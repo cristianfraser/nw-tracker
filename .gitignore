@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+.DS_Store
+server/data/*.db
+server/data/*.db-journal
+
+# Personal Numbers workbook (large / sensitive)
+*.numbers
