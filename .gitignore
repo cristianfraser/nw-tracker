@@ -12,3 +12,5 @@ server/data/*.db-shm
 
 # Personal Numbers workbook (large / sensitive)
 *.numbers
+
+.venv-numbers/

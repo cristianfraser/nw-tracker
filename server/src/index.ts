@@ -1,8 +1,9 @@
 import cors from "cors";
 import express from "express";
-import { initSchema, db } from "./db.js";
+import { initSchema, runMigrations, db } from "./db.js";
 
 initSchema();
+runMigrations();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;

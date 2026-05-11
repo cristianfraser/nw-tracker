@@ -88,6 +88,11 @@ export function initSchema() {
       status TEXT NOT NULL DEFAULT 'pending',
       raw_text TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   const count = db.prepare("SELECT COUNT(*) AS c FROM asset_groups").get() as { c: number };
@@ -170,6 +175,34 @@ function seedReferenceData() {
     }
   });
   tx();
+}
+
+const migrationsDir = path.join(__dirname, "..", "migrations");
+
+export function runMigrations() {
+  if (!fs.existsSync(migrationsDir)) {
+    return;
+  }
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  const applied = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
+  const done = new Set(applied.map((r) => r.id));
+
+  for (const file of files) {
+    if (done.has(file)) {
+      continue;
+    }
+    const full = path.join(migrationsDir, file);
+    const sql = fs.readFileSync(full, "utf8");
+    const run = db.transaction(() => {
+      db.exec(sql);
+      db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
+    });
+    run();
+    console.log(`migration applied: ${file}`);
+  }
 }
 
 export { db };
