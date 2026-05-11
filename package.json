@@ -4,6 +4,7 @@
   "workspaces": ["server", "client"],
   "scripts": {
     "dev:server": "npm run dev -w nw-tracker-server",
-    "dev:client": "npm run dev -w nw-tracker-client"
+    "dev:client": "npm run dev -w nw-tracker-client",
+    "import:excel": "npm run import:excel -w nw-tracker-server"
   }
 }

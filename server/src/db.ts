@@ -187,8 +187,9 @@ export function runMigrations() {
     .readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  const applied = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
-  const done = new Set(applied.map((r) => r.id));
+  const appliedRows = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
+  const done = new Set(appliedRows.map((r) => r.id));
+  let appliedCount = 0;
 
   for (const file of files) {
     if (done.has(file)) {
@@ -201,7 +202,14 @@ export function runMigrations() {
       db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     });
     run();
+    appliedCount += 1;
     console.log(`migration applied: ${file}`);
+  }
+
+  if (appliedCount === 0) {
+    console.log(`migrations: up to date (${done.size} applied)`);
+  } else {
+    console.log(`migrations: applied ${appliedCount} new file(s); total recorded ${done.size + appliedCount}`);
   }
 }
 

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "import:excel": "tsx scripts/import-excel-history.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -19,6 +20,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "xlsx": "^0.18.5"
   }
 }
