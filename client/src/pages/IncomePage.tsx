@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api";
 import { formatClp } from "../format";
 
@@ -31,19 +30,12 @@ export function IncomePage() {
   }, []);
 
   if (err) {
-    return (
-      <main className="page">
-        <p className="error">{err}</p>
-      </main>
-    );
+    return <p className="error">{err}</p>;
   }
 
   return (
-    <main className="page">
-      <p className="muted">
-        <Link to="/">← Dashboard</Link>
-      </p>
-      <h1>Income</h1>
+    <>
+      <h2 className="flow-section-title">Income</h2>
       <p className="muted">Log salary, bonuses, etc. via API for now.</p>
 
       <div className="table-wrap">
@@ -76,6 +68,6 @@ export function IncomePage() {
           </tbody>
         </table>
       </div>
-    </main>
+    </>
   );
 }

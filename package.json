@@ -1,10 +1,15 @@
 {
   "name": "nw-tracker",
   "private": true,
+  "engines": {
+    "node": "24.11.1"
+  },
   "workspaces": ["server", "client"],
   "scripts": {
     "dev:server": "npm run dev -w nw-tracker-server",
     "dev:client": "npm run dev -w nw-tracker-client",
-    "import:excel": "npm run import:excel -w nw-tracker-server"
+    "migrate": "npm run migrate -w nw-tracker-server",
+    "import:excel": "npm run import:excel -w nw-tracker-server",
+    "fetch-uf": "npm run fetch-uf -w nw-tracker-server"
   }
 }

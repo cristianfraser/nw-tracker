@@ -44,8 +44,7 @@ export function initSchema() {
     CREATE TABLE IF NOT EXISTS movements (
       id INTEGER PRIMARY KEY,
       account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      kind TEXT NOT NULL CHECK (kind IN ('deposit', 'withdrawal')),
-      amount_clp REAL NOT NULL CHECK (amount_clp > 0),
+      amount_clp REAL NOT NULL CHECK (amount_clp != 0),
       occurred_on TEXT NOT NULL,
       note TEXT
     );
@@ -61,6 +60,11 @@ export function initSchema() {
     CREATE TABLE IF NOT EXISTS fx_daily (
       date TEXT PRIMARY KEY,
       clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS uf_daily (
+      date TEXT PRIMARY KEY,
+      clp_per_uf REAL NOT NULL CHECK (clp_per_uf > 0)
     );
 
     CREATE TABLE IF NOT EXISTS income_entries (
@@ -87,6 +91,17 @@ export function initSchema() {
       uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
       status TEXT NOT NULL DEFAULT 'pending',
       raw_text TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS brokerage_flows (
+      id INTEGER PRIMARY KEY,
+      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      occurred_on TEXT NOT NULL,
+      flow_kind TEXT NOT NULL CHECK (flow_kind IN ('deposit_clp', 'compra_usd', 'dividend_usd', 'withdrawal_clp', 'other')),
+      amount_clp REAL,
+      amount_usd REAL,
+      ticker TEXT,
+      note TEXT
     );
 
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -118,8 +133,10 @@ function seedReferenceData() {
       label: "Brokerage",
       sort: 20,
       cats: [
-        { slug: "fintual_risky_norris", label: "Fintual (Risky Norris)" },
-        { slug: "individual_stocks", label: "Individual stocks" },
+        { slug: "fintual_risky_norris", label: "Fintual RN" },
+        { slug: "spy", label: "SPY" },
+        { slug: "vea", label: "VEA" },
+        { slug: "individual_stocks", label: "Acciones (USD)" },
       ],
     },
     {
@@ -152,6 +169,7 @@ function seedReferenceData() {
       sort: 60,
       cats: [
         { slug: "mortgage", label: "Mortgage" },
+        { slug: "credit_card", label: "Credit card" },
         { slug: "other_debt", label: "Other debt" },
       ],
     },
@@ -211,6 +229,58 @@ export function runMigrations() {
   } else {
     console.log(`migrations: applied ${appliedCount} new file(s); total recorded ${done.size + appliedCount}`);
   }
+
+  migrateMovementsSignedIfNeeded();
 }
+
+const MOVEMENTS_SIGNED_MIGRATION_ID = "008_movements_signed_amount.sql";
+
+/** Legacy rows used kind + strictly positive amount; new model is signed amount_clp (withdrawal = negative). */
+function migrateMovementsSignedIfNeeded() {
+  const already = db.prepare("SELECT 1 FROM schema_migrations WHERE id = ?").get(MOVEMENTS_SIGNED_MIGRATION_ID) as
+    | { 1: number }
+    | undefined;
+  if (already) return;
+
+  const cols = db.prepare("PRAGMA table_info(movements)").all() as { name: string }[];
+  const hasKind = cols.some((c) => c.name === "kind");
+
+  if (!hasKind) {
+    db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
+    return;
+  }
+
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE movements__signed (
+        id INTEGER PRIMARY KEY,
+        account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        amount_clp REAL NOT NULL CHECK (amount_clp != 0),
+        occurred_on TEXT NOT NULL,
+        note TEXT
+      );
+      INSERT INTO movements__signed (id, account_id, amount_clp, occurred_on, note)
+      SELECT
+        id,
+        account_id,
+        CASE
+          WHEN kind = 'withdrawal' THEN -ABS(amount_clp)
+          ELSE ABS(amount_clp)
+        END,
+        occurred_on,
+        note
+      FROM movements;
+      DROP TABLE movements;
+      ALTER TABLE movements__signed RENAME TO movements;
+    `);
+    db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
+  });
+  tx();
+  console.log(`migration applied: ${MOVEMENTS_SIGNED_MIGRATION_ID} (movements → signed amount_clp)`);
+}
+
+/** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
+initSchema();
+runMigrations();
 
 export { db };

@@ -10,6 +10,8 @@
   --accent-dim: #2563a8;
   --positive: #34d399;
   --negative: #f87171;
+  --chart-panel-min-height: 420px;
+  --chart-panel-height: clamp(390px, 54vh, 600px);
   font-family: "DM Sans", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -80,6 +82,101 @@ a:hover {
 .topnav a.active {
   color: var(--text);
   background: var(--accent-dim);
+}
+
+.flow-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.flow-subnav a,
+.flow-subnav button {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.flow-subnav a:hover,
+.flow-subnav button:hover {
+  color: var(--text);
+  background: var(--surface2);
+  text-decoration: none;
+}
+
+.flow-subnav a.active,
+.flow-subnav button.active {
+  color: var(--text);
+  background: var(--accent-dim);
+}
+
+h2.flow-section-title {
+  margin-top: 0;
+}
+
+select.rates-series-select {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  font: inherit;
+  min-width: min(22rem, 100%);
+  max-width: 100%;
+}
+
+.rates-fx-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 880px) {
+  .rates-fx-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rates-instrument-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.rates-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem 0.5rem;
+}
+
+.rates-chart-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+.rates-chart-card__note {
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+}
+
+.rates-chart-card__empty {
+  margin: 0.5rem 0 0.35rem;
+  font-size: 0.875rem;
+}
+
+.rates-chart-card__plot {
+  height: clamp(200px, 28vh, 320px);
+  width: 100%;
 }
 
 .brand {
@@ -200,7 +297,66 @@ tr:hover td {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  height: 320px;
+  min-height: var(--chart-panel-min-height);
+  height: var(--chart-panel-height);
+}
+
+/**
+ * Recharts renders tooltip “active” points inside `<g class="recharts-active-dot">` above the lines.
+ * That group’s bbox can steal pointer events from Line hit underlays — disable hit-testing on the whole layer.
+ */
+.recharts-wrapper .recharts-active-dot {
+  pointer-events: none;
+}
+
+/* Tooltip cursor is often a tall band above the plot — must not block Line hit targets */
+.recharts-wrapper .recharts-tooltip-cursor {
+  pointer-events: none;
+}
+
+/* Pair of valuation line charts: side-by-side on wide viewports, stacked on narrow */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem 1.25rem;
+  align-items: stretch;
+  margin-top: 0.75rem;
+}
+
+@media (min-width: 900px) {
+  .chart-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /** Single wide chart (no allocation pie), e.g. account detail */
+  .chart-grid.chart-grid--full-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-grid__col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-grid__col > .chart-panel-title {
+  margin: 0 0 0.5rem;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.chart-grid__col .chart-box {
+  flex: 1;
+  min-height: var(--chart-panel-min-height);
+  height: var(--chart-panel-height);
+  margin-top: 0;
+}
+
+.chart-grid__col > .empty {
+  margin: 0;
+  padding: 1rem 0;
 }
 
 .error {

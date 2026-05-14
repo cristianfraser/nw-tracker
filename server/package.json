@@ -7,12 +7,14 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "import:excel": "tsx scripts/import-excel-history.ts"
+    "migrate": "tsx -e \"import './src/db.ts'\"",
+    "import:excel": "tsx scripts/import-excel-history.ts",
+    "fetch-uf": "tsx scripts/fetch-sii-uf-daily.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "express": "4.21.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>nw-tracker — project context</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #0f172a;
+        --muted: #475569;
+        --border: #cbd5e1;
+        --code: #f1f5f9;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e2e8f0;
+          --muted: #94a3b8;
+          --border: #334155;
+          --code: #1e293b;
+        }
+      }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        line-height: 1.55;
+        max-width: 52rem;
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem 3rem;
+        color: var(--fg);
+      }
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 650;
+        margin-top: 0;
+      }
+      h2 {
+        font-size: 1.05rem;
+        margin-top: 2rem;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 0.25rem;
+      }
+      p,
+      li {
+        color: var(--fg);
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      .maintain {
+        background: var(--code);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.1rem;
+        margin: 1.5rem 0 2rem;
+      }
+      .maintain strong {
+        display: block;
+        margin-bottom: 0.5rem;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+        font-size: 0.86em;
+      }
+      pre {
+        background: var(--code);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        overflow-x: auto;
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+      a {
+        color: inherit;
+        text-decoration-thickness: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>nw-tracker</h1>
+    <p class="muted">
+      Single source of truth for net-worth history: Excel/Numbers import into SQLite, REST API, Vite + React
+      dashboard (CLP/USD charts, class tabs, account detail).
+    </p>
+
+    <div class="maintain" id="maintain-this-file">
+      <strong>Maintaining this file (for humans and coding agents)</strong>
+      <p style="margin: 0 0 0.6rem">
+        Treat <code>about.html</code> as the project’s <em>living</em> orientation doc. When you change behavior,
+        data model, import pipeline, chart semantics, or operational commands, update this file in the same PR or
+        follow-up commit.
+      </p>
+      <ul style="margin: 0">
+        <li><strong>Add</strong> new facts that help the next person (or agent) avoid rediscovering them.</li>
+        <li><strong>Edit</strong> sections that are wrong or outdated after a refactor.</li>
+        <li><strong>Remove</strong> one-off debugging notes, duplicated README material, and anything no longer true.</li>
+        <li>Prefer short bullets and real paths/commands over long prose.</li>
+        <li>Do not store secrets, API keys, or personal financial numbers here.</li>
+      </ul>
+    </div>
+
+    <h2>Repository layout</h2>
+    <ul>
+      <li><code>server/</code> — Express + TypeScript + <code>better-sqlite3</code>; migrations in <code>server/migrations/</code>; DB file <code>server/data/nw-tracker.db</code>.</li>
+      <li><code>client/</code> — Vite + React + TypeScript.</li>
+      <li><code>cfraser/</code> — Numbers CSV exports + optional <code>stocks-lots.csv</code>, <code>fund-unit-values.csv</code>, etc.</li>
+      <li><code>cfraser.xlsx</code> — primary import workbook (path overridable via <code>EXCEL_PATH</code>).</li>
+      <li>Root <code>package.json</code> — npm workspaces (<code>server</code>, <code>client</code>); scripts <code>dev:server</code>, <code>dev:client</code>, <code>migrate</code>, <code>import:excel</code>.</li>
+    </ul>
+
+    <h2>Node &amp; install</h2>
+    <ul>
+      <li><code>.nvmrc</code> pins Node (keep in sync with root <code>package.json</code> <code>engines.node</code>).</li>
+      <li>Use <code>nvm use</code> before installs or scripts if you use nvm.</li>
+      <li><code>.npmrc</code> may set <code>min-release-age</code> (supply-chain). If <code>npm install</code> fails on a too-new package, pin an older release (e.g. Express was pinned to <code>4.21.2</code> exact) rather than disabling the policy long-term.</li>
+    </ul>
+
+    <h2>Database &amp; migrations</h2>
+    <ul>
+      <li><code>server/src/db.ts</code> opens the DB, runs <code>initSchema()</code> and <code>runMigrations()</code> at module load so any import of <code>db</code> runs migrations before modules that <code>prepare()</code> statements against migrated tables (e.g. <code>equity_daily</code>).</li>
+      <li><code>npm run migrate</code> (root) loads <code>server/src/db.ts</code> once to apply pending SQL migrations.</li>
+      <li>Notable tables: <code>equity_daily</code> (ticker, trade_date, close_usd) for SPY/VEA EOD from Yahoo at import; <code>fund_unit_daily</code> (optional valor-cuota backfill via CSV).</li>
+    </ul>
+
+    <h2>Import pipeline</h2>
+    <ul>
+      <li>Run from repo: <code>npm run import:excel</code> (see <code>server/scripts/import-excel-history.ts</code> header comment for behavior).</li>
+      <li>SPY/VEA with <code>units</code> in <code>stocks-lots.csv</code>: MTM CLP from <code>equity_daily</code> + <code>brokerage_flows</code> + <code>fx_daily</code>; import clears SPY/VEA <code>valuations</code> when MTM mode applies and refreshes <code>equity_daily</code> for SPY/VEA.</li>
+      <li>Monthly snapshot dates for import-driven valuations, FX, UF, and related movements use <strong>calendar month-end</strong> (<code>monthEndDate</code> in CSV helpers), not the first of the month.</li>
+      <li>Optional <code>cfraser/fund-unit-values.csv</code>: semicolon CSV, headers <code>series_key</code>, <code>day</code>, <code>unit_value_clp</code>, optional <code>note</code> — example keys: <code>afp_uno_cuota_a</code>, <code>fintual_risky_norris</code>, <code>fintual_risky_norris_apv</code> (charts still mostly use <code>valuations</code> unless wired to fund series).</li>
+    </ul>
+
+    <h2>Valuation &amp; charts (API + UI)</h2>
+    <ul>
+      <li><code>server/src/valuationTimeseries.ts</code> builds dashboard and per–asset-group time series; brokerage tab merges SPY+VEA into <code>stocks_total</code> with optional crypto merge into <code>crypto_total</code>.</li>
+      <li><strong>Class tabs only</strong> (<code>getGroupValuationTimeseries</code>): response includes synthetic lines <code>__group_val_total</code> and <code>__group_dep_total</code> (“Total (clase)” / “Total aportes acum.”) prepended to the series list. The <strong>main dashboard primary</strong> block (<code>accounts_ex_property</code>) does <em>not</em> add these totals.</li>
+      <li>Cumulative <strong>deposit</strong> lines: merged crypto/stocks and per-account lines use <code>null</code> until the first month cumulative deposits are non-zero, so lines do not sit at zero from the chart’s earliest date.</li>
+      <li>Category <code>cuenta_corriente</code>: <strong>no</strong> cumulative deposit line (balance-only semantics).</li>
+      <li>Account detail: optional <code>?granularity=daily</code> for SPY/VEA MTM when <code>equity_daily</code> exists; monthly remains default.</li>
+      <li>Client: <code>ValuationLineCharts.tsx</code> (<code>trimLeadingInactivePoints</code>, deposit line naming via <code>deposit_series_name</code>); class tab page uses <code>thickKey="__group_val_total"</code> for the total valuation stroke.</li>
+    </ul>
+
+    <h2>Dev server &amp; ports</h2>
+    <ul>
+      <li>API default port <code>3001</code> (<code>PORT</code> env).</li>
+      <li><code>tsx watch src/index.ts</code> may ignore Ctrl+C in some setups; kill with <code>lsof -iTCP:3001</code> / <code>pkill -f "tsx watch src/index.ts"</code> if needed.</li>
+    </ul>
+
+    <h2>External references (public)</h2>
+    <ul>
+      <li>Fintual “números en detalle” (valor cuota style data): <a href="https://fintual.cl/numeros-en-detalle/">fintual.cl/numeros-en-detalle/</a> — manual backfill into <code>fund-unit-values.csv</code> when needed.</li>
+    </ul>
+
+    <p class="muted" style="margin-top: 2.5rem">
+      Last curated for maintainability: keep this file accurate when the codebase changes. Remove obsolete bullets
+      aggressively so it stays scannable.
+    </p>
+  </body>
+</html>
