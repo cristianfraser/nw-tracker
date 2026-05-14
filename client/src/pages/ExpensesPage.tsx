@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api";
 import { formatClp } from "../format";
 
@@ -32,19 +31,12 @@ export function ExpensesPage() {
   }, []);
 
   if (err) {
-    return (
-      <main className="page">
-        <p className="error">{err}</p>
-      </main>
-    );
+    return <p className="error">{err}</p>;
   }
 
   return (
-    <main className="page">
-      <p className="muted">
-        <Link to="/">← Dashboard</Link>
-      </p>
-      <h1>Expenses</h1>
+    <>
+      <h2 className="flow-section-title">Expenses</h2>
       <p className="muted">
         Optional tracker. Later: upload bank statements to{" "}
         <span className="mono">POST /api/imports/bank-statement</span> (stored as pending batches).
@@ -80,6 +72,6 @@ export function ExpensesPage() {
           </tbody>
         </table>
       </div>
-    </main>
+    </>
   );
 }
