@@ -55,6 +55,8 @@ const GROUP_TAB_ACCOUNT_COLORS = [
 
 export function shadesForGroupSlug(slug: string): string[] {
   switch (slug) {
+    case "inversiones":
+      return [...RETIREMENT.slice(0, 4), ...BROKERAGE.slice(0, 4)];
     case "retirement":
       return RETIREMENT;
     case "brokerage":
@@ -80,6 +82,7 @@ const BUCKET_STROKE: Record<string, string> = {
   real_estate: REAL_ESTATE[4],
   retirement: RETIREMENT[4],
   brokerage: BROKERAGE[3],
+  inversiones: "#94a3b8",
   cash_eqs: CASH[4],
   crypto: CRYPTO[3],
   liabilities: LIABILITIES[4],
@@ -106,7 +109,13 @@ export type ChartColorPlan =
   | { kind: "default" }
   | { kind: "dashboard-primary"; dataKeyToGroup: Record<string, string> }
   | { kind: "dashboard-overview" }
-  | { kind: "group-tab"; groupSlug: AssetGroupSlug; accounts: TimeseriesAccountLine[] };
+  | {
+      kind: "group-tab";
+      groupSlug: AssetGroupSlug;
+      /** Brokerage tab: when `crypto`, BTC/ETH lines use the crypto palette (same as `/brokerage/crypto`). */
+      brokerageSubgroup?: "acciones" | "fondos_mutuos" | "crypto";
+      accounts: TimeseriesAccountLine[];
+    };
 
 export type LineSeriesColorInput = {
   dataKey: string;
@@ -126,6 +135,9 @@ function dashboardRetirementQuartetRankFromName(name: string): number | null {
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{M}/gu, "");
+  // Merged dashboard primary lines (must precede single-leg "afc" / "afp" checks).
+  if (n.includes("afp") && n.includes("afc")) return 1;
+  if (n === "apv") return 0;
   if (n.includes("afc")) return 3;
   if (n.includes("apv") && (n.includes("regimen b") || n.includes("apv-b") || n.includes("apv b"))) return 2;
   if (n.includes("apv") && (n.includes("regimen a") || n.includes("apv-a") || n.includes("apv a"))) return 0;
@@ -147,6 +159,12 @@ function isDashboardReservaCashLine(name: string): boolean {
   const n = name.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
   if (n === "reserva") return true;
   return n.includes("fondo reserva") || (n.includes("reserva") && n.includes("fintual"));
+}
+
+/** Dashboard primary merged “Fondos mutuos” line (same label as Inversiones → Brokerage → Fondos mutuos). */
+function isDashboardFondosMutuosBrokerageLine(name: string): boolean {
+  const n = name.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  return n === "fondos mutuos" || (n.includes("fondos") && n.includes("mutuos"));
 }
 
 export function resolveLineSeriesColors(
@@ -199,7 +217,10 @@ export function resolveLineSeriesColors(
         const idx = nextByGroup.get(g) ?? 0;
         nextByGroup.set(g, idx + 1);
         stroke = DASHBOARD_RESERVA_STROKE;
-      } else if (g === "brokerage" && isFintualRnBrokerageAccountName(s.name)) {
+      } else if (
+        g === "brokerage" &&
+        (isFintualRnBrokerageAccountName(s.name) || isDashboardFondosMutuosBrokerageLine(s.name))
+      ) {
         const idx = nextByGroup.get(g) ?? 0;
         nextByGroup.set(g, idx + 1);
         stroke = FINTUAL_RN_BROKER_STROKE;
@@ -215,7 +236,9 @@ export function resolveLineSeriesColors(
   }
 
   if (plan.kind === "group-tab") {
-    const { byDataKey } = buildGroupTabColorMaps(plan.groupSlug, plan.accounts);
+    const colorSlug =
+      plan.groupSlug === "brokerage" && plan.brokerageSubgroup === "crypto" ? "crypto" : plan.groupSlug;
+    const { byDataKey } = buildGroupTabColorMaps(colorSlug, plan.accounts);
     return series.map((s) => ({
       ...s,
       stroke:
@@ -266,7 +289,7 @@ function isLiabilitiesCreditCardAccountName(name: string): boolean {
 
 /** Line chart (dataKey) + pie (account_id) use the same map on class tabs. */
 export function buildGroupTabColorMaps(
-  groupSlug: AssetGroupSlug,
+  groupSlug: AssetGroupSlug | "crypto",
   accounts: TimeseriesAccountLine[]
 ): { byDataKey: Map<string, string>; byAccountId: Map<number, string> } {
   const byDataKey = new Map<string, string>();
@@ -276,6 +299,10 @@ export function buildGroupTabColorMaps(
     let stroke: string;
     if (a.account_id === -1) stroke = "#cbd5e1";
     else if (a.account_id === -4) stroke = "#fb7185";
+    /** Brokerage “Todas” + grouped: synthetic rows from `aggregateBrokerageAllViewValuationBlock`. */
+    else if (groupSlug === "brokerage" && a.account_id === -201) stroke = FINTUAL_RN_BROKER_STROKE;
+    else if (groupSlug === "brokerage" && a.account_id === -202) stroke = "#34d399";
+    else if (groupSlug === "brokerage" && a.account_id === -203) stroke = CRYPTO[3]!;
     else if (groupSlug === "brokerage" && isFintualRnBrokerageAccountName(a.name)) {
       stroke = FINTUAL_RN_BROKER_STROKE;
       hueIndex += 1;
@@ -303,12 +330,13 @@ export function buildGroupTabColorMaps(
 }
 
 export function groupTabPieSliceFill(
-  groupSlug: AssetGroupSlug,
+  groupSlug: AssetGroupSlug | "crypto",
   maps: { byAccountId: Map<number, string> },
-  accountId: number | undefined
+  accountId: number | undefined,
+  opts?: { allocationBucketSlug?: AssetGroupSlug | "crypto" }
 ): string {
   if (accountId == null) return DEFAULT_LINE_COLORS[0];
   const hit = maps.byAccountId.get(accountId);
   if (hit) return hit;
-  return allocationBucketColor(groupSlug);
+  return allocationBucketColor(opts?.allocationBucketSlug ?? groupSlug);
 }

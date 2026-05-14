@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { ValuationLineCharts } from "../components/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
+import { Table } from "../components/Table";
 import { api } from "../api";
 import { allocationBucketColor } from "../chartColors";
 import {
@@ -145,6 +146,13 @@ export function DashboardPage() {
     m.stocks_total__dep = "brokerage";
     m.crypto_total = "crypto";
     m.crypto_total__dep = "crypto";
+    m.fondos_mutuos_total = "brokerage";
+    m.fondos_mutuos_total__dep = "brokerage";
+    /** Synthetic keys from `mergeDashboardPrimaryAccountsBlock` (server `valuationTimeseries.ts`). */
+    m["-9101"] = "retirement";
+    m["-9101__dep"] = "retirement";
+    m["-9102"] = "retirement";
+    m["-9102__dep"] = "retirement";
     return m;
   }, [dash]);
 
@@ -432,8 +440,8 @@ export function DashboardPage() {
       )}
 
       <h2>Accounts</h2>
-      <div className="table-wrap">
-        <table>
+      <Table
+        header={
           <thead>
             <tr>
               <th>Account</th>
@@ -447,48 +455,47 @@ export function DashboardPage() {
               <th>As of</th>
             </tr>
           </thead>
-          <tbody>
-            {dash.accounts.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="muted">
-                  No accounts yet. Open an asset tab and note category IDs for{" "}
-                  <span className="mono">POST /api/accounts</span>.
-                </td>
-              </tr>
-            ) : (
-              dash.accounts.map((a) => (
-                <tr key={a.account_id}>
-                  <td>
-                    <Link to={`/account/${a.account_id}`}>{a.name}</Link>
-                  </td>
-                  <td>{a.group_label}</td>
-                  <td>{a.category_label}</td>
-                  <td className="mono">{a.position?.ticker ?? "—"}</td>
-                  <td className="mono">
-                    {a.position?.units != null && Number.isFinite(a.position.units)
-                      ? formatInstrumentUnits(a.position.units, a.position.units_kind)
-                      : "—"}
-                  </td>
-                  <td className="mono">{fmtFlow(a.deposits_clp)}</td>
-                  <td className="mono">
-                    {showUsd
-                      ? fmtUsdPos(a.current_value_usd ?? null)
-                      : a.current_value_clp != null
-                        ? fmtClp(a.current_value_clp)
-                        : "—"}
-                  </td>
-                  <td className="mono">
-                    {a.position?.value_per_unit_clp != null
-                      ? fmtClp(a.position.value_per_unit_clp)
-                      : "—"}
-                  </td>
-                  <td className="muted">{a.valuation_as_of ?? "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        }
+      >
+        {dash.accounts.length === 0 ? (
+          <tr>
+            <td colSpan={9} className="muted">
+              No accounts yet. Open an asset tab and note category IDs for{" "}
+              <span className="mono">POST /api/accounts</span>.
+            </td>
+          </tr>
+        ) : (
+          dash.accounts.map((a) => (
+            <tr key={a.account_id}>
+              <td>
+                <Link to={`/account/${a.account_id}`}>{a.name}</Link>
+              </td>
+              <td>{a.group_label}</td>
+              <td>{a.category_label}</td>
+              <td className="mono">{a.position?.ticker ?? "—"}</td>
+              <td className="mono">
+                {a.position?.units != null && Number.isFinite(a.position.units)
+                  ? formatInstrumentUnits(a.position.units, a.position.units_kind)
+                  : "—"}
+              </td>
+              <td className="mono">{fmtFlow(a.deposits_clp)}</td>
+              <td className="mono">
+                {showUsd
+                  ? fmtUsdPos(a.current_value_usd ?? null)
+                  : a.current_value_clp != null
+                    ? fmtClp(a.current_value_clp)
+                    : "—"}
+              </td>
+              <td className="mono">
+                {a.position?.value_per_unit_clp != null
+                  ? fmtClp(a.position.value_per_unit_clp)
+                  : "—"}
+              </td>
+              <td className="muted">{a.valuation_as_of ?? "—"}</td>
+            </tr>
+          ))
+        )}
+      </Table>
     </main>
   );
 }
