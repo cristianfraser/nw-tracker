@@ -203,6 +203,8 @@ type MergePairOpts = {
   ethId?: number;
   spyId?: number;
   veaId?: number;
+  /** Brokerage “Fondos mutuos” tab membership (`brokerageSubgroupMatchesCategory`). */
+  fondosMutuosIds?: number[];
 };
 
 function categorySlugByAccountId(accountIds: number[]): Map<number, string> {
@@ -240,9 +242,14 @@ function attachDepositSeriesKeys(
         (veaId != null && (depMovs.get(veaId)?.length ?? 0) > 0);
       return has ? { ...t, depositDataKey: "stocks_total__dep" } : { ...t };
     }
+    if (t.dataKey === "fondos_mutuos_total") {
+      const ids = merge?.fondosMutuosIds ?? [];
+      const has = ids.some((id) => (depMovs.get(id)?.length ?? 0) > 0);
+      return has ? { ...t, depositDataKey: "fondos_mutuos_total__dep" } : { ...t };
+    }
     if (t.account_id > 0) {
-      if (slugById.get(t.account_id) === "cuenta_corriente") return { ...t };
       const slug = slugById.get(t.account_id);
+      if (slug === "cuenta_corriente" || slug === "cuenta_ahorro_vivienda") return { ...t };
       if (slug && CATEGORY_NO_CHART_DEPOSIT_LINE.has(slug)) return { ...t };
       const depLen = (depMovs.get(t.account_id) ?? []).length;
       const propertyWithCapital =
@@ -309,7 +316,13 @@ function propertyDeptoClpSeriesBySnapshotDate(
 }
 
 function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit, merge?: MergePairOpts) {
-  const mergeIds = [merge?.btcId, merge?.ethId, merge?.spyId, merge?.veaId].filter((x): x is number => x != null);
+  const mergeIds = [
+    merge?.btcId,
+    merge?.ethId,
+    merge?.spyId,
+    merge?.veaId,
+    ...(merge?.fondosMutuosIds ?? []),
+  ].filter((x): x is number => x != null);
   const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds, ...mergeIds])];
   if (allIds.length === 0) {
     return { accounts: top, points: [] as Record<string, string | number | null>[] };
@@ -387,6 +400,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   let lastEth: number | null = null;
   let lastSpy: number | null = null;
   let lastVea: number | null = null;
+  const lastFondosMutuosById = new Map<number, number>();
   const btcId = merge?.btcId;
   const ethId = merge?.ethId;
   const spyId = merge?.spyId;
@@ -394,15 +408,18 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
 
   const needsCrypto = topOut.some((t) => t.dataKey === "crypto_total");
   const needsStocks = topOut.some((t) => t.dataKey === "stocks_total");
+  const needsFondosMutuos = topOut.some((t) => t.dataKey === "fondos_mutuos_total");
   /** Avoid drawing merged deposit lines at 0 from the first chart date before any inflows exist. */
   let cryptoMergedDepSeen = false;
   let stocksMergedDepSeen = false;
+  let fondosMutuosMergedDepSeen = false;
   const singleAccountDepSeen = new Map<number, boolean>();
 
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
     for (const t of topOut) {
-      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total") continue;
+      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "fondos_mutuos_total")
+        continue;
       const aid = t.account_id;
       let raw = valuationRawClpForAccount(aid, d, byDate);
       if (propertyAccountIds.length === 1 && slugById.get(aid) === "property") {
@@ -442,6 +459,20 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       } else {
         row.stocks_total = null;
       }
+    }
+    if (needsFondosMutuos && merge?.fondosMutuosIds && merge.fondosMutuosIds.length > 0) {
+      for (const id of merge.fondosMutuosIds) {
+        const raw = valuationRawClpForAccount(id, d, byDate);
+        if (raw != null) lastFondosMutuosById.set(id, raw);
+      }
+      let sumClp = 0;
+      let any = false;
+      for (const id of merge.fondosMutuosIds) {
+        const v = lastFondosMutuosById.get(id);
+        if (v != null) any = true;
+        sumClp += v ?? 0;
+      }
+      row.fondos_mutuos_total = any ? convertTs(sumClp, d, unit) : null;
     }
     for (const t of topOut) {
       if (!t.depositDataKey) continue;
@@ -492,6 +523,28 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
             row[t.depositDataKey] = null;
           } else {
             stocksMergedDepSeen = true;
+            row[t.depositDataKey] = depPlot;
+          }
+        } else {
+          row[t.depositDataKey] = depPlot;
+        }
+      } else if (t.dataKey === "fondos_mutuos_total") {
+        const ids = merge?.fondosMutuosIds ?? [];
+        let sumClp = 0;
+        let depPlot: number;
+        for (const id of ids) sumClp += depClpByAccAndDate.get(id)?.get(d) ?? 0;
+        if (unit === "uf") {
+          depPlot = ids.reduce((s, id) => s + (depUfByAccAndDate.get(id)?.get(d) ?? 0), 0);
+        } else if (unit === "usd") {
+          depPlot = ids.reduce((s, id) => s + (depUsdByAccAndDate.get(id)?.get(d) ?? 0), 0);
+        } else {
+          depPlot = sumClp;
+        }
+        if (!fondosMutuosMergedDepSeen) {
+          if (depPlot === 0) {
+            row[t.depositDataKey] = null;
+          } else {
+            fondosMutuosMergedDepSeen = true;
             row[t.depositDataKey] = depPlot;
           }
         } else {
@@ -573,9 +626,113 @@ const FIXED_IMPORT_NOTES = [
   "import:excel|key=afp",
   "import:excel|key=fondo_reserva",
   "import:excel|key=apv_b",
-  "import:excel|key=fintual_rn",
   "import:excel|key=afc",
 ] as const;
+
+/** Synthetic `account_id` / `dataKey` for dashboard primary chart merged retirement legs. */
+const DASH_MERGED_AFP_AFC_ID = -9101;
+const DASH_MERGED_APV_ID = -9102;
+
+function sumNumericOrNull(a: unknown, b: unknown): number | null {
+  const x = typeof a === "number" && Number.isFinite(a) ? a : null;
+  const y = typeof b === "number" && Number.isFinite(b) ? b : null;
+  if (x == null && y == null) return null;
+  return (x ?? 0) + (y ?? 0);
+}
+
+/**
+ * Dashboard “Cuentas principales”: merge APV-a+APV-b → one **APV** line and AFP+AFC → **AFP + AFC**
+ * (same mental model as Inversiones / Retiro nav).
+ */
+function mergeDashboardPrimaryAccountsBlock(
+  block: { accounts: AccountLine[]; points: Record<string, string | number | null>[] },
+  opts: {
+    afpId: number | undefined;
+    afcId: number | undefined;
+    apvAId: number | undefined;
+    apvBId: number | undefined;
+  }
+): { accounts: AccountLine[]; points: Record<string, string | number | null>[] } {
+  const { afpId, afcId, apvAId, apvBId } = opts;
+  const mergeAfpAfc = afpId != null && afcId != null;
+  const mergeApv = apvAId != null && apvBId != null;
+  const drop = new Set<number>();
+  if (mergeAfpAfc) {
+    drop.add(afpId);
+    drop.add(afcId);
+  }
+  if (mergeApv) {
+    drop.add(apvAId);
+    drop.add(apvBId);
+  }
+  if (drop.size === 0) return block;
+
+  const dkAfp = afpId != null ? String(afpId) : "";
+  const dkAfc = afcId != null ? String(afcId) : "";
+  const dkApvA = apvAId != null ? String(apvAId) : "";
+  const dkApvB = apvBId != null ? String(apvBId) : "";
+  const dkMaa = String(DASH_MERGED_AFP_AFC_ID);
+  const dkMapv = String(DASH_MERGED_APV_ID);
+
+  const points = block.points.map((row) => {
+    const out: Record<string, string | number | null> = { ...row };
+    if (mergeAfpAfc) {
+      out[dkMaa] = sumNumericOrNull(row[dkAfp], row[dkAfc]);
+      out[`${dkMaa}__dep`] = sumNumericOrNull(row[`${dkAfp}__dep`], row[`${dkAfc}__dep`]);
+      delete out[dkAfp];
+      delete out[`${dkAfp}__dep`];
+      delete out[dkAfc];
+      delete out[`${dkAfc}__dep`];
+    }
+    if (mergeApv) {
+      out[dkMapv] = sumNumericOrNull(row[dkApvA], row[dkApvB]);
+      out[`${dkMapv}__dep`] = sumNumericOrNull(row[`${dkApvA}__dep`], row[`${dkApvB}__dep`]);
+      delete out[dkApvA];
+      delete out[`${dkApvA}__dep`];
+      delete out[dkApvB];
+      delete out[`${dkApvB}__dep`];
+    }
+    return out;
+  });
+
+  const mergedApvLine: AccountLine = {
+    account_id: DASH_MERGED_APV_ID,
+    name: "APV",
+    dataKey: dkMapv,
+    depositDataKey: `${dkMapv}__dep`,
+    deposit_series_name: "aportes acum.",
+  };
+  const mergedAfpAfcLine: AccountLine = {
+    account_id: DASH_MERGED_AFP_AFC_ID,
+    name: "AFP + AFC",
+    dataKey: dkMaa,
+    depositDataKey: `${dkMaa}__dep`,
+    deposit_series_name: "aportes acum.",
+  };
+
+  const accounts: AccountLine[] = [];
+  let addedApv = false;
+  let addedAfpAfc = false;
+  for (const line of block.accounts) {
+    if (mergeApv && (line.account_id === apvAId || line.account_id === apvBId)) {
+      if (!addedApv) {
+        accounts.push(mergedApvLine);
+        addedApv = true;
+      }
+      continue;
+    }
+    if (mergeAfpAfc && (line.account_id === afpId || line.account_id === afcId)) {
+      if (!addedAfpAfc) {
+        accounts.push(mergedAfpAfcLine);
+        addedAfpAfc = true;
+      }
+      continue;
+    }
+    if (!drop.has(line.account_id)) accounts.push(line);
+  }
+
+  return { accounts, points };
+}
 
 /** Short labels for the dashboard primary chart only (accounts table names unchanged). */
 const DASHBOARD_PRIMARY_LINE_LABEL: Record<(typeof FIXED_IMPORT_NOTES)[number], string> = {
@@ -583,7 +740,6 @@ const DASHBOARD_PRIMARY_LINE_LABEL: Record<(typeof FIXED_IMPORT_NOTES)[number], 
   "import:excel|key=afp": "AFP",
   "import:excel|key=fondo_reserva": "Reserva",
   "import:excel|key=apv_b": "APV-b",
-  "import:excel|key=fintual_rn": "Risky Norris",
   "import:excel|key=afc": "AFC",
 };
 
@@ -612,8 +768,8 @@ function getLiabilitiesLiquidityExtraSeries(unit: TsUnit): {
     .prepare(
       `
       SELECT v.as_of_date AS d,
-        COALESCE(SUM(CASE WHEN g.slug = 'brokerage' THEN v.value_clp ELSE 0 END), 0) AS brokerage,
-        COALESCE(SUM(CASE WHEN g.slug = 'crypto' THEN v.value_clp ELSE 0 END), 0) AS crypto
+        COALESCE(SUM(CASE WHEN g.slug = 'brokerage' AND c.slug NOT IN ('bitcoin', 'eth') THEN v.value_clp ELSE 0 END), 0) AS brokerage,
+        COALESCE(SUM(CASE WHEN c.slug IN ('bitcoin', 'eth') OR g.slug = 'crypto' THEN v.value_clp ELSE 0 END), 0) AS crypto
       FROM valuations v
       JOIN accounts a ON a.id = v.account_id
       JOIN categories c ON c.id = a.category_id
@@ -679,6 +835,32 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
       });
   }
 
+  const fondosBrokerageRows = db
+    .prepare(
+      `SELECT a.id AS account_id, c.slug AS category_slug
+       FROM accounts a
+       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = c.group_id
+       WHERE (a.notes IS NULL OR a.notes != ?)
+         AND g.slug = 'brokerage'
+         AND c.slug != 'individual_stocks'`
+    )
+    .all(NOTE_STOCKS_LEGACY) as { account_id: number; category_slug: string }[];
+  const fondosMutuosIds = fondosBrokerageRows
+    .filter((r) => brokerageSubgroupMatchesCategory(r.category_slug, "fondos_mutuos"))
+    .map((r) => r.account_id);
+  if (fondosMutuosIds.length > 0) {
+    const fmLine: AccountLine = { account_id: 0, name: "Fondos mutuos", dataKey: "fondos_mutuos_total" };
+    const afcDashRow = accByNote.get("import:excel|key=afc") as { account_id: number } | undefined;
+    if (afcDashRow) {
+      const afcIdx = top.findIndex((x) => x.account_id === afcDashRow.account_id);
+      if (afcIdx >= 0) top.splice(afcIdx, 0, fmLine);
+      else top.push(fmLine);
+    } else {
+      top.push(fmLine);
+    }
+  }
+
   const spyRow = accByNote.get("import:excel|key=spy") as { account_id: number } | undefined;
   const veaRow = accByNote.get("import:excel|key=vea") as { account_id: number } | undefined;
   const spyId = spyRow?.account_id;
@@ -695,7 +877,23 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
   top.push({ account_id: 0, name: "Cripto", dataKey: "crypto_total" });
 
   const extra = [btcId, ethId].filter((x): x is number => x != null);
-  const accountsExProperty = buildPointsForAccounts(top, extra, unit, { btcId, ethId, spyId, veaId });
+  let accountsExProperty = buildPointsForAccounts(top, extra, unit, {
+    btcId,
+    ethId,
+    spyId,
+    veaId,
+    fondosMutuosIds: fondosMutuosIds.length > 0 ? fondosMutuosIds : undefined,
+  });
+  const afpRow = accByNote.get("import:excel|key=afp") as { account_id: number } | undefined;
+  const afcRow = accByNote.get("import:excel|key=afc") as { account_id: number } | undefined;
+  const apvARow = accByNote.get("import:excel|key=apv_a") as { account_id: number } | undefined;
+  const apvBRow = accByNote.get("import:excel|key=apv_b") as { account_id: number } | undefined;
+  accountsExProperty = mergeDashboardPrimaryAccountsBlock(accountsExProperty, {
+    afpId: afpRow?.account_id,
+    afcId: afcRow?.account_id,
+    apvAId: apvARow?.account_id,
+    apvBId: apvBRow?.account_id,
+  });
 
   type OvRow = {
     d: string;
@@ -713,9 +911,9 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
       SELECT v.as_of_date AS d,
         COALESCE(SUM(CASE WHEN g.slug = 'real_estate' THEN v.value_clp ELSE 0 END), 0) AS real_estate,
         COALESCE(SUM(CASE WHEN g.slug = 'retirement' THEN v.value_clp ELSE 0 END), 0) AS retirement,
-        COALESCE(SUM(CASE WHEN g.slug = 'brokerage' THEN v.value_clp ELSE 0 END), 0) AS brokerage,
+        COALESCE(SUM(CASE WHEN g.slug = 'brokerage' AND c.slug NOT IN ('bitcoin', 'eth') THEN v.value_clp ELSE 0 END), 0) AS brokerage,
         COALESCE(SUM(CASE WHEN g.slug = 'cash_eqs' THEN v.value_clp ELSE 0 END), 0) AS cash,
-        COALESCE(SUM(CASE WHEN g.slug = 'crypto' THEN v.value_clp ELSE 0 END), 0) AS crypto,
+        COALESCE(SUM(CASE WHEN c.slug IN ('bitcoin', 'eth') OR g.slug = 'crypto' THEN v.value_clp ELSE 0 END), 0) AS crypto,
         COALESCE(SUM(CASE WHEN g.slug = 'liabilities' THEN v.value_clp ELSE 0 END), 0) AS liabilities,
         COALESCE(SUM(CASE WHEN g.slug != 'liabilities' THEN v.value_clp ELSE 0 END), 0) AS assets_ex_liab
       FROM valuations v
@@ -787,13 +985,54 @@ export type GroupTabAccountRow = {
   category_slug: string;
   category_label: string;
   cso: number;
+  notes: string | null;
 };
 
-export function listAccountsForGroupTab(groupSlug: string): GroupTabAccountRow[] {
-  return db
-    .prepare(
-      `
-      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso
+/** Optional slice of the Brokerage class tab (all accounts live under the brokerage asset group). */
+export type BrokerageTabSubgroup = "acciones" | "fondos_mutuos" | "crypto";
+
+export function brokerageSubgroupMatchesCategory(
+  categorySlug: string,
+  subgroup: string
+): boolean {
+  if (subgroup === "acciones") return categorySlug === "spy" || categorySlug === "vea";
+  if (subgroup === "fondos_mutuos") return categorySlug === "fintual_risky_norris";
+  if (subgroup === "crypto") return categorySlug === "bitcoin" || categorySlug === "eth";
+  return false;
+}
+
+function filterBrokerageSubgroupRows(
+  rows: GroupTabAccountRow[],
+  subgroup: string | undefined
+): GroupTabAccountRow[] {
+  if (!subgroup) return rows;
+  return rows.filter((r) => brokerageSubgroupMatchesCategory(r.category_slug, subgroup));
+}
+
+/** `subgroup` for `group=retirement`: afp | afc | afp_afc (both) | apv | apv_a | apv_b (APV legs split by import note key). */
+export function retirementSubgroupMatchesAccount(
+  row: { category_slug: string; notes?: string | null },
+  sub: string
+): boolean {
+  if (sub === "afp_afc") return row.category_slug === "afp" || row.category_slug === "afc";
+  if (sub === "afp") return row.category_slug === "afp";
+  if (sub === "afc") return row.category_slug === "afc";
+  if (sub === "apv") return row.category_slug === "apv";
+  if (sub === "apv_a") return row.category_slug === "apv" && (row.notes?.includes("key=apv_a") ?? false);
+  if (sub === "apv_b") return row.category_slug === "apv" && (row.notes?.includes("key=apv_b") ?? false);
+  return false;
+}
+
+function filterRetirementSubgroupRows(
+  rows: GroupTabAccountRow[],
+  subgroup: string | undefined
+): GroupTabAccountRow[] {
+  if (!subgroup) return rows;
+  return rows.filter((r) => retirementSubgroupMatchesAccount(r, subgroup));
+}
+
+const LIST_TAB_ACCOUNTS_SINGLE_GROUP = `
+      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso, a.notes AS notes
       FROM accounts a
       JOIN categories c ON c.id = a.category_id
       JOIN asset_groups g ON g.id = c.group_id
@@ -801,13 +1040,55 @@ export function listAccountsForGroupTab(groupSlug: string): GroupTabAccountRow[]
         AND (a.notes IS NULL OR a.notes != ?)
         AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
       ORDER BY c.sort_order, c.id, a.name
-    `
-    )
+    `;
+
+const LIST_TAB_ACCOUNTS_BROKERAGE_TAB = `
+      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso, a.notes AS notes
+      FROM accounts a
+      JOIN categories c ON c.id = a.category_id
+      JOIN asset_groups g ON g.id = c.group_id
+      WHERE (a.notes IS NULL OR a.notes != ?)
+        AND g.slug = 'brokerage'
+        AND c.slug != 'individual_stocks'
+      ORDER BY c.sort_order, c.id, a.name
+    `;
+
+const LIST_TAB_INVERSIONES_UNION = `
+      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso, a.notes AS notes
+      FROM accounts a
+      JOIN categories c ON c.id = a.category_id
+      JOIN asset_groups g ON g.id = c.group_id
+      WHERE (a.notes IS NULL OR a.notes != ?)
+        AND (
+          g.slug = 'retirement'
+          OR (g.slug = 'brokerage' AND c.slug != 'individual_stocks')
+        )
+      ORDER BY g.sort_order, c.sort_order, c.id, a.name
+    `;
+
+export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
+  if (groupSlug === "brokerage") {
+    const rows = db
+      .prepare(LIST_TAB_ACCOUNTS_BROKERAGE_TAB)
+      .all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
+    return filterBrokerageSubgroupRows(rows, tabSubgroup);
+  }
+  if (groupSlug === "inversiones") {
+    return db.prepare(LIST_TAB_INVERSIONES_UNION).all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
+  }
+  if (groupSlug === "retirement") {
+    const rows = db
+      .prepare(LIST_TAB_ACCOUNTS_SINGLE_GROUP)
+      .all("retirement", NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
+    return filterRetirementSubgroupRows(rows, tabSubgroup);
+  }
+  return db
+    .prepare(LIST_TAB_ACCOUNTS_SINGLE_GROUP)
     .all(groupSlug, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
 }
 
-export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit) {
-  const rows = listAccountsForGroupTab(groupSlug);
+export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tabSubgroup?: string) {
+  const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
 
   const pieTop: AccountLine[] = rows.map((r) => ({
     account_id: r.account_id,
@@ -932,6 +1213,7 @@ export function getAccountValuationTimeseries(
       `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
     )
     .get(accountId) as { category_slug: string } | undefined;
+
   if (cat?.category_slug === "property" && accounts.points.length > 0) {
     const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
     if (ledger.length > 0) {
