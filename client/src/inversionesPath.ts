@@ -1,3 +1,5 @@
+import { brokeragePortfolioGroupLabel } from "./brokerageGroupedAggregation";
+
 export type InversionesResolved = {
   apiGroup: "inversiones" | "retirement" | "brokerage";
   apiSubgroup: string | undefined;
@@ -99,7 +101,8 @@ export function parseInversionesSplat(splat: string | undefined): InversionesRes
       };
     }
     const map: Record<string, string> = {
-      "fondos-mutuos": "fondos_mutuos",
+      "fondos-mutuos": "mutual_funds",
+      "mutual-funds": "mutual_funds",
       acciones: "acciones",
       crypto: "crypto",
     };
@@ -108,8 +111,8 @@ export function parseInversionesSplat(splat: string | undefined): InversionesRes
       const pageTitle =
         sub === "acciones"
           ? "Inversiones — Brokerage — Acciones"
-          : sub === "fondos_mutuos"
-            ? "Inversiones — Brokerage — Fondos mutuos"
+          : sub === "mutual_funds"
+            ? `Inversiones — Brokerage — ${brokeragePortfolioGroupLabel("mutual_funds")}`
             : "Inversiones — Brokerage — Cripto";
       return { apiGroup: "brokerage", apiSubgroup: sub, pageTitle, navScope: "brokerage" };
     }

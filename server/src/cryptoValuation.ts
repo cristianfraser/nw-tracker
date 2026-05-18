@@ -2,7 +2,7 @@ import { monthEndsBetweenInclusive, monthEndUtcYmd, monthKeyFromYmd } from "./ca
 import { cryptoSheetMovementDeltas, type CryptoSheetMonthMovement } from "./cryptoSheetUnits.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 
 export const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
 
@@ -127,7 +127,7 @@ export function computeCryptoMtmClp(accountId: number, asOfYmd: string): number 
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
   const crow = stmtClose.get(ticker, asOfYmd) as { close_usd: number } | undefined;
   if (!crow || !Number.isFinite(crow.close_usd)) return null;
-  const fx = fxRowOnOrBefore(asOfYmd);
+  const fx = fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = units * crow.close_usd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;

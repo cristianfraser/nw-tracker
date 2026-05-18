@@ -26,11 +26,11 @@ export default function App() {
             <Route path="/brokerage/*" element={<Navigate to="/inversiones/brokerage" replace />} />
             <Route
               path="/cash_eqs"
-              element={<AssetGroupPage slug="cash_eqs" title="Cash & equivalents" />}
+              element={<AssetGroupPage slug="cash_eqs" />}
             />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
-            <Route path="/real_estate" element={<AssetGroupPage slug="real_estate" title="Real estate" />} />
-            <Route path="/liabilities" element={<AssetGroupPage slug="liabilities" title="Liabilities" />} />
+            <Route path="/real_estate" element={<AssetGroupPage slug="real_estate" />} />
+            <Route path="/liabilities" element={<AssetGroupPage slug="liabilities" />} />
             <Route path="/flows" element={<FlowsLayout />}>
               <Route index element={<Navigate to="income" replace />} />
               <Route path="income" element={<IncomePage />} />

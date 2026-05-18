@@ -59,6 +59,18 @@ export interface DashboardAccountRow {
   category_slug: string;
   category_label: string;
   deposits_clp: number;
+  deposits_usd?: number | null;
+  /** Nominal P/L for the current calendar month (or latest month in series). */
+  delta_month_clp?: number | null;
+  delta_month_usd?: number | null;
+  delta_year_clp?: number | null;
+  delta_year_usd?: number | null;
+  delta_total_clp?: number | null;
+  delta_total_usd?: number | null;
+  deposits_month_clp?: number;
+  deposits_month_usd?: number | null;
+  deposits_year_clp?: number;
+  deposits_year_usd?: number | null;
   current_value_clp: number | null;
   valuation_as_of: string | null;
   current_value_usd?: number | null;
@@ -110,6 +122,13 @@ export interface DashboardResponse {
     DepositFlowCategory,
     { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
   >;
+  /** Retiro + brokerage net deposits per period (flows chart aggregation). */
+  inversiones_deposits_chart?: {
+    monthly_clp: { as_of_date: string; deposited: number }[];
+    yearly_clp: { as_of_date: string; deposited: number }[];
+    monthly_usd?: { as_of_date: string; deposited: number }[];
+    yearly_usd?: { as_of_date: string; deposited: number }[];
+  };
 }
 
 export interface FxLatest {

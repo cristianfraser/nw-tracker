@@ -4,7 +4,7 @@ import {
   brokeragePortfolioGroupLabel,
   type BrokeragePortfolioGroup,
 } from "./brokerageGroupedAggregation";
-import i18n, { dashboardBucketLabel } from "./i18n";
+import i18n, { dashboardBucketLabel, depositFlowCategoryLabel } from "./i18n";
 import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
 import type { AccountListRow, DashboardAccountRow, DepositFlowCategory } from "./types";
 
@@ -21,6 +21,23 @@ function asNavRow(a: DashboardAccountRow): AccountListRow {
   };
 }
 
+export type CardGroupMetrics = {
+  /** Lifetime net deposits. */
+  deposits_clp: number;
+  deposits_usd?: number | null;
+  /** Cumulative nominal P/L (latest performance row). */
+  delta_total_clp: number | null;
+  delta_total_usd?: number | null;
+  /** Net deposits in the selected calendar month or year. */
+  deposits_period_clp: number;
+  deposits_period_usd?: number | null;
+  /** Nominal P/L in the selected calendar month or year. */
+  delta_period_clp: number | null;
+  delta_period_usd?: number | null;
+};
+
+export type CardGroupMetricsPeriod = "month" | "year";
+
 export type CardBreakdownLine = {
   label: string;
   clp: number;
@@ -29,7 +46,106 @@ export type CardBreakdownLine = {
   depth: 0 | 1 | 2;
 };
 
+export function cardGroupMetricsFromAccounts(
+  rows: DashboardAccountRow[],
+  period: CardGroupMetricsPeriod
+): CardGroupMetrics {
+  let deposits_clp = 0;
+  let deposits_usd = 0;
+  let delta_total_clp = 0;
+  let delta_total_usd = 0;
+  let deposits_period_clp = 0;
+  let deposits_period_usd = 0;
+  let delta_period_clp = 0;
+  let delta_period_usd = 0;
+  let anyUsdDep = false;
+  let anyUsdTotalDelta = false;
+  let anyUsdPeriodDep = false;
+  let anyPeriodDelta = false;
+  let anyUsdPeriodDelta = false;
+  let anyTotalDelta = false;
+
+  for (const r of rows) {
+    deposits_clp += r.deposits_clp;
+    if (r.deposits_usd != null && Number.isFinite(r.deposits_usd)) {
+      deposits_usd += r.deposits_usd;
+      anyUsdDep = true;
+    }
+    if (r.delta_total_clp != null && Number.isFinite(r.delta_total_clp)) {
+      delta_total_clp += r.delta_total_clp;
+      anyTotalDelta = true;
+    }
+    if (r.delta_total_usd != null && Number.isFinite(r.delta_total_usd)) {
+      delta_total_usd += r.delta_total_usd;
+      anyUsdTotalDelta = true;
+    }
+
+    const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
+    const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
+    deposits_period_clp += periodDepClp ?? 0;
+    if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
+      deposits_period_usd += periodDepUsd;
+      anyUsdPeriodDep = true;
+    }
+
+    const periodDeltaClp = period === "month" ? r.delta_month_clp : r.delta_year_clp;
+    const periodDeltaUsd = period === "month" ? r.delta_month_usd : r.delta_year_usd;
+    if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
+      delta_period_clp += periodDeltaClp;
+      anyPeriodDelta = true;
+    }
+    if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
+      delta_period_usd += periodDeltaUsd;
+      anyUsdPeriodDelta = true;
+    }
+  }
+
+  return {
+    deposits_clp,
+    deposits_usd: anyUsdDep ? deposits_usd : null,
+    delta_total_clp: anyTotalDelta ? delta_total_clp : null,
+    delta_total_usd: anyUsdTotalDelta ? delta_total_usd : null,
+    deposits_period_clp,
+    deposits_period_usd: anyUsdPeriodDep ? deposits_period_usd : null,
+    delta_period_clp: anyPeriodDelta ? delta_period_clp : null,
+    delta_period_usd: anyUsdPeriodDelta ? delta_period_usd : null,
+  };
+}
+
+/** Sum deposits + monthly Δ for accounts in a dashboard bucket (big-4 cards). */
+export function cardGroupMetricsForGroup(
+  accounts: DashboardAccountRow[],
+  groupSlug: string,
+  period: CardGroupMetricsPeriod,
+  filter?: (a: DashboardAccountRow) => boolean
+): CardGroupMetrics {
+  const rows = accounts.filter(
+    (a) =>
+      a.group_slug === groupSlug &&
+      a.current_value_clp != null &&
+      Number.isFinite(a.current_value_clp) &&
+      (!filter || filter(a))
+  );
+  return cardGroupMetricsFromAccounts(rows, period);
+}
+
 const NW_BUCKET_ORDER = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
+
+const CASH_CARD_SLUGS = new Set(["fondo_reserva", "cuenta_corriente"]);
+
+/** Patrimonio neto: sum metrics across RE, retiro, brokerage, efectivo (same scope as NW total). */
+export function cardGroupMetricsNetWorth(
+  accounts: DashboardAccountRow[],
+  period: CardGroupMetricsPeriod
+): CardGroupMetrics {
+  const rows = accounts.filter((a) => {
+    if (!(NW_BUCKET_ORDER as readonly string[]).includes(a.group_slug)) return false;
+    if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) return false;
+    if (a.group_slug === "cash_eqs" && !CASH_CARD_SLUGS.has(a.category_slug)) return false;
+    return true;
+  });
+  return cardGroupMetricsFromAccounts(rows, period);
+}
 
 const DEPOSIT_CATEGORY_ORDER = ["real_estate", "cash", "brokerage", "inversiones"] as const;
 
@@ -90,7 +206,12 @@ function flattenRetirementApv(apv: DashboardAccountRow[]): CardBreakdownLine[] {
   const groupUsd = sumUsd(apv);
   lines.push({ label: i18n.t("retirement.apv"), clp: groupClp, usd: groupUsd, depth: 0 });
   for (const leaf of leaves) {
-    lines.push({ label: leaf.label, clp: leaf.clp, usd: leaf.usd, depth: 1 });
+    lines.push({
+      label: leaf.label,
+      clp: leaf.clp,
+      usd: leaf.usd,
+      depth: 1,
+    });
   }
   return lines;
 }
@@ -211,7 +332,12 @@ export function buildRealEstateCardBreakdown(
   const netClp = suecia?.net_value_clp ?? netFromAccount ?? 0;
   const groupUsd = props.length ? sumUsd(props) : null;
 
-  lines.push({ label: propertyName, clp: netClp, usd: groupUsd, depth: 0 });
+  lines.push({
+    label: propertyName,
+    clp: netClp,
+    usd: groupUsd,
+    depth: 0,
+  });
 
   if (suecia) {
     lines.push({
@@ -239,18 +365,26 @@ export function buildRealEstateCardBreakdown(
   return lines;
 }
 
-const CASH_CARD_SLUGS = new Set(["fondo_reserva", "cuenta_corriente"]);
 const CASH_CATEGORY_KEYS: Record<string, string> = {
   fondo_reserva: "cash.reserva",
   cuenta_corriente: "cash.checkingAccount",
 };
 
-/** Cash card: reserva and cuenta corriente (active accounts only). */
-export function buildCashCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
+export type CashCardBreakdown = {
+  lines: CardBreakdownLine[];
+  /** Credit-card liability pinned to the bottom of the cash dashboard card. */
+  bottomLines: CardBreakdownLine[];
+};
+
+/** Cash card: reserva and cuenta corriente; optional tarjeta de crédito row at the bottom. */
+export function buildCashCardBreakdown(
+  accounts: DashboardAccountRow[],
+  creditCard?: { clp: number; usd?: number | null } | null
+): CashCardBreakdown {
   const cash = valueRows(
     accounts.filter((a) => a.group_slug === "cash_eqs" && CASH_CARD_SLUGS.has(a.category_slug))
   );
-  return sortGroupsDesc(
+  const lines = sortGroupsDesc(
     cash.map((r) => ({
       label: CASH_CATEGORY_KEYS[r.category_slug]
         ? i18n.t(CASH_CATEGORY_KEYS[r.category_slug]!)
@@ -259,6 +393,17 @@ export function buildCashCardBreakdown(accounts: DashboardAccountRow[]): CardBre
       usd: r.current_value_usd ?? null,
     }))
   ).map((r) => ({ ...r, depth: 0 as const }));
+
+  const bottomLines: CardBreakdownLine[] = [];
+  if (creditCard && creditCard.clp > 0) {
+    bottomLines.push({
+      label: i18n.t("liabilities.creditCard"),
+      clp: creditCard.clp,
+      usd: creditCard.usd ?? null,
+      depth: 0,
+    });
+  }
+  return { lines, bottomLines };
 }
 
 const LIABILITY_KEYS = {
@@ -307,7 +452,7 @@ export function buildDepositsCardBreakdown(
     .map((c) => {
       const block = byCategory[c]!;
       return {
-        label: block.label,
+        label: depositFlowCategoryLabel(c),
         clp: block.total_clp,
         usd: block.total_usd,
       };

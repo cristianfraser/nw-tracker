@@ -16,6 +16,7 @@ import { useMemo } from "react";
 import { densifyRecordsByCalendarPeriod } from "../chartDensifyTimeSeries";
 import { allocationBucketColor } from "../chartColors";
 import { formatClp } from "../format";
+import { depositFlowCategoryLabel } from "../i18n";
 import type { DepositFlowCategory, FlowDepositChartPoint } from "../types";
 import {
   buildNiceYAxis,
@@ -30,12 +31,20 @@ import {
 const AXIS_LINE_STROKE = "#64748b";
 const CHART_ANIM_MS = 90;
 
-const CATEGORY_BAR: { dataKey: DepositFlowCategory; name: string; color: string }[] = [
-  { dataKey: "real_estate", name: "Real estate", color: allocationBucketColor("real_estate") },
-  { dataKey: "cash", name: "Cash", color: allocationBucketColor("cash_eqs") },
-  { dataKey: "brokerage", name: "Brokerage", color: allocationBucketColor("brokerage") },
-  { dataKey: "inversiones", name: "Retirement", color: allocationBucketColor("retirement") },
-];
+const DEPOSIT_CHART_CATEGORIES = ["real_estate", "cash", "brokerage", "inversiones"] as const;
+
+function allocationKeyForDepositChart(cat: DepositFlowCategory): "real_estate" | "cash_eqs" | "brokerage" | "retirement" {
+  if (cat === "cash") return "cash_eqs";
+  if (cat === "inversiones") return "retirement";
+  return cat;
+}
+
+const CATEGORY_BAR: { dataKey: DepositFlowCategory; name: string; color: string }[] =
+  DEPOSIT_CHART_CATEGORIES.map((dataKey) => ({
+    dataKey,
+    name: depositFlowCategoryLabel(dataKey),
+    color: allocationBucketColor(allocationKeyForDepositChart(dataKey)),
+  }));
 
 function minMaxForKeys(
   points: Record<string, string | number | null>[],

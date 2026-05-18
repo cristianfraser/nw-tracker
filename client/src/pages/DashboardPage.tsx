@@ -5,28 +5,30 @@ import { LineChartPanel, ValuationLineCharts } from "../components/ValuationLine
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { Table } from "../components/Table";
 import { DashboardCardBreakdown } from "../components/DashboardCardBreakdown";
+import { DashboardCardGroupMetrics } from "../components/DashboardCardGroupMetrics";
+import { DashboardCardValue, DashboardCardsValueGroup } from "../components/DashboardCardValue";
 import { api } from "../api";
 import {
   buildBrokerageCardBreakdown,
   buildCashCardBreakdown,
-  buildDepositsCardBreakdown,
-  buildLiabilitiesCardBreakdown,
   buildNetWorthCardBreakdown,
   buildRealEstateCardBreakdown,
   buildRetirementCardBreakdown,
+  cardGroupMetricsForGroup,
+  cardGroupMetricsNetWorth,
 } from "../dashboardCardBreakdown";
 import { allocationBucketColor } from "../chartColors";
+import { appendTrailingMovingAverage } from "../chartMovingAverage";
 import {
   rollupRetirementBrokeragePerfYearly,
   rollupTimeseriesBlockYearEnd,
   type DashboardChartGranularity,
 } from "../dashboardTimeseriesYearly";
 import { useLoading } from "../context/LoadingContext";
-import { Trans, useTranslation } from "../i18n";
+import { useTranslation } from "../i18n";
 import { formatClp, formatUsd, formatInstrumentUnits, formatMoneyForPie } from "../format";
 import type {
   DashboardResponse,
-  DepositFlowCategory,
   FxLatest,
   GroupMonthlyPerformanceResponse,
   ValuationTimeseriesResponse,
@@ -187,6 +189,27 @@ export function DashboardPage() {
     return rollupRetirementBrokeragePerfYearly(retirementBrokeragePerfPoints);
   }, [retirementBrokeragePerfPoints, isYearly]);
 
+  const retirementBrokerageAccumChart = useMemo(() => {
+    const depChart = dash?.inversiones_deposits_chart;
+    const depositSeries = !depChart
+      ? []
+      : isYearly
+        ? showUsd && depChart.yearly_usd
+          ? depChart.yearly_usd
+          : depChart.yearly_clp
+        : showUsd && depChart.monthly_usd
+          ? depChart.monthly_usd
+          : depChart.monthly_clp;
+    const depByDate = new Map(depositSeries.map((p) => [p.as_of_date, p.deposited]));
+    let rows: Record<string, string | number | null>[] = retirementBrokerageForCharts.map((row) => ({
+      ...row,
+      deposits_inversiones: depByDate.get(String(row.as_of_date ?? "")) ?? 0,
+    }));
+    rows = appendTrailingMovingAverage(rows, "delta_combined", "delta_combined_ma3");
+    rows = appendTrailingMovingAverage(rows, "deposits_inversiones", "deposits_inversiones_ma3");
+    return rows;
+  }, [retirementBrokerageForCharts, dash?.inversiones_deposits_chart, isYearly, showUsd]);
+
   const tsForCharts = useMemo((): ValuationTimeseriesResponse | null => {
     if (!ts?.accounts_ex_property || !ts.overview) return ts;
     if (!isYearly) return ts;
@@ -215,8 +238,8 @@ export function DashboardPage() {
     m.stocks_total__dep = "brokerage";
     m.crypto_total = "brokerage";
     m.crypto_total__dep = "brokerage";
-    m.fondos_mutuos_total = "brokerage";
-    m.fondos_mutuos_total__dep = "brokerage";
+    m.mutual_funds_total = "brokerage";
+    m.mutual_funds_total__dep = "brokerage";
     /** Synthetic keys from `mergeDashboardPrimaryAccountsBlock` (server `valuationTimeseries.ts`). */
     m["-9101"] = "retirement";
     m["-9101__dep"] = "retirement";
@@ -233,26 +256,49 @@ export function DashboardPage() {
     () => (dash ? buildBrokerageCardBreakdown(dash.accounts) : []),
     [dash]
   );
-  const depositsBreakdown = useMemo(() => {
-    if (!dash?.deposits_by_category) return [];
-    const slim: Partial<
-      Record<DepositFlowCategory, { label: string; total_clp: number; total_usd: number }>
-    > = {};
-    for (const cat of ["real_estate", "cash", "brokerage", "inversiones"] as const) {
-      const b = dash.deposits_by_category[cat];
-      if (b) slim[cat] = { label: b.label, total_clp: b.total_clp, total_usd: b.total_usd };
-    }
-    return buildDepositsCardBreakdown(slim);
-  }, [dash]);
   const netWorthBreakdown = useMemo(() => (dash ? buildNetWorthCardBreakdown(dash.totals) : []), [dash]);
   const realEstateBreakdown = useMemo(
     () => (dash ? buildRealEstateCardBreakdown(dash.accounts, dash.suecia_snapshot) : []),
     [dash]
   );
-  const cashBreakdown = useMemo(() => (dash ? buildCashCardBreakdown(dash.accounts) : []), [dash]);
-  const liabilitiesBreakdown = useMemo(
-    () => (dash?.liabilities_breakdown ? buildLiabilitiesCardBreakdown(dash.liabilities_breakdown) : []),
-    [dash]
+  const cashBreakdown = useMemo(() => {
+    if (!dash) return { lines: [], bottomLines: [] };
+    const cc = dash.liabilities_breakdown;
+    return buildCashCardBreakdown(
+      dash.accounts,
+      cc
+        ? { clp: cc.credit_card_clp, usd: cc.credit_card_usd }
+        : null
+    );
+  }, [dash]);
+
+  const cashCardSlugs = useMemo(() => new Set(["fondo_reserva", "cuenta_corriente"]), []);
+  const metricsPeriod = isYearly ? "year" : "month";
+
+  const netWorthMetrics = useMemo(
+    () => (dash ? cardGroupMetricsNetWorth(dash.accounts, metricsPeriod) : null),
+    [dash, metricsPeriod]
+  );
+  const realEstateMetrics = useMemo(
+    () => (dash ? cardGroupMetricsForGroup(dash.accounts, "real_estate", metricsPeriod) : null),
+    [dash, metricsPeriod]
+  );
+  const retirementMetrics = useMemo(
+    () => (dash ? cardGroupMetricsForGroup(dash.accounts, "retirement", metricsPeriod) : null),
+    [dash, metricsPeriod]
+  );
+  const brokerageMetrics = useMemo(
+    () => (dash ? cardGroupMetricsForGroup(dash.accounts, "brokerage", metricsPeriod) : null),
+    [dash, metricsPeriod]
+  );
+  const cashMetrics = useMemo(
+    () =>
+      dash
+        ? cardGroupMetricsForGroup(dash.accounts, "cash_eqs", metricsPeriod, (a) =>
+            cashCardSlugs.has(a.category_slug)
+          )
+        : null,
+    [dash, metricsPeriod, cashCardSlugs]
   );
 
   if (err) {
@@ -264,11 +310,7 @@ export function DashboardPage() {
   }
 
   if (!dash || !tsForCharts || !tsForCharts.accounts_ex_property || !tsForCharts.overview) {
-    return (
-      <main className="page">
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
+    return null;
   }
 
   const fmtClp = (clp: number) => formatClp(clp);
@@ -320,7 +362,7 @@ export function DashboardPage() {
           USD
         </label>
         <span className="muted" style={{ marginLeft: "1.25rem" }}>
-          {t("dashboard.charts")}{" "}
+          {t("dashboard.chartGranularityLabel")}{" "}
         </span>
         <label>
           <input
@@ -341,58 +383,154 @@ export function DashboardPage() {
           {t("dashboard.yearly")}
         </label>
       </div>
-      {isYearly ? (
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.35rem", maxWidth: "58rem" }}>
-          <Trans
-            i18nKey="dashboard.yearlyViewHint"
-            components={{ 1: <strong />, 2: <strong /> }}
-          />
-        </p>
-      ) : null}
-
-      <div className="cards">
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.netWorth")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.net_worth_clp, dash.totals.net_worth_usd)}</div>
-          <DashboardCardBreakdown lines={netWorthBreakdown} formatAmount={fmtMoney} />
+      <DashboardCardsValueGroup>
+        <div className="cards">
+          <div className="card card--detail card--detail-stretch">
+            <div className="label">{t("dashboard.cards.netWorth")}</div>
+            <div className="value">
+              <DashboardCardValue
+                clp={dash.totals.net_worth_clp}
+                apiUsd={dash.totals.net_worth_usd}
+                showUsd={showUsd}
+                animated={!unitSwitching}
+                mountSeedKey="net_worth"
+              />
+            </div>
+            {netWorthMetrics ? (
+              <DashboardCardGroupMetrics
+                metrics={netWorthMetrics}
+                showUsd={showUsd}
+                period={metricsPeriod}
+                cardSlug="net_worth"
+                animated={!unitSwitching}
+              />
+            ) : null}
+            <DashboardCardBreakdown
+              lines={netWorthBreakdown}
+              showUsd={showUsd}
+              cardSlug="net_worth"
+              animated={!unitSwitching}
+            />
+          </div>
+          <div className="card card--detail card--detail-stretch">
+            <div className="label">{t("dashboard.cards.realEstate")}</div>
+            <div className="value">
+              <DashboardCardValue
+                clp={dash.totals.real_estate_clp}
+                apiUsd={dash.totals.real_estate_usd}
+                showUsd={showUsd}
+                animated={!unitSwitching}
+                mountSeedKey="real_estate"
+              />
+            </div>
+            {realEstateMetrics ? (
+              <DashboardCardGroupMetrics
+                metrics={realEstateMetrics}
+                showUsd={showUsd}
+                period={metricsPeriod}
+                cardSlug="real_estate"
+                animated={!unitSwitching}
+              />
+            ) : null}
+            <DashboardCardBreakdown
+              lines={realEstateBreakdown}
+              showUsd={showUsd}
+              cardSlug="real_estate"
+              animated={!unitSwitching}
+            />
+          </div>
+          <div className="card card--detail card--detail-stretch">
+            <div className="label">{t("dashboard.cards.retirement")}</div>
+            <div className="value">
+              <DashboardCardValue
+                clp={dash.totals.retirement_clp}
+                apiUsd={dash.totals.retirement_usd}
+                showUsd={showUsd}
+                animated={!unitSwitching}
+                mountSeedKey="retirement"
+              />
+            </div>
+            {retirementMetrics ? (
+              <DashboardCardGroupMetrics
+                metrics={retirementMetrics}
+                showUsd={showUsd}
+                period={metricsPeriod}
+                cardSlug="retirement"
+                animated={!unitSwitching}
+              />
+            ) : null}
+            <DashboardCardBreakdown
+              lines={retirementBreakdown}
+              showUsd={showUsd}
+              cardSlug="retirement"
+              animated={!unitSwitching}
+            />
+          </div>
+          <div className="card card--detail card--detail-stretch">
+            <div className="label">{t("dashboard.cards.brokerage")}</div>
+            <div className="value">
+              <DashboardCardValue
+                clp={dash.totals.brokerage_clp}
+                apiUsd={dash.totals.brokerage_usd}
+                showUsd={showUsd}
+                animated={!unitSwitching}
+                mountSeedKey="brokerage"
+              />
+            </div>
+            {brokerageMetrics ? (
+              <DashboardCardGroupMetrics
+                metrics={brokerageMetrics}
+                showUsd={showUsd}
+                period={metricsPeriod}
+                cardSlug="brokerage"
+                animated={!unitSwitching}
+              />
+            ) : null}
+            <DashboardCardBreakdown
+              lines={brokerageBreakdown}
+              showUsd={showUsd}
+              cardSlug="brokerage"
+              animated={!unitSwitching}
+            />
+          </div>
+          <div className="card card--detail card--detail-stretch">
+            <div className="label">{t("dashboard.cards.cash")}</div>
+            <div className="value">
+              <DashboardCardValue
+                clp={dash.totals.cash_eqs_clp}
+                apiUsd={dash.totals.cash_eqs_usd}
+                showUsd={showUsd}
+                animated={!unitSwitching}
+                mountSeedKey="cash_eqs"
+              />
+            </div>
+            <div className="card--detail-body">
+              {cashMetrics ? (
+                <DashboardCardGroupMetrics
+                  metrics={cashMetrics}
+                  showUsd={showUsd}
+                  period={metricsPeriod}
+                  cardSlug="cash_eqs"
+                  animated={!unitSwitching}
+                />
+              ) : null}
+              <DashboardCardBreakdown
+                lines={cashBreakdown.lines}
+                bottomLines={cashBreakdown.bottomLines}
+                showUsd={showUsd}
+                cardSlug="cash_eqs"
+                animated={!unitSwitching}
+              />
+            </div>
+          </div>
         </div>
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.totalDeposits")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.deposits_clp, dash.totals.deposits_usd)}</div>
-          <DashboardCardBreakdown lines={depositsBreakdown} formatAmount={fmtMoney} />
-        </div>
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.realEstate")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.real_estate_clp, dash.totals.real_estate_usd)}</div>
-          <DashboardCardBreakdown lines={realEstateBreakdown} formatAmount={fmtMoney} />
-        </div>
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.retirement")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.retirement_clp, dash.totals.retirement_usd)}</div>
-          <DashboardCardBreakdown lines={retirementBreakdown} formatAmount={fmtMoney} />
-        </div>
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.brokerage")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.brokerage_clp, dash.totals.brokerage_usd)}</div>
-          <DashboardCardBreakdown lines={brokerageBreakdown} formatAmount={fmtMoney} />
-        </div>
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.cash")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.cash_eqs_clp, dash.totals.cash_eqs_usd)}</div>
-          <DashboardCardBreakdown lines={cashBreakdown} formatAmount={fmtMoney} />
-        </div>
-        <div className="card card--detail">
-          <div className="label">{t("dashboard.cards.liabilities")}</div>
-          <div className="value mono">{fmtMoney(dash.totals.liabilities_clp, dash.totals.liabilities_usd)}</div>
-          <DashboardCardBreakdown lines={liabilitiesBreakdown} formatAmount={fmtMoney} />
-        </div>
-      </div>
+      </DashboardCardsValueGroup>
 
       <ValuationLineCharts
         displayUnit={displayUnit}
-        primaryTitle={t("dashboard.charts.primaryAccountsTitle")}
+        primaryTitle={t("dashboard.sections.primaryAccountsTitle")}
         primary={tsForCharts.accounts_ex_property}
-        secondaryTitle={t("dashboard.charts.overviewTitle")}
+        secondaryTitle={t("dashboard.sections.overviewTitle")}
         secondary={{ lines: tsForCharts.overview.lines, points: tsForCharts.overview.points }}
         thickLineDataKey="total_nw"
         includeAccumulatedLines={false}
@@ -404,13 +542,13 @@ export function DashboardPage() {
 
       {tsForCharts.patrimonio_usd_milestones_chart?.points.length ? (
         <>
-          <h2 style={{ marginTop: "1.75rem" }}>{t("dashboard.charts.netWorthUsdSectionTitle")}</h2>
+          <h2 style={{ marginTop: "1.75rem" }}>{t("dashboard.sections.netWorthUsdSectionTitle")}</h2>
           <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {t("dashboard.charts.netWorthUsdSectionHint")}
+            {t("dashboard.sections.netWorthUsdSectionHint")}
           </p>
           <div className="chart-grid chart-grid--full-line">
             <LineChartPanel
-              title={t("dashboard.charts.netWorthUsdChartTitle")}
+              title={t("dashboard.sections.netWorthUsdChartTitle")}
               titleAs="h3"
               block={tsForCharts.patrimonio_usd_milestones_chart}
               displayUnit="clp"
@@ -428,15 +566,15 @@ export function DashboardPage() {
       {retirementBrokerageForCharts.length > 0 ? (
         <>
           <h2 style={{ marginTop: "1.75rem" }}>
-            {isYearly ? t("dashboard.charts.perfSectionTitleYearly") : t("dashboard.charts.perfSectionTitleMonthly")}
+            {isYearly ? t("dashboard.sections.perfSectionTitleYearly") : t("dashboard.sections.perfSectionTitleMonthly")}
           </h2>
           <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {isYearly ? t("dashboard.charts.perfSectionHintYearly") : t("dashboard.charts.perfSectionHintMonthly")}
+            {isYearly ? t("dashboard.sections.perfSectionHintYearly") : t("dashboard.sections.perfSectionHintMonthly")}
           </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={
-                isYearly ? t("dashboard.charts.perfChartTitleYearly") : t("dashboard.charts.perfChartTitleMonthly")
+                isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
               titleAs="h3"
               points={retirementBrokerageForCharts}
@@ -446,20 +584,20 @@ export function DashboardPage() {
                 {
                   dataKey: "delta_retirement",
                   name: isYearly
-                    ? t("dashboard.charts.deltaRetirementYearly")
-                    : t("dashboard.charts.deltaRetirementMonthly"),
+                    ? t("dashboard.sections.deltaRetirementYearly")
+                    : t("dashboard.sections.deltaRetirementMonthly"),
                   color: allocationBucketColor("retirement"),
                 },
                 {
                   dataKey: "delta_brokerage",
                   name: isYearly
-                    ? t("dashboard.charts.deltaBrokerageYearly")
-                    : t("dashboard.charts.deltaBrokerageMonthly"),
+                    ? t("dashboard.sections.deltaBrokerageYearly")
+                    : t("dashboard.sections.deltaBrokerageMonthly"),
                   color: allocationBucketColor("brokerage"),
                 },
               ]}
               areaKey="ytd_combined"
-              areaName={isYearly ? t("dashboard.charts.yearTotalCombined") : t("dashboard.charts.ytdCombined")}
+              areaName={isYearly ? t("dashboard.sections.yearTotalCombined") : t("dashboard.sections.ytdCombined")}
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               lineKey="delta_combined"
@@ -467,34 +605,61 @@ export function DashboardPage() {
             />
           </div>
           <h2 style={{ marginTop: "1.75rem" }}>
-            {isYearly ? t("dashboard.charts.accumSectionTitleYearly") : t("dashboard.charts.accumSectionTitleMonthly")}
+            {isYearly ? t("dashboard.sections.accumSectionTitleYearly") : t("dashboard.sections.accumSectionTitleMonthly")}
           </h2>
           <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {isYearly ? t("dashboard.charts.accumSectionHintYearly") : t("dashboard.charts.accumSectionHintMonthly")}
+            {isYearly ? t("dashboard.sections.accumSectionHintYearly") : t("dashboard.sections.accumSectionHintMonthly")}
           </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={
-                isYearly ? t("dashboard.charts.accumChartTitleYearly") : t("dashboard.charts.accumChartTitleMonthly")
+                isYearly ? t("dashboard.sections.accumChartTitleYearly") : t("dashboard.sections.accumChartTitleMonthly")
               }
               titleAs="h3"
-              points={retirementBrokerageForCharts}
+              points={retirementBrokerageAccumChart}
               displayUnit={displayUnit}
               xAxisGranularity={xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_combined",
                   name: isYearly
-                    ? t("dashboard.charts.deltaCombinedYearly")
-                    : t("dashboard.charts.deltaCombinedMonthly"),
+                    ? t("dashboard.sections.deltaCombinedYearly")
+                    : t("dashboard.sections.deltaCombinedMonthly"),
                   color: "#38bdf8",
+                },
+                {
+                  dataKey: "deposits_inversiones",
+                  name: isYearly
+                    ? t("dashboard.sections.depositsInversionesYearly")
+                    : t("dashboard.sections.depositsInversionesMonthly"),
+                  color: "#a78bfa",
                 },
               ]}
               areaKey="accumulated_earnings"
-              areaName={t("dashboard.charts.accumulatedEarnings")}
+              areaName={t("dashboard.sections.accumulatedEarnings")}
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes={false}
+              lineSeries={[
+                {
+                  dataKey: "delta_combined_ma3",
+                  name: isYearly
+                    ? t("dashboard.sections.ma3DeltaCombinedYearly")
+                    : t("dashboard.sections.ma3DeltaCombinedMonthly"),
+                  stroke: "#38bdf8",
+                  strokeWidth: 1.5,
+                  showDot: false,
+                },
+                {
+                  dataKey: "deposits_inversiones_ma3",
+                  name: isYearly
+                    ? t("dashboard.sections.ma3DepositsInversionesYearly")
+                    : t("dashboard.sections.ma3DepositsInversionesMonthly"),
+                  stroke: "#a78bfa",
+                  strokeWidth: 1.5,
+                  showDot: false,
+                },
+              ]}
             />
           </div>
         </>

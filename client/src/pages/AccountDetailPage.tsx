@@ -14,6 +14,7 @@ import {
 } from "../components/ValuationLineCharts";
 import { api } from "../api";
 import { resolveAccountParentNavLink } from "../accountDetailBackNav";
+import { isPersonalCapitalFlowType } from "../depositFlowKind";
 import { DEFAULT_LINE_COLORS } from "../chartColors";
 import type {
   AccountDepositInflowsResponse,
@@ -766,10 +767,7 @@ export function AccountDetailPage() {
   const displayedMovements = useMemo(() => {
     if (!movementsOnlyPersonalDeposits) return movements;
     return movements.filter(
-      (m) =>
-        m.amount_clp > 0 &&
-        (m.flow_type === "deposit_clp" || m.flow_type === "traspaso_bonificacion_clp") &&
-        !m.note?.includes("cripto-coin-only-wdw")
+      (m) => isPersonalCapitalFlowType(m.flow_type) && !m.note?.includes("cripto-coin-only-wdw")
     );
   }, [movements, movementsOnlyPersonalDeposits]);
 

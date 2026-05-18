@@ -1,5 +1,6 @@
 import { getAccountValuationTimeseries, listAccountsForGroupTab, convertTs } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -69,24 +70,19 @@ const MONTH_ROW_EPS = 0.01;
  */
 function pickRepresentativeMonthlyPerfRow(rows: AccountMonthlyPerformanceRow[]): AccountMonthlyPerformanceRow {
   const asc = [...rows].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
-  const fromEnd = (pred: (r: AccountMonthlyPerformanceRow) => boolean): AccountMonthlyPerformanceRow | null => {
-    for (let i = asc.length - 1; i >= 0; i--) {
-      if (pred(asc[i]!)) return asc[i]!;
+  if (asc.length === 1) return asc[0]!;
+  let best = asc[asc.length - 1]!;
+  let bestScore = -1;
+  for (const r of asc) {
+    const pl = r.nominal_pl != null && Number.isFinite(r.nominal_pl) ? Math.abs(r.nominal_pl) : 0;
+    const flow = Math.abs(r.net_capital_flow);
+    const score = Math.max(pl, flow);
+    if (score > bestScore + MONTH_ROW_EPS) {
+      bestScore = score;
+      best = r;
     }
-    return null;
-  };
-  return (
-    fromEnd((r) => {
-      const n = r.nominal_pl;
-      return n != null && Number.isFinite(n) && Math.abs(n) > MONTH_ROW_EPS;
-    }) ??
-    fromEnd((r) => {
-      if (r.prior_closing == null) return false;
-      return Math.abs(r.closing_value - r.prior_closing) > MONTH_ROW_EPS;
-    }) ??
-    fromEnd((r) => Math.abs(r.net_capital_flow) > MONTH_ROW_EPS) ??
-    asc[asc.length - 1]!
-  );
+  }
+  return best;
 }
 
 function collapseMonthlyPerfDuplicateCalendarMonths(
@@ -322,8 +318,12 @@ export function getAccountMonthlyPerformance(
   }
 
   const dk = String(accountId);
-  const depKey = `${dk}__dep`;
+  const depKeyFull = `${dk}__dep`;
+  const depKeyDisplay = `${dk}__dep_display`;
   let pts = [...ts.accounts.points].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
+  const depKey = pts.some((p) => p[depKeyDisplay] != null && Number.isFinite(Number(p[depKeyDisplay])))
+    ? depKeyDisplay
+    : depKeyFull;
 
   const bookAsc = loadBookValuationsAsc(accountId);
   const exactClpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));
@@ -502,6 +502,20 @@ export function getAccountMonthlyPerformance(
   const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc);
   const monthly = [...collapsed].reverse();
   return { account_id: accountId, category_slug: row.category_slug, monthly };
+}
+
+/** Latest calendar month nominal P/L (falls back to most recent month in the series). */
+export function latestAccountMonthDelta(accountId: number, unit: TsUnit = "clp"): number | null {
+  const perf = getAccountMonthlyPerformance(accountId, unit);
+  if (!perf?.monthly.length) return null;
+  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
+  for (const row of perf.monthly) {
+    if (monthKeyFromYmd(row.as_of_date) === currentMk) {
+      return row.nominal_pl;
+    }
+  }
+  const latest = perf.monthly[0]?.nominal_pl;
+  return latest != null && Number.isFinite(latest) ? latest : null;
 }
 
 export type GroupMonthlyPerformanceBarAccount = {

@@ -1,13 +1,63 @@
 import { db } from "./db.js";
 
+export type FxRow = { date: string; clp_per_usd: number };
+
+export type FxLookupOptions = {
+  /**
+   * When true, only month-end `fx_daily` rows are considered (official monthly snapshots).
+   * Falls back to any row on or before the date if no month-end row exists.
+   */
+  monthEndOnly?: boolean;
+};
+
+const stmtAny = db.prepare(
+  `SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
+);
+
+const stmtMonthEnd = db.prepare(
+  `SELECT date, clp_per_usd FROM fx_daily
+   WHERE date <= ?
+     AND date = date(date, 'start of month', '+1 month', '-1 day')
+   ORDER BY date DESC LIMIT 1`
+);
+
+/** First month-end `fx_daily` row on or after `date` (when the series starts after snapshot dates). */
+const stmtMonthEndOnOrAfter = db.prepare(
+  `SELECT date, clp_per_usd FROM fx_daily
+   WHERE date >= ?
+     AND date = date(date, 'start of month', '+1 month', '-1 day')
+   ORDER BY date ASC LIMIT 1`
+);
+
 /** Single FX row used for CLP↔USD (charts, bolsa flows, dashboard). */
-export function fxRowOnOrBefore(date: string | null): { date: string; clp_per_usd: number } | null {
+export function fxRowOnOrBefore(
+  date: string | null,
+  opts?: FxLookupOptions
+): FxRow | null {
   if (!date) return null;
-  return (
-    (db
-      .prepare(`SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
-      .get(date) as { date: string; clp_per_usd: number } | undefined) ?? null
-  );
+  if (opts?.monthEndOnly) {
+    const row = (stmtMonthEnd.get(date) as FxRow | undefined) ?? null;
+    if (row) return row;
+  }
+  return (stmtAny.get(date) as FxRow | undefined) ?? null;
+}
+
+/** Month-end FX on or before `date` (for valuations / USD charts). */
+export function fxMonthEndOnOrBefore(date: string | null): FxRow | null {
+  return fxRowOnOrBefore(date, { monthEndOnly: true });
+}
+
+/**
+ * CLP→USD rate for **balance / chart** conversion when `fx_daily` has no row on or before `date`
+ * (e.g. first table row is mid-2017 but valuations exist in May 2017). Uses the earliest month-end
+ * FX on or after `date` so we never treat raw CLP as USD. Does not apply to dated cash flows
+ * ({@link fxRowOnOrBefore} per `occurred_on` remains strict).
+ */
+export function fxMonthEndForBalanceUsd(date: string | null): FxRow | null {
+  if (!date) return null;
+  const prior = (stmtMonthEnd.get(date) as FxRow | undefined) ?? null;
+  if (prior) return prior;
+  return (stmtMonthEndOnOrAfter.get(date) as FxRow | undefined) ?? null;
 }
 
 export function ufRowOnOrBefore(date: string | null): { date: string; clp_per_uf: number } | null {

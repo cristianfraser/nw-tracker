@@ -28,6 +28,7 @@ import {
   aggregateRetiroGroupedValuationBlock,
 } from "../inversionesGroupedAggregation";
 import { allocationBucketColor, buildGroupTabColorMaps, groupTabPieSliceFill } from "../chartColors";
+import i18n from "../i18n";
 import { parseInversionesSplat, inversionesGroupParentBackLink } from "../inversionesPath";
 import {
   brokerageAccountNavLabel,
@@ -412,7 +413,7 @@ export function InversionesPage() {
               brokerageSubgroup:
                 resolved.apiGroup === "brokerage" &&
                   (resolved.apiSubgroup === "acciones" ||
-                    resolved.apiSubgroup === "fondos_mutuos" ||
+                    resolved.apiSubgroup === "mutual_funds" ||
                     resolved.apiSubgroup === "crypto")
                   ? resolved.apiSubgroup
                   : undefined,
@@ -544,7 +545,7 @@ export function InversionesPage() {
                 isGroup
                 nameCell={<Link to="/inversiones/retiro">Retiro</Link>}
                 categoryCell={<span className="muted">—</span>}
-                groupCell={<span className="muted">Retirement</span>}
+                groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                 notesCell={<span className="muted">—</span>}
               />
               {(() => {
@@ -555,16 +556,16 @@ export function InversionesPage() {
                 const collapseAfc = hideRedundantGroupRow("afc", afcAccounts, retirementAccountNavLabel);
                 return (
                   <>
-                        <HierarchyNavRow
-                          depth={2}
-                          isGroup
-                          nameCell={
-                            <Link to="/inversiones/retiro/afp-afc" title={RETIRO_AFP_AFC_GROUP_TITLE}>
-                              AFP + AFC
-                            </Link>
-                          }
+                    <HierarchyNavRow
+                      depth={2}
+                      isGroup
+                      nameCell={
+                        <Link to="/inversiones/retiro/afp-afc" title={RETIRO_AFP_AFC_GROUP_TITLE}>
+                          AFP + AFC
+                        </Link>
+                      }
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {afpAccounts.length > 0 ? (
@@ -589,7 +590,7 @@ export function InversionesPage() {
                             isGroup
                             nameCell={<Link to="/inversiones/retiro/afp">afp</Link>}
                             categoryCell={<span className="muted">—</span>}
-                            groupCell={<span className="muted">Retirement</span>}
+                            groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                             notesCell={<span className="muted">—</span>}
                           />
                           {afpAccounts.map((a) => (
@@ -630,7 +631,7 @@ export function InversionesPage() {
                             isGroup
                             nameCell={<Link to="/inversiones/retiro/afc">afc</Link>}
                             categoryCell={<span className="muted">—</span>}
-                            groupCell={<span className="muted">Retirement</span>}
+                            groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                             notesCell={<span className="muted">—</span>}
                           />
                           {afcAccounts.map((a) => (
@@ -657,7 +658,7 @@ export function InversionesPage() {
                 isGroup
                 nameCell={<Link to="/inversiones/retiro/apv">apv</Link>}
                 categoryCell={<span className="muted">—</span>}
-                groupCell={<span className="muted">Retirement</span>}
+                groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                 notesCell={<span className="muted">—</span>}
               />
               {(() => {
@@ -693,7 +694,7 @@ export function InversionesPage() {
                         <Link to="/inversiones/retiro/apv/apv-a-principal">apv-a — principal</Link>
                       }
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {apvPrincipal.map((a) => (
@@ -738,7 +739,7 @@ export function InversionesPage() {
                       isGroup
                       nameCell={<Link to="/inversiones/retiro/apv/apv-a">apv-a</Link>}
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {apvA.map((a) => (
@@ -783,7 +784,7 @@ export function InversionesPage() {
                       isGroup
                       nameCell={<Link to="/inversiones/retiro/apv/apv-b">apv-b</Link>}
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {apvB.map((a) => (
@@ -812,10 +813,10 @@ export function InversionesPage() {
               />
               {(() => {
                 const inGroup = navInv.filter(
-                  (a) => brokeragePortfolioGroupFromCategorySlug(a.category_slug) === "fondos_mutuos"
+                  (a) => brokeragePortfolioGroupFromCategorySlug(a.category_slug) === "mutual_funds"
                 );
-                const label = brokeragePortfolioGroupLabel("fondos_mutuos");
-                const path = brokeragePortfolioGroupPath("fondos_mutuos");
+                const label = brokeragePortfolioGroupLabel("mutual_funds");
+                const path = brokeragePortfolioGroupPath("mutual_funds");
                 const collapse = hideRedundantGroupRow(label, inGroup, brokerageAccountNavLabel);
                 return collapse ? (
                   inGroup.map((a) => (
@@ -968,7 +969,7 @@ export function InversionesPage() {
                   </>
                 }
                 categoryCell={<span className="muted">Todas</span>}
-                groupCell={<span className="muted">Retirement</span>}
+                groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                 notesCell={<span className="muted">—</span>}
               />
               {(() => {
@@ -979,16 +980,16 @@ export function InversionesPage() {
                 const collapseAfc = hideRedundantGroupRow("afc", afcAccounts, retirementAccountNavLabel);
                 return (
                   <>
-                        <HierarchyNavRow
-                          depth={1}
-                          isGroup
-                          nameCell={
-                            <Link to="/inversiones/retiro/afp-afc" title={RETIRO_AFP_AFC_GROUP_TITLE}>
-                              AFP + AFC
-                            </Link>
-                          }
+                    <HierarchyNavRow
+                      depth={1}
+                      isGroup
+                      nameCell={
+                        <Link to="/inversiones/retiro/afp-afc" title={RETIRO_AFP_AFC_GROUP_TITLE}>
+                          AFP + AFC
+                        </Link>
+                      }
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {afpAccounts.length > 0 ? (
@@ -1013,7 +1014,7 @@ export function InversionesPage() {
                             isGroup
                             nameCell={<Link to="/inversiones/retiro/afp">afp</Link>}
                             categoryCell={<span className="muted">—</span>}
-                            groupCell={<span className="muted">Retirement</span>}
+                            groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                             notesCell={<span className="muted">—</span>}
                           />
                           {afpAccounts.map((a) => (
@@ -1054,7 +1055,7 @@ export function InversionesPage() {
                             isGroup
                             nameCell={<Link to="/inversiones/retiro/afc">afc</Link>}
                             categoryCell={<span className="muted">—</span>}
-                            groupCell={<span className="muted">Retirement</span>}
+                            groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                             notesCell={<span className="muted">—</span>}
                           />
                           {afcAccounts.map((a) => (
@@ -1081,7 +1082,7 @@ export function InversionesPage() {
                 isGroup
                 nameCell={<Link to="/inversiones/retiro/apv">apv</Link>}
                 categoryCell={<span className="muted">—</span>}
-                groupCell={<span className="muted">Retirement</span>}
+                groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                 notesCell={<span className="muted">—</span>}
               />
               {(() => {
@@ -1117,7 +1118,7 @@ export function InversionesPage() {
                         <Link to="/inversiones/retiro/apv/apv-a-principal">apv-a — principal</Link>
                       }
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {apvPrincipal.map((a) => (
@@ -1162,7 +1163,7 @@ export function InversionesPage() {
                       isGroup
                       nameCell={<Link to="/inversiones/retiro/apv/apv-a">apv-a</Link>}
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {apvA.map((a) => (
@@ -1207,7 +1208,7 @@ export function InversionesPage() {
                       isGroup
                       nameCell={<Link to="/inversiones/retiro/apv/apv-b">apv-b</Link>}
                       categoryCell={<span className="muted">—</span>}
-                      groupCell={<span className="muted">Retirement</span>}
+                      groupCell={<span className="muted">{i18n.t("dashboard.cards.retirement")}</span>}
                       notesCell={<span className="muted">—</span>}
                     />
                     {apvB.map((a) => (

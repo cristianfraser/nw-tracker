@@ -3,6 +3,7 @@ import {
   brokeragePortfolioGroupLabel,
   brokeragePortfolioGroupPath,
 } from "./brokerageGroupedAggregation";
+import i18n, { assetGroupPageTitle } from "./i18n";
 import type { AccountListRow } from "./types";
 
 const AFP_AFC_PARENT_LABEL = "AFP + AFC";
@@ -206,22 +207,22 @@ export function resolveAccountParentNavLink(
       if (invBack) return invBack;
     }
     if (group_slug === "brokerage") {
-      return { to: "/inversiones/brokerage", label: "brokerage" };
+      return { to: "/inversiones/brokerage", label: i18n.t("dashboard.cards.brokerage") };
     }
-    return { to: "/inversiones/retiro", label: "Retiro" };
+    return { to: "/inversiones/retiro", label: i18n.t("dashboard.cards.retirement") };
   }
 
   if (group_slug === "cash_eqs") {
     if (peers < 1) return null;
-    return { to: "/cash_eqs", label: group_label?.trim() || "Cash & equivalents" };
+    return { to: "/cash_eqs", label: group_label?.trim() || assetGroupPageTitle("cash_eqs") };
   }
   if (group_slug === "real_estate") {
     if (peers < 1) return null;
-    return { to: "/real_estate", label: group_label?.trim() || "Real estate" };
+    return { to: "/real_estate", label: group_label?.trim() || assetGroupPageTitle("real_estate") };
   }
   if (group_slug === "liabilities") {
     if (peers < 1) return null;
-    return { to: "/liabilities", label: group_label?.trim() || "Liabilities" };
+    return { to: "/liabilities", label: group_label?.trim() || assetGroupPageTitle("liabilities") };
   }
 
   return null;

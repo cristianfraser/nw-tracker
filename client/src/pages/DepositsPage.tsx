@@ -5,6 +5,7 @@ import { DepositsByCategoryChart } from "../components/DepositsByCategoryChart";
 import { Table } from "../components/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
 import { formatClp } from "../format";
+import { depositFlowCategoryLabel } from "../i18n";
 import type { DepositFlowCategory, FlowsDepositsResponse } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
@@ -85,7 +86,7 @@ export function DepositsPage() {
         return (
           <section key={cat} style={{ marginBottom: "1.5rem" }}>
             <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
-              {block.label}
+              {depositFlowCategoryLabel(cat)}
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatClp(block.total_clp)}
               </span>
@@ -113,7 +114,7 @@ export function DepositsPage() {
                 block.rows.map((r, idx) => (
                   <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
                     <td className="mono">{r.occurred_on}</td>
-                    <td>{r.category_label}</td>
+                    <td>{depositFlowCategoryLabel(r.category)}</td>
                     <td>
                       <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
                     </td>

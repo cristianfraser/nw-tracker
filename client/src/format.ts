@@ -23,11 +23,55 @@ const ufUnitsFmt = new Intl.NumberFormat("es-CL", {
   maximumFractionDigits: 2,
 });
 
-/** Whole pesos: `$` + es-CL thousands (e.g. `$95.817.344`). */
-export function formatClp(n: number): string {
+/** Matches `@number-flow/react` `format` prop (subset of `Intl.NumberFormatOptions`). */
+export const NUMBER_FLOW_INT_FORMAT = {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+  signDisplay: "never",
+} as const;
+
+export type CurrencyDisplayUnit = "clp" | "usd" | "usd-fine";
+
+const CURRENCY_SYMBOL: Record<Exclude<CurrencyDisplayUnit, "usd-fine">, string> = {
+  clp: "$",
+  usd: "US$",
+};
+
+function intlFormatter(unit: CurrencyDisplayUnit): Intl.NumberFormat {
+  if (unit === "usd-fine") return usdFineNum;
+  return unit === "clp" ? intEsCl : intEnUs;
+}
+
+function currencyLocales(unit: CurrencyDisplayUnit): string {
+  return unit === "clp" ? "es-CL" : "en-US";
+}
+
+/**
+ * Grouped digits only (no sign, no currency). For deltas and other non-currency amounts.
+ */
+export function formatNumberGrouped(n: number, unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp"): string {
   if (!Number.isFinite(n)) return "—";
-  const rounded = Math.round(n);
-  return `$${normalizeIntlNum(intEsCl.format(rounded))}`;
+  return normalizeIntlNum(intlFormatter(unit).format(Math.abs(Math.round(n))));
+}
+
+/**
+ * Currency display string. Negatives use accounting parentheses: `$-1` → `($1)`.
+ * No leading `+` on positives.
+ */
+export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): string {
+  if (!Number.isFinite(n)) return "—";
+  const rounded = unit === "usd-fine" ? n : Math.round(n);
+  const abs = Math.abs(rounded);
+  const sym = unit === "usd-fine" ? CURRENCY_SYMBOL.usd : CURRENCY_SYMBOL[unit];
+  const digits = normalizeIntlNum(intlFormatter(unit).format(abs));
+  const body = `${sym}${digits}`;
+  if (rounded < 0) return `(${body})`;
+  return body;
+}
+
+/** Whole pesos: `$` + es-CL thousands (e.g. `$95.817.344`; negative `($1.234)`). */
+export function formatClp(n: number): string {
+  return formatCurrency(n, "clp");
 }
 
 export function clpToUsd(clp: number, clpPerUsd: number) {
@@ -35,17 +79,60 @@ export function clpToUsd(clp: number, clpPerUsd: number) {
   return clp / clpPerUsd;
 }
 
-/** Whole USD: `US$` + en-US thousands (e.g. `US$123,456`). */
+/** Whole USD: `US$` + en-US thousands (e.g. `US$123,456`; negative `(US$1,234)`). */
 export function formatUsd(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  const rounded = Math.round(n);
-  return `US$${normalizeIntlNum(intEnUs.format(rounded))}`;
+  return formatCurrency(n, "usd");
 }
 
-/** USD with cents — still prefixed `US$`. */
+/** USD with cents — still prefixed `US$`; negatives `(US$1,234.56)`. */
 export function formatUsdFine(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  return `US$${normalizeIntlNum(usdFineNum.format(n))}`;
+  return formatCurrency(n, "usd-fine");
+}
+
+/** Props for {@link https://number-flow.barvian.me/ NumberFlow} currency (no `+`/`-` digit; negatives via parens). */
+export function accountingCurrencyNumberFlowParts(
+  n: number,
+  unit: Exclude<CurrencyDisplayUnit, "usd-fine">,
+  /** Dashboard card values use `$` for both CLP and USD. */
+  symbolOverride?: string
+): {
+  value: number;
+  prefix: string;
+  suffix: string;
+  locales: string;
+  format: typeof NUMBER_FLOW_INT_FORMAT;
+} {
+  const rounded = Math.round(n);
+  const abs = Math.abs(rounded);
+  const symbol = symbolOverride ?? CURRENCY_SYMBOL[unit];
+  if (rounded < 0) {
+    return {
+      value: abs,
+      prefix: `(${symbol}`,
+      suffix: ")",
+      locales: currencyLocales(unit),
+      format: NUMBER_FLOW_INT_FORMAT,
+    };
+  }
+  return {
+    value: abs,
+    prefix: symbol,
+    suffix: "",
+    locales: currencyLocales(unit),
+    format: NUMBER_FLOW_INT_FORMAT,
+  };
+}
+
+/** Plain grouped amount for NumberFlow (no sign, no currency) — use color/icon for direction. */
+export function plainNumberFlowParts(
+  n: number,
+  unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp"
+): { value: number; locales: string; format: typeof NUMBER_FLOW_INT_FORMAT } {
+  return {
+    value: Math.abs(Math.round(n)),
+    locales: currencyLocales(unit),
+    format: NUMBER_FLOW_INT_FORMAT,
+  };
 }
 
 /** ETF shares or crypto coin units (no currency symbol) */

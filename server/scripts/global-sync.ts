@@ -1,7 +1,8 @@
 /**
  * Orchestrates external syncs with Chile-time rules:
  * - AFP UNO spot: once per Chile calendar day (00:00 rollover).
- * - Fintual goals: only from 18:00 America/Santiago; applies when NAV differs from DB.
+ * - Fintual goals: from 18:00 America/Santiago; applies when mapped NAV signature changes (poll alone
+ *   does not clear stale). Valuations use prior calendar day as `as_of_date` until Fintual publishes.
  * - UF / UTM / IPC (SBIF API): from the 9th of each month through month-end, incremental fetch
  *   ([UF posteriores](https://api.sbif.cl/documentacion/UF.html), same pattern for UTM/IPC).
  *
@@ -42,6 +43,7 @@ import {
 } from "./fintualApiLib.js";
 import {
   applyFintualGoalsSnapshotToDb,
+  cleanupMistakenPollDayFintualValuations,
   fintualMappedNavSignature,
   fintualSnapshotMatchesDb,
 } from "./fintualApplyShared.js";
@@ -169,15 +171,20 @@ async function runFintual(
 
   const raw = await fetchFintualGoalsRaw(session.email, session.token);
   const rows = parseGoalsFromResponse(raw);
-  const snap = buildGoalsSnapshot(rows, loadGoalIdOverrides());
+  const snap = buildGoalsSnapshot(rows, loadGoalIdOverrides(), cl);
   writeGoalsSnapshot(snap);
 
   const sig = fintualMappedNavSignature(snap);
   state.fintualLastCheckYmd = cl.ymd;
+  state.fintualLastCheckSig = sig;
 
   if (fintualSnapshotMatchesDb(snap)) {
+    const cleaned = cleanupMistakenPollDayFintualValuations(snap, DRY);
+    if (cleaned > 0) {
+      console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
+    }
     console.log(
-      "sync: Fintual — DB already matches API (no NAV change yet today, or already applied); still “pending” until Fintual publishes new totals."
+      "sync: Fintual — API NAV unchanged since last apply; still stale until Fintual publishes new totals."
     );
     if (STRICT_FINTUAL) {
       const hasMapped = snap.goals.some((g) => g.matchedNotes);

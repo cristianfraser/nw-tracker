@@ -1,6 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import type { BrokeragePortfolioGroup } from "../brokerageGroupedAggregation";
+import type { AssetGroupSlug, DepositFlowCategory } from "../types";
 import es from "./locales/es.json";
 
 void i18n.use(initReactI18next).init({
@@ -23,4 +24,22 @@ export function brokerageGroupLabel(group: BrokeragePortfolioGroup): string {
 
 export function dashboardBucketLabel(bucket: "real_estate" | "retirement" | "brokerage" | "cash_eqs"): string {
   return i18n.t(`dashboard.buckets.${bucket}`);
+}
+
+/** Deposit-flow categories: same Spanish labels as dashboard buckets (retirement deposits → Retiro). */
+export function depositFlowCategoryLabel(cat: DepositFlowCategory): string {
+  const key: Record<DepositFlowCategory, string> = {
+    real_estate: "dashboard.buckets.real_estate",
+    cash: "dashboard.buckets.cash_eqs",
+    brokerage: "dashboard.buckets.brokerage",
+    inversiones: "sidebar.inversiones",
+  };
+  return i18n.t(key[cat]);
+}
+
+/** Asset group page `<h1>` — reuses dashboard card titles. */
+export function assetGroupPageTitle(slug: AssetGroupSlug): string {
+  if (slug === "cash_eqs") return i18n.t("dashboard.cards.cash");
+  if (slug === "real_estate") return i18n.t("dashboard.cards.realEstate");
+  return i18n.t("dashboard.cards.liabilities");
 }

@@ -313,25 +313,25 @@ const AFP_UNO_RETIROS_10_PCT: readonly {
   units_delta: number;
   label: string;
 }[] = [
-  {
-    occurred_on: "2021-03-18",
-    amount_clp: -1_014_454,
-    units_delta: -17.72,
-    label: "202103|1er-retiro-10pct|Fondo-A",
-  },
-  {
-    occurred_on: "2021-03-29",
-    amount_clp: -1_019_948,
-    units_delta: -17.72,
-    label: "202103|2do-retiro-10pct|Fondo-A",
-  },
-  {
-    occurred_on: "2021-05-31",
-    amount_clp: -1_020_863,
-    units_delta: -18.1,
-    label: "202105|3er-retiro-10pct|Fondo-A",
-  },
-];
+    {
+      occurred_on: "2021-03-18",
+      amount_clp: -1_014_454,
+      units_delta: -17.72,
+      label: "202103|1er-retiro-10pct|Fondo-A",
+    },
+    {
+      occurred_on: "2021-03-29",
+      amount_clp: -1_019_948,
+      units_delta: -17.72,
+      label: "202103|2do-retiro-10pct|Fondo-A",
+    },
+    {
+      occurred_on: "2021-05-31",
+      amount_clp: -1_020_863,
+      units_delta: -18.1,
+      label: "202105|3er-retiro-10pct|Fondo-A",
+    },
+  ];
 
 function afpUnoRetiroNetAmountClpByMonth(maxMonth: MonthKey): Map<MonthKey, number> {
   const m = new Map<MonthKey, number>();
@@ -1185,7 +1185,7 @@ async function main() {
     mortgage: ensureAccount("mortgage", DEPTO_SUECIA_ACCOUNT_DISPLAY_NAME, "mortgage"),
     spy: ensureAccount("spy", "SPY", "spy"),
     vea: ensureAccount("vea", "VEA", "vea"),
-    credit_card: ensureAccount("credit_card", "Tarjeta de crédito", "credit_card"),
+    credit_card: ensureAccount("credit_card", "santander - worldmember", "credit_card"),
   };
 
   const upsertVal = db.prepare(`
@@ -1508,10 +1508,10 @@ async function main() {
       }
 
       if (b.fx != null && b.fx > 50 && b.fx < 50000) {
-        upsertFx.run({ date: asOf, clp_per_usd: b.fx });
+        upsertFx.run({ date: monthEndDate(mk), clp_per_usd: b.fx });
       }
       if (b.eur != null && b.eur > 50 && b.eur < 50000) {
-        upsertEur.run({ date: asOf, clp_per_eur: b.eur });
+        upsertEur.run({ date: monthEndDate(mk), clp_per_eur: b.eur });
       }
     }
 
@@ -1591,8 +1591,8 @@ async function main() {
           if (nAfp.c > 0) {
             console.error(
               `import:excel: AFP UNO cert sync matched 0 rows but ${nAfp.c} cumulative AFP movement(s) exist — cuotas stay empty. ` +
-                `Confirm the movimientos CSV is at ${certAbs} (cfraser dir ${path.resolve(cfraserDir)}), ` +
-                `or run: npm run afp:uno:cert-sync -w nw-tracker-server -- --account-id=${accounts.afp} --csv=... --dry-run`
+              `Confirm the movimientos CSV is at ${certAbs} (cfraser dir ${path.resolve(cfraserDir)}), ` +
+              `or run: npm run afp:uno:cert-sync -w nw-tracker-server -- --account-id=${accounts.afp} --csv=... --dry-run`
             );
           }
         }
@@ -1654,8 +1654,8 @@ async function main() {
             );
             console.log(
               `import:excel: AFP Modelo prior cuotas: +${finalDelta} cuotas on ${adjDay} (computed=${prior.delta}` +
-                (supplement > 0 ? ` + supplement=${supplement}` : "") +
-                `; ${prior.lines.length} month line(s))`
+              (supplement > 0 ? ` + supplement=${supplement}` : "") +
+              `; ${prior.lines.length} month line(s))`
             );
             const maxLog = 36;
             for (let i = 0; i < Math.min(maxLog, prior.lines.length); i++) {
@@ -1667,7 +1667,7 @@ async function main() {
           } else {
             console.log(
               `import:excel: AFP Modelo CSV (${modeloRows.length} row(s)) — prior cuotas gap ≤0; no adjustment` +
-                (supplement > 0 ? ` (supplement ${supplement} ignored: computed 0)` : "")
+              (supplement > 0 ? ` (supplement ${supplement} ignored: computed 0)` : "")
             );
           }
         }
@@ -1860,7 +1860,7 @@ async function main() {
     }
     console.log(
       `import:excel income rows: ${incomeN}, expense rows: ${expenseN}; TC valuations (Saldo tc): ${tcValN}, TC payments (Crédito): ${tcPayN}` +
-        (tcPdfSyncN > 0 ? `; TC valuations from PDF ledger (existing import): ${tcPdfSyncN} month-ends` : "")
+      (tcPdfSyncN > 0 ? `; TC valuations from PDF ledger (existing import): ${tcPdfSyncN} month-ends` : "")
     );
   });
   tx();
@@ -1886,7 +1886,7 @@ async function main() {
   if (ccAcc && ccInstallmentLedgerRowCount(ccAcc.id) === 0 && fs.existsSync(ccCsv)) {
     console.warn(
       `import:excel: Tarjeta de crédito (account_id=${ccAcc.id}) has no PDF installment ledger in DB, but ${ccCsv} exists. ` +
-        `Run: npm run import:cc-parsed -w nw-tracker-server -- --account-id=${ccAcc.id}`
+      `Run: npm run import:cc-parsed -w nw-tracker-server -- --account-id=${ccAcc.id}`
     );
   }
 

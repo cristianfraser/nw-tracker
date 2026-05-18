@@ -30,7 +30,7 @@ import {
   noteIsDeptoPiePayment,
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
@@ -45,13 +45,21 @@ import {
   retirementSubgroupMatchesAccount,
   type TsUnit,
 } from "./valuationTimeseries.js";
-import { getAccountMonthlyPerformance, getGroupMonthlyPerformanceSeries, getStocksLifetimeEarningsSeries } from "./accountPerformance.js";
+import {
+  getAccountMonthlyPerformance,
+  getGroupMonthlyPerformanceSeries,
+  getStocksLifetimeEarningsSeries,
+} from "./accountPerformance.js";
+import { accountCardPerformanceMetrics } from "./dashboardAccountCardMetrics.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
 import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
 import {
   buildFlowsDepositsPayload,
   depositClpToUsdAtDate,
+  inversionesBrokerageDepositsSeries,
+  flowsDepositsNetInPeriodByAccount,
   flowsDepositsNetTotalByAccount,
+  flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
@@ -65,7 +73,8 @@ function parseClassTabSubgroupQuery(group: string, raw: unknown): string | undef
   const t = raw.trim();
   if (t === "") return undefined;
   if (group === "brokerage") {
-    if (t === "acciones" || t === "fondos_mutuos" || t === "crypto") return t;
+    if (t === "fondos_mutuos") return "mutual_funds";
+    if (t === "acciones" || t === "mutual_funds" || t === "crypto") return t;
     return null;
   }
   if (group === "retirement") {
@@ -210,7 +219,7 @@ app.get("/api/accounts", (req, res) => {
   if (subRaw === null) {
     res.status(400).json({
       error:
-        "invalid subgroup (brokerage: acciones, fondos_mutuos, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
+        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
     });
     return;
   }
@@ -625,9 +634,18 @@ app.get("/api/dashboard", (req, res) => {
 
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const depositsNetByAccount = flowsDepositsNetTotalByAccount();
+  const depositsNetUsdByAccount = includeUsd ? flowsDepositsNetTotalUsdByAccount() : null;
+  const depositsMonth = flowsDepositsNetInPeriodByAccount("month");
+  const depositsYear = flowsDepositsNetInPeriodByAccount("year");
+  const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
   const rowsBuilt: DashboardAccountStats[] = accounts.map((a) => {
     const deposits = depositsNetByAccount.get(a.id) ?? 0;
+    const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
+    const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(a.group_slug);
+    const perfClp = trackAssetMetrics ? accountCardPerformanceMetrics(a.id, "clp") : null;
+    const perfUsd =
+      trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
     let v = latestValuationRowOnOrBeforeChileToday(a.id);
     const eqShown = computeLatestDisplayedEquityClp(a.id);
     if (eqShown != null) {
@@ -657,7 +675,7 @@ app.get("/api/dashboard", (req, res) => {
       current_value_clp = position.value_clp;
       if (position.value_as_of != null) valuation_as_of = position.value_as_of;
     }
-    const fxRow = includeUsd ? fxRowOnOrBefore(valuation_as_of ?? null) : null;
+    const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
     const current_value_usd =
       includeUsd && current_value_clp != null && fxRow != null
         ? current_value_clp / fxRow.clp_per_usd
@@ -672,6 +690,19 @@ app.get("/api/dashboard", (req, res) => {
       category_slug: a.category_slug,
       category_label: a.category_label,
       deposits_clp: deposits,
+      deposits_usd: includeUsd ? deposits_usd : undefined,
+      delta_month_clp: perfClp?.delta_month,
+      delta_month_usd: perfUsd?.delta_month,
+      delta_year_clp: perfClp?.delta_year,
+      delta_year_usd: perfUsd?.delta_year,
+      delta_total_clp: perfClp?.delta_total,
+      delta_total_usd: perfUsd?.delta_total,
+      deposits_month_clp: trackAssetMetrics ? (depositsMonth.clp.get(a.id) ?? 0) : undefined,
+      deposits_month_usd: trackAssetMetrics
+        ? (depositsMonth.usd.get(a.id) ?? null)
+        : undefined,
+      deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
+      deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
       current_value_clp,
       valuation_as_of,
       current_value_usd,
@@ -789,6 +820,16 @@ app.get("/api/dashboard", (req, res) => {
     suecia_snapshot,
     liabilities_breakdown,
     deposits_by_category: depositsFlow.by_category,
+    inversiones_deposits_chart: {
+      monthly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly),
+      yearly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly),
+      ...(includeUsd
+        ? {
+            monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd),
+            yearly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly_usd),
+          }
+        : {}),
+    },
   });
 });
 
@@ -815,7 +856,7 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
     if (sub === null) {
       res.status(400).json({
         error:
-          "invalid subgroup (brokerage: acciones, fondos_mutuos, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
+          "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
       });
       return;
     }
@@ -848,7 +889,7 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
   if (sub === null) {
     res.status(400).json({
       error:
-        "invalid subgroup (brokerage: acciones, fondos_mutuos, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
+        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
     });
     return;
   }

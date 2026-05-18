@@ -2,7 +2,7 @@ import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { readSpyVeaShareUnitsFromStocksCsv } from "./accountPosition.js";
 import { db } from "./db.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 
 /** Yahoo chart symbols loaded at `import:excel` into `equity_daily` (USD close per share/coin). */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "BTC-USD", "ETH-USD"] as const;
@@ -61,7 +61,7 @@ export function computeEquityMtmClp(accountId: number, asOfYmd: string): number 
   if (units <= 0 || !Number.isFinite(units)) return null;
   const crow = stmtClose.get(ticker, asOfYmd) as { close_usd: number } | undefined;
   if (!crow || !Number.isFinite(crow.close_usd)) return null;
-  const fx = fxRowOnOrBefore(asOfYmd);
+  const fx = fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = units * crow.close_usd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
@@ -95,7 +95,7 @@ export function computeLatestDisplayedEquityClp(
 
   const crow = stmtClose.get(ticker, md) as { close_usd: number } | undefined;
   if (!crow || !Number.isFinite(crow.close_usd)) return null;
-  const fx = fxRowOnOrBefore(md);
+  const fx = fxMonthEndForBalanceUsd(md);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = u * crow.close_usd * fx.clp_per_usd;
   if (!Number.isFinite(clp) || clp <= 0) return null;

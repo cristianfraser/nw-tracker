@@ -10,6 +10,12 @@ export function applyFintualGoalsSnapshotToDb(snap: FintualGoalSnapshot, dryRun:
     ON CONFLICT(account_id, as_of_date) DO UPDATE SET
       value_clp = excluded.value_clp
   `);
+  /** Poll-day rows stamped before as_of fix (same NAV, date > snap.asOfDate). */
+  const deleteMistakenFutureDup = db.prepare(
+    `DELETE FROM valuations
+     WHERE account_id = @account_id AND as_of_date > @as_of_date
+       AND ABS(value_clp - @value_clp) <= 1`
+  );
 
   let applied = 0;
   let skipped = 0;
@@ -36,6 +42,13 @@ export function applyFintualGoalsSnapshotToDb(snap: FintualGoalSnapshot, dryRun:
         as_of_date: snap.asOfDate,
         value_clp,
       });
+      if (!dryRun) {
+        deleteMistakenFutureDup.run({
+          account_id: row.id,
+          as_of_date: snap.asOfDate,
+          value_clp,
+        });
+      }
     }
     const fu = recordFintualGoalFundUnitDaily({
       accountId: row.id,
@@ -72,6 +85,31 @@ export function fintualSnapshotMatchesDb(snap: FintualGoalSnapshot): boolean {
     checked++;
   }
   return checked > 0;
+}
+
+/** Remove valuations dated after `snap.asOfDate` that duplicate the API NAV (legacy poll-day stamps). */
+export function cleanupMistakenPollDayFintualValuations(snap: FintualGoalSnapshot, dryRun: boolean): number {
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  const deleteMistakenFutureDup = db.prepare(
+    `DELETE FROM valuations
+     WHERE account_id = @account_id AND as_of_date > @as_of_date
+       AND ABS(value_clp - @value_clp) <= 1`
+  );
+  let n = 0;
+  for (const g of snap.goals) {
+    if (!g.matchedNotes) continue;
+    const row = accStmt.get(g.matchedNotes) as { id: number } | undefined;
+    if (!row) continue;
+    const value_clp = Math.round(g.navClp * 100) / 100;
+    if (dryRun) continue;
+    const r = deleteMistakenFutureDup.run({
+      account_id: row.id,
+      as_of_date: snap.asOfDate,
+      value_clp,
+    });
+    n += r.changes;
+  }
+  return n;
 }
 
 export function fintualMappedNavSignature(snap: FintualGoalSnapshot): string {

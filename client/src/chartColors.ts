@@ -127,12 +127,12 @@ export type ChartColorPlan =
   | { kind: "dashboard-overview" }
   | { kind: "dashboard-patrimonio-usd" }
   | {
-      kind: "group-tab";
-      groupSlug: AssetGroupSlug;
-      /** Brokerage tab: when `crypto`, BTC/ETH lines use the crypto palette (same as `/brokerage/crypto`). */
-      brokerageSubgroup?: "acciones" | "fondos_mutuos" | "crypto";
-      accounts: TimeseriesAccountLine[];
-    };
+    kind: "group-tab";
+    groupSlug: AssetGroupSlug;
+    /** Brokerage tab: when `crypto`, BTC/ETH lines use the crypto palette (same as `/brokerage/crypto`). */
+    brokerageSubgroup?: "acciones" | "mutual_funds" | "crypto";
+    accounts: TimeseriesAccountLine[];
+  };
 
 export type LineSeriesColorInput = {
   dataKey: string;
@@ -183,10 +183,14 @@ function isDashboardReservaCashLine(name: string): boolean {
   return n.includes("fondo reserva") || (n.includes("reserva") && n.includes("fintual"));
 }
 
-/** Dashboard primary merged “Fondos mutuos” line (same label as Inversiones → Brokerage → Fondos mutuos). */
-function isDashboardFondosMutuosBrokerageLine(name: string): boolean {
+/** Dashboard primary merged mutual-funds line (matches brokerage subgroup series name). */
+function isDashboardMutualFundsBrokerageLine(name: string): boolean {
   const n = name.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
-  return n === "fondos mutuos" || (n.includes("fondos") && n.includes("mutuos"));
+  return (
+    n === "mutual funds" ||
+    n === "fondos mutuos" ||
+    (n.includes("fondos") && n.includes("mutuos"))
+  );
 }
 
 export function resolveLineSeriesColors(
@@ -263,7 +267,7 @@ export function resolveLineSeriesColors(
         stroke = DASHBOARD_RESERVA_STROKE;
       } else if (
         g === "brokerage" &&
-        (isFintualRnBrokerageAccountName(s.name) || isDashboardFondosMutuosBrokerageLine(s.name))
+        (isFintualRnBrokerageAccountName(s.name) || isDashboardMutualFundsBrokerageLine(s.name))
       ) {
         const idx = nextByGroup.get(g) ?? 0;
         nextByGroup.set(g, idx + 1);
@@ -333,7 +337,12 @@ function isLiabilitiesMortgageAccountName(name: string): boolean {
 
 function isLiabilitiesCreditCardAccountName(name: string): boolean {
   const n = normAccountLabel(name);
-  return n.includes("tarjeta") || n.includes("credit card");
+  return (
+    n.includes("tarjeta") ||
+    n.includes("credit card") ||
+    n.includes("worldmember") ||
+    n.includes("santander")
+  );
 }
 
 /** Minimal series identity for color maps (perf bars, legends — not necessarily valuation lines). */

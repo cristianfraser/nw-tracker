@@ -1,7 +1,7 @@
 {
   "brokerage": {
     "groups": {
-      "fondos_mutuos": "Fondos mutuos",
+      "mutual_funds": "Fondos mutuos",
       "acciones": "Acciones",
       "cripto": "Cripto"
     }
@@ -30,10 +30,10 @@
   "dashboard": {
     "title": "Dashboard",
     "values": "Valores:",
-    "charts": "Gráficos:",
+    "chartGranularityLabel": "Gráficos:",
     "monthly": "Mensual",
     "yearly": "Anual",
-    "yearlyViewHint": "Vista anual: las valorizaciones usan el <1>último mes</1> de cada año calendario. El P/L retiro + broker suma los <2>Δ mensuales</2> de ese año en un solo punto.",
+    "yearlyViewHint": "Vista anual: las valorizaciones usan el <1>último mes</1> de cada año calendario. El P/L de inversiones suma los <2>Δ mensuales</2> de ese año en un solo punto.",
     "cards": {
       "netWorth": "Patrimonio neto",
       "totalDeposits": "Depósitos totales",
@@ -49,33 +49,39 @@
       "brokerage": "Brokerage",
       "cash_eqs": "Efectivo"
     },
-    "charts": {
+    "sections": {
       "primaryAccountsTitle": "Cuentas principales (sin inmuebles)",
       "overviewTitle": "Inmuebles, buckets consolidados y patrimonio neto",
       "netWorthUsdSectionTitle": "Patrimonio neto, invested y niveles US$ (CLP)",
       "netWorthUsdSectionHint": "Patrimonio neto e invested en CLP. Líneas punteadas: equivalente CLP de US$10k, US$50k, US$100k, US$250k y US$500k según el tipo de cambio de cada fecha (US$ × USD/CLP del día). El eje Y sigue solo patrimonio e invested; los niveles US$ pueden quedar fuera de escala.",
       "netWorthUsdChartTitle": "Patrimonio neto vs invested (referencia US$)",
-      "perfSectionTitleMonthly": "Retiro y brokerage — P/L mensual (YTD)",
-      "perfSectionTitleYearly": "Retiro y brokerage — P/L anual (año calendario)",
-      "perfSectionHintMonthly": "Barras por clase (retiro / brokerage), área YTD combinado y rombo = Δ total del mes.",
-      "perfSectionHintYearly": "Barras por clase, total del año combinado y rombo = Δ anual combinado.",
-      "perfChartTitleMonthly": "Δ mensual por clase, YTD combinado y Δ mensual combinado",
-      "perfChartTitleYearly": "Δ anual por clase, total del año combinado y Δ anual combinado",
-      "accumSectionTitleMonthly": "Retiro y brokerage — ganancias acumuladas",
-      "accumSectionTitleYearly": "Retiro y brokerage — acumulado (pasos anuales)",
-      "accumSectionHintMonthly": "Una barra = Δ mensual combinado; área = ganancias acumuladas desde el primer mes.",
-      "accumSectionHintYearly": "Una barra = suma anual combinada; área = ganancias acumuladas desde el primer año.",
-      "accumChartTitleMonthly": "Δ mensual (combinado) y ganancias acumuladas",
-      "accumChartTitleYearly": "Δ anual (combinado) y ganancias acumuladas",
+      "perfSectionTitleMonthly": "Inversiones — P/L mensual (YTD)",
+      "perfSectionTitleYearly": "Inversiones — P/L anual (año calendario)",
+      "perfSectionHintMonthly": "Barras por clase (retiro / brokerage), área YTD de inversiones y rombo = Δ mensual combinado.",
+      "perfSectionHintYearly": "Barras por clase (retiro / brokerage), total anual de inversiones y rombo = Δ anual combinado.",
+      "perfChartTitleMonthly": "Δ mensual por clase, YTD inversiones y Δ mensual combinado",
+      "perfChartTitleYearly": "Δ anual por clase, total anual inversiones y Δ anual combinado",
+      "accumSectionTitleMonthly": "Inversiones — ganancias acumuladas",
+      "accumSectionTitleYearly": "Inversiones — acumulado (pasos anuales)",
+      "accumSectionHintMonthly": "Barras = Δ mensual y depósitos (inversiones); líneas MM3; área = ganancias acumuladas desde el primer mes.",
+      "accumSectionHintYearly": "Barras = Δ anual y depósitos (inversiones); líneas MM3; área = ganancias acumuladas desde el primer año.",
+      "accumChartTitleMonthly": "Δ mensual (inversiones), depósitos y ganancias acumuladas",
+      "accumChartTitleYearly": "Δ anual (inversiones), depósitos y ganancias acumuladas",
       "deltaRetirementMonthly": "Δ mensual retiro",
       "deltaRetirementYearly": "Δ anual retiro",
       "deltaBrokerageMonthly": "Δ mensual brokerage",
       "deltaBrokerageYearly": "Δ anual brokerage",
-      "ytdCombined": "YTD (retiro + brokerage)",
-      "yearTotalCombined": "Total del año (combinado)",
-      "deltaCombinedMonthly": "Δ mensual (retiro + brokerage)",
-      "deltaCombinedYearly": "Δ anual (retiro + brokerage)",
-      "accumulatedEarnings": "Ganancias acumuladas"
+      "ytdCombined": "YTD (inversiones)",
+      "yearTotalCombined": "Total del año (inversiones)",
+      "deltaCombinedMonthly": "Δ mensual (inversiones)",
+      "deltaCombinedYearly": "Δ anual (inversiones)",
+      "accumulatedEarnings": "Ganancias acumuladas",
+      "depositsInversionesMonthly": "Depósitos del mes (inversiones)",
+      "depositsInversionesYearly": "Depósitos del año (inversiones)",
+      "ma3DeltaCombinedMonthly": "MM3 Δ mensual (inversiones)",
+      "ma3DepositsInversionesMonthly": "MM3 depósitos del mes (inversiones)",
+      "ma3DeltaCombinedYearly": "MM3 Δ anual (inversiones)",
+      "ma3DepositsInversionesYearly": "MM3 depósitos del año (inversiones)"
     },
     "accountsTable": {
       "title": "Cuentas principales (sin inmuebles)",
@@ -86,7 +92,25 @@
       "empty": "Agrega cuentas y valorizaciones para ver el gráfico."
     },
     "combinedMonthlyDelta": "Σ Δ mensual",
-    "combinedAnnualDelta": "Σ Δ anual"
+    "combinedAnnualDelta": "Σ Δ anual",
+    "cardBreakdown": {
+      "totalDeposited": "Total depositado",
+      "totalDelta": "Δ total",
+      "periodDepositsMonth": "Depósitos del mes",
+      "periodDepositsYear": "Depósitos del año",
+      "periodDeltaMonth": "Δ del mes",
+      "periodDeltaYear": "Δ del año",
+      "summaryAria": "Depósitos y Δ total y del período"
+    }
+  },
+  "sidebar": {
+    "inversiones": "Inversiones",
+    "afp": "AFP",
+    "afc": "AFC",
+    "flows": "Flujos",
+    "flowsIncome": "Ingresos",
+    "flowsExpenses": "Gastos",
+    "flowsDeposits": "Depósitos"
   },
   "common": {
     "loading": "Cargando…",
