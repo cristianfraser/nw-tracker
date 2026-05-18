@@ -1,10 +1,8 @@
 import {
   CartesianGrid,
   Cell,
-  DefaultTooltipContent,
   Legend,
   Line,
-  LineChart,
   Pie,
   PieChart,
   ReferenceLine,
@@ -14,11 +12,20 @@ import {
   YAxis,
 } from "recharts";
 import type { TooltipProps } from "recharts";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { formatClp, formatUsd, formatMoneyForPie } from "../format";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../chartColors";
 import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../chartColors";
 import type { TimeseriesBlock } from "../types";
+import { clipChartDataToYDomain, collectTailClipSeriesFromBlock, dataSeriesKeysFromTailClip } from "../chartTailClip";
+import {
+  AppLineChart,
+  filterChartRowsThroughDate,
+  trailingZeroTailClipLastVisibleDate,
+  useMultiSeriesTrailingZeroTailClip,
+  type TailClipOptions,
+} from "./AppLineChart";
+import { densifyRecordsByCalendarPeriod } from "../chartDensifyTimeSeries";
 
 export type ChartDisplayUnit = "clp" | "usd";
 
@@ -87,6 +94,10 @@ function numericCell(v: unknown): number {
  * Drop leading months with no cumulative deposits and no valuation, but keep the **last** such month
  * (so the chart starts at the last month “aportes” were still 0, then the first inflow is visible).
  * If there is no positive deposit/valuation in the series, returns the block unchanged.
+ *
+ * **Deposits vs valuations:** When cumulative deposit lines exist (`depositKeys` non-empty), we still break as soon
+ * as **either** a deposit or a valuation is positive. Otherwise a class like Cash & equivalents would hide years of
+ * checking / ahorro balances until the first Reserva “aportes” month.
  */
 export function trimLeadingInactivePoints(
   block: TimeseriesBlock,
@@ -101,13 +112,13 @@ export function trimLeadingInactivePoints(
     for (const a of accounts) {
       valueKeys.add(a.dataKey);
       if (includeAccumulatedLines && a.depositDataKey) depositKeys.add(a.depositDataKey);
+      if (includeAccumulatedLines && a.displayDepositDataKey) depositKeys.add(a.displayDepositDataKey);
     }
   }
   if (lines?.length) {
     for (const ln of lines) valueKeys.add(ln.dataKey);
   }
 
-  const hasDeposits = depositKeys.size > 0;
   let i = 0;
   while (i < points.length) {
     const row = points[i]!;
@@ -119,11 +130,7 @@ export function trimLeadingInactivePoints(
     for (const k of valueKeys) {
       if (numericCell(row[k]) > 0) valPositive = true;
     }
-    if (hasDeposits) {
-      if (depPositive) break;
-    } else if (valPositive) {
-      break;
-    }
+    if (depPositive || valPositive) break;
     i++;
   }
 
@@ -140,7 +147,7 @@ export function trimLeadingInactivePoints(
     for (const k of valueKeys) {
       if (numericCell(prev[k]) > 0) prevVal = true;
     }
-    const prevActive = hasDeposits ? prevDep || prevVal : prevVal;
+    const prevActive = prevDep || prevVal;
     if (prevActive) start = i - 1;
   }
   return { ...block, points: points.slice(start) };
@@ -191,8 +198,9 @@ function buildTickList(y0: number, y1: number, step: number): number[] {
 }
 
 /**
- * Y domain and explicit ticks with round steps; non-negative data stays anchored at 0.
- * When the domain crosses zero, caller should render a horizontal reference at y=0 (same stroke as axes).
+ * Y domain and explicit ticks with round steps; non-negative data uses domain `[0, y1]`.
+ * Renders a horizontal reference at **y = 0** when that value lies on the scale: always for the `[0, y1]`
+ * branch, and when the scale crosses zero for mixed-sign data (same stroke as axes; see `LineChartPanel`).
  */
 export function buildNiceYAxis(minData: number, maxData: number): {
   domain: [number, number];
@@ -221,7 +229,8 @@ export function buildNiceYAxis(minData: number, maxData: number): {
     const step = niceYStep(hi / targetDivisions || 1);
     const y1 = Math.max(step, Math.ceil(hi / step) * step);
     const ticks = buildTickList(0, y1, step);
-    return { domain: [0, y1], ticks, showZeroReference: false };
+    /** Domain is anchored at 0; draw a baseline at y=0 (with X-axis) so the floor is visible on all-positive series. */
+    return { domain: [0, y1], ticks, showZeroReference: true };
   }
 
   const span = hi - lo;
@@ -234,8 +243,8 @@ export function buildNiceYAxis(minData: number, maxData: number): {
 }
 
 /**
- * Y-axis for strictly positive series that should **not** be forced to start at zero
- * (e.g. FX ~600–1000, UF ~36k–41k): padded band with 1–2–5–10 style tick steps.
+ * Y-axis for series with a padded band around the data range (e.g. valuations, FX).
+ * When `minData >= 0`, the domain never extends below 0 (padding only shrinks toward zero).
  */
 export function buildNiceYAxisPositiveBand(
   minData: number,
@@ -244,19 +253,22 @@ export function buildNiceYAxisPositiveBand(
 ): { domain: [number, number]; ticks: number[] } {
   const targetDivisions = Math.max(4, Math.min(8, options?.targetDivisions ?? 6));
   const padRatio = options?.padRatio ?? 0.045;
-  let lo = Math.min(minData, maxData);
-  let hi = Math.max(minData, maxData);
+  const dataLo = Math.min(minData, maxData);
+  const dataHi = Math.max(minData, maxData);
+  const nonNegative = dataLo >= 0;
+  let lo = dataLo;
+  let hi = dataHi;
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
     return { domain: [0, 1], ticks: [0, 0.5, 1] };
   }
   if (lo === hi) {
     const w = Math.max(Math.abs(hi) * 0.02, Number.EPSILON * 1e6);
-    lo -= w;
+    lo = nonNegative ? Math.max(0, lo - w) : lo - w;
     hi += w;
   }
   const span = hi - lo;
   const pad = Math.max(span * padRatio, 1e-9);
-  const yLo = lo - pad;
+  const yLo = nonNegative ? Math.max(0, lo - pad) : lo - pad;
   const yHi = hi + pad;
   const spanP = yHi - yLo;
   const roughStep = spanP / Math.max(2, targetDivisions - 1);
@@ -270,6 +282,11 @@ export function buildNiceYAxisPositiveBand(
     y0 = Math.floor(yLo / step) * step;
     y1 = Math.ceil(yHi / step) * step;
     ticks = buildTickList(y0, y1, step);
+  }
+  if (nonNegative) {
+    y0 = Math.max(0, y0);
+    ticks = ticks.filter((t) => t >= 0);
+    if (y0 === 0 && ticks.length > 0 && ticks[0]! > 0) ticks = [0, ...ticks];
   }
   return { domain: [y0, y1], ticks };
 }
@@ -418,7 +435,14 @@ function LineTooltipBelowPlot({
   viewBox,
   displayUnit,
   xAxisGranularity = "month",
-}: TooltipProps<number, string> & { displayUnit: ChartDisplayUnit; xAxisGranularity?: "month" | "year" }) {
+  focusColorIndex,
+  seriesByDataKey,
+}: TooltipProps<number, string> & {
+  displayUnit: ChartDisplayUnit;
+  xAxisGranularity?: "month" | "year";
+  focusColorIndex: number | null;
+  seriesByDataKey: ReadonlyMap<string, ResolvedLineSeriesItem>;
+}) {
   if (!active || !payload?.length || !viewBox) return null;
   const tooltipPayload = dedupeTooltipPayloadPreferVisibleStroke(payload);
   if (!tooltipPayload.length) return null;
@@ -431,6 +455,7 @@ function LineTooltipBelowPlot({
   const pad = 8;
   const left = Math.min(Math.max(cx, pad + 40), vx + vw - pad);
   const top = vy + vh + 4;
+  const dim = focusColorIndex != null;
   return (
     <div
       className="line-chart-tooltip-dock"
@@ -444,21 +469,75 @@ function LineTooltipBelowPlot({
         maxWidth: Math.min(360, vw),
       }}
     >
-      <DefaultTooltipContent<number, string>
-        payload={tooltipPayload}
-        label={label}
-        formatter={(v) => formatTooltipValue(typeof v === "number" ? v : Number(v), displayUnit)}
-        labelFormatter={(d) => formatLineChartXTick(String(d), xAxisGranularity)}
-        contentStyle={{
+      <div
+        className="line-chart-tooltip-content"
+        style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: 8,
           padding: "10px 12px",
           boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
         }}
-      />
+      >
+        <p style={{ margin: "0 0 6px", color: "#f1f5f9", fontSize: 13, fontWeight: 600 }}>
+          {formatLineChartXTick(String(label), xAxisGranularity)}
+        </p>
+        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+          {tooltipPayload.map((entry) => {
+            const dataKey = String(entry.dataKey ?? "");
+            const meta = seriesByDataKey.get(dataKey);
+            const isHi = focusColorIndex != null && meta?.colorIndex === focusColorIndex;
+            const faded = dim && !isHi;
+            const swatchColor =
+              tooltipColorIsVisible(entry.color) ? String(entry.color) : (meta?.stroke ?? "#94a3b8");
+            const name = String(entry.name ?? meta?.name ?? dataKey);
+            const raw = entry.value;
+            const value =
+              typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
+            return (
+              <li
+                key={dataKey}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 4,
+                  fontSize: 13,
+                  opacity: faded ? DIM_LEGEND_OPACITY : 1,
+                  transition: "opacity 0.12s ease-out",
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    background: swatchColor,
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ color: isHi ? "#f1f5f9" : "#94a3b8" }}>{name}</span>
+                <span style={{ color: isHi ? "#f1f5f9" : "#94a3b8" }}>:</span>
+                <span style={{ color: isHi ? "#f1f5f9" : "#e2e8f0", fontWeight: isHi ? 600 : 400 }}>
+                  {Number.isFinite(value)
+                    ? formatTooltipValue(value, displayUnit)
+                    : "—"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
+}
+
+/** Clear line focus when the pointer leaves a hit target, unless it moves to another hit line. */
+function clearLineHighlightUnlessMovingToHitLine(e: ReactMouseEvent, clear: () => void) {
+  const related = e.relatedTarget;
+  if (related instanceof Element && related.closest(".line-chart-hit-target")) return;
+  clear();
 }
 
 interface BlockProps {
@@ -477,10 +556,12 @@ interface BlockProps {
   trimLeadingInactive?: boolean;
   /** Line colors: dashboard buckets, class-tab alignment with pie, or default. */
   colorPlan?: ChartColorPlan;
-  /** When true, Y scale never goes below 0 (retirement class tab). */
+  /** When true, Y scale is anchored at 0. Default: padded band from data min/max. */
   yAxisMinZero?: boolean;
   /** X-axis tick labels: calendar year only vs month+year (dashboard yearly rollup). */
   xAxisGranularity?: "month" | "year";
+  /** When set, Y-axis min/max uses only these series (others may render off-scale). */
+  yScaleDataKeys?: readonly string[];
 }
 
 const CHART_ANIM_MS = 300;
@@ -508,14 +589,62 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
           isDeposit: true,
         });
       }
+      if (includeAccumulatedLines && a.displayDepositDataKey) {
+        raw.push({
+          dataKey: a.displayDepositDataKey,
+          name: a.display_deposit_series_name?.trim() || "aportes propios acum.",
+          colorIndex: i,
+          isDeposit: true,
+          isDisplayDeposit: true,
+        });
+      }
     });
   }
   const nAccounts = block.accounts?.length ?? 0;
   for (let j = 0; j < (block.lines?.length ?? 0); j++) {
     const ln = block.lines![j]!;
-    raw.push({ dataKey: ln.dataKey, name: ln.name, colorIndex: nAccounts + j });
+    raw.push({
+      dataKey: ln.dataKey,
+      name: ln.name,
+      colorIndex: nAccounts + j,
+      isReferenceOverlay: ln.valueSeriesType === "reference",
+    });
   }
   return raw;
+}
+
+/** Tail-clip options for a valuation timeseries block (same rules as {@link LineChartPanel}). */
+export function buildLineChartTailClipOptions(
+  block: TimeseriesBlock,
+  includeAccumulatedLines: boolean
+): TailClipOptions | null {
+  if (!block.points.length) return null;
+  const series = collectTailClipSeriesFromBlock(block, includeAccumulatedLines);
+  if (dataSeriesKeysFromTailClip(series).length === 0) return null;
+  const accs = block.accounts;
+  const groupValTotalSourceKeys = accs?.some((a) => a.dataKey === "__group_val_total")
+    ? accs
+        .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals)
+        .map((a) => a.dataKey)
+    : undefined;
+  const groupDepTotalSourceKeys =
+    accs?.some((a) => a.dataKey === "__group_dep_total") && accs.some((a) => Boolean(a.depositDataKey))
+      ? accs
+          .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals && a.depositDataKey)
+          .map((a) => a.depositDataKey!)
+      : undefined;
+  const depositKeysByValuationKey: Record<string, string[]> = {};
+  for (const a of accs ?? []) {
+    if (a.account_id <= 0) continue;
+    const deps = [a.depositDataKey, a.displayDepositDataKey].filter((dk): dk is string => Boolean(dk));
+    if (deps.length > 0) depositKeysByValuationKey[a.dataKey] = deps;
+  }
+  return {
+    series,
+    depositKeysByValuationKey,
+    groupValTotalSourceKeys,
+    groupDepTotalSourceKeys,
+  };
 }
 
 function InteractiveLegend({
@@ -528,7 +657,7 @@ function InteractiveLegend({
   focusColorIndex: number | null;
   onHighlight: (dataKey: string | null) => void;
 }) {
-  const visible = series.filter((s) => !s.isDeposit);
+  const visible = series.filter((s) => !s.isDeposit || s.isDisplayDeposit);
   if (visible.length === 0) return null;
   const dim = focusColorIndex != null;
   return (
@@ -538,9 +667,13 @@ function InteractiveLegend({
         display: "flex",
         flexWrap: "wrap",
         justifyContent: "center",
-        gap: "10px 18px",
-        paddingTop: 10,
+        alignContent: "flex-start",
+        rowGap: 12,
+        columnGap: 20,
+        paddingTop: 14,
+        paddingBottom: 10,
         fontSize: 12,
+        lineHeight: 1.35,
         color: "var(--muted, #94a3b8)",
       }}
     >
@@ -550,7 +683,8 @@ function InteractiveLegend({
         const faded = dim && !isHi;
         const isDerivedDash =
           s.dataKey === "invested" || s.dataKey === "available" || s.dataKey === "all_available";
-        const legBase = isDerivedDash ? 1.5 : 2;
+        const legBase = s.isDisplayDeposit ? 1.15 : isDerivedDash ? 1.5 : 2;
+        const legDash = s.isDisplayDeposit ? "6 4" : undefined;
         return (
           <button
             key={s.dataKey}
@@ -580,6 +714,7 @@ function InteractiveLegend({
                 y2={5}
                 stroke={color}
                 strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
+                strokeDasharray={legDash}
                 opacity={faded ? 0.5 : s.dataKey === "all_available" ? 0.6 : isDerivedDash ? 0.8 : 1}
               />
             </svg>
@@ -609,6 +744,7 @@ export function LineChartPanel({
   colorPlan,
   yAxisMinZero = false,
   xAxisGranularity = "month",
+  yScaleDataKeys,
 }: BlockProps) {
   const TitleTag = titleAs;
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
@@ -620,23 +756,82 @@ export function LineChartPanel({
     () => resolveLineSeriesColors(buildRawLineSeries(blockPlotted, includeAccumulatedLines), colorPlan),
     [blockPlotted, includeAccumulatedLines, colorPlan]
   );
+
+  const seriesByDataKey = useMemo(
+    () => new Map(series.map((s) => [s.dataKey, s] as const)),
+    [series]
+  );
+
+  const tailClipOptions = useMemo(
+    () => buildLineChartTailClipOptions(blockPlotted, includeAccumulatedLines),
+    [blockPlotted, includeAccumulatedLines]
+  );
+
+  const plotEndDate = useMemo(() => {
+    if (!tailClipOptions) return null;
+    return trailingZeroTailClipLastVisibleDate(blockPlotted.points, tailClipOptions);
+  }, [blockPlotted.points, tailClipOptions]);
+
+  const { chartData: clippedChartData, tailClippedKeys } = useMultiSeriesTrailingZeroTailClip(
+    blockPlotted.points,
+    tailClipOptions
+  );
+
+  const clippedForPlot = useMemo(
+    () => filterChartRowsThroughDate(clippedChartData, plotEndDate),
+    [clippedChartData, plotEndDate]
+  );
+
+  const chartData = useMemo(
+    () =>
+      densifyRecordsByCalendarPeriod(clippedForPlot, {
+        granularity: xAxisGranularity,
+        dateKey: "as_of_date",
+        fillMissing: "null_all",
+      }),
+    [clippedForPlot, xAxisGranularity]
+  );
+
   const yScale = useMemo(() => {
-    const { min, max } = minMaxAcrossSeries(blockPlotted.points, series);
+    const scaleSeries =
+      yScaleDataKeys?.length && yScaleDataKeys.length > 0
+        ? series.filter((s) => yScaleDataKeys.includes(s.dataKey))
+        : series;
+    const { min, max } = minMaxAcrossSeries(chartData, scaleSeries);
     if (yAxisMinZero) {
       return buildNiceYAxis(0, Math.max(max, 0));
     }
+    if (min >= 0 && max >= 0) {
+      const band = buildNiceYAxisPositiveBand(min, max);
+      return {
+        ...band,
+        showZeroReference: band.domain[0] === 0 && band.domain[1] > 0,
+      };
+    }
     return buildNiceYAxis(min, max);
-  }, [blockPlotted.points, series, yAxisMinZero]);
+  }, [chartData, series, yAxisMinZero, yScaleDataKeys]);
+
+  const clipPlotToYDomain = Boolean(yScaleDataKeys?.length);
+  const lineCurveType = clipPlotToYDomain ? "linear" : "monotone";
+
+  const plotChartData = useMemo(() => {
+    if (!clipPlotToYDomain) return chartData;
+    return clipChartDataToYDomain(
+      chartData,
+      series.map((s) => s.dataKey),
+      yScale.domain
+    );
+  }, [chartData, series, yScale.domain, clipPlotToYDomain]);
 
   const xAxisTicks = useMemo(() => {
-    const dates = extractSortedAsOfDates(blockPlotted.points);
+    const dates = extractSortedAsOfDates(chartData);
     if (xAxisGranularity === "year") {
       return computeRegularYearXAxisTicks(dates);
     }
     return computeRegularMonthXAxisTicks(dates, { includeLastDataPoint: false });
-  }, [blockPlotted.points, xAxisGranularity]);
+  }, [chartData, xAxisGranularity]);
 
-  if (!blockPlotted.points.length || !series.length) {
+  if (!chartData.length || !series.length) {
     return (
       <div className="chart-grid__col">
         <TitleTag className="chart-panel-title">{title}</TitleTag>
@@ -648,6 +843,8 @@ export function LineChartPanel({
   const focusColorIndex =
     highlightedKey == null ? null : (series.find((x) => x.dataKey === highlightedKey)?.colorIndex ?? null);
 
+  const chartMargin = RECHARTS_MONEY_CHART_MARGIN;
+
   return (
     <div className="chart-grid__col">
       <TitleTag className="chart-panel-title">{title}</TitleTag>
@@ -656,7 +853,7 @@ export function LineChartPanel({
         onPointerLeave={() => setHighlightedKey(null)}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={blockPlotted.points} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
+          <AppLineChart data={plotChartData} tailClippedKeys={tailClippedKeys} margin={chartMargin}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
@@ -673,6 +870,7 @@ export function LineChartPanel({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
+              allowDataOverflow={!clipPlotToYDomain}
               tick={{ fontSize: 11, fill: "#94a3b8" }}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
@@ -687,6 +885,8 @@ export function LineChartPanel({
                   {...(props as TooltipProps<number, string>)}
                   displayUnit={displayUnit}
                   xAxisGranularity={xAxisGranularity}
+                  focusColorIndex={focusColorIndex}
+                  seriesByDataKey={seriesByDataKey}
                 />
               )}
             />
@@ -703,7 +903,7 @@ export function LineChartPanel({
               const hitLines = series.map((s) => (
                 <Line
                   key={`${s.dataKey}__hit`}
-                  type="monotone"
+                  type={lineCurveType}
                   dataKey={s.dataKey}
                   name={s.name}
                   stroke="transparent"
@@ -714,34 +914,58 @@ export function LineChartPanel({
                   isAnimationActive={false}
                   connectNulls
                   legendType="none"
+                  className="line-chart-hit-target"
                   style={{ pointerEvents: "stroke" }}
                   onPointerEnter={() => setHighlightedKey(s.dataKey)}
+                  onMouseLeave={(_curve, e) => {
+                    if (e) {
+                      clearLineHighlightUnlessMovingToHitLine(e, () => setHighlightedKey(null));
+                    } else {
+                      setHighlightedKey(null);
+                    }
+                  }}
                 />
               ));
               const visLines = series.map((s) => {
                 const stroke = s.stroke;
                 const isDep = Boolean(s.isDeposit);
+                const isDisplayDep = Boolean(s.isDisplayDeposit);
                 const dimOthers = focusColorIndex != null && s.colorIndex !== focusColorIndex;
                 const isThinDerivedLine =
                   (colorPlan?.kind === "dashboard-overview" && s.dataKey === "invested") ||
                   (colorPlan?.kind === "group-tab" &&
                     colorPlan.groupSlug === "liabilities" &&
                     (s.dataKey === "available" || s.dataKey === "all_available"));
-                const baseW = isDep ? 1.15 : isThinDerivedLine ? 1.5 : thickKey && s.dataKey === thickKey ? 3 : 2;
-                const baseOpacity = isDep
-                  ? 0.8
-                  : s.dataKey === "all_available"
-                    ? 0.6
+                const isRefOverlay = Boolean(s.isReferenceOverlay);
+                const baseW = isDep
+                  ? isDisplayDep
+                    ? 1
+                    : 1.15
+                  : isRefOverlay
+                    ? 1.25
                     : isThinDerivedLine
-                      ? 0.8
-                      : 1;
+                      ? 1.5
+                      : thickKey && s.dataKey === thickKey
+                        ? 3
+                        : 2;
+                const baseOpacity = isDep
+                  ? isDisplayDep
+                    ? 0.65
+                    : 0.8
+                  : isRefOverlay
+                    ? 0.55
+                    : s.dataKey === "all_available"
+                      ? 0.6
+                      : isThinDerivedLine
+                        ? 0.8
+                        : 1;
                 const strokeOpacity = dimOthers ? DIM_LINE_OPACITY : baseOpacity;
                 const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
                 const strokeWidth = isHi ? Math.max(baseW * 1.35, baseW + 0.85) : baseW;
                 return (
                   <Line
                     key={`${s.dataKey}__vis`}
-                    type="monotone"
+                    type={lineCurveType}
                     dataKey={s.dataKey}
                     name={s.name}
                     stroke={stroke}
@@ -751,6 +975,7 @@ export function LineChartPanel({
                     style={{ pointerEvents: "none" }}
                     connectNulls
                     legendType={isDep ? "none" : "plainline"}
+                    strokeDasharray={isDisplayDep || isRefOverlay ? "6 4" : undefined}
                     isAnimationActive
                     animationDuration={CHART_ANIM_MS}
                     animationEasing="ease-out"
@@ -759,7 +984,7 @@ export function LineChartPanel({
               });
               return [...hitLines, ...visLines];
             })()}
-          </LineChart>
+          </AppLineChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -847,6 +1072,10 @@ interface Props {
   secondaryColorPlan?: ChartColorPlan;
   /** Dashboard yearly rollup: X-axis shows calendar year. */
   xAxisGranularity?: "month" | "year";
+  /**
+   * `fullWidthStack`: one chart per row (full width). Default `twoColumn` matches legacy side-by-side on wide viewports.
+   */
+  chartLayout?: "twoColumn" | "fullWidthStack";
 }
 
 export function ValuationLineCharts({
@@ -861,9 +1090,12 @@ export function ValuationLineCharts({
   primaryColorPlan,
   secondaryColorPlan,
   xAxisGranularity = "month",
+  chartLayout = "twoColumn",
 }: Props) {
+  const gridClass =
+    chartLayout === "fullWidthStack" ? "chart-grid chart-grid--full-width-stack" : "chart-grid";
   return (
-    <div className="chart-grid">
+    <div className={gridClass}>
       <LineChartPanel
         title={primaryTitle}
         block={primary}

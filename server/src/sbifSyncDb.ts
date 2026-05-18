@@ -1,0 +1,84 @@
+import { db } from "./db.js";
+
+const upsertUf = db.prepare(`
+  INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET clp_per_uf = excluded.clp_per_uf
+`);
+
+const upsertUtm = db.prepare(`
+  INSERT INTO utm_daily (date, utm_clp) VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET utm_clp = excluded.utm_clp
+`);
+
+const upsertIpc = db.prepare(`
+  INSERT INTO ipc_daily (date, ipc_index) VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET ipc_index = excluded.ipc_index
+`);
+
+export function upsertUfRows(rows: { date: string; clpPerUf: number }[], dryRun: boolean): number {
+  if (dryRun) return rows.length;
+  let n = 0;
+  for (const r of rows) {
+    upsertUf.run(r.date, r.clpPerUf);
+    n++;
+  }
+  return n;
+}
+
+export function upsertUtmRows(rows: { date: string; utmClp: number }[], dryRun: boolean): number {
+  if (dryRun) return rows.length;
+  let n = 0;
+  for (const r of rows) {
+    upsertUtm.run(r.date, r.utmClp);
+    n++;
+  }
+  return n;
+}
+
+export function upsertIpcRows(rows: { date: string; ipcIndex: number }[], dryRun: boolean): number {
+  if (dryRun) return rows.length;
+  let n = 0;
+  for (const r of rows) {
+    upsertIpc.run(r.date, r.ipcIndex);
+    n++;
+  }
+  return n;
+}
+
+export function maxUfDate(): string | null {
+  const r = db.prepare(`SELECT MAX(date) AS d FROM uf_daily`).get() as { d: string | null };
+  return r?.d ?? null;
+}
+
+export function maxUtmMonthParts(): { y: number; m: number } | null {
+  const r = db.prepare(`SELECT MAX(date) AS d FROM utm_daily`).get() as { d: string | null };
+  if (!r?.d) return null;
+  const [y, mo] = r.d.split("-").map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(mo)) return null;
+  return { y, m: mo };
+}
+
+export function maxIpcMonthParts(): { y: number; m: number } | null {
+  const r = db.prepare(`SELECT MAX(date) AS d FROM ipc_daily`).get() as { d: string | null };
+  if (!r?.d) return null;
+  const [y, mo] = r.d.split("-").map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(mo)) return null;
+  return { y, m: mo };
+}
+
+/** Table may not exist before migration — treat as empty. */
+export function safeMaxUtmMonthParts(): { y: number; m: number } | null {
+  try {
+    return maxUtmMonthParts();
+  } catch {
+    return null;
+  }
+}
+
+export function safeMaxIpcMonthParts(): { y: number; m: number } | null {
+  try {
+    return maxIpcMonthParts();
+  } catch {
+    return null;
+  }
+}

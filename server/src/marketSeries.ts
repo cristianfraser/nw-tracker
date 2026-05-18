@@ -43,6 +43,7 @@ export function getMarketSeriesPayload(): {
     clp_per_uf: number | null;
     clp_per_eur: number | null;
     ipc_index: number | null;
+    utm_clp: number | null;
     equity_usd: Record<string, number | null>;
     equity_clp: Record<string, number | null>;
     fund_unit_clp: Record<string, number | null>;
@@ -55,6 +56,7 @@ export function getMarketSeriesPayload(): {
   type UfR = { date: string; clp_per_uf: number };
   type EurR = { date: string; clp_per_eur: number };
   type IpcR = { date: string; ipc_index: number };
+  type UtmR = { date: string; utm_clp: number };
   type EqR = { ticker: string; date: string; close_usd: number };
   type FuR = { series_key: string; day: string; unit_value_clp: number };
 
@@ -62,6 +64,12 @@ export function getMarketSeriesPayload(): {
   const ufRows = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date ASC`).all() as UfR[];
   const eurRows = db.prepare(`SELECT date, clp_per_eur FROM eur_daily ORDER BY date ASC`).all() as EurR[];
   const ipcRows = db.prepare(`SELECT date, ipc_index FROM ipc_daily ORDER BY date ASC`).all() as IpcR[];
+  let utmRows: UtmR[] = [];
+  try {
+    utmRows = db.prepare(`SELECT date, utm_clp FROM utm_daily ORDER BY date ASC`).all() as UtmR[];
+  } catch {
+    utmRows = [];
+  }
   const eqRows = db
     .prepare(`SELECT ticker, trade_date AS date, close_usd FROM equity_daily ORDER BY ticker, trade_date ASC`)
     .all() as EqR[];
@@ -91,6 +99,7 @@ export function getMarketSeriesPayload(): {
   for (const r of ufRows) dateSet.add(r.date);
   for (const r of eurRows) dateSet.add(r.date);
   for (const r of ipcRows) dateSet.add(r.date);
+  for (const r of utmRows) dateSet.add(r.date);
   for (const r of eqRows) dateSet.add(r.date);
   for (const r of fuRows) dateSet.add(r.day);
 
@@ -106,6 +115,8 @@ export function getMarketSeriesPayload(): {
   let lastEur: number | null = null;
   let ipcPtr = -1;
   let lastIpc: number | null = null;
+  let utmPtr = -1;
+  let lastUtm: number | null = null;
 
   const eqPtr = new Map<string, number>();
   const lastEqUsd = new Map<string, number | null>();
@@ -127,6 +138,7 @@ export function getMarketSeriesPayload(): {
     clp_per_uf: number | null;
     clp_per_eur: number | null;
     ipc_index: number | null;
+    utm_clp: number | null;
     equity_usd: Record<string, number | null>;
     equity_clp: Record<string, number | null>;
     fund_unit_clp: Record<string, number | null>;
@@ -149,6 +161,10 @@ export function getMarketSeriesPayload(): {
     while (ipcPtr + 1 < ipcRows.length && ipcRows[ipcPtr + 1]!.date <= d) {
       ipcPtr++;
       lastIpc = ipcRows[ipcPtr]!.ipc_index;
+    }
+    while (utmPtr + 1 < utmRows.length && utmRows[utmPtr + 1]!.date <= d) {
+      utmPtr++;
+      lastUtm = utmRows[utmPtr]!.utm_clp;
     }
 
     for (const t of equityTickers) {
@@ -199,6 +215,7 @@ export function getMarketSeriesPayload(): {
       clp_per_uf: lastUf,
       clp_per_eur: lastEur,
       ipc_index: lastIpc,
+      utm_clp: lastUtm,
       equity_usd,
       equity_clp,
       fund_unit_clp,

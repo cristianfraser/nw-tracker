@@ -3,13 +3,14 @@ import { Link } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { api } from "../api";
+import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
+import { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "../components/AppLineChart";
 import { formatClp, formatUsdFine } from "../format";
 import type { MarketSeriesPoint, MarketSeriesResponse } from "../types";
 import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/ValuationLineCharts";
@@ -78,11 +79,28 @@ function MiniLineChart({
   yUnit: "clp" | "usd" | "index";
   valueFormatter: (n: number) => string;
 }) {
+  const denseData = useMemo(
+    () => densifyRecordsByCalendarDay(data as unknown as ChartSparseRow[], "date", ["value"]),
+    [data]
+  );
+
+  const clip = useMultiSeriesTrailingZeroTailClip(
+    denseData as unknown as Record<string, string | number | null>[],
+    denseData.length ? { series: [{ dataKey: "value", type: "data" as const }] } : null
+  );
+  const chartData = clip.chartData as { date: string; value: number | null }[];
+  const tailClippedKeys = clip.tailClippedKeys;
+
   const yBand = useMemo(() => {
-    const mm = minMaxSeriesValues(data);
+    const finiteRows = chartData.filter(
+      (r): r is { date: string; value: number } =>
+        typeof r.value === "number" && Number.isFinite(r.value)
+    );
+    const mm = minMaxSeriesValues(finiteRows);
     if (!mm) return null;
     return buildNiceYAxisPositiveBand(mm.min, mm.max);
-  }, [data]);
+  }, [chartData]);
+
   const axisW = yUnit === "usd" ? 78 : yUnit === "clp" ? 104 : 62;
   if (data.length === 0) {
     return (
@@ -99,7 +117,7 @@ function MiniLineChart({
       {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
       <div className="rates-chart-card__plot">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
+          <AppLineChart data={chartData} tailClippedKeys={tailClippedKeys} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} tickMargin={4} minTickGap={32} />
             <YAxis
@@ -120,7 +138,7 @@ function MiniLineChart({
               labelFormatter={(l) => String(l)}
             />
             <Line type="monotone" dataKey="value" stroke="var(--accent)" dot={false} strokeWidth={2} />
-          </LineChart>
+          </AppLineChart>
         </ResponsiveContainer>
       </div>
     </section>

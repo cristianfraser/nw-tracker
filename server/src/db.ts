@@ -38,6 +38,7 @@ export function initSchema() {
       category_id INTEGER NOT NULL REFERENCES categories(id),
       name TEXT NOT NULL,
       notes TEXT,
+      exclude_from_group_totals INTEGER NOT NULL DEFAULT 0 CHECK (exclude_from_group_totals IN (0, 1)),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -136,6 +137,8 @@ function seedReferenceData() {
         { slug: "fintual_risky_norris", label: "Fintual RN" },
         { slug: "spy", label: "SPY" },
         { slug: "vea", label: "VEA" },
+        { slug: "bitcoin", label: "Bitcoin" },
+        { slug: "eth", label: "ETH" },
         { slug: "individual_stocks", label: "Acciones (USD)" },
       ],
     },
@@ -145,16 +148,8 @@ function seedReferenceData() {
       sort: 30,
       cats: [
         { slug: "cuenta_corriente", label: "Cuenta corriente" },
+        { slug: "cuenta_ahorro_vivienda", label: "Cuenta de ahorro para la vivienda — BancoEstado" },
         { slug: "fondo_reserva", label: "Fondo reserva" },
-      ],
-    },
-    {
-      slug: "crypto",
-      label: "Crypto",
-      sort: 40,
-      cats: [
-        { slug: "bitcoin", label: "Bitcoin" },
-        { slug: "eth", label: "ETH" },
       ],
     },
     {

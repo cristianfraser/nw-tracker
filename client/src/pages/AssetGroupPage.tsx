@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AllocationPiePanel, LineChartPanel } from "../components/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
+import { Table } from "../components/Table";
 import { api } from "../api";
 import { allocationBucketColor, buildGroupTabColorMaps, groupTabPieSliceFill } from "../chartColors";
 import type {
   AccountListRow,
   AssetGroupSlug,
   GroupMonthlyPerformanceResponse,
-  TimeseriesAccountLine,
   ValuationTimeseriesResponse,
 } from "../types";
 
@@ -49,16 +49,19 @@ export function AssetGroupPage({ slug, title }: Props) {
     };
   }, [slug, displayUnit]);
 
+  const displayValuationBlock = useMemo(() => ts?.accounts_in_group ?? null, [ts]);
+
   const groupColorMaps = useMemo(() => {
-    if (!ts?.accounts_in_group?.accounts?.length) {
+    const accLines = displayValuationBlock?.accounts;
+    if (!accLines?.length) {
       return { byDataKey: new Map<string, string>(), byAccountId: new Map<number, string>() };
     }
-    return buildGroupTabColorMaps(slug, ts.accounts_in_group.accounts);
-  }, [slug, ts]);
+    return buildGroupTabColorMaps(slug, accLines);
+  }, [slug, displayValuationBlock]);
 
   const groupPerfBarSeries = useMemo(() => {
     if (!groupPerf?.bar_accounts.length) return [];
-    const lines: TimeseriesAccountLine[] = groupPerf.bar_accounts.map((a) => ({
+    const lines = groupPerf.bar_accounts.map((a) => ({
       account_id: a.account_id,
       name: a.name,
       dataKey: a.bar_data_key,
@@ -100,7 +103,7 @@ export function AssetGroupPage({ slug, title }: Props) {
         <Link to="/">← Dashboard</Link>
       </p>
 
-      <div className="toggle-row">
+      <div className="toggle-row" style={{ flexWrap: "wrap", gap: "0.5rem 1rem" }}>
         <span className="muted">Gráficos: </span>
         <label>
           <input
@@ -142,16 +145,15 @@ export function AssetGroupPage({ slug, title }: Props) {
         >
           <LineChartPanel
             title="Valorización y aportes (todas las cuentas)"
-            block={ts.accounts_in_group}
+            block={displayValuationBlock!}
             displayUnit={displayUnit}
-            yAxisMinZero={slug === "retirement"}
             colorPlan={{
               kind: "group-tab",
               groupSlug: slug,
-              accounts: ts.accounts_in_group.accounts ?? [],
+              accounts: displayValuationBlock!.accounts ?? [],
             }}
             thickKey={
-              ts.accounts_in_group.accounts?.some((a) => a.dataKey === "__group_val_total")
+              displayValuationBlock!.accounts?.some((a) => a.dataKey === "__group_val_total")
                 ? "__group_val_total"
                 : undefined
             }
@@ -161,7 +163,11 @@ export function AssetGroupPage({ slug, title }: Props) {
               title="Valor actual por cuenta"
               slices={pieSlices}
               displayUnit={displayUnit}
-              sliceFill={(slice) => groupTabPieSliceFill(slug, groupColorMaps, slice.account_id)}
+              sliceFill={(slice) =>
+                groupTabPieSliceFill(slug, groupColorMaps, slice.account_id, {
+                  allocationBucketSlug: slug,
+                })
+              }
             />
           )}
         </div>
@@ -217,38 +223,39 @@ export function AssetGroupPage({ slug, title }: Props) {
       ) : null}
 
       <h2 style={{ marginTop: "2rem" }}>Accounts in this class</h2>
-      <div className="table-wrap">
-        <table>
+      <Table
+        header={
           <thead>
             <tr>
               <th>Name</th>
               <th>Category</th>
+              <th>Group</th>
               <th>Notes</th>
             </tr>
           </thead>
-          <tbody>
-            {accounts.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="muted">
-                  No accounts in this class yet. Create one with{" "}
-                  <span className="mono">POST /api/accounts</span> using a{" "}
-                  <span className="mono">category_id</span> from the asset tree.
-                </td>
-              </tr>
-            ) : (
-              accounts.map((a) => (
-                <tr key={a.id}>
-                  <td>
-                    <Link to={`/account/${a.id}`}>{a.name}</Link>
-                  </td>
-                  <td>{a.category_label}</td>
-                  <td className="muted">{a.notes ?? "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        }
+      >
+        {accounts.length === 0 ? (
+          <tr>
+            <td colSpan={4} className="muted">
+              No accounts in this class yet. Create one with{" "}
+              <span className="mono">POST /api/accounts</span> using a{" "}
+              <span className="mono">category_id</span> from the asset tree.
+            </td>
+          </tr>
+        ) : (
+          accounts.map((a) => (
+            <tr key={a.id}>
+              <td>
+                <Link to={`/account/${a.id}`}>{a.name}</Link>
+              </td>
+              <td>{a.category_label}</td>
+              <td className="muted">{a.group_label}</td>
+              <td className="muted">{a.notes ?? "—"}</td>
+            </tr>
+          ))
+        )}
+      </Table>
     </main>
   );
 }

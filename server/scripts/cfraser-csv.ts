@@ -3,6 +3,7 @@
  */
 
 import fs from "node:fs";
+import type { Statement } from "better-sqlite3";
 
 export type MonthKey = string;
 
@@ -80,14 +81,18 @@ export function readSemicolonCsv(filePath: string): string[][] {
   return lines.map((line) => line.split(";"));
 }
 
+/** `movements` insert shape used by `import:excel` (optional `units_delta`). */
+export type ExcelMovementInsertStmt = Statement<[number, number, string, string, number | null]>;
+
 /** Inserts one signed CLP movement (positive inflow, negative outflow). */
 export function emitSignedMonthlyMovement(
-  ins: { run: (...args: unknown[]) => unknown },
+  ins: ExcelMovementInsertStmt,
   accountId: number,
   amount: number | null,
   occurredOn: string,
-  note: string
+  note: string,
+  unitsDelta: number | null = null
 ) {
   if (amount == null || !Number.isFinite(amount) || amount === 0) return;
-  ins.run(accountId, amount, occurredOn, note);
+  ins.run(accountId, amount, occurredOn, note, unitsDelta);
 }

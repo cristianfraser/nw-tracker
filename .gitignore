@@ -9,8 +9,17 @@ server/data/*.db
 server/data/*.db-journal
 server/data/*.db-wal
 server/data/*.db-shm
+server/data/.fintual-api-session.json
+server/data/.fintual-goals-latest.json
+server/data/fintual-goal-map.json
 
 # Personal Numbers workbook (large / sensitive)
 *.numbers
 
 .venv-numbers/
+
+# Local PDF parsing deps (see server/scripts/parse-cc-statement-pdfs.py)
+server/scripts/.pdf_deps/
+
+# Optional local AFP website residual (see import:excel Modelo prior cuotas)
+cfraser/afp-modelo-cuotas-supplement.txt

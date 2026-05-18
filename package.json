@@ -5,11 +5,17 @@
     "node": "24.11.1"
   },
   "workspaces": ["server", "client"],
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  },
   "scripts": {
     "dev:server": "npm run dev -w nw-tracker-server",
     "dev:client": "npm run dev -w nw-tracker-client",
     "migrate": "npm run migrate -w nw-tracker-server",
     "import:excel": "npm run import:excel -w nw-tracker-server",
+    "import:cc-parsed": "npm run import:cc-parsed -w nw-tracker-server",
+    "backfill:cc-valuations-from-ledger": "npm run backfill:cc-valuations-from-ledger -w nw-tracker-server",
+    "backfill:cc-cuota-gaps": "npm run backfill:cc-cuota-gaps -w nw-tracker-server",
     "fetch-uf": "npm run fetch-uf -w nw-tracker-server"
   }
 }

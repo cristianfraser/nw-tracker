@@ -1,16 +1,17 @@
 /**
  * Fetches official daily UF (CLP per 1 UF) from the SII HTML tables
- * (e.g. https://www.sii.cl/valores_y_fechas/uf/uf2026.htm) and writes `cfraser/uf-daily.csv`.
+ * (e.g. https://www.sii.cl/valores_y_fechas/uf/uf2026.htm) and writes `server/data/uf-sii-daily.csv`
+ * (committed; sole source for `uf_daily` during `import:excel`).
  *
  * Usage (from repo root):
  *   npm run fetch-uf -w nw-tracker-server
- *   npm run fetch-uf -w nw-tracker-server -- --years 2024,2025
+ *   npm run fetch-uf -w nw-tracker-server -- --years 2024,2025,2026
  *
  * Re-run periodically for new calendar days / years.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
+import { resolveBundledUfSiiDailyCsvPath } from "../src/ufSiiDailyPath.js";
 
 const SII_UF_BASE = "https://www.sii.cl/valores_y_fechas/uf";
 
@@ -103,8 +104,7 @@ async function main() {
   }
   const dates = [...merged.keys()].sort();
   const lines = ["date;clp_per_uf", ...dates.map((d) => `${d};${merged.get(d)!}`)];
-  const outPath =
-    process.argv.includes("--stdout") ? null : path.join(resolveCfraserCsvDir(), "uf-daily.csv");
+  const outPath = process.argv.includes("--stdout") ? null : resolveBundledUfSiiDailyCsvPath();
   const text = lines.join("\n") + "\n";
   if (outPath) {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
