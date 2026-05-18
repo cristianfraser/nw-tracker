@@ -75,6 +75,11 @@ export function formatUfUnitsFine(uf: number | null | undefined): string {
   return `${normalizeIntlNum(s)} UF`;
 }
 
+/** Mortgage / loan remaining balance — up to 4 UF decimals, no trailing zeros. */
+export function formatUfBalance(uf: number | null | undefined): string {
+  return formatUfUnitsFine(uf);
+}
+
 export type PieMoneyUnit = "clp" | "usd";
 
 /** Legend / tooltips on pies: CLP whole pesos; USD with cents and en-US grouping. */

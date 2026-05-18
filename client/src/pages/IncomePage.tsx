@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Table } from "../components/Table";
 import { formatClp } from "../format";
 
 interface IncomeRow {
@@ -38,8 +39,8 @@ export function IncomePage() {
       <h2 className="flow-section-title">Income</h2>
       <p className="muted">Log salary, bonuses, etc. via API for now.</p>
 
-      <div className="table-wrap">
-        <table>
+      <Table
+        header={
           <thead>
             <tr>
               <th>Date</th>
@@ -48,26 +49,25 @@ export function IncomePage() {
               <th>Note</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="muted">
-                  No entries. <span className="mono">POST /api/income</span>
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.received_on}</td>
-                  <td className="mono">{formatClp(r.amount_clp)}</td>
-                  <td>{r.source ?? "—"}</td>
-                  <td className="muted">{r.note ?? "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        }
+      >
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={4} className="muted">
+              No entries. <span className="mono">POST /api/income</span>
+            </td>
+          </tr>
+        ) : (
+          rows.map((r) => (
+            <tr key={r.id}>
+              <td>{r.received_on}</td>
+              <td className="mono">{formatClp(r.amount_clp)}</td>
+              <td>{r.source ?? "—"}</td>
+              <td className="muted">{r.note ?? "—"}</td>
+            </tr>
+          ))
+        )}
+      </Table>
     </>
   );
 }

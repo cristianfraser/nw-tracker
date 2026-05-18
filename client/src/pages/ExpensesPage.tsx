@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Table } from "../components/Table";
 import { formatClp } from "../format";
 
 interface ExpenseRow {
@@ -42,8 +43,8 @@ export function ExpensesPage() {
         <span className="mono">POST /api/imports/bank-statement</span> (stored as pending batches).
       </p>
 
-      <div className="table-wrap">
-        <table>
+      <Table
+        header={
           <thead>
             <tr>
               <th>Date</th>
@@ -52,26 +53,25 @@ export function ExpensesPage() {
               <th>Note</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="muted">
-                  No entries. <span className="mono">POST /api/expenses</span>
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.spent_on}</td>
-                  <td className="mono">{formatClp(r.amount_clp)}</td>
-                  <td>{r.category ?? "—"}</td>
-                  <td className="muted">{r.note ?? "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        }
+      >
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={4} className="muted">
+              No entries. <span className="mono">POST /api/expenses</span>
+            </td>
+          </tr>
+        ) : (
+          rows.map((r) => (
+            <tr key={r.id}>
+              <td>{r.spent_on}</td>
+              <td className="mono">{formatClp(r.amount_clp)}</td>
+              <td>{r.category ?? "—"}</td>
+              <td className="muted">{r.note ?? "—"}</td>
+            </tr>
+          ))
+        )}
+      </Table>
     </>
   );
 }

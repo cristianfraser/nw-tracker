@@ -1,0 +1,9 @@
+{
+  "byGoalId": {
+    "123": "import:excel|key=fondo_reserva",
+    "456": "import:excel|key=fintual_rn",
+    "2859": "import:excel|key=fintual_rn",
+    "789": "import:excel|key=apv_a",
+    "790": "import:excel|key=apv_b"
+  }
+}

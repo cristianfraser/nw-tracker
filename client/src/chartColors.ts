@@ -1,5 +1,21 @@
 import type { AssetGroupSlug, TimeseriesAccountLine } from "./types";
 
+/** Mix stroke toward white so “aportes acum.” reads as the same hue as valorización, one step lighter. */
+export function lightenStrokeForAccumulated(baseStroke: string, mixTowardWhite = 0.42): string {
+  const s = baseStroke.trim();
+  const hex6 = /^#?([0-9a-f]{6})$/i.exec(s);
+  if (!hex6) return baseStroke;
+  const h = hex6[1]!;
+  const r0 = parseInt(h.slice(0, 2), 16);
+  const g0 = parseInt(h.slice(2, 4), 16);
+  const b0 = parseInt(h.slice(4, 6), 16);
+  const w = Math.min(1, Math.max(0, mixTowardWhite));
+  const r = Math.round(r0 + (255 - r0) * w);
+  const g = Math.round(g0 + (255 - g0) * w);
+  const b = Math.round(b0 + (255 - b0) * w);
+  return `rgb(${r},${g},${b})`;
+}
+
 const RETIREMENT = ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac"];
 const BROKERAGE = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
 /** Same blue as dashboard “Brokerage (consolidado)” / allocation brokerage slice (`BROKERAGE[3]`). */
@@ -109,6 +125,7 @@ export type ChartColorPlan =
   | { kind: "default" }
   | { kind: "dashboard-primary"; dataKeyToGroup: Record<string, string> }
   | { kind: "dashboard-overview" }
+  | { kind: "dashboard-patrimonio-usd" }
   | {
       kind: "group-tab";
       groupSlug: AssetGroupSlug;
@@ -122,6 +139,10 @@ export type LineSeriesColorInput = {
   name: string;
   colorIndex: number;
   isDeposit?: boolean;
+  /** Personal-only cumulative deposits (dashed in chart). */
+  isDisplayDeposit?: boolean;
+  /** Dashed overlay (e.g. USD milestone lines on patrimonio chart). */
+  isReferenceOverlay?: boolean;
 };
 
 export type ResolvedLineSeriesItem = LineSeriesColorInput & { stroke: string };
@@ -139,6 +160,7 @@ function dashboardRetirementQuartetRankFromName(name: string): number | null {
   if (n.includes("afp") && n.includes("afc")) return 1;
   if (n === "apv") return 0;
   if (n.includes("afc")) return 3;
+  if (n.includes("apv") && (n.includes("principal") || n.includes("pre-fintual"))) return 0;
   if (n.includes("apv") && (n.includes("regimen b") || n.includes("apv-b") || n.includes("apv b"))) return 2;
   if (n.includes("apv") && (n.includes("regimen a") || n.includes("apv-a") || n.includes("apv a"))) return 0;
   if (n.includes("afp")) return 1;
@@ -172,10 +194,18 @@ export function resolveLineSeriesColors(
   plan: ChartColorPlan | undefined
 ): ResolvedLineSeriesItem[] {
   if (!plan || plan.kind === "default") {
-    return series.map((s, i) => ({
-      ...s,
-      stroke: DEFAULT_LINE_COLORS[i % DEFAULT_LINE_COLORS.length],
-    }));
+    const valueStrokeByColorIndex = new Map<number, string>();
+    return series.map((s) => {
+      if (!s.isDeposit) {
+        const stroke = DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
+        valueStrokeByColorIndex.set(s.colorIndex, stroke);
+        return { ...s, stroke };
+      }
+      const base =
+        valueStrokeByColorIndex.get(s.colorIndex) ??
+        DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
+      return { ...s, stroke: lightenStrokeForAccumulated(base) };
+    });
   }
 
   if (plan.kind === "dashboard-overview") {
@@ -185,15 +215,29 @@ export function resolveLineSeriesColors(
     }));
   }
 
+  if (plan.kind === "dashboard-patrimonio-usd") {
+    const milestoneStrokes = ["#94a3b8", "#78716c", "#a8a29e", "#71717a", "#64748b"];
+    let mi = 0;
+    return series.map((s) => {
+      if (s.dataKey === "total_nw") return { ...s, stroke: BUCKET_STROKE.total_nw };
+      if (s.dataKey === "invested") return { ...s, stroke: BUCKET_STROKE.invested };
+      const stroke = milestoneStrokes[mi % milestoneStrokes.length]!;
+      mi += 1;
+      return { ...s, stroke, isReferenceOverlay: true };
+    });
+  }
+
   if (plan.kind === "dashboard-primary") {
     const nextByGroup = new Map<string, number>();
     const strokeByColorIndex = new Map<number, string>();
     let retirementOtherIndex = 0;
     return series.map((s) => {
       if (s.isDeposit) {
+        const base =
+          strokeByColorIndex.get(s.colorIndex) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
         return {
           ...s,
-          stroke: strokeByColorIndex.get(s.colorIndex) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length],
+          stroke: lightenStrokeForAccumulated(base),
         };
       }
       const g = plan.dataKeyToGroup[s.dataKey] ?? "other";
@@ -239,13 +283,14 @@ export function resolveLineSeriesColors(
     const colorSlug =
       plan.groupSlug === "brokerage" && plan.brokerageSubgroup === "crypto" ? "crypto" : plan.groupSlug;
     const { byDataKey } = buildGroupTabColorMaps(colorSlug, plan.accounts);
-    return series.map((s) => ({
-      ...s,
-      stroke:
-        plan.groupSlug === "liabilities" && (s.dataKey === "available" || s.dataKey === "all_available")
-          ? (BUCKET_STROKE[s.dataKey] ?? "#2dd4bf")
-          : byDataKey.get(s.dataKey) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length],
-    }));
+    return series.map((s) => {
+      if (plan.groupSlug === "liabilities" && (s.dataKey === "available" || s.dataKey === "all_available")) {
+        const stroke = BUCKET_STROKE[s.dataKey] ?? "#2dd4bf";
+        return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
+      }
+      const base = byDataKey.get(s.dataKey) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
+      return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(base) : base };
+    });
   }
 
   return series.map((s, i) => ({
@@ -276,10 +321,14 @@ function isCryptoTabEthAccountName(name: string): boolean {
   return /\beth\b/.test(n) || n.trim() === "eth";
 }
 
-/** Liabilities tab: “Pasivos (total hoja)” — deeper red-wine; “Tarjeta” uses the lighter companion in `LIABILITIES_TAB_WINE_STROKES`. */
-function isLiabilitiesSheetTotalAccountName(name: string): boolean {
+/** Liabilities tab: mortgage (Suecia) — deeper red-wine; “Tarjeta” uses the lighter companion. */
+function isLiabilitiesMortgageAccountName(name: string): boolean {
   const n = normAccountLabel(name);
-  return n.includes("total hoja") || (n.includes("pasivos") && n.includes("total"));
+  return (
+    n === "suecia" ||
+    n.includes("total hoja") ||
+    (n.includes("pasivos") && n.includes("total"))
+  );
 }
 
 function isLiabilitiesCreditCardAccountName(name: string): boolean {
@@ -287,10 +336,16 @@ function isLiabilitiesCreditCardAccountName(name: string): boolean {
   return n.includes("tarjeta") || n.includes("credit card");
 }
 
+/** Minimal series identity for color maps (perf bars, legends — not necessarily valuation lines). */
+export type ChartSeriesColorKey = Pick<
+  TimeseriesAccountLine,
+  "account_id" | "name" | "dataKey" | "depositDataKey" | "displayDepositDataKey"
+>;
+
 /** Line chart (dataKey) + pie (account_id) use the same map on class tabs. */
 export function buildGroupTabColorMaps(
   groupSlug: AssetGroupSlug | "crypto",
-  accounts: TimeseriesAccountLine[]
+  accounts: ChartSeriesColorKey[]
 ): { byDataKey: Map<string, string>; byAccountId: Map<number, string> } {
   const byDataKey = new Map<string, string>();
   const byAccountId = new Map<number, string>();
@@ -312,7 +367,7 @@ export function buildGroupTabColorMaps(
     } else if (groupSlug === "crypto" && isCryptoTabEthAccountName(a.name)) {
       stroke = CRYPTO_TAB_ETH_GREY_BLUE;
       hueIndex += 1;
-    } else if (groupSlug === "liabilities" && isLiabilitiesSheetTotalAccountName(a.name)) {
+    } else if (groupSlug === "liabilities" && isLiabilitiesMortgageAccountName(a.name)) {
       stroke = LIABILITIES_TAB_WINE_STROKES[0];
       hueIndex += 1;
     } else if (groupSlug === "liabilities" && isLiabilitiesCreditCardAccountName(a.name)) {

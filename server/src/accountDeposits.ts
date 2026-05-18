@@ -1,14 +1,17 @@
+import { isApvAAccountNote } from "./apvAFintualFlowOverrides.js";
+import { movementIsApvAStateBonus } from "./apvAStateBonusInference.js";
 import { readSpyVeaDepositadoClpFromStocksCsv } from "./accountPosition.js";
+import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { db } from "./db.js";
 
 /**
- * Canonical **external** capital for charts, “aportes netos”, and “aportes acum.”:
- * - `movements`: signed `amount_clp` (user transfers).
+ * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
+ * - `movements`: signed `amount_clp` (all external flows, including APV-A state bonus).
  * - `brokerage_flows`: only **`deposit_clp`** as positive inflow; **`withdrawal_clp`** as outflow.
  *
- * **`compra_usd`** and **`dividend_usd`** are not new cash from outside the account (DRIP, divs in caja, buys from
- * existing USD) — they do **not** enter this series. They remain in the Bolsa table and drive **stock inflows** via
- * `units_delta` where applicable.
+ * **`compra_usd`** and **`dividend_usd`** are not new cash from outside the account — they do **not** enter this series.
+ *
+ * For charts that exclude state bonus, use {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
  */
 
 /** Dated CLP flow toward cumulative “aportes” (positive = in, negative = out). */
@@ -16,15 +19,26 @@ export type DepositInflowEvent = { occurred_on: string; amt: number };
 
 type SortFlow = { occurred_on: string; amt: number; tie: string };
 
-function loadMovementSignedFlowEvents(accountIds: number[]): Map<number, SortFlow[]> {
+const MOVEMENT_EXCLUDE_NOTE_SQL = `note IS NULL OR (
+  note NOT LIKE '%|afp-modelo-prior-cuotas|%'
+  AND note NOT LIKE '%|afp-orphan-cert-month|%'
+  AND note NOT LIKE '%|afp-antecedentes-opening|%'
+  AND note NOT LIKE '%|afp-cuotas-synthetic-trim|%'
+)`;
+
+function loadMovementSignedFlowEvents(
+  accountIds: number[],
+  personalOnly: boolean
+): Map<number, SortFlow[]> {
   const uniq = [...new Set(accountIds.filter((id) => id > 0))];
   if (uniq.length === 0) return new Map();
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id
+      `SELECT account_id, occurred_on, amount_clp, id, note
        FROM movements
        WHERE account_id IN (${ph})
+         AND (${MOVEMENT_EXCLUDE_NOTE_SQL})
        ORDER BY account_id, occurred_on, id`
     )
     .all(...uniq) as {
@@ -32,9 +46,20 @@ function loadMovementSignedFlowEvents(accountIds: number[]): Map<number, SortFlo
     occurred_on: string;
     amount_clp: number;
     id: number;
+    note: string | null;
   }[];
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
+    if (personalOnly) {
+      if (
+        movementIsStateContribution(r.note) ||
+        movementIsApvAStateBonus(r.account_id, r.id, r.note)
+      ) {
+        continue;
+      }
+      if (!movementCountsAsPersonalDeposit(r.note)) continue;
+    }
+    if (r.note?.includes("cripto-coin-only-wdw")) continue;
     const amt = r.amount_clp;
     if (amt === 0 || !Number.isFinite(amt)) continue;
     if (!map.has(r.account_id)) map.set(r.account_id, []);
@@ -110,10 +135,12 @@ function mergeSortFlows(a: SortFlow[], b: SortFlow[], c: SortFlow[]): DepositInf
   return merged.map(({ occurred_on, amt }) => ({ occurred_on, amt }));
 }
 
-/** Movements (signed) + bolsa `deposit_clp` inflows and `withdrawal_clp` (signed), sorted for cumulative charts. */
-export function loadMergedDepositInflowEvents(accountIds: number[]): Map<number, DepositInflowEvent[]> {
+function buildMergedDepositMap(
+  accountIds: number[],
+  personalOnly: boolean
+): Map<number, DepositInflowEvent[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
-  const mov = loadMovementSignedFlowEvents(accountIds);
+  const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
   const brkIn = loadBrokerageInflowEvents(accountIds);
   const brkOut = loadBrokerageWithdrawalFlowEvents(accountIds);
   const ids = new Set<number>([...mov.keys(), ...brkIn.keys(), ...brkOut.keys(), ...requested]);
@@ -124,15 +151,87 @@ export function loadMergedDepositInflowEvents(accountIds: number[]): Map<number,
   return out;
 }
 
+/** Full external capital (includes state APV-A bonus when tagged). */
+export function loadMergedDepositInflowEvents(accountIds: number[]): Map<number, DepositInflowEvent[]> {
+  return buildMergedDepositMap(accountIds, false);
+}
+
+/** Personal capital only (`deposit_clp` + `traspaso_bonificacion_clp`; excludes `aporte_estatal_clp`). */
+export function loadMergedDisplayDepositInflowEvents(
+  accountIds: number[]
+): Map<number, DepositInflowEvent[]> {
+  return buildMergedDepositMap(accountIds, true);
+}
+
 /** Same merged timeline as charts; use for audits and “Historial de aportes”. */
 export function getMergedDepositInflowEventsForAccount(accountId: number): DepositInflowEvent[] {
   if (!Number.isFinite(accountId) || accountId <= 0) return [];
   return loadMergedDepositInflowEvents([accountId]).get(accountId) ?? [];
 }
 
+export function getMergedDisplayDepositInflowEventsForAccount(accountId: number): DepositInflowEvent[] {
+  if (!Number.isFinite(accountId) || accountId <= 0) return [];
+  return loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
+}
+
+function loadStateContributionMovementEvents(accountIds: number[]): Map<number, SortFlow[]> {
+  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
+  if (uniq.length === 0) return new Map();
+  const ph = uniq.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT account_id, occurred_on, amount_clp, id, note
+       FROM movements
+       WHERE account_id IN (${ph})
+         AND amount_clp > 0
+       ORDER BY account_id, occurred_on, id`
+    )
+    .all(...uniq) as {
+    account_id: number;
+    occurred_on: string;
+    amount_clp: number;
+    id: number;
+    note: string | null;
+  }[];
+  const map = new Map<number, SortFlow[]>();
+  for (const r of rows) {
+    if (!movementIsStateContribution(r.note) && !movementIsApvAStateBonus(r.account_id, r.id, r.note)) continue;
+    if (!map.has(r.account_id)) map.set(r.account_id, []);
+    map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt: r.amount_clp, tie: `m:${r.id}` });
+  }
+  return map;
+}
+
+/** APV-A state bonus rows (informational; included in full deposit totals). */
+export function getStateContributionInflowEventsForAccount(accountId: number): DepositInflowEvent[] {
+  if (!Number.isFinite(accountId) || accountId <= 0) return [];
+  const flows = loadStateContributionMovementEvents([accountId]).get(accountId) ?? [];
+  flows.sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.tie.localeCompare(b.tie));
+  return flows.map(({ occurred_on, amt }) => ({ occurred_on, amt }));
+}
+
+export function totalStateContributionsClpForAccount(accountId: number): number {
+  return getStateContributionInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
+}
+
+export function accountHasStateContributionMovements(accountId: number): boolean {
+  return totalStateContributionsClpForAccount(accountId) > 0.5;
+}
+
+export function accountShowsDisplayDepositSeries(accountId: number): boolean {
+  const row = db.prepare(`SELECT notes FROM accounts WHERE id = ?`).get(accountId) as
+    | { notes: string | null }
+    | undefined;
+  return isApvAAccountNote(row?.notes);
+}
+
 /** Net external CLP capital (movements + CLP wires − withdrawals); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
   return getMergedDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
+}
+
+export function totalDisplayDepositsClpForAccount(accountId: number): number {
+  return getMergedDisplayDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 
 /**

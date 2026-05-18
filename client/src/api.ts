@@ -58,10 +58,11 @@ export const api = {
     j<import("./types").DashboardResponse>(
       includeUsd ? "/api/dashboard?include_usd=true" : "/api/dashboard"
     ),
-  valuationTimeseries: (unit: "clp" | "usd", opts?: { group?: string }) => {
+  valuationTimeseries: (unit: "clp" | "usd", opts?: { group?: string; subgroup?: string }) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
     if (opts?.group) q.set("group", opts.group);
+    if (opts?.subgroup) q.set("subgroup", opts.subgroup);
     const qs = q.toString();
     return j<import("./types").ValuationTimeseriesResponse>(
       `/api/dashboard/valuation-timeseries${qs ? `?${qs}` : ""}`
@@ -77,16 +78,31 @@ export const api = {
         amount_usd: number | null;
         ticker: string | null;
         note: string | null;
+        units_delta: number | null;
       }[];
     }>(`/api/accounts/${accountId}/brokerage-flows`),
   ufLatest: () => j<import("./types").UfLatest | null>("/api/uf/latest"),
   fxLatest: () => j<import("./types").FxLatest | null>("/api/fx/latest"),
-  accountsByGroup: (groupSlug: string) =>
-    j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?group=${encodeURIComponent(groupSlug)}`),
+  accountsByGroup: (groupSlug: string, subgroup?: string) => {
+    const q = new URLSearchParams();
+    q.set("group", groupSlug);
+    if (subgroup) q.set("subgroup", subgroup);
+    return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${q.toString()}`);
+  },
   accountDepositInflows: (id: string | number) =>
     j<import("./types").AccountDepositInflowsResponse>(`/api/accounts/${id}/deposit-inflows`),
   accountMortgageLedger: (id: string | number) =>
     j<import("./types").AccountMortgageLedgerResponse>(`/api/accounts/${id}/mortgage-ledger`),
+  accountCcInstallments: (id: string | number, extraOffsets?: Record<string, number>) => {
+    const q = new URLSearchParams();
+    if (extraOffsets && Object.keys(extraOffsets).length > 0) {
+      q.set("extraOffsets", JSON.stringify(extraOffsets));
+    }
+    const qs = q.toString();
+    return j<import("./types").AccountCcInstallmentsResponse>(
+      `/api/accounts/${id}/cc-installments${qs ? `?${qs}` : ""}`
+    );
+  },
   accountValuationTimeseries: (
     id: string | number,
     unit: "clp" | "usd",
@@ -104,6 +120,9 @@ export const api = {
     j<{
       account_id: number;
       category_slug: string | null;
+      group_slug: string | null;
+      group_label: string | null;
+      group_peer_count: number | null;
       deposits_clp: number;
       withdrawals_clp: number;
       latest_valuation_clp: number | null;
@@ -116,10 +135,13 @@ export const api = {
       `/api/accounts/${id}/performance-monthly${q}`
     );
   },
-  groupMonthlyPerformance: (slug: string, unit: "clp" | "usd") => {
-    const q = unit === "usd" ? "?include_usd=true" : "";
+  groupMonthlyPerformance: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    if (subgroup) q.set("subgroup", subgroup);
+    const qs = q.toString();
     return j<import("./types").GroupMonthlyPerformanceResponse>(
-      `/api/groups/${encodeURIComponent(slug)}/performance-monthly${q}`
+      `/api/groups/${encodeURIComponent(slug)}/performance-monthly${qs ? `?${qs}` : ""}`
     );
   },
   accountMovements: (id: string | number) =>
@@ -129,9 +151,13 @@ export const api = {
         amount_clp: number;
         occurred_on: string;
         note: string | null;
+        units_delta: number | null;
+        flow_type: string;
+        flow_type_label: string;
       }[];
     }>(`/api/accounts/${id}/movements`),
   income: () => j<{ income: unknown[] }>("/api/income"),
   expenses: () => j<{ expenses: unknown[] }>("/api/expenses"),
+  flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
 };

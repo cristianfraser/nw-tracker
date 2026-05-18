@@ -1,6 +1,7 @@
 export type AssetGroupSlug =
   | "retirement"
   | "brokerage"
+  | "inversiones"
   | "cash_eqs"
   | "crypto"
   | "real_estate"
@@ -35,6 +36,8 @@ export interface AccountListRow {
   category_label: string;
   group_slug: string;
   group_label: string;
+  /** When 1, account is listed in nav but omitted from class totals and dashboard buckets. */
+  exclude_from_group_totals?: number;
 }
 
 export interface AccountPositionSnapshot {
@@ -50,6 +53,7 @@ export interface AccountPositionSnapshot {
 export interface DashboardAccountRow {
   account_id: number;
   name: string;
+  notes?: string | null;
   group_slug: string;
   group_label: string;
   category_slug: string;
@@ -71,14 +75,13 @@ export interface DashboardResponse {
     retirement_clp: number;
     brokerage_clp: number;
     cash_eqs_clp: number;
-    crypto_clp: number;
     liabilities_clp: number;
     net_worth_usd?: number | null;
+    deposits_usd?: number;
     real_estate_usd?: number;
     retirement_usd?: number;
     brokerage_usd?: number;
     cash_eqs_usd?: number;
-    crypto_usd?: number;
     liabilities_usd?: number;
   };
   allocation: {
@@ -88,6 +91,25 @@ export interface DashboardResponse {
     value_usd?: number;
   }[];
   accounts: DashboardAccountRow[];
+  /** Suecia depto snapshot for dashboard RE card (valor / net / mortgage). */
+  suecia_snapshot?: {
+    valor_clp: number;
+    net_value_clp: number;
+    mortgage_clp: number;
+    valor_usd?: number | null;
+    net_value_usd?: number | null;
+    mortgage_usd?: number | null;
+  } | null;
+  liabilities_breakdown?: {
+    mortgage_clp: number;
+    credit_card_clp: number;
+    mortgage_usd?: number | null;
+    credit_card_usd?: number | null;
+  };
+  deposits_by_category?: Record<
+    DepositFlowCategory,
+    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
+  >;
 }
 
 export interface FxLatest {
@@ -100,19 +122,29 @@ export interface UfLatest {
   clp_per_uf: number;
 }
 
+/** `data` = account valuation / flows (tail-clip trailing zeros). `reference` = totals, NW, liquidity overlays. */
+export type ValueSeriesType = "data" | "reference";
+
 export interface TimeseriesAccountLine {
   account_id: number;
   name: string;
   dataKey: string;
+  /** Set on every chart line: `data` = clip trailing zeros; `reference` = totals / overlays (not clipped). */
+  valueSeriesType: ValueSeriesType;
   /** Cumulative deposits (CLP) through each date, same unit as valuations; thinner line in UI */
   depositDataKey?: string;
   /** Legend label for the deposit line when not the default "aportes acum." */
   deposit_series_name?: string;
+  /** Personal deposits only (excludes APV-A state bonus) when present */
+  displayDepositDataKey?: string;
+  display_deposit_series_name?: string;
+  /** Omitted from class “Total” / dashboard buckets; still shown as its own line. */
+  exclude_from_group_totals?: boolean;
 }
 
 export interface TimeseriesBlock {
   accounts?: TimeseriesAccountLine[];
-  lines?: { dataKey: string; name: string }[];
+  lines?: { dataKey: string; name: string; valueSeriesType: ValueSeriesType }[];
   points: Record<string, string | number | null>[];
 }
 
@@ -121,6 +153,8 @@ export interface ValuationTimeseriesResponse {
   unit: "clp" | "usd" | "uf";
   accounts_ex_property?: TimeseriesBlock;
   overview?: Required<Pick<TimeseriesBlock, "lines" | "points">>;
+  /** Patrimonio neto + invested (CLP) and USD milestone reference lines (CLP via FX). */
+  patrimonio_usd_milestones_chart?: TimeseriesBlock;
   group_slug?: string;
   /** Whole class tab: all accounts on one line chart (+ deposit lines) */
   accounts_in_group?: TimeseriesBlock;
@@ -130,8 +164,15 @@ export interface ValuationTimeseriesResponse {
 /** `GET /api/accounts/:id/deposit-inflows` — same merge as charts / summary deposits */
 export interface AccountDepositInflowsResponse {
   account_id: number;
+  /** All external capital (includes state bonus). */
   total_clp: number;
+  /** Personal deposits only (excludes `aporte_estatal_clp`). */
+  display_total_clp: number;
   events: { occurred_on: string; amt_clp: number; cumulative_clp: number }[];
+  display_events: { occurred_on: string; amt_clp: number; cumulative_clp: number }[];
+  /** APV-A state bonus rows (`aporte_estatal_clp`). */
+  state_contribution_total_clp: number;
+  state_contribution_events: { occurred_on: string; amt_clp: number; cumulative_clp: number }[];
 }
 
 /** `GET /api/accounts/:id/mortgage-ledger` — property: full sheet from CSV; other accounts: empty. */
@@ -191,11 +232,102 @@ export interface AccountMortgageLedgerMeta {
   csv_file_exists?: boolean;
 }
 
+export type DeptoPaymentScenarioTerm = 30 | 25 | 20 | 15 | 12 | 10 | 5 | "max";
+
+export interface DeptoPaymentScenarioCell {
+  term: DeptoPaymentScenarioTerm;
+  payment_uf: number | null;
+  payment_clp: number | null;
+}
+
+/** Reference only — min/max UF payment scenarios from the depto sheet (not movements). */
+export interface DeptoPaymentScenarioRow {
+  /** Schedule date (11th of month), not bank payment date. */
+  occurred_on: string;
+  cuota: string;
+  min_payment_uf: number | null;
+  min_payment_clp: number | null;
+  scenarios: DeptoPaymentScenarioCell[];
+  /** Projected upcoming installment (shown as first row). */
+  is_next_payment?: boolean;
+}
+
 export interface AccountMortgageLedgerResponse {
   account_id: number;
   source: "csv" | "none";
   meta: AccountMortgageLedgerMeta | null;
   rows: DeptoMortgageSheetRow[];
+  payment_scenarios?: DeptoPaymentScenarioRow[];
+}
+
+/** `GET /api/accounts/:id/cc-installments` — credit_card: installment purchases from CSV + monthly projection. */
+export interface CcInstallmentPurchaseComputed {
+  purchase_id: string;
+  label: string;
+  principal_clp: number;
+  installment_count: number;
+  installments_paid: number;
+  cuota_clp: number;
+  annual_interest_pct: number;
+  first_due_month: string;
+  schedule_offset_months: number;
+  purchase_month: string | null;
+  note: string | null;
+  remaining_installments: number;
+  remaining_principal_clp: number;
+  next_due_month: string | null;
+  next_installment_index: number | null;
+  /** YYYY-MM from last payment row (DB) or schedule (CSV). */
+  last_paid_month: string | null;
+  upcoming_cuota_clp: number;
+}
+
+export interface CcInstallmentMonthBreakdown {
+  purchase_id: string;
+  label: string;
+  installment_index: number;
+  amount_clp: number;
+}
+
+export interface CcInstallmentMonthRow {
+  month: string;
+  total_clp: number;
+  breakdown: CcInstallmentMonthBreakdown[];
+}
+
+export interface AccountCcInstallmentsMeta {
+  csv_path: string;
+  csv_absolute_path: string;
+  csv_file_exists: boolean;
+  db_purchase_count?: number;
+  db_payment_count?: number;
+  pay_by_rule?: string;
+  remaining_balance_line_rule?: string;
+}
+
+export interface CcInstallmentHistoryMonthPoint {
+  month: string;
+  remaining_balance_clp: number;
+  installment_payments_clp: number;
+  /** PDF ledger only (sin sustituir por valorización); solo cuando `source === "db"`. */
+  ledger_remaining_installments_clp?: number;
+}
+
+export interface AccountCcInstallmentsResponse {
+  account_id: number;
+  source: "csv" | "db" | "none";
+  meta: AccountCcInstallmentsMeta | null;
+  purchases: CcInstallmentPurchaseComputed[];
+  /** Compras en cuotas ya liquidadas (restan 0 y saldo 0). */
+  purchases_completed: CcInstallmentPurchaseComputed[];
+  months: CcInstallmentMonthRow[];
+  totals: {
+    total_remaining_principal_clp: number;
+    next_calendar_month_total_clp: number | null;
+    next_calendar_month: string | null;
+  };
+  /** Present for `source === "db"`: end-of-month outstanding installment principal vs cuotas pagadas en ese mes. */
+  installment_history_months?: CcInstallmentHistoryMonthPoint[];
 }
 
 /** `GET /api/accounts/:id/valuation-timeseries` */
@@ -215,12 +347,18 @@ export interface AccountMonthlyPerformanceRow {
   closing_value: number;
   prior_closing: number | null;
   net_capital_flow: number;
-  /** Sum units added in the month (brokerage_flows.units_delta > 0): buys + DRIP. */
+  /** Sum units added in the month: brokerage buys + DRIP (`brokerage_flows.units_delta > 0`), or for **afp** certificate cuotas (`movements.units_delta > 0` on AFP import rows). */
   stock_units_inflow: number;
+  /** Coin balance at month-end (bitcoin / eth). */
+  coin_units_eom?: number | null;
   nominal_pl: number | null;
   pct_month: number | null;
   ytd_nominal_pl: number | null;
   cumulative_nominal_pl: number | null;
+  /** Mortgage: crédito restante (UF) from depto dividendos sheet at month-end. */
+  closing_balance_uf?: number | null;
+  /** Mortgage: UF/CLP rate from depto dividendos sheet at month-end. */
+  uf_clp_day?: number | null;
   unit: "clp" | "usd" | "uf";
 }
 
@@ -268,4 +406,41 @@ export interface MarketSeriesResponse {
   points: MarketSeriesPoint[];
   equity_tickers: string[];
   fund_series_keys: string[];
+}
+
+export type DepositFlowCategory = "real_estate" | "cash" | "brokerage" | "inversiones";
+
+export interface FlowDepositRow {
+  occurred_on: string;
+  category: DepositFlowCategory;
+  category_label: string;
+  account_id: number;
+  account_name: string;
+  amount_clp: number;
+  amount_usd: number | null;
+}
+
+export interface FlowDepositChartPoint {
+  as_of_date: string;
+  real_estate: number;
+  cash: number;
+  brokerage: number;
+  inversiones: number;
+  total: number;
+}
+
+/** `GET /api/flows/deposits` — amounts may be negative (withdrawals). */
+export interface FlowsDepositsResponse {
+  rows: FlowDepositRow[];
+  chart_monthly: FlowDepositChartPoint[];
+  chart_yearly: FlowDepositChartPoint[];
+  /** Sum of all row amounts (matches dashboard “Total deposits”). */
+  net_total_clp: number;
+  net_total_usd: number;
+  chart_monthly_usd: FlowDepositChartPoint[];
+  chart_yearly_usd: FlowDepositChartPoint[];
+  by_category: Record<
+    DepositFlowCategory,
+    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
+  >;
 }

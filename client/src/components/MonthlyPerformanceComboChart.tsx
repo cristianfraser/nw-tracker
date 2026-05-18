@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import type { TooltipProps } from "recharts";
 import { useMemo } from "react";
+import { densifyRecordsByCalendarPeriod } from "../chartDensifyTimeSeries";
 import { formatClp, formatUsd } from "../format";
 import {
   buildNiceYAxis,
@@ -202,6 +203,15 @@ export function MonthlyPerformanceComboChart({
 }) {
   const TitleTag = titleAs;
 
+  const densePoints = useMemo(() => {
+    const zeroKeys = barSeries.map((b) => b.dataKey);
+    return densifyRecordsByCalendarPeriod(points, {
+      granularity: xAxisGranularity,
+      dateKey: "as_of_date",
+      fillMissing: { zeroKeys },
+    });
+  }, [points, xAxisGranularity, barSeries]);
+
   const yKeys = useMemo(() => {
     const k = [...barSeries.map((b) => b.dataKey), areaKey];
     if (lineKey) k.push(lineKey);
@@ -209,28 +219,28 @@ export function MonthlyPerformanceComboChart({
   }, [barSeries, areaKey, lineKey]);
 
   const yScale = useMemo(() => {
-    const { min, max } = minMaxForKeys(points, yKeys);
+    const { min, max } = minMaxForKeys(densePoints, yKeys);
     return buildNiceYAxis(min, max);
-  }, [points, yKeys]);
+  }, [densePoints, yKeys]);
 
   const plotPoints = useMemo(
     () =>
-      alternateYearAreaStripes ? augmentPointsWithYearStripeAreas(points, areaKey) : points,
-    [points, areaKey, alternateYearAreaStripes]
+      alternateYearAreaStripes ? augmentPointsWithYearStripeAreas(densePoints, areaKey) : densePoints,
+    [densePoints, areaKey, alternateYearAreaStripes]
   );
+
+  const xAxisTicks = useMemo(() => {
+    if (!densePoints.length) return undefined;
+    const dates = extractSortedAsOfDates(densePoints);
+    return xAxisGranularity === "year"
+      ? computeRegularYearXAxisTicks(dates)
+      : computeRegularMonthXAxisTicks(dates);
+  }, [densePoints, xAxisGranularity]);
 
   const [fillEvenYear, fillOddYear] = useMemo(
     () => pairAlternatingYearAreaFills(areaFill),
     [areaFill]
   );
-
-  const xAxisTicks = useMemo(() => {
-    if (!points.length) return undefined;
-    const dates = extractSortedAsOfDates(points);
-    return xAxisGranularity === "year"
-      ? computeRegularYearXAxisTicks(dates)
-      : computeRegularMonthXAxisTicks(dates);
-  }, [points, xAxisGranularity]);
 
   if (!points.length) {
     return (
