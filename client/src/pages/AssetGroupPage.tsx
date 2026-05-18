@@ -4,6 +4,7 @@ import { AllocationPiePanel, LineChartPanel } from "../components/ValuationLineC
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { Table } from "../components/Table";
 import { api } from "../api";
+import { assetGroupPageTitle } from "../i18n";
 import { allocationBucketColor, buildGroupTabColorMaps, groupTabPieSliceFill } from "../chartColors";
 import type {
   AccountListRow,
@@ -14,12 +15,12 @@ import type {
 
 interface Props {
   slug: AssetGroupSlug;
-  title: string;
 }
 
 type DisplayUnit = "clp" | "usd";
 
-export function AssetGroupPage({ slug, title }: Props) {
+export function AssetGroupPage({ slug }: Props) {
+  const title = assetGroupPageTitle(slug);
   const [accounts, setAccounts] = useState<AccountListRow[]>([]);
   const [ts, setTs] = useState<ValuationTimeseriesResponse | null>(null);
   const [groupPerf, setGroupPerf] = useState<GroupMonthlyPerformanceResponse | null>(null);

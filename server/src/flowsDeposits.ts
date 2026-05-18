@@ -1,5 +1,6 @@
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
@@ -97,22 +98,52 @@ function periodEndFromOccurredOn(occurredOn: string, granularity: "month" | "yea
   return mk ? monthEndUtcYmd(mk) : occurredOn;
 }
 
-/** Net capital (deposits − withdrawals) per account — same accounts as the flows deposits page. */
-export function flowsDepositsNetTotalByAccount(): Map<number, number> {
+function flowsDepositsNetTotalsByAccount(opts?: {
+  period?: "month" | "year";
+}): { clp: Map<number, number>; usd: Map<number, number> } {
   const accounts = listDepositFlowAccounts();
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDepositInflowEvents(ids);
-  const out = new Map<number, number>();
+  const today = chileCalendarTodayYmd();
+  const currentMk = monthKeyFromYmd(today);
+  const currentY = today.slice(0, 4);
+  const clp = new Map<number, number>();
+  const usd = new Map<number, number>();
   for (const acc of accounts) {
     const events = eventsByAccount.get(acc.account_id) ?? [];
-    let sum = 0;
+    let sumClp = 0;
+    let sumUsd = 0;
     for (const e of events) {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
-      sum += e.amt;
+      if (opts?.period === "month" && monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
+      if (opts?.period === "year" && e.occurred_on.slice(0, 4) !== currentY) continue;
+      const amount_clp = Math.round(e.amt);
+      sumClp += amount_clp;
+      const amount_usd = depositClpToUsdAtDate(amount_clp, e.occurred_on);
+      if (amount_usd != null && Number.isFinite(amount_usd)) sumUsd += amount_usd;
     }
-    out.set(acc.account_id, Math.round(sum));
+    clp.set(acc.account_id, sumClp);
+    usd.set(acc.account_id, sumUsd);
   }
-  return out;
+  return { clp, usd };
+}
+
+/** Net deposits in the current calendar month or year (flows-page accounts only). */
+export function flowsDepositsNetInPeriodByAccount(period: "month" | "year"): {
+  clp: Map<number, number>;
+  usd: Map<number, number>;
+} {
+  return flowsDepositsNetTotalsByAccount({ period });
+}
+
+/** Net capital (deposits − withdrawals) per account — same accounts as the flows deposits page. */
+export function flowsDepositsNetTotalByAccount(): Map<number, number> {
+  return flowsDepositsNetTotalsByAccount().clp;
+}
+
+/** Net deposits per account in USD (each event at its own FX date). */
+export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
+  return flowsDepositsNetTotalsByAccount().usd;
 }
 
 /** Sum of all rows on the flows → deposits page (dashboard “Total deposits”). */
@@ -216,5 +247,15 @@ function aggregateDepositChartPoints(
     pt.total += amt;
   }
   return [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+}
+
+/** Retiro (inversiones) + brokerage net deposits per chart period. */
+export function inversionesBrokerageDepositsSeries(
+  points: readonly FlowDepositChartPoint[]
+): { as_of_date: string; deposited: number }[] {
+  return points.map((pt) => ({
+    as_of_date: pt.as_of_date,
+    deposited: (pt.brokerage ?? 0) + (pt.inversiones ?? 0),
+  }));
 }
 

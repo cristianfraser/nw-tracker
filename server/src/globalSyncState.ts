@@ -15,6 +15,8 @@ export type GlobalSyncStateFile = {
   fintualLastAppliedSig?: string;
   /** Last Chile day we attempted Fintual fetch after 18:00 (even if no DB change). */
   fintualLastCheckYmd?: string;
+  /** Mapped-goals NAV signature at the last post-18:00 poll (see {@link isFintualSyncStale}). */
+  fintualLastCheckSig?: string;
   /** `YYYY-MM` SBIF UF incremental sync succeeded for. */
   sbifUfMonth?: string;
   sbifUtmMonth?: string;

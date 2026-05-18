@@ -1,4 +1,15 @@
+import i18n from "./i18n";
 import type { AccountListRow } from "./types";
+
+const LIABILITY_CATEGORY_KEYS: Record<string, string> = {
+  credit_card: "liabilities.creditCard",
+  mortgage: "liabilities.mortgage",
+};
+
+export function liabilityCategoryNavLabel(slug: string): string {
+  const k = LIABILITY_CATEGORY_KEYS[slug];
+  return k ? i18n.t(k) : slug.replace(/_/g, " ");
+}
 
 export function normalizeHierarchyCompare(s: string): string {
   return s
@@ -44,15 +55,6 @@ export function retirementAccountNavLabel(a: AccountListRow): string {
     if (a.notes === "import:excel|key=apv_b") return "apv-b-fintual";
   }
   return a.name;
-}
-
-const LIABILITY_CATEGORY_LABELS: Record<string, string> = {
-  credit_card: "credit card",
-  mortgage: "mortgage",
-};
-
-export function liabilityCategoryNavLabel(slug: string): string {
-  return LIABILITY_CATEGORY_LABELS[slug] ?? slug.replace(/_/g, " ");
 }
 
 export function assetAccountSidebarLabel(a: AccountListRow): string {

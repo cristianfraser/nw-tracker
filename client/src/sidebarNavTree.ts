@@ -12,6 +12,7 @@ import {
   liabilityCategoryNavLabel,
   retirementAccountNavLabel,
 } from "./navAccountLabels";
+import i18n from "./i18n";
 import type { AccountListRow } from "./types";
 
 export type SidebarNavNode = {
@@ -78,7 +79,7 @@ function buildBrokerageBranch(inv: AccountListRow[]): SidebarNavNode {
   );
   return {
     id: "inv.brokerage",
-    label: "brokerage",
+    label: i18n.t("dashboard.cards.brokerage"),
     to: "/inversiones/brokerage",
     activePrefix: "/inversiones/brokerage",
     children,
@@ -127,7 +128,7 @@ function buildApvBranch(inv: AccountListRow[]): SidebarNavNode | null {
   if (children.length === 0) return null;
   return {
     id: "retiro.apv",
-    label: "apv",
+    label: i18n.t("retirement.apv"),
     to: "/inversiones/retiro/apv",
     activePrefix: "/inversiones/retiro/apv",
     children,
@@ -143,13 +144,25 @@ function buildRetiroBranch(inv: AccountListRow[]): SidebarNavNode {
 
   if (afp.length > 0 || afc.length > 0) {
     const afpAfcChildren: SidebarNavNode[] = [];
-    const afpNode = maybeSubgroup("retiro.afp", "afp", "/inversiones/retiro/afp", afp, retirementAccountNavLabel);
-    const afcNode = maybeSubgroup("retiro.afc", "afc", "/inversiones/retiro/afc", afc, retirementAccountNavLabel);
+    const afpNode = maybeSubgroup(
+      "retiro.afp",
+      i18n.t("sidebar.afp"),
+      "/inversiones/retiro/afp",
+      afp,
+      retirementAccountNavLabel
+    );
+    const afcNode = maybeSubgroup(
+      "retiro.afc",
+      i18n.t("sidebar.afc"),
+      "/inversiones/retiro/afc",
+      afc,
+      retirementAccountNavLabel
+    );
     if (afpNode) afpAfcChildren.push(afpNode);
     if (afcNode) afpAfcChildren.push(afcNode);
     children.push({
       id: "retiro.afp-afc",
-      label: "afp + afc",
+      label: i18n.t("retirement.afpAfc"),
       to: "/inversiones/retiro/afp-afc",
       activePrefix: "/inversiones/retiro/afp-afc",
       children: afpAfcChildren,
@@ -161,7 +174,7 @@ function buildRetiroBranch(inv: AccountListRow[]): SidebarNavNode {
 
   return {
     id: "inv.retiro",
-    label: "retiro",
+    label: i18n.t("dashboard.cards.retirement"),
     to: "/inversiones/retiro",
     activePrefix: "/inversiones/retiro",
     children,
@@ -171,7 +184,7 @@ function buildRetiroBranch(inv: AccountListRow[]): SidebarNavNode {
 function buildInversionesBranch(inv: AccountListRow[]): SidebarNavNode {
   return {
     id: "inversiones",
-    label: "inversiones",
+    label: i18n.t("sidebar.inversiones"),
     to: "/inversiones",
     activePrefix: "/inversiones",
     children: [buildBrokerageBranch(inv), buildRetiroBranch(inv)],
@@ -198,7 +211,7 @@ function buildLiabilitiesBranch(accounts: AccountListRow[]): SidebarNavNode {
 
   return {
     id: "liabilities",
-    label: "liabilities",
+    label: i18n.t("dashboard.cards.liabilities"),
     to: "/liabilities",
     children,
   };
@@ -207,7 +220,7 @@ function buildLiabilitiesBranch(accounts: AccountListRow[]): SidebarNavNode {
 function buildRealEstateBranch(accounts: AccountListRow[]): SidebarNavNode {
   return {
     id: "real_estate",
-    label: "real estate",
+    label: i18n.t("dashboard.buckets.real_estate"),
     to: "/real_estate",
     children: accountLeaves("real_estate", accounts, assetAccountSidebarLabel),
   };
@@ -217,7 +230,7 @@ function buildCashBranch(accounts: AccountListRow[]): SidebarNavNode {
   const children = accountLeaves("cash", accounts, assetAccountSidebarLabel);
   return {
     id: "cash",
-    label: "cash",
+    label: i18n.t("dashboard.buckets.cash_eqs"),
     to: "/cash_eqs",
     children: children.length > 0 ? children : undefined,
   };
@@ -232,20 +245,20 @@ export type SidebarAccountsBundle = {
 
 export function buildSidebarNavTree(data: SidebarAccountsBundle): SidebarNavNode[] {
   return [
-    { id: "dashboard", label: "dashboard", to: "/", end: true, showLeafHyphen: false },
+    { id: "dashboard", label: i18n.t("dashboard.title"), to: "/", end: true, showLeafHyphen: false },
     buildCashBranch(data.cash),
     buildLiabilitiesBranch(data.liabilities),
     buildRealEstateBranch(data.realEstate),
     buildInversionesBranch(data.inversiones),
     {
       id: "flows",
-      label: "flows",
+      label: i18n.t("sidebar.flows"),
       to: "/flows",
       activePrefix: "/flows",
       children: [
-        { id: "flows.income", label: "income", to: "/flows/income", end: true },
-        { id: "flows.expenses", label: "expenses", to: "/flows/expenses", end: true },
-        { id: "flows.deposits", label: "deposits", to: "/flows/deposits", end: true },
+        { id: "flows.income", label: i18n.t("sidebar.flowsIncome"), to: "/flows/income", end: true },
+        { id: "flows.expenses", label: i18n.t("sidebar.flowsExpenses"), to: "/flows/expenses", end: true },
+        { id: "flows.deposits", label: i18n.t("sidebar.flowsDeposits"), to: "/flows/deposits", end: true },
       ],
     },
     { id: "rates", label: "rates", to: "/rates", showLeafHyphen: false },

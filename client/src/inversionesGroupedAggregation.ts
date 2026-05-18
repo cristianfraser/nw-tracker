@@ -35,18 +35,18 @@ const ROOT_GRP_META: Record<
 };
 
 /** Inversiones root — sin agrupar: sub-clases (AFP y AFC van juntos, alineado con la jerarquía Retiro → AFP + AFC). */
-const ROOT_UNG_ORDER = ["fondos_mutuos", "acciones", "cripto", "afp_afc", "apv"] as const;
+const ROOT_UNG_ORDER = ["mutual_funds", "acciones", "cripto", "afp_afc", "apv"] as const;
 type RootUngrouped = (typeof ROOT_UNG_ORDER)[number];
 const ROOT_UNG_META: Record<
   RootUngrouped,
   { accountId: number; dataKey: string; depKey: string; barDataKey: string; name: string }
 > = {
-  fondos_mutuos: {
+  mutual_funds: {
     accountId: -611,
     dataKey: "inv_u_fm",
     depKey: "inv_u_fm_dep",
     barDataKey: "pl_inv_u_fm",
-    name: "Fondos mutuos",
+    name: "Mutual funds",
   },
   acciones: {
     accountId: -612,

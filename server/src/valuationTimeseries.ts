@@ -1,5 +1,4 @@
 import {
-  accountShowsDisplayDepositSeries,
   loadMergedDepositInflowEvents,
   loadMergedDisplayDepositInflowEvents,
   totalDepositsClpForAccount,
@@ -31,10 +30,11 @@ import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { ccLedgerStatementClosingPointsClp, ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxRowOnOrBefore, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd, fxRowOnOrBefore, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 import {
   latestValuationRowOnOrBefore,
   latestValuationRowOnOrBeforeChileToday,
+  latestLiabilityValuationRowForSnapshot,
 } from "./valuationLatest.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
@@ -43,7 +43,7 @@ export type TimeseriesGranularity = "monthly" | "daily";
 
 export function convertTs(clp: number, asOf: string, unit: TsUnit): number {
   if (unit === "usd") {
-    const fx = fxRowOnOrBefore(asOf);
+    const fx = fxMonthEndForBalanceUsd(asOf);
     return fx && fx.clp_per_usd > 0 ? clp / fx.clp_per_usd : clp;
   }
   if (unit === "uf") {
@@ -92,9 +92,7 @@ function collapseApvAFintualDisplayDepositsForGroupTabBlock(block: GroupTabValua
   if (realAccounts.length < 2) return block;
 
   const targets = block.accounts.filter(
-    (a) =>
-      a.account_id > 0 &&
-      Boolean(a.depositDataKey && a.displayDepositDataKey && accountShowsDisplayDepositSeries(a.account_id))
+    (a) => a.account_id > 0 && Boolean(a.depositDataKey && a.displayDepositDataKey)
   );
   if (targets.length === 0) return block;
 
@@ -274,8 +272,8 @@ type MergePairOpts = {
   ethId?: number;
   spyId?: number;
   veaId?: number;
-  /** Brokerage “Fondos mutuos” tab membership (`brokerageSubgroupMatchesCategory`). */
-  fondosMutuosIds?: number[];
+  /** Brokerage mutual-funds tab membership (`brokerageSubgroupMatchesCategory`). */
+  mutualFundsIds?: number[];
 };
 
 function categorySlugByAccountId(accountIds: number[]): Map<number, string> {
@@ -313,10 +311,10 @@ function attachDepositSeriesKeys(
         (veaId != null && (depMovs.get(veaId)?.length ?? 0) > 0);
       return has ? { ...t, depositDataKey: "stocks_total__dep" } : { ...t };
     }
-    if (t.dataKey === "fondos_mutuos_total") {
-      const ids = merge?.fondosMutuosIds ?? [];
+    if (t.dataKey === "mutual_funds_total") {
+      const ids = merge?.mutualFundsIds ?? [];
       const has = ids.some((id) => (depMovs.get(id)?.length ?? 0) > 0);
-      return has ? { ...t, depositDataKey: "fondos_mutuos_total__dep" } : { ...t };
+      return has ? { ...t, depositDataKey: "mutual_funds_total__dep" } : { ...t };
     }
     if (t.account_id > 0) {
       const slug = slugById.get(t.account_id);
@@ -336,15 +334,12 @@ function attachDepositSeriesKeys(
 function attachDisplayDepositSeriesKeys(top: AccountLine[]): AccountLine[] {
   const displayName = "aportes propios acum.";
   return top.map((t) => {
-    if (!t.depositDataKey) return t;
-    if (t.account_id > 0 && accountShowsDisplayDepositSeries(t.account_id)) {
-      return {
-        ...t,
-        displayDepositDataKey: `${t.dataKey}__dep_display`,
-        display_deposit_series_name: displayName,
-      };
-    }
-    return t;
+    if (!t.depositDataKey || t.account_id <= 0) return t;
+    return {
+      ...t,
+      displayDepositDataKey: `${t.dataKey}__dep_display`,
+      display_deposit_series_name: displayName,
+    };
   });
 }
 
@@ -435,7 +430,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     merge?.ethId,
     merge?.spyId,
     merge?.veaId,
-    ...(merge?.fondosMutuosIds ?? []),
+    ...(merge?.mutualFundsIds ?? []),
   ].filter((x): x is number => x != null);
   const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds, ...mergeIds])];
   if (allIds.length === 0) {
@@ -537,7 +532,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   let lastEth: number | null = null;
   let lastSpy: number | null = null;
   let lastVea: number | null = null;
-  const lastFondosMutuosById = new Map<number, number>();
+  const lastMutualFundsById = new Map<number, number>();
   const btcId = merge?.btcId;
   const ethId = merge?.ethId;
   const spyId = merge?.spyId;
@@ -545,18 +540,18 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
 
   const needsCrypto = topOut.some((t) => t.dataKey === "crypto_total");
   const needsStocks = topOut.some((t) => t.dataKey === "stocks_total");
-  const needsFondosMutuos = topOut.some((t) => t.dataKey === "fondos_mutuos_total");
+  const needsMutualFunds = topOut.some((t) => t.dataKey === "mutual_funds_total");
   /** Avoid drawing merged deposit lines at 0 from the first chart date before any inflows exist. */
   let cryptoMergedDepSeen = false;
   let stocksMergedDepSeen = false;
-  let fondosMutuosMergedDepSeen = false;
+  let mutualFundsMergedDepSeen = false;
   const singleAccountDepSeen = new Map<number, boolean>();
   const singleAccountDisplayDepSeen = new Map<number, boolean>();
 
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
     for (const t of topOut) {
-      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "fondos_mutuos_total")
+      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total")
         continue;
       const aid = t.account_id;
       let raw = valuationRawClpForAccount(aid, d, byDate);
@@ -598,19 +593,19 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         row.stocks_total = null;
       }
     }
-    if (needsFondosMutuos && merge?.fondosMutuosIds && merge.fondosMutuosIds.length > 0) {
-      for (const id of merge.fondosMutuosIds) {
+    if (needsMutualFunds && merge?.mutualFundsIds && merge.mutualFundsIds.length > 0) {
+      for (const id of merge.mutualFundsIds) {
         const raw = valuationRawClpForAccount(id, d, byDate);
-        if (raw != null) lastFondosMutuosById.set(id, raw);
+        if (raw != null) lastMutualFundsById.set(id, raw);
       }
       let sumClp = 0;
       let any = false;
-      for (const id of merge.fondosMutuosIds) {
-        const v = lastFondosMutuosById.get(id);
+      for (const id of merge.mutualFundsIds) {
+        const v = lastMutualFundsById.get(id);
         if (v != null) any = true;
         sumClp += v ?? 0;
       }
-      row.fondos_mutuos_total = any ? convertTs(sumClp, d, unit) : null;
+      row.mutual_funds_total = any ? convertTs(sumClp, d, unit) : null;
     }
     for (const t of topOut) {
       if (!t.depositDataKey) continue;
@@ -666,8 +661,8 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         } else {
           row[t.depositDataKey] = depPlot;
         }
-      } else if (t.dataKey === "fondos_mutuos_total") {
-        const ids = merge?.fondosMutuosIds ?? [];
+      } else if (t.dataKey === "mutual_funds_total") {
+        const ids = merge?.mutualFundsIds ?? [];
         let sumClp = 0;
         let depPlot: number;
         for (const id of ids) sumClp += depClpByAccAndDate.get(id)?.get(d) ?? 0;
@@ -678,11 +673,11 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         } else {
           depPlot = sumClp;
         }
-        if (!fondosMutuosMergedDepSeen) {
+        if (!mutualFundsMergedDepSeen) {
           if (depPlot === 0) {
             row[t.depositDataKey] = null;
           } else {
-            fondosMutuosMergedDepSeen = true;
+            mutualFundsMergedDepSeen = true;
             row[t.depositDataKey] = depPlot;
           }
         } else {
@@ -718,7 +713,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       }
       const displayDk = t.displayDepositDataKey;
       if (!displayDk) continue;
-      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "fondos_mutuos_total") {
+      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total") {
         continue;
       }
       const aid = t.account_id;
@@ -846,7 +841,7 @@ export function liabilitiesGroupClpAsOf(
       if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
     }
     if (clp == null) {
-      clp = latestValuationRowOnOrBefore(r.account_id, asOfYmd)?.value_clp ?? null;
+      clp = latestLiabilityValuationRowForSnapshot(r.account_id, r.category_slug, asOfYmd)?.value_clp ?? null;
     }
     if (clp != null && Number.isFinite(clp)) sum += clp;
   }
@@ -887,7 +882,7 @@ export function liabilitiesBreakdownClpAsOf(
       if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
     }
     if (clp == null) {
-      clp = latestValuationRowOnOrBefore(r.account_id, asOfYmd)?.value_clp ?? null;
+      clp = latestLiabilityValuationRowForSnapshot(r.account_id, r.category_slug, asOfYmd)?.value_clp ?? null;
     }
     if (clp == null || !Number.isFinite(clp) || clp <= 0) continue;
     if (r.category_slug === "mortgage") out.mortgage_clp += clp;
@@ -966,7 +961,7 @@ function appendUsdMilestoneClpFields(
   asOfYmd: string
 ): void {
   for (const usd of PATRIMONIO_USD_MILESTONE_AMOUNTS) {
-    const fx = fxRowOnOrBefore(asOfYmd);
+    const fx = fxMonthEndForBalanceUsd(asOfYmd);
     row[usdMilestoneDataKey(usd)] =
       fx != null && fx.clp_per_usd > 0 ? usd * fx.clp_per_usd : null;
   }
@@ -1300,7 +1295,7 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
       });
   }
 
-  const fondosBrokerageRows = db
+  const mutualFundsBrokerageRows = db
     .prepare(
       `SELECT a.id AS account_id, c.slug AS category_slug
        FROM accounts a
@@ -1311,14 +1306,14 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
          AND c.slug != 'individual_stocks'`
     )
     .all(NOTE_STOCKS_LEGACY) as { account_id: number; category_slug: string }[];
-  const fondosMutuosIds = fondosBrokerageRows
-    .filter((r) => brokerageSubgroupMatchesCategory(r.category_slug, "fondos_mutuos"))
+  const mutualFundsIds = mutualFundsBrokerageRows
+    .filter((r) => brokerageSubgroupMatchesCategory(r.category_slug, "mutual_funds"))
     .map((r) => r.account_id);
-  if (fondosMutuosIds.length > 0) {
+  if (mutualFundsIds.length > 0) {
     const fmLine: AccountLine = {
       account_id: 0,
-      name: "Fondos mutuos",
-      dataKey: "fondos_mutuos_total",
+      name: "Mutual funds",
+      dataKey: "mutual_funds_total",
       valueSeriesType: "data",
     };
     const afcDashRow = accByNote.get("import:excel|key=afc") as { account_id: number } | undefined;
@@ -1352,7 +1347,7 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
     ethId,
     spyId,
     veaId,
-    fondosMutuosIds: fondosMutuosIds.length > 0 ? fondosMutuosIds : undefined,
+    mutualFundsIds: mutualFundsIds.length > 0 ? mutualFundsIds : undefined,
   });
   const afpRow = accByNote.get("import:excel|key=afp") as { account_id: number } | undefined;
   const afcRow = accByNote.get("import:excel|key=afc") as { account_id: number } | undefined;
@@ -1404,14 +1399,14 @@ export type GroupTabAccountRow = {
 };
 
 /** Optional slice of the Brokerage class tab (all accounts live under the brokerage asset group). */
-export type BrokerageTabSubgroup = "acciones" | "fondos_mutuos" | "crypto";
+export type BrokerageTabSubgroup = "acciones" | "mutual_funds" | "crypto";
 
 export function brokerageSubgroupMatchesCategory(
   categorySlug: string,
   subgroup: string
 ): boolean {
   if (subgroup === "acciones") return categorySlug === "spy" || categorySlug === "vea";
-  if (subgroup === "fondos_mutuos") return categorySlug === "fintual_risky_norris";
+  if (subgroup === "mutual_funds") return categorySlug === "fintual_risky_norris";
   if (subgroup === "crypto") return categorySlug === "bitcoin" || categorySlug === "eth";
   return false;
 }

@@ -624,14 +624,14 @@ export function buildLineChartTailClipOptions(
   const accs = block.accounts;
   const groupValTotalSourceKeys = accs?.some((a) => a.dataKey === "__group_val_total")
     ? accs
-        .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals)
-        .map((a) => a.dataKey)
+      .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals)
+      .map((a) => a.dataKey)
     : undefined;
   const groupDepTotalSourceKeys =
     accs?.some((a) => a.dataKey === "__group_dep_total") && accs.some((a) => Boolean(a.depositDataKey))
       ? accs
-          .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals && a.depositDataKey)
-          .map((a) => a.depositDataKey!)
+        .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals && a.depositDataKey)
+        .map((a) => a.depositDataKey!)
       : undefined;
   const depositKeysByValuationKey: Record<string, string[]> = {};
   for (const a of accs ?? []) {

@@ -80,6 +80,15 @@ function augmentPointsWithYearStripeAreas(
 
 export type MonthlyPlBarSeries = { dataKey: string; name: string; color: string };
 
+export type MonthlyPlLineSeries = {
+  dataKey: string;
+  name: string;
+  stroke: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+  showDot?: boolean;
+};
+
 function formatAxisValue(v: number, unit: ChartDisplayUnit) {
   return unit === "usd" ? formatUsd(v) : formatClp(v);
 }
@@ -183,6 +192,7 @@ export function MonthlyPerformanceComboChart({
   areaStroke,
   lineKey,
   lineName,
+  lineSeries,
   /** When true (default), YTD-style area is split into two fills by calendar year parity. Set false for a single continuous area fill (e.g. accumulated earnings). */
   alternateYearAreaStripes = true,
   xAxisGranularity = "month",
@@ -198,6 +208,7 @@ export function MonthlyPerformanceComboChart({
   areaStroke: string;
   lineKey?: string;
   lineName?: string;
+  lineSeries?: MonthlyPlLineSeries[];
   alternateYearAreaStripes?: boolean;
   xAxisGranularity?: "month" | "year";
 }) {
@@ -212,11 +223,18 @@ export function MonthlyPerformanceComboChart({
     });
   }, [points, xAxisGranularity, barSeries]);
 
+  const resolvedLineSeries = useMemo((): MonthlyPlLineSeries[] => {
+    if (lineSeries?.length) return lineSeries;
+    if (lineKey && lineName) {
+      return [{ dataKey: lineKey, name: lineName, stroke: "#38bdf8", showDot: true }];
+    }
+    return [];
+  }, [lineSeries, lineKey, lineName]);
+
   const yKeys = useMemo(() => {
-    const k = [...barSeries.map((b) => b.dataKey), areaKey];
-    if (lineKey) k.push(lineKey);
+    const k = [...barSeries.map((b) => b.dataKey), areaKey, ...resolvedLineSeries.map((l) => l.dataKey)];
     return k;
-  }, [barSeries, areaKey, lineKey]);
+  }, [barSeries, areaKey, resolvedLineSeries]);
 
   const yScale = useMemo(() => {
     const { min, max } = minMaxForKeys(densePoints, yKeys);
@@ -350,18 +368,21 @@ export function MonthlyPerformanceComboChart({
                 maxBarSize={28}
               />
             ))}
-            {lineKey && lineName ? (
+            {resolvedLineSeries.map((l) => (
               <Line
+                key={l.dataKey}
                 type="monotone"
-                dataKey={lineKey}
-                name={lineName}
-                stroke="#38bdf8"
-                strokeWidth={1.5}
-                dot={<DiamondDot />}
+                dataKey={l.dataKey}
+                name={l.name}
+                stroke={l.stroke}
+                strokeWidth={l.strokeWidth ?? 1.5}
+                strokeDasharray={l.strokeDasharray ?? "4 3"}
+                dot={l.showDot ? <DiamondDot /> : false}
+                connectNulls
                 isAnimationActive
                 animationDuration={CHART_ANIM_MS}
               />
-            ) : null}
+            ))}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

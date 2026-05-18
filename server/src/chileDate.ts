@@ -48,6 +48,20 @@ export function chileWallClockNow(): ChileWallClock {
 }
 
 /** Calendar `YYYY-MM-DD` in America/Santiago (DST-safe via Intl). */
+/** Calendar add in UTC (safe for `YYYY-MM-DD` portfolio dates; not wall-clock DST edges). */
+export function chileCalendarAddDays(ymd: string, deltaDays: number): string {
+  const parts = ymd.split("-").map((x) => parseInt(x, 10));
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d || !Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    throw new Error(`Invalid YMD: ${ymd}`);
+  }
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + deltaDays);
+  return dt.toISOString().slice(0, 10);
+}
+
 export function chileCalendarTodayYmd(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Santiago",

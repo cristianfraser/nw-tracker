@@ -15,7 +15,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chileCalendarTodayYmd } from "../src/chileDate.js";
+import { chileWallClockNow, type ChileWallClock } from "../src/chileDate.js";
+import { fintualValuationAsOfYmd } from "../src/fintualSyncPolicy.js";
 
 export const FINTUAL_API_BASE = "https://fintual.cl/api";
 
@@ -355,8 +356,12 @@ export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
   return out;
 }
 
-export function buildGoalsSnapshot(goals: FintualGoalRow[], byGoalId: Record<string, string>): FintualGoalSnapshot {
-  const asOfDate = chileCalendarTodayYmd();
+export function buildGoalsSnapshot(
+  goals: FintualGoalRow[],
+  byGoalId: Record<string, string>,
+  cl: ChileWallClock = chileWallClockNow()
+): FintualGoalSnapshot {
+  const asOfDate = fintualValuationAsOfYmd(cl);
   return {
     fetchedAt: new Date().toISOString(),
     asOfDate,

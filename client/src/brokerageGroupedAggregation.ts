@@ -7,7 +7,7 @@ import type {
   TimeseriesBlock,
 } from "./types";
 
-export type BrokeragePortfolioGroup = "fondos_mutuos" | "acciones" | "cripto";
+export type BrokeragePortfolioGroup = "mutual_funds" | "acciones" | "cripto";
 
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
 const GROUP_TAB_DEP_TOTAL = "__group_dep_total";
@@ -16,7 +16,7 @@ const G_META: Record<
   BrokeragePortfolioGroup,
   { dataKey: string; depKey: string; barDataKey: string; accountId: number }
 > = {
-  fondos_mutuos: {
+  mutual_funds: {
     dataKey: "brk_fm",
     depKey: "brk_fm_dep",
     barDataKey: "pl_brk_fm",
@@ -37,7 +37,7 @@ const G_META: Record<
 };
 
 /** Display / navigation order on the Brokerage page. */
-export const BROKERAGE_GROUP_ORDER: readonly BrokeragePortfolioGroup[] = ["fondos_mutuos", "acciones", "cripto"];
+export const BROKERAGE_GROUP_ORDER: readonly BrokeragePortfolioGroup[] = ["mutual_funds", "acciones", "cripto"];
 
 export function brokeragePortfolioGroupLabel(g: BrokeragePortfolioGroup): string {
   return brokerageGroupLabel(g);
@@ -45,13 +45,13 @@ export function brokeragePortfolioGroupLabel(g: BrokeragePortfolioGroup): string
 
 /** React Router path for a brokerage subgroup (matches API `subgroup`). */
 export function brokeragePortfolioGroupPath(g: BrokeragePortfolioGroup): string {
-  if (g === "fondos_mutuos") return "/inversiones/brokerage/fondos-mutuos";
+  if (g === "mutual_funds") return "/inversiones/brokerage/mutual-funds";
   if (g === "acciones") return "/inversiones/brokerage/acciones";
   return "/inversiones/brokerage/crypto";
 }
 
 export function brokeragePortfolioGroupFromCategorySlug(categorySlug: string): BrokeragePortfolioGroup | null {
-  if (categorySlug === "fintual_risky_norris") return "fondos_mutuos";
+  if (categorySlug === "fintual_risky_norris") return "mutual_funds";
   if (categorySlug === "spy" || categorySlug === "vea") return "acciones";
   if (categorySlug === "bitcoin" || categorySlug === "eth") return "cripto";
   return null;
@@ -139,7 +139,7 @@ export function appendGroupTabTotalsClient(block: TimeseriesBlock): TimeseriesBl
 }
 
 /**
- * Brokerage “Todas”: collapse member accounts into Fondos mutuos / Acciones / Cripto for line + pie charts.
+ * Brokerage “Todas”: collapse member accounts into mutual funds / acciones / cripto for line + pie charts.
  */
 export function aggregateBrokerageAllViewValuationBlock(
   block: TimeseriesBlock,

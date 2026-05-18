@@ -25,10 +25,16 @@ export function isAfpUnoSpotStale(
   return state.unoLastSpotYmd !== cl.ymd;
 }
 
-/** After 18:00 Chile, poll Fintual at least once per calendar day. */
+/**
+ * After 18:00 Chile, Fintual is stale until the API publishes a **new** NAV (signature change).
+ * Polling alone does not clear stale — Sunday evening may still show Friday close until tweaked.
+ */
 export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
   if (cl.hour < 18) return false;
-  return state.fintualLastCheckYmd !== cl.ymd;
+  if (state.fintualLastCheckYmd !== cl.ymd) return true;
+  if (!state.fintualLastAppliedSig) return true;
+  if (!state.fintualLastCheckSig) return true;
+  return state.fintualLastCheckSig === state.fintualLastAppliedSig;
 }
 
 export function isSbifMonthlyStale(
