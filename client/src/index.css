@@ -466,7 +466,7 @@ h2 {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1rem;
 }
 
@@ -922,7 +922,7 @@ tr:hover td {
   }
 }
 
-/* Fixed top market ticker (Bloomberg-style marquee). No panel fill — page --bg shows through. */
+/* Fixed top market ticker (Bloomberg-style marquee). */
 .market-ticker-panel {
   position: fixed;
   top: 0;
@@ -932,14 +932,19 @@ tr:hover td {
   border-radius: 0;
   border: none;
   border-bottom: 1px solid var(--border);
-  background: transparent;
+  background-color: var(--bg);
   box-shadow: none;
   pointer-events: auto;
+  z-index: 1;
 }
 
 @media (max-width: 879px) {
-  .layout--with-sidebar {
+  .app-sidebar {
     padding-top: var(--market-ticker-height);
+  }
+
+  .layout-main>.content {
+    padding-top: calc(var(--market-ticker-height) + 1.25rem);
   }
 }
 
@@ -948,7 +953,6 @@ tr:hover td {
     left: auto;
     width: calc((100vw - 15.5rem) * 2 / 3);
     background-color: var(--bg);
-    z-index: 1;
   }
 
   .market-ticker-panel::before {
