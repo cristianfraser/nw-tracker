@@ -854,7 +854,7 @@ export function AccountDetailPage() {
 
   if (err) {
     return (
-      <main className="page">
+      <main>
         <p className="error">{err}</p>
       </main>
     );
@@ -862,7 +862,7 @@ export function AccountDetailPage() {
 
   if (!summary || !ts || !depositInflows || !mortgageLedger || !ccLedger || invNavAccounts == null) {
     return (
-      <main className="page">
+      <main>
         <p className="muted">Loading…</p>
       </main>
     );
@@ -880,7 +880,7 @@ export function AccountDetailPage() {
   };
 
   return (
-    <main className="page">
+    <main>
       <p className="muted">
         {parentBack ? (
           <Link to={parentBack.to}>← {parentBack.label}</Link>

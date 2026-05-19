@@ -303,7 +303,7 @@ export function InversionesPage() {
 
   if (err) {
     return (
-      <main className="page">
+      <main>
         <p className="error">{err}</p>
       </main>
     );
@@ -311,7 +311,7 @@ export function InversionesPage() {
 
   if (!ts?.accounts_in_group || !ts.group_allocation_pie) {
     return (
-      <main className="page">
+      <main>
         <p className="muted">Loading…</p>
       </main>
     );
@@ -328,7 +328,7 @@ export function InversionesPage() {
   const brkAccounts = navBrk.filter((a) => a.group_slug === "brokerage");
 
   return (
-    <main className="page">
+    <main>
       <h1>{resolved.pageTitle}</h1>
       <p className="muted">
         <Link to={parentBack.to}>← {parentBack.label}</Link>

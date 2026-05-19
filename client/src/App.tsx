@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/AppSidebar";
+import { MarketTickerPanel } from "./components/MarketTickerPanel";
 import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { AssetGroupPage } from "./pages/AssetGroupPage";
@@ -9,6 +10,7 @@ import { ExpensesPage } from "./pages/ExpensesPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
 import { IncomePage } from "./pages/IncomePage";
 import { InversionesPage } from "./pages/InversionesPage";
+import { MessagesPage } from "./pages/MessagesPage";
 import { RatesPage } from "./pages/RatesPage";
 
 export default function App() {
@@ -16,7 +18,9 @@ export default function App() {
     <LoadingProvider>
       <div className="layout layout--with-sidebar">
         <AppSidebar />
+        <MarketTickerPanel />
         <div className="layout-main">
+          <div className="content">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<InversionesPage />} />
@@ -38,10 +42,12 @@ export default function App() {
               <Route path="deposits" element={<DepositsPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />
+            <Route path="/messages" element={<MessagesPage />} />
             <Route path="/income" element={<Navigate to="/flows/income" replace />} />
             <Route path="/expenses" element={<Navigate to="/flows/expenses" replace />} />
             <Route path="/account/:id" element={<AccountDetailPage />} />
           </Routes>
+          </div>
         </div>
       </div>
     </LoadingProvider>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api";
 import {
@@ -129,8 +130,16 @@ function SidebarNavItem({
   );
 }
 
+function unreadBadgeLabel(count: number): string | null {
+  if (count <= 0) return null;
+  if (count > 9) return "9+";
+  return String(count);
+}
+
 export function AppSidebar() {
+  const { t } = useTranslation();
   const { pathname } = useLocation();
+  const [unreadCount, setUnreadCount] = useState(0);
   const [accounts, setAccounts] = useState<{
     cash: AccountListRow[];
     liabilities: AccountListRow[];
@@ -138,6 +147,24 @@ export function AppSidebar() {
     inversiones: AccountListRow[];
   } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsedIds);
+
+  const refreshUnread = useCallback(() => {
+    void api.messagesUnreadCount().then(
+      (d) => setUnreadCount(d.count),
+      () => setUnreadCount(0)
+    );
+  }, []);
+
+  useEffect(() => {
+    refreshUnread();
+    const onRead = () => refreshUnread();
+    window.addEventListener("nw-messages-read", onRead);
+    const id = window.setInterval(refreshUnread, 60_000);
+    return () => {
+      window.removeEventListener("nw-messages-read", onRead);
+      window.clearInterval(id);
+    };
+  }, [refreshUnread]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +235,7 @@ export function AppSidebar() {
     tree?.filter((n) => n.id !== "flows" && n.id !== "rates" && n.id !== "dashboard") ?? [];
   const flowsNode = tree?.find((n) => n.id === "flows");
   const ratesNode = tree?.find((n) => n.id === "rates");
+  const unreadPill = unreadBadgeLabel(unreadCount);
 
   return (
     <aside className="app-sidebar" aria-label="Main navigation">
@@ -215,8 +243,9 @@ export function AppSidebar() {
         <NavLink to="/">NW Tracker</NavLink>
       </div>
       <nav className="sidebar-nav">
+        <div className="sidebar-nav-scroll">
         {!tree ? (
-          <p className="sidebar-loading muted">Loading…</p>
+          <p className="sidebar-loading muted">{t("common.loading")}</p>
         ) : (
           <>
             <ul className="sidebar-list">
@@ -270,6 +299,32 @@ export function AppSidebar() {
             </ul>
           </>
         )}
+        </div>
+        <div className="sidebar-nav-footer">
+          <div className="sidebar-separator" role="separator" />
+          <ul className="sidebar-list">
+            <li className="sidebar-item" style={{ "--sidebar-depth": 0 } as CSSProperties}>
+              <div className="sidebar-item-body">
+                <span className="sidebar-leaf-mark" aria-hidden />
+                <div className="sidebar-item-content">
+                  <div className={`sidebar-row${pathname === "/messages" ? " sidebar-row--active" : ""}`}>
+                    <NavLink
+                      to="/messages"
+                      className={({ isActive }) => `sidebar-link${isActive ? " active" : ""}`}
+                    >
+                      <span className="sidebar-link-label">{t("sidebar.messages")}</span>
+                      {unreadPill ? (
+                        <span className="sidebar-unread-pill" aria-label={`${unreadCount} sin leer`}>
+                          {unreadPill}
+                        </span>
+                      ) : null}
+                    </NavLink>
+                  </div>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
       </nav>
     </aside>
   );

@@ -9,6 +9,7 @@
  * Usage (repo root):
  *   npm run fintual:fetch-goals -w nw-tracker-server
  */
+import { chileWallClockNow } from "../src/chileDate.js";
 import {
   buildGoalsSnapshot,
   fetchFintualGoalsRaw,
@@ -22,13 +23,14 @@ import {
 async function main(): Promise<void> {
   const { email, token } = await getValidFintualSession();
   const raw = await fetchFintualGoalsRaw(email, token);
+  const cl = chileWallClockNow();
   const rows = parseGoalsFromResponse(raw);
   const byGoalId = loadGoalIdOverrides();
-  const snap = buildGoalsSnapshot(rows, byGoalId);
+  const snap = buildGoalsSnapshot(rows, byGoalId, cl);
   writeGoalsSnapshot(snap);
 
   console.log(`Wrote ${rows.length} goal(s) → ${fintualGoalsSnapshotPath()}`);
-  console.log(`as_of_date (Chile today): ${snap.asOfDate}\n`);
+  console.log(`as_of_date: ${snap.asOfDate}\n`);
 
   for (const g of snap.goals) {
     const tag = g.matchedNotes ? `→ ${g.matchedNotes}` : "(no auto-map — add to fintual-goal-map.json)";

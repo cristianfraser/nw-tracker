@@ -261,7 +261,7 @@ export function buildSidebarNavTree(data: SidebarAccountsBundle): SidebarNavNode
         { id: "flows.deposits", label: i18n.t("sidebar.flowsDeposits"), to: "/flows/deposits", end: true },
       ],
     },
-    { id: "rates", label: "rates", to: "/rates", showLeafHyphen: false },
+    { id: "rates", label: i18n.t("sidebar.rates"), to: "/rates", showLeafHyphen: false },
   ];
 }
 

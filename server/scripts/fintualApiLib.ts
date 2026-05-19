@@ -32,10 +32,13 @@ export type FintualSession = {
   updatedAt: string;
 };
 
+export type FintualGoalInvestment = { weight: number; asset_id: number };
+
 export type FintualGoalRow = {
   id: string;
   name: string;
   navClp: number;
+  investments?: FintualGoalInvestment[];
 };
 
 export type FintualGoalSnapshot = {
@@ -341,8 +344,20 @@ export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
     const id = g.id != null ? String(g.id) : "";
     const attrs = g.attributes;
     if (!attrs || typeof attrs !== "object") continue;
-    const a = attrs as { name?: unknown; nav?: unknown };
+    const a = attrs as { name?: unknown; nav?: unknown; investments?: unknown };
     const name = typeof a.name === "string" ? a.name : "";
+    const investments: FintualGoalInvestment[] = [];
+    if (Array.isArray(a.investments)) {
+      for (const raw of a.investments) {
+        if (!raw || typeof raw !== "object") continue;
+        const o = raw as { weight?: unknown; asset_id?: unknown };
+        const weight = typeof o.weight === "number" ? o.weight : Number(o.weight);
+        const asset_id = typeof o.asset_id === "number" ? o.asset_id : Number(o.asset_id);
+        if (Number.isFinite(weight) && Number.isFinite(asset_id)) {
+          investments.push({ weight, asset_id });
+        }
+      }
+    }
     const navRaw = a.nav;
     const nav =
       typeof navRaw === "number"
@@ -351,7 +366,7 @@ export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
           ? Number(navRaw)
           : NaN;
     if (!id || !Number.isFinite(nav)) continue;
-    out.push({ id, name, navClp: nav });
+    out.push({ id, name, navClp: nav, investments: investments.length ? investments : undefined });
   }
   return out;
 }
@@ -359,9 +374,10 @@ export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
 export function buildGoalsSnapshot(
   goals: FintualGoalRow[],
   byGoalId: Record<string, string>,
-  cl: ChileWallClock = chileWallClockNow()
+  cl: ChileWallClock = chileWallClockNow(),
+  asOfDateOverride?: string
 ): FintualGoalSnapshot {
-  const asOfDate = fintualValuationAsOfYmd(cl);
+  const asOfDate = asOfDateOverride ?? fintualValuationAsOfYmd(cl);
   return {
     fetchedAt: new Date().toISOString(),
     asOfDate,

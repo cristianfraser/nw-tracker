@@ -61,6 +61,11 @@ import {
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
+import {
+  listAppMessages,
+  markAllNotificationsRead,
+  unreadNotificationCount,
+} from "./appMessages.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
 
@@ -380,11 +385,11 @@ app.get("/api/accounts/:id/summary", (req, res) => {
     )
     .get(NOTE_STOCKS_LEGACY, id) as
     | {
-        category_slug: string;
-        group_slug: string;
-        group_label: string;
-        group_peer_count: number;
-      }
+      category_slug: string;
+      group_slug: string;
+      group_label: string;
+      group_peer_count: number;
+    }
     | undefined;
   const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, cat?.category_slug ?? "");
   const maxEqDateStmt = db.prepare(
@@ -409,10 +414,10 @@ app.get("/api/accounts/:id/summary", (req, res) => {
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
   const positionMeta = cat
     ? getAccountPositionMeta(
-        id,
-        cat.category_slug,
-        cat.category_slug === "afp" ? { afpCuotasAsOfYmd: asOfCuotas } : undefined
-      )
+      id,
+      cat.category_slug,
+      cat.category_slug === "afp" ? { afpCuotasAsOfYmd: asOfCuotas } : undefined
+    )
     : null;
   const position = positionSnapshotFromMeta(cat?.category_slug ?? null, positionMeta, deposits_clp, latest ?? undefined);
   let latest_valuation_clp = latest?.value_clp ?? null;
@@ -447,12 +452,12 @@ app.get("/api/accounts/:id/movements", (req, res) => {
       `SELECT id, amount_clp, occurred_on, note, units_delta FROM movements WHERE account_id = ? ORDER BY occurred_on DESC, id DESC`
     )
     .all(id) as {
-    id: number;
-    amount_clp: number;
-    occurred_on: string;
-    note: string | null;
-    units_delta: number | null;
-  }[];
+      id: number;
+      amount_clp: number;
+      occurred_on: string;
+      note: string | null;
+      units_delta: number | null;
+    }[];
   if (cat?.category_slug === "mortgage") {
     rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
   }
@@ -619,14 +624,14 @@ app.get("/api/dashboard", (req, res) => {
     `
     )
     .all(NOTE_STOCKS_LEGACY) as {
-    id: number;
-    name: string;
-    notes: string | null;
-    group_slug: string;
-    group_label: string;
-    category_slug: string;
-    category_label: string;
-  }[];
+      id: number;
+      name: string;
+      notes: string | null;
+      group_slug: string;
+      group_label: string;
+      category_slug: string;
+      category_label: string;
+    }[];
 
   const maxEqDateStmt = db.prepare(
     `SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`
@@ -773,11 +778,11 @@ app.get("/api/dashboard", (req, res) => {
   const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfToday, deptoLedger);
   const suecia_snapshot = sueciaRaw
     ? {
-        ...sueciaRaw,
-        valor_usd: depositClpToUsdAtDate(sueciaRaw.valor_clp, asOfToday),
-        net_value_usd: depositClpToUsdAtDate(sueciaRaw.net_value_clp, asOfToday),
-        mortgage_usd: depositClpToUsdAtDate(sueciaRaw.mortgage_clp, asOfToday),
-      }
+      ...sueciaRaw,
+      valor_usd: depositClpToUsdAtDate(sueciaRaw.valor_clp, asOfToday),
+      net_value_usd: depositClpToUsdAtDate(sueciaRaw.net_value_clp, asOfToday),
+      mortgage_usd: depositClpToUsdAtDate(sueciaRaw.mortgage_clp, asOfToday),
+    }
     : null;
   const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, {
     mortgageFromDeptoSheet: true,
@@ -800,14 +805,14 @@ app.get("/api/dashboard", (req, res) => {
       liabilities_clp: liabilities_clp_aligned,
       ...(includeUsd
         ? {
-            net_worth_usd: netWorthUsd,
-            deposits_usd: depositsFlow.net_total_usd,
-            real_estate_usd: re.usd,
-            retirement_usd: ret.usd,
-            brokerage_usd: bro.usd,
-            cash_eqs_usd: cash.usd,
-            liabilities_usd: lia.usd,
-          }
+          net_worth_usd: netWorthUsd,
+          deposits_usd: depositsFlow.net_total_usd,
+          real_estate_usd: re.usd,
+          retirement_usd: ret.usd,
+          brokerage_usd: bro.usd,
+          cash_eqs_usd: cash.usd,
+          liabilities_usd: lia.usd,
+        }
         : {}),
     },
     allocation: [...byGroup.entries()].map(([slug, v]) => ({
@@ -825,9 +830,9 @@ app.get("/api/dashboard", (req, res) => {
       yearly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly),
       ...(includeUsd
         ? {
-            monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd),
-            yearly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly_usd),
-          }
+          monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd),
+          yearly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly_usd),
+        }
         : {}),
     },
   });
@@ -1060,6 +1065,20 @@ app.post("/api/expenses", (req, res) => {
 /** Stale external sources + last sync state (AFP / Fintual / SBIF). */
 app.get("/api/sync/status", (_req, res) => {
   res.json(syncStatusPayload());
+});
+
+app.get("/api/messages/unread-count", (_req, res) => {
+  res.json({ count: unreadNotificationCount() });
+});
+
+app.get("/api/messages", (req, res) => {
+  const kind = req.query.kind === "log" ? "log" : "notification";
+  res.json({ messages: listAppMessages(kind) });
+});
+
+app.post("/api/messages/mark-read", (_req, res) => {
+  const marked = markAllNotificationsRead();
+  res.json({ marked });
 });
 
 /** Placeholder for future bank CSV / PDF pipeline */

@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 
 export function FlowsLayout() {
   return (
-    <main className="page">
+    <main>
       <p className="muted">
         <Link to="/">← Dashboard</Link>
       </p>
