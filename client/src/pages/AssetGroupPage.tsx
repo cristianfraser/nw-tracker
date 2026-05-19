@@ -77,7 +77,7 @@ export function AssetGroupPage({ slug }: Props) {
 
   if (err) {
     return (
-      <main className="page">
+      <main>
         <p className="error">{err}</p>
       </main>
     );
@@ -85,7 +85,7 @@ export function AssetGroupPage({ slug }: Props) {
 
   if (!ts?.accounts_in_group || !ts.group_allocation_pie) {
     return (
-      <main className="page">
+      <main>
         <p className="muted">Loading…</p>
       </main>
     );
@@ -98,7 +98,7 @@ export function AssetGroupPage({ slug }: Props) {
   }));
 
   return (
-    <main className="page">
+    <main>
       <h1>{title}</h1>
       <p className="muted">
         <Link to="/">← Dashboard</Link>

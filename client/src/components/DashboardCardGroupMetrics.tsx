@@ -1,8 +1,9 @@
 import type { CardGroupMetrics, CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
-import { accountingCurrencyNumberFlowParts, plainNumberFlowParts } from "../format";
+import { accountingCurrencyNumberFlowParts } from "../format";
 import { useTranslation } from "../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
+import { DeltaMetricFlow } from "./DeltaMetricFlow";
 
 const METRIC_MOUNT_DIGIT_RANGE: [number, number] = [5, 7];
 const METRIC_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
@@ -45,43 +46,6 @@ function DepositedMetricFlow({
       transformTiming={METRIC_TIMING.transformTiming}
       spinTiming={METRIC_TIMING.spinTiming}
     />
-  );
-}
-
-function DeltaMetricFlow({
-  delta,
-  showUsd,
-  animated,
-  mountSeedId,
-}: {
-  delta: number | null;
-  showUsd: boolean;
-  animated: boolean;
-  mountSeedId: string;
-}) {
-  if (delta == null) {
-    return <span className="card-group-metrics__amount card-group-metrics__amount--empty mono">—</span>;
-  }
-  const sign = delta > 0 ? 1 : delta < 0 ? -1 : 0;
-  const tone =
-    sign > 0 ? "card-group-metrics__amount--delta-up" : sign < 0 ? "card-group-metrics__amount--delta-down" : "";
-  const unit = showUsd ? "usd" : "clp";
-  return (
-    <span className={`card-group-metrics__delta ${tone}`}>
-      <span className="card-group-metrics__delta-icon" aria-hidden>
-        {sign >= 0 ? "▲" : "▼"}
-      </span>
-      <AnimatedNumberFlow
-        value={delta}
-        animated={animated}
-        mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
-        mountSeedId={mountSeedId}
-        mapDisplayValue={(n) => plainNumberFlowParts(n, unit)}
-        className={`card-group-metrics__amount mono ${tone}`}
-        transformTiming={METRIC_TIMING.transformTiming}
-        spinTiming={METRIC_TIMING.spinTiming}
-      />
-    </span>
   );
 }
 

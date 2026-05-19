@@ -126,12 +126,23 @@ export function accountingCurrencyNumberFlowParts(
 /** Plain grouped amount for NumberFlow (no sign, no currency) — use color/icon for direction. */
 export function plainNumberFlowParts(
   n: number,
-  unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp"
-): { value: number; locales: string; format: typeof NUMBER_FLOW_INT_FORMAT } {
+  unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp",
+  fractionDigits = 0
+): {
+  value: number;
+  locales: string;
+  format: { minimumFractionDigits: number; maximumFractionDigits: number; signDisplay: "never" };
+} {
+  const fd = Math.max(0, Math.min(8, Math.trunc(fractionDigits)));
+  const factor = 10 ** fd;
   return {
-    value: Math.abs(Math.round(n)),
+    value: Math.abs(Math.round(n * factor) / factor),
     locales: currencyLocales(unit),
-    format: NUMBER_FLOW_INT_FORMAT,
+    format: {
+      minimumFractionDigits: fd,
+      maximumFractionDigits: fd,
+      signDisplay: "never",
+    },
   };
 }
 

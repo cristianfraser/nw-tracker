@@ -160,4 +160,17 @@ export const api = {
   expenses: () => j<{ expenses: unknown[] }>("/api/expenses"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
+  messagesUnreadCount: () => j<{ count: number }>("/api/messages/unread-count"),
+  messages: (kind: "notification" | "log") =>
+    j<{ messages: AppMessageRow[] }>(`/api/messages?kind=${kind}`),
+  markMessagesRead: () => j<{ marked: number }>("/api/messages/mark-read", { method: "POST" }),
+};
+
+export type AppMessageRow = {
+  id: number;
+  kind: "notification" | "log";
+  created_at: string;
+  read_at: string | null;
+  title: string;
+  body: string;
 };

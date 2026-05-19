@@ -50,7 +50,7 @@
       "cash_eqs": "Efectivo"
     },
     "sections": {
-      "primaryAccountsTitle": "Cuentas principales (sin inmuebles)",
+      "primaryAccountsTitle": "Cuentas principales",
       "overviewTitle": "Inmuebles, buckets consolidados y patrimonio neto",
       "netWorthUsdSectionTitle": "Patrimonio neto, invested y niveles US$ (CLP)",
       "netWorthUsdSectionHint": "Patrimonio neto e invested en CLP. Líneas punteadas: equivalente CLP de US$10k, US$50k, US$100k, US$250k y US$500k según el tipo de cambio de cada fecha (US$ × USD/CLP del día). El eje Y sigue solo patrimonio e invested; los niveles US$ pueden quedar fuera de escala.",
@@ -84,7 +84,7 @@
       "ma3DepositsInversionesYearly": "MM3 depósitos del año (inversiones)"
     },
     "accountsTable": {
-      "title": "Cuentas principales (sin inmuebles)",
+      "title": "Cuentas principales",
       "empty": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts."
     },
     "allocation": {
@@ -110,10 +110,31 @@
     "flows": "Flujos",
     "flowsIncome": "Ingresos",
     "flowsExpenses": "Gastos",
-    "flowsDeposits": "Depósitos"
+    "flowsDeposits": "Depósitos",
+    "rates": "Tipos de cambio",
+    "messages": "Mensajes"
+  },
+  "messages": {
+    "pageTitle": "Mensajes",
+    "pageHint": "Avisos de validación (p. ej. Fintual) y registro de cada ejecución del sync.",
+    "notificationsTitle": "Notificaciones",
+    "notificationsEmpty": "Sin notificaciones.",
+    "logsTitle": "Registro de sync",
+    "logsEmpty": "Sin entradas de sync.",
+    "showMore": "Mostrar más…",
+    "showLess": "Mostrar menos…",
+    "colDate": "Fecha",
+    "colTitle": "Título",
+    "colDetail": "Detalle",
+    "colRead": "Leído"
   },
   "common": {
     "loading": "Cargando…",
     "loadFailed": "Error al cargar"
+  },
+  "marketTicker": {
+    "panelAria": "Mercado",
+    "uf": "UF",
+    "usdLive": "USD"
   }
 }

@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  --market-ticker-height: 30px;
   --bg: #0c0f14;
   --surface: #141a22;
   --surface2: #1c2430;
@@ -15,8 +16,12 @@
   font-family: "DM Sans", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
+}
+
+html {
+  background-color: var(--bg);
 }
 
 * {
@@ -26,6 +31,12 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background-color: var(--bg);
+}
+
+#root {
+  min-height: 100vh;
+  background-color: var(--bg);
 }
 
 .visually-hidden {
@@ -38,10 +49,6 @@ body {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-}
-
-#root {
-  min-height: 100vh;
 }
 
 a {
@@ -75,6 +82,7 @@ a:hover {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  background-color: var(--bg);
 }
 
 .app-sidebar {
@@ -114,8 +122,21 @@ a:hover {
 
 .sidebar-nav {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-nav-scroll {
+  flex: 1;
   overflow-y: auto;
-  padding: 0.5rem 0.5rem 1rem 0.8rem;
+  padding: 0.5rem 0.5rem 0.25rem 0.8rem;
+}
+
+.sidebar-nav-footer {
+  flex-shrink: 0;
+  padding: 0 0.5rem 0.75rem 0.8rem;
 }
 
 .sidebar-loading {
@@ -239,17 +260,18 @@ a:hover {
 }
 
 .sidebar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   flex: 1;
   min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: 0.8125rem;
   font-weight: 500;
   padding: 0.3rem 0.45rem 0.3rem 0.1rem;
   border-radius: 6px;
   text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .sidebar-link:hover {
@@ -278,6 +300,35 @@ a:hover {
   height: 1px;
   margin: 0.5rem 0.65rem;
   background: var(--border);
+}
+
+.sidebar-link-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-unread-pill {
+  flex-shrink: 0;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: #c62828;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.15rem;
+  text-align: center;
+}
+
+.messages-body-pre {
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
 }
 
 .flow-subnav {
@@ -390,7 +441,8 @@ select.rates-series-select {
   color: var(--accent);
 }
 
-main.page {
+/** Standard page gutter for all routed views (see App.tsx layout wrapper). */
+.layout-main>.content {
   flex: 1;
   padding: 1.25rem 1.5rem 2rem;
   max-width: 1200px;
@@ -534,13 +586,13 @@ number-flow-react.dashboard-card-value--breakdown {
   padding-top: 0.5rem;
 }
 
-.card-breakdown-stack > .card-breakdown {
+.card-breakdown-stack>.card-breakdown {
   margin-top: 0;
   border-top: none;
   padding-top: 0;
 }
 
-.card-breakdown-stack > .card-breakdown--bottom {
+.card-breakdown-stack>.card-breakdown--bottom {
   margin-top: auto;
   border-top: 1px solid var(--border);
   padding-top: 0.5rem;
@@ -653,13 +705,13 @@ number-flow-react.dashboard-card-value--breakdown {
   line-height: 1;
 }
 
-.card-group-metrics__amount--delta-up,
-.card-group-metrics__delta.card-group-metrics__amount--delta-up {
+.card-group-metrics__delta.card-group-metrics__amount--delta-up,
+.card-group-metrics__amount--delta-up {
   color: var(--positive);
 }
 
-.card-group-metrics__amount--delta-down,
-.card-group-metrics__delta.card-group-metrics__amount--delta-down {
+.card-group-metrics__delta.card-group-metrics__amount--delta-down,
+.card-group-metrics__amount--delta-down {
   color: var(--negative);
 }
 
@@ -868,4 +920,127 @@ tr:hover td {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Fixed top market ticker (Bloomberg-style marquee). No panel fill — page --bg shows through. */
+.market-ticker-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+@media (max-width: 879px) {
+  .layout--with-sidebar {
+    padding-top: var(--market-ticker-height);
+  }
+}
+
+@media (min-width: 880px) {
+  .market-ticker-panel {
+    left: auto;
+    width: calc((100vw - 15.5rem) * 2 / 3);
+    background-color: var(--bg);
+    z-index: 1;
+  }
+
+  .market-ticker-panel::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: -1px;
+    width: calc(min(6.5rem, 10%) + 1.25rem);
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(to right, var(--bg) 0%, var(--bg) 10%, transparent 100%);
+  }
+}
+
+.market-ticker-panel__marquee-wrap {
+  position: relative;
+  width: 100%;
+  height: var(--market-ticker-height);
+  overflow: hidden;
+  border-radius: 0;
+  background: transparent;
+}
+
+.market-ticker-panel__marquee-wrap--idle {
+  display: flex;
+  align-items: center;
+}
+
+.app-marquee,
+.app-marquee .rfm-marquee,
+.app-marquee .rfm-initial-child-container,
+.app-marquee .rfm-child,
+.app-marquee .rfm-overlay {
+  background: transparent !important;
+}
+
+.app-marquee {
+  height: var(--market-ticker-height);
+}
+
+.app-marquee .rfm-marquee,
+.app-marquee .rfm-initial-child-container,
+.app-marquee .rfm-child {
+  align-items: center;
+  height: var(--market-ticker-height);
+}
+
+.market-ticker-panel__loading {
+  display: inline-flex;
+  align-items: center;
+  height: var(--market-ticker-height);
+  padding: 0 0.75rem;
+  font-size: 0.72rem;
+}
+
+.market-ticker-panel__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0 0.2rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.market-ticker-panel__label {
+  color: #f5c842;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.market-ticker-panel__value {
+  color: var(--text);
+  font-size: 0.7rem;
+}
+
+.market-ticker-panel__delta {
+  font-size: 0.65rem;
+}
+
+.market-ticker-panel__delta .card-group-metrics__amount {
+  font-size: 0.65rem;
+}
+
+.market-ticker-panel__sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  margin: 0 0.65rem;
+  background: var(--border);
+  vertical-align: middle;
 }

@@ -303,7 +303,7 @@ export function DashboardPage() {
 
   if (err) {
     return (
-      <main className="page">
+      <main>
         <p className="error">{err}</p>
       </main>
     );
@@ -337,7 +337,7 @@ export function DashboardPage() {
     }));
 
   return (
-    <main className="page">
+    <main>
       <h1>{t("dashboard.title")}</h1>
       <div className="toggle-row">
         <span className="muted">{t("dashboard.values")} </span>

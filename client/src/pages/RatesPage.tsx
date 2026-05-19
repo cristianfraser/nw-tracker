@@ -175,7 +175,7 @@ export function RatesPage() {
 
   if (err) {
     return (
-      <main className="page">
+      <main>
         <p className="error">{err}</p>
       </main>
     );
@@ -183,7 +183,7 @@ export function RatesPage() {
 
   if (!payload) {
     return (
-      <main className="page">
+      <main>
         <p className="muted">
           <Link to="/">← Dashboard</Link>
         </p>
@@ -194,7 +194,7 @@ export function RatesPage() {
   }
 
   return (
-    <main className="page">
+    <main>
       <p className="muted">
         <Link to="/">← Dashboard</Link>
       </p>

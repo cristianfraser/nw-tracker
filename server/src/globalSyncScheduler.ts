@@ -1,22 +1,16 @@
 /**
- * In-process scheduler: if any external source is stale, run `scripts/global-sync.ts`
- * (each source skips itself when already fresh).
+ * In-process scheduler: if any external source is stale, run `runGlobalSyncAll()` directly
+ * (no child `npx` process — more reliable under `tsx watch`).
  *
  * Env:
  * - `GLOBAL_SYNC_ENABLED` — default on; set `0` to disable.
- * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval (default 10 minutes).
+ * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval (default 15 minutes).
  * - `GLOBAL_SYNC_STARTUP_DELAY_MS` — first check after server listen (default 30s).
  */
-import { spawn } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { chileWallClockNow } from "./chileDate.js";
 import { staleSyncSources } from "./globalSyncStale.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SERVER_DIR = path.resolve(__dirname, "..");
 
 let inFlight = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -33,21 +27,16 @@ function envMs(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function runGlobalSyncScript(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const script = path.join(SERVER_DIR, "scripts/global-sync.ts");
-    const child = spawn("npx", ["tsx", script], {
-      cwd: SERVER_DIR,
-      stdio: "inherit",
-      env: process.env,
-    });
-    child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 1));
-  });
+async function runGlobalSyncInProcess(): Promise<number> {
+  const { runGlobalSyncAll } = await import("../scripts/global-sync.js");
+  return runGlobalSyncAll({ dryRun: false });
 }
 
 async function schedulerTick(): Promise<void> {
-  if (inFlight) return;
+  if (inFlight) {
+    console.log("sync:scheduler — skip (previous run still in progress).");
+    return;
+  }
   inFlight = true;
   try {
     loadRootDotenv();
@@ -58,9 +47,11 @@ async function schedulerTick(): Promise<void> {
     console.log(
       `sync:scheduler — stale [${stale.join(", ")}] at Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")}`
     );
-    const code = await runGlobalSyncScript();
+    const code = await runGlobalSyncInProcess();
     if (code !== 0) {
       console.warn(`sync:scheduler — global-sync exited with code ${code}`);
+    } else {
+      console.log("sync:scheduler — global-sync finished ok.");
     }
   } catch (e) {
     console.error(`sync:scheduler — error: ${e instanceof Error ? e.message : e}`);
@@ -74,7 +65,7 @@ export function startGlobalSyncScheduler(): void {
     console.log("sync:scheduler — disabled (GLOBAL_SYNC_ENABLED=0).");
     return;
   }
-  const intervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 10 * 60 * 1000);
+  const intervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
   const startupDelayMs = envMs("GLOBAL_SYNC_STARTUP_DELAY_MS", 30 * 1000);
 
   console.log(

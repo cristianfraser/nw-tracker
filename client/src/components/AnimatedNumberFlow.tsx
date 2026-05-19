@@ -13,12 +13,18 @@ import type { NUMBER_FLOW_INT_FORMAT } from "../format";
 const MOUNT_STORAGE_PREFIX = "nw:numberFlowMount:";
 const DEFAULT_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 
+export type NumberFlowFormatOptions = {
+  minimumFractionDigits?: number;
+  maximumFractionDigits?: number;
+  signDisplay?: "auto" | "never" | "always" | "exceptZero";
+};
+
 export type AnimatedNumberFlowMapResult = {
   value: number;
   prefix?: string;
   suffix?: string;
   locales?: string;
-  format?: typeof NUMBER_FLOW_INT_FORMAT;
+  format?: typeof NUMBER_FLOW_INT_FORMAT | NumberFlowFormatOptions;
 };
 
 type NumberFlowPassthrough = Omit<
@@ -35,6 +41,8 @@ type BaseProps = NumberFlowPassthrough & {
   wrapClassName?: string;
   /** Opacity fade duration on first mount reveal (ms). */
   mountDuration?: number;
+  /** Caller-owned mount state (e.g. shared opacity with a leading ▲/▼). Skips inner opacity transition. */
+  mountAnimation?: MountAnimationState;
   emptyFallback?: ReactNode;
 };
 
@@ -124,12 +132,18 @@ function mountSeedFromStorage(
   return mountSeedFresh(digitRange);
 }
 
-function useMountAnimation(
+export type MountAnimationState = {
+  displayValue: number | null;
+  opacity: number;
+  mountDuration: number;
+};
+
+export function useMountAnimation(
   target: number | null,
   animated: boolean,
   mountSeedDigitRange: [number, number] | undefined,
   mountSeedId: string | undefined
-): { displayValue: number | null; opacity: number; mountDuration: number } {
+): MountAnimationState {
   const mountSeed = useRef<number | null>(null);
   const mountDone = useRef(false);
   const useMountSeed = mountSeedDigitRange != null && mountSeedId != null;
@@ -203,6 +217,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       className,
       wrapClassName,
       mountDuration: mountDurationProp,
+      mountAnimation: mountAnimationProp,
       emptyFallback,
       transformTiming,
       spinTiming,
@@ -213,12 +228,9 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     const hostRef = useRef<NumberFlowElement | null>(null);
     useImperativeHandle(ref, () => hostRef.current as NumberFlowElement);
 
-    const { displayValue, opacity, mountDuration } = useMountAnimation(
-      target,
-      animated,
-      mountSeedDigitRange,
-      mountSeedId
-    );
+    const internalMount = useMountAnimation(target, animated, mountSeedDigitRange, mountSeedId);
+    const { displayValue, opacity, mountDuration } = mountAnimationProp ?? internalMount;
+    const externalMount = mountAnimationProp != null;
     const duration = mountDurationProp ?? mountDuration;
     const easing = DEFAULT_EASING;
     const resolvedTransform = transformTiming ?? { duration, easing };
@@ -235,8 +247,9 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       <span
         className={wrapClassName}
         style={{
-          opacity,
-          transition: mountSeedDigitRange ? `opacity ${duration}ms ${easing}` : undefined,
+          opacity: externalMount ? 1 : opacity,
+          transition:
+            !externalMount && mountSeedDigitRange ? `opacity ${duration}ms ${easing}` : undefined,
         }}
       >
         <NumberFlow
