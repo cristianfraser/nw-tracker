@@ -1,6 +1,12 @@
 :root {
   color-scheme: dark;
   --market-ticker-height: 30px;
+  /** Gap below fixed marquee; same for display prefs bar offset from viewport top. */
+  --display-prefs-gap: 0.35rem;
+  /** Horizontal inset for the floating display prefs panel. */
+  --display-prefs-side: 0.75rem;
+  /** Reserved height under ticker so main content clears the fixed prefs bar (desktop). */
+  --display-prefs-stack-height: 2.625rem;
   --nav-drawer-tab-gap: 0.5rem;
   --bg: #0c0f14;
   --surface: #141a22;
@@ -15,6 +21,9 @@
   --negative: #f87171;
   --chart-panel-min-height: 420px;
   --chart-panel-height: clamp(390px, 54vh, 600px);
+  /** Primary currency figure on dashboard / group cards (compact strip + detailed buckets). */
+  --dashboard-card-primary-value-font-size: 1.05rem;
+  --dashboard-card-primary-value-font-weight: 600;
   font-family: "DM Sans", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;

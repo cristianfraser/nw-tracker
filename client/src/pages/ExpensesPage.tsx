@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "../api";
+import { useFlowsExpenses } from "../queries/hooks";
 import { ExpensesByApartmentChart } from "../components/ExpensesByApartmentChart";
 import { Table } from "../components/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
@@ -10,7 +10,6 @@ import type {
   ExpenseApartmentSlug,
   ExpenseFlowGroupSlug,
   FlowExpenseAccountBlock,
-  FlowsExpensesResponse,
 } from "../types";
 
 const GROUP_ORDER: ExpenseFlowGroupSlug[] = ["real_estate"];
@@ -24,24 +23,9 @@ function formatAmountCell(amount_clp: number): string {
 export function ExpensesPage() {
   const { t } = useTranslation();
   const { groupSlug, accountSlug } = useParams<{ groupSlug?: string; accountSlug?: string }>();
-  const [data, setData] = useState<FlowsExpensesResponse | null>(null);
   const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const d = await api.flowsExpenses();
-        if (!cancelled) setData(d);
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, error } = useFlowsExpenses();
+  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];

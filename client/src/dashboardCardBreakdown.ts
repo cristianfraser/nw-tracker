@@ -344,20 +344,18 @@ const DASHBOARD_GROUP_OVERVIEW_KEY = {
 
 export type DashboardGroupSlug = keyof typeof DASHBOARD_GROUP_OVERVIEW_KEY;
 
-/** Balance Δ: Σ current (live dashboard) − Σ prior period close (performance month/year-end). */
-export function groupPeriodBalanceDeltaFromAccounts(
+/** Balance Δ for an arbitrary account subset: Σ current − Σ prior close (same rules as bucket cards). */
+export function subsetPeriodBalanceDeltaFromAccounts(
   accounts: DashboardAccountRow[],
-  groupSlug: DashboardGroupSlug,
   period: CardGroupMetricsPeriod,
   unit: "clp" | "usd",
-  filter?: (a: DashboardAccountRow) => boolean
+  include: (a: DashboardAccountRow) => boolean
 ): number | null {
   const rows = accounts.filter(
     (a) =>
-      a.group_slug === groupSlug &&
+      include(a) &&
       a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp) &&
-      (!filter || filter(a))
+      Number.isFinite(a.current_value_clp)
   );
   if (!rows.length) return null;
 
@@ -384,6 +382,75 @@ export function groupPeriodBalanceDeltaFromAccounts(
 
   if (counted === 0) return null;
   return current - prior;
+}
+
+export function subsetTitleBalanceDeltaRounded(
+  accounts: DashboardAccountRow[],
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean,
+  include: (a: DashboardAccountRow) => boolean
+): number | null {
+  const unit = showUsd ? "usd" : "clp";
+  const v = subsetPeriodBalanceDeltaFromAccounts(accounts, period, unit, include);
+  return v != null && Number.isFinite(v) ? Math.round(v) : null;
+}
+
+/** Single-account card title Δ (prior month/year close vs live mark). */
+export function accountCardTitleBalanceDelta(
+  row: DashboardAccountRow,
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean
+): number | null {
+  return subsetTitleBalanceDeltaRounded([row], period, showUsd, () => true);
+}
+
+/** Sum deposits + P/L metrics for an arbitrary account subset. */
+export function cardGroupMetricsForAccountSubset(
+  accounts: DashboardAccountRow[],
+  period: CardGroupMetricsPeriod,
+  include: (a: DashboardAccountRow) => boolean
+): CardGroupMetrics {
+  return cardGroupMetricsFromAccounts(accounts.filter(include), period);
+}
+
+/** Sum live dashboard current values for an account subset (CLP always; USD when `showUsd`). */
+export function sumCurrentValueClpUsd(
+  rows: DashboardAccountRow[],
+  showUsd: boolean
+): { clp: number; apiUsd: number | null } {
+  let clp = 0;
+  let usd = 0;
+  let anyUsd = false;
+  for (const r of rows) {
+    if (r.current_value_clp != null && Number.isFinite(r.current_value_clp)) {
+      clp += r.current_value_clp;
+    }
+    if (showUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
+      usd += r.current_value_usd;
+      anyUsd = true;
+    }
+  }
+  return { clp, apiUsd: anyUsd ? usd : null };
+}
+
+/** Balance Δ: Σ current (live dashboard) − Σ prior period close (performance month/year-end). */
+export function groupPeriodBalanceDeltaFromAccounts(
+  accounts: DashboardAccountRow[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd",
+  filter?: (a: DashboardAccountRow) => boolean
+): number | null {
+  return subsetPeriodBalanceDeltaFromAccounts(
+    accounts,
+    period,
+    unit,
+    (a) =>
+      a.group_slug === groupSlug &&
+      a.current_value_clp != null &&
+      Number.isFinite(a.current_value_clp) &&
+      (!filter || filter(a))
+  );
 }
 
 /** Fallback: overview bucket total when performance prior close is missing. */

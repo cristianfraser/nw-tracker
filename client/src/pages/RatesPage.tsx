@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CartesianGrid,
@@ -8,24 +8,42 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api } from "../api";
+import { useMarketSeries, useRatesInstruments } from "../queries/hooks";
+import type { DisplayUnit } from "../queries/keys";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
 import { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "../components/AppLineChart";
 import { formatClp, formatUsdFine } from "../format";
-import type { MarketSeriesPoint, MarketSeriesResponse } from "../types";
+import type { MarketSeriesPoint } from "../types";
 import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/ValuationLineCharts";
+import { useTranslation } from "../i18n";
 
 type RatesTab = "fx" | "tickers";
-type DisplayUnit = "clp" | "usd";
 
-const INSTRUMENT_SLOTS = [
-  { kind: "eq" as const, id: "SPY", title: "SPY" },
-  { kind: "eq" as const, id: "VEA", title: "VEA" },
-  { kind: "fund" as const, id: "fintual_risky_norris", title: "Risky Norris (valor cuota)" },
-  { kind: "fund" as const, id: "afp_uno_cuota_a", title: "AFP Uno — valor cuota" },
-  { kind: "eq" as const, id: "BTC-USD", title: "BTC" },
-  { kind: "eq" as const, id: "ETH-USD", title: "ETH" },
-];
+type InstrumentSlot = {
+  kind: "eq" | "fund";
+  id: string;
+  title: string;
+};
+
+function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): InstrumentSlot[] {
+  if (!rows?.length) {
+    return [
+      { kind: "eq", id: "SPY", title: "SPY" },
+      { kind: "eq", id: "VEA", title: "VEA" },
+      { kind: "fund", id: "fintual_risky_norris", title: "Risky Norris (valor cuota)" },
+      { kind: "fund", id: "afp_uno_cuota_a", title: "AFP Uno — valor cuota" },
+      { kind: "eq", id: "BTC-USD", title: "BTC" },
+      { kind: "eq", id: "ETH-USD", title: "ETH" },
+    ];
+  }
+  return rows.map((r) => ({
+    kind: r.kind === "fund_unit" ? "fund" : "eq",
+    id: r.series_key ?? r.slug,
+    title: r.rates_chart_title ?? r.label,
+  }));
+}
 
 function formatIpcIndex(n: number): string {
   return new Intl.NumberFormat("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(n);
@@ -45,7 +63,7 @@ function seriesFromPoints(
 
 function instrumentValue(
   p: MarketSeriesPoint,
-  slot: (typeof INSTRUMENT_SLOTS)[number],
+  slot: InstrumentSlot,
   display: DisplayUnit
 ): number | null {
   if (slot.kind === "eq") {
@@ -146,25 +164,17 @@ function MiniLineChart({
 }
 
 export function RatesPage() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<RatesTab>("fx");
-  const [displayUnit, setDisplayUnit] = useState<DisplayUnit>("clp");
-  const [payload, setPayload] = useState<MarketSeriesResponse | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const { displayUnit } = useDisplayPreferences();
+  const { data: payload, error } = useMarketSeries();
+  const { data: ratesInstruments } = useRatesInstruments();
+  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const d = await api.marketSeries();
-        if (!cancelled) setPayload(d);
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const instrumentSlots = useMemo(
+    () => instrumentSlotsFromDb(ratesInstruments?.instruments),
+    [ratesInstruments]
+  );
 
   const points = useMemo(() => payload?.points ?? [], [payload]);
 
@@ -253,29 +263,12 @@ export function RatesPage() {
         </>
       ) : (
         <>
-          <div className="toggle-row" style={{ alignItems: "center", flexWrap: "wrap", marginBottom: "1rem" }}>
-            <span className="muted">Display: </span>
-            <label>
-              <input
-                type="radio"
-                name="rates-du"
-                checked={displayUnit === "clp"}
-                onChange={() => setDisplayUnit("clp")}
-              />{" "}
-              CLP
-            </label>
-            <label>
-              <input type="radio" name="rates-du" checked={displayUnit === "usd"} onChange={() => setDisplayUnit("usd")} />{" "}
-              USD
-            </label>
-            <span className="muted" style={{ marginLeft: "0.5rem" }}>
-              CLP mode uses the USD/CLP series to convert USD-denominated closes; fund valor cuota stays CLP-based then
-              converts to US$ in USD mode.
-            </span>
-          </div>
+          <p className="muted" style={{ marginBottom: "1rem", maxWidth: "52rem", lineHeight: 1.45 }}>
+            {t("rates.instrumentDisplayHint")}
+          </p>
 
           <div className="rates-instrument-stack">
-            {INSTRUMENT_SLOTS.map((slot) => {
+            {instrumentSlots.map((slot) => {
               const data = seriesFromPoints(points, (p) => instrumentValue(p, slot, displayUnit));
               const axis: "clp" | "usd" = displayUnit === "clp" ? "clp" : "usd";
               const fmt = displayUnit === "clp" ? formatClp : formatUsdFine;

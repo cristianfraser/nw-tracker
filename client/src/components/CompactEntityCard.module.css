@@ -1,0 +1,26 @@
+.root {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 10px);
+  padding: 0.65rem 0.85rem;
+  background: var(--card, var(--panel));
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/**
+ * `cards.css` gives the title row `margin-bottom`; this component also uses column `gap`, which
+ * would stack spacing and push the primary value down vs `DetailedGroupCard` (title margin only).
+ */
+.root :global(.card-title-row.title-container) {
+  margin-bottom: 0;
+}
+
+/** Nested inside `portfolio-strip-compact` / net-worth strip (outer shell already has card chrome). */
+.rootStripInner {
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}

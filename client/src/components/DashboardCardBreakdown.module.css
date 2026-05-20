@@ -34,7 +34,6 @@
   justify-content: space-between;
   gap: 0.5rem;
   align-items: baseline;
-  line-height: 1.35;
   padding: 0.12rem 0;
 }
 
@@ -67,10 +66,4 @@
 .grandchild .label {
   padding-left: 1.25rem;
   color: var(--muted);
-}
-
-.grandchild :global(.card-breakdown__amount),
-.child :global(.card-breakdown__amount) {
-  color: var(--muted);
-  font-size: 0.68rem;
 }

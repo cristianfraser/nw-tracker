@@ -8,29 +8,6 @@ export type InversionesResolved = {
   navScope: "root" | "retiro" | "brokerage";
 };
 
-/** Back link on group tab pages: parent group in the title hierarchy, or Dashboard only at the Inversiones root. */
-export function inversionesGroupParentBackLink(r: InversionesResolved): { to: string; label: string } {
-  if (r.apiGroup === "inversiones") {
-    return { to: "/", label: "Dashboard" };
-  }
-  if (r.apiGroup === "retirement") {
-    if (r.apiSubgroup == null) {
-      return { to: "/inversiones", label: "Inversiones" };
-    }
-    if (r.apiSubgroup === "apv_a" || r.apiSubgroup === "apv_a_principal" || r.apiSubgroup === "apv_b") {
-      return { to: "/inversiones/retiro/apv", label: "APV" };
-    }
-    return { to: "/inversiones/retiro", label: "Retiro" };
-  }
-  if (r.apiGroup === "brokerage") {
-    if (r.apiSubgroup == null) {
-      return { to: "/inversiones", label: "Inversiones" };
-    }
-    return { to: "/inversiones/brokerage", label: "Brokerage" };
-  }
-  return { to: "/", label: "Dashboard" };
-}
-
 /**
  * Maps `useParams()['*']` under `/inversiones/*` to API `group` + `subgroup` query params.
  */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { LineChartPanel, ValuationLineCharts } from "../components/ValuationLineCharts";
@@ -6,9 +6,11 @@ import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceCo
 import { Table } from "../components/Table";
 import { DashboardCardBreakdown } from "../components/DashboardCardBreakdown";
 import { DashboardCardGroupMetrics } from "../components/DashboardCardGroupMetrics";
-import { DashboardCardTitleRow } from "../components/DashboardCardTitleRow";
-import { DashboardCardValue, DashboardCardsValueGroup } from "../components/DashboardCardValue";
-import { api } from "../api";
+import { CompactEntityCard } from "../components/CompactEntityCard";
+import { PortfolioEntityCardsStrip } from "../components/PortfolioEntityCardsStrip";
+import { DetailedGroupCard } from "../components/DetailedGroupCard";
+import { useDashboardBundle } from "../queries/hooks";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildBrokerageCardBreakdown,
   buildCashCardBreakdown,
@@ -24,112 +26,70 @@ import { appendTrailingMovingAverage } from "../chartMovingAverage";
 import {
   rollupRetirementBrokeragePerfYearly,
   rollupTimeseriesBlockYearEnd,
-  type DashboardChartGranularity,
 } from "../dashboardTimeseriesYearly";
 import { useLoading } from "../context/LoadingContext";
 import { useTranslation } from "../i18n";
 import { formatClp, formatUsd, formatInstrumentUnits, formatMoneyForPie } from "../format";
-import type {
-  DashboardResponse,
-  FxLatest,
-  GroupMonthlyPerformanceResponse,
-  ValuationTimeseriesResponse,
-} from "../types";
+import type { DashboardLayoutCardRow, ValuationTimeseriesResponse } from "../types";
 
-type DisplayUnit = "clp" | "usd";
+const DASHBOARD_KNOWN_BUCKETS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
-type DashboardBundle = {
-  dash: DashboardResponse;
-  ts: ValuationTimeseriesResponse;
-  fx: FxLatest | null;
-  retirementPerf: GroupMonthlyPerformanceResponse | null;
-  brokeragePerf: GroupMonthlyPerformanceResponse | null;
-};
-
-async function fetchDashboardBundle(unit: DisplayUnit): Promise<DashboardBundle> {
-  const showUsd = unit === "usd";
-  const [dash, fx, ts, retirementPerf, brokeragePerf] = await Promise.all([
-    api.dashboard(showUsd),
-    api.fxLatest(),
-    api.valuationTimeseries(unit),
-    api.groupMonthlyPerformance("retirement", unit).catch(() => null),
-    api.groupMonthlyPerformance("brokerage", unit).catch(() => null),
-  ]);
-  return { dash, fx, ts, retirementPerf, brokeragePerf };
-}
-
+/** Used when API omits `dashboard_layout` (e.g. before migration 035). Matches legacy order. */
+const DEFAULT_DASHBOARD_BUCKET_LAYOUT: DashboardLayoutCardRow[] = [
+  {
+    slug: "real_estate",
+    label: "Real estate",
+    label_i18n_key: "dashboard.cards.realEstate",
+    sort_order: 10,
+    bucket_slug: "real_estate",
+    card_css: null,
+  },
+  {
+    slug: "retirement",
+    label: "Retirement",
+    label_i18n_key: "dashboard.cards.retirement",
+    sort_order: 20,
+    bucket_slug: "retirement",
+    card_css: null,
+  },
+  {
+    slug: "brokerage",
+    label: "Brokerage",
+    label_i18n_key: "dashboard.cards.inversiones",
+    sort_order: 30,
+    bucket_slug: "brokerage",
+    card_css: null,
+  },
+  {
+    slug: "cash_eqs",
+    label: "Cash",
+    label_i18n_key: "dashboard.cards.cash",
+    sort_order: 40,
+    bucket_slug: "cash_eqs",
+    card_css: "cash",
+  },
+];
 export function DashboardPage() {
   const { t } = useTranslation();
   const { setLoading } = useLoading();
-  const [dash, setDash] = useState<DashboardResponse | null>(null);
-  const [ts, setTs] = useState<ValuationTimeseriesResponse | null>(null);
-  const [retirementPerf, setRetirementPerf] = useState<GroupMonthlyPerformanceResponse | null>(null);
-  const [brokeragePerf, setBrokeragePerf] = useState<GroupMonthlyPerformanceResponse | null>(null);
-  const [displayUnit, setDisplayUnit] = useState<DisplayUnit>("clp");
-  const [unitPending, setUnitPending] = useState<DisplayUnit | null>(null);
-  const [chartGranularity, setChartGranularity] = useState<DashboardChartGranularity>("monthly");
-  const [err, setErr] = useState<string | null>(null);
-  const switchSeq = useRef(0);
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { data, error, isPending, isFetching } = useDashboardBundle(displayUnit);
+
+  const dash = data?.dash ?? null;
+  const ts = data?.ts ?? null;
+  const retirementPerf = data?.retirementPerf ?? null;
+  const brokeragePerf = data?.brokeragePerf ?? null;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const showUsd = displayUnit === "usd";
-  const radioUnit = unitPending ?? displayUnit;
-  const unitSwitching = unitPending !== null;
-  const isYearly = chartGranularity === "yearly";
+  const unitSwitching = isFetching && !isPending;
+  const isYearly = metricsPeriod === "year";
   const xAxisGranularity = isYearly ? "year" : "month";
 
-  const applyBundle = useCallback((bundle: DashboardBundle) => {
-    setDash(bundle.dash);
-    setTs(bundle.ts);
-    setRetirementPerf(bundle.retirementPerf);
-    setBrokeragePerf(bundle.brokeragePerf);
-  }, []);
-
-  const switchDisplayUnit = useCallback(
-    async (next: DisplayUnit) => {
-      if (next === displayUnit && unitPending === null) return;
-      const seq = ++switchSeq.current;
-      setUnitPending(next);
-      setLoading(true);
-      try {
-        const bundle = await fetchDashboardBundle(next);
-        if (seq !== switchSeq.current) return;
-        applyBundle(bundle);
-        setDisplayUnit(next);
-        setErr(null);
-      } catch (e) {
-        if (seq !== switchSeq.current) return;
-        setErr(e instanceof Error ? e.message : t("common.loadFailed"));
-      } finally {
-        if (seq === switchSeq.current) {
-          setUnitPending(null);
-          setLoading(false);
-        }
-      }
-    },
-    [displayUnit, unitPending, applyBundle, setLoading, t]
-  );
-
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    void (async () => {
-      try {
-        const bundle = await fetchDashboardBundle("clp");
-        if (cancelled) return;
-        applyBundle(bundle);
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : t("common.loadFailed"));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      setLoading(false);
-    };
-  }, [applyBundle, setLoading, t]);
-
-  useEffect(() => () => setLoading(false), [setLoading]);
+    setLoading(isPending);
+    return () => setLoading(false);
+  }, [isPending, setLoading]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {
@@ -250,6 +210,16 @@ export function DashboardPage() {
     return m;
   }, [dash]);
 
+  const primaryColorRgbByIndex = useMemo(() => {
+    const lines = tsForCharts?.accounts_ex_property?.accounts;
+    if (!lines?.length) return undefined;
+    const m = new Map<number, string>();
+    lines.forEach((line, i) => {
+      if (line.color_rgb) m.set(i, line.color_rgb);
+    });
+    return m.size > 0 ? m : undefined;
+  }, [tsForCharts]);
+
   const retirementBreakdown = useMemo(
     () => (dash ? buildRetirementCardBreakdown(dash.accounts) : []),
     [dash]
@@ -274,7 +244,6 @@ export function DashboardPage() {
   }, [dash]);
 
   const cashCardSlugs = useMemo(() => new Set(["fondo_reserva", "cuenta_corriente"]), []);
-  const metricsPeriod = isYearly ? "year" : "month";
 
   const netWorthMetrics = useMemo(
     () => (dash ? cardGroupMetricsNetWorth(dash.accounts, metricsPeriod) : null),
@@ -375,6 +344,13 @@ export function DashboardPage() {
     [dash, overviewPoints, metricsPeriod, showUsd, cashCardSlugs]
   );
 
+  const dashboardBucketLayout = useMemo(() => {
+    if (!dash) return DEFAULT_DASHBOARD_BUCKET_LAYOUT;
+    const raw = (dash.dashboard_layout ?? []).filter((c) => DASHBOARD_KNOWN_BUCKETS.has(c.bucket_slug));
+    const list = raw.length > 0 ? [...raw].sort((a, b) => a.sort_order - b.sort_order) : DEFAULT_DASHBOARD_BUCKET_LAYOUT;
+    return list;
+  }, [dash]);
+
   if (err) {
     return (
       <main>
@@ -411,218 +387,183 @@ export function DashboardPage() {
     }));
 
   return (
-    <main>
+    <main className="page-dashboard">
       <h1>{t("dashboard.title")}</h1>
-      <div className="toggle-row">
-        <span className="muted">{t("dashboard.values")} </span>
-        <label>
-          <input
-            type="radio"
-            name="du"
-            checked={radioUnit === "clp"}
-            disabled={unitSwitching}
-            onChange={() => void switchDisplayUnit("clp")}
-          />{" "}
-          CLP
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="du"
-            checked={radioUnit === "usd"}
-            disabled={unitSwitching}
-            onChange={() => void switchDisplayUnit("usd")}
-          />{" "}
-          USD
-        </label>
-        <span className="muted" style={{ marginLeft: "1.25rem" }}>
-          {t("dashboard.chartGranularityLabel")}{" "}
-        </span>
-        <label>
-          <input
-            type="radio"
-            name="cg"
-            checked={chartGranularity === "monthly"}
-            onChange={() => setChartGranularity("monthly")}
-          />{" "}
-          {t("dashboard.monthly")}
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="cg"
-            checked={chartGranularity === "yearly"}
-            onChange={() => setChartGranularity("yearly")}
-          />{" "}
-          {t("dashboard.yearly")}
-        </label>
-      </div>
-      <DashboardCardsValueGroup>
-        <div className="dashboard-cards">
-          <div className="card card--detail card--detail-compact card--detail-stretch card--dashboard-net-worth">
-            <DashboardCardTitleRow
-              label={t("dashboard.cards.netWorth")}
-              balanceDelta={netWorthTitleDelta}
-              showUsd={showUsd}
-              cardSlug="net_worth"
-              animated={!unitSwitching}
-            />
-            <div className="value">
-              <DashboardCardValue
-                clp={dash.totals.net_worth_clp}
-                apiUsd={dash.totals.net_worth_usd}
-                showUsd={showUsd}
-                animated={!unitSwitching}
-                mountSeedKey="net_worth"
-              />
-            </div>
-            {netWorthMetrics ? (
-              <DashboardCardGroupMetrics
-                metrics={netWorthMetrics}
-                showUsd={showUsd}
-                period={metricsPeriod}
-                cardSlug="net_worth"
-                animated={!unitSwitching}
-              />
-            ) : null}
-          </div>
-          <div className="row-spacer" aria-hidden="true" />
-          <div className="card card--detail card--detail-stretch">
-            <DashboardCardTitleRow
-              label={t("dashboard.cards.realEstate")}
-              balanceDelta={realEstateTitleDelta}
-              showUsd={showUsd}
-              cardSlug="real_estate"
-              animated={!unitSwitching}
-            />
-            <div className="value">
-              <DashboardCardValue
-                clp={dash.totals.real_estate_clp}
-                apiUsd={dash.totals.real_estate_usd}
-                showUsd={showUsd}
-                animated={!unitSwitching}
-                mountSeedKey="real_estate"
-              />
-            </div>
-            {realEstateMetrics ? (
-              <DashboardCardGroupMetrics
-                metrics={realEstateMetrics}
-                showUsd={showUsd}
-                period={metricsPeriod}
-                cardSlug="real_estate"
-                animated={!unitSwitching}
-              />
-            ) : null}
-            <DashboardCardBreakdown
-              lines={realEstateBreakdown}
-              showUsd={showUsd}
-              cardSlug="real_estate"
-              animated={!unitSwitching}
-            />
-          </div>
-          <div className="card card--detail card--detail-stretch">
-            <DashboardCardTitleRow
-              label={t("dashboard.cards.retirement")}
-              balanceDelta={retirementTitleDelta}
-              showUsd={showUsd}
-              cardSlug="retirement"
-              animated={!unitSwitching}
-            />
-            <div className="value">
-              <DashboardCardValue
-                clp={dash.totals.retirement_clp}
-                apiUsd={dash.totals.retirement_usd}
-                showUsd={showUsd}
-                animated={!unitSwitching}
-                mountSeedKey="retirement"
-              />
-            </div>
-            {retirementMetrics ? (
-              <DashboardCardGroupMetrics
-                metrics={retirementMetrics}
-                showUsd={showUsd}
-                period={metricsPeriod}
-                cardSlug="retirement"
-                animated={!unitSwitching}
-              />
-            ) : null}
-            <DashboardCardBreakdown
-              lines={retirementBreakdown}
-              showUsd={showUsd}
-              cardSlug="retirement"
-              animated={!unitSwitching}
-            />
-          </div>
-          <div className="card card--detail card--detail-stretch">
-            <DashboardCardTitleRow
-              label={t("dashboard.cards.brokerage")}
-              balanceDelta={brokerageTitleDelta}
-              showUsd={showUsd}
-              cardSlug="brokerage"
-              animated={!unitSwitching}
-            />
-            <div className="value">
-              <DashboardCardValue
-                clp={dash.totals.brokerage_clp}
-                apiUsd={dash.totals.brokerage_usd}
-                showUsd={showUsd}
-                animated={!unitSwitching}
-                mountSeedKey="brokerage"
-              />
-            </div>
-            {brokerageMetrics ? (
-              <DashboardCardGroupMetrics
-                metrics={brokerageMetrics}
-                showUsd={showUsd}
-                period={metricsPeriod}
-                cardSlug="brokerage"
-                animated={!unitSwitching}
-              />
-            ) : null}
-            <DashboardCardBreakdown
-              lines={brokerageBreakdown}
-              showUsd={showUsd}
-              cardSlug="brokerage"
-              animated={!unitSwitching}
-            />
-          </div>
-          <div className="card card--detail card--detail-stretch card--cash">
-            <DashboardCardTitleRow
-              label={t("dashboard.cards.cash")}
-              balanceDelta={cashTitleDelta}
-              showUsd={showUsd}
-              cardSlug="cash_eqs"
-              animated={!unitSwitching}
-            />
-            <div className="value">
-              <DashboardCardValue
-                clp={dash.totals.cash_eqs_clp}
-                apiUsd={dash.totals.cash_eqs_usd}
-                showUsd={showUsd}
-                animated={!unitSwitching}
-                mountSeedKey="cash_eqs"
-              />
-            </div>
-            {cashMetrics ? (
-              <DashboardCardGroupMetrics
-                metrics={cashMetrics}
-                showUsd={showUsd}
-                period={metricsPeriod}
-                cardSlug="cash_eqs"
-                animated={!unitSwitching}
-              />
-            ) : null}
-            <DashboardCardBreakdown
-              lines={cashBreakdown.lines}
-              bottomLines={cashBreakdown.bottomLines}
-              pinBottomToCard
-              showUsd={showUsd}
-              cardSlug="cash_eqs"
-              animated={!unitSwitching}
-            />
-          </div>
-        </div>
-      </DashboardCardsValueGroup>
+      <PortfolioEntityCardsStrip
+        compactSlot={
+          <CompactEntityCard
+            label={t("dashboard.cards.netWorth")}
+            balanceDelta={netWorthTitleDelta}
+            showUsd={showUsd}
+            clp={dash.totals.net_worth_clp}
+            apiUsd={dash.totals.net_worth_usd}
+            cardSlug="net_worth"
+            animated={!unitSwitching}
+            stripInner
+            valueVariant="main"
+            metrics={
+              netWorthMetrics ? (
+                <DashboardCardGroupMetrics
+                  metrics={netWorthMetrics}
+                  showUsd={showUsd}
+                  period={metricsPeriod}
+                  cardSlug="net_worth"
+                  animated={!unitSwitching}
+                />
+              ) : null
+            }
+          />
+        }
+        detailSlots={
+          <>
+            {dashboardBucketLayout.map((card) => {
+            const bucket = card.bucket_slug;
+            const cardTitle = card.label_i18n_key ? t(card.label_i18n_key) : card.label;
+            const cashClass = card.card_css === "cash" ? "card--cash" : "";
+
+            if (bucket === "real_estate") {
+              return (
+                <DetailedGroupCard
+                  key={card.slug}
+                  title={cardTitle}
+                  balanceDelta={realEstateTitleDelta}
+                  showUsd={showUsd}
+                  clp={dash.totals.real_estate_clp}
+                  apiUsd={dash.totals.real_estate_usd}
+                  cardSlug="real_estate"
+                  animated={!unitSwitching}
+                  className={cashClass}
+                  metrics={
+                    realEstateMetrics ? (
+                      <DashboardCardGroupMetrics
+                        metrics={realEstateMetrics}
+                        showUsd={showUsd}
+                        period={metricsPeriod}
+                        cardSlug="real_estate"
+                        animated={!unitSwitching}
+                      />
+                    ) : null
+                  }
+                  breakdown={
+                    <DashboardCardBreakdown
+                      lines={realEstateBreakdown}
+                      showUsd={showUsd}
+                      cardSlug="real_estate"
+                      animated={!unitSwitching}
+                    />
+                  }
+                />
+              );
+            }
+            if (bucket === "retirement") {
+              return (
+                <DetailedGroupCard
+                  key={card.slug}
+                  title={cardTitle}
+                  balanceDelta={retirementTitleDelta}
+                  showUsd={showUsd}
+                  clp={dash.totals.retirement_clp}
+                  apiUsd={dash.totals.retirement_usd}
+                  cardSlug="retirement"
+                  animated={!unitSwitching}
+                  className={cashClass}
+                  metrics={
+                    retirementMetrics ? (
+                      <DashboardCardGroupMetrics
+                        metrics={retirementMetrics}
+                        showUsd={showUsd}
+                        period={metricsPeriod}
+                        cardSlug="retirement"
+                        animated={!unitSwitching}
+                      />
+                    ) : null
+                  }
+                  breakdown={
+                    <DashboardCardBreakdown
+                      lines={retirementBreakdown}
+                      showUsd={showUsd}
+                      cardSlug="retirement"
+                      animated={!unitSwitching}
+                    />
+                  }
+                />
+              );
+            }
+            if (bucket === "brokerage") {
+              return (
+                <DetailedGroupCard
+                  key={card.slug}
+                  title={cardTitle}
+                  balanceDelta={brokerageTitleDelta}
+                  showUsd={showUsd}
+                  clp={dash.totals.brokerage_clp}
+                  apiUsd={dash.totals.brokerage_usd}
+                  cardSlug="brokerage"
+                  animated={!unitSwitching}
+                  className={cashClass}
+                  metrics={
+                    brokerageMetrics ? (
+                      <DashboardCardGroupMetrics
+                        metrics={brokerageMetrics}
+                        showUsd={showUsd}
+                        period={metricsPeriod}
+                        cardSlug="brokerage"
+                        animated={!unitSwitching}
+                      />
+                    ) : null
+                  }
+                  breakdown={
+                    <DashboardCardBreakdown
+                      lines={brokerageBreakdown}
+                      showUsd={showUsd}
+                      cardSlug="brokerage"
+                      animated={!unitSwitching}
+                    />
+                  }
+                />
+              );
+            }
+            if (bucket === "cash_eqs") {
+              return (
+                <DetailedGroupCard
+                  key={card.slug}
+                  title={cardTitle}
+                  balanceDelta={cashTitleDelta}
+                  showUsd={showUsd}
+                  clp={dash.totals.cash_eqs_clp}
+                  apiUsd={dash.totals.cash_eqs_usd}
+                  cardSlug="cash_eqs"
+                  animated={!unitSwitching}
+                  className={cashClass}
+                  metrics={
+                    cashMetrics ? (
+                      <DashboardCardGroupMetrics
+                        metrics={cashMetrics}
+                        showUsd={showUsd}
+                        period={metricsPeriod}
+                        cardSlug="cash_eqs"
+                        animated={!unitSwitching}
+                      />
+                    ) : null
+                  }
+                  breakdown={
+                    <DashboardCardBreakdown
+                      lines={cashBreakdown.lines}
+                      bottomLines={cashBreakdown.bottomLines}
+                      pinBottomToCard
+                      showUsd={showUsd}
+                      cardSlug="cash_eqs"
+                      animated={!unitSwitching}
+                    />
+                  }
+                />
+              );
+            }
+            return null;
+          })}
+          </>
+        }
+      />
 
       <ValuationLineCharts
         displayUnit={displayUnit}
@@ -632,7 +573,11 @@ export function DashboardPage() {
         secondary={{ lines: tsForCharts.overview.lines, points: tsForCharts.overview.points }}
         thickLineDataKey="total_nw"
         includeAccumulatedLines={false}
-        primaryColorPlan={{ kind: "dashboard-primary", dataKeyToGroup }}
+        primaryColorPlan={{
+          kind: "dashboard-primary",
+          dataKeyToGroup,
+          colorRgbByColorIndex: primaryColorRgbByIndex,
+        }}
         secondaryColorPlan={{ kind: "dashboard-overview" }}
         xAxisGranularity={xAxisGranularity}
         chartLayout="fullWidthStack"

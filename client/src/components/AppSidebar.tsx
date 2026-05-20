@@ -1,14 +1,15 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
-import { api } from "../api";
+import { queryKeys } from "../queries/keys";
+import { useMessagesUnreadCount, useSidebarNav } from "../queries/hooks";
+import { buildSidebarNavFromApi } from "../sidebarNavFromApi";
 import {
-  buildSidebarNavTree,
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
   type SidebarNavNode,
 } from "../sidebarNavTree";
-import type { AccountListRow } from "../types";
 import styles from "./AppSidebar.module.css";
 
 const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
@@ -105,7 +106,7 @@ function SidebarNavItem({
           <div className={`${styles.row}${isActive ? ` ${styles.rowActive}` : ""}`}>
             <NavLink
               to={node.to}
-              end={node.end}
+              end
               className={({ isActive: linkActive }) =>
                 `${styles.link}${linkActive || isActive ? ` ${styles.linkActive}` : ""}`
               }
@@ -142,71 +143,24 @@ function unreadBadgeLabel(count: number): string | null {
 export function AppSidebar() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [accounts, setAccounts] = useState<{
-    cash: AccountListRow[];
-    liabilities: AccountListRow[];
-    realEstate: AccountListRow[];
-    inversiones: AccountListRow[];
-  } | null>(null);
+  const queryClient = useQueryClient();
+  const { data: unread } = useMessagesUnreadCount();
+  const { data: navPayload } = useSidebarNav();
+  const unreadCount = unread?.count ?? 0;
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsedIds);
 
-  const refreshUnread = useCallback(() => {
-    void api.messagesUnreadCount().then(
-      (d) => setUnreadCount(d.count),
-      () => setUnreadCount(0)
-    );
-  }, []);
-
   useEffect(() => {
-    refreshUnread();
-    const onRead = () => refreshUnread();
+    const onRead = () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.messagesUnread() });
+    };
     window.addEventListener("nw-messages-read", onRead);
-    const id = window.setInterval(refreshUnread, 60_000);
-    return () => {
-      window.removeEventListener("nw-messages-read", onRead);
-      window.clearInterval(id);
-    };
-  }, [refreshUnread]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [cash, liabilities, realEstate, inversiones] = await Promise.all([
-          api.accountsByGroup("cash_eqs"),
-          api.accountsByGroup("liabilities"),
-          api.accountsByGroup("real_estate"),
-          api.accountsByGroup("inversiones"),
-        ]);
-        if (!cancelled) {
-          setAccounts({
-            cash: cash.accounts,
-            liabilities: liabilities.accounts,
-            realEstate: realEstate.accounts,
-            inversiones: inversiones.accounts,
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setAccounts({ cash: [], liabilities: [], realEstate: [], inversiones: [] });
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => window.removeEventListener("nw-messages-read", onRead);
+  }, [queryClient]);
 
   const tree = useMemo(() => {
-    if (!accounts) return null;
-    return buildSidebarNavTree({
-      cash: accounts.cash,
-      liabilities: accounts.liabilities,
-      realEstate: accounts.realEstate,
-      inversiones: accounts.inversiones,
-    });
-  }, [accounts]);
+    if (!navPayload) return null;
+    return buildSidebarNavFromApi(navPayload);
+  }, [navPayload]);
 
   useEffect(() => {
     if (!tree) return;
@@ -243,7 +197,9 @@ export function AppSidebar() {
   return (
     <aside className="app-sidebar" aria-label="Main navigation">
       <div className={styles.brand}>
-        <NavLink to="/">NW Tracker</NavLink>
+        <NavLink to="/" end>
+          NW Tracker
+        </NavLink>
       </div>
       <nav className={styles.nav}>
         <div className={styles.navInner}>
@@ -317,6 +273,7 @@ export function AppSidebar() {
                     >
                       <NavLink
                         to="/messages"
+                        end
                         className={({ isActive }) =>
                           `${styles.link}${isActive ? ` ${styles.linkActive}` : ""}`
                         }

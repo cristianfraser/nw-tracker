@@ -2,6 +2,68 @@ import { chileCalendarAddDays } from "../src/chileDate.js";
 import { db } from "../src/db.js";
 import { buildGoalsSnapshot } from "./fintualApiLib.js";
 import { recordFintualGoalFundUnitDaily } from "../src/fintualFundUnitDaily.js";
+import { formatSyncClp } from "../src/syncRunLog.js";
+/** Mapped Fintual goals whose API NAV differs from the stored valuation on `snap.asOfDate`. */
+export function collectFintualGoalValuationChanges(snap) {
+    const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+    const valStmt = db.prepare(`SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`);
+    const changes = [];
+    for (const g of snap.goals) {
+        if (!g.matchedNotes)
+            continue;
+        const row = accStmt.get(g.matchedNotes);
+        if (!row)
+            continue;
+        const nextRounded = Math.round(g.navClp);
+        const prev = valStmt.get(row.id, snap.asOfDate);
+        const prevRounded = prev?.value_clp != null && Number.isFinite(prev.value_clp)
+            ? Math.round(prev.value_clp)
+            : null;
+        if (prevRounded != null && Math.abs(prevRounded - nextRounded) <= 1)
+            continue;
+        changes.push({
+            group: "fintual",
+            label: g.name,
+            oldValue: prevRounded != null ? formatSyncClp(prevRounded) : "—",
+            newValue: formatSyncClp(nextRounded),
+            oldDate: snap.asOfDate,
+            newDate: snap.asOfDate,
+        });
+    }
+    return changes;
+}
+/**
+ * Upsert `fund_unit_daily` from evening Fintual poll (publish price and/or NAV), even when valuations are unchanged.
+ */
+export function syncFintualFundUnitsFromResolutions(resolutions, asOfYmd, dryRun) {
+    const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+    let recorded = 0;
+    for (const r of resolutions) {
+        if (!r.row.matchedNotes)
+            continue;
+        const acc = accStmt.get(r.row.matchedNotes);
+        if (!acc)
+            continue;
+        const fu = recordFintualGoalFundUnitDaily({
+            accountId: acc.id,
+            importNotes: r.row.matchedNotes,
+            asOfYmd,
+            navClp: r.appliedNavClp,
+            fundPriceClp: r.fundPriceClp,
+            units: r.units,
+            dryRun,
+        });
+        if (!fu.recorded)
+            continue;
+        recorded += 1;
+        if (!dryRun) {
+            const src = r.fundPriceClp != null && r.fundPriceClp > 0 ? "publish" : "inferred";
+            console.log(`sync: Fintual — fund_unit_daily ${fu.unitClp} (${asOfYmd}, ${src})` +
+                (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : ""));
+        }
+    }
+    return recorded;
+}
 export function applyFintualGoalsSnapshotToDb(snap, dryRun) {
     const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
     const upsert = db.prepare(`
@@ -14,10 +76,9 @@ export function applyFintualGoalsSnapshotToDb(snap, dryRun) {
     const deleteMistakenFutureDup = db.prepare(`DELETE FROM valuations
      WHERE account_id = @account_id AND as_of_date > @as_of_date
        AND ABS(value_clp - @value_clp) <= 1`);
-    const valStmt = db.prepare(`SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`);
     let applied = 0;
     let skipped = 0;
-    const changes = [];
+    const changes = collectFintualGoalValuationChanges(snap);
     for (const g of snap.goals) {
         if (!g.matchedNotes) {
             skipped += 1;
@@ -30,18 +91,6 @@ export function applyFintualGoalsSnapshotToDb(snap, dryRun) {
             continue;
         }
         const value_clp = Math.round(g.navClp * 100) / 100;
-        const prev = valStmt.get(row.id, snap.asOfDate);
-        const prevRounded = prev?.value_clp != null && Number.isFinite(prev.value_clp)
-            ? Math.round(prev.value_clp)
-            : null;
-        const nextRounded = Math.round(value_clp);
-        if (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1) {
-            changes.push({
-                label: `${g.name} value_clp`,
-                oldValue: prevRounded != null ? String(prevRounded) : "—",
-                newValue: String(nextRounded),
-            });
-        }
         if (dryRun) {
             console.log(`[dry-run] account_id=${row.id} as_of=${snap.asOfDate} value_clp=${value_clp} ← goal "${g.name}"`);
         }
@@ -59,16 +108,13 @@ export function applyFintualGoalsSnapshotToDb(snap, dryRun) {
                 });
             }
         }
-        const fu = recordFintualGoalFundUnitDaily({
+        recordFintualGoalFundUnitDaily({
             accountId: row.id,
             importNotes: g.matchedNotes,
             asOfYmd: snap.asOfDate,
             navClp: g.navClp,
             dryRun,
         });
-        if (fu.recorded && fu.gapDaysFilled > 0 && !dryRun) {
-            console.log(`sync: Fintual — fund_unit_daily ${fu.unitClp} (${snap.asOfDate}), carried ${fu.gapDaysFilled} day(s)`);
-        }
         applied += 1;
     }
     return { applied, skipped, changes };

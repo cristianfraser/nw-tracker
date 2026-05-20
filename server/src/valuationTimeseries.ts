@@ -29,6 +29,7 @@ import {
 } from "./deptoDividendosLedger.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { ccLedgerStatementClosingPointsClp, ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
+import { syntheticGroupColorRgbMapForValuationGroup } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, fxRowOnOrBefore, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
@@ -80,6 +81,7 @@ type GroupTabValuationBlock = {
   accounts: AccountLine[];
   points: Record<string, string | number | null>[];
   lines?: { dataKey: string; name: string; valueSeriesType: "data" | "reference" }[];
+  synthetic_group_color_rgb?: Record<string, string>;
 };
 
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
@@ -1726,6 +1728,11 @@ export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tab
     }
   }
   const group_allocation_pie = latestAllocationPieForAccounts(pieTop, unit);
+
+  const synthColors = syntheticGroupColorRgbMapForValuationGroup(groupSlug);
+  if (Object.keys(synthColors).length > 0) {
+    accounts_in_group = { ...accounts_in_group, synthetic_group_color_rgb: synthColors };
+  }
 
   return {
     unit,

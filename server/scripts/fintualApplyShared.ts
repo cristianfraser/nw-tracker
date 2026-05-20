@@ -4,6 +4,7 @@ import type { GlobalSyncStateFile } from "../src/globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
 import { recordFintualGoalFundUnitDaily } from "../src/fintualFundUnitDaily.js";
 import { formatSyncClp, type SyncFieldChange } from "../src/syncRunLog.js";
+import type { FintualGoalNavResolution } from "./fintualRealAssetNav.js";
 
 export type ValuationChange = SyncFieldChange;
 
@@ -35,6 +36,43 @@ export function collectFintualGoalValuationChanges(snap: FintualGoalSnapshot): V
     });
   }
   return changes;
+}
+
+/**
+ * Upsert `fund_unit_daily` from evening Fintual poll (publish price and/or NAV), even when valuations are unchanged.
+ */
+export function syncFintualFundUnitsFromResolutions(
+  resolutions: FintualGoalNavResolution[],
+  asOfYmd: string,
+  dryRun: boolean
+): number {
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  let recorded = 0;
+  for (const r of resolutions) {
+    if (!r.row.matchedNotes) continue;
+    const acc = accStmt.get(r.row.matchedNotes) as { id: number } | undefined;
+    if (!acc) continue;
+    const fu = recordFintualGoalFundUnitDaily({
+      accountId: acc.id,
+      importNotes: r.row.matchedNotes,
+      asOfYmd,
+      navClp: r.appliedNavClp,
+      fundPriceClp: r.fundPriceClp,
+      units: r.units,
+      dryRun,
+    });
+    if (!fu.recorded) continue;
+    recorded += 1;
+    if (!dryRun) {
+      const src =
+        r.fundPriceClp != null && r.fundPriceClp > 0 ? "publish" : "inferred";
+      console.log(
+        `sync: Fintual — fund_unit_daily ${fu.unitClp} (${asOfYmd}, ${src})` +
+          (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : "")
+      );
+    }
+  }
+  return recorded;
 }
 
 export function applyFintualGoalsSnapshotToDb(
@@ -89,18 +127,13 @@ export function applyFintualGoalsSnapshotToDb(
         });
       }
     }
-    const fu = recordFintualGoalFundUnitDaily({
+    recordFintualGoalFundUnitDaily({
       accountId: row.id,
       importNotes: g.matchedNotes,
       asOfYmd: snap.asOfDate,
       navClp: g.navClp,
       dryRun,
     });
-    if (fu.recorded && fu.gapDaysFilled > 0 && !dryRun) {
-      console.log(
-        `sync: Fintual — fund_unit_daily ${fu.unitClp} (${snap.asOfDate}), carried ${fu.gapDaysFilled} day(s)`
-      );
-    }
     applied += 1;
   }
 

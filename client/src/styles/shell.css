@@ -18,7 +18,7 @@
   background-color: var(--bg);
 }
 
-.layout-main > .content {
+.layout-main>.content {
   flex: 1;
   padding: 1.25rem 1.5rem 2rem;
   max-width: 1200px;
@@ -82,7 +82,7 @@
   border-bottom: 1px solid var(--border);
   background-color: var(--bg);
   pointer-events: auto;
-  z-index: 1;
+  z-index: 4;
   animation: market-ticker-panel-mount 550ms cubic-bezier(0.33, 1, 0.68, 1) both;
   box-shadow: 5px -7px 3px 7px var(--bg);
 }
@@ -147,19 +147,19 @@
     box-shadow: none;
   }
 
-  .nav-drawer-toggle:checked ~ .nav-drawer-tab {
+  .nav-drawer-toggle:checked~.nav-drawer-tab {
     opacity: 0;
     backdrop-filter: blur(0px);
     pointer-events: none;
   }
 
-  .nav-drawer-toggle:checked ~ .nav-drawer-overlay {
+  .nav-drawer-toggle:checked~.nav-drawer-overlay {
     opacity: 1;
     backdrop-filter: blur(2px);
     pointer-events: auto;
   }
 
-  .nav-drawer-toggle:checked ~ .app-sidebar {
+  .nav-drawer-toggle:checked~.app-sidebar {
     transform: translateX(0);
     box-shadow: 4px 0 28px rgba(0, 0, 0, 0.4);
   }
@@ -169,8 +169,13 @@
     height: 100vh;
   }
 
-  .layout-main > .content {
-    padding-top: calc(var(--market-ticker-height) + 1.25rem);
+  /* Ticker is fixed: pad scroll column so first content sits just below marquee + gap. */
+  .layout-main {
+    padding-top: calc(var(--market-ticker-height) + var(--display-prefs-gap));
+  }
+
+  .layout-main>.content {
+    padding-top: 1.25rem;
   }
 }
 
@@ -195,5 +200,23 @@
     z-index: 2;
     pointer-events: none;
     background: linear-gradient(to right, var(--bg) 0%, var(--bg) 10%, transparent 100%);
+  }
+
+  /* Fixed prefs bar is out of flow; reserve vertical space so page content clears it. */
+  .layout--with-sidebar .layout-main>.content {
+    padding-top: calc(var(--market-ticker-height) + var(--display-prefs-gap) + var(--display-prefs-stack-height));
+  }
+
+  /* Host only wraps the bar; no in-flow height on desktop so it doesn’t stack under the ticker. */
+  .layout-main>[data-app-display-prefs-host] {
+    height: 0;
+    flex: 0 0 0;
+    overflow: visible;
+    pointer-events: none;
+    align-self: stretch;
+  }
+
+  .layout-main>[data-app-display-prefs-host]>* {
+    pointer-events: auto;
   }
 }

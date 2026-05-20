@@ -31,6 +31,7 @@ import {
 import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
+import { accountChartInactive } from "./accountChartInactive.js";
 import {
   deptoSueciaDashboardSnapshotAt,
   isDeptoMortgagePaymentCuota,
@@ -40,7 +41,12 @@ import {
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { db } from "./db.js";
+import { listRatesInstrumentSeries, listMarketDisplaySeries } from "./marketDisplaySeries.js";
+import { getPortfolioTreeForCharts, getSidebarNavPayload } from "./navTree.js";
+import { getDashboardLayoutCards } from "./dashboardLayout.js";
+import { seedNavTree } from "./seedNavTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 import type { AccountPositionMeta } from "./accountPosition.js";
@@ -82,6 +88,8 @@ import {
 } from "./appMessages.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
+
+seedNavTree();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -186,7 +194,7 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/meta/asset-tree", (_req, res) => {
   const groups = db
     .prepare(
-      `SELECT id, slug, label, sort_order FROM asset_groups ORDER BY sort_order, id`
+      `SELECT id, slug, label, sort_order, color_rgb FROM asset_groups ORDER BY sort_order, id`
     )
     .all() as { id: number; slug: string; label: string; sort_order: number }[];
 
@@ -211,12 +219,31 @@ app.get("/api/meta/asset-tree", (_req, res) => {
   });
 });
 
+/** Recursive portfolio groups (accounts + nested groups) with resolved colors. */
+app.get("/api/meta/portfolio-tree", (_req, res) => {
+  res.json({ roots: getPortfolioTreeForCharts() });
+});
+
+/** Sidebar navigation tree (DB-driven; matches legacy layout). */
+app.get("/api/meta/sidebar-nav", (_req, res) => {
+  res.json(getSidebarNavPayload());
+});
+
+/** Market instruments for rates charts and marquee configuration. */
+app.get("/api/meta/market-display-series", (_req, res) => {
+  res.json({ series: listMarketDisplaySeries() });
+});
+
+app.get("/api/meta/rates-instruments", (_req, res) => {
+  res.json({ instruments: listRatesInstrumentSeries() });
+});
+
 app.get("/api/accounts", (req, res) => {
   const groupSlug = req.query.group as string | undefined;
   if (!groupSlug) {
     const rows = db
       .prepare(
-        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals,
+        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
            c.slug AS category_slug, c.label AS category_label,
            g.slug AS group_slug, g.label AS group_label
     FROM accounts a
@@ -244,7 +271,7 @@ app.get("/api/accounts", (req, res) => {
   }
 
   let sql = `
-    SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals,
+    SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
            c.slug AS category_slug, c.label AS category_label,
            g.slug AS group_slug, g.label AS group_label
     FROM accounts a
@@ -293,7 +320,9 @@ app.post("/api/accounts", (req, res) => {
       `INSERT INTO accounts (category_id, name, notes) VALUES (?, ?, ?)`
     )
     .run(category_id, name.trim(), notes ?? null);
-  res.status(201).json({ id: Number(r.lastInsertRowid) });
+  const id = Number(r.lastInsertRowid);
+  db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(id), id);
+  res.status(201).json({ id });
 });
 
 app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
@@ -310,7 +339,7 @@ app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
     res.status(404).json({ error: "account not found" });
     return;
   }
-  res.json(payload);
+  res.json(attachColorsToValuationPayload(payload));
 });
 
 /** Month-on-month P/L from valuations + merged capital flows (not persisted). Empty for `cuenta_corriente`. */
@@ -644,7 +673,7 @@ app.get("/api/dashboard", async (req, res) => {
   const accounts = db
     .prepare(
       `
-      SELECT a.id, a.name, a.notes,
+      SELECT a.id, a.name, a.notes, a.color_rgb,
              g.slug AS group_slug, g.label AS group_label,
              c.slug AS category_slug, c.label AS category_label
       FROM accounts a
@@ -742,6 +771,7 @@ app.get("/api/dashboard", async (req, res) => {
       fx_clp_per_usd,
       fx_date_used,
       notes: a.notes ?? null,
+      chart_inactive: accountChartInactive(a.id),
       position,
     };
   })
@@ -844,6 +874,7 @@ app.get("/api/dashboard", async (req, res) => {
         }
         : {}),
     },
+    dashboard_layout: getDashboardLayoutCards(),
     allocation: [...byGroup.entries()].map(([slug, v]) => ({
       group_slug: slug,
       group_label: v.label,
@@ -894,11 +925,15 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
       });
       return;
     }
-    res.json(getGroupValuationTimeseries(group, unit, typeof sub === "string" ? sub : undefined));
+    res.json(
+      attachColorsToValuationPayload(
+        getGroupValuationTimeseries(group, unit, typeof sub === "string" ? sub : undefined)
+      )
+    );
     return;
   }
 
-  res.json(getDashboardValuationTimeseries(unit));
+  res.json(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)));
 });
 
 /** SPY+VEA merged: monthly Δ (sum) and cumulative earnings since first month (derived). */

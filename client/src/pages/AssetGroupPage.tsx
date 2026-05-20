@@ -1,56 +1,45 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { AllocationPiePanel, LineChartPanel } from "../components/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { Table } from "../components/Table";
-import { api } from "../api";
+import { PortfolioNavEntityCardsStrip } from "../components/PortfolioNavEntityCardsStrip";
+import { assetGroupPageParentTitleMode } from "../portfolioNavDashboardCards";
+import { useAssetGroupBundle, useDashboardBundle, useSidebarNav } from "../queries/hooks";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { assetGroupPageTitle } from "../i18n";
 import { allocationBucketColor, buildGroupTabColorMaps, groupTabPieSliceFill } from "../chartColors";
-import type {
-  AccountListRow,
-  AssetGroupSlug,
-  GroupMonthlyPerformanceResponse,
-  ValuationTimeseriesResponse,
-} from "../types";
+import type { AssetGroupSlug } from "../types";
+import { findPortfolioNavNodeForPage } from "../portfolioNavFromApi";
 
 interface Props {
   slug: AssetGroupSlug;
 }
 
-type DisplayUnit = "clp" | "usd";
-
 export function AssetGroupPage({ slug }: Props) {
   const title = assetGroupPageTitle(slug);
-  const [accounts, setAccounts] = useState<AccountListRow[]>([]);
-  const [ts, setTs] = useState<ValuationTimeseriesResponse | null>(null);
-  const [groupPerf, setGroupPerf] = useState<GroupMonthlyPerformanceResponse | null>(null);
-  const [displayUnit, setDisplayUnit] = useState<DisplayUnit>("clp");
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [acc, series, perfResult] = await Promise.all([
-          api.accountsByGroup(slug),
-          api.valuationTimeseries(displayUnit, { group: slug }),
-          api.groupMonthlyPerformance(slug, displayUnit).catch(() => null),
-        ]);
-        if (!cancelled) {
-          setAccounts(acc.accounts);
-          setTs(series);
-          setGroupPerf(perfResult);
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, displayUnit]);
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { data, error } = useAssetGroupBundle(slug, displayUnit);
+  const { data: dashBundle } = useDashboardBundle(displayUnit);
+  const dash = dashBundle?.dash ?? null;
+  const overviewPoints = dashBundle?.ts?.overview?.points ?? [];
+  const { data: sidebarNav } = useSidebarNav();
+  const accounts = data?.accounts ?? [];
+  const ts = data?.ts ?? null;
+  const groupPerf = data?.groupPerf ?? null;
+  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
   const displayValuationBlock = useMemo(() => ts?.accounts_in_group ?? null, [ts]);
+
+  const portfolioNavNode = useMemo(
+    () => findPortfolioNavNodeForPage(sidebarNav, { assetGroupSlug: slug }),
+    [sidebarNav, slug]
+  );
+
+  const firstLevelNavChildren = useMemo(
+    () => portfolioNavNode?.children?.filter((c) => c.route_path?.trim()) ?? [],
+    [portfolioNavNode]
+  );
 
   const groupColorMaps = useMemo(() => {
     const accLines = displayValuationBlock?.accounts;
@@ -74,6 +63,8 @@ export function AssetGroupPage({ slug }: Props) {
       color: maps.byDataKey.get(a.bar_data_key) ?? "#60a5fa",
     }));
   }, [slug, groupPerf]);
+
+  const showUsd = displayUnit === "usd";
 
   if (err) {
     return (
@@ -100,26 +91,21 @@ export function AssetGroupPage({ slug }: Props) {
   return (
     <main>
       <h1>{title}</h1>
-      <p className="muted">
-        <Link to="/">← Dashboard</Link>
-      </p>
 
-      <div className="toggle-row" style={{ flexWrap: "wrap", gap: "0.5rem 1rem" }}>
-        <span className="muted">Gráficos: </span>
-        <label>
-          <input
-            type="radio"
-            name="adu"
-            checked={displayUnit === "clp"}
-            onChange={() => setDisplayUnit("clp")}
-          />{" "}
-          CLP
-        </label>
-        <label>
-          <input type="radio" name="adu" checked={displayUnit === "usd"} onChange={() => setDisplayUnit("usd")} />{" "}
-          USD
-        </label>
-      </div>
+      {dash && portfolioNavNode && accounts.length > 0 && displayValuationBlock ? (
+        <PortfolioNavEntityCardsStrip
+          dash={dash}
+          overviewPoints={overviewPoints}
+          parentNavNode={portfolioNavNode}
+          detailNavChildren={firstLevelNavChildren}
+          compactTitle={title}
+          compactCardSlug={`grp-${slug}-total`}
+          parentTitleMode={assetGroupPageParentTitleMode(slug)}
+          showUsd={showUsd}
+          metricsPeriod={metricsPeriod}
+          animated
+        />
+      ) : null}
 
       {slug === "real_estate" && (
         <p className="muted" style={{ marginTop: "0.75rem", maxWidth: "52rem", lineHeight: 1.45 }}>

@@ -1,5 +1,5 @@
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useDeferredValue, useLayoutEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { CcInstallmentHistoryChart } from "../components/CcInstallmentHistoryChart";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { Table } from "../components/Table";
@@ -12,22 +12,26 @@ import {
   LineChartPanel,
   trimLeadingInactivePoints,
 } from "../components/ValuationLineCharts";
-import { api } from "../api";
-import { resolveAccountParentNavLink } from "../accountDetailBackNav";
+import { useAccountDetailBundle, useAccountMonthlyPerformance, useDashboardBundle, useSidebarNav } from "../queries/hooks";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { isPersonalCapitalFlowType } from "../depositFlowKind";
 import { DEFAULT_LINE_COLORS } from "../chartColors";
+import { CompactEntityCard } from "../components/CompactEntityCard";
+import { DashboardCardGroupMetrics } from "../components/DashboardCardGroupMetrics";
+import { PortfolioEntityCardsStrip } from "../components/PortfolioEntityCardsStrip";
+import { PortfolioNavChildDetailCards } from "../components/PortfolioNavChildDetailCards";
+import { useTranslation } from "../i18n";
 import type {
-  AccountDepositInflowsResponse,
-  AccountListRow,
-  AccountMonthlyPerformanceResponse,
   AccountCcInstallmentsResponse,
   AccountMortgageLedgerResponse,
-  AccountPositionSnapshot,
-  AccountValuationTimeseriesResponse,
-  DeptoMortgageSheetRow,
   DeptoPaymentScenarioRow,
   DeptoPaymentScenarioTerm,
 } from "../types";
+import { findNavTreeNodeByAccountId } from "../portfolioNavFromApi";
+import {
+  accountCardTitleBalanceDelta,
+  cardGroupMetricsFromAccounts,
+} from "../dashboardCardBreakdown";
 import {
   formatClp,
   formatUsdFine,
@@ -647,40 +651,6 @@ function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }
   );
 }
 
-interface Summary {
-  account_id: number;
-  category_slug: string | null;
-  group_slug: string | null;
-  group_label: string | null;
-  group_peer_count: number | null;
-  deposits_clp: number;
-  withdrawals_clp: number;
-  latest_valuation_clp: number | null;
-  latest_valuation_date: string | null;
-  position: AccountPositionSnapshot | null;
-}
-
-interface Movement {
-  id: number;
-  amount_clp: number;
-  occurred_on: string;
-  note: string | null;
-  units_delta: number | null;
-  flow_type: string;
-  flow_type_label: string;
-}
-
-interface BrokerageFlow {
-  id: number;
-  occurred_on: string;
-  flow_kind: string;
-  amount_clp: number | null;
-  amount_usd: number | null;
-  ticker: string | null;
-  note: string | null;
-  units_delta: number | null;
-}
-
 const BROKERAGE_FLOW_LABELS: Record<string, string> = {
   deposit_clp: "Depósito CLP",
   withdrawal_clp: "Retiro CLP",
@@ -694,44 +664,56 @@ function movementUnitsKind(categorySlug: string | null | undefined): "shares" | 
   return "shares";
 }
 
-type DisplayUnit = "clp" | "usd";
 type ChartGranularity = "monthly" | "daily";
 
 /** Default visible rows in “Detalle por mes” (newest first); rest behind “Mostrar más”. */
 const MONTHLY_PERF_COLLAPSED = 12;
 
 export function AccountDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams();
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [movements, setMovements] = useState<Movement[]>([]);
-  const [flows, setFlows] = useState<BrokerageFlow[]>([]);
-  const [ts, setTs] = useState<AccountValuationTimeseriesResponse | null>(null);
-  const [depositInflows, setDepositInflows] = useState<AccountDepositInflowsResponse | null>(null);
-  const [mortgageLedger, setMortgageLedger] = useState<AccountMortgageLedgerResponse | null>(null);
-  const [ccLedger, setCcLedger] = useState<AccountCcInstallmentsResponse | null>(null);
   const [extraCcOffsets, setExtraCcOffsets] = useState<Record<string, number>>({});
-  const [monthlyPerf, setMonthlyPerf] = useState<AccountMonthlyPerformanceResponse | null>(null);
-  const [monthlyPerfErr, setMonthlyPerfErr] = useState<string | null>(null);
-  const [displayUnit, setDisplayUnit] = useState<DisplayUnit>("clp");
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const [chartGranularity, setChartGranularity] = useState<ChartGranularity>("monthly");
   const [movementsOnlyPersonalDeposits, setMovementsOnlyPersonalDeposits] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [invNavAccounts, setInvNavAccounts] = useState<AccountListRow[] | null>(null);
 
   const deferredCcOffsets = useDeferredValue(extraCcOffsets);
 
-  const parentBack = useMemo(() => {
-    if (!summary || invNavAccounts == null) return null;
-    return resolveAccountParentNavLink(
-      summary.account_id,
-      {
-        group_slug: summary.group_slug,
-        group_label: summary.group_label,
-        group_peer_count: summary.group_peer_count,
-      },
-      invNavAccounts
-    );
-  }, [summary, invNavAccounts]);
+  const {
+    data: detail,
+    error: detailError,
+    isPending: detailPending,
+  } = useAccountDetailBundle(id, displayUnit, chartGranularity, deferredCcOffsets);
+  const {
+    data: monthlyPerf,
+    error: monthlyPerfError,
+  } = useAccountMonthlyPerformance(id, displayUnit);
+
+  const { data: sidebarNav } = useSidebarNav();
+  const { data: dashBundle } = useDashboardBundle(displayUnit);
+  const dash = dashBundle?.dash ?? null;
+  const overviewPoints = dashBundle?.ts?.overview?.points ?? [];
+
+  const summary = detail?.summary ?? null;
+  const movements = detail?.movements ?? [];
+  const flows = detail?.flows ?? [];
+  const ts = detail?.ts ?? null;
+  const depositInflows = detail?.depositInflows ?? null;
+  const mortgageLedger = detail?.mortgageLedger ?? null;
+  const ccLedger = detail?.ccLedger ?? null;
+  const invNavAccounts = detail?.invNavAccounts ?? null;
+  const err =
+    detailError instanceof Error
+      ? detailError.message
+      : detailError
+        ? "Failed to load"
+        : null;
+  const monthlyPerfErr =
+    monthlyPerfError instanceof Error
+      ? monthlyPerfError.message
+      : monthlyPerfError
+        ? "No se pudo cargar el rendimiento mensual."
+        : null;
 
   const valuationTailClipEndDate = useMemo(() => {
     if (!ts?.accounts?.points?.length) return null;
@@ -780,77 +762,13 @@ export function AccountDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    setInvNavAccounts(null);
-    (async () => {
-      try {
-        const [s, m, f, series, dep, ml, cc, inv] = await Promise.all([
-          api.accountSummary(id),
-          api.accountMovements(id),
-          api.brokerageFlows(id).catch(() => ({ flows: [] as BrokerageFlow[] })),
-          api.accountValuationTimeseries(id, displayUnit, { granularity: chartGranularity }),
-          api.accountDepositInflows(id),
-          api.accountMortgageLedger(id).catch(() => ({
-            account_id: Number(id),
-            source: "none" as const,
-            meta: null,
-            rows: [] as DeptoMortgageSheetRow[],
-          })),
-          api.accountCcInstallments(id, deferredCcOffsets).catch(() => ({
-            account_id: Number(id),
-            source: "none" as const,
-            meta: null,
-            purchases: [],
-            purchases_completed: [],
-            months: [],
-            totals: {
-              total_remaining_principal_clp: 0,
-              next_calendar_month_total_clp: null,
-              next_calendar_month: null,
-            },
-          })),
-          api.accountsByGroup("inversiones"),
-        ]);
-        if (!cancelled) {
-          setSummary(s);
-          setMovements(m.movements ?? []);
-          setFlows(f.flows ?? []);
-          setTs(series);
-          setDepositInflows(dep);
-          setMortgageLedger(ml);
-          setCcLedger(cc);
-          setInvNavAccounts(inv.accounts);
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, displayUnit, chartGranularity, deferredCcOffsets]);
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    setMonthlyPerfErr(null);
-    (async () => {
-      try {
-        const p = await api.accountMonthlyPerformance(id, displayUnit);
-        if (!cancelled) setMonthlyPerf(p);
-      } catch (e) {
-        if (!cancelled) {
-          setMonthlyPerf(null);
-          setMonthlyPerfErr(e instanceof Error ? e.message : "No se pudo cargar el rendimiento mensual.");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, displayUnit]);
+  if (detailPending) {
+    return (
+      <main>
+        <p className="muted">Loading…</p>
+      </main>
+    );
+  }
 
   if (err) {
     return (
@@ -879,17 +797,79 @@ export function AccountDetailPage() {
     return displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
   };
 
+  const lastChartRow =
+    ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
+  const accountDataKey = String(summary.account_id);
+  const chartUsdVal =
+    displayUnit === "usd" &&
+    lastChartRow &&
+    typeof lastChartRow[accountDataKey] === "number" &&
+    Number.isFinite(lastChartRow[accountDataKey] as number)
+      ? (lastChartRow[accountDataKey] as number)
+      : null;
+
+  const accountDashRow =
+    dash?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
+  const accountTitleDelta =
+    accountDashRow != null
+      ? accountCardTitleBalanceDelta(accountDashRow, metricsPeriod, displayUnit === "usd")
+      : null;
+  const accountMetricsAgg = cardGroupMetricsFromAccounts(
+    accountDashRow ? [accountDashRow] : [],
+    metricsPeriod
+  );
+  const navSelf = findNavTreeNodeByAccountId(sidebarNav?.main ?? [], summary.account_id);
+  const accountNavChildren = navSelf?.children?.filter((c) => c.route_path?.trim()) ?? [];
+
   return (
     <main>
-      <p className="muted">
-        {parentBack ? (
-          <Link to={parentBack.to}>← {parentBack.label}</Link>
-        ) : (
-          <Link to="/">← Dashboard</Link>
-        )}
+      <PortfolioEntityCardsStrip
+        compactSlot={
+          <CompactEntityCard
+            label={ts.name}
+            balanceDelta={accountTitleDelta}
+            showUsd={displayUnit === "usd"}
+            clp={
+              displayUnit === "usd"
+                ? 0
+                : accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? 0
+            }
+            apiUsd={
+              displayUnit === "usd"
+                ? accountDashRow?.current_value_usd ?? chartUsdVal
+                : null
+            }
+            cardSlug={`acc-${summary.account_id}-hero`}
+            animated
+            stripInner
+            valueVariant="main"
+            metrics={
+              <DashboardCardGroupMetrics
+                metrics={accountMetricsAgg}
+                showUsd={displayUnit === "usd"}
+                period={metricsPeriod}
+                cardSlug={`acc-${summary.account_id}-hero`}
+                animated
+              />
+            }
+          />
+        }
+        detailSlots={
+          dash && accountNavChildren.length > 0 ? (
+            <PortfolioNavChildDetailCards
+              dash={dash}
+              overviewPoints={overviewPoints}
+              navChildren={accountNavChildren}
+              showUsd={displayUnit === "usd"}
+              metricsPeriod={metricsPeriod}
+              animated
+            />
+          ) : null
+        }
+      />
+      <p className="muted mono" style={{ marginTop: "0.35rem" }}>
+        {t("accountDetail.card.accountNumber", { id: summary.account_id })}
       </p>
-      <h1>{ts.name}</h1>
-      <p className="muted mono">Account #{summary.account_id}</p>
 
       {summary.position != null && (
         <div style={{ marginTop: "0.75rem" }}>
@@ -945,23 +925,7 @@ export function AccountDetailPage() {
       )}
 
       <div className="toggle-row">
-        <span className="muted">Gráficos: </span>
-        <label>
-          <input
-            type="radio"
-            name="adu"
-            checked={displayUnit === "clp"}
-            onChange={() => setDisplayUnit("clp")}
-          />{" "}
-          CLP
-        </label>
-        <label>
-          <input type="radio" name="adu" checked={displayUnit === "usd"} onChange={() => setDisplayUnit("usd")} />{" "}
-          USD
-        </label>
-        <span className="muted" style={{ marginLeft: "1rem" }}>
-          Serie:{" "}
-        </span>
+        <span className="muted">{t("accountDetail.chart.seriesLabel")} </span>
         <label>
           <input
             type="radio"
@@ -969,7 +933,7 @@ export function AccountDetailPage() {
             checked={chartGranularity === "monthly"}
             onChange={() => setChartGranularity("monthly")}
           />{" "}
-          Mensual (fin de mes)
+          {t("accountDetail.chart.monthlyEnd")}
         </label>
         <label>
           <input
@@ -978,7 +942,7 @@ export function AccountDetailPage() {
             checked={chartGranularity === "daily"}
             onChange={() => setChartGranularity("daily")}
           />{" "}
-          Diario
+          {t("accountDetail.chart.daily")}
         </label>
       </div>
       {chartGranularity === "daily" && ts.granularity === "monthly" ? (

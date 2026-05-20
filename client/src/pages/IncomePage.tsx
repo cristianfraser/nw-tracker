@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { api } from "../api";
 import { Table } from "../components/Table";
+import { useIncome } from "../queries/hooks";
 import { formatClp } from "../format";
 
 interface IncomeRow {
@@ -12,23 +11,9 @@ interface IncomeRow {
 }
 
 export function IncomePage() {
-  const [rows, setRows] = useState<IncomeRow[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const d = await api.income();
-        if (!cancelled) setRows((d.income as IncomeRow[]) ?? []);
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, error } = useIncome();
+  const rows = (data?.income as IncomeRow[] | undefined) ?? [];
+  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
   if (err) {
     return <p className="error">{err}</p>;

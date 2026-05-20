@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { api, type AppMessageRow } from "../api";
+import type { AppMessageRow } from "../api";
 import { Table } from "../components/Table";
+import { useMarkMessagesReadMutation, useMessages } from "../queries/hooks";
 
 function formatWhen(iso: string): string {
   const d = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`);
@@ -85,29 +86,35 @@ function MessagesTable({
 
 export function MessagesPage() {
   const { t } = useTranslation();
-  const [notifications, setNotifications] = useState<AppMessageRow[]>([]);
-  const [logs, setLogs] = useState<AppMessageRow[]>([]);
-  const [err, setErr] = useState<string | null>(null);
+  const markRead = useMarkMessagesReadMutation();
+  const {
+    data: notificationsData,
+    error: notificationsError,
+    isPending: notificationsPending,
+  } = useMessages("notification");
+  const { data: logsData, error: logsError, isPending: logsPending } = useMessages("log");
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await api.markMessagesRead();
-        const [n, l] = await Promise.all([api.messages("notification"), api.messages("log")]);
-        if (!cancelled) {
-          setNotifications(n.messages);
-          setLogs(l.messages);
-          window.dispatchEvent(new Event("nw-messages-read"));
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : t("common.loadFailed"));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
+    markRead.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mark read once on mount
+  }, []);
+
+  const notifications = notificationsData?.messages ?? [];
+  const logs = logsData?.messages ?? [];
+  const err =
+    markRead.error instanceof Error
+      ? markRead.error.message
+      : notificationsError instanceof Error
+        ? notificationsError.message
+        : logsError instanceof Error
+          ? logsError.message
+          : markRead.error || notificationsError || logsError
+            ? t("common.loadFailed")
+            : null;
+
+  if (notificationsPending || logsPending) {
+    return <p className="muted">{t("common.loading")}</p>;
+  }
 
   if (err) {
     return <p className="error">{err}</p>;

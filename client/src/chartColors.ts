@@ -1,5 +1,39 @@
 import type { AssetGroupSlug, TimeseriesAccountLine } from "./types";
 
+export function parseRgbTriplet(raw: string | null | undefined): [number, number, number] | null {
+  if (!raw?.trim()) return null;
+  const parts = raw.split(",").map((s) => parseInt(s.trim(), 10));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return null;
+  return [parts[0]!, parts[1]!, parts[2]!];
+}
+
+export function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a3b8"): string {
+  const p = parseRgbTriplet(raw);
+  if (!p) return fallback;
+  return `rgb(${p[0]},${p[1]},${p[2]})`;
+}
+
+function strokeFromAccountColorRgb(colorRgb: string | undefined): string | undefined {
+  if (!colorRgb) return undefined;
+  return rgbTripletToCss(colorRgb);
+}
+
+/** RGB average of `r,g,b` triplets (group lines from child accounts). */
+export function averageRgbTriplets(triplets: (string | null | undefined)[]): string | undefined {
+  const parsed = triplets.map(parseRgbTriplet).filter((p): p is [number, number, number] => p != null);
+  if (parsed.length === 0) return undefined;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const [pr, pg, pb] of parsed) {
+    r += pr;
+    g += pg;
+    b += pb;
+  }
+  const n = parsed.length;
+  return `${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)}`;
+}
+
 /** Mix stroke toward white so “aportes acum.” reads as the same hue as valorización, one step lighter. */
 export function lightenStrokeForAccumulated(baseStroke: string, mixTowardWhite = 0.42): string {
   const s = baseStroke.trim();
@@ -123,7 +157,12 @@ export function overviewLineColor(dataKey: string): string {
 
 export type ChartColorPlan =
   | { kind: "default" }
-  | { kind: "dashboard-primary"; dataKeyToGroup: Record<string, string> }
+  | {
+    kind: "dashboard-primary";
+    dataKeyToGroup: Record<string, string>;
+    /** Account line colors keyed by chart `colorIndex` (from timeseries `color_rgb`). */
+    colorRgbByColorIndex?: Map<number, string>;
+  }
   | { kind: "dashboard-overview" }
   | { kind: "dashboard-patrimonio-usd" }
   | {
@@ -234,6 +273,7 @@ export function resolveLineSeriesColors(
   if (plan.kind === "dashboard-primary") {
     const nextByGroup = new Map<string, number>();
     const strokeByColorIndex = new Map<number, string>();
+    const colorRgbByColorIndex = plan.colorRgbByColorIndex;
     let retirementOtherIndex = 0;
     return series.map((s) => {
       if (s.isDeposit) {
@@ -243,6 +283,12 @@ export function resolveLineSeriesColors(
           ...s,
           stroke: lightenStrokeForAccumulated(base),
         };
+      }
+      const fromDb = colorRgbByColorIndex?.get(s.colorIndex);
+      if (fromDb) {
+        const stroke = rgbTripletToCss(fromDb);
+        strokeByColorIndex.set(s.colorIndex, stroke);
+        return { ...s, stroke };
       }
       const g = plan.dataKeyToGroup[s.dataKey] ?? "other";
       const palette = shadesForGroupSlug(g);
@@ -348,7 +394,7 @@ function isLiabilitiesCreditCardAccountName(name: string): boolean {
 /** Minimal series identity for color maps (perf bars, legends — not necessarily valuation lines). */
 export type ChartSeriesColorKey = Pick<
   TimeseriesAccountLine,
-  "account_id" | "name" | "dataKey" | "depositDataKey" | "displayDepositDataKey"
+  "account_id" | "name" | "dataKey" | "depositDataKey" | "displayDepositDataKey" | "color_rgb"
 >;
 
 /** Line chart (dataKey) + pie (account_id) use the same map on class tabs. */
@@ -360,8 +406,12 @@ export function buildGroupTabColorMaps(
   const byAccountId = new Map<number, string>();
   let hueIndex = 0;
   for (const a of accounts) {
+    const fromDb = strokeFromAccountColorRgb("color_rgb" in a ? a.color_rgb : undefined);
     let stroke: string;
-    if (a.account_id === -1) stroke = "#cbd5e1";
+    if (fromDb) {
+      stroke = fromDb;
+      hueIndex += 1;
+    } else if (a.account_id === -1) stroke = "#cbd5e1";
     else if (a.account_id === -4) stroke = "#fb7185";
     /** Brokerage “Todas” + grouped: synthetic rows from `aggregateBrokerageAllViewValuationBlock`. */
     else if (groupSlug === "brokerage" && a.account_id === -201) stroke = FINTUAL_RN_BROKER_STROKE;

@@ -8,7 +8,6 @@ import {
 import {
   assetAccountSidebarLabel,
   brokerageAccountNavLabel,
-  hideRedundantGroupRow,
   liabilityCategoryNavLabel,
   retirementAccountNavLabel,
 } from "./navAccountLabels";
@@ -51,10 +50,6 @@ function maybeSubgroup(
   accountLabel: (a: AccountListRow) => string
 ): SidebarNavNode | null {
   if (accounts.length === 0) return null;
-  if (hideRedundantGroupRow(groupLabel, accounts, accountLabel)) {
-    const a = accounts[0]!;
-    return accountLeaf(id, a, accountLabel);
-  }
   return {
     id,
     label: groupLabel,
@@ -289,10 +284,26 @@ export function buildSidebarNavTree(data: SidebarAccountsBundle): SidebarNavNode
   ];
 }
 
+function normalizeNavPath(p: string): string {
+  if (!p || p === "/") return "/";
+  return p.endsWith("/") && p.length > 1 ? p.slice(0, -1) : p;
+}
+
+/** True when `pathname` is this node or under its `to` / `activePrefix` (ancestor auto-expand). */
+function sidebarNodeSubtreeContainsPath(pathname: string, node: SidebarNavNode): boolean {
+  const p = normalizeNavPath(pathname);
+  const to = normalizeNavPath(node.to);
+  if (p === to || p.startsWith(`${to}/`)) return true;
+  if (node.activePrefix) {
+    const ap = normalizeNavPath(node.activePrefix);
+    return p === ap || p.startsWith(`${ap}/`);
+  }
+  return false;
+}
+
+/** Exact `to` match only — parent rows are not highlighted when a child route is open. */
 export function sidebarNodeMatchesPath(pathname: string, node: SidebarNavNode): boolean {
-  if (node.end) return pathname === node.to;
-  if (node.activePrefix) return pathname === node.activePrefix || pathname.startsWith(`${node.activePrefix}/`);
-  return pathname === node.to || pathname.startsWith(`${node.to}/`);
+  return normalizeNavPath(pathname) === normalizeNavPath(node.to);
 }
 
 export function collectAncestorIdsToExpand(nodes: SidebarNavNode[], pathname: string): string[] {
@@ -301,8 +312,8 @@ export function collectAncestorIdsToExpand(nodes: SidebarNavNode[], pathname: st
     for (const node of list) {
       const childHit = node.children?.length ? walk(node.children) : false;
       const selfHit =
-        pathname === node.to ||
-        (node.children?.length ? sidebarNodeMatchesPath(pathname, node) : false);
+        normalizeNavPath(pathname) === normalizeNavPath(node.to) ||
+        (node.children?.length ? sidebarNodeSubtreeContainsPath(pathname, node) : false);
       if (childHit) {
         if (node.children?.length) ids.push(node.id);
         return true;
