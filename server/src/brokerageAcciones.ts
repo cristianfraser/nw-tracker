@@ -35,6 +35,11 @@ export interface DashboardAccountStats {
   fx_clp_per_usd: number | null;
   fx_date_used: string | null;
   notes: string | null;
+  /**
+   * True when monthly closing values end with more than three trailing zero months (same tail rule as
+   * valuation charts). Computed on each `/api/dashboard` response.
+   */
+  chart_inactive: boolean;
   /** SPY, VEA, BTC, ETH — ticker, units, implied CLP per unit when data exists */
   position?: {
     ticker: string;

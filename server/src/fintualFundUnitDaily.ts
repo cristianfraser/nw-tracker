@@ -1,7 +1,8 @@
 /**
- * Append Fintual goal NAV polls to `fund_unit_daily` when we can infer a share price.
+ * Append Fintual goal NAV polls to `fund_unit_daily` (marquee, rates charts).
  */
 import { db } from "./db.js";
+import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import { latestFundUnitRow, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 
 /** `import:excel|key=…` → rates chart series key. */
@@ -32,7 +33,6 @@ function latestValuationClp(accountId: number, onOrBefore: string): number | nul
 
 /**
  * Implied valor cuota ≈ goal NAV ÷ shares, with shares from last (valuation ÷ unit) pair.
- * Returns null on first observation when we cannot anchor shares.
  */
 export function impliedFintualUnitClpFromNav(
   accountId: number,
@@ -49,26 +49,76 @@ export function impliedFintualUnitClpFromNav(
   return Math.round((navClp / shares) * 10000) / 10000;
 }
 
+/** Resolve valor cuota: publish price (evening API) → implied from history → NAV ÷ Σ cuotas bootstrap. */
+export function resolveFintualUnitClp(opts: {
+  accountId: number;
+  seriesKey: string;
+  navClp: number;
+  asOfYmd: string;
+  fundPriceClp?: number | null;
+  units?: number | null;
+}): number | null {
+  if (
+    opts.fundPriceClp != null &&
+    Number.isFinite(opts.fundPriceClp) &&
+    opts.fundPriceClp > 0
+  ) {
+    return Math.round(opts.fundPriceClp * 10000) / 10000;
+  }
+
+  const implied = impliedFintualUnitClpFromNav(
+    opts.accountId,
+    opts.seriesKey,
+    opts.navClp,
+    opts.asOfYmd
+  );
+  if (implied != null && implied > 0) return implied;
+
+  let shares = opts.units;
+  if (shares == null || !Number.isFinite(shares) || shares <= 0) {
+    shares = fintualGoalUnitsFromMovements(opts.accountId);
+  }
+  if (shares != null && shares > 0 && Number.isFinite(opts.navClp) && opts.navClp > 0) {
+    return Math.round((opts.navClp / shares) * 10000) / 10000;
+  }
+
+  return null;
+}
+
 export function recordFintualGoalFundUnitDaily(opts: {
   accountId: number;
   importNotes: string;
   asOfYmd: string;
   navClp: number;
   dryRun: boolean;
+  fundPriceClp?: number | null;
+  units?: number | null;
 }): { recorded: boolean; unitClp: number | null; gapDaysFilled: number } {
   const seriesKey = fundSeriesKeyFromImportNotes(opts.importNotes);
   if (!seriesKey) return { recorded: false, unitClp: null, gapDaysFilled: 0 };
 
-  const unitClp = impliedFintualUnitClpFromNav(opts.accountId, seriesKey, opts.navClp, opts.asOfYmd);
+  const unitClp = resolveFintualUnitClp({
+    accountId: opts.accountId,
+    seriesKey,
+    navClp: opts.navClp,
+    asOfYmd: opts.asOfYmd,
+    fundPriceClp: opts.fundPriceClp,
+    units: opts.units,
+  });
   if (unitClp == null || unitClp <= 0) {
     return { recorded: false, unitClp: null, gapDaysFilled: 0 };
   }
+
+  const note =
+    opts.fundPriceClp != null && opts.fundPriceClp > 0
+      ? `fintual:real_assets:publish|${opts.importNotes}`
+      : `fintual:api:goal-nav|${opts.importNotes}`;
 
   const { gapDaysFilled } = upsertFundUnitSpotPreservingHistory({
     seriesKey,
     observationDay: opts.asOfYmd,
     unitValueClp: unitClp,
-    note: `fintual:api:goal-nav|${opts.importNotes}`,
+    note,
     carryNote: "fintual:carry-forward",
     dryRun: opts.dryRun,
   });

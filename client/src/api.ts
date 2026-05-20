@@ -54,6 +54,8 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   assetTree: () => j<import("./types").AssetTreeResponse>("/api/meta/asset-tree"),
+  sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
+  ratesInstruments: () => j<import("./types").RatesInstrumentsResponse>("/api/meta/rates-instruments"),
   dashboard: (includeUsd?: boolean) =>
     j<import("./types").DashboardResponse>(
       includeUsd ? "/api/dashboard?include_usd=true" : "/api/dashboard"

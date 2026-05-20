@@ -1,34 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api";
+import { useFlowsDeposits } from "../queries/hooks";
 import { DepositsByCategoryChart } from "../components/DepositsByCategoryChart";
 import { Table } from "../components/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
 import { formatClp } from "../format";
 import { depositFlowCategoryLabel } from "../i18n";
-import type { DepositFlowCategory, FlowsDepositsResponse } from "../types";
+import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
 export function DepositsPage() {
-  const [data, setData] = useState<FlowsDepositsResponse | null>(null);
   const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const d = await api.flowsDeposits();
-        if (!cancelled) setData(d);
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, error } = useFlowsDeposits();
+  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];

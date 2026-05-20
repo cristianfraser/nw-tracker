@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Fragment, useMemo, useState } from "react";
+import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import { AllocationPiePanel, LineChartPanel } from "../components/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { Table } from "../components/Table";
-import { api } from "../api";
+import { useInversionesBundle, useSidebarNav, useDashboardBundle } from "../queries/hooks";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   aggregateBrokerageAllViewPerformance,
   aggregateBrokerageAllViewPie,
@@ -29,19 +30,16 @@ import {
 } from "../inversionesGroupedAggregation";
 import { allocationBucketColor, buildGroupTabColorMaps, groupTabPieSliceFill } from "../chartColors";
 import i18n from "../i18n";
-import { parseInversionesSplat, inversionesGroupParentBackLink } from "../inversionesPath";
+import { PortfolioNavEntityCardsStrip } from "../components/PortfolioNavEntityCardsStrip";
+import { portfolioNavParentTitleModeForNavNode } from "../portfolioNavDashboardCards";
+import { findBestNavNodeForPathname, findPortfolioNavNodeForPage } from "../portfolioNavFromApi";
 import {
   brokerageAccountNavLabel,
   hideRedundantGroupRow,
   retirementAccountNavLabel,
 } from "../navAccountLabels";
-import type {
-  AccountListRow,
-  GroupMonthlyPerformanceResponse,
-  ValuationTimeseriesResponse,
-} from "../types";
-
-type DisplayUnit = "clp" | "usd";
+import { parseInversionesSplat } from "../inversionesPath";
+import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 
 /** Parent row in “Grupos y cuentas” for AFP + AFC (cotización obligatoria). */
 const RETIRO_AFP_AFC_GROUP_TITLE = "AFP + AFC";
@@ -81,17 +79,11 @@ function HierarchyNavRow({
 
 export function InversionesPage() {
   const { "*": splat } = useParams();
+  const { data: sidebarNav } = useSidebarNav();
   const resolved = useMemo(() => parseInversionesSplat(splat), [splat]);
   const pathInvalid = resolved === null;
 
-  const [accounts, setAccounts] = useState<AccountListRow[]>([]);
-  const [navInv, setNavInv] = useState<AccountListRow[]>([]);
-  const [navRet, setNavRet] = useState<AccountListRow[]>([]);
-  const [navBrk, setNavBrk] = useState<AccountListRow[]>([]);
-  const [ts, setTs] = useState<ValuationTimeseriesResponse | null>(null);
-  const [groupPerf, setGroupPerf] = useState<GroupMonthlyPerformanceResponse | null>(null);
-  const [displayUnit, setDisplayUnit] = useState<DisplayUnit>("clp");
-  const [err, setErr] = useState<string | null>(null);
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const [brokerageGroupedAll, setBrokerageGroupedAll] = useState(true);
   const [invRootGrouped, setInvRootGrouped] = useState(true);
   const [retiroGrouped, setRetiroGrouped] = useState(true);
@@ -119,51 +111,44 @@ export function InversionesPage() {
   const brkFetchSub =
     resolved?.apiGroup === "brokerage" && resolved.apiSubgroup != null ? resolved.apiSubgroup : undefined;
 
-  useEffect(() => {
-    if (!resolved) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const accP = api.accountsByGroup(resolved.apiGroup, resolved.apiSubgroup);
-        const treeBrkP =
-          resolved.navScope === "brokerage" && brkFetchSub
-            ? api.accountsByGroup("brokerage", undefined)
-            : resolved.navScope === "brokerage"
-              ? accP
-              : Promise.resolve({ accounts: [] as AccountListRow[] });
-        const treeInvP =
-          resolved.navScope === "root"
-            ? api.accountsByGroup("inversiones")
-            : Promise.resolve({ accounts: [] as AccountListRow[] });
-        const treeRetP =
-          resolved.navScope === "retiro"
-            ? api.accountsByGroup("retirement")
-            : Promise.resolve({ accounts: [] as AccountListRow[] });
+  const { data, error } = useInversionesBundle({
+    apiGroup: resolved?.apiGroup ?? "",
+    apiSubgroup: resolved?.apiSubgroup,
+    navScope: resolved?.navScope ?? "root",
+    brkFetchSub,
+    unit: displayUnit,
+    enabled: resolved != null,
+  });
+  const { data: dashBundle } = useDashboardBundle(displayUnit);
+  const dash = dashBundle?.dash ?? null;
+  const overviewPoints = dashBundle?.ts?.overview?.points ?? [];
+  const accounts = data?.accounts ?? [];
+  const navInv = data?.navInv ?? [];
+  const navRet = data?.navRet ?? [];
+  const navBrk = data?.navBrk ?? [];
+  const ts = data?.ts ?? null;
+  const groupPerf = data?.groupPerf ?? null;
+  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
-        const [acc, tInv, tRet, tBrk, series, perfResult] = await Promise.all([
-          accP,
-          treeInvP,
-          treeRetP,
-          treeBrkP,
-          api.valuationTimeseries(displayUnit, { group: resolved.apiGroup, subgroup: resolved.apiSubgroup }),
-          api.groupMonthlyPerformance(resolved.apiGroup, displayUnit, resolved.apiSubgroup).catch(() => null),
-        ]);
-        if (!cancelled) {
-          setAccounts(acc.accounts);
-          setNavInv(tInv.accounts);
-          setNavRet(tRet.accounts);
-          setNavBrk(tBrk.accounts);
-          setTs(series);
-          setGroupPerf(perfResult);
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [resolved, displayUnit, brkFetchSub]);
+  const { pathname } = useLocation();
+
+  const inversionesNavRoot = useMemo(
+    () => findPortfolioNavNodeForPage(sidebarNav, { portfolioSlug: "inversiones" }),
+    [sidebarNav]
+  );
+
+  const navMatchNode = useMemo(() => {
+    const roots = inversionesNavRoot ? [inversionesNavRoot] : sidebarNav?.main;
+    return findBestNavNodeForPathname(roots, pathname);
+  }, [inversionesNavRoot, sidebarNav, pathname]);
+
+  const stripDetailChildren = useMemo(() => {
+    if (!navMatchNode?.children?.length) return [];
+    if (navMatchNode.slug === "inversiones") {
+      return (navMatchNode.children ?? []).filter((c) => c.slug === "brokerage" || c.slug === "retirement");
+    }
+    return navMatchNode.children ?? [];
+  }, [navMatchNode]);
 
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group) return null;
@@ -263,11 +248,6 @@ export function InversionesPage() {
     apvGrouped,
   ]);
 
-  const parentBack = useMemo(
-    () => (resolved ? inversionesGroupParentBackLink(resolved) : { to: "/", label: "Dashboard" }),
-    [resolved]
-  );
-
   const chartColorSlug = useMemo(() => {
     if (!resolved) return "inversiones";
     if (resolved.apiGroup === "brokerage" && resolved.apiSubgroup === "crypto") return "crypto";
@@ -317,10 +297,6 @@ export function InversionesPage() {
     );
   }
 
-  if (resolved.apiSubgroup != null && accounts.length === 1) {
-    return <Navigate to={`/account/${accounts[0]!.id}`} replace />;
-  }
-
   const pieSlices = displayPieSlices;
   const pieAllocationSlug =
     resolved.apiGroup === "brokerage" && resolved.apiSubgroup === "crypto" ? "crypto" : resolved.apiGroup;
@@ -330,63 +306,59 @@ export function InversionesPage() {
   return (
     <main>
       <h1>{resolved.pageTitle}</h1>
-      <p className="muted">
-        <Link to={parentBack.to}>← {parentBack.label}</Link>
-      </p>
 
-      <div className="toggle-row" style={{ flexWrap: "wrap", gap: "0.5rem 1rem" }}>
-        <span className="muted">Gráficos: </span>
-        <label>
-          <input
-            type="radio"
-            name="adu-inv"
-            checked={displayUnit === "clp"}
-            onChange={() => setDisplayUnit("clp")}
-          />{" "}
-          CLP
-        </label>
-        <label>
-          <input type="radio" name="adu-inv" checked={displayUnit === "usd"} onChange={() => setDisplayUnit("usd")} />{" "}
-          USD
-        </label>
-        {showGroupedToggle ? (
-          <>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
-              <input
-                type="checkbox"
-                checked={
-                  rootInvTodas
-                    ? invRootGrouped
-                    : apvTodas
-                      ? apvGrouped
-                      : retiroTodas
-                        ? retiroGrouped
-                        : brokerageGroupedAll
-                }
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  if (rootInvTodas) setInvRootGrouped(v);
-                  else if (apvTodas) setApvGrouped(v);
-                  else if (retiroTodas) setRetiroGrouped(v);
-                  else setBrokerageGroupedAll(v);
-                }}
-              />
-              <span>Agrupado</span>
-            </label>
-            <label
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 12 }}
-              title="Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización)."
-            >
-              <input
-                type="checkbox"
-                checked={showValuationDeposits}
-                onChange={(e) => setShowValuationDeposits(e.target.checked)}
-              />
-              <span>Aportes acumulados</span>
-            </label>
-          </>
-        ) : null}
-      </div>
+      {showGroupedToggle ? (
+        <div className="toggle-row" style={{ flexWrap: "wrap", gap: "0.5rem 1rem" }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
+            <input
+              type="checkbox"
+              checked={
+                rootInvTodas
+                  ? invRootGrouped
+                  : apvTodas
+                    ? apvGrouped
+                    : retiroTodas
+                      ? retiroGrouped
+                      : brokerageGroupedAll
+              }
+              onChange={(e) => {
+                const v = e.target.checked;
+                if (rootInvTodas) setInvRootGrouped(v);
+                else if (apvTodas) setApvGrouped(v);
+                else if (retiroTodas) setRetiroGrouped(v);
+                else setBrokerageGroupedAll(v);
+              }}
+            />
+            <span>Agrupado</span>
+          </label>
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 12 }}
+            title="Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización)."
+          >
+            <input
+              type="checkbox"
+              checked={showValuationDeposits}
+              onChange={(e) => setShowValuationDeposits(e.target.checked)}
+            />
+            <span>Aportes acumulados</span>
+          </label>
+        </div>
+      ) : null}
+
+      {displayValuationBlock && dash && navMatchNode && accounts.length > 0 ? (
+        <PortfolioNavEntityCardsStrip
+          dash={dash}
+          overviewPoints={overviewPoints}
+          parentNavNode={navMatchNode}
+          detailNavChildren={stripDetailChildren}
+          compactTitle={resolveNavTreeLabel(navMatchNode)}
+          compactCardSlug={`inv-nav-${navMatchNode.slug}-${navMatchNode.node_id}`}
+          parentTitleMode={portfolioNavParentTitleModeForNavNode(navMatchNode)}
+          showUsd={displayUnit === "usd"}
+          metricsPeriod={metricsPeriod}
+          animated
+        />
+      ) : null}
 
       {accounts.length === 0 ? (
         <p className="empty muted" style={{ marginTop: "1rem" }}>

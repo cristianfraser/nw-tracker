@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/AppSidebar";
 import { MobileNavDrawer } from "./components/MobileNavDrawer";
+import { AppDisplayPreferencesBar } from "./components/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/MarketTickerPanel";
+import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext";
 import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { AssetGroupPage } from "./pages/AssetGroupPage";
@@ -17,12 +19,14 @@ import { RatesPage } from "./pages/RatesPage";
 export default function App() {
   return (
     <LoadingProvider>
+      <DisplayPreferencesProvider>
       <div className="layout layout--with-sidebar">
         <MobileNavDrawer>
           <AppSidebar />
         </MobileNavDrawer>
         <MarketTickerPanel />
         <div className="layout-main">
+          <AppDisplayPreferencesBar />
           <div className="content">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
@@ -55,6 +59,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      </DisplayPreferencesProvider>
     </LoadingProvider>
   );
 }

@@ -1,4 +1,13 @@
 {
+  "app": {
+    "displayPreferences": {
+      "toolbarAria": "Divisa (CLP o USD) y período MTD/YTD para tarjetas y gráficos",
+      "displayCurrency": "Divisa: "
+    }
+  },
+  "rates": {
+    "instrumentDisplayHint": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD."
+  },
   "brokerage": {
     "groups": {
       "mutual_funds": "Fondos mutuos",
@@ -29,13 +38,13 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "values": "Valores:",
     "chartGranularityLabel": "Período:",
     "monthly": "MTD",
     "yearly": "YTD",
     "yearlyViewHint": "Vista anual: las valorizaciones usan el <1>último mes</1> de cada año calendario. El P/L de inversiones suma los <2>Δ mensuales</2> de ese año en un solo punto.",
     "cards": {
       "netWorth": "Patrimonio neto",
+      "inversiones": "Inversiones",
       "totalDeposits": "Depósitos totales",
       "realEstate": "Inmuebles",
       "retirement": "Retiro",
@@ -117,6 +126,16 @@
     "rates": "Tipos de cambio",
     "messages": "Mensajes"
   },
+  "accountDetail": {
+    "chart": {
+      "seriesLabel": "Serie:",
+      "monthlyEnd": "Mensual (fin de mes)",
+      "daily": "Diario"
+    },
+    "card": {
+      "accountNumber": "Cuenta n.º {{id}}"
+    }
+  },
   "messages": {
     "pageTitle": "Mensajes",
     "pageHint": "Avisos de validación (p. ej. Fintual) y registro de cada ejecución del sync.",
@@ -159,6 +178,7 @@
     "panelAria": "Mercado",
     "uf": "UF",
     "usdLive": "USD",
-    "unoA": "UNO-A"
+    "unoA": "UNO-A",
+    "riskyNorris": "Risky Norris"
   }
 }

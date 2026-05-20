@@ -127,7 +127,9 @@ export function DashboardCardValue({
     ? { mountSeedDigitRange: MOUNT_DIGIT_RANGE[variant], mountSeedId: mountSeedKey }
     : {};
 
-  const wrapClass = isMain ? `${styles.wrap} ${styles.wrapMain}` : `${styles.wrap} ${styles.wrapBreakdown}`;
+  const wrapClass = isMain
+    ? `${styles.wrap} ${styles.wrapMain} dashboard-card-value dashboard-card-value--main`
+    : `${styles.wrap} ${styles.wrapBreakdown} dashboard-card-value dashboard-card-value--breakdown`;
   const valueClass = isMain
     ? `${styles.value} ${styles.valueMain} mono`
     : `${styles.value} ${styles.valueBreakdown} mono`;
@@ -148,7 +150,7 @@ export function DashboardCardValue({
       transformTiming={transformTiming}
       spinTiming={spinTiming}
       emptyFallback={
-        <span className={`${valueClass} ${styles.valueEmpty}`}>—</span>
+        <span className={`${valueClass} ${styles.valueEmpty} dashboard-card-value-empty`}>—</span>
       }
     />
   );

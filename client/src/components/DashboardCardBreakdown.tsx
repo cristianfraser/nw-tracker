@@ -29,13 +29,14 @@ function BreakdownList({
 }) {
   if (lines.length === 0) return null;
   return (
-    <ul className={className ? `${styles.root} ${className}` : styles.root}>
+    <ul className={`card-breakdown-root ${className ? `${styles.root} ${className}` : styles.root}`}>
       {lines.map((line, i) => (
         <li
           key={`${rowKeyPrefix}-${line.depth}-${line.label}-${i}`}
           className={
             line.depth >= 2 ? styles.grandchild : line.depth === 1 ? styles.child : styles.group
           }
+          data-card-breakdown-depth={line.depth}
         >
           <span className={styles.label}>{line.label}</span>
           <span className="card-breakdown__amount mono">

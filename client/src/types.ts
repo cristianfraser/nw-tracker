@@ -38,6 +38,8 @@ export interface AccountListRow {
   group_label: string;
   /** When 1, account is listed in nav but omitted from class totals and dashboard buckets. */
   exclude_from_group_totals?: number;
+  /** Chart line color as `r,g,b` (0–255). */
+  color_rgb?: string | null;
 }
 
 export interface AccountPositionSnapshot {
@@ -81,6 +83,17 @@ export interface DashboardAccountRow {
   fx_clp_per_usd?: number | null;
   fx_date_used?: string | null;
   position?: AccountPositionSnapshot | null;
+  /** True when monthly closes show a long zero tail (same rule as chart tail clip). From `/api/dashboard`. */
+  chart_inactive?: boolean;
+}
+
+export interface DashboardLayoutCardRow {
+  slug: string;
+  label: string;
+  label_i18n_key: string | null;
+  sort_order: number;
+  bucket_slug: string;
+  card_css: string | null;
 }
 
 export interface DashboardResponse {
@@ -133,6 +146,8 @@ export interface DashboardResponse {
     monthly_usd?: { as_of_date: string; deposited: number }[];
     yearly_usd?: { as_of_date: string; deposited: number }[];
   };
+  /** Home bucket cards (order + bucket) from `portfolio_groups`; Patrimonio neto hero is not included. */
+  dashboard_layout?: DashboardLayoutCardRow[];
 }
 
 export interface FxLatest {
@@ -163,12 +178,16 @@ export interface TimeseriesAccountLine {
   display_deposit_series_name?: string;
   /** Omitted from class “Total” / dashboard buckets; still shown as its own line. */
   exclude_from_group_totals?: boolean;
+  /** Chart line color as `r,g,b` (0–255), from DB. */
+  color_rgb?: string;
 }
 
 export interface TimeseriesBlock {
   accounts?: TimeseriesAccountLine[];
   lines?: { dataKey: string; name: string; valueSeriesType: ValueSeriesType }[];
   points: Record<string, string | number | null>[];
+  /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */
+  synthetic_group_color_rgb?: Record<string, string>;
 }
 
 /** Dashboard home, or `/api/...?group=` for class tabs */
@@ -432,12 +451,64 @@ export interface MarketSeriesResponse {
 }
 
 /** `GET /api/market-ticker` — Chile-today snapshot for the marquee (not forward-filled series tail). */
+export interface MarketDisplaySeriesRow {
+  id: number;
+  slug: string;
+  label: string;
+  label_i18n_key: string | null;
+  sort_order: number;
+  kind: "equity" | "fund_unit" | "fx_usd" | "uf";
+  series_key: string | null;
+  show_in_marquee: number;
+  show_in_rates: number;
+  rates_chart_title: string | null;
+}
+
 export interface MarketTickerResponse {
   chile_today: string;
   uf: { date: string; clp_per_uf: number } | null;
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
-  equities: { ticker: string; trade_date: string; value_usd: number; delta_pct: number | null }[];
+  risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
+  equities: {
+    ticker: string;
+    trade_date: string;
+    value_usd: number;
+    delta_pct: number | null;
+    source?: "live" | "eod";
+  }[];
+  marquee_series?: MarketDisplaySeriesRow[];
+}
+
+export interface NavTreeNodeDto {
+  node_id: string;
+  slug: string;
+  label: string;
+  label_i18n_key: string | null;
+  route_path: string;
+  active_prefix: string | null;
+  nav_end: boolean;
+  show_leaf_hyphen: boolean;
+  account_id: number | null;
+  expense_account_id: number | null;
+  expense_account_slug: string | null;
+  asset_group_slug: string | null;
+  api_group: string | null;
+  api_subgroup: string | null;
+  color_rgb: string | null;
+  color: string | null;
+  children: NavTreeNodeDto[];
+}
+
+export interface SidebarNavResponse {
+  dashboard: NavTreeNodeDto | null;
+  main: NavTreeNodeDto[];
+  flows: NavTreeNodeDto | null;
+  rates: NavTreeNodeDto | null;
+}
+
+export interface RatesInstrumentsResponse {
+  instruments: MarketDisplaySeriesRow[];
 }
 
 export type DepositFlowCategory = "real_estate" | "cash" | "brokerage" | "inversiones";

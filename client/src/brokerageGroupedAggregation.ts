@@ -1,3 +1,4 @@
+import { averageRgbTriplets } from "./chartColors";
 import i18n, { brokerageGroupLabel } from "./i18n";
 import type {
   AccountListRow,
@@ -55,6 +56,14 @@ export function brokeragePortfolioGroupFromCategorySlug(categorySlug: string): B
   if (categorySlug === "spy" || categorySlug === "vea") return "acciones";
   if (categorySlug === "bitcoin" || categorySlug === "eth") return "cripto";
   return null;
+}
+
+function accountColorRgbFromLine(
+  line: TimeseriesAccountLine,
+  listRows: AccountListRow[]
+): string | undefined {
+  if (line.color_rgb) return line.color_rgb;
+  return listRows.find((r) => r.id === line.account_id)?.color_rgb ?? undefined;
 }
 
 function accountIdToGroup(rows: AccountListRow[]): Map<number, BrokeragePortfolioGroup> {
@@ -161,6 +170,11 @@ export function aggregateBrokerageAllViewValuationBlock(
   const ordered: BrokeragePortfolioGroup[] = BROKERAGE_GROUP_ORDER.filter((g) => used.has(g));
   const synth: TimeseriesAccountLine[] = ordered.map((g) => {
     const m = G_META[g];
+    const groupMembers = members.filter((a) => idToGroup.get(a.account_id) === g);
+    const fromServer = block.synthetic_group_color_rgb?.[String(m.accountId)];
+    const color_rgb =
+      fromServer ??
+      averageRgbTriplets(groupMembers.map((a) => accountColorRgbFromLine(a, listRows)));
     return {
       account_id: m.accountId,
       name: brokeragePortfolioGroupLabel(g),
@@ -168,6 +182,7 @@ export function aggregateBrokerageAllViewValuationBlock(
       valueSeriesType: "data",
       depositDataKey: m.depKey,
       deposit_series_name: i18n.t("charts.accumulatedDeposits"),
+      ...(color_rgb ? { color_rgb } : {}),
     };
   });
 

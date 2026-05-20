@@ -5,6 +5,7 @@ import type {
   TimeseriesAccountLine,
   TimeseriesBlock,
 } from "./types";
+import { averageRgbTriplets } from "./chartColors";
 import {
   addNullableNumbers,
   appendGroupTabTotalsClient,
@@ -147,8 +148,17 @@ function buildIdToBucket<K extends string>(
   return (id) => m.get(id) ?? null;
 }
 
+function accountColorRgbFromLine(
+  line: TimeseriesAccountLine,
+  listRows: AccountListRow[]
+): string | undefined {
+  if (line.color_rgb) return line.color_rgb;
+  return listRows.find((r) => r.id === line.account_id)?.color_rgb ?? undefined;
+}
+
 function aggregateValuationByBucket<K extends string>(
   block: TimeseriesBlock,
+  listRows: AccountListRow[],
   orderedKeys: readonly K[],
   meta: Record<K, { accountId: number; dataKey: string; depKey: string; barDataKey: string; name: string }>,
   idToBucket: (id: number) => K | null
@@ -168,6 +178,11 @@ function aggregateValuationByBucket<K extends string>(
   const ordered = orderedKeys.filter((k) => used.has(k));
   const synth: TimeseriesAccountLine[] = ordered.map((k) => {
     const m = meta[k]!;
+    const groupMembers = members.filter((a) => idToBucket(a.account_id) === k);
+    const fromServer = block.synthetic_group_color_rgb?.[String(m.accountId)];
+    const color_rgb =
+      fromServer ??
+      averageRgbTriplets(groupMembers.map((a) => accountColorRgbFromLine(a, listRows)));
     return {
       account_id: m.accountId,
       name: m.name,
@@ -175,6 +190,7 @@ function aggregateValuationByBucket<K extends string>(
       valueSeriesType: "data",
       depositDataKey: m.depKey,
       deposit_series_name: "aportes acum.",
+      ...(color_rgb ? { color_rgb } : {}),
     };
   });
 
@@ -287,7 +303,13 @@ export function aggregateInversionesRootGroupedValuationBlock(
   block: TimeseriesBlock,
   listRows: AccountListRow[]
 ): TimeseriesBlock {
-  return aggregateValuationByBucket(block, ROOT_GRP_ORDER, ROOT_GRP_META, buildIdToBucket(listRows, rootGroupedBucket));
+  return aggregateValuationByBucket(
+    block,
+    listRows,
+    ROOT_GRP_ORDER,
+    ROOT_GRP_META,
+    buildIdToBucket(listRows, rootGroupedBucket)
+  );
 }
 
 export function aggregateInversionesRootGroupedPie(
@@ -310,6 +332,7 @@ export function aggregateInversionesRootUngroupedValuationBlock(
 ): TimeseriesBlock {
   return aggregateValuationByBucket(
     block,
+    listRows,
     ROOT_UNG_ORDER,
     ROOT_UNG_META,
     buildIdToBucket(listRows, rootUngroupedBucket)
@@ -331,7 +354,13 @@ export function aggregateInversionesRootUngroupedPerformance(
 }
 
 export function aggregateRetiroGroupedValuationBlock(block: TimeseriesBlock, listRows: AccountListRow[]): TimeseriesBlock {
-  return aggregateValuationByBucket(block, RET_GRP_ORDER, RET_GRP_META, buildIdToBucket(listRows, retiroGroupedBucket));
+  return aggregateValuationByBucket(
+    block,
+    listRows,
+    RET_GRP_ORDER,
+    RET_GRP_META,
+    buildIdToBucket(listRows, retiroGroupedBucket)
+  );
 }
 
 export function aggregateRetiroGroupedPie(
@@ -387,6 +416,7 @@ export function aggregateApvSubgroupGroupedValuationBlock(
 ): TimeseriesBlock {
   return aggregateValuationByBucket(
     block,
+    listRows,
     APV_LEAF_SUBGROUP_ORDER,
     APV_LEAF_SUBGROUP_META,
     buildIdToBucket(listRows, apvLeafSubgroupBucket)

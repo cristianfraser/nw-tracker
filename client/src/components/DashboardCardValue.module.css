@@ -12,22 +12,12 @@
   text-align: right;
 }
 
-:global(.card) .value .wrapMain {
-  text-align: left;
-}
-
-:global(number-flow-react).valueMain,
-.valueMain {
+:global(number-flow-react).valueMain {
   display: inline-block;
 }
 
-:global(.card) .value .value {
+:global(number-flow-react).valueBreakdown {
   display: inline-block;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: 0.85;
-  font-variant-numeric: tabular-nums;
-  text-align: left;
 }
 
 :global(number-flow-react).valueMain::part(number) {
@@ -36,28 +26,4 @@
 
 :global(number-flow-react).valueBreakdown::part(number) {
   transform-origin: right top;
-}
-
-:global(.card-breakdown__amount) .wrapBreakdown {
-  display: block;
-  width: 100%;
-  text-align: right;
-}
-
-:global(number-flow-react).valueBreakdown,
-.valueBreakdown {
-  display: inline-block;
-}
-
-:global(.card-breakdown__amount) .value {
-  display: inline-block;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-
-:global(.card-breakdown__amount) .valueEmpty,
-:global(.card) .value .valueEmpty {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
 }

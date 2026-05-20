@@ -62,6 +62,7 @@ import {
   fintualMappedNavSignature,
   fintualSnapshotMatchesDb,
   pickFintualApplySnapshot,
+  syncFintualFundUnitsFromResolutions,
 } from "./fintualApplyShared.js";
 import {
   clearFintualRealAssetNavCaches,
@@ -310,6 +311,8 @@ async function runFintual(
   state.fintualLastCheckSig = sig;
 
   const anyMapped = snap.goals.some((g) => g.matchedNotes);
+
+  syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
 
   if (fintualSnapshotMatchesDb(snap)) {
     const fintualLogChanges = collectFintualGoalValuationChanges(snap);

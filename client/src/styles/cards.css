@@ -10,7 +10,8 @@
   gap: 1rem;
 }
 
-.dashboard-cards > .card--dashboard-net-worth {
+.dashboard-cards>.card--dashboard-net-worth,
+.dashboard-cards>.portfolio-strip-compact {
   grid-row: 1;
   grid-column: 1;
   min-height: auto;
@@ -28,8 +29,9 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 1.1rem;
+  border-radius: 5px;
+  padding: 0.4rem 0.7rem 0.4rem 0.65rem;
+  line-height: 1;
 }
 
 .card .label {
@@ -40,19 +42,51 @@
   margin-bottom: 0.35rem;
 }
 
-.card-title-row {
+/**
+ * Title row: `.title` truncates with ellipsis; `.number-container` keeps the Δ visible on the right.
+ * (Used by `DashboardCardTitleRow` on dashboard + group cards; primary amount uses global `value` in
+ * `DetailedGroupCard` and `CompactEntityCard` so `.card .value` rules match strip vs detail cards.)
+ */
+.card-title-row.title-container {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
   margin-bottom: 0.35rem;
+  min-width: 0;
+  width: 100%;
 }
 
-.card-title-row__label {
+.card-title-row.title-container>.title.card-title-row__label {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-title-row.title-container>.title.card-title-row__label a {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+
+.card-title-row.title-container>.title.card-title-row__label a:hover {
+  text-decoration: underline;
+}
+
+.card-title-row.title-container>.number-container {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
   min-width: 0;
 }
 
@@ -65,14 +99,74 @@
   display: flex;
   justify-content: flex-start;
   align-items: baseline;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: var(--dashboard-card-primary-value-font-size);
+  font-weight: var(--dashboard-card-primary-value-font-weight);
   text-align: left;
+}
+
+/** Matches `CompactEntityCard` row gap under the primary value (metrics bring their own bottom margin). */
+.dashboard-card-metrics-slot {
+  margin-top: 0.35rem;
+}
+
+/* DashboardCardValue — hook classes from TS (app classes stay global here, not :global in CSS modules). */
+.card .value>.dashboard-card-value--main {
+  text-align: left;
+}
+
+.card .value>.dashboard-card-value--breakdown {
+  display: block;
+  width: 100%;
+  text-align: right;
+}
+
+.card .value .dashboard-card-value--main number-flow-react {
+  display: inline-block;
+  font-size: inherit;
+  font-weight: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.card .value .dashboard-card-value--breakdown number-flow-react {
+  display: inline-block;
+  font-size: inherit;
+  font-weight: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.card .value .dashboard-card-value-empty,
+.card-breakdown__amount .dashboard-card-value-empty {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.card-breakdown__amount .dashboard-card-value--breakdown {
+  display: block;
+  width: 100%;
+  text-align: right;
+}
+
+.card-breakdown__amount number-flow-react {
+  display: inline-block;
+  font-size: inherit;
+  font-weight: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-breakdown-root li[data-card-breakdown-depth="1"] .card-breakdown__amount,
+.card-breakdown-root li[data-card-breakdown-depth="2"] .card-breakdown__amount {
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
 .card--detail {
   min-width: 220px;
-  min-height: 300px;
+}
+
+/* Bucket card height alignment: only on the home dashboard (not inversiones/asset strips). */
+.page-dashboard .card--detail:not(.card--dashboard-net-worth) {
+  min-height: 230px;
 }
 
 .card--detail-compact {
@@ -85,11 +179,6 @@
   height: 100%;
 }
 
-/* Reinforce bucket min-height when stretch also sets height (cash wraps to its own row). */
-.card--detail.card--detail-stretch:not(.card--dashboard-net-worth) {
-  min-height: 300px;
-}
-
 .card--detail-body {
   flex: 1 1 auto;
   display: flex;
@@ -98,12 +187,12 @@
 }
 
 /* Cash card: pin credit-card row (and its separator) to the card bottom. */
-.card--cash.card--detail-stretch > .card-breakdown-spacer {
+.card--cash.card--detail-stretch>.card-breakdown-spacer {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.card--cash.card--detail-stretch > .card-breakdown-bottom {
+.card--cash.card--detail-stretch>.card-breakdown-bottom {
   flex-shrink: 0;
   margin-top: 0;
 }

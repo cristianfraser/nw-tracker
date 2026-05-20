@@ -21,7 +21,8 @@ export function initSchema() {
       id INTEGER PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
       label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      color_rgb TEXT
     );
 
     CREATE TABLE IF NOT EXISTS categories (
@@ -38,8 +39,58 @@ export function initSchema() {
       category_id INTEGER NOT NULL REFERENCES categories(id),
       name TEXT NOT NULL,
       notes TEXT,
+      color_rgb TEXT,
       exclude_from_group_totals INTEGER NOT NULL DEFAULT 0 CHECK (exclude_from_group_totals IN (0, 1)),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS portfolio_groups (
+      id INTEGER PRIMARY KEY,
+      parent_id INTEGER REFERENCES portfolio_groups(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      color_rgb TEXT,
+      route_path TEXT,
+      active_prefix TEXT,
+      nav_end INTEGER NOT NULL DEFAULT 0,
+      show_leaf_hyphen INTEGER NOT NULL DEFAULT 1,
+      label_i18n_key TEXT,
+      api_group TEXT,
+      api_subgroup TEXT,
+      asset_group_slug TEXT,
+      sidebar_section TEXT NOT NULL DEFAULT 'nested'
+    );
+
+    CREATE TABLE IF NOT EXISTS portfolio_group_items (
+      id INTEGER PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES portfolio_groups(id) ON DELETE CASCADE,
+      item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account', 'expense_account')),
+      child_group_id INTEGER REFERENCES portfolio_groups(id) ON DELETE CASCADE,
+      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+      expense_account_id INTEGER REFERENCES expense_accounts(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      CHECK (
+        (item_kind = 'group' AND child_group_id IS NOT NULL AND account_id IS NULL AND expense_account_id IS NULL)
+        OR (item_kind = 'account' AND account_id IS NOT NULL AND child_group_id IS NULL AND expense_account_id IS NULL)
+        OR (item_kind = 'expense_account' AND expense_account_id IS NOT NULL AND child_group_id IS NULL AND account_id IS NULL)
+      ),
+      UNIQUE (group_id, child_group_id),
+      UNIQUE (group_id, account_id),
+      UNIQUE (group_id, expense_account_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS market_display_series (
+      id INTEGER PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      label_i18n_key TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL CHECK (kind IN ('equity', 'fund_unit', 'fx_usd', 'uf')),
+      series_key TEXT,
+      show_in_marquee INTEGER NOT NULL DEFAULT 0 CHECK (show_in_marquee IN (0, 1)),
+      show_in_rates INTEGER NOT NULL DEFAULT 0 CHECK (show_in_rates IN (0, 1)),
+      rates_chart_title TEXT
     );
 
     CREATE TABLE IF NOT EXISTS movements (
