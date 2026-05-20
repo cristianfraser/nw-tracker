@@ -21,5 +21,6 @@ server/data/fintual-goal-map.json
 # Local PDF parsing deps (see server/scripts/parse-cc-statement-pdfs.py)
 server/scripts/.pdf_deps/
 
-# Optional local AFP website residual (see import:excel Modelo prior cuotas)
-cfraser/afp-modelo-cuotas-supplement.txt
+# Personal finance data (Numbers/Excel exports, certificates, local CSVs)
+cfraser/
+cfraser.xlsx
