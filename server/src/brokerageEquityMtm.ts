@@ -1,6 +1,12 @@
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { readSpyVeaShareUnitsFromStocksCsv } from "./accountPosition.js";
 import { db } from "./db.js";
+import {
+  equityCloseUsdEod,
+  equitySessionYmdForTicker,
+  getCachedLiveEquityQuote,
+  resolveEquityQuote,
+} from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 
@@ -47,24 +53,49 @@ const stmtUnits = db.prepare(
   `SELECT COALESCE(SUM(units_delta), 0) AS u FROM brokerage_flows WHERE account_id = ? AND occurred_on <= ?`
 );
 
-const stmtClose = db.prepare(
-  `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
-);
-
-/** CLP MTM: shares through `asOfYmd` × last EOD ≤ asOf × FX. `asOfYmd` is the snapshot date (month-end). */
-export function computeEquityMtmClp(accountId: number, asOfYmd: string): number | null {
+/** CLP MTM: shares through `asOfYmd` × USD price × FX. Uses EOD from DB unless `priceUsd` passed. */
+export function computeEquityMtmClp(
+  accountId: number,
+  asOfYmd: string,
+  priceUsd?: number | null
+): number | null {
   const ticker = equityTickerForAccount(accountId);
   if (!ticker) return null;
   if (!accountUsesEquityMtm(accountId)) return null;
   const urow = stmtUnits.get(accountId, asOfYmd) as { u: number };
   const units = urow?.u ?? 0;
   if (units <= 0 || !Number.isFinite(units)) return null;
-  const crow = stmtClose.get(ticker, asOfYmd) as { close_usd: number } | undefined;
-  if (!crow || !Number.isFinite(crow.close_usd)) return null;
+  const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
+  if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
   const fx = fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = units * crow.close_usd * fx.clp_per_usd;
+  const clp = units * closeUsd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
+}
+
+/** Sync MTM using a fresh cached live quote when the dashboard has already loaded one. */
+export function computeEquityMtmClpCachedLive(accountId: number): number | null {
+  const ticker = equityTickerForAccount(accountId);
+  if (!ticker || !accountUsesEquityMtm(accountId)) return null;
+  const session = equitySessionYmdForTicker(ticker);
+  const cached = getCachedLiveEquityQuote(ticker);
+  if (!cached) return null;
+  return computeEquityMtmClp(accountId, session, cached.price_usd);
+}
+
+/** MTM with live Yahoo quote when session is open (dashboard / account summary). */
+export async function computeEquityMtmClpLive(
+  accountId: number,
+  asOfYmd?: string
+): Promise<{ value_clp: number; as_of_date: string; source: string } | null> {
+  const ticker = equityTickerForAccount(accountId);
+  if (!ticker) return null;
+  const session = asOfYmd ?? equitySessionYmdForTicker(ticker);
+  const quote = await resolveEquityQuote(ticker, session, { preferLive: true });
+  if (!quote) return null;
+  const clp = computeEquityMtmClp(accountId, session, quote.price_usd);
+  if (clp == null || !Number.isFinite(clp) || clp <= 0) return null;
+  return { value_clp: clp, as_of_date: quote.trade_date, source: quote.source };
 }
 
 const stmtMaxEqDate = db.prepare(
@@ -75,9 +106,14 @@ const stmtMaxEqDate = db.prepare(
  * Latest CLP mark for SPY/VEA on the dashboard: prefer flows-based MTM; if that is unavailable (no `units_delta`
  * yet, or stale `valuations` row with 0), use share count from `net worth-stocks.csv` × last EOD × FX.
  */
-export function computeLatestDisplayedEquityClp(
+export async function computeLatestDisplayedEquityClp(
   accountId: number
-): { value_clp: number; as_of_date: string } | null {
+): Promise<{ value_clp: number; as_of_date: string } | null> {
+  const live = await computeEquityMtmClpLive(accountId);
+  if (live != null && live.value_clp > 0) {
+    return { value_clp: live.value_clp, as_of_date: live.as_of_date };
+  }
+
   const ticker = equityTickerForAccount(accountId);
   if (!ticker) return null;
   const mdRow = stmtMaxEqDate.get(ticker) as { md: string | null } | undefined;
@@ -93,11 +129,11 @@ export function computeLatestDisplayedEquityClp(
   const u = readSpyVeaShareUnitsFromStocksCsv(slug);
   if (u == null || !Number.isFinite(u) || u <= 0) return null;
 
-  const crow = stmtClose.get(ticker, md) as { close_usd: number } | undefined;
-  if (!crow || !Number.isFinite(crow.close_usd)) return null;
+  const closeUsd = equityCloseUsdEod(ticker, md);
+  if (closeUsd == null) return null;
   const fx = fxMonthEndForBalanceUsd(md);
   if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = u * crow.close_usd * fx.clp_per_usd;
+  const clp = u * closeUsd * fx.clp_per_usd;
   if (!Number.isFinite(clp) || clp <= 0) return null;
   return { value_clp: clp, as_of_date: md };
 }

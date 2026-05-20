@@ -1249,7 +1249,11 @@ export function AccountDetailPage() {
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
         Tipo de flujo, monto en CLP y unidades cuando el importe las trae (AFP cuotas, cripto, etc.).{" "}
         <span className="mono">POST /api/accounts/{id}/movements</span> con cuerpo{" "}
-        <span className="mono">{"{ amount_clp, occurred_on, note? }"}</span>.
+        <span className="mono">
+          {"{ amount_clp, occurred_on, note?, units_delta? }"}
+        </span>
+        . En AFP, cripto y Fintual,{" "}
+        <span className="mono">units_delta</span> (o <span className="mono">unit_amount</span>) es obligatorio.
       </p>
       <label
         style={{
@@ -1330,7 +1334,9 @@ export function AccountDetailPage() {
               No hay flujos. Usa{" "}
               <span className="mono">POST /api/accounts/{id}/brokerage-flows</span> (body:{" "}
               <span className="mono">flow_kind</span>, <span className="mono">amount_usd</span> o{" "}
-              <span className="mono">amount_clp</span>, <span className="mono">ticker</span>).
+              <span className="mono">amount_clp</span>, <span className="mono">ticker</span>;{" "}
+              <span className="mono">units_delta</span> obligatorio en{" "}
+              <span className="mono">compra_usd</span> / <span className="mono">dividend_usd</span>).
             </td>
           </tr>
         ) : (

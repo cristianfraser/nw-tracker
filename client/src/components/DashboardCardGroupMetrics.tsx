@@ -4,6 +4,7 @@ import { useTranslation } from "../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
+import styles from "./CardGroupMetrics.module.css";
 
 const METRIC_MOUNT_DIGIT_RANGE: [number, number] = [5, 7];
 const METRIC_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
@@ -32,7 +33,7 @@ function DepositedMetricFlow({
   mountSeedId: string;
 }) {
   if (value == null) {
-    return <span className="card-group-metrics__amount card-group-metrics__amount--empty mono">—</span>;
+    return <span className={`${styles.amount} ${styles.amountEmpty} mono`}>—</span>;
   }
   const unit = showUsd ? "usd" : "clp";
   return (
@@ -42,7 +43,7 @@ function DepositedMetricFlow({
       mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
       mountSeedId={mountSeedId}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "$")}
-      className="card-group-metrics__amount mono"
+      className={`${styles.amount} mono`}
       transformTiming={METRIC_TIMING.transformTiming}
       spinTiming={METRIC_TIMING.spinTiming}
     />
@@ -69,8 +70,8 @@ function MetricsRow({
   rowKey: string;
 }) {
   return (
-    <div className="card-group-metrics__row">
-      <span className="card-group-metrics__deposited">
+    <div className={styles.row}>
+      <span className={styles.deposited}>
         <span className="visually-hidden">{depositedLabel}</span>
         <DepositedMetricFlow
           value={deposited}
@@ -79,7 +80,7 @@ function MetricsRow({
           mountSeedId={`${cardSlug}:deposited:${rowKey}`}
         />
       </span>
-      <span className="card-group-metrics__delta-wrap" title={deltaLabel}>
+      <span className={styles.deltaWrap} title={deltaLabel}>
         <DeltaMetricFlow
           delta={delta}
           showUsd={showUsd}
@@ -124,7 +125,6 @@ function metricDelta(metrics: CardGroupMetrics, showUsd: boolean, kind: "total" 
   return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;
 }
 
-/** Two rows below the card total: lifetime deposits/Δ, then period deposits/Δ. */
 export function DashboardCardGroupMetrics({
   metrics,
   showUsd,
@@ -143,7 +143,7 @@ export function DashboardCardGroupMetrics({
       : t("dashboard.cardBreakdown.periodDeltaMonth");
 
   return (
-    <div className="card-group-metrics" aria-label={t("dashboard.cardBreakdown.summaryAria")}>
+    <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
       <DashboardCardsValueGroup>
         <MetricsRow
           deposited={metricDeposited(metrics, showUsd, "total")}

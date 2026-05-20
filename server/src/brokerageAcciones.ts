@@ -23,6 +23,12 @@ export interface DashboardAccountStats {
   deposits_month_usd?: number | null;
   deposits_year_clp?: number;
   deposits_year_usd?: number | null;
+  /** Performance series month-end close for the calendar month before Chile today. */
+  prior_month_close_clp?: number | null;
+  prior_month_close_usd?: number | null;
+  /** Performance series close for the latest month in the prior calendar year. */
+  prior_year_close_clp?: number | null;
+  prior_year_close_usd?: number | null;
   current_value_clp: number | null;
   valuation_as_of: string | null;
   current_value_usd: number | null;

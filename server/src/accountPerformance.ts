@@ -17,7 +17,14 @@ import {
 import { db } from "./db.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { AFP_IMPORT_CUOTAS_NOTE_SQL } from "./afpUnoValuation.js";
-import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
+import {
+  accountUsesEquityMtm,
+  computeEquityMtmClp,
+  computeEquityMtmClpCachedLive,
+} from "./brokerageEquityMtm.js";
+import { liveAfpDisplayValueClp } from "./accountPosition.js";
+import { getCachedLiveEquityQuote } from "./equityQuote.js";
+import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 import {
   accountUsesCryptoMtm,
   CRYPTO_IMPORT_NOTE_SQL,
@@ -68,9 +75,16 @@ const MONTH_ROW_EPS = 0.01;
  * `sanitizeValuationChartDateStrs` month-end). A trailing month-end often forward-fills the same close as the
  * prior point → `nominal_pl = 0` while the earlier row has the real Δ. Pick one row per month for tables / bars.
  */
-function pickRepresentativeMonthlyPerfRow(rows: AccountMonthlyPerformanceRow[]): AccountMonthlyPerformanceRow {
+function pickRepresentativeMonthlyPerfRow(
+  rows: AccountMonthlyPerformanceRow[],
+  monthKey: string
+): AccountMonthlyPerformanceRow {
   const asc = [...rows].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
   if (asc.length === 1) return asc[0]!;
+  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
+  if (monthKey === currentMk) {
+    return asc[asc.length - 1]!;
+  }
   let best = asc[asc.length - 1]!;
   let bestScore = -1;
   for (const r of asc) {
@@ -97,8 +111,89 @@ function collapseMonthlyPerfDuplicateCalendarMonths(
     byMonth.set(mk, arr);
   }
   const monthsAsc = [...byMonth.keys()].sort((a, b) => a.localeCompare(b));
-  const picked = monthsAsc.map((mk) => pickRepresentativeMonthlyPerfRow(byMonth.get(mk)!));
+  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
+  const picked = monthsAsc.map((mk) => {
+    const monthRows = byMonth.get(mk)!;
+    const row = pickRepresentativeMonthlyPerfRow(monthRows, mk);
+    if (mk !== currentMk) return row;
+    const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
+    return { ...row, net_capital_flow: totalFlow };
+  });
   return recomputeYtdAndCumulativeOnMonthlyRows(picked);
+}
+
+function livePerfCloseClpForCurrentMonth(
+  accountId: number,
+  categorySlug: string
+): number | null {
+  if (categorySlug === "property") {
+    const booked = latestValuationRowOnOrBeforeChileToday(accountId);
+    if (booked?.value_clp != null && Number.isFinite(booked.value_clp)) {
+      return booked.value_clp;
+    }
+    return null;
+  }
+  if (categorySlug === "afp") {
+    return liveAfpDisplayValueClp(accountId)?.value_clp ?? null;
+  }
+  if (accountUsesEquityMtm(accountId)) {
+    return computeEquityMtmClpCachedLive(accountId);
+  }
+  if (accountUsesCryptoMtm(accountId)) {
+    const ticker = cryptoAssetFromCategorySlug(categorySlug);
+    if (!ticker) return null;
+    const equityTicker = ticker === "BTC" ? "BTC-USD" : "ETH-USD";
+    const cached = getCachedLiveEquityQuote(equityTicker);
+    if (!cached) return null;
+    return computeCryptoMtmClp(accountId, cached.trade_date, cached.price_usd);
+  }
+  return null;
+}
+
+function priorCalendarMonthKeyFromToday(todayYmd: string): string {
+  const y = Number(todayYmd.slice(0, 4));
+  const m = Number(todayYmd.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return todayYmd.slice(0, 7);
+  if (m === 1) return `${y - 1}-12`;
+  return `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+/** Prefer live marks for the in-progress calendar month so P/L reconciles with dashboard balance Δ. */
+function applyLiveCloseToCurrentMonthPerfRows(
+  accountId: number,
+  categorySlug: string,
+  sortedAsc: AccountMonthlyPerformanceRow[]
+): AccountMonthlyPerformanceRow[] {
+  if (!sortedAsc.length) return sortedAsc;
+  const today = chileCalendarTodayYmd();
+  const curMk = monthKeyFromYmd(today);
+  const idx = sortedAsc.findIndex((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+  if (idx < 0) return sortedAsc;
+
+  const row = sortedAsc[idx]!;
+  const priorMk = priorCalendarMonthKeyFromToday(today);
+  const priorRow = sortedAsc.find((r) => monthKeyFromYmd(r.as_of_date) === priorMk);
+  const priorClose = priorRow?.closing_value ?? row.prior_closing;
+  if (priorClose == null || !Number.isFinite(priorClose)) return sortedAsc;
+
+  const live = livePerfCloseClpForCurrentMonth(accountId, categorySlug) ?? row.closing_value;
+  if (live == null || !Number.isFinite(live)) return sortedAsc;
+
+  const netFlow = row.net_capital_flow;
+  const nominal = live - priorClose - netFlow;
+  const denom = priorClose + netFlow;
+  const pct =
+    Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
+  const out = [...sortedAsc];
+  out[idx] = {
+    ...row,
+    as_of_date: today,
+    prior_closing: priorClose,
+    closing_value: live,
+    nominal_pl: nominal,
+    pct_month: pct,
+  };
+  return recomputeYtdAndCumulativeOnMonthlyRows(out);
 }
 
 function recomputeYtdAndCumulativeOnMonthlyRows(
@@ -500,7 +595,12 @@ export function getAccountMonthlyPerformance(
   }
 
   const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc);
-  const monthly = [...collapsed].reverse();
+  const withLive = applyLiveCloseToCurrentMonthPerfRows(
+    accountId,
+    row.category_slug,
+    collapsed
+  );
+  const monthly = [...withLive].reverse();
   return { account_id: accountId, category_slug: row.category_slug, monthly };
 }
 

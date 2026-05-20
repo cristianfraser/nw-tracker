@@ -1,0 +1,57 @@
+.marqueeWrap {
+  position: relative;
+  width: 100%;
+  height: var(--market-ticker-height);
+  overflow: hidden;
+  border-radius: 0;
+  background: transparent;
+}
+
+.marqueeWrapIdle {
+  display: flex;
+  align-items: center;
+}
+
+.loading {
+  display: inline-flex;
+  align-items: center;
+  height: var(--market-ticker-height);
+  padding: 0 0.75rem;
+  font-size: 0.72rem;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0 0.2rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.label {
+  color: #f5c842;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.value {
+  color: var(--text);
+  font-size: 0.7rem;
+}
+
+.delta {
+  font-size: 0.65rem;
+}
+
+.sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  margin: 0 0.65rem;
+  background: var(--border);
+  vertical-align: middle;
+}

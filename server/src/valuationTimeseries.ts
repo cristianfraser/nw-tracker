@@ -6,6 +6,7 @@ import {
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
+  computeEquityMtmClpCachedLive,
   equityTickerForAccount,
   expandSnapshotDatesForEquityMtm,
 } from "./brokerageEquityMtm.js";
@@ -36,6 +37,11 @@ import {
   latestValuationRowOnOrBeforeChileToday,
   latestLiabilityValuationRowForSnapshot,
 } from "./valuationLatest.js";
+import {
+  afpValuationRawClpForChart,
+  applyLiveAfpToAccountValueMap,
+  liveAfpDisplayValueClp,
+} from "./accountPosition.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
 
@@ -424,6 +430,111 @@ function sanitizeValuationChartDateStrs(sortedAsc: string[]): string[] {
   return uniq;
 }
 
+/** Rightmost chart point for AFP = live cuotas × valor cuota (dashboard position), dated Chile today. */
+function patchAfpLiveLastPoint(
+  accountId: number,
+  unit: TsUnit,
+  points: Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  const live = liveAfpDisplayValueClp(accountId);
+  if (!live) return points;
+
+  const dk = String(accountId);
+  const today = chileCalendarTodayYmd();
+  const plotValue = convertTs(live.value_clp, today, unit);
+
+  if (points.length === 0) {
+    return [{ as_of_date: today, [dk]: plotValue }];
+  }
+
+  const out = points.map((p) => ({ ...p }));
+  let lastIdx = 0;
+  for (let i = 1; i < out.length; i++) {
+    if (String(out[i]!.as_of_date).localeCompare(String(out[lastIdx]!.as_of_date)) > 0) {
+      lastIdx = i;
+    }
+  }
+  const lastDate = String(out[lastIdx]!.as_of_date);
+
+  if (lastDate === today) {
+    out[lastIdx] = { ...out[lastIdx]!, [dk]: plotValue };
+    return out;
+  }
+
+  if (today > lastDate) {
+    const row: Record<string, string | number | null> = { ...out[lastIdx]!, as_of_date: today, [dk]: plotValue };
+    out.push(row);
+    out.sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
+    return out;
+  }
+
+  out[lastIdx] = { ...out[lastIdx]!, [dk]: plotValue };
+  return out;
+}
+
+/** Rightmost chart point for SPY/VEA = cached live MTM when available (same as dashboard). */
+function patchEquityLiveLastPoint(
+  accountId: number,
+  unit: TsUnit,
+  points: Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  if (!accountUsesEquityMtm(accountId)) return points;
+  const liveClp = computeEquityMtmClpCachedLive(accountId);
+  if (liveClp == null || !Number.isFinite(liveClp)) return points;
+
+  const dk = String(accountId);
+  const today = chileCalendarTodayYmd();
+  const plotValue = convertTs(liveClp, today, unit);
+
+  if (points.length === 0) {
+    return [{ as_of_date: today, [dk]: plotValue }];
+  }
+
+  const out = points.map((p) => ({ ...p }));
+  let lastIdx = 0;
+  for (let i = 1; i < out.length; i++) {
+    if (String(out[i]!.as_of_date).localeCompare(String(out[lastIdx]!.as_of_date)) > 0) {
+      lastIdx = i;
+    }
+  }
+  const lastDate = String(out[lastIdx]!.as_of_date);
+
+  if (lastDate === today) {
+    out[lastIdx] = { ...out[lastIdx]!, [dk]: plotValue };
+    return out;
+  }
+
+  if (today > lastDate) {
+    const row: Record<string, string | number | null> = {
+      ...out[lastIdx]!,
+      as_of_date: today,
+      [dk]: plotValue,
+    };
+    out.push(row);
+    out.sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
+    return out;
+  }
+
+  out[lastIdx] = { ...out[lastIdx]!, [dk]: plotValue };
+  return out;
+}
+
+function patchLiveAfpMarksOnPoints(
+  rows: { account_id: number; category_slug: string }[],
+  unit: TsUnit,
+  points: Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  let next = points;
+  for (const r of rows) {
+    if (r.category_slug === "afp") {
+      next = patchAfpLiveLastPoint(r.account_id, unit, next);
+    } else if (accountUsesEquityMtm(r.account_id)) {
+      next = patchEquityLiveLastPoint(r.account_id, unit, next);
+    }
+  }
+  return next;
+}
+
 function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit, merge?: MergePairOpts) {
   const mergeIds = [
     merge?.btcId,
@@ -547,17 +658,26 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   let mutualFundsMergedDepSeen = false;
   const singleAccountDepSeen = new Map<number, boolean>();
   const singleAccountDisplayDepSeen = new Map<number, boolean>();
+  const trailingChartDate = dateStrs.length > 0 ? dateStrs[dateStrs.length - 1]! : "";
+  const todayYmd = chileCalendarTodayYmd();
 
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
+    const useLiveAfpOnDate = d === trailingChartDate || d === todayYmd;
     for (const t of topOut) {
       if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total")
         continue;
       const aid = t.account_id;
       let raw = valuationRawClpForAccount(aid, d, byDate);
+      if (slugById.get(aid) === "afp") {
+        raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
+      }
       if (propertyAccountIds.length === 1 && slugById.get(aid) === "property") {
         const fromDepto = propertyDeptoCloseByDate.get(d);
-        if (fromDepto != null && Number.isFinite(fromDepto)) raw = fromDepto;
+        const keepBookOnTrailing = d === todayYmd || d === trailingChartDate;
+        if (fromDepto != null && Number.isFinite(fromDepto) && !keepBookOnTrailing) {
+          raw = fromDepto;
+        }
       }
       if (raw != null) last.set(aid, raw);
       const v = last.get(aid);
@@ -939,10 +1059,14 @@ function forwardFilledOverviewRawByDatesAsc(datesAsc: string[]): Map<string, Raw
   let ei = 0;
   const lastVal = new Map<number, number>();
   const out = new Map<string, RawOverviewBuckets>();
+  const trailingOverviewDate = datesAsc.length > 0 ? datesAsc[datesAsc.length - 1]! : "";
   for (const d of datesAsc) {
     while (ei < events.length && events[ei].as_of_date <= d) {
       lastVal.set(events[ei].account_id, events[ei].value_clp);
       ei += 1;
+    }
+    if (d === trailingOverviewDate) {
+      applyLiveAfpToAccountValueMap(lastVal, meta);
     }
     out.set(d, aggregateOverviewBucketsFromLastVal(lastVal, meta));
   }
@@ -1045,6 +1169,8 @@ function latestAllocationPieForAccounts(
 ): { name: string; account_id: number; value: number }[] {
   const out: { name: string; account_id: number; value: number }[] = [];
   const stmtMd = db.prepare(`SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`);
+  const pieIds = accounts.map((a) => a.account_id).filter((id) => id > 0);
+  const slugById = categorySlugByAccountId(pieIds);
   for (const a of accounts) {
     if (a.account_id <= 0) continue;
     if (!accountCountsTowardGroupTotals(a.account_id)) continue;
@@ -1073,6 +1199,16 @@ function latestAllocationPieForAccounts(
             asOf = md.md;
           }
         }
+      }
+    } else if (slugById.get(a.account_id) === "afp") {
+      const live = liveAfpDisplayValueClp(a.account_id);
+      if (live) {
+        clp = live.value_clp;
+        asOf = live.as_of_date;
+      } else {
+        const vrow = latestValuationRowOnOrBeforeChileToday(a.account_id);
+        clp = vrow?.value_clp;
+        asOf = vrow?.as_of_date;
       }
     } else {
       const vrow = latestValuationRowOnOrBeforeChileToday(a.account_id);
@@ -1527,7 +1663,11 @@ export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tab
 
   const built = buildPointsForAccounts(chartTop, [], unit, merge);
   const collapsed = collapseApvAFintualDisplayDepositsForGroupTabBlock(built);
-  let accounts_in_group = appendGroupTabTotals(collapsed);
+  const withLiveAfp = {
+    ...collapsed,
+    points: patchLiveAfpMarksOnPoints(rows, unit, collapsed.points),
+  };
+  let accounts_in_group = appendGroupTabTotals(withLiveAfp);
   if (groupSlug === "liabilities" && accounts_in_group.points.length > 0) {
     const accByNote = db.prepare("SELECT id AS account_id, name FROM accounts WHERE notes = ?");
     const spyRow = accByNote.get("import:excel|key=spy") as { account_id: number } | undefined;
@@ -1725,7 +1865,9 @@ export function getAccountValuationTimeseries(
         ],
         points: accounts.points.map((pt) => {
           const d = String(pt.as_of_date);
-          const close = closeByDate.get(d);
+          const today = chileCalendarTodayYmd();
+          const keepBook = d === today;
+          const close = keepBook ? null : closeByDate.get(d);
           const hipoteca = mortgageClpByDate.get(d);
           return {
             ...pt,
@@ -1735,6 +1877,18 @@ export function getAccountValuationTimeseries(
           };
         }),
       };
+    }
+  }
+
+  if (accounts.points.length > 0) {
+    let points = accounts.points;
+    if (cat?.category_slug === "afp") {
+      points = patchAfpLiveLastPoint(row.account_id, unit, points);
+    } else if (accountUsesEquityMtm(row.account_id)) {
+      points = patchEquityLiveLastPoint(row.account_id, unit, points);
+    }
+    if (points !== accounts.points) {
+      accounts = { ...accounts, points };
     }
   }
 

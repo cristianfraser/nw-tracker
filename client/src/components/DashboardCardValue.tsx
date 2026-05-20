@@ -2,6 +2,7 @@ import { NumberFlowElement, NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { accountingCurrencyNumberFlowParts } from "../format";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
+import styles from "./DashboardCardValue.module.css";
 
 export type DashboardCardValueVariant = "main" | "breakdown";
 
@@ -116,6 +117,7 @@ export function DashboardCardValue({
   const target = resolvedAmount(clp, apiUsd, showUsd);
   const { duration, transformTiming, spinTiming } = VARIANT_TIMING[variant];
   const flowUnit = showUsd ? "usd" : "clp";
+  const isMain = variant === "main";
 
   useEffect(() => {
     injectAlignStyles(hostRef.current, variant);
@@ -124,6 +126,11 @@ export function DashboardCardValue({
   const mountProps = mountSeedKey
     ? { mountSeedDigitRange: MOUNT_DIGIT_RANGE[variant], mountSeedId: mountSeedKey }
     : {};
+
+  const wrapClass = isMain ? `${styles.wrap} ${styles.wrapMain}` : `${styles.wrap} ${styles.wrapBreakdown}`;
+  const valueClass = isMain
+    ? `${styles.value} ${styles.valueMain} mono`
+    : `${styles.value} ${styles.valueBreakdown} mono`;
 
   return (
     <AnimatedNumberFlow
@@ -135,17 +142,13 @@ export function DashboardCardValue({
       animated={animated}
       {...mountProps}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, flowUnit, "$")}
-      wrapClassName={`dashboard-card-value-wrap dashboard-card-value-wrap--${variant}`}
-      className={`dashboard-card-value dashboard-card-value--${variant} mono`}
+      wrapClassName={wrapClass}
+      className={valueClass}
       mountDuration={duration}
       transformTiming={transformTiming}
       spinTiming={spinTiming}
       emptyFallback={
-        <span
-          className={`dashboard-card-value dashboard-card-value--${variant} dashboard-card-value--empty`}
-        >
-          —
-        </span>
+        <span className={`${valueClass} ${styles.valueEmpty}`}>—</span>
       }
     />
   );

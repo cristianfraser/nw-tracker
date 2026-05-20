@@ -12,7 +12,13 @@ import {
   YAxis,
 } from "recharts";
 import type { TooltipProps } from "recharts";
-import { useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { formatClp, formatUsd, formatMoneyForPie } from "../format";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../chartColors";
 import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../chartColors";
@@ -426,6 +432,26 @@ export function computeRegularYearXAxisTicks(
   return ticks.length ? ticks : undefined;
 }
 
+const TOOLTIP_VIEWPORT_INSET_PX = 10;
+
+/** Shift tooltip horizontally so it stays inside the chart panel and viewport. */
+function horizontalNudgeToStayInViewport(el: HTMLElement): number {
+  const rect = el.getBoundingClientRect();
+  const chartBox = el.closest(".chart-box");
+  const bounds = chartBox?.getBoundingClientRect();
+  const minLeft = Math.max(
+    TOOLTIP_VIEWPORT_INSET_PX,
+    (bounds?.left ?? 0) + TOOLTIP_VIEWPORT_INSET_PX
+  );
+  const maxRight = Math.min(
+    window.innerWidth - TOOLTIP_VIEWPORT_INSET_PX,
+    (bounds?.right ?? window.innerWidth) - TOOLTIP_VIEWPORT_INSET_PX
+  );
+  if (rect.left < minLeft) return minLeft - rect.left;
+  if (rect.right > maxRight) return maxRight - rect.right;
+  return 0;
+}
+
 /** Tooltip fixed just under the plot so it does not cover the lines (Recharts default follows the cursor). */
 function LineTooltipBelowPlot({
   active,
@@ -443,27 +469,48 @@ function LineTooltipBelowPlot({
   focusColorIndex: number | null;
   seriesByDataKey: ReadonlyMap<string, ResolvedLineSeriesItem>;
 }) {
-  if (!active || !payload?.length || !viewBox) return null;
-  const tooltipPayload = dedupeTooltipPayloadPreferVisibleStroke(payload);
-  if (!tooltipPayload.length) return null;
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [nudgeByAnchor, setNudgeByAnchor] = useState({ anchor: "", x: 0 });
+
+  const tooltipPayload = useMemo(
+    () => (payload?.length ? dedupeTooltipPayloadPreferVisibleStroke(payload) : []),
+    [payload]
+  );
   const cx = coordinate?.x;
-  if (cx == null) return null;
-  const vx = viewBox.x ?? 0;
-  const vy = viewBox.y ?? 0;
-  const vw = viewBox.width ?? 0;
-  const vh = viewBox.height ?? 0;
-  const pad = 8;
-  const left = Math.min(Math.max(cx, pad + 40), vx + vw - pad);
+  const vy = viewBox?.y ?? 0;
+  const vw = viewBox?.width ?? 0;
+  const vh = viewBox?.height ?? 0;
   const top = vy + vh + 4;
+  const canShow = Boolean(active && viewBox && cx != null && tooltipPayload.length > 0);
+  const anchorKey = canShow ? `${cx}|${top}|${String(label)}` : "";
+  const nudgeX = nudgeByAnchor.anchor === anchorKey ? nudgeByAnchor.x : 0;
+
+  useLayoutEffect(() => {
+    if (!canShow || cx == null) {
+      setNudgeByAnchor({ anchor: "", x: 0 });
+      return;
+    }
+    const el = dockRef.current;
+    if (!el) return;
+    const dx = horizontalNudgeToStayInViewport(el);
+    setNudgeByAnchor({ anchor: anchorKey, x: dx });
+  }, [canShow, cx, top, label, anchorKey, focusColorIndex, tooltipPayload.length, displayUnit]);
+
+  if (!canShow || cx == null) return null;
+
   const dim = focusColorIndex != null;
   return (
     <div
+      ref={dockRef}
       className="line-chart-tooltip-dock"
       style={{
         position: "absolute",
         left: 0,
         top: 0,
-        transform: `translate(${left}px, ${top}px) translateX(-50%)`,
+        transform:
+          nudgeX === 0
+            ? `translate(${cx}px, ${top}px) translateX(-50%)`
+            : `translate(${cx}px, ${top}px) translateX(-50%) translateX(${nudgeX}px)`,
         pointerEvents: "none",
         zIndex: 20,
         maxWidth: Math.min(360, vw),

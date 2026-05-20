@@ -1,15 +1,15 @@
 import type { CardBreakdownLine } from "../dashboardCardBreakdown";
 import { DashboardCardValue } from "./DashboardCardValue";
+import styles from "./DashboardCardBreakdown.module.css";
 
 type Props = {
   lines: CardBreakdownLine[];
   showUsd: boolean;
-  /** Stable slug for this card (e.g. `net_worth`) — used in mount seed localStorage keys. */
   cardSlug: string;
-  /** Set false while currency data is loading to avoid animating from stale values. */
   animated?: boolean;
-  /** Pinned to the bottom of a stretched detail card (e.g. tarjeta de crédito on cash). */
   bottomLines?: CardBreakdownLine[];
+  /** Pin `bottomLines` to the card footer (direct flex child + margin-top: auto). */
+  pinBottomToCard?: boolean;
 };
 
 function BreakdownList({
@@ -29,19 +29,15 @@ function BreakdownList({
 }) {
   if (lines.length === 0) return null;
   return (
-    <ul className={className ? `card-breakdown ${className}` : "card-breakdown"}>
+    <ul className={className ? `${styles.root} ${className}` : styles.root}>
       {lines.map((line, i) => (
         <li
           key={`${rowKeyPrefix}-${line.depth}-${line.label}-${i}`}
           className={
-            line.depth >= 2
-              ? "card-breakdown__grandchild"
-              : line.depth === 1
-                ? "card-breakdown__child"
-                : "card-breakdown__group"
+            line.depth >= 2 ? styles.grandchild : line.depth === 1 ? styles.child : styles.group
           }
         >
-          <span className="card-breakdown__label">{line.label}</span>
+          <span className={styles.label}>{line.label}</span>
           <span className="card-breakdown__amount mono">
             <DashboardCardValue
               clp={line.clp}
@@ -64,6 +60,7 @@ export function DashboardCardBreakdown({
   cardSlug,
   animated = true,
   bottomLines,
+  pinBottomToCard = false,
 }: Props) {
   const hasMain = lines.length > 0;
   const hasBottom = (bottomLines?.length ?? 0) > 0;
@@ -81,25 +78,49 @@ export function DashboardCardBreakdown({
     );
   }
 
-  return (
-    <div className="card-breakdown-stack">
-      {hasMain ? (
+  if (pinBottomToCard) {
+    return (
+      <>
+        {hasMain ? (
+          <BreakdownList
+            lines={lines}
+            showUsd={showUsd}
+            cardSlug={cardSlug}
+            animated={animated}
+            rowKeyPrefix="main"
+          />
+        ) : null}
+        <div className="card-breakdown-spacer" aria-hidden />
         <BreakdownList
-          lines={lines}
+          lines={bottomLines!}
           showUsd={showUsd}
           cardSlug={cardSlug}
           animated={animated}
-          rowKeyPrefix="row"
+          className="card-breakdown-bottom"
+          rowKeyPrefix="bottom"
         />
-      ) : null}
+      </>
+    );
+  }
+
+  return (
+    <div className={styles.stack}>
+      <BreakdownList
+        lines={lines}
+        showUsd={showUsd}
+        cardSlug={cardSlug}
+        animated={animated}
+        rowKeyPrefix="main"
+      />
       <BreakdownList
         lines={bottomLines!}
         showUsd={showUsd}
         cardSlug={cardSlug}
         animated={animated}
-        className="card-breakdown--bottom"
+        className={styles.bottom}
         rowKeyPrefix="bottom"
       />
     </div>
   );
 }
+

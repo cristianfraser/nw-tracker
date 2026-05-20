@@ -6,12 +6,14 @@ import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceCo
 import { Table } from "../components/Table";
 import { DashboardCardBreakdown } from "../components/DashboardCardBreakdown";
 import { DashboardCardGroupMetrics } from "../components/DashboardCardGroupMetrics";
+import { DashboardCardTitleRow } from "../components/DashboardCardTitleRow";
 import { DashboardCardValue, DashboardCardsValueGroup } from "../components/DashboardCardValue";
 import { api } from "../api";
 import {
   buildBrokerageCardBreakdown,
   buildCashCardBreakdown,
-  buildNetWorthCardBreakdown,
+  cardGroupNetWorthTitleBalanceDelta,
+  cardGroupTitleBalanceDelta,
   buildRealEstateCardBreakdown,
   buildRetirementCardBreakdown,
   cardGroupMetricsForGroup,
@@ -256,7 +258,6 @@ export function DashboardPage() {
     () => (dash ? buildBrokerageCardBreakdown(dash.accounts) : []),
     [dash]
   );
-  const netWorthBreakdown = useMemo(() => (dash ? buildNetWorthCardBreakdown(dash.totals) : []), [dash]);
   const realEstateBreakdown = useMemo(
     () => (dash ? buildRealEstateCardBreakdown(dash.accounts, dash.suecia_snapshot) : []),
     [dash]
@@ -299,6 +300,79 @@ export function DashboardPage() {
           )
         : null,
     [dash, metricsPeriod, cashCardSlugs]
+  );
+
+  const overviewPoints = ts?.overview?.points ?? [];
+
+  const netWorthTitleDelta = useMemo(
+    () =>
+      dash
+        ? cardGroupNetWorthTitleBalanceDelta(
+            dash.accounts,
+            dash.totals,
+            overviewPoints,
+            metricsPeriod,
+            showUsd
+          )
+        : null,
+    [dash, overviewPoints, metricsPeriod, showUsd]
+  );
+  const realEstateTitleDelta = useMemo(
+    () =>
+      dash
+        ? cardGroupTitleBalanceDelta(
+            dash.accounts,
+            dash.totals,
+            overviewPoints,
+            "real_estate",
+            metricsPeriod,
+            showUsd
+          )
+        : null,
+    [dash, overviewPoints, metricsPeriod, showUsd]
+  );
+  const retirementTitleDelta = useMemo(
+    () =>
+      dash
+        ? cardGroupTitleBalanceDelta(
+            dash.accounts,
+            dash.totals,
+            overviewPoints,
+            "retirement",
+            metricsPeriod,
+            showUsd
+          )
+        : null,
+    [dash, overviewPoints, metricsPeriod, showUsd]
+  );
+  const brokerageTitleDelta = useMemo(
+    () =>
+      dash
+        ? cardGroupTitleBalanceDelta(
+            dash.accounts,
+            dash.totals,
+            overviewPoints,
+            "brokerage",
+            metricsPeriod,
+            showUsd
+          )
+        : null,
+    [dash, overviewPoints, metricsPeriod, showUsd]
+  );
+  const cashTitleDelta = useMemo(
+    () =>
+      dash
+        ? cardGroupTitleBalanceDelta(
+            dash.accounts,
+            dash.totals,
+            overviewPoints,
+            "cash_eqs",
+            metricsPeriod,
+            showUsd,
+            (a) => cashCardSlugs.has(a.category_slug)
+          )
+        : null,
+    [dash, overviewPoints, metricsPeriod, showUsd, cashCardSlugs]
   );
 
   if (err) {
@@ -384,9 +458,15 @@ export function DashboardPage() {
         </label>
       </div>
       <DashboardCardsValueGroup>
-        <div className="cards">
-          <div className="card card--detail card--detail-stretch">
-            <div className="label">{t("dashboard.cards.netWorth")}</div>
+        <div className="dashboard-cards">
+          <div className="card card--detail card--detail-compact card--detail-stretch card--dashboard-net-worth">
+            <DashboardCardTitleRow
+              label={t("dashboard.cards.netWorth")}
+              balanceDelta={netWorthTitleDelta}
+              showUsd={showUsd}
+              cardSlug="net_worth"
+              animated={!unitSwitching}
+            />
             <div className="value">
               <DashboardCardValue
                 clp={dash.totals.net_worth_clp}
@@ -405,15 +485,16 @@ export function DashboardPage() {
                 animated={!unitSwitching}
               />
             ) : null}
-            <DashboardCardBreakdown
-              lines={netWorthBreakdown}
+          </div>
+          <div className="row-spacer" aria-hidden="true" />
+          <div className="card card--detail card--detail-stretch">
+            <DashboardCardTitleRow
+              label={t("dashboard.cards.realEstate")}
+              balanceDelta={realEstateTitleDelta}
               showUsd={showUsd}
-              cardSlug="net_worth"
+              cardSlug="real_estate"
               animated={!unitSwitching}
             />
-          </div>
-          <div className="card card--detail card--detail-stretch">
-            <div className="label">{t("dashboard.cards.realEstate")}</div>
             <div className="value">
               <DashboardCardValue
                 clp={dash.totals.real_estate_clp}
@@ -440,7 +521,13 @@ export function DashboardPage() {
             />
           </div>
           <div className="card card--detail card--detail-stretch">
-            <div className="label">{t("dashboard.cards.retirement")}</div>
+            <DashboardCardTitleRow
+              label={t("dashboard.cards.retirement")}
+              balanceDelta={retirementTitleDelta}
+              showUsd={showUsd}
+              cardSlug="retirement"
+              animated={!unitSwitching}
+            />
             <div className="value">
               <DashboardCardValue
                 clp={dash.totals.retirement_clp}
@@ -467,7 +554,13 @@ export function DashboardPage() {
             />
           </div>
           <div className="card card--detail card--detail-stretch">
-            <div className="label">{t("dashboard.cards.brokerage")}</div>
+            <DashboardCardTitleRow
+              label={t("dashboard.cards.brokerage")}
+              balanceDelta={brokerageTitleDelta}
+              showUsd={showUsd}
+              cardSlug="brokerage"
+              animated={!unitSwitching}
+            />
             <div className="value">
               <DashboardCardValue
                 clp={dash.totals.brokerage_clp}
@@ -493,8 +586,14 @@ export function DashboardPage() {
               animated={!unitSwitching}
             />
           </div>
-          <div className="card card--detail card--detail-stretch">
-            <div className="label">{t("dashboard.cards.cash")}</div>
+          <div className="card card--detail card--detail-stretch card--cash">
+            <DashboardCardTitleRow
+              label={t("dashboard.cards.cash")}
+              balanceDelta={cashTitleDelta}
+              showUsd={showUsd}
+              cardSlug="cash_eqs"
+              animated={!unitSwitching}
+            />
             <div className="value">
               <DashboardCardValue
                 clp={dash.totals.cash_eqs_clp}
@@ -504,24 +603,23 @@ export function DashboardPage() {
                 mountSeedKey="cash_eqs"
               />
             </div>
-            <div className="card--detail-body">
-              {cashMetrics ? (
-                <DashboardCardGroupMetrics
-                  metrics={cashMetrics}
-                  showUsd={showUsd}
-                  period={metricsPeriod}
-                  cardSlug="cash_eqs"
-                  animated={!unitSwitching}
-                />
-              ) : null}
-              <DashboardCardBreakdown
-                lines={cashBreakdown.lines}
-                bottomLines={cashBreakdown.bottomLines}
+            {cashMetrics ? (
+              <DashboardCardGroupMetrics
+                metrics={cashMetrics}
                 showUsd={showUsd}
+                period={metricsPeriod}
                 cardSlug="cash_eqs"
                 animated={!unitSwitching}
               />
-            </div>
+            ) : null}
+            <DashboardCardBreakdown
+              lines={cashBreakdown.lines}
+              bottomLines={cashBreakdown.bottomLines}
+              pinBottomToCard
+              showUsd={showUsd}
+              cardSlug="cash_eqs"
+              animated={!unitSwitching}
+            />
           </div>
         </div>
       </DashboardCardsValueGroup>

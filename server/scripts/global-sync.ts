@@ -3,6 +3,8 @@
  * - AFP UNO spot: once per Chile calendar day (00:00 rollover).
  * - Fintual goals: from 18:00 America/Santiago; applies when mapped NAV signature changes (poll alone
  *   does not clear stale). Valuations use prior calendar day as `as_of_date` until Fintual publishes.
+ * - USD / EUR (SBIF dólar & euro observado): daily incremental fetch on every run.
+ * - SPY / VEA / BTC / ETH EOD: Yahoo daily bars after NYSE close (16:05 ET); crypto daily every run.
  * - UF / UTM / IPC (SBIF API): from the 9th of each month through month-end, incremental fetch
  *   ([UF posteriores](https://api.sbif.cl/documentacion/UF.html), same pattern for UTM/IPC).
  *
@@ -18,8 +20,17 @@ import "../src/db.js";
 import { insertAppMessage } from "../src/appMessages.js";
 import { chileWallClockNow } from "../src/chileDate.js";
 import { db } from "../src/db.js";
-import { isSbifMonthlyStale, staleSyncSources } from "../src/globalSyncStale.js";
-import { insertSyncRunLog, type SyncFieldChange } from "../src/syncRunLog.js";
+import { isEquityEodStale, isSbifMonthlyStale, staleSyncSources } from "../src/globalSyncStale.js";
+import {
+  formatSyncClp,
+  formatSyncFxRate,
+  formatSyncUsdClose,
+  insertSyncRunLog,
+  formatSyncUfRate,
+  type SyncFieldChange,
+  type SyncRunLogOptions,
+  type SyncStepError,
+} from "../src/syncRunLog.js";
 import {
   loadGlobalSyncState,
   saveGlobalSyncState,
@@ -45,6 +56,7 @@ import {
 } from "./fintualApiLib.js";
 import {
   applyFintualGoalsSnapshotToDb,
+  collectFintualGoalValuationChanges,
   cleanupMistakenPollDayFintualValuations,
   fintualEveningCatchUpComplete,
   fintualMappedNavSignature,
@@ -56,15 +68,29 @@ import {
   formatClp,
   resolveFintualGoalNavs,
 } from "./fintualRealAssetNav.js";
-import { fetchIpcAfterMonth, fetchUfAfterDate, fetchUtmAfterMonth } from "../src/sbifApi.js";
 import {
+  fetchDolarAfterDate,
+  fetchEuroAfterDate,
+  fetchIpcAfterMonth,
+  fetchUfAfterDate,
+  fetchUtmAfterMonth,
+} from "../src/sbifApi.js";
+import {
+  maxEurDate,
+  maxFxDate,
   maxUfDate,
   safeMaxIpcMonthParts,
   safeMaxUtmMonthParts,
+  upsertEurRows,
+  upsertFxRows,
   upsertIpcRows,
   upsertUfRows,
   upsertUtmRows,
 } from "../src/sbifSyncDb.js";
+import {
+  EQUITY_DAILY_IMPORT_TICKERS,
+} from "../src/brokerageEquityMtm.js";
+import { equityEodSyncSessionLabel, syncEquityEodFromYahoo } from "../src/equityEodSync.js";
 let syncDryRun = process.argv.includes("--dry-run");
 const FORCE_SBIF = process.argv.includes("--force-sbif");
 const FORCE = process.argv.includes("--force");
@@ -78,6 +104,46 @@ function monthBeforeCalendar(y: number, m: number): { y: number; m: number } {
 function parseYmdParts(ymd: string): { y: number; m: number } {
   const [ys, ms] = ymd.split("-");
   return { y: parseInt(ys!, 10), m: parseInt(ms!, 10) };
+}
+
+function latestEquityEodRow(
+  ticker: string
+): { trade_date: string; close_usd: number } | null {
+  const row = db
+    .prepare(
+      `SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
+    )
+    .get(ticker) as { trade_date: string; close_usd: number } | undefined;
+  if (row?.close_usd == null || !Number.isFinite(row.close_usd)) return null;
+  return { trade_date: row.trade_date, close_usd: row.close_usd };
+}
+
+function latestEquityCloseUsd(ticker: string): number | null {
+  return latestEquityEodRow(ticker)?.close_usd ?? null;
+}
+
+function fxClpPerUsdAt(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date = ?`)
+    .get(date) as { clp_per_usd: number } | undefined;
+  const v = row?.clp_per_usd;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+function ufClpAt(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_uf FROM uf_daily WHERE date = ?`)
+    .get(date) as { clp_per_uf: number } | undefined;
+  const v = row?.clp_per_uf;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+function fxClpPerUsdOnOrBefore(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(date) as { clp_per_usd: number } | undefined;
+  const v = row?.clp_per_usd;
+  return v != null && Number.isFinite(v) ? v : null;
 }
 
 async function runUnoSpot(
@@ -144,23 +210,31 @@ async function runUnoSpot(
     note: `uno.cl:homepage|Fondo-A|${parsed.raw_price_fragment}|sync:all`,
     dryRun: syncDryRun,
   });
-  upsertAfpSpotValuationWithExplicitPx({
+  const marked = upsertAfpSpotValuationWithExplicitPx({
     accountId: row.id,
     asOfYmd: asOf,
     px,
     dryRun: syncDryRun,
   });
-  const impliedVal = Math.round(px * 100) / 100;
   const prevRounded =
     prevVal?.value_clp != null && Number.isFinite(prevVal.value_clp)
       ? Math.round(prevVal.value_clp)
       : null;
-  const nextRounded = Math.round(impliedVal);
-  if (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1) {
+  const nextRounded =
+    marked?.value_clp != null && Number.isFinite(marked.value_clp)
+      ? Math.round(marked.value_clp)
+      : null;
+  if (
+    nextRounded != null &&
+    (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1)
+  ) {
     changes.push({
-      label: "AFP UNO value_clp",
-      oldValue: prevRounded != null ? String(prevRounded) : "—",
-      newValue: String(nextRounded),
+      group: "afp",
+      label: "AFP UNO",
+      oldValue: prevRounded != null ? formatSyncClp(prevRounded) : "—",
+      newValue: formatSyncClp(nextRounded),
+      oldDate: asOf,
+      newDate: asOf,
     });
   }
   if (!syncDryRun) {
@@ -186,7 +260,7 @@ async function runFintual(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
-): Promise<{ pending: boolean }> {
+): Promise<{ pending: boolean; fintualNoChange?: boolean }> {
   if (cl.hour < 18) {
     console.log(`sync: Fintual — skip (before 18:00 Chile; now ${cl.hour}:${String(cl.minute).padStart(2, "0")}).`);
     return { pending: false };
@@ -235,7 +309,11 @@ async function runFintual(
   state.fintualLastCheckYmd = cl.ymd;
   state.fintualLastCheckSig = sig;
 
+  const anyMapped = snap.goals.some((g) => g.matchedNotes);
+
   if (fintualSnapshotMatchesDb(snap)) {
+    const fintualLogChanges = collectFintualGoalValuationChanges(snap);
+    changes.push(...fintualLogChanges);
     const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
     if (cleaned > 0) {
       console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
@@ -249,12 +327,13 @@ async function runFintual(
     if (STRICT_FINTUAL) {
       const hasMapped = snap.goals.some((g) => g.matchedNotes);
       if (hasMapped) {
-        console.error("sync: Fintual — --strict-fintual: no valuation update applied.");
-        if (!syncDryRun) saveGlobalSyncState(state);
-        process.exit(2);
+        throw new Error("--strict-fintual: no valuation update applied");
       }
     }
-    return { pending: true };
+    return {
+      pending: true,
+      fintualNoChange: anyMapped && fintualLogChanges.length === 0,
+    };
   }
 
   const { applied, skipped, changes: fintualChanges } = applyFintualGoalsSnapshotToDb(snap, syncDryRun);
@@ -267,12 +346,147 @@ async function runFintual(
     }
   }
   console.log(`sync: Fintual — applied ${applied}, skipped ${skipped} for as_of=${snap.asOfDate} (${syncDryRun ? "dry-run" : "ok"})`);
-  return { pending: false };
+  return {
+    pending: false,
+    fintualNoChange: anyMapped && fintualChanges.length === 0,
+  };
 }
 
 function isSbifNoDataError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   return msg.includes("404") || msg.includes("No hay datos");
+}
+
+async function runSbifUsd(apiKey: string, changes: SyncFieldChange[]): Promise<void> {
+  const anchor = portfolioStartYmd();
+  const lastFx = maxFxDate() ?? anchor;
+  const prevUsdClp = fxClpPerUsdAt(lastFx) ?? fxClpPerUsdOnOrBefore(lastFx);
+
+  let fxRows: { date: string; clpPerUsd: number }[] = [];
+  try {
+    fxRows = await fetchDolarAfterDate(lastFx, apiKey);
+  } catch (e) {
+    if (isSbifNoDataError(e)) {
+      console.warn(`sync: SBIF USD — no newer series after ${lastFx} (ok if current).`);
+    } else throw e;
+  }
+  const fxN = upsertFxRows(
+    fxRows.filter((r) => r.date >= anchor),
+    syncDryRun
+  );
+  if (fxN > 0) {
+    const newest = fxRows[fxRows.length - 1];
+    const newUsdClp = newest?.clpPerUsd ?? fxClpPerUsdOnOrBefore(newest?.date ?? lastFx);
+    if (newUsdClp != null) {
+      changes.push({
+        group: "sbif_usd",
+        label: "SBIF USD",
+        oldValue: prevUsdClp != null ? formatSyncFxRate(prevUsdClp) : "—",
+        newValue: formatSyncFxRate(newUsdClp),
+        oldDate: lastFx,
+        newDate: newest?.date ?? lastFx,
+      });
+    }
+  }
+  console.log(`sync: SBIF USD — ${fxN} row(s) after ${lastFx} (${syncDryRun ? "dry-run" : "ok"})`);
+}
+
+/** [SBIF euro observado](https://api.sbif.cl/documentacion/Euro.html) — `euro/posteriores/.../dias/...` */
+async function runSbifEur(apiKey: string, changes: SyncFieldChange[]): Promise<void> {
+  const anchor = portfolioStartYmd();
+  const lastEur = maxEurDate() ?? anchor;
+  const prevEurClp = db
+    .prepare(`SELECT clp_per_eur FROM eur_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(lastEur) as { clp_per_eur: number } | undefined;
+
+  let eurRows: { date: string; clpPerEur: number }[] = [];
+  try {
+    eurRows = await fetchEuroAfterDate(lastEur, apiKey);
+  } catch (e) {
+    if (isSbifNoDataError(e)) {
+      console.warn(`sync: SBIF EUR — no newer series after ${lastEur} (ok if current).`);
+    } else throw e;
+  }
+  const eurN = upsertEurRows(
+    eurRows.filter((r) => r.date >= anchor),
+    syncDryRun
+  );
+  if (eurN > 0) {
+    const newest = eurRows[eurRows.length - 1];
+    const newEurClp = newest?.clpPerEur;
+    const prevEur =
+      prevEurClp?.clp_per_eur != null && Number.isFinite(prevEurClp.clp_per_eur)
+        ? prevEurClp.clp_per_eur
+        : null;
+    if (newEurClp != null && Number.isFinite(newEurClp)) {
+      changes.push({
+        group: "sbif_eur",
+        label: "SBIF EUR",
+        oldValue: prevEur != null ? formatSyncFxRate(prevEur) : "—",
+        newValue: formatSyncFxRate(newEurClp),
+        oldDate: lastEur,
+        newDate: newest?.date ?? lastEur,
+      });
+    }
+  }
+  console.log(`sync: SBIF EUR — ${eurN} row(s) after ${lastEur} (${syncDryRun ? "dry-run" : "ok"})`);
+}
+
+function syncErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function runSyncStep(
+  step: string,
+  errors: SyncStepError[],
+  fn: () => Promise<void>
+): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    const message = syncErrorMessage(e);
+    console.error(`sync: ${step} — error: ${message}`);
+    errors.push({ step, message });
+  }
+}
+
+async function runEquityEod(state: GlobalSyncStateFile, changes: SyncFieldChange[]): Promise<void> {
+  if (!FORCE && !isEquityEodStale(state, { force: false })) {
+    console.log("sync: equity EOD — skip (NYSE session + crypto UTC day already synced).");
+    return;
+  }
+  const eodBefore = new Map<string, { trade_date: string; close_usd: number } | null>();
+  for (const ticker of EQUITY_DAILY_IMPORT_TICKERS) {
+    eodBefore.set(ticker, latestEquityEodRow(ticker));
+  }
+  const results = await syncEquityEodFromYahoo(undefined, {
+    dryRun: syncDryRun,
+    force: FORCE,
+  });
+  for (const r of results) {
+    if (r.skipped) {
+      console.log(`sync: equity EOD ${r.ticker} — skip (${r.skipped})`);
+      continue;
+    }
+    console.log(`sync: equity EOD ${r.ticker} — ${r.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
+    const before = eodBefore.get(r.ticker) ?? null;
+    const after = latestEquityEodRow(r.ticker);
+    if (after == null) continue;
+    if (before != null && Math.abs(before.close_usd - after.close_usd) < 1e-8) continue;
+    changes.push({
+      group: "tickers",
+      label: r.ticker,
+      oldValue: before != null ? formatSyncUsdClose(before.close_usd) : "—",
+      newValue: formatSyncUsdClose(after.close_usd),
+      oldDate: before?.trade_date ?? null,
+      newDate: after.trade_date,
+    });
+  }
+  if (!syncDryRun) {
+    const labels = equityEodSyncSessionLabel();
+    if (labels.nyseSession) state.equityEodLastNySessionYmd = labels.nyseSession;
+    state.equityEodLastCryptoUtcYmd = labels.cryptoUtcDay;
+  }
 }
 
 async function runSbifUf(
@@ -299,11 +513,20 @@ async function runSbifUf(
     syncDryRun
   );
   if (n > 0) {
-    changes.push({
-      label: "SBIF UF rows",
-      oldValue: last,
-      newValue: `+${n} (latest ${rows[rows.length - 1]?.date ?? last})`,
-    });
+    const newest = rows[rows.length - 1];
+    const newDate = newest?.date ?? last;
+    const oldUf = ufClpAt(last);
+    const newUf = newest ? ufClpAt(newDate) : null;
+    if (newUf != null) {
+      changes.push({
+        group: "sbif_uf",
+        label: "SBIF UF",
+        oldValue: oldUf != null ? formatSyncUfRate(oldUf) : "—",
+        newValue: formatSyncUfRate(newUf),
+        oldDate: last,
+        newDate,
+      });
+    }
   }
   if (!syncDryRun) state.sbifUfMonth = cl.monthKey;
   console.log(`sync: SBIF UF — ${n} row(s) after ${last} (${syncDryRun ? "dry-run" : "ok"})`);
@@ -332,11 +555,15 @@ async function runSbifUtm(
   }
   const n = upsertUtmRows(rows, syncDryRun);
   if (n > 0) {
-    const anchorLabel = `${anchor.y}-${String(anchor.m).padStart(2, "0")}`;
+    const newest = rows[rows.length - 1];
+    const oldLabel = `${anchor.y}-${String(anchor.m).padStart(2, "0")}`;
     changes.push({
-      label: "SBIF UTM rows",
-      oldValue: anchorLabel,
-      newValue: `+${n}`,
+      group: "sbif_utm",
+      label: "SBIF UTM",
+      oldValue: "—",
+      newValue: newest ? String(Math.round(newest.utmClp)) : `+${n}`,
+      oldDate: null,
+      newDate: newest?.date?.slice(0, 10) ?? null,
     });
   }
   if (!syncDryRun) state.sbifUtmMonth = cl.monthKey;
@@ -367,55 +594,90 @@ async function runSbifIpc(
   }
   const n = upsertIpcRows(rows, syncDryRun);
   if (n > 0) {
-    const anchorLabel = `${anchor.y}-${String(anchor.m).padStart(2, "0")}`;
+    const newest = rows[rows.length - 1];
     changes.push({
-      label: "SBIF IPC rows",
-      oldValue: anchorLabel,
-      newValue: `+${n}`,
+      group: "sbif_ipc",
+      label: "SBIF IPC",
+      oldValue: "—",
+      newValue: newest ? String(newest.ipcIndex) : `+${n}`,
+      oldDate: null,
+      newDate: newest?.date?.slice(0, 10) ?? null,
     });
   }
   if (!syncDryRun) state.sbifIpcMonth = cl.monthKey;
   console.log(`sync: SBIF IPC — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
-/** Run all external syncs. Returns exit code 0 on success. */
+/** Run all external syncs. Returns exit code 0 on success, 1 if any step failed. */
 export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<number> {
   syncDryRun = opts?.dryRun ?? process.argv.includes("--dry-run");
+  const syncChanges: SyncFieldChange[] = [];
+  const stepErrors: SyncStepError[] = [];
+  const logOpts: SyncRunLogOptions = {};
+  let stale: string[] = [];
+  let state: GlobalSyncStateFile | null = null;
+
   try {
     loadRootDotenv();
     const cl = chileWallClockNow();
-    const state = loadGlobalSyncState();
-    const stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
-    const syncChanges: SyncFieldChange[] = [];
+    state = loadGlobalSyncState();
+    stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
     console.log(
       `sync:all — Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")} (${syncDryRun ? "dry-run" : "live"})` +
         (stale.length ? ` stale=[${stale.join(", ")}]` : " nothing stale")
     );
 
-    await runUnoSpot(cl, state, syncChanges);
-    await runFintual(cl, state, syncChanges);
+    await runSyncStep("AFP UNO", stepErrors, async () => {
+      await runUnoSpot(cl, state!, syncChanges);
+    });
+
+    await runSyncStep("Fintual", stepErrors, async () => {
+      const fintualResult = await runFintual(cl, state!, syncChanges);
+      if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
+    });
 
     const apiKey = process.env.SBIF_APIKEY?.trim() ?? "";
     if (!apiKey) {
-      console.warn("sync: SBIF — skip UF/UTM/IPC (set SBIF_APIKEY in .env).");
-    } else if (cl.day < 9 && !FORCE_SBIF) {
-      console.log(
-        "sync: SBIF — skip UF/UTM/IPC (before day 9; CMF UF series often incomplete earlier — use --force-sbif to override)."
-      );
+      console.warn("sync: SBIF — skip (set SBIF_APIKEY in .env).");
     } else {
-      await runSbifUf(cl, apiKey, state, syncChanges);
-      await runSbifUtm(cl, apiKey, state, syncChanges);
-      await runSbifIpc(cl, apiKey, state, syncChanges);
+      await runSyncStep("Equity EOD", stepErrors, async () => {
+        await runEquityEod(state!, syncChanges);
+      });
+      await runSyncStep("SBIF USD", stepErrors, async () => {
+        await runSbifUsd(apiKey, syncChanges);
+      });
+      await runSyncStep("SBIF EUR", stepErrors, async () => {
+        await runSbifEur(apiKey, syncChanges);
+      });
+      if (cl.day < 9 && !FORCE_SBIF) {
+        console.log(
+          "sync: SBIF — skip UF/UTM/IPC (before day 9; CMF UF series often incomplete earlier — use --force-sbif to override)."
+        );
+      } else {
+        await runSyncStep("SBIF UF", stepErrors, async () => {
+          await runSbifUf(cl, apiKey, state!, syncChanges);
+        });
+        await runSyncStep("SBIF UTM", stepErrors, async () => {
+          await runSbifUtm(cl, apiKey, state!, syncChanges);
+        });
+        await runSyncStep("SBIF IPC", stepErrors, async () => {
+          await runSbifIpc(cl, apiKey, state!, syncChanges);
+        });
+      }
     }
-
-    insertSyncRunLog(stale, syncChanges, syncDryRun);
-
-    if (!syncDryRun) saveGlobalSyncState(state);
+  } catch (e) {
+    const message = syncErrorMessage(e);
+    console.error(`sync:all — fatal: ${message}`);
+    stepErrors.push({ step: "sync:all", message });
+  } finally {
+    insertSyncRunLog(stale, syncChanges, syncDryRun, { ...logOpts, errors: stepErrors });
+    if (!syncDryRun && state) saveGlobalSyncState(state);
+    if (stepErrors.length > 0) {
+      console.log(`sync:all — done with ${stepErrors.length} error(s).`);
+      return 1;
+    }
     console.log("sync:all — done.");
     return 0;
-  } catch (e) {
-    console.error(e instanceof Error ? e.message : e);
-    return 1;
   }
 }
 

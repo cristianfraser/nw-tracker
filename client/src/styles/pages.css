@@ -1,0 +1,94 @@
+.flow-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.flow-subnav a,
+.flow-subnav button {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.flow-subnav a:hover,
+.flow-subnav button:hover {
+  color: var(--text);
+  background: var(--surface2);
+  text-decoration: none;
+}
+
+.flow-subnav a.active,
+.flow-subnav button.active {
+  color: var(--text);
+  background: var(--accent-dim);
+}
+
+h2.flow-section-title {
+  margin-top: 0;
+}
+
+select.rates-series-select {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  font: inherit;
+  min-width: min(22rem, 100%);
+  max-width: 100%;
+}
+
+.rates-fx-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 880px) {
+  .rates-fx-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rates-instrument-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.rates-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem 0.5rem;
+}
+
+.rates-chart-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+.rates-chart-card__note {
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+}
+
+.rates-chart-card__empty {
+  margin: 0.5rem 0 0.35rem;
+  font-size: 0.875rem;
+}
+
+.rates-chart-card__plot {
+  height: clamp(200px, 28vh, 320px);
+  width: 100%;
+}

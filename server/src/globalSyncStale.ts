@@ -6,7 +6,17 @@ import { db } from "./db.js";
 import { loadGlobalSyncState, type GlobalSyncStateFile } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 
-export type GlobalSyncSource = "afp_uno" | "fintual" | "sbif_uf" | "sbif_utm" | "sbif_ipc";
+import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock } from "./nyseSession.js";
+import { isNyseTradingDay } from "./marketHolidays.js";
+import { utcTodayYmd } from "./nyseSession.js";
+
+export type GlobalSyncSource =
+  | "afp_uno"
+  | "fintual"
+  | "sbif_uf"
+  | "sbif_utm"
+  | "sbif_ipc"
+  | "equity_eod";
 
 function afpUnoAccountId(): number | null {
   const row = db
@@ -40,6 +50,22 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   return true;
 }
 
+export function isEquityEodStale(
+  state: GlobalSyncStateFile,
+  opts?: { force?: boolean; now?: Date }
+): boolean {
+  if (opts?.force) return true;
+  const now = opts?.now ?? new Date();
+  const ny = nyseWallClock(now);
+  if (isNyseTradingDay(ny.ymd) && isAfterNyseRegularClose(now)) {
+    const session = nyseSessionYmd(now);
+    if (state.equityEodLastNySessionYmd !== session) return true;
+  }
+  const utc = utcTodayYmd(now);
+  if (state.equityEodLastCryptoUtcYmd !== utc) return true;
+  return false;
+}
+
 export function isSbifMonthlyStale(
   cl: ChileWallClock,
   syncedMonth: string | undefined,
@@ -65,6 +91,7 @@ export function staleSyncSources(
     if (isSbifMonthlyStale(cl, state.sbifUtmMonth, opts)) out.push("sbif_utm");
     if (isSbifMonthlyStale(cl, state.sbifIpcMonth, opts)) out.push("sbif_ipc");
   }
+  if (isEquityEodStale(state, opts)) out.push("equity_eod");
   return out;
 }
 

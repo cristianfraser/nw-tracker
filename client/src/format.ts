@@ -54,6 +54,12 @@ export function formatNumberGrouped(n: number, unit: Exclude<CurrencyDisplayUnit
   return normalizeIntlNum(intlFormatter(unit).format(Math.abs(Math.round(n))));
 }
 
+/** Grouped digits with up to 2 fraction digits; trailing zeros omitted (e.g. `902`, `40,41`). */
+export function formatGroupedDecimalTrimmed(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return normalizeIntlNum(ufUnitsFmt.format(n));
+}
+
 /**
  * Currency display string. Negatives use accounting parentheses: `$-1` → `($1)`.
  * No leading `+` on positives.
@@ -120,6 +126,30 @@ export function accountingCurrencyNumberFlowParts(
     suffix: "",
     locales: currencyLocales(unit),
     format: NUMBER_FLOW_INT_FORMAT,
+  };
+}
+
+/** Plain percent for NumberFlow (no sign) — direction via ▲/▼; suffix `%`. */
+export function plainPercentNumberFlowParts(
+  n: number,
+  fractionDigits = 2
+): {
+  value: number;
+  suffix: string;
+  locales: string;
+  format: { minimumFractionDigits: number; maximumFractionDigits: number; signDisplay: "never" };
+} {
+  const fd = Math.max(0, Math.min(4, Math.trunc(fractionDigits)));
+  const factor = 10 ** fd;
+  return {
+    value: Math.abs(Math.round(n * factor) / factor),
+    suffix: "%",
+    locales: "en-US",
+    format: {
+      minimumFractionDigits: fd,
+      maximumFractionDigits: fd,
+      signDisplay: "never",
+    },
   };
 }
 

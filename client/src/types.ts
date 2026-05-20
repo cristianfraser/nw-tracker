@@ -71,6 +71,10 @@ export interface DashboardAccountRow {
   deposits_month_usd?: number | null;
   deposits_year_clp?: number;
   deposits_year_usd?: number | null;
+  prior_month_close_clp?: number | null;
+  prior_month_close_usd?: number | null;
+  prior_year_close_clp?: number | null;
+  prior_year_close_usd?: number | null;
   current_value_clp: number | null;
   valuation_as_of: string | null;
   current_value_usd?: number | null;
@@ -427,6 +431,15 @@ export interface MarketSeriesResponse {
   fund_series_keys: string[];
 }
 
+/** `GET /api/market-ticker` — Chile-today snapshot for the marquee (not forward-filled series tail). */
+export interface MarketTickerResponse {
+  chile_today: string;
+  uf: { date: string; clp_per_uf: number } | null;
+  usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
+  uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
+  equities: { ticker: string; trade_date: string; value_usd: number; delta_pct: number | null }[];
+}
+
 export type DepositFlowCategory = "real_estate" | "cash" | "brokerage" | "inversiones";
 
 export interface FlowDepositRow {
@@ -446,6 +459,54 @@ export interface FlowDepositChartPoint {
   brokerage: number;
   inversiones: number;
   total: number;
+}
+
+export type ExpenseFlowGroupSlug = "real_estate";
+
+export type ExpenseApartmentSlug = "el_vergel" | "lastarria" | "suecia";
+
+export interface FlowExpenseRow {
+  spent_on: string;
+  group_slug: ExpenseFlowGroupSlug;
+  group_label: string;
+  account_id: number;
+  account_slug: ExpenseApartmentSlug;
+  account_name: string;
+  amount_clp: number;
+  category: string | null;
+  note: string | null;
+}
+
+export interface FlowExpenseChartPoint {
+  as_of_date: string;
+  real_estate: number;
+  lastarria: number;
+  suecia: number;
+  el_vergel: number;
+  total: number;
+}
+
+export interface FlowExpenseAccountBlock {
+  account_id: number;
+  account_slug: ExpenseApartmentSlug;
+  label: string;
+  rows: FlowExpenseRow[];
+  total_clp: number;
+}
+
+export interface FlowExpenseGroupBlock {
+  label: string;
+  total_clp: number;
+  by_account: Record<string, FlowExpenseAccountBlock>;
+}
+
+/** `GET /api/flows/expenses` — apartment utility / housing costs (positive outflows). */
+export interface FlowsExpensesResponse {
+  rows: FlowExpenseRow[];
+  chart_monthly: FlowExpenseChartPoint[];
+  chart_yearly: FlowExpenseChartPoint[];
+  total_clp: number;
+  by_group: Record<ExpenseFlowGroupSlug, FlowExpenseGroupBlock>;
 }
 
 /** `GET /api/flows/deposits` — amounts may be negative (withdrawals). */

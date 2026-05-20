@@ -3,8 +3,39 @@ import { db } from "../src/db.js";
 import type { GlobalSyncStateFile } from "../src/globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
 import { recordFintualGoalFundUnitDaily } from "../src/fintualFundUnitDaily.js";
+import { formatSyncClp, type SyncFieldChange } from "../src/syncRunLog.js";
 
-export type ValuationChange = { label: string; oldValue: string; newValue: string };
+export type ValuationChange = SyncFieldChange;
+
+/** Mapped Fintual goals whose API NAV differs from the stored valuation on `snap.asOfDate`. */
+export function collectFintualGoalValuationChanges(snap: FintualGoalSnapshot): ValuationChange[] {
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  const valStmt = db.prepare(
+    `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+  );
+  const changes: ValuationChange[] = [];
+  for (const g of snap.goals) {
+    if (!g.matchedNotes) continue;
+    const row = accStmt.get(g.matchedNotes) as { id: number } | undefined;
+    if (!row) continue;
+    const nextRounded = Math.round(g.navClp);
+    const prev = valStmt.get(row.id, snap.asOfDate) as { value_clp: number } | undefined;
+    const prevRounded =
+      prev?.value_clp != null && Number.isFinite(prev.value_clp)
+        ? Math.round(prev.value_clp)
+        : null;
+    if (prevRounded != null && Math.abs(prevRounded - nextRounded) <= 1) continue;
+    changes.push({
+      group: "fintual",
+      label: g.name,
+      oldValue: prevRounded != null ? formatSyncClp(prevRounded) : "—",
+      newValue: formatSyncClp(nextRounded),
+      oldDate: snap.asOfDate,
+      newDate: snap.asOfDate,
+    });
+  }
+  return changes;
+}
 
 export function applyFintualGoalsSnapshotToDb(
   snap: FintualGoalSnapshot,
@@ -24,13 +55,9 @@ export function applyFintualGoalsSnapshotToDb(
        AND ABS(value_clp - @value_clp) <= 1`
   );
 
-  const valStmt = db.prepare(
-    `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
-  );
-
   let applied = 0;
   let skipped = 0;
-  const changes: ValuationChange[] = [];
+  const changes = collectFintualGoalValuationChanges(snap);
 
   for (const g of snap.goals) {
     if (!g.matchedNotes) {
@@ -44,19 +71,6 @@ export function applyFintualGoalsSnapshotToDb(
       continue;
     }
     const value_clp = Math.round(g.navClp * 100) / 100;
-    const prev = valStmt.get(row.id, snap.asOfDate) as { value_clp: number } | undefined;
-    const prevRounded =
-      prev?.value_clp != null && Number.isFinite(prev.value_clp)
-        ? Math.round(prev.value_clp)
-        : null;
-    const nextRounded = Math.round(value_clp);
-    if (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1) {
-      changes.push({
-        label: `${g.name} value_clp`,
-        oldValue: prevRounded != null ? String(prevRounded) : "—",
-        newValue: String(nextRounded),
-      });
-    }
     if (dryRun) {
       console.log(
         `[dry-run] account_id=${row.id} as_of=${snap.asOfDate} value_clp=${value_clp} ← goal "${g.name}"`

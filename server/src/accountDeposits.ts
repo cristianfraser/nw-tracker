@@ -24,6 +24,7 @@ const MOVEMENT_EXCLUDE_NOTE_SQL = `note IS NULL OR (
   AND note NOT LIKE '%|afp-orphan-cert-month|%'
   AND note NOT LIKE '%|afp-antecedentes-opening|%'
   AND note NOT LIKE '%|afp-cuotas-synthetic-trim|%'
+  AND note NOT LIKE '%|afp-cuotas-website-reconcile|%'
 )`;
 
 function loadMovementSignedFlowEvents(

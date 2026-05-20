@@ -30,9 +30,9 @@
   "dashboard": {
     "title": "Dashboard",
     "values": "Valores:",
-    "chartGranularityLabel": "Gráficos:",
-    "monthly": "Mensual",
-    "yearly": "Anual",
+    "chartGranularityLabel": "Período:",
+    "monthly": "MTD",
+    "yearly": "YTD",
     "yearlyViewHint": "Vista anual: las valorizaciones usan el <1>último mes</1> de cada año calendario. El P/L de inversiones suma los <2>Δ mensuales</2> de ese año en un solo punto.",
     "cards": {
       "netWorth": "Patrimonio neto",
@@ -95,21 +95,24 @@
     "combinedAnnualDelta": "Σ Δ anual",
     "cardBreakdown": {
       "totalDeposited": "Total depositado",
-      "totalDelta": "Δ total",
+      "totalDelta": "P/L acumulado",
       "periodDepositsMonth": "Depósitos del mes",
       "periodDepositsYear": "Depósitos del año",
-      "periodDeltaMonth": "Δ del mes",
-      "periodDeltaYear": "Δ del año",
+      "periodDeltaMonth": "P/L del mes",
+      "periodDeltaYear": "P/L del año",
       "summaryAria": "Depósitos y Δ total y del período"
     }
   },
   "sidebar": {
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
     "inversiones": "Inversiones",
     "afp": "AFP",
     "afc": "AFC",
     "flows": "Flujos",
     "flowsIncome": "Ingresos",
     "flowsExpenses": "Gastos",
+    "flowsExpensesRealEstate": "Inmuebles",
     "flowsDeposits": "Depósitos",
     "rates": "Tipos de cambio",
     "messages": "Mensajes"
@@ -132,9 +135,30 @@
     "loading": "Cargando…",
     "loadFailed": "Error al cargar"
   },
+  "expenses": {
+    "groups": {
+      "real_estate": "Inmuebles"
+    },
+    "accounts": {
+      "el_vergel": "El Vergel",
+      "lastarria": "Lastarria",
+      "suecia": "Suecia"
+    },
+    "kinds": {
+      "gas": "Gas",
+      "electricidad": "Electricidad",
+      "internet": "Internet",
+      "gastos_comunes": "Gastos comunes",
+      "contribuciones": "Contribuciones",
+      "kwh": "kWh (lectura)"
+    },
+    "emptyAccount": "Sin gastos importados.",
+    "chartTitle": "Gastos por departamento"
+  },
   "marketTicker": {
     "panelAria": "Mercado",
     "uf": "UF",
-    "usdLive": "USD"
+    "usdLive": "USD",
+    "unoA": "UNO-A"
   }
 }

@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import type { BrokeragePortfolioGroup } from "../brokerageGroupedAggregation";
-import type { AssetGroupSlug, DepositFlowCategory } from "../types";
+import type { AssetGroupSlug, DepositFlowCategory, ExpenseApartmentSlug } from "../types";
 import es from "./locales/es.json";
 
 void i18n.use(initReactI18next).init({
@@ -27,6 +27,17 @@ export function dashboardBucketLabel(bucket: "real_estate" | "retirement" | "bro
 }
 
 /** Deposit-flow categories: same Spanish labels as dashboard buckets (retirement deposits → Retiro). */
+export function expenseApartmentLabel(slug: ExpenseApartmentSlug): string {
+  return i18n.t(`expenses.accounts.${slug}`);
+}
+
+export function expenseKindLabel(kind: string | null | undefined): string {
+  if (!kind) return "—";
+  const key = `expenses.kinds.${kind}`;
+  const t = i18n.t(key);
+  return t === key ? kind : t;
+}
+
 export function depositFlowCategoryLabel(cat: DepositFlowCategory): string {
   const key: Record<DepositFlowCategory, string> = {
     real_estate: "dashboard.buckets.real_estate",

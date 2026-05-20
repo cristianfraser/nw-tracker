@@ -23,6 +23,10 @@ export type GlobalSyncStateFile = {
   sbifUfMonth?: string;
   sbifUtmMonth?: string;
   sbifIpcMonth?: string;
+  /** Last NYSE session date we synced EOD for SPY/VEA. */
+  equityEodLastNySessionYmd?: string;
+  /** Last UTC day we synced crypto EOD. */
+  equityEodLastCryptoUtcYmd?: string;
 };
 
 export function globalSyncStatePath(): string {

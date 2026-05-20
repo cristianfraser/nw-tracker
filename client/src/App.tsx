@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/AppSidebar";
+import { MobileNavDrawer } from "./components/MobileNavDrawer";
 import { MarketTickerPanel } from "./components/MarketTickerPanel";
 import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
@@ -17,7 +18,9 @@ export default function App() {
   return (
     <LoadingProvider>
       <div className="layout layout--with-sidebar">
-        <AppSidebar />
+        <MobileNavDrawer>
+          <AppSidebar />
+        </MobileNavDrawer>
         <MarketTickerPanel />
         <div className="layout-main">
           <div className="content">
@@ -39,6 +42,8 @@ export default function App() {
               <Route index element={<Navigate to="income" replace />} />
               <Route path="income" element={<IncomePage />} />
               <Route path="expenses" element={<ExpensesPage />} />
+              <Route path="expenses/:groupSlug" element={<ExpensesPage />} />
+              <Route path="expenses/:groupSlug/:accountSlug" element={<ExpensesPage />} />
               <Route path="deposits" element={<DepositsPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />

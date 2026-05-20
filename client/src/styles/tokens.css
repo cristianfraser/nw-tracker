@@ -1,0 +1,23 @@
+:root {
+  color-scheme: dark;
+  --market-ticker-height: 30px;
+  --nav-drawer-tab-gap: 0.5rem;
+  --bg: #0c0f14;
+  --surface: #141a22;
+  --surface2: #1c2430;
+  --surface-emphasis: color-mix(in srgb, var(--surface) 72%, var(--surface2) 28%);
+  --border: #2a3544;
+  --text: #e8edf4;
+  --muted: #8b98a8;
+  --accent: #3d9cf9;
+  --accent-dim: #2563a8;
+  --positive: #34d399;
+  --negative: #f87171;
+  --chart-panel-min-height: 420px;
+  --chart-panel-height: clamp(390px, 54vh, 600px);
+  font-family: "DM Sans", system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  background-color: var(--bg);
+  color: var(--text);
+}

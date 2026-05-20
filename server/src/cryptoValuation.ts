@@ -2,6 +2,7 @@ import { monthEndsBetweenInclusive, monthEndUtcYmd, monthKeyFromYmd } from "./ca
 import { cryptoSheetMovementDeltas, type CryptoSheetMonthMovement } from "./cryptoSheetUnits.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { equityCloseUsdEod, equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 
 export const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
@@ -114,23 +115,37 @@ export function cryptoCoinCumulativeThroughDate(
   return netCryptoCoinFromLedgerNotes(accountId, resolved, asOfYmd);
 }
 
-const stmtClose = db.prepare(
-  `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
-);
-
-/** CLP MTM: coin units through `asOfYmd` × last EOD ≤ asOf × FX (same pattern as SPY/VEA). */
-export function computeCryptoMtmClp(accountId: number, asOfYmd: string): number | null {
+/** CLP MTM: coin units through `asOfYmd` × USD price × FX. */
+export function computeCryptoMtmClp(
+  accountId: number,
+  asOfYmd: string,
+  priceUsd?: number | null
+): number | null {
   const ticker = cryptoEquityTickerForAccount(accountId);
   if (!ticker) return null;
   const asset = ticker === "BTC-USD" ? "BTC" : "ETH";
   const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd, asset);
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
-  const crow = stmtClose.get(ticker, asOfYmd) as { close_usd: number } | undefined;
-  if (!crow || !Number.isFinite(crow.close_usd)) return null;
+  const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
+  if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
   const fx = fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = units * crow.close_usd * fx.clp_per_usd;
+  const clp = units * closeUsd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
+}
+
+export async function computeCryptoMtmClpLive(
+  accountId: number,
+  asOfYmd?: string
+): Promise<{ value_clp: number; as_of_date: string } | null> {
+  const ticker = cryptoEquityTickerForAccount(accountId);
+  if (!ticker) return null;
+  const session = asOfYmd ?? equitySessionYmdForTicker(ticker);
+  const quote = await resolveEquityQuote(ticker, session, { preferLive: true });
+  if (!quote) return null;
+  const clp = computeCryptoMtmClp(accountId, session, quote.price_usd);
+  if (clp == null || !Number.isFinite(clp)) return null;
+  return { value_clp: clp, as_of_date: quote.trade_date };
 }
 
 /**

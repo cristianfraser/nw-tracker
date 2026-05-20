@@ -13,7 +13,7 @@ import {
   retirementAccountNavLabel,
 } from "./navAccountLabels";
 import i18n from "./i18n";
-import type { AccountListRow } from "./types";
+import type { AccountListRow, ExpenseApartmentSlug } from "./types";
 
 export type SidebarNavNode = {
   id: string;
@@ -243,6 +243,30 @@ export type SidebarAccountsBundle = {
   inversiones: AccountListRow[];
 };
 
+function buildFlowsExpensesBranch(): SidebarNavNode {
+  const apartments: ExpenseApartmentSlug[] = ["el_vergel", "lastarria", "suecia"];
+  return {
+    id: "flows.expenses",
+    label: i18n.t("sidebar.flowsExpenses"),
+    to: "/flows/expenses",
+    activePrefix: "/flows/expenses",
+    children: [
+      {
+        id: "flows.expenses.real_estate",
+        label: i18n.t("sidebar.flowsExpensesRealEstate"),
+        to: "/flows/expenses/real_estate",
+        activePrefix: "/flows/expenses/real_estate",
+        children: apartments.map((slug) => ({
+          id: `flows.expenses.real_estate.${slug}`,
+          label: i18n.t(`expenses.accounts.${slug}`),
+          to: `/flows/expenses/real_estate/${slug}`,
+          end: true,
+        })),
+      },
+    ],
+  };
+}
+
 export function buildSidebarNavTree(data: SidebarAccountsBundle): SidebarNavNode[] {
   return [
     { id: "dashboard", label: i18n.t("dashboard.title"), to: "/", end: true, showLeafHyphen: false },
@@ -257,7 +281,7 @@ export function buildSidebarNavTree(data: SidebarAccountsBundle): SidebarNavNode
       activePrefix: "/flows",
       children: [
         { id: "flows.income", label: i18n.t("sidebar.flowsIncome"), to: "/flows/income", end: true },
-        { id: "flows.expenses", label: i18n.t("sidebar.flowsExpenses"), to: "/flows/expenses", end: true },
+        buildFlowsExpensesBranch(),
         { id: "flows.deposits", label: i18n.t("sidebar.flowsDeposits"), to: "/flows/deposits", end: true },
       ],
     },
