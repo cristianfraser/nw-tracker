@@ -13,13 +13,22 @@ import {
   totalWithdrawalsClpForAccount,
 } from "./accountDeposits.js";
 import { movementFlowTypeFromSignedClp, movementFlowTypeLabel } from "./movementFlowType.js";
+import {
+  brokerageFlowCreateSchemaForAccount,
+  movementCreateSchemaForAccount,
+  validateBrokerageFlowCreate,
+  validateMovementCreate,
+  type AccountRow,
+} from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
+  computeEquityMtmClpLive,
   computeLatestDisplayedEquityClp,
   equityTickerForAccount,
 } from "./brokerageEquityMtm.js";
+import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import {
@@ -36,6 +45,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 import type { AccountPositionMeta } from "./accountPosition.js";
 import { getMarketSeriesPayload } from "./marketSeries.js";
+import { getMarketTickerPayload } from "./marketTicker.js";
 import { liabilitiesBreakdownClpAsOf, liabilitiesGroupClpAsOf } from "./valuationTimeseries.js";
 import {
   brokerageSubgroupMatchesCategory,
@@ -50,7 +60,10 @@ import {
   getGroupMonthlyPerformanceSeries,
   getStocksLifetimeEarningsSeries,
 } from "./accountPerformance.js";
-import { accountCardPerformanceMetrics } from "./dashboardAccountCardMetrics.js";
+import {
+  accountCardPerformanceMetrics,
+  accountPriorPeriodClose,
+} from "./dashboardAccountCardMetrics.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
 import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
 import {
@@ -61,6 +74,7 @@ import {
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   listAppMessages,
   markAllNotificationsRead,
@@ -363,7 +377,29 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
   });
 });
 
-app.get("/api/accounts/:id/summary", (req, res) => {
+async function latestValuationDisplayForAccount(
+  accountId: number
+): Promise<{ value_clp: number; as_of_date: string } | null> {
+  const eq = await computeLatestDisplayedEquityClp(accountId);
+  if (eq != null) return eq;
+  const crypto = await computeCryptoMtmClpLive(accountId);
+  if (crypto != null) return crypto;
+  const stored = latestValuationRowOnOrBeforeChileToday(accountId);
+  if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
+    return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+  }
+  if (accountUsesEquityMtm(accountId)) {
+    const live = await computeEquityMtmClpLive(accountId);
+    if (live != null) return { value_clp: live.value_clp, as_of_date: live.as_of_date };
+  }
+  if (accountUsesCryptoMtm(accountId)) {
+    const live = await computeCryptoMtmClpLive(accountId);
+    if (live != null) return live;
+  }
+  return null;
+}
+
+app.get("/api/accounts/:id/summary", async (req, res) => {
   const id = Number(req.params.id);
   const withdrawals_clp = totalWithdrawalsClpForAccount(id);
   const cat = db
@@ -392,24 +428,10 @@ app.get("/api/accounts/:id/summary", (req, res) => {
     }
     | undefined;
   const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, cat?.category_slug ?? "");
-  const maxEqDateStmt = db.prepare(
-    `SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`
-  );
-  let latest = latestValuationRowOnOrBeforeChileToday(id);
-  const eqShown = computeLatestDisplayedEquityClp(id);
-  if (eqShown != null) {
-    latest = eqShown;
-  } else if (!latest || latest.value_clp == null || latest.value_clp === 0) {
-    if (accountUsesEquityMtm(id)) {
-      const t = equityTickerForAccount(id);
-      if (t) {
-        const md = maxEqDateStmt.get(t) as { md: string | null };
-        if (md?.md) {
-          const c = computeEquityMtmClp(id, md.md);
-          if (c != null) latest = { value_clp: c, as_of_date: md.md };
-        }
-      }
-    }
+  let latest = await latestValuationDisplayForAccount(id);
+  if (latest == null) {
+    const stored = latestValuationRowOnOrBeforeChileToday(id);
+    if (stored?.value_clp != null) latest = stored as { value_clp: number; as_of_date: string };
   }
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
   const positionMeta = cat
@@ -437,8 +459,24 @@ app.get("/api/accounts/:id/summary", (req, res) => {
     latest_valuation_clp,
     latest_valuation_date,
     position,
+    movement_create: cat ? movementCreateSchemaForAccount(cat) : null,
+    brokerage_flow_create: cat ? brokerageFlowCreateSchemaForAccount(cat) : null,
   });
 });
+
+function accountRowForId(accountId: number): AccountRow | null {
+  if (!Number.isFinite(accountId) || accountId <= 0) return null;
+  const row = db
+    .prepare(
+      `SELECT c.slug AS category_slug, g.slug AS group_slug
+       FROM accounts a
+       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = c.group_id
+       WHERE a.id = ?`
+    )
+    .get(accountId) as AccountRow | undefined;
+  return row ?? null;
+}
 
 app.get("/api/accounts/:id/movements", (req, res) => {
   const id = Number(req.params.id);
@@ -559,29 +597,23 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
 
 app.post("/api/accounts/:id/movements", (req, res) => {
   const accountId = Number(req.params.id);
-  const { amount_clp, occurred_on, note } = req.body as {
-    amount_clp?: number;
-    occurred_on?: string;
-    note?: string;
-  };
-  if (
-    amount_clp === undefined ||
-    amount_clp === null ||
-    amount_clp === 0 ||
-    !Number.isFinite(amount_clp) ||
-    !occurred_on
-  ) {
-    res.status(400).json({
-      error: "amount_clp must be non-zero (positive = deposit, negative = withdrawal) and occurred_on required",
-    });
+  const account = accountRowForId(accountId);
+  if (!account) {
+    res.status(404).json({ error: "Account not found." });
     return;
   }
+  const validated = validateMovementCreate(account, req.body as Record<string, unknown>);
+  if (!validated.ok) {
+    res.status(validated.status).json({ error: validated.error });
+    return;
+  }
+  const { amount_clp, occurred_on, note, units_delta } = validated;
   const r = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta) VALUES (?, ?, ?, ?, ?)`
     )
-    .run(accountId, amount_clp, occurred_on, note ?? null);
-  res.status(201).json({ id: Number(r.lastInsertRowid) });
+    .run(accountId, amount_clp, occurred_on, note, units_delta);
+  res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
 });
 
 app.get("/api/accounts/:id/valuations", (req, res) => {
@@ -608,7 +640,7 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/dashboard", (req, res) => {
+app.get("/api/dashboard", async (req, res) => {
   const accounts = db
     .prepare(
       `
@@ -633,10 +665,6 @@ app.get("/api/dashboard", (req, res) => {
       category_label: string;
     }[];
 
-  const maxEqDateStmt = db.prepare(
-    `SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`
-  );
-
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const depositsNetByAccount = flowsDepositsNetTotalByAccount();
   const depositsNetUsdByAccount = includeUsd ? flowsDepositsNetTotalUsdByAccount() : null;
@@ -644,27 +672,19 @@ app.get("/api/dashboard", (req, res) => {
   const depositsYear = flowsDepositsNetInPeriodByAccount("year");
   const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
-  const rowsBuilt: DashboardAccountStats[] = accounts.map((a) => {
+  const rowsBuilt: DashboardAccountStats[] = await Promise.all(
+    accounts.map(async (a) => {
     const deposits = depositsNetByAccount.get(a.id) ?? 0;
     const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
     const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(a.group_slug);
     const perfClp = trackAssetMetrics ? accountCardPerformanceMetrics(a.id, "clp") : null;
     const perfUsd =
       trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
-    let v = latestValuationRowOnOrBeforeChileToday(a.id);
-    const eqShown = computeLatestDisplayedEquityClp(a.id);
-    if (eqShown != null) {
-      v = eqShown;
-    } else if (!v || v.value_clp == null || v.value_clp === 0) {
-      if (accountUsesEquityMtm(a.id)) {
-        const t = equityTickerForAccount(a.id);
-        if (t) {
-          const md = maxEqDateStmt.get(t) as { md: string | null };
-          if (md?.md) {
-            const c = computeEquityMtmClp(a.id, md.md);
-            if (c != null) v = { value_clp: c, as_of_date: md.md };
-          }
-        }
+    let v = await latestValuationDisplayForAccount(a.id);
+    if (v == null) {
+      const stored = latestValuationRowOnOrBeforeChileToday(a.id);
+      if (stored?.value_clp != null && stored.as_of_date) {
+        v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
       }
     }
     const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
@@ -708,6 +728,14 @@ app.get("/api/dashboard", (req, res) => {
         : undefined,
       deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
       deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
+      prior_month_close_clp: trackAssetMetrics
+        ? accountPriorPeriodClose(a.id, "month", "clp")
+        : undefined,
+      prior_month_close_usd:
+        trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "month", "usd") : undefined,
+      prior_year_close_clp: trackAssetMetrics ? accountPriorPeriodClose(a.id, "year", "clp") : undefined,
+      prior_year_close_usd:
+        trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "year", "usd") : undefined,
       current_value_clp,
       valuation_as_of,
       current_value_usd,
@@ -716,7 +744,8 @@ app.get("/api/dashboard", (req, res) => {
       notes: a.notes ?? null,
       position,
     };
-  });
+  })
+  );
 
   function addToBucket(
     map: Map<string, { clp: number; usd: number }>,
@@ -916,38 +945,30 @@ app.get("/api/accounts/:id/brokerage-flows", (req, res) => {
 
 app.post("/api/accounts/:id/brokerage-flows", (req, res) => {
   const accountId = Number(req.params.id);
-  const { occurred_on, flow_kind, amount_clp, amount_usd, ticker, note } = req.body as {
-    occurred_on?: string;
-    flow_kind?: string;
-    amount_clp?: number;
-    amount_usd?: number;
-    ticker?: string;
-    note?: string;
-  };
-  const kinds = ["deposit_clp", "compra_usd", "dividend_usd", "withdrawal_clp", "other"];
-  if (!occurred_on || !flow_kind || !kinds.includes(flow_kind)) {
-    res.status(400).json({ error: "occurred_on and valid flow_kind required" });
+  const account = accountRowForId(accountId);
+  if (!account) {
+    res.status(404).json({ error: "Account not found." });
     return;
   }
-  const clp = amount_clp ?? null;
-  const usd = amount_usd ?? null;
-  if ((clp == null || clp === 0) && (usd == null || usd === 0)) {
-    res.status(400).json({ error: "amount_clp or amount_usd required" });
+  const validated = validateBrokerageFlowCreate(account, req.body as Record<string, unknown>);
+  if (!validated.ok) {
+    res.status(validated.status).json({ error: validated.error });
     return;
   }
+  const { occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta } = validated;
   const r = db
     .prepare(
-      `INSERT INTO brokerage_flows (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO brokerage_flows (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(accountId, occurred_on, flow_kind, clp, usd, ticker ?? null, note ?? null);
-  res.status(201).json({ id: Number(r.lastInsertRowid) });
+    .run(accountId, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta);
+  res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
 });
 
 app.get("/api/fx/latest", (_req, res) => {
   const row = db
-    .prepare(`SELECT date, clp_per_usd FROM fx_daily ORDER BY date DESC LIMIT 1`)
-    .get() as { date: string; clp_per_usd: number } | undefined;
+    .prepare(`SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(chileCalendarTodayYmd()) as { date: string; clp_per_usd: number } | undefined;
   res.json(row ?? null);
 });
 
@@ -974,8 +995,8 @@ app.post("/api/fx", (req, res) => {
 
 app.get("/api/uf/latest", (_req, res) => {
   const row = db
-    .prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date DESC LIMIT 1`)
-    .get() as { date: string; clp_per_uf: number } | undefined;
+    .prepare(`SELECT date, clp_per_uf FROM uf_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(chileCalendarTodayYmd()) as { date: string; clp_per_uf: number } | undefined;
   res.json(row ?? null);
 });
 
@@ -1000,6 +1021,14 @@ app.post("/api/uf", (req, res) => {
 
 app.get("/api/market-series", (_req, res) => {
   res.json(getMarketSeriesPayload());
+});
+
+app.get("/api/market-ticker", async (_req, res) => {
+  try {
+    res.json(await getMarketTickerPayload());
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
+  }
 });
 
 app.get("/api/flows/deposits", (_req, res) => {
@@ -1037,10 +1066,15 @@ app.post("/api/income", (req, res) => {
 app.get("/api/expenses", (_req, res) => {
   const rows = db
     .prepare(
-      `SELECT id, amount_clp, spent_on, category, note, import_batch_id FROM expense_entries ORDER BY spent_on DESC, id DESC`
+      `SELECT id, amount_clp, spent_on, category, note, import_batch_id, expense_account_id
+       FROM expense_entries ORDER BY spent_on DESC, id DESC`
     )
     .all();
   res.json({ expenses: rows });
+});
+
+app.get("/api/flows/expenses", (_req, res) => {
+  res.json(buildFlowsExpensesPayload());
 });
 
 app.post("/api/expenses", (req, res) => {

@@ -286,6 +286,274 @@ export function buildBrokerageCardBreakdown(accounts: DashboardAccountRow[]): Ca
   return sortGroupsDesc(groupBlocks).flatMap((b) => b.lines);
 }
 
+export type NetWorthBucketDeltaLine = {
+  slug: DashboardGroupSlug;
+  label: string;
+  delta: number | null;
+};
+
+function overviewBalanceAt(
+  row: Record<string, string | number | null>,
+  dataKey: string
+): number | null {
+  const v = row[dataKey];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function chileTodayYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Last month-end or prior calendar year-end row in the overview series (anchor = Chile today). */
+function priorOverviewClosePoint(
+  points: Record<string, string | number | null>[],
+  period: CardGroupMetricsPeriod
+): Record<string, string | number | null> | null {
+  if (!points.length) return null;
+  const sorted = [...points].sort((a, b) =>
+    String(a.as_of_date).localeCompare(String(b.as_of_date))
+  );
+  const today = chileTodayYmd();
+  if (period === "year") {
+    const y0 = today.slice(0, 4);
+    let best: Record<string, string | number | null> | null = null;
+    for (const row of sorted) {
+      if (String(row.as_of_date).slice(0, 4) < y0) best = row;
+    }
+    return best;
+  }
+  const mk0 = today.slice(0, 7);
+  let best: Record<string, string | number | null> | null = null;
+  for (const row of sorted) {
+    if (String(row.as_of_date).slice(0, 7) < mk0) best = row;
+  }
+  return best;
+}
+
+const DASHBOARD_GROUP_OVERVIEW_KEY = {
+  real_estate: "real_estate",
+  retirement: "retirement",
+  brokerage: "brokerage",
+  cash_eqs: "cash",
+} as const;
+
+export type DashboardGroupSlug = keyof typeof DASHBOARD_GROUP_OVERVIEW_KEY;
+
+/** Balance Δ: Σ current (live dashboard) − Σ prior period close (performance month/year-end). */
+export function groupPeriodBalanceDeltaFromAccounts(
+  accounts: DashboardAccountRow[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd",
+  filter?: (a: DashboardAccountRow) => boolean
+): number | null {
+  const rows = accounts.filter(
+    (a) =>
+      a.group_slug === groupSlug &&
+      a.current_value_clp != null &&
+      Number.isFinite(a.current_value_clp) &&
+      (!filter || filter(a))
+  );
+  if (!rows.length) return null;
+
+  let current = 0;
+  let prior = 0;
+  let counted = 0;
+
+  for (const r of rows) {
+    const close =
+      period === "year"
+        ? unit === "usd"
+          ? r.prior_year_close_usd
+          : r.prior_year_close_clp
+        : unit === "usd"
+          ? r.prior_month_close_usd
+          : r.prior_month_close_clp;
+    const cur = unit === "usd" ? r.current_value_usd : r.current_value_clp;
+    if (close == null || !Number.isFinite(close)) continue;
+    if (cur == null || !Number.isFinite(cur)) continue;
+    current += cur;
+    prior += close;
+    counted += 1;
+  }
+
+  if (counted === 0) return null;
+  return current - prior;
+}
+
+/** Fallback: overview bucket total when performance prior close is missing. */
+export function groupPeriodBalanceDelta(
+  totals: {
+    real_estate_clp: number;
+    retirement_clp: number;
+    brokerage_clp: number;
+    cash_eqs_clp: number;
+    real_estate_usd?: number;
+    retirement_usd?: number;
+    brokerage_usd?: number;
+    cash_eqs_usd?: number;
+  },
+  overviewPoints: Record<string, string | number | null>[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd"
+): number | null {
+  const dataKey = DASHBOARD_GROUP_OVERVIEW_KEY[groupSlug];
+  const current =
+    unit === "usd" ? totals[`${groupSlug}_usd`] : totals[`${groupSlug}_clp` as const];
+  const prior = priorOverviewClosePoint(overviewPoints, period);
+  const prev = prior ? overviewBalanceAt(prior, dataKey) : null;
+  if (current == null || prev == null || !Number.isFinite(current) || !Number.isFinite(prev)) {
+    return null;
+  }
+  return current - prev;
+}
+
+export function resolveGroupPeriodBalanceDelta(
+  accounts: DashboardAccountRow[],
+  totals: Parameters<typeof groupPeriodBalanceDelta>[0],
+  overviewPoints: Record<string, string | number | null>[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd",
+  filter?: (a: DashboardAccountRow) => boolean
+): number | null {
+  const fromAccounts = groupPeriodBalanceDeltaFromAccounts(
+    accounts,
+    groupSlug,
+    period,
+    unit,
+    filter
+  );
+  if (fromAccounts != null) return fromAccounts;
+  return groupPeriodBalanceDelta(totals, overviewPoints, groupSlug, period, unit);
+}
+
+/** Card title: Σ live current_value − Σ prior month/year-end close. */
+export function cardGroupTitleBalanceDelta(
+  accounts: DashboardAccountRow[],
+  totals: Parameters<typeof groupPeriodBalanceDelta>[0],
+  overviewPoints: Record<string, string | number | null>[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean,
+  filter?: (a: DashboardAccountRow) => boolean
+): number | null {
+  const delta = resolveGroupPeriodBalanceDelta(
+    accounts,
+    totals,
+    overviewPoints,
+    groupSlug,
+    period,
+    showUsd ? "usd" : "clp",
+    filter
+  );
+  return delta != null && Number.isFinite(delta) ? Math.round(delta) : null;
+}
+
+/** Net worth card title: sum of bucket balance changes vs prior close. */
+export function cardGroupNetWorthTitleBalanceDelta(
+  accounts: DashboardAccountRow[],
+  totals: Parameters<typeof groupPeriodBalanceDelta>[0],
+  overviewPoints: Record<string, string | number | null>[],
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean
+): number | null {
+  const unit = showUsd ? "usd" : "clp";
+  let sum = 0;
+  let any = false;
+  for (const slug of NW_BUCKET_ORDER) {
+    const d = resolveGroupPeriodBalanceDelta(
+      accounts,
+      totals,
+      overviewPoints,
+      slug,
+      period,
+      unit
+    );
+    if (d != null && Number.isFinite(d)) {
+      sum += d;
+      any = true;
+    }
+  }
+  return any ? Math.round(sum) : null;
+}
+
+/** Replace period Δ on card metrics with balance change (keeps deposits + lifetime P/L). */
+export function cardGroupMetricsWithPeriodBalanceDelta(
+  metrics: CardGroupMetrics,
+  accounts: DashboardAccountRow[],
+  totals: Parameters<typeof groupPeriodBalanceDelta>[0],
+  overviewPoints: Record<string, string | number | null>[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd",
+  filter?: (a: DashboardAccountRow) => boolean
+): CardGroupMetrics {
+  const delta = resolveGroupPeriodBalanceDelta(
+    accounts,
+    totals,
+    overviewPoints,
+    groupSlug,
+    period,
+    unit,
+    filter
+  );
+  if (unit === "usd") {
+    return { ...metrics, delta_period_usd: delta };
+  }
+  return { ...metrics, delta_period_clp: delta };
+}
+
+/** Net worth card: bucket balance change vs prior month/year close. */
+export function buildNetWorthBucketDeltaBreakdown(
+  accounts: DashboardAccountRow[],
+  totals: {
+    real_estate_clp: number;
+    retirement_clp: number;
+    brokerage_clp: number;
+    cash_eqs_clp: number;
+    real_estate_usd?: number;
+    retirement_usd?: number;
+    brokerage_usd?: number;
+    cash_eqs_usd?: number;
+  },
+  overviewPoints: Record<string, string | number | null>[],
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd"
+): NetWorthBucketDeltaLine[] {
+  return NW_BUCKET_ORDER.map((slug) => ({
+    slug,
+    label: dashboardBucketLabel(slug),
+    delta: resolveGroupPeriodBalanceDelta(
+      accounts,
+      totals,
+      overviewPoints,
+      slug,
+      period,
+      unit
+    ),
+  }));
+}
+
+/** Period accounting check: net deposits + nominal P/L (should match title balance Δ). */
+export function cardGroupPeriodDepositsPlusPl(
+  metrics: CardGroupMetrics | null | undefined,
+  showUsd: boolean
+): number | null {
+  if (!metrics) return null;
+  const pl = showUsd ? metrics.delta_period_usd : metrics.delta_period_clp;
+  if (pl == null || !Number.isFinite(pl)) return null;
+  const depRaw = showUsd ? metrics.deposits_period_usd : metrics.deposits_period_clp;
+  const dep = depRaw != null && Number.isFinite(depRaw) ? depRaw : 0;
+  return Math.round(dep + pl);
+}
+
 /** Net worth card: RE, retirement, brokerage, cash (assets ex liabilities). */
 export function buildNetWorthCardBreakdown(totals: {
   real_estate_clp: number;

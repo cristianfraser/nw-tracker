@@ -1,0 +1,199 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.layout--with-sidebar {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.layout-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg);
+}
+
+.layout-main > .content {
+  flex: 1;
+  padding: 1.25rem 1.5rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Mobile nav drawer — checkbox + labels are siblings before `.app-sidebar` (see MobileNavDrawer). */
+.nav-drawer-toggle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.nav-drawer-tab,
+.nav-drawer-overlay {
+  display: none;
+}
+
+.app-sidebar {
+  --sidebar-max-depth: 5;
+  --sidebar-rail-space-base: 32px;
+  width: 15.5rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+@keyframes market-ticker-panel-mount {
+  from {
+    opacity: 0.2;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.market-ticker-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg);
+  pointer-events: auto;
+  z-index: 1;
+  animation: market-ticker-panel-mount 550ms cubic-bezier(0.33, 1, 0.68, 1) both;
+  box-shadow: 5px -7px 3px 7px var(--bg);
+}
+
+@media (max-width: 879px) {
+  .row-spacer {
+    display: none;
+  }
+
+  .layout--with-sidebar {
+    display: block;
+  }
+
+  .nav-drawer-tab {
+    display: flex;
+    position: fixed;
+    left: 0;
+    top: calc(var(--market-ticker-height) + var(--nav-drawer-tab-gap));
+    z-index: 52;
+    width: 0.9rem;
+    height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.28);
+    transition: opacity 0.2s ease;
+  }
+
+  .nav-drawer-tab__glyph {
+    font-size: 0.9rem;
+    line-height: 1;
+    transform: translateX(1px);
+  }
+
+  .nav-drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 48;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    cursor: pointer;
+    transition: opacity 0.25s ease, backdrop-filter 0.25s ease;
+    backdrop-filter: blur(0);
+  }
+
+  .app-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.33, 1, 0.68, 1);
+    box-shadow: none;
+  }
+
+  .nav-drawer-toggle:checked ~ .nav-drawer-tab {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    pointer-events: none;
+  }
+
+  .nav-drawer-toggle:checked ~ .nav-drawer-overlay {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+    pointer-events: auto;
+  }
+
+  .nav-drawer-toggle:checked ~ .app-sidebar {
+    transform: translateX(0);
+    box-shadow: 4px 0 28px rgba(0, 0, 0, 0.4);
+  }
+
+  .layout--with-sidebar:has(.nav-drawer-toggle:checked) {
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  .layout-main > .content {
+    padding-top: calc(var(--market-ticker-height) + 1.25rem);
+  }
+}
+
+@media (min-width: 880px) {
+  .nav-drawer-toggle {
+    display: none;
+  }
+
+  .market-ticker-panel {
+    left: auto;
+    width: calc((100vw - 15.5rem) * 2 / 3);
+    background-color: var(--bg);
+  }
+
+  .market-ticker-panel::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: -1px;
+    width: calc(min(6.5rem, 10%) + 1.25rem);
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(to right, var(--bg) 0%, var(--bg) 10%, transparent 100%);
+  }
+}

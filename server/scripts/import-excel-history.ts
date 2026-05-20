@@ -27,7 +27,8 @@
  *   For **`compra_usd`** in lots CSV use dot decimals
  *   (`612.36`) — `numCsv` would misread that as 61236 USD.
  * - **UF (CLF):** only from committed **`server/data/uf-sii-daily.csv`** (SII [valores y fechas / UF](https://www.sii.cl/valores_y_fechas/uf/uf2026.htm)).
- *   Not from Excel or `variables-Table 1-1.csv`. Refresh the file with `npm run fetch-uf -w nw-tracker-server`. EUR/CLP still from the variables sheet → **`eur_daily`**.
+ *   Not from Excel or `variables-Table 1-1.csv`. Refresh with `npm run fetch-uf -w nw-tracker-server`.
+ *   USD/EUR daily observado: SBIF (`npm run backfill:sbif-fx-eur -w nw-tracker-server`, `sync:all`). Excel variables sheet seeds month-end only when SBIF is absent.
  * - Optional **`ipc-index.csv`**: semicolon `date;ipc_index` (month-ends) → **`ipc_daily`** (IPC price index level).
  * - AFC: balance from Table 1-3 col 35. **Valuations** allow 0 after a full withdrawal (no stale forward-fill).
  *   **Movements** combine that balance series with `net worth-retiro.csv` col 14 when signs match (retiro amount for
@@ -48,6 +49,8 @@
  *   months that match Table 1-3 **dep_afp** CLP deltas (overlap months) plus thin UNO months before **2017-07**.
  *   Optional **`cfraser/afp-modelo-cuotas-supplement.txt`**: one line (e.g. `13,78`) added to the computed gap when the
  *   AFP website total still differs (rounding / older AFP history not on the Modelo PDF).
+ *   Optional **`cfraser/afp-uno-website-cuotas.txt`**: one line with official Σ cuotas (default **293.51**); import inserts
+ *   **`import:excel|afp-cuotas-website-reconcile`** when ledger Σ differs.
  *   **`cfraser/afp-modelo-antecedentes.csv`** / **`afp-modelo-traspaso.csv`** from `afp:modelo:antecedentes-pdf-to-csv` and
  *   `afp:modelo:traspaso-pdf-to-csv` (logged on import; traspaso Planvital→Modelo is not added to UNO cuotas).
  *   Inserts **`import:excel|afp-orphan-cert-month`** rows for UNO cert periods **before** the first Table 1-3 month
@@ -136,14 +139,16 @@ import {
 import { loadGoalIdOverrides, matchGoalToImportNotes } from "./fintualApiLib.js";
 import { applyAfpUnoCertificadoCuotasToMovements } from "../src/afpUnoCertMovementSync.js";
 import {
-  AFP_CUOTAS_SYNTHETIC_TRIM_DELTA,
-  AFP_CUOTAS_SYNTHETIC_TRIM_TARGET,
+  AFP_UNO_WEBSITE_CUOTAS_TARGET,
   buildDepAfpDeltaByMonth,
+  computeAfpCuotasWebsiteReconciliationDelta,
   computeModeloVersusUnoPriorCuotasDelta,
   readOptionalAfpModeloCuotasSupplement,
+  readOptionalAfpUnoWebsiteCuotasTarget,
   tryReadModeloAntecedentesSnapshot,
   tryReadModeloCotizacionesRows,
 } from "../src/afpModeloPriorCuotasBackfill.js";
+import { afpCuotasCumulativeThroughDate } from "../src/afpUnoValuation.js";
 import {
   computeOrphanUnoCertMonthMovements,
   firstAfpCumulativeMovementMonth,
@@ -1671,17 +1676,27 @@ async function main() {
             );
           }
         }
-        const trimDay = monthEndDate("2017-06");
-        insMov.run(
-          accounts.afp,
-          1,
-          trimDay,
-          `import:excel|afp-cuotas-synthetic-trim|delta=${AFP_CUOTAS_SYNTHETIC_TRIM_DELTA}|target=${AFP_CUOTAS_SYNTHETIC_TRIM_TARGET}|amount_clp_placeholder=1`,
-          AFP_CUOTAS_SYNTHETIC_TRIM_DELTA
-        );
-        console.log(
-          `import:excel: AFP cuotas synthetic trim: ${AFP_CUOTAS_SYNTHETIC_TRIM_DELTA} on ${trimDay} (target Σ=${AFP_CUOTAS_SYNTHETIC_TRIM_TARGET})`
-        );
+        const reconDay = monthEndDate("2017-06");
+        const cuotasTarget =
+          readOptionalAfpUnoWebsiteCuotasTarget(cfraserDir) ?? AFP_UNO_WEBSITE_CUOTAS_TARGET;
+        const cuotasSum = afpCuotasCumulativeThroughDate(accounts.afp, reconDay);
+        const reconDelta = computeAfpCuotasWebsiteReconciliationDelta(cuotasSum, cuotasTarget);
+        if (reconDelta != null) {
+          insMov.run(
+            accounts.afp,
+            1,
+            reconDay,
+            `import:excel|afp-cuotas-website-reconcile|delta=${reconDelta}|target=${cuotasTarget}|sum_before=${cuotasSum}|amount_clp_placeholder=1`,
+            reconDelta
+          );
+          console.log(
+            `import:excel: AFP cuotas website reconcile: ${reconDelta >= 0 ? "+" : ""}${reconDelta} on ${reconDay} (Σ ${cuotasSum.toFixed(2)} → ${cuotasTarget})`
+          );
+        } else {
+          console.log(
+            `import:excel: AFP cuotas already match website target (${cuotasSum.toFixed(2)} ≈ ${cuotasTarget})`
+          );
+        }
       } else {
         console.warn(`import:excel: ${certAbs} is empty; skipping AFP cert cuotas sync.`);
       }

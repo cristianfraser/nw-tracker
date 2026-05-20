@@ -1,0 +1,18 @@
+.root,
+.root :global(.rfm-marquee),
+.root :global(.rfm-initial-child-container),
+.root :global(.rfm-child),
+.root :global(.rfm-overlay) {
+  background: transparent !important;
+}
+
+.root {
+  height: var(--market-ticker-height);
+}
+
+.root :global(.rfm-marquee),
+.root :global(.rfm-initial-child-container),
+.root :global(.rfm-child) {
+  align-items: center;
+  height: var(--market-ticker-height);
+}

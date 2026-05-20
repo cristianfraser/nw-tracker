@@ -10,7 +10,7 @@ import { countFundUnitRowsInRange, upsertFundUnitSpotPreservingHistory } from ".
 import { portfolioStartYmd } from "./portfolioStart.js";
 
 /** SQL fragment: import rows that affect AFP Uno cuotas (sheet deposits + fixed 10% retiros + cert sync tags + Modelo prior adjustment). */
-export const AFP_IMPORT_CUOTAS_NOTE_SQL = `(note LIKE '%Table1-3|AFP%' OR note LIKE 'import:excel|retiro-10pct|UNO-Fondo-A|%' OR note LIKE '%|afp-cert:period=%' OR note LIKE 'import:excel|afp-modelo-prior-cuotas%' OR note LIKE 'import:excel|afp-orphan-cert-month%' OR note LIKE 'import:excel|afp-antecedentes-opening%' OR note LIKE 'import:excel|afp-cuotas-synthetic-trim%')`;
+export const AFP_IMPORT_CUOTAS_NOTE_SQL = `(note LIKE '%Table1-3|AFP%' OR note LIKE 'import:excel|retiro-10pct|UNO-Fondo-A|%' OR note LIKE '%|afp-cert:period=%' OR note LIKE 'import:excel|afp-modelo-prior-cuotas%' OR note LIKE 'import:excel|afp-orphan-cert-month%' OR note LIKE 'import:excel|afp-antecedentes-opening%' OR note LIKE 'import:excel|afp-cuotas-synthetic-trim%' OR note LIKE 'import:excel|afp-cuotas-website-reconcile%')`;
 
 /**
  * Cumulative AFP cuotas from `movements.units_delta` on AFP import rows (after cert sync).
@@ -71,6 +71,30 @@ export function latestAfpUnoFundUnitRowOnOrBeforeForDisplay(
     }
   }
   return latestFundUnitRowOnOrBefore(seriesKey, asOfYmd);
+}
+
+/** Prior reputable valor cuota strictly before `beforeDay` (skips cert scratch rows). */
+export function priorAfpUnoFundUnitRowBeforeForDisplay(
+  seriesKey: string,
+  beforeDay: string
+): { day: string; unit_value_clp: number } | null {
+  const rows = db
+    .prepare(
+      `SELECT day, unit_value_clp, COALESCE(note, '') AS note FROM fund_unit_daily
+       WHERE series_key = ? AND day < ?
+       ORDER BY day DESC
+       LIMIT 60`
+    )
+    .all(seriesKey, beforeDay) as { day: string; unit_value_clp: number; note: string }[];
+  for (const r of rows) {
+    if (!r.note.includes(AFP_CERT_FUND_UNIT_SCRATCH)) {
+      const v = r.unit_value_clp;
+      if (v != null && Number.isFinite(v) && v > 0 && r.day) {
+        return { day: r.day, unit_value_clp: v };
+      }
+    }
+  }
+  return null;
 }
 
 /** Upsert latest UNO Fondo A valor cuota from the public homepage (authoritative spot). */

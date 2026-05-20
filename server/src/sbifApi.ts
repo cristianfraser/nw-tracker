@@ -1,5 +1,5 @@
 /**
- * CMF [SBIF API v3](https://api.sbif.cl) — UF (daily), UTM / IPC (monthly).
+ * CMF [SBIF API v3](https://api.sbif.cl) — UF, dólar observado, euro (daily), UTM / IPC (monthly).
  * Env: `SBIF_APIKEY` (repo-root `.env`, loaded by callers).
  */
 
@@ -47,6 +47,50 @@ export async function fetchSbifJson(url: string): Promise<unknown> {
   } catch {
     throw new Error(`SBIF JSON parse error: ${text.slice(0, 200)}`);
   }
+}
+
+/** Dólar observado (CLP per USD) for dates strictly after `lastYmd`. */
+export async function fetchDolarAfterDate(
+  lastYmd: string,
+  apiKey: string
+): Promise<{ date: string; clpPerUsd: number }[]> {
+  const [y, mo, d] = lastYmd.split("-").map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
+    throw new Error(`Invalid lastYmd: ${lastYmd}`);
+  }
+  const url = `${SBIF_RECURSOS_BASE}/dolar/posteriores/${y}/${String(mo).padStart(2, "0")}/dias/${String(d).padStart(2, "0")}?apikey=${encodeURIComponent(apiKey)}&formato=json`;
+  const body = await fetchSbifJson(url);
+  const leaves: FechaValor[] = [];
+  collectFechaValorLeaves(body, leaves);
+  const rows: { date: string; value: number }[] = [];
+  for (const { fecha, valor } of leaves) {
+    const v = parseSbifNumber(valor);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || v == null || v <= 0) continue;
+    rows.push({ date: fecha, value: v });
+  }
+  return dedupeByDate(rows).map((r) => ({ date: r.date, clpPerUsd: r.value }));
+}
+
+/** Euro observado (CLP per EUR) for dates strictly after `lastYmd`. */
+export async function fetchEuroAfterDate(
+  lastYmd: string,
+  apiKey: string
+): Promise<{ date: string; clpPerEur: number }[]> {
+  const [y, mo, d] = lastYmd.split("-").map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
+    throw new Error(`Invalid lastYmd: ${lastYmd}`);
+  }
+  const url = `${SBIF_RECURSOS_BASE}/euro/posteriores/${y}/${String(mo).padStart(2, "0")}/dias/${String(d).padStart(2, "0")}?apikey=${encodeURIComponent(apiKey)}&formato=json`;
+  const body = await fetchSbifJson(url);
+  const leaves: FechaValor[] = [];
+  collectFechaValorLeaves(body, leaves);
+  const rows: { date: string; value: number }[] = [];
+  for (const { fecha, valor } of leaves) {
+    const v = parseSbifNumber(valor);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || v == null || v <= 0) continue;
+    rows.push({ date: fecha, value: v });
+  }
+  return dedupeByDate(rows).map((r) => ({ date: r.date, clpPerEur: r.value }));
 }
 
 /** UF for calendar dates strictly after `lastYmd` (use last row in `uf_daily`). */
@@ -110,6 +154,42 @@ export async function fetchIpcAfterMonth(
     return [];
   }
   return deduped.map((r) => ({ date: r.date, ipcIndex: r.value }));
+}
+
+/** One calendar year of daily dólar observado (backfill / catch-up). */
+export async function fetchDolarYear(
+  year: number,
+  apiKey: string
+): Promise<{ date: string; clpPerUsd: number }[]> {
+  const url = `${SBIF_RECURSOS_BASE}/dolar/${year}?apikey=${encodeURIComponent(apiKey)}&formato=json`;
+  const body = await fetchSbifJson(url);
+  const leaves: FechaValor[] = [];
+  collectFechaValorLeaves(body, leaves);
+  const rows: { date: string; value: number }[] = [];
+  for (const { fecha, valor } of leaves) {
+    const v = parseSbifNumber(valor);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || v == null || v <= 0) continue;
+    rows.push({ date: fecha, value: v });
+  }
+  return dedupeByDate(rows).map((r) => ({ date: r.date, clpPerUsd: r.value }));
+}
+
+/** One calendar year of daily euro observado (backfill / catch-up). */
+export async function fetchEuroYear(
+  year: number,
+  apiKey: string
+): Promise<{ date: string; clpPerEur: number }[]> {
+  const url = `${SBIF_RECURSOS_BASE}/euro/${year}?apikey=${encodeURIComponent(apiKey)}&formato=json`;
+  const body = await fetchSbifJson(url);
+  const leaves: FechaValor[] = [];
+  collectFechaValorLeaves(body, leaves);
+  const rows: { date: string; value: number }[] = [];
+  for (const { fecha, valor } of leaves) {
+    const v = parseSbifNumber(valor);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || v == null || v <= 0) continue;
+    rows.push({ date: fecha, value: v });
+  }
+  return dedupeByDate(rows).map((r) => ({ date: r.date, clpPerEur: r.value }));
 }
 
 /** One calendar year of daily UF (backfill / catch-up). */

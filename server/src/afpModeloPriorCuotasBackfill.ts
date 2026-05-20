@@ -13,9 +13,27 @@ import {
   type AfpModeloCotizacionRow,
 } from "./afpModeloCotizacionesParse.js";
 
-/** Synthetic trim after cert/orphan backfill so header Σ cuotas matches AFP UNO website. */
-export const AFP_CUOTAS_SYNTHETIC_TRIM_DELTA = -0.66;
-export const AFP_CUOTAS_SYNTHETIC_TRIM_TARGET = 292.08;
+/** Official AFP UNO Fondo A cuotas total (private site); reconciled after cert/modelo import. */
+export const AFP_UNO_WEBSITE_CUOTAS_TARGET = 293.51;
+
+export function readOptionalAfpUnoWebsiteCuotasTarget(cfraserDir: string): number | null {
+  const p = path.join(cfraserDir, "afp-uno-website-cuotas.txt");
+  if (!fs.existsSync(p)) return null;
+  const line = fs.readFileSync(p, "utf8").replace(/^\uFEFF/, "").trim().split(/\r?\n/)[0] ?? "";
+  const n = parseDecimalComma(line.trim());
+  return n != null && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Δ cuotas so Σ movements matches `target` (null when already within 0.01). */
+export function computeAfpCuotasWebsiteReconciliationDelta(
+  currentSum: number,
+  target: number = AFP_UNO_WEBSITE_CUOTAS_TARGET
+): number | null {
+  if (!Number.isFinite(currentSum) || !Number.isFinite(target) || target <= 0) return null;
+  const delta = Math.round((target - currentSum) * 100) / 100;
+  if (Math.abs(delta) < 0.005) return null;
+  return delta;
+}
 
 export type MonthKey = string;
 

@@ -1,0 +1,115 @@
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-cards > .card--dashboard-net-worth {
+  grid-row: 1;
+  grid-column: 1;
+  min-height: auto;
+  background: var(--surface-emphasis);
+  border-color: color-mix(in srgb, var(--border) 80%, var(--surface2) 20%);
+}
+
+.row-spacer {
+  grid-row: 1;
+  grid-column: 2 / -1;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+}
+
+.card .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.card-title-row__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.card-title-row__delta {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.card .value {
+  display: flex;
+  justify-content: flex-start;
+  align-items: baseline;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.card--detail {
+  min-width: 220px;
+  min-height: 300px;
+}
+
+.card--detail-compact {
+  min-width: 220px;
+}
+
+.card--detail-stretch {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Reinforce bucket min-height when stretch also sets height (cash wraps to its own row). */
+.card--detail.card--detail-stretch:not(.card--dashboard-net-worth) {
+  min-height: 300px;
+}
+
+.card--detail-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Cash card: pin credit-card row (and its separator) to the card bottom. */
+.card--cash.card--detail-stretch > .card-breakdown-spacer {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.card--cash.card--detail-stretch > .card-breakdown-bottom {
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+/* Hook for DashboardCardValue breakdown variant (module targets this class). */
+.card-breakdown__amount {
+  flex-shrink: 0;
+  text-align: right;
+}

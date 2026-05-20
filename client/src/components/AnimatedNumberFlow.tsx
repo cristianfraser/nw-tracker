@@ -3,6 +3,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentPropsWithoutRef,
@@ -12,6 +13,8 @@ import type { NUMBER_FLOW_INT_FORMAT } from "../format";
 
 const MOUNT_STORAGE_PREFIX = "nw:numberFlowMount:";
 const DEFAULT_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
+/** Opacity reveal on mount — independent of digit spin duration (main uses 550ms). */
+export const MOUNT_OPACITY_MS = 320;
 
 export type NumberFlowFormatOptions = {
   minimumFractionDigits?: number;
@@ -132,10 +135,14 @@ function mountSeedFromStorage(
   return mountSeedFresh(digitRange);
 }
 
+type MountFadePhase = "idle" | "hold" | "arm";
+
 export type MountAnimationState = {
   displayValue: number | null;
   opacity: number;
   mountDuration: number;
+  /** When false, skip opacity transition so the first frame can paint at 0.2 (not from 0). */
+  opacityTransition: boolean;
 };
 
 export function useMountAnimation(
@@ -161,6 +168,10 @@ export function useMountAnimation(
   const [opacity, setOpacity] = useState(() =>
     target != null && animated && useMountSeed ? 0.2 : 1
   );
+  const [mountFadePhase, setMountFadePhase] = useState<MountFadePhase>(() =>
+    target != null && animated && useMountSeed ? "hold" : "idle"
+  );
+  const opacityTransition = mountFadePhase === "arm" || mountFadePhase === "idle";
 
   useEffect(() => {
     if (useMountSeed && mountSeedId && target != null && Number.isFinite(target) && mountDone.current) {
@@ -172,11 +183,13 @@ export function useMountAnimation(
     if (target == null) {
       setDisplayValue(null);
       setOpacity(1);
+      setMountFadePhase("idle");
       return;
     }
     if (!animated) {
       setDisplayValue(target);
       setOpacity(1);
+      setMountFadePhase("idle");
       mountDone.current = true;
       if (useMountSeed && mountSeedId) persistMountValue(mountSeedId, target);
       return;
@@ -184,6 +197,7 @@ export function useMountAnimation(
     if (!useMountSeed) {
       setDisplayValue(target);
       setOpacity(1);
+      setMountFadePhase("idle");
       return;
     }
     if (!mountDone.current) {
@@ -192,18 +206,27 @@ export function useMountAnimation(
       }
       setDisplayValue(mountSeed.current);
       setOpacity(0.2);
-      const frame = requestAnimationFrame(() => {
-        setDisplayValue(target);
-        setOpacity(1);
-        mountDone.current = true;
-        persistMountValue(mountSeedId!, target);
-      });
-      return () => cancelAnimationFrame(frame);
+      setMountFadePhase("hold");
+      const paintFrame = requestAnimationFrame(() => setMountFadePhase("arm"));
+      return () => cancelAnimationFrame(paintFrame);
     }
     setDisplayValue(target);
   }, [target, animated, useMountSeed, mountSeedDigitRange, mountSeedId]);
 
-  return { displayValue, opacity, mountDuration };
+  useLayoutEffect(() => {
+    if (mountFadePhase !== "arm" || mountDone.current || target == null) return;
+    let fadeFrame = 0;
+    fadeFrame = requestAnimationFrame(() => {
+      setDisplayValue(target);
+      setOpacity(1);
+      mountDone.current = true;
+      setMountFadePhase("idle");
+      if (useMountSeed && mountSeedId) persistMountValue(mountSeedId, target);
+    });
+    return () => cancelAnimationFrame(fadeFrame);
+  }, [mountFadePhase, target, useMountSeed, mountSeedId]);
+
+  return { displayValue, opacity, mountDuration, opacityTransition };
 }
 
 export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFlowProps>(
@@ -229,12 +252,13 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     useImperativeHandle(ref, () => hostRef.current as NumberFlowElement);
 
     const internalMount = useMountAnimation(target, animated, mountSeedDigitRange, mountSeedId);
-    const { displayValue, opacity, mountDuration } = mountAnimationProp ?? internalMount;
+    const { displayValue, opacity, mountDuration, opacityTransition } =
+      mountAnimationProp ?? internalMount;
     const externalMount = mountAnimationProp != null;
-    const duration = mountDurationProp ?? mountDuration;
+    const digitDuration = mountDurationProp ?? mountDuration;
     const easing = DEFAULT_EASING;
-    const resolvedTransform = transformTiming ?? { duration, easing };
-    const resolvedSpin = spinTiming ?? { duration, easing };
+    const resolvedTransform = transformTiming ?? { duration: digitDuration, easing };
+    const resolvedSpin = spinTiming ?? { duration: digitDuration, easing };
 
     if (displayValue == null) {
       if (emptyFallback != null) return <>{emptyFallback}</>;
@@ -249,7 +273,9 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
         style={{
           opacity: externalMount ? 1 : opacity,
           transition:
-            !externalMount && mountSeedDigitRange ? `opacity ${duration}ms ${easing}` : undefined,
+            !externalMount && mountSeedDigitRange && opacityTransition
+              ? `opacity ${MOUNT_OPACITY_MS}ms ${easing}`
+              : undefined,
         }}
       >
         <NumberFlow

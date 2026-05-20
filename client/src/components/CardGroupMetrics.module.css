@@ -1,0 +1,56 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.15rem;
+  font-size: 0.72rem;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.deposited {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.deltaWrap {
+  flex-shrink: 0;
+}
+
+.amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.amountEmpty {
+  font-size: 0.72rem;
+}
+
+.delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12rem;
+}
+
+.deltaIcon {
+  font-size: 0.55rem;
+  line-height: 1;
+}
+
+.deltaUp,
+.amountUp {
+  color: var(--positive);
+}
+
+.deltaDown,
+.amountDown {
+  color: var(--negative);
+}

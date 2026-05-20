@@ -195,3 +195,43 @@ export function getAccountPositionMeta(
   }
   return null;
 }
+
+/** Live AFP mark: Σ cuotas × latest valor cuota (same as dashboard / account summary). */
+export function liveAfpDisplayValueClp(
+  accountId: number,
+  asOfYmd?: string
+): { value_clp: number; as_of_date: string } | null {
+  const asOf =
+    asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
+  const meta = getAccountPositionMeta(accountId, "afp", { afpCuotasAsOfYmd: asOf });
+  const clp = meta?.afp_override_value_clp;
+  const date = meta?.afp_override_value_as_of;
+  if (clp != null && Number.isFinite(clp) && date) {
+    return { value_clp: clp, as_of_date: date };
+  }
+  return null;
+}
+
+/** Chart / pie trailing point: live AFP when requested, else stored valuation snapshot. */
+export function afpValuationRawClpForChart(
+  accountId: number,
+  storedClp: number | null | undefined,
+  useLiveMark: boolean
+): number | null {
+  if (useLiveMark) {
+    const live = liveAfpDisplayValueClp(accountId);
+    if (live) return live.value_clp;
+  }
+  return storedClp != null && Number.isFinite(storedClp) ? storedClp : null;
+}
+
+export function applyLiveAfpToAccountValueMap(
+  lastVal: Map<number, number>,
+  accountMeta: Map<number, { category_slug: string }>
+): void {
+  for (const [id, m] of accountMeta) {
+    if (m.category_slug !== "afp") continue;
+    const live = liveAfpDisplayValueClp(id);
+    if (live) lastVal.set(id, live.value_clp);
+  }
+}

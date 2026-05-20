@@ -1,0 +1,45 @@
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.brokerage-nav-table tr.brokerage-nav-account td:first-child {
+  padding-left: 1.85rem;
+  box-shadow: inset 3px 0 0 var(--border);
+}
+
+.brokerage-nav-table tr.brokerage-nav-group td:first-child,
+.hierarchy-nav-table tr.hierarchy-nav-group td:first-child {
+  font-weight: 500;
+}
+
+tr:hover td {
+  background: var(--surface2);
+}

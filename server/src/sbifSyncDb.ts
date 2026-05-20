@@ -15,6 +15,16 @@ const upsertIpc = db.prepare(`
   ON CONFLICT(date) DO UPDATE SET ipc_index = excluded.ipc_index
 `);
 
+const upsertFx = db.prepare(`
+  INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd
+`);
+
+const upsertEur = db.prepare(`
+  INSERT INTO eur_daily (date, clp_per_eur) VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET clp_per_eur = excluded.clp_per_eur
+`);
+
 export function upsertUfRows(rows: { date: string; clpPerUf: number }[], dryRun: boolean): number {
   if (dryRun) return rows.length;
   let n = 0;
@@ -43,6 +53,36 @@ export function upsertIpcRows(rows: { date: string; ipcIndex: number }[], dryRun
     n++;
   }
   return n;
+}
+
+export function upsertFxRows(rows: { date: string; clpPerUsd: number }[], dryRun: boolean): number {
+  if (dryRun) return rows.length;
+  let n = 0;
+  for (const r of rows) {
+    upsertFx.run(r.date, r.clpPerUsd);
+    n++;
+  }
+  return n;
+}
+
+export function upsertEurRows(rows: { date: string; clpPerEur: number }[], dryRun: boolean): number {
+  if (dryRun) return rows.length;
+  let n = 0;
+  for (const r of rows) {
+    upsertEur.run(r.date, r.clpPerEur);
+    n++;
+  }
+  return n;
+}
+
+export function maxFxDate(): string | null {
+  const r = db.prepare(`SELECT MAX(date) AS d FROM fx_daily`).get() as { d: string | null };
+  return r?.d ?? null;
+}
+
+export function maxEurDate(): string | null {
+  const r = db.prepare(`SELECT MAX(date) AS d FROM eur_daily`).get() as { d: string | null };
+  return r?.d ?? null;
 }
 
 export function maxUfDate(): string | null {

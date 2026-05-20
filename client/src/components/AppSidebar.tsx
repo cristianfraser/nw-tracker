@@ -9,6 +9,7 @@ import {
   type SidebarNavNode,
 } from "../sidebarNavTree";
 import type { AccountListRow } from "../types";
+import styles from "./AppSidebar.module.css";
 
 const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
 
@@ -31,7 +32,7 @@ function writeCollapsedIds(ids: Set<string>) {
 function CaretIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
-      className={`sidebar-caret-icon${expanded ? " sidebar-caret-icon--expanded" : ""}`}
+      className={`${styles.caretIcon}${expanded ? ` ${styles.caretIconExpanded}` : ""}`}
       width="14"
       height="14"
       viewBox="0 0 14 14"
@@ -75,43 +76,45 @@ function SidebarNavItem({
   };
 
   return (
-    <li className="sidebar-item" style={{ "--sidebar-depth": depth } as CSSProperties}>
-      <div className="sidebar-item-body">
+    <li className={styles.item} style={{ "--sidebar-depth": depth } as CSSProperties}>
+      <div className={styles.itemBody}>
         {hasChildren ? (
           <button
             type="button"
-            className="sidebar-expand"
+            className={styles.expand}
             aria-label={isCollapsed ? `Expand ${node.label}` : `Collapse ${node.label}`}
             aria-expanded={!isCollapsed}
             onClick={collapse}
           >
-            <span className="sidebar-expand-caret">
+            <span className={styles.expandCaret}>
               <CaretIcon expanded={!isCollapsed} />
             </span>
-            {showChildren ? <>
-              <span className="sidebar-expand-rail" aria-hidden />
-              <span className="sidebar-expand-rail-space" aria-hidden />
-            </> : null}
+            {showChildren ? (
+              <>
+                <span className={styles.expandRail} aria-hidden />
+                <span className={styles.expandRailSpace} aria-hidden />
+              </>
+            ) : null}
           </button>
         ) : (
-          <span className="sidebar-leaf-mark" aria-hidden>
-            {leafHyphen ? <span className="sidebar-leaf-hyphen" /> : null}
+          <span className={styles.leafMark} aria-hidden>
+            {leafHyphen ? <span className={styles.leafHyphen} /> : null}
           </span>
         )}
-        <div className="sidebar-item-content">
-          <div className={`sidebar-row${isActive ? " sidebar-row--active" : ""}`}>
+        <div className={styles.itemContent}>
+          <div className={`${styles.row}${isActive ? ` ${styles.rowActive}` : ""}`}>
             <NavLink
               to={node.to}
               end={node.end}
               className={({ isActive: linkActive }) =>
-                `sidebar-link${linkActive || isActive ? " active" : ""}`
+                `${styles.link}${linkActive || isActive ? ` ${styles.linkActive}` : ""}`
               }
             >
               {node.label}
             </NavLink>
           </div>
           {showChildren ? (
-            <ul className="sidebar-sublist">
+            <ul className={styles.sublist}>
               {node.children!.map((child) => (
                 <SidebarNavItem
                   key={child.id}
@@ -239,91 +242,98 @@ export function AppSidebar() {
 
   return (
     <aside className="app-sidebar" aria-label="Main navigation">
-      <div className="sidebar-brand">
+      <div className={styles.brand}>
         <NavLink to="/">NW Tracker</NavLink>
       </div>
-      <nav className="sidebar-nav">
-        <div className="sidebar-nav-scroll">
-        {!tree ? (
-          <p className="sidebar-loading muted">{t("common.loading")}</p>
-        ) : (
-          <>
-            <ul className="sidebar-list">
-              {dashboardNode ? (
-                <SidebarNavItem
-                  key={dashboardNode.id}
-                  node={dashboardNode}
-                  depth={0}
-                  collapsed={collapsed}
-                  onToggleCollapse={onToggleCollapse}
-                  pathname={pathname}
-                />
-              ) : null}
-            </ul>
-            <div className="sidebar-separator" role="separator" />
-            <ul className="sidebar-list">
-              {mainNavNodes.map((node) => (
-                <SidebarNavItem
-                  key={node.id}
-                  node={node}
-                  depth={0}
-                  collapsed={collapsed}
-                  onToggleCollapse={onToggleCollapse}
-                  pathname={pathname}
-                />
-              ))}
-            </ul>
-            <div className="sidebar-separator" role="separator" />
-            <ul className="sidebar-list">
-              {flowsNode ? (
-                <SidebarNavItem
-                  node={flowsNode}
-                  depth={0}
-                  collapsed={collapsed}
-                  onToggleCollapse={onToggleCollapse}
-                  pathname={pathname}
-                />
-              ) : null}
-            </ul>
-            <div className="sidebar-separator" role="separator" />
-            <ul className="sidebar-list">
-              {ratesNode ? (
-                <SidebarNavItem
-                  node={ratesNode}
-                  depth={0}
-                  collapsed={collapsed}
-                  onToggleCollapse={onToggleCollapse}
-                  pathname={pathname}
-                />
-              ) : null}
-            </ul>
-          </>
-        )}
-        </div>
-        <div className="sidebar-nav-footer">
-          <div className="sidebar-separator" role="separator" />
-          <ul className="sidebar-list">
-            <li className="sidebar-item" style={{ "--sidebar-depth": 0 } as CSSProperties}>
-              <div className="sidebar-item-body">
-                <span className="sidebar-leaf-mark" aria-hidden />
-                <div className="sidebar-item-content">
-                  <div className={`sidebar-row${pathname === "/messages" ? " sidebar-row--active" : ""}`}>
-                    <NavLink
-                      to="/messages"
-                      className={({ isActive }) => `sidebar-link${isActive ? " active" : ""}`}
+      <nav className={styles.nav}>
+        <div className={styles.navInner}>
+          <div className={styles.navScroll}>
+            {!tree ? (
+              <p className={`${styles.loading} muted`}>{t("common.loading")}</p>
+            ) : (
+              <>
+                <ul className={styles.list}>
+                  {dashboardNode ? (
+                    <SidebarNavItem
+                      key={dashboardNode.id}
+                      node={dashboardNode}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                    />
+                  ) : null}
+                </ul>
+                <div className={styles.separator} role="separator" />
+                <ul className={styles.list}>
+                  {mainNavNodes.map((node) => (
+                    <SidebarNavItem
+                      key={node.id}
+                      node={node}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                    />
+                  ))}
+                </ul>
+                <div className={styles.separator} role="separator" />
+                <ul className={styles.list}>
+                  {flowsNode ? (
+                    <SidebarNavItem
+                      node={flowsNode}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                    />
+                  ) : null}
+                </ul>
+                <div className={styles.separator} role="separator" />
+                <ul className={styles.list}>
+                  {ratesNode ? (
+                    <SidebarNavItem
+                      node={ratesNode}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                    />
+                  ) : null}
+                </ul>
+              </>
+            )}
+          </div>
+          <div className={styles.navSpacer} aria-hidden="true" />
+          <div className={styles.navFooter}>
+            <div className={styles.separator} role="separator" />
+            <ul className={styles.list}>
+              <li className={styles.item} style={{ "--sidebar-depth": 0 } as CSSProperties}>
+                <div className={styles.itemBody}>
+                  <span className={styles.leafMark} aria-hidden />
+                  <div className={styles.itemContent}>
+                    <div
+                      className={`${styles.row}${pathname === "/messages" ? ` ${styles.rowActive}` : ""}`}
                     >
-                      <span className="sidebar-link-label">{t("sidebar.messages")}</span>
-                      {unreadPill ? (
-                        <span className="sidebar-unread-pill" aria-label={`${unreadCount} sin leer`}>
-                          {unreadPill}
-                        </span>
-                      ) : null}
-                    </NavLink>
+                      <NavLink
+                        to="/messages"
+                        className={({ isActive }) =>
+                          `${styles.link}${isActive ? ` ${styles.linkActive}` : ""}`
+                        }
+                      >
+                        <span className={styles.linkLabel}>{t("sidebar.messages")}</span>
+                        {unreadPill ? (
+                          <span className={styles.unreadPill} aria-label={`${unreadCount} sin leer`}>
+                            {unreadPill}
+                          </span>
+                        ) : null}
+                      </NavLink>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </li>
-          </ul>
+              </li>
+            </ul>
+          </div>
         </div>
       </nav>
     </aside>

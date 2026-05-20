@@ -15,7 +15,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chileCalendarTodayYmd } from "../src/chileDate.js";
+import { chileWallClockNow } from "../src/chileDate.js";
+import { fintualValuationAsOfYmd } from "../src/fintualSyncPolicy.js";
 export const FINTUAL_API_BASE = "https://fintual.cl/api";
 const FINTUAL_FETCH_HEADERS = {
     Accept: "application/json",
@@ -299,6 +300,19 @@ export function parseGoalsFromResponse(json) {
             continue;
         const a = attrs;
         const name = typeof a.name === "string" ? a.name : "";
+        const investments = [];
+        if (Array.isArray(a.investments)) {
+            for (const raw of a.investments) {
+                if (!raw || typeof raw !== "object")
+                    continue;
+                const o = raw;
+                const weight = typeof o.weight === "number" ? o.weight : Number(o.weight);
+                const asset_id = typeof o.asset_id === "number" ? o.asset_id : Number(o.asset_id);
+                if (Number.isFinite(weight) && Number.isFinite(asset_id)) {
+                    investments.push({ weight, asset_id });
+                }
+            }
+        }
         const navRaw = a.nav;
         const nav = typeof navRaw === "number"
             ? navRaw
@@ -307,12 +321,12 @@ export function parseGoalsFromResponse(json) {
                 : NaN;
         if (!id || !Number.isFinite(nav))
             continue;
-        out.push({ id, name, navClp: nav });
+        out.push({ id, name, navClp: nav, investments: investments.length ? investments : undefined });
     }
     return out;
 }
-export function buildGoalsSnapshot(goals, byGoalId) {
-    const asOfDate = chileCalendarTodayYmd();
+export function buildGoalsSnapshot(goals, byGoalId, cl = chileWallClockNow(), asOfDateOverride) {
+    const asOfDate = asOfDateOverride ?? fintualValuationAsOfYmd(cl);
     return {
         fetchedAt: new Date().toISOString(),
         asOfDate,
