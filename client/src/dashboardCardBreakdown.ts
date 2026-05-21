@@ -8,13 +8,12 @@ import {
 } from "./brokerageGroupedAggregation";
 import { dashboardBucketRoutePath } from "./portfolioDashboardBuckets";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
-import i18n, { dashboardBucketLabel, depositFlowCategoryLabel } from "./i18n";
+import i18n from "./i18n";
 import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
 import type {
   AccountListRow,
   DashboardAccountRow,
   DashboardResponse,
-  DepositFlowCategory,
 } from "./types";
 
 function asNavRow(a: DashboardAccountRow): AccountListRow {
@@ -233,8 +232,6 @@ export function cardGroupMetricsNetWorth(
   return cardGroupMetricsFromAccounts(rows, period);
 }
 
-const DEPOSIT_CATEGORY_ORDER = ["real_estate", "cash", "brokerage", "inversiones"] as const;
-
 function sumUsd(rows: DashboardAccountRow[]): number | null {
   let sum = 0;
   let any = false;
@@ -407,12 +404,6 @@ export function buildBrokerageCardBreakdown(accounts: DashboardAccountRow[]): Ca
 
   return sortGroupsDesc(groupBlocks).flatMap((b) => b.lines);
 }
-
-export type NetWorthBucketDeltaLine = {
-  slug: DashboardGroupSlug;
-  label: string;
-  delta: number | null;
-};
 
 function overviewBalanceAt(
   row: Record<string, string | number | null>,
@@ -713,100 +704,6 @@ export function cardGroupNetWorthTitleBalanceDelta(
   return any ? Math.round(sum) : null;
 }
 
-/** Replace period Δ on card metrics with balance change (keeps deposits + lifetime P/L). */
-export function cardGroupMetricsWithPeriodBalanceDelta(
-  metrics: CardGroupMetrics,
-  accounts: DashboardAccountRow[],
-  totals: Parameters<typeof groupPeriodBalanceDelta>[0],
-  overviewPoints: Record<string, string | number | null>[],
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd",
-  filter?: (a: DashboardAccountRow) => boolean
-): CardGroupMetrics {
-  const delta = resolveGroupPeriodBalanceDelta(
-    accounts,
-    totals,
-    overviewPoints,
-    groupSlug,
-    period,
-    unit,
-    filter
-  );
-  if (unit === "usd") {
-    return { ...metrics, delta_period_usd: delta };
-  }
-  return { ...metrics, delta_period_clp: delta };
-}
-
-/** Net worth card: bucket balance change vs prior month/year close. */
-export function buildNetWorthBucketDeltaBreakdown(
-  accounts: DashboardAccountRow[],
-  totals: {
-    real_estate_clp: number;
-    retirement_clp: number;
-    brokerage_clp: number;
-    cash_eqs_clp: number;
-    real_estate_usd?: number;
-    retirement_usd?: number;
-    brokerage_usd?: number;
-    cash_eqs_usd?: number;
-  },
-  overviewPoints: Record<string, string | number | null>[],
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd"
-): NetWorthBucketDeltaLine[] {
-  return NW_BUCKET_ORDER.map((slug) => ({
-    slug,
-    label: dashboardBucketLabel(slug),
-    delta: resolveGroupPeriodBalanceDelta(
-      accounts,
-      totals,
-      overviewPoints,
-      slug,
-      period,
-      unit
-    ),
-  }));
-}
-
-/** Period accounting check: net deposits + nominal P/L (should match title balance Δ). */
-export function cardGroupPeriodDepositsPlusPl(
-  metrics: CardGroupMetrics | null | undefined,
-  showUsd: boolean
-): number | null {
-  if (!metrics) return null;
-  const pl = showUsd ? metrics.delta_period_usd : metrics.delta_period_clp;
-  if (pl == null || !Number.isFinite(pl)) return null;
-  const depRaw = showUsd ? metrics.deposits_period_usd : metrics.deposits_period_clp;
-  const dep = depRaw != null && Number.isFinite(depRaw) ? depRaw : 0;
-  return Math.round(dep + pl);
-}
-
-/** Net worth card: RE, retirement, brokerage, cash (assets ex liabilities). */
-export function buildNetWorthCardBreakdown(totals: {
-  real_estate_clp: number;
-  retirement_clp: number;
-  brokerage_clp: number;
-  cash_eqs_clp: number;
-  real_estate_usd?: number;
-  retirement_usd?: number;
-  brokerage_usd?: number;
-  cash_eqs_usd?: number;
-}): CardBreakdownLine[] {
-  const rows = NW_BUCKET_ORDER.map((key) => {
-    const clpKey = `${key}_clp` as const;
-    const usdKey = `${key}_usd` as const;
-    return {
-      label: dashboardBucketLabel(key),
-      clp: totals[clpKey],
-      usd: totals[usdKey],
-      to: dashboardBucketRoutePath(key),
-    };
-  });
-  return sortGroupsDesc(rows).map((r) => ({ ...r, depth: 0 as const }));
-}
-
 export type SueciaSnapshot = {
   valor_clp: number;
   net_value_clp: number;
@@ -1023,26 +920,4 @@ export function buildLiabilitiesCardBreakdown(breakdown: {
       to: liabilitiesSubgroupPath(r.key),
     }))
   ).map((r) => ({ ...r, depth: 0 as const }));
-}
-
-/** Deposits card: per-category totals (USD = sum of each event at its deposit-date FX). */
-export function buildDepositsCardBreakdown(
-  byCategory:
-    | Partial<Record<DepositFlowCategory, { label: string; total_clp: number; total_usd: number }>>
-    | undefined
-): CardBreakdownLine[] {
-  if (!byCategory) return [];
-  return DEPOSIT_CATEGORY_ORDER.filter((c) => byCategory[c])
-    .map((c) => {
-      const block = byCategory[c]!;
-      return {
-        label: depositFlowCategoryLabel(c),
-        clp: block.total_clp,
-        usd: block.total_usd,
-        to: "/flows/deposits",
-      };
-    })
-    .filter((g) => g.clp !== 0)
-    .sort((a, b) => Math.abs(b.clp) - Math.abs(a.clp))
-    .map((g) => ({ ...g, depth: 0 as const }));
 }

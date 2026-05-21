@@ -1,0 +1,194 @@
+/* Section headings */
+.sectionTitle {
+  margin-top: var(--space-2xl);
+}
+
+.sectionTitleCompact {
+  margin-bottom: var(--space-2xs);
+}
+
+.sectionTitleSpaced {
+  margin-top: var(--space-xl);
+}
+
+.subsectionTitle {
+  font-size: var(--font-size-section-title);
+  margin-bottom: var(--space-2xs);
+}
+
+.subsectionTitleTight {
+  composes: subsectionTitle;
+  margin-top: var(--space-2xs);
+  margin-bottom: var(--space-2xs);
+}
+
+.subsectionTitleMid {
+  composes: subsectionTitle;
+  margin-top: var(--space-xl);
+  margin-bottom: var(--space-2xs);
+}
+
+.subsectionTitleLoose {
+  composes: subsectionTitle;
+  margin-top: var(--space-section);
+  margin-bottom: var(--space-2xs);
+}
+
+/* Prose / muted copy */
+.proseMuted {
+  font-size: var(--font-size-prose);
+  margin-bottom: var(--space-sm);
+  max-width: var(--content-max-width);
+}
+
+.proseMutedMd {
+  composes: proseMuted;
+  margin-bottom: var(--space-md);
+}
+
+.proseMutedXs {
+  composes: proseMuted;
+  margin-bottom: var(--space-xs);
+}
+
+.proseMutedTight {
+  composes: proseMuted;
+  margin-bottom: var(--space-tight);
+}
+
+.proseMutedTop {
+  composes: proseMuted;
+  margin-top: var(--space-2xs);
+  margin-bottom: 0;
+}
+
+.proseSm {
+  font-size: var(--font-size-prose-sm);
+  margin-bottom: var(--space-md);
+  max-width: var(--content-max-width);
+}
+
+.proseSmTight {
+  composes: proseSm;
+  margin-bottom: var(--space-tight);
+}
+
+.proseLabel {
+  font-size: var(--font-size-card-label);
+  margin-bottom: var(--space-2xs);
+  max-width: var(--content-max-width);
+}
+
+.caption {
+  font-size: var(--font-size-caption);
+  margin-bottom: var(--space-tight);
+  max-width: var(--content-max-width);
+}
+
+.stateNote {
+  display: block;
+  margin-top: var(--space-2xs);
+  font-size: var(--font-size-caption);
+}
+
+/* Cards / layout blocks */
+.cardsBelow {
+  margin-bottom: var(--space-md);
+}
+
+.cardsSection {
+  margin-top: var(--space-2xl);
+}
+
+.chartBlock {
+  margin-top: var(--space-md);
+}
+
+.chartBlockFlush {
+  margin-top: 0;
+}
+
+.positionBlock {
+  margin-top: var(--space-md);
+}
+
+.marginTopBase {
+  margin-top: var(--space-base);
+}
+
+.marginBottomBase {
+  margin-bottom: var(--space-base);
+}
+
+/* Tables */
+.tableWrapSpaced {
+  margin-bottom: var(--space-xl);
+}
+
+.tableCompact {
+  font-size: var(--font-size-table);
+}
+
+.tableMortgage {
+  font-size: var(--font-size-caption);
+}
+
+.tableScenario {
+  font-size: var(--font-size-caption);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.nestedList {
+  margin: 0;
+  padding-left: var(--space-lg);
+}
+
+/* Card values / meta */
+.cardValueSecondary {
+  font-size: var(--font-size-value-secondary);
+}
+
+.cardFootnote {
+  font-size: var(--font-size-prose-sm);
+  margin-top: var(--space-2xs);
+}
+
+.purchaseMeta {
+  font-size: var(--font-size-card-meta);
+}
+
+.purchaseMetaBlock {
+  display: block;
+  font-size: var(--font-size-card-meta);
+}
+
+.cellSub {
+  display: block;
+  font-size: var(--font-size-card-meta);
+}
+
+/* Form / misc */
+.offsetInput {
+  width: 4.5rem;
+  padding: 0.2rem var(--space-2xs);
+}
+
+.breakAll {
+  word-break: break-all;
+}
+
+.errorText {
+  font-size: var(--font-size-ui);
+}
+
+.flowsFilterToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-sm);
+  font-size: var(--font-size-ui);
+  cursor: pointer;
+}

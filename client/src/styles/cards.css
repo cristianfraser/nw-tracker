@@ -23,13 +23,13 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--card-radius);
   padding: 0.4rem 0.7rem 0.4rem 0.65rem;
   line-height: 1;
 }
 
 .card .label {
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -48,7 +48,7 @@
 }
 
 .card-title-row.title-container>.title.card-title-row__label {
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -84,7 +84,7 @@
 
 .card-title-row__delta {
   flex-shrink: 0;
-  font-size: 0.72rem;
+  font-size: var(--font-size-card-meta);
 }
 
 .card .value {
@@ -144,7 +144,7 @@
 .card-breakdown-root .child .card-breakdown__amount,
 .card-breakdown-root .card-breakdown__amount--muted {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: var(--font-size-card-meta-sm);
 }
 
 .card--detail {

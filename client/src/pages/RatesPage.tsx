@@ -18,6 +18,7 @@ import { Table } from "../components/Table";
 import { formatClp, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
 import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/ValuationLineCharts";
+import { cn } from "../cn";
 import { useTranslation } from "../i18n";
 
 type RatesTab = "fx" | "tickers";
@@ -306,10 +307,10 @@ export function RatesPage() {
       </p>
 
       <nav className="flow-subnav" aria-label="Rates sections">
-        <button type="button" className={tab === "fx" ? "active" : ""} onClick={() => setTab("fx")}>
+        <button type="button" className={cn(tab === "fx" && "active")} onClick={() => setTab("fx")}>
           FX
         </button>
-        <button type="button" className={tab === "tickers" ? "active" : ""} onClick={() => setTab("tickers")}>
+        <button type="button" className={cn(tab === "tickers" && "active")} onClick={() => setTab("tickers")}>
           Tickers
         </button>
       </nav>

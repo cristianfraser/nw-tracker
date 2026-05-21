@@ -42,6 +42,8 @@ import {
   formatUfUnits,
   formatUfUnitsFine,
 } from "../format";
+import { cn } from "../cn";
+import styles from "./AccountDetailPage.module.css";
 
 function cellClp(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -128,10 +130,8 @@ function CreditCardInstallmentsSection({
       <tr key={p.purchase_id}>
         <td>
           <div>{p.label}</div>
-          <div className="mono muted" style={{ fontSize: "0.72rem" }}>
-            {p.purchase_id}
-          </div>
-          {p.note ? <div className="muted" style={{ fontSize: "0.72rem" }}>{p.note}</div> : null}
+          <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
+          {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
         </td>
         <td className="mono">{p.installment_count}</td>
         <td className="mono">{p.installments_paid}</td>
@@ -148,8 +148,7 @@ function CreditCardInstallmentsSection({
             <input
               type="number"
               step={1}
-              className="mono"
-              style={{ width: "4.5rem", padding: "0.2rem 0.35rem" }}
+              className={cn("mono", styles.offsetInput)}
               value={extraOffsets[p.purchase_id] ?? 0}
               onChange={(e) => {
                 const raw = e.target.value;
@@ -181,9 +180,9 @@ function CreditCardInstallmentsSection({
 
   return (
     <>
-      <h2 style={{ marginTop: "1.5rem" }}>Cupos en cuotas (tarjeta)</h2>
+      <h2 className={styles.sectionTitle}>Cupos en cuotas (tarjeta)</h2>
       {fromDb ? (
-        <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.65rem", maxWidth: "58rem" }}>
+        <p className={cn("muted", styles.proseMuted)}>
           Datos importados a la base desde los PDF de estado de cuenta (cuotas).{" "}
           {m?.db_purchase_count != null && m?.db_payment_count != null ? (
             <>
@@ -192,14 +191,12 @@ function CreditCardInstallmentsSection({
             </>
           ) : null}{" "}
           {m?.pay_by_rule ? (
-            <span style={{ display: "block", marginTop: "0.35rem", fontSize: "0.78rem" }}>
-              {m.pay_by_rule}
-            </span>
+            <span className={cn("muted", styles.stateNote)}>{m.pay_by_rule}</span>
           ) : null}
         </p>
       ) : (
         <>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.65rem", maxWidth: "58rem" }}>
+          <p className={cn("muted", styles.proseMuted)}>
             Datos desde <span className="mono">{m?.csv_path ?? "cfraser/credit-card-installments.csv"}</span>. Tasa anual
             nominal por compra (por defecto <strong>0%</strong> = cuota fija); si en el futuro cargas cupos con interés,
             el saldo restante usa amortización mensual estándar. El campo <strong>Offset UI</strong> suma meses solo en
@@ -207,9 +204,9 @@ function CreditCardInstallmentsSection({
             persistente va en la columna CSV <span className="mono">schedule_offset_months</span>.
           </p>
           {m && (
-            <p className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.75rem" }}>
+            <p className={cn("muted", styles.proseSm)}>
               Archivo:{" "}
-              <span className="mono" style={{ wordBreak: "break-all" }}>
+              <span className={cn("mono", styles.breakAll)}>
                 {m.csv_absolute_path}
               </span>
               {m.csv_file_exists === false ? " (no encontrado)" : null}
@@ -220,7 +217,7 @@ function CreditCardInstallmentsSection({
       {ledger.source === "none" &&
       ledger.purchases.length === 0 &&
       (ledger.purchases_completed?.length ?? 0) === 0 ? (
-        <p className="muted" style={{ marginBottom: "1rem" }}>
+        <p className={cn("muted", styles.marginBottomBase)}>
           No hay datos en la base ni CSV de cupos. Opciones: importar PDF parseados con{" "}
           <span className="mono">npm run import:cc-parsed -w nw-tracker-server -- --account-id=…</span>, o crear{" "}
           <span className="mono">cfraser/credit-card-installments.csv</span> con cabecera{" "}
@@ -232,21 +229,21 @@ function CreditCardInstallmentsSection({
       ) : ledger.source === "csv" &&
         ledger.purchases.length === 0 &&
         (ledger.purchases_completed?.length ?? 0) === 0 ? (
-        <p className="muted" style={{ marginBottom: "1rem" }}>
+        <p className={cn("muted", styles.marginBottomBase)}>
           El CSV existe pero no hay filas válidas: revisa cabecera y números (principal positivo, cuotas ≥ 1,{" "}
           <span className="mono">first_due_month</span> en formato <span className="mono">YYYY-MM</span>, pagadas ≤
           total).
         </p>
       ) : (
         <>
-          <div className="cards" style={{ marginBottom: "0.75rem" }}>
+          <div className={cn("cards", styles.cardsBelow)}>
             <div className="card">
               <div className="label">Total cupos restantes (aprox.)</div>
               <div className="value mono">{formatClp(ledger.totals.total_remaining_principal_clp)}</div>
             </div>
             <div className="card">
               <div className="label">Próximo mes con cargos</div>
-              <div className="value mono" style={{ fontSize: "0.95rem" }}>
+              <div className={cn("value", "mono", styles.cardValueSecondary)}>
                 {ledger.totals.next_calendar_month
                   ? `${formatYmEs(ledger.totals.next_calendar_month)} · ${formatClp(ledger.totals.next_calendar_month_total_clp ?? 0)}`
                   : "—"}
@@ -256,14 +253,14 @@ function CreditCardInstallmentsSection({
 
           {fromDb && hist.length > 0 ? (
             <>
-              <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>Historial (cuotas)</h3>
-              <p className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.4rem", maxWidth: "58rem" }}>
+              <h3 className={styles.subsectionTitle}>Historial (cuotas)</h3>
+              <p className={cn("muted", styles.proseSmTight)}>
                 Línea: <strong>cierre mensual</strong> desde el ledger de estados de cuenta parseados (misma serie que
                 el gráfico «Valorización y aportes» y el rendimiento mensual de esta página). Barras: suma de cuotas
                 cuyo <strong>PAGAR HASTA</strong> cae en ese mes calendario.
               </p>
               {m?.remaining_balance_line_rule ? (
-                <p className="muted" style={{ fontSize: "0.75rem", marginBottom: "0.35rem", maxWidth: "58rem" }}>
+                <p className={cn("muted", styles.proseLabel)}>
                   {m.remaining_balance_line_rule}
                 </p>
               ) : null}
@@ -271,10 +268,10 @@ function CreditCardInstallmentsSection({
             </>
           ) : null}
 
-          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>Compras activas (cuotas pendientes)</h3>
+          <h3 className={styles.subsectionTitle}>Compras activas (cuotas pendientes)</h3>
           <Table
-            wrapStyle={{ marginBottom: "1.25rem" }}
-            tableStyle={{ fontSize: "0.82rem" }}
+            wrapClassName={styles.tableWrapSpaced}
+            tableClassName={styles.tableCompact}
             header={
               <thead>
                 <tr>
@@ -305,8 +302,8 @@ function CreditCardInstallmentsSection({
             )}
           </Table>
 
-          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>Compras completadas (histórico)</h3>
-          <p className="muted" style={{ fontSize: "0.78rem", marginBottom: "0.4rem", maxWidth: "58rem" }}>
+          <h3 className={styles.subsectionTitle}>Compras completadas (histórico)</h3>
+          <p className={cn("muted", styles.caption)}>
             Incluye contratos cuyo total pagado alcanzó el principal (incl. última cuota en el PDF aunque{" "}
             <span className="mono">nro_cuota_current</span> falte en filas resumen tipo{" "}
             <span className="mono">03 CUOTAS COMERC</span>).
@@ -314,8 +311,8 @@ function CreditCardInstallmentsSection({
           <Table
             key={`cc-completed-${accountId}`}
             collapsedVisibleRows={5}
-            wrapStyle={{ marginBottom: "1.25rem" }}
-            tableStyle={{ fontSize: "0.82rem" }}
+            wrapClassName={styles.tableWrapSpaced}
+            tableClassName={styles.tableCompact}
             header={
               <thead>
                 <tr>
@@ -347,9 +344,9 @@ function CreditCardInstallmentsSection({
             )}
           </Table>
 
-          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>Proyección por mes (una fila por mes)</h3>
+          <h3 className={styles.subsectionTitle}>Proyección por mes (una fila por mes)</h3>
           <Table
-            tableStyle={{ fontSize: "0.82rem" }}
+            tableClassName={styles.tableCompact}
             header={
               <thead>
                 <tr>
@@ -380,7 +377,7 @@ function CreditCardInstallmentsSection({
                       <td className="mono">{formatClp(row.total_clp)}</td>
                       <td className="mono muted">{formatClp(cum)}</td>
                       <td>
-                        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                        <ul className={styles.nestedList}>
                           {row.breakdown.map((b, i) => (
                             <li key={`${b.purchase_id}-${b.installment_index}-${i}`} className="mono muted">
                               {b.label}: {formatClp(b.amount_clp)} (cuota {b.installment_index + 1} de{" "}
@@ -413,10 +410,10 @@ function MortgageDividendosTable({
   const isMortgageView = variant === "mortgage";
   return (
     <>
-      <h2 style={{ marginTop: "1.5rem" }}>
+      <h2 className={styles.sectionTitle}>
         {isMortgageView ? "Dividendos hipoteca (hoja depto)" : "Hipoteca / dividendos (hoja depto)"}
       </h2>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.65rem", maxWidth: "58rem" }}>
+      <p className={cn("muted", styles.proseMuted)}>
         Tabla leída directamente de <span className="mono">{m?.csv_path ?? "cfraser/depto-dividendos.csv"}</span>: cada
         fila con monto CLP es un pago (puede haber varios en un mes).
         {isMortgageView ? (
@@ -430,7 +427,7 @@ function MortgageDividendosTable({
         )}
       </p>
       {m && !isMortgageView && (
-        <div className="cards" style={{ marginBottom: "0.75rem" }}>
+        <div className={cn("cards", styles.cardsBelow)}>
           <div className="card">
             <div className="label">Vivienda (hoja)</div>
             <div className="value mono">
@@ -445,7 +442,7 @@ function MortgageDividendosTable({
           </div>
           <div className="card">
             <div className="label">Pie (CLP / UF)</div>
-            <div className="value mono" style={{ fontSize: "0.95rem" }}>
+            <div className={cn("value", "mono", styles.cardValueSecondary)}>
               {m.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {formatUfUnitsFine(m.pie_uf)}
             </div>
           </div>
@@ -456,8 +453,7 @@ function MortgageDividendosTable({
         </div>
       )}
       <Table
-        tableClassName="mortgage-sheet"
-        tableStyle={{ fontSize: "0.78rem" }}
+        tableClassName={`mortgage-sheet ${styles.tableMortgage}`}
         header={
           <thead>
             <tr>
@@ -580,23 +576,21 @@ function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }
   const terms: DeptoPaymentScenarioTerm[] = [30, 25, 20, 15, 12, 10, 5, "max"];
   return (
     <>
-      <h3 style={{ marginTop: "1.25rem", marginBottom: "0.35rem", fontSize: "1.05rem" }}>
-        Referencia: cuota mín / máx (UF)
-      </h3>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
+      <h3 className={styles.subsectionTitleMid}>Referencia: cuota mín / máx (UF)</h3>
+      <p className={cn("muted", styles.proseMutedXs)}>
         Escenarios de la hoja depto (no son movimientos), en fechas del calendario hipotecario (día 11 de cada mes).
         La primera fila es la próxima cuota proyectada. El pago mínimo (30 años) es editable en Numbers; el máximo
         (~80 UF) aproxima amortizar en 5 años al inicio del crédito.
       </p>
       <Table
-        tableStyle={{ fontSize: "0.78rem" }}
+        tableClassName={styles.tableScenario}
         header={
           <thead>
             <tr>
               <th>Cuota</th>
               <th>Fecha</th>
               {terms.map((t) => (
-                <th key={String(t)} style={{ whiteSpace: "nowrap" }}>
+                <th key={String(t)} className={styles.nowrap}>
                   {SCENARIO_TERM_LABELS[t]}
                 </th>
               ))}
@@ -611,9 +605,7 @@ function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }
               <td className="mono">
                 {row.cuota}
                 {row.is_next_payment ? (
-                  <span className="muted" style={{ display: "block", fontSize: "0.72rem" }}>
-                    próx.
-                  </span>
+                  <span className={cn("muted", styles.cellSub)}>próx.</span>
                 ) : null}
               </td>
               <td className="mono">{row.occurred_on}</td>
@@ -629,12 +621,10 @@ function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }
                         clp: byTerm.get(t)?.payment_clp ?? null,
                       };
                 return (
-                  <td key={String(t)} className="mono" style={{ whiteSpace: "nowrap" }}>
+                  <td key={String(t)} className={cn("mono", styles.nowrap)}>
                     {cell.uf != null ? formatUfUnitsFine(cell.uf) : "—"}
                     {cell.clp != null ? (
-                      <span className="muted" style={{ display: "block", fontSize: "0.72rem" }}>
-                        {formatClp(cell.clp)}
-                      </span>
+                      <span className={cn("muted", styles.cellSub)}>{formatClp(cell.clp)}</span>
                     ) : null}
                   </td>
                 );
@@ -885,9 +875,9 @@ export function AccountDetailPage() {
       />
 
       {summary.position != null && (
-        <div style={{ marginTop: "0.75rem" }}>
-          <h2 style={{ marginBottom: "0.35rem" }}>Posición (ticker y cuotas)</h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+        <div className={styles.positionBlock}>
+          <h2 className={styles.sectionTitleCompact}>Posición (ticker y cuotas)</h2>
+          <p className={cn("muted", styles.proseMutedXs)}>
             Acciones: cuotas desde <span className="mono">cfraser/net worth-stocks.csv</span> (columna valor
             acción). Cripto: saldo neto de moneda desde notas de movimientos del import.
             {isAfpAccount ? (
@@ -959,19 +949,19 @@ export function AccountDetailPage() {
         </label>
       </div>
       {chartGranularity === "daily" && ts.granularity === "monthly" ? (
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.35rem" }}>
+        <p className={cn("muted", styles.proseMutedTop)}>
           Serie diaria no disponible para esta cuenta (solo SPY/VEA con unidades en bolsa e import Yahoo).
         </p>
       ) : null}
 
-      <div className="chart-grid chart-grid--full-line" style={{ marginTop: "0.75rem" }}>
+      <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
         <LineChartPanel title="Valorización y aportes" block={ts.accounts} displayUnit={displayUnit} />
       </div>
 
       {showMonthlyPerformance ? (
         <>
-          <h2 style={{ marginTop: "1.25rem" }}>Rendimiento mensual (calculado)</h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
+          <h2 className={styles.sectionTitleSpaced}>Rendimiento mensual (calculado)</h2>
+          <p className={cn("muted", styles.proseMutedXs)}>
             Dos gráficos: (1) P/L mensual vs <strong>YTD</strong> (área reinicia cada enero). (2) mismo Δ mensual con
             área <strong>Accumulated earnings</strong> (continua desde el primer mes, sin franjas por año). La tabla
             conserva el detalle.
@@ -997,9 +987,7 @@ export function AccountDetailPage() {
             ) : null}
           </p>
           {monthlyPerfErr ? (
-            <p className="error" style={{ fontSize: "0.9rem" }}>
-              {monthlyPerfErr}
-            </p>
+            <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
           ) : monthlyPerf == null ? (
             <p className="muted">Cargando rendimiento…</p>
           ) : monthlyPerfRows.length === 0 ? (
@@ -1009,10 +997,8 @@ export function AccountDetailPage() {
             </p>
           ) : (
             <>
-              <h3 style={{ marginTop: "0.35rem", marginBottom: "0.35rem", fontSize: "1.05rem" }}>
-                YTD (año calendario)
-              </h3>
-              <div className="chart-grid chart-grid--full-line" style={{ marginTop: 0 }}>
+              <h3 className={styles.subsectionTitleTight}>YTD (año calendario)</h3>
+              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
                 <MonthlyPerformanceComboChart
                   title="P/L mensual vs YTD"
                   titleAs="h3"
@@ -1031,10 +1017,8 @@ export function AccountDetailPage() {
                   areaStroke={accountChartTheme.areaStroke}
                 />
               </div>
-              <h3 style={{ marginTop: "1.35rem", marginBottom: "0.35rem", fontSize: "1.05rem" }}>
-                Accumulated earnings
-              </h3>
-              <div className="chart-grid chart-grid--full-line" style={{ marginTop: 0 }}>
+              <h3 className={styles.subsectionTitleLoose}>Accumulated earnings</h3>
+              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
                 <MonthlyPerformanceComboChart
                   title="Monthly Δ y accumulated earnings"
                   titleAs="h3"
@@ -1054,9 +1038,7 @@ export function AccountDetailPage() {
                   alternateYearAreaStripes={false}
                 />
               </div>
-              <h3 style={{ marginTop: "1.25rem", marginBottom: "0.35rem", fontSize: "1.05rem" }}>
-                {t("accountDetail.monthlyDetailTitle")}
-              </h3>
+              <h3 className={styles.subsectionTitleMid}>{t("accountDetail.monthlyDetailTitle")}</h3>
               <MonthlyPerfDetailTable
                 key={`${id}-${displayUnit}-mp-detail`}
                 rows={monthlyPerfRows}
@@ -1082,12 +1064,12 @@ export function AccountDetailPage() {
           ) : null}
         </>
       ) : mortgageLedger.source === "csv" ? (
-        <p className="muted" style={{ marginTop: "1rem" }}>
+        <p className={cn("muted", styles.marginTopBase)}>
           No hay filas con pago CLP en <span className="mono">cfraser/depto-dividendos.csv</span>
           {mortgageLedger.meta?.csv_absolute_path ? (
             <>
               . El servidor leyó{" "}
-              <span className="mono" style={{ wordBreak: "break-all" }}>
+              <span className={cn("mono", styles.breakAll)}>
                 {mortgageLedger.meta.csv_absolute_path}
               </span>
               {mortgageLedger.meta.csv_file_exists === false ? " (archivo no encontrado)" : ""}.
@@ -1107,13 +1089,13 @@ export function AccountDetailPage() {
         />
       ) : null}
 
-      <div className="cards" style={{ marginTop: "1.5rem" }}>
+      <div className={cn("cards", styles.cardsSection)}>
         <div className="card">
           <div className="label">Flujo neto (mov + bolsa)</div>
           <div className="value mono">{formatClp(summary.deposits_clp)}</div>
           {depositInflows != null &&
           Math.abs(depositInflows.display_total_clp - depositInflows.total_clp) > 0.5 ? (
-            <div className="muted" style={{ fontSize: "0.8rem", marginTop: "0.35rem" }}>
+            <div className={cn("muted", styles.cardFootnote)}>
               Propios: <span className="mono">{formatClp(depositInflows.display_total_clp)}</span>
               {" · "}
               Estatal: <span className="mono">{formatClp(depositInflows.state_contribution_total_clp)}</span>
@@ -1129,16 +1111,14 @@ export function AccountDetailPage() {
           <div className="value mono">
             {summary.latest_valuation_clp != null ? formatClp(summary.latest_valuation_clp) : "—"}
           </div>
-          <div className="muted" style={{ fontSize: "0.8rem", marginTop: "0.35rem" }}>
-            {summary.latest_valuation_date ?? ""}
-          </div>
+          <div className={cn("muted", styles.cardFootnote)}>{summary.latest_valuation_date ?? ""}</div>
         </div>
       </div>
 
       {depositInflows != null && depositInflows.state_contribution_events.length > 0 ? (
         <>
-          <h2 style={{ marginTop: "1.5rem" }}>Aporte estatal APV-A</h2>
-          <p className="muted" style={{ marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+          <h2 className={styles.sectionTitle}>Aporte estatal APV-A</h2>
+          <p className={cn("muted", styles.proseMutedXs)}>
             Bonificación del Estado (~15% de tus depósitos del año anterior, con tope). Total acumulado:{" "}
             <span className="mono">{formatClp(depositInflows.state_contribution_total_clp)}</span>
           </p>
@@ -1165,21 +1145,12 @@ export function AccountDetailPage() {
       ) : null}
 
       <h2>{t("accountDetail.flowsTitle")}</h2>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+      <p className={cn("muted", styles.proseMutedXs)}>
         Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
         <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
         Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
       </p>
-      <label
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: "0.65rem",
-          fontSize: "0.9rem",
-          cursor: "pointer",
-        }}
-      >
+      <label className={styles.flowsFilterToggle}>
         <input
           type="checkbox"
           checked={movementsOnlyPersonalDeposits}

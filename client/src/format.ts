@@ -46,14 +46,6 @@ function currencyLocales(unit: CurrencyDisplayUnit): string {
   return unit === "clp" ? "es-CL" : "en-US";
 }
 
-/**
- * Grouped digits only (no sign, no currency). For deltas and other non-currency amounts.
- */
-export function formatNumberGrouped(n: number, unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp"): string {
-  if (!Number.isFinite(n)) return "—";
-  return normalizeIntlNum(intlFormatter(unit).format(Math.abs(Math.round(n))));
-}
-
 /** Grouped digits with up to 2 fraction digits; trailing zeros omitted (e.g. `902`, `40,41`). */
 export function formatGroupedDecimalTrimmed(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -78,11 +70,6 @@ export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): st
 /** Whole pesos: `$` + es-CL thousands (e.g. `$95.817.344`; negative `($1.234)`). */
 export function formatClp(n: number): string {
   return formatCurrency(n, "clp");
-}
-
-export function clpToUsd(clp: number, clpPerUsd: number) {
-  if (!clpPerUsd) return 0;
-  return clp / clpPerUsd;
 }
 
 /** Whole USD: `US$` + en-US thousands (e.g. `US$123,456`; negative `(US$1,234)`). */

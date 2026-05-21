@@ -7,7 +7,7 @@ export function parseRgbTriplet(raw: string | null | undefined): [number, number
   return [parts[0]!, parts[1]!, parts[2]!];
 }
 
-export function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a3b8"): string {
+function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a3b8"): string {
   const p = parseRgbTriplet(raw);
   if (!p) return fallback;
   return `rgb(${p[0]},${p[1]},${p[2]})`;
@@ -24,12 +24,6 @@ export function chartStrokeFromRgbTriplet(
   fallback = DEFAULT_LINE_COLORS[0]!
 ): string {
   return strokeFromAccountColorRgb(colorRgb) ?? fallback;
-}
-
-export function chartFillFromRgbTriplet(colorRgb: string | null | undefined, alpha = 0.28): string {
-  const p = parseRgbTriplet(colorRgb);
-  if (!p) return `rgba(148, 163, 184, ${alpha})`;
-  return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${alpha})`;
 }
 
 function strokeFromAccountColorRgb(colorRgb: string | null | undefined): string | undefined {

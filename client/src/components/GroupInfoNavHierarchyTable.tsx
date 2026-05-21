@@ -12,7 +12,7 @@ import {
 import { navHierarchyTableChildren } from "../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import type { AccountListRow, NavTreeNodeDto } from "../types";
-import { HierarchyNavRow } from "./RetirementApvHierarchyRows";
+import { HierarchyNavRow } from "./HierarchyNavRow";
 import { Table } from "./Table";
 
 type HierarchyLabelContext = {
@@ -247,7 +247,7 @@ export function GroupInfoNavHierarchyTable({
           subtreeRows
         ) : (
           <tr>
-            <td colSpan={4} className="muted" style={{ paddingLeft: "calc(0.65rem + 1.15rem)" }}>
+            <td colSpan={4} className="muted" style={{ paddingLeft: "calc(var(--space-sm) + var(--space-lg))" }}>
               {t(emptyI18nKey)}
             </td>
           </tr>

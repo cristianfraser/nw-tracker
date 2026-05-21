@@ -1,3 +1,4 @@
+import { cn } from "../cn";
 import type { CardGroupMetrics, CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
 import { accountingCurrencyNumberFlowParts } from "../format";
 import { useTranslation } from "../i18n";
@@ -33,7 +34,7 @@ function DepositedMetricFlow({
   mountSeedId: string;
 }) {
   if (value == null) {
-    return <span className={`${styles.amount} ${styles.amountEmpty} mono`}>—</span>;
+    return <span className={cn(styles.amount, styles.amountEmpty, "mono")}>—</span>;
   }
   const unit = showUsd ? "usd" : "clp";
   return (
@@ -43,7 +44,7 @@ function DepositedMetricFlow({
       mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
       mountSeedId={mountSeedId}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "$")}
-      className={`${styles.amount} mono`}
+      className={cn(styles.amount, "mono")}
       transformTiming={METRIC_TIMING.transformTiming}
       spinTiming={METRIC_TIMING.spinTiming}
     />

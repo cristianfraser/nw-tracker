@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   margin-bottom: 0.15rem;
-  font-size: 0.72rem;
+  font-size: var(--font-size-card-meta);
 }
 
 .row {
@@ -28,7 +28,7 @@
 }
 
 .amountEmpty {
-  font-size: 0.72rem;
+  font-size: var(--font-size-card-meta);
 }
 
 .delta {

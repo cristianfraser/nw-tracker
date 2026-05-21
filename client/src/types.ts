@@ -7,26 +7,6 @@ export type AssetGroupSlug =
   | "real_estate"
   | "liabilities";
 
-export interface CategoryRow {
-  id: number;
-  group_id: number;
-  slug: string;
-  label: string;
-  sort_order: number;
-}
-
-export interface AssetGroupRow {
-  id: number;
-  slug: string;
-  label: string;
-  sort_order: number;
-  categories: CategoryRow[];
-}
-
-export interface AssetTreeResponse {
-  groups: AssetGroupRow[];
-}
-
 export interface AccountListRow {
   id: number;
   name: string;

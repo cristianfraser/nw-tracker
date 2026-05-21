@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { DashboardCardValueVariant } from "./DashboardCardValue";
 import { DashboardCardValue } from "./DashboardCardValue";
 import { DashboardCardTitleRow } from "./DashboardCardTitleRow";
+import { cn } from "../cn";
 import styles from "./CompactEntityCard.module.css";
 
 export type CompactEntityCardProps = {
@@ -43,16 +44,14 @@ export function CompactEntityCard({
   stripInner = false,
   breakdown,
 }: CompactEntityCardProps) {
-  const rootClass = [
-    styles.root,
-    stripInner ? styles.rootStripInner : "",
-    breakdown ? styles.rootWithBreakdown : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div className={rootClass}>
+    <div
+      className={cn(
+        styles.root,
+        stripInner && styles.rootStripInner,
+        breakdown != null && breakdown !== false && styles.rootWithBreakdown
+      )}
+    >
       <DashboardCardTitleRow
         label={label}
         titleTo={to}

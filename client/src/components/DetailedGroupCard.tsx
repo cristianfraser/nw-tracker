@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "../cn";
 import { DashboardCardTitleRow } from "./DashboardCardTitleRow";
 import { DashboardCardValue } from "./DashboardCardValue";
 
@@ -39,9 +40,8 @@ export function DetailedGroupCard({
   className,
   outerClassName = "card card--detail card--detail-stretch",
 }: DetailedGroupCardProps) {
-  const outer = className ? `${outerClassName} ${className}` : outerClassName;
   return (
-    <div className={outer}>
+    <div className={cn(outerClassName, className)}>
       <DashboardCardTitleRow
         label={title}
         titleTo={titleTo}

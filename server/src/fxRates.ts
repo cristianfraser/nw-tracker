@@ -42,11 +42,6 @@ export function fxRowOnOrBefore(
   return (stmtAny.get(date) as FxRow | undefined) ?? null;
 }
 
-/** Month-end FX on or before `date` (for valuations / USD charts). */
-export function fxMonthEndOnOrBefore(date: string | null): FxRow | null {
-  return fxRowOnOrBefore(date, { monthEndOnly: true });
-}
-
 /**
  * CLP→USD for balances, charts, and dashboard `current_value_usd`.
  * Prefers Banco Central **daily** observado (`fxRowOnOrBefore`) so Chile holidays still use the last

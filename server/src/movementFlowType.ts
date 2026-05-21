@@ -45,6 +45,14 @@ function depositFlowKindToMovementFlowType(kind: DepositFlowKind): MovementFlowT
   return kind;
 }
 
+function isDepositMovementFlowType(flowType: MovementFlowType): flowType is DepositFlowKind {
+  return (
+    flowType === DEPOSIT_FLOW_KIND_PERSONAL ||
+    flowType === DEPOSIT_FLOW_KIND_STATE ||
+    flowType === DEPOSIT_FLOW_KIND_TRASPASO
+  );
+}
+
 function resolveMovementDepositFlowKind(
   accountId: number,
   occurred_on: string,
@@ -106,15 +114,12 @@ export function movementFlowTypeLabel(flowType: MovementFlowType): string {
   if (isBrokerageFlowKind(flowType)) {
     return BROKERAGE_FLOW_KIND_LABELS[flowType];
   }
-  if (
-    flowType === DEPOSIT_FLOW_KIND_PERSONAL ||
-    flowType === DEPOSIT_FLOW_KIND_STATE ||
-    flowType === DEPOSIT_FLOW_KIND_TRASPASO
-  ) {
+  const label = flowType as string;
+  if (label === "withdrawal_clp") return "Retiro";
+  if (label === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
+  if (label === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
+  if (isDepositMovementFlowType(flowType)) {
     return depositFlowKindLabel(flowType);
   }
-  if (flowType === "withdrawal_clp") return "Retiro";
-  if (flowType === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
-  if (flowType === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
   return "Otro";
 }

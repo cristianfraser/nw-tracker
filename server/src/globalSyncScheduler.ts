@@ -55,8 +55,7 @@ function envMs(name: string, fallback: number): number {
 }
 
 async function runGlobalSyncInProcess(): Promise<number> {
-  // Resolved by tsx to scripts/global-sync.ts (no compiled .js — avoid stale duplicate).
-  const { runGlobalSyncAll } = await import("../scripts/global-sync.js");
+  const { runGlobalSyncAll } = await import("./globalSyncAll.js");
   return runGlobalSyncAll({ dryRun: false });
 }
 

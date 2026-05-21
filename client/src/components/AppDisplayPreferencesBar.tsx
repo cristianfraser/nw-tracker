@@ -1,6 +1,7 @@
 import { useIsFetching } from "@tanstack/react-query";
 import { useTranslation } from "../i18n";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { cn } from "../cn";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
 /**
@@ -23,7 +24,7 @@ export function AppDisplayPreferencesBar() {
           role="toolbar"
           aria-label={t("app.displayPreferences.toolbarAria")}
         >
-          <div className={`toggle-row ${styles.row}`}>
+          <div className={cn("toggle-row", styles.row)}>
           <span className="muted">{t("app.displayPreferences.displayCurrency")}</span>
         <label>
           <input

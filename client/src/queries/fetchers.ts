@@ -34,12 +34,6 @@ export type PortfolioGroupBundle = {
   groupPerf: GroupMonthlyPerformanceResponse | null;
 };
 
-/** @deprecated Use {@link fetchPortfolioGroupBundle} */
-export type AssetGroupBundle = PortfolioGroupBundle;
-
-/** @deprecated Use {@link fetchPortfolioGroupBundle} */
-export const fetchAssetGroupBundle = fetchPortfolioGroupBundle;
-
 export async function fetchPortfolioGroupBundle(opts: {
   group: string;
   subgroup?: string;
@@ -51,27 +45,5 @@ export async function fetchPortfolioGroupBundle(opts: {
     api.groupMonthlyPerformance(opts.group, opts.unit, opts.subgroup).catch(() => null),
   ]);
   return { accounts: acc.accounts, ts: series, groupPerf: perfResult };
-}
-
-export type SidebarAccountsBundle = {
-  cash: AccountListRow[];
-  liabilities: AccountListRow[];
-  realEstate: AccountListRow[];
-  inversiones: AccountListRow[];
-};
-
-export async function fetchSidebarAccounts(): Promise<SidebarAccountsBundle> {
-  const [cash, liabilities, realEstate, inversiones] = await Promise.all([
-    api.accountsByGroup("cash_eqs"),
-    api.accountsByGroup("liabilities"),
-    api.accountsByGroup("real_estate"),
-    api.accountsByGroup("inversiones"),
-  ]);
-  return {
-    cash: cash.accounts,
-    liabilities: liabilities.accounts,
-    realEstate: realEstate.accounts,
-    inversiones: inversiones.accounts,
-  };
 }
 

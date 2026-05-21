@@ -22,7 +22,7 @@ import {
 import i18n from "./i18n";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import { collectNavAccountDataKeys } from "./portfolioNavFromApi";
-import type { AssetGroupSlug, DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
+import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
 
 const CASH_DASHBOARD_CATEGORY_SLUGS = new Set(["fondo_reserva", "cuenta_corriente"]);
 
@@ -274,24 +274,6 @@ export function portfolioNavParentMetrics(
     );
   }
   return cardGroupMetricsFromAccounts(navSubtreeRows, period);
-}
-
-/** Maps asset-class page slug to the same title-Δ rules as dashboard buckets where applicable. */
-export function assetGroupPageParentTitleMode(slug: AssetGroupSlug): PortfolioNavParentTitleDeltaMode {
-  if (slug === "real_estate") return { kind: "dashboard_group", group: "real_estate" };
-  if (slug === "cash_eqs") {
-    return {
-      kind: "dashboard_group",
-      group: "cash_eqs",
-      groupRowFilter: (a) =>
-        CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug) && accountCountsTowardGroupTotals(a),
-    };
-  }
-  if (slug === "liabilities") return { kind: "subset_only" };
-  if (slug === "retirement") return { kind: "dashboard_group", group: "retirement" };
-  if (slug === "brokerage" || slug === "crypto") return { kind: "dashboard_group", group: "brokerage" };
-  if (slug === "inversiones") return { kind: "sum_dashboard_groups", groups: ["retirement", "brokerage"] };
-  return { kind: "subset_only" };
 }
 
 /** Parent title balance Δ mode from the matched API nav node (Inversiones hub, bucket slugs, or subset). */

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { monthEndDate, numCsv, readSemicolonCsv, type MonthKey } from "../scripts/cfraser-csv.js";
+import { monthEndDate, numCsv, readSemicolonCsv, type MonthKey } from "./cfraserCsv.js";
 
 export type DeptoApartmentSlug = "lastarria" | "suecia";
 

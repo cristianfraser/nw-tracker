@@ -129,18 +129,3 @@ export function lastCloseOnOrBefore(series: EodCloseSeries, ymd: string): number
   }
   return closes[lo];
 }
-
-/** Mark-to-market CLP: shares × last USD close ≤ month-end × CLP/USD for that month (sheet FX). */
-export function equityMtmValueClp(
-  units: number,
-  series: EodCloseSeries | null,
-  positionEndYmd: string,
-  clpPerUsd: number | null | undefined
-): number | null {
-  if (!series || units <= 0) return null;
-  if (clpPerUsd == null || !Number.isFinite(clpPerUsd) || clpPerUsd <= 0) return null;
-  const usd = lastCloseOnOrBefore(series, positionEndYmd);
-  if (usd == null) return null;
-  const v = units * usd * clpPerUsd;
-  return Number.isFinite(v) ? v : null;
-}

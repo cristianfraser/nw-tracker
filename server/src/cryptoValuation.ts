@@ -178,11 +178,6 @@ export function recalculateCryptoMovementUnitsFromLedger(accountId: number, asse
   return ids.length;
 }
 
-/** @deprecated Use {@link recalculateCryptoMovementUnitsFromLedger}. */
-export function backfillCryptoMovementUnitsFromNotes(accountId: number, asset: CryptoAsset): number {
-  return recalculateCryptoMovementUnitsFromLedger(accountId, asset);
-}
-
 function snapshotDatesForCryptoAccount(accountId: number, equityTicker: "BTC-USD" | "ETH-USD"): string[] {
   const s = new Set<string>();
   const movDates = db

@@ -44,14 +44,3 @@ export function signedAmountClpForBrokerageFlow(
       return amount_clp != null && Number.isFinite(amount_clp) ? amount_clp : 0;
   }
 }
-
-export type BrokerageFlowRow = {
-  id: number;
-  occurred_on: string;
-  flow_kind: string;
-  amount_clp: number | null;
-  amount_usd: number | null;
-  ticker: string | null;
-  note: string | null;
-  units_delta: number | null;
-};

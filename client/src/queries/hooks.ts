@@ -1,11 +1,9 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { api } from "../api";
-import type { AssetGroupSlug } from "../types";
 import {
   fetchDashboardBundle,
   fetchPortfolioGroupBundle,
-  fetchSidebarAccounts,
 } from "./fetchers";
 import { queryKeys, type DisplayUnit } from "./keys";
 
@@ -27,19 +25,6 @@ export function usePortfolioGroupBundle(opts: {
     queryKey: queryKeys.portfolioGroup(group, subgroup, unit),
     queryFn: () => fetchPortfolioGroupBundle({ group, subgroup, unit }),
     enabled: enabled && Boolean(group),
-  });
-}
-
-/** @deprecated Use {@link usePortfolioGroupBundle} */
-export function useAssetGroupBundle(slug: AssetGroupSlug, unit: DisplayUnit) {
-  return usePortfolioGroupBundle({ group: slug, unit });
-}
-
-export function useSidebarAccounts() {
-  return useQuery({
-    queryKey: queryKeys.sidebarAccounts(),
-    queryFn: fetchSidebarAccounts,
-    staleTime: 60_000,
   });
 }
 

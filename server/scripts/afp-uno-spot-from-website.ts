@@ -9,8 +9,8 @@
 import "../src/db.js";
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { fetchUnoClFondoAValorCuota } from "../src/afpUnoWebsiteCuota.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "../src/afpQuetalmiApi.js";
 import {
-  AFP_UNO_CUOTA_SERIES_KEY,
   upsertAfpSpotValuationWithExplicitPx,
   upsertFundUnitDailyRow,
 } from "../src/afpUnoValuation.js";

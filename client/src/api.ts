@@ -53,7 +53,6 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  assetTree: () => j<import("./types").AssetTreeResponse>("/api/meta/asset-tree"),
   sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
   updateAccountColor: (id: number, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
@@ -80,7 +79,6 @@ export const api = {
       `/api/dashboard/valuation-timeseries${qs ? `?${qs}` : ""}`
     );
   },
-  ufLatest: () => j<import("./types").UfLatest | null>("/api/uf/latest"),
   fxLatest: () => j<import("./types").FxLatest | null>("/api/fx/latest"),
   accountsByGroup: (groupSlug: string, subgroup?: string) => {
     const q = new URLSearchParams();
@@ -159,7 +157,6 @@ export const api = {
       }[];
     }>(`/api/accounts/${id}/movements`),
   income: () => j<{ income: unknown[] }>("/api/income"),
-  expenses: () => j<{ expenses: unknown[] }>("/api/expenses"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
