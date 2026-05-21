@@ -7,6 +7,11 @@ import {
   depositFlowKindLabel,
   type DepositFlowKind,
 } from "./depositFlowKind.js";
+import {
+  BROKERAGE_FLOW_KIND_LABELS,
+  isBrokerageFlowKind,
+  type BrokerageFlowKind,
+} from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
 
 export const FLOW_KIND_PAGO_CUOTA_HIPOTECARIO = "pago_cuota_hipotecario" as const;
@@ -19,6 +24,7 @@ export type MortgageFlowKind =
 export type MovementFlowType =
   | DepositFlowKind
   | MortgageFlowKind
+  | BrokerageFlowKind
   | "withdrawal_clp"
   | "other";
 
@@ -55,6 +61,24 @@ function resolveMovementDepositFlowKind(
   return depositFlowKindFromMovementNote(note);
 }
 
+export function movementFlowTypeFromRow(row: {
+  note: string | null | undefined;
+  amount_clp: number;
+  flow_kind?: string | null;
+  accountId?: number;
+  movementId?: number;
+  occurred_on?: string;
+}): MovementFlowType {
+  if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
+  return movementFlowTypeFromSignedClp(
+    row.note,
+    row.amount_clp,
+    row.accountId,
+    row.movementId,
+    row.occurred_on
+  );
+}
+
 export function movementFlowTypeFromSignedClp(
   note: string | null | undefined,
   amount_clp: number,
@@ -79,18 +103,18 @@ export function movementFlowTypeFromSignedClp(
 }
 
 export function movementFlowTypeLabel(flowType: MovementFlowType): string {
-  switch (flowType) {
-    case DEPOSIT_FLOW_KIND_PERSONAL:
-    case DEPOSIT_FLOW_KIND_STATE:
-    case DEPOSIT_FLOW_KIND_TRASPASO:
-      return depositFlowKindLabel(flowType);
-    case "withdrawal_clp":
-      return "Retiro";
-    case FLOW_KIND_PAGO_CUOTA_HIPOTECARIO:
-      return "Pago cuota hipotecario";
-    case FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO:
-      return "Prepago parcial hipotecario";
-    default:
-      return "Otro";
+  if (isBrokerageFlowKind(flowType)) {
+    return BROKERAGE_FLOW_KIND_LABELS[flowType];
   }
+  if (
+    flowType === DEPOSIT_FLOW_KIND_PERSONAL ||
+    flowType === DEPOSIT_FLOW_KIND_STATE ||
+    flowType === DEPOSIT_FLOW_KIND_TRASPASO
+  ) {
+    return depositFlowKindLabel(flowType);
+  }
+  if (flowType === "withdrawal_clp") return "Retiro";
+  if (flowType === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
+  if (flowType === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
+  return "Otro";
 }

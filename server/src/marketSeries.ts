@@ -191,10 +191,19 @@ export function getMarketSeriesPayload(): {
       lastFuClp.set(k, i >= 0 ? bars[i]!.v : null);
     }
 
+    const fxOnD = fxPtr >= 0 && fxRows[fxPtr]!.date === d ? lastFx : null;
+    const ufOnD = ufPtr >= 0 && ufRows[ufPtr]!.date === d ? lastUf : null;
+    const eurOnD = eurPtr >= 0 && eurRows[eurPtr]!.date === d ? lastEur : null;
+    const ipcOnD = ipcPtr >= 0 && ipcRows[ipcPtr]!.date === d ? lastIpc : null;
+    const utmOnD = utmPtr >= 0 && utmRows[utmPtr]!.date === d ? lastUtm : null;
+
     const equity_usd: Record<string, number | null> = {};
     const equity_clp: Record<string, number | null> = {};
     for (const t of equityTickers) {
-      const u = lastEqUsd.get(t) ?? null;
+      const bars = eqBars.get(t);
+      const i = eqPtr.get(t) ?? -1;
+      const onD = bars != null && i >= 0 && bars[i]!.date === d;
+      const u = onD ? (lastEqUsd.get(t) ?? null) : null;
       equity_usd[t] = u;
       equity_clp[t] =
         u != null && lastFx != null && Number.isFinite(u) && Number.isFinite(lastFx) ? u * lastFx : null;
@@ -203,19 +212,28 @@ export function getMarketSeriesPayload(): {
     const fund_unit_clp: Record<string, number | null> = {};
     const fund_unit_usd: Record<string, number | null> = {};
     for (const k of fundKeys) {
-      const c = lastFuClp.get(k) ?? null;
+      const bars = fuBars.get(k);
+      const i = fuPtr.get(k) ?? -1;
+      const onD = bars != null && i >= 0 && bars[i]!.date === d;
+      const c = onD ? (lastFuClp.get(k) ?? null) : null;
       fund_unit_clp[k] = c;
       fund_unit_usd[k] =
         c != null && lastFx != null && lastFx > 0 && Number.isFinite(c) ? c / lastFx : null;
     }
 
+    const hasEquity = equityTickers.some((t) => equity_usd[t] != null);
+    const hasFund = fundKeys.some((k) => fund_unit_clp[k] != null);
+    if (fxOnD == null && ufOnD == null && eurOnD == null && ipcOnD == null && utmOnD == null && !hasEquity && !hasFund) {
+      continue;
+    }
+
     points.push({
       as_of_date: d,
-      clp_per_usd: lastFx,
-      clp_per_uf: lastUf,
-      clp_per_eur: lastEur,
-      ipc_index: lastIpc,
-      utm_clp: lastUtm,
+      clp_per_usd: fxOnD,
+      clp_per_uf: ufOnD,
+      clp_per_eur: eurOnD,
+      ipc_index: ipcOnD,
+      utm_clp: utmOnD,
       equity_usd,
       equity_clp,
       fund_unit_clp,

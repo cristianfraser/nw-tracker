@@ -1,11 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { api } from "../api";
 import type { AssetGroupSlug } from "../types";
 import {
-  fetchAssetGroupBundle,
   fetchDashboardBundle,
-  fetchInversionesBundle,
+  fetchPortfolioGroupBundle,
   fetchSidebarAccounts,
 } from "./fetchers";
 import { queryKeys, type DisplayUnit } from "./keys";
@@ -17,28 +16,23 @@ export function useDashboardBundle(unit: DisplayUnit) {
   });
 }
 
-export function useAssetGroupBundle(slug: AssetGroupSlug, unit: DisplayUnit) {
+export function usePortfolioGroupBundle(opts: {
+  group: string;
+  subgroup?: string;
+  unit: DisplayUnit;
+  enabled?: boolean;
+}) {
+  const { group, subgroup, unit, enabled = true } = opts;
   return useQuery({
-    queryKey: queryKeys.assetGroup(slug, unit),
-    queryFn: () => fetchAssetGroupBundle(slug, unit),
+    queryKey: queryKeys.portfolioGroup(group, subgroup, unit),
+    queryFn: () => fetchPortfolioGroupBundle({ group, subgroup, unit }),
+    enabled: enabled && Boolean(group),
   });
 }
 
-export function useInversionesBundle(opts: {
-  apiGroup: string;
-  apiSubgroup?: string;
-  navScope: "root" | "retiro" | "brokerage";
-  brkFetchSub?: string;
-  unit: DisplayUnit;
-  enabled: boolean;
-}) {
-  const { enabled, apiGroup, apiSubgroup, navScope, brkFetchSub, unit } = opts;
-  return useQuery({
-    queryKey: queryKeys.inversiones(apiGroup, apiSubgroup, navScope, unit),
-    queryFn: () =>
-      fetchInversionesBundle({ apiGroup, apiSubgroup, navScope, brkFetchSub, unit }),
-    enabled,
-  });
+/** @deprecated Use {@link usePortfolioGroupBundle} */
+export function useAssetGroupBundle(slug: AssetGroupSlug, unit: DisplayUnit) {
+  return usePortfolioGroupBundle({ group: slug, unit });
 }
 
 export function useSidebarAccounts() {
@@ -99,6 +93,14 @@ export function useMessages(kind: "notification" | "log") {
   });
 }
 
+export function useSyncStatus() {
+  return useQuery({
+    queryKey: queryKeys.syncStatus(),
+    queryFn: () => api.syncStatus(),
+    refetchInterval: 15_000,
+  });
+}
+
 export function useMarkMessagesReadMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -139,6 +141,39 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
   });
 }
 
+const SKIP_MONTHLY_PERF_SLUGS = new Set(["cuenta_corriente", "cuenta_ahorro_vivienda"]);
+
+export function useGroupAccountsMonthlyPerformance(
+  accounts: readonly { id: number; name: string; category_slug: string }[],
+  unit: DisplayUnit,
+  enabled: boolean
+) {
+  const eligible = accounts.filter((a) => !SKIP_MONTHLY_PERF_SLUGS.has(a.category_slug));
+  return useQueries({
+    queries: eligible.map((a) => ({
+      queryKey: queryKeys.accountMonthlyPerformance(String(a.id), unit),
+      queryFn: () => api.accountMonthlyPerformance(a.id, unit),
+      enabled,
+    })),
+  });
+}
+
+export function useGroupAccountMovements(
+  accounts: readonly { id: number; name: string; category_slug: string }[],
+  enabled: boolean
+) {
+  return useQueries({
+    queries: accounts.map((a) => ({
+      queryKey: queryKeys.accountMovements(a.id),
+      queryFn: async () => {
+        const res = await api.accountMovements(a.id);
+        return { account: a, movements: res.movements ?? [] };
+      },
+      enabled,
+    })),
+  });
+}
+
 export function useAccountDetailBundle(
   id: string | undefined,
   unit: DisplayUnit,
@@ -150,10 +185,9 @@ export function useAccountDetailBundle(
   return useQuery({
     queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity, ccOffsetsKey),
     queryFn: async () => {
-      const [s, m, f, series, dep, ml, cc, inv] = await Promise.all([
+      const [s, m, series, dep, ml, cc, inv] = await Promise.all([
         api.accountSummary(id!),
         api.accountMovements(id!),
-        api.brokerageFlows(id!).catch(() => ({ flows: [] })),
         api.accountValuationTimeseries(id!, unit, { granularity: chartGranularity }),
         api.accountDepositInflows(id!),
         api.accountMortgageLedger(id!).catch(() => ({
@@ -180,7 +214,6 @@ export function useAccountDetailBundle(
       return {
         summary: s,
         movements: m.movements ?? [],
-        flows: f.flows ?? [],
         ts: series,
         depositInflows: dep,
         mortgageLedger: ml,

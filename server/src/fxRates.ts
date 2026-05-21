@@ -48,13 +48,15 @@ export function fxMonthEndOnOrBefore(date: string | null): FxRow | null {
 }
 
 /**
- * CLP→USD rate for **balance / chart** conversion when `fx_daily` has no row on or before `date`
- * (e.g. first table row is mid-2017 but valuations exist in May 2017). Uses the earliest month-end
- * FX on or after `date` so we never treat raw CLP as USD. Does not apply to dated cash flows
- * ({@link fxRowOnOrBefore} per `occurred_on` remains strict).
+ * CLP→USD for balances, charts, and dashboard `current_value_usd`.
+ * Prefers Banco Central **daily** observado (`fxRowOnOrBefore`) so Chile holidays still use the last
+ * published tipo de cambio. Falls back to month-end-only rows for legacy Excel imports, then the
+ * earliest month-end on or after `date` when the series starts after snapshot dates.
  */
 export function fxMonthEndForBalanceUsd(date: string | null): FxRow | null {
   if (!date) return null;
+  const observado = fxRowOnOrBefore(date);
+  if (observado) return observado;
   const prior = (stmtMonthEnd.get(date) as FxRow | undefined) ?? null;
   if (prior) return prior;
   return (stmtMonthEndOnOrAfter.get(date) as FxRow | undefined) ?? null;

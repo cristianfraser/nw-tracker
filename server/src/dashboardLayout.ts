@@ -7,6 +7,7 @@ export type DashboardLayoutCardRow = {
   sort_order: number;
   bucket_slug: string;
   card_css: string | null;
+  route_path: string | null;
 };
 
 const fallbackBucketCardsQuery = `
@@ -14,7 +15,8 @@ const fallbackBucketCardsQuery = `
          COALESCE(dashboard_card_label_i18n_key, label_i18n_key) AS label_i18n_key,
          dashboard_sort_order AS sort_order,
          dashboard_bucket_slug AS bucket_slug,
-         dashboard_card_css AS card_css
+         dashboard_card_css AS card_css,
+         route_path
   FROM portfolio_groups
   WHERE dashboard_sort_order IS NOT NULL
     AND dashboard_card_kind = 'bucket'
@@ -27,7 +29,8 @@ const netWorthChildrenQuery = `
          COALESCE(c.dashboard_card_label_i18n_key, c.label_i18n_key) AS label_i18n_key,
          i.sort_order AS sort_order,
          c.dashboard_bucket_slug AS bucket_slug,
-         c.dashboard_card_css AS card_css
+         c.dashboard_card_css AS card_css,
+         c.route_path
   FROM portfolio_groups p
   JOIN portfolio_group_items i ON i.group_id = p.id AND i.item_kind = 'group'
   JOIN portfolio_groups c ON c.id = i.child_group_id
@@ -40,7 +43,8 @@ const legacyBucketCardsQuery = `
   SELECT slug, label, label_i18n_key,
          dashboard_sort_order AS sort_order,
          dashboard_bucket_slug AS bucket_slug,
-         dashboard_card_css AS card_css
+         dashboard_card_css AS card_css,
+         route_path
   FROM portfolio_groups
   WHERE dashboard_sort_order IS NOT NULL
     AND dashboard_card_kind = 'bucket'

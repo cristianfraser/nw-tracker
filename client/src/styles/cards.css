@@ -4,14 +4,8 @@
   gap: 1rem;
 }
 
-.dashboard-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1rem;
-}
-
-.dashboard-cards>.card--dashboard-net-worth,
-.dashboard-cards>.portfolio-strip-compact {
+.cards>.card--dashboard-net-worth,
+.cards>.portfolio-strip-compact {
   grid-row: 1;
   grid-column: 1;
   min-height: auto;
@@ -39,7 +33,6 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  margin-bottom: 0.35rem;
 }
 
 /**
@@ -50,7 +43,6 @@
 .card-title-row.title-container {
   display: flex;
   align-items: baseline;
-  margin-bottom: 0.35rem;
   min-width: 0;
   width: 100%;
 }
@@ -104,11 +96,6 @@
   text-align: left;
 }
 
-/** Matches `CompactEntityCard` row gap under the primary value (metrics bring their own bottom margin). */
-.dashboard-card-metrics-slot {
-  margin-top: 0.35rem;
-}
-
 /* DashboardCardValue — hook classes from TS (app classes stay global here, not :global in CSS modules). */
 .card .value>.dashboard-card-value--main {
   text-align: left;
@@ -154,8 +141,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.card-breakdown-root li[data-card-breakdown-depth="1"] .card-breakdown__amount,
-.card-breakdown-root li[data-card-breakdown-depth="2"] .card-breakdown__amount {
+.card-breakdown-root .child .card-breakdown__amount,
+.card-breakdown-root .card-breakdown__amount--muted {
   color: var(--muted);
   font-size: 0.68rem;
 }
@@ -187,12 +174,14 @@
 }
 
 /* Cash card: pin credit-card row (and its separator) to the card bottom. */
-.card--cash.card--detail-stretch>.card-breakdown-spacer {
+.card--cash.card--detail-stretch>.card-breakdown-spacer,
+.card--cash.card--detail-stretch .card-breakdown-spacer {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.card--cash.card--detail-stretch>.card-breakdown-bottom {
+.card--cash.card--detail-stretch>.card-breakdown-bottom,
+.card--cash.card--detail-stretch .card-breakdown-bottom {
   flex-shrink: 0;
   margin-top: 0;
 }

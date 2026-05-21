@@ -4,8 +4,8 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
 /**
- * Global CLP/USD + MTD/YTD controls. Desktop: `position: fixed` under the marquee, top-right.
- * Mobile: same viewport offsets with `position: sticky` while scrolling `layout-main`.
+ * Global CLP/USD + MTD/YTD controls. Desktop: fixed under the marquee, top-right.
+ * Mobile: full-width bottom dock (blurred backdrop) with the toolbar centered inside.
  */
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();
@@ -17,12 +17,13 @@ export function AppDisplayPreferencesBar() {
 
   return (
     <div className={styles.host} data-app-display-prefs-host>
-      <div
-        className={styles.bar}
-        role="toolbar"
-        aria-label={t("app.displayPreferences.toolbarAria")}
-      >
-        <div className={`toggle-row ${styles.row}`}>
+      <div className={styles.dock}>
+        <div
+          className={styles.bar}
+          role="toolbar"
+          aria-label={t("app.displayPreferences.toolbarAria")}
+        >
+          <div className={`toggle-row ${styles.row}`}>
           <span className="muted">{t("app.displayPreferences.displayCurrency")}</span>
         <label>
           <input
@@ -65,6 +66,7 @@ export function AppDisplayPreferencesBar() {
           />{" "}
           {t("dashboard.yearly")}
         </label>
+          </div>
         </div>
       </div>
     </div>

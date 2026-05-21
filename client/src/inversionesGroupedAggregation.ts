@@ -79,19 +79,19 @@ const ROOT_UNG_META: Record<
   },
 };
 
-/** Retiro — Agrupado: AFP / APV / AFC. */
-const RET_GRP_ORDER = ["afp", "apv", "afc"] as const;
+/** Retiro — Agrupado: first-level portfolio children (`retirement_afp_afc`, `retirement_apv`). */
+const RET_GRP_ORDER = ["afp_afc", "apv"] as const;
 type RetGrp = (typeof RET_GRP_ORDER)[number];
 const RET_GRP_META: Record<
   RetGrp,
   { accountId: number; dataKey: string; depKey: string; barDataKey: string; name: string }
 > = {
-  afp: {
+  afp_afc: {
     accountId: -701,
-    dataKey: "ret_g_afp",
-    depKey: "ret_g_afp_dep",
-    barDataKey: "pl_ret_g_afp",
-    name: "AFP",
+    dataKey: "ret_g_afp_afc",
+    depKey: "ret_g_afp_afc_dep",
+    barDataKey: "pl_ret_g_afp_afc",
+    name: "AFP + AFC",
   },
   apv: {
     accountId: -702,
@@ -99,13 +99,6 @@ const RET_GRP_META: Record<
     depKey: "ret_g_apv_dep",
     barDataKey: "pl_ret_g_apv",
     name: "APV",
-  },
-  afc: {
-    accountId: -703,
-    dataKey: "ret_g_afc",
-    depKey: "ret_g_afc_dep",
-    barDataKey: "pl_ret_g_afc",
-    name: "AFC",
   },
 };
 
@@ -130,9 +123,8 @@ function rootUngroupedBucket(row: AccountListRow): RootUngrouped | null {
 
 function retiroGroupedBucket(row: AccountListRow): RetGrp | null {
   if (row.group_slug !== "retirement") return null;
-  if (row.category_slug === "afp") return "afp";
+  if (row.category_slug === "afp" || row.category_slug === "afc") return "afp_afc";
   if (row.category_slug === "apv") return "apv";
-  if (row.category_slug === "afc") return "afc";
   return null;
 }
 

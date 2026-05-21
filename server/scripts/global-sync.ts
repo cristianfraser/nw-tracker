@@ -1,14 +1,12 @@
 /**
  * Orchestrates external syncs with Chile-time rules:
- * - AFP UNO spot: once per Chile calendar day (00:00 rollover).
- * - Fintual goals: from 18:00 America/Santiago; applies when mapped NAV signature changes (poll alone
- *   does not clear stale). Valuations use prior calendar day as `as_of_date` until Fintual publishes.
- * - USD / EUR (SBIF dólar & euro observado): daily incremental fetch on every run.
+ * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
+ * - Fintual goals: from 18:00 America/Santiago on business days only; applies when mapped NAV signature changes.
+ * - USD / EUR (Banco Central BDE): stale from 18:00 Chile until today's observado is in DB (prior session on holidays).
  * - SPY / VEA / BTC / ETH EOD: Yahoo daily bars after NYSE close (16:05 ET); crypto daily every run.
- * - UF / UTM / IPC (SBIF API): from the 9th of each month through month-end, incremental fetch
- *   ([UF posteriores](https://api.sbif.cl/documentacion/UF.html), same pattern for UTM/IPC).
+ * - UF / UTM / IPC (BDE GetSeries): from the 9th of each month when stale.
  *
- * Env: `SBIF_APIKEY`, Fintual vars (see `fintualApiLib.ts`), AFP account `import:excel|key=afp`.
+ * Env: `BCENTRAL_EMAIL`, `BCENTRAL_PASSWORD`, Fintual vars (see `fintualApiLib.ts`), AFP account.
  *
  * Usage (repo root):
  *   npm run sync:all -w nw-tracker-server
@@ -17,10 +15,16 @@
  *   npm run sync:all -w nw-tracker-server -- --force
  */
 import "../src/db.js";
-import { insertAppMessage } from "../src/appMessages.js";
-import { chileWallClockNow } from "../src/chileDate.js";
+import { chileWallClockNow, type ChileWallClock } from "../src/chileDate.js";
 import { db } from "../src/db.js";
-import { isEquityEodStale, isSbifMonthlyStale, staleSyncSources } from "../src/globalSyncStale.js";
+import {
+  isEquityEodStale,
+  isSbifMonthlyStale,
+  shouldRunSyncSource,
+  staleSyncSources,
+  type GlobalSyncSource,
+} from "../src/globalSyncStale.js";
+import { isChileBusinessDay } from "../src/marketHolidays.js";
 import {
   formatSyncClp,
   formatSyncFxRate,
@@ -30,6 +34,7 @@ import {
   type SyncFieldChange,
   type SyncRunLogOptions,
   type SyncStepError,
+  type SyncStepNote,
 } from "../src/syncRunLog.js";
 import {
   loadGlobalSyncState,
@@ -60,7 +65,9 @@ import {
   cleanupMistakenPollDayFintualValuations,
   fintualEveningCatchUpComplete,
   fintualMappedNavSignature,
+  fintualNavUnchangedSinceLastApply,
   fintualSnapshotMatchesDb,
+  markFintualEveningSettledWhenCurrent,
   pickFintualApplySnapshot,
   syncFintualFundUnitsFromResolutions,
 } from "./fintualApplyShared.js";
@@ -75,10 +82,14 @@ import {
   fetchIpcAfterMonth,
   fetchUfAfterDate,
   fetchUtmAfterMonth,
-} from "../src/sbifApi.js";
+  isBcentralNoDataError,
+  loadBcentralCredentials,
+  type BcentralCredentials,
+} from "../src/bcentralApi.js";
+import { isSbifApiInBackoff, sbifApiBackoffRemainingMs } from "../src/sbifApiGate.js";
 import {
-  maxEurDate,
-  maxFxDate,
+  maxEurDateOnOrBefore,
+  maxFxDateOnOrBefore,
   maxUfDate,
   safeMaxIpcMonthParts,
   safeMaxUtmMonthParts,
@@ -147,11 +158,39 @@ function fxClpPerUsdOnOrBefore(date: string): number | null {
   return v != null && Number.isFinite(v) ? v : null;
 }
 
+function eurClpPerEurAt(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_eur FROM eur_daily WHERE date = ?`)
+    .get(date) as { clp_per_eur: number } | undefined;
+  const v = row?.clp_per_eur;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+function eurClpPerEurOnOrBefore(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_eur FROM eur_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(date) as { clp_per_eur: number } | undefined;
+  const v = row?.clp_per_eur;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+function maxFxDateAfterUpsert(cl: ChileWallClock): string | null {
+  return maxFxDateOnOrBefore(cl.ymd);
+}
+
+function maxEurDateAfterUpsert(cl: ChileWallClock): string | null {
+  return maxEurDateOnOrBefore(cl.ymd);
+}
+
 async function runUnoSpot(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
+  if (!FORCE && !isChileBusinessDay(cl.ymd)) {
+    console.log(`sync: AFP UNO — skip (Chile non-business day ${cl.ymd}).`);
+    return;
+  }
   if (!FORCE && state.unoLastSpotYmd === cl.ymd) {
     console.log("sync: AFP UNO — skip (already ran today Chile).");
     return;
@@ -266,6 +305,10 @@ async function runFintual(
     console.log(`sync: Fintual — skip (before 18:00 Chile; now ${cl.hour}:${String(cl.minute).padStart(2, "0")}).`);
     return { pending: false };
   }
+  if (!FORCE && !isChileBusinessDay(cl.ymd)) {
+    console.log(`sync: Fintual — skip (Chile non-business day ${cl.ymd}).`);
+    return { pending: false };
+  }
 
   let session;
   try {
@@ -291,14 +334,11 @@ async function runFintual(
   for (const r of resolutions) {
     if (!r.mismatch || !r.row.matchedNotes || r.realAssetsNavClp == null) continue;
     const unitLine =
-      r.units != null ? `\nCuotas: ${r.units.toLocaleString("es-CL", { maximumFractionDigits: 4 })}` : "";
+      r.units != null ? ` · cuotas ${r.units.toLocaleString("es-CL", { maximumFractionDigits: 4 })}` : "";
     const priceLine =
-      r.fundPriceClp != null ? `\nValor cuota: $${formatClp(r.fundPriceClp)}` : "";
-    insertAppMessage(
-      "notification",
-      `Fintual: ${r.row.name}`,
-      `Cuenta API: $${formatClp(r.goalsApiNavClp)} vs real_assets: $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`,
-      syncDryRun
+      r.fundPriceClp != null ? ` · valor cuota $${formatClp(r.fundPriceClp)}` : "";
+    console.log(
+      `sync: Fintual — ${r.row.name}: goals API $${formatClp(r.goalsApiNavClp)} vs real_assets $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`
     );
   }
   const appliedRows = resolutions.map((r) => r.row);
@@ -312,6 +352,29 @@ async function runFintual(
 
   const anyMapped = snap.goals.some((g) => g.matchedNotes);
 
+  if (fintualNavUnchangedSinceLastApply(sig, state)) {
+    if (fintualSnapshotMatchesDb(snap)) {
+      const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
+      if (cleaned > 0) {
+        console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
+      }
+      markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
+    }
+    console.log(
+      "sync: Fintual — API NAV unchanged since last apply; skip DB write (valuations already current)."
+    );
+    if (STRICT_FINTUAL) {
+      const hasMapped = snap.goals.some((g) => g.matchedNotes);
+      if (hasMapped) {
+        throw new Error("--strict-fintual: no valuation update applied");
+      }
+    }
+    return {
+      pending: true,
+      fintualNoChange: anyMapped,
+    };
+  }
+
   syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
 
   if (fintualSnapshotMatchesDb(snap)) {
@@ -321,11 +384,12 @@ async function runFintual(
     if (cleaned > 0) {
       console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
     }
+    markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
     if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, cl)) {
       state.fintualEveningSettledYmd = cl.ymd;
     }
     console.log(
-      "sync: Fintual — API NAV unchanged since last apply; still stale until Fintual publishes new totals."
+      "sync: Fintual — valuations already match API; no DB update needed."
     );
     if (STRICT_FINTUAL) {
       const hasMapped = snap.goals.some((g) => g.matchedNotes);
@@ -344,6 +408,7 @@ async function runFintual(
   if (!syncDryRun) {
     state.fintualLastAppliedYmd = cl.ymd;
     state.fintualLastAppliedSig = sig;
+    markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
     if (fintualEveningCatchUpComplete(rows, overrides, cl)) {
       state.fintualEveningSettledYmd = cl.ymd;
     }
@@ -355,26 +420,92 @@ async function runFintual(
   };
 }
 
-function isSbifNoDataError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e);
-  return msg.includes("404") || msg.includes("No hay datos");
+
+function markSbifObservedFxSuccess(state: GlobalSyncStateFile, kind: "usd" | "eur"): void {
+  if (kind === "usd") delete state.sbifUsdLastErrorAt;
+  else delete state.sbifEurLastErrorAt;
 }
 
-async function runSbifUsd(apiKey: string, changes: SyncFieldChange[]): Promise<void> {
+function markSbifObservedFxError(state: GlobalSyncStateFile, kind: "usd" | "eur"): void {
+  const at = new Date().toISOString();
+  if (kind === "usd") state.sbifUsdLastErrorAt = at;
+  else state.sbifEurLastErrorAt = at;
+}
+
+/** After a failed/blocked SBIF call, later steps are not attempted — record that in the sync log. */
+function skipSbifStepForBackoff(
+  step: string,
+  kind: "usd" | "eur",
+  state: GlobalSyncStateFile,
+  notes: SyncStepNote[]
+): boolean {
+  if (!isSbifApiInBackoff()) return false;
+  const sec = Math.ceil(sbifApiBackoffRemainingMs() / 1000);
+  const message = `skipped (API backoff, ${sec}s remaining — prior BCentral request failed or was rate-limited)`;
+  console.warn(`sync: ${step} — ${message}`);
+  notes.push({ step, message });
+  if (!syncDryRun) markSbifObservedFxError(state, kind);
+  return true;
+}
+
+function pushBcentralFxStepNote(
+  notes: SyncStepNote[],
+  step: string,
+  lastAnchorYmd: string,
+  rowsFetched: number,
+  rowsUpserted: number,
+  cl: ChileWallClock,
+  maxDateFn: (cl: ChileWallClock) => string | null
+): void {
+  const latest = maxDateFn(cl);
+  if (rowsUpserted > 0) {
+    notes.push({
+      step,
+      message: `ok — ${rowsUpserted} row(s) upserted (${rowsFetched} from API after ${lastAnchorYmd}); latest in DB on or before today: ${latest ?? "—"}`,
+    });
+    return;
+  }
+  if (rowsFetched > 0) {
+    notes.push({
+      step,
+      message: `ok — ${rowsFetched} observation(s) from API but none new in DB (already had through ${lastAnchorYmd}); latest: ${latest ?? "—"}`,
+    });
+    return;
+  }
+  notes.push({
+    step,
+    message: `ok — no new observations after ${lastAnchorYmd} (BCentral has not published later dates yet); latest in DB: ${latest ?? "—"}`,
+  });
+}
+
+async function runSbifUsd(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  creds: BcentralCredentials,
+  changes: SyncFieldChange[],
+  errors: SyncStepError[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  if (skipSbifStepForBackoff("BCentral USD", "usd", state, notes)) return;
   const anchor = portfolioStartYmd();
-  const lastFx = maxFxDate() ?? anchor;
+  const lastFx = maxFxDateOnOrBefore(cl.ymd) ?? anchor;
   const prevUsdClp = fxClpPerUsdAt(lastFx) ?? fxClpPerUsdOnOrBefore(lastFx);
 
   let fxRows: { date: string; clpPerUsd: number }[] = [];
   try {
-    fxRows = await fetchDolarAfterDate(lastFx, apiKey);
+    fxRows = await fetchDolarAfterDate(lastFx, creds, cl.ymd);
+    markSbifObservedFxSuccess(state, "usd");
   } catch (e) {
-    if (isSbifNoDataError(e)) {
-      console.warn(`sync: SBIF USD — no newer series after ${lastFx} (ok if current).`);
-    } else throw e;
+    if (isBcentralNoDataError(e)) {
+      console.warn(`sync: BCentral USD — no newer series after ${lastFx} (ok if current).`);
+      markSbifObservedFxSuccess(state, "usd");
+    } else {
+      if (!syncDryRun) markSbifObservedFxError(state, "usd");
+      throw e;
+    }
   }
   const fxN = upsertFxRows(
-    fxRows.filter((r) => r.date >= anchor),
+    fxRows.filter((r) => r.date >= anchor && r.date <= cl.ymd),
     syncDryRun
   );
   if (fxN > 0) {
@@ -383,7 +514,7 @@ async function runSbifUsd(apiKey: string, changes: SyncFieldChange[]): Promise<v
     if (newUsdClp != null) {
       changes.push({
         group: "sbif_usd",
-        label: "SBIF USD",
+        label: "BCentral USD",
         oldValue: prevUsdClp != null ? formatSyncFxRate(prevUsdClp) : "—",
         newValue: formatSyncFxRate(newUsdClp),
         oldDate: lastFx,
@@ -391,40 +522,48 @@ async function runSbifUsd(apiKey: string, changes: SyncFieldChange[]): Promise<v
       });
     }
   }
-  console.log(`sync: SBIF USD — ${fxN} row(s) after ${lastFx} (${syncDryRun ? "dry-run" : "ok"})`);
+  pushBcentralFxStepNote(notes, "BCentral USD", lastFx, fxRows.length, fxN, cl, maxFxDateAfterUpsert);
+  console.log(`sync: BCentral USD — ${fxN} row(s) after ${lastFx} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
 /** [SBIF euro observado](https://api.sbif.cl/documentacion/Euro.html) — `euro/posteriores/.../dias/...` */
-async function runSbifEur(apiKey: string, changes: SyncFieldChange[]): Promise<void> {
+async function runSbifEur(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  creds: BcentralCredentials,
+  changes: SyncFieldChange[],
+  errors: SyncStepError[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  if (skipSbifStepForBackoff("BCentral EUR", "eur", state, notes)) return;
   const anchor = portfolioStartYmd();
-  const lastEur = maxEurDate() ?? anchor;
-  const prevEurClp = db
-    .prepare(`SELECT clp_per_eur FROM eur_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
-    .get(lastEur) as { clp_per_eur: number } | undefined;
+  const lastEur = maxEurDateOnOrBefore(cl.ymd) ?? anchor;
+  const prevEur = eurClpPerEurAt(lastEur) ?? eurClpPerEurOnOrBefore(lastEur);
 
   let eurRows: { date: string; clpPerEur: number }[] = [];
   try {
-    eurRows = await fetchEuroAfterDate(lastEur, apiKey);
+    eurRows = await fetchEuroAfterDate(lastEur, creds, cl.ymd);
+    markSbifObservedFxSuccess(state, "eur");
   } catch (e) {
-    if (isSbifNoDataError(e)) {
-      console.warn(`sync: SBIF EUR — no newer series after ${lastEur} (ok if current).`);
-    } else throw e;
+    if (isBcentralNoDataError(e)) {
+      console.warn(`sync: BCentral EUR — no newer series after ${lastEur} (ok if current).`);
+      markSbifObservedFxSuccess(state, "eur");
+    } else {
+      if (!syncDryRun) markSbifObservedFxError(state, "eur");
+      throw e;
+    }
   }
   const eurN = upsertEurRows(
-    eurRows.filter((r) => r.date >= anchor),
+    eurRows.filter((r) => r.date >= anchor && r.date <= cl.ymd),
     syncDryRun
   );
   if (eurN > 0) {
     const newest = eurRows[eurRows.length - 1];
     const newEurClp = newest?.clpPerEur;
-    const prevEur =
-      prevEurClp?.clp_per_eur != null && Number.isFinite(prevEurClp.clp_per_eur)
-        ? prevEurClp.clp_per_eur
-        : null;
     if (newEurClp != null && Number.isFinite(newEurClp)) {
       changes.push({
         group: "sbif_eur",
-        label: "SBIF EUR",
+        label: "BCentral EUR",
         oldValue: prevEur != null ? formatSyncFxRate(prevEur) : "—",
         newValue: formatSyncFxRate(newEurClp),
         oldDate: lastEur,
@@ -432,7 +571,8 @@ async function runSbifEur(apiKey: string, changes: SyncFieldChange[]): Promise<v
       });
     }
   }
-  console.log(`sync: SBIF EUR — ${eurN} row(s) after ${lastEur} (${syncDryRun ? "dry-run" : "ok"})`);
+  pushBcentralFxStepNote(notes, "BCentral EUR", lastEur, eurRows.length, eurN, cl, maxEurDateAfterUpsert);
+  console.log(`sync: BCentral EUR — ${eurN} row(s) after ${lastEur} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
 function syncErrorMessage(e: unknown): string {
@@ -451,6 +591,20 @@ async function runSyncStep(
     console.error(`sync: ${step} — error: ${message}`);
     errors.push({ step, message });
   }
+}
+
+async function runSyncStepIfStale(
+  source: GlobalSyncSource,
+  stale: readonly GlobalSyncSource[],
+  step: string,
+  errors: SyncStepError[],
+  fn: () => Promise<void>
+): Promise<void> {
+  if (!shouldRunSyncSource(source, stale)) {
+    console.log(`sync: ${step} — skip (not stale).`);
+    return;
+  }
+  await runSyncStep(step, errors, fn);
 }
 
 async function runEquityEod(state: GlobalSyncStateFile, changes: SyncFieldChange[]): Promise<void> {
@@ -494,21 +648,21 @@ async function runEquityEod(state: GlobalSyncStateFile, changes: SyncFieldChange
 
 async function runSbifUf(
   cl: ReturnType<typeof chileWallClockNow>,
-  apiKey: string,
+  creds: BcentralCredentials,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
   if (!isSbifMonthlyStale(cl, state.sbifUfMonth, { forceSbif: FORCE_SBIF })) {
-    console.log("sync: SBIF UF — skip (monthly window or already synced this month).");
+    console.log("sync: BCentral UF — skip (monthly window or already synced this month).");
     return;
   }
   const last = maxUfDate() ?? portfolioStartYmd();
   let rows: { date: string; clpPerUf: number }[] = [];
   try {
-    rows = await fetchUfAfterDate(last, apiKey);
+    rows = await fetchUfAfterDate(last, creds, cl.ymd);
   } catch (e) {
-    if (isSbifNoDataError(e)) {
-      console.warn(`sync: SBIF UF — no newer series after ${last} (ok if already current).`);
+    if (isBcentralNoDataError(e)) {
+      console.warn(`sync: BCentral UF — no newer series after ${last} (ok if already current).`);
     } else throw e;
   }
   const n = upsertUfRows(
@@ -523,7 +677,7 @@ async function runSbifUf(
     if (newUf != null) {
       changes.push({
         group: "sbif_uf",
-        label: "SBIF UF",
+        label: "BCentral UF",
         oldValue: oldUf != null ? formatSyncUfRate(oldUf) : "—",
         newValue: formatSyncUfRate(newUf),
         oldDate: last,
@@ -532,17 +686,17 @@ async function runSbifUf(
     }
   }
   if (!syncDryRun) state.sbifUfMonth = cl.monthKey;
-  console.log(`sync: SBIF UF — ${n} row(s) after ${last} (${syncDryRun ? "dry-run" : "ok"})`);
+  console.log(`sync: BCentral UF — ${n} row(s) after ${last} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
 async function runSbifUtm(
   cl: ReturnType<typeof chileWallClockNow>,
-  apiKey: string,
+  creds: BcentralCredentials,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
   if (!isSbifMonthlyStale(cl, state.sbifUtmMonth, { forceSbif: FORCE_SBIF })) {
-    console.log("sync: SBIF UTM — skip (monthly window or already synced this month).");
+    console.log("sync: BCentral UTM — skip (monthly window or already synced this month).");
     return;
   }
   const lastParts = safeMaxUtmMonthParts();
@@ -550,10 +704,10 @@ async function runSbifUtm(
   const anchor = lastParts ?? monthBeforeCalendar(parseYmdParts(start).y, parseYmdParts(start).m);
   let rows: { date: string; utmClp: number }[] = [];
   try {
-    rows = await fetchUtmAfterMonth(anchor.y, anchor.m, apiKey);
+    rows = await fetchUtmAfterMonth(anchor.y, anchor.m, creds, cl.ymd);
   } catch (e) {
-    if (isSbifNoDataError(e)) {
-      console.warn(`sync: SBIF UTM — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (ok if current).`);
+    if (isBcentralNoDataError(e)) {
+      console.warn(`sync: BCentral UTM — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (ok if current).`);
     } else throw e;
   }
   const n = upsertUtmRows(rows, syncDryRun);
@@ -562,7 +716,7 @@ async function runSbifUtm(
     const oldLabel = `${anchor.y}-${String(anchor.m).padStart(2, "0")}`;
     changes.push({
       group: "sbif_utm",
-      label: "SBIF UTM",
+      label: "BCentral UTM",
       oldValue: "—",
       newValue: newest ? String(Math.round(newest.utmClp)) : `+${n}`,
       oldDate: null,
@@ -570,17 +724,17 @@ async function runSbifUtm(
     });
   }
   if (!syncDryRun) state.sbifUtmMonth = cl.monthKey;
-  console.log(`sync: SBIF UTM — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
+  console.log(`sync: BCentral UTM — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
 async function runSbifIpc(
   cl: ReturnType<typeof chileWallClockNow>,
-  apiKey: string,
+  creds: BcentralCredentials,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
   if (!isSbifMonthlyStale(cl, state.sbifIpcMonth, { forceSbif: FORCE_SBIF })) {
-    console.log("sync: SBIF IPC — skip (monthly window or already synced this month).");
+    console.log("sync: BCentral IPC — skip (monthly window or already synced this month).");
     return;
   }
   const lastParts = safeMaxIpcMonthParts();
@@ -589,10 +743,10 @@ async function runSbifIpc(
   const anchor = lastParts ?? monthBeforeCalendar(sp.y, sp.m);
   let rows: { date: string; ipcIndex: number }[] = [];
   try {
-    rows = await fetchIpcAfterMonth(anchor.y, anchor.m, apiKey);
+    rows = await fetchIpcAfterMonth(anchor.y, anchor.m, creds, cl.ymd);
   } catch (e) {
-    if (isSbifNoDataError(e)) {
-      console.warn(`sync: SBIF IPC — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (ok if current).`);
+    if (isBcentralNoDataError(e)) {
+      console.warn(`sync: BCentral IPC — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (ok if current).`);
     } else throw e;
   }
   const n = upsertIpcRows(rows, syncDryRun);
@@ -600,7 +754,7 @@ async function runSbifIpc(
     const newest = rows[rows.length - 1];
     changes.push({
       group: "sbif_ipc",
-      label: "SBIF IPC",
+      label: "BCentral IPC",
       oldValue: "—",
       newValue: newest ? String(newest.ipcIndex) : `+${n}`,
       oldDate: null,
@@ -608,7 +762,7 @@ async function runSbifIpc(
     });
   }
   if (!syncDryRun) state.sbifIpcMonth = cl.monthKey;
-  console.log(`sync: SBIF IPC — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
+  console.log(`sync: BCentral IPC — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
 /** Run all external syncs. Returns exit code 0 on success, 1 if any step failed. */
@@ -616,13 +770,15 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
   syncDryRun = opts?.dryRun ?? process.argv.includes("--dry-run");
   const syncChanges: SyncFieldChange[] = [];
   const stepErrors: SyncStepError[] = [];
+  const stepNotes: SyncStepNote[] = [];
   const logOpts: SyncRunLogOptions = {};
   let stale: string[] = [];
   let state: GlobalSyncStateFile | null = null;
+  let cl = chileWallClockNow();
 
   try {
     loadRootDotenv();
-    const cl = chileWallClockNow();
+    cl = chileWallClockNow();
     state = loadGlobalSyncState();
     stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
     console.log(
@@ -630,41 +786,41 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
         (stale.length ? ` stale=[${stale.join(", ")}]` : " nothing stale")
     );
 
-    await runSyncStep("AFP UNO", stepErrors, async () => {
+    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, async () => {
       await runUnoSpot(cl, state!, syncChanges);
     });
 
-    await runSyncStep("Fintual", stepErrors, async () => {
+    await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, async () => {
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
     });
 
-    const apiKey = process.env.SBIF_APIKEY?.trim() ?? "";
-    if (!apiKey) {
-      console.warn("sync: SBIF — skip (set SBIF_APIKEY in .env).");
+    const bcentral = loadBcentralCredentials();
+    if (!bcentral) {
+      console.warn("sync: BCentral — skip (set BCENTRAL_EMAIL and BCENTRAL_PASSWORD in .env).");
     } else {
-      await runSyncStep("Equity EOD", stepErrors, async () => {
+      await runSyncStepIfStale("equity_eod", stale, "Equity EOD", stepErrors, async () => {
         await runEquityEod(state!, syncChanges);
       });
-      await runSyncStep("SBIF USD", stepErrors, async () => {
-        await runSbifUsd(apiKey, syncChanges);
+      await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, async () => {
+        await runSbifUsd(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
-      await runSyncStep("SBIF EUR", stepErrors, async () => {
-        await runSbifEur(apiKey, syncChanges);
+      await runSyncStepIfStale("sbif_eur", stale, "BCentral EUR", stepErrors, async () => {
+        await runSbifEur(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
       if (cl.day < 9 && !FORCE_SBIF) {
         console.log(
-          "sync: SBIF — skip UF/UTM/IPC (before day 9; CMF UF series often incomplete earlier — use --force-sbif to override)."
+          "sync: BCentral — skip UF/UTM/IPC (before day 9; series often incomplete earlier — use --force-sbif to override)."
         );
       } else {
-        await runSyncStep("SBIF UF", stepErrors, async () => {
-          await runSbifUf(cl, apiKey, state!, syncChanges);
+        await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", stepErrors, async () => {
+          await runSbifUf(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStep("SBIF UTM", stepErrors, async () => {
-          await runSbifUtm(cl, apiKey, state!, syncChanges);
+        await runSyncStepIfStale("sbif_utm", stale, "BCentral UTM", stepErrors, async () => {
+          await runSbifUtm(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStep("SBIF IPC", stepErrors, async () => {
-          await runSbifIpc(cl, apiKey, state!, syncChanges);
+        await runSyncStepIfStale("sbif_ipc", stale, "BCentral IPC", stepErrors, async () => {
+          await runSbifIpc(cl, bcentral, state!, syncChanges);
         });
       }
     }
@@ -673,7 +829,14 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     console.error(`sync:all — fatal: ${message}`);
     stepErrors.push({ step: "sync:all", message });
   } finally {
-    insertSyncRunLog(stale, syncChanges, syncDryRun, { ...logOpts, errors: stepErrors });
+    if (state) {
+      stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
+    }
+    insertSyncRunLog(stale, syncChanges, syncDryRun, {
+      ...logOpts,
+      notes: stepNotes,
+      errors: stepErrors,
+    });
     if (!syncDryRun && state) saveGlobalSyncState(state);
     if (stepErrors.length > 0) {
       console.log(`sync:all — done with ${stepErrors.length} error(s).`);

@@ -45,16 +45,17 @@ export function accountPriorPeriodClose(
     const exact = bestPerformanceCloseInMonth(perf.monthly, priorMk);
     if (exact != null) return exact;
 
+    // No prior-calendar-month close: do not substitute an older month (new position / first month).
     const curMk = today.slice(0, 7);
-    let best: AccountMonthlyPerformanceRow | null = null;
-    for (const row of perf.monthly) {
-      if (monthKeyFromYmd(row.as_of_date) >= curMk) continue;
-      if (!best || String(row.as_of_date).localeCompare(String(best.as_of_date)) > 0) {
-        best = row;
-      }
-    }
-    const v = best?.closing_value;
-    return v != null && Number.isFinite(v) ? v : null;
+    const hasBalanceInOrAfterPriorMonth = perf.monthly.some((row) => {
+      const mk = monthKeyFromYmd(row.as_of_date);
+      return (
+        mk >= priorMk && row.closing_value != null && Number.isFinite(row.closing_value)
+      );
+    });
+    if (hasBalanceInOrAfterPriorMonth) return 0;
+
+    return null;
   }
 
   const y0 = today.slice(0, 4);
@@ -67,7 +68,15 @@ export function accountPriorPeriodClose(
     }
   }
   const v = best?.closing_value;
-  return v != null && Number.isFinite(v) ? v : null;
+  if (v != null && Number.isFinite(v)) return v;
+
+  const hasCurrentYearClose = perf.monthly.some(
+    (row) =>
+      row.as_of_date.slice(0, 4) === y0 &&
+      row.closing_value != null &&
+      Number.isFinite(row.closing_value)
+  );
+  return hasCurrentYearClose ? 0 : null;
 }
 
 export type AccountCardPerformanceMetrics = {

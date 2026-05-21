@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
 type GroupUpsert = {
   slug: string;
@@ -15,16 +16,20 @@ type GroupUpsert = {
   sidebar_section?: "main" | "flows" | "link" | "nested";
   parent_slug?: string;
   color_rgb?: string;
+  group_kind?: "normal" | "reference";
+  chart_host_slug?: string | null;
 };
 
 const upsertGroup = db.prepare(`
   INSERT INTO portfolio_groups (
     parent_id, slug, label, sort_order, color_rgb, route_path, active_prefix,
-    nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section
+    nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
+    group_kind, chart_host_slug
   )
   VALUES (
     @parent_id, @slug, @label, @sort_order, @color_rgb, @route_path, @active_prefix,
-    @nav_end, @show_leaf_hyphen, @label_i18n_key, @api_group, @api_subgroup, @asset_group_slug, @sidebar_section
+    @nav_end, @show_leaf_hyphen, @label_i18n_key, @api_group, @api_subgroup, @asset_group_slug, @sidebar_section,
+    @group_kind, @chart_host_slug
   )
   ON CONFLICT(slug) DO UPDATE SET
     parent_id = excluded.parent_id,
@@ -39,17 +44,32 @@ const upsertGroup = db.prepare(`
     api_subgroup = COALESCE(excluded.api_subgroup, portfolio_groups.api_subgroup),
     asset_group_slug = COALESCE(excluded.asset_group_slug, portfolio_groups.asset_group_slug),
     sidebar_section = excluded.sidebar_section,
-    color_rgb = COALESCE(excluded.color_rgb, portfolio_groups.color_rgb)
+    color_rgb = COALESCE(excluded.color_rgb, portfolio_groups.color_rgb),
+    group_kind = excluded.group_kind,
+    chart_host_slug = excluded.chart_host_slug
 `);
 
 const groupIdBySlug = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`);
 
 const deleteGroupItems = db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ?`);
 
+const deleteRetiredPortfolioGroups = db.prepare(`
+  DELETE FROM portfolio_groups WHERE slug IN ('retirement_afp', 'retirement_afc')
+`);
+
 const insertGroupChild = db.prepare(`
   INSERT INTO portfolio_group_items (group_id, item_kind, child_group_id, sort_order)
   VALUES (?, 'group', ?, ?)
   ON CONFLICT(group_id, child_group_id) DO UPDATE SET sort_order = excluded.sort_order
+`);
+
+const insertLinkedGroupChild = db.prepare(`
+  INSERT INTO portfolio_group_items (group_id, item_kind, child_group_id, sort_order, link_weight)
+  VALUES (?, 'linked_group', ?, ?, ?)
+  ON CONFLICT(group_id, child_group_id) DO UPDATE SET
+    item_kind = 'linked_group',
+    sort_order = excluded.sort_order,
+    link_weight = excluded.link_weight
 `);
 
 const insertAccountChild = db.prepare(`
@@ -86,8 +106,16 @@ function upsert(g: GroupUpsert): number {
     api_subgroup: g.api_subgroup ?? null,
     asset_group_slug: g.asset_group_slug ?? null,
     sidebar_section: g.sidebar_section ?? "nested",
+    group_kind: g.group_kind ?? "normal",
+    chart_host_slug: g.chart_host_slug ?? null,
   });
   return (groupIdBySlug.get(g.slug) as { id: number }).id;
+}
+
+function linkLinkedGroup(parentSlug: string, childSlug: string, sort: number, weight: number) {
+  const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
+  const cid = (groupIdBySlug.get(childSlug) as { id: number }).id;
+  insertLinkedGroupChild.run(pid, cid, sort, weight);
 }
 
 function linkGroup(parentSlug: string, childSlug: string, sort: number) {
@@ -140,8 +168,6 @@ function rebuildRetirementNav() {
 
   const groups = [
     "retirement_afp_afc",
-    "retirement_afp",
-    "retirement_afc",
     "retirement_apv",
     "retirement_apv_a",
     "retirement_apv_b",
@@ -152,10 +178,8 @@ function rebuildRetirementNav() {
   }
 
   linkGroup("retirement", "retirement_afp_afc", 0);
-  linkGroup("retirement_afp_afc", "retirement_afp", 0);
-  linkGroup("retirement_afp_afc", "retirement_afc", 10);
-  linkAccountsByNotes("retirement_afp", ["import:excel|key=afp"]);
-  linkAccountsByNotes("retirement_afc", ["import:excel|key=afc"]);
+  linkAccountsByNotes("retirement_afp_afc", ["import:excel|key=afp"], 0);
+  linkAccountsByNotes("retirement_afp_afc", ["import:excel|key=afc"], 10);
 
   linkGroup("retirement", "retirement_apv", 20);
   linkGroup("retirement_apv", "retirement_apv_a", 0);
@@ -165,6 +189,8 @@ function rebuildRetirementNav() {
     "import:excel|key=apv_a",
   ]);
   linkAccountsByNotes("retirement_apv_b", ["import:excel|key=apv_b"]);
+
+  deleteRetiredPortfolioGroups.run();
 }
 
 function rebuildBrokerageNav() {
@@ -184,7 +210,7 @@ export function seedNavTree(): void {
     upsert({
       slug: "dashboard",
       label: "Dashboard",
-      label_i18n_key: "dashboard.title",
+      label_i18n_key: "dashboard.cards.netWorth",
       sort_order: 0,
       route_path: "/",
       nav_end: true,
@@ -214,6 +240,7 @@ export function seedNavTree(): void {
     const cashId = (groupIdBySlug.get("cash_eqs") as { id: number }).id;
     deleteGroupItems.run(cashId);
     linkAccountsByAssetGroup("cash_eqs", "cash_eqs");
+    linkLinkedGroup("cash_eqs", "liabilities_credit_card", 100, 1);
 
     upsert({
       slug: "liabilities",
@@ -229,7 +256,8 @@ export function seedNavTree(): void {
       label: "Tarjeta de crédito",
       parent_slug: "liabilities",
       sort_order: 0,
-      route_path: "/liabilities",
+      route_path: "/liabilities/credit-card",
+      active_prefix: "/liabilities/credit-card",
       label_i18n_key: "liabilities.creditCard",
     });
     upsert({
@@ -237,31 +265,15 @@ export function seedNavTree(): void {
       label: "Hipoteca",
       parent_slug: "liabilities",
       sort_order: 10,
-      route_path: "/liabilities",
+      route_path: "/liabilities/mortgage",
+      active_prefix: "/liabilities/mortgage",
       label_i18n_key: "liabilities.mortgage",
     });
     const liabId = (groupIdBySlug.get("liabilities") as { id: number }).id;
     deleteGroupItems.run(liabId);
-    linkGroup("liabilities", "liabilities_credit_card", 0);
-    linkGroup("liabilities", "liabilities_mortgage", 10);
-    const ccId = (groupIdBySlug.get("liabilities_credit_card") as { id: number }).id;
-    const mtgId = (groupIdBySlug.get("liabilities_mortgage") as { id: number }).id;
-    deleteGroupItems.run(ccId);
-    deleteGroupItems.run(mtgId);
-    db.prepare(
-      `INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order)
-       SELECT ?, 'account', a.id, 0
-       FROM accounts a JOIN categories c ON c.id = a.category_id
-       WHERE c.slug = 'credit_card'
-       ON CONFLICT(group_id, account_id) DO UPDATE SET sort_order = excluded.sort_order`
-    ).run(ccId);
-    db.prepare(
-      `INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order)
-       SELECT ?, 'account', a.id, 0
-       FROM accounts a JOIN categories c ON c.id = a.category_id
-       WHERE c.slug = 'mortgage'
-       ON CONFLICT(group_id, account_id) DO UPDATE SET sort_order = excluded.sort_order`
-    ).run(mtgId);
+
+    seedLiabilitiesReferenceChartGroups();
+    seedCashReferenceChartGroups();
 
     upsert({
       slug: "real_estate",
@@ -349,28 +361,6 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro/afp-afc",
       api_group: "retirement",
       api_subgroup: "afp_afc",
-    });
-    upsert({
-      slug: "retirement_afp",
-      label: "AFP",
-      label_i18n_key: "sidebar.afp",
-      parent_slug: "retirement_afp_afc",
-      sort_order: 0,
-      route_path: "/inversiones/retiro/afp",
-      active_prefix: "/inversiones/retiro/afp",
-      api_group: "retirement",
-      api_subgroup: "afp",
-    });
-    upsert({
-      slug: "retirement_afc",
-      label: "AFC",
-      label_i18n_key: "sidebar.afc",
-      parent_slug: "retirement_afp_afc",
-      sort_order: 10,
-      route_path: "/inversiones/retiro/afc",
-      active_prefix: "/inversiones/retiro/afc",
-      api_group: "retirement",
-      api_subgroup: "afc",
     });
     upsert({
       slug: "retirement_apv",
@@ -480,7 +470,60 @@ export function seedNavTree(): void {
     applyDashboardBucketLayout();
   });
   tx();
-  console.log("nav tree: seeded sidebar portfolio_groups");
+  seedLiabilitiesTree();
+  console.log("nav tree: seeded sidebar portfolio_groups + liability_groups");
+}
+
+/** Efectivo chart overlay: linked Pasivos > tarjeta de crédito total (not a sidebar leaf). */
+function seedCashReferenceChartGroups() {
+  upsert({
+    slug: "cash_eqs_ref_credit_card",
+    label: "Tarjeta de crédito",
+    label_i18n_key: "liabilities.creditCard",
+    sort_order: 10,
+    group_kind: "reference",
+    chart_host_slug: "cash_eqs",
+    sidebar_section: "nested",
+    nav_end: true,
+  });
+  const refId = (groupIdBySlug.get("cash_eqs_ref_credit_card") as { id: number }).id;
+  deleteGroupItems.run(refId);
+  linkLinkedGroup("cash_eqs_ref_credit_card", "liabilities_credit_card", 0, 1);
+}
+
+/** Pasivos root chart overlays (not sidebar leaves). */
+function seedLiabilitiesReferenceChartGroups() {
+  upsert({
+    slug: "liabilities_ref_disponible",
+    label: "Disponible",
+    label_i18n_key: "liabilities.ref.disponible",
+    sort_order: 100,
+    group_kind: "reference",
+    chart_host_slug: "liabilities",
+    color_rgb: "94,234,212",
+    sidebar_section: "nested",
+    nav_end: true,
+  });
+  upsert({
+    slug: "liabilities_ref_disponible_total",
+    label: "Disponible total",
+    label_i18n_key: "liabilities.ref.disponibleTotal",
+    sort_order: 110,
+    group_kind: "reference",
+    chart_host_slug: "liabilities",
+    color_rgb: "45,212,191",
+    sidebar_section: "nested",
+    nav_end: true,
+  });
+  const dispId = (groupIdBySlug.get("liabilities_ref_disponible") as { id: number }).id;
+  const dispTotId = (groupIdBySlug.get("liabilities_ref_disponible_total") as { id: number }).id;
+  deleteGroupItems.run(dispId);
+  deleteGroupItems.run(dispTotId);
+  linkLinkedGroup("liabilities_ref_disponible", "brokerage", 0, 1);
+  linkLinkedGroup("liabilities_ref_disponible", "cash_eqs", 10, 1);
+  linkLinkedGroup("liabilities_ref_disponible_total", "brokerage", 0, 1);
+  linkLinkedGroup("liabilities_ref_disponible_total", "cash_eqs", 10, 1);
+  linkLinkedGroup("liabilities_ref_disponible_total", "retirement_apv", 20, 0.85);
 }
 
 /** First-level dashboard buckets under logical `net_worth` root (see migration 036). */

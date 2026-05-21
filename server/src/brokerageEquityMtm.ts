@@ -1,5 +1,6 @@
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { readSpyVeaShareUnitsFromStocksCsv } from "./accountPosition.js";
+import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
 import {
   equityCloseUsdEod,
@@ -30,12 +31,20 @@ export function upsertEquityDailySeries(ticker: string, series: EodCloseSeries):
   return n;
 }
 
+const shareUnitsFlowPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
+
 const stmtHasUnits = db.prepare(
-  `SELECT 1 FROM brokerage_flows WHERE account_id = ? AND COALESCE(units_delta, 0) != 0 LIMIT 1`
+  `SELECT 1 FROM movements
+   WHERE account_id = ?
+     AND flow_kind IN (${shareUnitsFlowPh})
+     AND COALESCE(units_delta, 0) != 0
+   LIMIT 1`
 );
 
 export function accountUsesEquityMtm(accountId: number): boolean {
-  return stmtHasUnits.get(accountId) != null;
+  return (
+    stmtHasUnits.get(accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
+  );
 }
 
 const stmtSlug = db.prepare(
@@ -50,7 +59,11 @@ export function equityTickerForAccount(accountId: number): "SPY" | "VEA" | null 
 }
 
 const stmtUnits = db.prepare(
-  `SELECT COALESCE(SUM(units_delta), 0) AS u FROM brokerage_flows WHERE account_id = ? AND occurred_on <= ?`
+  `SELECT COALESCE(SUM(units_delta), 0) AS u
+   FROM movements
+   WHERE account_id = ?
+     AND occurred_on <= ?
+     AND flow_kind IN (${shareUnitsFlowPh})`
 );
 
 /** CLP MTM: shares through `asOfYmd` × USD price × FX. Uses EOD from DB unless `priceUsd` passed. */
@@ -62,7 +75,11 @@ export function computeEquityMtmClp(
   const ticker = equityTickerForAccount(accountId);
   if (!ticker) return null;
   if (!accountUsesEquityMtm(accountId)) return null;
-  const urow = stmtUnits.get(accountId, asOfYmd) as { u: number };
+  const urow = stmtUnits.get(
+    accountId,
+    asOfYmd,
+    ...BROKERAGE_SHARE_UNITS_FLOW_KINDS
+  ) as { u: number };
   const units = urow?.u ?? 0;
   if (units <= 0 || !Number.isFinite(units)) return null;
   const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);

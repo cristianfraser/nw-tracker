@@ -1,4 +1,5 @@
 import { insertAppMessage } from "./appMessages.js";
+import { db } from "./db.js";
 
 export type SyncChangeGroup =
   | "afp"
@@ -24,9 +25,16 @@ export type SyncStepError = {
   message: string;
 };
 
+export type SyncStepNote = {
+  step: string;
+  message: string;
+};
+
 export type SyncRunLogOptions = {
   /** Fintual API was checked (≥18:00) and no mapped goal NAV changed. */
   fintualNoChange?: boolean;
+  /** Per-step outcomes (fetch ran, rows upserted, skipped, etc.). */
+  notes?: SyncStepNote[];
   /** Step failures (sync continues; listed under Errors in the log body). */
   errors?: SyncStepError[];
 };
@@ -89,13 +97,21 @@ export function formatSyncLogBody(
   lines.push(`Stale: ${staleSources.length ? staleSources.join(", ") : "none"}`);
 
   const errors = opts?.errors ?? [];
+  const notes = opts?.notes ?? [];
   const hasFintualSection =
     opts?.fintualNoChange === true || changes.some((c) => c.group === "fintual");
-  const hasAnyContent = changes.length > 0 || hasFintualSection || errors.length > 0;
+  const hasAnyContent = changes.length > 0 || hasFintualSection || notes.length > 0 || errors.length > 0;
 
   if (!hasAnyContent) {
     lines.push("No changes");
     return lines.join("\n");
+  }
+
+  if (notes.length > 0) {
+    lines.push("Steps:");
+    for (const n of notes) {
+      lines.push(`- ${n.step}: ${n.message}`);
+    }
   }
 
   if (changes.length > 0 || hasFintualSection) {
@@ -140,6 +156,19 @@ export function formatSyncLogBody(
   }
 
   return lines.join("\n");
+}
+
+/** Latest `global-sync` log row in `app_messages` (kind=log, title `Sync …`). */
+export function lastSyncRunCreatedAt(): string | null {
+  const row = db
+    .prepare(
+      `SELECT created_at FROM app_messages
+       WHERE kind = 'log' AND title LIKE 'Sync %'
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`
+    )
+    .get() as { created_at: string } | undefined;
+  return row?.created_at ?? null;
 }
 
 export function insertSyncRunLog(

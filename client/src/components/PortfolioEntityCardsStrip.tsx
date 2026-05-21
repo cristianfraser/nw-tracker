@@ -8,6 +8,8 @@ export type PortfolioEntityCardsStripProps = {
   detailSlots?: ReactNode;
   /** When true, wraps in `DashboardCardsValueGroup` for shared number-flow context. */
   wrapValueGroup?: boolean;
+  /** Extra classes on the compact strip shell (e.g. `card--cash`). */
+  compactStripClassName?: string;
 };
 
 /**
@@ -18,13 +20,23 @@ export function PortfolioEntityCardsStrip({
   compactSlot,
   detailSlots,
   wrapValueGroup = true,
+  compactStripClassName,
 }: PortfolioEntityCardsStripProps) {
   const hasDetails = detailSlots != null && detailSlots !== false;
+  const compactShell = [
+    "portfolio-strip-compact",
+    "card",
+    "card--detail",
+    "card--detail-compact",
+    "card--detail-stretch",
+    "card--dashboard-net-worth",
+    compactStripClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const inner = (
-    <div className="dashboard-cards">
-      <div className="portfolio-strip-compact card card--detail card--detail-compact card--detail-stretch card--dashboard-net-worth">
-        {compactSlot}
-      </div>
+    <div className="cards">
+      <div className={compactShell}>{compactSlot}</div>
       {hasDetails ? (
         <>
           <div className="row-spacer" aria-hidden="true" />

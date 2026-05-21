@@ -1,0 +1,165 @@
+.trigger {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.trigger[data-focus-visible] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.trigger:hover {
+  background: color-mix(in srgb, var(--surface2) 65%, transparent);
+}
+
+.swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #000 8%, transparent);
+}
+
+.swatchPage {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #000 8%, transparent);
+}
+
+.popover {
+  padding: 0;
+  min-width: 13.5rem;
+  max-height: inherit;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 22%, transparent);
+}
+
+.dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  padding-bottom: 2.15rem;
+  outline: none;
+}
+
+.area {
+  width: 100%;
+  height: 7.5rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.hueSlider {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.hueTrack {
+  position: relative;
+  width: 100%;
+  height: 1.25rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+}
+
+.hueSlider :global(.react-aria-ColorThumb) {
+  top: 50%;
+}
+
+.hexRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.previewSwatch {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #000 8%, transparent);
+}
+
+.hexField {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.hexField :global(.react-aria-Input) {
+  width: 100%;
+  font-size: 0.8125rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.hexField :global(.react-aria-Input)[data-focus-visible] {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.clearColor {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--muted);
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.clearColor:hover:not([data-disabled]) {
+  color: var(--text);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface2) 70%, var(--text) 8%);
+}
+
+.clearColor[data-focus-visible] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.clearColor[data-disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.clearIcon {
+  font-size: 1.05rem;
+  line-height: 1;
+  font-weight: 500;
+}

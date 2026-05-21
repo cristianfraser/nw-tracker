@@ -1,5 +1,7 @@
+import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
+import { getLiabilitiesNavChildren } from "./liabilityTree.js";
 
 export type NavTreeNodeDto = {
   node_id: string;
@@ -11,6 +13,7 @@ export type NavTreeNodeDto = {
   nav_end: boolean;
   show_leaf_hyphen: boolean;
   account_id: number | null;
+  portfolio_group_id: number | null;
   expense_account_id: number | null;
   expense_account_slug: string | null;
   asset_group_slug: string | null;
@@ -69,6 +72,13 @@ function loadItems(): ItemRow[] {
     .all() as ItemRow[];
 }
 
+/** Drop portfolio group nodes that have no account/expense leaves after inactive filtering. */
+function pruneEmptyNavGroups(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
+  return nodes
+    .map((n) => ({ ...n, children: pruneEmptyNavGroups(n.children) }))
+    .filter((n) => n.account_id != null || n.expense_account_id != null || n.children.length > 0);
+}
+
 function buildNode(
   group: GroupRow,
   itemsByGroup: Map<number, ItemRow[]>,
@@ -84,6 +94,7 @@ function buildNode(
       const child = groupsById.get(item.child_group_id);
       if (child) children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta));
     } else if (item.item_kind === "account" && item.account_id != null) {
+      if (accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
@@ -96,6 +107,8 @@ function buildNode(
         nav_end: true,
         show_leaf_hyphen: true,
         account_id: item.account_id,
+        portfolio_group_id: null,
+        source_account_id: null,
         expense_account_id: null,
         expense_account_slug: null,
         asset_group_slug: null,
@@ -118,6 +131,8 @@ function buildNode(
         nav_end: true,
         show_leaf_hyphen: true,
         account_id: null,
+        portfolio_group_id: null,
+        source_account_id: null,
         expense_account_id: item.expense_account_id,
         expense_account_slug: slug,
         asset_group_slug: null,
@@ -130,7 +145,7 @@ function buildNode(
     }
   }
 
-  /** Explicit `portfolio_groups.color_rgb` wins; otherwise same resolver as charts (child average only when parent has no color). */
+  /** Explicit `portfolio_groups.color_rgb` wins; otherwise same resolver as charts (largest child balance). */
   const resolved = group.color_rgb ?? resolvePortfolioGroupColorRgb(group.id);
 
   return {
@@ -143,6 +158,8 @@ function buildNode(
     nav_end: group.nav_end === 1,
     show_leaf_hyphen: group.show_leaf_hyphen === 1,
     account_id: null,
+    portfolio_group_id: group.id,
+    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: group.asset_group_slug,
@@ -150,7 +167,7 @@ function buildNode(
     api_subgroup: group.api_subgroup,
     color_rgb: resolved,
     color: rgbTripletToCss(resolved),
-    children,
+    children: pruneEmptyNavGroups(children),
   };
 }
 
@@ -209,19 +226,40 @@ function buildNavForest(section: string | null): NavTreeNodeDto[] {
   return roots.map((g) => buildNode(g, itemsByGroup, groupsById, accountMeta, expenseMeta));
 }
 
+/** `portfolio_groups.slug = net_worth` — home page + dashboard hierarchy (first-level bucket groups as children). */
+export function getNetWorthNavGroupNode(): NavTreeNodeDto | null {
+  const groups = loadGroups();
+  const nw = groups.find((g) => g.slug === "net_worth");
+  if (!nw) return null;
+  const items = loadItems();
+  const groupsById = new Map(groups.map((g) => [g.id, g]));
+  const itemsByGroup = new Map<number, ItemRow[]>();
+  for (const item of items) {
+    const arr = itemsByGroup.get(item.group_id) ?? [];
+    arr.push(item);
+    itemsByGroup.set(item.group_id, arr);
+  }
+  const { accountMeta, expenseMeta } = loadMetaMaps(items);
+  return buildNode(nw, itemsByGroup, groupsById, accountMeta, expenseMeta);
+}
+
 /** Full sidebar layout: dashboard, main asset branches, flows, rates. */
 export function getSidebarNavPayload(): {
   dashboard: NavTreeNodeDto | null;
+  net_worth: NavTreeNodeDto | null;
   main: NavTreeNodeDto[];
   flows: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
 } {
   const linkRoots = buildNavForest("link");
-  const mainRoots = buildNavForest("main");
+  const mainRoots = buildNavForest("main").map((node) =>
+    node.slug === "liabilities" ? { ...node, children: getLiabilitiesNavChildren() } : node
+  );
   const flowRoots = buildNavForest("flows");
 
   return {
     dashboard: linkRoots.find((n) => n.slug === "dashboard") ?? null,
+    net_worth: getNetWorthNavGroupNode(),
     main: mainRoots,
     flows: flowRoots.find((n) => n.slug === "flows") ?? flowRoots[0] ?? null,
     rates: linkRoots.find((n) => n.slug === "rates") ?? null,

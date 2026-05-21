@@ -111,10 +111,20 @@ export function parseAfpUnoMovimientoMergedLine(line: string): AfpMovimientoCert
   const rest0 = s.slice(head[0].length).trim();
   const rutRe = /(\d{2}\.\d{3}\.\d{3}-[\dkK])\s+([A-E])\s*$/i;
   const rm = rutRe.exec(rest0);
-  if (!rm) return null;
-  const rutEmpleador = rm[1]!;
-  const fondo = rm[2]!.toUpperCase();
-  const rest = rest0.slice(0, rm.index).trim();
+  let rutEmpleador: string;
+  let fondo: string;
+  let rest: string;
+  if (rm) {
+    rutEmpleador = rm[1]!;
+    fondo = rm[2]!.toUpperCase();
+    rest = rest0.slice(0, rm.index).trim();
+  } else {
+    const fm = /\s+([A-E])\s*$/i.exec(rest0);
+    if (!fm) return null;
+    fondo = fm[1]!.toUpperCase();
+    rutEmpleador = "00.000.000-0";
+    rest = rest0.slice(0, fm.index).trim();
+  }
 
   const tailRe = /\s+([\d\.,]+)\s+([\d\.,]+)\s*$/;
   const tm = tailRe.exec(rest);
@@ -142,15 +152,23 @@ export function parseAfpUnoMovimientoMergedLine(line: string): AfpMovimientoCert
 
   if (montoClpAbs == null) {
     const parts = middle.split(/\s+/).filter(Boolean);
-    for (let i = parts.length - 1; i >= 0; i--) {
+    let best: number | null = null;
+    let bestIdx = -1;
+    for (let i = 0; i < parts.length; i++) {
       const tok = parts[i]!;
       if (looksLikeMovementCode(tok)) continue;
       const v = parseClpChilean(tok);
-      if (v != null && v > 0) {
-        montoClpAbs = v;
-        tipoMovimiento = parts.slice(0, i).join(" ").trim();
-        break;
+      if (v == null || v <= 0) continue;
+      if (Math.abs(v - valorCuotaClp) < 2) continue;
+      if (Math.abs(v - cuotasAbs) < 0.02 && v < 500) continue;
+      if (best == null || v > best) {
+        best = v;
+        bestIdx = i;
       }
+    }
+    if (best != null && bestIdx >= 0) {
+      montoClpAbs = best;
+      tipoMovimiento = parts.slice(0, bestIdx).join(" ").trim();
     }
   }
 

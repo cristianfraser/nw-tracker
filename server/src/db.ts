@@ -40,8 +40,47 @@ export function initSchema() {
       name TEXT NOT NULL,
       notes TEXT,
       color_rgb TEXT,
+      source_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+      account_kind TEXT NOT NULL DEFAULT 'master' CHECK (account_kind IN ('master', 'liability_view')),
       exclude_from_group_totals INTEGER NOT NULL DEFAULT 0 CHECK (exclude_from_group_totals IN (0, 1)),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS credit_card_account_config (
+      account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+      cupo_clp INTEGER,
+      cupo_usd REAL,
+      billing_cycle_start_day INTEGER NOT NULL DEFAULT 21
+        CHECK (billing_cycle_start_day BETWEEN 1 AND 31),
+      billing_cycle_end_day INTEGER
+        CHECK (billing_cycle_end_day IS NULL OR billing_cycle_end_day BETWEEN 1 AND 31),
+      notes TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS liability_groups (
+      id INTEGER PRIMARY KEY,
+      parent_id INTEGER REFERENCES liability_groups(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      label_i18n_key TEXT,
+      route_path TEXT,
+      liability_kind TEXT CHECK (liability_kind IN ('credit_card', 'mortgage', 'other'))
+    );
+
+    CREATE TABLE IF NOT EXISTS liability_group_items (
+      id INTEGER PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES liability_groups(id) ON DELETE CASCADE,
+      item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account')),
+      child_group_id INTEGER REFERENCES liability_groups(id) ON DELETE CASCADE,
+      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      CHECK (
+        (item_kind = 'group' AND child_group_id IS NOT NULL AND account_id IS NULL)
+        OR (item_kind = 'account' AND account_id IS NOT NULL AND child_group_id IS NULL)
+      ),
+      UNIQUE (group_id, child_group_id),
+      UNIQUE (group_id, account_id)
     );
 
     CREATE TABLE IF NOT EXISTS portfolio_groups (
@@ -96,9 +135,13 @@ export function initSchema() {
     CREATE TABLE IF NOT EXISTS movements (
       id INTEGER PRIMARY KEY,
       account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      amount_clp REAL NOT NULL CHECK (amount_clp != 0),
+      amount_clp REAL NOT NULL DEFAULT 0,
       occurred_on TEXT NOT NULL,
-      note TEXT
+      note TEXT,
+      units_delta REAL,
+      flow_kind TEXT,
+      amount_usd REAL,
+      ticker TEXT
     );
 
     CREATE TABLE IF NOT EXISTS valuations (
@@ -143,17 +186,6 @@ export function initSchema() {
       uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
       status TEXT NOT NULL DEFAULT 'pending',
       raw_text TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS brokerage_flows (
-      id INTEGER PRIMARY KEY,
-      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      occurred_on TEXT NOT NULL,
-      flow_kind TEXT NOT NULL CHECK (flow_kind IN ('deposit_clp', 'compra_usd', 'dividend_usd', 'withdrawal_clp', 'other')),
-      amount_clp REAL,
-      amount_usd REAL,
-      ticker TEXT,
-      note TEXT
     );
 
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -218,6 +250,12 @@ function seedReferenceData() {
         { slug: "credit_card", label: "Credit card" },
         { slug: "other_debt", label: "Other debt" },
       ],
+    },
+    {
+      slug: "credit_cards",
+      label: "Credit cards",
+      sort: 55,
+      cats: [{ slug: "credit_card", label: "Credit card" }],
     },
   ];
 

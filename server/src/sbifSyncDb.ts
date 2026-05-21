@@ -85,6 +85,21 @@ export function maxEurDate(): string | null {
   return r?.d ?? null;
 }
 
+/** Latest stored row on or before `asOfYmd` (ignores future month-end placeholders). */
+export function maxFxDateOnOrBefore(asOfYmd: string): string | null {
+  const r = db
+    .prepare(`SELECT MAX(date) AS d FROM fx_daily WHERE date <= ?`)
+    .get(asOfYmd) as { d: string | null };
+  return r?.d ?? null;
+}
+
+export function maxEurDateOnOrBefore(asOfYmd: string): string | null {
+  const r = db
+    .prepare(`SELECT MAX(date) AS d FROM eur_daily WHERE date <= ?`)
+    .get(asOfYmd) as { d: string | null };
+  return r?.d ?? null;
+}
+
 export function maxUfDate(): string | null {
   const r = db.prepare(`SELECT MAX(date) AS d FROM uf_daily`).get() as { d: string | null };
   return r?.d ?? null;

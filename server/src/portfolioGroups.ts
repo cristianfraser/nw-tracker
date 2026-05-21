@@ -1,5 +1,4 @@
 import {
-  averageRgbTriplets,
   getAccountColorRgb,
   resolvePortfolioGroupColorRgb,
   rgbTripletToCss,
@@ -90,13 +89,7 @@ function buildGroupNode(
     }
   }
 
-  const explicit = group.color_rgb;
-  const resolved =
-    explicit ??
-    averageRgbTriplets(
-      children.map((c) => ("color_rgb" in c ? c.color_rgb : ""))
-    ) ??
-    "148,163,184";
+  const resolved = group.color_rgb ?? resolvePortfolioGroupColorRgb(group.id);
 
   return {
     kind: "group",

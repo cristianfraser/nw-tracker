@@ -23,6 +23,10 @@ export type GlobalSyncStateFile = {
   sbifUfMonth?: string;
   sbifUtmMonth?: string;
   sbifIpcMonth?: string;
+  /** ISO timestamp of last failed BCentral dólar observado fetch (cleared on success). */
+  sbifUsdLastErrorAt?: string;
+  /** ISO timestamp of last failed BCentral euro observado fetch (cleared on success). */
+  sbifEurLastErrorAt?: string;
   /** Last NYSE session date we synced EOD for SPY/VEA. */
   equityEodLastNySessionYmd?: string;
   /** Last UTC day we synced crypto EOD. */

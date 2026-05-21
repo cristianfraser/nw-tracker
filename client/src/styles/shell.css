@@ -169,13 +169,14 @@
     height: 100vh;
   }
 
-  /* Ticker is fixed: pad scroll column so first content sits just below marquee + gap. */
+  /* Ticker is fixed: pad scroll column so first content sits just below marquee. */
   .layout-main {
-    padding-top: calc(var(--market-ticker-height) + var(--display-prefs-gap));
+    padding-top: calc(var(--market-ticker-height));
   }
 
   .layout-main>.content {
     padding-top: 1.25rem;
+    padding-bottom: calc(2rem + var(--display-prefs-bar-reserve) + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -200,11 +201,6 @@
     z-index: 2;
     pointer-events: none;
     background: linear-gradient(to right, var(--bg) 0%, var(--bg) 10%, transparent 100%);
-  }
-
-  /* Fixed prefs bar is out of flow; reserve vertical space so page content clears it. */
-  .layout--with-sidebar .layout-main>.content {
-    padding-top: calc(var(--market-ticker-height) + var(--display-prefs-gap) + var(--display-prefs-stack-height));
   }
 
   /* Host only wraps the bar; no in-flow height on desktop so it doesn’t stack under the ticker. */

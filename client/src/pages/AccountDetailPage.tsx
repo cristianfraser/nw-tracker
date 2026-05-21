@@ -2,6 +2,8 @@ import { useDeferredValue, useLayoutEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { CcInstallmentHistoryChart } from "../components/CcInstallmentHistoryChart";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
+import { AccountFlowsTable } from "../components/AccountFlowsTable";
+import { MonthlyPerfDetailTable } from "../components/MonthlyPerfDetailTable";
 import { Table } from "../components/Table";
 import {
   filterPointsThroughAsOfDate,
@@ -14,8 +16,8 @@ import {
 } from "../components/ValuationLineCharts";
 import { useAccountDetailBundle, useAccountMonthlyPerformance, useDashboardBundle, useSidebarNav } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { isPersonalCapitalFlowType } from "../depositFlowKind";
-import { DEFAULT_LINE_COLORS } from "../chartColors";
+import { filterAccountFlowsPersonalOnly, accountMovementsToFlowRows } from "../accountFlows";
+import { chartStrokeFromRgbTriplet } from "../chartColors";
 import { CompactEntityCard } from "../components/CompactEntityCard";
 import { DashboardCardGroupMetrics } from "../components/DashboardCardGroupMetrics";
 import { PortfolioEntityCardsStrip } from "../components/PortfolioEntityCardsStrip";
@@ -28,15 +30,15 @@ import type {
   DeptoPaymentScenarioTerm,
 } from "../types";
 import { findNavTreeNodeByAccountId } from "../portfolioNavFromApi";
+import type { EntityColorTarget } from "../entityColor";
+import { PageTitleRow } from "../components/PageTitleRow";
 import {
   accountCardTitleBalanceDelta,
   cardGroupMetricsFromAccounts,
 } from "../dashboardCardBreakdown";
 import {
   formatClp,
-  formatUsdFine,
   formatInstrumentUnits,
-  formatUfBalance,
   formatUfUnits,
   formatUfUnitsFine,
 } from "../format";
@@ -49,12 +51,6 @@ function cellClp(n: number | null | undefined) {
 function cellTxt(s: string | null | undefined) {
   if (s == null || !String(s).trim()) return "—";
   return s;
-}
-
-function cellPct(p: number | null | undefined) {
-  if (p == null || !Number.isFinite(p)) return "—";
-  const s = (p * 100).toFixed(2).replace(".", ",");
-  return `${s}%`;
 }
 
 function tasaPlusLabel(n: number | null | undefined) {
@@ -651,14 +647,6 @@ function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }
   );
 }
 
-const BROKERAGE_FLOW_LABELS: Record<string, string> = {
-  deposit_clp: "Depósito CLP",
-  withdrawal_clp: "Retiro CLP",
-  compra_usd: "Compra USD",
-  dividend_usd: "Dividendo USD",
-  other: "Otro",
-};
-
 function movementUnitsKind(categorySlug: string | null | undefined): "shares" | "coin" {
   if (categorySlug === "bitcoin" || categorySlug === "eth") return "coin";
   return "shares";
@@ -668,6 +656,7 @@ type ChartGranularity = "monthly" | "daily";
 
 /** Default visible rows in “Detalle por mes” (newest first); rest behind “Mostrar más”. */
 const MONTHLY_PERF_COLLAPSED = 12;
+const ACCOUNT_FLOWS_COLLAPSED = 10;
 
 export function AccountDetailPage() {
   const { t } = useTranslation();
@@ -696,7 +685,6 @@ export function AccountDetailPage() {
 
   const summary = detail?.summary ?? null;
   const movements = detail?.movements ?? [];
-  const flows = detail?.flows ?? [];
   const ts = detail?.ts ?? null;
   const depositInflows = detail?.depositInflows ?? null;
   const mortgageLedger = detail?.mortgageLedger ?? null;
@@ -746,12 +734,12 @@ export function AccountDetailPage() {
     }));
   }, [monthlyPerfRows]);
 
-  const displayedMovements = useMemo(() => {
-    if (!movementsOnlyPersonalDeposits) return movements;
-    return movements.filter(
-      (m) => isPersonalCapitalFlowType(m.flow_type) && !m.note?.includes("cripto-coin-only-wdw")
-    );
-  }, [movements, movementsOnlyPersonalDeposits]);
+  const allFlows = useMemo(() => accountMovementsToFlowRows(movements), [movements]);
+
+  const displayedFlows = useMemo(() => {
+    if (!movementsOnlyPersonalDeposits) return allFlows;
+    return filterAccountFlowsPersonalOnly(allFlows);
+  }, [allFlows, movementsOnlyPersonalDeposits]);
 
   useLayoutEffect(() => {
     if (!id) return;
@@ -761,6 +749,35 @@ export function AccountDetailPage() {
       setExtraCcOffsets({});
     }
   }, [id]);
+
+  const navSelf = useMemo(() => {
+    const accountId = summary?.account_id ?? (id ? Number(id) : NaN);
+    if (!Number.isFinite(accountId) || accountId <= 0) return null;
+    return findNavTreeNodeByAccountId(sidebarNav?.main ?? [], accountId);
+  }, [sidebarNav?.main, summary?.account_id, id]);
+
+  /** From `GET /api/accounts/:id/valuation-timeseries` (`accounts.color_rgb` in DB). */
+  const accountColorRgb = useMemo(() => {
+    if (summary == null || ts == null) return null;
+    return (
+      ts.accounts.accounts?.find((a) => a.account_id === summary.account_id)?.color_rgb ?? null
+    );
+  }, [summary, ts?.accounts.accounts]);
+
+  const pageColorTarget = useMemo((): EntityColorTarget | undefined => {
+    const accountId = summary?.account_id ?? (id ? Number(id) : NaN);
+    if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
+    return { kind: "account", accountId };
+  }, [summary?.account_id, id]);
+
+  const accountChartTheme = useMemo(
+    () => ({
+      bar: chartStrokeFromRgbTriplet(accountColorRgb),
+      areaStroke: "#64748b",
+      areaFill: "rgba(148, 163, 184, 0.22)",
+    }),
+    [accountColorRgb]
+  );
 
   if (detailPending) {
     return (
@@ -792,11 +809,6 @@ export function AccountDetailPage() {
   const isMortgageAccount = summary.category_slug === "mortgage";
   const ccChartsFromParsedLedger =
     summary.category_slug === "credit_card" && ccLedger.source === "db";
-  const fmtPerf = (n: number | null | undefined) => {
-    if (n == null || !Number.isFinite(n)) return "—";
-    return displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
-  };
-
   const lastChartRow =
     ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
   const accountDataKey = String(summary.account_id);
@@ -818,11 +830,15 @@ export function AccountDetailPage() {
     accountDashRow ? [accountDashRow] : [],
     metricsPeriod
   );
-  const navSelf = findNavTreeNodeByAccountId(sidebarNav?.main ?? [], summary.account_id);
   const accountNavChildren = navSelf?.children?.filter((c) => c.route_path?.trim()) ?? [];
 
   return (
     <main>
+      <PageTitleRow
+        title={ts.name}
+        colorRgb={accountColorRgb}
+        colorTarget={pageColorTarget}
+      />
       <PortfolioEntityCardsStrip
         compactSlot={
           <CompactEntityCard
@@ -867,9 +883,6 @@ export function AccountDetailPage() {
           ) : null
         }
       />
-      <p className="muted mono" style={{ marginTop: "0.35rem" }}>
-        {t("accountDetail.card.accountNumber", { id: summary.account_id })}
-      </p>
 
       {summary.position != null && (
         <div style={{ marginTop: "0.75rem" }}>
@@ -1009,13 +1022,13 @@ export function AccountDetailPage() {
                     {
                       dataKey: "nominal_pl",
                       name: isMortgageAccount ? "Coste financiero mes" : "Δ mes (P/L nominal)",
-                      color: DEFAULT_LINE_COLORS[0] ?? "#3b82f6",
+                      color: accountChartTheme.bar,
                     },
                   ]}
                   areaKey="ytd_nominal_pl"
                   areaName="YTD"
-                  areaFill="rgba(148, 163, 184, 0.28)"
-                  areaStroke="#94a3b8"
+                  areaFill={accountChartTheme.areaFill}
+                  areaStroke={accountChartTheme.areaStroke}
                 />
               </div>
               <h3 style={{ marginTop: "1.35rem", marginBottom: "0.35rem", fontSize: "1.05rem" }}>
@@ -1031,86 +1044,28 @@ export function AccountDetailPage() {
                     {
                       dataKey: "delta_month",
                       name: isMortgageAccount ? "Coste financiero mes" : "Monthly Δ",
-                      color: DEFAULT_LINE_COLORS[2] ?? "#a78bfa",
+                      color: accountChartTheme.bar,
                     },
                   ]}
                   areaKey="accumulated_earnings"
                   areaName="Accumulated earnings"
-                  areaFill="rgba(148, 163, 184, 0.28)"
-                  areaStroke="#94a3b8"
+                  areaFill={accountChartTheme.areaFill}
+                  areaStroke={accountChartTheme.areaStroke}
                   alternateYearAreaStripes={false}
                 />
               </div>
               <h3 style={{ marginTop: "1.25rem", marginBottom: "0.35rem", fontSize: "1.05rem" }}>
-                Detalle por mes
+                {t("accountDetail.monthlyDetailTitle")}
               </h3>
-              <Table
+              <MonthlyPerfDetailTable
                 key={`${id}-${displayUnit}-mp-detail`}
+                rows={monthlyPerfRows}
+                displayUnit={displayUnit}
                 collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
-                showMoreLabel={`Mostrar más (${monthlyPerfRows.length - MONTHLY_PERF_COLLAPSED} meses anteriores)`}
-                showLessLabel="Ocultar meses anteriores"
-                header={
-                  <thead>
-                    <tr>
-                      <th>Mes (cierre)</th>
-                      <th>Cierre</th>
-                      {isMortgageAccount ? (
-                        <>
-                          <th style={{ whiteSpace: "nowrap" }}>UF día</th>
-                          <th style={{ whiteSpace: "nowrap" }}>Saldo UF</th>
-                        </>
-                      ) : null}
-                      <th>Cierre ant.</th>
-                      <th>Aportes netos</th>
-                      <th>{isAfpAccount ? "Cuotas (aportes)" : "Stock inflows"}</th>
-                      <th>{isMortgageAccount ? "Coste fin. mes" : "P/L mes"}</th>
-                      <th>{isMortgageAccount ? "% s/ saldo ant." : "% mes"}</th>
-                      <th>{isMortgageAccount ? "Coste fin. YTD" : "P/L YTD"}</th>
-                      <th>{isMortgageAccount ? "Coste fin. acum." : "P/L acum."}</th>
-                    </tr>
-                  </thead>
-                }
-              >
-                {monthlyPerfRows.map((row) => (
-                  <tr key={row.as_of_date}>
-                    <td className="mono">{row.as_of_date}</td>
-                    <td className="mono">{fmtPerf(row.closing_value)}</td>
-                    {isMortgageAccount ? (
-                      <>
-                        <td className="mono" style={{ whiteSpace: "nowrap" }}>
-                          {row.uf_clp_day != null && Number.isFinite(row.uf_clp_day)
-                            ? formatClp(Math.round(row.uf_clp_day))
-                            : "—"}
-                        </td>
-                        <td className="mono" style={{ whiteSpace: "nowrap" }}>
-                          {formatUfBalance(row.closing_balance_uf)}
-                        </td>
-                      </>
-                    ) : null}
-                    <td className="mono">{fmtPerf(row.prior_closing)}</td>
-                    <td className="mono">{fmtPerf(row.net_capital_flow)}</td>
-                    <td className="mono">
-                      {(() => {
-                        const slug = summary?.category_slug ?? "";
-                        const u = row.stock_units_inflow ?? 0;
-                        if (!Number.isFinite(u) || u === 0) return "—";
-                        if (slug === "afp") {
-                          return formatInstrumentUnits(u, "shares");
-                        }
-                        const kind =
-                          slug === "bitcoin" || slug === "eth"
-                            ? ("coin" as const)
-                            : ("shares" as const);
-                        return formatInstrumentUnits(u, kind);
-                      })()}
-                    </td>
-                    <td className="mono">{fmtPerf(row.nominal_pl)}</td>
-                    <td className="mono">{cellPct(row.pct_month)}</td>
-                    <td className="mono">{fmtPerf(row.ytd_nominal_pl)}</td>
-                    <td className="mono">{fmtPerf(row.cumulative_nominal_pl)}</td>
-                  </tr>
-                ))}
-              </Table>
+                isMortgageAccount={isMortgageAccount}
+                isAfpAccount={isAfpAccount}
+                movementUnitsKind={movementUnitsKind}
+              />
             </>
           )}
         </>
@@ -1209,15 +1164,11 @@ export function AccountDetailPage() {
         </>
       ) : null}
 
-      <h2>Movements</h2>
+      <h2>{t("accountDetail.flowsTitle")}</h2>
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-        Tipo de flujo, monto en CLP y unidades cuando el importe las trae (AFP cuotas, cripto, etc.).{" "}
-        <span className="mono">POST /api/accounts/{id}/movements</span> con cuerpo{" "}
-        <span className="mono">
-          {"{ amount_clp, occurred_on, note?, units_delta? }"}
-        </span>
-        . En AFP, cripto y Fintual,{" "}
-        <span className="mono">units_delta</span> (o <span className="mono">unit_amount</span>) es obligatorio.
+        Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
+        <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
+        Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
       </p>
       <label
         style={{
@@ -1234,95 +1185,17 @@ export function AccountDetailPage() {
           checked={movementsOnlyPersonalDeposits}
           onChange={(e) => setMovementsOnlyPersonalDeposits(e.target.checked)}
         />
-        Solo aportes propios
+        {t("accountDetail.flowsPersonalOnly")}
       </label>
-      <Table
-        header={
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Fecha</th>
-              <th>Monto CLP</th>
-              <th>Unidades</th>
-              <th>Nota</th>
-            </tr>
-          </thead>
-        }
-      >
-        {displayedMovements.length === 0 ? (
-          <tr>
-            <td colSpan={5} className="muted">
-              {movements.length === 0
-                ? "No movements."
-                : "Ningún movimiento coincide con el filtro."}
-            </td>
-          </tr>
-        ) : (
-          displayedMovements.map((m) => (
-            <tr key={m.id}>
-              <td>{m.flow_type_label}</td>
-              <td>{m.occurred_on}</td>
-              <td className="mono">{formatClp(m.amount_clp)}</td>
-              <td className="mono">
-                {m.units_delta != null &&
-                Number.isFinite(m.units_delta) &&
-                Math.abs(m.units_delta) > 1e-12
-                  ? formatInstrumentUnits(m.units_delta, movementUnitsKind(summary.category_slug))
-                  : "—"}
-              </td>
-              <td className="muted">{m.note ?? "—"}</td>
-            </tr>
-          ))
-        )}
-      </Table>
-
-      <h2>Bolsa (depósito CLP, compra USD, dividendo USD)</h2>
-      <Table
-        header={
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Fecha</th>
-              <th>Ticker</th>
-              <th>Monto CLP</th>
-              <th>Monto USD</th>
-              <th>Unidades</th>
-              <th>Nota</th>
-            </tr>
-          </thead>
-        }
-      >
-        {flows.length === 0 ? (
-          <tr>
-            <td colSpan={7} className="muted">
-              No hay flujos. Usa{" "}
-              <span className="mono">POST /api/accounts/{id}/brokerage-flows</span> (body:{" "}
-              <span className="mono">flow_kind</span>, <span className="mono">amount_usd</span> o{" "}
-              <span className="mono">amount_clp</span>, <span className="mono">ticker</span>;{" "}
-              <span className="mono">units_delta</span> obligatorio en{" "}
-              <span className="mono">compra_usd</span> / <span className="mono">dividend_usd</span>).
-            </td>
-          </tr>
-        ) : (
-          flows.map((f) => (
-            <tr key={f.id}>
-              <td>{BROKERAGE_FLOW_LABELS[f.flow_kind] ?? f.flow_kind}</td>
-              <td>{f.occurred_on}</td>
-              <td>{f.ticker ?? "—"}</td>
-              <td className="mono">{f.amount_clp != null ? formatClp(f.amount_clp) : "—"}</td>
-              <td className="mono">{f.amount_usd != null ? formatUsdFine(f.amount_usd) : "—"}</td>
-              <td className="mono">
-                {f.units_delta != null &&
-                Number.isFinite(f.units_delta) &&
-                Math.abs(f.units_delta) > 1e-12
-                  ? formatInstrumentUnits(f.units_delta, "shares")
-                  : "—"}
-              </td>
-              <td className="muted">{f.note ?? "—"}</td>
-            </tr>
-          ))
-        )}
-      </Table>
+      <AccountFlowsTable
+        rows={displayedFlows.map((row) => ({
+          ...row,
+          category_slug: summary.category_slug ?? undefined,
+        }))}
+        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
+        movementUnitsKind={movementUnitsKind}
+        totalCount={allFlows.length}
+      />
     </main>
   );
 }

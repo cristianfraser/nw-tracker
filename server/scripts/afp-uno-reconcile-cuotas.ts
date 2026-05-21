@@ -1,5 +1,5 @@
 /**
- * Reconcile Σ AFP cuotas movements to the official AFP UNO website total (default 293.51).
+ * Reconcile Σ AFP cuotas movements to the official AFP UNO website total (default 296.46).
  * Removes prior synthetic-trim / website-reconcile rows and inserts one adjustment.
  *
  *   npm run afp:uno:reconcile-cuotas -w nw-tracker-server -- --account-id=NN --dry-run
@@ -38,7 +38,7 @@ function parseArgs(argv: string[]) {
 function main() {
   const { accountId, dryRun, target: targetArg, undoOnly } = parseArgs(process.argv.slice(2));
   if (accountId == null || !Number.isFinite(accountId) || accountId <= 0) {
-    console.error("Usage: --account-id=NN [--apply] [--target=293.51]");
+    console.error("Usage: --account-id=NN [--apply] [--target=296.46]");
     process.exit(1);
   }
   const slug = db

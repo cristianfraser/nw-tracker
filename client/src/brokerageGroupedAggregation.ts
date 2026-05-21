@@ -127,7 +127,7 @@ export function appendGroupTabTotalsClient(block: TimeseriesBlock): TimeseriesBl
   const totalLine: TimeseriesAccountLine = anyChildDep
     ? {
         account_id: -1,
-        name: "Total (clase)",
+        name: "Total",
         dataKey: GROUP_TAB_VAL_TOTAL,
         valueSeriesType: "reference",
         depositDataKey: GROUP_TAB_DEP_TOTAL,
@@ -135,7 +135,7 @@ export function appendGroupTabTotalsClient(block: TimeseriesBlock): TimeseriesBl
       }
     : {
         account_id: -1,
-        name: "Total (clase)",
+        name: "Total",
         dataKey: GROUP_TAB_VAL_TOTAL,
         valueSeriesType: "reference",
       };

@@ -59,7 +59,7 @@ export function DetailedGroupCard({
           mountSeedKey={cardSlug}
         />
       </div>
-      {metrics ? <div className="dashboard-card-metrics-slot">{metrics}</div> : null}
+      {metrics ? <div>{metrics}</div> : null}
       {breakdown}
     </div>
   );

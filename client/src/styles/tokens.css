@@ -7,6 +7,8 @@
   --display-prefs-side: 0.75rem;
   /** Reserved height under ticker so main content clears the fixed prefs bar (desktop). */
   --display-prefs-stack-height: 2.625rem;
+  /** Mobile: fixed bottom dock (progressive blur fade + toolbar) — content padding-bottom. */
+  --display-prefs-bar-reserve: 7.5rem;
   --nav-drawer-tab-gap: 0.5rem;
   --bg: #0c0f14;
   --surface: #141a22;

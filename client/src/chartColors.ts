@@ -13,7 +13,26 @@ export function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a
   return `rgb(${p[0]},${p[1]},${p[2]})`;
 }
 
-function strokeFromAccountColorRgb(colorRgb: string | undefined): string | undefined {
+export function rgbTripletToHex(raw: string | null | undefined, fallback = "#94a3b8"): string {
+  const p = parseRgbTriplet(raw);
+  if (!p) return fallback;
+  return `#${p.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function chartStrokeFromRgbTriplet(
+  colorRgb: string | null | undefined,
+  fallback = DEFAULT_LINE_COLORS[0]!
+): string {
+  return strokeFromAccountColorRgb(colorRgb) ?? fallback;
+}
+
+export function chartFillFromRgbTriplet(colorRgb: string | null | undefined, alpha = 0.28): string {
+  const p = parseRgbTriplet(colorRgb);
+  if (!p) return `rgba(148, 163, 184, ${alpha})`;
+  return `rgba(${p[0]}, ${p[1]}, ${p[2]}, ${alpha})`;
+}
+
+function strokeFromAccountColorRgb(colorRgb: string | null | undefined): string | undefined {
   if (!colorRgb) return undefined;
   return rgbTripletToCss(colorRgb);
 }
@@ -54,8 +73,6 @@ const RETIREMENT = ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ad
 const BROKERAGE = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
 /** Same blue as dashboard “Brokerage (consolidado)” / allocation brokerage slice (`BROKERAGE[3]`). */
 const FINTUAL_RN_BROKER_STROKE = BROKERAGE[3];
-/** Dashboard primary: fondo reserva / “Reserva” line — light bluish grey (not cash purple ramp). */
-const DASHBOARD_RESERVA_STROKE = "#b4c8d4";
 const CRYPTO = ["#c9a227", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a"];
 const CASH = ["#4c1d95", "#5b21b6", "#6d28d9", "#7c3aed", "#8b5cf6", "#a78bfa", "#c4b5fd"];
 const REAL_ESTATE = ["#831843", "#9d174d", "#be185d", "#db2777", "#ec4899", "#f472b6", "#fbcfe8"];
@@ -146,23 +163,19 @@ const BUCKET_STROKE: Record<string, string> = {
   available: "#5eead4",
 };
 
-export function allocationBucketColor(groupSlug: string): string {
+export function allocationBucketColor(groupSlug: string, colorRgb?: string | null): string {
+  const fromDb = strokeFromAccountColorRgb(colorRgb ?? undefined);
+  if (fromDb) return fromDb;
   return BUCKET_STROKE[groupSlug] ?? shadesForGroupSlug(groupSlug)[3] ?? "#94a3b8";
 }
 
 export function overviewLineColor(dataKey: string): string {
-  if (dataKey === "liabilities") return REAL_ESTATE[2];
-  return BUCKET_STROKE[dataKey] ?? "#94a3b8";
+  return BUCKET_STROKE[dataKey] ?? shadesForGroupSlug(dataKey === "cash" ? "cash_eqs" : dataKey)[3] ?? "#94a3b8";
 }
 
 export type ChartColorPlan =
   | { kind: "default" }
-  | {
-    kind: "dashboard-primary";
-    dataKeyToGroup: Record<string, string>;
-    /** Account line colors keyed by chart `colorIndex` (from timeseries `color_rgb`). */
-    colorRgbByColorIndex?: Map<number, string>;
-  }
+  | { kind: "dashboard-primary" }
   | { kind: "dashboard-overview" }
   | { kind: "dashboard-patrimonio-usd" }
   | {
@@ -177,6 +190,8 @@ export type LineSeriesColorInput = {
   dataKey: string;
   name: string;
   colorIndex: number;
+  /** Server `portfolio_groups` color (`r,g,b`) when provided. */
+  color_rgb?: string;
   isDeposit?: boolean;
   /** Personal-only cumulative deposits (dashed in chart). */
   isDisplayDeposit?: boolean;
@@ -185,26 +200,6 @@ export type LineSeriesColorInput = {
 };
 
 export type ResolvedLineSeriesItem = LineSeriesColorInput & { stroke: string };
-
-/**
- * Dashboard primary chart: first four retirement greens go to APV-A, AFP, APV-B, AFC (semantic order 0–3).
- * We assign them **reversed** (AFC gets the darkest that was APV-A’s, etc.). Other retirement lines use palette indices ≥ 4.
- */
-function dashboardRetirementQuartetRankFromName(name: string): number | null {
-  const n = name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-  // Merged dashboard primary lines (must precede single-leg "afc" / "afp" checks).
-  if (n.includes("afp") && n.includes("afc")) return 1;
-  if (n === "apv") return 0;
-  if (n.includes("afc")) return 3;
-  if (n.includes("apv") && (n.includes("principal") || n.includes("pre-fintual"))) return 0;
-  if (n.includes("apv") && (n.includes("regimen b") || n.includes("apv-b") || n.includes("apv b"))) return 2;
-  if (n.includes("apv") && (n.includes("regimen a") || n.includes("apv-a") || n.includes("apv a"))) return 0;
-  if (n.includes("afp")) return 1;
-  return null;
-}
 
 function isFintualRnBrokerageAccountName(name: string): boolean {
   const n = name
@@ -216,22 +211,6 @@ function isFintualRnBrokerageAccountName(name: string): boolean {
   return n.includes("risky") || n.includes("norris") || /\brn\b/.test(n);
 }
 
-function isDashboardReservaCashLine(name: string): boolean {
-  const n = name.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
-  if (n === "reserva") return true;
-  return n.includes("fondo reserva") || (n.includes("reserva") && n.includes("fintual"));
-}
-
-/** Dashboard primary merged mutual-funds line (matches brokerage subgroup series name). */
-function isDashboardMutualFundsBrokerageLine(name: string): boolean {
-  const n = name.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
-  return (
-    n === "mutual funds" ||
-    n === "fondos mutuos" ||
-    (n.includes("fondos") && n.includes("mutuos"))
-  );
-}
-
 export function resolveLineSeriesColors(
   series: LineSeriesColorInput[],
   plan: ChartColorPlan | undefined
@@ -239,14 +218,14 @@ export function resolveLineSeriesColors(
   if (!plan || plan.kind === "default") {
     const valueStrokeByColorIndex = new Map<number, string>();
     return series.map((s) => {
+      const fallback = DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length]!;
       if (!s.isDeposit) {
-        const stroke = DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
+        const stroke = strokeFromAccountColorRgb(s.color_rgb) ?? fallback;
         valueStrokeByColorIndex.set(s.colorIndex, stroke);
         return { ...s, stroke };
       }
       const base =
-        valueStrokeByColorIndex.get(s.colorIndex) ??
-        DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
+        valueStrokeByColorIndex.get(s.colorIndex) ?? strokeFromAccountColorRgb(s.color_rgb) ?? fallback;
       return { ...s, stroke: lightenStrokeForAccumulated(base) };
     });
   }
@@ -254,7 +233,7 @@ export function resolveLineSeriesColors(
   if (plan.kind === "dashboard-overview") {
     return series.map((s) => ({
       ...s,
-      stroke: overviewLineColor(s.dataKey),
+      stroke: strokeFromAccountColorRgb(s.color_rgb) ?? overviewLineColor(s.dataKey),
     }));
   }
 
@@ -271,10 +250,8 @@ export function resolveLineSeriesColors(
   }
 
   if (plan.kind === "dashboard-primary") {
-    const nextByGroup = new Map<string, number>();
     const strokeByColorIndex = new Map<number, string>();
-    const colorRgbByColorIndex = plan.colorRgbByColorIndex;
-    let retirementOtherIndex = 0;
+    const missingColor = "#f43f5e";
     return series.map((s) => {
       if (s.isDeposit) {
         const base =
@@ -284,46 +261,7 @@ export function resolveLineSeriesColors(
           stroke: lightenStrokeForAccumulated(base),
         };
       }
-      const fromDb = colorRgbByColorIndex?.get(s.colorIndex);
-      if (fromDb) {
-        const stroke = rgbTripletToCss(fromDb);
-        strokeByColorIndex.set(s.colorIndex, stroke);
-        return { ...s, stroke };
-      }
-      const g = plan.dataKeyToGroup[s.dataKey] ?? "other";
-      const palette = shadesForGroupSlug(g);
-
-      let stroke: string;
-      if (g === "retirement") {
-        const rank = dashboardRetirementQuartetRankFromName(s.name);
-        if (rank != null) {
-          stroke = palette[3 - rank]!;
-        } else {
-          const start = 4;
-          if (start < palette.length) {
-            const span = palette.length - start;
-            stroke = palette[start + (retirementOtherIndex++ % span)]!;
-          } else {
-            stroke = palette[retirementOtherIndex++ % palette.length]!;
-          }
-        }
-      } else if (g === "cash_eqs" && isDashboardReservaCashLine(s.name)) {
-        const idx = nextByGroup.get(g) ?? 0;
-        nextByGroup.set(g, idx + 1);
-        stroke = DASHBOARD_RESERVA_STROKE;
-      } else if (
-        g === "brokerage" &&
-        (isFintualRnBrokerageAccountName(s.name) || isDashboardMutualFundsBrokerageLine(s.name))
-      ) {
-        const idx = nextByGroup.get(g) ?? 0;
-        nextByGroup.set(g, idx + 1);
-        stroke = FINTUAL_RN_BROKER_STROKE;
-      } else {
-        const idx = nextByGroup.get(g) ?? 0;
-        nextByGroup.set(g, idx + 1);
-        stroke = palette[idx % palette.length]!;
-      }
-
+      const stroke = strokeFromAccountColorRgb(s.color_rgb) ?? missingColor;
       strokeByColorIndex.set(s.colorIndex, stroke);
       return { ...s, stroke };
     });
@@ -334,8 +272,20 @@ export function resolveLineSeriesColors(
       plan.groupSlug === "brokerage" && plan.brokerageSubgroup === "crypto" ? "crypto" : plan.groupSlug;
     const { byDataKey } = buildGroupTabColorMaps(colorSlug, plan.accounts);
     return series.map((s) => {
-      if (plan.groupSlug === "liabilities" && (s.dataKey === "available" || s.dataKey === "all_available")) {
-        const stroke = BUCKET_STROKE[s.dataKey] ?? "#2dd4bf";
+      if (
+        plan.groupSlug === "liabilities" &&
+        (s.dataKey === "available" ||
+          s.dataKey === "all_available" ||
+          s.dataKey.startsWith("ref:"))
+      ) {
+        const stroke =
+          strokeFromAccountColorRgb(s.color_rgb) ??
+          BUCKET_STROKE[s.dataKey] ??
+          (s.dataKey.includes("disponible_total") ? "#2dd4bf" : "#5eead4");
+        return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
+      }
+      if (plan.groupSlug === "liabilities" && s.dataKey === "__group_val_total") {
+        const stroke = strokeFromAccountColorRgb(s.color_rgb) ?? "#cbd5e1";
         return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
       }
       const base = byDataKey.get(s.dataKey) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
@@ -349,7 +299,7 @@ export function resolveLineSeriesColors(
   }));
 }
 
-/** Same hue as dashboard primary `crypto_total` (first `crypto` bucket shade). */
+/** BTC line on brokerage crypto tab. */
 const CRYPTO_TAB_BTC_MUSTARD = CRYPTO[0];
 const CRYPTO_TAB_ETH_GREY_BLUE = "#4f7fb8";
 
@@ -381,6 +331,58 @@ function isLiabilitiesMortgageAccountName(name: string): boolean {
   );
 }
 
+/**
+ * Negative `account_id` on grouped charts → portfolio group slug (mirrors server
+ * `SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG`).
+ */
+const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, string>> = {
+  [-201]: "brokerage_mutual_funds",
+  [-202]: "brokerage_acciones",
+  [-203]: "brokerage_crypto",
+  [-601]: "brokerage",
+  [-602]: "retirement",
+  [-611]: "brokerage_mutual_funds",
+  [-612]: "brokerage_acciones",
+  [-613]: "brokerage_crypto",
+  [-614]: "retirement_afp_afc",
+  [-615]: "retirement_apv",
+  [-701]: "retirement_afp_afc",
+  [-702]: "retirement_apv",
+  [-703]: "retirement_apv_a",
+  [-704]: "retirement_apv_b",
+  [-9101]: "retirement_afp_afc",
+  [-9102]: "retirement_apv",
+  [-9201]: "cash_eqs",
+};
+
+/** Fallback stroke when `color_rgb` is not on the series (matches legend families). */
+function syntheticPortfolioGroupStroke(portfolioGroupSlug: string): string {
+  switch (portfolioGroupSlug) {
+    case "brokerage_mutual_funds":
+      return FINTUAL_RN_BROKER_STROKE;
+    case "brokerage_acciones":
+      return "#34d399";
+    case "brokerage_crypto":
+      return CRYPTO[3]!;
+    case "brokerage":
+      return BROKERAGE[3]!;
+    case "retirement":
+      return RETIREMENT[4]!;
+    case "retirement_afp_afc":
+      return RETIREMENT[3]!;
+    case "retirement_apv":
+      return RETIREMENT[0]!;
+    case "retirement_apv_a":
+      return RETIREMENT[0]!;
+    case "retirement_apv_b":
+      return RETIREMENT[2]!;
+    case "cash_eqs":
+      return CASH[4]!;
+    default:
+      return allocationBucketColor(portfolioGroupSlug as AssetGroupSlug);
+  }
+}
+
 function isLiabilitiesCreditCardAccountName(name: string): boolean {
   const n = normAccountLabel(name);
   return (
@@ -408,15 +410,15 @@ export function buildGroupTabColorMaps(
   for (const a of accounts) {
     const fromDb = strokeFromAccountColorRgb("color_rgb" in a ? a.color_rgb : undefined);
     let stroke: string;
+    const portfolioGroupSlug = SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG[a.account_id];
     if (fromDb) {
       stroke = fromDb;
       hueIndex += 1;
+    } else if (portfolioGroupSlug) {
+      stroke = syntheticPortfolioGroupStroke(portfolioGroupSlug);
+      hueIndex += 1;
     } else if (a.account_id === -1) stroke = "#cbd5e1";
     else if (a.account_id === -4) stroke = "#fb7185";
-    /** Brokerage “Todas” + grouped: synthetic rows from `aggregateBrokerageAllViewValuationBlock`. */
-    else if (groupSlug === "brokerage" && a.account_id === -201) stroke = FINTUAL_RN_BROKER_STROKE;
-    else if (groupSlug === "brokerage" && a.account_id === -202) stroke = "#34d399";
-    else if (groupSlug === "brokerage" && a.account_id === -203) stroke = CRYPTO[3]!;
     else if (groupSlug === "brokerage" && isFintualRnBrokerageAccountName(a.name)) {
       stroke = FINTUAL_RN_BROKER_STROKE;
       hueIndex += 1;

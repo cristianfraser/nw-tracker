@@ -6,7 +6,10 @@
     }
   },
   "rates": {
-    "instrumentDisplayHint": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD."
+    "instrumentDisplayHint": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD.",
+    "recentColDate": "Fecha",
+    "recentColValue": "Valor",
+    "recentEmpty": "Sin datos recientes"
   },
   "brokerage": {
     "groups": {
@@ -29,7 +32,11 @@
   },
   "liabilities": {
     "mortgage": "hipoteca",
-    "creditCard": "tarjeta de crédito"
+    "creditCard": "tarjeta de crédito",
+    "ref": {
+      "disponible": "Disponible",
+      "disponibleTotal": "Disponible total"
+    }
   },
   "charts": {
     "accumulatedDeposits": "aportes acum.",
@@ -60,7 +67,7 @@
     },
     "sections": {
       "primaryAccountsTitle": "Cuentas principales",
-      "overviewTitle": "Inmuebles, buckets consolidados y patrimonio neto",
+      "overviewTitle": "Patrimonio neto",
       "netWorthUsdSectionTitle": "Patrimonio neto, invested y niveles US$ (CLP)",
       "netWorthUsdSectionHint": "Patrimonio neto e invested en CLP. Líneas punteadas: equivalente CLP de US$10k, US$50k, US$100k, US$250k y US$500k según el tipo de cambio de cada fecha (US$ × USD/CLP del día). El eje Y sigue solo patrimonio e invested; los niveles US$ pueden quedar fuera de escala.",
       "netWorthUsdChartTitle": "Patrimonio neto vs invested (referencia US$)",
@@ -100,6 +107,10 @@
       "title": "Asignación (últimas valorizaciones)",
       "empty": "Agrega cuentas y valorizaciones para ver el gráfico."
     },
+    "accountsTreeTitle": "Cuentas",
+    "accountsTreeEmpty": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts.",
+    "monthlyDetailHint": "Totales por mes (suma de cuentas de patrimonio neto).",
+    "flowsHint": "Movimientos de todas las cuentas de patrimonio neto, ordenados por fecha.",
     "combinedMonthlyDelta": "Σ Δ mensual",
     "combinedAnnualDelta": "Σ Δ anual",
     "cardBreakdown": {
@@ -126,15 +137,58 @@
     "rates": "Tipos de cambio",
     "messages": "Mensajes"
   },
+  "detail": {
+    "colorPicker": {
+      "open": "Elegir color",
+      "hue": "Tono",
+      "hex": "Hex",
+      "clear": "Quitar color personalizado"
+    }
+  },
   "accountDetail": {
     "chart": {
       "seriesLabel": "Serie:",
       "monthlyEnd": "Mensual (fin de mes)",
       "daily": "Diario"
     },
-    "card": {
-      "accountNumber": "Cuenta n.º {{id}}"
-    }
+    "monthlyDetailTitle": "Detalle por mes",
+    "flowsTitle": "Flujos",
+    "monthCloseColumn": "Mes (cierre)",
+    "closingColumn": "Cierre",
+    "ufDayColumn": "UF día",
+    "balanceUfColumn": "Saldo UF",
+    "priorClosingColumn": "Cierre ant.",
+    "netDepositsColumn": "Aportes netos",
+    "flowTypeColumn": "Tipo",
+    "flowDateColumn": "Fecha",
+    "flowTickerColumn": "Ticker",
+    "flowAmountClpColumn": "Monto CLP",
+    "flowAmountUsdColumn": "Monto USD",
+    "flowUnitsColumn": "Unidades",
+    "flowNoteColumn": "Nota",
+    "flowsEmpty": "No hay flujos.",
+    "flowsFilteredEmpty": "Ningún flujo coincide con el filtro.",
+    "flowsPersonalOnly": "Solo aportes propios"
+  },
+  "groupPage": {
+    "monthlyDetailTitle": "Detalle por mes",
+    "flowsTitle": "Flujos",
+    "flowsAccountColumn": "Cuenta",
+    "monthlyDetailHint": "Totales del grupo por mes (suma de las cuentas hijas).",
+    "monthlyDetailEmpty": "Sin datos de rendimiento mensual para las cuentas de este grupo.",
+    "flowsHint": "Movimientos de todas las cuentas hijas, ordenados por fecha.",
+    "accountsTreeTitle": "Cuentas en esta vista",
+    "accountsTreeName": "Nombre",
+    "accountsTreeCategory": "Categoría",
+    "accountsTreeGroup": "Clase",
+    "accountsTreeNotes": "Notas",
+    "accountsTreeEmpty": "Aún no hay cuentas en esta vista."
+  },
+  "table": {
+    "showMoreMonths": "Mostrar más ({{count}} meses anteriores)",
+    "showLessMonths": "Ocultar meses anteriores",
+    "showMoreFlows": "Mostrar más ({{count}} flujos anteriores)",
+    "showLessFlows": "Ocultar flujos anteriores"
   },
   "messages": {
     "pageTitle": "Mensajes",
@@ -143,6 +197,27 @@
     "notificationsEmpty": "Sin notificaciones.",
     "logsTitle": "Registro de sync",
     "logsEmpty": "Sin entradas de sync.",
+    "sync": {
+      "lastSync": "Último sync: {{time}} ({{ago}})",
+      "lastSyncNever": "Último sync: —",
+      "nextCheck": "Próximo chequeo del sync: {{time}} (en {{remaining}})",
+      "nextCheckUnknown": "Próximo chequeo del sync: —",
+      "schedulerOff": "Sync automático desactivado (GLOBAL_SYNC_ENABLED=0).",
+      "inFlight": "Sync en curso…",
+      "statusOk": "Al día",
+      "statusStale": "Desactualizado",
+      "statusDisabled": "No configurado",
+      "sources": {
+        "afp_uno": "AFP UNO (cuota del día)",
+        "fintual": "Fintual (metas, desde 18:00 Chile)",
+        "sbif_usd": "Banco Central — dólar observado (desde 18:00 Chile)",
+        "sbif_eur": "Banco Central — euro observado (desde 18:00 Chile)",
+        "sbif_uf": "Banco Central — UF (desde día 9 del mes)",
+        "sbif_utm": "Banco Central — UTM (desde día 9 del mes)",
+        "sbif_ipc": "Banco Central — IPC (desde día 9 del mes)",
+        "equity_eod": "Mercados — SPY/VEA y cripto (EOD)"
+      }
+    },
     "showMore": "Mostrar más…",
     "showLess": "Mostrar menos…",
     "colDate": "Fecha",

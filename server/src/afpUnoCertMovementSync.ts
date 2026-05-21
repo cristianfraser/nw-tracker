@@ -7,20 +7,9 @@ import { db } from "./db.js";
 import { AFP_UNO_CUOTA_SERIES_KEY, ymdFromDdMmYyyy } from "./afpQuetalmiApi.js";
 import { parseAfpCertificadoBody } from "./afpUnoCertMovimientosParse.js";
 import type { AfpCertMovementRow } from "./afpUnoCertParse.js";
+import { aggregateAfpCertCuotasByPeriodForTable1 } from "./afpUnoCertTable1Aggregation.js";
 
 type Agg = { monto: number; cuotas: number; rows: AfpCertMovementRow[] };
-
-function aggregateByPeriod(rows: AfpCertMovementRow[]): Map<string, Agg> {
-  const m = new Map<string, Agg>();
-  for (const r of rows) {
-    const a = m.get(r.periodYm) ?? { monto: 0, cuotas: 0, rows: [] };
-    a.monto += r.montoClp;
-    a.cuotas += r.cuotasDelta;
-    a.rows.push(r);
-    m.set(r.periodYm, a);
-  }
-  return m;
-}
 
 function movementMonthKey(occurredOn: string): string | null {
   const d = /^(\d{4}-\d{2})-\d{2}$/.exec(occurredOn.trim());
@@ -57,7 +46,7 @@ export function applyAfpUnoCertificadoCuotasToMovements(opts: {
     return { matched: 0, warned: 0, fundUnitSeeded: 0, fundUnitWouldSeed: 0 };
   }
 
-  const byPeriod = aggregateByPeriod(parsed);
+  const byPeriod = aggregateAfpCertCuotasByPeriodForTable1(parsed);
 
   const movs = db
     .prepare(
