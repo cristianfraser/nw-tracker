@@ -1,30 +1,4 @@
-import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
-
-function walk(nodes: NavTreeNodeDto[], visit: (n: NavTreeNodeDto) => boolean): NavTreeNodeDto | null {
-  for (const n of nodes) {
-    if (visit(n)) return n;
-    const hit = walk(n.children ?? [], visit);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-/**
- * Find a portfolio nav node for an asset-class page (`asset_group_slug`) or by portfolio `slug`
- * (e.g. `inversiones`, `liabilities`).
- */
-export function findPortfolioNavNodeForPage(
-  nav: SidebarNavResponse | null | undefined,
-  opts: { assetGroupSlug?: string; portfolioSlug?: string }
-): NavTreeNodeDto | null {
-  if (!nav?.main?.length) return null;
-  const { assetGroupSlug, portfolioSlug } = opts;
-  return walk(nav.main, (n) => {
-    if (portfolioSlug && n.slug === portfolioSlug) return true;
-    if (assetGroupSlug && n.asset_group_slug === assetGroupSlug) return true;
-    return false;
-  });
-}
+import type { NavTreeNodeDto } from "./types";
 
 export function collectNavAccountDataKeys(node: NavTreeNodeDto): string[] {
   const keys: string[] = [];

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SyncSourceDisplayStatus, SyncStatusResponse } from "../types";
+import { cn } from "../cn";
 import styles from "./SyncLogStatusPanel.module.css";
 
 function formatWhenEs(iso: string): string {
@@ -81,20 +82,18 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
 
   return (
     <div className={styles.panel}>
-      <p className={`muted ${styles.scheduleLine}`}>{lastLine}</p>
-      <p className={`muted ${styles.scheduleLine}`}>{nextLine}</p>
+      <p className={cn("muted", styles.scheduleLine)}>{lastLine}</p>
+      <p className={cn("muted", styles.scheduleLine)}>{nextLine}</p>
       <ul className={styles.sourceList}>
         {status.sources.map((row) => (
           <li key={row.source} className={styles.sourceRow}>
             <span className={styles.sourceName}>{t(`messages.sync.sources.${row.source}`)}</span>
             <span
-              className={
-                row.status === "stale"
-                  ? styles.badgeStale
-                  : row.status === "ok"
-                    ? styles.badgeOk
-                    : styles.badgeMuted
-              }
+              className={cn(
+                row.status === "stale" && styles.badgeStale,
+                row.status === "ok" && styles.badgeOk,
+                row.status !== "stale" && row.status !== "ok" && styles.badgeMuted
+              )}
             >
               {statusLabel(t, row.status)}
             </span>

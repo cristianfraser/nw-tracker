@@ -1,15 +1,26 @@
 :root {
   color-scheme: dark;
   --market-ticker-height: 30px;
+  /** Spacing scale (rem). */
+  --space-2xs: 0.35rem;
+  --space-tight: 0.4rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.65rem;
+  --space-md: 0.75rem;
+  --space-base: 1rem;
+  --space-lg: 1.15rem;
+  --space-xl: 1.25rem;
+  --space-section: 1.35rem;
+  --space-2xl: 1.5rem;
   /** Gap below fixed marquee; same for display prefs bar offset from viewport top. */
-  --display-prefs-gap: 0.35rem;
+  --display-prefs-gap: var(--space-2xs);
   /** Horizontal inset for the floating display prefs panel. */
-  --display-prefs-side: 0.75rem;
+  --display-prefs-side: var(--space-md);
   /** Reserved height under ticker so main content clears the fixed prefs bar (desktop). */
   --display-prefs-stack-height: 2.625rem;
   /** Mobile: fixed bottom dock (progressive blur fade + toolbar) — content padding-bottom. */
   --display-prefs-bar-reserve: 7.5rem;
-  --nav-drawer-tab-gap: 0.5rem;
+  --nav-drawer-tab-gap: var(--space-xs);
   --bg: #0c0f14;
   --surface: #141a22;
   --surface2: #1c2430;
@@ -26,6 +37,18 @@
   /** Primary currency figure on dashboard / group cards (compact strip + detailed buckets). */
   --dashboard-card-primary-value-font-size: 1.05rem;
   --dashboard-card-primary-value-font-weight: 600;
+  --font-size-card-label: 0.75rem;
+  --font-size-card-meta: 0.72rem;
+  --font-size-card-meta-sm: 0.68rem;
+  --font-size-prose: 0.85rem;
+  --font-size-prose-sm: 0.8rem;
+  --font-size-caption: 0.78rem;
+  --font-size-table: 0.82rem;
+  --font-size-value-secondary: 0.95rem;
+  --font-size-ui: 0.9rem;
+  --font-size-section-title: var(--dashboard-card-primary-value-font-size);
+  --content-max-width: 58rem;
+  --card-radius: 5px;
   font-family: "DM Sans", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;

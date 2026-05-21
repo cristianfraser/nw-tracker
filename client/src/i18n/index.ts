@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import type { BrokeragePortfolioGroup } from "../brokerageGroupedAggregation";
-import type { AssetGroupSlug, DepositFlowCategory, ExpenseApartmentSlug } from "../types";
+import type { DepositFlowCategory, ExpenseApartmentSlug } from "../types";
 import es from "./locales/es.json";
 
 void i18n.use(initReactI18next).init({
@@ -46,11 +46,4 @@ export function depositFlowCategoryLabel(cat: DepositFlowCategory): string {
     inversiones: "sidebar.inversiones",
   };
   return i18n.t(key[cat]);
-}
-
-/** Asset group page `<h1>` — reuses dashboard card titles. */
-export function assetGroupPageTitle(slug: AssetGroupSlug): string {
-  if (slug === "cash_eqs") return i18n.t("dashboard.cards.cash");
-  if (slug === "real_estate") return i18n.t("dashboard.cards.realEstate");
-  return i18n.t("dashboard.cards.liabilities");
 }

@@ -75,8 +75,6 @@ export function isApvAAccountNote(notes: string | null | undefined): boolean {
   return notes === APV_A_ACCOUNT_NOTE;
 }
 
-export { isFintualTraspasoBonificacionOtraInstitucion };
-
 export function apvAFlowKindOverride(
   occurred_on: string,
   amount_clp: number,

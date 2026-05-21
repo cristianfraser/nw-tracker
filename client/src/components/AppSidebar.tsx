@@ -10,6 +10,7 @@ import {
   sidebarNodeMatchesPath,
   type SidebarNavNode,
 } from "../sidebarNavTree";
+import { cn } from "../cn";
 import styles from "./AppSidebar.module.css";
 
 const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
@@ -33,7 +34,7 @@ function writeCollapsedIds(ids: Set<string>) {
 function CaretIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
-      className={`${styles.caretIcon}${expanded ? ` ${styles.caretIconExpanded}` : ""}`}
+      className={cn(styles.caretIcon, expanded && styles.caretIconExpanded)}
       width="14"
       height="14"
       viewBox="0 0 14 14"
@@ -103,12 +104,12 @@ function SidebarNavItem({
           </span>
         )}
         <div className={styles.itemContent}>
-          <div className={`${styles.row}${isActive ? ` ${styles.rowActive}` : ""}`}>
+          <div className={cn(styles.row, isActive && styles.rowActive)}>
             <NavLink
               to={node.to}
               end
               className={({ isActive: linkActive }) =>
-                `${styles.link}${linkActive || isActive ? ` ${styles.linkActive}` : ""}`
+                cn(styles.link, (linkActive || isActive) && styles.linkActive)
               }
             >
               {node.label}
@@ -205,7 +206,7 @@ export function AppSidebar() {
         <div className={styles.navInner}>
           <div className={styles.navScroll}>
             {!tree ? (
-              <p className={`${styles.loading} muted`}>{t("common.loading")}</p>
+              <p className={cn(styles.loading, "muted")}>{t("common.loading")}</p>
             ) : (
               <>
                 <ul className={styles.list}>
@@ -269,14 +270,12 @@ export function AppSidebar() {
                   <span className={styles.leafMark} aria-hidden />
                   <div className={styles.itemContent}>
                     <div
-                      className={`${styles.row}${pathname === "/messages" ? ` ${styles.rowActive}` : ""}`}
+                      className={cn(styles.row, pathname === "/messages" && styles.rowActive)}
                     >
                       <NavLink
                         to="/messages"
                         end
-                        className={({ isActive }) =>
-                          `${styles.link}${isActive ? ` ${styles.linkActive}` : ""}`
-                        }
+                        className={({ isActive }) => cn(styles.link, isActive && styles.linkActive)}
                       >
                         <span className={styles.linkLabel}>{t("sidebar.messages")}</span>
                         {unreadPill ? (

@@ -61,17 +61,6 @@ export function clearApvAStateBonusInferenceCache(): void {
   classificationCache.clear();
 }
 
-export function inferApvAStateBonusMovementIds(movements: MovRow[]): Set<number> {
-  const ids = new Set<number>();
-  for (const m of movements) {
-    const medio = m.note?.match(/\|medio=([^|]+)/)?.[1] ?? "";
-    if (depositFlowKindForApvAFintualRow(m.occurred_on, m.amount_clp, medio, m.note) === DEPOSIT_FLOW_KIND_STATE) {
-      ids.add(m.id);
-    }
-  }
-  return ids;
-}
-
 export function getApvAInferredStateBonusIds(accountId: number): Set<number> {
   const ids = new Set<number>();
   for (const [id, isState] of cacheForAccount(accountId)) {

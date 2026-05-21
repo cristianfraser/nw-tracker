@@ -5,6 +5,7 @@ import {
   type CardBreakdownNode,
 } from "../dashboardCardBreakdown";
 import { DashboardCardValue } from "./DashboardCardValue";
+import { cn } from "../cn";
 import styles from "./DashboardCardBreakdown.module.css";
 
 type Props = {
@@ -31,7 +32,7 @@ function BreakdownAmount({
   muted: boolean;
 }) {
   const amount = (
-    <span className={`card-breakdown__amount mono${muted ? " card-breakdown__amount--muted" : ""}`}>
+    <span className={cn("card-breakdown__amount", "mono", muted && "card-breakdown__amount--muted")}>
       <DashboardCardValue
         clp={node.clp}
         apiUsd={node.usd}
@@ -131,7 +132,7 @@ function BreakdownList({
   const items = nestCardBreakdownLines(lines);
   if (items.length === 0) return null;
   return (
-    <ul className={`card-breakdown-root ${className ? `${styles.root} ${className}` : styles.root}`}>
+    <ul className={cn("card-breakdown-root", styles.root, className)}>
       {items.map((node, i) => (
         <BreakdownNodeRow
           key={`${rowKeyPrefix}-0-${node.label}-${i}`}

@@ -1,4 +1,3 @@
-import { isApvAAccountNote } from "./apvAFintualFlowOverrides.js";
 import { movementIsApvAStateBonus } from "./apvAStateBonusInference.js";
 import { readSpyVeaDepositadoClpFromStocksCsv } from "./accountPosition.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
@@ -179,17 +178,6 @@ export function getStateContributionInflowEventsForAccount(accountId: number): D
 
 export function totalStateContributionsClpForAccount(accountId: number): number {
   return getStateContributionInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
-}
-
-export function accountHasStateContributionMovements(accountId: number): boolean {
-  return totalStateContributionsClpForAccount(accountId) > 0.5;
-}
-
-export function accountShowsDisplayDepositSeries(accountId: number): boolean {
-  const row = db.prepare(`SELECT notes FROM accounts WHERE id = ?`).get(accountId) as
-    | { notes: string | null }
-    | undefined;
-  return isApvAAccountNote(row?.notes);
 }
 
 /** Net external CLP capital (movements); same sum as chart cumulative end-state. */

@@ -146,13 +146,6 @@ export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
   return flowsDepositsNetTotalsByAccount().usd;
 }
 
-/** Sum of all rows on the flows → deposits page (dashboard “Total deposits”). */
-export function flowsDepositsNetTotalClp(): number {
-  let sum = 0;
-  for (const v of flowsDepositsNetTotalByAccount().values()) sum += v;
-  return sum;
-}
-
 export function buildFlowsDepositsPayload(): FlowDepositsPayload {
   const accounts = listDepositFlowAccounts();
   const ids = accounts.map((a) => a.account_id);

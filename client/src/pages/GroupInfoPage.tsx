@@ -26,6 +26,7 @@ import {
 } from "../portfolioNavDashboardCards";
 import { findBestNavNodeForPathname, navHierarchyTableChildren } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
+import { cn } from "../cn";
 import { useTranslation } from "../i18n";
 import {
   useDashboardBundle,
@@ -245,7 +246,7 @@ export function GroupInfoPage() {
         </p>
       ) : (
         <div
-          className={`chart-grid${accounts.length > 1 ? "" : " chart-grid--full-line"}`}
+          className={cn("chart-grid", accounts.length <= 1 && "chart-grid--full-line")}
           style={{ marginTop: "0.75rem" }}
         >
           <LineChartPanel

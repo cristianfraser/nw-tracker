@@ -3,6 +3,7 @@ import { useTranslation } from "../i18n";
 import { useMarketTickerMarquee } from "../hooks/useMarketTickerMarquee";
 import { AppMarquee } from "./AppMarquee";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
+import { cn } from "../cn";
 import styles from "./MarketTickerPanel.module.css";
 
 function MarqueeSegmentSeparator() {
@@ -29,7 +30,7 @@ function MarqueeItemContent({
   return (
     <span className={styles.item}>
       <span className={styles.label}>{label}</span>
-      <span className={`${styles.value} mono`}>{value}</span>
+      <span className={cn(styles.value, "mono")}>{value}</span>
       {showDelta ? (
         <DeltaMetricFlow
           delta={delta ?? null}
@@ -79,14 +80,14 @@ export function MarketTickerPanel() {
   return (
     <aside className="market-ticker-panel" aria-label={t("marketTicker.panelAria")}>
       <div
-        className={`${styles.marqueeWrap}${ready ? "" : ` ${styles.marqueeWrapIdle}`}`}
+        className={cn(styles.marqueeWrap, !ready && styles.marqueeWrapIdle)}
       >
         {ready ? (
           <AppMarquee speed={42} play>
             <MarqueeTrack items={items} />
           </AppMarquee>
         ) : (
-          <span className={`${styles.loading} muted`}>{loading ? "…" : ""}</span>
+          <span className={cn(styles.loading, "muted")}>{loading ? "…" : ""}</span>
         )}
       </div>
     </aside>

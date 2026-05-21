@@ -45,6 +45,7 @@ export type TableProps = {
   tableStyle?: CSSProperties;
   /** Extra class on `<table>` (e.g. `mortgage-sheet`, `hierarchy-nav-table`). */
   tableClassName?: string;
+  wrapClassName?: string;
   wrapStyle?: CSSProperties;
 };
 
@@ -60,6 +61,7 @@ export function Table({
   showLessLabel = "Mostrar menos…",
   tableStyle,
   tableClassName,
+  wrapClassName,
   wrapStyle,
 }: TableProps) {
   const [expanded, setExpanded] = useState(false);
@@ -73,7 +75,7 @@ export function Table({
     limit != null && hasHiddenRows && !expanded ? rows.slice(0, limit) : null;
 
   return (
-    <div style={wrapStyle}>
+    <div className={wrapClassName} style={wrapStyle}>
       <div
         className="table-wrap"
         style={{

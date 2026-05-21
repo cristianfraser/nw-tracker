@@ -1,5 +1,6 @@
 import Marquee from "react-fast-marquee";
 import type { ReactNode } from "react";
+import { cn } from "../cn";
 import styles from "./AppMarquee.module.css";
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
 export function AppMarquee({ children, speed = 45, className, play = true }: Props) {
   return (
     <Marquee
-      className={className ? `${styles.root} ${className}` : styles.root}
+      className={cn(styles.root, className)}
       gradient={false}
       speed={speed}
       play={play}

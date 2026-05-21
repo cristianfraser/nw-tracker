@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 
-/** Semicolon CSV + es-CL number parsing (aligned with `scripts/cfraser-csv.ts`). */
+/** Semicolon CSV + es-CL number parsing (aligned with `cfraserCsv.ts`). */
 export function numCsv(v: unknown): number | null {
   if (v == null) return null;
   if (typeof v === "number") return Number.isFinite(v) ? v : null;

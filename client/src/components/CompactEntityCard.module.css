@@ -1,7 +1,7 @@
 .root {
   border: 1px solid var(--border);
   border-radius: var(--radius, 10px);
-  padding: 0.65rem 0.85rem;
+  padding: var(--space-sm) 0.85rem;
   background: var(--card, var(--panel));
   display: flex;
   flex-direction: column;

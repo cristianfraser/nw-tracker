@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "migrate": "tsx -e \"import './src/db.ts'\"",
     "import:excel": "tsx scripts/import-excel-history.ts",
     "import:depto-expenses": "tsx scripts/import-depto-apartment-expenses.ts",

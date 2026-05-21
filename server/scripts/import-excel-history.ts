@@ -96,7 +96,7 @@ import {
   readSemicolonCsv,
   type ExcelMovementInsertStmt,
   type MonthKey,
-} from "./cfraser-csv.js";
+} from "../src/cfraserCsv.js";
 import { signedAmountClpForBrokerageFlow } from "../src/brokerageFlowMovement.js";
 import { deleteEquityDailyForImportTickers, EQUITY_DAILY_IMPORT_TICKERS, upsertEquityDailySeries } from "../src/brokerageEquityMtm.js";
 import {

@@ -21,10 +21,8 @@ import {
 import { getAccountPositionMeta } from "./accountPosition.js";
 import {
   accountUsesEquityMtm,
-  computeEquityMtmClp,
   computeEquityMtmClpLive,
   computeLatestDisplayedEquityClp,
-  equityTickerForAccount,
 } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";

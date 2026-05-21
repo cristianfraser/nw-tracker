@@ -2,6 +2,7 @@ import { NumberFlowElement, NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { accountingCurrencyNumberFlowParts } from "../format";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
+import { cn } from "../cn";
 import styles from "./DashboardCardValue.module.css";
 
 export type DashboardCardValueVariant = "main" | "breakdown";
@@ -150,7 +151,7 @@ export function DashboardCardValue({
       transformTiming={transformTiming}
       spinTiming={spinTiming}
       emptyFallback={
-        <span className={`${valueClass} ${styles.valueEmpty} dashboard-card-value-empty`}>—</span>
+        <span className={cn(valueClass, styles.valueEmpty, "dashboard-card-value-empty")}>—</span>
       }
     />
   );

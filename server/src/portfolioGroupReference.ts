@@ -3,8 +3,6 @@
  * and `portfolio_group_items` with `item_kind = 'linked_group'` (weighted child groups).
  */
 import { db } from "./db.js";
-import { rgbTripletToCss } from "./chartColorRgb.js";
-
 export type ReferenceGroupDef = {
   id: number;
   slug: string;
@@ -14,14 +12,6 @@ export type ReferenceGroupDef = {
   dataKey: string;
   chart_account_id: number;
   links: { source_slug: string; weight: number }[];
-};
-
-export type ReferenceAccountLine = {
-  account_id: number;
-  name: string;
-  dataKey: string;
-  valueSeriesType: "reference";
-  color_rgb?: string;
 };
 
 const linkedGroupsStmt = db.prepare(
@@ -83,10 +73,6 @@ export function composeReferenceValuesByDate(
     valuesByDataKey.set(def.dataKey, byDate);
   }
   return valuesByDataKey;
-}
-
-export function referenceGroupStrokeCss(def: ReferenceGroupDef): string | undefined {
-  return def.color_rgb ? rgbTripletToCss(def.color_rgb) : undefined;
 }
 
 export function portfolioGroupApiForValuation(slug: string): {

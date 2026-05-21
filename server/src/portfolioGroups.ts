@@ -4,8 +4,6 @@ import {
   rgbTripletToCss,
 } from "./chartColorRgb.js";
 import { db } from "./db.js";
-import { getPortfolioTreeForCharts } from "./navTree.js";
-
 export type PortfolioTreeNode =
   | {
       kind: "group";
@@ -101,11 +99,6 @@ function buildGroupNode(
     color: rgbTripletToCss(resolved),
     children,
   };
-}
-
-/** Chart grouping tree (inversiones subtree). */
-export function getPortfolioTree(): PortfolioTreeNode[] {
-  return getPortfolioTreeForCharts() as PortfolioTreeNode[];
 }
 
 export function portfolioGroupColorRgbBySlug(slug: string): string | null {

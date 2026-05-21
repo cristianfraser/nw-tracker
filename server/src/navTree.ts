@@ -13,6 +13,8 @@ export type NavTreeNodeDto = {
   nav_end: boolean;
   show_leaf_hyphen: boolean;
   account_id: number | null;
+  /** Operational account when `account_id` is a liability snapshot row. */
+  source_account_id: number | null;
   portfolio_group_id: number | null;
   expense_account_id: number | null;
   expense_account_slug: string | null;

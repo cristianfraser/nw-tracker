@@ -1,3 +1,4 @@
+import { cn } from "../cn";
 import { plainNumberFlowParts, plainPercentNumberFlowParts } from "../format";
 import { AnimatedNumberFlow, MOUNT_OPACITY_MS, useMountAnimation } from "./AnimatedNumberFlow";
 import styles from "./CardGroupMetrics.module.css";
@@ -38,11 +39,11 @@ export function DeltaMetricFlow({
 
   if (delta == null) {
     return (
-      <span className={`${styles.delta} ${className}`.trim()}>
-        <span className={`${styles.deltaIcon} ${styles.deltaIconReserve}`} aria-hidden>
+      <span className={cn(styles.delta, className)}>
+        <span className={cn(styles.deltaIcon, styles.deltaIconReserve)} aria-hidden>
           ▲
         </span>
-        <span className={`${styles.amount} ${styles.amountEmpty} mono`}>—</span>
+        <span className={cn(styles.amount, styles.amountEmpty, "mono")}>—</span>
       </span>
     );
   }
@@ -52,7 +53,7 @@ export function DeltaMetricFlow({
   const unit = showUsd ? "usd" : "clp";
   return (
     <span
-      className={`${styles.delta} ${tone} ${className}`.trim()}
+      className={cn(styles.delta, tone, className)}
       style={{
         opacity: mountAnimation.opacity,
         transition:
@@ -75,7 +76,7 @@ export function DeltaMetricFlow({
             ? plainPercentNumberFlowParts(n, fractionDigits)
             : plainNumberFlowParts(n, unit, fractionDigits)
         }
-        className={`${styles.amount} mono`}
+        className={cn(styles.amount, "mono")}
         transformTiming={METRIC_TIMING.transformTiming}
         spinTiming={METRIC_TIMING.spinTiming}
       />
