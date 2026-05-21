@@ -627,7 +627,12 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
   const raw: LineSeriesColorInput[] = [];
   if (block.accounts?.length) {
     block.accounts.forEach((a, i) => {
-      raw.push({ dataKey: a.dataKey, name: a.name, colorIndex: i });
+      raw.push({
+        dataKey: a.dataKey,
+        name: a.name,
+        colorIndex: i,
+        color_rgb: a.color_rgb,
+      });
       if (includeAccumulatedLines && a.depositDataKey) {
         raw.push({
           dataKey: a.depositDataKey,
@@ -647,13 +652,17 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
       }
     });
   }
+  const seenDataKeys = new Set(raw.map((r) => r.dataKey));
   const nAccounts = block.accounts?.length ?? 0;
   for (let j = 0; j < (block.lines?.length ?? 0); j++) {
     const ln = block.lines![j]!;
+    if (seenDataKeys.has(ln.dataKey)) continue;
+    seenDataKeys.add(ln.dataKey);
     raw.push({
       dataKey: ln.dataKey,
       name: ln.name,
       colorIndex: nAccounts + j,
+      color_rgb: ln.color_rgb,
       isReferenceOverlay: ln.valueSeriesType === "reference",
     });
   }
@@ -729,7 +738,10 @@ function InteractiveLegend({
         const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
         const faded = dim && !isHi;
         const isDerivedDash =
-          s.dataKey === "invested" || s.dataKey === "available" || s.dataKey === "all_available";
+          s.dataKey === "invested" ||
+          s.dataKey === "available" ||
+          s.dataKey === "all_available" ||
+          s.dataKey.startsWith("ref:");
         const legBase = s.isDisplayDeposit ? 1.15 : isDerivedDash ? 1.5 : 2;
         const legDash = s.isDisplayDeposit ? "6 4" : undefined;
         return (
@@ -762,7 +774,15 @@ function InteractiveLegend({
                 stroke={color}
                 strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
                 strokeDasharray={legDash}
-                opacity={faded ? 0.5 : s.dataKey === "all_available" ? 0.6 : isDerivedDash ? 0.8 : 1}
+                opacity={
+                  faded
+                    ? 0.5
+                    : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
+                      ? 0.6
+                      : isDerivedDash
+                        ? 0.8
+                        : 1
+                }
               />
             </svg>
             <span
@@ -978,11 +998,15 @@ export function LineChartPanel({
                 const isDep = Boolean(s.isDeposit);
                 const isDisplayDep = Boolean(s.isDisplayDeposit);
                 const dimOthers = focusColorIndex != null && s.colorIndex !== focusColorIndex;
+                const isLiquidityRefLine =
+                  colorPlan?.kind === "group-tab" &&
+                  colorPlan.groupSlug === "liabilities" &&
+                  (s.dataKey === "available" ||
+                    s.dataKey === "all_available" ||
+                    s.dataKey.startsWith("ref:"));
                 const isThinDerivedLine =
                   (colorPlan?.kind === "dashboard-overview" && s.dataKey === "invested") ||
-                  (colorPlan?.kind === "group-tab" &&
-                    colorPlan.groupSlug === "liabilities" &&
-                    (s.dataKey === "available" || s.dataKey === "all_available"));
+                  isLiquidityRefLine;
                 const isRefOverlay = Boolean(s.isReferenceOverlay);
                 const baseW = isDep
                   ? isDisplayDep
@@ -1001,7 +1025,7 @@ export function LineChartPanel({
                     : 0.8
                   : isRefOverlay
                     ? 0.55
-                    : s.dataKey === "all_available"
+                    : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
                       ? 0.6
                       : isThinDerivedLine
                         ? 0.8
@@ -1147,6 +1171,7 @@ export function ValuationLineCharts({
         title={primaryTitle}
         block={primary}
         displayUnit={displayUnit}
+        thickKey={thickLineDataKey}
         includeAccumulatedLines={includeAccumulatedLines}
         trimLeadingInactive={trimLeadingInactive}
         colorPlan={primaryColorPlan}
@@ -1156,7 +1181,6 @@ export function ValuationLineCharts({
         title={secondaryTitle}
         block={secondary}
         displayUnit={displayUnit}
-        thickKey={thickLineDataKey}
         includeAccumulatedLines={includeAccumulatedLines}
         trimLeadingInactive={trimLeadingInactive}
         colorPlan={secondaryColorPlan}

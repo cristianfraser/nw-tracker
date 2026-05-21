@@ -2,8 +2,8 @@
  * UNO cert periods with net cuotas that have no matching `import:excel` Table 1-3 month-end movement
  * (e.g. Excel `dep_afp` starts at 2017-06 but cert has 2017-05–06 activity).
  */
-import type { AfpCertMovementRow } from "./afpUnoCertParse.js";
 import { parseAfpCertificadoBody } from "./afpUnoCertMovimientosParse.js";
+import { aggregateAfpCertCuotasByPeriodForTable1 } from "./afpUnoCertTable1Aggregation.js";
 import type { AfpModeloCotizacionRow } from "./afpModeloCotizacionesParse.js";
 import { aggregateModeloCuotasAndMontoByPeriod } from "./afpModeloCotizacionesParse.js";
 import type { MonthKey } from "./afpModeloPriorCuotasBackfill.js";
@@ -16,23 +16,18 @@ export type OrphanCertMonthRow = {
   note: string;
 };
 
-function aggregateUnoByPeriod(rows: AfpCertMovementRow[]): Map<string, { cuotas: number; monto: number }> {
-  const m = new Map<string, { cuotas: number; monto: number }>();
-  for (const r of rows) {
-    const a = m.get(r.periodYm) ?? { cuotas: 0, monto: 0 };
-    a.cuotas += r.cuotasDelta;
-    a.monto += r.montoClp;
-    m.set(r.periodYm, a);
-  }
-  return m;
-}
-
 function monthEndFromYm(ym: string): string {
   const [ys, ms] = ym.split("-");
   const y = Number(ys);
   const mo = Number(ms);
   if (!Number.isFinite(y) || mo < 1 || mo > 12) return `${ym}-28`;
   return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+}
+
+/** Month-end for cert period, capped at `asOfYmd` so in-progress months count in spot cuotas. */
+export function certPeriodOccurredOn(periodYm: string, asOfYmd: string): string {
+  const end = monthEndFromYm(periodYm);
+  return end <= asOfYmd ? end : asOfYmd;
 }
 
 /** First `YYYY-MM` with a Table 1-3 AFP cumulative movement (month-end `occurred_on`). */
@@ -57,9 +52,11 @@ export function computeOrphanUnoCertMonthMovements(opts: {
   existingMovementMonths: Set<MonthKey>;
   /** `units_delta` on Table 1-3 row for that month (0 when cert sync left cuotas empty). */
   table1UnitsByMonth: Map<MonthKey, number>;
+  /** Cap orphan `occurred_on` for the open month (default: omit → month-end only). */
+  asOfYmd?: string;
 }): OrphanCertMonthRow[] {
   const { rows: unoRows } = parseAfpCertificadoBody(opts.unoCertText, opts.unoCertSourceFileName);
-  const unoBy = aggregateUnoByPeriod(unoRows);
+  const unoBy = aggregateAfpCertCuotasByPeriodForTable1(unoRows);
   const modeloBy = aggregateModeloCuotasAndMontoByPeriod(opts.modeloRows);
   const firstMk = opts.firstCumulativeMk ?? "9999-12";
   const out: OrphanCertMonthRow[] = [];
@@ -78,7 +75,7 @@ export function computeOrphanUnoCertMonthMovements(opts: {
         : Math.abs(agg.monto) > 0
           ? Math.round(agg.monto)
           : 1;
-    const occurredOn = monthEndFromYm(periodYm);
+    const occurredOn = opts.asOfYmd ? certPeriodOccurredOn(periodYm, opts.asOfYmd) : monthEndFromYm(periodYm);
     out.push({
       periodYm,
       occurredOn,

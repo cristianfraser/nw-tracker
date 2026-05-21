@@ -1,4 +1,4 @@
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { getAccountMonthlyPerformance, loadBookValuationsAsc } from "./accountPerformance.js";
 
 /**
  * Matches client {@link DEFAULT_TRAILING_ZERO_MONTHS_KEPT}: months of trailing **zero** balance
@@ -26,14 +26,22 @@ export function chartInactiveFromMonthlyClosingAsc(
   return trailingLen > monthsKept;
 }
 
+/** Month-end closes for tail-inactive detection (performance series, else stored valuations). */
+function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
+  const perf = getAccountMonthlyPerformance(accountId, "clp");
+  if (perf?.monthly.length) {
+    return [...perf.monthly].reverse().map((r) => r.closing_value);
+  }
+  return loadBookValuationsAsc(accountId).map((r) => r.value_clp);
+}
+
 /**
- * True when the account’s monthly performance closes show a long zero tail (chart tail-clip rule).
- * No monthly series → not flagged inactive (insufficient data).
+ * True when month-end closes show a long trailing-zero tail (chart tail-clip rule).
+ * Uses performance closes when available; otherwise stored `valuations` (e.g. cash accounts
+ * that skip monthly P/L but still have month-end book balances).
  */
 export function accountChartInactive(accountId: number): boolean {
-  const perf = getAccountMonthlyPerformance(accountId, "clp");
-  if (!perf?.monthly.length) return false;
-  const asc = [...perf.monthly].reverse();
-  const closing = asc.map((r) => r.closing_value);
+  const closing = monthEndClosingAscForInactiveCheck(accountId);
+  if (!closing.length) return false;
   return chartInactiveFromMonthlyClosingAsc(closing, CHART_TRAILING_ZERO_MONTHS_KEPT);
 }

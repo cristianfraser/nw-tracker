@@ -11,6 +11,8 @@ server/data/*.db-wal
 server/data/*.db-shm
 server/data/.fintual-api-session.json
 server/data/.fintual-goals-latest.json
+server/data/.sbif-api-gate.json
+server/data/.bcentral-api-gate.json
 server/data/fintual-goal-map.json
 
 # Personal Numbers workbook (large / sensitive)

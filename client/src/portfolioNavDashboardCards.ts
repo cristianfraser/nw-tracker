@@ -1,19 +1,44 @@
+import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
 import {
   buildBrokerageCardBreakdown,
-  buildCashCardBreakdown,
+  cashCardBreakdownFromDash,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
+  buildRetirementAfpAfcBreakdown,
+  buildRetirementApvBreakdown,
   buildRetirementCardBreakdown,
+  cardGroupMetricsForAccountSubset,
+  cardGroupMetricsForGroup,
+  cardGroupMetricsFromAccounts,
   cardGroupTitleBalanceDelta,
+  dashboardBucketMainValue,
   subsetTitleBalanceDeltaRounded,
+  sumCurrentValueClpUsd,
   type CardBreakdownLine,
+  type CardGroupMetrics,
   type CardGroupMetricsPeriod,
   type DashboardGroupSlug,
 } from "./dashboardCardBreakdown";
+import i18n from "./i18n";
+import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import { collectNavAccountDataKeys } from "./portfolioNavFromApi";
 import type { AssetGroupSlug, DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
 
 const CASH_DASHBOARD_CATEGORY_SLUGS = new Set(["fondo_reserva", "cuenta_corriente"]);
+
+/** Nav subtree with optional first-level children removed (e.g. cash → credit card reference link). */
+export function navNodeWithoutChildSlugs(
+  navNode: NavTreeNodeDto,
+  excludeSlugs: ReadonlySet<string>
+): NavTreeNodeDto {
+  if (!excludeSlugs.size) return navNode;
+  return {
+    ...navNode,
+    children: navNode.children.filter((c) => !excludeSlugs.has(c.slug)),
+  };
+}
+
+const CASH_NAV_REFERENCE_CHILD_SLUGS = new Set(["liabilities_credit_card"]);
 
 /** Account ids referenced anywhere under `navNode` (including the node itself). */
 export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
@@ -25,12 +50,18 @@ export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
   return idSet;
 }
 
+/** Cash portfolio node: totals/metrics exclude linked liability reference children. */
+export function navNodeForCashAssetTotals(navNode: NavTreeNodeDto): NavTreeNodeDto {
+  if (navNode.slug !== "cash_eqs") return navNode;
+  return navNodeWithoutChildSlugs(navNode, CASH_NAV_REFERENCE_CHILD_SLUGS);
+}
+
 export function dashboardRowsForNavSubtree(
   all: DashboardAccountRow[],
   navNode: NavTreeNodeDto
 ): DashboardAccountRow[] {
   const idSet = navAccountIdSet(navNode);
-  return all.filter((a) => idSet.has(a.account_id));
+  return all.filter((a) => idSet.has(a.account_id) && isChartActiveAccount(a));
 }
 
 /**
@@ -40,7 +71,7 @@ function activeDashboardRowsForStripChild(
   allAccounts: DashboardAccountRow[],
   navChild: NavTreeNodeDto
 ): DashboardAccountRow[] {
-  return dashboardRowsForNavSubtree(allAccounts, navChild).filter((r) => r.chart_inactive !== true);
+  return dashboardRowsForNavSubtree(allAccounts, navChild);
 }
 
 /** True when this nav subtree has a nonzero live balance on non-chart-inactive accounts. */
@@ -98,7 +129,8 @@ export function titleDeltaModelForNavChildSlug(navChildSlug: string): NavChildTi
     return {
       mode: "dashboard_group",
       group: "cash_eqs",
-      groupRowFilter: (a) => CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug),
+      groupRowFilter: (a) =>
+        CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug) && accountCountsTowardGroupTotals(a),
     };
   }
   if (navChildSlug === "real_estate") return { mode: "dashboard_group", group: "real_estate" };
@@ -185,6 +217,65 @@ export function parentTitleBalanceDelta(
   return subsetTitleBalanceDeltaRounded(dash.accounts, period, showUsd, inIds);
 }
 
+/**
+ * Main balance for portfolio strip compact card: dashboard bucket totals when the page maps to a
+ * bucket; otherwise sum of live values under the nav subtree (e.g. Pasivos subset).
+ */
+export function portfolioNavParentMainValue(
+  dash: Pick<DashboardResponse, "totals">,
+  mode: PortfolioNavParentTitleDeltaMode,
+  navSubtreeRows: DashboardAccountRow[],
+  showUsd: boolean
+): { clp: number; apiUsd: number | null } {
+  if (mode.kind === "dashboard_group") {
+    return dashboardBucketMainValue(dash.totals, mode.group, showUsd);
+  }
+  if (mode.kind === "sum_dashboard_groups") {
+    let clp = 0;
+    let usd = 0;
+    let anyUsd = false;
+    for (const g of mode.groups) {
+      const part = dashboardBucketMainValue(dash.totals, g, showUsd);
+      clp += part.clp;
+      if (part.apiUsd != null) {
+        usd += part.apiUsd;
+        anyUsd = true;
+      }
+    }
+    return { clp, apiUsd: anyUsd ? usd : null };
+  }
+  return sumCurrentValueClpUsd(navSubtreeRows, showUsd);
+}
+
+/** Deposits / period Δ metrics aligned with {@link portfolioNavParentMainValue}. */
+export function portfolioNavParentMetrics(
+  dash: Pick<DashboardResponse, "accounts">,
+  mode: PortfolioNavParentTitleDeltaMode,
+  navSubtreeRows: DashboardAccountRow[],
+  period: CardGroupMetricsPeriod
+): CardGroupMetrics {
+  if (mode.kind === "dashboard_group") {
+    return cardGroupMetricsForGroup(
+      dash.accounts,
+      mode.group,
+      period,
+      mode.groupRowFilter
+    );
+  }
+  if (mode.kind === "sum_dashboard_groups") {
+    return cardGroupMetricsForAccountSubset(
+      dash.accounts,
+      period,
+      (a) =>
+        (mode.groups as readonly string[]).includes(a.group_slug) &&
+        accountCountsTowardGroupTotals(a) &&
+        a.current_value_clp != null &&
+        Number.isFinite(a.current_value_clp)
+    );
+  }
+  return cardGroupMetricsFromAccounts(navSubtreeRows, period);
+}
+
 /** Maps asset-class page slug to the same title-Δ rules as dashboard buckets where applicable. */
 export function assetGroupPageParentTitleMode(slug: AssetGroupSlug): PortfolioNavParentTitleDeltaMode {
   if (slug === "real_estate") return { kind: "dashboard_group", group: "real_estate" };
@@ -192,7 +283,8 @@ export function assetGroupPageParentTitleMode(slug: AssetGroupSlug): PortfolioNa
     return {
       kind: "dashboard_group",
       group: "cash_eqs",
-      groupRowFilter: (a) => CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug),
+      groupRowFilter: (a) =>
+        CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug) && accountCountsTowardGroupTotals(a),
     };
   }
   if (slug === "liabilities") return { kind: "subset_only" };
@@ -208,12 +300,26 @@ export function portfolioNavParentTitleModeForNavNode(
 ): PortfolioNavParentTitleDeltaMode {
   if (!node) return { kind: "subset_only" };
   const slug = node.slug;
+  const asset = node.asset_group_slug;
   if (slug === "inversiones") return { kind: "sum_dashboard_groups", groups: ["retirement", "brokerage"] };
-  if (slug === "retirement" || slug.startsWith("retirement_")) {
-    return { kind: "dashboard_group", group: "retirement" };
+  if (slug === "retirement") return { kind: "dashboard_group", group: "retirement" };
+  /** Nav sub-routes (AFP+AFC, APV, acciones, …): sum/metrics only accounts in this subtree. */
+  if (slug.startsWith("retirement_")) return { kind: "subset_only" };
+  if (slug === "brokerage") return { kind: "dashboard_group", group: "brokerage" };
+  if (slug.startsWith("brokerage_")) return { kind: "subset_only" };
+  if (slug === "real_estate" || asset === "real_estate") {
+    return { kind: "dashboard_group", group: "real_estate" };
   }
-  if (slug === "brokerage" || slug.startsWith("brokerage_")) {
-    return { kind: "dashboard_group", group: "brokerage" };
+  if (slug === "cash_eqs" || asset === "cash_eqs") {
+    return {
+      kind: "dashboard_group",
+      group: "cash_eqs",
+      groupRowFilter: (a) =>
+        CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug) && accountCountsTowardGroupTotals(a),
+    };
+  }
+  if (slug === "liabilities" || asset === "liabilities" || slug.startsWith("liabilities_")) {
+    return { kind: "subset_only" };
   }
   return { kind: "subset_only" };
 }
@@ -228,9 +334,17 @@ export type NavChildBreakdownResult = {
 export function breakdownForNavChild(
   navChild: NavTreeNodeDto,
   rows: DashboardAccountRow[],
-  dash: Pick<DashboardResponse, "suecia_snapshot" | "liabilities_breakdown">
+  dash: Pick<DashboardResponse, "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links">
 ): NavChildBreakdownResult | null {
   const slug = navChild.slug;
+  if (slug === "retirement_afp_afc") {
+    const lines = buildRetirementAfpAfcBreakdown(rows);
+    return lines.length ? { lines } : null;
+  }
+  if (slug === "retirement_apv") {
+    const lines = buildRetirementApvBreakdown(rows);
+    return lines.length ? { lines } : null;
+  }
   if (slug === "retirement" || slug.startsWith("retirement_")) {
     return { lines: buildRetirementCardBreakdown(rows) };
   }
@@ -241,12 +355,38 @@ export function breakdownForNavChild(
     return { lines: buildRealEstateCardBreakdown(rows, dash.suecia_snapshot ?? null) };
   }
   if (slug === "cash_eqs") {
-    const cc = dash.liabilities_breakdown;
-    const b = buildCashCardBreakdown(
-      rows,
-      cc ? { clp: cc.credit_card_clp, usd: cc.credit_card_usd ?? null } : null
-    );
+    const b = cashCardBreakdownFromDash(rows, dash);
     return { lines: b.lines, bottomLines: b.bottomLines, pinBottom: true };
+  }
+  if (slug === "liabilities_credit_card") {
+    const lb = dash.liabilities_breakdown;
+    if (!lb || lb.credit_card_clp <= 0) return null;
+    return {
+      lines: [
+        {
+          label: i18n.t("liabilities.creditCard"),
+          clp: lb.credit_card_clp,
+          usd: lb.credit_card_usd ?? null,
+          depth: 0,
+          to: liabilitiesSubgroupPath("credit_card"),
+        },
+      ],
+    };
+  }
+  if (slug === "liabilities_mortgage") {
+    const lb = dash.liabilities_breakdown;
+    if (!lb || lb.mortgage_clp <= 0) return null;
+    return {
+      lines: [
+        {
+          label: i18n.t("liabilities.mortgage"),
+          clp: lb.mortgage_clp,
+          usd: lb.mortgage_usd ?? null,
+          depth: 0,
+          to: liabilitiesSubgroupPath("mortgage"),
+        },
+      ],
+    };
   }
   if (slug === "liabilities" || slug.startsWith("liabilities_")) {
     const lb = dash.liabilities_breakdown;

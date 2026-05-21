@@ -92,3 +92,7 @@ select.rates-series-select {
   height: clamp(200px, 28vh, 320px);
   width: 100%;
 }
+
+.rates-chart-card__table {
+  margin-top: 0.65rem;
+}

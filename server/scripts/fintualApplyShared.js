@@ -177,10 +177,21 @@ export function fintualEveningCatchUpComplete(rows, byGoalId, cl) {
     const snapT = buildGoalsSnapshot(rows, byGoalId, cl, ymd);
     return fintualSnapshotMatchesDb(snapY) && fintualSnapshotMatchesDb(snapT);
 }
+/** Mark evening poll settled when today's mapped goals already match DB (≥18:00 Chile). */
+export function markFintualEveningSettledWhenCurrent(state, cl, snap, dryRun) {
+    if (dryRun || cl.hour < 18)
+        return;
+    if (fintualSnapshotMatchesDb(snap))
+        state.fintualEveningSettledYmd = cl.ymd;
+}
 export function fintualMappedNavSignature(snap) {
     const parts = snap.goals
         .filter((g) => g.matchedNotes)
         .map((g) => `${g.id}:${Math.round(g.navClp * 100) / 100}`)
         .sort();
     return parts.join("|");
+}
+/** True when mapped goals' NAV matches the last evening apply (Fintual has not published new totals). */
+export function fintualNavUnchangedSinceLastApply(sig, state) {
+    return Boolean(state.fintualLastAppliedSig && sig === state.fintualLastAppliedSig);
 }

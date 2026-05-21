@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 
 /** Stored as `r,g,b` integers 0–255. */
 export type RgbTriplet = `${number},${number},${number}` | string;
@@ -8,6 +9,27 @@ export function parseRgbTriplet(raw: string | null | undefined): [number, number
   const parts = raw.split(",").map((s) => parseInt(s.trim(), 10));
   if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return null;
   return [parts[0]!, parts[1]!, parts[2]!];
+}
+
+export function formatRgbTriplet(triplet: [number, number, number]): string {
+  return `${triplet[0]},${triplet[1]},${triplet[2]}`;
+}
+
+/** Accept `r,g,b` or `#rgb` / `#rrggbb` for API color updates. */
+export function normalizeColorRgbInput(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  const triplet = parseRgbTriplet(s);
+  if (triplet) return formatRgbTriplet(triplet);
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+  if (!hex) return null;
+  let h = hex[1]!;
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if (![r, g, b].every((n) => Number.isFinite(n))) return null;
+  return formatRgbTriplet([r, g, b]);
 }
 
 export function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a3b8"): string {
@@ -63,7 +85,45 @@ const groupItemsStmt = db.prepare(
 
 const resolvedGroupColorCache = new Map<number, string>();
 
-/** Explicit group color, else RGB average of direct child accounts and child groups. */
+function collectAccountIdsUnderGroup(groupId: number, visiting = new Set<number>()): number[] {
+  if (visiting.has(groupId)) return [];
+  visiting.add(groupId);
+  const items = groupItemsStmt.all(groupId) as {
+    item_kind: "group" | "account";
+    child_group_id: number | null;
+    account_id: number | null;
+  }[];
+  const ids: number[] = [];
+  for (const item of items) {
+    if (item.item_kind === "account" && item.account_id != null) {
+      ids.push(item.account_id);
+    } else if (item.item_kind === "group" && item.child_group_id != null) {
+      ids.push(...collectAccountIdsUnderGroup(item.child_group_id, visiting));
+    }
+  }
+  return ids;
+}
+
+/** Color of the descendant account with the largest latest valuation (CLP). */
+function groupColorFromLargestBalanceAccount(groupId: number): string {
+  const accountIds = collectAccountIdsUnderGroup(groupId);
+  if (accountIds.length === 0) return "148,163,184";
+
+  let bestId = accountIds[0]!;
+  let bestBalance = -Infinity;
+  for (const accountId of accountIds) {
+    const row = latestValuationRowOnOrBeforeChileToday(accountId);
+    const balance =
+      row?.value_clp != null && Number.isFinite(row.value_clp) ? row.value_clp : 0;
+    if (balance > bestBalance) {
+      bestBalance = balance;
+      bestId = accountId;
+    }
+  }
+  return getAccountColorRgb(bestId);
+}
+
+/** Explicit group color, else color of the child account with the largest latest balance. */
 export function resolvePortfolioGroupColorRgb(groupId: number): string {
   const cached = resolvedGroupColorCache.get(groupId);
   if (cached) return cached;
@@ -78,24 +138,9 @@ export function resolvePortfolioGroupColorRgb(groupId: number): string {
     return group.color_rgb;
   }
 
-  const items = groupItemsStmt.all(groupId) as {
-    item_kind: "group" | "account";
-    child_group_id: number | null;
-    account_id: number | null;
-  }[];
-
-  const childColors: string[] = [];
-  for (const item of items) {
-    if (item.item_kind === "account" && item.account_id != null) {
-      childColors.push(getAccountColorRgb(item.account_id));
-    } else if (item.item_kind === "group" && item.child_group_id != null) {
-      childColors.push(resolvePortfolioGroupColorRgb(item.child_group_id));
-    }
-  }
-
-  const avg = averageRgbTriplets(childColors) ?? "148,163,184";
-  resolvedGroupColorCache.set(groupId, avg);
-  return avg;
+  const resolved = groupColorFromLargestBalanceAccount(groupId);
+  resolvedGroupColorCache.set(groupId, resolved);
+  return resolved;
 }
 
 export function resolvePortfolioGroupColorRgbBySlug(slug: string): string | null {
@@ -115,30 +160,18 @@ export function syntheticGroupColorRgbMapForValuationGroup(groupSlug: string): R
     if (c) out[String(accountId)] = c;
   };
 
-  switch (groupSlug) {
-    case "brokerage":
-      add(-201, "brokerage_mutual_funds");
-      add(-202, "brokerage_acciones");
-      add(-203, "brokerage_crypto");
-      break;
-    case "inversiones":
-      add(-601, "brokerage");
-      add(-602, "retirement");
-      add(-611, "brokerage_mutual_funds");
-      add(-612, "brokerage_acciones");
-      add(-613, "brokerage_crypto");
-      add(-614, "retirement_afp_afc");
-      add(-615, "retirement_apv");
-      break;
-    case "retirement":
-      add(-701, "retirement_afp");
-      add(-702, "retirement_apv");
-      add(-703, "retirement_afc");
-      add(-801, "retirement_apv_a");
-      add(-802, "retirement_apv_b");
-      break;
-    default:
-      break;
+  for (const [idStr, portfolioSlug] of Object.entries(SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG)) {
+    const accountId = Number(idStr);
+    if (!Number.isFinite(accountId)) continue;
+    const belongs =
+      groupSlug === "brokerage"
+        ? accountId >= -203 && accountId <= -201
+        : groupSlug === "inversiones"
+          ? accountId >= -615 && accountId <= -601
+          : groupSlug === "retirement"
+            ? accountId >= -704 && accountId <= -701
+            : false;
+    if (belongs) add(accountId, portfolioSlug);
   }
 
   return out;
@@ -154,43 +187,32 @@ export function colorRgbForTimeseriesAccountLine(accountId: number): string | un
   return getAccountColorRgb(accountId);
 }
 
-const accountColorByNoteStmt = db.prepare(
-  `SELECT color_rgb FROM accounts WHERE notes = ? LIMIT 1`
-);
+/** Negative `account_id` on grouped valuation / performance charts → `portfolio_groups.slug`. */
+export const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, string>> = {
+  [-201]: "brokerage_mutual_funds",
+  [-202]: "brokerage_acciones",
+  [-203]: "brokerage_crypto",
+  [-601]: "brokerage",
+  [-602]: "retirement",
+  [-611]: "brokerage_mutual_funds",
+  [-612]: "brokerage_acciones",
+  [-613]: "brokerage_crypto",
+  [-614]: "retirement_afp_afc",
+  [-615]: "retirement_apv",
+  [-701]: "retirement_afp_afc",
+  [-702]: "retirement_apv",
+  [-703]: "retirement_apv_a",
+  [-704]: "retirement_apv_b",
+  [-9101]: "retirement_afp_afc",
+  [-9102]: "retirement_apv",
+  [-9201]: "cash_eqs",
+};
 
-function getAccountColorRgbByImportNote(note: string): string | null {
-  const row = accountColorByNoteStmt.get(note) as { color_rgb: string | null } | undefined;
-  return row?.color_rgb ?? null;
-}
-
-/** Synthetic brokerage subgroup lines (`aggregateBrokerageAllViewValuationBlock`). */
+/** Synthetic grouped lines (brokerage / inversiones / retiro tabs, dashboard primary). */
 export function colorRgbForSyntheticAccountLine(accountId: number): string | undefined {
-  switch (accountId) {
-    case -201:
-      return resolvePortfolioGroupColorRgbBySlug("brokerage_mutual_funds") ?? undefined;
-    case -202:
-      return resolvePortfolioGroupColorRgbBySlug("brokerage_acciones") ?? undefined;
-    case -203:
-      return resolvePortfolioGroupColorRgbBySlug("brokerage_crypto") ?? undefined;
-    case -9101: {
-      const avg = averageRgbTriplets(
-        ["import:excel|key=afp", "import:excel|key=afc"]
-          .map(getAccountColorRgbByImportNote)
-          .filter((c): c is string => c != null)
-      );
-      return avg ?? undefined;
-    }
-    case -9102: {
-      const avg = averageRgbTriplets(
-        ["import:excel|key=apv_a", "import:excel|key=apv_b"]
-          .map(getAccountColorRgbByImportNote)
-          .filter((c): c is string => c != null)
-      );
-      return avg ?? undefined;
-    }
-    default:
-      return undefined;
-  }
+  const slug = SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG[accountId];
+  if (!slug) return undefined;
+  return resolvePortfolioGroupColorRgbBySlug(slug) ?? undefined;
 }
 
 export function attachColorRgbToAccountLines<

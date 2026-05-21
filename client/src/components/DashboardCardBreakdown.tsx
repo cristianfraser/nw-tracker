@@ -1,4 +1,9 @@
-import type { CardBreakdownLine } from "../dashboardCardBreakdown";
+import { Link } from "react-router-dom";
+import {
+  nestCardBreakdownLines,
+  type CardBreakdownLine,
+  type CardBreakdownNode,
+} from "../dashboardCardBreakdown";
 import { DashboardCardValue } from "./DashboardCardValue";
 import styles from "./DashboardCardBreakdown.module.css";
 
@@ -11,6 +16,102 @@ type Props = {
   /** Pin `bottomLines` to the card footer (direct flex child + margin-top: auto). */
   pinBottomToCard?: boolean;
 };
+
+function BreakdownAmount({
+  node,
+  showUsd,
+  animated,
+  mountSeedKey,
+  muted,
+}: {
+  node: CardBreakdownNode;
+  showUsd: boolean;
+  animated: boolean;
+  mountSeedKey: string;
+  muted: boolean;
+}) {
+  const amount = (
+    <span className={`card-breakdown__amount mono${muted ? " card-breakdown__amount--muted" : ""}`}>
+      <DashboardCardValue
+        clp={node.clp}
+        apiUsd={node.usd}
+        showUsd={showUsd}
+        animated={animated}
+        variant="breakdown"
+        mountSeedKey={mountSeedKey}
+      />
+    </span>
+  );
+  if (!node.to) return amount;
+  return (
+    <Link to={node.to} className={styles.amountLink}>
+      {amount}
+    </Link>
+  );
+}
+
+function BreakdownNodeRow({
+  node,
+  showUsd,
+  cardSlug,
+  animated,
+  depth,
+  index,
+  rowKeyPrefix,
+}: {
+  node: CardBreakdownNode;
+  showUsd: boolean;
+  cardSlug: string;
+  animated: boolean;
+  depth: number;
+  index: number;
+  rowKeyPrefix: string;
+}) {
+  const isGroup = depth === 0;
+  const omitGroupTotal = node.children.length === 1;
+  const liClass = isGroup ? styles.group : styles.child;
+  const mountSeedKey = `${cardSlug}:${rowKeyPrefix}:${depth}:${index}:${node.label}`;
+  const label = node.to ? (
+    <Link to={node.to} className={styles.labelLink}>
+      {node.label}
+    </Link>
+  ) : (
+    <span className={styles.label}>{node.label}</span>
+  );
+
+  return (
+    <li className={liClass}>
+      <div className={styles.row}>
+        {label}
+        {omitGroupTotal ? null : (
+          <BreakdownAmount
+            node={node}
+            showUsd={showUsd}
+            animated={animated}
+            mountSeedKey={mountSeedKey}
+            muted={!isGroup}
+          />
+        )}
+      </div>
+      {node.children.length > 0 ? (
+        <ul className={styles.nested}>
+          {node.children.map((child, j) => (
+            <BreakdownNodeRow
+              key={`${rowKeyPrefix}-${depth + 1}-${child.label}-${j}`}
+              node={child}
+              showUsd={showUsd}
+              cardSlug={cardSlug}
+              animated={animated}
+              depth={depth + 1}
+              index={j}
+              rowKeyPrefix={rowKeyPrefix}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
 
 function BreakdownList({
   lines,
@@ -27,29 +128,21 @@ function BreakdownList({
   className?: string;
   rowKeyPrefix: string;
 }) {
-  if (lines.length === 0) return null;
+  const items = nestCardBreakdownLines(lines);
+  if (items.length === 0) return null;
   return (
     <ul className={`card-breakdown-root ${className ? `${styles.root} ${className}` : styles.root}`}>
-      {lines.map((line, i) => (
-        <li
-          key={`${rowKeyPrefix}-${line.depth}-${line.label}-${i}`}
-          className={
-            line.depth >= 2 ? styles.grandchild : line.depth === 1 ? styles.child : styles.group
-          }
-          data-card-breakdown-depth={line.depth}
-        >
-          <span className={styles.label}>{line.label}</span>
-          <span className="card-breakdown__amount mono">
-            <DashboardCardValue
-              clp={line.clp}
-              apiUsd={line.usd}
-              showUsd={showUsd}
-              animated={animated}
-              variant="breakdown"
-              mountSeedKey={`${cardSlug}:${rowKeyPrefix}:${i}`}
-            />
-          </span>
-        </li>
+      {items.map((node, i) => (
+        <BreakdownNodeRow
+          key={`${rowKeyPrefix}-0-${node.label}-${i}`}
+          node={node}
+          showUsd={showUsd}
+          cardSlug={cardSlug}
+          animated={animated}
+          depth={0}
+          index={i}
+          rowKeyPrefix={rowKeyPrefix}
+        />
       ))}
     </ul>
   );
@@ -124,4 +217,3 @@ export function DashboardCardBreakdown({
     </div>
   );
 }
-

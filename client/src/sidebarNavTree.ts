@@ -138,29 +138,15 @@ function buildRetiroBranch(inv: AccountListRow[]): SidebarNavNode {
   const children: SidebarNavNode[] = [];
 
   if (afp.length > 0 || afc.length > 0) {
-    const afpAfcChildren: SidebarNavNode[] = [];
-    const afpNode = maybeSubgroup(
-      "retiro.afp",
-      i18n.t("sidebar.afp"),
-      "/inversiones/retiro/afp",
-      afp,
-      retirementAccountNavLabel
-    );
-    const afcNode = maybeSubgroup(
-      "retiro.afc",
-      i18n.t("sidebar.afc"),
-      "/inversiones/retiro/afc",
-      afc,
-      retirementAccountNavLabel
-    );
-    if (afpNode) afpAfcChildren.push(afpNode);
-    if (afcNode) afpAfcChildren.push(afcNode);
     children.push({
       id: "retiro.afp-afc",
       label: i18n.t("retirement.afpAfc"),
       to: "/inversiones/retiro/afp-afc",
       activePrefix: "/inversiones/retiro/afp-afc",
-      children: afpAfcChildren,
+      children: [
+        ...accountLeaves("retiro.afp-afc.afp", afp, retirementAccountNavLabel),
+        ...accountLeaves("retiro.afp-afc.afc", afc, retirementAccountNavLabel),
+      ],
     });
   }
 
@@ -264,7 +250,7 @@ function buildFlowsExpensesBranch(): SidebarNavNode {
 
 export function buildSidebarNavTree(data: SidebarAccountsBundle): SidebarNavNode[] {
   return [
-    { id: "dashboard", label: i18n.t("dashboard.title"), to: "/", end: true, showLeafHyphen: false },
+    { id: "dashboard", label: i18n.t("dashboard.cards.netWorth"), to: "/", end: true, showLeafHyphen: false },
     buildCashBranch(data.cash),
     buildLiabilitiesBranch(data.liabilities),
     buildRealEstateBranch(data.realEstate),

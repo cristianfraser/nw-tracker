@@ -31,6 +31,9 @@ export function collectNavAccountDataKeys(node: NavTreeNodeDto): string[] {
   const visit = (n: NavTreeNodeDto) => {
     if (n.account_id != null && n.account_id > 0) {
       keys.push(String(n.account_id));
+      if (n.source_account_id != null && n.source_account_id > 0) {
+        keys.push(String(n.source_account_id));
+      }
     }
     for (const c of n.children ?? []) visit(c);
   };
@@ -45,7 +48,7 @@ export function findNavTreeNodeByAccountId(
 ): NavTreeNodeDto | null {
   if (!nodes?.length) return null;
   for (const n of nodes) {
-    if (n.account_id === accountId) return n;
+    if (n.account_id === accountId || n.source_account_id === accountId) return n;
     const hit = findNavTreeNodeByAccountId(n.children, accountId);
     if (hit) return hit;
   }
@@ -89,4 +92,16 @@ export function findBestNavNodeForPathname(
 
   for (const root of nodes) visit(root);
   return bestScore >= 0 ? best : null;
+}
+
+/** Top-level nav children for the group “Grupos y cuentas” hierarchy table (matches child-card strip rules). */
+export function navHierarchyTableChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  let children = (root.children ?? []).filter((c) => c.route_path?.trim());
+  if (root.slug === "inversiones") {
+    children = children.filter((c) => c.slug === "brokerage" || c.slug === "retirement");
+  }
+  if (root.slug === "cash_eqs") {
+    children = children.filter((c) => c.slug !== "liabilities_credit_card");
+  }
+  return children;
 }

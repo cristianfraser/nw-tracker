@@ -672,11 +672,25 @@ export function mortgageSheetPaymentsClpInMonth(
   ledger: readonly DeptoMortgageSheetRow[],
   asOf: string
 ): number {
+  return mortgageSheetPaymentsClpThroughDate(ledger, asOf, null);
+}
+
+/**
+ * Σ mortgage payments in the calendar month of `asOf` with `occurred_on` ≤ `asOf`.
+ * When `afterExclusive` is set, only counts payments strictly after that date (same month snapshots).
+ */
+export function mortgageSheetPaymentsClpThroughDate(
+  ledger: readonly DeptoMortgageSheetRow[],
+  asOf: string,
+  afterExclusive: string | null
+): number {
   const mk = asOf.slice(0, 7);
   let sum = 0;
   for (const r of ledger) {
     if (!isDeptoMortgagePaymentCuota(r.cuota)) continue;
     if (r.occurred_on.slice(0, 7) !== mk) continue;
+    if (afterExclusive != null && r.occurred_on <= afterExclusive) continue;
+    if (r.occurred_on > asOf) continue;
     sum += Math.abs(r.pago_clp);
   }
   return sum;

@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { DashboardCardBreakdown } from "./DashboardCardBreakdown";
 import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { CompactEntityCard } from "./CompactEntityCard";
 import { PortfolioEntityCardsStrip } from "./PortfolioEntityCardsStrip";
@@ -6,14 +8,20 @@ import {
   dashboardRowsForNavSubtree,
   filterNavChildrenForEntityStrip,
   navAccountIdSet,
+  navNodeForCashAssetTotals,
   parentTitleBalanceDelta,
+  portfolioNavParentMainValue,
+  portfolioNavParentMetrics,
   type PortfolioNavParentTitleDeltaMode,
 } from "../portfolioNavDashboardCards";
-import { cardGroupMetricsFromAccounts, sumCurrentValueClpUsd, type CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import { cashCardBreakdownFromDash, type CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
 import type { DashboardResponse, NavTreeNodeDto } from "../types";
 
 export type PortfolioNavEntityCardsStripProps = {
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown">;
+  dash: Pick<
+    DashboardResponse,
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
+  >;
   overviewPoints: Record<string, string | number | null>[];
   parentNavNode: NavTreeNodeDto;
   detailNavChildren: NavTreeNodeDto[];
@@ -43,8 +51,9 @@ export function PortfolioNavEntityCardsStrip({
   metricsPeriod,
   animated = true,
 }: PortfolioNavEntityCardsStripProps) {
-  const parentIds = navAccountIdSet(parentNavNode);
-  const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
+  const parentNavForTotals = navNodeForCashAssetTotals(parentNavNode);
+  const parentIds = navAccountIdSet(parentNavForTotals);
+  const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavForTotals);
   const parentTitleDelta = parentTitleBalanceDelta(
     dash,
     overviewPoints,
@@ -53,15 +62,45 @@ export function PortfolioNavEntityCardsStrip({
     showUsd,
     parentTitleMode
   );
-  const parentTotals = sumCurrentValueClpUsd(parentRows, showUsd);
-  const parentMetrics = cardGroupMetricsFromAccounts(parentRows, metricsPeriod);
+  const parentTotals = portfolioNavParentMainValue(dash, parentTitleMode, parentRows, showUsd);
+  const parentMetrics = portfolioNavParentMetrics(dash, parentTitleMode, parentRows, metricsPeriod);
 
-  const filteredDetailChildren = filterNavChildrenForEntityStrip(detailNavChildren, dash.accounts, showUsd);
+  const stripDetailChildren = useMemo(() => {
+    if (parentNavNode.slug === "cash_eqs") {
+      return detailNavChildren.filter((c) => c.slug !== "liabilities_credit_card");
+    }
+    return detailNavChildren;
+  }, [detailNavChildren, parentNavNode.slug]);
+
+  const filteredDetailChildren = filterNavChildrenForEntityStrip(
+    stripDetailChildren,
+    dash.accounts,
+    showUsd
+  );
   const showDetailSlots = filteredDetailChildren.length > 0;
+
+  const isCashParent = parentNavNode.slug === "cash_eqs";
+  const cashBreakdown = useMemo(
+    () => (isCashParent ? cashCardBreakdownFromDash(dash.accounts, dash) : null),
+    [isCashParent, dash]
+  );
+
+  const compactBreakdown =
+    cashBreakdown && (cashBreakdown.lines.length > 0 || cashBreakdown.bottomLines.length > 0) ? (
+      <DashboardCardBreakdown
+        lines={cashBreakdown.lines}
+        bottomLines={cashBreakdown.bottomLines}
+        pinBottomToCard
+        showUsd={showUsd}
+        cardSlug={compactCardSlug}
+        animated={animated}
+      />
+    ) : undefined;
 
   return (
     <div style={{ marginTop: "0.85rem" }}>
       <PortfolioEntityCardsStrip
+        compactStripClassName={isCashParent ? "card--cash" : undefined}
         compactSlot={
           <CompactEntityCard
             label={compactTitle}
@@ -74,6 +113,7 @@ export function PortfolioNavEntityCardsStrip({
             animated={animated}
             stripInner
             valueVariant="main"
+            breakdown={compactBreakdown}
             metrics={
               <DashboardCardGroupMetrics
                 metrics={parentMetrics}

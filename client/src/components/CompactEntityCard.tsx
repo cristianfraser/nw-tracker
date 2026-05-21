@@ -21,6 +21,8 @@ export type CompactEntityCardProps = {
   valueVariant?: DashboardCardValueVariant;
   /** When true, no inner border/padding (parent is `portfolio-strip-compact`). */
   stripInner?: boolean;
+  /** Optional account list / footer (e.g. cash bucket breakdown). */
+  breakdown?: ReactNode;
 };
 
 /**
@@ -39,8 +41,15 @@ export function CompactEntityCard({
   metrics,
   valueVariant = "breakdown",
   stripInner = false,
+  breakdown,
 }: CompactEntityCardProps) {
-  const rootClass = stripInner ? `${styles.root} ${styles.rootStripInner}` : styles.root;
+  const rootClass = [
+    styles.root,
+    stripInner ? styles.rootStripInner : "",
+    breakdown ? styles.rootWithBreakdown : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={rootClass}>
@@ -63,7 +72,8 @@ export function CompactEntityCard({
           mountSeedKey={`${cardSlug}:compact`}
         />
       </div>
-      {metrics}
+      {metrics ? <div>{metrics}</div> : null}
+      {breakdown}
     </div>
   );
 }

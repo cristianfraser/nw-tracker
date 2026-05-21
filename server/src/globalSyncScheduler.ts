@@ -14,6 +14,33 @@ import { loadRootDotenv } from "./rootDotenv.js";
 
 let inFlight = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let schedulerEnabled = false;
+let schedulerIntervalMs = 15 * 60 * 1000;
+/** Wall-clock ms when the next `schedulerTick` is scheduled (poll; runs sync if stale). */
+let nextCheckAtMs: number | null = null;
+
+export type GlobalSyncSchedulerSnapshot = {
+  enabled: boolean;
+  interval_ms: number;
+  in_flight: boolean;
+  next_check_at: string | null;
+};
+
+export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
+  return {
+    enabled: schedulerEnabled,
+    interval_ms: schedulerIntervalMs,
+    in_flight: inFlight,
+    next_check_at:
+      nextCheckAtMs != null && Number.isFinite(nextCheckAtMs)
+        ? new Date(nextCheckAtMs).toISOString()
+        : null,
+  };
+}
+
+function scheduleNextCheck(delayMs: number): void {
+  nextCheckAtMs = Date.now() + delayMs;
+}
 
 function envFlag(name: string, defaultOn: boolean): boolean {
   const v = process.env[name]?.trim().toLowerCase();
@@ -58,24 +85,34 @@ async function schedulerTick(): Promise<void> {
     console.error(`sync:scheduler — error: ${e instanceof Error ? e.message : e}`);
   } finally {
     inFlight = false;
+    if (schedulerEnabled && intervalHandle != null) {
+      scheduleNextCheck(schedulerIntervalMs);
+    }
   }
 }
 
 export function startGlobalSyncScheduler(): void {
-  if (!envFlag("GLOBAL_SYNC_ENABLED", true)) {
+  schedulerEnabled = envFlag("GLOBAL_SYNC_ENABLED", true);
+  if (!schedulerEnabled) {
     console.log("sync:scheduler — disabled (GLOBAL_SYNC_ENABLED=0).");
+    nextCheckAtMs = null;
     return;
   }
-  const intervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
+  schedulerIntervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
   const startupDelayMs = envMs("GLOBAL_SYNC_STARTUP_DELAY_MS", 30 * 1000);
 
   console.log(
-    `sync:scheduler — enabled; first check in ${Math.round(startupDelayMs / 1000)}s, then every ${Math.round(intervalMs / 1000)}s`
+    `sync:scheduler — enabled; first check in ${Math.round(startupDelayMs / 1000)}s, then every ${Math.round(schedulerIntervalMs / 1000)}s`
   );
 
+  scheduleNextCheck(startupDelayMs);
   setTimeout(() => {
     void schedulerTick();
-    intervalHandle = setInterval(() => void schedulerTick(), intervalMs);
+    scheduleNextCheck(schedulerIntervalMs);
+    intervalHandle = setInterval(() => {
+      scheduleNextCheck(schedulerIntervalMs);
+      void schedulerTick();
+    }, schedulerIntervalMs);
   }, startupDelayMs);
 }
 
@@ -84,4 +121,6 @@ export function stopGlobalSyncScheduler(): void {
     clearInterval(intervalHandle);
     intervalHandle = null;
   }
+  schedulerEnabled = false;
+  nextCheckAtMs = null;
 }

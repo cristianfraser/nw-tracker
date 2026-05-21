@@ -38,7 +38,12 @@ export function DeltaMetricFlow({
 
   if (delta == null) {
     return (
-      <span className={`${styles.amount} ${styles.amountEmpty} mono ${className}`.trim()}>—</span>
+      <span className={`${styles.delta} ${className}`.trim()}>
+        <span className={`${styles.deltaIcon} ${styles.deltaIconReserve}`} aria-hidden>
+          ▲
+        </span>
+        <span className={`${styles.amount} ${styles.amountEmpty} mono`}>—</span>
+      </span>
     );
   }
   const sign = delta > 0 ? 1 : delta < 0 ? -1 : 0;

@@ -17,7 +17,6 @@
  *   npm run sync:all -w nw-tracker-server -- --force
  */
 import "../src/db.js";
-import { insertAppMessage } from "../src/appMessages.js";
 import { chileWallClockNow } from "../src/chileDate.js";
 import { db } from "../src/db.js";
 import { isEquityEodStale, isSbifMonthlyStale, staleSyncSources } from "../src/globalSyncStale.js";
@@ -29,7 +28,7 @@ import { upsertFundUnitDailyRow, upsertAfpSpotValuationWithExplicitPx, ensureAfp
 import { fillFundUnitDailyCalendarGap, latestFundUnitRow } from "../src/fundUnitDaily.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "../src/afpQuetalmiApi.js";
 import { fetchFintualGoalsRaw, getValidFintualSession, loadGoalIdOverrides, loadRootDotenv, matchGoalToImportNotes, parseGoalsFromResponse, writeGoalsSnapshot, } from "./fintualApiLib.js";
-import { applyFintualGoalsSnapshotToDb, collectFintualGoalValuationChanges, cleanupMistakenPollDayFintualValuations, fintualEveningCatchUpComplete, fintualMappedNavSignature, fintualSnapshotMatchesDb, pickFintualApplySnapshot, syncFintualFundUnitsFromResolutions, } from "./fintualApplyShared.js";
+import { applyFintualGoalsSnapshotToDb, collectFintualGoalValuationChanges, cleanupMistakenPollDayFintualValuations, fintualEveningCatchUpComplete, fintualMappedNavSignature, fintualNavUnchangedSinceLastApply, fintualSnapshotMatchesDb, markFintualEveningSettledWhenCurrent, pickFintualApplySnapshot, syncFintualFundUnitsFromResolutions, } from "./fintualApplyShared.js";
 import { clearFintualRealAssetNavCaches, formatClp, resolveFintualGoalNavs, } from "./fintualRealAssetNav.js";
 import { fetchDolarAfterDate, fetchEuroAfterDate, fetchIpcAfterMonth, fetchUfAfterDate, fetchUtmAfterMonth, } from "../src/sbifApi.js";
 import { maxEurDate, maxFxDate, maxUfDate, safeMaxIpcMonthParts, safeMaxUtmMonthParts, upsertEurRows, upsertFxRows, upsertIpcRows, upsertUfRows, upsertUtmRows, } from "../src/sbifSyncDb.js";
@@ -204,9 +203,9 @@ async function runFintual(cl, state, changes) {
     for (const r of resolutions) {
         if (!r.mismatch || !r.row.matchedNotes || r.realAssetsNavClp == null)
             continue;
-        const unitLine = r.units != null ? `\nCuotas: ${r.units.toLocaleString("es-CL", { maximumFractionDigits: 4 })}` : "";
-        const priceLine = r.fundPriceClp != null ? `\nValor cuota: $${formatClp(r.fundPriceClp)}` : "";
-        insertAppMessage("notification", `Fintual: ${r.row.name}`, `Cuenta API: $${formatClp(r.goalsApiNavClp)} vs real_assets: $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`, syncDryRun);
+        const unitLine = r.units != null ? ` · cuotas ${r.units.toLocaleString("es-CL", { maximumFractionDigits: 4 })}` : "";
+        const priceLine = r.fundPriceClp != null ? ` · valor cuota $${formatClp(r.fundPriceClp)}` : "";
+        console.log(`sync: Fintual — ${r.row.name}: goals API $${formatClp(r.goalsApiNavClp)} vs real_assets $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`);
     }
     const appliedRows = resolutions.map((r) => r.row);
     const picked = pickFintualApplySnapshot(appliedRows, overrides, cl, state);
@@ -216,6 +215,26 @@ async function runFintual(cl, state, changes) {
     state.fintualLastCheckYmd = cl.ymd;
     state.fintualLastCheckSig = sig;
     const anyMapped = snap.goals.some((g) => g.matchedNotes);
+    if (fintualNavUnchangedSinceLastApply(sig, state)) {
+        if (fintualSnapshotMatchesDb(snap)) {
+            const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
+            if (cleaned > 0) {
+                console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
+            }
+            markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
+        }
+        console.log("sync: Fintual — API NAV unchanged since last apply; skip DB write (valuations already current).");
+        if (STRICT_FINTUAL) {
+            const hasMapped = snap.goals.some((g) => g.matchedNotes);
+            if (hasMapped) {
+                throw new Error("--strict-fintual: no valuation update applied");
+            }
+        }
+        return {
+            pending: true,
+            fintualNoChange: anyMapped,
+        };
+    }
     syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
     if (fintualSnapshotMatchesDb(snap)) {
         const fintualLogChanges = collectFintualGoalValuationChanges(snap);
@@ -224,10 +243,11 @@ async function runFintual(cl, state, changes) {
         if (cleaned > 0) {
             console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
         }
+        markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
         if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, cl)) {
             state.fintualEveningSettledYmd = cl.ymd;
         }
-        console.log("sync: Fintual — API NAV unchanged since last apply; still stale until Fintual publishes new totals.");
+        console.log("sync: Fintual — valuations already match API; no DB update needed.");
         if (STRICT_FINTUAL) {
             const hasMapped = snap.goals.some((g) => g.matchedNotes);
             if (hasMapped) {
@@ -244,6 +264,7 @@ async function runFintual(cl, state, changes) {
     if (!syncDryRun) {
         state.fintualLastAppliedYmd = cl.ymd;
         state.fintualLastAppliedSig = sig;
+        markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
         if (fintualEveningCatchUpComplete(rows, overrides, cl)) {
             state.fintualEveningSettledYmd = cl.ymd;
         }
@@ -500,9 +521,10 @@ export async function runGlobalSyncAll(opts) {
     const logOpts = {};
     let stale = [];
     let state = null;
+    let cl = chileWallClockNow();
     try {
         loadRootDotenv();
-        const cl = chileWallClockNow();
+        cl = chileWallClockNow();
         state = loadGlobalSyncState();
         stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
         console.log(`sync:all — Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")} (${syncDryRun ? "dry-run" : "live"})` +
@@ -551,6 +573,9 @@ export async function runGlobalSyncAll(opts) {
         stepErrors.push({ step: "sync:all", message });
     }
     finally {
+        if (state) {
+            stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
+        }
         insertSyncRunLog(stale, syncChanges, syncDryRun, { ...logOpts, errors: stepErrors });
         if (!syncDryRun && state)
             saveGlobalSyncState(state);

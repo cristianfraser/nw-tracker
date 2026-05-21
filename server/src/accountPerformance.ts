@@ -1,4 +1,9 @@
-import { getAccountValuationTimeseries, listAccountsForGroupTab, convertTs } from "./valuationTimeseries.js";
+import {
+  getAccountValuationTimeseries,
+  listAccountsForGroupTab,
+  convertTs,
+  seriesAccountIdForGroupTab,
+} from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -8,13 +13,17 @@ import {
   deptoMortgageCloseClpBySnapshotDates,
   deptoSueciaPropertyCloseClpBySnapshotDates,
   loadDeptoDividendosSheetLedger,
-  mortgageSheetPaymentsClpInMonth,
+  mortgageSheetPaymentsClpThroughDate,
 } from "./deptoDividendosLedger.js";
 import {
   ccInstallmentLedgerRowCount,
   creditCardInstallmentPaymentsByBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { db } from "./db.js";
+import {
+  colorRgbForSyntheticAccountLine,
+  colorRgbForTimeseriesAccountLine,
+} from "./chartColorRgb.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { AFP_IMPORT_CUOTAS_NOTE_SQL } from "./afpUnoValuation.js";
 import {
@@ -40,7 +49,7 @@ export type AccountMonthlyPerformanceRow = {
   prior_closing: number | null;
   /** Net capital flow in the month (Δ cumulative aportes vs prior month-end). */
   net_capital_flow: number;
-  /** Sum of positive `brokerage_flows.units_delta` in the calendar month (purchases + reinvest DRIP). For **afp**, sum of positive `movements.units_delta` on AFP import rows (certificate cuotas). */
+  /** Sum of positive `movements.units_delta` in the calendar month (brokerage buys + DRIP, or AFP certificate cuotas). */
   stock_units_inflow: number;
   /** Coin units held at month-end snapshot (bitcoin / eth only). */
   coin_units_eom?: number | null;
@@ -162,7 +171,8 @@ function priorCalendarMonthKeyFromToday(todayYmd: string): string {
 function applyLiveCloseToCurrentMonthPerfRows(
   accountId: number,
   categorySlug: string,
-  sortedAsc: AccountMonthlyPerformanceRow[]
+  sortedAsc: AccountMonthlyPerformanceRow[],
+  unit: TsUnit
 ): AccountMonthlyPerformanceRow[] {
   if (!sortedAsc.length) return sortedAsc;
   const today = chileCalendarTodayYmd();
@@ -176,7 +186,12 @@ function applyLiveCloseToCurrentMonthPerfRows(
   const priorClose = priorRow?.closing_value ?? row.prior_closing;
   if (priorClose == null || !Number.isFinite(priorClose)) return sortedAsc;
 
-  const live = livePerfCloseClpForCurrentMonth(accountId, categorySlug) ?? row.closing_value;
+  let live: number | null = livePerfCloseClpForCurrentMonth(accountId, categorySlug);
+  if (live != null && unit === "usd") {
+    const usd = convertTs(live, today, "usd");
+    live = Number.isFinite(usd) ? usd : null;
+  }
+  if (live == null || !Number.isFinite(live)) live = row.closing_value;
   if (live == null || !Number.isFinite(live)) return sortedAsc;
 
   const netFlow = row.net_capital_flow;
@@ -222,7 +237,7 @@ function recomputeYtdAndCumulativeOnMonthlyRows(
 }
 
 /** Stored `valuations` rows (ascending) for book / month-end snapshots. */
-function loadBookValuationsAsc(accountId: number): { as_of_date: string; value_clp: number }[] {
+export function loadBookValuationsAsc(accountId: number): { as_of_date: string; value_clp: number }[] {
   return db
     .prepare(`SELECT as_of_date, value_clp FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
     .all(accountId) as { as_of_date: string; value_clp: number }[];
@@ -282,7 +297,8 @@ function monthEndCloseForPerformance(
       ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
   }
   if (rawClp == null) return null;
-  return convertTs(rawClp, asOf, unit);
+  const converted = convertTs(rawClp, asOf, unit);
+  return Number.isFinite(converted) ? converted : null;
 }
 
 /**
@@ -316,7 +332,8 @@ function monthEndCloseForMortgagePerformance(
 ): number | null {
   const fromSheet = closeClpByDate?.get(asOf);
   if (fromSheet != null && Number.isFinite(fromSheet)) {
-    return convertTs(fromSheet, asOf, unit);
+    const converted = convertTs(fromSheet, asOf, unit);
+    return Number.isFinite(converted) ? converted : null;
   }
   return monthEndCloseForPerformance(
     accountId,
@@ -329,13 +346,15 @@ function monthEndCloseForMortgagePerformance(
   );
 }
 
-/** Month-end `YYYY-MM-DD` → Σ positive units_delta on `brokerage_flows` in that calendar month. */
+/** Month-end `YYYY-MM-DD` → Σ positive units_delta on equity brokerage movements in that calendar month. */
 function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
   const rows = db
     .prepare(
       `SELECT occurred_on, COALESCE(units_delta, 0) AS ud
-       FROM brokerage_flows
-       WHERE account_id = ? AND COALESCE(units_delta, 0) > 0`
+       FROM movements
+       WHERE account_id = ?
+         AND flow_kind IN ('compra_usd', 'dividend_usd')
+         AND COALESCE(units_delta, 0) > 0`
     )
     .all(accountId) as { occurred_on: string; ud: number }[];
   const m = new Map<string, number>();
@@ -425,6 +444,7 @@ export function getAccountMonthlyPerformance(
 
   let prevClose: number | null = null;
   let prevCumDep: number | null = null;
+  let prevPerfAsOf: string | null = null;
   const outAsc: AccountMonthlyPerformanceRow[] = [];
   let ytdYear = 0;
   let ytdRun = 0;
@@ -503,7 +523,9 @@ export function getAccountMonthlyPerformance(
       ytdRun = 0;
       /** First month in the series: no prior month-end — net flow = cumulative aportes at this date (vs 0). */
       const netFlowFirst =
-        isMortgage && deptoLedger ? mortgageSheetPaymentsClpInMonth(deptoLedger, asOf) : cumDep;
+        isMortgage && deptoLedger
+          ? mortgageSheetPaymentsClpThroughDate(deptoLedger, asOf, null)
+          : cumDep;
       /** Mortgage: opening balance after pie is not P/L (only cuota-driven changes count). */
       const nominalFirst = isMortgage ? 0 : close - netFlowFirst;
       const pctFirst =
@@ -533,12 +555,17 @@ export function getAccountMonthlyPerformance(
       });
       prevClose = close;
       prevCumDep = cumDep;
+      prevPerfAsOf = asOf;
       continue;
     }
 
+    const mortgageAfterExclusive =
+      isMortgage && deptoLedger && prevPerfAsOf != null && monthKeyFromYmd(prevPerfAsOf) === monthKeyFromYmd(asOf)
+        ? prevPerfAsOf
+        : null;
     let netFlow =
       isMortgage && deptoLedger
-        ? mortgageSheetPaymentsClpInMonth(deptoLedger, asOf)
+        ? mortgageSheetPaymentsClpThroughDate(deptoLedger, asOf, mortgageAfterExclusive)
         : cumDep - (prevCumDep ?? 0);
     if (ccBillingPayByMonth != null) {
       const sched = ccBillingPayByMonth.get(monthKeyFromYmd(asOf)) ?? 0;
@@ -561,6 +588,7 @@ export function getAccountMonthlyPerformance(
     if (!Number.isFinite(y)) {
       prevClose = close;
       prevCumDep = cumDep;
+      prevPerfAsOf = asOf;
       continue;
     }
     if (y !== ytdYear) {
@@ -592,13 +620,15 @@ export function getAccountMonthlyPerformance(
 
     prevClose = close;
     prevCumDep = cumDep;
+    prevPerfAsOf = asOf;
   }
 
   const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc);
   const withLive = applyLiveCloseToCurrentMonthPerfRows(
     accountId,
     row.category_slug,
-    collapsed
+    collapsed,
+    unit
   );
   const monthly = [...withLive].reverse();
   return { account_id: accountId, category_slug: row.category_slug, monthly };
@@ -623,6 +653,8 @@ export type GroupMonthlyPerformanceBarAccount = {
   name: string;
   /** Point field for this account’s monthly nominal P/L (e.g. `pl_12`). */
   bar_data_key: string;
+  /** Portfolio group / account color (`r,g,b`), same as valuation lines. */
+  color_rgb?: string;
 };
 
 /**
@@ -672,14 +704,20 @@ export function getGroupMonthlyPerformanceSeries(
   const bar_accounts: GroupMonthlyPerformanceBarAccount[] = [];
 
   for (const r of perfRows) {
-    const p = getAccountMonthlyPerformance(r.account_id, unit);
+    const seriesId = seriesAccountIdForGroupTab(r, groupSlug);
+    const p = getAccountMonthlyPerformance(seriesId, unit);
     if (!p || p.monthly.length === 0) continue;
     const asc = [...p.monthly].reverse();
-    byIdAsc.set(r.account_id, asc);
+    byIdAsc.set(seriesId, asc);
+    const color_rgb =
+      seriesId > 0
+        ? colorRgbForTimeseriesAccountLine(seriesId)
+        : colorRgbForSyntheticAccountLine(seriesId);
     bar_accounts.push({
-      account_id: r.account_id,
+      account_id: seriesId,
       name: r.name,
-      bar_data_key: `pl_${r.account_id}`,
+      bar_data_key: `pl_${seriesId}`,
+      ...(color_rgb ? { color_rgb } : {}),
     });
   }
 

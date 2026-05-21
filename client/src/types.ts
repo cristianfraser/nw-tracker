@@ -85,6 +85,8 @@ export interface DashboardAccountRow {
   position?: AccountPositionSnapshot | null;
   /** True when monthly closes show a long zero tail (same rule as chart tail clip). From `/api/dashboard`. */
   chart_inactive?: boolean;
+  /** When 1, listed in nav/charts but omitted from bucket totals, class Total, NW cash bucket. */
+  exclude_from_group_totals?: number;
 }
 
 export interface DashboardLayoutCardRow {
@@ -94,6 +96,7 @@ export interface DashboardLayoutCardRow {
   sort_order: number;
   bucket_slug: string;
   card_css: string | null;
+  route_path?: string | null;
 }
 
 export interface DashboardResponse {
@@ -118,6 +121,8 @@ export interface DashboardResponse {
     group_label: string;
     value_clp: number;
     value_usd?: number;
+    /** `portfolio_groups` resolved color (`r,g,b`). */
+    color_rgb?: string;
   }[];
   accounts: DashboardAccountRow[];
   /** Suecia depto snapshot for dashboard RE card (valor / net / mortgage). */
@@ -135,6 +140,14 @@ export interface DashboardResponse {
     mortgage_usd?: number | null;
     credit_card_usd?: number | null;
   };
+  /** Pasivos > tarjeta de crédito leaves (same source as liabilities sidebar). */
+  cash_credit_card_links?: {
+    liability_account_id: number;
+    operational_account_id: number;
+    name: string;
+    clp: number;
+    usd?: number | null;
+  }[];
   deposits_by_category?: Record<
     DepositFlowCategory,
     { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
@@ -184,7 +197,13 @@ export interface TimeseriesAccountLine {
 
 export interface TimeseriesBlock {
   accounts?: TimeseriesAccountLine[];
-  lines?: { dataKey: string; name: string; valueSeriesType: ValueSeriesType }[];
+  lines?: {
+    dataKey: string;
+    name: string;
+    valueSeriesType: ValueSeriesType;
+    /** Resolved from `portfolio_groups` for dashboard overview buckets. */
+    color_rgb?: string;
+  }[];
   points: Record<string, string | number | null>[];
   /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */
   synthetic_group_color_rgb?: Record<string, string>;
@@ -389,7 +408,7 @@ export interface AccountMonthlyPerformanceRow {
   closing_value: number;
   prior_closing: number | null;
   net_capital_flow: number;
-  /** Sum units added in the month: brokerage buys + DRIP (`brokerage_flows.units_delta > 0`), or for **afp** certificate cuotas (`movements.units_delta > 0` on AFP import rows). */
+  /** Sum units added in the month: equity buys + DRIP (`movements.units_delta > 0` with `flow_kind`), or for **afp** certificate cuotas on AFP import rows. */
   stock_units_inflow: number;
   /** Coin balance at month-end (bitcoin / eth). */
   coin_units_eom?: number | null;
@@ -415,6 +434,7 @@ export interface GroupMonthlyPerformanceBarAccount {
   account_id: number;
   name: string;
   bar_data_key: string;
+  color_rgb?: string;
 }
 
 export interface GroupMonthlyPerformanceResponse {
@@ -431,7 +451,7 @@ export interface StocksLifetimeEarningsResponse {
   points: { as_of_date: string; delta_month: number; accumulated_earnings: number; ytd_merged: number }[];
 }
 
-/** `GET /api/market-series` — FX, UF, `equity_daily` (USD EOD per ticker), `fund_unit_daily` (valor cuota CLP); CLP crosses derived from carried-forward FX. */
+/** `GET /api/market-series` — sparse observations per field (no cross-series forward-fill); CLP crosses use FX on or before each equity/fund observation date. */
 export interface MarketSeriesPoint {
   as_of_date: string;
   clp_per_usd: number | null;
@@ -490,6 +510,9 @@ export interface NavTreeNodeDto {
   nav_end: boolean;
   show_leaf_hyphen: boolean;
   account_id: number | null;
+  portfolio_group_id: number | null;
+  /** Master account when `account_id` is a liability-view leaf (CC purchases, cupo, ledger). */
+  source_account_id: number | null;
   expense_account_id: number | null;
   expense_account_slug: string | null;
   asset_group_slug: string | null;
@@ -502,6 +525,8 @@ export interface NavTreeNodeDto {
 
 export interface SidebarNavResponse {
   dashboard: NavTreeNodeDto | null;
+  /** `portfolio_groups.slug = net_worth` — label for home route and page title. */
+  net_worth: NavTreeNodeDto | null;
   main: NavTreeNodeDto[];
   flows: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
@@ -578,6 +603,41 @@ export interface FlowsExpensesResponse {
   chart_yearly: FlowExpenseChartPoint[];
   total_clp: number;
   by_group: Record<ExpenseFlowGroupSlug, FlowExpenseGroupBlock>;
+}
+
+export type SyncSourceId =
+  | "afp_uno"
+  | "fintual"
+  | "sbif_usd"
+  | "sbif_eur"
+  | "sbif_uf"
+  | "sbif_utm"
+  | "sbif_ipc"
+  | "equity_eod";
+
+export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
+
+export interface SyncSourceStatusRow {
+  source: SyncSourceId;
+  status: SyncSourceDisplayStatus;
+  stale: boolean;
+}
+
+export interface SyncSchedulerStatus {
+  enabled: boolean;
+  interval_ms: number;
+  in_flight: boolean;
+  next_check_at: string | null;
+}
+
+/** `GET /api/sync/status` */
+export interface SyncStatusResponse {
+  chile: { ymd: string; hour: number; minute: number; monthKey: string };
+  stale: SyncSourceId[];
+  sources: SyncSourceStatusRow[];
+  scheduler: SyncSchedulerStatus;
+  /** ISO-ish timestamp from latest sync log row (`app_messages`, kind=log). */
+  last_sync_at: string | null;
 }
 
 /** `GET /api/flows/deposits` — amounts may be negative (withdrawals). */

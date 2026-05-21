@@ -1,3 +1,4 @@
+import { resolveOperationalAccountId } from "./accountSource.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -70,8 +71,9 @@ export function latestLiabilityValuationRowForSnapshot(
   categorySlug: string,
   asOfYmd: string
 ): LatestValuationRow | undefined {
+  const effectiveId = resolveOperationalAccountId(accountId);
   if (categorySlug === "credit_card") {
-    return latestCreditCardValuationRowAsOf(accountId, asOfYmd);
+    return latestCreditCardValuationRowAsOf(effectiveId, asOfYmd);
   }
-  return latestValuationRowOnOrBefore(accountId, asOfYmd);
+  return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
 }

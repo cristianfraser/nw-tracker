@@ -8,12 +8,21 @@ import {
   titleBalanceDeltaForAccountIds,
   titleDeltaModelForNavChildSlug,
 } from "../portfolioNavDashboardCards";
-import { cardGroupMetricsFromAccounts, sumCurrentValueClpUsd, type CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import {
+  cardGroupMetricsFromAccounts,
+  compareDashboardCardMainDesc,
+  sumCurrentValueClpUsd,
+  type CardGroupMetricsPeriod,
+} from "../dashboardCardBreakdown";
+import { useMemo } from "react";
 import type { DashboardResponse, NavTreeNodeDto } from "../types";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 
 export type PortfolioNavChildDetailCardsProps = {
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown">;
+  dash: Pick<
+    DashboardResponse,
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
+  >;
   overviewPoints: Record<string, string | number | null>[];
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
@@ -30,12 +39,20 @@ export function PortfolioNavChildDetailCards({
   metricsPeriod,
   animated = true,
 }: PortfolioNavChildDetailCardsProps) {
-  const filtered = navChildren.filter((c) => c.route_path?.trim());
-  if (!filtered.length) return null;
+  const sorted = useMemo(() => {
+    const filtered = navChildren.filter((c) => c.route_path?.trim());
+    return [...filtered].sort((a, b) => {
+      const aVal = sumCurrentValueClpUsd(dashboardRowsForNavSubtree(dash.accounts, a), showUsd);
+      const bVal = sumCurrentValueClpUsd(dashboardRowsForNavSubtree(dash.accounts, b), showUsd);
+      return compareDashboardCardMainDesc(aVal.clp, aVal.apiUsd, bVal.clp, bVal.apiUsd, showUsd);
+    });
+  }, [navChildren, dash.accounts, showUsd]);
+
+  if (!sorted.length) return null;
 
   return (
     <>
-      {filtered.map((child) => {
+      {sorted.map((child) => {
         const childRows = dashboardRowsForNavSubtree(dash.accounts, child);
         const childIds = navAccountIdSet(child);
         const spec = titleDeltaModelForNavChildSlug(child.slug);

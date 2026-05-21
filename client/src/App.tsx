@@ -6,13 +6,12 @@ import { MarketTickerPanel } from "./components/MarketTickerPanel";
 import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext";
 import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
-import { AssetGroupPage } from "./pages/AssetGroupPage";
+import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DepositsPage } from "./pages/DepositsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
 import { IncomePage } from "./pages/IncomePage";
-import { InversionesPage } from "./pages/InversionesPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import { RatesPage } from "./pages/RatesPage";
 
@@ -30,18 +29,16 @@ export default function App() {
           <div className="content">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/inversiones/*" element={<InversionesPage />} />
+            <Route path="/inversiones/*" element={<GroupInfoPage />} />
             <Route path="/retirement" element={<Navigate to="/inversiones/retiro" replace />} />
             <Route path="/retirement/*" element={<Navigate to="/inversiones/retiro" replace />} />
             <Route path="/brokerage" element={<Navigate to="/inversiones/brokerage" replace />} />
             <Route path="/brokerage/*" element={<Navigate to="/inversiones/brokerage" replace />} />
-            <Route
-              path="/cash_eqs"
-              element={<AssetGroupPage slug="cash_eqs" />}
-            />
+            <Route path="/cash_eqs" element={<GroupInfoPage />} />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
-            <Route path="/real_estate" element={<AssetGroupPage slug="real_estate" />} />
-            <Route path="/liabilities" element={<AssetGroupPage slug="liabilities" />} />
+            <Route path="/real_estate" element={<GroupInfoPage />} />
+            <Route path="/liabilities" element={<GroupInfoPage />} />
+            <Route path="/liabilities/:subgroup" element={<GroupInfoPage />} />
             <Route path="/flows" element={<FlowsLayout />}>
               <Route index element={<Navigate to="income" replace />} />
               <Route path="income" element={<IncomePage />} />

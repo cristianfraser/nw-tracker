@@ -12,7 +12,7 @@
  *   **Movements** from xlsx “cripto - Bitcoin – BTC” / “cripto - Ether – ETH”: col 1 Depositado CLP (+), col 4 Retirado CLP (−);
  *   coin cells may include an “ETH 0,…” prefix; some Retirado rows have **coin only** (CLP blank) — those still emit a movement with placeholder CLP flagged `cripto-coin-only-wdw` (excluded from aportes).
  *   `units_delta` follows cumulative-vs-monthly rules in `cryptoSheetUnits.ts` (not raw ±coin per row).
- * - Sheet “stocks”: monthly valuations from Table 1-3 col 18 (total). **SPY/VEA `brokerage_flows`:** keep
+ * - Sheet “stocks”: monthly valuations from Table 1-3 col 18 (total). **SPY/VEA equity flows** in `movements` (`flow_kind`): keep
  *   **`cfraser/stocks-lots.csv`** in the repo (broker / certificate SoT: CLP **`deposit_clp`**, **`compra_usd`**, **`dividend_usd`**,
  *   **`units`**). `import:excel` loads it **first**; it is **not** derived from Excel. If the file is missing or invalid,
  *   import falls back to one **`deposit_clp` per ticker** from Numbers `net worth-stocks.csv` only (no lots → broken MTM / VEA).
@@ -97,6 +97,7 @@ import {
   type ExcelMovementInsertStmt,
   type MonthKey,
 } from "./cfraser-csv.js";
+import { signedAmountClpForBrokerageFlow } from "../src/brokerageFlowMovement.js";
 import { deleteEquityDailyForImportTickers, EQUITY_DAILY_IMPORT_TICKERS, upsertEquityDailySeries } from "../src/brokerageEquityMtm.js";
 import {
   cryptoDepositCoinUnitsDelta,
@@ -627,7 +628,7 @@ function importSpyVeaDepositadoFromStocksCsv(
   if (!fs.existsSync(fp)) return 0;
   const rows = readSemicolonCsv(fp);
   const ins = db.prepare(
-    `INSERT INTO brokerage_flows (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta)
+    `INSERT INTO movements (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta)
      VALUES (?, ?, 'deposit_clp', ?, NULL, ?, ?, NULL)`
   );
   // SPY: Numbers “depositado” + Fintual first buy align to **2024-12-10** (certificate trade date).
@@ -646,10 +647,22 @@ function importSpyVeaDepositadoFromStocksCsv(
     const dep = numCsv(row[3]);
     if (dep == null || dep <= 0) continue;
     if (key === "spy") {
-      ins.run(spyId, spyDepositDay, dep, "SPY", "import:excel|net worth-stocks.csv|depositado");
+      ins.run(
+        spyId,
+        spyDepositDay,
+        signedAmountClpForBrokerageFlow("deposit_clp", dep, null),
+        "SPY",
+        "import:excel|net worth-stocks.csv|depositado"
+      );
       n += 1;
     } else if (key === "vea") {
-      ins.run(veaId, veaDepositDay, dep, "VEA", "import:excel|net worth-stocks.csv|depositado");
+      ins.run(
+        veaId,
+        veaDepositDay,
+        signedAmountClpForBrokerageFlow("deposit_clp", dep, null),
+        "VEA",
+        "import:excel|net worth-stocks.csv|depositado"
+      );
       n += 1;
     }
   }
@@ -760,10 +773,22 @@ function readSpyVeaDepositadoWeights(cfraserDir: string): { spy: number; vea: nu
 function accountHasUnitsDelta(accountId: number): boolean {
   const r = db
     .prepare(
-      `SELECT 1 FROM brokerage_flows WHERE account_id = ? AND COALESCE(units_delta, 0) != 0 LIMIT 1`
+      `SELECT 1 FROM movements
+       WHERE account_id = ?
+         AND flow_kind IN ('compra_usd', 'dividend_usd')
+         AND COALESCE(units_delta, 0) != 0
+       LIMIT 1`
     )
     .get(accountId) as { 1: number } | undefined;
   return r != null;
+}
+
+/** Replace SPY/VEA `flow_kind` rows before re-importing `stocks-lots.csv` (avoids 039-style duplicates). */
+function deleteSpyVeaBrokerageMovements(spyId: number, veaId: number): number {
+  const r = db
+    .prepare(`DELETE FROM movements WHERE account_id IN (?, ?) AND flow_kind IS NOT NULL`)
+    .run(spyId, veaId);
+  return r.changes;
 }
 
 /** Optional `stocks-lots.csv`: `occurred_on;ticker;flow_kind;amount_clp;amount_usd;units;note` (`units` optional). */
@@ -792,7 +817,7 @@ function importStocksLotsCsv(
   const useUnitsCol = header[5] === "units";
   const noteCol = useUnitsCol ? 6 : 5;
   const ins = db.prepare(
-    `INSERT INTO brokerage_flows (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta)
+    `INSERT INTO movements (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const kinds = new Set(["deposit_clp", "compra_usd", "dividend_usd", "withdrawal_clp", "other"]);
@@ -824,7 +849,16 @@ function importStocksLotsCsv(
       (ausd != null && ausd !== 0) ||
       (unitsDelta != null && unitsDelta !== 0);
     if (!hasMoney) continue;
-    ins.run(accountId, occurredOn, flowKind, aclp, ausd, ticker || null, note, unitsDelta);
+    ins.run(
+      accountId,
+      occurredOn,
+      flowKind,
+      signedAmountClpForBrokerageFlow(flowKind, aclp, ausd),
+      ausd,
+      ticker || null,
+      note,
+      unitsDelta
+    );
     inserted += 1;
   }
   return inserted;
@@ -1155,19 +1189,25 @@ async function main() {
   const catId = (slug: string) => (catStmt.get(slug) as { id: number }).id;
 
   const insAcc = db.prepare(
-    "INSERT INTO accounts (category_id, name, notes) VALUES (?, ?, ?)"
+    "INSERT INTO accounts (category_id, name, notes, exclude_from_group_totals) VALUES (?, ?, ?, ?)"
   );
 
   const updAccName = db.prepare("UPDATE accounts SET name = ? WHERE id = ?");
 
+  function excludeFromGroupTotalsForCategory(categorySlug: string): number {
+    return categorySlug === "cuenta_corriente" ? 1 : 0;
+  }
+
   function ensureAccount(slug: string, name: string, key: string): number {
     const note = `import:excel|key=${key}`;
+    const exclude = excludeFromGroupTotalsForCategory(slug);
     const row = db.prepare("SELECT id FROM accounts WHERE notes = ?").get(note) as { id: number } | undefined;
     if (row) {
       updAccName.run(name, row.id);
+      db.prepare("UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?").run(exclude, row.id);
       return row.id;
     }
-    const r = insAcc.run(catId(slug), name, note);
+    const r = insAcc.run(catId(slug), name, note, exclude);
     return Number(r.lastInsertRowid);
   }
 
@@ -1364,6 +1404,12 @@ async function main() {
     const ccFromPdf = ccInstallmentLedgerRowCount(accounts.credit_card) > 0;
 
     const stocksLotsPath = path.join(cfraserDir, "stocks-lots.csv");
+    const clearedBrokerageMov = deleteSpyVeaBrokerageMovements(accounts.spy, accounts.vea);
+    if (clearedBrokerageMov > 0) {
+      console.log(
+        `import:excel: cleared ${clearedBrokerageMov} existing SPY/VEA flow_kind movement(s) before re-import`
+      );
+    }
     let stocksLotsN = importStocksLotsCsv(cfraserDir, maxMonth, accounts.spy, accounts.vea);
     if (stocksLotsN === 0) {
       if (fs.existsSync(stocksLotsPath)) {
@@ -1383,7 +1429,7 @@ async function main() {
       }
     } else {
       console.log(
-        `import:excel: stocks-lots.csv → ${stocksLotsN} brokerage_flows (SPY/VEA); skipping 50/50 dep_stocks movements`
+        `import:excel: stocks-lots.csv → ${stocksLotsN} equity movements (SPY/VEA); skipping 50/50 dep_stocks movements`
       );
     }
 
@@ -1623,6 +1669,7 @@ async function main() {
           firstCumulativeMk: firstCumMk,
           existingMovementMonths: existingMk,
           table1UnitsByMonth,
+          asOfYmd: chileCalendarTodayYmd(),
         });
         for (const o of orphans) {
           insMov.run(accounts.afp, o.amountClp, o.occurredOn, o.note, o.unitsDelta);

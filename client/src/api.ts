@@ -55,6 +55,16 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   assetTree: () => j<import("./types").AssetTreeResponse>("/api/meta/asset-tree"),
   sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
+  updateAccountColor: (id: number, color_rgb: string | null) =>
+    j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
+      method: "PATCH",
+      body: JSON.stringify({ color_rgb }),
+    }),
+  updatePortfolioGroupColor: (slug: string, color_rgb: string | null) =>
+    j<{ color_rgb: string | null; color: string }>(`/api/portfolio-groups/${slug}/color`, {
+      method: "PATCH",
+      body: JSON.stringify({ color_rgb }),
+    }),
   ratesInstruments: () => j<import("./types").RatesInstrumentsResponse>("/api/meta/rates-instruments"),
   dashboard: (includeUsd?: boolean) =>
     j<import("./types").DashboardResponse>(
@@ -70,19 +80,6 @@ export const api = {
       `/api/dashboard/valuation-timeseries${qs ? `?${qs}` : ""}`
     );
   },
-  brokerageFlows: (accountId: string | number) =>
-    j<{
-      flows: {
-        id: number;
-        occurred_on: string;
-        flow_kind: string;
-        amount_clp: number | null;
-        amount_usd: number | null;
-        ticker: string | null;
-        note: string | null;
-        units_delta: number | null;
-      }[];
-    }>(`/api/accounts/${accountId}/brokerage-flows`),
   ufLatest: () => j<import("./types").UfLatest | null>("/api/uf/latest"),
   fxLatest: () => j<import("./types").FxLatest | null>("/api/fx/latest"),
   accountsByGroup: (groupSlug: string, subgroup?: string) => {
@@ -154,6 +151,9 @@ export const api = {
         occurred_on: string;
         note: string | null;
         units_delta: number | null;
+        flow_kind: string | null;
+        amount_usd: number | null;
+        ticker: string | null;
         flow_type: string;
         flow_type_label: string;
       }[];
@@ -168,6 +168,7 @@ export const api = {
   messages: (kind: "notification" | "log") =>
     j<{ messages: AppMessageRow[] }>(`/api/messages?kind=${kind}`),
   markMessagesRead: () => j<{ marked: number }>("/api/messages/mark-read", { method: "POST" }),
+  syncStatus: () => j<import("./types").SyncStatusResponse>("/api/sync/status"),
 };
 
 export type AppMessageRow = {

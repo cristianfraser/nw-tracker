@@ -12,11 +12,9 @@ import {
   totalStateContributionsClpForAccount,
   totalWithdrawalsClpForAccount,
 } from "./accountDeposits.js";
-import { movementFlowTypeFromSignedClp, movementFlowTypeLabel } from "./movementFlowType.js";
+import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import {
-  brokerageFlowCreateSchemaForAccount,
   movementCreateSchemaForAccount,
-  validateBrokerageFlowCreate,
   validateMovementCreate,
   type AccountRow,
 } from "./movementUnitsPolicy.js";
@@ -42,10 +40,14 @@ import {
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./chartColorRgb.js";
+import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "./entityColors.js";
 import { db } from "./db.js";
 import { listRatesInstrumentSeries, listMarketDisplaySeries } from "./marketDisplaySeries.js";
+import { creditCardLiabilityLinkRowsForCashCard } from "./liabilityTree.js";
 import { getPortfolioTreeForCharts, getSidebarNavPayload } from "./navTree.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
+import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
+import { resolveOperationalAccountId } from "./accountSource.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
@@ -87,9 +89,17 @@ import {
   unreadNotificationCount,
 } from "./appMessages.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
+import { lastSyncRunCreatedAt } from "./syncRunLog.js";
+import { getGlobalSyncSchedulerSnapshot } from "./globalSyncScheduler.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
 
 seedNavTree();
+
+function operationalAccountIdFromReq(req: { params: { id?: string } }): number {
+  const raw = Number(req.params.id);
+  if (!Number.isFinite(raw)) return NaN;
+  return resolveOperationalAccountId(raw);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,7 +130,15 @@ function parseClassTabSubgroupQuery(group: string, raw: unknown): string | undef
   if (group === "inversiones") {
     return null;
   }
+  if (group === "liabilities") {
+    if (t === "credit_card" || t === "mortgage") return t;
+    return null;
+  }
   return null;
+}
+
+function subgroupAllowedForGroup(group: string): boolean {
+  return group === "brokerage" || group === "retirement" || group === "liabilities";
 }
 
 function isKnownClassTabGroup(group: string): boolean {
@@ -258,14 +276,16 @@ app.get("/api/accounts", (req, res) => {
     return;
   }
   const subRaw = parseClassTabSubgroupQuery(groupSlug, req.query.subgroup);
-  if (groupSlug !== "brokerage" && groupSlug !== "retirement" && subRaw !== undefined && subRaw !== null) {
-    res.status(400).json({ error: "subgroup is only valid with group=brokerage or group=retirement" });
+  if (subRaw !== undefined && subRaw !== null && !subgroupAllowedForGroup(groupSlug)) {
+    res.status(400).json({
+      error: "subgroup is only valid with group=brokerage, group=retirement, or group=liabilities",
+    });
     return;
   }
   if (subRaw === null) {
     res.status(400).json({
       error:
-        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
+        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b; liabilities: credit_card, mortgage)",
     });
     return;
   }
@@ -302,6 +322,9 @@ app.get("/api/accounts", (req, res) => {
       )
     );
   }
+  if (groupSlug === "liabilities" && typeof subRaw === "string") {
+    rows = rows.filter((r) => String(r.category_slug) === subRaw);
+  }
   res.json({ accounts: rows });
 });
 
@@ -325,8 +348,50 @@ app.post("/api/accounts", (req, res) => {
   res.status(201).json({ id });
 });
 
+app.patch("/api/accounts/:id/color", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const body = req.body as { color_rgb?: unknown };
+  const updated = updateAccountColorRgb(id, body.color_rgb);
+  if (!updated) {
+    const exists = db.prepare(`SELECT 1 AS o FROM accounts WHERE id = ?`).get(id) as { o: number } | undefined;
+    if (!exists) {
+      res.status(404).json({ error: "account not found" });
+      return;
+    }
+    res.status(400).json({ error: body.color_rgb === null ? "invalid request" : "invalid color_rgb" });
+    return;
+  }
+  res.json(updated);
+});
+
+app.patch("/api/portfolio-groups/:slug/color", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  if (!slug) {
+    res.status(400).json({ error: "slug required" });
+    return;
+  }
+  const body = req.body as { color_rgb?: unknown };
+  const updated = updatePortfolioGroupColorRgb(slug, body.color_rgb);
+  if (!updated) {
+    const exists = db
+      .prepare(`SELECT 1 AS o FROM portfolio_groups WHERE slug = ?`)
+      .get(slug) as { o: number } | undefined;
+    if (!exists) {
+      res.status(404).json({ error: "portfolio group not found" });
+      return;
+    }
+    res.status(400).json({ error: "invalid color_rgb" });
+    return;
+  }
+  res.json(updated);
+});
+
 app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -344,7 +409,7 @@ app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
 
 /** Month-on-month P/L from valuations + merged capital flows (not persisted). Empty for `cuenta_corriente`. */
 app.get("/api/accounts/:id/performance-monthly", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -360,7 +425,7 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
 });
 
 app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -429,7 +494,7 @@ async function latestValuationDisplayForAccount(
 }
 
 app.get("/api/accounts/:id/summary", async (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   const withdrawals_clp = totalWithdrawalsClpForAccount(id);
   const cat = db
     .prepare(
@@ -489,7 +554,6 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
     latest_valuation_date,
     position,
     movement_create: cat ? movementCreateSchemaForAccount(cat) : null,
-    brokerage_flow_create: cat ? brokerageFlowCreateSchemaForAccount(cat) : null,
   });
 });
 
@@ -508,7 +572,7 @@ function accountRowForId(accountId: number): AccountRow | null {
 }
 
 app.get("/api/accounts/:id/movements", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   const cat = db
     .prepare(
       `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
@@ -516,7 +580,8 @@ app.get("/api/accounts/:id/movements", (req, res) => {
     .get(id) as { category_slug: string } | undefined;
   let rows = db
     .prepare(
-      `SELECT id, amount_clp, occurred_on, note, units_delta FROM movements WHERE account_id = ? ORDER BY occurred_on DESC, id DESC`
+      `SELECT id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker
+       FROM movements WHERE account_id = ? ORDER BY occurred_on DESC, id DESC`
     )
     .all(id) as {
       id: number;
@@ -524,13 +589,23 @@ app.get("/api/accounts/:id/movements", (req, res) => {
       occurred_on: string;
       note: string | null;
       units_delta: number | null;
+      flow_kind: string | null;
+      amount_usd: number | null;
+      ticker: string | null;
     }[];
   if (cat?.category_slug === "mortgage") {
     rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
   }
   res.json({
     movements: rows.map((r) => {
-      const flow_type = movementFlowTypeFromSignedClp(r.note, r.amount_clp, id, r.id, r.occurred_on);
+      const flow_type = movementFlowTypeFromRow({
+        note: r.note,
+        amount_clp: r.amount_clp,
+        flow_kind: r.flow_kind,
+        accountId: id,
+        movementId: r.id,
+        occurred_on: r.occurred_on,
+      });
       return {
         ...r,
         flow_type,
@@ -542,7 +617,7 @@ app.get("/api/accounts/:id/movements", (req, res) => {
 
 /** Inmuebles: full “dividendos” sheet from `cfraser/depto-dividendos.csv` (not DB movements). */
 app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -590,7 +665,7 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
 
 /** Tarjeta de crédito: cupos desde SQLite (PDF import) si hay filas; si no, desde `cfraser/credit-card-installments.csv`. */
 app.get("/api/accounts/:id/cc-installments", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -625,7 +700,7 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
 });
 
 app.post("/api/accounts/:id/movements", (req, res) => {
-  const accountId = Number(req.params.id);
+  const accountId = operationalAccountIdFromReq(req);
   const account = accountRowForId(accountId);
   if (!account) {
     res.status(404).json({ error: "Account not found." });
@@ -634,6 +709,29 @@ app.post("/api/accounts/:id/movements", (req, res) => {
   const validated = validateMovementCreate(account, req.body as Record<string, unknown>);
   if (!validated.ok) {
     res.status(validated.status).json({ error: validated.error });
+    return;
+  }
+  if (validated.mode === "brokerage") {
+    const r = db
+      .prepare(
+        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        accountId,
+        validated.amount_clp,
+        validated.occurred_on,
+        validated.note,
+        validated.units_delta,
+        validated.flow_kind,
+        validated.amount_usd,
+        validated.ticker
+      );
+    res.status(201).json({
+      id: Number(r.lastInsertRowid),
+      units_delta: validated.units_delta,
+      flow_kind: validated.flow_kind,
+    });
     return;
   }
   const { amount_clp, occurred_on, note, units_delta } = validated;
@@ -646,7 +744,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
 });
 
 app.get("/api/accounts/:id/valuations", (req, res) => {
-  const id = Number(req.params.id);
+  const id = operationalAccountIdFromReq(req);
   const rows = db
     .prepare(
       `SELECT id, as_of_date, value_clp FROM valuations WHERE account_id = ? ORDER BY as_of_date DESC`
@@ -656,7 +754,7 @@ app.get("/api/accounts/:id/valuations", (req, res) => {
 });
 
 app.post("/api/accounts/:id/valuations", (req, res) => {
-  const accountId = Number(req.params.id);
+  const accountId = operationalAccountIdFromReq(req);
   const { as_of_date, value_clp } = req.body as { as_of_date?: string; value_clp?: number };
   if (!as_of_date || value_clp === undefined || value_clp === null) {
     res.status(400).json({ error: "as_of_date and value_clp required" });
@@ -673,7 +771,7 @@ app.get("/api/dashboard", async (req, res) => {
   const accounts = db
     .prepare(
       `
-      SELECT a.id, a.name, a.notes, a.color_rgb,
+      SELECT a.id, a.name, a.notes, a.color_rgb, a.exclude_from_group_totals,
              g.slug AS group_slug, g.label AS group_label,
              c.slug AS category_slug, c.label AS category_label
       FROM accounts a
@@ -688,6 +786,7 @@ app.get("/api/dashboard", async (req, res) => {
       id: number;
       name: string;
       notes: string | null;
+      exclude_from_group_totals: number;
       group_slug: string;
       group_label: string;
       category_slug: string;
@@ -771,6 +870,7 @@ app.get("/api/dashboard", async (req, res) => {
       fx_clp_per_usd,
       fx_date_used,
       notes: a.notes ?? null,
+      exclude_from_group_totals: a.exclude_from_group_totals,
       chart_inactive: accountChartInactive(a.id),
       position,
     };
@@ -852,6 +952,13 @@ app.get("/api/dashboard", async (req, res) => {
     mortgage_usd: depositClpToUsdAtDate(liabilitiesClp.mortgage_clp, asOfToday),
     credit_card_usd: depositClpToUsdAtDate(liabilitiesClp.credit_card_clp, asOfToday),
   };
+  const cash_credit_card_links = creditCardLiabilityLinkRowsForCashCard(asOfToday).map((row) => ({
+    liability_account_id: row.liability_account_id,
+    operational_account_id: row.operational_account_id,
+    name: row.name,
+    clp: row.clp,
+    ...(includeUsd ? { usd: depositClpToUsdAtDate(row.clp, asOfToday) } : {}),
+  }));
 
   res.json({
     totals: {
@@ -875,15 +982,19 @@ app.get("/api/dashboard", async (req, res) => {
         : {}),
     },
     dashboard_layout: getDashboardLayoutCards(),
-    allocation: [...byGroup.entries()].map(([slug, v]) => ({
-      group_slug: slug,
-      group_label: v.label,
-      value_clp: v.value_clp,
-      ...(includeUsd ? { value_usd: v.value_usd } : {}),
-    })),
+    allocation: [...byGroup.entries()]
+      .filter(([slug]) => DASHBOARD_ASSET_METRIC_GROUPS.has(slug))
+      .map(([slug, v]) => ({
+        group_slug: slug,
+        group_label: v.label,
+        value_clp: v.value_clp,
+        color_rgb: portfolioGroupColorRgbBySlug(slug) ?? undefined,
+        ...(includeUsd ? { value_usd: v.value_usd } : {}),
+      })),
     accounts: clientAccounts,
     suecia_snapshot,
     liabilities_breakdown,
+    cash_credit_card_links,
     deposits_by_category: depositsFlow.by_category,
     inversiones_deposits_chart: {
       monthly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly),
@@ -914,14 +1025,16 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
       return;
     }
     const sub = parseClassTabSubgroupQuery(group, req.query.subgroup);
-    if (group !== "brokerage" && group !== "retirement" && sub !== undefined && sub !== null) {
-      res.status(400).json({ error: "subgroup is only valid with group=brokerage or group=retirement" });
+    if (sub !== undefined && sub !== null && !subgroupAllowedForGroup(group)) {
+      res.status(400).json({
+        error: "subgroup is only valid with group=brokerage, group=retirement, or group=liabilities",
+      });
       return;
     }
     if (sub === null) {
       res.status(400).json({
         error:
-          "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
+          "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b; liabilities: credit_card, mortgage)",
       });
       return;
     }
@@ -951,53 +1064,22 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
     return;
   }
   const sub = parseClassTabSubgroupQuery(slug, req.query.subgroup);
-  if (slug !== "brokerage" && slug !== "retirement" && sub !== undefined && sub !== null) {
-    res.status(400).json({ error: "subgroup is only valid for brokerage or retirement" });
+  if (sub !== undefined && sub !== null && !subgroupAllowedForGroup(slug)) {
+    res.status(400).json({
+      error: "subgroup is only valid for brokerage, retirement, or liabilities",
+    });
     return;
   }
   if (sub === null) {
     res.status(400).json({
       error:
-        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b)",
+        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b; liabilities: credit_card, mortgage)",
     });
     return;
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(getGroupMonthlyPerformanceSeries(slug, unit, typeof sub === "string" ? sub : undefined));
-});
-
-app.get("/api/accounts/:id/brokerage-flows", (req, res) => {
-  const id = Number(req.params.id);
-  const rows = db
-    .prepare(
-      `SELECT id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta
-       FROM brokerage_flows WHERE account_id = ? ORDER BY occurred_on DESC, id DESC`
-    )
-    .all(id);
-  res.json({ flows: rows });
-});
-
-app.post("/api/accounts/:id/brokerage-flows", (req, res) => {
-  const accountId = Number(req.params.id);
-  const account = accountRowForId(accountId);
-  if (!account) {
-    res.status(404).json({ error: "Account not found." });
-    return;
-  }
-  const validated = validateBrokerageFlowCreate(account, req.body as Record<string, unknown>);
-  if (!validated.ok) {
-    res.status(validated.status).json({ error: validated.error });
-    return;
-  }
-  const { occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta } = validated;
-  const r = db
-    .prepare(
-      `INSERT INTO brokerage_flows (account_id, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(accountId, occurred_on, flow_kind, amount_clp, amount_usd, ticker, note, units_delta);
-  res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
 });
 
 app.get("/api/fx/latest", (_req, res) => {
@@ -1131,9 +1213,13 @@ app.post("/api/expenses", (req, res) => {
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 });
 
-/** Stale external sources + last sync state (AFP / Fintual / SBIF). */
+/** Stale external sources + last sync state (AFP / Fintual / BCentral BDE). */
 app.get("/api/sync/status", (_req, res) => {
-  res.json(syncStatusPayload());
+  res.json({
+    ...syncStatusPayload(),
+    scheduler: getGlobalSyncSchedulerSnapshot(),
+    last_sync_at: lastSyncRunCreatedAt(),
+  });
 });
 
 app.get("/api/messages/unread-count", (_req, res) => {

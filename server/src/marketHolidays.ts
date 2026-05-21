@@ -113,6 +113,18 @@ export function isChileBusinessDay(ymd: string): boolean {
   return !isWeekendYmd(ymd) && !isChileHoliday(ymd);
 }
 
+/** Previous Chile business day strictly before `ymd` (for observado / AFP / Fintual expectations). */
+export function priorChileBusinessDayYmd(ymd: string, maxSteps = 14): string | null {
+  let cur = ymd;
+  for (let i = 0; i < maxSteps; i++) {
+    const [y, m, d] = cur.split("-").map(Number);
+    const dt = new Date(Date.UTC(y!, m! - 1, d! - 1));
+    cur = dt.toISOString().slice(0, 10);
+    if (isChileBusinessDay(cur)) return cur;
+  }
+  return null;
+}
+
 /** Previous NYSE session date strictly before `ymd`. */
 export function priorNyseSessionYmd(ymd: string, maxSteps = 14): string | null {
   let cur = ymd;

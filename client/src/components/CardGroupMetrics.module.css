@@ -1,9 +1,6 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  /* Top spacing: parent layout (e.g. `CompactEntityCard` gap or `.dashboard-card-metrics-slot`). */
-  margin-top: 0;
   margin-bottom: 0.15rem;
   font-size: 0.72rem;
 }
@@ -12,7 +9,6 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
 }
 
 .deposited {
@@ -38,12 +34,16 @@
 .delta {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.12rem;
 }
 
 .deltaIcon {
   font-size: 0.55rem;
   line-height: 1;
+}
+
+/* Invisible ▲/▼ slot so empty "—" lines up with populated Δ rows. */
+.deltaIconReserve {
+  visibility: hidden;
 }
 
 .deltaUp,

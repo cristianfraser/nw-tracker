@@ -6,10 +6,10 @@ import { db } from "./db.js";
 
 /**
  * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
- * - `movements`: signed `amount_clp` (all external flows, including APV-A state bonus).
- * - `brokerage_flows`: only **`deposit_clp`** as positive inflow; **`withdrawal_clp`** as outflow.
+ * signed `amount_clp` on `movements` (all external flows, including APV-A state bonus).
  *
- * **`compra_usd`** and **`dividend_usd`** are not new cash from outside the account — they do **not** enter this series.
+ * SPY/VEA brokerage rows use `flow_kind`: only **`deposit_clp`** / **`withdrawal_clp`** count as cash in/out.
+ * **`compra_usd`** and **`dividend_usd`** are not new external capital.
  *
  * For charts that exclude state bonus, use {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
  */
@@ -27,6 +27,30 @@ const MOVEMENT_EXCLUDE_NOTE_SQL = `note IS NULL OR (
   AND note NOT LIKE '%|afp-cuotas-website-reconcile|%'
 )`;
 
+const BROKERAGE_NON_CASH_FLOW_KINDS = new Set(["compra_usd", "dividend_usd"]);
+
+/** SPY/VEA with `flow_kind` ledger — ignore legacy Table 1-3 `dep_stocks` rows on the same account. */
+function equityAccountIdsUsingFlowLedger(accountIds: number[]): Set<number> {
+  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
+  if (uniq.length === 0) return new Set();
+  const ph = uniq.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT a.id AS id
+       FROM accounts a
+       JOIN categories c ON c.id = a.category_id
+       WHERE a.id IN (${ph})
+         AND c.slug IN ('spy', 'vea')
+         AND EXISTS (
+           SELECT 1 FROM movements m
+           WHERE m.account_id = a.id AND m.flow_kind IS NOT NULL
+           LIMIT 1
+         )`
+    )
+    .all(...uniq) as { id: number }[];
+  return new Set(rows.map((r) => r.id));
+}
+
 function loadMovementSignedFlowEvents(
   accountIds: number[],
   personalOnly: boolean
@@ -36,7 +60,7 @@ function loadMovementSignedFlowEvents(
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id, note
+      `SELECT account_id, occurred_on, amount_clp, id, note, flow_kind
        FROM movements
        WHERE account_id IN (${ph})
          AND (${MOVEMENT_EXCLUDE_NOTE_SQL})
@@ -48,9 +72,13 @@ function loadMovementSignedFlowEvents(
     amount_clp: number;
     id: number;
     note: string | null;
+    flow_kind: string | null;
   }[];
+  const equityFlowLedgerIds = equityAccountIdsUsingFlowLedger(uniq);
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
+    if (equityFlowLedgerIds.has(r.account_id) && r.flow_kind == null) continue;
+    if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (personalOnly) {
       if (
         movementIsStateContribution(r.note) ||
@@ -58,7 +86,8 @@ function loadMovementSignedFlowEvents(
       ) {
         continue;
       }
-      if (!movementCountsAsPersonalDeposit(r.note)) continue;
+      const brokerageDeposit = r.flow_kind === "deposit_clp";
+      if (!brokerageDeposit && !movementCountsAsPersonalDeposit(r.note)) continue;
     }
     if (r.note?.includes("cripto-coin-only-wdw")) continue;
     const amt = r.amount_clp;
@@ -69,85 +98,22 @@ function loadMovementSignedFlowEvents(
   return map;
 }
 
-/** Brokerage CLP wires only (not compra/dividend USD). */
-function loadBrokerageInflowEvents(accountIds: number[]): Map<number, SortFlow[]> {
-  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
-  if (uniq.length === 0) return new Map();
-  const ph = uniq.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id
-       FROM brokerage_flows
-       WHERE account_id IN (${ph})
-         AND flow_kind = 'deposit_clp'
-         AND COALESCE(amount_clp, 0) > 0
-       ORDER BY account_id, occurred_on, id`
-    )
-    .all(...uniq) as {
-    account_id: number;
-    occurred_on: string;
-    amount_clp: number;
-    id: number;
-  }[];
-  const map = new Map<number, SortFlow[]>();
-  for (const r of rows) {
-    if (!map.has(r.account_id)) map.set(r.account_id, []);
-    map.get(r.account_id)!.push({
-      occurred_on: r.occurred_on,
-      amt: r.amount_clp,
-      tie: `b+:${r.id}`,
-    });
-  }
-  for (const arr of map.values()) {
-    arr.sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.tie.localeCompare(b.tie));
-  }
-  return map;
-}
-
-function loadBrokerageWithdrawalFlowEvents(accountIds: number[]): Map<number, SortFlow[]> {
-  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
-  if (uniq.length === 0) return new Map();
-  const ph = uniq.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id
-       FROM brokerage_flows
-       WHERE account_id IN (${ph})
-         AND flow_kind = 'withdrawal_clp'
-         AND COALESCE(amount_clp, 0) > 0
-       ORDER BY account_id, occurred_on, id`
-    )
-    .all(...uniq) as { account_id: number; occurred_on: string; amount_clp: number; id: number }[];
-  const map = new Map<number, SortFlow[]>();
-  for (const r of rows) {
-    if (!map.has(r.account_id)) map.set(r.account_id, []);
-    map.get(r.account_id)!.push({
-      occurred_on: r.occurred_on,
-      amt: -r.amount_clp,
-      tie: `b-:${r.id}`,
-    });
-  }
-  return map;
-}
-
-function mergeSortFlows(a: SortFlow[], b: SortFlow[], c: SortFlow[]): DepositInflowEvent[] {
-  const merged = [...a, ...b, ...c].filter((e) => e.amt !== 0 && Number.isFinite(e.amt));
-  merged.sort((x, y) => x.occurred_on.localeCompare(y.occurred_on) || x.tie.localeCompare(y.tie));
-  return merged.map(({ occurred_on, amt }) => ({ occurred_on, amt }));
-}
-
 function buildMergedDepositMap(
   accountIds: number[],
   personalOnly: boolean
 ): Map<number, DepositInflowEvent[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
-  const brkIn = loadBrokerageInflowEvents(accountIds);
-  const brkOut = loadBrokerageWithdrawalFlowEvents(accountIds);
-  const ids = new Set<number>([...mov.keys(), ...brkIn.keys(), ...brkOut.keys(), ...requested]);
+  const ids = new Set<number>([...mov.keys(), ...requested]);
   const out = new Map<number, DepositInflowEvent[]>();
   for (const id of ids) {
-    out.set(id, mergeSortFlows(mov.get(id) ?? [], brkIn.get(id) ?? [], brkOut.get(id) ?? []));
+    const flows = mov.get(id) ?? [];
+    const merged = flows.filter((e) => e.amt !== 0 && Number.isFinite(e.amt));
+    merged.sort((x, y) => x.occurred_on.localeCompare(y.occurred_on) || x.tie.localeCompare(y.tie));
+    out.set(
+      id,
+      merged.map(({ occurred_on, amt }) => ({ occurred_on, amt }))
+    );
   }
   return out;
 }
@@ -226,7 +192,7 @@ export function accountShowsDisplayDepositSeries(accountId: number): boolean {
   return isApvAAccountNote(row?.notes);
 }
 
-/** Net external CLP capital (movements + CLP wires − withdrawals); same sum as chart cumulative end-state. */
+/** Net external CLP capital (movements); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
   return getMergedDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
@@ -248,15 +214,10 @@ export function totalDepositsClpWithStocksSheetFloor(accountId: number, category
   return Math.max(base, sheet);
 }
 
-const movWdwSumStmt = db.prepare(
+const wdwSumStmt = db.prepare(
   `SELECT COALESCE(SUM(ABS(amount_clp)), 0) AS s FROM movements WHERE account_id = ? AND amount_clp < 0`
-);
-const brkWdwSumStmt = db.prepare(
-  `SELECT COALESCE(SUM(amount_clp), 0) AS s FROM brokerage_flows WHERE account_id = ? AND flow_kind = 'withdrawal_clp'`
 );
 
 export function totalWithdrawalsClpForAccount(accountId: number): number {
-  const mov = (movWdwSumStmt.get(accountId) as { s: number }).s;
-  const brk = (brkWdwSumStmt.get(accountId) as { s: number }).s;
-  return mov + brk;
+  return (wdwSumStmt.get(accountId) as { s: number }).s;
 }

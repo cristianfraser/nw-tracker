@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppMessageRow } from "../api";
 import { Table } from "../components/Table";
-import { useMarkMessagesReadMutation, useMessages } from "../queries/hooks";
+import { SyncLogStatusPanel } from "../components/SyncLogStatusPanel";
+import { useMarkMessagesReadMutation, useMessages, useSyncStatus } from "../queries/hooks";
 
 function formatWhen(iso: string): string {
   const d = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`);
@@ -93,6 +94,11 @@ export function MessagesPage() {
     isPending: notificationsPending,
   } = useMessages("notification");
   const { data: logsData, error: logsError, isPending: logsPending } = useMessages("log");
+  const {
+    data: syncStatus,
+    error: syncStatusError,
+    isPending: syncStatusPending,
+  } = useSyncStatus();
 
   useEffect(() => {
     markRead.mutate();
@@ -108,11 +114,13 @@ export function MessagesPage() {
         ? notificationsError.message
         : logsError instanceof Error
           ? logsError.message
-          : markRead.error || notificationsError || logsError
-            ? t("common.loadFailed")
-            : null;
+          : syncStatusError instanceof Error
+            ? syncStatusError.message
+            : markRead.error || notificationsError || logsError || syncStatusError
+              ? t("common.loadFailed")
+              : null;
 
-  if (notificationsPending || logsPending) {
+  if (notificationsPending || logsPending || syncStatusPending) {
     return <p className="muted">{t("common.loading")}</p>;
   }
 
@@ -141,6 +149,7 @@ export function MessagesPage() {
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("messages.logsTitle")}
       </h2>
+      {syncStatus ? <SyncLogStatusPanel status={syncStatus} /> : null}
       <MessagesTable
         rows={logs}
         showReadAt={false}

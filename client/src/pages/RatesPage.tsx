@@ -14,6 +14,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
 import { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "../components/AppLineChart";
+import { Table } from "../components/Table";
 import { formatClp, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
 import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/ValuationLineCharts";
@@ -72,6 +73,73 @@ function instrumentValue(
   return display === "clp" ? p.fund_unit_clp[slot.id] ?? null : p.fund_unit_usd[slot.id] ?? null;
 }
 
+const RATES_RECENT_ROWS = 5;
+
+function formatSeriesDateYmd(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString("es-CL", { dateStyle: "short" });
+}
+
+function lastSeriesEntries(
+  data: readonly { date: string; value: number }[],
+  limit = RATES_RECENT_ROWS
+): { date: string; value: number }[] {
+  return [...data]
+    .filter((r) => Number.isFinite(r.value))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit);
+}
+
+function RatesRecentEntriesTable({
+  data,
+  valueFormatter,
+  colDate,
+  colValue,
+  emptyLabel,
+}: {
+  data: readonly { date: string; value: number }[];
+  valueFormatter: (n: number) => string;
+  colDate: string;
+  colValue: string;
+  emptyLabel: string;
+}) {
+  const rows = lastSeriesEntries(data);
+  return (
+    <div className="rates-chart-card__table">
+      <Table
+        header={
+          <thead>
+            <tr>
+              <th>{colDate}</th>
+              <th className="mono" style={{ textAlign: "right" }}>
+                {colValue}
+              </th>
+            </tr>
+          </thead>
+        }
+      >
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={2} className="muted">
+              {emptyLabel}
+            </td>
+          </tr>
+        ) : (
+          rows.map((r) => (
+            <tr key={r.date}>
+              <td className="mono">{formatSeriesDateYmd(r.date)}</td>
+              <td className="mono" style={{ textAlign: "right" }}>
+                {valueFormatter(r.value)}
+              </td>
+            </tr>
+          ))
+        )}
+      </Table>
+    </div>
+  );
+}
+
 function minMaxSeriesValues(data: { value: number }[]): { min: number; max: number } | null {
   let minV = Infinity;
   let maxV = -Infinity;
@@ -90,12 +158,18 @@ function MiniLineChart({
   data,
   yUnit,
   valueFormatter,
+  recentColDate,
+  recentColValue,
+  recentEmptyLabel,
 }: {
   title: string;
   footnote?: string;
   data: { date: string; value: number }[];
   yUnit: "clp" | "usd" | "index";
   valueFormatter: (n: number) => string;
+  recentColDate: string;
+  recentColValue: string;
+  recentEmptyLabel: string;
 }) {
   const denseData = useMemo(
     () => densifyRecordsByCalendarDay(data as unknown as ChartSparseRow[], "date", ["value"]),
@@ -120,12 +194,23 @@ function MiniLineChart({
   }, [chartData]);
 
   const axisW = yUnit === "usd" ? 78 : yUnit === "clp" ? 104 : 62;
+  const recentTable = (
+    <RatesRecentEntriesTable
+      data={data}
+      valueFormatter={valueFormatter}
+      colDate={recentColDate}
+      colValue={recentColValue}
+      emptyLabel={recentEmptyLabel}
+    />
+  );
+
   if (data.length === 0) {
     return (
       <section className="rates-chart-card">
         <h3 className="rates-chart-card__title">{title}</h3>
         {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
         <p className="muted rates-chart-card__empty">No data</p>
+        {recentTable}
       </section>
     );
   }
@@ -159,6 +244,7 @@ function MiniLineChart({
           </AppLineChart>
         </ResponsiveContainer>
       </div>
+      {recentTable}
     </section>
   );
 }
@@ -182,6 +268,11 @@ export function RatesPage() {
   const fxUfClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_uf), [points]);
   const fxIpc = useMemo(() => seriesFromPoints(points, (p) => p.ipc_index), [points]);
   const fxEurClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_eur), [points]);
+
+  const recentColDate = t("rates.recentColDate");
+  const recentColValue = t("rates.recentColValue");
+  const recentEmptyLabel = t("rates.recentEmpty");
+  const recentTableProps = { recentColDate, recentColValue, recentEmptyLabel };
 
   if (err) {
     return (
@@ -237,6 +328,7 @@ export function RatesPage() {
               data={fxUsdClp}
               yUnit="clp"
               valueFormatter={formatClp}
+              {...recentTableProps}
             />
             <MiniLineChart
               title="UF / CLP"
@@ -244,6 +336,7 @@ export function RatesPage() {
               data={fxUfClp}
               yUnit="clp"
               valueFormatter={formatClp}
+              {...recentTableProps}
             />
             <MiniLineChart
               title="IPC"
@@ -251,6 +344,7 @@ export function RatesPage() {
               data={fxIpc}
               yUnit="index"
               valueFormatter={formatIpcIndex}
+              {...recentTableProps}
             />
             <MiniLineChart
               title="EUR / CLP"
@@ -258,6 +352,7 @@ export function RatesPage() {
               data={fxEurClp}
               yUnit="clp"
               valueFormatter={formatClp}
+              {...recentTableProps}
             />
           </div>
         </>
@@ -280,6 +375,7 @@ export function RatesPage() {
                   data={data}
                   yUnit={axis}
                   valueFormatter={fmt}
+                  {...recentTableProps}
                 />
               );
             })}
