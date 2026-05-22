@@ -1,6 +1,11 @@
 import { db } from "./db.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import {
+  isInstallmentContractSummaryMerchant,
+  merchantStemForInstallmentDedupe,
+} from "./ccInstallmentLineDedupe.js";
 import type { CcInstallmentMonthRow, CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
 
 type PurchaseRow = {
@@ -323,7 +328,7 @@ function scheduledPaymentsPlanDueByMonth(
   return out;
 }
 
-/** End-of-month remaining = Σ per-purchase (principal − scheduled cuotas due through month). */
+/** End-of-month plan saldo: Σ cuotas with due month after `ym` (matches flujos historial / chart tail). */
 function scheduledTotalRemainingByMonth(
   purchasesRaw: PurchaseRow[],
   paymentsByPurchase: Map<number, PaymentRow[]>
@@ -342,11 +347,40 @@ function scheduledTotalRemainingByMonth(
   return out;
 }
 
+function ledgerPurchaseDedupeKey(pr: PurchaseRow): string {
+  return [
+    pr.purchase_date,
+    String(pr.total_amount_clp),
+    String(pr.cuotas_totales),
+    merchantStemForInstallmentDedupe(pr.merchant),
+  ].join("\t");
+}
+
+/**
+ * Drop PDF contract-summary purchases (N/CUOTAS PRECIO, etc.) when indexed cuota rows exist.
+ * Those summaries duplicate the full contract principal and inflated cupo / valuations (e.g. card 4242).
+ */
+export function filterLedgerPurchasesForSchedule(purchases: PurchaseRow[]): PurchaseRow[] {
+  const byKey = new Map<string, PurchaseRow>();
+  for (const pr of purchases) {
+    const key = ledgerPurchaseDedupeKey(pr);
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, pr);
+      continue;
+    }
+    const prevSummary = isInstallmentContractSummaryMerchant(prev.merchant);
+    const curSummary = isInstallmentContractSummaryMerchant(pr.merchant);
+    if (prevSummary && !curSummary) byKey.set(key, pr);
+  }
+  return [...byKey.values()];
+}
+
 function loadLedgerPurchasesAndPayments(accountId: number): {
   purchasesRaw: PurchaseRow[];
   paymentsByPurchase: Map<number, PaymentRow[]>;
 } {
-  const purchasesRaw = db
+  const purchasesDb = db
     .prepare(
       `SELECT id, canonical_row_id, card_group, purchase_date, total_amount_clp, cuotas_totales,
               merchant, description_merged, matched_baseline_purchase_id, source
@@ -355,6 +389,9 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
        ORDER BY purchase_date, id`
     )
     .all(accountId) as PurchaseRow[];
+
+  const purchasesRaw = filterLedgerPurchasesForSchedule(purchasesDb);
+  const keptIds = new Set(purchasesRaw.map((p) => p.id));
 
   const allPayments = db
     .prepare(
@@ -368,6 +405,7 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
 
   const paymentsByPurchase = new Map<number, PaymentRow[]>();
   for (const row of allPayments) {
+    if (!keptIds.has(row.purchase_id)) continue;
     const list = paymentsByPurchase.get(row.purchase_id) ?? [];
     list.push(row);
     paymentsByPurchase.set(row.purchase_id, list);
@@ -437,15 +475,8 @@ function installmentHistoryMonthsFromLedgerData(
   const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
   if (!bounds) return [];
 
-  const nowYm = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
-  let currentOutstanding = 0;
-  for (const sched of schedules.values()) {
-    currentOutstanding += scheduledOutstandingPrincipal(sched);
-  }
-
   return expandYearMonthsInclusive(bounds.minYm, bounds.maxYm).map((ym) => {
-    const remaining =
-      ym === nowYm ? currentOutstanding : (remainingByMonth.get(ym) ?? 0);
+    const remaining = remainingByMonth.get(ym) ?? 0;
     return {
       month: ym,
       remaining_balance_clp: remaining,
@@ -498,12 +529,15 @@ export function upsertCreditCardValuationsFromLedger(accountId: number): number 
     });
     n += 1;
   }
-  const live = liveCreditCardOutstandingClp(accountId);
-  if (live != null) {
+  const today = chileCalendarTodayYmd();
+  const todayYm = monthKeyFromYmd(today);
+  const planByMonth = installmentRemainingClpByCalendarMonth(accountId);
+  const todayClp = todayYm ? planByMonth.get(todayYm) : undefined;
+  if (todayClp != null && Number.isFinite(todayClp)) {
     upsertValuationMonth.run({
       account_id: accountId,
-      as_of_date: chileCalendarTodayYmd(),
-      value_clp: live,
+      as_of_date: today,
+      value_clp: todayClp,
     });
     n += 1;
   }

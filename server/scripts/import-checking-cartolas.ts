@@ -1,0 +1,32 @@
+/**
+ * Import Santander checking-account cartolas from xlsx and/or PDF.
+ *
+ *   npm run import:checking-cartolas -w nw-tracker-server -- --wipe
+ *   npm run import:checking-cartolas -w nw-tracker-server -- --pdf
+ *   npm run parse:checking-cartola-pdfs   # writes cfraser/checking-cartolas-from-pdf.json
+ *
+ * `--wipe` deletes all movements, valuations, and import registry for cuenta corriente, then loads every file.
+ * Without `--wipe`, only months not yet in `checking_cartola_imports` are imported (safe when adding new files).
+ * `--pdf` runs the PDF parser then imports readable cartolas from `cfraser/cartolas-cuenta-corriente/`.
+ * `--skip-pdf-parse` imports existing JSON only (with `--pdf`).
+ *
+ * Env: CFRASER_CHECKING_CARTOLAS_DIR, CFRASER_CHECKING_CARTOLA_PDFS_DIR (optional overrides).
+ */
+import { importCheckingCartolasFromDir } from "../src/checkingCartolaImport.js";
+
+function main() {
+  const wipe = process.argv.includes("--wipe");
+  const dryRun = process.argv.includes("--dry-run");
+  const pdf = process.argv.includes("--pdf");
+  const skipPdfParse = process.argv.includes("--skip-pdf-parse");
+  const dirArg = process.argv.find((a) => a.startsWith("--dir="));
+  const dir = dirArg?.slice("--dir=".length);
+
+  const result = importCheckingCartolasFromDir({ dir, wipe, dryRun, pdf, skipPdfParse });
+
+  if (result.errors.length) {
+    process.exit(1);
+  }
+}
+
+main();

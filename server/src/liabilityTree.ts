@@ -1,6 +1,7 @@
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountIdsForNavMatch, resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
+import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
@@ -20,8 +21,9 @@ type LiabilityGroupRow = {
 
 type LiabilityItemRow = {
   group_id: number;
-  item_kind: "group" | "account";
+  item_kind: "group" | "account" | "credit_card_group";
   child_group_id: number | null;
+  child_credit_card_group_id: number | null;
   account_id: number | null;
   sort_order: number;
 };
@@ -39,7 +41,7 @@ function loadLiabilityGroups(): LiabilityGroupRow[] {
 function loadLiabilityItems(): LiabilityItemRow[] {
   return db
     .prepare(
-      `SELECT group_id, item_kind, child_group_id, account_id, sort_order
+      `SELECT group_id, item_kind, child_group_id, child_credit_card_group_id, account_id, sort_order
        FROM liability_group_items
        ORDER BY sort_order, id`
     )
@@ -65,6 +67,11 @@ function buildLiabilityNode(
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
       if (child) children.push(buildLiabilityNode(child, itemsByGroup, groupsById, accountMeta));
+    } else if (item.item_kind === "credit_card_group" && item.child_credit_card_group_id != null) {
+      const ccGroup = db
+        .prepare(`SELECT slug FROM credit_card_groups WHERE id = ?`)
+        .get(item.child_credit_card_group_id) as { slug: string } | undefined;
+      if (ccGroup) children.push(...getCreditCardGroupNavChildren(ccGroup.slug));
     } else if (item.item_kind === "account" && item.account_id != null) {
       if (accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
@@ -172,34 +179,38 @@ export type CreditCardCashLinkRow = {
   clp: number;
 };
 
-/** Pasivos > tarjeta de crédito leaves (liability_group_items); same source as the liabilities sidebar. */
+/** Pasivos > tarjeta de crédito → Santander cards (liability_view per master). */
 export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditCardCashLinkRow[] {
-  const group = db
-    .prepare(`SELECT id FROM liability_groups WHERE slug = 'liabilities_credit_card'`)
-    .get() as { id: number } | undefined;
-  if (!group) return [];
-
-  const items = db
+  const views = db
     .prepare(
-      `SELECT account_id FROM liability_group_items
-       WHERE group_id = ? AND item_kind = 'account'
-       ORDER BY sort_order, id`
+      `SELECT v.id AS liability_account_id, v.name, v.source_account_id
+       FROM accounts v
+       JOIN accounts m ON m.id = v.source_account_id
+       JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
+       JOIN credit_card_groups g ON g.id = i.group_id
+       WHERE g.slug = 'santander'
+         AND v.account_kind = 'liability_view'
+       ORDER BY v.name, v.id`
     )
-    .all(group.id) as { account_id: number }[];
+    .all() as {
+    liability_account_id: number;
+    name: string;
+    source_account_id: number;
+  }[];
 
   const out: CreditCardCashLinkRow[] = [];
-  for (const { account_id } of items) {
-    const meta = db
-      .prepare(`SELECT name FROM accounts WHERE id = ?`)
-      .get(account_id) as { name: string } | undefined;
-    if (!meta) continue;
-    const row = latestLiabilityValuationRowForSnapshot(account_id, "credit_card", asOfYmd);
-    const clp = row?.value_clp;
+  for (const row of views) {
+    const snap = latestLiabilityValuationRowForSnapshot(
+      row.liability_account_id,
+      "credit_card",
+      asOfYmd
+    );
+    const clp = snap?.value_clp;
     if (clp == null || !Number.isFinite(clp)) continue;
     out.push({
-      liability_account_id: account_id,
-      operational_account_id: resolveOperationalAccountId(account_id),
-      name: meta.name,
+      liability_account_id: row.liability_account_id,
+      operational_account_id: row.source_account_id,
+      name: row.name,
       clp,
     });
   }

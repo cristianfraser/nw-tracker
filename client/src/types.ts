@@ -20,6 +20,8 @@ export interface AccountListRow {
   exclude_from_group_totals?: number;
   /** Chart line color as `r,g,b` (0–255). */
   color_rgb?: string | null;
+  /** Pasivos liability_view → master account for valuations / P/L. */
+  source_account_id?: number | null;
 }
 
 export interface AccountPositionSnapshot {
@@ -494,6 +496,26 @@ export interface AccountMonthlyPerformanceResponse {
   monthly: AccountMonthlyPerformanceRow[];
 }
 
+export interface CheckingCartolaMonthRowDto {
+  period_month: string;
+  as_of_date: string;
+  source_file: string;
+  has_cartola: boolean;
+  deposits_clp: number;
+  withdrawals_clp: number;
+  balance_end_clp: number | null;
+  /** Parsed cartola saldo final (reference only). */
+  cartola_saldo_final_clp: number | null;
+  movement_count: number;
+  imported_at: string | null;
+}
+
+export interface CheckingCartolaMonthsResponse {
+  account_id: number;
+  imported_months: string[];
+  rows: CheckingCartolaMonthRowDto[];
+}
+
 /** `GET /api/groups/:slug/performance-monthly` — derived, not stored. */
 export interface GroupMonthlyPerformanceBarAccount {
   account_id: number;
@@ -661,6 +683,66 @@ export interface FlowExpenseGroupBlock {
   label: string;
   total_clp: number;
   by_account: Record<string, FlowExpenseAccountBlock>;
+}
+
+export interface FlowCcExpenseMonthRow {
+  period_month: string;
+  as_of_date: string;
+  gastos_mes_clp: number;
+  gastos_real_mes_clp: number;
+  abonos_mes_clp: number;
+  gastos_acumulado_clp: number;
+  gastos_real_acumulado_clp: number;
+  line_count: number;
+}
+
+export interface FlowCcExpenseChartPoint {
+  as_of_date: string;
+  gastos_clp: number;
+}
+
+export interface CcExpenseCategoryDto {
+  id: number;
+  slug: string;
+  label: string;
+  label_i18n_key: string | null;
+  sort_order: number;
+  chart_color: string;
+}
+
+export interface FlowCcExpenseLineRow {
+  statement_line_id: number;
+  account_id: number;
+  billing_month: string;
+  occurred_on: string;
+  purchase_on: string | null;
+  statement_date: string;
+  amount_clp: number;
+  merchant: string | null;
+  merchant_key: string;
+  installment_flag: number;
+  nro_cuota_current: number | null;
+  nro_cuota_total: number | null;
+  category_slug: string;
+  category_unique: boolean;
+}
+
+export type FlowCcExpenseCategoryChartPoint = {
+  as_of_date: string;
+  [categorySlug: string]: string | number;
+};
+
+/** `GET /api/flows/expenses/credit-card` — Pasivos tarjeta de crédito (grupo, líneas de estado de cuenta). */
+export interface FlowsCreditCardExpensesResponse {
+  group_slug: string;
+  account_ids: number[];
+  categories: CcExpenseCategoryDto[];
+  lines: FlowCcExpenseLineRow[];
+  by_month: FlowCcExpenseMonthRow[];
+  chart_monthly: FlowCcExpenseChartPoint[];
+  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
+  total_clp: number;
+  total_real_clp: number;
 }
 
 /** `GET /api/flows/expenses` — apartment utility / housing costs (positive outflows). */

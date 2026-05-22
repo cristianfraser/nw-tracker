@@ -1,4 +1,9 @@
 import { db } from "./db.js";
+import {
+  propagateCcExpenseMerchantRulesFromLegacy,
+  restoreCcExpenseCategories,
+  snapshotCcExpenseCategories,
+} from "./ccExpenseCategoryPersist.js";
 
 function parseInt10(s: string): number | null {
   const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
@@ -58,7 +63,10 @@ function currencyFromRow(row: CsvRecord): string {
 export function importCcStatementsFromCsvRecords(
   accountId: number,
   records: CsvRecord[]
-): { statementCount: number; lineCount: number } {
+): { statementCount: number; lineCount: number; categoriesRestored: number } {
+  propagateCcExpenseMerchantRulesFromLegacy(accountId);
+  const categorySnap = snapshotCcExpenseCategories(accountId);
+
   db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id IN (
     SELECT id FROM cc_statements WHERE account_id = ?
   )`).run(accountId);
@@ -173,5 +181,11 @@ export function importCcStatementsFromCsvRecords(
     }
   }
 
-  return { statementCount, lineCount };
+  const restored = restoreCcExpenseCategories(accountId, categorySnap);
+
+  return {
+    statementCount,
+    lineCount,
+    categoriesRestored: restored.lineCategories + restored.uniquePurchases,
+  };
 }

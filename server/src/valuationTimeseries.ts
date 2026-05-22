@@ -17,7 +17,8 @@ import {
   expandSnapshotDatesForCryptoMtm,
 } from "./cryptoValuation.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
+import { monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   deptoMortgageBalanceClpBySnapshotDates,
@@ -32,7 +33,7 @@ import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
   ccLedgerStatementClosingPointsClp,
   ccInstallmentLedgerRowCount,
-  liveCreditCardOutstandingClp,
+  installmentRemainingClpByCalendarMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { syntheticGroupColorRgbMapForValuationGroup } from "./chartColorRgb.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
@@ -368,7 +369,15 @@ function attachDisplayDepositSeriesKeys(top: AccountLine[]): AccountLine[] {
   });
 }
 
-function valuationRawClpForAccount(accountId: number, asOf: string, byDate: Map<string, Map<number, number>>): number | null {
+function valuationRawClpForAccount(
+  accountId: number,
+  asOf: string,
+  byDate: Map<string, Map<number, number>>,
+  slugById?: Map<number, string>
+): number | null {
+  if (slugById?.get(accountId) === "cuenta_corriente") {
+    return checkingMovementBalanceClpAtCached(accountId, asOf);
+  }
   if (accountUsesEquityMtm(accountId)) {
     return computeEquityMtmClp(accountId, asOf);
   }
@@ -377,6 +386,28 @@ function valuationRawClpForAccount(accountId: number, asOf: string, byDate: Map<
     if (mtm != null) return mtm;
   }
   return byDate.get(asOf)?.get(accountId) ?? null;
+}
+
+function augmentChartDatesForCheckingAccounts(
+  dateStrs: string[],
+  allIds: number[],
+  slugById: Map<number, string>
+): string[] {
+  const aug = new Set(dateStrs);
+  const today = chileCalendarTodayYmd();
+  for (const id of allIds) {
+    if (slugById.get(id) !== "cuenta_corriente") continue;
+    const bounds = db
+      .prepare(
+        `SELECT MIN(occurred_on) AS min_d, MAX(occurred_on) AS max_d
+         FROM movements WHERE account_id = ?`
+      )
+      .get(id) as { min_d: string | null; max_d: string | null };
+    if (!bounds?.min_d || !bounds?.max_d) continue;
+    const maxD = bounds.max_d > today ? bounds.max_d : today;
+    for (const d of monthEndsBetweenInclusive(bounds.min_d, maxD)) aug.add(d);
+  }
+  return [...aug].sort();
 }
 
 /**
@@ -501,11 +532,14 @@ function patchCreditCardLiveLastPoint(
   unit: TsUnit,
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
-  const live = liveCreditCardOutstandingClp(accountId);
+  const today = chileCalendarTodayYmd();
+  const todayYm = monthKeyFromYmd(today);
+  const planByMonth = installmentRemainingClpByCalendarMonth(accountId);
+  const live =
+    (todayYm ? planByMonth.get(todayYm) : undefined) ?? null;
   if (live == null || !Number.isFinite(live)) return points;
 
   const dk = String(accountId);
-  const today = chileCalendarTodayYmd();
   const plotValue = convertTs(live, today, unit);
 
   if (points.length === 0) {
@@ -649,6 +683,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   }
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   const slugById = categorySlugByAccountId(allIds);
+  dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
   const propertyAccountIds = allIds.filter((id) => slugById.get(id) === "property");
   const propertyDeptoSheets =
     propertyAccountIds.length === 1
@@ -738,7 +773,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total")
         continue;
       const aid = t.account_id;
-      let raw = valuationRawClpForAccount(aid, d, byDate);
+      let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
       if (slugById.get(aid) === "afp") {
         raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
       }
@@ -1632,7 +1667,76 @@ const LIST_TAB_INVERSIONES_UNION = `
       ORDER BY g.sort_order, c.sort_order, c.id, a.name
     `;
 
+function santanderPerCardCreditCardMastersExist(): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`
+    )
+    .get() as { o: number } | undefined;
+  return row != null;
+}
+
+/** Pasivos tab: one liability_view row per operational card; drop superseded combined worldmember. */
+export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAccountRow[] {
+  const rows = db
+    .prepare(
+      `SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label,
+              c.sort_order AS cso, a.notes AS notes, a.exclude_from_group_totals AS exclude_from_group_totals,
+              a.source_account_id AS source_account_id
+       FROM accounts a
+       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = c.group_id
+       WHERE g.slug = 'liabilities'
+         AND a.account_kind = 'liability_view'
+         AND (a.notes IS NULL OR a.notes != ?)
+       ORDER BY c.sort_order, c.id, a.name`
+    )
+    .all(NOTE_STOCKS_LEGACY) as (GroupTabAccountRow & { source_account_id: number | null })[];
+
+  const perCard = santanderPerCardCreditCardMastersExist();
+  let kept = rows;
+  if (perCard) {
+    const legacyMasterIds = new Set(
+      (
+        db
+          .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=credit_card'`)
+          .all() as { id: number }[]
+      ).map((r) => r.id)
+    );
+    kept = rows.filter((r) => {
+      if (r.exclude_from_group_totals === 1) return false;
+      const src = r.source_account_id;
+      return src == null || !legacyMasterIds.has(src);
+    });
+  }
+
+  if (tabSubgroup) {
+    kept = kept.filter((r) => r.category_slug === tabSubgroup);
+  }
+
+  const seenSeries = new Set<number>();
+  const out: GroupTabAccountRow[] = [];
+  for (const r of kept) {
+    const seriesId = resolveOperationalAccountId(r.account_id);
+    if (seenSeries.has(seriesId)) continue;
+    seenSeries.add(seriesId);
+    out.push({
+      account_id: r.account_id,
+      name: r.name,
+      category_slug: r.category_slug,
+      category_label: r.category_label,
+      cso: r.cso,
+      notes: r.notes,
+      exclude_from_group_totals: r.exclude_from_group_totals,
+    });
+  }
+  return out;
+}
+
 export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
+  if (groupSlug === "liabilities") {
+    return listLiabilitiesTabAccountRows(tabSubgroup);
+  }
   if (groupSlug === "brokerage") {
     const rows = db
       .prepare(LIST_TAB_ACCOUNTS_BROKERAGE_TAB)
@@ -1651,9 +1755,6 @@ export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string)
   const rows = db
     .prepare(LIST_TAB_ACCOUNTS_SINGLE_GROUP)
     .all(groupSlug, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
-  if (groupSlug === "liabilities" && tabSubgroup) {
-    return rows.filter((r) => r.category_slug === tabSubgroup);
-  }
   return rows;
 }
 

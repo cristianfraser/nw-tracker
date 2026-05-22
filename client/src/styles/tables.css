@@ -26,6 +26,26 @@ th {
   letter-spacing: 0.04em;
 }
 
+th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th[data-sort-key]:hover {
+  color: var(--text);
+}
+
+th.table-th--sort-asc,
+th.table-th--sort-desc {
+  color: var(--text);
+}
+
+.table-sort-indicator {
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+
 tr:last-child td {
   border-bottom: none;
 }
