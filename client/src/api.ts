@@ -162,6 +162,10 @@ export const api = {
       `/api/accounts/${id}/performance-monthly${q}`
     );
   },
+  accountCheckingCartolaMonths: (id: string | number) =>
+    j<import("./types").CheckingCartolaMonthsResponse>(
+      `/api/accounts/${id}/checking-cartola-months`
+    ),
   groupMonthlyPerformance: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
@@ -189,6 +193,16 @@ export const api = {
   income: () => j<{ income: unknown[] }>("/api/income"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),
+  flowsCreditCardExpenses: () =>
+    j<import("./types").FlowsCreditCardExpensesResponse>("/api/flows/expenses/credit-card"),
+  assignCcExpenseLineCategory: (
+    lineId: number,
+    body: { unique: boolean; category_slug?: string }
+  ) =>
+    j<{ category_slug: string; unique: boolean; merchant_key: string; purchase_key: string }>(
+      `/api/flows/expenses/credit-card/lines/${lineId}/category`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
   marketTicker: () => j<import("./types").MarketTickerResponse>("/api/market-ticker"),
   messagesUnreadCount: () => j<{ count: number }>("/api/messages/unread-count"),

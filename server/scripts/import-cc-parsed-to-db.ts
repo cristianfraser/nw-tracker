@@ -2,7 +2,8 @@
  * Upsert installment purchases + payments from `cfraser/cc-statements-parsed-all.csv` into SQLite.
  *
  * Usage (from repo root or server/):
- *   npx tsx server/scripts/import-cc-parsed-to-db.ts --account-id=NN [--csv=/abs/path.csv] [--dry-run]
+ *   npx tsx server/scripts/import-cc-parsed-to-db.ts --santander [--csv=/abs/path.csv] [--dry-run]
+ *   npx tsx server/scripts/import-cc-parsed-to-db.ts --account-id=NN [--csv=...] [--dry-run]
  *
  * Requires migration `020_cc_installment_ledger.sql` applied (`npm run migrate`).
  *
@@ -13,6 +14,10 @@
  *
  * After a successful load, upserts month-end `valuations` for this account from the same PDF-derived
  * balances (so Liabilities / patrimonio charts read `valuations`, not a separate runtime series).
+ *
+ * Pre-2020 checking: when cartola months are missing, `MONTO CANCELADO` payment rows can mirror to
+ * cuenta corriente via `createCheckingRealSyntheticFromCcPayment` in `checkingPre2020Synthetic.ts`
+ * (not wired yet — add when importing CC history before 2020).
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +31,11 @@ import { upsertCreditCardValuationsFromLedger } from "../src/ccInstallmentLedger
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { loadCreditCardInstallmentPurchases } from "../src/creditCardInstallments.js";
 import { backfillMissingInstallmentPaymentsForAccount } from "../src/ccInstallmentPaymentBackfill.js";
+import { isInstallmentContractSummaryMerchant } from "../src/ccInstallmentLineDedupe.js";
+import {
+  listCreditCardGroupMasterAccountIds,
+  resolveMasterAccountIdForCardLast4,
+} from "../src/creditCardTree.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -98,19 +108,57 @@ function txDateIso(row: Record<string, string>): string | null {
   return parseDdMmYyToIso(raw);
 }
 
-function main() {
-  const accountId = Number(arg("account-id"));
-  if (!Number.isFinite(accountId) || accountId <= 0) {
-    console.error("Missing or invalid --account-id= (positive integer).");
-    process.exit(1);
+function cardLast4FromRow(row: Record<string, string>): string {
+  const l4 = String(row.card_last4 ?? "").trim();
+  if (l4) return l4;
+  const pdf = String(row.source_pdf ?? "");
+  const m = /(\d{4})\.pdf/i.exec(pdf);
+  return m?.[1] ?? "";
+}
+
+function partitionRecordsByAccount(
+  records: Record<string, string>[],
+  accountIds: number[]
+): Map<number, Record<string, string>[]> {
+  const allowed = new Set(accountIds);
+  const byAcc = new Map<number, Record<string, string>[]>();
+  for (const id of accountIds) byAcc.set(id, []);
+
+  for (const row of records) {
+    const l4 = cardLast4FromRow(row);
+    const accId = resolveMasterAccountIdForCardLast4(l4);
+    if (accId == null || !allowed.has(accId)) continue;
+    byAcc.get(accId)!.push(row);
   }
+  return byAcc;
+}
+
+function main() {
+  const santander = process.argv.includes("--santander");
+  const accountIdArg = Number(arg("account-id"));
   const dry = process.argv.includes("--dry-run");
   const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
 
-  const acc = db.prepare(`SELECT id FROM accounts WHERE id = ?`).get(accountId) as { id: number } | undefined;
-  if (!acc) {
-    console.error(`Account ${accountId} not found.`);
+  let accountIds: number[];
+  if (santander) {
+    accountIds = listCreditCardGroupMasterAccountIds("santander");
+    if (accountIds.length === 0) {
+      console.error("No master accounts under credit_card_group santander. Run migrate + seed.");
+      process.exit(1);
+    }
+  } else if (Number.isFinite(accountIdArg) && accountIdArg > 0) {
+    accountIds = [accountIdArg];
+  } else {
+    console.error("Use --santander or --account-id=NN.");
     process.exit(1);
+  }
+
+  for (const id of accountIds) {
+    const acc = db.prepare(`SELECT id FROM accounts WHERE id = ?`).get(id) as { id: number } | undefined;
+    if (!acc) {
+      console.error(`Account ${id} not found.`);
+      process.exit(1);
+    }
   }
 
   const records = readCommaCsvRecords(csvPath);
@@ -119,12 +167,30 @@ function main() {
     process.exit(1);
   }
 
+  const byAccountRecords = partitionRecordsByAccount(records, accountIds);
   const baselineIds = new Set(loadCreditCardInstallmentPurchases().map((r) => r.purchase_id));
 
+  let totalPurchases = 0;
+  let totalPayments = 0;
+  let totalStatements = 0;
+  let totalLines = 0;
+  let totalGap = 0;
+  let totalVal = 0;
+  let totalBilling = 0;
+  let totalCategoriesRestored = 0;
+
+  for (const accountId of accountIds) {
+    const accountRecords = byAccountRecords.get(accountId) ?? [];
+    if (accountRecords.length === 0 && !dry) {
+      console.warn(`# skip account ${accountId}: no CSV rows for this card`);
+      continue;
+    }
+
   const byLoan = new Map<string, Agg>();
-  for (const row of records) {
+  for (const row of accountRecords) {
     const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
     if (!inst) continue;
+    if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
     if (installmentContractAmountClp(row) <= 0) continue;
     const loanKey = makeLoanKey(row);
     if (!loanKey) continue;
@@ -180,6 +246,7 @@ function main() {
   let valuationMonthsSynced = 0;
   let statementCount = 0;
   let statementLineCount = 0;
+  let categoriesRestored = 0;
   let billingSnapshots = 0;
 
   const run = db.transaction(() => {
@@ -188,9 +255,10 @@ function main() {
         `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
       ).run(accountId);
       db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
-      const st = importCcStatementsFromCsvRecords(accountId, records);
+      const st = importCcStatementsFromCsvRecords(accountId, accountRecords);
       statementCount = st.statementCount;
       statementLineCount = st.lineCount;
+      categoriesRestored += st.categoriesRestored;
     }
 
     for (const agg of byLoan.values()) {
@@ -206,6 +274,7 @@ function main() {
       let maxTotal = 0;
       let maxCuotas = 0;
       for (const r of sorted) {
+        if (isInstallmentContractSummaryMerchant(String(r.merchant ?? ""))) continue;
         maxTotal = Math.max(maxTotal, installmentContractAmountClp(r));
         const nt = parseInt10(String(r.nro_cuota_total ?? ""));
         if (nt != null && nt > 0) maxCuotas = Math.max(maxCuotas, nt);
@@ -315,9 +384,27 @@ function main() {
 
   console.log(
     dry
-      ? `[dry-run] would upsert ${purchaseUpserts} purchases and ~${paymentUpserts} payment groups from ${csvPath} (grouped by loan key, not canonical_row_id)`
-      : `Upserted ${purchaseUpserts} purchases and ${paymentUpserts} payment rows for account ${accountId} from ${csvPath} (loan-key merge; prior rows for this account were replaced). Statements: ${statementCount} (${statementLineCount} lines). Synthetic cuota gap-fill: ${gapFilled} rows. Valuation sync: ${valuationMonthsSynced}. Billing snapshots: ${billingSnapshots}.`
+      ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountRecords.length} csv rows`
+      : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}, valuations ${valuationMonthsSynced}, billing ${billingSnapshots}.`
   );
+
+    totalPurchases += purchaseUpserts;
+    totalPayments += paymentUpserts;
+    totalStatements += statementCount;
+    totalLines += statementLineCount;
+    totalGap += gapFilled;
+    totalVal += valuationMonthsSynced;
+    totalBilling += billingSnapshots;
+    totalCategoriesRestored += categoriesRestored;
+  }
+
+  if (santander || accountIds.length > 1) {
+    console.log(
+      dry
+        ? `[dry-run] santander total: ~${totalPurchases} purchases, ~${totalPayments} payments from ${csvPath}`
+        : `Santander import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, ${totalStatements} statements (${totalLines} lines), categories restored ${totalCategoriesRestored}, gap-fill ${totalGap}, valuations ${totalVal}, billing ${totalBilling}.`
+    );
+  }
 }
 
 main();

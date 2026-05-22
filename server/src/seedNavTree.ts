@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { seedCreditCardTree } from "./seedCreditCardTree.js";
 import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
 type GroupUpsert = {
@@ -474,6 +475,7 @@ export function seedNavTree(): void {
     applyDashboardBucketLayout();
   });
   tx();
+  seedCreditCardTree();
   seedLiabilitiesTree();
   console.log("nav tree: seeded sidebar portfolio_groups + liability_groups");
 }

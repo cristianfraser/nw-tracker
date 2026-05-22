@@ -118,6 +118,27 @@ export function useFlowsExpenses() {
   });
 }
 
+export function useFlowsCreditCardExpenses() {
+  return useQuery({
+    queryKey: queryKeys.flowsCreditCardExpenses(),
+    queryFn: () => api.flowsCreditCardExpenses(),
+  });
+}
+
+export function useAssignCcExpenseLineCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (opts: { lineId: number; unique: boolean; category_slug?: string }) =>
+      api.assignCcExpenseLineCategory(opts.lineId, {
+        unique: opts.unique,
+        ...(opts.category_slug ? { category_slug: opts.category_slug } : {}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+    },
+  });
+}
+
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {
   return useQuery({
     queryKey: queryKeys.accountMonthlyPerformance(id ?? "", unit),
@@ -170,7 +191,7 @@ export function useAccountDetailBundle(
   return useQuery({
     queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity, ccOffsetsKey),
     queryFn: async () => {
-      const [s, m, series, dep, ml, cc, inv] = await Promise.all([
+      const [s, m, series, dep, ml, cc, inv, checkingMonths] = await Promise.all([
         api.accountSummary(id!),
         api.accountMovements(id!),
         api.accountValuationTimeseries(id!, unit, { granularity: chartGranularity }),
@@ -195,6 +216,7 @@ export function useAccountDetailBundle(
           },
         })),
         api.accountsByGroup("inversiones"),
+        api.accountCheckingCartolaMonths(id!).catch(() => null),
       ]);
       return {
         summary: s,
@@ -204,6 +226,7 @@ export function useAccountDetailBundle(
         mortgageLedger: ml,
         ccLedger: cc,
         invNavAccounts: inv.accounts,
+        checkingCartolaMonths: checkingMonths,
       };
     },
     enabled: Boolean(id),

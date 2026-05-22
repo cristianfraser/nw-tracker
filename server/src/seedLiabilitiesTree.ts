@@ -28,6 +28,12 @@ const insertAccountChild = db.prepare(`
   ON CONFLICT(group_id, account_id) DO UPDATE SET sort_order = excluded.sort_order
 `);
 
+const insertCreditCardGroupChild = db.prepare(`
+  INSERT INTO liability_group_items (group_id, item_kind, child_credit_card_group_id, sort_order)
+  VALUES (?, 'credit_card_group', ?, ?)
+  ON CONFLICT(group_id, child_credit_card_group_id) DO UPDATE SET sort_order = excluded.sort_order
+`);
+
 /** Idempotent Pasivos subtree: CC liability leaf → master source; mortgage leaf → master account. */
 export function seedLiabilitiesTree(): void {
   const tx = db.transaction(() => {
@@ -55,19 +61,34 @@ export function seedLiabilitiesTree(): void {
     deleteGroupItems.run(ccGroupId);
     deleteGroupItems.run(mtgGroupId);
 
-    const ccView = db
-      .prepare(
-        `SELECT id FROM accounts
-         WHERE account_kind = 'liability_view' AND notes = 'liability_view|credit_card'
-         ORDER BY id LIMIT 1`
-      )
+    const santanderCc = db
+      .prepare(`SELECT id FROM credit_card_groups WHERE slug = 'santander'`)
       .get() as { id: number } | undefined;
-    if (ccView) insertAccountChild.run(ccGroupId, ccView.id, 0);
+    if (santanderCc) insertCreditCardGroupChild.run(ccGroupId, santanderCc.id, 0);
 
     const mtgMaster = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)
       .get() as { id: number } | undefined;
-    if (mtgMaster) insertAccountChild.run(mtgGroupId, mtgMaster.id, 0);
+    if (mtgMaster) {
+      db.prepare(
+        `INSERT INTO accounts (category_id, name, notes, account_kind, source_account_id, color_rgb)
+         SELECT
+           (SELECT c.id FROM categories c JOIN asset_groups g ON g.id = c.group_id
+            WHERE g.slug = 'liabilities' AND c.slug = 'mortgage' LIMIT 1),
+           m.name, 'liability_view|mortgage', 'liability_view', m.id, m.color_rgb
+         FROM accounts m WHERE m.id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM accounts v WHERE v.source_account_id = m.id AND v.account_kind = 'liability_view'
+           )`
+      ).run(mtgMaster.id);
+      const mtgLeaf = db
+        .prepare(
+          `SELECT v.id FROM accounts v
+           WHERE v.source_account_id = ? AND v.account_kind = 'liability_view'`
+        )
+        .get(mtgMaster.id) as { id: number } | undefined;
+      insertAccountChild.run(mtgGroupId, mtgLeaf?.id ?? mtgMaster.id, 0);
+    }
   });
   tx();
 }

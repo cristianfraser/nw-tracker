@@ -7,9 +7,11 @@ import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext"
 import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
+import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DepositsPage } from "./pages/DepositsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
+import { RealEstateExpensesPage } from "./pages/RealEstateExpensesPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
 import { IncomePage } from "./pages/IncomePage";
 import { MessagesPage } from "./pages/MessagesPage";
@@ -37,14 +39,14 @@ export default function App() {
             <Route path="/cash_eqs" element={<GroupInfoPage />} />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
-            <Route path="/liabilities" element={<GroupInfoPage />} />
-            <Route path="/liabilities/:subgroup" element={<GroupInfoPage />} />
+            <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
+            <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />
             <Route path="/flows" element={<FlowsLayout />}>
               <Route index element={<Navigate to="income" replace />} />
               <Route path="income" element={<IncomePage />} />
               <Route path="expenses" element={<ExpensesPage />} />
-              <Route path="expenses/:groupSlug" element={<ExpensesPage />} />
-              <Route path="expenses/:groupSlug/:accountSlug" element={<ExpensesPage />} />
+              <Route path="expenses/real_estate" element={<RealEstateExpensesPage />} />
+              <Route path="expenses/real_estate/:accountSlug" element={<RealEstateExpensesPage />} />
               <Route path="deposits" element={<DepositsPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />

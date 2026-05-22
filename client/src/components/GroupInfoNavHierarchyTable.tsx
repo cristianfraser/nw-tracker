@@ -9,7 +9,7 @@ import {
   liabilityCategoryNavLabel,
   retirementAccountNavLabel,
 } from "../navAccountLabels";
-import { navHierarchyTableChildren } from "../portfolioNavFromApi";
+import { navHierarchyTableChildrenForDisplay } from "../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import type { AccountListRow, NavTreeNodeDto } from "../types";
 import { HierarchyNavRow } from "./HierarchyNavRow";
@@ -22,7 +22,12 @@ type HierarchyLabelContext = {
 
 function accountsByIdMap(accounts: readonly AccountListRow[]): Map<number, AccountListRow> {
   const m = new Map<number, AccountListRow>();
-  for (const a of accounts) m.set(a.id, a);
+  for (const a of accounts) {
+    m.set(a.id, a);
+    if (a.source_account_id != null && a.source_account_id > 0) {
+      m.set(a.source_account_id, a);
+    }
+  }
   return m;
 }
 
@@ -91,6 +96,9 @@ function GroupColumnMuted({ node, ctx }: { node: NavTreeNodeDto; ctx: HierarchyL
   }
   if (slug.startsWith("retirement") || slug === "retirement" || ag === "retirement") {
     return <span className="muted">{t("dashboard.cards.retirement")}</span>;
+  }
+  if (ag === "credit_cards" || slug === "santander") {
+    return <span className="muted">{t("liabilities.creditCard")}</span>;
   }
   if (ag === "liabilities" || slug.startsWith("liabilities")) {
     return <span className="muted">{t("dashboard.cards.liabilities")}</span>;
@@ -205,7 +213,7 @@ export function GroupInfoNavHierarchyTable({
   const { t } = useTranslation();
   const accountsById = useMemo(() => accountsByIdMap(accounts), [accounts]);
   const ctx = useMemo(() => hierarchyLabelContext(rootNode), [rootNode]);
-  const tableChildren = useMemo(() => navHierarchyTableChildren(rootNode), [rootNode]);
+  const tableChildren = useMemo(() => navHierarchyTableChildrenForDisplay(rootNode), [rootNode]);
 
   const rootLabel = resolveNavTreeLabel(rootNode);
   const subtreeRows = tableChildren.flatMap((child) =>

@@ -54,6 +54,7 @@ export function initSchema() {
         CHECK (billing_cycle_start_day BETWEEN 1 AND 31),
       billing_cycle_end_day INTEGER
         CHECK (billing_cycle_end_day IS NULL OR billing_cycle_end_day BETWEEN 1 AND 31),
+      card_last4 TEXT,
       notes TEXT
     );
 
@@ -68,11 +69,21 @@ export function initSchema() {
       liability_kind TEXT CHECK (liability_kind IN ('credit_card', 'mortgage', 'other'))
     );
 
-    CREATE TABLE IF NOT EXISTS liability_group_items (
+    CREATE TABLE IF NOT EXISTS credit_card_groups (
       id INTEGER PRIMARY KEY,
-      group_id INTEGER NOT NULL REFERENCES liability_groups(id) ON DELETE CASCADE,
+      parent_id INTEGER REFERENCES credit_card_groups(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      label_i18n_key TEXT,
+      route_path TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS credit_card_group_items (
+      id INTEGER PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES credit_card_groups(id) ON DELETE CASCADE,
       item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account')),
-      child_group_id INTEGER REFERENCES liability_groups(id) ON DELETE CASCADE,
+      child_group_id INTEGER REFERENCES credit_card_groups(id) ON DELETE CASCADE,
       account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
       sort_order INTEGER NOT NULL DEFAULT 0,
       CHECK (
@@ -81,6 +92,24 @@ export function initSchema() {
       ),
       UNIQUE (group_id, child_group_id),
       UNIQUE (group_id, account_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS liability_group_items (
+      id INTEGER PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES liability_groups(id) ON DELETE CASCADE,
+      item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account', 'credit_card_group')),
+      child_group_id INTEGER REFERENCES liability_groups(id) ON DELETE CASCADE,
+      child_credit_card_group_id INTEGER REFERENCES credit_card_groups(id) ON DELETE CASCADE,
+      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      CHECK (
+        (item_kind = 'group' AND child_group_id IS NOT NULL AND account_id IS NULL AND child_credit_card_group_id IS NULL)
+        OR (item_kind = 'account' AND account_id IS NOT NULL AND child_group_id IS NULL AND child_credit_card_group_id IS NULL)
+        OR (item_kind = 'credit_card_group' AND child_credit_card_group_id IS NOT NULL AND child_group_id IS NULL AND account_id IS NULL)
+      ),
+      UNIQUE (group_id, child_group_id),
+      UNIQUE (group_id, account_id),
+      UNIQUE (group_id, child_credit_card_group_id)
     );
 
     CREATE TABLE IF NOT EXISTS portfolio_groups (

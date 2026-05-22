@@ -73,10 +73,10 @@
  *   on `apv_a`). Principal **valuations** are forced to **0** from the cut month onward so MTM charts do not forward-fill.
  * - **Cuenta de ahorro para la vivienda (BancoEstado):** from **`net worth-cash and cash equivalents.csv`**, block
  *   “Cuenta ahorro”: cols **Depósitos**, **Abonos**, **Intereses** → signed `movements` + month-end `valuations` as the
- *   running sum of those flows (`cuenta_ahorro_vivienda`). **Cuenta corriente** month-end CLP is **`net worth - Table 1-2-1`**
- *   col “cuenta corriente” (same as `cfraser/net worth-Table 1-2-1.csv`); valuations use **`put(..., allowNonPositive=true)`**
- *   so **0** (and any negative) persist — otherwise missing rows forward-fill stale balances. Do not use the cash CSV’s
- *   first money column for checking; it is not the same series as Table 1-2-1.
+ *   running sum of those flows (`cuenta_ahorro_vivienda`). **Cuenta corriente** is **not** written here — use
+ *   `npm run import:checking-cartolas` (Santander cartola xlsx under `cfraser/excels/cuenta corriente/`). The wipe
+ *   and valuation loop skip that account so `import:excel` does not delete or overwrite cartola movements/valuations.
+ *   Table 1-2-1 “cuenta corriente” is legacy Numbers only. Do not use the cash CSV’s first money column for checking.
  *
  * Run: `cd server && npm run import:excel`
  * Env: EXCEL_PATH, CFRASER_CSV_DIR (default ../cfraser), IMPORT_MAX_MONTH, FINTUAL_CERTIFICADO_CSV (optional).
@@ -1085,8 +1085,7 @@ function walkCashCsvMonthRows(
 }
 
 /**
- * Reserva-only flows from the cash CSV (cols 7–8 when present). Checking-account movements are **not** taken from
- * this file (see `net worth - Table 1-2-1` for `cuenta_corriente` valuations).
+ * Reserva-only flows from the cash CSV (cols 7–8 when present). Cuenta corriente uses Santander cartola import, not this file.
  */
 function importCashCsvMovements(
   cfraserDir: string,
@@ -1163,15 +1162,25 @@ async function main() {
   const wipe = db.transaction(() => {
     db.exec(`
       DELETE FROM valuations WHERE account_id IN (
-        SELECT id FROM accounts WHERE notes LIKE 'import:excel%' OR notes LIKE 'import:cfraser%'
+        SELECT a.id FROM accounts a
+        JOIN categories c ON c.id = a.category_id
+        WHERE (a.notes LIKE 'import:excel%' OR a.notes LIKE 'import:cfraser%')
+          AND c.slug != 'cuenta_corriente'
       );
       DELETE FROM movements WHERE account_id IN (
-        SELECT id FROM accounts WHERE notes LIKE 'import:excel%' OR notes LIKE 'import:cfraser%'
+        SELECT a.id FROM accounts a
+        JOIN categories c ON c.id = a.category_id
+        WHERE (a.notes LIKE 'import:excel%' OR a.notes LIKE 'import:cfraser%')
+          AND c.slug != 'cuenta_corriente'
       );
       DELETE FROM accounts
       WHERE (notes LIKE 'import:excel%' OR notes LIKE 'import:cfraser%')
         AND NOT EXISTS (
           SELECT 1 FROM cc_installment_purchases p WHERE p.account_id = accounts.id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM categories c
+          WHERE c.id = accounts.category_id AND c.slug = 'cuenta_corriente'
         );
       DELETE FROM income_entries WHERE note LIKE 'import:excel%';
       DELETE FROM expense_entries WHERE note LIKE 'import:excel%';
@@ -1232,6 +1241,10 @@ async function main() {
     vea: ensureAccount("vea", "VEA", "vea"),
     credit_card: ensureAccount("credit_card", "santander - worldmember", "credit_card"),
   };
+
+  console.log(
+    "import:excel: cuenta corriente left unchanged (use import:checking-cartolas for movements/valuations)."
+  );
 
   const upsertVal = db.prepare(`
     INSERT INTO valuations (account_id, as_of_date, value_clp)
@@ -1534,8 +1547,7 @@ async function main() {
       put(accounts.apv_b, b.apv_b);
       // AFC can go to 0 after a full withdrawal; must persist 0 or valuations forward-fill stale balances.
       put(accounts.afc, b.afc, true);
-      // Cuenta corriente is often 0 for stretches; must persist 0 (Table 1-2-1 / Numbers `net worth-Table 1-2-1.csv`).
-      put(accounts.cuenta_corriente, b.cuenta, true);
+      // Cuenta corriente: Santander cartolas (`import:checking-cartolas`), not Table 1-2-1.
       // Table 1-2 legs can be negative while total stays positive; still store for correct crypto_total sum.
       put(accounts.bitcoin, b.btc, true);
       put(accounts.eth, b.eth, true);

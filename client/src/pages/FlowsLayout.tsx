@@ -1,12 +1,9 @@
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { cn } from "../cn";
 
 export function FlowsLayout() {
   return (
     <main>
-      <p className="muted">
-        <Link to="/">← Dashboard</Link>
-      </p>
       <h1>Flows</h1>
       <nav className="flow-subnav" aria-label="Flows sections">
         <NavLink to="income" className={({ isActive }) => cn(isActive && "active")}>

@@ -19,7 +19,7 @@ import {
   accountCardTitleBalanceDelta,
   cardGroupMetricsFromAccounts,
 } from "../../dashboardCardBreakdown";
-import type { AccountCcInstallmentsResponse } from "../../types";
+import type { AccountCcInstallmentsResponse, CheckingCartolaMonthsResponse } from "../../types";
 import { CC_EXTRA_OFFSET_LS } from "./shared";
 
 type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"]>;
@@ -34,6 +34,7 @@ export type AccountDetailPageData = {
   depositInflows: DetailBundle["depositInflows"];
   mortgageLedger: NonNullable<DetailBundle["mortgageLedger"]>;
   ccLedger: AccountCcInstallmentsResponse;
+  checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   invNavAccounts: NonNullable<DetailBundle["invNavAccounts"]>;
   movements: DetailBundle["movements"];
   dash: ReturnType<typeof useDashboardBundle>["data"] extends infer D
@@ -240,6 +241,7 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
     depositInflows,
     mortgageLedger,
     ccLedger: ccLedger as AccountCcInstallmentsResponse,
+    checkingCartolaMonths: detail?.checkingCartolaMonths ?? null,
     invNavAccounts,
     movements,
     dash,
