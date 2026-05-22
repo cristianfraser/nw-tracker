@@ -1028,6 +1028,70 @@ function mortgageLedgerForLiabilitiesOverview(): DeptoMortgageSheetRow[] {
   return mortgageLedgerForOverview;
 }
 
+type LiabilityValuationRow = { account_id: number; category_slug: string };
+
+function liabilityAccountsForValuation(): LiabilityValuationRow[] {
+  return db
+    .prepare(
+      `SELECT a.id AS account_id, c.slug AS category_slug
+       FROM accounts a
+       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = c.group_id
+       WHERE g.slug = 'liabilities'`
+    )
+    .all() as LiabilityValuationRow[];
+}
+
+function liabilityValuationClpAt(
+  row: LiabilityValuationRow,
+  asOfYmd: string,
+  ctx: {
+    meta: ReturnType<typeof accountCategoryMetaById>;
+    useSheet: boolean;
+    firstMortgageYmd: string | null;
+    mortgageClose: Map<string, number>;
+  }
+): number | null {
+  const m = ctx.meta.get(row.account_id);
+  if (m?.exclude_from_group_totals) return null;
+  let clp: number | null = null;
+  if (
+    ctx.useSheet &&
+    row.category_slug === "mortgage" &&
+    ctx.firstMortgageYmd != null &&
+    asOfYmd >= ctx.firstMortgageYmd
+  ) {
+    const fromSheet = ctx.mortgageClose.get(asOfYmd);
+    if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
+  }
+  if (clp == null) {
+    clp =
+      latestLiabilityValuationRowForSnapshot(row.account_id, row.category_slug, asOfYmd)
+        ?.value_clp ?? null;
+  }
+  return clp != null && Number.isFinite(clp) ? clp : null;
+}
+
+function liabilityValuationContext(opts?: { mortgageFromDeptoSheet?: boolean }, asOfYmd?: string) {
+  const useSheet = opts?.mortgageFromDeptoSheet === true;
+  const ledger = useSheet ? mortgageLedgerForLiabilitiesOverview() : [];
+  const firstMortgageYmd = useSheet ? firstDeptoPropertyOwnershipYmd(ledger) : null;
+  const mortgageClose =
+    useSheet &&
+    ledger.length > 0 &&
+    firstMortgageYmd != null &&
+    asOfYmd != null &&
+    asOfYmd >= firstMortgageYmd
+      ? deptoMortgageCloseClpBySnapshotDates([asOfYmd], ledger, ufClpBySnapshotDatesAsc([asOfYmd]))
+      : new Map<string, number>();
+  return {
+    meta: accountCategoryMetaById(),
+    useSheet,
+    firstMortgageYmd,
+    mortgageClose,
+  };
+}
+
 /**
  * Pasivos total as of `asOfYmd` — per-account latest valuation on or before the date (no forward
  * projection from the future). Matches the Liabilities class-tab chart when `mortgageFromDeptoSheet`
@@ -1037,38 +1101,11 @@ export function liabilitiesGroupClpAsOf(
   asOfYmd: string,
   opts?: { mortgageFromDeptoSheet?: boolean }
 ): number {
-  const meta = accountCategoryMetaById();
-  const rows = db
-    .prepare(
-      `SELECT a.id AS account_id, c.slug AS category_slug
-       FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = 'liabilities'`
-    )
-    .all() as { account_id: number; category_slug: string }[];
-
-  const useSheet = opts?.mortgageFromDeptoSheet === true;
-  const ledger = useSheet ? mortgageLedgerForLiabilitiesOverview() : [];
-  const firstMortgageYmd = useSheet ? firstDeptoPropertyOwnershipYmd(ledger) : null;
-  const mortgageClose =
-    useSheet && ledger.length > 0 && firstMortgageYmd != null && asOfYmd >= firstMortgageYmd
-      ? deptoMortgageCloseClpBySnapshotDates([asOfYmd], ledger, ufClpBySnapshotDatesAsc([asOfYmd]))
-      : new Map<string, number>();
-
+  const ctx = liabilityValuationContext(opts, asOfYmd);
   let sum = 0;
-  for (const r of rows) {
-    const m = meta.get(r.account_id);
-    if (m?.exclude_from_group_totals) continue;
-    let clp: number | null = null;
-    if (useSheet && r.category_slug === "mortgage" && firstMortgageYmd != null && asOfYmd >= firstMortgageYmd) {
-      const fromSheet = mortgageClose.get(asOfYmd);
-      if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
-    }
-    if (clp == null) {
-      clp = latestLiabilityValuationRowForSnapshot(r.account_id, r.category_slug, asOfYmd)?.value_clp ?? null;
-    }
-    if (clp != null && Number.isFinite(clp)) sum += clp;
+  for (const r of liabilityAccountsForValuation()) {
+    const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
+    if (clp != null) sum += clp;
   }
   return sum;
 }
@@ -1078,38 +1115,11 @@ export function liabilitiesBreakdownClpAsOf(
   asOfYmd: string,
   opts?: { mortgageFromDeptoSheet?: boolean }
 ): { mortgage_clp: number; credit_card_clp: number } {
-  const meta = accountCategoryMetaById();
-  const rows = db
-    .prepare(
-      `SELECT a.id AS account_id, c.slug AS category_slug
-       FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = 'liabilities'`
-    )
-    .all() as { account_id: number; category_slug: string }[];
-
-  const useSheet = opts?.mortgageFromDeptoSheet === true;
-  const ledger = useSheet ? mortgageLedgerForLiabilitiesOverview() : [];
-  const firstMortgageYmd = useSheet ? firstDeptoPropertyOwnershipYmd(ledger) : null;
-  const mortgageClose =
-    useSheet && ledger.length > 0 && firstMortgageYmd != null && asOfYmd >= firstMortgageYmd
-      ? deptoMortgageCloseClpBySnapshotDates([asOfYmd], ledger, ufClpBySnapshotDatesAsc([asOfYmd]))
-      : new Map<string, number>();
-
+  const ctx = liabilityValuationContext(opts, asOfYmd);
   const out = { mortgage_clp: 0, credit_card_clp: 0 };
-  for (const r of rows) {
-    const m = meta.get(r.account_id);
-    if (m?.exclude_from_group_totals) continue;
-    let clp: number | null = null;
-    if (useSheet && r.category_slug === "mortgage" && firstMortgageYmd != null && asOfYmd >= firstMortgageYmd) {
-      const fromSheet = mortgageClose.get(asOfYmd);
-      if (fromSheet != null && Number.isFinite(fromSheet)) clp = fromSheet;
-    }
-    if (clp == null) {
-      clp = latestLiabilityValuationRowForSnapshot(r.account_id, r.category_slug, asOfYmd)?.value_clp ?? null;
-    }
-    if (clp == null || !Number.isFinite(clp) || clp <= 0) continue;
+  for (const r of liabilityAccountsForValuation()) {
+    const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
+    if (clp == null || clp <= 0) continue;
     if (r.category_slug === "mortgage") out.mortgage_clp += clp;
     else if (r.category_slug === "credit_card") out.credit_card_clp += clp;
   }
