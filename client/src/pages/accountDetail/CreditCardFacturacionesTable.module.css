@@ -1,0 +1,14 @@
+.dateLink {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.dateLink:hover {
+  color: color-mix(in srgb, var(--accent) 85%, var(--text));
+}

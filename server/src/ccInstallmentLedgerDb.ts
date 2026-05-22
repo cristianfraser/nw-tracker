@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import type { CcInstallmentMonthRow, CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
 
@@ -12,6 +13,7 @@ type PurchaseRow = {
   merchant: string | null;
   description_merged: string | null;
   matched_baseline_purchase_id: string | null;
+  source: string;
 };
 
 type PaymentRow = {
@@ -347,7 +349,7 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   const purchasesRaw = db
     .prepare(
       `SELECT id, canonical_row_id, card_group, purchase_date, total_amount_clp, cuotas_totales,
-              merchant, description_merged, matched_baseline_purchase_id
+              merchant, description_merged, matched_baseline_purchase_id, source
        FROM cc_installment_purchases
        WHERE account_id = ?
        ORDER BY purchase_date, id`
@@ -378,6 +380,29 @@ export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): 
   if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   return scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase);
+}
+
+/**
+ * Month-end remaining installment principal by calendar month (YYYY-MM).
+ * Same series as historial de cuotas and valorización (scheduled plan saldo).
+ */
+export function installmentRemainingClpByCalendarMonth(accountId: number): Map<string, number> {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
+  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  return scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase);
+}
+
+/** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */
+export function liveCreditCardOutstandingClp(accountId: number): number | null {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  const nowYm = currentCalendarYm();
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm);
+  let total = 0;
+  for (const sched of schedules.values()) {
+    total += scheduledOutstandingPrincipal(sched);
+  }
+  return total;
 }
 
 export function ccInstallmentLedgerRowCount(accountId: number): number {
@@ -473,6 +498,15 @@ export function upsertCreditCardValuationsFromLedger(accountId: number): number 
     });
     n += 1;
   }
+  const live = liveCreditCardOutstandingClp(accountId);
+  if (live != null) {
+    upsertValuationMonth.run({
+      account_id: accountId,
+      as_of_date: chileCalendarTodayYmd(),
+      value_clp: live,
+    });
+    n += 1;
+  }
   return n;
 }
 
@@ -554,7 +588,9 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     }
 
     computed.push({
+      purchase_db_id: pr.id,
       purchase_id: pr.canonical_row_id,
+      purchase_source: pr.source === "manual" ? "manual" : "pdf",
       label,
       principal_clp: principal,
       installment_count: pr.cuotas_totales,

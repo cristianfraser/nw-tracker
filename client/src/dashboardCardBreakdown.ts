@@ -127,6 +127,22 @@ function cashAccountPath(row: DashboardAccountRow): string {
   return accountDetailPath(row.account_id);
 }
 
+function accountHasFinitePriorClose(
+  row: DashboardAccountRow,
+  period: CardGroupMetricsPeriod,
+  unit: "clp" | "usd"
+): boolean {
+  const close =
+    period === "year"
+      ? unit === "usd"
+        ? row.prior_year_close_usd
+        : row.prior_year_close_clp
+      : unit === "usd"
+        ? row.prior_month_close_usd
+        : row.prior_month_close_clp;
+  return close != null && Number.isFinite(close);
+}
+
 export function cardGroupMetricsFromAccounts(
   rows: DashboardAccountRow[],
   period: CardGroupMetricsPeriod
@@ -161,23 +177,27 @@ export function cardGroupMetricsFromAccounts(
       anyUsdTotalDelta = true;
     }
 
-    const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
-    const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
-    deposits_period_clp += periodDepClp ?? 0;
-    if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
-      deposits_period_usd += periodDepUsd;
-      anyUsdPeriodDep = true;
+    if (accountHasFinitePriorClose(r, period, "clp")) {
+      const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
+      deposits_period_clp += periodDepClp ?? 0;
+      const periodDeltaClp = period === "month" ? r.delta_month_clp : r.delta_year_clp;
+      if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
+        delta_period_clp += periodDeltaClp;
+        anyPeriodDelta = true;
+      }
     }
 
-    const periodDeltaClp = period === "month" ? r.delta_month_clp : r.delta_year_clp;
-    const periodDeltaUsd = period === "month" ? r.delta_month_usd : r.delta_year_usd;
-    if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
-      delta_period_clp += periodDeltaClp;
-      anyPeriodDelta = true;
-    }
-    if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
-      delta_period_usd += periodDeltaUsd;
-      anyUsdPeriodDelta = true;
+    if (accountHasFinitePriorClose(r, period, "usd")) {
+      const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
+      if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
+        deposits_period_usd += periodDepUsd;
+        anyUsdPeriodDep = true;
+      }
+      const periodDeltaUsd = period === "month" ? r.delta_month_usd : r.delta_year_usd;
+      if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
+        delta_period_usd += periodDeltaUsd;
+        anyUsdPeriodDelta = true;
+      }
     }
   }
 
@@ -200,6 +220,9 @@ export function cardGroupMetricsForGroup(
   period: CardGroupMetricsPeriod,
   filter?: (a: DashboardAccountRow) => boolean
 ): CardGroupMetrics {
+  if (groupSlug === "net_worth") {
+    return cardGroupMetricsNetWorth(accounts, period);
+  }
   const rows = accounts.filter(
     (a) =>
       a.group_slug === groupSlug &&
@@ -449,6 +472,7 @@ function priorOverviewClosePoint(
 }
 
 const DASHBOARD_GROUP_OVERVIEW_KEY = {
+  net_worth: "total_nw",
   real_estate: "real_estate",
   retirement: "retirement",
   brokerage: "brokerage",
@@ -609,10 +633,12 @@ export function groupPeriodBalanceDeltaFromAccounts(
 /** Fallback: overview bucket total when performance prior close is missing. */
 export function groupPeriodBalanceDelta(
   totals: {
+    net_worth_clp: number;
     real_estate_clp: number;
     retirement_clp: number;
     brokerage_clp: number;
     cash_eqs_clp: number;
+    net_worth_usd?: number | null;
     real_estate_usd?: number;
     retirement_usd?: number;
     brokerage_usd?: number;
@@ -664,6 +690,9 @@ export function cardGroupTitleBalanceDelta(
   showUsd: boolean,
   filter?: (a: DashboardAccountRow) => boolean
 ): number | null {
+  if (groupSlug === "net_worth") {
+    return cardGroupNetWorthTitleBalanceDelta(accounts, totals, overviewPoints, period, showUsd);
+  }
   const delta = resolveGroupPeriodBalanceDelta(
     accounts,
     totals,
@@ -920,4 +949,73 @@ export function buildLiabilitiesCardBreakdown(breakdown: {
       to: liabilitiesSubgroupPath(r.key),
     }))
   ).map((r) => ({ ...r, depth: 0 as const }));
+}
+
+/** Rounded deposits for card metrics (matches `DashboardCardGroupMetrics`). */
+export function roundedMetricDeposits(
+  metrics: CardGroupMetrics,
+  showUsd: boolean,
+  kind: "total" | "period"
+): number | null {
+  if (kind === "total") {
+    if (showUsd) {
+      if (metrics.deposits_usd != null && Number.isFinite(metrics.deposits_usd)) {
+        return Math.round(metrics.deposits_usd);
+      }
+      return null;
+    }
+    return Math.round(metrics.deposits_clp);
+  }
+  if (showUsd) {
+    if (metrics.deposits_period_usd != null && Number.isFinite(metrics.deposits_period_usd)) {
+      return Math.round(metrics.deposits_period_usd);
+    }
+    return null;
+  }
+  return Math.round(metrics.deposits_period_clp);
+}
+
+/** Rounded Δ for card metrics (matches `DashboardCardGroupMetrics`). */
+export function roundedMetricDelta(
+  metrics: CardGroupMetrics,
+  showUsd: boolean,
+  kind: "total" | "period"
+): number | null {
+  const clp = kind === "total" ? metrics.delta_total_clp : metrics.delta_period_clp;
+  if (showUsd) {
+    const usd = kind === "total" ? metrics.delta_total_usd : metrics.delta_period_usd;
+    if (usd != null && Number.isFinite(usd)) return Math.round(usd);
+    return null;
+  }
+  return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;
+}
+
+/** Total row: deposits + lifetime Δ (same rounding as the card UI). */
+export function cardMainBalanceFromMetrics(metrics: CardGroupMetrics, showUsd: boolean): number | null {
+  const deposited = roundedMetricDeposits(metrics, showUsd, "total");
+  const delta = roundedMetricDelta(metrics, showUsd, "total");
+  if (deposited == null || delta == null) return null;
+  return deposited + delta;
+}
+
+/** Period row: period deposits + period Δ (same rounding as the card UI). */
+export function cardPeriodChangeFromMetrics(metrics: CardGroupMetrics, showUsd: boolean): number | null {
+  const deposited = roundedMetricDeposits(metrics, showUsd, "period");
+  const delta = roundedMetricDelta(metrics, showUsd, "period");
+  if (deposited == null || delta == null) return null;
+  return deposited + delta;
+}
+
+/** Difference between headline balance and deposits + Δ from metrics (0 = identity holds). */
+export function cardMetricsMainBalanceDiff(
+  metrics: CardGroupMetrics,
+  mainClp: number,
+  showUsd: boolean,
+  tolerance = 0
+): number | null {
+  const fromMetrics = cardMainBalanceFromMetrics(metrics, showUsd);
+  if (fromMetrics == null) return null;
+  const main = showUsd ? mainClp : Math.round(mainClp);
+  const diff = main - fromMetrics;
+  return Math.abs(diff) <= tolerance ? 0 : diff;
 }

@@ -20,6 +20,16 @@
   visibility: hidden;
 }
 
+/** Forces account compact row below detailed group cards in portfolio strips. */
+.portfolio-strip-section-break {
+  grid-column: 1 / -1;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -153,7 +163,7 @@
 
 /* Bucket card height alignment: only on the home dashboard (not inversiones/asset strips). */
 .page-dashboard .card--detail:not(.card--dashboard-net-worth) {
-  min-height: 230px;
+  min-height: 180px;
 }
 
 .card--detail-compact {

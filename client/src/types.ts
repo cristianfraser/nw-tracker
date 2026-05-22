@@ -302,8 +302,88 @@ export interface AccountMortgageLedgerResponse {
 }
 
 /** `GET /api/accounts/:id/cc-installments` — credit_card: installment purchases from CSV + monthly projection. */
+export interface CcStatementLineDto {
+  id: number;
+  statement_id: number;
+  transaction_date: string | null;
+  posting_date: string | null;
+  merchant: string | null;
+  description_merged: string | null;
+  country: string | null;
+  amount_orig: number | null;
+  orig_currency: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  installment_flag: boolean;
+}
+
+export interface CcStatementDto {
+  id: number;
+  account_id: number;
+  card_group: string;
+  source_pdf: string;
+  statement_date: string;
+  statement_date_iso: string;
+  period_from: string | null;
+  period_to: string | null;
+  pay_by: string | null;
+  pay_by_iso: string | null;
+  billing_month: string | null;
+  layout: string;
+  currency: string;
+  monto_facturado: number | null;
+  deuda_total: number | null;
+  lines: CcStatementLineDto[];
+}
+
+export interface CcBillingMonthBalanceDto {
+  id: number;
+  billing_month: string;
+  as_of_date: string;
+  as_of_kind: string;
+  facturado_clp: number | null;
+  facturado_usd: number | null;
+  cupo_utilizado_clp: number;
+  saldo_total_clp: number;
+  saldo_total_usd: number | null;
+}
+
+export interface CcBillingDetailMonthDto {
+  billing_month: string;
+  as_of_date: string;
+  as_of_kind: "statement" | "manual";
+  total_facturado_actual_clp: number | null;
+  facturado_placeholder_clp: number | null;
+  total_facturado_clp: number | null;
+  facturado_is_placeholder: boolean;
+  facturado_editable: boolean;
+  cupo_en_cuotas_clp: number;
+  cuota_a_pagar_next_mes_clp: number;
+  balance_total_clp: number;
+}
+
+export interface CcFacturacionDto {
+  billing_month: string;
+  close_date: string;
+  close_date_iso: string;
+  pay_by: string | null;
+  pay_by_iso: string | null;
+  facturado_clp: number | null;
+  facturado_usd: number | null;
+  facturado_usd_clp: number | null;
+  facturado_total_clp: number | null;
+  cuota_a_pagar_clp: number | null;
+}
+
+export interface CreditCardBillingConfigDto {
+  billing_cycle_start_day: number;
+  billing_cycle_end_day: number | null;
+}
+
 export interface CcInstallmentPurchaseComputed {
   purchase_id: string;
+  purchase_db_id?: number;
+  purchase_source?: "pdf" | "manual";
   label: string;
   principal_clp: number;
   installment_count: number;
@@ -369,6 +449,11 @@ export interface AccountCcInstallmentsResponse {
   };
   /** Present for `source === "db"`: end-of-month outstanding installment principal vs cuotas pagadas en ese mes. */
   installment_history_months?: CcInstallmentHistoryMonthPoint[];
+  statements?: CcStatementDto[];
+  billing_month_balances?: CcBillingMonthBalanceDto[];
+  billing_detail_by_month?: CcBillingDetailMonthDto[];
+  facturaciones?: CcFacturacionDto[];
+  billing_config?: CreditCardBillingConfigDto;
 }
 
 /** `GET /api/accounts/:id/valuation-timeseries` */
@@ -500,6 +585,8 @@ export interface NavTreeNodeDto {
   api_subgroup: string | null;
   color_rgb: string | null;
   color: string | null;
+  /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
+  group_kind: "normal" | "reference" | "nav_hub";
   children: NavTreeNodeDto[];
 }
 

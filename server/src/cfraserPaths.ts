@@ -37,3 +37,10 @@ export function resolveCfraserCsvDir(): string {
 export function resolveDeptoDividendosCsvPath(): string {
   return path.join(resolveCfraserCsvDir(), DEPTO_CSV);
 }
+
+/** Credit-card statement PDFs (`estado-de-cuenta-*.pdf`, `estado-de-cuenta-usd.pdf`, optional `80_*.pdf`). */
+export function resolveCfraserPdfsDir(): string {
+  const env = process.env.CFRASER_PDFS_DIR?.trim();
+  if (env) return path.resolve(env);
+  return path.resolve(__dirname, "..", "..", "cfraser", "pdfs");
+}

@@ -5,8 +5,8 @@ import { cn } from "../cn";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
 /**
- * Global CLP/USD + MTD/YTD controls. Desktop: fixed under the marquee, top-right.
- * Mobile: full-width bottom dock (blurred backdrop) with the toolbar centered inside.
+ * Global CLP/USD + MTD/YTD controls. Default: full-width bottom dock, toolbar centered.
+ * Desktop: compact toolbar at the bottom-right (not stretched).
  */
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();

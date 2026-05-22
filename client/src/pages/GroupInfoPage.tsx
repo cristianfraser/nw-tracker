@@ -4,7 +4,6 @@ import { AllocationPiePanel, LineChartPanel } from "../components/ValuationLineC
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { GroupInfoNavHierarchyTable } from "../components/GroupInfoNavHierarchyTable";
 import { GroupInfoBase } from "../components/GroupInfoBase";
-import { PortfolioNavEntityCardsStrip } from "../components/PortfolioNavEntityCardsStrip";
 import { filterTimeseriesBlockByAccountIds } from "../filterTimeseriesBlock";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
@@ -19,12 +18,10 @@ import {
   groupTabPieSliceFill,
 } from "../chartColors";
 import type { AssetGroupSlug } from "../types";
+import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
-import {
-  navAccountIdSet,
-  portfolioNavParentTitleModeForNavNode,
-} from "../portfolioNavDashboardCards";
-import { findBestNavNodeForPathname, navHierarchyTableChildren } from "../portfolioNavFromApi";
+import { navAccountIdSet } from "../portfolioNavDashboardCards";
+import { findBestNavNodeForPathname } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { cn } from "../cn";
 import { useTranslation } from "../i18n";
@@ -69,6 +66,8 @@ export function GroupInfoPage() {
   );
 
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const isYearly = metricsPeriod === "year";
+  const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const { data: dashBundle } = useDashboardBundle(displayUnit);
@@ -165,10 +164,26 @@ export function GroupInfoPage() {
     return perf;
   }, [groupPerfRaw, accounts, chartCtx, groupedToggleOn, liabilitiesCategory, chartAccountIds]);
 
-  const stripDetailChildren = useMemo(
-    () => (navMatchNode ? navHierarchyTableChildren(navMatchNode) : []),
-    [navMatchNode]
-  );
+  const valuationBlockForChart = useMemo(() => {
+    if (!displayValuationBlock) return null;
+    if (!isYearly) return displayValuationBlock;
+    return rollupTimeseriesBlockYearEnd(displayValuationBlock);
+  }, [displayValuationBlock, isYearly]);
+
+  const groupPerfForChart = useMemo(() => {
+    if (!displayGroupPerf?.points.length) return displayGroupPerf;
+    if (!isYearly) return displayGroupPerf;
+    const barKeys = displayGroupPerf.bar_accounts.map((a) => a.bar_data_key);
+    return {
+      ...displayGroupPerf,
+      points: rollupPerfPointsYearly(displayGroupPerf.points, {
+        sumKeys: barKeys,
+        ytdKey: "ytd_group",
+        accumKey: "accumulated_earnings",
+        totalKey: "delta_total",
+      }),
+    };
+  }, [displayGroupPerf, isYearly]);
 
   const chartColorSlug = (chartCtx?.chartColorSlug ?? apiGroup) as AssetGroupSlug | "crypto";
   const groupColorMaps = useMemo(() => {
@@ -251,17 +266,18 @@ export function GroupInfoPage() {
         >
           <LineChartPanel
             title="Valorización y aportes"
-            block={displayValuationBlock!}
+            block={valuationBlockForChart!}
             displayUnit={displayUnit}
+            xAxisGranularity={xAxisGranularity}
             includeAccumulatedLines={chartCtx?.showGroupedToggle ? showValuationDeposits : true}
             colorPlan={{
               kind: "group-tab",
               groupSlug: chartCtx?.colorPlanGroupSlug ?? "inversiones",
               brokerageSubgroup: chartCtx?.brokerageSubgroup,
-              accounts: displayValuationBlock!.accounts ?? [],
+              accounts: valuationBlockForChart!.accounts ?? [],
             }}
             thickKey={
-              displayValuationBlock!.accounts?.some((a) => a.dataKey === "__group_val_total")
+              valuationBlockForChart!.accounts?.some((a) => a.dataKey === "__group_val_total")
                 ? "__group_val_total"
                 : undefined
             }
@@ -282,8 +298,8 @@ export function GroupInfoPage() {
       )}
 
       {accounts.length > 0 &&
-        displayGroupPerf &&
-        displayGroupPerf.points.length > 0 &&
+        groupPerfForChart &&
+        groupPerfForChart.points.length > 0 &&
         groupPerfBarSeries.length > 0 ? (
         <>
           <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>P/L mensual — YTD (grupo)</h2>
@@ -294,8 +310,9 @@ export function GroupInfoPage() {
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title="Δ por cuenta / subgrupo, YTD combinado y Δ total"
-              points={displayGroupPerf.points}
+              points={groupPerfForChart.points}
               displayUnit={displayUnit}
+              xAxisGranularity={xAxisGranularity}
               barSeries={groupPerfBarSeries}
               areaKey="ytd_group"
               areaName="YTD (grupo)"
@@ -312,8 +329,9 @@ export function GroupInfoPage() {
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title="Monthly Δ (consolidado) y accumulated earnings"
-              points={displayGroupPerf.points}
+              points={groupPerfForChart.points}
               displayUnit={displayUnit}
+              xAxisGranularity={xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_total",
@@ -369,21 +387,17 @@ export function GroupInfoPage() {
           </div>
         ) : null
       }
-      cards={
-        dash && displayValuationBlock && accounts.length > 0 ? (
-          <PortfolioNavEntityCardsStrip
-            dash={dash}
-            overviewPoints={overviewPoints}
-            parentNavNode={navMatchNode}
-            detailNavChildren={stripDetailChildren}
-            compactTitle={title}
-            compactCardSlug={`grp-nav-${navMatchNode.slug}-${navMatchNode.node_id}`}
-            parentTitleMode={portfolioNavParentTitleModeForNavNode(navMatchNode)}
-            showUsd={showUsd}
-            metricsPeriod={metricsPeriod}
-            animated
-          />
-        ) : null
+      portfolio={
+        dash && displayValuationBlock && accounts.length > 0
+          ? {
+              navNode: navMatchNode,
+              dash,
+              overviewPoints,
+              metricsPeriod,
+              showUsd,
+              animated: true,
+            }
+          : null
       }
       notice={
         isRealEstate ? (

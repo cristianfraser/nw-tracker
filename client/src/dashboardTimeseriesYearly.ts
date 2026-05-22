@@ -78,3 +78,72 @@ export function rollupRetirementBrokeragePerfYearly(
   }
   return out;
 }
+
+function numField(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+export type RollupPerfPointsYearlyOpts = {
+  /** Monthly delta keys to sum within each calendar year. */
+  sumKeys: string[];
+  /** YTD area key → annual total for that year (optional). */
+  ytdKey?: string;
+  /** Cumulative area key → running sum of annual totals (optional). */
+  accumKey?: string;
+  /** Combined Δ line / total (optional; summed when present on rows). */
+  totalKey?: string;
+};
+
+/**
+ * One point per calendar year: sums monthly performance deltas; optional YTD = annual total,
+ * optional cumulative = running sum of annual totals (same rules as dashboard retirement/brokerage rollup).
+ */
+export function rollupPerfPointsYearly(
+  points: Record<string, string | number | null>[],
+  opts: RollupPerfPointsYearlyOpts
+): Record<string, string | number | null>[] {
+  if (!points.length) return [];
+
+  const totalKey = opts.totalKey ?? "delta_total";
+  const byYear = new Map<number, Record<string, string | number | null>[]>();
+  for (const row of points) {
+    const y = calendarYearFromAsOf(String(row.as_of_date ?? ""));
+    if (y == null) continue;
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y)!.push(row);
+  }
+
+  let cumLife = 0;
+  const years = [...byYear.keys()].sort((a, b) => a - b);
+  const out: Record<string, string | number | null>[] = [];
+
+  for (const y of years) {
+    const rows = byYear.get(y)!;
+    const pt: Record<string, string | number | null> = { as_of_date: `${y}-12-31` };
+
+    for (const k of opts.sumKeys) {
+      let s = 0;
+      for (const row of rows) s += numField(row[k]);
+      pt[k] = s;
+    }
+
+    let deltaTotal = 0;
+    if (rows.some((r) => totalKey in r)) {
+      for (const row of rows) deltaTotal += numField(row[totalKey]);
+      pt[totalKey] = deltaTotal;
+    } else {
+      for (const k of opts.sumKeys) deltaTotal += numField(pt[k]);
+      pt[totalKey] = deltaTotal;
+    }
+
+    if (opts.ytdKey) pt[opts.ytdKey] = deltaTotal;
+    if (opts.accumKey) {
+      cumLife += deltaTotal;
+      pt[opts.accumKey] = cumLife;
+    }
+
+    out.push(pt);
+  }
+
+  return out;
+}

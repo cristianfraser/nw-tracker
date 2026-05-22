@@ -1,5 +1,10 @@
 import { cn } from "../cn";
-import type { CardGroupMetrics, CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import {
+  roundedMetricDelta,
+  roundedMetricDeposits,
+  type CardGroupMetrics,
+  type CardGroupMetricsPeriod,
+} from "../dashboardCardBreakdown";
 import { accountingCurrencyNumberFlowParts } from "../format";
 import { useTranslation } from "../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
@@ -93,39 +98,6 @@ function MetricsRow({
   );
 }
 
-function metricDeposited(
-  metrics: CardGroupMetrics,
-  showUsd: boolean,
-  kind: "total" | "period"
-): number | null {
-  if (kind === "total") {
-    if (showUsd) {
-      if (metrics.deposits_usd != null && Number.isFinite(metrics.deposits_usd)) {
-        return Math.round(metrics.deposits_usd);
-      }
-      return null;
-    }
-    return Math.round(metrics.deposits_clp);
-  }
-  if (showUsd) {
-    if (metrics.deposits_period_usd != null && Number.isFinite(metrics.deposits_period_usd)) {
-      return Math.round(metrics.deposits_period_usd);
-    }
-    return null;
-  }
-  return Math.round(metrics.deposits_period_clp);
-}
-
-function metricDelta(metrics: CardGroupMetrics, showUsd: boolean, kind: "total" | "period"): number | null {
-  const clp = kind === "total" ? metrics.delta_total_clp : metrics.delta_period_clp;
-  if (showUsd) {
-    const usd = kind === "total" ? metrics.delta_total_usd : metrics.delta_period_usd;
-    if (usd != null && Number.isFinite(usd)) return Math.round(usd);
-    return null;
-  }
-  return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;
-}
-
 export function DashboardCardGroupMetrics({
   metrics,
   showUsd,
@@ -147,9 +119,9 @@ export function DashboardCardGroupMetrics({
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
       <DashboardCardsValueGroup>
         <MetricsRow
-          deposited={metricDeposited(metrics, showUsd, "total")}
+          deposited={roundedMetricDeposits(metrics, showUsd, "total")}
           depositedLabel={t("dashboard.cardBreakdown.totalDeposited")}
-          delta={metricDelta(metrics, showUsd, "total")}
+          delta={roundedMetricDelta(metrics, showUsd, "total")}
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
           showUsd={showUsd}
           animated={animated}
@@ -157,9 +129,9 @@ export function DashboardCardGroupMetrics({
           rowKey="total"
         />
         <MetricsRow
-          deposited={metricDeposited(metrics, showUsd, "period")}
+          deposited={roundedMetricDeposits(metrics, showUsd, "period")}
           depositedLabel={periodDepositsLabel}
-          delta={metricDelta(metrics, showUsd, "period")}
+          delta={roundedMetricDelta(metrics, showUsd, "period")}
           deltaLabel={periodDeltaLabel}
           showUsd={showUsd}
           animated={animated}

@@ -29,7 +29,11 @@ import {
 } from "./deptoDividendosLedger.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
-import { ccLedgerStatementClosingPointsClp, ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
+import {
+  ccLedgerStatementClosingPointsClp,
+  ccInstallmentLedgerRowCount,
+  liveCreditCardOutstandingClp,
+} from "./ccInstallmentLedgerDb.js";
 import { syntheticGroupColorRgbMapForValuationGroup } from "./chartColorRgb.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { db } from "./db.js";
@@ -484,6 +488,57 @@ function patchAfpLiveLastPoint(
   }
 
   out[lastIdx] = { ...out[lastIdx]!, [dk]: plotValue };
+  return out;
+}
+
+/**
+ * Live cupo en cuotas at Chile today. Only patches/inserts a point with `as_of_date <= today` so
+ * projected month-ends after today (plan saldo → 0) are not overwritten — that caused a false spike
+ * on the last chart month when the installment schedule runs past the current date.
+ */
+function patchCreditCardLiveLastPoint(
+  accountId: number,
+  unit: TsUnit,
+  points: Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  const live = liveCreditCardOutstandingClp(accountId);
+  if (live == null || !Number.isFinite(live)) return points;
+
+  const dk = String(accountId);
+  const today = chileCalendarTodayYmd();
+  const plotValue = convertTs(live, today, unit);
+
+  if (points.length === 0) {
+    return [{ as_of_date: today, [dk]: plotValue }];
+  }
+
+  const out = points.map((p) => ({ ...p }));
+  let lastOnOrBeforeIdx = -1;
+  for (let i = 0; i < out.length; i++) {
+    const d = String(out[i]!.as_of_date);
+    if (d > today) continue;
+    if (
+      lastOnOrBeforeIdx < 0 ||
+      d.localeCompare(String(out[lastOnOrBeforeIdx]!.as_of_date)) > 0
+    ) {
+      lastOnOrBeforeIdx = i;
+    }
+  }
+
+  if (lastOnOrBeforeIdx < 0) {
+    out.push({ as_of_date: today, [dk]: plotValue });
+    out.sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
+    return out;
+  }
+
+  const anchorDate = String(out[lastOnOrBeforeIdx]!.as_of_date);
+  if (anchorDate === today) {
+    out[lastOnOrBeforeIdx] = { ...out[lastOnOrBeforeIdx]!, [dk]: plotValue };
+    return out;
+  }
+
+  out.push({ as_of_date: today, [dk]: plotValue });
+  out.sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
   return out;
 }
 
@@ -1791,7 +1846,10 @@ export function getAccountValuationTimeseries(
         mergedPoints.sort((a, b) =>
           String(a.as_of_date).localeCompare(String(b.as_of_date))
         );
-        accounts = { ...accounts, points: mergedPoints };
+        accounts = {
+          ...accounts,
+          points: patchCreditCardLiveLastPoint(accountId, unit, mergedPoints),
+        };
       }
     }
   }

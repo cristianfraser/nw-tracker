@@ -16,7 +16,7 @@ type GroupUpsert = {
   sidebar_section?: "main" | "flows" | "link" | "nested";
   parent_slug?: string;
   color_rgb?: string;
-  group_kind?: "normal" | "reference";
+  group_kind?: "normal" | "reference" | "nav_hub";
   chart_host_slug?: string | null;
 };
 
@@ -223,6 +223,7 @@ export function seedNavTree(): void {
       label: "Net worth",
       label_i18n_key: "dashboard.cards.netWorth",
       sort_order: -10,
+      asset_group_slug: "net_worth",
       sidebar_section: "nested",
       nav_end: true,
       show_leaf_hyphen: false,
@@ -296,6 +297,7 @@ export function seedNavTree(): void {
       route_path: "/inversiones",
       active_prefix: "/inversiones",
       api_group: "inversiones",
+      group_kind: "nav_hub",
       sidebar_section: "main",
     });
 
@@ -308,6 +310,7 @@ export function seedNavTree(): void {
       route_path: "/inversiones/brokerage",
       active_prefix: "/inversiones/brokerage",
       api_group: "brokerage",
+      asset_group_slug: "brokerage",
     });
     upsert({
       slug: "brokerage_mutual_funds",
@@ -350,6 +353,7 @@ export function seedNavTree(): void {
       route_path: "/inversiones/retiro",
       active_prefix: "/inversiones/retiro",
       api_group: "retirement",
+      asset_group_slug: "retirement",
     });
     upsert({
       slug: "retirement_afp_afc",
@@ -533,9 +537,9 @@ function rebuildNetWorthDashboardLinks() {
     if (!nw) return;
     deleteGroupItems.run(nw.id);
     linkGroup("net_worth", "real_estate", 10);
-    linkGroup("net_worth", "retirement", 20);
-    linkGroup("net_worth", "brokerage", 30);
-    linkGroup("net_worth", "cash_eqs", 40);
+    linkGroup("net_worth", "inversiones", 20);
+    linkGroup("net_worth", "cash_eqs", 30);
+    linkGroup("net_worth", "liabilities", 40);
   } catch (e) {
     console.warn("rebuildNetWorthDashboardLinks:", e instanceof Error ? e.message : e);
   }

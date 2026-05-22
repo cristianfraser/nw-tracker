@@ -1,3 +1,5 @@
+import { isDashboardNwBucketSlug } from "./portfolioDashboardBuckets";
+import type { DashboardGroupSlug } from "./dashboardCardBreakdown";
 import type { NavTreeNodeDto } from "./types";
 
 export function collectNavAccountDataKeys(node: NavTreeNodeDto): string[] {
@@ -68,11 +70,80 @@ export function findBestNavNodeForPathname(
   return bestScore >= 0 ? best : null;
 }
 
+export function isNavHubNode(node: NavTreeNodeDto): boolean {
+  return node.group_kind === "nav_hub";
+}
+
+/** Dashboard bucket slug for a nav node (from `asset_group_slug` or top-level bucket slug). */
+export function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): DashboardGroupSlug | null {
+  const asset = node.asset_group_slug;
+  if (asset === "net_worth") return "net_worth";
+  if (asset && isDashboardNwBucketSlug(asset)) return asset;
+  if (isDashboardNwBucketSlug(node.slug)) return node.slug;
+  return null;
+}
+
+/** Bucket slugs for routable children under a `nav_hub` (e.g. inversiones → retirement + brokerage). */
+export function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): DashboardGroupSlug[] {
+  const out: DashboardGroupSlug[] = [];
+  for (const child of portfolioStripGroupChildren(node)) {
+    const g = resolveDashboardBucketFromNavNode(child);
+    if (g && g !== "net_worth") out.push(g);
+  }
+  return out;
+}
+
+/** Routable portfolio group row for a detail card (bucket, pasivos, or inversiones sub-routes). */
+export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
+  if (!node.route_path?.trim() || isNavHubNode(node)) return false;
+  if (node.account_id != null || node.expense_account_id != null) return false;
+  if (resolveDashboardBucketFromNavNode(node) != null) return true;
+  if (node.asset_group_slug === "liabilities") return true;
+  /** e.g. brokerage_mutual_funds, retirement_apv — `api_group` without top-level bucket slug. */
+  if (node.portfolio_group_id != null && (node.api_group || node.api_subgroup)) return true;
+  return false;
+}
+
+/** Account leaves under a subgroup page (e.g. mutual funds → one fund account). */
+export function isPortfolioStripAccountNode(node: NavTreeNodeDto): boolean {
+  return node.account_id != null && node.account_id > 0 && Boolean(node.route_path?.trim());
+}
+
+/**
+ * Group children for strip row 2 (detailed cards). Flattens `nav_hub` (e.g. inversiones → brokerage + retirement).
+ */
+export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  const out: NavTreeNodeDto[] = [];
+  for (const child of root.children ?? []) {
+    if (isNavHubNode(child)) {
+      out.push(...portfolioStripGroupChildren(child));
+      continue;
+    }
+    if (isPortfolioStripCardNode(child)) out.push(child);
+  }
+  return out;
+}
+
+/** Direct account leaves for strip row 3 (compact cards). */
+export function portfolioStripAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  return (root.children ?? []).filter(isPortfolioStripAccountNode);
+}
+
+/** @deprecated Use {@link portfolioStripGroupChildren}. */
+export function portfolioStripDetailChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  return portfolioStripGroupChildren(root);
+}
+
+/** @deprecated Use {@link portfolioStripGroupChildren}. */
+export function detailNavChildrenForPortfolioStrip(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  return portfolioStripGroupChildren(root);
+}
+
 /** Top-level nav children for the group “Grupos y cuentas” hierarchy table (matches child-card strip rules). */
 export function navHierarchyTableChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   let children = (root.children ?? []).filter((c) => c.route_path?.trim());
-  if (root.slug === "inversiones") {
-    children = children.filter((c) => c.slug === "brokerage" || c.slug === "retirement");
+  if (isNavHubNode(root)) {
+    return children;
   }
   if (root.slug === "cash_eqs") {
     children = children.filter((c) => c.slug !== "liabilities_credit_card");

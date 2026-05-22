@@ -10,7 +10,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { CcInstallmentHistoryMonthPoint } from "../types";
+import { useTranslation } from "../i18n";
+import type { CcHistorialChartRow } from "../pages/accountDetail/ccChartData";
 import { formatClp } from "../format";
 import { buildNiceYAxis, RECHARTS_MONEY_CHART_MARGIN } from "./ValuationLineCharts";
 
@@ -24,32 +25,34 @@ function formatYmEs(ym: string): string {
   return `${label} ${ys}`;
 }
 
-function minMax(
-  points: { remaining_balance_clp: number; installment_payments_clp: number }[],
-  key: "remaining_balance_clp" | "installment_payments_clp"
-) {
-  let minV = Infinity;
-  let maxV = -Infinity;
+function unifiedMinMax(points: CcHistorialChartRow[]) {
+  let minV = 0;
+  let maxV = 0;
   for (const row of points) {
-    const v = row[key];
-    if (typeof v === "number" && Number.isFinite(v)) {
-      minV = Math.min(minV, v);
-      maxV = Math.max(maxV, v);
+    for (const v of [
+      row.installment_payments_clp,
+      row.facturado_clp,
+      row.cupo_en_cuotas_clp,
+      row.balance_total_clp,
+    ]) {
+      if (typeof v === "number" && Number.isFinite(v)) {
+        minV = Math.min(minV, v);
+        maxV = Math.max(maxV, v);
+      }
     }
   }
-  if (!Number.isFinite(minV)) return { min: 0, max: 0 };
-  return { min: minV, max: maxV };
+  return { min: minV, max: Math.max(maxV, 1) };
 }
 
-export function CcInstallmentHistoryChart({ rows }: { rows: CcInstallmentHistoryMonthPoint[] }) {
-  const leftScale = useMemo(() => {
-    const { min, max } = minMax(rows, "remaining_balance_clp");
-    return buildNiceYAxis(min, max);
-  }, [rows]);
+const FACTURADO_FILL = "#d97706";
+const CUPO_STROKE = "#f472b6";
+const BALANCE_TOTAL_STROKE = "#38bdf8";
 
-  const rightScale = useMemo(() => {
-    const { min, max } = minMax(rows, "installment_payments_clp");
-    return buildNiceYAxis(Math.min(0, min), Math.max(max, 1));
+export function CcInstallmentHistoryChart({ rows }: { rows: CcHistorialChartRow[] }) {
+  const { t } = useTranslation();
+  const yScale = useMemo(() => {
+    const { min, max } = unifiedMinMax(rows);
+    return buildNiceYAxis(min, max);
   }, [rows]);
 
   if (rows.length === 0) {
@@ -61,7 +64,7 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcInstallmentHistory
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={rows}
-          margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 18, bottom: 4 }}
+          margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 8, bottom: 4 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
           <XAxis
@@ -74,21 +77,9 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcInstallmentHistory
             interval="preserveStartEnd"
           />
           <YAxis
-            yAxisId="left"
-            domain={leftScale.domain}
-            ticks={leftScale.ticks}
+            domain={yScale.domain}
+            ticks={yScale.ticks}
             width={56}
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
-            tickFormatter={(v: number) => formatClp(v)}
-            axisLine={{ stroke: AXIS_STROKE }}
-            tickLine={{ stroke: AXIS_STROKE }}
-          />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            domain={rightScale.domain}
-            ticks={rightScale.ticks}
-            width={52}
             tick={{ fontSize: 10, fill: "#94a3b8" }}
             tickFormatter={(v: number) => formatClp(v)}
             axisLine={{ stroke: AXIS_STROKE }}
@@ -97,13 +88,8 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcInstallmentHistory
           <Tooltip
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null;
-              const d = payload[0]?.payload as CcInstallmentHistoryMonthPoint | undefined;
+              const d = payload[0]?.payload as CcHistorialChartRow | undefined;
               if (!d) return null;
-              const ledger = d.ledger_remaining_installments_clp;
-              const showLedgerHint =
-                ledger != null &&
-                Number.isFinite(ledger) &&
-                Math.round(ledger) !== Math.round(d.remaining_balance_clp);
               return (
                 <div
                   style={{
@@ -115,11 +101,20 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcInstallmentHistory
                   }}
                 >
                   <div style={{ marginBottom: 6, fontWeight: 600 }}>{formatYmEs(String(label))}</div>
-                  <div>Saldo (línea): {formatClp(d.remaining_balance_clp)}</div>
-                  <div>Pagos del mes: {formatClp(d.installment_payments_clp)}</div>
-                  {showLedgerHint ? (
-                    <div style={{ marginTop: 6, opacity: 0.85 }}>
-                      Solo cuotas PDF (sin valorización): {formatClp(ledger)}
+                  <div>
+                    {t("accountDetail.creditCard.colCupoEnCuotas")}:{" "}
+                    {d.cupo_en_cuotas_clp != null ? formatClp(d.cupo_en_cuotas_clp) : "—"}
+                  </div>
+                  <div>
+                    {t("accountDetail.creditCard.saldoTotal")}:{" "}
+                    {d.balance_total_clp != null ? formatClp(d.balance_total_clp) : "—"}
+                  </div>
+                  <div>
+                    Pagos del mes: {formatClp(d.installment_payments_clp)}
+                  </div>
+                  {d.facturado_clp != null && Number.isFinite(d.facturado_clp) ? (
+                    <div>
+                      {t("accountDetail.creditCard.chartFacturadoClose")}: {formatClp(d.facturado_clp)}
                     </div>
                   ) : null}
                 </div>
@@ -131,21 +126,35 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcInstallmentHistory
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />
           <Bar
-            yAxisId="right"
             dataKey="installment_payments_clp"
             name="Pagos de cuotas (mes)"
             fill="#64748b"
             maxBarSize={32}
             radius={[2, 2, 0, 0]}
           />
+          <Bar
+            dataKey="facturado_clp"
+            name={t("accountDetail.creditCard.chartFacturadoClose")}
+            fill={FACTURADO_FILL}
+            maxBarSize={32}
+            radius={[2, 2, 0, 0]}
+          />
           <Line
-            yAxisId="left"
             type="monotone"
-            dataKey="remaining_balance_clp"
-            name="Saldo cierre (PDF)"
-            stroke="#f472b6"
+            dataKey="cupo_en_cuotas_clp"
+            name={t("accountDetail.creditCard.colCupoEnCuotas")}
+            stroke={CUPO_STROKE}
             strokeWidth={2}
-            dot={{ r: 2.5, fill: "#f472b6" }}
+            dot={{ r: 2.5, fill: CUPO_STROKE }}
+            connectNulls
+          />
+          <Line
+            type="monotone"
+            dataKey="balance_total_clp"
+            name={t("accountDetail.creditCard.saldoTotal")}
+            stroke={BALANCE_TOTAL_STROKE}
+            strokeWidth={2}
+            dot={{ r: 2.5, fill: BALANCE_TOTAL_STROKE }}
             connectNulls
           />
         </ComposedChart>

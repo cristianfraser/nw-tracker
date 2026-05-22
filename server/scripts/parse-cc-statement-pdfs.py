@@ -6,7 +6,12 @@ Parse Chilean Banco de Chile / Lider credit card statement PDFs into CSV extract
 Deps (workspace-local, no global pip required):
   mkdir -p server/scripts/.pdf_deps
   pip3 install pypdf typing_extensions -t server/scripts/.pdf_deps
-  PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/parse-cc-statement-pdfs.py
+
+From repo root:
+  npm run parse:cc-pdfs
+  npm run import:cc-parsed -w nw-tracker-server -- --account-id=<ID>
+
+PDFs are read from `cfraser/pdfs/` (override with CFRASER_PDFS_DIR).
 
 Writes:
   cfraser/cc-statements-parsed-all.csv
@@ -21,6 +26,7 @@ import csv
 import hashlib
 import os
 import re
+import subprocess
 import sys
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -69,6 +75,316 @@ def fmt_clp(n: Optional[int]) -> str:
     if n is None:
         return ""
     return str(int(n))
+
+
+def parse_usd_amount(raw: str) -> Optional[float]:
+    t = str(raw or "").strip().replace("US$", "").replace("$", "").strip()
+    if not t:
+        return None
+    neg = t.startswith("-")
+    if neg:
+        t = t[1:].strip()
+    # Chilean-style USD on statements: 3.290,00 (dot thousands, comma decimals)
+    if re.search(r",\d{1,2}$", t):
+        t = t.replace(".", "").replace(",", ".")
+    else:
+        t = t.replace(",", "")
+    try:
+        v = float(t)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
+def fmt_usd(n: Optional[float]) -> str:
+    if n is None:
+        return ""
+    return f"{n:.2f}".replace(".", ",")
+
+
+RE_INTL_COUNTRY = re.compile(r"^[A-Z]{2}$")
+RE_AMOUNT_TOKEN = re.compile(r"^-?[\d.,]+$")
+
+# País en columna → moneda del monto origen (columna antes del US$).
+COUNTRY_ORIGIN_CURRENCY: Dict[str, str] = {
+    "CL": "CLP",
+    "CH": "CLP",
+    "US": "USD",
+    "GB": "GBP",
+    "UK": "GBP",
+    "DE": "EUR",
+    "FR": "EUR",
+    "ES": "EUR",
+    "IT": "EUR",
+    "NL": "EUR",
+    "BE": "EUR",
+    "PT": "EUR",
+    "IE": "EUR",
+    "AT": "EUR",
+    "CA": "CAD",
+    "AU": "AUD",
+    "NZ": "NZD",
+    "BR": "BRL",
+    "MX": "MXN",
+    "JP": "JPY",
+    "CN": "CNY",
+    "AR": "ARS",
+    "PE": "PEN",
+    "CO": "COP",
+}
+
+
+def _origin_currency_for_country(country: str) -> str:
+    c = country.upper().strip()
+    return COUNTRY_ORIGIN_CURRENCY.get(c, c)
+
+
+def _resolve_intl_orig_amounts(
+    orig_raw: str,
+    country: str,
+    usd_val: float,
+) -> Tuple[Optional[float], str, Optional[int]]:
+    """
+    Returns (amount_orig, orig_currency, amount_clp).
+    US/CL: origen often CLP reference on USD card; GB/EU: origen in local currency; US$ column always USD.
+    """
+    orig_ccy = _origin_currency_for_country(country)
+    if not orig_raw:
+        return None, orig_ccy, None
+
+    if orig_ccy == "CLP":
+        orig_clp = parse_clp_amount(orig_raw)
+        orig_usd = parse_usd_amount(orig_raw)
+        if country == "US" and orig_clp is not None and (orig_usd is None or orig_clp >= 100):
+            return float(orig_clp), "CLP", orig_clp
+        if orig_clp is not None:
+            return float(orig_clp), "CLP", orig_clp
+        if orig_usd is not None:
+            return orig_usd, "USD", None
+        return None, "CLP", None
+
+    if orig_ccy == "USD":
+        orig_usd = parse_usd_amount(orig_raw)
+        orig_clp = parse_clp_amount(orig_raw)
+        if orig_clp is not None and (orig_usd is None or orig_clp >= 100):
+            return float(orig_clp), "CLP", orig_clp
+        if orig_usd is not None:
+            return orig_usd, "USD", None
+        return None, "USD", None
+
+    # GBP, EUR, … — same decimal pattern as US$ (e.g. 2.859,00)
+    orig_fx = parse_usd_amount(orig_raw)
+    if orig_fx is None:
+        return None, orig_ccy, None
+    return orig_fx, orig_ccy, None
+RE_ORIGEN_COLUMN = re.compile(
+    r"^(WWW\.?|[A-Za-z0-9*.-]+\.(COM|NET|IO|ORG|CO|AI)\b)$",
+    re.I,
+)
+
+
+def _is_amount_token(s: str) -> bool:
+    return bool(RE_AMOUNT_TOKEN.match(str(s).replace(" ", "").strip()))
+
+
+def _split_trailing_country_code(text: str) -> Tuple[str, Optional[str]]:
+    """e.g. 'RENDER.COM US' → ('RENDER.COM', 'US')."""
+    t = text.strip()
+    if RE_INTL_COUNTRY.match(t):
+        return "", t
+    m = re.match(r"^(.+?)\s+([A-Z]{2})$", t)
+    if m and RE_INTL_COUNTRY.match(m.group(2)):
+        return m.group(1).strip(), m.group(2)
+    return t, None
+
+
+def _is_origen_column_line(line: str, merchant: str) -> bool:
+    """Middle PDF column (often empty): RENDER.COM, CURSOR.COM, WWW."""
+    o = line.strip()
+    m = merchant.strip()
+    if not o or _is_amount_token(o) or RE_INTL_COUNTRY.match(o):
+        return False
+    if o.upper() in ("WWW.", "WWW"):
+        return True
+    if m and o.upper() == m.upper():
+        return False
+    if RE_ORIGEN_COLUMN.match(o):
+        return True
+    if m and len(o) <= len(m) + 8 and re.search(r"\.(COM|NET|IO)\b", o, re.I):
+        return True
+    return False
+
+
+def _parse_international_vertical_chunk(
+    chunk: List[str], fecha: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Map pdftotext vertical cells to statement columns:
+    left (fecha, descripción, [origen vacío]) + right (país, monto origen, US$).
+    """
+    amounts: List[str] = []
+    texts: List[str] = []
+    for part in chunk:
+        p = part.strip()
+        if not p:
+            continue
+        if _is_amount_token(p):
+            amounts.append(p)
+        else:
+            texts.append(p)
+
+    if not amounts:
+        return None
+
+    # Orphan tail cells (e.g. "CH" + "0,00" before section 3 header) glued to prior row.
+    while texts and amounts:
+        if not RE_INTL_COUNTRY.match(texts[-1]):
+            break
+        tail_usd = parse_usd_amount(amounts[-1])
+        if tail_usd is None or tail_usd != 0:
+            break
+        texts.pop()
+        amounts.pop()
+
+    if not amounts:
+        return None
+
+    usd_raw = amounts[-1]
+    orig_raw = amounts[-2] if len(amounts) >= 2 else ""
+    usd_val = parse_usd_amount(usd_raw)
+    if usd_val is None:
+        return None
+
+    country = ""
+    origen = ""
+    merchant = ""
+
+    for t in texts:
+        if RE_INTL_COUNTRY.match(t):
+            country = t
+            continue
+        left, cc = _split_trailing_country_code(t)
+        if cc:
+            country = cc
+            if not merchant:
+                merchant = left
+            elif not origen and left and left.upper() != merchant.upper():
+                origen = left
+            continue
+        if not merchant:
+            merchant = t
+            continue
+        if not origen and _is_origen_column_line(t, merchant):
+            origen = t
+            continue
+        merchant = f"{merchant} {t}".strip()
+
+    if not country:
+        if re.search(r"TRASPASO|INTERNACIO", merchant, re.I):
+            country = "CH"
+        else:
+            return None
+
+    orig_val, orig_ccy, amount_clp = _resolve_intl_orig_amounts(orig_raw, country, usd_val)
+
+    desc_bits = [fecha, merchant]
+    if origen:
+        desc_bits.append(origen)
+    desc_bits.extend([country, usd_raw])
+
+    return {
+        "layout": "international_usd",
+        "transaction_date": fecha,
+        "posting_date": fecha,
+        "place": origen,
+        "description_raw": " | ".join(desc_bits),
+        "merchant": merchant[:120],
+        "amount_clp": amount_clp,
+        "amount_usd": usd_val,
+        "amount_orig": orig_val,
+        "orig_currency": orig_ccy,
+        "country": country,
+        "monto_total_a_pagar_clp": None,
+        "valor_cuota_mensual_clp": "",
+        "nro_cuota_current": "",
+        "nro_cuota_total": "",
+        "installment_flag": False,
+        "interest_rate_text": "",
+        "tipo_cuota": "",
+        "foreign_currency": "USD",
+        "authorization_code": "",
+    }
+
+
+def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
+    meta = extract_meta(full, source_pdf)
+    meta["currency"] = "usd"
+    lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
+
+    def grab_usd(label: str) -> Optional[float]:
+        m = re.search(
+            rf"{label}[^\dUS$]*US\$\s*([\d.,\-]+)",
+            full,
+            re.I | re.S,
+        )
+        if m:
+            return parse_usd_amount(m.group(1))
+        m2 = re.search(rf"{label}[^\d]*\n\s*US\$\s*([\d.,\-]+)", full, re.I)
+        if m2:
+            return parse_usd_amount(m2.group(1))
+        for i, ln in enumerate(lines):
+            if label.upper() in ln.upper():
+                for j in range(i - 1, max(i - 6, -1), -1):
+                    m3 = re.match(r"^US\$\s*([\d.,\-]+)$", lines[j], re.I)
+                    if m3:
+                        return parse_usd_amount(m3.group(1))
+        return None
+
+    meta["statement_saldo_anterior"] = grab_usd("SALDO ANTERIOR FACTURADO")
+    meta["statement_abono"] = grab_usd("ABONO REALIZADO")
+    meta["statement_compras_cargos"] = grab_usd("TOTAL DE COMPRAS Y CARGOS")
+    meta["statement_deuda_total"] = grab_usd("DEUDA TOTAL")
+    m_fac = re.search(
+        r"MONTO TOTAL FACTURADO A PAGAR\s+US\$\s*([\d.,\-]+)",
+        full,
+        re.I,
+    )
+    if m_fac:
+        meta["statement_monto_facturado"] = parse_usd_amount(m_fac.group(1))
+    elif meta.get("statement_deuda_total") is not None:
+        meta["statement_monto_facturado"] = meta["statement_deuda_total"]
+    return meta
+
+
+def parse_international_usd_document(full: str) -> List[Dict[str, Any]]:
+    lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
+    out: List[Dict[str, Any]] = []
+    i = 0
+    while i < len(lines):
+        m = re.match(r"^(\d{2}/\d{2}/\d{2})$", lines[i])
+        if not m:
+            i += 1
+            continue
+        fecha = m.group(1)
+        j = i + 1
+        chunk: List[str] = []
+        while j < len(lines) and not re.match(r"^\d{2}/\d{2}/\d{2}$", lines[j]):
+            if (
+                re.match(r"^\d+\.\s", lines[j])
+                or re.match(r"^\d+\.[A-Za-zÁÉÍÓÚ]", lines[j])
+                or "COMPROBANTE" in lines[j].upper()
+            ):
+                break
+            chunk.append(lines[j])
+            j += 1
+        if len(chunk) < 1:
+            i += 1
+            continue
+        row = _parse_international_vertical_chunk(chunk, fecha)
+        if row:
+            out.append(row)
+        i = j
+    return out
 
 
 def _norm_header_cell(s: str) -> str:
@@ -122,12 +438,70 @@ def load_baseline_rows(path: Path) -> List[Dict[str, Any]]:
     return [x for x in rows if x.get("purchase_id") and x.get("label")]
 
 
-def extract_pdf_text(path: Path) -> Tuple[List[str], str]:
+def choose_parser(path: Path, full: str = "") -> str:
+    name = path.name.lower()
+    if "internacional" in full.upper() or "usd" in name:
+        return "international_usd"
+    if name.startswith("80_"):
+        return "wide"
+    return "compact"
+
+
+def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
+    """International USD: `pdftotext` (one field per line). CLP compact/wide: pypdf (merged rows)."""
+    if parser == "international_usd":
+        try:
+            full = subprocess.check_output(
+                ["pdftotext", str(path), "-"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            return [], full
+        except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+            pass
     reader = PdfReader(str(path))
     pages: List[str] = []
     for p in reader.pages:
         pages.append(p.extract_text() or "")
     return pages, "\n".join(pages)
+
+
+def _date_after_header(full: str, header: str, within: int = 14) -> str:
+    lines = [ln.strip() for ln in full.splitlines()]
+    for i, ln in enumerate(lines):
+        if header.upper() in ln.upper():
+            for j in range(i + 1, min(i + 1 + within, len(lines))):
+                m = re.match(r"^(\d{2}/\d{2}/\d{4})$", lines[j])
+                if m:
+                    return m.group(1)
+    return ""
+
+
+def _fill_period_and_pay_by(meta: Dict[str, Any], full: str) -> None:
+    if meta.get("period_from") and meta.get("pay_by"):
+        return
+    lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
+    period_dates: List[str] = []
+    for i, ln in enumerate(lines):
+        if re.search(r"PER[IÍ]ODO\s+FACTURADO\s+DESDE", ln, re.I):
+            inline = re.findall(r"(\d{2}/\d{2}/\d{4})", ln)
+            period_dates.extend(inline)
+            for j in range(i + 1, min(i + 8, len(lines))):
+                if re.search(r"PER[IÍ]ODO\s+FACTURADO\s+HASTA|PAGAR\s+HASTA", lines[j], re.I):
+                    break
+                m = re.match(r"^(\d{2}/\d{2}/\d{4})$", lines[j])
+                if m:
+                    period_dates.append(m.group(1))
+            break
+    if len(period_dates) >= 2:
+        meta.setdefault("period_from", period_dates[0])
+        meta.setdefault("period_to", period_dates[1])
+    if len(period_dates) >= 3:
+        meta.setdefault("pay_by", period_dates[2])
+    if not meta.get("pay_by"):
+        m = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", full, re.I)
+        if m:
+            meta["pay_by"] = m.group(1)
 
 
 def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
@@ -177,6 +551,30 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
         meta["card_product"] = "VISA"
     elif re.search(r"MASTER", full, re.I):
         meta["card_product"] = "MASTER"
+    if not meta["statement_date"]:
+        meta["statement_date"] = _date_after_header(full, "FECHA ESTADO DE CUENTA")
+    _fill_period_and_pay_by(meta, full)
+    monto_candidates: List[int] = []
+    for m_total in re.finditer(
+        r"MONTO\s+TOTAL\s+FACTURADO\s+A\s+PAGAR[^\$]*\$\s*([\d.\-]+)",
+        full,
+        re.I,
+    ):
+        v = parse_clp_amount(m_total.group(1))
+        if v is not None and v > 0:
+            monto_candidates.append(v)
+    if monto_candidates:
+        meta["statement_monto_facturado"] = max(monto_candidates)
+    m_deuda = re.search(r"DEUDA\s+TOTAL[^\$]*\$\s*([\d.\-]+)", full, re.I)
+    if m_deuda:
+        meta["statement_deuda_total"] = parse_clp_amount(m_deuda.group(1))
+    m_prev = re.search(
+        r"MONTO\s+FACTURADO\s+A\s+PAGAR\s*\(PER[IÍ]ODO\s+ANTERIOR\)[^\$]*\$\s*([\d.\-]+)",
+        full,
+        re.I,
+    )
+    if m_prev:
+        meta["statement_saldo_anterior"] = parse_clp_amount(m_prev.group(1))
     meta["raw_header_snippet"] = full[:400].replace("\n", " ")
     return meta
 
@@ -290,11 +688,24 @@ def try_parse_compact_simple(line: str) -> Optional[Dict[str, Any]]:
     m = RE_COMPACT_SIMPLE.match(line.strip())
     if not m:
         return None
-    fecha, place, amt_raw, tail = m.group(1), m.group(2).strip(), m.group(3), m.group(4).strip()
+    fecha, place_chunk, amt_raw, tail = (
+        m.group(1),
+        m.group(2).strip(),
+        m.group(3),
+        m.group(4).strip(),
+    )
     amt = parse_clp_amount(amt_raw)
     if amt is None:
         return None
+    place = place_chunk
     merchant = (tail or "").strip()
+    country = ""
+    merchant, cc = _split_trailing_country_code(merchant)
+    if cc:
+        country = cc
+    place, cc2 = _split_trailing_country_code(place)
+    if cc2 and not country:
+        country = cc2
     return {
         "layout": "compact_de_simple",
         "transaction_date": fecha,
@@ -313,6 +724,7 @@ def try_parse_compact_simple(line: str) -> Optional[Dict[str, Any]]:
         "tipo_cuota": "",
         "foreign_currency": _extract_fx(merchant),
         "authorization_code": _extract_auth(merchant),
+        "country": country,
     }
 
 
@@ -479,13 +891,6 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
     return out
 
 
-def choose_parser(path: Path) -> str:
-    name = path.name
-    if name.startswith("80_"):
-        return "wide"
-    return "compact"
-
-
 def row_dedupe_key(card_group: str, r: Dict[str, Any]) -> str:
     m = norm_merchant(str(r.get("merchant", "")))
     if r.get("installment_flag"):
@@ -617,6 +1022,16 @@ CSV_COLUMNS: List[str] = [
     "matched_excel_row",
     "match_confidence",
     "mismatch_notes",
+    "currency",
+    "amount_usd",
+    "amount_orig",
+    "orig_currency",
+    "country",
+    "statement_saldo_anterior",
+    "statement_abono",
+    "statement_compras_cargos",
+    "statement_deuda_total",
+    "statement_monto_facturado",
 ]
 
 
@@ -675,6 +1090,26 @@ def emit_row(
         "matched_excel_row": "",
         "match_confidence": "",
         "mismatch_notes": "",
+        "currency": meta.get("currency", "clp"),
+        "amount_usd": fmt_usd(pr.get("amount_usd")),
+        "amount_orig": fmt_usd(pr.get("amount_orig")) if pr.get("amount_orig") is not None else "",
+        "orig_currency": pr.get("orig_currency", ""),
+        "country": pr.get("country", ""),
+        "statement_saldo_anterior": fmt_usd(meta.get("statement_saldo_anterior"))
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_saldo_anterior"))),
+        "statement_abono": fmt_usd(meta.get("statement_abono"))
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_abono"))),
+        "statement_compras_cargos": fmt_usd(meta.get("statement_compras_cargos"))
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_compras_cargos"))),
+        "statement_deuda_total": fmt_usd(meta.get("statement_deuda_total"))
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_deuda_total"))),
+        "statement_monto_facturado": fmt_usd(meta.get("statement_monto_facturado"))
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_monto_facturado"))),
     }
 
 
@@ -692,21 +1127,65 @@ def write_csv(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
             w.writerow({k: r.get(k, "") for k in CSV_COLUMNS})
 
 
-def main() -> int:
+RE_ESTADO_NUM = re.compile(r"^estado-de-cuenta-(\d+)\.pdf$", re.I)
+
+
+def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
+    """Scan `cfraser/pdfs` for statement PDFs. Returns (card_group, path) jobs."""
     jobs: List[Tuple[str, Path]] = []
+    if not pdfs_dir.is_dir():
+        return jobs
+    clp_numeric: List[Tuple[int, Path]] = []
+    for entry in sorted(pdfs_dir.iterdir()):
+        if not entry.is_file() or entry.suffix.lower() != ".pdf":
+            continue
+        name = entry.name
+        lower = name.lower()
+        if lower == "estado-de-cuenta-usd.pdf":
+            jobs.append(("INTL", entry))
+            continue
+        m = RE_ESTADO_NUM.match(name)
+        if m:
+            clp_numeric.append((int(m.group(1)), entry))
+            continue
+        if name.startswith("80_"):
+            jobs.append(("B", entry))
+            continue
+    for _n, p in sorted(clp_numeric, key=lambda t: t[0]):
+        jobs.append(("A", p))
+    return jobs
+
+
+def fallback_downloads_jobs() -> List[Tuple[str, Path]]:
+    """Legacy paths when `cfraser/pdfs` is empty (developer machine)."""
+    jobs: List[Tuple[str, Path]] = []
+    downloads = Path.home() / "Downloads"
     for n in range(18, 5, -1):
-        jobs.append(("A", Path(f"/Users/crfrsr/Downloads/estado-de-cuenta-{n}.pdf")))
-    card_b_extra = [
+        jobs.append(("A", downloads / f"estado-de-cuenta-{n}.pdf"))
+    for name in [
         "80_9576_REDACTED_20240322.pdf",
         "80_9827_REDACTED_20240424.pdf",
         "80_10073_REDACTED_20240524.pdf",
         "80_10312_REDACTED_20240624.pdf",
         "80_10567_REDACTED_20240724.pdf",
-    ]
-    for name in card_b_extra:
-        jobs.append(("B", Path(f"/Users/crfrsr/Downloads/{name}")))
+    ]:
+        jobs.append(("B", downloads / name))
     for n in range(33, 18, -1):
-        jobs.append(("B", Path(f"/Users/crfrsr/Downloads/estado-de-cuenta-{n}.pdf")))
+        jobs.append(("B", downloads / f"estado-de-cuenta-{n}.pdf"))
+    usd_pdf = downloads / "estado-de-cuenta-usd.pdf"
+    if usd_pdf.is_file():
+        jobs.append(("INTL", usd_pdf))
+    return jobs
+
+
+def main() -> int:
+    pdfs_dir = CFRASER_DIR / "pdfs"
+    jobs = discover_pdf_jobs(pdfs_dir)
+    if not jobs:
+        jobs = fallback_downloads_jobs()
+        print(f"# pdf source: fallback ~/Downloads ({len(jobs)} candidates)")
+    else:
+        print(f"# pdf source: {pdfs_dir} ({len(jobs)} files)")
 
     baseline = load_baseline_rows(BASELINE_CSV)
 
@@ -719,16 +1198,20 @@ def main() -> int:
             failures.append(f"missing:{p}")
             continue
         try:
-            _pages, full = extract_pdf_text(p)
+            parser = choose_parser(p)
+            _pages, full = extract_pdf_text(p, parser)
         except Exception as e:
             failures.append(f"read_error:{p}:{e}")
             continue
-        parser = choose_parser(p)
-        if parser == "wide":
+        if parser == "international_usd":
+            parsed = parse_international_usd_document(full)
+            meta = extract_meta_international(full, p.name)
+        elif parser == "wide":
             parsed = parse_wide_document(full)
+            meta = extract_meta(full, p.name)
         else:
             parsed = parse_compact_document(full)
-        meta = extract_meta(full, p.name)
+            meta = extract_meta(full, p.name)
         # Re-parse raw_line from description_raw stored
         for i, pr in enumerate(parsed):
             raw_line = str(pr.get("description_raw", ""))
