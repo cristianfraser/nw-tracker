@@ -10,6 +10,7 @@
     "migrate": "tsx -e \"import './src/db.ts'\"",
     "import:excel": "tsx scripts/import-excel-history.ts",
     "import:depto-expenses": "tsx scripts/import-depto-apartment-expenses.ts",
+    "parse:cc-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cc-statement-pdfs.py",
     "import:cc-parsed": "tsx scripts/import-cc-parsed-to-db.ts",
     "backfill:cc-valuations-from-ledger": "tsx scripts/backfill-cc-valuations-from-installment-ledger.ts",
     "backfill:cc-cuota-gaps": "tsx scripts/backfill-cc-installment-gaps.ts",
@@ -38,7 +39,8 @@
     "afp:modelo:traspaso-pdf-to-csv": "tsx scripts/afp-modelo-traspaso-pdf-to-csv.ts",
     "crypto:apply-valuation": "tsx scripts/crypto-apply-valuation.ts",
     "retag:fintual-state-contributions": "tsx scripts/retag-fintual-state-contributions.ts",
-    "apv:apply-flow-overrides": "tsx scripts/apply-apv-a-flow-overrides.ts"
+    "apv:apply-flow-overrides": "tsx scripts/apply-apv-a-flow-overrides.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -52,6 +54,7 @@
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "vitest": "^3.0.5",
     "xlsx": "^0.18.5"
   }
 }

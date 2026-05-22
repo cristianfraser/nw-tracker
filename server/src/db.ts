@@ -203,6 +203,12 @@ export function initSchema() {
 function seedReferenceData() {
   const groups: { slug: string; label: string; sort: number; cats: { slug: string; label: string }[] }[] = [
     {
+      slug: "net_worth",
+      label: "Net worth",
+      sort: 5,
+      cats: [],
+    },
+    {
       slug: "retirement",
       label: "Retirement",
       sort: 10,

@@ -771,6 +771,8 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
   const stepNotes: SyncStepNote[] = [];
   const logOpts: SyncRunLogOptions = {};
   let stale: GlobalSyncSource[] = [];
+  /** Sources stale when the run started (log must not re-check after updates). */
+  let staleAtStart: GlobalSyncSource[] = [];
   let state: GlobalSyncStateFile | null = null;
   let cl = chileWallClockNow();
 
@@ -779,6 +781,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     cl = chileWallClockNow();
     state = loadGlobalSyncState();
     stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
+    staleAtStart = [...stale];
     console.log(
       `sync:all — Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")} (${syncDryRun ? "dry-run" : "live"})` +
         (stale.length ? ` stale=[${stale.join(", ")}]` : " nothing stale")
@@ -827,10 +830,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     console.error(`sync:all — fatal: ${message}`);
     stepErrors.push({ step: "sync:all", message });
   } finally {
-    if (state) {
-      stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
-    }
-    insertSyncRunLog(stale, syncChanges, syncDryRun, {
+    insertSyncRunLog(staleAtStart, syncChanges, syncDryRun, {
       ...logOpts,
       notes: stepNotes,
       errors: stepErrors,

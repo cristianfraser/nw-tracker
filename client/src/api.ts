@@ -100,6 +100,36 @@ export const api = {
       `/api/accounts/${id}/cc-installments${qs ? `?${qs}` : ""}`
     );
   },
+  createCcPurchase: (
+    id: string | number,
+    body: {
+      purchase_date: string;
+      total_amount_clp: number;
+      cuotas_totales: number;
+      merchant?: string;
+      description?: string;
+      card_group?: string;
+    }
+  ) =>
+    j<{ id: number; canonical_row_id: string }>(`/api/accounts/${id}/cc-purchases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteCcPurchase: (id: string | number, purchaseId: number) =>
+    j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, { method: "DELETE" }),
+  patchCcBillingFacturadoPlaceholder: (
+    id: string | number,
+    body: { billing_month: string; estimated_facturado_clp: number | null }
+  ) =>
+    j<{ ok: boolean; billing_month: string; estimated_facturado_clp: number | null }>(
+      `/api/accounts/${id}/cc-billing-facturado-placeholder`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    ),
   accountValuationTimeseries: (
     id: string | number,
     unit: "clp" | "usd",

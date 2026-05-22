@@ -28,6 +28,7 @@ import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
+import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
 import {
   deptoSueciaDashboardSnapshotAt,
   isDeptoMortgagePaymentCuota,
@@ -48,7 +49,10 @@ import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
+import {
+  latestDisplayedBalanceForAccount,
+  latestValuationRowOnOrBeforeChileToday,
+} from "./valuationLatest.js";
 import type { AccountPositionMeta } from "./accountPosition.js";
 import { getMarketSeriesPayload } from "./marketSeries.js";
 import { getMarketTickerPayload } from "./marketTicker.js";
@@ -70,6 +74,17 @@ import {
   accountCardPerformanceMetrics,
   accountPriorPeriodClose,
 } from "./dashboardAccountCardMetrics.js";
+import {
+  createManualCcInstallmentPurchase,
+  deleteManualCcInstallmentPurchase,
+  updateManualCcInstallmentPurchase,
+} from "./ccInstallmentManual.js";
+import { patchCreditCardBillingConfig, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import {
+  isValidBillingMonthYm,
+  upsertCcFacturadoPlaceholder,
+} from "./ccBillingPlaceholders.js";
+import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
 import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
 import {
@@ -476,7 +491,7 @@ async function latestValuationDisplayForAccount(
   if (eq != null) return eq;
   const crypto = await computeCryptoMtmClpLive(accountId);
   if (crypto != null) return crypto;
-  const stored = latestValuationRowOnOrBeforeChileToday(accountId);
+  const stored = latestDisplayedBalanceForAccount(accountId);
   if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
     return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
   }
@@ -697,6 +712,132 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
   res.json(creditCardInstallmentsResponse(id, extra));
 });
 
+app.post("/api/accounts/:id/cc-purchases", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const cat = db
+    .prepare(
+      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+    )
+    .get(id) as { category_slug: string } | undefined;
+  if (!cat || cat.category_slug !== "credit_card") {
+    res.status(400).json({ error: "account is not a credit card" });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  try {
+    const created = createManualCcInstallmentPurchase(id, {
+      purchase_date: String(body.purchase_date ?? ""),
+      total_amount_clp: Number(body.total_amount_clp),
+      cuotas_totales: Number(body.cuotas_totales),
+      merchant: body.merchant != null ? String(body.merchant) : undefined,
+      description: body.description != null ? String(body.description) : undefined,
+      card_group: body.card_group != null ? String(body.card_group) : undefined,
+    });
+    res.status(201).json(created);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "invalid body" });
+  }
+});
+
+app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const purchaseId = Number(req.params.purchaseId);
+  if (!Number.isFinite(purchaseId) || purchaseId <= 0) {
+    res.status(400).json({ error: "invalid purchase id" });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  try {
+    updateManualCcInstallmentPurchase(id, purchaseId, {
+      purchase_date: body.purchase_date != null ? String(body.purchase_date) : undefined,
+      total_amount_clp:
+        body.total_amount_clp != null ? Number(body.total_amount_clp) : undefined,
+      cuotas_totales: body.cuotas_totales != null ? Number(body.cuotas_totales) : undefined,
+      merchant: body.merchant != null ? String(body.merchant) : undefined,
+      description: body.description != null ? String(body.description) : undefined,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "update failed" });
+  }
+});
+
+app.delete("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const purchaseId = Number(req.params.purchaseId);
+  if (!Number.isFinite(purchaseId) || purchaseId <= 0) {
+    res.status(400).json({ error: "invalid purchase id" });
+    return;
+  }
+  try {
+    deleteManualCcInstallmentPurchase(id, purchaseId);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "delete failed" });
+  }
+});
+
+app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const body = req.body as Record<string, unknown>;
+  const start =
+    body.billing_cycle_start_day != null ? Number(body.billing_cycle_start_day) : undefined;
+  const end =
+    body.billing_cycle_end_day !== undefined
+      ? body.billing_cycle_end_day == null
+        ? null
+        : Number(body.billing_cycle_end_day)
+      : undefined;
+  if (start != null && (!Number.isFinite(start) || start < 1 || start > 31)) {
+    res.status(400).json({ error: "invalid billing_cycle_start_day" });
+    return;
+  }
+  if (end != null && end !== undefined && (!Number.isFinite(end) || end < 1 || end > 31)) {
+    res.status(400).json({ error: "invalid billing_cycle_end_day" });
+    return;
+  }
+  patchCreditCardBillingConfig(id, {
+    billing_cycle_start_day: start,
+    billing_cycle_end_day: end,
+  });
+  recomputeCcBillingMonthBalances(id);
+  res.json({ billing_config: loadCreditCardBillingConfig(id) });
+});
+
+app.patch("/api/accounts/:id/cc-billing-facturado-placeholder", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const cat = db
+    .prepare(
+      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+    )
+    .get(id) as { category_slug: string } | undefined;
+  if (!cat || cat.category_slug !== "credit_card") {
+    res.status(400).json({ error: "account is not a credit card" });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const billingMonth = String(body.billing_month ?? "").trim();
+  if (!isValidBillingMonthYm(billingMonth)) {
+    res.status(400).json({ error: "invalid billing_month" });
+    return;
+  }
+  const raw = body.estimated_facturado_clp;
+  const amount =
+    raw === null || raw === undefined || raw === ""
+      ? null
+      : Number(raw);
+  if (amount != null && (!Number.isFinite(amount) || amount < 0)) {
+    res.status(400).json({ error: "invalid estimated_facturado_clp" });
+    return;
+  }
+  try {
+    upsertCcFacturadoPlaceholder(id, billingMonth, amount);
+    res.json({ ok: true, billing_month: billingMonth, estimated_facturado_clp: amount });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "update failed" });
+  }
+});
+
 app.post("/api/accounts/:id/movements", (req, res) => {
   const accountId = operationalAccountIdFromReq(req);
   const account = accountRowForId(accountId);
@@ -833,7 +974,7 @@ app.get("/api/dashboard", async (req, res) => {
         : null;
     const fx_date_used = fxRow?.date ?? null;
     const fx_clp_per_usd = fxRow?.clp_per_usd ?? null;
-    return {
+    const rowBeforeReconcile = {
       account_id: a.id,
       name: a.name,
       group_slug: a.group_slug,
@@ -872,6 +1013,8 @@ app.get("/api/dashboard", async (req, res) => {
       chart_inactive: accountChartInactive(a.id),
       position,
     };
+    const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, { includeUsd });
+    return { ...rowBeforeReconcile, ...reconciled };
   })
   );
 

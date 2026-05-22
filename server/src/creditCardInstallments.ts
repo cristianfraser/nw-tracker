@@ -1,5 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
+import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
+import {
+  buildBillingDetailByMonth,
+  buildFacturaciones,
+  type CcBillingDetailMonthRow,
+  type CcFacturacionRow,
+} from "./ccBillingViews.js";
+import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
+import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
+import {
+  ccStatementRowCount,
+  ccStatementsPayloadForAccount,
+  type CcStatementRow,
+  type CcStatementLineRow,
+} from "./ccStatementsDb.js";
 import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { numCsv, readSemicolonCsv } from "./deptoDividendosLedger.js";
@@ -26,6 +42,8 @@ export type CcInstallmentPurchaseRow = {
 };
 
 export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
+  /** SQLite row id (DB ledger only). */
+  purchase_db_id?: number;
   remaining_installments: number;
   remaining_principal_clp: number;
   next_due_month: string | null;
@@ -34,6 +52,8 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   last_paid_month: string | null;
   /** Constant cuota for upcoming months (CLP). */
   upcoming_cuota_clp: number;
+  /** `pdf` from statement import; `manual` from UI/API. Omitted on CSV fallback. */
+  purchase_source?: "pdf" | "manual";
 };
 
 export type CcInstallmentMonthBreakdown = {
@@ -342,6 +362,11 @@ export function creditCardInstallmentsResponse(
     installment_payments_clp: number;
     ledger_remaining_installments_clp?: number;
   }[];
+  statements?: (CcStatementRow & { lines: CcStatementLineRow[] })[];
+  billing_month_balances?: CcBillingMonthBalanceRow[];
+  billing_detail_by_month?: CcBillingDetailMonthRow[];
+  facturaciones?: CcFacturacionRow[];
+  billing_config?: CreditCardBillingConfig;
 } {
   if (ccInstallmentLedgerRowCount(accountId) > 0) {
     const db = ccInstallmentsDbApiPayload(accountId);
@@ -362,6 +387,43 @@ export function creditCardInstallmentsResponse(
       months: db.months,
       totals: db.totals,
       installment_history_months: db.installment_history_months,
+      statements: ccStatementsPayloadForAccount(accountId).statements,
+      billing_month_balances: listCcBillingMonthBalances(accountId),
+      billing_detail_by_month: buildBillingDetailByMonth(accountId, db.months),
+      facturaciones: buildFacturaciones(accountId, db.months),
+      billing_config: loadCreditCardBillingConfig(accountId),
+    };
+  }
+
+  if (ccStatementRowCount(accountId) > 0) {
+    const billing = listCcBillingMonthBalances(accountId);
+    const latestCupo =
+      billing.length > 0
+        ? [...billing].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date))[0]!.cupo_utilizado_clp
+        : 0;
+    return {
+      account_id: accountId,
+      source: "db",
+      meta: {
+        csv_path: "SQLite · cc_statements / cc_statement_lines",
+        csv_absolute_path: "",
+        csv_file_exists: true,
+        pay_by_rule:
+          "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP.",
+      },
+      purchases: [],
+      purchases_completed: [],
+      months: [],
+      totals: {
+        total_remaining_principal_clp: latestCupo,
+        next_calendar_month_total_clp: null,
+        next_calendar_month: null,
+      },
+      statements: ccStatementsPayloadForAccount(accountId).statements,
+      billing_month_balances: billing,
+      billing_detail_by_month: buildBillingDetailByMonth(accountId, []),
+      facturaciones: buildFacturaciones(accountId, []),
+      billing_config: loadCreditCardBillingConfig(accountId),
     };
   }
 

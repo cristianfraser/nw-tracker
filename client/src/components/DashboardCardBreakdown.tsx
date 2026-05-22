@@ -69,7 +69,8 @@ function BreakdownNodeRow({
   rowKeyPrefix: string;
 }) {
   const isGroup = depth === 0;
-  const omitGroupTotal = node.children.length === 1;
+  /** One leaf under a group: show the group total only (same as brokerage “Fondos mutuos”). */
+  const hideOnlyChild = node.children.length === 1;
   const liClass = isGroup ? styles.group : styles.child;
   const mountSeedKey = `${cardSlug}:${rowKeyPrefix}:${depth}:${index}:${node.label}`;
   const label = node.to ? (
@@ -84,17 +85,15 @@ function BreakdownNodeRow({
     <li className={liClass}>
       <div className={styles.row}>
         {label}
-        {omitGroupTotal ? null : (
-          <BreakdownAmount
-            node={node}
-            showUsd={showUsd}
-            animated={animated}
-            mountSeedKey={mountSeedKey}
-            muted={!isGroup}
-          />
-        )}
+        <BreakdownAmount
+          node={node}
+          showUsd={showUsd}
+          animated={animated}
+          mountSeedKey={mountSeedKey}
+          muted={!isGroup}
+        />
       </div>
-      {node.children.length > 0 ? (
+      {node.children.length > 0 && !hideOnlyChild ? (
         <ul className={styles.nested}>
           {node.children.map((child, j) => (
             <BreakdownNodeRow

@@ -23,6 +23,8 @@ export type NavTreeNodeDto = {
   api_subgroup: string | null;
   color_rgb: string | null;
   color: string | null;
+  /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
+  group_kind: "normal" | "reference" | "nav_hub";
   children: NavTreeNodeDto[];
 };
 
@@ -42,6 +44,7 @@ type GroupRow = {
   api_subgroup: string | null;
   asset_group_slug: string | null;
   sidebar_section: string;
+  group_kind: string;
 };
 
 type ItemRow = {
@@ -57,7 +60,8 @@ function loadGroups(): GroupRow[] {
   return db
     .prepare(
       `SELECT id, parent_id, slug, label, sort_order, color_rgb, route_path, active_prefix,
-              nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section
+              nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
+              group_kind
        FROM portfolio_groups
        ORDER BY sort_order, id`
     )
@@ -116,6 +120,7 @@ function buildNode(
         asset_group_slug: null,
         api_group: null,
         api_subgroup: null,
+        group_kind: "normal",
         color_rgb,
         color: rgbTripletToCss(color_rgb),
         children: [],
@@ -140,12 +145,18 @@ function buildNode(
         asset_group_slug: null,
         api_group: null,
         api_subgroup: null,
+        group_kind: "normal",
         color_rgb: null,
         color: null,
         children: [],
       });
     }
   }
+
+  const groupKind =
+    group.group_kind === "reference" || group.group_kind === "nav_hub"
+      ? group.group_kind
+      : "normal";
 
   /** Explicit `portfolio_groups.color_rgb` wins; otherwise same resolver as charts (largest child balance). */
   const resolved = group.color_rgb ?? resolvePortfolioGroupColorRgb(group.id);
@@ -169,6 +180,7 @@ function buildNode(
     api_subgroup: group.api_subgroup,
     color_rgb: resolved,
     color: rgbTripletToCss(resolved),
+    group_kind: groupKind,
     children: pruneEmptyNavGroups(children),
   };
 }

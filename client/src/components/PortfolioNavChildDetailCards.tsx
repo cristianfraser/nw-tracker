@@ -4,16 +4,12 @@ import { DetailedGroupCard } from "./DetailedGroupCard";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
+  mainValueAndMetricsForNavChild,
   navAccountIdSet,
   titleBalanceDeltaForAccountIds,
-  titleDeltaModelForNavChildSlug,
+  titleDeltaModelForNavChild,
 } from "../portfolioNavDashboardCards";
-import {
-  cardGroupMetricsFromAccounts,
-  compareDashboardCardMainDesc,
-  sumCurrentValueClpUsd,
-  type CardGroupMetricsPeriod,
-} from "../dashboardCardBreakdown";
+import { compareDashboardCardMainDesc, type CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
 import { useMemo } from "react";
 import type { DashboardResponse, NavTreeNodeDto } from "../types";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
@@ -42,11 +38,11 @@ export function PortfolioNavChildDetailCards({
   const sorted = useMemo(() => {
     const filtered = navChildren.filter((c) => c.route_path?.trim());
     return [...filtered].sort((a, b) => {
-      const aVal = sumCurrentValueClpUsd(dashboardRowsForNavSubtree(dash.accounts, a), showUsd);
-      const bVal = sumCurrentValueClpUsd(dashboardRowsForNavSubtree(dash.accounts, b), showUsd);
-      return compareDashboardCardMainDesc(aVal.clp, aVal.apiUsd, bVal.clp, bVal.apiUsd, showUsd);
+      const aMain = mainValueAndMetricsForNavChild(dash, a, metricsPeriod, showUsd);
+      const bMain = mainValueAndMetricsForNavChild(dash, b, metricsPeriod, showUsd);
+      return compareDashboardCardMainDesc(aMain.clp, aMain.apiUsd, bMain.clp, bMain.apiUsd, showUsd);
     });
-  }, [navChildren, dash.accounts, showUsd]);
+  }, [navChildren, dash, metricsPeriod, showUsd]);
 
   if (!sorted.length) return null;
 
@@ -55,7 +51,7 @@ export function PortfolioNavChildDetailCards({
       {sorted.map((child) => {
         const childRows = dashboardRowsForNavSubtree(dash.accounts, child);
         const childIds = navAccountIdSet(child);
-        const spec = titleDeltaModelForNavChildSlug(child.slug);
+        const spec = titleDeltaModelForNavChild(child);
         const childTitleDelta = titleBalanceDeltaForAccountIds(
           dash,
           overviewPoints,
@@ -64,8 +60,12 @@ export function PortfolioNavChildDetailCards({
           showUsd,
           spec
         );
-        const { clp, apiUsd } = sumCurrentValueClpUsd(childRows, showUsd);
-        const childMetrics = cardGroupMetricsFromAccounts(childRows, metricsPeriod);
+        const { clp, apiUsd, metrics: childMetrics } = mainValueAndMetricsForNavChild(
+          dash,
+          child,
+          metricsPeriod,
+          showUsd
+        );
         const br = breakdownForNavChild(child, childRows, dash);
         const rp = child.route_path?.trim() ?? "";
         const cashClass = child.slug === "cash_eqs" ? "card--cash" : "";

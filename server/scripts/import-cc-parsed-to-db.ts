@@ -20,6 +20,8 @@ import { fileURLToPath } from "node:url";
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
 import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
+import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccInstallmentLedgerDb.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { loadCreditCardInstallmentPurchases } from "../src/creditCardInstallments.js";
@@ -176,6 +178,9 @@ function main() {
   let paymentUpserts = 0;
   let gapFilled = 0;
   let valuationMonthsSynced = 0;
+  let statementCount = 0;
+  let statementLineCount = 0;
+  let billingSnapshots = 0;
 
   const run = db.transaction(() => {
     if (!dry) {
@@ -183,6 +188,9 @@ function main() {
         `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
       ).run(accountId);
       db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
+      const st = importCcStatementsFromCsvRecords(accountId, records);
+      statementCount = st.statementCount;
+      statementLineCount = st.lineCount;
     }
 
     for (const agg of byLoan.values()) {
@@ -284,6 +292,7 @@ function main() {
     if (!dry) {
       gapFilled = backfillMissingInstallmentPaymentsForAccount(accountId).inserted;
       valuationMonthsSynced = upsertCreditCardValuationsFromLedger(accountId);
+      billingSnapshots = recomputeCcBillingMonthBalances(accountId);
     }
   });
 
@@ -307,7 +316,7 @@ function main() {
   console.log(
     dry
       ? `[dry-run] would upsert ${purchaseUpserts} purchases and ~${paymentUpserts} payment groups from ${csvPath} (grouped by loan key, not canonical_row_id)`
-      : `Upserted ${purchaseUpserts} purchases and ${paymentUpserts} payment rows for account ${accountId} from ${csvPath} (loan-key merge; prior rows for this account were replaced). Synthetic cuota gap-fill: ${gapFilled} rows. Valuation month-ends synced from ledger: ${valuationMonthsSynced}.`
+      : `Upserted ${purchaseUpserts} purchases and ${paymentUpserts} payment rows for account ${accountId} from ${csvPath} (loan-key merge; prior rows for this account were replaced). Statements: ${statementCount} (${statementLineCount} lines). Synthetic cuota gap-fill: ${gapFilled} rows. Valuation sync: ${valuationMonthsSynced}. Billing snapshots: ${billingSnapshots}.`
   );
 }
 

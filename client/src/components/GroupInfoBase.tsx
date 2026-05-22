@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AccountFlowsTable } from "./AccountFlowsTable";
 import { MonthlyPerfDetailTable } from "./MonthlyPerfDetailTable";
 import { PageTitleRow } from "./PageTitleRow";
+import { PortfolioNavEntityCardsStrip } from "./PortfolioNavEntityCardsStrip";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { EntityColorTarget } from "../entityColor";
 import { useTranslation } from "../i18n";
@@ -9,9 +10,26 @@ import {
   useGroupInfoConsolidatedTables,
   type GroupInfoTableAccount,
 } from "../useGroupInfoConsolidatedTables";
+import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import type { DashboardResponse, NavTreeNodeDto } from "../types";
 
 const GROUP_MONTHLY_PERF_COLLAPSED = 12;
 const GROUP_FLOWS_COLLAPSED = 10;
+
+export type GroupInfoPortfolioStrip = {
+  navNode: NavTreeNodeDto;
+  dash: Pick<
+    DashboardResponse,
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
+  >;
+  overviewPoints: Record<string, string | number | null>[];
+  metricsPeriod: CardGroupMetricsPeriod;
+  showUsd: boolean;
+  animated?: boolean;
+  /** When false, the strip is omitted (e.g. group page before valuation data is ready). Default true. */
+  enabled?: boolean;
+  compactTitleTo?: string;
+};
 
 export type GroupInfoBaseProps = {
   mainClassName?: string;
@@ -20,8 +38,8 @@ export type GroupInfoBaseProps = {
   colorTarget?: EntityColorTarget;
   /** e.g. Agrupado / Aportes acumulados toggles (group pages). */
   toolbar?: ReactNode;
-  /** Portfolio strip or dashboard bucket cards. */
-  cards?: ReactNode;
+  /** Nav node + dashboard bundle for the two-row portfolio card strip. */
+  portfolio?: GroupInfoPortfolioStrip | null;
   /** Optional muted notice under cards (e.g. real estate import hint). */
   notice?: ReactNode;
   /** Page-specific charts (valuation, P/L, allocation, …). */
@@ -40,7 +58,7 @@ export function GroupInfoBase({
   colorRgb,
   colorTarget,
   toolbar,
-  cards,
+  portfolio,
   notice,
   charts,
   tableAccounts,
@@ -54,11 +72,24 @@ export function GroupInfoBase({
   const { consolidatedMonthlyPerf, consolidatedFlows, tableFlags, tablesLoading } =
     useGroupInfoConsolidatedTables(tableAccounts, displayUnit, tablesEnabled);
 
+  const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
+
   return (
     <main className={mainClassName}>
       <PageTitleRow title={title} colorRgb={colorRgb} colorTarget={colorTarget} />
       {toolbar}
-      {cards}
+      {showPortfolioStrip ? (
+        <PortfolioNavEntityCardsStrip
+          dash={portfolio.dash}
+          overviewPoints={portfolio.overviewPoints}
+          parentNavNode={portfolio.navNode}
+          compactTitle={title}
+          compactTitleTo={portfolio.compactTitleTo}
+          showUsd={portfolio.showUsd}
+          metricsPeriod={portfolio.metricsPeriod}
+          animated={portfolio.animated}
+        />
+      ) : null}
       {notice}
       {charts}
       {tablesEnabled ? (

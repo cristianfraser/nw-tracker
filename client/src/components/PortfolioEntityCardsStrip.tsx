@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
+import { cn } from "../cn";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
 
 export type PortfolioEntityCardsStripProps = {
   /** Hero row (e.g. net worth `CompactEntityCard`). */
   compactSlot: ReactNode;
-  /** Second row: detailed cards (fragment or array). Omitted when empty — no spacer. */
+  /** Row 2: detailed group cards. Omitted when empty — no spacer for this row. */
   detailSlots?: ReactNode;
+  /** Row 3: compact account-leaf cards. */
+  accountCompactSlots?: ReactNode;
   /** When true, wraps in `DashboardCardsValueGroup` for shared number-flow context. */
   wrapValueGroup?: boolean;
   /** Extra classes on the compact strip shell (e.g. `card--cash`). */
@@ -13,17 +16,21 @@ export type PortfolioEntityCardsStripProps = {
 };
 
 /**
- * Dashboard-style two-row card strip: compact summary on row 1 (grid column 1), optional spacer,
- * then detail cards (same CSS grid as home dashboard).
+ * Dashboard-style card strip: compact parent (row 1), optional detailed group children (row 2),
+ * optional compact account leaves (row 3). Same CSS grid as the home dashboard.
  */
 export function PortfolioEntityCardsStrip({
   compactSlot,
   detailSlots,
+  accountCompactSlots,
   wrapValueGroup = true,
   compactStripClassName,
 }: PortfolioEntityCardsStripProps) {
   const hasDetails = detailSlots != null && detailSlots !== false;
-  const compactShell = [
+  const hasAccountCompacts =
+    accountCompactSlots != null && accountCompactSlots !== false;
+  const showRow1Spacer = hasDetails || hasAccountCompacts;
+  const compactShell = cn(
     "portfolio-strip-compact",
     "card",
     "card--detail",
@@ -31,18 +38,16 @@ export function PortfolioEntityCardsStrip({
     "card--detail-stretch",
     "card--dashboard-net-worth",
     compactStripClassName,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  );
   const inner = (
     <div className="cards">
       <div className={compactShell}>{compactSlot}</div>
-      {hasDetails ? (
-        <>
-          <div className="row-spacer" aria-hidden="true" />
-          {detailSlots}
-        </>
+      {showRow1Spacer ? <div className="row-spacer" aria-hidden="true" /> : null}
+      {hasDetails ? detailSlots : null}
+      {hasDetails && hasAccountCompacts ? (
+        <div className="portfolio-strip-section-break" aria-hidden="true" />
       ) : null}
+      {hasAccountCompacts ? accountCompactSlots : null}
     </div>
   );
   if (wrapValueGroup) return <DashboardCardsValueGroup>{inner}</DashboardCardsValueGroup>;

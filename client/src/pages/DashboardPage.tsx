@@ -4,23 +4,8 @@ import { LineChartPanel, ValuationLineCharts } from "../components/ValuationLine
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { GroupInfoNavHierarchyTable } from "../components/GroupInfoNavHierarchyTable";
 import { GroupInfoBase } from "../components/GroupInfoBase";
-import { DashboardCardBreakdown } from "../components/DashboardCardBreakdown";
-import { DashboardCardGroupMetrics } from "../components/DashboardCardGroupMetrics";
-import { CompactEntityCard } from "../components/CompactEntityCard";
-import { PortfolioEntityCardsStrip } from "../components/PortfolioEntityCardsStrip";
-import { DetailedGroupCard } from "../components/DetailedGroupCard";
 import { useDashboardBundle } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import {
-  buildBrokerageCardBreakdown,
-  cashCardBreakdownFromDash,
-  cardGroupNetWorthTitleBalanceDelta,
-  cardGroupTitleBalanceDelta,
-  buildRealEstateCardBreakdown,
-  buildRetirementCardBreakdown,
-  cardGroupMetricsForGroup,
-  cardGroupMetricsNetWorth,
-} from "../dashboardCardBreakdown";
 import { allocationBucketColor } from "../chartColors";
 import { appendTrailingMovingAverage } from "../chartMovingAverage";
 import {
@@ -33,51 +18,12 @@ import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavF
 import { useSidebarNav } from "../queries/hooks";
 import { formatMoneyForPie } from "../format";
 import {
-  bucketMainSortKeyFromTotals,
-  dashboardBucketRoutePath,
-  isDashboardNwBucketSlug,
   dashboardAccountsForNavHierarchy,
+  isDashboardNwBucketSlug,
   netWorthTableAccountsFromDash,
 } from "../portfolioDashboardBuckets";
-import type { DashboardLayoutCardRow, ValuationTimeseriesResponse } from "../types";
+import type { ValuationTimeseriesResponse } from "../types";
 
-const DASHBOARD_KNOWN_BUCKETS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
-
-/** Used when API omits `dashboard_layout` (e.g. before migration 035). Matches legacy order. */
-const DEFAULT_DASHBOARD_BUCKET_LAYOUT: DashboardLayoutCardRow[] = [
-  {
-    slug: "real_estate",
-    label: "Real estate",
-    label_i18n_key: "dashboard.cards.realEstate",
-    sort_order: 10,
-    bucket_slug: "real_estate",
-    card_css: null,
-  },
-  {
-    slug: "retirement",
-    label: "Retirement",
-    label_i18n_key: "dashboard.cards.retirement",
-    sort_order: 20,
-    bucket_slug: "retirement",
-    card_css: null,
-  },
-  {
-    slug: "brokerage",
-    label: "Brokerage",
-    label_i18n_key: "dashboard.cards.inversiones",
-    sort_order: 30,
-    bucket_slug: "brokerage",
-    card_css: null,
-  },
-  {
-    slug: "cash_eqs",
-    label: "Cash",
-    label_i18n_key: "dashboard.cards.cash",
-    sort_order: 40,
-    bucket_slug: "cash_eqs",
-    card_css: "cash",
-  },
-];
 export function DashboardPage() {
   const { t } = useTranslation();
   const { setLoading } = useLoading();
@@ -211,137 +157,7 @@ export function DashboardPage() {
     return m;
   }, [dash?.allocation]);
 
-  const retirementBreakdown = useMemo(
-    () => (dash ? buildRetirementCardBreakdown(dash.accounts) : []),
-    [dash]
-  );
-  const brokerageBreakdown = useMemo(
-    () => (dash ? buildBrokerageCardBreakdown(dash.accounts) : []),
-    [dash]
-  );
-  const realEstateBreakdown = useMemo(
-    () => (dash ? buildRealEstateCardBreakdown(dash.accounts, dash.suecia_snapshot) : []),
-    [dash]
-  );
-  const cashBreakdown = useMemo(() => {
-    if (!dash) return { lines: [], bottomLines: [] };
-    return cashCardBreakdownFromDash(dash.accounts, dash);
-  }, [dash]);
-
-  const cashCardSlugs = useMemo(() => new Set(["fondo_reserva", "cuenta_corriente"]), []);
-
-  const netWorthMetrics = useMemo(
-    () => (dash ? cardGroupMetricsNetWorth(dash.accounts, metricsPeriod) : null),
-    [dash, metricsPeriod]
-  );
-  const realEstateMetrics = useMemo(
-    () => (dash ? cardGroupMetricsForGroup(dash.accounts, "real_estate", metricsPeriod) : null),
-    [dash, metricsPeriod]
-  );
-  const retirementMetrics = useMemo(
-    () => (dash ? cardGroupMetricsForGroup(dash.accounts, "retirement", metricsPeriod) : null),
-    [dash, metricsPeriod]
-  );
-  const brokerageMetrics = useMemo(
-    () => (dash ? cardGroupMetricsForGroup(dash.accounts, "brokerage", metricsPeriod) : null),
-    [dash, metricsPeriod]
-  );
-  const cashMetrics = useMemo(
-    () =>
-      dash
-        ? cardGroupMetricsForGroup(
-            dash.accounts,
-            "cash_eqs",
-            metricsPeriod,
-            (a) => cashCardSlugs.has(a.category_slug)
-          )
-        : null,
-    [dash, metricsPeriod, cashCardSlugs]
-  );
-
   const overviewPoints = ts?.overview?.points ?? [];
-
-  const netWorthTitleDelta = useMemo(
-    () =>
-      dash
-        ? cardGroupNetWorthTitleBalanceDelta(
-            dash.accounts,
-            dash.totals,
-            overviewPoints,
-            metricsPeriod,
-            showUsd
-          )
-        : null,
-    [dash, overviewPoints, metricsPeriod, showUsd]
-  );
-  const realEstateTitleDelta = useMemo(
-    () =>
-      dash
-        ? cardGroupTitleBalanceDelta(
-            dash.accounts,
-            dash.totals,
-            overviewPoints,
-            "real_estate",
-            metricsPeriod,
-            showUsd
-          )
-        : null,
-    [dash, overviewPoints, metricsPeriod, showUsd]
-  );
-  const retirementTitleDelta = useMemo(
-    () =>
-      dash
-        ? cardGroupTitleBalanceDelta(
-            dash.accounts,
-            dash.totals,
-            overviewPoints,
-            "retirement",
-            metricsPeriod,
-            showUsd
-          )
-        : null,
-    [dash, overviewPoints, metricsPeriod, showUsd]
-  );
-  const brokerageTitleDelta = useMemo(
-    () =>
-      dash
-        ? cardGroupTitleBalanceDelta(
-            dash.accounts,
-            dash.totals,
-            overviewPoints,
-            "brokerage",
-            metricsPeriod,
-            showUsd
-          )
-        : null,
-    [dash, overviewPoints, metricsPeriod, showUsd]
-  );
-  const cashTitleDelta = useMemo(
-    () =>
-      dash
-        ? cardGroupTitleBalanceDelta(
-            dash.accounts,
-            dash.totals,
-            overviewPoints,
-            "cash_eqs",
-            metricsPeriod,
-            showUsd,
-            (a) => cashCardSlugs.has(a.category_slug)
-          )
-        : null,
-    [dash, overviewPoints, metricsPeriod, showUsd, cashCardSlugs]
-  );
-
-  const dashboardBucketLayout = useMemo(() => {
-    if (!dash) return DEFAULT_DASHBOARD_BUCKET_LAYOUT;
-    const raw = (dash.dashboard_layout ?? []).filter((c) => DASHBOARD_KNOWN_BUCKETS.has(c.bucket_slug));
-    const list = raw.length > 0 ? [...raw] : [...DEFAULT_DASHBOARD_BUCKET_LAYOUT];
-    return list.sort(
-      (a, b) =>
-        bucketMainSortKeyFromTotals(b.bucket_slug, dash.totals, showUsd) -
-        bucketMainSortKeyFromTotals(a.bucket_slug, dash.totals, showUsd)
-    );
-  }, [dash, showUsd]);
 
   const netWorthTableAccounts = useMemo(
     () => (dash ? netWorthTableAccountsFromDash(dash.accounts) : []),
@@ -567,187 +383,17 @@ export function DashboardPage() {
       title={pageTitle}
       colorRgb={netWorthNav?.color_rgb}
       colorTarget={netWorthColorTarget}
-      cards={
-        <PortfolioEntityCardsStrip
-        compactSlot={
-          <CompactEntityCard
-            label={pageTitle}
-            balanceDelta={netWorthTitleDelta}
-            showUsd={showUsd}
-            clp={dash.totals.net_worth_clp}
-            apiUsd={dash.totals.net_worth_usd}
-            cardSlug="net_worth"
-            animated={!unitSwitching}
-            stripInner
-            valueVariant="main"
-            metrics={
-              netWorthMetrics ? (
-                <DashboardCardGroupMetrics
-                  metrics={netWorthMetrics}
-                  showUsd={showUsd}
-                  period={metricsPeriod}
-                  cardSlug="net_worth"
-                  animated={!unitSwitching}
-                />
-              ) : null
+      portfolio={
+        netWorthNav
+          ? {
+              navNode: netWorthNav,
+              dash,
+              overviewPoints,
+              metricsPeriod,
+              showUsd,
+              animated: !unitSwitching,
             }
-          />
-        }
-        detailSlots={
-          <>
-            {dashboardBucketLayout.map((card) => {
-            const bucket = card.bucket_slug;
-            const cardTitle = card.label_i18n_key ? t(card.label_i18n_key) : card.label;
-            const cashClass = card.card_css === "cash" ? "card--cash" : "";
-            const cardTitleTo = card.route_path?.trim() || dashboardBucketRoutePath(bucket);
-
-            if (bucket === "real_estate") {
-              return (
-                <DetailedGroupCard
-                  key={card.slug}
-                  title={cardTitle}
-                  titleTo={cardTitleTo}
-                  balanceDelta={realEstateTitleDelta}
-                  showUsd={showUsd}
-                  clp={dash.totals.real_estate_clp}
-                  apiUsd={dash.totals.real_estate_usd}
-                  cardSlug="real_estate"
-                  animated={!unitSwitching}
-                  className={cashClass}
-                  metrics={
-                    realEstateMetrics ? (
-                      <DashboardCardGroupMetrics
-                        metrics={realEstateMetrics}
-                        showUsd={showUsd}
-                        period={metricsPeriod}
-                        cardSlug="real_estate"
-                        animated={!unitSwitching}
-                      />
-                    ) : null
-                  }
-                  breakdown={
-                    <DashboardCardBreakdown
-                      lines={realEstateBreakdown}
-                      showUsd={showUsd}
-                      cardSlug="real_estate"
-                      animated={!unitSwitching}
-                    />
-                  }
-                />
-              );
-            }
-            if (bucket === "retirement") {
-              return (
-                <DetailedGroupCard
-                  key={card.slug}
-                  title={cardTitle}
-                  titleTo={cardTitleTo}
-                  balanceDelta={retirementTitleDelta}
-                  showUsd={showUsd}
-                  clp={dash.totals.retirement_clp}
-                  apiUsd={dash.totals.retirement_usd}
-                  cardSlug="retirement"
-                  animated={!unitSwitching}
-                  className={cashClass}
-                  metrics={
-                    retirementMetrics ? (
-                      <DashboardCardGroupMetrics
-                        metrics={retirementMetrics}
-                        showUsd={showUsd}
-                        period={metricsPeriod}
-                        cardSlug="retirement"
-                        animated={!unitSwitching}
-                      />
-                    ) : null
-                  }
-                  breakdown={
-                    <DashboardCardBreakdown
-                      lines={retirementBreakdown}
-                      showUsd={showUsd}
-                      cardSlug="retirement"
-                      animated={!unitSwitching}
-                    />
-                  }
-                />
-              );
-            }
-            if (bucket === "brokerage") {
-              return (
-                <DetailedGroupCard
-                  key={card.slug}
-                  title={cardTitle}
-                  titleTo={cardTitleTo}
-                  balanceDelta={brokerageTitleDelta}
-                  showUsd={showUsd}
-                  clp={dash.totals.brokerage_clp}
-                  apiUsd={dash.totals.brokerage_usd}
-                  cardSlug="brokerage"
-                  animated={!unitSwitching}
-                  className={cashClass}
-                  metrics={
-                    brokerageMetrics ? (
-                      <DashboardCardGroupMetrics
-                        metrics={brokerageMetrics}
-                        showUsd={showUsd}
-                        period={metricsPeriod}
-                        cardSlug="brokerage"
-                        animated={!unitSwitching}
-                      />
-                    ) : null
-                  }
-                  breakdown={
-                    <DashboardCardBreakdown
-                      lines={brokerageBreakdown}
-                      showUsd={showUsd}
-                      cardSlug="brokerage"
-                      animated={!unitSwitching}
-                    />
-                  }
-                />
-              );
-            }
-            if (bucket === "cash_eqs") {
-              return (
-                <DetailedGroupCard
-                  key={card.slug}
-                  title={cardTitle}
-                  titleTo={cardTitleTo}
-                  balanceDelta={cashTitleDelta}
-                  showUsd={showUsd}
-                  clp={dash.totals.cash_eqs_clp}
-                  apiUsd={dash.totals.cash_eqs_usd}
-                  cardSlug="cash_eqs"
-                  animated={!unitSwitching}
-                  className={cashClass}
-                  metrics={
-                    cashMetrics ? (
-                      <DashboardCardGroupMetrics
-                        metrics={cashMetrics}
-                        showUsd={showUsd}
-                        period={metricsPeriod}
-                        cardSlug="cash_eqs"
-                        animated={!unitSwitching}
-                      />
-                    ) : null
-                  }
-                  breakdown={
-                    <DashboardCardBreakdown
-                      lines={cashBreakdown.lines}
-                      bottomLines={cashBreakdown.bottomLines}
-                      pinBottomToCard
-                      showUsd={showUsd}
-                      cardSlug="cash_eqs"
-                      animated={!unitSwitching}
-                    />
-                  }
-                />
-              );
-            }
-            return null;
-          })}
-          </>
-        }
-        />
+          : null
       }
       charts={dashboardCharts}
       tableAccounts={netWorthTableAccounts}

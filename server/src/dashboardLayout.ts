@@ -24,19 +24,23 @@ const fallbackBucketCardsQuery = `
   ORDER BY dashboard_sort_order ASC, id ASC
 `;
 
-const netWorthChildrenQuery = `
+/** Bucket cards under `net_worth`, flattening `nav_hub` children (e.g. inversiones → brokerage + retirement). */
+const netWorthBucketCardsQuery = `
   SELECT c.slug, c.label,
          COALESCE(c.dashboard_card_label_i18n_key, c.label_i18n_key) AS label_i18n_key,
-         i.sort_order AS sort_order,
+         c.dashboard_sort_order AS sort_order,
          c.dashboard_bucket_slug AS bucket_slug,
          c.dashboard_card_css AS card_css,
          c.route_path
   FROM portfolio_groups p
   JOIN portfolio_group_items i ON i.group_id = p.id AND i.item_kind = 'group'
-  JOIN portfolio_groups c ON c.id = i.child_group_id
+  JOIN portfolio_groups child ON child.id = i.child_group_id
+  LEFT JOIN portfolio_group_items i2
+    ON i2.group_id = child.id AND i2.item_kind = 'group' AND child.group_kind = 'nav_hub'
+  JOIN portfolio_groups c ON c.id = COALESCE(i2.child_group_id, child.id)
   WHERE p.slug = 'net_worth'
     AND c.dashboard_bucket_slug IS NOT NULL
-  ORDER BY i.sort_order ASC, c.id ASC
+  ORDER BY c.dashboard_sort_order ASC, c.id ASC
 `;
 
 const legacyBucketCardsQuery = `
@@ -58,7 +62,7 @@ const legacyBucketCardsQuery = `
  */
 export function getDashboardLayoutCards(): DashboardLayoutCardRow[] {
   try {
-    const fromNetWorth = db.prepare(netWorthChildrenQuery).all() as DashboardLayoutCardRow[];
+    const fromNetWorth = db.prepare(netWorthBucketCardsQuery).all() as DashboardLayoutCardRow[];
     if (fromNetWorth.length > 0) return fromNetWorth;
   } catch (e) {
     console.warn("dashboard_layout: net_worth children query failed.", e);

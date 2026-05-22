@@ -1,24 +1,36 @@
+/* Mobile-first: full-width bottom dock with centered toolbar. */
 .host {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-  box-sizing: border-box;
+  display: block;
+  pointer-events: none;
 }
 
-/* Desktop: inert pass-through; mobile: full-width bottom dock (see below). */
 .dock {
-  display: contents;
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 1.1rem var(--display-prefs-side, 0.75rem) calc(0.55rem + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+  background: transparent;
 }
 
 .bar {
+  position: relative;
   box-sizing: border-box;
-  z-index: 3;
+  pointer-events: auto;
   background: color-mix(in srgb, var(--surface) 94%, var(--bg) 6%);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 2px 12px color-mix(in srgb, #000 35%, transparent);
+  box-shadow:
+    0 4px 20px color-mix(in srgb, #000 55%, transparent),
+    0 1px 4px color-mix(in srgb, #000 40%, transparent);
   width: max-content;
-  max-width: calc(100vw - 2 * var(--display-prefs-side, 0.75rem));
+  max-width: calc(100% - 2 * var(--display-prefs-side, 0.75rem));
+  margin: 0;
 }
 
 .row {
@@ -28,69 +40,17 @@
   gap: 0.35rem 1rem;
 }
 
-@media (max-width: 879px) {
-  .host {
-    display: block;
-    pointer-events: none;
-  }
-
-  .dock {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 10;
-    justify-content: center;
-    align-items: flex-end;
-    isolation: isolate;
-    padding: 1.1rem var(--display-prefs-side, 0.75rem) calc(0.55rem + env(safe-area-inset-bottom, 0px));
-    pointer-events: none;
-    background: transparent;
-  }
-
-  /*
-   * Progressive blur: uniform backdrop-filter, faded out toward the top (sharp above, blurred at bottom).
-   */
-  .dock::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: -1.25rem;
-    z-index: 0;
-    pointer-events: none;
-    -webkit-backdrop-filter: blur(22px) saturate(1.25);
-    backdrop-filter: blur(22px) saturate(1.25);
-    background: linear-gradient(to top,
-        color-mix(in srgb, var(--bg) 72%, transparent) 0%,
-        color-mix(in srgb, var(--bg) 28%, transparent) 42%,
-        transparent 100%);
-    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 38%, transparent 100%);
-    mask-image: linear-gradient(to top, #000 0%, #000 38%, transparent 100%);
-    border-top: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
-  }
-
-  .dock>.bar {
-    position: relative;
-    z-index: 1;
-    pointer-events: auto;
-    transform: none;
-    margin: 0;
-    max-width: calc(100% - 2 * var(--display-prefs-side, 0.75rem));
-  }
-}
-
 @media (min-width: 880px) {
-  .bar {
-    position: fixed;
-    top: calc(var(--market-ticker-height) + var(--display-prefs-gap, 0.35rem));
-    bottom: auto;
-    right: var(--display-prefs-side, 0.75rem);
+  .dock {
     left: auto;
-    transform: none;
-    margin: 0;
-    z-index: 3;
+    right: var(--display-prefs-side, 0.75rem);
+    width: max-content;
+    max-width: calc(100vw - 15.5rem - 2 * var(--display-prefs-side, 0.75rem));
+    justify-content: flex-end;
+    padding: 0 0 calc(var(--display-prefs-side, 0.75rem) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .bar {
+    max-width: 100%;
   }
 }

@@ -203,16 +203,11 @@
     background: linear-gradient(to right, var(--bg) 0%, var(--bg) 10%, transparent 100%);
   }
 
-  /* Host only wraps the bar; no in-flow height on desktop so it doesn’t stack under the ticker. */
+  /* Host only wraps the dock; no in-flow height on desktop (bar is fixed). */
   .layout-main>[data-app-display-prefs-host] {
     height: 0;
     flex: 0 0 0;
     overflow: visible;
     pointer-events: none;
-    align-self: stretch;
-  }
-
-  .layout-main>[data-app-display-prefs-host]>* {
-    pointer-events: auto;
   }
 }

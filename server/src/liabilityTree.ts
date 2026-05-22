@@ -89,6 +89,7 @@ function buildLiabilityNode(
         api_subgroup: group.liability_kind,
         color_rgb,
         color: rgbTripletToCss(color_rgb),
+        group_kind: "normal",
         children: [],
       });
     }
@@ -113,6 +114,7 @@ function buildLiabilityNode(
     api_subgroup: group.liability_kind,
     color_rgb: null,
     color: null,
+    group_kind: "normal",
     children: pruneEmptyLiabilityNavGroups(children),
   };
 }
