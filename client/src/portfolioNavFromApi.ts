@@ -174,16 +174,6 @@ export function portfolioStripAccountChildren(root: NavTreeNodeDto): NavTreeNode
   return (root.children ?? []).filter(isPortfolioStripAccountNode);
 }
 
-/** @deprecated Use {@link portfolioStripGroupChildren}. */
-export function portfolioStripDetailChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
-  return portfolioStripGroupChildren(root);
-}
-
-/** @deprecated Use {@link portfolioStripGroupChildren}. */
-export function detailNavChildrenForPortfolioStrip(root: NavTreeNodeDto): NavTreeNodeDto[] {
-  return portfolioStripGroupChildren(root);
-}
-
 /** Top-level nav children for the group “Grupos y cuentas” hierarchy table (matches child-card strip rules). */
 export function navHierarchyTableChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   let children = (root.children ?? []).filter((c) => c.route_path?.trim());

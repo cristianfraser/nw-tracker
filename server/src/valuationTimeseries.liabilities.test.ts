@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { listLiabilitiesTabAccountRows } from "./valuationTimeseries.js";
+import {
+  liabilitiesBreakdownClpAsOf,
+  liabilitiesGroupClpAsOf,
+  listLiabilitiesTabAccountRows,
+} from "./valuationTimeseries.js";
 
 describe("listLiabilitiesTabAccountRows", () => {
   it("excludes legacy combined worldmember when per-card Santander masters exist", () => {
@@ -41,6 +45,19 @@ describe("listLiabilitiesTabAccountRows", () => {
       .get(master.id) as { id: number } | undefined;
     if (!view) return;
     expect(mtgRows.some((r) => r.account_id === view.id)).toBe(true);
+  });
+
+  it("breakdown mortgage + credit_card equals total pasivos at a snapshot date", () => {
+    const row = db
+      .prepare(
+        `SELECT as_of_date FROM valuations ORDER BY as_of_date DESC LIMIT 1`
+      )
+      .get() as { as_of_date: string } | undefined;
+    if (!row) return;
+
+    const total = liabilitiesGroupClpAsOf(row.as_of_date);
+    const parts = liabilitiesBreakdownClpAsOf(row.as_of_date);
+    expect(parts.mortgage_clp + parts.credit_card_clp).toBeCloseTo(total, 0);
   });
 
   it("returns at most one row per operational credit card series", () => {

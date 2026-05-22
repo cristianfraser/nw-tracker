@@ -95,12 +95,23 @@ describe("ccExpenseCategories", () => {
     expect(updated?.category_slug).toBe("unclassified");
   });
 
-  it("merchant assignment applies to same comercio", () => {
+  it("merchant assignment applies to same comercio when not marked unique", () => {
     const accounts = listCreditCardGroupOperationalAccountIds();
     if (accounts.length === 0) return;
 
     const payload = buildFlowsCreditCardExpensesPayload();
-    const line = payload.lines.find((ln) => ln.amount_clp > 0 && ln.merchant);
+    const line = payload.lines.find((ln) => {
+      if (ln.amount_clp <= 0 || !ln.merchant || ln.category_unique) return false;
+      const peers = payload.lines.filter(
+        (p) =>
+          p.statement_line_id !== ln.statement_line_id &&
+          p.account_id === ln.account_id &&
+          p.merchant_key === ln.merchant_key &&
+          p.amount_clp > 0 &&
+          !p.category_unique
+      );
+      return peers.length > 0;
+    });
     if (!line) return;
 
     const supermarket = getCcExpenseCategoryBySlug("supermarket");
@@ -117,12 +128,12 @@ describe("ccExpenseCategories", () => {
       (ln) =>
         ln.account_id === line.account_id &&
         ln.merchant_key === line.merchant_key &&
-        ln.amount_clp > 0
+        ln.amount_clp > 0 &&
+        !ln.category_unique
     );
-    expect(sameMerchant.length).toBeGreaterThan(0);
+    expect(sameMerchant.length).toBeGreaterThan(1);
     for (const ln of sameMerchant) {
       expect(ln.category_slug).toBe("supermarket");
-      expect(ln.category_unique).toBe(false);
     }
 
     assignCcExpenseLineCategory({
@@ -136,17 +147,18 @@ describe("ccExpenseCategories", () => {
     expect(onlyLine?.category_slug).toBe("others");
     expect(onlyLine?.category_unique).toBe(true);
 
-    const peer = uniqueAfter.lines.find(
+    const peers = uniqueAfter.lines.filter(
       (ln) =>
         ln.statement_line_id !== line.statement_line_id &&
         ln.account_id === line.account_id &&
         ln.merchant_key === line.merchant_key &&
         ln.amount_clp > 0 &&
-        ln.installment_flag === 0
+        !ln.category_unique
     );
-    if (peer) {
-      expect(peer.category_slug).toBe("supermarket");
-      expect(peer.category_unique).toBe(false);
+    if (peers.length > 0) {
+      for (const peer of peers) {
+        expect(peer.category_slug).toBe("supermarket");
+      }
     }
   });
 

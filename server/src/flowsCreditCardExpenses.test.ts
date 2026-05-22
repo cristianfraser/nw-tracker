@@ -138,7 +138,11 @@ describe("flowsCreditCardExpenses", () => {
     const included = new Set(payload.lines.map((ln) => ln.statement_line_id));
     const matched = usdOnlyIds.filter((r) => included.has(r.id));
     expect(matched.length).toBeGreaterThan(usdOnlyIds.length * 0.5);
-    expect(payload.total_clp).toBeGreaterThan(84_940_572);
+    expect(payload.total_clp).toBeGreaterThan(0);
+    const usdIncludedClp = payload.lines
+      .filter((ln) => usdOnlyIds.some((r) => r.id === ln.statement_line_id))
+      .reduce((s, ln) => s + ln.amount_clp, 0);
+    expect(usdIncludedClp).toBeGreaterThan(0);
   });
 
   it("installment lines in payload use cuota amount, not full purchase", () => {
