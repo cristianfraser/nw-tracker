@@ -31,6 +31,12 @@ export function expenseApartmentLabel(slug: ExpenseApartmentSlug): string {
   return i18n.t(`expenses.accounts.${slug}`);
 }
 
+export function ccExpenseCategoryLabel(slug: string): string {
+  const key = `expenses.creditCard.categories.${slug}`;
+  const t = i18n.t(key);
+  return t === key ? slug : t;
+}
+
 export function expenseKindLabel(kind: string | null | undefined): string {
   if (!kind) return "—";
   const key = `expenses.kinds.${kind}`;

@@ -30,6 +30,9 @@
     "reserva": "reserva",
     "checkingAccount": "cuenta corriente"
   },
+  "creditCardGroup": {
+    "santander": "Santander"
+  },
   "liabilities": {
     "mortgage": "hipoteca",
     "creditCard": "tarjeta de crédito",
@@ -169,6 +172,19 @@
     "flowsEmpty": "No hay flujos.",
     "flowsFilteredEmpty": "Ningún flujo coincide con el filtro.",
     "flowsPersonalOnly": "Solo aportes propios",
+    "checking": {
+      "cartolaMonthHint": "Una fila por cada mes del historial. Abonos y cargos solo con cartola importada. Saldo fin de mes = suma de movimientos (ledger). Saldo cartola = cierre impreso en el estado (solo referencia). Diferencia = saldo fin de mes − saldo cartola.",
+      "cartolaMonthEmpty": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas en el servidor.",
+      "cartolaMonthImportedCount": "{{imported}} de {{total}} mes(es) con cartola importada",
+      "cartolaNo": "Sin cartola",
+      "colDeposits": "Abonos",
+      "colWithdrawals": "Cargos",
+      "colBalanceEnd": "Saldo fin de mes",
+      "colCartolaSaldo": "Saldo cartola (ref.)",
+      "colDiff": "Diferencia",
+      "colCartola": "Cartola",
+      "cartolaYes": "Importada"
+    },
     "creditCard": {
       "lastFacturado": "Último facturado",
       "nextPayment": "Próximo pago",
@@ -220,9 +236,12 @@
     "flowsTitle": "Flujos",
     "flowsAccountColumn": "Cuenta",
     "monthlyDetailHint": "Totales del grupo por mes (suma de las cuentas hijas).",
+    "monthlyDetailHintLiabilities": "Totales del grupo por mes (suma de todas las cuentas bajo este nodo, incluidas tarjetas y hipoteca).",
     "monthlyDetailEmpty": "Sin datos de rendimiento mensual para las cuentas de este grupo.",
     "flowsHint": "Movimientos de todas las cuentas hijas, ordenados por fecha.",
+    "flowsHintLiabilities": "Movimientos de todas las cuentas bajo este nodo (tarjetas, hipoteca, etc.), ordenados por fecha.",
     "accountsTreeTitle": "Cuentas en esta vista",
+    "accountsTreeTitleLiabilities": "Grupos y cuentas en esta vista",
     "accountsTreeName": "Nombre",
     "accountsTreeCategory": "Categoría",
     "accountsTreeGroup": "Clase",
@@ -233,7 +252,9 @@
     "showMoreMonths": "Mostrar más ({{count}} meses anteriores)",
     "showLessMonths": "Ocultar meses anteriores",
     "showMoreFlows": "Mostrar más ({{count}} flujos anteriores)",
-    "showLessFlows": "Ocultar flujos anteriores"
+    "showLessFlows": "Ocultar flujos anteriores",
+    "showMoreRows": "Mostrar más ({{count}})",
+    "showLess": "Mostrar menos…"
   },
   "messages": {
     "pageTitle": "Mensajes",
@@ -275,8 +296,57 @@
     "loadFailed": "Error al cargar"
   },
   "expenses": {
+    "realEstateIntro": "Gastos de arriendo y departamento desde cfraser/depto-Table 1-2.csv. Lastarria es arriendo (no suma al patrimonio inmobiliario); Suecia es tu depto en cartera.",
+    "chartGranularityLabel": "Gráfico",
+    "colDate": "Fecha",
+    "colKind": "Tipo",
+    "colAmount": "Monto",
+    "colDetail": "Detalle",
     "groups": {
       "real_estate": "Inmuebles"
+    },
+    "creditCard": {
+      "intro": "Gastos por mes de facturación del grupo tarjeta de crédito (cierre del estado), en CLP y cargos en dólares convertidos al tipo de cambio del cierre. En cuotas se usa el valor de la cuota de ese mes, no el monto total de la compra.",
+      "chartTitle": "Gasto por categoría",
+      "chartEmpty": "Sin gastos en este período.",
+      "colCategory": "Categoría",
+      "categoryUniqueLabel": "Único",
+      "categories": {
+        "unclassified": "Sin clasificar",
+        "no_cuenta": "No cuenta",
+        "bills": "Cuentas y servicios",
+        "supermarket": "Supermercado",
+        "food": "Comida",
+        "transportation": "Transporte",
+        "healthcare": "Salud",
+        "clothes": "Ropa",
+        "subscriptions": "Suscripciones",
+        "fun": "Ocio",
+        "trees": "Jardín / plantas",
+        "others": "Otros"
+      },
+      "monthlyDetailHint": "Una fila por mes de facturación (cierre del estado). Gasto del mes excluye «No cuenta» y cuotas 0; total real incluye todos los cargos positivos. Abonos y exclusiones al abrir el mes.",
+      "colMonthExpense": "Gasto del mes",
+      "colMonthExpenseReal": "Total real",
+      "colCumulative": "Acumulado",
+      "colLineCount": "Líneas",
+      "emptyMonths": "Sin líneas de estado de cuenta importadas.",
+      "monthModalTitle": "Gastos {{month}}",
+      "monthModalClose": "Cerrar",
+      "monthModalEmpty": "Sin movimientos en la facturación de este mes.",
+      "monthModalGastosSum": "Suma gastos",
+      "monthModalAbonosSum": "Suma abonos",
+      "modalSectionGastos": "Gastos",
+      "modalSectionAbonos": "Abonos",
+      "modalSectionExcluded": "No cuenta y cuota 0",
+      "modalSectionEmpty": "Sin movimientos.",
+      "lineColStatementClose": "Cierre estado",
+      "lineColPurchaseDate": "Fecha compra",
+      "lineColAmount": "Monto CLP",
+      "lineColInstallment": "Cuota",
+      "unclassifiedTableTitle": "Gastos sin clasificar",
+      "unclassifiedTableHint": "Cargos sin categoría, ordenados por monto (mayor primero). Asigna categoría aquí o por comercio en el detalle del mes.",
+      "unclassifiedTableEmpty": "No hay gastos sin clasificar."
     },
     "accounts": {
       "el_vergel": "El Vergel",

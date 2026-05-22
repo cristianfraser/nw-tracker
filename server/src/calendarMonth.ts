@@ -31,3 +31,28 @@ export function monthEndsBetweenInclusive(minYmd: string, maxYmd: string): strin
   }
   return out;
 }
+
+/** Every `YYYY-MM` from `minYm` through `maxYm` inclusive. */
+export function expandYearMonthsInclusive(minYm: string, maxYm: string): string[] {
+  const out: string[] = [];
+  let y = Number(minYm.slice(0, 4));
+  let m = Number(minYm.slice(5, 7));
+  const yEnd = Number(maxYm.slice(0, 4));
+  const mEnd = Number(maxYm.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(yEnd) || !Number.isFinite(mEnd)) {
+    return out;
+  }
+  while (y < yEnd || (y === yEnd && m <= mEnd)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+export function ymCompare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}

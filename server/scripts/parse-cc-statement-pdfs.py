@@ -11,7 +11,7 @@ From repo root:
   npm run parse:cc-pdfs
   npm run import:cc-parsed -w nw-tracker-server -- --account-id=<ID>
 
-PDFs are read from `cfraser/pdfs/` (override with CFRASER_PDFS_DIR).
+PDFs are read from `cfraser/credit-card-statements/` (override with CFRASER_PDFS_DIR).
 
 Writes:
   cfraser/cc-statements-parsed-all.csv
@@ -104,12 +104,87 @@ def fmt_usd(n: Optional[float]) -> str:
 
 RE_INTL_COUNTRY = re.compile(r"^[A-Z]{2}$")
 RE_AMOUNT_TOKEN = re.compile(r"^-?[\d.,]+$")
+# US$ column on international statements: comma decimals, no Chilean thousands dots (e.g. 20,81).
+RE_STATEMENT_USD_TOKEN = re.compile(r"^-?\d+,\d{1,2}$")
+# Foreign origin column often uses Chilean grouping (e.g. GBP 20.604,00 = 20,604.00).
+RE_CHILEAN_GROUPED_AMOUNT = re.compile(r"^-?\d{1,3}(\.\d{3})+,\d{2}$")
+
+
+def looks_like_statement_usd_token(raw: str) -> bool:
+    t = str(raw or "").strip().replace(" ", "")
+    if not t:
+        return False
+    # MONTO MONEDA ORIGEN (CLP/GBP reference), not the US$ column.
+    if RE_CHILEAN_GROUPED_AMOUNT.match(t):
+        return False
+    if RE_STATEMENT_USD_TOKEN.match(t):
+        return True
+    if "," not in t and "." not in t:
+        v = parse_usd_amount(t)
+        return v is not None and abs(v) < 10_000
+    return False
+
+
+def parse_foreign_origin_amount(
+    raw: str, usd_hint: Optional[float] = None
+) -> Optional[float]:
+    """
+    Parse MONTO MONEDA ORIGEN for GBP/EUR/etc.
+    pdftotext uses Chilean separators; when that yields a value far above the US$ column,
+    treat a single middle dot as decimal (20.604,00 → 20.604).
+    """
+    t = str(raw or "").strip().replace(" ", "")
+    if not t:
+        return None
+    chilean = parse_usd_amount(t)
+    if chilean is None:
+        return None
+    hint = usd_hint if usd_hint is not None and usd_hint > 0 else None
+    if hint is not None and chilean > max(500, hint * 8):
+        m = re.match(r"^(-?)(\d+)\.(\d{3}),(\d{2})$", t)
+        if m:
+            sign = -1 if m.group(1) else 1
+            try:
+                eu = float(f"{m.group(2)}.{m.group(3)}")
+            except ValueError:
+                eu = None
+            if eu is not None and eu < 100_000:
+                return sign * eu
+    return chilean
+
+
+def _assign_intl_orig_and_usd_amounts(amounts: List[str]) -> Tuple[str, str]:
+    """
+    Return (orig_raw, usd_raw). Vertical pdftotext order does not match table column order;
+    identify the US$ cell by format (20,81) vs foreign (20.604,00).
+    """
+    if not amounts:
+        return "", ""
+    if len(amounts) == 1:
+        sole = amounts[0]
+        if looks_like_statement_usd_token(sole):
+            return "", sole
+        # MONTO MONEDA ORIGEN without US$ (pdftotext dropped the rightmost cell).
+        return sole, ""
+    a, b = amounts[-2], amounts[-1]
+    a_usd = looks_like_statement_usd_token(a)
+    b_usd = looks_like_statement_usd_token(b)
+    if a_usd and not b_usd:
+        return b, a
+    if b_usd and not a_usd:
+        return a, b
+    pa, pb = parse_usd_amount(a), parse_usd_amount(b)
+    if pa is not None and pb is not None and pa > 0 and pb > 0:
+        if pa <= pb:
+            return (b, a) if pa == parse_usd_amount(a) else (a, b)
+        return (b, a)
+    return a, b
 
 # País en columna → moneda del monto origen (columna antes del US$).
 COUNTRY_ORIGIN_CURRENCY: Dict[str, str] = {
     "CL": "CLP",
     "CH": "CLP",
-    "US": "USD",
+    "US": "CLP",
     "GB": "GBP",
     "UK": "GBP",
     "DE": "EUR",
@@ -146,7 +221,8 @@ def _resolve_intl_orig_amounts(
 ) -> Tuple[Optional[float], str, Optional[int]]:
     """
     Returns (amount_orig, orig_currency, amount_clp).
-    US/CL: origen often CLP reference on USD card; GB/EU: origen in local currency; US$ column always USD.
+    International USD statements: billable amount is only MONTO US$ (row amount_usd).
+    MONTO MONEDA ORIGEN is stored as amount_orig for reference — never amount_clp.
     """
     orig_ccy = _origin_currency_for_country(country)
     if not orig_raw:
@@ -155,10 +231,8 @@ def _resolve_intl_orig_amounts(
     if orig_ccy == "CLP":
         orig_clp = parse_clp_amount(orig_raw)
         orig_usd = parse_usd_amount(orig_raw)
-        if country == "US" and orig_clp is not None and (orig_usd is None or orig_clp >= 100):
-            return float(orig_clp), "CLP", orig_clp
         if orig_clp is not None:
-            return float(orig_clp), "CLP", orig_clp
+            return float(orig_clp), "CLP", None
         if orig_usd is not None:
             return orig_usd, "USD", None
         return None, "CLP", None
@@ -166,14 +240,14 @@ def _resolve_intl_orig_amounts(
     if orig_ccy == "USD":
         orig_usd = parse_usd_amount(orig_raw)
         orig_clp = parse_clp_amount(orig_raw)
-        if orig_clp is not None and (orig_usd is None or orig_clp >= 100):
-            return float(orig_clp), "CLP", orig_clp
         if orig_usd is not None:
             return orig_usd, "USD", None
+        if orig_clp is not None:
+            return float(orig_clp), "CLP", None
         return None, "USD", None
 
-    # GBP, EUR, … — same decimal pattern as US$ (e.g. 2.859,00)
-    orig_fx = parse_usd_amount(orig_raw)
+    # GBP, EUR, … — Chilean-grouped origin amounts; do not feed into amount_clp.
+    orig_fx = parse_foreign_origin_amount(orig_raw, usd_hint=usd_val)
     if orig_fx is None:
         return None, orig_ccy, None
     return orig_fx, orig_ccy, None
@@ -249,8 +323,9 @@ def _parse_international_vertical_chunk(
     if not amounts:
         return None
 
-    usd_raw = amounts[-1]
-    orig_raw = amounts[-2] if len(amounts) >= 2 else ""
+    orig_raw, usd_raw = _assign_intl_orig_and_usd_amounts(amounts)
+    if not usd_raw:
+        return None
     usd_val = parse_usd_amount(usd_raw)
     if usd_val is None:
         return None
@@ -356,9 +431,140 @@ def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
     return meta
 
 
-def parse_international_usd_document(full: str) -> List[Dict[str, Any]]:
-    lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
+def _iter_vertical_subchunks(
+    chunk: List[str], default_fecha: str
+) -> List[Tuple[str, List[str]]]:
+    """Split pdftotext vertical cells when a new operation date appears mid-chunk."""
+    segments: List[Tuple[str, List[str]]] = []
+    sub: List[str] = []
+    sub_fecha = default_fecha
+    for part in chunk:
+        p = part.strip()
+        if re.match(r"^\d{2}/\d{2}/\d{2}$", p):
+            if sub:
+                segments.append((sub_fecha, sub))
+                sub = []
+            sub_fecha = p
+            continue
+        sub.append(part)
+    if sub:
+        segments.append((sub_fecha, sub))
+    return segments
+
+
+def _build_intl_row(
+    fecha: str,
+    merchant: str,
+    country: str,
+    orig_raw: str,
+    usd_raw: str,
+    origen: str = "",
+) -> Optional[Dict[str, Any]]:
+    usd_val = parse_usd_amount(usd_raw)
+    if usd_val is None:
+        return None
+    orig_val, orig_ccy, amount_clp = _resolve_intl_orig_amounts(
+        orig_raw, country, usd_val
+    )
+    desc_bits = [fecha, merchant]
+    if origen:
+        desc_bits.append(origen)
+    desc_bits.extend([country, usd_raw])
+    return {
+        "layout": "international_usd",
+        "transaction_date": fecha,
+        "posting_date": fecha,
+        "place": origen,
+        "description_raw": " | ".join(desc_bits),
+        "merchant": merchant[:120],
+        "amount_clp": amount_clp,
+        "amount_usd": usd_val,
+        "amount_orig": orig_val,
+        "orig_currency": orig_ccy,
+        "country": country,
+        "monto_total_a_pagar_clp": None,
+        "valor_cuota_mensual_clp": "",
+        "nro_cuota_current": "",
+        "nro_cuota_total": "",
+        "installment_flag": False,
+        "interest_rate_text": "",
+        "tipo_cuota": "",
+        "foreign_currency": "USD",
+        "authorization_code": "",
+    }
+
+
+RE_INTL_LAYOUT_ROW = re.compile(
+    r"^(\d{2}/\d{2}/\d{2})\s+(.+?)\s+([A-Z]{2})\s+([\d.,\-]+)\s+([\d.,\-]+)\s*$"
+)
+
+
+def _parse_international_layout_document(full_layout: str) -> List[Dict[str, Any]]:
+    """
+    Wide table rows: FECHA | DESCRIPCIÓN | PAÍS | MONTO MONEDA ORIGEN | MONTO US$.
+    Column order is always origen then US$ (source of truth).
+    """
     out: List[Dict[str, Any]] = []
+    for raw in full_layout.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        up = line.upper()
+        if (
+            "TOTAL OPERACIONES" in up
+            or "MOVIMIENTOS TARJETA" in up
+            or "CARGOS, COMISIONES" in up
+            or line.startswith("EMISOR")
+        ):
+            continue
+        m = RE_INTL_LAYOUT_ROW.match(line)
+        if not m:
+            continue
+        fecha, merchant, country, orig_raw, usd_raw = (
+            m.group(1),
+            m.group(2).strip(),
+            m.group(3),
+            m.group(4).strip(),
+            m.group(5).strip(),
+        )
+        if not merchant or not RE_INTL_COUNTRY.match(country):
+            continue
+        row = _build_intl_row(fecha, merchant, country, orig_raw, usd_raw)
+        if row:
+            out.append(row)
+    return out
+
+
+def _intl_row_merge_key(r: Dict[str, Any]) -> str:
+    return _sha1(
+        "|".join(
+            [
+                str(r.get("transaction_date", "")),
+                norm_merchant(str(r.get("merchant", ""))),
+                f"{float(r.get('amount_usd') or 0):.4f}",
+            ]
+        )
+    )
+
+
+def _merge_intl_parsed_rows(
+    vertical_rows: List[Dict[str, Any]],
+    layout_rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Layout table wins (correct orig/US$ columns); vertical fills rows layout missed."""
+    merged: Dict[str, Dict[str, Any]] = {}
+    for r in vertical_rows:
+        merged[_intl_row_merge_key(r)] = r
+    for r in layout_rows:
+        merged[_intl_row_merge_key(r)] = r
+    return list(merged.values())
+
+
+def parse_international_usd_document(
+    full_vertical: str, full_layout: str = ""
+) -> List[Dict[str, Any]]:
+    lines = [ln.strip() for ln in full_vertical.splitlines() if ln.strip()]
+    vertical_out: List[Dict[str, Any]] = []
     i = 0
     while i < len(lines):
         m = re.match(r"^(\d{2}/\d{2}/\d{2})$", lines[i])
@@ -380,11 +586,15 @@ def parse_international_usd_document(full: str) -> List[Dict[str, Any]]:
         if len(chunk) < 1:
             i += 1
             continue
-        row = _parse_international_vertical_chunk(chunk, fecha)
-        if row:
-            out.append(row)
+        for sub_fecha, sub_chunk in _iter_vertical_subchunks(chunk, fecha):
+            row = _parse_international_vertical_chunk(sub_chunk, sub_fecha)
+            if row:
+                vertical_out.append(row)
         i = j
-    return out
+    if full_layout.strip():
+        layout_out = _parse_international_layout_document(full_layout)
+        return _merge_intl_parsed_rows(vertical_out, layout_out)
+    return vertical_out
 
 
 def _norm_header_cell(s: str) -> str:
@@ -438,13 +648,54 @@ def load_baseline_rows(path: Path) -> List[Dict[str, Any]]:
     return [x for x in rows if x.get("purchase_id") and x.get("label")]
 
 
+def peek_pdf_text(path: Path) -> str:
+    """Lightweight text peek so `80_*.pdf` international statements are not forced to CLP wide layout."""
+    try:
+        return subprocess.check_output(
+            ["pdftotext", str(path), "-"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        reader = PdfReader(str(path))
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+
 def choose_parser(path: Path, full: str = "") -> str:
+    if not full.strip():
+        full = peek_pdf_text(path)
+    upper = full.upper()
+    if "ESTADO DE CUENTA INTERNACIONAL" in upper or (
+        "INTERNACIONAL" in upper and "MONTO US$" in upper
+    ):
+        return "international_usd"
     name = path.name.lower()
-    if "internacional" in full.upper() or "usd" in name:
+    if name == "estado-de-cuenta-usd.pdf":
         return "international_usd"
     if name.startswith("80_"):
         return "wide"
+    if _clp_statement_looks_wide_layout(upper):
+        return "wide"
     return "compact"
+
+
+def _clp_statement_looks_wide_layout(upper: str) -> bool:
+    """Santander multi-column CLP tables (LUGAR / MONTO ORIGEN / VALOR CUOTA)."""
+    return (
+        "MONTO ORIGEN OPERAC" in upper
+        and ("VALOR CUOTA" in upper or "N° CUOTA" in upper or "Nº CUOTA" in upper)
+    )
+
+
+def parse_clp_document(full: str, parser: str) -> List[Dict[str, Any]]:
+    """Parse CLP statement; fall back to wide when compact misses most rows."""
+    if parser == "wide":
+        return parse_wide_document(full)
+    compact_rows = parse_compact_document(full)
+    wide_rows = parse_wide_document(full)
+    if len(wide_rows) > len(compact_rows) and len(wide_rows) >= 5:
+        return wide_rows
+    return compact_rows
 
 
 def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
@@ -606,6 +857,31 @@ RE_WIDE_PERIODIC = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(\d{2})\s+CUOTAS\s+COMERC\s+(\d,\d{2})\s*%\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s*$",
     re.I,
 )
+RE_WIDE_PRECIO_SUMMARY = re.compile(
+    r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(\d,\d{2}\s*%)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+(\d{1,2})/(\d{1,2})\s+\$\s*([\d.]+)\s*$",
+    re.I,
+)
+
+
+def _tipo_cuota_from_precio_description(desc: str) -> str:
+    u = desc.upper()
+    if "N/CUOTAS PRECIO" in u:
+        return "N/CUOTAS PRECIO"
+    if "TRES CUOTAS PREC" in u:
+        return "TRES CUOTAS PREC"
+    m = re.search(r"(\d{2})\s+CUOTAS\s+COMERC", u)
+    if m:
+        return f"{m.group(1)} CUOTAS COMERC"
+    return "INSTALLMENT PRECIO SUMMARY"
+
+
+def _is_installment_precio_summary_description(desc: str) -> bool:
+    u = desc.upper()
+    return (
+        "N/CUOTAS PRECIO" in u
+        or "TRES CUOTAS PREC" in u
+        or bool(re.search(r"\d{2}\s+CUOTAS\s+COMERC", u))
+    )
 
 
 def parse_tail_installment_suffix(suffix: str) -> Optional[Dict[str, Any]]:
@@ -833,6 +1109,37 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
                 }
             )
             continue
+        m = RE_WIDE_PRECIO_SUMMARY.match(line)
+        if m and _is_installment_precio_summary_description(m.group(2)):
+            fecha = m.group(1)
+            desc = m.group(2).strip()
+            rate = m.group(3)
+            tot1 = parse_clp_amount(m.group(4))
+            tot2 = parse_clp_amount(m.group(5))
+            nc, nt = int(m.group(6)), int(m.group(7))
+            cuota = parse_clp_amount(m.group(8))
+            out.append(
+                {
+                    "layout": "wide_master_precio_summary",
+                    "transaction_date": fecha,
+                    "posting_date": fecha,
+                    "place": "",
+                    "description_raw": line,
+                    "merchant": desc,
+                    "amount_clp": tot1 or 0,
+                    "monto_total_a_pagar_clp": tot2 or tot1 or 0,
+                    "monto_origen_operacion_clp": tot1 or 0,
+                    "valor_cuota_mensual_clp": cuota or "",
+                    "nro_cuota_current": nc,
+                    "nro_cuota_total": nt,
+                    "installment_flag": True,
+                    "interest_rate_text": rate,
+                    "tipo_cuota": _tipo_cuota_from_precio_description(desc),
+                    "foreign_currency": _extract_fx(desc),
+                    "authorization_code": _extract_auth(desc),
+                }
+            )
+            continue
         m = RE_WIDE_PLACE_DATE.match(line)
         if m:
             place, fecha, desc, amt_raw = m.group(1), m.group(2), m.group(3), m.group(4)
@@ -864,6 +1171,36 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
         m = RE_WIDE_DATE_FIRST.match(line)
         if m:
             fecha, desc, amt_raw = m.group(1), m.group(2), m.group(3)
+            if _is_installment_precio_summary_description(desc):
+                m_precio = RE_WIDE_PRECIO_SUMMARY.match(line)
+                if m_precio:
+                    rate = m_precio.group(3)
+                    tot1 = parse_clp_amount(m_precio.group(4))
+                    tot2 = parse_clp_amount(m_precio.group(5))
+                    nc, nt = int(m_precio.group(6)), int(m_precio.group(7))
+                    cuota = parse_clp_amount(m_precio.group(8))
+                    out.append(
+                        {
+                            "layout": "wide_master_precio_summary",
+                            "transaction_date": fecha,
+                            "posting_date": fecha,
+                            "place": "",
+                            "description_raw": line,
+                            "merchant": desc.strip(),
+                            "amount_clp": tot1 or 0,
+                            "monto_total_a_pagar_clp": tot2 or tot1 or 0,
+                            "monto_origen_operacion_clp": tot1 or 0,
+                            "valor_cuota_mensual_clp": cuota or "",
+                            "nro_cuota_current": nc,
+                            "nro_cuota_total": nt,
+                            "installment_flag": True,
+                            "interest_rate_text": rate,
+                            "tipo_cuota": _tipo_cuota_from_precio_description(desc),
+                            "foreign_currency": _extract_fx(desc),
+                            "authorization_code": _extract_auth(desc),
+                        }
+                    )
+                    continue
             amt = parse_clp_amount(amt_raw)
             if amt is None:
                 continue
@@ -1128,10 +1465,22 @@ def write_csv(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
 
 
 RE_ESTADO_NUM = re.compile(r"^estado-de-cuenta-(\d+)\.pdf$", re.I)
+RE_ORGANIZED_CC = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
+
+
+def card_group_for_pdf_name(name: str) -> str:
+    """Heuristic card group for legacy parsers (A/B/INTL)."""
+    lower = name.lower()
+    if "usd" in lower or "internacional" in lower:
+        return "INTL"
+    for token in ("4901", "4902", "4141"):
+        if token in lower:
+            return "B"
+    return "A"
 
 
 def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
-    """Scan `cfraser/pdfs` for statement PDFs. Returns (card_group, path) jobs."""
+    """Scan credit-card statement PDF dir. Returns (card_group, path) jobs."""
     jobs: List[Tuple[str, Path]] = []
     if not pdfs_dir.is_dir():
         return jobs
@@ -1141,6 +1490,9 @@ def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
             continue
         name = entry.name
         lower = name.lower()
+        if RE_ORGANIZED_CC.match(name):
+            jobs.append((card_group_for_pdf_name(name), entry))
+            continue
         if lower == "estado-de-cuenta-usd.pdf":
             jobs.append(("INTL", entry))
             continue
@@ -1151,13 +1503,14 @@ def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
         if name.startswith("80_"):
             jobs.append(("B", entry))
             continue
+        jobs.append((card_group_for_pdf_name(name), entry))
     for _n, p in sorted(clp_numeric, key=lambda t: t[0]):
         jobs.append(("A", p))
     return jobs
 
 
 def fallback_downloads_jobs() -> List[Tuple[str, Path]]:
-    """Legacy paths when `cfraser/pdfs` is empty (developer machine)."""
+    """Legacy paths when `credit-card-statements` is empty (developer machine)."""
     jobs: List[Tuple[str, Path]] = []
     downloads = Path.home() / "Downloads"
     for n in range(18, 5, -1):
@@ -1179,7 +1532,7 @@ def fallback_downloads_jobs() -> List[Tuple[str, Path]]:
 
 
 def main() -> int:
-    pdfs_dir = CFRASER_DIR / "pdfs"
+    pdfs_dir = CFRASER_DIR / "credit-card-statements"
     jobs = discover_pdf_jobs(pdfs_dir)
     if not jobs:
         jobs = fallback_downloads_jobs()
@@ -1203,21 +1556,28 @@ def main() -> int:
         except Exception as e:
             failures.append(f"read_error:{p}:{e}")
             continue
+        effective_group = "INTL" if parser == "international_usd" else card_group
         if parser == "international_usd":
-            parsed = parse_international_usd_document(full)
+            try:
+                layout_run = subprocess.run(
+                    ["pdftotext", "-layout", str(p), "-"],
+                    capture_output=True,
+                    text=True,
+                )
+                full_layout = layout_run.stdout if layout_run.returncode == 0 else ""
+            except (FileNotFoundError, OSError):
+                full_layout = ""
+            parsed = parse_international_usd_document(full, full_layout)
             meta = extract_meta_international(full, p.name)
-        elif parser == "wide":
-            parsed = parse_wide_document(full)
-            meta = extract_meta(full, p.name)
         else:
-            parsed = parse_compact_document(full)
+            parsed = parse_clp_document(full, parser)
             meta = extract_meta(full, p.name)
         # Re-parse raw_line from description_raw stored
         for i, pr in enumerate(parsed):
             raw_line = str(pr.get("description_raw", ""))
-            rid = _sha1(f"{card_group}|{p.name}|{i}|{raw_line}")
+            rid = _sha1(f"{effective_group}|{p.name}|{i}|{raw_line}")
             row = emit_row(
-                card_group=card_group,
+                card_group=effective_group,
                 source_pdf=p.name,
                 meta=meta,
                 pr=pr,

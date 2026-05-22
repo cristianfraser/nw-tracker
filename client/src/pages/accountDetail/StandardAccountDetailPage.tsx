@@ -2,6 +2,7 @@ import { useTranslation } from "../../i18n";
 import { MonthlyPerformanceComboChart } from "../../components/MonthlyPerformanceComboChart";
 import { AccountFlowsTable } from "../../components/AccountFlowsTable";
 import { MonthlyPerfDetailTable } from "../../components/MonthlyPerfDetailTable";
+import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { Table } from "../../components/Table";
 import { LineChartPanel } from "../../components/ValuationLineCharts";
 import { formatClp, formatInstrumentUnits } from "../../format";
@@ -43,10 +44,12 @@ export function StandardAccountDetailPage({ data }: Props) {
     setMovementsOnlyPersonalDeposits,
     displayedFlows,
     allFlows,
+    checkingCartolaMonths,
   } = data;
 
+  const isCheckingAccount = summary.category_slug === "cuenta_corriente";
   const showMonthlyPerformance =
-    summary.category_slug !== "cuenta_corriente" && summary.category_slug !== "cuenta_ahorro_vivienda";
+    !isCheckingAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
   const isAfpAccount = summary.category_slug === "afp";
   const isMortgageAccount = summary.category_slug === "mortgage";
   const ccChartsFromParsedLedger =
@@ -141,8 +144,23 @@ export function StandardAccountDetailPage({ data }: Props) {
           block={valuationBlockForChart ?? ts.accounts}
           displayUnit={displayUnit}
           xAxisGranularity={xAxisGranularity}
+          trimLeadingInactive={!isCheckingAccount}
         />
       </div>
+
+      {isCheckingAccount ? (
+        <>
+          <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyDetailTitle")}</h2>
+          <p className={cn("muted", styles.proseSmTight)}>
+            {t("accountDetail.checking.cartolaMonthHint")}
+          </p>
+          <CheckingCartolaMonthTable
+            rows={checkingCartolaMonths?.rows ?? []}
+            importedMonthCount={checkingCartolaMonths?.imported_months.length ?? 0}
+            collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
+          />
+        </>
+      ) : null}
 
       {showMonthlyPerformance ? (
         <>

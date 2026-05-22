@@ -70,6 +70,49 @@ export function findBestNavNodeForPathname(
   return bestScore >= 0 ? best : null;
 }
 
+/** Depth-first lookup by `slug` (e.g. `liabilities_credit_card` under Pasivos). */
+export function findNavNodeBySlug(
+  nodes: NavTreeNodeDto[] | undefined,
+  slug: string
+): NavTreeNodeDto | null {
+  if (!nodes?.length) return null;
+  for (const n of nodes) {
+    if (n.slug === slug) return n;
+    const hit = findNavNodeBySlug(n.children, slug);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+const LIABILITIES_SUBGROUP_NAV_SLUG: Record<string, string> = {
+  credit_card: "liabilities_credit_card",
+  mortgage: "liabilities_mortgage",
+};
+
+/**
+ * Pasivos pages: prefer `liability_groups` nodes over credit_card_groups that share the same URL
+ * (e.g. `/liabilities/credit-card` → tarjeta de crédito, not Santander leaf).
+ */
+export function findLiabilitiesNavNodeForPathname(
+  main: NavTreeNodeDto[] | undefined,
+  pathname: string,
+  categorySlug: "credit_card" | "mortgage" | undefined
+): NavTreeNodeDto | null {
+  const root = main?.find((n) => n.slug === "liabilities") ?? null;
+  if (categorySlug) {
+    const groupSlug = LIABILITIES_SUBGROUP_NAV_SLUG[categorySlug];
+    if (root && groupSlug) {
+      const hit = findNavNodeBySlug([root], groupSlug);
+      if (hit) return hit;
+    }
+  }
+  const pathnameNorm = (pathname.replace(/\/+$/, "") || "/").trim();
+  if (root && (pathnameNorm === "/liabilities" || pathnameNorm === root.route_path?.replace(/\/+$/, ""))) {
+    return root;
+  }
+  return findBestNavNodeForPathname(main, pathname) ?? root;
+}
+
 export function isNavHubNode(node: NavTreeNodeDto): boolean {
   return node.group_kind === "nav_hub";
 }
@@ -99,6 +142,8 @@ export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
   if (node.account_id != null || node.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(node) != null) return true;
   if (node.asset_group_slug === "liabilities") return true;
+  /** Credit card issuer groups (e.g. Santander) under Pasivos → tarjeta de crédito. */
+  if (node.asset_group_slug === "credit_cards" && (node.children?.length ?? 0) > 0) return true;
   /** e.g. brokerage_mutual_funds, retirement_apv — `api_group` without top-level bucket slug. */
   if (node.portfolio_group_id != null && (node.api_group || node.api_subgroup)) return true;
   return false;
@@ -147,6 +192,24 @@ export function navHierarchyTableChildren(root: NavTreeNodeDto): NavTreeNodeDto[
   }
   if (root.slug === "cash_eqs") {
     children = children.filter((c) => c.slug !== "liabilities_credit_card");
+  }
+  return children;
+}
+
+/**
+ * Hierarchy table rows: drill one level when a single intermediate group wraps several leaves
+ * (e.g. tarjeta de crédito → Santander → cards).
+ */
+export function navHierarchyTableChildrenForDisplay(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  const children = navHierarchyTableChildren(root);
+  if (children.length === 1) {
+    const sole = children[0]!;
+    const inner = navHierarchyTableChildren(sole);
+    if (inner.length > 0) return inner;
+    const accountKids = (sole.children ?? []).filter(
+      (c) => c.route_path?.trim() || (c.account_id != null && c.account_id > 0)
+    );
+    if (accountKids.length > 0) return accountKids;
   }
   return children;
 }

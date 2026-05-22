@@ -38,9 +38,23 @@ export function resolveDeptoDividendosCsvPath(): string {
   return path.join(resolveCfraserCsvDir(), DEPTO_CSV);
 }
 
-/** Credit-card statement PDFs (`estado-de-cuenta-*.pdf`, `estado-de-cuenta-usd.pdf`, optional `80_*.pdf`). */
+/** Credit-card statement PDFs (`cfraser/credit-card-statements/`, `yyyy-mm-dd estado de cuenta tarjeta….pdf`). */
 export function resolveCfraserPdfsDir(): string {
   const env = process.env.CFRASER_PDFS_DIR?.trim();
   if (env) return path.resolve(env);
-  return path.resolve(__dirname, "..", "..", "cfraser", "pdfs");
+  return path.resolve(__dirname, "..", "..", "cfraser", "credit-card-statements");
+}
+
+/** Santander checking-account cartola `.xlsx` files (`cfraser/excels/cuenta corriente/`). */
+export function resolveCfraserCheckingCartolasDir(): string {
+  const env = process.env.CFRASER_CHECKING_CARTOLAS_DIR?.trim();
+  if (env) return path.resolve(env);
+  return path.resolve(__dirname, "..", "..", "cfraser", "excels", "cuenta corriente");
+}
+
+/** Santander checking-account cartola PDFs (`cfraser/cartolas-cuenta-corriente/`). */
+export function resolveCfraserCheckingCartolaPdfsDir(): string {
+  const env = process.env.CFRASER_CHECKING_CARTOLA_PDFS_DIR?.trim();
+  if (env) return path.resolve(env);
+  return path.resolve(__dirname, "..", "..", "cfraser", "cartolas-cuenta-corriente");
 }

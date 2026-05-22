@@ -62,6 +62,7 @@ import {
   getAccountValuationTimeseries,
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
+  listLiabilitiesTabAccountRows,
   retirementSubgroupMatchesAccount,
   type TsUnit,
 } from "./valuationTimeseries.js";
@@ -80,6 +81,8 @@ import {
   updateManualCcInstallmentPurchase,
 } from "./ccInstallmentManual.js";
 import { patchCreditCardBillingConfig, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
+import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import {
   isValidBillingMonthYm,
   upsertCcFacturadoPlaceholder,
@@ -95,6 +98,8 @@ import {
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
+import { assignCcExpenseLineCategory } from "./ccExpenseCategories.js";
+import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   listAppMessages,
@@ -303,6 +308,31 @@ app.get("/api/accounts", (req, res) => {
     return;
   }
 
+  if (groupSlug === "liabilities") {
+    const tabRows = listLiabilitiesTabAccountRows(typeof subRaw === "string" ? subRaw : undefined);
+    const ids = tabRows.map((r) => r.account_id);
+    if (!ids.length) {
+      res.json({ accounts: [] });
+      return;
+    }
+    const ph = ids.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
+                a.source_account_id,
+                c.slug AS category_slug, c.label AS category_label,
+                g.slug AS group_slug, g.label AS group_label
+         FROM accounts a
+         JOIN categories c ON c.id = a.category_id
+         JOIN asset_groups g ON g.id = c.group_id
+         WHERE a.id IN (${ph})
+         ORDER BY c.sort_order, c.id, a.name`
+      )
+      .all(...ids) as Record<string, unknown>[];
+    res.json({ accounts: rows });
+    return;
+  }
+
   let sql = `
     SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
            c.slug AS category_slug, c.label AS category_label,
@@ -334,9 +364,6 @@ app.get("/api/accounts", (req, res) => {
         subRaw
       )
     );
-  }
-  if (groupSlug === "liabilities" && typeof subRaw === "string") {
-    rows = rows.filter((r) => String(r.category_slug) === subRaw);
   }
   res.json({ accounts: rows });
 });
@@ -437,6 +464,21 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
   res.json(payload);
 });
 
+/** Cuenta corriente: per-cartola month totals from `checking_cartola_imports` + movements. */
+app.get("/api/accounts/:id/checking-cartola-months", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const payload = getCheckingCartolaMonths(id);
+  if (!payload) {
+    res.status(400).json({ error: "account is not cuenta corriente" });
+    return;
+  }
+  res.json(payload);
+});
+
 app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
   const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
@@ -485,8 +527,12 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
 });
 
 async function latestValuationDisplayForAccount(
-  accountId: number
+  accountId: number,
+  categorySlug?: string | null
 ): Promise<{ value_clp: number; as_of_date: string } | null> {
+  if (categorySlug === "cuenta_corriente") {
+    return checkingMovementBalanceLive(accountId);
+  }
   const eq = await computeLatestDisplayedEquityClp(accountId);
   if (eq != null) return eq;
   const crypto = await computeCryptoMtmClpLive(accountId);
@@ -535,8 +581,8 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
     }
     | undefined;
   const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, cat?.category_slug ?? "");
-  let latest = await latestValuationDisplayForAccount(id);
-  if (latest == null) {
+  let latest = await latestValuationDisplayForAccount(id, cat?.category_slug ?? null);
+  if (latest == null && cat?.category_slug !== "cuenta_corriente") {
     const stored = latestValuationRowOnOrBeforeChileToday(id);
     if (stored?.value_clp != null) latest = stored as { value_clp: number; as_of_date: string };
   }
@@ -947,8 +993,8 @@ app.get("/api/dashboard", async (req, res) => {
     const perfClp = trackAssetMetrics ? accountCardPerformanceMetrics(a.id, "clp") : null;
     const perfUsd =
       trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
-    let v = await latestValuationDisplayForAccount(a.id);
-    if (v == null) {
+    let v = await latestValuationDisplayForAccount(a.id, a.category_slug);
+    if (v == null && a.category_slug !== "cuenta_corriente") {
       const stored = latestValuationRowOnOrBeforeChileToday(a.id);
       if (stored?.value_clp != null && stored.as_of_date) {
         v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
@@ -1333,6 +1379,32 @@ app.get("/api/expenses", (_req, res) => {
 
 app.get("/api/flows/expenses", (_req, res) => {
   res.json(buildFlowsExpensesPayload());
+});
+
+app.get("/api/flows/expenses/credit-card", (_req, res) => {
+  res.json(buildFlowsCreditCardExpensesPayload());
+});
+
+app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) => {
+  const lineId = Number(req.params.lineId);
+  if (!Number.isFinite(lineId) || lineId <= 0) {
+    res.status(400).json({ error: "invalid line id" });
+    return;
+  }
+  const body = req.body as { category_slug?: string; unique?: boolean };
+  const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
+  const unique = !!body.unique;
+  try {
+    const result = assignCcExpenseLineCategory({
+      statementLineId: lineId,
+      unique,
+      categorySlug: categorySlug || null,
+    });
+    res.json(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "assign failed";
+    res.status(400).json({ error: msg });
+  }
 });
 
 app.post("/api/expenses", (req, res) => {

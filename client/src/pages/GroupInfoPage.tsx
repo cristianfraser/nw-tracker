@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
-import { Navigate, useLocation, useParams } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { AllocationPiePanel, LineChartPanel } from "../components/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
 import { GroupInfoNavHierarchyTable } from "../components/GroupInfoNavHierarchyTable";
 import { GroupInfoBase } from "../components/GroupInfoBase";
-import { filterTimeseriesBlockByAccountIds } from "../filterTimeseriesBlock";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
@@ -19,7 +18,6 @@ import {
 } from "../chartColors";
 import type { AssetGroupSlug } from "../types";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
-import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
 import { navAccountIdSet } from "../portfolioNavDashboardCards";
 import { findBestNavNodeForPathname } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
@@ -30,40 +28,10 @@ import {
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
-import type { GroupMonthlyPerformanceResponse } from "../types";
-
-function filterGroupPerfByAccountIds(
-  perf: GroupMonthlyPerformanceResponse | null,
-  accountIds: Set<number>
-): GroupMonthlyPerformanceResponse | null {
-  if (!perf?.points.length) return perf;
-  const bars = perf.bar_accounts.filter((b) => accountIds.has(b.account_id));
-  if (!bars.length) return { ...perf, bar_accounts: [], points: perf.points };
-  const barKeys = new Set(bars.map((b) => b.bar_data_key));
-  const points = perf.points.map((row) => {
-    const out: Record<string, string | number | null> = {
-      as_of_date: row.as_of_date,
-      delta_total: row.delta_total,
-      ytd_group: row.ytd_group,
-      accumulated_earnings: row.accumulated_earnings,
-    };
-    for (const k of barKeys) {
-      if (k in row) out[k] = row[k] ?? null;
-    }
-    return out;
-  });
-  return { ...perf, bar_accounts: bars, points };
-}
-
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const { subgroup: liabilitiesSubgroupParam } = useParams();
-  const liabilitiesCategory = useMemo(
-    () => parseLiabilitiesSubgroupParam(liabilitiesSubgroupParam),
-    [liabilitiesSubgroupParam]
-  );
 
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
@@ -80,8 +48,7 @@ export function GroupInfoPage() {
   );
 
   const apiGroup = navMatchNode?.api_group ?? navMatchNode?.asset_group_slug ?? "";
-  const apiSubgroup =
-    liabilitiesCategory ?? (apiGroup === "liabilities" ? undefined : navMatchNode?.api_subgroup ?? undefined);
+  const apiSubgroup = navMatchNode?.api_subgroup ?? undefined;
 
   const { data, error } = usePortfolioGroupBundle({
     group: apiGroup,
@@ -113,11 +80,7 @@ export function GroupInfoPage() {
             : false
     : false;
 
-  const allAccounts = data?.accounts ?? [];
-  const accounts = useMemo(() => {
-    if (!liabilitiesCategory) return allAccounts;
-    return allAccounts.filter((a) => a.category_slug === liabilitiesCategory);
-  }, [allAccounts, liabilitiesCategory]);
+  const accounts = data?.accounts ?? [];
 
   const chartAccountIds = useMemo(() => {
     if (navMatchNode) return navAccountIdSet(navMatchNode);
@@ -144,25 +107,20 @@ export function GroupInfoPage() {
 
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group || !chartCtx) return null;
-    let block = buildDisplayValuationBlock(ts, accounts, chartCtx, groupedToggleOn);
-    if (!block) return null;
-    if (liabilitiesCategory) {
-      block = filterTimeseriesBlockByAccountIds(block, chartAccountIds);
-    }
-    return block;
-  }, [ts, accounts, chartCtx, groupedToggleOn, liabilitiesCategory, chartAccountIds]);
+    return buildDisplayValuationBlock(ts, accounts, chartCtx, groupedToggleOn, navMatchNode);
+  }, [ts, accounts, chartCtx, groupedToggleOn, navMatchNode]);
 
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx) return [];
-    return buildDisplayPieSlices(ts, accounts, chartCtx, groupedToggleOn);
-  }, [ts, accounts, chartCtx, groupedToggleOn]);
+    return buildDisplayPieSlices(ts, accounts, chartCtx, groupedToggleOn, navMatchNode);
+  }, [ts, accounts, chartCtx, groupedToggleOn, navMatchNode]);
 
   const displayGroupPerf = useMemo(() => {
     if (!chartCtx) return groupPerfRaw;
-    const perf = buildDisplayGroupPerf(groupPerfRaw, accounts, chartCtx, groupedToggleOn);
-    if (liabilitiesCategory) return filterGroupPerfByAccountIds(perf, chartAccountIds);
-    return perf;
-  }, [groupPerfRaw, accounts, chartCtx, groupedToggleOn, liabilitiesCategory, chartAccountIds]);
+    return buildDisplayGroupPerf(groupPerfRaw, accounts, chartCtx, groupedToggleOn, navMatchNode);
+  }, [groupPerfRaw, accounts, chartCtx, groupedToggleOn, navMatchNode]);
+
+  const chartSeriesCount = accounts.length;
 
   const valuationBlockForChart = useMemo(() => {
     if (!displayValuationBlock) return null;
@@ -218,10 +176,6 @@ export function GroupInfoPage() {
   const showUsd = displayUnit === "usd";
   const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
-  if (liabilitiesSubgroupParam != null && liabilitiesSubgroupParam !== "" && liabilitiesCategory === null) {
-    return <Navigate to="/liabilities" replace />;
-  }
-
   if (navStillLoading) {
     return (
       <main>
@@ -261,7 +215,7 @@ export function GroupInfoPage() {
         </p>
       ) : (
         <div
-          className={cn("chart-grid", accounts.length <= 1 && "chart-grid--full-line")}
+          className={cn("chart-grid", chartSeriesCount <= 1 && "chart-grid--full-line")}
           style={{ marginTop: "0.75rem" }}
         >
           <LineChartPanel
@@ -282,7 +236,7 @@ export function GroupInfoPage() {
                 : undefined
             }
           />
-          {accounts.length > 1 && (
+          {chartSeriesCount > 1 && (
             <AllocationPiePanel
               title="Valor actual por cuenta"
               slices={displayPieSlices}

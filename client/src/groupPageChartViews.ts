@@ -17,6 +17,12 @@ import {
   aggregateRetiroGroupedPie,
   aggregateRetiroGroupedValuationBlock,
 } from "./inversionesGroupedAggregation";
+import {
+  aggregateLiabilitiesNavGroupedPerformance,
+  aggregateLiabilitiesNavGroupedPie,
+  aggregateLiabilitiesNavGroupedValuationBlock,
+} from "./liabilitiesGroupedAggregation";
+import { shouldAggregateLiabilitiesCharts } from "./liabilitiesChartBuckets";
 import type {
   AccountListRow,
   GroupMonthlyPerformanceResponse,
@@ -30,6 +36,7 @@ export type GroupPageChartContext = {
   retiroTodas: boolean;
   brokerageTodas: boolean;
   apvTodas: boolean;
+  liabilitiesGrouped: boolean;
   chartColorSlug: string;
   pieAllocationSlug: string;
   colorPlanGroupSlug: "inversiones" | "brokerage" | "retirement";
@@ -45,6 +52,7 @@ export function resolveGroupPageChartContext(navNode: NavTreeNodeDto): GroupPage
   const retiroTodas = slug === "retirement" && !sub;
   const brokerageTodas = slug === "brokerage" && !sub;
   const apvTodas = slug === "retirement_apv" && sub === "apv";
+  const liabilitiesGrouped = shouldAggregateLiabilitiesCharts(navNode);
   const showGroupedToggle = rootInvTodas || retiroTodas || brokerageTodas || apvTodas;
 
   const chartColorSlug =
@@ -70,6 +78,7 @@ export function resolveGroupPageChartContext(navNode: NavTreeNodeDto): GroupPage
     retiroTodas,
     brokerageTodas,
     apvTodas,
+    liabilitiesGrouped,
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug,
@@ -81,10 +90,14 @@ export function buildDisplayValuationBlock(
   ts: ValuationTimeseriesResponse,
   accounts: AccountListRow[],
   ctx: GroupPageChartContext,
-  grouped: boolean
+  grouped: boolean,
+  navNode?: NavTreeNodeDto | null
 ) {
   const block = ts.accounts_in_group;
   if (!block) return null;
+  if (ctx.liabilitiesGrouped && navNode) {
+    return aggregateLiabilitiesNavGroupedValuationBlock(block, accounts, navNode);
+  }
   if (ctx.brokerageTodas && grouped) {
     return aggregateBrokerageAllViewValuationBlock(block, accounts);
   }
@@ -107,13 +120,17 @@ export function buildDisplayPieSlices(
   ts: ValuationTimeseriesResponse,
   accounts: AccountListRow[],
   ctx: GroupPageChartContext,
-  grouped: boolean
+  grouped: boolean,
+  navNode?: NavTreeNodeDto | null
 ) {
   const base = (ts.group_allocation_pie ?? []).map((p) => ({
     name: p.name,
     value: p.value,
     account_id: p.account_id,
   }));
+  if (ctx.liabilitiesGrouped && navNode) {
+    return aggregateLiabilitiesNavGroupedPie(base, navNode);
+  }
   if (ctx.brokerageTodas && grouped) {
     return aggregateBrokerageAllViewPie(ts.group_allocation_pie ?? [], accounts);
   }
@@ -136,9 +153,13 @@ export function buildDisplayGroupPerf(
   groupPerf: GroupMonthlyPerformanceResponse | null,
   accounts: AccountListRow[],
   ctx: GroupPageChartContext,
-  grouped: boolean
+  grouped: boolean,
+  navNode?: NavTreeNodeDto | null
 ) {
   if (!groupPerf) return null;
+  if (ctx.liabilitiesGrouped && navNode) {
+    return aggregateLiabilitiesNavGroupedPerformance(groupPerf, accounts, navNode);
+  }
   if (ctx.brokerageTodas && grouped) {
     return aggregateBrokerageAllViewPerformance(groupPerf, accounts);
   }

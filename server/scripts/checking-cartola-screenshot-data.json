@@ -1,0 +1,344 @@
+{
+  "source": "screenshots",
+  "cartolas": [
+    {
+      "source_image": "image-7754cd23-8b94-4801-9c00-3656d99f06c3.png",
+      "cartola_no": "39",
+      "period_from": "2020-03-31",
+      "period_to": "2020-04-30",
+      "period_month": "2020-04",
+      "saldo_inicial_clp": 1251492,
+      "saldo_final_clp": 527317,
+      "movements": [
+        {
+          "occurred_on": "2020-04-07",
+          "branch": "Agustinas",
+          "description": "Transf a INMOBILIARIA Y CONSTR",
+          "document_no": "5034296",
+          "debit_clp": 600000,
+          "balance_clp": 651492
+        },
+        {
+          "occurred_on": "2020-04-24",
+          "branch": "O.Gerencia",
+          "description": "PAGO EN LINEA PROM. CMR FALABELLA S.A.",
+          "document_no": "6007021",
+          "debit_clp": 124175,
+          "balance_clp": 527317
+        }
+      ]
+    },
+    {
+      "source_image": "image-e02b07a2-9ab4-4bba-a8c5-c818e01b5434.png",
+      "cartola_no": "47",
+      "period_from": "2020-11-30",
+      "period_to": "2020-12-30",
+      "period_month": "2020-12",
+      "saldo_inicial_clp": 3129602,
+      "saldo_final_clp": 2730304,
+      "movements": [
+        {
+          "occurred_on": "2020-12-01",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a T. Crédito",
+          "debit_clp": 468274
+        },
+        {
+          "occurred_on": "2020-12-01",
+          "branch": "Agustinas",
+          "description": "Egreso por Compra de Divisas",
+          "debit_clp": 169836,
+          "balance_clp": 2491492
+        },
+        {
+          "occurred_on": "2020-12-02",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a T. Crédito",
+          "debit_clp": 419152,
+          "balance_clp": 2072340
+        },
+        {
+          "occurred_on": "2020-12-03",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 10000,
+          "balance_clp": 2062340
+        },
+        {
+          "occurred_on": "2020-12-07",
+          "branch": "Agustinas",
+          "description": "Transf a INMOBILIARIA Y CONSTR",
+          "document_no": "5034296",
+          "debit_clp": 600000
+        },
+        {
+          "occurred_on": "2020-12-07",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 541160,
+          "balance_clp": 921180
+        },
+        {
+          "occurred_on": "2020-12-23",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 10000,
+          "balance_clp": 911180
+        },
+        {
+          "occurred_on": "2020-12-24",
+          "branch": "Agustinas",
+          "description": "Transf a EDIFICIO EL VERGEL",
+          "document_no": "3043646",
+          "debit_clp": 182425,
+          "balance_clp": 728755
+        },
+        {
+          "occurred_on": "2020-12-30",
+          "branch": "G.Finanzas",
+          "description": "0761381687 REMUNERACION Intellego C",
+          "credit_clp": 2001549,
+          "balance_clp": 2730304
+        }
+      ]
+    },
+    {
+      "source_image": "image-8f6681eb-fb35-48b6-91ad-5245ca5a1a32.png",
+      "cartola_no": "48",
+      "period_from": "2020-12-30",
+      "period_to": "2021-01-29",
+      "period_month": "2021-01",
+      "saldo_inicial_clp": 2730304,
+      "saldo_final_clp": 3400996,
+      "movements": [
+        {
+          "occurred_on": "2021-01-04",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a T. Crédito",
+          "debit_clp": 799068
+        },
+        {
+          "occurred_on": "2021-01-04",
+          "branch": "Agustinas",
+          "description": "Transf a INMOBILIARIA Y CONSTR",
+          "document_no": "5034296",
+          "debit_clp": 600000
+        },
+        {
+          "occurred_on": "2021-01-04",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 400000,
+          "balance_clp": 931236
+        },
+        {
+          "occurred_on": "2021-01-05",
+          "branch": "Bilbao",
+          "description": "Egreso por Compra de Divisas",
+          "debit_clp": 120721,
+          "balance_clp": 810515
+        },
+        {
+          "occurred_on": "2021-01-06",
+          "branch": "Agustinas",
+          "description": "0081172919 Transf. FRASER VILLABLANCA JUAN P",
+          "document_no": "2061316",
+          "credit_clp": 20000
+        },
+        {
+          "occurred_on": "2021-01-06",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a T. Crédito",
+          "debit_clp": 169626,
+          "balance_clp": 660889
+        },
+        {
+          "occurred_on": "2021-01-07",
+          "branch": "Bilbao",
+          "description": "Depósito en Efectivo",
+          "document_no": "0000525",
+          "credit_clp": 2050041
+        },
+        {
+          "occurred_on": "2021-01-07",
+          "branch": "Bilbao",
+          "description": "Giro por Cajas sin Cheques",
+          "debit_clp": 100000,
+          "balance_clp": 2610930
+        },
+        {
+          "occurred_on": "2021-01-13",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 60000,
+          "balance_clp": 2550930
+        },
+        {
+          "occurred_on": "2021-01-18",
+          "branch": "Agustinas",
+          "description": "Transf a EDIFICIO EL VERGEL",
+          "document_no": "3043646",
+          "debit_clp": 188297,
+          "balance_clp": 2362633
+        },
+        {
+          "occurred_on": "2021-01-20",
+          "branch": "G.Finanzas",
+          "description": "0965014500 P.PROVEEDOR 0965014500",
+          "credit_clp": 290333,
+          "balance_clp": 2652966
+        },
+        {
+          "occurred_on": "2021-01-29",
+          "branch": "G.Finanzas",
+          "description": "0761381687 REMUNERACION Intellego C",
+          "credit_clp": 748030,
+          "balance_clp": 3400996
+        }
+      ]
+    },
+    {
+      "source_image": "image-01c260fc-568c-49a0-b669-a76edd011e34.png",
+      "cartola_no": "52",
+      "period_from": "2021-04-30",
+      "period_to": "2021-05-31",
+      "period_month": "2021-05",
+      "saldo_inicial_clp": 5044315,
+      "saldo_final_clp": 6695050,
+      "movements": [
+        {
+          "occurred_on": "2021-05-03",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a T. Crédito",
+          "debit_clp": 681191
+        },
+        {
+          "occurred_on": "2021-05-03",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 600000
+        },
+        {
+          "occurred_on": "2021-05-03",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a Cuentamática",
+          "document_no": "8732587",
+          "debit_clp": 100000
+        },
+        {
+          "occurred_on": "2021-05-03",
+          "branch": "Agustinas",
+          "description": "Egreso por Compra de Divisas",
+          "debit_clp": 59003,
+          "balance_clp": 3604121
+        },
+        {
+          "occurred_on": "2021-05-05",
+          "branch": "Agustinas",
+          "description": "Transf a INMOBILIARIA Y CONSTR",
+          "document_no": "5034296",
+          "debit_clp": 600000,
+          "balance_clp": 3004121
+        },
+        {
+          "occurred_on": "2021-05-06",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 25000,
+          "balance_clp": 2979121
+        },
+        {
+          "occurred_on": "2021-05-10",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 30000,
+          "balance_clp": 2949121
+        },
+        {
+          "occurred_on": "2021-05-12",
+          "branch": "G.Finanzas",
+          "description": "0608050000 DEV IMPUESTO TESORERIA G",
+          "credit_clp": 320365,
+          "balance_clp": 3269486
+        },
+        {
+          "occurred_on": "2021-05-19",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet de Cuenta Vista",
+          "credit_clp": 1020863
+        },
+        {
+          "occurred_on": "2021-05-19",
+          "branch": "G.Finanzas",
+          "description": "0769604243 RET O ANTI PREV AFP UNO",
+          "credit_clp": 1020863
+        },
+        {
+          "occurred_on": "2021-05-19",
+          "branch": "PENALOLEN",
+          "description": "Traspaso a Cuenta Vista 10%",
+          "document_no": "4917514",
+          "debit_clp": 1020863
+        },
+        {
+          "occurred_on": "2021-05-19",
+          "branch": "Agustinas",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 1000000
+        },
+        {
+          "occurred_on": "2021-05-19",
+          "branch": "Agustinas",
+          "description": "Traspaso Internet a Cuentamática",
+          "document_no": "8732587",
+          "debit_clp": 186936,
+          "balance_clp": 3103413
+        },
+        {
+          "occurred_on": "2021-05-20",
+          "branch": "Agustinas",
+          "description": "0764155289 Transf. BUDA COM SPA",
+          "document_no": "9211397",
+          "credit_clp": 1000000,
+          "balance_clp": 4103413
+        },
+        {
+          "occurred_on": "2021-05-25",
+          "branch": "Bilbao",
+          "description": "Venta Moneda Extranjera",
+          "document_no": "0120357",
+          "credit_clp": 2830106
+        },
+        {
+          "occurred_on": "2021-05-25",
+          "branch": "Agustinas",
+          "description": "0184662884 Transf CARACCI VEL",
+          "credit_clp": 15000,
+          "balance_clp": 6948519
+        },
+        {
+          "occurred_on": "2021-05-26",
+          "branch": "Agustinas",
+          "description": "Transf a EDIFICIO EL VERGEL",
+          "document_no": "3043646",
+          "debit_clp": 161969,
+          "balance_clp": 6786550
+        },
+        {
+          "occurred_on": "2021-05-27",
+          "branch": "Agustinas",
+          "description": "0184662884 Transf CARACCI VEL",
+          "credit_clp": 8500,
+          "balance_clp": 6795050
+        },
+        {
+          "occurred_on": "2021-05-28",
+          "branch": "O.Gerencia",
+          "description": "Transf. Internet a otro Bancos",
+          "debit_clp": 100000,
+          "balance_clp": 6695050
+        }
+      ]
+    }
+  ]
+}
