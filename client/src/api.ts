@@ -292,6 +292,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ source }),
     }),
+  importSyncDocumentCoverage: () =>
+    j<import("./types").ImportSyncDocumentCoverageResponse>(
+      "/api/import-sync/document-coverage"
+    ),
 };
 
 export type AppMessageRow = {

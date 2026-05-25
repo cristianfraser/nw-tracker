@@ -45,6 +45,7 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 import { db } from "./db.js";
 
+import { enrichFlowLinesWithOriginLabels } from "./ccExpenseOriginLabel.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
 import { dedupeFlowCcExpenseLines } from "./ccExpenseLineDedupe.js";
 import {
@@ -149,9 +150,12 @@ export type FlowCcExpenseLineRow = {
   /** User note for this purchase (shared across cuotas / synthetic total). */
   purchase_notes: string;
 
+  /** Display label for origin column (card last4 or account name). */
+  origin_label: string;
+
 };
 
-
+export type FlowCcExpenseLineRowDraft = Omit<FlowCcExpenseLineRow, "origin_label">;
 
 export type FlowCcExpenseMonthRow = {
 
@@ -480,7 +484,7 @@ function computeFlowsExpenseTotals(
 export function buildCcExpenseLines(
   accountIds: number[],
   opts?: { dedupeDisplay?: boolean }
-): FlowCcExpenseLineRow[] {
+): FlowCcExpenseLineRowDraft[] {
   const dedupeDisplay = opts?.dedupeDisplay !== false;
 
   const { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
@@ -621,7 +625,7 @@ export function buildCcExpenseLines(
 
 
 
-  const lines: FlowCcExpenseLineRow[] = [];
+  const lines: FlowCcExpenseLineRowDraft[] = [];
 
 
 
@@ -756,7 +760,7 @@ export function buildCcExpenseLines(
   });
 }
 
-function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRow[] {
+function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   const checkingId = cartolaCashAccountIdOptional("cuenta_corriente");
   if (checkingId == null) return [];
 
@@ -785,7 +789,9 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
 
 
   if (accountIds.length === 0) {
-    const checkingLines = enrichFlowLinesWithPurchaseNotes(loadCheckingGastosLinesForExpenses());
+    const checkingLines = enrichFlowLinesWithOriginLabels(
+      enrichFlowLinesWithPurchaseNotes(loadCheckingGastosLinesForExpenses())
+    );
     const agg = aggregateGastosFromLines(checkingLines, chartCategorySlugs);
     const totals = computeFlowsExpenseTotals(checkingLines);
 
@@ -811,8 +817,10 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
 
   const ccLines = buildCcExpenseLines(accountIds);
   const checkingLines = loadCheckingGastosLinesForExpenses();
-  const lines = enrichFlowLinesWithPurchaseNotes(
-    enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])
+  const lines = enrichFlowLinesWithOriginLabels(
+    enrichFlowLinesWithPurchaseNotes(
+      enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])
+    )
   );
 
   const { by_month, chart_monthly, chart_monthly_by_category } = aggregateGastosFromLines(

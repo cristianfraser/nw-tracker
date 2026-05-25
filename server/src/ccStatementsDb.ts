@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 export type CcStatementRow = {
@@ -81,7 +81,10 @@ export function listCcStatementsForAccount(accountId: number): CcStatementRow[] 
       ...r,
       statement_date_iso,
       pay_by_iso: isoFromField(r.pay_by),
-      billing_month: billingMonthForStatementDate(statement_date_iso),
+      billing_month: billingMonthForCcStatement({
+        statement_date: r.statement_date,
+        period_to: r.period_to,
+      }),
     };
   });
 }

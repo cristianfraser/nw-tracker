@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import XLSX from "xlsx";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 
 const SPANISH_MONTH: Record<string, number> = {
   enero: 1,
@@ -92,6 +93,16 @@ export function cartolaFileNameDatePrefix(year: number, month1to12: number): str
 }
 
 export function periodMonthFromCartolaFileName(fileName: string): string | null {
+  const m = /-\s*([A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s+(\d{4})\s*\.(xlsx|pdf)$/i.exec(fileName);
+  if (m) {
+    const monthName = m[1]!
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "");
+    const mo = SPANISH_MONTH[monthName];
+    const y = Number(m[2]);
+    if (mo && Number.isFinite(y)) return `${y}-${String(mo).padStart(2, "0")}`;
+  }
   const dated = /^(\d{4})-(\d{2})-\d{2}(?:\s|_)/.exec(fileName);
   if (dated) {
     const y = Number(dated[1]);
@@ -100,16 +111,7 @@ export function periodMonthFromCartolaFileName(fileName: string): string | null 
       return `${y}-${String(mo).padStart(2, "0")}`;
     }
   }
-  const m = /-\s*([A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s+(\d{4})\s*\.xlsx$/i.exec(fileName);
-  if (!m) return null;
-  const monthName = m[1]!
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-  const mo = SPANISH_MONTH[monthName];
-  const y = Number(m[2]);
-  if (!mo || !Number.isFinite(y)) return null;
-  return `${y}-${String(mo).padStart(2, "0")}`;
+  return null;
 }
 
 function parseDdMmYyyy(raw: string): string | null {
@@ -245,7 +247,7 @@ export function parseCheckingCartolaWorkbook(
   workbook: XLSX.WorkBook,
   sourceFile: string
 ): ParsedCheckingCartola {
-  const periodMonth = periodMonthFromCartolaFileName(sourceFile);
+  let periodMonth = periodMonthFromCartolaFileName(sourceFile);
   if (!periodMonth) {
     throw new Error(`Cannot infer period month from file name: ${sourceFile}`);
   }
@@ -267,6 +269,11 @@ export function parseCheckingCartolaWorkbook(
     const label = cell(row, 4).toLowerCase();
     if (label === "desde") periodFrom = parseDdMmYyyy(cell(row, 5));
     if (label === "hasta") periodTo = parseDdMmYyyy(cell(row, 5));
+  }
+
+  if (periodTo) {
+    const fromHasta = monthKeyFromYmd(periodTo);
+    if (fromHasta) periodMonth = fromHasta;
   }
 
   const saldoInicial = findLabelAmount(rows, "Saldo inicial:");

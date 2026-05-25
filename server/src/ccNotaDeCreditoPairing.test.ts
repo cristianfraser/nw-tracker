@@ -67,6 +67,21 @@ describe("pairNotaDeCreditoAnnulments", () => {
     expect(pairing.unmatchedNotaIds.size).toBe(0);
   });
 
+  it("leaves large NOTA DE CREDITO without a purchase match unpaired (abono via negative amount)", () => {
+    const nota = ccLine({
+      statement_line_id: 400,
+      amount_clp: -43_691,
+      merchant: "NOTA DE CREDITO",
+      purchase_on: "2021-09-14",
+      expense_month: "2021-09",
+    });
+
+    const pairing = pairNotaDeCreditoAnnulments([nota]);
+    expect(pairing.unmatchedNotaIds.size).toBe(0);
+    expect(pairing.matchedNotaIds.size).toBe(0);
+    expect(pairing.annulledPurchaseIds.size).toBe(0);
+  });
+
   it("treats small NOTA DE CREDITO as unmatched adjustments", () => {
     const nota = ccLine({
       statement_line_id: 300,

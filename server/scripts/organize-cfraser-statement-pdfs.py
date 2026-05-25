@@ -201,6 +201,12 @@ def unique_dest(folder: Path, stem: str) -> Path:
         n += 1
 
 
+def is_cuenta_vista_pdf(path: Path) -> bool:
+    """CUENTAMATICA cartolas must not be filed under credit-card-statements."""
+    hasta, _ = peek_cuenta_vista_meta(path)
+    return hasta is not None
+
+
 def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> int:
     CC_DIR.mkdir(parents=True, exist_ok=True)
     sources = []
@@ -214,6 +220,8 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> in
     moved = 0
     for p in sources:
         if RE_ORGANIZED.match(p.name) and p.parent.resolve() == CC_DIR.resolve():
+            continue
+        if is_cuenta_vista_pdf(p):
             continue
         row = by_pdf.get(p.name)
         fn_iso = iso_from_santander_80_filename(p.name)
@@ -343,10 +351,11 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     by_pdf = load_csv_by_pdf()
-    n_cc = organize_credit_card(args.dry_run, by_pdf)
+    # Vista PDFs in cfraser/pdfs/ must be filed before credit-card organize reads the same inbox.
     n_vista = organize_cuenta_vista(args.dry_run)
+    n_cc = organize_credit_card(args.dry_run, by_pdf)
     n_cart = organize_cartolas(args.dry_run)
-    print(f"credit-card: {n_cc} file(s); cuenta-vista: {n_vista} file(s); cartolas: {n_cart} file(s)")
+    print(f"cuenta-vista: {n_vista} file(s); credit-card: {n_cc} file(s); cartolas: {n_cart} file(s)")
     return 0
 
 

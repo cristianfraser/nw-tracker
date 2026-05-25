@@ -200,12 +200,14 @@ def parse_one_pdf(
             full_layout = ""
         parsed = parse_international_usd_document(full, full_layout)
         meta = extract_meta_international(full, pdf_path.name)
+        finalize_statement_meta(meta, pdf_path)
     else:
         parsed = parse_clp_document(full, parser)
         meta = extract_meta(full, pdf_path.name)
+        finalize_statement_meta(meta, pdf_path)
     rows = rows_from_parse_payload(
         effective_group=effective_group,
-        source_pdf=pdf_path.name,
+        source_pdf=canonical_cc_source_pdf_name(pdf_path.name),
         meta=meta,
         parsed=parsed,
         baseline=baseline,
@@ -1191,7 +1193,11 @@ def _date_after_header(full: str, header: str, within: int = 14) -> str:
 
 
 def _fill_period_and_pay_by(meta: Dict[str, Any], full: str) -> None:
-    if meta.get("period_from") and meta.get("pay_by"):
+    if (
+        str(meta.get("period_from") or "").strip()
+        and str(meta.get("period_to") or "").strip()
+        and str(meta.get("pay_by") or "").strip()
+    ):
         return
     lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
     period_dates: List[str] = []
@@ -1200,17 +1206,23 @@ def _fill_period_and_pay_by(meta: Dict[str, Any], full: str) -> None:
             inline = re.findall(r"(\d{2}/\d{2}/\d{4})", ln)
             period_dates.extend(inline)
             for j in range(i + 1, min(i + 8, len(lines))):
-                if re.search(r"PER[IÍ]ODO\s+FACTURADO\s+HASTA|PAGAR\s+HASTA", lines[j], re.I):
+                if re.search(r"PER[IÍ]ODO\s+FACTURADO\s+HASTA", lines[j], re.I):
+                    period_dates.extend(re.findall(r"(\d{2}/\d{2}/\d{4})", lines[j]))
+                    break
+                if re.search(r"PAGAR\s+HASTA", lines[j], re.I):
+                    period_dates.extend(re.findall(r"(\d{2}/\d{2}/\d{4})", lines[j]))
                     break
                 m = re.match(r"^(\d{2}/\d{2}/\d{4})$", lines[j])
                 if m:
                     period_dates.append(m.group(1))
             break
     if len(period_dates) >= 2:
-        meta.setdefault("period_from", period_dates[0])
-        meta.setdefault("period_to", period_dates[1])
-    if len(period_dates) >= 3:
-        meta.setdefault("pay_by", period_dates[2])
+        if not str(meta.get("period_from") or "").strip():
+            meta["period_from"] = period_dates[0]
+        if not str(meta.get("period_to") or "").strip():
+            meta["period_to"] = period_dates[1]
+    if len(period_dates) >= 3 and not str(meta.get("pay_by") or "").strip():
+        meta["pay_by"] = period_dates[2]
     if not meta.get("pay_by"):
         m = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", full, re.I)
         if m:
@@ -1258,6 +1270,12 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
     )
     if m:
         meta["period_from"], meta["period_to"] = m.group(1), m.group(2)
+    m_desde = re.search(r"PER[IÍ]ODO\s+FACTURADO\s+DESDE\s+(\d{2}/\d{2}/\d{4})", full, re.I)
+    m_hasta = re.search(r"PER[IÍ]ODO\s+FACTURADO\s+HASTA\s+(\d{2}/\d{2}/\d{4})", full, re.I)
+    if m_desde and not str(meta.get("period_from") or "").strip():
+        meta["period_from"] = normalize_statement_date(m_desde.group(1))
+    if m_hasta and not str(meta.get("period_to") or "").strip():
+        meta["period_to"] = normalize_statement_date(m_hasta.group(1))
     m = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", full, re.I)
     if m:
         meta["pay_by"] = m.group(1)
@@ -1317,6 +1335,72 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
     merge_section_totals_into_meta(meta, full, parse_clp_amount, parse_usd_amount)
     meta["raw_header_snippet"] = full[:400].replace("\n", " ")
     return meta
+
+
+def pdftotext_layout_full(pdf_path: Path) -> str:
+    try:
+        return subprocess.check_output(
+            ["pdftotext", "-layout", str(pdf_path), "-"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        return ""
+
+
+def merge_meta_missing_fields(meta: Dict[str, Any], supplemental: Dict[str, Any]) -> None:
+    for key in (
+        "statement_date",
+        "period_from",
+        "period_to",
+        "pay_by",
+        "card_last4",
+        "card_product",
+    ):
+        if not str(meta.get(key) or "").strip() and str(supplemental.get(key) or "").strip():
+            meta[key] = supplemental[key]
+
+
+def require_statement_meta(meta: Dict[str, Any], source_pdf: str) -> None:
+    missing = [
+        key
+        for key in ("statement_date", "period_from", "period_to")
+        if not str(meta.get(key) or "").strip()
+    ]
+    if missing:
+        raise ValueError(
+            f"{source_pdf}: missing statement metadata {missing} "
+            f"(statement_date={meta.get('statement_date')!r}, "
+            f"period_from={meta.get('period_from')!r}, period_to={meta.get('period_to')!r})"
+        )
+
+
+def infer_period_from_statement_close_santander(meta: Dict[str, Any]) -> None:
+    """21→20 cycle when the PDF has a close date but no PERÍODO FACTURADO block (legacy/damaged)."""
+    if str(meta.get("period_from") or "").strip() and str(meta.get("period_to") or "").strip():
+        return
+    sd = normalize_statement_date(str(meta.get("statement_date") or ""))
+    if not sd:
+        return
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", sd)
+    if not m:
+        return
+    _d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not str(meta.get("period_to") or "").strip():
+        meta["period_to"] = sd
+    if not str(meta.get("period_from") or "").strip():
+        prev_mo = 12 if mo == 1 else mo - 1
+        prev_y = y - 1 if mo == 1 else y
+        meta["period_from"] = f"21/{prev_mo:02d}/{prev_y}"
+
+
+def finalize_statement_meta(meta: Dict[str, Any], pdf_path: Path) -> None:
+    """pypdf body text often drops inline PERÍODO FACTURADO dates; fill from pdftotext -layout."""
+    layout_full = pdftotext_layout_full(pdf_path)
+    if layout_full:
+        merge_meta_missing_fields(meta, extract_meta(layout_full, pdf_path.name))
+    infer_period_from_statement_close_santander(meta)
+    require_statement_meta(meta, pdf_path.name)
 
 
 def statement_sort_key(meta: Dict[str, Any]) -> Tuple[int, int, int]:
@@ -2059,6 +2143,14 @@ def card_group_for_pdf_name(name: str) -> str:
     return "A"
 
 
+def canonical_cc_source_pdf_name(filename: str) -> str:
+    """DB/CSV use the normal filename; disk may only have a `-CORRUPT` renamed copy."""
+    name = str(filename or "").strip()
+    if name.lower().endswith("-corrupt.pdf"):
+        return f"{name[:-len('-CORRUPT.pdf')]}.pdf"
+    return name
+
+
 def mark_pdf_corrupt(p: Path) -> Path:
     """Rename an unreadable PDF so it is skipped on the next parse run."""
     if p.stem.endswith("-CORRUPT"):
@@ -2163,8 +2255,6 @@ def main() -> int:
     cache_misses = 0
 
     for card_group, p in jobs:
-        if p.stem.endswith("-CORRUPT"):
-            continue
         if not p.is_file():
             failures.append(f"missing:{p}")
             continue
@@ -2351,7 +2441,21 @@ def main() -> int:
                             f"#   {ch.code}: expected={ch.expected} actual={ch.actual} delta={ch.delta}"
                         )
     reconcile_exit = reconcile_fail_count > 0 if not no_reconcile else False
-    return 1 if failures or zero_row_pdfs or reconcile_exit else 0
+
+    def ignorable_zero_row_pdf(name: str) -> bool:
+        """Legacy month-end PDFs without card suffix; unreadable cartola scans, not in DB."""
+        return bool(
+            re.match(
+                r"^\d{4}-\d{2}-\d{2} estado de cuenta tarjeta(?:-CORRUPT)?\.pdf$",
+                name,
+                re.I,
+            )
+        )
+
+    zero_row_fatal = [n for n in zero_row_pdfs if not ignorable_zero_row_pdf(n)]
+    if zero_row_fatal:
+        print(f"# WARN zero_rows_fatal={len(zero_row_fatal)}")
+    return 1 if failures or zero_row_fatal or reconcile_exit else 0
 
 
 def _row_to_pr(r: Dict[str, Any]) -> Dict[str, Any]:

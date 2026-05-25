@@ -5,6 +5,10 @@ import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByAmountDesc,
 } from "./CreditCardExpenseLinesTable";
+import {
+  CreditCardExpenseLinesSelectionPageFooter,
+  CreditCardExpenseLinesSelectionProvider,
+} from "./CreditCardExpenseLinesSelection";
 
 const UNCLASSIFIED_VISIBLE_ROWS = 20;
 
@@ -41,15 +45,18 @@ export function CreditCardUnclassifiedExpensesTable({
       <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
         {t("expenses.creditCard.unclassifiedTableHint")}
       </p>
-      <CreditCardExpenseLinesTable
-        lines={unclassifiedGastos}
-        categories={categories}
-        emptyLabel={t("expenses.creditCard.unclassifiedTableEmpty")}
-        showCategoryControls
-        categoryControlVariant="pills"
-        collapsedVisibleRows={UNCLASSIFIED_VISIBLE_ROWS}
-        enableCheckingNotes
-      />
+      <CreditCardExpenseLinesSelectionProvider lines={unclassifiedGastos}>
+        <CreditCardExpenseLinesTable
+          lines={unclassifiedGastos}
+          categories={categories}
+          emptyLabel={t("expenses.creditCard.unclassifiedTableEmpty")}
+          showCategoryControls
+          categoryControlVariant="pills"
+          collapsedVisibleRows={UNCLASSIFIED_VISIBLE_ROWS}
+          enableCheckingNotes
+        />
+        <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
+      </CreditCardExpenseLinesSelectionProvider>
     </section>
   );
 }

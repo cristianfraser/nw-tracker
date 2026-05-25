@@ -11,6 +11,7 @@
     "import:excel": "tsx scripts/import-excel-history.ts",
     "import:cfraser-inbox": "tsx scripts/import-cfraser-inbox.ts",
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",
+    "repair:checking-cartola-period-month": "tsx scripts/repair-checking-cartola-period-month.ts",
     "import:depto-expenses": "tsx scripts/import-depto-apartment-expenses.ts",
     "parse:cc-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cc-statement-pdfs.py",
     "parse:checking-cartola-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-checking-cartola-pdfs.py",

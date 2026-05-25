@@ -9,6 +9,7 @@ export const queryKeys = {
   messagesUnread: () => ["messages", "unreadCount"] as const,
   messages: (kind: "notification" | "log") => ["messages", kind] as const,
   syncStatus: () => ["syncStatus"] as const,
+  importSyncDocumentCoverage: () => ["importSyncDocumentCoverage"] as const,
   income: () => ["income"] as const,
   flowsDeposits: () => ["flowsDeposits"] as const,
   flowsExpenses: () => ["flowsExpenses"] as const,

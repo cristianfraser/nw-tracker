@@ -13,6 +13,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe("checkingCartolaParse", () => {
   it("parses period month from Spanish file name", () => {
+    expect(
+      periodMonthFromCartolaFileName(
+        "2026-03-31 Cartola de cuenta Corriente - Abril 2026.xlsx"
+      )
+    ).toBe("2026-04");
     expect(periodMonthFromCartolaFileName("Cartola de cuenta Corriente - Abril 2026.xlsx")).toBe(
       "2026-04"
     );

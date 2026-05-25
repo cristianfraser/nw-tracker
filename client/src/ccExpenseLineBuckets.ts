@@ -71,7 +71,8 @@ export function countsTowardGastosMes(
   if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
     return false;
   }
-  if (line.nota_credito_role === "unmatched_nota") return true;
+  // Small fee adjustments affect gastos totals only (see aggregateGastosFromLines), not compras/cuotas UI.
+  if (line.nota_credito_role === "unmatched_nota") return false;
   if (line.amount_clp <= 0) return false;
   if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;

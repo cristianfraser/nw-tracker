@@ -77,13 +77,13 @@ export function setCcExpensePurchaseNote(opts: {
 
 export type FlowCcExpenseLineBeforeNotes = Omit<
   FlowCcExpenseLineRow,
-  "purchase_key" | "purchase_notes"
+  "purchase_key" | "purchase_notes" | "origin_label"
 >;
 
 export function enrichFlowLinesWithPurchaseNotes(
   lines: FlowCcExpenseLineBeforeNotes[],
   notesByKey?: Map<string, string>
-): FlowCcExpenseLineRow[] {
+): Omit<FlowCcExpenseLineRow, "origin_label">[] {
   const accountIds = [...new Set(lines.map((ln) => ln.account_id))];
   const notes =
     notesByKey ??

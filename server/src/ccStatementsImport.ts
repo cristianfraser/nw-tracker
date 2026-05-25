@@ -53,6 +53,20 @@ export function statementKeyFromRow(row: CcStatementCsvRecord): string {
   return `${row.card_group ?? "A"}\t${row.source_pdf ?? ""}\t${row.statement_date ?? ""}`;
 }
 
+function assertCcStatementCsvHeader(row: CcStatementCsvRecord): void {
+  const sourcePdf = String(row.source_pdf ?? "").trim();
+  if (!sourcePdf || sourcePdf.startsWith("import:web-paste")) return;
+  const missing: string[] = [];
+  if (!String(row.statement_date ?? "").trim()) missing.push("statement_date");
+  if (!String(row.period_from ?? "").trim()) missing.push("period_from");
+  if (!String(row.period_to ?? "").trim()) missing.push("period_to");
+  if (missing.length === 0) return;
+  throw new Error(
+    `CC statement import missing ${missing.join(", ")} for ${sourcePdf}; ` +
+      `re-run parse:cc-pdfs and import`
+  );
+}
+
 function layoutFromRow(row: CcStatementCsvRecord): string {
   const layout = String(row.parser_layout ?? "").trim();
   if (layout === "international_usd") return "international_usd";
@@ -175,6 +189,7 @@ export function importCcStatementsMerge(
 
   for (const [key, rows] of byStmt) {
     const first = rows[0]!;
+    assertCcStatementCsvHeader(first);
     const currency = currencyFromRow(first);
     const cardGroup = String(first.card_group ?? "A").trim() || "A";
     const sourcePdf = String(first.source_pdf ?? "").trim();

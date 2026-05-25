@@ -1,8 +1,10 @@
 /**
  * One-shot pipeline for new files dropped under `cfraser/`:
  *
- * 1. Organize credit-card PDFs from `cfraser/pdfs/` → `cfraser/credit-card-statements/`
- *    (and normalize cartola PDF names under `cfraser/cartolas-cuenta-corriente/`).
+ * 1. Organize PDFs from `cfraser/pdfs/`:
+ *    - CUENTAMATICA → `cfraser/cartolas-cuenta-vista/`
+ *    - credit-card → `cfraser/credit-card-statements/`
+ *    - checking cartola PDFs → `cfraser/cartolas-cuenta-corriente/`
  * 2. qpdf repair on unreadable credit-card PDFs (`repair:cc-pdfs-qpdf`, skippable)
  * 3. Parse all credit-card statement PDFs → `cfraser/cc-statements-parsed-all.csv`
  * 4. Merge-import parsed CC rows into SQLite (`import:cc-parsed`, default merge mode).
@@ -150,10 +152,24 @@ function main(): void {
 
   if (!hasFlag("skip-cuenta-vista")) {
     console.log("\n=== Import cuenta vista cartolas (pdf, incremental) ===");
+    console.log(
+      "  PDFs: cfraser/cartolas-cuenta-vista/ (drop new files in cfraser/pdfs/ and re-run inbox to organize)"
+    );
     const vistaResult = importCuentaVistaCartolasFromPdfs({
       dryRun,
       skipPdfParse: hasFlag("skip-cuenta-vista-pdf-parse"),
     });
+    const imported = vistaResult.filesImported.length;
+    const skipped = vistaResult.filesSkipped.length;
+    const errs = vistaResult.errors.length;
+    console.log(
+      `  cuenta vista: ${imported} file(s) imported, ${skipped} month(s) already in DB, ${errs} error(s)`
+    );
+    if (imported === 0 && skipped > 0 && errs === 0) {
+      console.log(
+        "  (No new months — drop PDFs in cfraser/pdfs/ or cartolas-cuenta-vista/, then re-run without --skip-cuenta-vista-pdf-parse if parser cache is stale)"
+      );
+    }
     if (vistaResult.errors.length) {
       console.error(vistaResult.errors.join("\n"));
       process.exit(1);
@@ -163,6 +179,9 @@ function main(): void {
   }
 
   if (!dryRun && !hasFlag("skip-sync")) {
+    console.log(
+      "\n(Global sync below only refreshes Fintual/SBIF/equity — not bank PDFs. 'Stale: none' / 'No changes' is normal.)"
+    );
     const code = runStep("Global sync (reconciliation)", "npm", [
       "run",
       "sync:all",

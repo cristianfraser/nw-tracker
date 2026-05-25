@@ -60,3 +60,9 @@
   overflow: auto;
   max-height: min(70vh, calc(100vh - 8rem));
 }
+
+.footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
