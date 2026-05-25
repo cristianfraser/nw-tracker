@@ -266,6 +266,7 @@ function seedReferenceData() {
       sort: 30,
       cats: [
         { slug: "cuenta_corriente", label: "Cuenta corriente" },
+        { slug: "cuenta_vista", label: "Cuenta vista" },
         { slug: "cuenta_ahorro_vivienda", label: "Cuenta de ahorro para la vivienda — BancoEstado" },
         { slug: "fondo_reserva", label: "Fondo reserva" },
       ],

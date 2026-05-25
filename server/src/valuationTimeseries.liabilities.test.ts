@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 import {
   liabilitiesBreakdownClpAsOf,
   liabilitiesGroupClpAsOf,
@@ -58,6 +59,25 @@ describe("listLiabilitiesTabAccountRows", () => {
     const total = liabilitiesGroupClpAsOf(row.as_of_date);
     const parts = liabilitiesBreakdownClpAsOf(row.as_of_date);
     expect(parts.mortgage_clp + parts.credit_card_clp).toBeCloseTo(total, 0);
+  });
+
+  it("group total matches sum of Pasivos tab account rows at a snapshot date", () => {
+    const row = db
+      .prepare(`SELECT as_of_date FROM valuations ORDER BY as_of_date DESC LIMIT 1`)
+      .get() as { as_of_date: string } | undefined;
+    if (!row) return;
+
+    const tabRows = listLiabilitiesTabAccountRows();
+    let tabSum = 0;
+    for (const r of tabRows) {
+      const snap = latestLiabilityValuationRowForSnapshot(
+        r.account_id,
+        r.category_slug,
+        row.as_of_date
+      );
+      if (snap?.value_clp != null && Number.isFinite(snap.value_clp)) tabSum += snap.value_clp;
+    }
+    expect(liabilitiesGroupClpAsOf(row.as_of_date)).toBeCloseTo(tabSum, 0);
   });
 
   it("returns at most one row per operational credit card series", () => {

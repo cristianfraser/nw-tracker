@@ -1,4 +1,5 @@
-import { chileCalendarAddDays, type ChileWallClock } from "../src/chileDate.js";
+import { type ChileWallClock } from "../src/chileDate.js";
+import { priorFintualPublishYmd } from "../src/fintualPublishDate.js";
 import { db } from "../src/db.js";
 import type { GlobalSyncStateFile } from "../src/globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
@@ -191,22 +192,26 @@ export function pickFintualApplySnapshot(
   rows: FintualGoalRow[],
   byGoalId: Record<string, string>,
   cl: ChileWallClock,
-  _state: GlobalSyncStateFile
+  _state: GlobalSyncStateFile,
+  publishYmd: string
 ): PickFintualSnapshotResult {
-  return { snap: buildGoalsSnapshot(rows, byGoalId, cl, cl.ymd), mode: "apply" };
+  return { snap: buildGoalsSnapshot(rows, byGoalId, cl, publishYmd), mode: "apply" };
 }
 
 export function fintualEveningCatchUpComplete(
   rows: FintualGoalRow[],
   byGoalId: Record<string, string>,
-  cl: ChileWallClock
+  cl: ChileWallClock,
+  publishYmd: string
 ): boolean {
   if (cl.hour < 18) return true;
-  const ymd = cl.ymd;
-  const yesterday = chileCalendarAddDays(ymd, -1);
-  const snapY = buildGoalsSnapshot(rows, byGoalId, cl, yesterday);
-  const snapT = buildGoalsSnapshot(rows, byGoalId, cl, ymd);
-  return fintualSnapshotMatchesDb(snapY) && fintualSnapshotMatchesDb(snapT);
+  const prior = priorFintualPublishYmd(publishYmd);
+  const snapPub = buildGoalsSnapshot(rows, byGoalId, cl, publishYmd);
+  if (!prior || prior === publishYmd) {
+    return fintualSnapshotMatchesDb(snapPub);
+  }
+  const snapPrior = buildGoalsSnapshot(rows, byGoalId, cl, prior);
+  return fintualSnapshotMatchesDb(snapPrior) && fintualSnapshotMatchesDb(snapPub);
 }
 
 /** Mark evening poll settled when today's mapped goals already match DB (≥18:00 Chile). */
@@ -231,7 +236,11 @@ export function fintualMappedNavSignature(snap: FintualGoalSnapshot): string {
 /** True when mapped goals' NAV matches the last evening apply (Fintual has not published new totals). */
 export function fintualNavUnchangedSinceLastApply(
   sig: string,
-  state: GlobalSyncStateFile
+  state: GlobalSyncStateFile,
+  publishYmd?: string
 ): boolean {
+  if (publishYmd != null && publishYmd !== state.fintualLastAppliedPublishYmd) {
+    return false;
+  }
   return Boolean(state.fintualLastAppliedSig && sig === state.fintualLastAppliedSig);
 }

@@ -710,14 +710,25 @@ export interface CcExpenseCategoryDto {
   chart_color: string;
 }
 
+export type FlowCcExpenseLineSource = "cc" | "checking";
+
 export interface FlowCcExpenseLineRow {
+  source: FlowCcExpenseLineSource;
   statement_line_id: number;
   account_id: number;
+  /** Calendar month bucket (YYYY-MM). */
+  expense_month: string;
+  /** Facturación month (CC); same as expense_month for checking. */
   billing_month: string;
+  /** Calendar month of purchase (YYYY-MM). */
+  purchase_month: string;
+  line_role: "purchase" | "installment_cuota" | "installment_purchase_total";
   occurred_on: string;
   purchase_on: string | null;
   statement_date: string;
   amount_clp: number;
+  /** Original USD when the charge is on a USD statement (or USD-only line). */
+  amount_usd?: number | null;
   merchant: string | null;
   merchant_key: string;
   installment_flag: number;
@@ -725,6 +736,14 @@ export interface FlowCcExpenseLineRow {
   nro_cuota_total: number | null;
   category_slug: string;
   category_unique: boolean;
+  /** Set when a NOTA DE CREDITO annuls or adjusts prior card charges. */
+  nota_credito_role?: "annulled_purchase" | "matched_nota" | "unmatched_nota";
+  /** Statement line id used for category / unique PATCH (installment purchase totals). */
+  category_statement_line_id?: number | null;
+  /** Stable purchase identity (cuota, one-shot, synthetic total). */
+  purchase_key: string;
+  /** User note for this purchase (shared across cuotas / synthetic total). */
+  purchase_notes: string;
 }
 
 export type FlowCcExpenseCategoryChartPoint = {

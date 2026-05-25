@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { allocationBucketColor, buildGroupTabColorMaps } from "./chartColors";
+import { buildGroupTabColorMaps, groupTabTotalStroke } from "./chartColors";
 
 export type GroupTabColorMaps = {
   byDataKey: Map<string, string>;
@@ -21,6 +21,10 @@ export function usePortfolioGroupCharts(opts: {
   chartColorSlug: PortfolioGroupChartsColorSlug;
   pieAllocationSlug: PortfolioGroupChartsColorSlug;
   colorPlanGroupSlug: "inversiones" | "brokerage" | "retirement";
+  /** Nav node `color_rgb` for this group page (Total line / consolidated Δ). */
+  groupColorRgb?: string | null;
+  /** Nav `portfolio_groups.slug` (e.g. `brokerage_acciones`) for color fallback. */
+  navGroupSlug?: string;
 }) {
   const {
     displayValuationBlock,
@@ -29,6 +33,8 @@ export function usePortfolioGroupCharts(opts: {
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug,
+    groupColorRgb,
+    navGroupSlug,
   } = opts;
 
   const valuationBlockForChart = useMemo(() => {
@@ -57,8 +63,8 @@ export function usePortfolioGroupCharts(opts: {
     if (!accLines?.length) {
       return { byDataKey: new Map<string, string>(), byAccountId: new Map<number, string>() };
     }
-    return buildGroupTabColorMaps(chartColorSlug, accLines);
-  }, [chartColorSlug, displayValuationBlock]);
+    return buildGroupTabColorMaps(chartColorSlug, accLines, groupColorRgb);
+  }, [chartColorSlug, displayValuationBlock, groupColorRgb]);
 
   const groupPerfBarSeries = useMemo(() => {
     if (!displayGroupPerf?.bar_accounts.length) return [];
@@ -68,7 +74,7 @@ export function usePortfolioGroupCharts(opts: {
       dataKey: a.bar_data_key,
       color_rgb: a.color_rgb,
     }));
-    const maps = buildGroupTabColorMaps(chartColorSlug, lines);
+    const maps = buildGroupTabColorMaps(chartColorSlug, lines, groupColorRgb);
     return displayGroupPerf.bar_accounts.map((a) => ({
       dataKey: a.bar_data_key,
       name: `Δ ${a.name}`,
@@ -77,16 +83,19 @@ export function usePortfolioGroupCharts(opts: {
         maps.byDataKey.get(a.bar_data_key) ??
         "#60a5fa",
     }));
-  }, [chartColorSlug, displayGroupPerf, groupColorMaps]);
+  }, [chartColorSlug, displayGroupPerf, groupColorMaps, groupColorRgb]);
 
-  const consolidatedBarColor = allocationBucketColor(pieAllocationSlug as AssetGroupSlug);
+  const groupTotalStroke = useMemo(
+    () => groupTabTotalStroke(groupColorRgb, navGroupSlug ?? pieAllocationSlug),
+    [groupColorRgb, navGroupSlug, pieAllocationSlug]
+  );
 
   return {
     valuationBlockForChart,
     groupPerfForChart,
     groupColorMaps,
     groupPerfBarSeries,
-    consolidatedBarColor,
+    groupTotalStroke,
     colorPlanGroupSlug,
     chartColorSlug,
     pieAllocationSlug,

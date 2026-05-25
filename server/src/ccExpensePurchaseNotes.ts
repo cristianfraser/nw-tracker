@@ -1,0 +1,98 @@
+import { db } from "./db.js";
+import { checkingAccountId } from "./checkingCartolaImport.js";
+import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
+import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+
+export function purchaseNotesMapKey(accountId: number, purchaseKey: string): string {
+  return `${accountId}|${purchaseKey}`;
+}
+
+function accountAllowedForExpensePurchaseNotes(accountId: number): boolean {
+  if (listCreditCardMasterAccountIds().includes(accountId)) return true;
+  try {
+    return accountId === checkingAccountId();
+  } catch {
+    return false;
+  }
+}
+
+export function loadCcExpensePurchaseNotes(accountIds: number[]): Map<string, string> {
+  const out = new Map<string, string>();
+  if (accountIds.length === 0) return out;
+  const ph = accountIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT account_id, purchase_key, notes
+       FROM cc_expense_purchase_notes
+       WHERE account_id IN (${ph})`
+    )
+    .all(...accountIds) as { account_id: number; purchase_key: string; notes: string }[];
+  for (const row of rows) {
+    out.set(purchaseNotesMapKey(row.account_id, row.purchase_key), row.notes ?? "");
+  }
+  return out;
+}
+
+export function getCcExpensePurchaseNote(accountId: number, purchaseKey: string): string {
+  const row = db
+    .prepare(
+      `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
+    )
+    .get(accountId, purchaseKey) as { notes: string } | undefined;
+  return row?.notes ?? "";
+}
+
+export function setCcExpensePurchaseNote(opts: {
+  accountId: number;
+  purchaseKey: string;
+  notes: string | null | undefined;
+}): { notes: string } {
+  const purchaseKey = String(opts.purchaseKey ?? "").trim();
+  if (!purchaseKey) {
+    throw new Error("purchase_key required");
+  }
+  const allowed = accountAllowedForExpensePurchaseNotes(opts.accountId);
+  if (!allowed) {
+    throw new Error("account not in credit card expenses scope");
+  }
+
+  const text = String(opts.notes ?? "").trim();
+  if (!text) {
+    db.prepare(
+      `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
+    ).run(opts.accountId, purchaseKey);
+    return { notes: "" };
+  }
+
+  db.prepare(
+    `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes, updated_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(account_id, purchase_key) DO UPDATE SET
+       notes = excluded.notes,
+       updated_at = excluded.updated_at`
+  ).run(opts.accountId, purchaseKey, text);
+  return { notes: text };
+}
+
+export type FlowCcExpenseLineBeforeNotes = Omit<
+  FlowCcExpenseLineRow,
+  "purchase_key" | "purchase_notes"
+>;
+
+export function enrichFlowLinesWithPurchaseNotes(
+  lines: FlowCcExpenseLineBeforeNotes[],
+  notesByKey?: Map<string, string>
+): FlowCcExpenseLineRow[] {
+  const accountIds = [...new Set(lines.map((ln) => ln.account_id))];
+  const notes =
+    notesByKey ??
+    loadCcExpensePurchaseNotes(
+      accountIds.length > 0 ? accountIds : listCreditCardMasterAccountIds()
+    );
+  return lines.map((ln) => {
+    const purchase_key = resolvePurchaseKeyForGastosLine(ln);
+    const purchase_notes = notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ?? "";
+    return { ...ln, purchase_key, purchase_notes };
+  });
+}

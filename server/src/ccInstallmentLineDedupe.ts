@@ -16,14 +16,12 @@ export type CcStatementLineForInstallmentTotals = {
   amount_usd?: number | null;
   valor_cuota_mensual_clp: number | null;
   valor_cuota_mensual_usd?: number | null;
+  nro_cuota_current?: number | null;
+  nro_cuota_total?: number | null;
   statement_currency?: string | null;
   /** Statement close (ISO) for USD→CLP on dedupe comparisons. */
   fx_date_iso?: string | null;
 };
-
-function statementGroupKey(line: CcStatementLineForInstallmentTotals): string {
-  return `${line.account_id}|${line.statement_date}`;
-}
 
 /** PDF contract summary row — not a separate purchase from indexed cuota lines. */
 export function isInstallmentContractSummaryMerchant(
@@ -34,7 +32,8 @@ export function isInstallmentContractSummaryMerchant(
   return (
     u.includes("N/CUOTAS PRECIO") ||
     u.includes("TRES CUOTAS PREC") ||
-    /\d{2}\s+CUOTAS\s+COMERC/.test(u)
+    /\d{2}\s+CUOTAS\s+COMERC/.test(u) ||
+    /\d{2}\s+CUOTAS,\s+TASA/.test(u)
   );
 }
 
@@ -49,6 +48,7 @@ export function merchantStemForInstallmentDedupe(
     " N/CUOTAS PRECIO",
     " TRES CUOTAS PREC",
     " CUOTAS COMERC",
+    " CUOTAS, TASA",
     " CUOTA COMERCIO",
   ];
   let cutAt = s.length;
@@ -65,6 +65,20 @@ function stemsMatch(a: string, b: string): boolean {
   const ua = a.toUpperCase();
   const ub = b.toUpperCase();
   return ua.startsWith(ub) || ub.startsWith(ua);
+}
+
+/** Plan resumen row (e.g. «03 CUOTAS, TASA») before indexed cuota lines appear on later statements. */
+export function isUnindexedInstallmentResumenLine(
+  line: Pick<
+    CcStatementLineForInstallmentTotals,
+    "installment_flag" | "nro_cuota_current" | "nro_cuota_total"
+  > & { nro_cuota_current?: number | null; nro_cuota_total?: number | null }
+): boolean {
+  if (line.installment_flag !== 1) return false;
+  const cur = line.nro_cuota_current;
+  const tot = line.nro_cuota_total;
+  if (cur != null && Number(cur) > 0) return false;
+  return tot != null && Number(tot) > 0;
 }
 
 export function installmentCuotaAmountClp(
@@ -94,17 +108,16 @@ export function redundantInstallmentSummaryLineIds(
   lines: CcStatementLineForInstallmentTotals[]
 ): Set<number> {
   const redundant = new Set<number>();
-  const byAccountStatementDate = new Map<string, CcStatementLineForInstallmentTotals[]>();
+  const byAccount = new Map<number, CcStatementLineForInstallmentTotals[]>();
   for (const ln of lines) {
-    const key = statementGroupKey(ln);
-    const bucket = byAccountStatementDate.get(key) ?? [];
+    const bucket = byAccount.get(ln.account_id) ?? [];
     bucket.push(ln);
-    byAccountStatementDate.set(key, bucket);
+    byAccount.set(ln.account_id, bucket);
   }
 
-  for (const stmtLines of byAccountStatementDate.values()) {
+  for (const accountLines of byAccount.values()) {
     const canonical: { stem: string; cuota: number }[] = [];
-    for (const ln of stmtLines) {
+    for (const ln of accountLines) {
       if (ln.installment_flag !== 1) continue;
       if (isInstallmentContractSummaryMerchant(ln.merchant)) continue;
       const cuota = installmentCuotaAmountClp(ln);
@@ -115,8 +128,11 @@ export function redundantInstallmentSummaryLineIds(
       });
     }
 
-    for (const ln of stmtLines) {
-      if (!isInstallmentContractSummaryMerchant(ln.merchant)) continue;
+    for (const ln of accountLines) {
+      const isSummary =
+        isInstallmentContractSummaryMerchant(ln.merchant) ||
+        isUnindexedInstallmentResumenLine(ln);
+      if (!isSummary) continue;
       const cuota = installmentCuotaAmountClp(ln);
       if (cuota == null || cuota <= 0) continue;
       const stem = merchantStemForInstallmentDedupe(ln.merchant);

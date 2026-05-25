@@ -13,11 +13,11 @@ import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
-import { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "../components/AppLineChart";
-import { Table } from "../components/Table";
+import { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "../components/charts/AppLineChart";
+import { Table } from "../components/ui/Table";
 import { formatClp, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
-import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/ValuationLineCharts";
+import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/charts/ValuationLineCharts";
 import { cn } from "../cn";
 import { useTranslation } from "../i18n";
 

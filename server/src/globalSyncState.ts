@@ -11,10 +11,14 @@ export type GlobalSyncStateFile = {
   afpLastUnitClp?: number;
   /** Last Chile calendar day we applied Fintual NAV (after 18:00 policy). */
   fintualLastAppliedYmd?: string;
+  /** Fund cuota publish date (`as_of_date`) at last apply — may be before poll calendar day. */
+  fintualLastAppliedPublishYmd?: string;
   /** Signature of mapped goals' NAV at last apply (stable ordering). */
   fintualLastAppliedSig?: string;
   /** Last Chile day we attempted Fintual fetch after 18:00 (even if no DB change). */
   fintualLastCheckYmd?: string;
+  /** Fund publish date resolved at last post-18:00 poll. */
+  fintualLastPublishYmd?: string;
   /** Mapped-goals NAV signature at the last post-18:00 poll (see {@link isFintualSyncStale}). */
   fintualLastCheckSig?: string;
   /** Chile day when post-18:00 Fintual poll matched DB for both prior-day and today `as_of`. */
@@ -31,6 +35,8 @@ export type GlobalSyncStateFile = {
   equityEodLastNySessionYmd?: string;
   /** Last UTC day we synced crypto EOD. */
   equityEodLastCryptoUtcYmd?: string;
+  /** Sources marked stale from the sync log UI until the next successful sync step. */
+  userForcedStale?: string[];
 };
 
 export function globalSyncStatePath(): string {

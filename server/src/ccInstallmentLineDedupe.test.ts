@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isInstallmentContractSummaryMerchant,
+  isUnindexedInstallmentResumenLine,
   merchantStemForInstallmentDedupe,
   redundantInstallmentSummaryLineIds,
 } from "./ccInstallmentLineDedupe.js";
@@ -16,6 +17,30 @@ describe("isInstallmentContractSummaryMerchant", () => {
       isInstallmentContractSummaryMerchant("8 BITS TRES CUOTAS PREC 0,00 %")
     ).toBe(true);
     expect(isInstallmentContractSummaryMerchant("VISTA LIBRE")).toBe(false);
+    expect(
+      isInstallmentContractSummaryMerchant(
+        "PARIS INTERNET TCOM 2 03 CUOTAS, TASA 3,01 %"
+      )
+    ).toBe(true);
+  });
+});
+
+describe("isUnindexedInstallmentResumenLine", () => {
+  it("detects TCOM resumen rows without cuota index", () => {
+    expect(
+      isUnindexedInstallmentResumenLine({
+        installment_flag: 1,
+        nro_cuota_current: null,
+        nro_cuota_total: 3,
+      })
+    ).toBe(true);
+    expect(
+      isUnindexedInstallmentResumenLine({
+        installment_flag: 1,
+        nro_cuota_current: 1,
+        nro_cuota_total: 3,
+      })
+    ).toBe(false);
   });
 });
 
@@ -58,6 +83,35 @@ describe("redundantInstallmentSummaryLineIds", () => {
       },
     ]);
     expect(redundant.size).toBe(0);
+  });
+
+  it("drops TCOM resumen when indexed cuota exists on a later statement", () => {
+    const redundant = redundantInstallmentSummaryLineIds([
+      {
+        statement_line_id: 10,
+        account_id: 35,
+        statement_date: "22/03/2023",
+        merchant: "PARIS INTERNET TCOM 2",
+        installment_flag: 1,
+        amount_clp: 233_980,
+        valor_cuota_mensual_clp: 86_497,
+        nro_cuota_current: null,
+        nro_cuota_total: 3,
+      },
+      {
+        statement_line_id: 11,
+        account_id: 35,
+        statement_date: "24/04/2023",
+        merchant: "PARIS INTERNET TCOM 2",
+        installment_flag: 1,
+        amount_clp: 233_980,
+        valor_cuota_mensual_clp: 86_497,
+        nro_cuota_current: 1,
+        nro_cuota_total: 3,
+      },
+    ]);
+    expect(redundant.has(10)).toBe(true);
+    expect(redundant.has(11)).toBe(false);
   });
 });
 

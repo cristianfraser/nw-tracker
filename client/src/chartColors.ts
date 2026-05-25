@@ -1,3 +1,4 @@
+import { GROUP_TAB_DEP_TOTAL, GROUP_TAB_VAL_TOTAL } from "./groupTabAggregation";
 import type { AssetGroupSlug, TimeseriesAccountLine } from "./types";
 
 export function parseRgbTriplet(raw: string | null | undefined): [number, number, number] | null {
@@ -163,6 +164,17 @@ export function allocationBucketColor(groupSlug: string, colorRgb?: string | nul
   return BUCKET_STROKE[groupSlug] ?? shadesForGroupSlug(groupSlug)[3] ?? "#94a3b8";
 }
 
+/** Stroke for synthetic group Total (`__group_val_total`, perf Δ total) from nav `color_rgb`. */
+export function groupTabTotalStroke(
+  groupTotalColorRgb: string | null | undefined,
+  fallbackSlug: string
+): string {
+  return chartStrokeFromRgbTriplet(
+    groupTotalColorRgb,
+    allocationBucketColor(fallbackSlug, groupTotalColorRgb)
+  );
+}
+
 export function overviewLineColor(dataKey: string): string {
   return BUCKET_STROKE[dataKey] ?? shadesForGroupSlug(dataKey === "cash" ? "cash_eqs" : dataKey)[3] ?? "#94a3b8";
 }
@@ -178,6 +190,8 @@ export type ChartColorPlan =
     /** Brokerage tab: when `crypto`, BTC/ETH lines use the crypto palette (same as `/brokerage/crypto`). */
     brokerageSubgroup?: "acciones" | "mutual_funds" | "crypto";
     accounts: TimeseriesAccountLine[];
+    /** Nav / portfolio group color for synthetic Total line (`__group_val_total`). */
+    groupTotalColorRgb?: string | null;
   };
 
 export type LineSeriesColorInput = {
@@ -264,7 +278,8 @@ export function resolveLineSeriesColors(
   if (plan.kind === "group-tab") {
     const colorSlug =
       plan.groupSlug === "brokerage" && plan.brokerageSubgroup === "crypto" ? "crypto" : plan.groupSlug;
-    const { byDataKey } = buildGroupTabColorMaps(colorSlug, plan.accounts);
+    const { byDataKey } = buildGroupTabColorMaps(colorSlug, plan.accounts, plan.groupTotalColorRgb);
+    const totalStroke = groupTabTotalStroke(plan.groupTotalColorRgb, colorSlug);
     return series.map((s) => {
       if (
         plan.groupSlug === "liabilities" &&
@@ -278,8 +293,8 @@ export function resolveLineSeriesColors(
           (s.dataKey.includes("disponible_total") ? "#2dd4bf" : "#5eead4");
         return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
       }
-      if (plan.groupSlug === "liabilities" && s.dataKey === "__group_val_total") {
-        const stroke = strokeFromAccountColorRgb(s.color_rgb) ?? "#cbd5e1";
+      if (s.dataKey === GROUP_TAB_VAL_TOTAL || s.dataKey === GROUP_TAB_DEP_TOTAL) {
+        const stroke = totalStroke;
         return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
       }
       const base = byDataKey.get(s.dataKey) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
@@ -396,8 +411,10 @@ export type ChartSeriesColorKey = Pick<
 /** Line chart (dataKey) + pie (account_id) use the same map on class tabs. */
 export function buildGroupTabColorMaps(
   groupSlug: AssetGroupSlug | "crypto",
-  accounts: ChartSeriesColorKey[]
+  accounts: ChartSeriesColorKey[],
+  groupTotalColorRgb?: string | null
 ): { byDataKey: Map<string, string>; byAccountId: Map<number, string> } {
+  const totalStroke = groupTabTotalStroke(groupTotalColorRgb, groupSlug);
   const byDataKey = new Map<string, string>();
   const byAccountId = new Map<number, string>();
   let hueIndex = 0;
@@ -411,7 +428,7 @@ export function buildGroupTabColorMaps(
     } else if (portfolioGroupSlug) {
       stroke = syntheticPortfolioGroupStroke(portfolioGroupSlug);
       hueIndex += 1;
-    } else if (a.account_id === -1) stroke = "#cbd5e1";
+    } else if (a.account_id === -1) stroke = totalStroke;
     else if (a.account_id === -4) stroke = "#fb7185";
     else if (groupSlug === "brokerage" && isFintualRnBrokerageAccountName(a.name)) {
       stroke = FINTUAL_RN_BROKER_STROKE;

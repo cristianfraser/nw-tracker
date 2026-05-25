@@ -2,12 +2,19 @@
  * Upsert installment purchases + payments from `cfraser/cc-statements-parsed-all.csv` into SQLite.
  *
  * Usage (from repo root or server/):
- *   npx tsx server/scripts/import-cc-parsed-to-db.ts --santander [--csv=/abs/path.csv] [--dry-run]
+ *   npx tsx server/scripts/import-cc-parsed-to-db.ts [--csv=/abs/path.csv] [--dry-run]
+ *   npx tsx server/scripts/import-cc-parsed-to-db.ts --santander [--csv=...] [--dry-run]
  *   npx tsx server/scripts/import-cc-parsed-to-db.ts --account-id=NN [--csv=...] [--dry-run]
+ *
+ * By default, master accounts are inferred from each row's `card_last4` or `source_pdf`
+ * (e.g. `… tarjeta 4141.pdf`). No account id is required when the CSV only contains known cards.
+ *
+ * Default: **merge** — upsert statements/lines and installment ledger without wiping existing months.
+ * Pass `--wipe` to delete all statements and reload the installment ledger for the account(s).
  *
  * Requires migration `020_cc_installment_ledger.sql` applied (`npm run migrate`).
  *
- * Replaces all `cc_installment_*` rows for the given account on each run (full reload from CSV),
+ * With `--wipe`, replaces all `cc_installment_*` rows for the given account (full reload from CSV),
  * after merging duplicate PDF contracts that shared different `canonical_row_id` (same tarjeta,
  * misma fecha de compra, mismo comercio, mismo nº de cuotas; el monto del contrato se toma como el máximo entre
  * `amount_clp`, `monto_origen_operacion_clp` y `monto_total_a_pagar_clp` para alinear filas resumen «03 CUOTAS COMERC» con cuotas sueltas).
@@ -25,17 +32,19 @@ import { fileURLToPath } from "node:url";
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
 import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
 import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccInstallmentLedgerDb.js";
-import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import { loadCreditCardInstallmentPurchases } from "../src/creditCardInstallments.js";
-import { backfillMissingInstallmentPaymentsForAccount } from "../src/ccInstallmentPaymentBackfill.js";
-import { isInstallmentContractSummaryMerchant } from "../src/ccInstallmentLineDedupe.js";
 import {
-  listCreditCardGroupMasterAccountIds,
-  resolveMasterAccountIdForCardLast4,
-} from "../src/creditCardTree.js";
+  mergeCcAccountFromParsedRows,
+  mergeInstallmentLedgerFromParsedRows,
+  replaceStatementKeysFromRecords,
+} from "../src/ccInstallmentLedgerMerge.js";
+import { isInstallmentContractSummaryMerchant } from "../src/ccInstallmentLineDedupe.js";
+import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
+import {
+  cardLast4FromParsedRow,
+  resolveImportAccountIds,
+} from "../src/ccParsedImportAccounts.js";
+import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -108,14 +117,6 @@ function txDateIso(row: Record<string, string>): string | null {
   return parseDdMmYyToIso(raw);
 }
 
-function cardLast4FromRow(row: Record<string, string>): string {
-  const l4 = String(row.card_last4 ?? "").trim();
-  if (l4) return l4;
-  const pdf = String(row.source_pdf ?? "");
-  const m = /(\d{4})\.pdf/i.exec(pdf);
-  return m?.[1] ?? "";
-}
-
 function partitionRecordsByAccount(
   records: Record<string, string>[],
   accountIds: number[]
@@ -125,31 +126,70 @@ function partitionRecordsByAccount(
   for (const id of accountIds) byAcc.set(id, []);
 
   for (const row of records) {
-    const l4 = cardLast4FromRow(row);
-    const accId = resolveMasterAccountIdForCardLast4(l4);
+    const l4 = cardLast4FromParsedRow(row);
+    const accId = resolveMasterAccountIdForImportCardLast4(l4);
     if (accId == null || !allowed.has(accId)) continue;
     byAcc.get(accId)!.push(row);
   }
   return byAcc;
 }
 
+function logAccountRouting(
+  discovery: ReturnType<typeof resolveImportAccountIds>["discovery"],
+  accountIds: number[]
+): void {
+  const notes = accountIds.map((id) => {
+    const row = db
+      .prepare(`SELECT name, notes FROM accounts WHERE id = ?`)
+      .get(id) as { name: string; notes: string | null } | undefined;
+    const m = /credit_card_master\|[^|]+\|(\d{4})/.exec(String(row?.notes ?? ""));
+    const l4 = m?.[1] ?? "?";
+    return `${id} (${l4} ${row?.name ?? ""})`.trim();
+  });
+  console.log(`# import targets (${accountIds.length}): ${notes.join("; ")}`);
+  if (discovery.unknownLast4.length > 0) {
+    console.warn(
+      `# CSV rows skipped — no master account for last4: ${discovery.unknownLast4.join(", ")}`
+    );
+  }
+  if (discovery.rowsWithoutCard > 0) {
+    console.warn(`# CSV rows skipped — missing card_last4 / source_pdf last4: ${discovery.rowsWithoutCard}`);
+  }
+}
+
 function main() {
   const santander = process.argv.includes("--santander");
   const accountIdArg = Number(arg("account-id"));
   const dry = process.argv.includes("--dry-run");
+  const wipe = process.argv.includes("--wipe");
+  if (process.argv.includes("--merge")) {
+    console.warn("# --merge is the default since 2026-05; flag is optional.");
+  }
+  const replaceAccount = wipe;
   const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
 
-  let accountIds: number[];
-  if (santander) {
-    accountIds = listCreditCardGroupMasterAccountIds("santander");
-    if (accountIds.length === 0) {
-      console.error("No master accounts under credit_card_group santander. Run migrate + seed.");
-      process.exit(1);
+  const records = readCommaCsvRecords(csvPath);
+  if (records.length === 0) {
+    console.error(`No rows read from ${csvPath}`);
+    process.exit(1);
+  }
+
+  const accountIdFilter =
+    Number.isFinite(accountIdArg) && accountIdArg > 0 ? accountIdArg : undefined;
+
+  const { accountIds, discovery } = resolveImportAccountIds({
+    records,
+    accountId: accountIdFilter,
+    groupSlug: santander ? "santander" : undefined,
+  });
+
+  if (accountIds.length === 0) {
+    console.error(
+      "No master accounts to import. CSV rows need card_last4 or a last4 in source_pdf, matching a configured card."
+    );
+    if (discovery.unknownLast4.length > 0) {
+      console.error(`Unknown last4 in CSV: ${discovery.unknownLast4.join(", ")}`);
     }
-  } else if (Number.isFinite(accountIdArg) && accountIdArg > 0) {
-    accountIds = [accountIdArg];
-  } else {
-    console.error("Use --santander or --account-id=NN.");
     process.exit(1);
   }
 
@@ -161,14 +201,12 @@ function main() {
     }
   }
 
-  const records = readCommaCsvRecords(csvPath);
-  if (records.length === 0) {
-    console.error(`No rows read from ${csvPath}`);
-    process.exit(1);
+  if (!dry) {
+    console.log(`# import-cc-parsed mode: ${wipe ? "wipe (full account reload)" : "merge (default)"}`);
+    logAccountRouting(discovery, accountIds);
   }
 
   const byAccountRecords = partitionRecordsByAccount(records, accountIds);
-  const baselineIds = new Set(loadCreditCardInstallmentPurchases().map((r) => r.purchase_id));
 
   let totalPurchases = 0;
   let totalPayments = 0;
@@ -186,207 +224,79 @@ function main() {
       continue;
     }
 
-  const byLoan = new Map<string, Agg>();
-  for (const row of accountRecords) {
-    const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-    if (!inst) continue;
-    if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
-    if (installmentContractAmountClp(row) <= 0) continue;
-    const loanKey = makeLoanKey(row);
-    if (!loanKey) continue;
-    const cg = String(row.card_group ?? "A").trim() || "A";
-    const g = byLoan.get(loanKey) ?? { card_group: cg, canonical_row_id: "", rows: [] };
-    g.rows.push(row);
-    g.canonical_row_id = pickCanonicalForLoan(g.rows);
-    byLoan.set(loanKey, g);
-  }
+    let purchaseUpserts = 0;
+    let paymentUpserts = 0;
+    let gapFilled = 0;
+    let valuationMonthsSynced = 0;
+    let statementCount = 0;
+    let statementLineCount = 0;
+    let categoriesRestored = 0;
+    let billingSnapshots = 0;
 
-  const insP = db.prepare(
-    `INSERT INTO cc_installment_purchases (
-       account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
-       purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id
-     ) VALUES (
-       @account_id, @card_group, @canonical_row_id, @dedupe_key, @parser_row_id_sample, @source_pdf_sample,
-       @purchase_date, @total_amount_clp, @cuotas_totales, @merchant, @description_merged, @matched_baseline_purchase_id
-     )
-     ON CONFLICT(account_id, card_group, canonical_row_id) DO UPDATE SET
-       dedupe_key = excluded.dedupe_key,
-       parser_row_id_sample = excluded.parser_row_id_sample,
-       source_pdf_sample = excluded.source_pdf_sample,
-       purchase_date = excluded.purchase_date,
-       total_amount_clp = excluded.total_amount_clp,
-       cuotas_totales = excluded.cuotas_totales,
-       merchant = excluded.merchant,
-       description_merged = excluded.description_merged,
-       matched_baseline_purchase_id = excluded.matched_baseline_purchase_id`
-  );
-
-  const insPay = db.prepare(
-    `INSERT INTO cc_installment_payments (
-       purchase_id, pay_by_date, statement_date, source_pdf, amount_clp, cuota_current, cuota_total, parser_row_id
-     ) VALUES (
-       @purchase_id, @pay_by_date, @statement_date, @source_pdf, @amount_clp, @cuota_current, @cuota_total, @parser_row_id
-     )
-     ON CONFLICT(purchase_id, pay_by_date) DO UPDATE SET
-       statement_date = excluded.statement_date,
-       source_pdf = excluded.source_pdf,
-       amount_clp = excluded.amount_clp,
-       cuota_current = excluded.cuota_current,
-       cuota_total = excluded.cuota_total,
-       parser_row_id = excluded.parser_row_id`
-  );
-
-  const selId = db.prepare(
-    `SELECT id FROM cc_installment_purchases WHERE account_id = ? AND card_group = ? AND canonical_row_id = ?`
-  );
-
-  let purchaseUpserts = 0;
-  let paymentUpserts = 0;
-  let gapFilled = 0;
-  let valuationMonthsSynced = 0;
-  let statementCount = 0;
-  let statementLineCount = 0;
-  let categoriesRestored = 0;
-  let billingSnapshots = 0;
-
-  const run = db.transaction(() => {
     if (!dry) {
-      db.prepare(
-        `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
-      ).run(accountId);
-      db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
-      const st = importCcStatementsFromCsvRecords(accountId, accountRecords);
-      statementCount = st.statementCount;
-      statementLineCount = st.lineCount;
-      categoriesRestored += st.categoriesRestored;
-    }
-
-    for (const agg of byLoan.values()) {
-      const sorted = [...agg.rows].sort((a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? ""));
-      const first = sorted[0]!;
-      let purchaseDate: string | null = null;
-      for (const r of sorted) {
-        const iso = txDateIso(r);
-        if (iso && (!purchaseDate || iso < purchaseDate)) purchaseDate = iso;
-      }
-      if (!purchaseDate) purchaseDate = parseDdMmYyToIso(first.statement_date ?? "") ?? "2000-01-01";
-
-      let maxTotal = 0;
-      let maxCuotas = 0;
-      for (const r of sorted) {
-        if (isInstallmentContractSummaryMerchant(String(r.merchant ?? ""))) continue;
-        maxTotal = Math.max(maxTotal, installmentContractAmountClp(r));
-        const nt = parseInt10(String(r.nro_cuota_total ?? ""));
-        if (nt != null && nt > 0) maxCuotas = Math.max(maxCuotas, nt);
-      }
-      if (maxCuotas <= 0) continue;
-
-      const matched = String(first.matched_excel_row ?? "").trim();
-      const matched_baseline = baselineIds.has(matched) ? matched : null;
-
-      const purchaseParams = {
-        account_id: accountId,
-        card_group: agg.card_group,
-        canonical_row_id: agg.canonical_row_id,
-        dedupe_key: String(first.dedupe_key ?? "").trim() || null,
-        parser_row_id_sample: String(first.row_id ?? "").trim() || null,
-        source_pdf_sample: String(first.source_pdf ?? "").trim() || null,
-        purchase_date: purchaseDate,
-        total_amount_clp: maxTotal,
-        cuotas_totales: maxCuotas,
-        merchant: String(first.merchant ?? "").trim() || null,
-        description_merged: String(first.description_merged ?? "").trim() || null,
-        matched_baseline_purchase_id: matched_baseline,
-      };
-
-      if (!dry) {
-        insP.run(purchaseParams);
-      }
-      purchaseUpserts++;
-
-      const pid = dry
-        ? 0
-        : (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
-
-      const payGroups = new Map<string, Record<string, string>[]>();
-      for (const r of sorted) {
-        const pdf = String(r.source_pdf ?? "").trim();
-        const sd = String(r.statement_date ?? "").trim();
-        const pk = `${pdf}\t${sd}`;
-        const list = payGroups.get(pk) ?? [];
-        list.push(r);
-        payGroups.set(pk, list);
-      }
-
-      for (const list of payGroups.values()) {
-        const chosen = [...list].sort((a, b) => {
-          const da = String(a.is_duplicate_across_statements ?? "").toLowerCase() === "true";
-          const dbi = String(b.is_duplicate_across_statements ?? "").toLowerCase() === "true";
-          if (da !== dbi) return da ? 1 : -1;
-          return String(a.row_id ?? "").localeCompare(String(b.row_id ?? ""));
-        })[0]!;
-
-        const payBy = resolveInstallmentPayByIso({
-          pay_by: chosen.pay_by,
-          statement_date: chosen.statement_date,
-          period_to: chosen.period_to,
-          transaction_date: chosen.transaction_date,
+      if (replaceAccount) {
+        const st = importCcStatementsFromCsvRecords(accountId, accountRecords);
+        statementCount = st.statementCount;
+        statementLineCount = st.lineCount;
+        categoriesRestored += st.categoriesRestored;
+        const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
+          replaceLedger: true,
         });
-        if (!payBy) {
-          console.warn("skip payment: no pay_by", agg.canonical_row_id, chosen.source_pdf);
-          continue;
+        purchaseUpserts = ledger.purchaseUpserts;
+        paymentUpserts = ledger.paymentUpserts;
+        gapFilled = ledger.gapFilled;
+        valuationMonthsSynced = ledger.valuationMonthsSynced;
+        billingSnapshots = ledger.billingSnapshots;
+      } else {
+        const merged = mergeCcAccountFromParsedRows(accountId, accountRecords, {
+          replaceLedger: false,
+          replaceStatementKeys: replaceStatementKeysFromRecords(accountRecords),
+        });
+        statementCount = merged.statements.statementCount;
+        statementLineCount = merged.statements.linesInserted;
+        categoriesRestored += merged.statements.categoriesRestored;
+        gapFilled = merged.ledger.gapFilled;
+        valuationMonthsSynced = merged.ledger.valuationMonthsSynced;
+        billingSnapshots = merged.ledger.billingSnapshots;
+        purchaseUpserts = merged.ledger.purchaseUpserts;
+        paymentUpserts = merged.ledger.paymentUpserts;
+      }
+    } else {
+      const byLoan = new Map<string, Agg>();
+      for (const row of accountRecords) {
+        const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
+        if (!inst) continue;
+        if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
+        if (installmentContractAmountClp(row) <= 0) continue;
+        const loanKey = makeLoanKey(row);
+        if (!loanKey) continue;
+        const cg = String(row.card_group ?? "A").trim() || "A";
+        const g = byLoan.get(loanKey) ?? { card_group: cg, canonical_row_id: "", rows: [] };
+        g.rows.push(row);
+        g.canonical_row_id = pickCanonicalForLoan(g.rows);
+        byLoan.set(loanKey, g);
+      }
+      purchaseUpserts = byLoan.size;
+      for (const agg of byLoan.values()) {
+        const sorted = [...agg.rows].sort(
+          (a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? "")
+        );
+        const payGroups = new Map<string, Record<string, string>[]>();
+        for (const r of sorted) {
+          const pk = `${r.source_pdf}\t${r.statement_date}`;
+          const list = payGroups.get(pk) ?? [];
+          list.push(r);
+          payGroups.set(pk, list);
         }
-        const cuotaAmt = parseInt10(String(chosen.valor_cuota_mensual_clp ?? ""));
-        if (cuotaAmt == null || cuotaAmt <= 0) continue;
-        const ccRaw = String(chosen.nro_cuota_current ?? "").trim();
-        const cuota_current = ccRaw ? parseInt10(ccRaw) : null;
-        const ct = parseInt10(String(chosen.nro_cuota_total ?? ""));
-        const cuota_total = ct != null && ct > 0 ? ct : maxCuotas;
-
-        if (!dry) {
-          insPay.run({
-            purchase_id: pid,
-            pay_by_date: payBy,
-            statement_date: String(chosen.statement_date ?? "").trim() || null,
-            source_pdf: String(chosen.source_pdf ?? "").trim() || null,
-            amount_clp: cuotaAmt,
-            cuota_current,
-            cuota_total,
-            parser_row_id: String(chosen.row_id ?? "").trim() || null,
-          });
-        }
-        paymentUpserts++;
+        paymentUpserts += payGroups.size;
       }
     }
-    if (!dry) {
-      gapFilled = backfillMissingInstallmentPaymentsForAccount(accountId).inserted;
-      valuationMonthsSynced = upsertCreditCardValuationsFromLedger(accountId);
-      billingSnapshots = recomputeCcBillingMonthBalances(accountId);
-    }
-  });
 
-  if (!dry) {
-    run();
-  } else {
-    for (const agg of byLoan.values()) {
-      purchaseUpserts++;
-      const sorted = [...agg.rows].sort((a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? ""));
-      const payGroups = new Map<string, Record<string, string>[]>();
-      for (const r of sorted) {
-        const pk = `${r.source_pdf}\t${r.statement_date}`;
-        const list = payGroups.get(pk) ?? [];
-        list.push(r);
-        payGroups.set(pk, list);
-      }
-      paymentUpserts += payGroups.size;
-    }
-  }
-
-  console.log(
-    dry
-      ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountRecords.length} csv rows`
-      : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}, valuations ${valuationMonthsSynced}, billing ${billingSnapshots}.`
-  );
+    console.log(
+      dry
+        ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountRecords.length} csv rows`
+        : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}, valuations ${valuationMonthsSynced}, billing ${billingSnapshots}.`
+    );
 
     totalPurchases += purchaseUpserts;
     totalPayments += paymentUpserts;
@@ -398,11 +308,11 @@ function main() {
     totalCategoriesRestored += categoriesRestored;
   }
 
-  if (santander || accountIds.length > 1) {
+  if (accountIds.length > 1) {
     console.log(
       dry
-        ? `[dry-run] santander total: ~${totalPurchases} purchases, ~${totalPayments} payments from ${csvPath}`
-        : `Santander import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, ${totalStatements} statements (${totalLines} lines), categories restored ${totalCategoriesRestored}, gap-fill ${totalGap}, valuations ${totalVal}, billing ${totalBilling}.`
+        ? `[dry-run] total: ~${totalPurchases} purchases, ~${totalPayments} payments from ${csvPath}`
+        : `Import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, ${totalStatements} statements (${totalLines} lines), categories restored ${totalCategoriesRestored}, gap-fill ${totalGap}, valuations ${totalVal}, billing ${totalBilling}.`
     );
   }
 }

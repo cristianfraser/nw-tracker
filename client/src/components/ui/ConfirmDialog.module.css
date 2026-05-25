@@ -1,0 +1,26 @@
+.message {
+  margin: 0 0 var(--space-base);
+  font-size: var(--font-size-prose-sm);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.confirmBtn {
+  border-color: var(--danger, #b91c1c);
+  color: var(--danger, #b91c1c);
+}
+
+.confirmBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #b91c1c) 12%, transparent);
+}
+
+.confirmBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

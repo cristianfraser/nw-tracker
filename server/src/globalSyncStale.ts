@@ -3,10 +3,15 @@
  */
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
-import { loadGlobalSyncState, type GlobalSyncStateFile } from "./globalSyncState.js";
+import {
+  loadGlobalSyncState,
+  saveGlobalSyncState,
+  type GlobalSyncStateFile,
+} from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 
 import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock } from "./nyseSession.js";
+import { isFintualFundPublishDay } from "./fintualPublishDate.js";
 import { isChileBusinessDay, isNyseTradingDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { utcTodayYmd } from "./nyseSession.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
@@ -21,6 +26,92 @@ export type GlobalSyncSource =
   | "sbif_utm"
   | "sbif_ipc"
   | "equity_eod";
+
+export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
+  "afp_uno",
+  "fintual",
+  "sbif_usd",
+  "sbif_eur",
+  "sbif_uf",
+  "sbif_utm",
+  "sbif_ipc",
+  "equity_eod",
+] as const;
+
+export function isGlobalSyncSource(value: string): value is GlobalSyncSource {
+  return (GLOBAL_SYNC_SOURCES as readonly string[]).includes(value);
+}
+
+function userForcedStaleSet(state: GlobalSyncStateFile): Set<GlobalSyncSource> {
+  const out = new Set<GlobalSyncSource>();
+  for (const s of state.userForcedStale ?? []) {
+    if (isGlobalSyncSource(s)) out.add(s);
+  }
+  return out;
+}
+
+export function clearUserForcedStale(state: GlobalSyncStateFile, source: GlobalSyncSource): void {
+  const list = state.userForcedStale;
+  if (!list?.length) return;
+  const next = list.filter((s) => s !== source);
+  if (next.length === list.length) return;
+  if (next.length === 0) delete state.userForcedStale;
+  else state.userForcedStale = next;
+}
+
+/** Mark a source stale from the UI until the next successful sync for that source. */
+export function forceSyncSourceStale(source: GlobalSyncSource): GlobalSyncStateFile {
+  const state = loadGlobalSyncState();
+  const list = state.userForcedStale ?? [];
+  if (!list.includes(source)) {
+    state.userForcedStale = [...list, source];
+    saveGlobalSyncState(state);
+  }
+  return state;
+}
+
+function applyUserForcedStaleToRows(
+  rows: SyncSourceStatusRow[],
+  state: GlobalSyncStateFile
+): SyncSourceStatusRow[] {
+  const forced = userForcedStaleSet(state);
+  if (forced.size === 0) return rows;
+  return rows.map((row) => {
+    if (!forced.has(row.source) || row.status === "disabled") return row;
+    return { ...row, status: "stale", stale: true };
+  });
+}
+
+function disabledSyncSources(
+  cl: ChileWallClock,
+  opts?: { bcentralConfigured?: boolean }
+): Set<GlobalSyncSource> {
+  const disabled = new Set<GlobalSyncSource>();
+  if (afpUnoAccountId() == null) disabled.add("afp_uno");
+  const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
+  if (!bde) {
+    disabled.add("sbif_usd");
+    disabled.add("sbif_eur");
+    disabled.add("sbif_uf");
+    disabled.add("sbif_utm");
+    disabled.add("sbif_ipc");
+  }
+  return disabled;
+}
+
+function mergeUserForcedIntoStaleList(
+  stale: GlobalSyncSource[],
+  state: GlobalSyncStateFile,
+  disabled: Set<GlobalSyncSource>
+): GlobalSyncSource[] {
+  const forced = userForcedStaleSet(state);
+  if (forced.size === 0) return stale;
+  const out = new Set(stale);
+  for (const s of forced) {
+    if (!disabled.has(s)) out.add(s);
+  }
+  return [...out];
+}
 
 function afpUnoAccountId(): number | null {
   const row = db
@@ -46,12 +137,28 @@ export function isAfpUnoSpotStale(
  */
 export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
   if (cl.hour < 18) return false;
-  if (!isChileBusinessDay(cl.ymd)) return false;
-  if (state.fintualEveningSettledYmd === cl.ymd) return false;
+  if (!isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) return false;
+  if (
+    state.fintualEveningSettledYmd === cl.ymd &&
+    state.fintualLastCheckYmd === cl.ymd &&
+    state.fintualLastPublishYmd != null &&
+    state.fintualLastPublishYmd === state.fintualLastAppliedPublishYmd &&
+    state.fintualLastCheckSig != null &&
+    state.fintualLastCheckSig === state.fintualLastAppliedSig
+  ) {
+    return false;
+  }
   if (state.fintualLastCheckYmd !== cl.ymd) return true;
   if (!state.fintualLastAppliedSig) return true;
   if (!state.fintualLastCheckSig) return true;
   if (state.fintualLastCheckSig !== state.fintualLastAppliedSig) return true;
+  if (
+    state.fintualLastPublishYmd != null &&
+    state.fintualLastAppliedPublishYmd != null &&
+    state.fintualLastPublishYmd !== state.fintualLastAppliedPublishYmd
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -116,12 +223,11 @@ export function shouldRunSyncSource(
   return stale.includes(source);
 }
 
-export function staleSyncSources(
+function naturalStaleSyncSources(
   cl: ChileWallClock,
   state: GlobalSyncStateFile,
   opts?: { force?: boolean; forceSbif?: boolean; bcentralConfigured?: boolean }
 ): GlobalSyncSource[] {
-  loadRootDotenv();
   const out: GlobalSyncSource[] = [];
   if (isAfpUnoSpotStale(cl, state, opts)) out.push("afp_uno");
   if (isFintualSyncStale(cl, state)) out.push("fintual");
@@ -137,6 +243,16 @@ export function staleSyncSources(
   }
   if (isEquityEodStale(state, opts)) out.push("equity_eod");
   return out;
+}
+
+export function staleSyncSources(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  opts?: { force?: boolean; forceSbif?: boolean; bcentralConfigured?: boolean }
+): GlobalSyncSource[] {
+  loadRootDotenv();
+  const natural = naturalStaleSyncSources(cl, state, opts);
+  return mergeUserForcedIntoStaleList(natural, state, disabledSyncSources(cl, opts));
 }
 
 export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
@@ -200,7 +316,7 @@ export function allSyncSourceStatuses(
     rows.push({ source: "equity_eod", status: stale ? "stale" : "ok", stale });
   }
 
-  return rows;
+  return applyUserForcedStaleToRows(rows, state);
 }
 
 export function syncStatusPayload(): {
@@ -211,11 +327,12 @@ export function syncStatusPayload(): {
 } {
   const cl = chileWallClockNow();
   const state = loadGlobalSyncState();
-  const stale = staleSyncSources(cl, state);
+  const sources = allSyncSourceStatuses(cl, state);
+  const stale = sources.filter((r) => r.stale).map((r) => r.source);
   return {
     chile: cl,
     state,
     stale,
-    sources: allSyncSourceStatuses(cl, state),
+    sources,
   };
 }

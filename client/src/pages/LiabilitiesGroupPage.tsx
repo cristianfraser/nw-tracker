@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
-import { GroupInfoNavHierarchyTable } from "../components/GroupInfoNavHierarchyTable";
-import { GroupInfoBase } from "../components/GroupInfoBase";
-import { PortfolioGroupChartsSection } from "../components/PortfolioGroupChartsSection";
+import { GroupInfoNavHierarchyTable } from "../components/group/GroupInfoNavHierarchyTable";
+import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { filterTimeseriesBlockByAccountIds } from "../filterTimeseriesBlock";
 import { filterGroupPerfByAccountIds } from "../filterGroupPerfByAccountIds";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -124,6 +124,8 @@ export function LiabilitiesGroupPage() {
     chartColorSlug: "liabilities",
     pieAllocationSlug: "liabilities",
     colorPlanGroupSlug: "inversiones",
+    groupColorRgb: navMatchNode?.color_rgb,
+    navGroupSlug: navMatchNode?.slug,
   });
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
@@ -195,7 +197,8 @@ export function LiabilitiesGroupPage() {
           groupColorMaps={charts.groupColorMaps}
           groupPerfForChart={charts.groupPerfForChart}
           groupPerfBarSeries={charts.groupPerfBarSeries}
-          consolidatedBarColor={charts.consolidatedBarColor}
+          groupTotalStroke={charts.groupTotalStroke}
+          groupColorRgb={navMatchNode.color_rgb}
           chartCtx={chartCtx}
         />
       }

@@ -1,0 +1,177 @@
+import {
+  AllocationPiePanel,
+  LineChartPanel,
+  type ChartDisplayUnit,
+} from "./ValuationLineCharts";
+import { MonthlyPerformanceComboChart } from "./MonthlyPerformanceComboChart";
+import { groupTabPieSliceFill } from "../../chartColors";
+import { cn } from "../../cn";
+import type { GroupTabColorMaps, PortfolioGroupChartsColorSlug } from "../../usePortfolioGroupCharts";
+import type { GroupPageChartContext } from "../../groupPageChartViews";
+import type { TimeseriesBlock } from "../../types";
+
+type PerfBarSeries = {
+  dataKey: string;
+  name: string;
+  color: string;
+};
+
+type PieSlice = { name: string; account_id: number; value: number };
+
+export function PortfolioGroupChartsSection({
+  accountsEmpty,
+  accountsEmptyMessage,
+  chartSeriesCount,
+  valuationBlockForChart,
+  displayPieSlices,
+  displayUnit,
+  xAxisGranularity,
+  chartColorSlug,
+  pieAllocationSlug,
+  colorPlanGroupSlug,
+  groupColorMaps,
+  groupPerfForChart,
+  groupPerfBarSeries,
+  groupTotalStroke,
+  groupColorRgb,
+  chartCtx,
+  showValuationDeposits = true,
+}: {
+  accountsEmpty: boolean;
+  accountsEmptyMessage: string;
+  chartSeriesCount: number;
+  valuationBlockForChart: TimeseriesBlock | null;
+  displayPieSlices: PieSlice[];
+  displayUnit: ChartDisplayUnit;
+  xAxisGranularity: "month" | "year";
+  chartColorSlug: PortfolioGroupChartsColorSlug;
+  pieAllocationSlug: PortfolioGroupChartsColorSlug;
+  colorPlanGroupSlug: GroupPageChartContext["colorPlanGroupSlug"];
+  groupColorMaps: GroupTabColorMaps;
+  groupPerfForChart: { points: Record<string, string | number | null>[] } | null;
+  groupPerfBarSeries: PerfBarSeries[];
+  groupTotalStroke: string;
+  groupColorRgb?: string | null;
+  chartCtx: GroupPageChartContext | null;
+  showValuationDeposits?: boolean;
+}) {
+  if (accountsEmpty) {
+    return (
+      <p className="empty muted" style={{ marginTop: "1rem" }}>
+        {accountsEmptyMessage}
+      </p>
+    );
+  }
+
+  if (!valuationBlockForChart) return null;
+
+  const includeDeposits = chartCtx?.showGroupedToggle ? showValuationDeposits : true;
+
+  return (
+    <>
+      <div
+        className={cn("chart-grid", chartSeriesCount <= 1 && "chart-grid--full-line")}
+        style={{ marginTop: "0.75rem" }}
+      >
+        <LineChartPanel
+          title="Valorización y aportes"
+          block={valuationBlockForChart}
+          displayUnit={displayUnit}
+          xAxisGranularity={xAxisGranularity}
+          includeAccumulatedLines={includeDeposits}
+          colorPlan={{
+            kind: "group-tab",
+            groupSlug:
+              chartColorSlug === "liabilities"
+                ? ("liabilities" as typeof colorPlanGroupSlug)
+                : colorPlanGroupSlug,
+            brokerageSubgroup: chartCtx?.brokerageSubgroup,
+            accounts: valuationBlockForChart.accounts ?? [],
+            groupTotalColorRgb: groupColorRgb,
+          }}
+          thickKey={
+            valuationBlockForChart.accounts?.some((a) => a.dataKey === "__group_val_total")
+              ? "__group_val_total"
+              : undefined
+          }
+        />
+        {chartSeriesCount > 1 && (
+          <AllocationPiePanel
+            title="Valor actual por cuenta"
+            slices={displayPieSlices}
+            displayUnit={displayUnit}
+            sliceFill={(slice) =>
+              groupTabPieSliceFill(chartColorSlug, groupColorMaps, slice.account_id, {
+                allocationBucketSlug: pieAllocationSlug,
+              })
+            }
+          />
+        )}
+      </div>
+
+      {groupPerfForChart &&
+      groupPerfForChart.points.length > 0 &&
+      groupPerfBarSeries.length > 0 ? (
+        <>
+          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>P/L mensual — YTD (grupo)</h2>
+          <p
+            className="muted"
+            style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}
+          >
+            Barras por cuenta o subgrupo, área YTD (suma de Δ del mes en el año calendario), rombo =
+            Δ total del mes. Derivado.
+          </p>
+          <div className="chart-grid chart-grid--full-line">
+            <MonthlyPerformanceComboChart
+              title="Δ por cuenta / subgrupo, YTD combinado y Δ total"
+              points={groupPerfForChart.points}
+              displayUnit={displayUnit}
+              xAxisGranularity={xAxisGranularity}
+              barSeries={groupPerfBarSeries}
+              areaKey="ytd_group"
+              areaName="YTD (grupo)"
+              areaFill="rgba(148, 163, 184, 0.22)"
+              areaStroke="#64748b"
+              lineSeries={[
+                {
+                  dataKey: "delta_total",
+                  name: "Δ total",
+                  stroke: groupTotalStroke,
+                  showDot: true,
+                },
+              ]}
+            />
+          </div>
+          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>Accumulated earnings (grupo)</h2>
+          <p
+            className="muted"
+            style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}
+          >
+            Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el
+            primer mes con datos.
+          </p>
+          <div className="chart-grid chart-grid--full-line">
+            <MonthlyPerformanceComboChart
+              title="Monthly Δ (consolidado) y accumulated earnings"
+              points={groupPerfForChart.points}
+              displayUnit={displayUnit}
+              xAxisGranularity={xAxisGranularity}
+              barSeries={[
+                {
+                  dataKey: "delta_total",
+                  name: "Monthly Δ (consolidated)",
+                  color: groupTotalStroke,
+                },
+              ]}
+              areaKey="accumulated_earnings"
+              areaName="Accumulated earnings"
+              areaFill="rgba(148, 163, 184, 0.22)"
+              areaStroke="#64748b"
+              alternateYearAreaStripes={false}
+            />
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+}

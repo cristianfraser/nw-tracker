@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppMessageRow } from "../api";
-import { Table } from "../components/Table";
-import { SyncLogStatusPanel } from "../components/SyncLogStatusPanel";
+import { Table } from "../components/ui/Table";
+import { SyncLogStatusPanel } from "../components/sync/SyncLogStatusPanel";
 import { useMarkMessagesReadMutation, useMessages, useSyncStatus } from "../queries/hooks";
 
 function formatWhen(iso: string): string {

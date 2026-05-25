@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./types";
 import {
+  countsTowardComprasModal,
   countsTowardGastosMes,
+  DEPOSITS_CC_EXPENSE_SLUG,
   isInstallmentCuotaZeroLine,
   NO_CUENTA_CC_EXPENSE_SLUG,
   sumLineAmountsClp,
 } from "./ccExpenseLineBuckets";
+import { purchaseModalLines } from "./ccExpensePeriodMonth";
 
 function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   return {
+    source: "cc",
     statement_line_id: 1,
     account_id: 32,
+    expense_month: "2025-05",
     billing_month: "2025-05",
+    purchase_month: "2025-05",
+    line_role: "purchase",
     amount_clp: 10_000,
     installment_flag: 0,
     nro_cuota_current: null,
@@ -23,6 +30,8 @@ function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     occurred_on: "2025-05-10",
     purchase_on: null,
     statement_date: "22/05/2025",
+    purchase_key: "line-pr:test",
+    purchase_notes: "",
     ...partial,
   };
 }
@@ -40,12 +49,76 @@ describe("ccExpenseLineBuckets", () => {
     );
   });
 
-  it("excludes no_cuenta and non-positive amounts from gastos del mes", () => {
+  it("respects split vs total for installment lines", () => {
+    const cuota = line({
+      line_role: "installment_cuota",
+      installment_flag: 1,
+      nro_cuota_current: 1,
+      nro_cuota_total: 3,
+    });
+    const total = line({
+      statement_line_id: -1,
+      line_role: "installment_purchase_total",
+      installment_flag: 1,
+      nro_cuota_current: null,
+      nro_cuota_total: 3,
+    });
+    expect(countsTowardGastosMes(cuota, "split")).toBe(true);
+    expect(countsTowardGastosMes(cuota, "total")).toBe(false);
+    expect(countsTowardGastosMes(total, "split")).toBe(false);
+    expect(countsTowardGastosMes(total, "total")).toBe(true);
+  });
+
+  it("excludes no_cuenta, deposits, and non-positive amounts from gastos del mes", () => {
     expect(
       countsTowardGastosMes(line({ category_slug: NO_CUENTA_CC_EXPENSE_SLUG }))
     ).toBe(false);
+    expect(
+      countsTowardGastosMes(line({ category_slug: DEPOSITS_CC_EXPENSE_SLUG }))
+    ).toBe(false);
     expect(countsTowardGastosMes(line({ amount_clp: 0 }))).toBe(false);
     expect(countsTowardGastosMes(line({ amount_clp: -500 }))).toBe(false);
+  });
+
+  it("shows installment purchase totals in compras only for total mode", () => {
+    const purchaseTotal = line({
+      statement_line_id: -1,
+      line_role: "installment_purchase_total",
+      installment_flag: 1,
+      nro_cuota_total: 3,
+    });
+    expect(countsTowardComprasModal(purchaseTotal, "split")).toBe(false);
+    expect(countsTowardComprasModal(purchaseTotal, "total")).toBe(true);
+  });
+
+  it("excludes no_cuenta and deposits from compras modal", () => {
+    expect(
+      countsTowardComprasModal(line({ category_slug: NO_CUENTA_CC_EXPENSE_SLUG }))
+    ).toBe(false);
+    expect(
+      countsTowardComprasModal(line({ category_slug: DEPOSITS_CC_EXPENSE_SLUG }))
+    ).toBe(false);
+    expect(
+      countsTowardComprasModal(
+        line({
+          statement_line_id: -1,
+          line_role: "installment_purchase_total",
+          installment_flag: 1,
+          nro_cuota_total: 3,
+          category_slug: NO_CUENTA_CC_EXPENSE_SLUG,
+        }),
+        "total"
+      )
+    ).toBe(false);
+    expect(
+      purchaseModalLines(
+        [
+          line({ category_slug: NO_CUENTA_CC_EXPENSE_SLUG }),
+          line({ statement_line_id: 2 }),
+        ],
+        "2025-05"
+      ).filter((ln) => countsTowardComprasModal(ln))
+    ).toHaveLength(1);
   });
 
   it("sums only gastos lines for modal subtotal", () => {
@@ -56,11 +129,12 @@ describe("ccExpenseLineBuckets", () => {
       line({
         amount_clp: 9000,
         installment_flag: 1,
+        line_role: "installment_cuota",
         nro_cuota_current: 0,
         statement_line_id: 4,
       }),
     ];
-    const gastos = rows.filter(countsTowardGastosMes);
+    const gastos = rows.filter((ln) => countsTowardGastosMes(ln));
     expect(sumLineAmountsClp(gastos)).toBe(3000);
   });
 });

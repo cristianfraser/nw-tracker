@@ -18,6 +18,7 @@ import {
 } from "./cryptoValuation.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -33,7 +34,7 @@ import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
   ccLedgerStatementClosingPointsClp,
   ccInstallmentLedgerRowCount,
-  installmentRemainingClpByCalendarMonth,
+  liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { syntheticGroupColorRgbMapForValuationGroup } from "./chartColorRgb.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
@@ -344,7 +345,7 @@ function attachDepositSeriesKeys(
     }
     if (t.account_id > 0) {
       const slug = slugById.get(t.account_id);
-      if (slug === "cuenta_corriente" || slug === "cuenta_ahorro_vivienda") return { ...t };
+      if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
       if (slug && CATEGORY_NO_CHART_DEPOSIT_LINE.has(slug)) return { ...t };
       const depLen = (depMovs.get(t.account_id) ?? []).length;
       const propertyWithCapital =
@@ -375,7 +376,7 @@ function valuationRawClpForAccount(
   byDate: Map<string, Map<number, number>>,
   slugById?: Map<number, string>
 ): number | null {
-  if (slugById?.get(accountId) === "cuenta_corriente") {
+  if (isMovementBalanceCashCategory(slugById?.get(accountId) ?? "")) {
     return checkingMovementBalanceClpAtCached(accountId, asOf);
   }
   if (accountUsesEquityMtm(accountId)) {
@@ -396,7 +397,7 @@ function augmentChartDatesForCheckingAccounts(
   const aug = new Set(dateStrs);
   const today = chileCalendarTodayYmd();
   for (const id of allIds) {
-    if (slugById.get(id) !== "cuenta_corriente") continue;
+    if (isMovementBalanceCashCategory(slugById.get(id) ?? "")) continue;
     const bounds = db
       .prepare(
         `SELECT MIN(occurred_on) AS min_d, MAX(occurred_on) AS max_d
@@ -533,10 +534,7 @@ function patchCreditCardLiveLastPoint(
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
   const today = chileCalendarTodayYmd();
-  const todayYm = monthKeyFromYmd(today);
-  const planByMonth = installmentRemainingClpByCalendarMonth(accountId);
-  const live =
-    (todayYm ? planByMonth.get(todayYm) : undefined) ?? null;
+  const live = liveCreditCardOutstandingClp(accountId);
   if (live == null || !Number.isFinite(live)) return points;
 
   const dk = String(accountId);

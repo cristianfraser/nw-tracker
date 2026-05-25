@@ -2,8 +2,9 @@ import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { listCcBillingMonthBalances, type CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { facturadoFromStatement } from "./ccBillingBalances.js";
 import {
-  installmentRemainingClpByCalendarMonth,
+  cupoEnCuotasClpForCalendarMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
@@ -56,14 +57,14 @@ function pickSnapshotRow(
   return manual ?? null;
 }
 
-function cupoEnCuotasClp(
+function cupoEnCuotasForBillingMonth(
+  accountId: number,
   billingMonth: string,
-  remainingByMonth: Map<string, number>,
   cupoLive: number
 ): number {
   const currentBillingMonth = billingMonthForStatementDate(chileCalendarTodayYmd());
   if (currentBillingMonth && billingMonth === currentBillingMonth) return cupoLive;
-  return remainingByMonth.get(billingMonth) ?? 0;
+  return cupoEnCuotasClpForCalendarMonth(accountId, billingMonth);
 }
 
 function statementSlotsByBillingMonth(accountId: number): Map<
@@ -113,7 +114,6 @@ export function buildBillingDetailByMonth(
     (r) => r.as_of_kind !== "month_end"
   );
   const placeholders = loadCcFacturadoPlaceholdersMap(accountId);
-  const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
   const cupoLive = liveCreditCardOutstandingClp(accountId) ?? 0;
   const slots = statementSlotsByBillingMonth(accountId);
   const months = new Set<string>();
@@ -138,7 +138,7 @@ export function buildBillingDetailByMonth(
       totalFacturado = placeholder;
       facturadoIsPlaceholder = true;
     }
-    const cupo = cupoEnCuotasClp(billingMonth, remainingByMonth, cupoLive);
+    const cupo = cupoEnCuotasForBillingMonth(accountId, billingMonth, cupoLive);
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
     const balanceTotal = (totalFacturado ?? 0) + cupo - cuotaNext;
     out.push({
@@ -189,7 +189,7 @@ function resolveFacturacionPayBy(
     }
   }
   const payByIso = resolveInstallmentPayByIso({
-    statement_date: primary.statement_date,
+    statement_date: primary.statement_date_iso ?? primary.statement_date,
     period_to: primary.period_to ?? undefined,
   });
   if (!payByIso) return { pay_by: null, pay_by_iso: null };
@@ -241,17 +241,27 @@ export function buildFacturaciones(
     const primary = slot.clp ?? slot.usd;
     if (!primary) continue;
 
+    const clpDerived = slot.clp
+      ? facturadoFromStatement(accountId, slot.clp.statement_date, slot.clp, slot.clp.statement_date_iso)
+      : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+    const usdDerived = slot.usd
+      ? facturadoFromStatement(accountId, slot.usd.statement_date, slot.usd, slot.usd.statement_date_iso)
+      : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+
     const facturadoClp =
       slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
         ? Math.round(slot.clp.monto_facturado)
-        : null;
+        : clpDerived.facturado_clp;
     const facturadoUsd =
       slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
         ? slot.usd.monto_facturado
-        : null;
+        : usdDerived.facturado_usd;
 
     const { pay_by, pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
-    const facturadoUsdClp = facturadoUsd != null ? usdToClpAtPayBy(facturadoUsd, payByIso) : null;
+    const facturadoUsdClp =
+      facturadoUsd != null
+        ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
+        : null;
     const facturadoTotal =
       (facturadoClp ?? 0) + (facturadoUsdClp ?? 0) > 0
         ? (facturadoClp ?? 0) + (facturadoUsdClp ?? 0)

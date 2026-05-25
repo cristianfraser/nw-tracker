@@ -237,7 +237,7 @@ export function cardGroupMetricsForGroup(
 
 const NW_BUCKET_ORDER = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
 
-const CASH_CARD_SLUGS = new Set(["fondo_reserva", "cuenta_corriente"]);
+const CASH_CARD_SLUGS = new Set(["fondo_reserva", "cuenta_corriente", "cuenta_vista"]);
 
 /** Patrimonio neto: sum metrics across RE, retiro, brokerage, efectivo (same scope as NW total). */
 export function cardGroupMetricsNetWorth(
@@ -806,6 +806,7 @@ export function buildRealEstateCardBreakdown(
 const CASH_CATEGORY_KEYS: Record<string, string> = {
   fondo_reserva: "cash.reserva",
   cuenta_corriente: "cash.checkingAccount",
+  cuenta_vista: "cash.cuentaVista",
 };
 
 export type CashCardBreakdown = {

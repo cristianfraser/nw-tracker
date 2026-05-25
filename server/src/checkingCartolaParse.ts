@@ -428,8 +428,12 @@ export function parseCheckingCartolaWorkbook(
 
 export function parseCheckingCartolaFile(filePath: string): ParsedCheckingCartola {
   const buf = fs.readFileSync(filePath);
-  const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
-  return parseCheckingCartolaWorkbook(wb, path.basename(filePath));
+  return parseCheckingCartolaBuffer(buf, path.basename(filePath));
+}
+
+export function parseCheckingCartolaBuffer(buffer: Buffer, fileName: string): ParsedCheckingCartola {
+  const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
+  return parseCheckingCartolaWorkbook(wb, fileName);
 }
 
 export function listCheckingCartolaXlsxFiles(dir: string): string[] {

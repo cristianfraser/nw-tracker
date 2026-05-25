@@ -1,8 +1,8 @@
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 
 /**
- * `as_of_date` for Fintual goal NAV from `GET /api/goals`.
- * After 18:00 Chile, Fintual's UI labels the published total with **today's** calendar date.
+ * Default `as_of_date` for manual / goals-only paths. Evening sync uses
+ * {@link resolveFintualPublishYmd} from `real_assets` (may be before poll calendar day).
  */
 export function fintualValuationAsOfYmd(cl: ChileWallClock = chileWallClockNow()): string {
   return cl.ymd;

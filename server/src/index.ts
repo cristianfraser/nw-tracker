@@ -80,8 +80,10 @@ import {
   deleteManualCcInstallmentPurchase,
   updateManualCcInstallmentPurchase,
 } from "./ccInstallmentManual.js";
+import { deleteCcWebPasteStatementLine } from "./ccStatementLineDelete.js";
 import { patchCreditCardBillingConfig, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import {
   isValidBillingMonthYm,
@@ -89,6 +91,15 @@ import {
 } from "./ccBillingPlaceholders.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
+import { documentImportSpecsForAccount } from "./accountDocumentRegistry.js";
+import {
+  importAccountDocument,
+  importCcStatementPdfUpload,
+  importCcWebPaste,
+  importCheckingCartolaXlsx,
+  importCheckingRecentXlsx,
+} from "./accountImports.js";
+import { uploadFields, uploadSingle } from "./uploadMiddleware.js";
 import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
 import {
   buildFlowsDepositsPayload,
@@ -98,7 +109,16 @@ import {
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
-import { assignCcExpenseLineCategory } from "./ccExpenseCategories.js";
+import {
+  assignCcExpenseLineCategory,
+  ccStatementLineBelongsToCreditCardGroup,
+} from "./ccExpenseCategories.js";
+import {
+  assignCheckingGastosMovementCategory,
+  checkingGastosMovementBelongs,
+} from "./flowsCheckingGastos.js";
+import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
+import { setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
@@ -106,7 +126,11 @@ import {
   markAllNotificationsRead,
   unreadNotificationCount,
 } from "./appMessages.js";
-import { syncStatusPayload } from "./globalSyncStale.js";
+import {
+  forceSyncSourceStale,
+  isGlobalSyncSource,
+  syncStatusPayload,
+} from "./globalSyncStale.js";
 import { lastSyncRunCreatedAt } from "./syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot } from "./globalSyncScheduler.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
@@ -530,7 +554,7 @@ async function latestValuationDisplayForAccount(
   accountId: number,
   categorySlug?: string | null
 ): Promise<{ value_clp: number; as_of_date: string } | null> {
-  if (categorySlug === "cuenta_corriente") {
+  if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
     return checkingMovementBalanceLive(accountId);
   }
   const eq = await computeLatestDisplayedEquityClp(accountId);
@@ -582,7 +606,7 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
     | undefined;
   const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, cat?.category_slug ?? "");
   let latest = await latestValuationDisplayForAccount(id, cat?.category_slug ?? null);
-  if (latest == null && cat?.category_slug !== "cuenta_corriente") {
+  if (latest == null && cat?.category_slug && !isMovementBalanceCashCategory(cat.category_slug)) {
     const stored = latestValuationRowOnOrBeforeChileToday(id);
     if (stored?.value_clp != null) latest = stored as { value_clp: number; as_of_date: string };
   }
@@ -823,6 +847,149 @@ app.delete("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
   }
 });
 
+app.delete("/api/accounts/:id/cc-statement-lines/:lineId", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const lineId = Number(req.params.lineId);
+  if (!Number.isFinite(lineId) || lineId <= 0) {
+    res.status(400).json({ error: "invalid statement line id" });
+    return;
+  }
+  try {
+    deleteCcWebPasteStatementLine(id, lineId);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "delete failed" });
+  }
+});
+
+app.get("/api/accounts/:id/import-specs", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const cat = db
+    .prepare(
+      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+    )
+    .get(id) as { category_slug: string } | undefined;
+  res.json({
+    account_id: id,
+    category_slug: cat?.category_slug ?? null,
+    document_imports: documentImportSpecsForAccount(id),
+    supports_cc_web_paste: cat?.category_slug === "credit_card",
+    supports_cc_statement_pdf: cat?.category_slug === "credit_card",
+    supports_checking_recent_xlsx: cat?.category_slug === "cuenta_corriente",
+    supports_checking_cartola_xlsx: cat?.category_slug === "cuenta_corriente",
+    supports_cuenta_vista_cartola_pdf: cat?.category_slug === "cuenta_vista",
+  });
+});
+
+app.post("/api/accounts/:id/imports/cc-web-paste", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const text = typeof req.body?.text === "string" ? req.body.text : "";
+  if (!text.trim()) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+  try {
+    res.json(importCcWebPaste(id, text));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+  }
+});
+
+app.post(
+  "/api/accounts/:id/imports/cc-statement-pdf",
+  uploadFields([
+    { name: "clp", maxCount: 1 },
+    { name: "usd", maxCount: 1 },
+    { name: "file", maxCount: 2 },
+  ]) as unknown as express.RequestHandler,
+  (req, res) => {
+    const id = operationalAccountIdFromReq(req);
+    const files = req.files as Record<string, { originalname: string; buffer: Buffer }[]> | undefined;
+    const uploads: { originalname: string; buffer: Buffer }[] = [];
+    for (const key of ["clp", "usd", "file"] as const) {
+      for (const f of files?.[key] ?? []) {
+        uploads.push({ originalname: f.originalname, buffer: f.buffer });
+      }
+    }
+    if (!uploads.length) {
+      res.status(400).json({ error: "Upload at least one PDF (field clp, usd, or file)" });
+      return;
+    }
+    try {
+      res.json(importCcStatementPdfUpload(id, uploads));
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+    }
+  }
+);
+
+app.post(
+  "/api/accounts/:id/imports/checking-recent-xlsx",
+  uploadSingle("file") as unknown as express.RequestHandler,
+  (req, res) => {
+    const id = operationalAccountIdFromReq(req);
+    const f = req.file;
+    if (!f) {
+      res.status(400).json({ error: "file is required" });
+      return;
+    }
+    try {
+      res.json(importCheckingRecentXlsx(id, f.buffer, f.originalname));
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+    }
+  }
+);
+
+app.post(
+  "/api/accounts/:id/imports/checking-cartola-xlsx",
+  uploadSingle("file") as unknown as express.RequestHandler,
+  (req, res) => {
+    const id = operationalAccountIdFromReq(req);
+    const f = req.file;
+    if (!f) {
+      res.status(400).json({ error: "file is required" });
+      return;
+    }
+    const replaceMonth =
+      typeof req.query.replaceMonth === "string" ? req.query.replaceMonth : undefined;
+    try {
+      res.json(importCheckingCartolaXlsx(id, f.buffer, f.originalname, { replaceMonth }));
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+    }
+  }
+);
+
+app.post(
+  "/api/accounts/:id/imports/document",
+  uploadSingle("file") as unknown as express.RequestHandler,
+  (req, res) => {
+    const id = operationalAccountIdFromReq(req);
+    const f = req.file;
+    const type = typeof req.body?.type === "string" ? req.body.type : "";
+    if (!f) {
+      res.status(400).json({ error: "file is required" });
+      return;
+    }
+    if (!type) {
+      res.status(400).json({ error: "type is required" });
+      return;
+    }
+    try {
+      res.json(
+        importAccountDocument(id, type as "afp_uno_cert", f.buffer, f.originalname, f.mimetype)
+      );
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+    }
+  }
+);
+
 app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
   const id = operationalAccountIdFromReq(req);
   const body = req.body as Record<string, unknown>;
@@ -994,7 +1161,7 @@ app.get("/api/dashboard", async (req, res) => {
     const perfUsd =
       trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
     let v = await latestValuationDisplayForAccount(a.id, a.category_slug);
-    if (v == null && a.category_slug !== "cuenta_corriente") {
+    if (v == null && !isMovementBalanceCashCategory(a.category_slug)) {
       const stored = latestValuationRowOnOrBeforeChileToday(a.id);
       if (stored?.value_clp != null && stored.as_of_date) {
         v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
@@ -1385,21 +1552,71 @@ app.get("/api/flows/expenses/credit-card", (_req, res) => {
   res.json(buildFlowsCreditCardExpensesPayload());
 });
 
+app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
+  const body = req.body as {
+    account_id?: number;
+    purchase_key?: string;
+    statement_line_id?: number;
+    notes?: string | null;
+  };
+  const accountId = Number(body.account_id);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    res.status(400).json({ error: "invalid account_id" });
+    return;
+  }
+  let purchaseKey = String(body.purchase_key ?? "").trim();
+  const statementLineId = Number(body.statement_line_id);
+  if (!purchaseKey && Number.isFinite(statementLineId) && statementLineId > 0) {
+    purchaseKey = resolveCcExpensePurchaseKey(statementLineId);
+  }
+  if (!purchaseKey) {
+    res.status(400).json({ error: "purchase_key or statement_line_id required" });
+    return;
+  }
+  try {
+    const result = setCcExpensePurchaseNote({
+      accountId,
+      purchaseKey,
+      notes: body.notes,
+    });
+    res.json({ account_id: accountId, purchase_key: purchaseKey, notes: result.notes });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "save failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
 app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) => {
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId <= 0) {
     res.status(400).json({ error: "invalid line id" });
     return;
   }
-  const body = req.body as { category_slug?: string; unique?: boolean };
+  const body = req.body as { category_slug?: string; unique?: boolean; clear_category?: boolean };
   const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
   const unique = !!body.unique;
+  const clearCategory = body.clear_category === true;
   try {
-    const result = assignCcExpenseLineCategory({
-      statementLineId: lineId,
-      unique,
-      categorySlug: categorySlug || null,
-    });
+    const belong = ccStatementLineBelongsToCreditCardGroup(lineId);
+    const result = belong.ok
+      ? assignCcExpenseLineCategory({
+          statementLineId: lineId,
+          unique,
+          categorySlug: categorySlug || null,
+          clearCategory,
+        })
+      : (() => {
+          const checking = checkingGastosMovementBelongs(lineId);
+          if (!checking.ok) {
+            throw new Error("expense line not found");
+          }
+          return assignCheckingGastosMovementCategory({
+            movementId: lineId,
+            unique,
+            categorySlug: categorySlug || null,
+            clearCategory,
+          });
+        })();
     res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "assign failed";
@@ -1428,6 +1645,20 @@ app.post("/api/expenses", (req, res) => {
 
 /** Stale external sources + last sync state (AFP / Fintual / BCentral BDE). */
 app.get("/api/sync/status", (_req, res) => {
+  res.json({
+    ...syncStatusPayload(),
+    scheduler: getGlobalSyncSchedulerSnapshot(),
+    last_sync_at: lastSyncRunCreatedAt(),
+  });
+});
+
+app.post("/api/sync/force-stale", (req, res) => {
+  const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
+  if (!isGlobalSyncSource(source)) {
+    res.status(400).json({ error: "invalid_source" });
+    return;
+  }
+  forceSyncSourceStale(source);
   res.json({
     ...syncStatusPayload(),
     scheduler: getGlobalSyncSchedulerSnapshot(),

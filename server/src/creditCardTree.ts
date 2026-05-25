@@ -1,4 +1,5 @@
 import { accountChartInactive } from "./accountChartInactive.js";
+import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
@@ -64,6 +65,7 @@ function buildCreditCardGroupNode(
         children.push(buildCreditCardGroupNode(child, itemsByGroup, groupsById, accountMeta));
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
+      if (isSupersededSantanderCcMaster(item.account_id)) continue;
       if (accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const operationalId = resolveOperationalAccountId(item.account_id);
@@ -126,8 +128,26 @@ export function getCreditCardGroupBySlug(slug: string): CreditCardGroupRow | und
     .get(slug) as CreditCardGroupRow | undefined;
 }
 
-/** Master account ids under a credit_card_group (recursive). */
-export function listCreditCardGroupMasterAccountIds(groupSlug?: string): number[] {
+/** Operational CC masters in asset group `credit_cards` (Gastos, category PATCH allowlist). */
+export function listCreditCardMasterAccountIds(): number[] {
+  const rows = db
+    .prepare(
+      `SELECT a.id
+       FROM accounts a
+       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = c.group_id
+       WHERE g.slug = 'credit_cards'
+         AND c.slug = 'credit_card'
+         AND a.account_kind = 'master'
+         AND a.notes LIKE 'credit_card_master|%'
+       ORDER BY a.notes`
+    )
+    .all() as { id: number }[];
+  return rows.map((r) => r.id).filter((id) => !isSupersededSantanderCcMaster(id));
+}
+
+/** Master account ids under one `credit_card_groups` issuer slug (nav, imports with `--santander`). */
+export function listCreditCardGroupMasterAccountIds(groupSlug: string): number[] {
   const groups = loadCreditCardGroups();
   const items = loadCreditCardGroupItems();
   const groupsById = new Map(groups.map((g) => [g.id, g]));
@@ -138,10 +158,7 @@ export function listCreditCardGroupMasterAccountIds(groupSlug?: string): number[
     itemsByGroup.set(item.group_id, arr);
   }
 
-  const rootIds = groupSlug
-    ? groups.filter((g) => g.slug === groupSlug).map((g) => g.id)
-    : groups.filter((g) => g.parent_id == null).map((g) => g.id);
-
+  const rootIds = groups.filter((g) => g.slug === groupSlug).map((g) => g.id);
   const out = new Set<number>();
 
   function walk(groupId: number): void {
@@ -155,7 +172,7 @@ export function listCreditCardGroupMasterAccountIds(groupSlug?: string): number[
   }
 
   for (const id of rootIds) walk(id);
-  return [...out];
+  return [...out].filter((id) => !isSupersededSantanderCcMaster(id));
 }
 
 /** Nav subtree for one credit_card_group (e.g. Santander → cards). */
@@ -219,8 +236,14 @@ export function resolveMasterAccountIdForCardLast4(last4: string): number | null
     )
     .get(l4) as { id: number } | undefined;
   if (row) return row.id;
-  const byNotes = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? LIMIT 1`)
-    .get(`credit_card_master|santander|${l4}`) as { id: number } | undefined;
-  return byNotes?.id ?? null;
+  for (const issuer of ["santander", "bci"] as const) {
+    const byNotes = db
+      .prepare(`SELECT id FROM accounts WHERE notes = ? LIMIT 1`)
+      .get(`credit_card_master|${issuer}|${l4}`) as { id: number } | undefined;
+    if (byNotes) return byNotes.id;
+  }
+  const fallback = db
+    .prepare(`SELECT id FROM accounts WHERE notes LIKE ? LIMIT 1`)
+    .get(`credit_card_master|%|${l4}`) as { id: number } | undefined;
+  return fallback?.id ?? null;
 }

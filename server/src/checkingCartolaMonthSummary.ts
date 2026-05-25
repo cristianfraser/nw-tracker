@@ -1,4 +1,5 @@
 import { checkingMovementBalanceAtMonthEnd } from "./checkingCartolaBalances.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
 import {
   expandYearMonthsInclusive,
@@ -92,7 +93,7 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
        JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
     )
     .get(accountId) as { category_slug: string } | undefined;
-  if (!cat || cat.category_slug !== "cuenta_corriente") return null;
+  if (!cat || !isMovementBalanceCashCategory(cat.category_slug)) return null;
 
   const importByMonth = new Map<
     string,

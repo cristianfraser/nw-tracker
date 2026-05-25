@@ -8,17 +8,17 @@ import {
 import {
   assignCcExpenseLineCategory,
   getCcExpenseCategoryBySlug,
-  listCreditCardGroupOperationalAccountIds,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
+import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 
 describe("ccExpenseCategoryPersist", () => {
   it("propagates merchant rules from legacy master onto per-card accounts", () => {
-    const ids = listCreditCardGroupOperationalAccountIds();
+    const ids = listCreditCardGroupMasterAccountIds("santander");
     if (ids.length === 0) return;
     const n = propagateCcExpenseMerchantRulesFromLegacy(ids[0]!, 15);
     expect(n).toBeGreaterThanOrEqual(0);
@@ -29,7 +29,7 @@ describe("ccExpenseCategoryPersist", () => {
   });
 
   it("restores per-line override after reimport via parser_row_id", () => {
-    const accountIds = listCreditCardGroupOperationalAccountIds();
+    const accountIds = listCreditCardGroupMasterAccountIds("santander");
     const accountId = accountIds.find((id) => {
       const c = db
         .prepare(
@@ -111,7 +111,7 @@ describe("ccExpenseCategoryPersist", () => {
   });
 
   it("merchant rules on per-card accounts survive statement reimport", () => {
-    const accountIds = listCreditCardGroupOperationalAccountIds();
+    const accountIds = listCreditCardGroupMasterAccountIds("santander");
     if (accountIds.length === 0) return;
     const accountId = accountIds[0]!;
 
