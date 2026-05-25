@@ -452,6 +452,34 @@ class ParseCacheTest(unittest.TestCase):
             self.assertIsNone(mod.load_parse_cache(pdf, "deadbeef00000000"))
 
 
+class IntlUsdPeriodMetaTest(unittest.TestCase):
+    def test_corrupt_usd_4141_layout_period(self) -> None:
+        root = Path(__file__).resolve().parent.parent.parent
+        pdf = root / "cfraser/credit-card-statements/2018-11-22 estado de cuenta tarjeta usd 4141-CORRUPT.pdf"
+        if not pdf.is_file():
+            self.skipTest("2018-11 USD 4141 CORRUPT PDF not present")
+        _rows, ctx = mod.parse_one_pdf("INTL", pdf, [])
+        meta = ctx["meta"]
+        self.assertEqual(meta.get("period_from"), "22/10/2018")
+        self.assertEqual(meta.get("period_to"), "22/11/2018")
+        self.assertTrue(_rows)
+        self.assertEqual(_rows[0].get("source_pdf"), "2018-11-22 estado de cuenta tarjeta usd 4141.pdf")
+
+
+class SantanderStatementMetaTest(unittest.TestCase):
+    def test_may_2025_4242_period_from_layout(self) -> None:
+        root = Path(__file__).resolve().parent.parent.parent
+        pdf = root / "cfraser/credit-card-statements/2025-05-22 estado de cuenta tarjeta 4242.pdf"
+        if not pdf.is_file():
+            self.skipTest("2025-05-22 4242 PDF not present")
+        _rows, ctx = mod.parse_one_pdf("A", pdf, [])
+        meta = ctx["meta"]
+        self.assertEqual(meta.get("statement_date"), "22/05/2025")
+        self.assertEqual(meta.get("period_from"), "22/04/2025")
+        self.assertEqual(meta.get("period_to"), "22/05/2025")
+        self.assertEqual(meta.get("pay_by"), "10/06/2025")
+
+
 class BciLiderStatementTest(unittest.TestCase):
     def test_detect_bci_lider(self) -> None:
         sample = (

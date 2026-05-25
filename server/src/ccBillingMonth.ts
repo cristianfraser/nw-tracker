@@ -1,6 +1,14 @@
 import { db } from "./db.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
+
+function isoFromStatementField(raw: string | null | undefined): string | null {
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return parseDdMmYyToIso(t);
+}
 
 export type CreditCardBillingConfig = {
   billing_cycle_start_day: number;
@@ -39,6 +47,21 @@ export function billingMonthForStatementDdMmYyyy(statementDate: string): string 
   const iso = parseDdMmYyToIso(statementDate);
   if (!iso) return null;
   return billingMonthForStatementDate(iso);
+}
+
+/**
+ * Facturación month (YYYY-MM) for an imported statement.
+ * Prefer `period_to` (cycle end: Mar 21–Apr 20 → April); else statement close/print date.
+ */
+export function billingMonthForCcStatement(fields: {
+  statement_date?: string | null;
+  period_to?: string | null;
+}): string | null {
+  const periodToIso = isoFromStatementField(fields.period_to);
+  if (periodToIso) return monthKeyFromYmd(periodToIso);
+  const closeIso = isoFromStatementField(fields.statement_date);
+  if (closeIso) return billingMonthForStatementDate(closeIso);
+  return null;
 }
 
 /** Inclusive billing period [from, to] ISO dates for a billing month YYYY-MM. */

@@ -8,6 +8,8 @@ export type ModalProps = {
   title: string;
   subtitle?: ReactNode;
   children: ReactNode;
+  /** Pinned below the scrollable body (e.g. bulk actions). */
+  footer?: ReactNode;
   className?: string;
   closeAriaLabel?: string;
 };
@@ -19,6 +21,7 @@ export function Modal({
   title,
   subtitle,
   children,
+  footer,
   className,
   closeAriaLabel = "Close",
 }: ModalProps) {
@@ -72,6 +75,7 @@ export function Modal({
         </button>
       </header>
       <div className={styles.body}>{children}</div>
+      {footer ? <footer className={styles.footer}>{footer}</footer> : null}
     </dialog>
   );
 }

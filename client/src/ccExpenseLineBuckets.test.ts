@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./types";
 import {
+  countsTowardAbonosMes,
   countsTowardComprasModal,
   countsTowardGastosMes,
   DEPOSITS_CC_EXPENSE_SLUG,
@@ -32,6 +33,7 @@ function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     statement_date: "22/05/2025",
     purchase_key: "line-pr:test",
     purchase_notes: "",
+    origin_label: "4242",
     ...partial,
   };
 }
@@ -119,6 +121,33 @@ describe("ccExpenseLineBuckets", () => {
         "2025-05"
       ).filter((ln) => countsTowardComprasModal(ln))
     ).toHaveLength(1);
+  });
+
+  it("counts large unmatched NOTA DE CREDITO as abono, not compras", () => {
+    const nota = line({
+      statement_line_id: 500,
+      amount_clp: -43_691,
+      merchant: "NOTA DE CREDITO",
+      purchase_on: "2021-09-14",
+      expense_month: "2021-09",
+      line_role: "purchase",
+    });
+    expect(countsTowardGastosMes(nota)).toBe(false);
+    expect(countsTowardComprasModal(nota)).toBe(false);
+    expect(countsTowardAbonosMes(nota)).toBe(true);
+  });
+
+  it("keeps small unmatched NOTA out of compras and abonos UI buckets", () => {
+    const nota = line({
+      statement_line_id: 501,
+      amount_clp: -9_999,
+      merchant: "NOTA DE CREDITO",
+      nota_credito_role: "unmatched_nota",
+      line_role: "purchase",
+    });
+    expect(countsTowardGastosMes(nota)).toBe(false);
+    expect(countsTowardComprasModal(nota)).toBe(false);
+    expect(countsTowardAbonosMes(nota)).toBe(false);
   });
 
   it("sums only gastos lines for modal subtotal", () => {

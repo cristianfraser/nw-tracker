@@ -7,6 +7,9 @@ export type SidebarNavNode = {
   children?: SidebarNavNode[];
   /** Leaf rows: show hyphen in the caret column. Default true; set false for top-level links like rates. */
   showLeafHyphen?: boolean;
+  /** Optional badge (e.g. unread count) shown beside the link label. */
+  badge?: string;
+  badgeAriaLabel?: string;
 };
 
 function normalizeNavPath(p: string): string {
@@ -15,7 +18,7 @@ function normalizeNavPath(p: string): string {
 }
 
 /** True when `pathname` is this node or under its `to` / `activePrefix` (ancestor auto-expand). */
-function sidebarNodeSubtreeContainsPath(pathname: string, node: SidebarNavNode): boolean {
+export function sidebarNodeSubtreeContainsPath(pathname: string, node: SidebarNavNode): boolean {
   const p = normalizeNavPath(pathname);
   const to = normalizeNavPath(node.to);
   if (p === to || p.startsWith(`${to}/`)) return true;

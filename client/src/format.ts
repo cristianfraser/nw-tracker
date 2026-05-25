@@ -211,3 +211,26 @@ export type PieMoneyUnit = "clp" | "usd";
 export function formatMoneyForPie(v: number, unit: PieMoneyUnit): string {
   return unit === "usd" ? formatUsdFine(v) : formatClp(v);
 }
+
+const YEAR_MONTH_SHORT_ES = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+] as const;
+
+/** Format `YYYY-MM` for tables without `Date` timezone shifting the month label. */
+export function formatYearMonthLabelEs(ym: string): string {
+  const [y, m] = ym.split("-");
+  const mo = Number(m);
+  if (!Number.isFinite(mo) || mo < 1 || mo > 12) return ym;
+  return `${YEAR_MONTH_SHORT_ES[mo - 1]} ${y}`;
+}
