@@ -17,7 +17,8 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
+import type { FlowCcExpenseLineRow, FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 
 export type InstallmentPurchaseRow = {
   id: number;
@@ -160,7 +161,7 @@ function buildSyntheticRow(opts: {
   categorySlug: string;
   categoryUnique: boolean;
   categoryStatementLineId: number | null;
-}): FlowCcExpenseLineRow {
+}): FlowCcExpenseLineBeforeNotes {
   return {
     source: "cc",
     statement_line_id: opts.statementLineId,
@@ -313,12 +314,12 @@ function collectInstallmentTotalKeys(lines: readonly FlowCcExpenseLineRow[]): Se
 /** One synthetic row per installment purchase for the Compras table / total mode. */
 export function buildInstallmentPurchaseTotalLines(
   accountIds: number[],
-  cuotaLines: readonly FlowCcExpenseLineRow[],
+  cuotaLines: readonly FlowCcExpenseLineRowDraft[],
   maps: ReturnType<typeof loadCcExpenseCategoryMaps>
-): FlowCcExpenseLineRow[] {
+): FlowCcExpenseLineBeforeNotes[] {
   const purchases = loadInstallmentPurchases(accountIds);
   const { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys } = maps;
-  const synthetics: FlowCcExpenseLineRow[] = [];
+  const synthetics: FlowCcExpenseLineBeforeNotes[] = [];
 
   for (const pr of purchases) {
     const purchaseOn = purchaseOnIso(pr.purchase_date);
@@ -480,14 +481,14 @@ function dedupeInstallmentPurchaseTotalLines(lines: FlowCcExpenseLineRow[]): Flo
 }
 
 export function mergeInstallmentPurchaseTotalsIntoLines(
-  lines: FlowCcExpenseLineRow[],
+  lines: FlowCcExpenseLineRowDraft[],
   accountIds: number[],
   maps: ReturnType<typeof loadCcExpenseCategoryMaps>
-): FlowCcExpenseLineRow[] {
+): FlowCcExpenseLineRowDraft[] {
   const purchases = loadInstallmentPurchases(accountIds);
   const synthetics = buildInstallmentPurchaseTotalLines(accountIds, lines, maps);
   const result = [...lines];
-  const pendingSynths: FlowCcExpenseLineRow[] = [];
+  const pendingSynths: FlowCcExpenseLineRowDraft[] = [];
   const satisfiedTotalKeys = new Set<string>();
 
   for (const synth of synthetics) {

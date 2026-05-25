@@ -19,6 +19,7 @@ import {
   DEPOSITS_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 
 /** Asset group for cash / efectivo accounts (internal transfer targets from checking). */
 export const CHECKING_GASTOS_CASH_GROUP = "cash_eqs";
@@ -807,7 +808,7 @@ export function buildCheckingGastosLines(opts?: {
   merchantRules?: Map<string, string>;
   uniquePurchases?: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
-}): FlowCcExpenseLineRow[] {
+}): FlowCcExpenseLineRowDraft[] {
   const accountId = checkingAccountId();
   const deposits = opts?.depositCandidates ?? loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
@@ -844,7 +845,7 @@ export function buildCheckingGastosLines(opts?: {
     checkingCredits,
   });
 
-  const lines: FlowCcExpenseLineRow[] = [];
+  const lines: FlowCcExpenseLineRowDraft[] = [];
   const usedDepositKeys = new Set<string>();
   for (const row of [...rows].reverse()) {
     const description = cartolaDescriptionFromNote(row.note);

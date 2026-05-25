@@ -1,7 +1,7 @@
 import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
-/** Below this CLP amount, NOTA DE CREDITO is treated as a fee/adjustment (no purchase match). */
+/** Below this CLP amount, NOTA DE CREDITO is an unmatched gastos adjustment (no purchase match). At or above, unmatched lines are abonos. */
 export const NOTA_DE_CREDITO_MATCH_MIN_CLP = 10_000;
 
 export type NotaDeCreditoRole =
@@ -78,7 +78,7 @@ export function pairNotaDeCreditoAnnulments(
     }
 
     if (bestPurchase == null) {
-      unmatchedNotaIds.add(nota.statement_line_id);
+      // Large standalone credits without a matching purchase count as abonos (negative amount).
       continue;
     }
 

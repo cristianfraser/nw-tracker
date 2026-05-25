@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
+import { useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
 import { formatCcExpenseLineAmount } from "../../format";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Table } from "../ui/Table";
@@ -212,6 +213,8 @@ export function CreditCardExpenseLinesTable({
   enableCheckingNotes?: boolean;
 }) {
   const { t } = useTranslation();
+  const selection = useCreditCardExpenseLinesSelection();
+  const showRowSelection = showCategoryControls && selection != null;
 
   if (lines.length === 0) {
     return <p className="muted" style={{ marginBottom: "1rem" }}>{emptyLabel}</p>;
@@ -235,6 +238,9 @@ export function CreditCardExpenseLinesTable({
       header={
         <thead>
           <tr>
+            {showRowSelection ? (
+              <th className={categoryStyles.selectCol} aria-label={t("expenses.creditCard.colSelect")} />
+            ) : null}
             <th data-sort-key="source">{t("expenses.creditCard.lineColSource")}</th>
             <th data-sort-key="statement" data-sort-type="date">
               {t("expenses.creditCard.lineColStatementClose")}
@@ -272,10 +278,12 @@ export function CreditCardExpenseLinesTable({
         const showNoteInput =
           Boolean(ln.purchase_key) &&
           (isCc || (enableCheckingNotes && ln.source === "checking"));
+        const rowSelected = showRowSelection && selection.isSelected(ln);
         return (
           <tr
             key={`${ln.source}-${ln.statement_line_id}-${ln.purchase_key}`}
-            data-sort-source={ln.source}
+            className={rowSelected ? categoryStyles.rowSelected : undefined}
+            data-sort-source={ln.origin_label}
             data-sort-statement={ln.occurred_on}
             data-sort-purchase={ln.purchase_on ?? ""}
             data-sort-merchant={ln.merchant ?? ""}
@@ -284,11 +292,19 @@ export function CreditCardExpenseLinesTable({
               ln.installment_flag ? (ln.nro_cuota_current ?? 0) : -1
             }
           >
-            <td>
-              {isCc
-                ? t("expenses.creditCard.sourceCreditCard")
-                : t("expenses.creditCard.sourceChecking")}
-            </td>
+            {showRowSelection ? (
+              <td className={categoryStyles.selectCol}>
+                <input
+                  type="checkbox"
+                  checked={rowSelected}
+                  aria-label={t("expenses.creditCard.selectRowAria", {
+                    merchant: ln.merchant ?? ln.origin_label,
+                  })}
+                  onChange={() => selection.toggleLine(ln)}
+                />
+              </td>
+            ) : null}
+            <td className="mono">{ln.origin_label}</td>
             <td className="mono">{isCc ? ln.statement_date : "—"}</td>
             <td className="mono">{ln.purchase_on ?? "—"}</td>
             <td>{ln.merchant ?? "—"}</td>

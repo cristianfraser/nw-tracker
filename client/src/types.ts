@@ -744,6 +744,8 @@ export interface FlowCcExpenseLineRow {
   purchase_key: string;
   /** User note for this purchase (shared across cuotas / synthetic total). */
   purchase_notes: string;
+  /** Card last4 (CC) or full account name (checking). */
+  origin_label: string;
 }
 
 export type FlowCcExpenseCategoryChartPoint = {
@@ -796,6 +798,30 @@ export interface SyncSchedulerStatus {
   interval_ms: number;
   in_flight: boolean;
   next_check_at: string | null;
+}
+
+export type ImportSyncDocumentKind =
+  | "checking_cartola"
+  | "cuenta_vista_cartola"
+  | "cc_statement";
+
+export interface ImportSyncDocumentAccount {
+  account_id: number;
+  label: string;
+  document_kind: ImportSyncDocumentKind;
+}
+
+export interface ImportSyncDocumentCell {
+  imported: boolean;
+  /** Absolute local path to the source PDF/XLSX when present on disk. */
+  file_path: string | null;
+}
+
+/** `GET /api/import-sync/document-coverage` */
+export interface ImportSyncDocumentCoverageResponse {
+  months: string[];
+  accounts: ImportSyncDocumentAccount[];
+  cells: ImportSyncDocumentCell[][];
 }
 
 /** `GET /api/sync/status` */

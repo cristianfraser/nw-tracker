@@ -8,7 +8,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 import type { CcExpenseLineRole } from "./ccExpensePeriodMonth.js";
 import { db } from "./db.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
@@ -35,7 +35,7 @@ function cuotaCoverageKey(opts: {
   ].join("\t");
 }
 
-function statementCuotaCoverageKeys(lines: readonly FlowCcExpenseLineRow[]): Set<string> {
+function statementCuotaCoverageKeys(lines: readonly FlowCcExpenseLineRowDraft[]): Set<string> {
   const keys = new Set<string>();
   for (const ln of lines) {
     if (ln.line_role !== "installment_cuota" || ln.statement_line_id <= 0) continue;
@@ -120,8 +120,8 @@ type PaymentRow = {
  */
 export function buildInstallmentPaymentGastosLines(
   accountIds: number[],
-  existingStatementLines: readonly FlowCcExpenseLineRow[]
-): FlowCcExpenseLineRow[] {
+  existingStatementLines: readonly FlowCcExpenseLineRowDraft[]
+): FlowCcExpenseLineRowDraft[] {
   if (accountIds.length === 0) return [];
 
   const coverage = statementCuotaCoverageKeys(existingStatementLines);
@@ -142,7 +142,7 @@ export function buildInstallmentPaymentGastosLines(
     )
     .all(...accountIds) as PaymentRow[];
 
-  const lines: FlowCcExpenseLineRow[] = [];
+  const lines: FlowCcExpenseLineRowDraft[] = [];
   const seenPayment = new Set<number>();
 
   for (const row of payments) {

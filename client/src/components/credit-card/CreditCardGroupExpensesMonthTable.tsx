@@ -32,6 +32,11 @@ import {
 
 } from "./CreditCardExpenseMonthModalSections";
 
+import {
+  CreditCardExpenseLinesBulkFooter,
+  CreditCardExpenseLinesSelectionProvider,
+} from "./CreditCardExpenseLinesSelection";
+
 import { formatYmEs } from "../../pages/accountDetail/shared";
 
 import linkStyles from "../../pages/accountDetail/CreditCardFacturacionesTable.module.css";
@@ -102,7 +107,15 @@ export function CreditCardGroupExpensesMonthTable({
 
   }, [lines, selected, installmentMode]);
 
-
+  const monthModalLines = useMemo(
+    () => [
+      ...monthBucket.purchases,
+      ...monthBucket.installments,
+      ...monthBucket.abonos,
+      ...monthBucket.excluded,
+    ],
+    [monthBucket]
+  );
 
   const purchasesSum = useMemo(
 
@@ -244,15 +257,16 @@ export function CreditCardGroupExpensesMonthTable({
 
 
 
-      <Modal
-
-        open={modalOpen}
-
-        onClose={closeModal}
-
-        closeAriaLabel={t("expenses.creditCard.monthModalClose")}
-
-        title={
+      <CreditCardExpenseLinesSelectionProvider
+        key={selected?.period_month ?? "closed"}
+        lines={monthModalLines}
+      >
+        <Modal
+          open={modalOpen}
+          onClose={closeModal}
+          closeAriaLabel={t("expenses.creditCard.monthModalClose")}
+          footer={<CreditCardExpenseLinesBulkFooter categories={categories} />}
+          title={
 
           selected
 
@@ -310,7 +324,8 @@ export function CreditCardGroupExpensesMonthTable({
 
         />
 
-      </Modal>
+        </Modal>
+      </CreditCardExpenseLinesSelectionProvider>
 
     </>
 

@@ -86,6 +86,13 @@ export function useSyncStatus() {
   });
 }
 
+export function useImportSyncDocumentCoverage() {
+  return useQuery({
+    queryKey: queryKeys.importSyncDocumentCoverage(),
+    queryFn: () => api.importSyncDocumentCoverage(),
+  });
+}
+
 export function useSyncForceStaleMutation() {
   const queryClient = useQueryClient();
   return useMutation({

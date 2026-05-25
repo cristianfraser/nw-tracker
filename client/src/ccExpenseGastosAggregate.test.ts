@@ -25,6 +25,7 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     category_unique: false,
     purchase_key: "line-pr:test",
     purchase_notes: "",
+    origin_label: "4242",
     ...partial,
   };
 }

@@ -131,6 +131,7 @@ import {
   isGlobalSyncSource,
   syncStatusPayload,
 } from "./globalSyncStale.js";
+import { buildImportSyncDocumentCoveragePayload } from "./importSyncDocumentCoverage.js";
 import { lastSyncRunCreatedAt } from "./syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot } from "./globalSyncScheduler.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
@@ -1664,6 +1665,10 @@ app.post("/api/sync/force-stale", (req, res) => {
     scheduler: getGlobalSyncSchedulerSnapshot(),
     last_sync_at: lastSyncRunCreatedAt(),
   });
+});
+
+app.get("/api/import-sync/document-coverage", (_req, res) => {
+  res.json(buildImportSyncDocumentCoveragePayload());
 });
 
 app.get("/api/messages/unread-count", (_req, res) => {

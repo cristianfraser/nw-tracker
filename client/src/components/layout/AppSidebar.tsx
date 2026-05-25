@@ -1,5 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
 import { queryKeys } from "../../queries/keys";
@@ -8,6 +15,7 @@ import { buildSidebarNavFromApi } from "../../sidebarNavFromApi";
 import {
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
+  sidebarNodeSubtreeContainsPath,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
 import { cn } from "../../cn";
@@ -68,7 +76,9 @@ function SidebarNavItem({
   const leafHyphen = node.showLeafHyphen !== false;
   const hasChildren = (node.children?.length ?? 0) > 0;
   const isCollapsed = collapsed.has(node.id);
-  const isActive = sidebarNodeMatchesPath(pathname, node);
+  const isActive =
+    sidebarNodeMatchesPath(pathname, node) ||
+    (hasChildren && sidebarNodeSubtreeContainsPath(pathname, node));
   const showChildren = hasChildren && !isCollapsed;
 
   const collapse = (e: MouseEvent) => {
@@ -112,7 +122,12 @@ function SidebarNavItem({
                 cn(styles.link, (linkActive || isActive) && styles.linkActive)
               }
             >
-              {node.label}
+              <span className={styles.linkLabel}>{node.label}</span>
+              {node.badge ? (
+                <span className={styles.unreadPill} aria-label={node.badgeAriaLabel}>
+                  {node.badge}
+                </span>
+              ) : null}
             </NavLink>
           </div>
           {showChildren ? (
@@ -195,6 +210,51 @@ export function AppSidebar() {
   const ratesNode = tree?.find((n) => n.id === "rates");
   const unreadPill = unreadBadgeLabel(unreadCount);
 
+  const panelNode = useMemo((): SidebarNavNode => {
+    const notifications: SidebarNavNode = {
+      id: "panel.notifications",
+      label: t("sidebar.notifications"),
+      to: "/panel/notifications",
+      end: true,
+      ...(unreadPill
+        ? {
+            badge: unreadPill,
+            badgeAriaLabel: t("notifications.unreadBadge", { count: unreadCount }),
+          }
+        : {}),
+    };
+    return {
+      id: "panel",
+      label: t("sidebar.controlPanel"),
+      to: "/panel",
+      activePrefix: "/panel",
+      showLeafHyphen: false,
+      children: [
+        notifications,
+        {
+          id: "panel.import-sync",
+          label: t("sidebar.importSync"),
+          to: "/panel/import-sync",
+          end: true,
+        },
+      ],
+    };
+  }, [t, unreadCount, unreadPill]);
+
+  useEffect(() => {
+    const expandIds = collectAncestorIdsToExpand([panelNode], pathname);
+    if (expandIds.length === 0) return;
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of expandIds) {
+        if (next.delete(id)) changed = true;
+      }
+      if (changed) writeCollapsedIds(next);
+      return changed ? next : prev;
+    });
+  }, [pathname, panelNode]);
+
   return (
     <aside className="app-sidebar" aria-label="Main navigation">
       <div className={styles.brand}>
@@ -265,29 +325,13 @@ export function AppSidebar() {
           <div className={styles.navFooter}>
             <div className={styles.separator} role="separator" />
             <ul className={styles.list}>
-              <li className={styles.item} style={{ "--sidebar-depth": 0 } as CSSProperties}>
-                <div className={styles.itemBody}>
-                  <span className={styles.leafMark} aria-hidden />
-                  <div className={styles.itemContent}>
-                    <div
-                      className={cn(styles.row, pathname === "/messages" && styles.rowActive)}
-                    >
-                      <NavLink
-                        to="/messages"
-                        end
-                        className={({ isActive }) => cn(styles.link, isActive && styles.linkActive)}
-                      >
-                        <span className={styles.linkLabel}>{t("sidebar.messages")}</span>
-                        {unreadPill ? (
-                          <span className={styles.unreadPill} aria-label={`${unreadCount} sin leer`}>
-                            {unreadPill}
-                          </span>
-                        ) : null}
-                      </NavLink>
-                    </div>
-                  </div>
-                </div>
-              </li>
+              <SidebarNavItem
+                node={panelNode}
+                depth={0}
+                collapsed={collapsed}
+                onToggleCollapse={onToggleCollapse}
+                pathname={pathname}
+              />
             </ul>
           </div>
         </div>

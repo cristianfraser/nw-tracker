@@ -44,9 +44,9 @@ function statusLabel(
   t: (key: string) => string,
   status: SyncSourceDisplayStatus
 ): string {
-  if (status === "stale") return t("messages.sync.statusStale");
-  if (status === "disabled") return t("messages.sync.statusDisabled");
-  return t("messages.sync.statusOk");
+  if (status === "stale") return t("importSync.sync.statusStale");
+  if (status === "disabled") return t("importSync.sync.statusDisabled");
+  return t("importSync.sync.statusOk");
 }
 
 export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
@@ -60,10 +60,10 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
   }, []);
 
   const lastLine = useMemo(() => {
-    if (!status.last_sync_at) return t("messages.sync.lastSyncNever");
+    if (!status.last_sync_at) return t("importSync.sync.lastSyncNever");
     const atMs = parseCreatedAtMs(status.last_sync_at);
-    if (Number.isNaN(atMs)) return t("messages.sync.lastSyncNever");
-    return t("messages.sync.lastSync", {
+    if (Number.isNaN(atMs)) return t("importSync.sync.lastSyncNever");
+    return t("importSync.sync.lastSync", {
       time: formatWhenEs(status.last_sync_at),
       ago: formatAgoEs(nowMs - atMs),
     });
@@ -71,12 +71,12 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
 
   const nextLine = useMemo(() => {
     const sched = status.scheduler;
-    if (!sched.enabled) return t("messages.sync.schedulerOff");
-    if (sched.in_flight) return t("messages.sync.inFlight");
-    if (!sched.next_check_at) return t("messages.sync.nextCheckUnknown");
+    if (!sched.enabled) return t("importSync.sync.schedulerOff");
+    if (sched.in_flight) return t("importSync.sync.inFlight");
+    if (!sched.next_check_at) return t("importSync.sync.nextCheckUnknown");
     const at = parseCreatedAtMs(sched.next_check_at);
     const remaining = formatRemainingEs(at - nowMs);
-    return t("messages.sync.nextCheck", {
+    return t("importSync.sync.nextCheck", {
       time: formatWhenEs(sched.next_check_at),
       remaining,
     });
@@ -89,7 +89,7 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
       <ul className={styles.sourceList}>
         {status.sources.map((row) => (
           <li key={row.source} className={styles.sourceRow}>
-            <span className={styles.sourceName}>{t(`messages.sync.sources.${row.source}`)}</span>
+            <span className={styles.sourceName}>{t(`importSync.sync.sources.${row.source}`)}</span>
             <span className={styles.sourceActions}>
               <span
                 className={cn(
@@ -108,8 +108,8 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
                   onClick={() => forceStale.mutate(row.source)}
                 >
                   {forceStale.isPending && forceStale.variables === row.source
-                    ? t("messages.sync.forceStalePending")
-                    : t("messages.sync.forceStale")}
+                    ? t("importSync.sync.forceStalePending")
+                    : t("importSync.sync.forceStale")}
                 </button>
               ) : null}
             </span>

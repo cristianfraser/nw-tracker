@@ -29,6 +29,7 @@ function sampleData(): FlowsCreditCardExpensesResponse {
         category_unique: false,
         purchase_key: "line-pr:test",
         purchase_notes: "",
+        origin_label: "4242",
       },
     ],
     by_month: [],

@@ -36,3 +36,12 @@
   font-size: 0.85rem;
   padding: 0.2rem 0.4rem;
 }
+
+.selectCol {
+  width: 2.25rem;
+  text-align: center;
+}
+
+.rowSelected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
