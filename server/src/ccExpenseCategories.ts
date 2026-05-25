@@ -1,17 +1,10 @@
 import { db } from "./db.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
+import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 
-/** Operational master account ids for flows (default: Santander credit_card_group). */
-export function listCreditCardGroupOperationalAccountIds(
-  creditCardGroupSlug = "santander"
-): number[] {
-  return listCreditCardGroupMasterAccountIds(creditCardGroupSlug);
-}
-
-/** Slug for `GET /api/flows/expenses/credit-card` (credit_card_groups, not liability_groups). */
+/** Asset group slug for `GET /api/flows/expenses/credit-card` (all issuers, not one `credit_card_groups` row). */
 export function primaryCreditCardExpensesGroupSlug(): string {
-  return "santander";
+  return "credit_cards";
 }
 
 export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
@@ -19,8 +12,20 @@ export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
 /** Excluded from gasto del mes, acumulado, chart stacks, and page total. */
 export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 
+/** Internal transfers to investments — same exclusion bucket as no_cuenta. */
+export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
+
+export const CC_EXPENSE_TOTALS_EXCLUDED_SLUGS = new Set([
+  NO_CUENTA_CC_EXPENSE_SLUG,
+  DEPOSITS_CC_EXPENSE_SLUG,
+]);
+
+export function isCcExpenseTotalsExcludedSlug(categorySlug: string): boolean {
+  return CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(categorySlug);
+}
+
 export function countsTowardCcExpenseTotals(categorySlug: string): boolean {
-  return categorySlug !== NO_CUENTA_CC_EXPENSE_SLUG;
+  return !isCcExpenseTotalsExcludedSlug(categorySlug);
 }
 
 /** Installment schedule row with cuota index 0 (contract summary, not a billed cuota). */
@@ -78,15 +83,18 @@ export function getCcExpenseCategoryBySlug(slug: string): CcExpenseCategoryRow |
 export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
   lineOverrides: Map<number, string>;
   merchantRules: Map<string, string>;
-  /** `account_id|purchase_key` → category slug, or null when Único without category yet. */
-  uniquePurchases: Map<string, string | null>;
+  /** `account_id|purchase_key` → category slug (assigned Único only). */
+  uniquePurchases: Map<string, string>;
+  /** Único checked but no category chosen yet — must not block merchant rules. */
+  uniquePurchaseModeKeys: Set<string>;
 } {
   const lineOverrides = new Map<number, string>();
   const merchantRules = new Map<string, string>();
-  const uniquePurchases = new Map<string, string | null>();
+  const uniquePurchases = new Map<string, string>();
+  const uniquePurchaseModeKeys = new Set<string>();
 
   if (accountIds.length === 0) {
-    return { lineOverrides, merchantRules, uniquePurchases };
+    return { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys };
   }
 
   const ph = accountIds.map(() => "?").join(",");
@@ -132,10 +140,15 @@ export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
   }[];
 
   for (const r of uniqueRows) {
-    uniquePurchases.set(`${r.account_id}|${r.purchase_key}`, r.slug);
+    const mapKey = `${r.account_id}|${r.purchase_key}`;
+    if (r.slug == null) {
+      uniquePurchaseModeKeys.add(mapKey);
+    } else {
+      uniquePurchases.set(mapKey, r.slug);
+    }
   }
 
-  return { lineOverrides, merchantRules, uniquePurchases };
+  return { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys };
 }
 
 export function resolveCcExpensePurchaseKey(statementLineId: number): string {
@@ -148,6 +161,60 @@ function uniquePurchaseMapKey(accountId: number, purchaseKey: string): string {
   return `${accountId}|${purchaseKey}`;
 }
 
+/** Longest stored merchant_key that matches exactly or as a prefix (statement names often truncate). */
+export function resolveMerchantCategorySlug(
+  accountId: number,
+  merchantKey: string,
+  merchantRules: Map<string, string>
+): string | null {
+  if (!merchantKey) return null;
+  const exact = merchantRules.get(`${accountId}|${merchantKey}`);
+  if (exact) return exact;
+
+  const prefix = `${accountId}|`;
+  let bestLen = 0;
+  let bestSlug: string | null = null;
+  for (const [mapKey, slug] of merchantRules) {
+    if (!mapKey.startsWith(prefix)) continue;
+    const ruleKey = mapKey.slice(prefix.length);
+    if (!ruleKey) continue;
+    if (merchantKey.startsWith(ruleKey) || ruleKey.startsWith(merchantKey)) {
+      const len = Math.min(ruleKey.length, merchantKey.length);
+      if (len > bestLen) {
+        bestLen = len;
+        bestSlug = slug;
+      }
+    }
+  }
+  return bestSlug;
+}
+
+/** Merchant rule keys on this account that would classify `merchantKey` (exact or prefix). */
+export function merchantRuleKeysMatchingLineMerchant(
+  accountId: number,
+  merchantKey: string
+): string[] {
+  if (!merchantKey) return [];
+  const rows = db
+    .prepare(
+      `SELECT merchant_key FROM cc_expense_merchant_categories WHERE account_id = ?`
+    )
+    .all(accountId) as { merchant_key: string }[];
+
+  const matched = new Set<string>();
+  for (const { merchant_key: ruleKey } of rows) {
+    if (!ruleKey) continue;
+    if (
+      ruleKey === merchantKey ||
+      merchantKey.startsWith(ruleKey) ||
+      ruleKey.startsWith(merchantKey)
+    ) {
+      matched.add(ruleKey);
+    }
+  }
+  return [...matched];
+}
+
 export function resolveCcExpenseCategorySlug(opts: {
   statementLineId: number;
   accountId: number;
@@ -155,20 +222,21 @@ export function resolveCcExpenseCategorySlug(opts: {
   purchaseKey: string;
   lineOverrides: Map<number, string>;
   merchantRules: Map<string, string>;
-  uniquePurchases: Map<string, string | null>;
+  uniquePurchases: Map<string, string>;
 }): string {
-  if (opts.uniquePurchases.has(uniquePurchaseMapKey(opts.accountId, opts.purchaseKey))) {
-    const slug = opts.uniquePurchases.get(uniquePurchaseMapKey(opts.accountId, opts.purchaseKey));
-    return slug ?? UNCLASSIFIED_CC_EXPENSE_SLUG;
-  }
+  const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
+  const uniqueSlug = opts.uniquePurchases.get(uniqueKey);
+  if (uniqueSlug != null) return uniqueSlug;
 
   const lineSlug = opts.lineOverrides.get(opts.statementLineId);
   if (lineSlug) return lineSlug;
 
-  if (opts.merchantKey) {
-    const merchantSlug = opts.merchantRules.get(`${opts.accountId}|${opts.merchantKey}`);
-    if (merchantSlug) return merchantSlug;
-  }
+  const merchantSlug = resolveMerchantCategorySlug(
+    opts.accountId,
+    opts.merchantKey,
+    opts.merchantRules
+  );
+  if (merchantSlug) return merchantSlug;
 
   return UNCLASSIFIED_CC_EXPENSE_SLUG;
 }
@@ -176,9 +244,14 @@ export function resolveCcExpenseCategorySlug(opts: {
 export function lineHasUniquePurchaseMode(
   accountId: number,
   purchaseKey: string,
-  uniquePurchases: Map<string, string | null>
+  uniquePurchases: Map<string, string>,
+  uniquePurchaseModeKeys?: Set<string>
 ): boolean {
-  return uniquePurchases.has(uniquePurchaseMapKey(accountId, purchaseKey));
+  const key = uniquePurchaseMapKey(accountId, purchaseKey);
+  return (
+    uniquePurchases.has(key) ||
+    (uniquePurchaseModeKeys?.has(key) ?? false)
+  );
 }
 
 export type CcStatementLineExpenseCtx = {
@@ -455,7 +528,7 @@ export function ccStatementLineBelongsToCreditCardGroup(statementLineId: number)
   account_id?: number;
   merchant?: string | null;
 } {
-  const allowed = new Set(listCreditCardGroupOperationalAccountIds());
+  const allowed = new Set(listCreditCardMasterAccountIds());
   const row = db
     .prepare(
       `SELECT s.account_id, l.merchant
@@ -475,6 +548,8 @@ export function assignCcExpenseLineCategory(opts: {
   statementLineId: number;
   unique: boolean;
   categorySlug?: string | null;
+  /** User chose «Sin clasificar» — remove line, merchant, and unique overrides for this purchase. */
+  clearCategory?: boolean;
 }): {
   category_slug: string;
   unique: boolean;
@@ -527,10 +602,21 @@ export function assignCcExpenseLineCategory(opts: {
      VALUES (?, ?, ?)
      ON CONFLICT(account_id, merchant_key) DO UPDATE SET category_id = excluded.category_id`
   );
+  const delMerchant = db.prepare(
+    `DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
+  );
 
   const tx = db.transaction(() => {
     for (const lineId of purchaseLineIds) {
       delLine.run(lineId);
+    }
+
+    if (opts.clearCategory) {
+      delUniquePurchase.run(belong.account_id, purchaseKey);
+      for (const ruleKey of merchantRuleKeysMatchingLineMerchant(belong.account_id, merchantKey)) {
+        delMerchant.run(belong.account_id, ruleKey);
+      }
+      return;
     }
 
     if (opts.unique) {
@@ -544,6 +630,15 @@ export function assignCcExpenseLineCategory(opts: {
     }
   });
   tx();
+
+  if (opts.clearCategory) {
+    return {
+      category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
+      unique: false,
+      merchant_key: merchantKey,
+      purchase_key: purchaseKey,
+    };
+  }
 
   return {
     category_slug: resolvedSlug,

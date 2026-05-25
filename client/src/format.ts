@@ -77,6 +77,16 @@ export function formatUsd(n: number): string {
   return formatCurrency(n, "usd");
 }
 
+/** CC expense line: CLP with optional original USD in parentheses. */
+export function formatCcExpenseLineAmount(
+  amountClp: number,
+  amountUsd: number | null | undefined
+): string {
+  const clp = formatClp(amountClp);
+  if (amountUsd == null || !Number.isFinite(amountUsd) || amountUsd === 0) return clp;
+  return `${clp} (${formatUsdFine(amountUsd)})`;
+}
+
 /** USD with cents — still prefixed `US$`; negatives `(US$1,234.56)`. */
 export function formatUsdFine(n: number): string {
   return formatCurrency(n, "usd-fine");

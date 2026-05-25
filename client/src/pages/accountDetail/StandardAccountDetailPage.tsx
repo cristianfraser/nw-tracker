@@ -1,12 +1,13 @@
 import { useTranslation } from "../../i18n";
-import { MonthlyPerformanceComboChart } from "../../components/MonthlyPerformanceComboChart";
-import { AccountFlowsTable } from "../../components/AccountFlowsTable";
-import { MonthlyPerfDetailTable } from "../../components/MonthlyPerfDetailTable";
+import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
+import { AccountFlowsTable } from "../../components/account/AccountFlowsTable";
+import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
-import { Table } from "../../components/Table";
-import { LineChartPanel } from "../../components/ValuationLineCharts";
+import { Table } from "../../components/ui/Table";
+import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
 import { formatClp, formatInstrumentUnits } from "../../format";
 import { cn } from "../../cn";
+import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
@@ -47,9 +48,9 @@ export function StandardAccountDetailPage({ data }: Props) {
     checkingCartolaMonths,
   } = data;
 
-  const isCheckingAccount = summary.category_slug === "cuenta_corriente";
+  const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
-    !isCheckingAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
+    !isMovementCartolaAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
   const isAfpAccount = summary.category_slug === "afp";
   const isMortgageAccount = summary.category_slug === "mortgage";
   const ccChartsFromParsedLedger =
@@ -78,6 +79,10 @@ export function StandardAccountDetailPage({ data }: Props) {
       overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
     >
+      {(isMovementCartolaAccount || isAfpAccount) && (
+        <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
+      )}
+
       <div className={styles.positionBlock}>
         <h2 className={styles.sectionTitleCompact}>Posición (ticker y cuotas)</h2>
         <p className={cn("muted", styles.proseMutedXs)}>
@@ -144,11 +149,11 @@ export function StandardAccountDetailPage({ data }: Props) {
           block={valuationBlockForChart ?? ts.accounts}
           displayUnit={displayUnit}
           xAxisGranularity={xAxisGranularity}
-          trimLeadingInactive={!isCheckingAccount}
+          trimLeadingInactive={!isMovementCartolaAccount}
         />
       </div>
 
-      {isCheckingAccount ? (
+      {isMovementCartolaAccount ? (
         <>
           <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyDetailTitle")}</h2>
           <p className={cn("muted", styles.proseSmTight)}>

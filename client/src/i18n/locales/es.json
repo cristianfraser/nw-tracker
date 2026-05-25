@@ -28,10 +28,12 @@
   },
   "cash": {
     "reserva": "reserva",
-    "checkingAccount": "cuenta corriente"
+    "checkingAccount": "cuenta corriente",
+    "cuentaVista": "cuenta vista"
   },
   "creditCardGroup": {
-    "santander": "Santander"
+    "santander": "Santander",
+    "bci": "BCI"
   },
   "liabilities": {
     "mortgage": "hipoteca",
@@ -172,6 +174,23 @@
     "flowsEmpty": "No hay flujos.",
     "flowsFilteredEmpty": "Ningún flujo coincide con el filtro.",
     "flowsPersonalOnly": "Solo aportes propios",
+    "import": {
+      "sectionTitle": "Importar movimientos y documentos",
+      "pastePlaceholder": "Pegar movimientos copiados del sitio web del banco (fecha, comercio, monto por línea o tabulado)",
+      "submit": "Importar",
+      "busy": "Importando…",
+      "ccWebPaste": "Movimientos del sitio web (tarjeta)",
+      "ccWebPasteHint": "Pega el listado de movimientos recientes antes de que esté el estado de cuenta PDF. Los duplicados se omiten.",
+      "ccStatementPdf": "Estado de cuenta PDF (oficial)",
+      "ccStatementPdfHint": "Sube el PDF CLP y, si aplica, el PDF internacional en US$. Se fusiona con lo ya importado.",
+      "ccPdfClp": "PDF CLP",
+      "ccPdfUsd": "PDF USD (opcional)",
+      "checkingRecent": "Últimos movimientos (Excel)",
+      "checkingRecentHint": "Export «últimos movimientos» de la cuenta corriente. Se pueden volver a subir archivos con filas ya importadas.",
+      "checkingCartola": "Cartola oficial (Excel)",
+      "checkingCartolaHint": "Cartola mensual completa. Si el mes ya fue importado, solo se agregan movimientos nuevos.",
+      "afpUnoCert": "Certificado AFP (PDF / CSV / TXT)"
+    },
     "checking": {
       "cartolaMonthHint": "Una fila por cada mes del historial. Abonos y cargos solo con cartola importada. Saldo fin de mes = suma de movimientos (ledger). Saldo cartola = cierre impreso en el estado (solo referencia). Diferencia = saldo fin de mes − saldo cartola.",
       "cartolaMonthEmpty": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas en el servidor.",
@@ -228,6 +247,16 @@
       "facturacionModalTitle": "Facturación {{month}}",
       "facturacionModalClose": "Cerrar",
       "facturacionModalEmpty": "Sin movimientos importados para este mes.",
+      "facturacionDeleteLine": "Eliminar",
+      "facturacionDeleteLineAria": "Eliminar movimiento",
+      "facturacionDeleteConfirmTitle": "Eliminar movimiento",
+      "facturacionDeleteConfirmBody": "¿Eliminar «{{merchant}}» ({{amount}}) de esta facturación? No se puede deshacer.",
+      "facturacionDeleteConfirmAction": "Eliminar",
+      "facturacionDeleteConfirmCancel": "Cancelar",
+      "lineColActions": "Acciones",
+      "lineColNotes": "Notas",
+      "purchaseNotePlaceholder": "Nota…",
+      "purchaseNoteAria": "Nota de la compra",
       "colCardCurrency": "Tarjeta"
     }
   },
@@ -273,6 +302,8 @@
       "statusOk": "Al día",
       "statusStale": "Desactualizado",
       "statusDisabled": "No configurado",
+      "forceStale": "Marcar desactualizado",
+      "forceStalePending": "Marcando…",
       "sources": {
         "afp_uno": "AFP UNO (cuota del día)",
         "fintual": "Fintual (metas, desde 18:00 Chile)",
@@ -306,11 +337,19 @@
       "real_estate": "Inmuebles"
     },
     "creditCard": {
-      "intro": "Gastos por mes de facturación del grupo tarjeta de crédito (cierre del estado), en CLP y cargos en dólares convertidos al tipo de cambio del cierre. En cuotas se usa el valor de la cuota de ese mes, no el monto total de la compra.",
+      "intro": "Gastos por mes calendario de la compra (tarjeta de crédito) y retiros de cuenta corriente que cuentan como gasto, en CLP. Al abrir un mes: Compras (cargos únicos y total de compras en cuotas) y Cuotas (cuotas facturadas ese mes). Cuotas en modo «Por cuota» suman cada cuota en su mes; en «Total» suma el monto completo en el mes de la compra. Se excluyen transferencias internas y pagos de tarjeta.",
+      "installmentModeLabel": "Cuotas",
+      "installmentModeSplit": "Por cuota",
+      "installmentModeTotal": "Total",
+      "installmentPurchaseTotalLabel": "Compra en cuotas · {{count}} cuotas",
       "chartTitle": "Gasto por categoría",
+      "chartStyleLabel": "Vista",
+      "chartStyleStacked": "Barras apiladas",
+      "chartStyleLine": "Líneas",
       "chartEmpty": "Sin gastos en este período.",
       "colCategory": "Categoría",
       "categoryUniqueLabel": "Único",
+      "clearCategoryAria": "Quitar categoría",
       "categories": {
         "unclassified": "Sin clasificar",
         "no_cuenta": "No cuenta",
@@ -323,9 +362,10 @@
         "subscriptions": "Suscripciones",
         "fun": "Ocio",
         "trees": "Jardín / plantas",
-        "others": "Otros"
+        "others": "Otros",
+        "deposits": "Depósitos (a inversiones)"
       },
-      "monthlyDetailHint": "Una fila por mes de facturación (cierre del estado). Gasto del mes excluye «No cuenta» y cuotas 0; total real incluye todos los cargos positivos. Abonos y exclusiones al abrir el mes.",
+      "monthlyDetailHint": "Una fila por mes calendario. Compras: mes de la compra (cargos únicos y total en cuotas). Cuotas: mes en que se factura cada cuota. Gasto del mes excluye «No cuenta» y cuota 0.",
       "colMonthExpense": "Gasto del mes",
       "colMonthExpenseReal": "Total real",
       "colCumulative": "Acumulado",
@@ -333,17 +373,25 @@
       "emptyMonths": "Sin líneas de estado de cuenta importadas.",
       "monthModalTitle": "Gastos {{month}}",
       "monthModalClose": "Cerrar",
-      "monthModalEmpty": "Sin movimientos en la facturación de este mes.",
+      "monthModalEmpty": "Sin movimientos en este mes calendario.",
       "monthModalGastosSum": "Suma gastos",
       "monthModalAbonosSum": "Suma abonos",
       "modalSectionGastos": "Gastos",
+      "modalSectionPurchases": "Compras",
+      "modalSectionInstallments": "Cuotas",
       "modalSectionAbonos": "Abonos",
       "modalSectionExcluded": "No cuenta y cuota 0",
       "modalSectionEmpty": "Sin movimientos.",
+      "lineColSource": "Origen",
+      "sourceCreditCard": "Tarjeta",
+      "sourceChecking": "Cuenta corriente",
       "lineColStatementClose": "Cierre estado",
       "lineColPurchaseDate": "Fecha compra",
       "lineColAmount": "Monto CLP",
       "lineColInstallment": "Cuota",
+      "lineColNotes": "Notas",
+      "purchaseNotePlaceholder": "Nota…",
+      "purchaseNoteAria": "Nota de la compra",
       "unclassifiedTableTitle": "Gastos sin clasificar",
       "unclassifiedTableHint": "Cargos sin categoría, ordenados por monto (mayor primero). Asigna categoría aquí o por comercio en el detalle del mes.",
       "unclassifiedTableEmpty": "No hay gastos sin clasificar."
@@ -381,7 +429,7 @@
       "colCupo": "Cupo en cuotas",
       "colSaldoTotal": "Saldo total",
       "statementsTitle": "Movimientos del estado de cuenta",
-      "statementsEmpty": "Sin estados de cuenta importados. Ejecuta el parser PDF y `import:cc-parsed`.",
+      "statementsEmpty": "Sin estados de cuenta importados. Ejecuta `npm run import:cfraser-inbox` (organiza PDFs en cfraser/pdfs, parsea e importa).",
       "statementPeriod": "Período",
       "statementPayBy": "Pagar hasta",
       "lineDate": "Fecha",

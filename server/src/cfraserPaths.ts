@@ -58,3 +58,10 @@ export function resolveCfraserCheckingCartolaPdfsDir(): string {
   if (env) return path.resolve(env);
   return path.resolve(__dirname, "..", "..", "cfraser", "cartolas-cuenta-corriente");
 }
+
+/** Santander cuenta vista (CUENTAMATICA) cartola PDFs (`cfraser/cartolas-cuenta-vista/`). */
+export function resolveCfraserCuentaVistaCartolaPdfsDir(): string {
+  const env = process.env.CFRASER_CUENTA_VISTA_PDFS_DIR?.trim();
+  if (env) return path.resolve(env);
+  return path.resolve(__dirname, "..", "..", "cfraser", "cartolas-cuenta-vista");
+}

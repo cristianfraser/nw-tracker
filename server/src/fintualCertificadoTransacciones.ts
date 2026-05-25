@@ -99,7 +99,8 @@ export type FintualCertificadoAggregateScan = {
 };
 
 /**
- * Parses the certificate and aggregates flows by (goal id × calendar day). Does not touch the database.
+ * Parses the certificate and emits one movement per CSV row with net flow (no same-day merge).
+ * Does not touch the database.
  */
 export function aggregateFintualCertificado(
   csvPath: string,
@@ -135,7 +136,7 @@ export function aggregateFintualCertificado(
     reservaSaldoClpByMonthKey.set(mk, v.saldo);
   }
 
-  const byKey = new Map<string, Agg>();
+  const sortedAggregates: Agg[] = [];
 
   let apvAFirstFlowYmd: string | null = null;
   let apvACutMonth: string | null = null;
@@ -166,26 +167,19 @@ export function aggregateFintualCertificado(
       importNote === "import:excel|key=apv_a"
         ? depositFlowKindForApvAFintualRow(ymd, clpNet, medio, null)
         : depositFlowKindFromFintualMedio(medio);
-    const k = `${goalId}|${ymd}|${flowKind}`;
-    let a = byKey.get(k);
-    if (!a) {
-      a = {
-        ymd,
-        goalId,
-        name: nombre,
-        flowKind,
-        clpNet: 0,
-        cuotasNet: 0,
-        medios: new Set<string>(),
-        valorCuotaHint: null,
-      };
-      byKey.set(k, a);
-    }
-    a.clpNet += clpNet;
-    a.cuotasNet += cuotasNet;
-    if (medio) a.medios.add(medio);
+    const medios = new Set<string>();
+    if (medio) medios.add(medio);
     const vqRow = parseFintualCertMoneyCell(r.valor_cuota);
-    if (vqRow != null && vqRow > 0) a.valorCuotaHint = vqRow;
+    sortedAggregates.push({
+      ymd,
+      goalId,
+      name: nombre,
+      flowKind,
+      clpNet,
+      cuotasNet,
+      medios,
+      valorCuotaHint: vqRow != null && vqRow > 0 ? vqRow : null,
+    });
 
     if (importNote === "import:excel|key=apv_a") {
       if (apvAFirstFlowYmd == null || ymd < apvAFirstFlowYmd) apvAFirstFlowYmd = ymd;
@@ -196,7 +190,7 @@ export function aggregateFintualCertificado(
 
   let apvAFirstMonthNetClp = 0;
   if (apvACutMonth) {
-    for (const a of byKey.values()) {
+    for (const a of sortedAggregates) {
       const note = matchGoal(a.goalId, a.name);
       if (note !== "import:excel|key=apv_a") continue;
       if (a.ymd.slice(0, 7) !== apvACutMonth) continue;
@@ -204,7 +198,7 @@ export function aggregateFintualCertificado(
     }
   }
 
-  const sortedAggregates = [...byKey.values()].sort((x, y) => {
+  sortedAggregates.sort((x, y) => {
     const c = x.ymd.localeCompare(y.ymd);
     return c !== 0 ? c : x.goalId.localeCompare(y.goalId);
   });

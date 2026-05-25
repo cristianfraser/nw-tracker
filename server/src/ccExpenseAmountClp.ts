@@ -53,3 +53,31 @@ export function effectiveCcExpenseLineAmountClp(
   }
   return usdToClpAtDate(row.amount_usd ?? NaN, fxDateIso);
 }
+
+/** Original USD for display when the charge is on a USD statement (or USD-only line). */
+export function effectiveCcExpenseLineAmountUsd(
+  row: CcExpenseLineAmountInput
+): number | null {
+  const isInstallment = row.installment_flag === 1;
+  const usdStatement = String(row.statement_currency ?? "").toLowerCase() === "usd";
+
+  const pick = (v: number | null | undefined): number | null => {
+    if (v == null || !Number.isFinite(v) || v === 0) return null;
+    return v;
+  };
+
+  if (isInstallment) {
+    const cuotaUsd = pick(row.valor_cuota_mensual_usd);
+    if (cuotaUsd != null) return cuotaUsd;
+    if (usdStatement) return pick(row.amount_usd);
+    return null;
+  }
+
+  if (usdStatement) return pick(row.amount_usd);
+
+  const clpMissing =
+    row.amount_clp == null || !Number.isFinite(row.amount_clp) || row.amount_clp === 0;
+  if (clpMissing) return pick(row.amount_usd);
+
+  return null;
+}

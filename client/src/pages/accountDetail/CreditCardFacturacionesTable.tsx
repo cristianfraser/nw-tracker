@@ -1,11 +1,20 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
-import { Modal } from "../../components/Modal";
+import { Modal } from "../../components/ui/Modal";
+import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
 import { mergedFacturacionLines } from "./mergedFacturacionLines";
 import type { CcFacturacionDto, CcStatementDto } from "../../types";
-import { Table } from "../../components/Table";
+import { Table } from "../../components/ui/Table";
+import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
+import {
+  buildFacturacionModalBucket,
+  emptyFacturacionModalBucket,
+} from "../../components/credit-card/buildFacturacionModalBucket";
+import { flowLinesForBillingStatementMonth } from "../../components/credit-card/flowLinesForStatementMonth";
+import { deletableWebPasteLineIds } from "../../components/credit-card/deletableWebPasteLineIds";
+import type { DisplayUnit } from "../../queries/keys";
 import styles from "../AccountDetailPage.module.css";
 import linkStyles from "./CreditCardFacturacionesTable.module.css";
 
@@ -14,30 +23,24 @@ function fmtUsd(n: number | null | undefined) {
   return `US$ ${n.toFixed(2)}`;
 }
 
-function fmtOrigAmount(
-  amountOrig: number | null | undefined,
-  origCurrency: string | null | undefined
-) {
-  if (amountOrig == null || !Number.isFinite(amountOrig)) return "—";
-  const ccy = (origCurrency ?? "").toUpperCase();
-  if (ccy === "CLP") return formatClp(Math.round(amountOrig));
-  if (ccy === "GBP") return `£${amountOrig.toFixed(2)}`;
-  if (ccy === "EUR") return `€${amountOrig.toFixed(2)}`;
-  if (ccy === "USD") return `US$ ${amountOrig.toFixed(2)}`;
-  if (ccy) return `${amountOrig.toFixed(2)} ${ccy}`;
-  return String(amountOrig);
-}
-
 export function CreditCardFacturacionesTable({
   rows,
   statements = [],
+  accountId,
+  displayUnit,
+  extraCcOffsetsKey,
   collapsedVisibleRows = 12,
 }: {
   rows: readonly CcFacturacionDto[];
   statements?: readonly CcStatementDto[];
+  accountId: number;
+  displayUnit: DisplayUnit;
+  extraCcOffsetsKey: string;
   collapsedVisibleRows?: number;
 }) {
   const { t } = useTranslation();
+  const { data: flows } = useFlowsCreditCardExpenses();
+  const categories = flows?.categories ?? [];
   const hidden = Math.max(0, rows.length - collapsedVisibleRows);
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
@@ -52,10 +55,30 @@ export function CreditCardFacturacionesTable({
     setModalOpen(true);
   }, []);
 
-  const modalLines = useMemo(() => {
-    if (!selected) return [];
-    return mergedFacturacionLines(statements, selected.billing_month);
-  }, [statements, selected]);
+  const scopedLines = useMemo(() => {
+    if (!selected || !flows) return [];
+    return flowLinesForBillingStatementMonth(
+      flows.lines,
+      statements,
+      accountId,
+      selected.billing_month
+    );
+  }, [accountId, flows, selected, statements]);
+
+  const statementLineCount = useMemo(() => {
+    if (!selected) return 0;
+    return mergedFacturacionLines(statements, selected.billing_month).length;
+  }, [selected, statements]);
+
+  const facturacionBucket = useMemo(() => {
+    if (!selected) return emptyFacturacionModalBucket();
+    return buildFacturacionModalBucket(scopedLines);
+  }, [scopedLines, selected]);
+
+  const deletableLineIds = useMemo(() => {
+    if (!selected) return new Set<number>();
+    return deletableWebPasteLineIds(statements, selected.billing_month);
+  }, [selected, statements]);
 
   const modalSubtitle = selected ? (
     <>
@@ -70,6 +93,12 @@ export function CreditCardFacturacionesTable({
         <>
           {" "}
           · {t("accountDetail.creditCard.colPayBy")}: {selected.pay_by}
+        </>
+      ) : null}
+      {selected.facturado_total_clp != null ? (
+        <>
+          {" "}
+          · {t("account.creditCard.colFacturadoTotal")}: {formatClp(selected.facturado_total_clp)}
         </>
       ) : null}
     </>
@@ -92,7 +121,7 @@ export function CreditCardFacturacionesTable({
               <th>{t("account.creditCard.colFacturado")}</th>
               <th>{t("accountDetail.creditCard.colFacturadoUsd")}</th>
               <th>{t("accountDetail.creditCard.colFacturadoUsdClp")}</th>
-              <th>{t("accountDetail.creditCard.colFacturadoTotal")}</th>
+              <th>{t("account.creditCard.colFacturadoTotal")}</th>
               <th>{t("accountDetail.creditCard.colCuotaAPagar")}</th>
             </tr>
           </thead>
@@ -141,47 +170,17 @@ export function CreditCardFacturacionesTable({
         }
         subtitle={modalSubtitle}
       >
-        {modalLines.length === 0 ? (
+        {statementLineCount === 0 ? (
           <p className="muted">{t("accountDetail.creditCard.facturacionModalEmpty")}</p>
         ) : (
-          <Table
-            tableClassName={styles.tableCompact}
-            header={
-              <thead>
-                <tr>
-                  <th>{t("account.creditCard.lineDate")}</th>
-                  <th>{t("accountDetail.creditCard.colCardCurrency")}</th>
-                  <th>{t("account.creditCard.lineMerchant")}</th>
-                  <th>{t("account.creditCard.lineOrig")}</th>
-                  <th>{t("account.creditCard.lineAmountClp")}</th>
-                  <th>{t("account.creditCard.lineAmountUsd")}</th>
-                </tr>
-              </thead>
-            }
-          >
-            {modalLines.map((ln) => (
-              <tr key={`${ln.statement_id}-${ln.id}`}>
-                <td className="mono">{ln.transaction_date ?? ln.posting_date ?? "—"}</td>
-                <td className="mono">{ln.currency.toUpperCase()}</td>
-                <td>{ln.merchant ?? ln.description_merged ?? "—"}</td>
-                <td className="mono">{fmtOrigAmount(ln.amount_orig, ln.orig_currency)}</td>
-                <td className="mono">
-                  {ln.amount_clp != null && ln.amount_clp !== 0
-                    ? formatClp(ln.amount_clp)
-                    : ln.currency === "usd"
-                      ? "—"
-                      : ln.amount_clp === 0
-                        ? "—"
-                        : formatClp(0)}
-                </td>
-                <td className="mono">
-                  {ln.amount_usd != null && Number.isFinite(ln.amount_usd)
-                    ? `US$ ${ln.amount_usd.toFixed(2)}`
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </Table>
+          <CreditCardFacturacionModalSections
+            bucket={facturacionBucket}
+            categories={categories}
+            accountId={accountId}
+            displayUnit={displayUnit}
+            extraCcOffsetsKey={extraCcOffsetsKey}
+            deletableLineIds={deletableLineIds}
+          />
         )}
       </Modal>
     </>

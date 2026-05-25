@@ -6,6 +6,8 @@ import {
 } from "./deptoDividendosLedger.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
+import { resolveOperationalAccountId } from "./accountSource.js";
+import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { db } from "./db.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
@@ -56,16 +58,60 @@ function mortgageLedgerForLiabilitiesOverview(): DeptoMortgageSheetRow[] {
   return mortgageLedgerForOverview;
 }
 
-function liabilityAccountsForValuation(): LiabilityValuationRow[] {
-  return db
+function santanderPerCardCreditCardMastersExist(): boolean {
+  const row = db
     .prepare(
-      `SELECT a.id AS account_id, c.slug AS category_slug
+      `SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`
+    )
+    .get() as { o: number } | undefined;
+  return row != null;
+}
+
+/** Same membership as {@link listLiabilitiesTabAccountRows} — liability_view only, one series per debt. */
+function liabilityAccountsForValuation(): LiabilityValuationRow[] {
+  const rows = db
+    .prepare(
+      `SELECT a.id AS account_id, c.slug AS category_slug,
+              a.exclude_from_group_totals AS exclude_from_group_totals,
+              a.source_account_id AS source_account_id
        FROM accounts a
        JOIN categories c ON c.id = a.category_id
        JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = 'liabilities'`
+       WHERE g.slug = 'liabilities'
+         AND a.account_kind = 'liability_view'
+         AND (a.notes IS NULL OR a.notes != ?)
+       ORDER BY c.sort_order, c.id, a.name`
     )
-    .all() as LiabilityValuationRow[];
+    .all(NOTE_STOCKS_LEGACY) as (LiabilityValuationRow & {
+    exclude_from_group_totals: number;
+    source_account_id: number | null;
+  })[];
+
+  let kept = rows;
+  if (santanderPerCardCreditCardMastersExist()) {
+    const legacyMasterIds = new Set(
+      (
+        db
+          .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=credit_card'`)
+          .all() as { id: number }[]
+      ).map((r) => r.id)
+    );
+    kept = rows.filter((r) => {
+      if (r.exclude_from_group_totals === 1) return false;
+      const src = r.source_account_id;
+      return src == null || !legacyMasterIds.has(src);
+    });
+  }
+
+  const seenSeries = new Set<number>();
+  const out: LiabilityValuationRow[] = [];
+  for (const r of kept) {
+    const seriesId = resolveOperationalAccountId(r.account_id);
+    if (seenSeries.has(seriesId)) continue;
+    seenSeries.add(seriesId);
+    out.push({ account_id: r.account_id, category_slug: r.category_slug });
+  }
+  return out;
 }
 
 function liabilityValuationClpAt(

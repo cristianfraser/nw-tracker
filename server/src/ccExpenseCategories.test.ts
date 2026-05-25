@@ -3,16 +3,34 @@ import {
   assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
-  listCreditCardGroupOperationalAccountIds,
   listStatementLineIdsForPurchaseKey,
+  loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
   resolveCcExpenseCategorySlug,
   resolveCcExpensePurchaseKey,
+  resolveMerchantCategorySlug,
 } from "./ccExpenseCategories.js";
+import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { db } from "./db.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 
 describe("ccExpenseCategories", () => {
-  it("countsTowardCcExpenseGastosMes excludes no_cuenta and installment cuota 0", () => {
+  it("listCreditCardMasterAccountIds includes active masters from every issuer group", () => {
+    const gastos = new Set(listCreditCardMasterAccountIds());
+    const santander = listCreditCardGroupMasterAccountIds("santander");
+    const bci = listCreditCardGroupMasterAccountIds("bci");
+    for (const id of [...santander, ...bci]) {
+      expect(gastos.has(id)).toBe(true);
+    }
+    const id4242 = (
+      db
+        .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+        .get() as { id: number } | undefined
+    )?.id;
+    if (id4242) expect(gastos.has(id4242)).toBe(true);
+  });
+
+  it("countsTowardCcExpenseGastosMes excludes no_cuenta, deposits, and installment cuota 0", () => {
     expect(
       countsTowardCcExpenseGastosMes("supermarket", {
         installment_flag: 1,
@@ -21,6 +39,12 @@ describe("ccExpenseCategories", () => {
     ).toBe(true);
     expect(
       countsTowardCcExpenseGastosMes("no_cuenta", {
+        installment_flag: 0,
+        nro_cuota_current: null,
+      })
+    ).toBe(false);
+    expect(
+      countsTowardCcExpenseGastosMes("deposits", {
         installment_flag: 0,
         nro_cuota_current: null,
       })
@@ -64,19 +88,34 @@ describe("ccExpenseCategories", () => {
       resolveCcExpenseCategorySlug({
         statementLineId: 3,
         accountId: 15,
-        merchantKey: "UNKNOWN",
-        purchaseKey: "line:3",
+        merchantKey: "TEST",
+        purchaseKey: "installment:8",
         lineOverrides: new Map(),
         merchantRules: new Map([["15|TEST", "supermarket"]]),
-        uniquePurchases: new Map([["15|installment:8", null]]),
+        uniquePurchases: new Map(),
+      })
+    ).toBe("supermarket");
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 4,
+        accountId: 15,
+        merchantKey: "UNKNOWN",
+        purchaseKey: "line:4",
+        lineOverrides: new Map(),
+        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        uniquePurchases: new Map(),
       })
     ).toBe("unclassified");
   });
 
-  it("can enable unique purchase mode before a category is chosen", () => {
-    const accounts = listCreditCardGroupOperationalAccountIds();
-    if (accounts.length === 0) return;
+  it("matches merchant rules by prefix when statement merchant name is longer", () => {
+    const rules = new Map([["32|METLIFE CHILE SEGUROS", "bills"]]);
+    expect(
+      resolveMerchantCategorySlug(32, "METLIFE CHILE SEGUROS DE VIDA", rules)
+    ).toBe("bills");
+  });
 
+  it("can enable unique purchase mode before a category is chosen", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
     const line = payload.lines.find((ln) => ln.amount_clp > 0);
     if (!line) return;
@@ -92,13 +131,16 @@ describe("ccExpenseCategories", () => {
     const after = buildFlowsCreditCardExpensesPayload();
     const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
     expect(updated?.category_unique).toBe(true);
-    expect(updated?.category_slug).toBe("unclassified");
+    const { merchantRules } = loadCcExpenseCategoryMaps([line.account_id]);
+    const merchantSlug = resolveMerchantCategorySlug(
+      line.account_id,
+      normalizeCcExpenseMerchantKey(line.merchant),
+      merchantRules
+    );
+    expect(updated?.category_slug).toBe(merchantSlug ?? "unclassified");
   });
 
   it("merchant assignment applies to same comercio when not marked unique", () => {
-    const accounts = listCreditCardGroupOperationalAccountIds();
-    if (accounts.length === 0) return;
-
     const payload = buildFlowsCreditCardExpensesPayload();
     const line = payload.lines.find((ln) => {
       if (ln.amount_clp <= 0 || !ln.merchant || ln.category_unique) return false;
@@ -162,10 +204,70 @@ describe("ccExpenseCategories", () => {
     }
   });
 
+  it("clear_category removes merchant and unique overrides", () => {
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const line = payload.lines.find((ln) => ln.amount_clp > 0 && ln.merchant);
+    if (!line) return;
+
+    assignCcExpenseLineCategory({
+      statementLineId: line.statement_line_id,
+      unique: true,
+      categorySlug: "fun",
+    });
+
+    const cleared = assignCcExpenseLineCategory({
+      statementLineId: line.statement_line_id,
+      unique: true,
+      clearCategory: true,
+    });
+    expect(cleared.category_slug).toBe("unclassified");
+    expect(cleared.unique).toBe(false);
+
+    const after = buildFlowsCreditCardExpensesPayload();
+    const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
+    expect(updated?.category_slug).toBe("unclassified");
+    expect(updated?.category_unique).toBe(false);
+
+    const peers = payload.lines.filter(
+      (ln) =>
+        ln.statement_line_id !== line.statement_line_id &&
+        ln.account_id === line.account_id &&
+        ln.merchant_key === line.merchant_key &&
+        ln.amount_clp > 0
+    );
+    if (peers.length === 0) return;
+
+    assignCcExpenseLineCategory({
+      statementLineId: line.statement_line_id,
+      unique: false,
+      categorySlug: "supermarket",
+    });
+
+    assignCcExpenseLineCategory({
+      statementLineId: line.statement_line_id,
+      unique: false,
+      clearCategory: true,
+    });
+
+    const afterMerchantClear = buildFlowsCreditCardExpensesPayload();
+    for (const ln of afterMerchantClear.lines.filter(
+      (p) =>
+        p.account_id === line.account_id &&
+        p.merchant_key === line.merchant_key &&
+        p.amount_clp > 0 &&
+        !p.category_unique
+    )) {
+      expect(ln.category_slug).toBe("unclassified");
+    }
+  });
+
   it("installment cuotas share purchase_key; Único check/uncheck applies to every cuota", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
     const inst = payload.lines.find(
       (ln) =>
+        ln.source === "cc" &&
+        ln.statement_line_id > 0 &&
+        ln.amount_clp > 0 &&
         ln.installment_flag === 1 &&
         ln.nro_cuota_total != null &&
         ln.nro_cuota_total >= 3 &&

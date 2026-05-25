@@ -1,8 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { AppSidebar } from "./components/AppSidebar";
-import { MobileNavDrawer } from "./components/MobileNavDrawer";
-import { AppDisplayPreferencesBar } from "./components/AppDisplayPreferencesBar";
-import { MarketTickerPanel } from "./components/MarketTickerPanel";
+import { AppSidebar } from "./components/layout/AppSidebar";
+import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
+import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
+import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext";
 import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";

@@ -2,6 +2,7 @@
  * Fintual valuation: prefer `real_assets` fund cuota × DB cuotas; compare to `GET /api/goals` NAV.
  */
 import { chileCalendarAddDays, type ChileWallClock } from "../src/chileDate.js";
+import { resolveFintualPublishYmd } from "../src/fintualPublishDate.js";
 import { fintualGoalUnitsFromMovements } from "../src/fintualGoalUnits.js";
 import { db } from "../src/db.js";
 import { FINTUAL_API_BASE, normalizeFintualCookieInput, loadRootDotenv } from "./fintualApiLib.js";
@@ -27,6 +28,12 @@ export type FintualGoalNavResolution = {
   units: number | null;
   fundPriceClp: number | null;
   mismatch: boolean;
+};
+
+export type ResolveFintualGoalNavsResult = {
+  resolutions: FintualGoalNavResolution[];
+  /** Fund cuota publish date used for NAV and valuations (may be before poll calendar day). */
+  publishYmd: string;
 };
 
 function authHeaders(email: string, token: string): Record<string, string> {
@@ -197,9 +204,32 @@ export async function resolveFintualGoalNavs(
   token: string,
   rows: FintualGoalRowWithMatch[],
   cl: ChileWallClock
-): Promise<FintualGoalNavResolution[]> {
-  const publishYmd = cl.ymd;
+): Promise<ResolveFintualGoalNavsResult> {
   const useRealAssets = cl.hour >= 18;
+  let hasTodayInSeries = false;
+  let latestLastDayDate: string | null = null;
+
+  if (useRealAssets) {
+    for (const row of rows) {
+      if (!row.matchedNotes) continue;
+      const inv = primaryInvestment(row.investments);
+      if (!inv) continue;
+      const lastDay = await fetchRealAssetLastDay(email, token, inv.asset_id);
+      const recentNav = await recentNavByDate(email, token, inv.asset_id);
+      if (recentNav.has(cl.ymd)) hasTodayInSeries = true;
+      if (lastDay?.date) {
+        if (!latestLastDayDate || lastDay.date > latestLastDayDate) {
+          latestLastDayDate = lastDay.date;
+        }
+      }
+    }
+  }
+
+  const publishYmd = resolveFintualPublishYmd(cl, {
+    hasTodayInSeries,
+    lastDayDate: latestLastDayDate,
+  });
+
   const out: FintualGoalNavResolution[] = [];
 
   for (const row of rows) {
@@ -236,7 +266,7 @@ export async function resolveFintualGoalNavs(
     });
   }
 
-  return out;
+  return { resolutions: out, publishYmd };
 }
 
 export function clearFintualRealAssetNavCaches(): void {

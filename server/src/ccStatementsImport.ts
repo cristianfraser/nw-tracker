@@ -1,9 +1,16 @@
 import { db } from "./db.js";
+import { shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
 import {
+  propagateCcExpenseMerchantRulesAcrossGroup,
   propagateCcExpenseMerchantRulesFromLegacy,
   restoreCcExpenseCategories,
   snapshotCcExpenseCategories,
 } from "./ccExpenseCategoryPersist.js";
+import {
+  canonicalCcLineDedupeKeys,
+  ccLineDedupeKeyExistsOnAccount,
+} from "./ccExpenseLineDedupe.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 function parseInt10(s: string): number | null {
   const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
@@ -16,7 +23,6 @@ function parseUsdAmount(s: string): number | null {
   if (!t) return null;
   const neg = t.startsWith("-");
   if (neg) t = t.slice(1).trim();
-  // Chilean-style: 3.290,00 → 3290.00 wrong without comma-decimal rule
   if (/,\d{1,2}$/.test(t)) {
     t = t.replace(/\./g, "").replace(",", ".");
   } else {
@@ -41,40 +47,83 @@ function parseOrigAmount(s: string, currency?: string): number | null {
   return neg ? -n : n;
 }
 
-type CsvRecord = Record<string, string>;
+export type CcStatementCsvRecord = Record<string, string>;
 
-function statementKey(row: CsvRecord): string {
+export function statementKeyFromRow(row: CcStatementCsvRecord): string {
   return `${row.card_group ?? "A"}\t${row.source_pdf ?? ""}\t${row.statement_date ?? ""}`;
 }
 
-function layoutFromRow(row: CsvRecord): string {
+function layoutFromRow(row: CcStatementCsvRecord): string {
   const layout = String(row.parser_layout ?? "").trim();
   if (layout === "international_usd") return "international_usd";
   if (layout.startsWith("wide")) return "wide";
   return "compact";
 }
 
-function currencyFromRow(row: CsvRecord): string {
+function currencyFromRow(row: CcStatementCsvRecord): string {
   if (String(row.currency ?? "").toLowerCase() === "usd") return "usd";
   if (layoutFromRow(row) === "international_usd") return "usd";
   return "clp";
 }
 
-export function importCcStatementsFromCsvRecords(
+export type CcStatementsMergeResult = {
+  statementCount: number;
+  lineCount: number;
+  linesInserted: number;
+  linesSkippedDuplicate: number;
+  /** One-shot line skipped — same purchase already in installment ledger. */
+  linesSkippedInstallmentOverlap: number;
+  categoriesRestored: number;
+};
+
+export type CcStatementsMergeOpts = {
+  /** Wipe all statements for the account before import (`import:cc-parsed --wipe`). */
+  replaceAll?: boolean;
+  /** Replace only these statement keys (`card_group\\tsource_pdf\\tstatement_date`). */
+  replaceStatementKeys?: Set<string>;
+  /** Skip line when dedupe_key already exists on any statement for this account. */
+  skipGlobalDedupeKeys?: boolean;
+};
+
+const findStmtId = db.prepare(
+  `SELECT id FROM cc_statements
+   WHERE account_id = ? AND card_group = ? AND source_pdf = ? AND statement_date = ?`
+);
+
+/** Same billing close re-imported from a different PDF filename. */
+const findStmtByClose = db.prepare(
+  `SELECT id FROM cc_statements
+   WHERE account_id = ? AND card_group = ? AND statement_date = ?
+     AND COALESCE(card_last4, '') = COALESCE(?, '')
+   ORDER BY id ASC
+   LIMIT 1`
+);
+
+export function importCcStatementsMerge(
   accountId: number,
-  records: CsvRecord[]
-): { statementCount: number; lineCount: number; categoriesRestored: number } {
+  records: CcStatementCsvRecord[],
+  opts?: CcStatementsMergeOpts
+): CcStatementsMergeResult {
   propagateCcExpenseMerchantRulesFromLegacy(accountId);
+  propagateCcExpenseMerchantRulesAcrossGroup("santander");
   const categorySnap = snapshotCcExpenseCategories(accountId);
 
-  db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id IN (
-    SELECT id FROM cc_statements WHERE account_id = ?
-  )`).run(accountId);
-  db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+  const replaceAll = opts?.replaceAll === true;
+  const replaceKeys = opts?.replaceStatementKeys;
+  const skipGlobalDedupe = opts?.skipGlobalDedupeKeys !== false;
 
-  const byStmt = new Map<string, CsvRecord[]>();
+  if (replaceAll) {
+    db.prepare(
+      `DELETE FROM cc_statement_lines WHERE statement_id IN (
+        SELECT id FROM cc_statements WHERE account_id = ?
+      )`
+    ).run(accountId);
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+  }
+
+  const byStmt = new Map<string, CcStatementCsvRecord[]>();
   for (const row of records) {
-    const k = statementKey(row);
+    const k = statementKeyFromRow(row);
     const list = byStmt.get(k) ?? [];
     list.push(row);
     byStmt.set(k, list);
@@ -92,6 +141,18 @@ export function importCcStatementsFromCsvRecords(
     )
   `);
 
+  const updStmt = db.prepare(`
+    UPDATE cc_statements SET
+      statement_date = @statement_date,
+      period_from = @period_from, period_to = @period_to, pay_by = @pay_by,
+      card_last4 = @card_last4, card_product = @card_product, layout = @layout, currency = @currency,
+      saldo_anterior = @saldo_anterior, abono = @abono, compras_cargos = @compras_cargos,
+      deuda_total = @deuda_total, monto_facturado = @monto_facturado
+    WHERE id = @id
+  `);
+
+  const delLinesForStmt = db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`);
+
   const insLine = db.prepare(`
     INSERT INTO cc_statement_lines (
       statement_id, transaction_date, posting_date, place, merchant, description_merged,
@@ -108,19 +169,30 @@ export function importCcStatementsFromCsvRecords(
 
   let statementCount = 0;
   let lineCount = 0;
+  let linesInserted = 0;
+  let linesSkippedDuplicate = 0;
+  let linesSkippedInstallmentOverlap = 0;
 
-  for (const [, rows] of byStmt) {
+  for (const [key, rows] of byStmt) {
     const first = rows[0]!;
     const currency = currencyFromRow(first);
+    const cardGroup = String(first.card_group ?? "A").trim() || "A";
+    const sourcePdf = String(first.source_pdf ?? "").trim();
+    const statementDate = String(first.statement_date ?? "").trim();
+
     const header = {
-      saldo_anterior: parseUsdAmount(String(first.statement_saldo_anterior ?? ""))
-        ?? parseInt10(String(first.statement_saldo_anterior ?? "")),
-      abono: parseUsdAmount(String(first.statement_abono ?? ""))
-        ?? parseInt10(String(first.statement_abono ?? "")),
-      compras_cargos: parseUsdAmount(String(first.statement_compras_cargos ?? ""))
-        ?? parseInt10(String(first.statement_compras_cargos ?? "")),
-      deuda_total: parseUsdAmount(String(first.statement_deuda_total ?? ""))
-        ?? parseInt10(String(first.statement_deuda_total ?? "")),
+      saldo_anterior:
+        parseUsdAmount(String(first.statement_saldo_anterior ?? "")) ??
+        parseInt10(String(first.statement_saldo_anterior ?? "")),
+      abono:
+        parseUsdAmount(String(first.statement_abono ?? "")) ??
+        parseInt10(String(first.statement_abono ?? "")),
+      compras_cargos:
+        parseUsdAmount(String(first.statement_compras_cargos ?? "")) ??
+        parseInt10(String(first.statement_compras_cargos ?? "")),
+      deuda_total:
+        parseUsdAmount(String(first.statement_deuda_total ?? "")) ??
+        parseInt10(String(first.statement_deuda_total ?? "")),
       monto_facturado: (() => {
         const v =
           parseUsdAmount(String(first.statement_monto_facturado ?? "")) ??
@@ -129,11 +201,11 @@ export function importCcStatementsFromCsvRecords(
       })(),
     };
 
-    const r = insStmt.run({
+    const stmtParams = {
       account_id: accountId,
-      card_group: String(first.card_group ?? "A").trim() || "A",
-      source_pdf: String(first.source_pdf ?? "").trim(),
-      statement_date: String(first.statement_date ?? "").trim(),
+      card_group: cardGroup,
+      source_pdf: sourcePdf,
+      statement_date: statementDate,
       period_from: String(first.period_from ?? "").trim() || null,
       period_to: String(first.period_to ?? "").trim() || null,
       pay_by: String(first.pay_by ?? "").trim() || null,
@@ -141,19 +213,71 @@ export function importCcStatementsFromCsvRecords(
       card_product: String(first.card_product ?? "").trim() || null,
       layout: layoutFromRow(first),
       currency,
-      saldo_anterior: header.saldo_anterior,
-      abono: header.abono,
-      compras_cargos: header.compras_cargos,
-      deuda_total: header.deuda_total,
-      monto_facturado: header.monto_facturado,
-    });
-    const statementId = Number(r.lastInsertRowid);
+      ...header,
+    };
+
+    let statementId: number;
+    const cardLast4 = String(first.card_last4 ?? "").trim() || null;
+    let existing = findStmtId.get(accountId, cardGroup, sourcePdf, statementDate) as
+      | { id: number }
+      | undefined;
+    if (!existing) {
+      existing = findStmtByClose.get(accountId, cardGroup, statementDate, cardLast4) as
+        | { id: number }
+        | undefined;
+    }
+
+    if (existing) {
+      statementId = existing.id;
+      updStmt.run({ ...stmtParams, id: statementId });
+      if (replaceKeys?.has(key) || replaceAll) {
+        delLinesForStmt.run(statementId);
+      }
+    } else {
+      const r = insStmt.run(stmtParams);
+      statementId = Number(r.lastInsertRowid);
+    }
     statementCount += 1;
+
+    const seenDedupeInBatch = new Set<string>();
 
     for (const row of rows) {
       const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
       const amountClp = parseInt10(String(row.amount_clp ?? ""));
       const amountUsd = parseUsdAmount(String(row.amount_usd ?? ""));
+      const dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
+      const dedupeKey = dedupeKeys[0] ?? null;
+
+      if (dedupeKeys.length > 0) {
+        const batchHit = dedupeKeys.some((k) => seenDedupeInBatch.has(k));
+        if (batchHit) {
+          linesSkippedDuplicate += 1;
+          continue;
+        }
+        for (const k of dedupeKeys) seenDedupeInBatch.add(k);
+        if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys)) {
+          linesSkippedDuplicate += 1;
+          continue;
+        }
+      }
+
+      if (!inst && amountClp != null && amountClp > 0) {
+        const purchaseDateIso =
+          parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
+          parseDdMmYyToIso(String(row.posting_date ?? "").trim());
+        if (
+          shouldSkipOneShotStatementImport(
+            accountId,
+            String(row.merchant ?? "").trim() || null,
+            purchaseDateIso,
+            amountClp
+          )
+        ) {
+          linesSkippedInstallmentOverlap += 1;
+          continue;
+        }
+      }
+
       insLine.run({
         statement_id: statementId,
         transaction_date: String(row.transaction_date ?? "").trim() || null,
@@ -173,11 +297,12 @@ export function importCcStatementsFromCsvRecords(
         valor_cuota_mensual_usd: parseUsdAmount(String(row.valor_cuota_mensual_usd ?? "")),
         interest_rate_text: String(row.interest_rate_text ?? "").trim() || null,
         tipo_cuota: String(row.tipo_cuota ?? "").trim() || null,
-        dedupe_key: String(row.dedupe_key ?? "").trim() || null,
+        dedupe_key: dedupeKeys[dedupeKeys.length - 1] ?? null,
         parser_row_id: String(row.row_id ?? "").trim() || null,
         raw_line: String(row.raw_line ?? "").trim() || null,
       });
       lineCount += 1;
+      linesInserted += 1;
     }
   }
 
@@ -186,6 +311,25 @@ export function importCcStatementsFromCsvRecords(
   return {
     statementCount,
     lineCount,
+    linesInserted,
+    linesSkippedDuplicate,
+    linesSkippedInstallmentOverlap,
     categoriesRestored: restored.lineCategories + restored.uniquePurchases,
+  };
+}
+
+/** Full account wipe + reload (CLI `import:cc-parsed --wipe`). */
+export function importCcStatementsFromCsvRecords(
+  accountId: number,
+  records: CcStatementCsvRecord[]
+): { statementCount: number; lineCount: number; categoriesRestored: number } {
+  const r = importCcStatementsMerge(accountId, records, {
+    replaceAll: true,
+    skipGlobalDedupeKeys: false,
+  });
+  return {
+    statementCount: r.statementCount,
+    lineCount: r.lineCount,
+    categoriesRestored: r.categoriesRestored,
   };
 }

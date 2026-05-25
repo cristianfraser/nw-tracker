@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import { formatYmEs } from "./shared";
 import type { CcBillingDetailMonthDto } from "../../types";
-import { Table } from "../../components/Table";
-import { api } from "../../api";
-import { queryKeys } from "../../queries/keys";
+import { Table } from "../../components/ui/Table";
+import { usePatchCcBillingFacturadoPlaceholderMutation } from "../../queries/hooks";
 import { cn } from "../../cn";
 import styles from "../AccountDetailPage.module.css";
 
@@ -35,22 +33,24 @@ function FacturadoCell({
   extraCcOffsets: Record<string, number>;
 }) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
+  const patchFacturado = usePatchCcBillingFacturadoPlaceholderMutation({
+    accountId,
+    displayUnit,
+    extraCcOffsetsKey: JSON.stringify(extraCcOffsets),
+  });
   const [text, setText] = useState(() => clpInputFromAmount(row.facturado_placeholder_clp));
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setText(clpInputFromAmount(row.facturado_placeholder_clp));
   }, [row.facturado_placeholder_clp]);
 
-  const refreshLedger = () => {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.accountDetail(
-        String(accountId),
-        displayUnit,
-        "monthly",
-        JSON.stringify(extraCcOffsets)
-      ),
+  const save = () => {
+    const parsed = parseClpInput(text);
+    const stored = row.facturado_placeholder_clp;
+    if (parsed === stored || (parsed == null && (stored == null || stored <= 0))) return;
+    patchFacturado.mutate({
+      billing_month: row.billing_month,
+      estimated_facturado_clp: parsed,
     });
   };
 
@@ -60,21 +60,7 @@ function FacturadoCell({
     );
   }
 
-  const save = async () => {
-    const parsed = parseClpInput(text);
-    const stored = row.facturado_placeholder_clp;
-    if (parsed === stored || (parsed == null && (stored == null || stored <= 0))) return;
-    setBusy(true);
-    try {
-      await api.patchCcBillingFacturadoPlaceholder(accountId, {
-        billing_month: row.billing_month,
-        estimated_facturado_clp: parsed,
-      });
-      refreshLedger();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const busy = patchFacturado.isPending;
 
   return (
     <>
@@ -89,7 +75,7 @@ function FacturadoCell({
         })}
         placeholder="0"
         onChange={(e) => setText(e.target.value)}
-        onBlur={() => void save()}
+        onBlur={save}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.currentTarget.blur();

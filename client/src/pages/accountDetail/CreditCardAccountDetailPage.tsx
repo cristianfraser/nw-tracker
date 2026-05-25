@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { CcInstallmentHistoryChart } from "../../components/CcInstallmentHistoryChart";
-import { MonthlyPerformanceComboChart } from "../../components/MonthlyPerformanceComboChart";
+import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
+import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
-import { LineChartPanel } from "../../components/ValuationLineCharts";
-import { AccountFlowsTable } from "../../components/AccountFlowsTable";
+import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
+import { AccountFlowsTable } from "../../components/account/AccountFlowsTable";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
+import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { CreditCardDetailSections } from "./CreditCardSections";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import { buildCcHistorialChartRows, mergeFacturadoIntoPerfPoints } from "./ccChartData";
@@ -258,6 +259,12 @@ export function CreditCardAccountDetailPage({ data }: Props) {
           />
         </>
       ) : null}
+
+      <AccountImportSection
+        accountId={summary.account_id}
+        displayUnit={displayUnit}
+        extraCcOffsetsKey={JSON.stringify(extraCcOffsets)}
+      />
 
       <CreditCardDetailSections
         ledger={ccLedger}

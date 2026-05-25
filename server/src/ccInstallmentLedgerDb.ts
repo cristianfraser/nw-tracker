@@ -3,6 +3,10 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import {
+  billingMonthForLedgerPurchase,
+} from "./ccManualBillingMonth.js";
+import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
+import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
@@ -347,7 +351,12 @@ function scheduledTotalRemainingByMonth(
   return out;
 }
 
-function ledgerPurchaseDedupeKey(pr: PurchaseRow): string {
+export function installmentPurchaseLedgerDedupeKey(pr: {
+  purchase_date: string;
+  total_amount_clp: number;
+  cuotas_totales: number;
+  merchant: string | null;
+}): string {
   return [
     pr.purchase_date,
     String(pr.total_amount_clp),
@@ -356,14 +365,19 @@ function ledgerPurchaseDedupeKey(pr: PurchaseRow): string {
   ].join("\t");
 }
 
-/**
- * Drop PDF contract-summary purchases (N/CUOTAS PRECIO, etc.) when indexed cuota rows exist.
- * Those summaries duplicate the full contract principal and inflated cupo / valuations (e.g. card 4242).
- */
-export function filterLedgerPurchasesForSchedule(purchases: PurchaseRow[]): PurchaseRow[] {
-  const byKey = new Map<string, PurchaseRow>();
+/** Collapse duplicate PDF ledger rows (same purchase, different merchant suffix / canonical_row_id). */
+export function dedupeInstallmentPurchaseLedgerRows<
+  T extends {
+    id: number;
+    purchase_date: string;
+    total_amount_clp: number;
+    cuotas_totales: number;
+    merchant: string | null;
+  },
+>(purchases: readonly T[]): T[] {
+  const byKey = new Map<string, T>();
   for (const pr of purchases) {
-    const key = ledgerPurchaseDedupeKey(pr);
+    const key = installmentPurchaseLedgerDedupeKey(pr);
     const prev = byKey.get(key);
     if (!prev) {
       byKey.set(key, pr);
@@ -371,9 +385,22 @@ export function filterLedgerPurchasesForSchedule(purchases: PurchaseRow[]): Purc
     }
     const prevSummary = isInstallmentContractSummaryMerchant(prev.merchant);
     const curSummary = isInstallmentContractSummaryMerchant(pr.merchant);
-    if (prevSummary && !curSummary) byKey.set(key, pr);
+    if (prevSummary && !curSummary) {
+      byKey.set(key, pr);
+      continue;
+    }
+    if (!prevSummary && curSummary) continue;
+    if (pr.id > prev.id) byKey.set(key, pr);
   }
   return [...byKey.values()];
+}
+
+/**
+ * Drop PDF contract-summary purchases (N/CUOTAS PRECIO, etc.) when indexed cuota rows exist.
+ * Those summaries duplicate the full contract principal and inflated cupo / valuations (e.g. card 4242).
+ */
+export function filterLedgerPurchasesForSchedule(purchases: PurchaseRow[]): PurchaseRow[] {
+  return dedupeInstallmentPurchaseLedgerRows(purchases);
 }
 
 function loadLedgerPurchasesAndPayments(accountId: number): {
@@ -430,6 +457,21 @@ export function installmentRemainingClpByCalendarMonth(accountId: number): Map<s
   return scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase);
 }
 
+/**
+ * Cupo en cuotas for a calendar month (YYYY-MM).
+ * Current month uses {@link liveCreditCardOutstandingClp} (same as historial / detalle por mes).
+ * Past months use month-end plan saldo (cuotas with due month after that month).
+ */
+export function cupoEnCuotasClpForCalendarMonth(accountId: number, ym: string): number {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return 0;
+  const nowYm = currentCalendarYm();
+  if (ym === nowYm) {
+    const live = liveCreditCardOutstandingClp(accountId);
+    if (live != null && Number.isFinite(live)) return live;
+  }
+  return installmentRemainingClpByCalendarMonth(accountId).get(ym) ?? 0;
+}
+
 /** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */
 export function liveCreditCardOutstandingClp(accountId: number): number | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
@@ -441,6 +483,28 @@ export function liveCreditCardOutstandingClp(accountId: number): number | null {
     total += scheduledOutstandingPrincipal(sched);
   }
   return total;
+}
+
+/** Facturado CLP from manual/PDF ledger purchases billing on `billingMonth` (one cuota per purchase). */
+export function ledgerFacturadoClpForBillingMonth(
+  accountId: number,
+  billingMonth: string
+): number {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return 0;
+  const config = loadCreditCardBillingConfig(accountId);
+  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  const schedules = buildSchedulesByPurchaseId(
+    purchasesRaw, paymentsByPurchase, billingMonth);
+  let sum = 0;
+  for (const pr of purchasesRaw) {
+    if (billingMonthForLedgerPurchase(accountId, pr, config) !== billingMonth) continue;
+    const sched = schedules.get(pr.id);
+    if (!sched) continue;
+    const idx = sched.planSlotsConsumed;
+    if (idx >= sched.cuotaAmounts.length) continue;
+    sum += sched.cuotaAmounts[idx]!;
+  }
+  return Math.round(sum);
 }
 
 export function ccInstallmentLedgerRowCount(accountId: number): number {
@@ -497,7 +561,7 @@ export function ccLedgerStatementClosingPointsClp(accountId: number): { as_of_da
   if (rows.length === 0) return null;
   return rows.map((r) => ({
     as_of_date: ccLedgerMonthEndIso(r.month),
-    value_clp: r.remaining_balance_clp,
+    value_clp: cupoEnCuotasClpForCalendarMonth(accountId, r.month),
   }));
 }
 
@@ -530,14 +594,12 @@ export function upsertCreditCardValuationsFromLedger(accountId: number): number 
     n += 1;
   }
   const today = chileCalendarTodayYmd();
-  const todayYm = monthKeyFromYmd(today);
-  const planByMonth = installmentRemainingClpByCalendarMonth(accountId);
-  const todayClp = todayYm ? planByMonth.get(todayYm) : undefined;
-  if (todayClp != null && Number.isFinite(todayClp)) {
+  const liveToday = liveCreditCardOutstandingClp(accountId);
+  if (liveToday != null && Number.isFinite(liveToday)) {
     upsertValuationMonth.run({
       account_id: accountId,
       as_of_date: today,
-      value_clp: todayClp,
+      value_clp: liveToday,
     });
     n += 1;
   }

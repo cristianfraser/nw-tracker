@@ -1204,7 +1204,7 @@ async function main() {
   const updAccName = db.prepare("UPDATE accounts SET name = ? WHERE id = ?");
 
   function excludeFromGroupTotalsForCategory(categorySlug: string): number {
-    return categorySlug === "cuenta_corriente" ? 1 : 0;
+    return categorySlug === "cuenta_corriente" || categorySlug === "cuenta_vista" ? 1 : 0;
   }
 
   function ensureAccount(slug: string, name: string, key: string): number {
@@ -1960,7 +1960,7 @@ async function main() {
   if (ccAcc && ccInstallmentLedgerRowCount(ccAcc.id) === 0 && fs.existsSync(ccCsv)) {
     console.warn(
       `import:excel: Tarjeta de crédito (account_id=${ccAcc.id}) has no PDF installment ledger in DB, but ${ccCsv} exists. ` +
-      `Run: npm run import:cc-parsed -w nw-tracker-server -- --account-id=${ccAcc.id}`
+      `Run: npm run import:cc-parsed -w nw-tracker-server`
     );
   }
 

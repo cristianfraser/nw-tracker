@@ -24,19 +24,10 @@ import {
 } from "./checkingCartolaBalances.js";
 import { loadParsedCheckingCartolasFromScreenshots } from "./checkingCartolaScreenshotImport.js";
 import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
+import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 
 export function checkingAccountId(dbHandle: Database = db): number {
-  const row = dbHandle
-    .prepare(
-      `SELECT a.id FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       WHERE c.slug = 'cuenta_corriente'
-       ORDER BY a.id
-       LIMIT 1`
-    )
-    .get() as { id: number } | undefined;
-  if (!row) throw new Error("cuenta_corriente account not found");
-  return row.id;
+  return cartolaCashAccountId("cuenta_corriente", dbHandle);
 }
 
 export function isCheckingCartolaMonthImported(
@@ -85,7 +76,7 @@ export function importCheckingCartola(
   accountId: number,
   cartola: ParsedCheckingCartola,
   dbHandle: Database = db
-): { movementsInserted: number } {
+): { movementsInserted: number; movementsSkipped: number } {
   const insMov = dbHandle.prepare(
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
      VALUES (?, ?, ?, ?, NULL)`
@@ -105,15 +96,25 @@ export function importCheckingCartola(
        imported_at = datetime('now')`
   );
 
+  const noteExists = dbHandle.prepare(
+    `SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ? LIMIT 1`
+  );
+
   let movementsInserted = 0;
+  let movementsSkipped = 0;
   const tx = dbHandle.transaction(() => {
     for (const mv of cartola.movements) {
-      insMov.run(
-        accountId,
-        mv.amount_clp,
-        mv.occurred_on,
-        movementNote(cartola.period_month, mv.branch, mv.description, mv.document_no)
+      const note = movementNote(
+        cartola.period_month,
+        mv.branch,
+        mv.description,
+        mv.document_no
       );
+      if (noteExists.get(accountId, note)) {
+        movementsSkipped += 1;
+        continue;
+      }
+      insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
       movementsInserted += 1;
     }
     markImported.run(
@@ -128,7 +129,7 @@ export function importCheckingCartola(
   });
   tx();
   clearCheckingBalanceCache(accountId);
-  return { movementsInserted };
+  return { movementsInserted, movementsSkipped };
 }
 
 export type ImportCheckingCartolasResult = {
@@ -165,7 +166,7 @@ function logParseError(file: string, e: unknown): CheckingCartolaFileImportLog {
   };
 }
 
-function importCartolaList(
+export function importCartolaList(
   accountId: number,
   cartolas: { cartola: ParsedCheckingCartola; label: string }[],
   opts: { wipe?: boolean; dryRun?: boolean },
@@ -210,16 +211,17 @@ function importCartolaList(
   }
 }
 
-function finishImportRun(
+export function finishCartolaImportRun(
   accountId: number,
   opts: { wipe?: boolean; dryRun?: boolean },
-  fileLogs: CheckingCartolaFileImportLog[]
+  fileLogs: CheckingCartolaFileImportLog[],
+  accountLabel = "cuenta corriente"
 ): ImportCheckingCartolasResult {
   if (!opts.dryRun && fileLogs.some((f) => f.status === "imported")) {
     const cleared = clearCheckingAccountValuations(accountId);
     if (cleared > 0) {
       console.log(
-        `Cleared ${cleared} persisted valuation row(s) for cuenta corriente (balances computed at runtime).`
+        `Cleared ${cleared} persisted valuation row(s) for ${accountLabel} (balances computed at runtime).`
       );
     }
     const opening = ensureCheckingOpeningBalance(accountId);
@@ -327,7 +329,7 @@ export function importCheckingCartolasFromDir(opts: {
     }
   }
 
-  return finishImportRun(accountId, opts, fileLogs);
+  return finishCartolaImportRun(accountId, opts, fileLogs);
 }
 
 export function importCheckingCartolasFromScreenshots(opts?: {
@@ -363,5 +365,5 @@ export function importCheckingCartolasFromScreenshots(opts?: {
     fileLogs.push(logParseError("screenshots", e));
   }
 
-  return finishImportRun(accountId, { wipe: opts?.wipe, dryRun: opts?.dryRun }, fileLogs);
+  return finishCartolaImportRun(accountId, { wipe: opts?.wipe, dryRun: opts?.dryRun }, fileLogs);
 }

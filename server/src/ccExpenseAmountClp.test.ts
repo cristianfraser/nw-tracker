@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
+import {
+  effectiveCcExpenseLineAmountClp,
+  effectiveCcExpenseLineAmountUsd,
+} from "./ccExpenseAmountClp.js";
 
 describe("effectiveCcExpenseLineAmountClp", () => {
   it("uses valor_cuota_mensual_clp for installment lines", () => {
@@ -76,5 +79,46 @@ describe("effectiveCcExpenseLineAmountClp", () => {
     );
     expect(amount).not.toBeNull();
     expect(amount!).toBeGreaterThan(20_000);
+  });
+});
+
+describe("effectiveCcExpenseLineAmountUsd", () => {
+  it("returns amount_usd on USD statements", () => {
+    expect(
+      effectiveCcExpenseLineAmountUsd({
+        installment_flag: 0,
+        amount_clp: 4112,
+        amount_usd: 4.53,
+        valor_cuota_mensual_clp: null,
+        valor_cuota_mensual_usd: null,
+        statement_currency: "usd",
+      })
+    ).toBe(4.53);
+  });
+
+  it("returns null for CLP-only revolving lines", () => {
+    expect(
+      effectiveCcExpenseLineAmountUsd({
+        installment_flag: 0,
+        amount_clp: 50_000,
+        amount_usd: null,
+        valor_cuota_mensual_clp: null,
+        valor_cuota_mensual_usd: null,
+        statement_currency: "clp",
+      })
+    ).toBeNull();
+  });
+
+  it("uses valor_cuota_mensual_usd for installment lines", () => {
+    expect(
+      effectiveCcExpenseLineAmountUsd({
+        installment_flag: 1,
+        amount_clp: 881_134,
+        amount_usd: 100,
+        valor_cuota_mensual_clp: 73_428,
+        valor_cuota_mensual_usd: 80,
+        statement_currency: "usd",
+      })
+    ).toBe(80);
   });
 });

@@ -1,0 +1,38 @@
+.categoryCell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 28rem;
+}
+
+.categoryPills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.uniqueLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.uniqueLabelPending {
+  cursor: wait;
+}
+
+.uniqueLabelReady {
+  cursor: pointer;
+}
+
+.noteInput {
+  width: 100%;
+  min-width: 8rem;
+  max-width: 16rem;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
+}

@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api";
-import { queryKeys } from "../../queries/keys";
-import { Table } from "../../components/Table";
+import { Table } from "../../components/ui/Table";
 import type { AccountCcInstallmentsResponse } from "../../types";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { formatYmEs, persistExtraCcOffsets } from "./shared";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
+import {
+  useCreateCcPurchaseMutation,
+  useDeleteCcPurchaseMutation,
+} from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
 
 function CreditCardInstallmentsSection({
@@ -25,13 +26,18 @@ function CreditCardInstallmentsSection({
   displayUnit: "clp" | "usd";
 }) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
+  const mutationOpts = {
+    accountId,
+    displayUnit,
+    extraCcOffsetsKey: JSON.stringify(extraOffsets),
+  };
+  const createPurchase = useCreateCcPurchaseMutation(mutationOpts);
+  const deletePurchase = useDeleteCcPurchaseMutation(mutationOpts);
   const m = ledger.meta;
   const fromDb = ledger.source === "db";
   const statements = ledger.statements ?? [];
   const facturaciones = ledger.facturaciones ?? [];
   const [manualOpen, setManualOpen] = useState(false);
-  const [manualBusy, setManualBusy] = useState(false);
   const [manualForm, setManualForm] = useState({
     purchase_date: "",
     total_amount_clp: "",
@@ -39,32 +45,23 @@ function CreditCardInstallmentsSection({
     merchant: "",
   });
 
-  const refreshLedger = () => {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.accountDetail(
-        String(accountId),
-        displayUnit,
-        "monthly",
-        JSON.stringify(extraOffsets)
-      ),
-    });
-  };
+  const manualBusy = createPurchase.isPending || deletePurchase.isPending;
 
-  const submitManualPurchase = async () => {
-    setManualBusy(true);
-    try {
-      await api.createCcPurchase(accountId, {
+  const submitManualPurchase = () => {
+    createPurchase.mutate(
+      {
         purchase_date: manualForm.purchase_date,
         total_amount_clp: Number(manualForm.total_amount_clp.replace(/\./g, "")),
         cuotas_totales: Number(manualForm.cuotas_totales),
         merchant: manualForm.merchant || undefined,
-      });
-      setManualOpen(false);
-      setManualForm({ purchase_date: "", total_amount_clp: "", cuotas_totales: "", merchant: "" });
-      refreshLedger();
-    } finally {
-      setManualBusy(false);
-    }
+      },
+      {
+        onSuccess: () => {
+          setManualOpen(false);
+          setManualForm({ purchase_date: "", total_amount_clp: "", cuotas_totales: "", merchant: "" });
+        },
+      }
+    );
   };
   const purchasesCompleted = ledger.purchases_completed ?? [];
 
@@ -116,14 +113,8 @@ function CreditCardInstallmentsSection({
               type="button"
               className={cn("muted", styles.purchaseMeta)}
               disabled={manualBusy}
-              onClick={async () => {
-                setManualBusy(true);
-                try {
-                  await api.deleteCcPurchase(accountId, p.purchase_db_id!);
-                  refreshLedger();
-                } finally {
-                  setManualBusy(false);
-                }
+              onClick={() => {
+                deletePurchase.mutate(p.purchase_db_id!);
               }}
             >
               {t("account.creditCard.manualDelete")}
@@ -216,7 +207,8 @@ function CreditCardInstallmentsSection({
       (ledger.purchases_completed?.length ?? 0) === 0 ? (
         <p className={cn("muted", styles.marginBottomBase)}>
           No hay datos en la base ni CSV de cupos. Opciones: importar PDF parseados con{" "}
-          <span className="mono">npm run import:cc-parsed -w nw-tracker-server -- --account-id=…</span>, o crear{" "}
+          <span className="mono">npm run import:cfraser-inbox</span> (o{" "}
+          <span className="mono">import:cc-parsed</span> si el CSV ya está parseado), o crear{" "}
           <span className="mono">cfraser/credit-card-installments.csv</span> con cabecera{" "}
           <span className="mono">
             purchase_id;label;principal_clp;installment_count;installments_paid;cuota_clp;annual_interest_pct;first_due_month;schedule_offset_months;purchase_month;note
@@ -252,7 +244,13 @@ function CreditCardInstallmentsSection({
             <>
               <h3 className={styles.subsectionTitle}>{t("accountDetail.creditCard.facturacionesTitle")}</h3>
               <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.facturacionesHint")}</p>
-              <CreditCardFacturacionesTable rows={facturaciones} statements={statements} />
+              <CreditCardFacturacionesTable
+                rows={facturaciones}
+                statements={statements}
+                accountId={accountId}
+                displayUnit={displayUnit}
+                extraCcOffsetsKey={JSON.stringify(extraOffsets)}
+              />
             </>
           ) : null}
 
@@ -309,7 +307,7 @@ function CreditCardInstallmentsSection({
                     </label>
                   </div>
                   <div className={styles.manualFormActions}>
-                    <button type="button" disabled={manualBusy} onClick={() => void submitManualPurchase()}>
+                    <button type="button" disabled={manualBusy} onClick={submitManualPurchase}>
                       {t("account.creditCard.manualSubmit")}
                     </button>
                     <button type="button" disabled={manualBusy} onClick={() => setManualOpen(false)}>

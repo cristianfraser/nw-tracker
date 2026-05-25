@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
 
 export type CreditCardBillingConfig = {
   billing_cycle_start_day: number;
@@ -58,4 +59,24 @@ export function billingPeriodIsoRange(
   const period_from = `${prevY}-${pad(prevMo)}-${pad(Math.min(startDay, 28))}`;
   const period_to = `${y}-${pad(mo)}-${pad(Math.min(endDay, 28))}`;
   return { period_from, period_to };
+}
+
+/**
+ * Billing month (YYYY-MM) for a purchase date using cycle boundaries (21→20).
+ * Purchases after period_to bill on the next month; before period_from on the previous.
+ */
+export function billingMonthForPurchaseDate(
+  purchaseDateIso: string,
+  config?: CreditCardBillingConfig
+): string | null {
+  const iso = String(purchaseDateIso ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const cfg = config ?? DEFAULT_CONFIG;
+  let bm = billingMonthForStatementDate(iso);
+  if (!bm) return null;
+  const range = billingPeriodIsoRange(bm, cfg);
+  if (!range) return bm;
+  if (iso > range.period_to) return addCalendarMonths(bm, 1);
+  if (iso < range.period_from) return addCalendarMonths(bm, -1);
+  return bm;
 }

@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from "react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { LineChartPanel, ValuationLineCharts } from "../components/ValuationLineCharts";
-import { MonthlyPerformanceComboChart } from "../components/MonthlyPerformanceComboChart";
-import { GroupInfoNavHierarchyTable } from "../components/GroupInfoNavHierarchyTable";
-import { GroupInfoBase } from "../components/GroupInfoBase";
+import { LineChartPanel, ValuationLineCharts } from "../components/charts/ValuationLineCharts";
+import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
+import { GroupInfoNavHierarchyTable } from "../components/group/GroupInfoNavHierarchyTable";
+import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { useDashboardBundle } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { allocationBucketColor } from "../chartColors";

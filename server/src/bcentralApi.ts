@@ -48,11 +48,30 @@ export type BcentralSeriesInfo = {
   spanishTitle: string;
 };
 
-/** Chilean number: thousands `.`, decimal `,` */
+/**
+ * BCentral observation values: usually Chilean (`1.234,56`), but USD/EUR sometimes arrive
+ * with a dot decimal (`899.68`). Treating that dot as thousands inflates ~900 → ~90000.
+ */
 export function parseBcentralNumber(raw: string): number | null {
   const t = raw.trim();
   if (!t || /^neun$/i.test(t)) return null;
-  const n = Number(t.replace(/\./g, "").replace(/,/g, "."));
+
+  if (t.includes(",")) {
+    const n = Number(t.replace(/\./g, "").replace(/,/g, "."));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  if (t.includes(".")) {
+    const parts = t.split(".");
+    if (parts.length === 2 && parts[1] != null && parts[1].length <= 2) {
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    }
+    const n = Number(t.replace(/\./g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
 

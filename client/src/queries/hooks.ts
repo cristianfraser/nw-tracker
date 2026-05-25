@@ -86,6 +86,16 @@ export function useSyncStatus() {
   });
 }
 
+export function useSyncForceStaleMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (source: import("../types").SyncSourceId) => api.syncForceStale(source),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.syncStatus(), data);
+    },
+  });
+}
+
 export function useMarkMessagesReadMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -125,19 +135,17 @@ export function useFlowsCreditCardExpenses() {
   });
 }
 
-export function useAssignCcExpenseLineCategory() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (opts: { lineId: number; unique: boolean; category_slug?: string }) =>
-      api.assignCcExpenseLineCategory(opts.lineId, {
-        unique: opts.unique,
-        ...(opts.category_slug ? { category_slug: opts.category_slug } : {}),
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
-    },
-  });
-}
+export {
+  useAssignCcExpenseLineCategory,
+  useMarkCcExpenseLineUniqueMutation,
+  usePatchCcBillingFacturadoPlaceholderMutation,
+  useCreateCcPurchaseMutation,
+  useDeleteCcPurchaseMutation,
+  useDeleteCcStatementLineMutation,
+  useAccountImportMutation,
+  usePatchCcExpenseLineCategoryMutation,
+  usePatchCcExpensePurchaseNoteMutation,
+} from "./mutations";
 
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {
   return useQuery({
@@ -147,7 +155,8 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
   });
 }
 
-const SKIP_MONTHLY_PERF_SLUGS = new Set(["cuenta_corriente", "cuenta_ahorro_vivienda"]);
+const MOVEMENT_CARTOLA_CATEGORY_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
+const SKIP_MONTHLY_PERF_SLUGS = new Set(["cuenta_corriente", "cuenta_vista", "cuenta_ahorro_vivienda"]);
 
 export function useGroupAccountsMonthlyPerformance(
   accounts: readonly { id: number; name: string; category_slug: string }[],
@@ -191,8 +200,10 @@ export function useAccountDetailBundle(
   return useQuery({
     queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity, ccOffsetsKey),
     queryFn: async () => {
-      const [s, m, series, dep, ml, cc, inv, checkingMonths] = await Promise.all([
-        api.accountSummary(id!),
+      const s = await api.accountSummary(id!);
+      const isMovementCartola = s.category_slug != null && MOVEMENT_CARTOLA_CATEGORY_SLUGS.has(s.category_slug);
+
+      const [m, series, dep, ml, cc, inv, checkingMonths] = await Promise.all([
         api.accountMovements(id!),
         api.accountValuationTimeseries(id!, unit, { granularity: chartGranularity }),
         api.accountDepositInflows(id!),
@@ -216,7 +227,7 @@ export function useAccountDetailBundle(
           },
         })),
         api.accountsByGroup("inversiones"),
-        api.accountCheckingCartolaMonths(id!).catch(() => null),
+        isMovementCartola ? api.accountCheckingCartolaMonths(id!) : Promise.resolve(null),
       ]);
       return {
         summary: s,
