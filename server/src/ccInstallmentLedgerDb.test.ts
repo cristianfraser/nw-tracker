@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   ccLedgerStatementClosingPointsClp,
+  cupoEnCuotasClpForCalendarMonth,
   filterLedgerPurchasesForSchedule,
   installmentRemainingClpByCalendarMonth,
+  liveCreditCardOutstandingClp,
+  upsertCreditCardValuationsFromLedger,
 } from "./ccInstallmentLedgerDb.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 
 describe("filterLedgerPurchasesForSchedule", () => {
   it("excludes N/CUOTAS PRECIO when a matching indexed purchase exists", () => {
@@ -59,22 +64,35 @@ describe("filterLedgerPurchasesForSchedule", () => {
 });
 
 describe("card 4242 ledger valuations", () => {
-  it("has no multi-million May 2026 spike from stale double-count", () => {
+  it("uses live cupo for current calendar month (matches historial)", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242' LIMIT 1`)
       .get() as { id: number } | undefined;
     if (!master) return;
 
-    const pts = ccLedgerStatementClosingPointsClp(master.id);
-    expect(pts?.length).toBeGreaterThan(0);
-    const may26 = pts?.filter((p) => p.as_of_date.startsWith("2026-05"));
-    for (const p of may26 ?? []) {
-      expect(p.value_clp).toBeLessThan(500_000);
-      expect(p.value_clp).not.toBe(6_037_018);
+    const todayYm = monthKeyFromYmd(chileCalendarTodayYmd());
+    if (!todayYm) return;
+
+    const live = liveCreditCardOutstandingClp(master.id);
+    const plan = installmentRemainingClpByCalendarMonth(master.id).get(todayYm);
+    const cupo = cupoEnCuotasClpForCalendarMonth(master.id, todayYm);
+    expect(live).not.toBeNull();
+    expect(cupo).toBe(live);
+    if (plan != null && live != null && live > plan) {
+      expect(cupo).toBeGreaterThan(plan);
     }
 
-    const mayYm = "2026-05";
-    const planMay = installmentRemainingClpByCalendarMonth(master.id).get(mayYm);
-    if (planMay != null) expect(planMay).toBeLessThan(500_000);
+    const pts = ccLedgerStatementClosingPointsClp(master.id);
+    const curPt = pts?.find((p) => monthKeyFromYmd(p.as_of_date) === todayYm);
+    expect(curPt?.value_clp).toBe(live);
+
+    upsertCreditCardValuationsFromLedger(master.id);
+    const today = chileCalendarTodayYmd();
+    const row = db
+      .prepare(
+        `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+      )
+      .get(master.id, today) as { value_clp: number } | undefined;
+    expect(row?.value_clp).toBe(live);
   });
 });

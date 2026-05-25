@@ -29,7 +29,7 @@ import {
 } from "./portfolioNavFromApi";
 import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
 
-const CASH_DASHBOARD_CATEGORY_SLUGS = new Set(["fondo_reserva", "cuenta_corriente"]);
+const CASH_DASHBOARD_CATEGORY_SLUGS = new Set(["fondo_reserva", "cuenta_corriente", "cuenta_vista"]);
 
 /** Nav subtree with optional first-level children removed (e.g. cash → credit card reference link). */
 export function navNodeWithoutChildSlugs(

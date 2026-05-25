@@ -1,0 +1,49 @@
+.panel {
+  margin: 1rem 0;
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.toggle {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.25rem 0;
+  text-align: left;
+  width: 100%;
+}
+
+.body {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.slotTitle {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 8rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.fileLabel {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.ok {
+  color: var(--positive, #6bcf7f);
+  font-size: 0.85rem;
+  margin: 0;
+}

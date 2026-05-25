@@ -1,7 +1,7 @@
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CheckingCartolaMonthRowDto } from "../../types";
-import { Table } from "../../components/Table";
+import { Table } from "../../components/ui/Table";
 import { formatYmEs } from "./shared";
 
 function fmtMoney(n: number, hasCartola: boolean): string {

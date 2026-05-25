@@ -61,10 +61,13 @@ export function seedLiabilitiesTree(): void {
     deleteGroupItems.run(ccGroupId);
     deleteGroupItems.run(mtgGroupId);
 
-    const santanderCc = db
-      .prepare(`SELECT id FROM credit_card_groups WHERE slug = 'santander'`)
-      .get() as { id: number } | undefined;
-    if (santanderCc) insertCreditCardGroupChild.run(ccGroupId, santanderCc.id, 0);
+    const ccIssuerGroups = db
+      .prepare(`SELECT id, slug FROM credit_card_groups ORDER BY sort_order, id`)
+      .all() as { id: number; slug: string }[];
+    let ccSort = 0;
+    for (const g of ccIssuerGroups) {
+      insertCreditCardGroupChild.run(ccGroupId, g.id, ccSort++);
+    }
 
     const mtgMaster = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)

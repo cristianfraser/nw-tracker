@@ -3,11 +3,11 @@ import { useParams } from "react-router-dom";
 import {
   filterPointsThroughAsOfDate,
   trailingZeroTailClipLastVisibleDate,
-} from "../../components/AppLineChart";
+} from "../../components/charts/AppLineChart";
 import {
   buildLineChartTailClipOptions,
   trimLeadingInactivePoints,
-} from "../../components/ValuationLineCharts";
+} from "../../components/charts/ValuationLineCharts";
 import { useAccountDetailBundle, useAccountMonthlyPerformance, useDashboardBundle, useSidebarNav } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";

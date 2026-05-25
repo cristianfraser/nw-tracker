@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { GroupInfoNavHierarchyTable } from "../components/GroupInfoNavHierarchyTable";
-import { GroupInfoBase } from "../components/GroupInfoBase";
-import { PortfolioGroupChartsSection } from "../components/PortfolioGroupChartsSection";
+import { GroupInfoNavHierarchyTable } from "../components/group/GroupInfoNavHierarchyTable";
+import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
@@ -124,6 +124,8 @@ export function GroupInfoPage() {
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug: chartCtx?.colorPlanGroupSlug ?? "inversiones",
+    groupColorRgb: navMatchNode?.color_rgb,
+    navGroupSlug: navMatchNode?.slug,
   });
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
@@ -239,7 +241,8 @@ export function GroupInfoPage() {
           groupColorMaps={charts.groupColorMaps}
           groupPerfForChart={charts.groupPerfForChart}
           groupPerfBarSeries={charts.groupPerfBarSeries}
-          consolidatedBarColor={charts.consolidatedBarColor}
+          groupTotalStroke={charts.groupTotalStroke}
+          groupColorRgb={navMatchNode.color_rgb}
           chartCtx={chartCtx}
           showValuationDeposits={showValuationDeposits}
         />

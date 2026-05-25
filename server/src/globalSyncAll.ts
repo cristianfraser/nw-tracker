@@ -1,7 +1,8 @@
 /**
  * Orchestrates external syncs with Chile-time rules:
  * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
- * - Fintual goals: from 18:00 America/Santiago on business days only; applies when mapped NAV signature changes.
+ * - Fintual goals: from 18:00 America/Santiago on business days only; `as_of` is the fund publish date
+ *   (may be the prior day after a holiday cuota or before today's cuota is on `/days`).
  * - USD / EUR (Banco Central BDE): stale from 18:00 Chile until today's observado is in DB (prior session on holidays).
  * - SPY / VEA / BTC / ETH EOD: Yahoo daily bars after NYSE close (16:05 ET); crypto daily every run.
  * - UF / UTM / IPC (BDE GetSeries): from the 9th of each month when stale.
@@ -18,6 +19,7 @@ import "./db.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
+  clearUserForcedStale,
   isEquityEodStale,
   isSbifMonthlyStale,
   shouldRunSyncSource,
@@ -25,6 +27,7 @@ import {
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
+import { isFintualFundPublishDay } from "./fintualPublishDate.js";
 import {
   formatSyncClp,
   formatSyncFxRate,
@@ -303,7 +306,7 @@ async function runFintual(
     console.log(`sync: Fintual — skip (before 18:00 Chile; now ${cl.hour}:${String(cl.minute).padStart(2, "0")}).`);
     return { pending: false };
   }
-  if (!FORCE && !isChileBusinessDay(cl.ymd)) {
+  if (!FORCE && !isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) {
     console.log(`sync: Fintual — skip (Chile non-business day ${cl.ymd}).`);
     return { pending: false };
   }
@@ -324,8 +327,11 @@ async function runFintual(
     matchedNotes: matchGoalToImportNotes(g.id, g.name, overrides),
   }));
   let resolutions;
+  let publishYmd = cl.ymd;
   try {
-    resolutions = await resolveFintualGoalNavs(session.email, session.token, rowsWithMatch, cl);
+    const resolved = await resolveFintualGoalNavs(session.email, session.token, rowsWithMatch, cl);
+    resolutions = resolved.resolutions;
+    publishYmd = resolved.publishYmd;
   } finally {
     clearFintualRealAssetNavCaches();
   }
@@ -340,17 +346,26 @@ async function runFintual(
     );
   }
   const appliedRows = resolutions.map((r) => r.row);
-  const picked = pickFintualApplySnapshot(appliedRows, overrides, cl, state);
+  const picked = pickFintualApplySnapshot(appliedRows, overrides, cl, state, publishYmd);
   const snap = picked.snap;
   writeGoalsSnapshot(snap);
 
   const sig = fintualMappedNavSignature(snap);
   state.fintualLastCheckYmd = cl.ymd;
+  state.fintualLastPublishYmd = publishYmd;
   state.fintualLastCheckSig = sig;
+
+  if (
+    state.fintualLastAppliedPublishYmd != null &&
+    publishYmd !== state.fintualLastAppliedPublishYmd &&
+    state.fintualEveningSettledYmd === cl.ymd
+  ) {
+    delete state.fintualEveningSettledYmd;
+  }
 
   const anyMapped = snap.goals.some((g) => g.matchedNotes);
 
-  if (fintualNavUnchangedSinceLastApply(sig, state)) {
+  if (fintualNavUnchangedSinceLastApply(sig, state, publishYmd)) {
     if (fintualSnapshotMatchesDb(snap)) {
       const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
       if (cleaned > 0) {
@@ -383,11 +398,11 @@ async function runFintual(
       console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
     }
     markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
-    if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, cl)) {
+    if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, cl, publishYmd)) {
       state.fintualEveningSettledYmd = cl.ymd;
     }
     console.log(
-      "sync: Fintual — valuations already match API; no DB update needed."
+      `sync: Fintual — valuations already match API for publish ${publishYmd}; no DB update needed.`
     );
     if (STRICT_FINTUAL) {
       const hasMapped = snap.goals.some((g) => g.matchedNotes);
@@ -405,13 +420,17 @@ async function runFintual(
   changes.push(...fintualChanges);
   if (!syncDryRun) {
     state.fintualLastAppliedYmd = cl.ymd;
+    state.fintualLastAppliedPublishYmd = publishYmd;
     state.fintualLastAppliedSig = sig;
     markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
-    if (fintualEveningCatchUpComplete(rows, overrides, cl)) {
+    if (fintualEveningCatchUpComplete(rows, overrides, cl, publishYmd)) {
       state.fintualEveningSettledYmd = cl.ymd;
     }
   }
-  console.log(`sync: Fintual — applied ${applied}, skipped ${skipped} for as_of=${snap.asOfDate} (${syncDryRun ? "dry-run" : "ok"})`);
+  const pollNote = publishYmd !== cl.ymd ? ` (poll ${cl.ymd})` : "";
+  console.log(
+    `sync: Fintual — applied ${applied}, skipped ${skipped} for as_of=${snap.asOfDate}${pollNote} (${syncDryRun ? "dry-run" : "ok"})`
+  );
   return {
     pending: false,
     fintualNoChange: anyMapped && fintualChanges.length === 0,
@@ -596,13 +615,16 @@ async function runSyncStepIfStale(
   stale: readonly GlobalSyncSource[],
   step: string,
   errors: SyncStepError[],
+  state: GlobalSyncStateFile,
   fn: () => Promise<void>
 ): Promise<void> {
   if (!shouldRunSyncSource(source, stale)) {
     console.log(`sync: ${step} — skip (not stale).`);
     return;
   }
+  const errorsBefore = errors.length;
   await runSyncStep(step, errors, fn);
+  if (errors.length === errorsBefore) clearUserForcedStale(state, source);
 }
 
 async function runEquityEod(state: GlobalSyncStateFile, changes: SyncFieldChange[]): Promise<void> {
@@ -787,11 +809,11 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
         (stale.length ? ` stale=[${stale.join(", ")}]` : " nothing stale")
     );
 
-    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, async () => {
+    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, state!, async () => {
       await runUnoSpot(cl, state!, syncChanges);
     });
 
-    await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, async () => {
+    await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, async () => {
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
     });
@@ -800,13 +822,13 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     if (!bcentral) {
       console.warn("sync: BCentral — skip (set BCENTRAL_EMAIL and BCENTRAL_PASSWORD in .env).");
     } else {
-      await runSyncStepIfStale("equity_eod", stale, "Equity EOD", stepErrors, async () => {
+      await runSyncStepIfStale("equity_eod", stale, "Equity EOD", stepErrors, state!, async () => {
         await runEquityEod(state!, syncChanges);
       });
-      await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, async () => {
+      await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, state!, async () => {
         await runSbifUsd(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
-      await runSyncStepIfStale("sbif_eur", stale, "BCentral EUR", stepErrors, async () => {
+      await runSyncStepIfStale("sbif_eur", stale, "BCentral EUR", stepErrors, state!, async () => {
         await runSbifEur(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
       if (cl.day < 9 && !FORCE_SBIF) {
@@ -814,13 +836,13 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
           "sync: BCentral — skip UF/UTM/IPC (before day 9; series often incomplete earlier — use --force-sbif to override)."
         );
       } else {
-        await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", stepErrors, async () => {
+        await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", stepErrors, state!, async () => {
           await runSbifUf(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStepIfStale("sbif_utm", stale, "BCentral UTM", stepErrors, async () => {
+        await runSyncStepIfStale("sbif_utm", stale, "BCentral UTM", stepErrors, state!, async () => {
           await runSbifUtm(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStepIfStale("sbif_ipc", stale, "BCentral IPC", stepErrors, async () => {
+        await runSyncStepIfStale("sbif_ipc", stale, "BCentral IPC", stepErrors, state!, async () => {
           await runSbifIpc(cl, bcentral, state!, syncChanges);
         });
       }

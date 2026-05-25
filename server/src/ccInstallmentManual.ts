@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { removeOneShotLinesForInstallmentPurchase } from "./ccCrossImportDedupe.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccInstallmentLedgerDb.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
@@ -51,10 +52,13 @@ export function createManualCcInstallmentPurchase(
       input.description?.trim() || null
     );
 
+  const purchaseId = Number(r.lastInsertRowid);
+  removeOneShotLinesForInstallmentPurchase(accountId, purchaseId);
+
   upsertCreditCardValuationsFromLedger(accountId);
   recomputeCcBillingMonthBalances(accountId);
 
-  return { id: Number(r.lastInsertRowid), canonical_row_id: canonical };
+  return { id: purchaseId, canonical_row_id: canonical };
 }
 
 export function updateManualCcInstallmentPurchase(

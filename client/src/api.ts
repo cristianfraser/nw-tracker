@@ -8,6 +8,25 @@ function isProbablyHtml(body: string) {
   return t.startsWith("<!") || t.startsWith("<html") || t.startsWith("<");
 }
 
+async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<T> {
+  const url = `${base()}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { method, body: form });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`${API_HINT} (${msg})`);
+  }
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!res.ok) {
+    if (isProbablyHtml(text)) throw new Error(`${API_HINT} (HTTP ${res.status})`);
+    throw new Error(trimmed || res.statusText);
+  }
+  if (trimmed === "") return undefined as T;
+  return JSON.parse(trimmed) as T;
+}
+
 async function j<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${base()}${path}`;
   let res: Response;
@@ -118,6 +137,8 @@ export const api = {
     }),
   deleteCcPurchase: (id: string | number, purchaseId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, { method: "DELETE" }),
+  deleteCcStatementLine: (id: string | number, lineId: number) =>
+    j<{ ok: boolean }>(`/api/accounts/${id}/cc-statement-lines/${lineId}`, { method: "DELETE" }),
   patchCcBillingFacturadoPlaceholder: (
     id: string | number,
     body: { billing_month: string; estimated_facturado_clp: number | null }
@@ -166,6 +187,52 @@ export const api = {
     j<import("./types").CheckingCartolaMonthsResponse>(
       `/api/accounts/${id}/checking-cartola-months`
     ),
+  accountImportSpecs: (id: string | number) =>
+    j<{
+      account_id: number;
+      category_slug: string | null;
+      document_imports: { type: string; labelKey: string; accept: string }[];
+      supports_cc_web_paste: boolean;
+      supports_cc_statement_pdf: boolean;
+      supports_checking_recent_xlsx: boolean;
+      supports_checking_cartola_xlsx: boolean;
+    }>(`/api/accounts/${id}/import-specs`),
+  importCcWebPaste: (id: string | number, text: string) =>
+    j<Record<string, unknown>>(`/api/accounts/${id}/imports/cc-web-paste`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  importCcStatementPdf: (
+    id: string | number,
+    files: Record<string, File | undefined>
+  ) => {
+    const form = new FormData();
+    if (files.clp) form.append("clp", files.clp);
+    if (files.usd) form.append("usd", files.usd);
+    return jForm<Record<string, unknown>>(`/api/accounts/${id}/imports/cc-statement-pdf`, form);
+  },
+  importCheckingRecentXlsx: (id: string | number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return jForm<Record<string, unknown>>(
+      `/api/accounts/${id}/imports/checking-recent-xlsx`,
+      form
+    );
+  },
+  importCheckingCartolaXlsx: (id: string | number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return jForm<Record<string, unknown>>(
+      `/api/accounts/${id}/imports/checking-cartola-xlsx`,
+      form
+    );
+  },
+  importAccountDocument: (id: string | number, type: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("type", type);
+    return jForm<Record<string, unknown>>(`/api/accounts/${id}/imports/document`, form);
+  },
   groupMonthlyPerformance: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
@@ -197,10 +264,20 @@ export const api = {
     j<import("./types").FlowsCreditCardExpensesResponse>("/api/flows/expenses/credit-card"),
   assignCcExpenseLineCategory: (
     lineId: number,
-    body: { unique: boolean; category_slug?: string }
+    body: { unique: boolean; category_slug?: string; clear_category?: boolean }
   ) =>
     j<{ category_slug: string; unique: boolean; merchant_key: string; purchase_key: string }>(
       `/api/flows/expenses/credit-card/lines/${lineId}/category`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
+  patchCcExpensePurchaseNote: (body: {
+    account_id: number;
+    purchase_key?: string;
+    statement_line_id?: number;
+    notes: string;
+  }) =>
+    j<{ account_id: number; purchase_key: string; notes: string }>(
+      "/api/flows/expenses/credit-card/purchase-notes",
       { method: "PATCH", body: JSON.stringify(body) }
     ),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
@@ -210,6 +287,11 @@ export const api = {
     j<{ messages: AppMessageRow[] }>(`/api/messages?kind=${kind}`),
   markMessagesRead: () => j<{ marked: number }>("/api/messages/mark-read", { method: "POST" }),
   syncStatus: () => j<import("./types").SyncStatusResponse>("/api/sync/status"),
+  syncForceStale: (source: import("./types").SyncSourceId) =>
+    j<import("./types").SyncStatusResponse>("/api/sync/force-stale", {
+      method: "POST",
+      body: JSON.stringify({ source }),
+    }),
 };
 
 export type AppMessageRow = {

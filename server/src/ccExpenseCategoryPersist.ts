@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import {
   loadCcStatementLineExpenseCtx,
   stableCcExpensePurchaseKeyFromCtx,
@@ -7,6 +8,8 @@ import {
 
 export type CcExpenseCategorySnapshot = {
   lineCategoryByParserRowId: Map<string, number>;
+  /** Fallback when parser_row_id changes but dedupe_key is stable across PDF reimports. */
+  lineCategoryByDedupeKey: Map<string, number>;
   uniqueCategoryByStablePurchaseKey: Map<string, number | null>;
 };
 
@@ -26,23 +29,56 @@ export function propagateCcExpenseMerchantRulesFromLegacy(
   return r.changes;
 }
 
+/** Share merchant rules across all cards in a credit-card group (e.g. Santander). */
+export function propagateCcExpenseMerchantRulesAcrossGroup(
+  groupSlug = "santander"
+): number {
+  const accountIds = listCreditCardGroupMasterAccountIds(groupSlug);
+  if (accountIds.length === 0) return 0;
+
+  let total = 0;
+  const ins = db.prepare(
+    `INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
+     SELECT ?, mc.merchant_key, mc.category_id
+     FROM cc_expense_merchant_categories mc
+     WHERE mc.account_id = ?`
+  );
+  for (const targetId of accountIds) {
+    for (const sourceId of accountIds) {
+      if (sourceId === targetId) continue;
+      total += ins.run(targetId, sourceId).changes;
+    }
+  }
+  return total;
+}
+
 /** Capture assignments before statement lines are deleted (reimport). */
 export function snapshotCcExpenseCategories(accountId: number): CcExpenseCategorySnapshot {
   const lineCategoryByParserRowId = new Map<string, number>();
+  const lineCategoryByDedupeKey = new Map<string, number>();
   const lineRows = db
     .prepare(
-      `SELECT l.parser_row_id, lc.category_id
+      `SELECT l.parser_row_id, l.dedupe_key, lc.category_id
        FROM cc_expense_line_categories lc
        JOIN cc_statement_lines l ON l.id = lc.statement_line_id
        JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ?
-         AND l.parser_row_id IS NOT NULL
-         AND TRIM(l.parser_row_id) != ''`
+       WHERE s.account_id = ?`
     )
-    .all(accountId) as { parser_row_id: string; category_id: number }[];
+    .all(accountId) as {
+    parser_row_id: string | null;
+    dedupe_key: string | null;
+    category_id: number;
+  }[];
 
   for (const r of lineRows) {
-    lineCategoryByParserRowId.set(String(r.parser_row_id).trim(), r.category_id);
+    const parserRowId = String(r.parser_row_id ?? "").trim();
+    if (parserRowId) {
+      lineCategoryByParserRowId.set(parserRowId, r.category_id);
+    }
+    const dedupeKey = String(r.dedupe_key ?? "").trim();
+    if (dedupeKey) {
+      lineCategoryByDedupeKey.set(dedupeKey, r.category_id);
+    }
   }
 
   const uniqueCategoryByStablePurchaseKey = new Map<string, number | null>();
@@ -74,7 +110,7 @@ export function snapshotCcExpenseCategories(accountId: number): CcExpenseCategor
     uniqueCategoryByStablePurchaseKey.set(stableKey, u.category_id);
   }
 
-  return { lineCategoryByParserRowId, uniqueCategoryByStablePurchaseKey };
+  return { lineCategoryByParserRowId, lineCategoryByDedupeKey, uniqueCategoryByStablePurchaseKey };
 }
 
 function migrateStoredPurchaseKeyToStable(
@@ -143,7 +179,6 @@ export function restoreCcExpenseCategories(
      WHERE account_id = ?
        AND (purchase_key LIKE 'line:%' OR purchase_key LIKE 'installment:%')`
   );
-
   let lineCategories = 0;
   let uniquePurchases = 0;
 
@@ -152,23 +187,26 @@ export function restoreCcExpenseCategories(
 
     const newLines = db
       .prepare(
-        `SELECT l.id, l.parser_row_id
+        `SELECT l.id, l.parser_row_id, l.dedupe_key
          FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ?
-           AND l.parser_row_id IS NOT NULL
-           AND TRIM(l.parser_row_id) != ''`
+         WHERE s.account_id = ?`
       )
-      .all(accountId) as { id: number; parser_row_id: string }[];
+      .all(accountId) as { id: number; parser_row_id: string | null; dedupe_key: string | null }[];
 
     for (const l of newLines) {
-      const catId = snap.lineCategoryByParserRowId.get(String(l.parser_row_id).trim());
+      let catId = snap.lineCategoryByParserRowId.get(String(l.parser_row_id ?? "").trim());
+      if (catId == null) {
+        const dedupeKey = String(l.dedupe_key ?? "").trim();
+        if (dedupeKey) catId = snap.lineCategoryByDedupeKey.get(dedupeKey);
+      }
       if (catId == null) continue;
       insLine.run(l.id, catId);
       lineCategories += 1;
     }
 
     for (const [purchaseKey, categoryId] of snap.uniqueCategoryByStablePurchaseKey) {
+      if (categoryId == null) continue;
       upsertUnique.run(accountId, purchaseKey, categoryId);
       uniquePurchases += 1;
     }

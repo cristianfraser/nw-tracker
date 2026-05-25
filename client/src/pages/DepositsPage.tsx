@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useFlowsDeposits } from "../queries/hooks";
-import { DepositsByCategoryChart } from "../components/DepositsByCategoryChart";
-import { Table } from "../components/Table";
+import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
+import { Table } from "../components/ui/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
 import { formatClp } from "../format";
 import { depositFlowCategoryLabel } from "../i18n";

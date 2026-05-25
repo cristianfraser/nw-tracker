@@ -1,4 +1,4 @@
-import { Table } from "../components/Table";
+import { Table } from "../components/ui/Table";
 import { useIncome } from "../queries/hooks";
 import { formatClp } from "../format";
 

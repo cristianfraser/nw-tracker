@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useFlowsExpenses } from "../queries/hooks";
-import { ExpensesByApartmentChart } from "../components/ExpensesByApartmentChart";
-import { Table } from "../components/Table";
+import { ExpensesByApartmentChart } from "../components/charts/ExpensesByApartmentChart";
+import { Table } from "../components/ui/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
 import { formatClp } from "../format";
 import { expenseApartmentLabel, expenseKindLabel, useTranslation } from "../i18n";

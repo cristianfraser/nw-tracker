@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { CompactEntityCard } from "../../components/CompactEntityCard";
-import { DashboardCardGroupMetrics } from "../../components/DashboardCardGroupMetrics";
-import { PortfolioEntityCardsStrip } from "../../components/PortfolioEntityCardsStrip";
-import { PortfolioNavChildDetailCards } from "../../components/PortfolioNavChildDetailCards";
-import { PageTitleRow } from "../../components/PageTitleRow";
+import { CompactEntityCard } from "../../components/dashboard/CompactEntityCard";
+import { DashboardCardGroupMetrics } from "../../components/dashboard/DashboardCardGroupMetrics";
+import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioEntityCardsStrip";
+import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
+import { PageTitleRow } from "../../components/layout/PageTitleRow";
 import type { EntityColorTarget } from "../../entityColor";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { accountCardTitleBalanceDelta } from "../../dashboardCardBreakdown";

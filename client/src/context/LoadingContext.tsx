@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { GlobalLoadingSpinner } from "../components/GlobalLoadingSpinner";
+import { GlobalLoadingSpinner } from "../components/layout/GlobalLoadingSpinner";
 
 type LoadingContextValue = {
   loading: boolean;

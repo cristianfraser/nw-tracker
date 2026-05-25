@@ -5,7 +5,7 @@ import {
   seriesAccountIdForGroupTab,
 } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
-import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import { MONTH_ROW_EPS, pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
@@ -20,6 +20,7 @@ import {
   ccInstallmentLedgerRowCount,
   creditCardInstallmentPaymentsByBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
 import {
   colorRgbForSyntheticAccountLine,
@@ -391,7 +392,7 @@ export function getAccountMonthlyPerformance(
     .get(accountId) as { id: number; category_slug: string } | undefined;
   if (!row) return null;
 
-  if (row.category_slug === "cuenta_corriente" || row.category_slug === "cuenta_ahorro_vivienda") {
+  if (isMovementBalanceCashCategory(row.category_slug) || row.category_slug === "cuenta_ahorro_vivienda") {
     return { account_id: accountId, category_slug: row.category_slug, monthly: [] };
   }
 
@@ -666,7 +667,7 @@ export function getGroupMonthlyPerformanceSeries(
 } {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const perfRows = rows.filter(
-    (r) => r.category_slug !== "cuenta_corriente" && r.category_slug !== "cuenta_ahorro_vivienda"
+    (r) => !isMovementBalanceCashCategory(r.category_slug) && r.category_slug !== "cuenta_ahorro_vivienda"
   );
 
   const byIdAsc = new Map<number, AccountMonthlyPerformanceRow[]>();

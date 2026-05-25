@@ -8,7 +8,8 @@ export type MonthlyPerfPickRow = {
   nominal_pl: number | null;
 };
 
-const MONTH_ROW_EPS = 0.01;
+/** Ignore float noise when comparing money fields (CLP or converted USD). */
+export const MONTH_ROW_EPS = 0.01;
 
 /**
  * Chart series can include two snapshots in the same calendar month (e.g. Chile “today” mid-month and

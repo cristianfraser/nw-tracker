@@ -16,6 +16,7 @@ const DD_MM = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/;
 
 export function parseDdMmYyToIso(raw: string): string | null {
   const t = String(raw ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
   const m = DD_MM.exec(t);
   if (!m) return null;
   const d = Number(m[1]);

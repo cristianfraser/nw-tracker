@@ -7,9 +7,13 @@ Deps (workspace-local, no global pip required):
   mkdir -p server/scripts/.pdf_deps
   pip3 install pypdf typing_extensions -t server/scripts/.pdf_deps
 
+System tools: `poppler` (`pdftotext`), `qpdf` (`brew install poppler qpdf`).
+Unreadable PDFs are rewritten/decrypted via qpdf before parse (see `cc_pdf_qpdf.py`).
+
 From repo root:
   npm run parse:cc-pdfs
-  npm run import:cc-parsed -w nw-tracker-server -- --account-id=<ID>
+  npm run import:cc-parsed -w nw-tracker-server
+  # add --wipe only to replace all statements/ledger for that account
 
 PDFs are read from `cfraser/credit-card-statements/` (override with CFRASER_PDFS_DIR).
 
@@ -18,16 +22,26 @@ Writes:
   cfraser/cc-statements-parsed-card-a.csv
   cfraser/cc-statements-parsed-card-b.csv
   cfraser/credit-card-installments-backfill-suggested.csv
+  cfraser/cc-statements-parse-reconciliation.jsonl
+
+Per-PDF parse cache (skip re-parse when PDF and parser unchanged):
+  cfraser/cc-statements-parsing-output/per-pdf/<sha256>.json
+  Override dir: CC_PARSE_CACHE_DIR. Flags: --no-cache, --force-reparse.
+
+Reconciliation runs after parse (skip with --no-reconcile). Exit 1 if any statement
+fails totals check; all PDFs are still processed and failures are listed.
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import os
 import re
 import subprocess
 import sys
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -36,15 +50,174 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 CFRASER_DIR = REPO_ROOT / "cfraser"
 BASELINE_CSV = CFRASER_DIR / "credit-card-installments.csv"
+PARSE_CACHE_DIR = Path(
+    os.environ.get("CC_PARSE_CACHE_DIR", str(CFRASER_DIR / "cc-statements-parsing-output"))
+)
+PARSE_CACHE_PER_PDF_DIR = PARSE_CACHE_DIR / "per-pdf"
+PARSE_CACHE_VERSION_FILES = (
+    SCRIPT_DIR / "parse-cc-statement-pdfs.py",
+    SCRIPT_DIR / "cc_statement_reconcile.py",
+    SCRIPT_DIR / "cc_pdf_qpdf.py",
+)
 PDF_DEPS = SCRIPT_DIR / ".pdf_deps"
 if PDF_DEPS.is_dir():
     sys.path.insert(0, str(PDF_DEPS))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 from pypdf import PdfReader  # type: ignore  # noqa: E402
+from cc_pdf_qpdf import (  # noqa: E402
+    load_repo_dotenv,
+    qpdf_available,
+    repair_unreadable_pdfs_in_dir,
+    statement_pdf_password,
+)
+from cc_statement_reconcile import (  # noqa: E402
+    merge_section_totals_into_meta,
+    reconcile_statement,
+    reconcile_statement_required,
+    write_reconciliation_jsonl,
+)
 
 
 def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
+
+
+def parser_cache_version() -> str:
+    """Bump invalidates all per-PDF caches when parser or reconcile logic changes."""
+    h = hashlib.sha256()
+    for path in PARSE_CACHE_VERSION_FILES:
+        if not path.is_file():
+            continue
+        h.update(path.name.encode("utf-8"))
+        h.update(path.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def pdf_content_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def parse_cache_file_path(pdf_hash: str) -> Path:
+    return PARSE_CACHE_PER_PDF_DIR / f"{pdf_hash}.json"
+
+
+def load_parse_cache(
+    pdf_path: Path, parser_version: str, *, force: bool = False
+) -> Optional[Dict[str, Any]]:
+    if force:
+        return None
+    try:
+        st = pdf_path.stat()
+    except OSError:
+        return None
+    pdf_hash = pdf_content_sha256(pdf_path)
+    cache_path = parse_cache_file_path(pdf_hash)
+    if not cache_path.is_file():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if str(payload.get("parser_version") or "") != parser_version:
+        return None
+    if str(payload.get("pdf_sha256") or "") != pdf_hash:
+        return None
+    if int(payload.get("pdf_mtime_ns") or 0) != int(st.st_mtime_ns):
+        return None
+    if int(payload.get("pdf_size") or 0) != int(st.st_size):
+        return None
+    return payload
+
+
+def save_parse_cache(pdf_path: Path, parser_version: str, payload: Dict[str, Any]) -> None:
+    st = pdf_path.stat()
+    pdf_hash = pdf_content_sha256(pdf_path)
+    out = {
+        "parser_version": parser_version,
+        "pdf_sha256": pdf_hash,
+        "pdf_mtime_ns": st.st_mtime_ns,
+        "pdf_size": st.st_size,
+        **payload,
+    }
+    cache_path = parse_cache_file_path(pdf_hash)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+
+
+def rows_from_parse_payload(
+    *,
+    effective_group: str,
+    source_pdf: str,
+    meta: Dict[str, Any],
+    parsed: List[Dict[str, Any]],
+    baseline: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for i, pr in enumerate(parsed):
+        raw_line = str(pr.get("description_raw", ""))
+        rid = _sha1(f"{effective_group}|{source_pdf}|{i}|{raw_line}")
+        row = emit_row(
+            card_group=effective_group,
+            source_pdf=source_pdf,
+            meta=meta,
+            pr=pr,
+            raw_line=raw_line,
+            row_id=rid,
+        )
+        mk, conf, note = match_baseline(pr, baseline)
+        row["matched_excel_row"] = mk
+        row["match_confidence"] = conf
+        row["mismatch_notes"] = note
+        rows.append(row)
+    return rows
+
+
+def parse_one_pdf(
+    card_group: str,
+    pdf_path: Path,
+    baseline: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Extract text, parse lines, return CSV rows and pdf_context entry."""
+    parser = choose_parser(pdf_path)
+    _pages, full = extract_pdf_text(pdf_path, parser)
+    effective_group = "INTL" if parser == "international_usd" else card_group
+    full_layout = ""
+    if parser == "international_usd":
+        try:
+            layout_run = subprocess.run(
+                ["pdftotext", "-layout", str(pdf_path), "-"],
+                capture_output=True,
+                text=True,
+            )
+            full_layout = layout_run.stdout if layout_run.returncode == 0 else ""
+        except (FileNotFoundError, OSError):
+            full_layout = ""
+        parsed = parse_international_usd_document(full, full_layout)
+        meta = extract_meta_international(full, pdf_path.name)
+    else:
+        parsed = parse_clp_document(full, parser)
+        meta = extract_meta(full, pdf_path.name)
+    rows = rows_from_parse_payload(
+        effective_group=effective_group,
+        source_pdf=pdf_path.name,
+        meta=meta,
+        parsed=parsed,
+        baseline=baseline,
+    )
+    ctx = {
+        "meta": meta,
+        "full": full,
+        "layout": full_layout,
+        "parser": parser,
+        "parsed": parsed,
+    }
+    return rows, ctx
 
 
 def parse_clp_amount(raw: str) -> Optional[int]:
@@ -108,6 +281,8 @@ RE_AMOUNT_TOKEN = re.compile(r"^-?[\d.,]+$")
 RE_STATEMENT_USD_TOKEN = re.compile(r"^-?\d+,\d{1,2}$")
 # Foreign origin column often uses Chilean grouping (e.g. GBP 20.604,00 = 20,604.00).
 RE_CHILEAN_GROUPED_AMOUNT = re.compile(r"^-?\d{1,3}(\.\d{3})+,\d{2}$")
+# Lone vertical cell above this is MONTO MONEDA ORIGEN (pdftotext dropped MONTO US$).
+_MAX_PLAUSIBLE_INTL_LINE_USD = 150.0
 
 
 def looks_like_statement_usd_token(raw: str) -> bool:
@@ -155,30 +330,87 @@ def parse_foreign_origin_amount(
 
 def _assign_intl_orig_and_usd_amounts(amounts: List[str]) -> Tuple[str, str]:
     """
-    Return (orig_raw, usd_raw). Vertical pdftotext order does not match table column order;
-    identify the US$ cell by format (20,81) vs foreign (20.604,00).
+    Return (orig_raw, usd_raw).
+
+    Santander international table order is fixed: … | MONTO MONEDA ORIGEN | MONTO US$ (last column).
+    When pdftotext emits both amounts for a row, the last token is always US$.
     """
     if not amounts:
         return "", ""
     if len(amounts) == 1:
         sole = amounts[0]
+        v = parse_usd_amount(sole)
+        if v is not None and v > _MAX_PLAUSIBLE_INTL_LINE_USD:
+            return sole, ""
         if looks_like_statement_usd_token(sole):
             return "", sole
-        # MONTO MONEDA ORIGEN without US$ (pdftotext dropped the rightmost cell).
         return sole, ""
-    a, b = amounts[-2], amounts[-1]
-    a_usd = looks_like_statement_usd_token(a)
-    b_usd = looks_like_statement_usd_token(b)
-    if a_usd and not b_usd:
-        return b, a
-    if b_usd and not a_usd:
-        return a, b
-    pa, pb = parse_usd_amount(a), parse_usd_amount(b)
-    if pa is not None and pb is not None and pa > 0 and pb > 0:
-        if pa <= pb:
-            return (b, a) if pa == parse_usd_amount(a) else (a, b)
-        return (b, a)
-    return a, b
+    trimmed = [a for a in amounts]
+    while len(trimmed) > 2 and RE_CHILEAN_GROUPED_AMOUNT.match(
+        trimmed[-1].replace(" ", "")
+    ):
+        trimmed.pop()
+    return trimmed[-2], trimmed[-1]
+
+
+def _strip_glued_statement_footer_cells(
+    texts: List[str], amounts: List[str]
+) -> None:
+    """
+    pdftotext often appends statement footer (CH + saldo en pesos 3.000,00) to the last row.
+  """
+    while texts and amounts:
+        if not RE_INTL_COUNTRY.match(texts[-1]):
+            break
+        tail_raw = amounts[-1].replace(" ", "")
+        if RE_CHILEAN_GROUPED_AMOUNT.match(tail_raw):
+            texts.pop()
+            amounts.pop()
+            continue
+        tail_usd = parse_usd_amount(amounts[-1])
+        if tail_usd is None or tail_usd != 0:
+            break
+        texts.pop()
+        amounts.pop()
+
+
+_MERCHANT_CORE_TAIL_WORDS = frozenset(
+    {"cost", "internet", "com", "bill", "hotel", "ride", "beds", "sao"}
+)
+
+
+def _intl_merchant_core(merchant: str, place: str = "") -> str:
+    """Dedupe key base: align layout (merchant + place) with vertical (merchant glues city)."""
+    m = norm_merchant(merchant)
+    p = norm_merchant(place)
+    if p:
+        if m.endswith(p):
+            m = m[: -len(p)].strip()
+        elif p in m:
+            m = m[: m.index(p)].strip()
+        m = m.rstrip(",").strip()
+    if not p:
+        parts = m.split()
+        if len(parts) >= 2:
+            first = parts[0]
+            # Vertical pdftotext glues "EASYJET000K2K1TJ4 LUTON BEDS" (commas already stripped).
+            if re.search(r"\d", first):
+                return first
+        if "," in str(merchant or ""):
+            head = m.split(",", 1)[0].strip()
+            tokens = head.split()
+            if tokens and re.match(r"^[\w.*]+$", tokens[0], re.I) and len(tokens[0]) >= 4:
+                return tokens[0]
+        parts = m.split()
+        if len(parts) >= 2:
+            tail = parts[-1]
+            if (
+                tail.isalpha()
+                and len(tail) >= 4
+                and tail not in _MERCHANT_CORE_TAIL_WORDS
+            ):
+                m = " ".join(parts[:-1]).strip()
+    return m or norm_merchant(merchant).split()[0]
 
 # País en columna → moneda del monto origen (columna antes del US$).
 COUNTRY_ORIGIN_CURRENCY: Dict[str, str] = {
@@ -310,15 +542,7 @@ def _parse_international_vertical_chunk(
     if not amounts:
         return None
 
-    # Orphan tail cells (e.g. "CH" + "0,00" before section 3 header) glued to prior row.
-    while texts and amounts:
-        if not RE_INTL_COUNTRY.match(texts[-1]):
-            break
-        tail_usd = parse_usd_amount(amounts[-1])
-        if tail_usd is None or tail_usd != 0:
-            break
-        texts.pop()
-        amounts.pop()
+    _strip_glued_statement_footer_cells(texts, amounts)
 
     if not amounts:
         return None
@@ -360,7 +584,20 @@ def _parse_international_vertical_chunk(
         else:
             return None
 
+    row_countries = [t for t in texts if RE_INTL_COUNTRY.match(t)]
+    if row_countries and country == "CH" and any(
+        c != "CH" for c in row_countries
+    ):
+        for c in reversed(row_countries):
+            if c != "CH":
+                country = c
+                break
+
     orig_val, orig_ccy, amount_clp = _resolve_intl_orig_amounts(orig_raw, country, usd_val)
+
+    merchant = _normalize_intl_payment_merchant(merchant)
+    if _intl_merchant_is_noise(merchant):
+        return None
 
     desc_bits = [fecha, merchant]
     if origen:
@@ -394,6 +631,10 @@ def _parse_international_vertical_chunk(
 def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
     meta = extract_meta(full, source_pdf)
     meta["currency"] = "usd"
+    if not meta.get("statement_date") or "XXXX" in str(meta.get("statement_date", "")).upper():
+        meta["statement_date"] = statement_date_from_source_pdf(source_pdf)
+    if not meta.get("statement_date"):
+        meta["statement_date"] = _date_after_header(full, "FECHA ESTADO DE CUENTA")
     lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
 
     def grab_usd(label: str) -> Optional[float]:
@@ -428,6 +669,7 @@ def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
         meta["statement_monto_facturado"] = parse_usd_amount(m_fac.group(1))
     elif meta.get("statement_deuda_total") is not None:
         meta["statement_monto_facturado"] = meta["statement_deuda_total"]
+    merge_section_totals_into_meta(meta, full, parse_clp_amount, parse_usd_amount)
     return meta
 
 
@@ -440,7 +682,7 @@ def _iter_vertical_subchunks(
     sub_fecha = default_fecha
     for part in chunk:
         p = part.strip()
-        if re.match(r"^\d{2}/\d{2}/\d{2}$", p):
+        if re.match(r"^\d{2}/\d{2}/\d{2,4}$", p):
             if sub:
                 segments.append((sub_fecha, sub))
                 sub = []
@@ -452,6 +694,34 @@ def _iter_vertical_subchunks(
     return segments
 
 
+RE_INTL_FOOTER_MERCHANT = re.compile(
+    r"EMISOR\s+CLIENTE|^(?:EMISOR|CLIENTE|COMPROBANTE)\s*$|DESCRIPCI[ÓO]N\s+OPERACI|MONTO\s+MONEDA\s+ORIGEN|MOVIMIENTOS\s+TARJETA",
+    re.I,
+)
+
+
+def _normalize_intl_payment_merchant(merchant: str) -> str:
+    m = re.sub(r"\s+EMISOR\s+CLIENTE\s*$", "", str(merchant or "").strip(), flags=re.I).strip()
+    if re.search(r"ABONO\s+DE\s+DIVISAS", m, re.I):
+        return "ABONO DE DIVISAS"
+    if re.search(r"NOTA\s+DE\s+CREDITO", m, re.I):
+        return "NOTA DE CREDITO"
+    return m
+
+
+def _intl_merchant_is_noise(merchant: str) -> bool:
+    m = str(merchant or "").strip()
+    if not m:
+        return True
+    if RE_INTL_FOOTER_MERCHANT.search(m):
+        return True
+    if "INFORMACION DE TRANSACCIONES" in m.upper():
+        return True
+    if "DESCRIPCI" in m.upper() and "OPERACI" in m.upper() and "CIUDAD" in m.upper():
+        return True
+    return False
+
+
 def _build_intl_row(
     fecha: str,
     merchant: str,
@@ -460,6 +730,9 @@ def _build_intl_row(
     usd_raw: str,
     origen: str = "",
 ) -> Optional[Dict[str, Any]]:
+    merchant = _normalize_intl_payment_merchant(merchant)
+    if _intl_merchant_is_noise(merchant):
+        return None
     usd_val = parse_usd_amount(usd_raw)
     if usd_val is None:
         return None
@@ -497,6 +770,33 @@ def _build_intl_row(
 RE_INTL_LAYOUT_ROW = re.compile(
     r"^(\d{2}/\d{2}/\d{2})\s+(.+?)\s+([A-Z]{2})\s+([\d.,\-]+)\s+([\d.,\-]+)\s*$"
 )
+RE_INTL_LAYOUT_DATE = re.compile(r"^(\d{2}/\d{2}/\d{2,4})\s+(.+)$")
+
+
+def _parse_intl_layout_table_line(line: str) -> Optional[Dict[str, Any]]:
+    """
+    pdftotext -layout table: FECHA | DESCRIPCIÓN | [CIUDAD] | PAÍS | MONTO ORIGEN | MONTO US$.
+    2024 statements use dd/mm/yyyy and an optional city column between merchant and país.
+    """
+    m = RE_INTL_LAYOUT_DATE.match(line.strip())
+    if not m:
+        return None
+    fecha = m.group(1)
+    parts = [p.strip() for p in re.split(r"\s{2,}", m.group(2).strip()) if p.strip()]
+    if len(parts) < 4:
+        return None
+    country_idx = next((i for i, p in enumerate(parts) if RE_INTL_COUNTRY.match(p)), None)
+    if country_idx is None or country_idx < 1:
+        return None
+    if country_idx + 2 >= len(parts):
+        return None
+    merchant = parts[0]
+    country = parts[country_idx]
+    orig_raw = parts[country_idx + 1]
+    usd_raw = parts[country_idx + 2]
+    place = " ".join(parts[1:country_idx]).strip() if country_idx > 1 else ""
+    row = _build_intl_row(fecha, merchant, country, orig_raw, usd_raw, origen=place)
+    return row
 
 
 def _parse_international_layout_document(full_layout: str) -> List[Dict[str, Any]]:
@@ -517,6 +817,10 @@ def _parse_international_layout_document(full_layout: str) -> List[Dict[str, Any
             or line.startswith("EMISOR")
         ):
             continue
+        row = _parse_intl_layout_table_line(line)
+        if row:
+            out.append(row)
+            continue
         m = RE_INTL_LAYOUT_ROW.match(line)
         if not m:
             continue
@@ -535,29 +839,144 @@ def _parse_international_layout_document(full_layout: str) -> List[Dict[str, Any
     return out
 
 
-def _intl_row_merge_key(r: Dict[str, Any]) -> str:
+def _intl_row_loose_key(r: Dict[str, Any]) -> str:
+    """Same calendar line (date + merchant + country), ignoring amounts."""
     return _sha1(
         "|".join(
             [
                 str(r.get("transaction_date", "")),
-                norm_merchant(str(r.get("merchant", ""))),
-                f"{float(r.get('amount_usd') or 0):.4f}",
+                _intl_merchant_core(
+                    str(r.get("merchant", "")),
+                    str(r.get("place", "")),
+                ),
+                str(r.get("country", "")).upper().strip(),
             ]
         )
     )
+
+
+def _vertical_intl_row_superseded_by_layout(
+    vertical_row: Dict[str, Any], layout_rows: List[Dict[str, Any]]
+) -> bool:
+    """Drop vertical row when layout already has the same purchase (MONTO US$ is authoritative)."""
+    usd = float(vertical_row.get("amount_usd") or 0)
+    orig = vertical_row.get("amount_orig")
+    has_orig = orig is not None and float(orig or 0) > 0
+    if usd > _MAX_PLAUSIBLE_INTL_LINE_USD:
+        loose = _intl_row_loose_key(vertical_row)
+        for layout_row in layout_rows:
+            if _intl_row_loose_key(layout_row) != loose:
+                continue
+            layout_usd = float(layout_row.get("amount_usd") or 0)
+            if layout_usd > 0 and layout_usd <= _MAX_PLAUSIBLE_INTL_LINE_USD:
+                return True
+        return False
+    if usd <= 0:
+        return False
+    v_loose = _intl_row_loose_key(vertical_row)
+    for layout_row in layout_rows:
+        if _intl_row_loose_key(layout_row) == v_loose:
+            return True
+        layout_usd = float(layout_row.get("amount_usd") or 0)
+        if layout_usd > 0 and abs(layout_usd - usd) < 0.02:
+            if (
+                str(vertical_row.get("transaction_date", ""))
+                == str(layout_row.get("transaction_date", ""))
+                and str(vertical_row.get("country", "")).upper()
+                == str(layout_row.get("country", "")).upper()
+                and _intl_merchant_core(
+                    str(vertical_row.get("merchant", "")),
+                    str(vertical_row.get("place", "")),
+                )
+                == _intl_merchant_core(
+                    str(layout_row.get("merchant", "")),
+                    str(layout_row.get("place", "")),
+                )
+            ):
+                return True
+    return False
+
+
+def _intl_row_merge_key(r: Dict[str, Any]) -> str:
+    usd = float(r.get("amount_usd") or 0)
+    orig = float(r.get("amount_orig") or 0)
+    # Same merchant/day can appear twice (e.g. two Dublin rides); US$ column disambiguates.
+    if usd > 0 and usd <= _MAX_PLAUSIBLE_INTL_LINE_USD:
+        amt_tag = f"{usd:.4f}"
+    elif orig > 0:
+        amt_tag = f"orig:{orig:.4f}"
+    else:
+        amt_tag = f"{usd:.4f}"
+    return _sha1(
+        "|".join(
+            [
+                str(r.get("transaction_date", "")),
+                _intl_merchant_core(
+                    str(r.get("merchant", "")),
+                    str(r.get("place", "")),
+                ),
+                str(r.get("country", "")).upper().strip(),
+                amt_tag,
+            ]
+        )
+    )
+
+
+def _intl_row_parse_quality(r: Dict[str, Any]) -> Tuple[int, float]:
+    """Prefer rows with both amount columns and a plausible MONTO US$."""
+    usd = float(r.get("amount_usd") or 0)
+    orig = r.get("amount_orig")
+    has_orig = bool(orig is not None and float(orig) > 0)
+    has_usd = usd > 0
+    plausible_usd = has_usd and usd <= _MAX_PLAUSIBLE_INTL_LINE_USD
+    score = int(has_orig) + int(has_usd) + int(plausible_usd)
+    return (score, -usd if has_orig else usd)
 
 
 def _merge_intl_parsed_rows(
     vertical_rows: List[Dict[str, Any]],
     layout_rows: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Layout table wins (correct orig/US$ columns); vertical fills rows layout missed."""
+    """Layout table wins on ties (correct orig/US$ columns); vertical fills rows layout missed."""
     merged: Dict[str, Dict[str, Any]] = {}
     for r in vertical_rows:
-        merged[_intl_row_merge_key(r)] = r
+        if _vertical_intl_row_superseded_by_layout(r, layout_rows):
+            continue
+        k = _intl_row_merge_key(r)
+        prev = merged.get(k)
+        if prev is None or _intl_row_parse_quality(r) > _intl_row_parse_quality(prev):
+            merged[k] = r
     for r in layout_rows:
-        merged[_intl_row_merge_key(r)] = r
-    return list(merged.values())
+        k = _intl_row_merge_key(r)
+        prev = merged.get(k)
+        if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev):
+            merged[k] = r
+    by_loose_usd: Dict[str, Dict[str, Any]] = {}
+    for r in merged.values():
+        usd = float(r.get("amount_usd") or 0)
+        if usd > 0:
+            bucket = "|".join(
+                [
+                    str(r.get("transaction_date", "")),
+                    str(r.get("country", "")).upper().strip(),
+                    f"{usd:.4f}",
+                ]
+            )
+        else:
+            m = str(r.get("merchant") or "").upper()
+            if "ABONO DE DIVISAS" in m:
+                pay = "ABONO DE DIVISAS"
+            elif "NOTA DE CREDITO" in m:
+                pay = "NOTA DE CREDITO"
+            elif "TRASPASO" in m and "DEUDA" in m:
+                pay = "TRASPASO DEUDA"
+            else:
+                pay = m[:40]
+            bucket = f"{r.get('transaction_date')}|{usd:.4f}|{pay}"
+        prev = by_loose_usd.get(bucket)
+        if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev):
+            by_loose_usd[bucket] = r
+    return list(by_loose_usd.values())
 
 
 def parse_international_usd_document(
@@ -567,14 +986,14 @@ def parse_international_usd_document(
     vertical_out: List[Dict[str, Any]] = []
     i = 0
     while i < len(lines):
-        m = re.match(r"^(\d{2}/\d{2}/\d{2})$", lines[i])
+        m = re.match(r"^(\d{2}/\d{2}/\d{2,4})$", lines[i])
         if not m:
             i += 1
             continue
         fecha = m.group(1)
         j = i + 1
         chunk: List[str] = []
-        while j < len(lines) and not re.match(r"^\d{2}/\d{2}/\d{2}$", lines[j]):
+        while j < len(lines) and not re.match(r"^\d{2}/\d{2}/\d{2,4}$", lines[j]):
             if (
                 re.match(r"^\d+\.\s", lines[j])
                 or re.match(r"^\d+\.[A-Za-zÁÉÍÓÚ]", lines[j])
@@ -661,10 +1080,30 @@ def peek_pdf_text(path: Path) -> str:
         return "\n".join((page.extract_text() or "") for page in reader.pages)
 
 
+def _ascii_upper(text: str) -> str:
+    folded = unicodedata.normalize("NFD", str(text or ""))
+    stripped = "".join(c for c in folded if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", stripped).upper()
+
+
+def is_bci_lider_statement_text(full: str) -> bool:
+    upper = _ascii_upper(full)
+    if "WORLDMEMBER" in upper or "MONTO ORIGEN OPERAC" in upper or "W. LIMITED" in upper:
+        return False
+    if "BANCO DE CREDITO" in upper:
+        return True
+    compact = upper.replace(" ", "")
+    if re.search(r"NUMEROTARJETA[X]{8,}\d{4}", compact):
+        return "MONTO TOTAL FACTURADO" in upper and "PERIODO FACTURADO" in upper
+    return False
+
+
 def choose_parser(path: Path, full: str = "") -> str:
     if not full.strip():
         full = peek_pdf_text(path)
     upper = full.upper()
+    if is_bci_lider_statement_text(full):
+        return "compact"
     if "ESTADO DE CUENTA INTERNACIONAL" in upper or (
         "INTERNACIONAL" in upper and "MONTO US$" in upper
     ):
@@ -688,12 +1127,14 @@ def _clp_statement_looks_wide_layout(upper: str) -> bool:
 
 
 def parse_clp_document(full: str, parser: str) -> List[Dict[str, Any]]:
-    """Parse CLP statement; fall back to wide when compact misses most rows."""
+    """Parse CLP statement; fall back to wide when compact misses rows."""
     if parser == "wide":
         return parse_wide_document(full)
     compact_rows = parse_compact_document(full)
     wide_rows = parse_wide_document(full)
-    if len(wide_rows) > len(compact_rows) and len(wide_rows) >= 5:
+    if not compact_rows:
+        return wide_rows
+    if len(wide_rows) > len(compact_rows):
         return wide_rows
     return compact_rows
 
@@ -717,14 +1158,35 @@ def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
     return pages, "\n".join(pages)
 
 
+RE_STMT_DATE_CELL = re.compile(r"^(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})$")
+
+
+def normalize_statement_date(raw: str) -> str:
+    s = str(raw or "").strip()
+    if not s or "XXXX" in s.upper():
+        return ""
+    m = RE_STMT_DATE_CELL.match(s)
+    if m:
+        return f"{int(m.group(1)):02d}/{int(m.group(2)):02d}/{m.group(3)}"
+    m2 = re.match(r"^(\d{2}/\d{2}/\d{4})$", s)
+    return m2.group(1) if m2 else ""
+
+
+def statement_date_from_source_pdf(source_pdf: str) -> str:
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})\s", str(source_pdf or "").strip())
+    if not m:
+        return ""
+    return f"{int(m.group(3)):02d}/{int(m.group(2)):02d}/{m.group(1)}"
+
+
 def _date_after_header(full: str, header: str, within: int = 14) -> str:
     lines = [ln.strip() for ln in full.splitlines()]
     for i, ln in enumerate(lines):
         if header.upper() in ln.upper():
             for j in range(i + 1, min(i + 1 + within, len(lines))):
-                m = re.match(r"^(\d{2}/\d{2}/\d{4})$", lines[j])
-                if m:
-                    return m.group(1)
+                cand = normalize_statement_date(lines[j])
+                if cand:
+                    return cand
     return ""
 
 
@@ -772,15 +1234,23 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
         re.I,
     ) or re.search(r"FECHA\s+ESTADO\s+DE\s+CUENTA\s*(\d{2}/\d{2}/\d{4})", full, re.I)
     if m:
-        meta["statement_date"] = m.group(1)
+        meta["statement_date"] = normalize_statement_date(m.group(1))
     if not meta["statement_date"]:
         m = re.search(
-            r"(\d{2}/\d{2}/\d{4})\s*FECHA\s+ESTADO\s+DE\s+CUENTA",
+            r"(\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4})\s*FECHA\s+ESTADO\s+DE\s+CUENTA",
             full,
             re.I,
         )
         if m:
-            meta["statement_date"] = m.group(1)
+            meta["statement_date"] = normalize_statement_date(m.group(1))
+    if not meta["statement_date"]:
+        m = re.search(
+            r"FECHA\s+ESTADO\s+DE\s+CUENTA[\s\n]+(\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4})",
+            full,
+            re.I,
+        )
+        if m:
+            meta["statement_date"] = normalize_statement_date(m.group(1))
     m = re.search(
         r"PER[IÍ]ODO\s+FACTURADO[^\d]*(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
         full,
@@ -802,12 +1272,21 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
         meta["card_product"] = "VISA"
     elif re.search(r"MASTER", full, re.I):
         meta["card_product"] = "MASTER"
+    if is_bci_lider_statement_text(full):
+        meta["card_product"] = "LIDER_BCI"
+        meta["card_issuer"] = "bci"
     if not meta["statement_date"]:
         meta["statement_date"] = _date_after_header(full, "FECHA ESTADO DE CUENTA")
+    if not meta["statement_date"]:
+        meta["statement_date"] = statement_date_from_source_pdf(source_pdf)
+    if "XXXX" in str(meta.get("statement_date", "")).upper():
+        meta["statement_date"] = statement_date_from_source_pdf(source_pdf) or _date_after_header(
+            full, "FECHA ESTADO DE CUENTA"
+        )
     _fill_period_and_pay_by(meta, full)
     monto_candidates: List[int] = []
     for m_total in re.finditer(
-        r"MONTO\s+TOTAL\s+FACTURADO\s+A\s+PAGAR[^\$]*\$\s*([\d.\-]+)",
+        r"MONTO\s+TOTAL\s+FACTURADO(?:\s+A\s+PAGAR)?[^\$]*\$\s*([\d.\-]+)",
         full,
         re.I,
     ):
@@ -826,6 +1305,16 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
     )
     if m_prev:
         meta["statement_saldo_anterior"] = parse_clp_amount(m_prev.group(1))
+    m_pagado = re.search(
+        r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR[^\$]*\$\s*([\d.\-]+)",
+        full,
+        re.I,
+    )
+    if m_pagado:
+        meta["pdf_monto_pagado_anterior"] = parse_clp_amount(m_pagado.group(1))
+        if meta.get("statement_abono") is None:
+            meta["statement_abono"] = parse_clp_amount(m_pagado.group(1))
+    merge_section_totals_into_meta(meta, full, parse_clp_amount, parse_usd_amount)
     meta["raw_header_snippet"] = full[:400].replace("\n", " ")
     return meta
 
@@ -861,10 +1350,31 @@ RE_WIDE_PRECIO_SUMMARY = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(\d,\d{2}\s*%)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+(\d{1,2})/(\d{1,2})\s+\$\s*([\d.]+)\s*$",
     re.I,
 )
+# Older Master layout: «TCOM 2 03 CUOTAS, TASA 3,01 % $ orig $ final $ cuota» (no NN/MM index).
+RE_WIDE_TCOM_CUOTAS_TASA = re.compile(
+    r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+TCOM\s+(\d+)\s+(\d{2})\s+CUOTAS,\s+TASA\s+(\d,\d{2}\s*%)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s*$",
+    re.I,
+)
+
+
+def _wide_installment_merchant_from_desc(desc: str) -> str:
+    """Strip trailing cuota plan labels; keep merchant (e.g. FLOW *COMUNIDAD VICT)."""
+    s = desc.strip()
+    stripped = re.sub(
+        r"\s+(?:N/CUOTAS\s+PRECIO|TRES\s+CUOTAS\s+PREC|\d{2}\s+CUOTAS\s+COMERC|CUOTA\s+(?:FIJA|VARIABLE|COMERCIO))\s*$",
+        "",
+        s,
+        flags=re.I,
+    ).strip()
+    return stripped or s
 
 
 def _tipo_cuota_from_precio_description(desc: str) -> str:
     u = desc.upper()
+    if "CUOTA FIJA" in u:
+        return "CUOTA FIJA"
+    if "CUOTA VARIABLE" in u:
+        return "CUOTA VARIABLE"
     if "N/CUOTAS PRECIO" in u:
         return "N/CUOTAS PRECIO"
     if "TRES CUOTAS PREC" in u:
@@ -881,6 +1391,81 @@ def _is_installment_precio_summary_description(desc: str) -> bool:
         "N/CUOTAS PRECIO" in u
         or "TRES CUOTAS PREC" in u
         or bool(re.search(r"\d{2}\s+CUOTAS\s+COMERC", u))
+        or "CUOTA FIJA" in u
+        or "CUOTA VARIABLE" in u
+    )
+
+
+def _is_tcom_cuotas_tasa_description(desc: str) -> bool:
+    return bool(re.search(r"\d{2}\s+CUOTAS,\s+TASA", desc, re.I))
+
+
+def _append_wide_tcom_cuotas_tasa_row(
+    out: List[Dict[str, Any]], line: str, m: re.Match[str]
+) -> None:
+    fecha = m.group(1)
+    merchant_base = m.group(2).strip()
+    tcom_plan = m.group(3)
+    nplan = int(m.group(4))
+    rate = m.group(5)
+    tot1 = parse_clp_amount(m.group(6))
+    tot2 = parse_clp_amount(m.group(7))
+    cuota = parse_clp_amount(m.group(8))
+    merchant = f"{merchant_base} TCOM {tcom_plan}".strip()
+    out.append(
+        {
+            "layout": "wide_master_tcom_cuotas_tasa",
+            "transaction_date": fecha,
+            "posting_date": fecha,
+            "place": "",
+            "description_raw": line,
+            "merchant": merchant,
+            "amount_clp": tot1 or 0,
+            "monto_total_a_pagar_clp": tot2 or tot1 or 0,
+            "monto_origen_operacion_clp": tot1 or 0,
+            "valor_cuota_mensual_clp": cuota or "",
+            "nro_cuota_current": "",
+            "nro_cuota_total": nplan,
+            "installment_flag": True,
+            "interest_rate_text": rate,
+            "tipo_cuota": f"{nplan:02d} CUOTAS TCOM",
+            "foreign_currency": _extract_fx(merchant_base),
+            "authorization_code": _extract_auth(merchant_base),
+        }
+    )
+
+
+def _append_wide_precio_installment_row(
+    out: List[Dict[str, Any]], line: str, m: re.Match[str]
+) -> None:
+    fecha = m.group(1)
+    desc = m.group(2).strip()
+    rate = m.group(3)
+    tot1 = parse_clp_amount(m.group(4))
+    tot2 = parse_clp_amount(m.group(5))
+    nc, nt = int(m.group(6)), int(m.group(7))
+    cuota = parse_clp_amount(m.group(8))
+    merchant = _wide_installment_merchant_from_desc(desc)
+    out.append(
+        {
+            "layout": "wide_master_precio_summary",
+            "transaction_date": fecha,
+            "posting_date": fecha,
+            "place": "",
+            "description_raw": line,
+            "merchant": merchant,
+            "amount_clp": tot1 or 0,
+            "monto_total_a_pagar_clp": tot2 or tot1 or 0,
+            "monto_origen_operacion_clp": tot1 or 0,
+            "valor_cuota_mensual_clp": cuota or "",
+            "nro_cuota_current": nc,
+            "nro_cuota_total": nt,
+            "installment_flag": True,
+            "interest_rate_text": rate,
+            "tipo_cuota": _tipo_cuota_from_precio_description(desc),
+            "foreign_currency": _extract_fx(desc),
+            "authorization_code": _extract_auth(desc),
+        }
     )
 
 
@@ -1109,36 +1694,13 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
                 }
             )
             continue
+        m = RE_WIDE_TCOM_CUOTAS_TASA.match(line)
+        if m:
+            _append_wide_tcom_cuotas_tasa_row(out, line, m)
+            continue
         m = RE_WIDE_PRECIO_SUMMARY.match(line)
         if m and _is_installment_precio_summary_description(m.group(2)):
-            fecha = m.group(1)
-            desc = m.group(2).strip()
-            rate = m.group(3)
-            tot1 = parse_clp_amount(m.group(4))
-            tot2 = parse_clp_amount(m.group(5))
-            nc, nt = int(m.group(6)), int(m.group(7))
-            cuota = parse_clp_amount(m.group(8))
-            out.append(
-                {
-                    "layout": "wide_master_precio_summary",
-                    "transaction_date": fecha,
-                    "posting_date": fecha,
-                    "place": "",
-                    "description_raw": line,
-                    "merchant": desc,
-                    "amount_clp": tot1 or 0,
-                    "monto_total_a_pagar_clp": tot2 or tot1 or 0,
-                    "monto_origen_operacion_clp": tot1 or 0,
-                    "valor_cuota_mensual_clp": cuota or "",
-                    "nro_cuota_current": nc,
-                    "nro_cuota_total": nt,
-                    "installment_flag": True,
-                    "interest_rate_text": rate,
-                    "tipo_cuota": _tipo_cuota_from_precio_description(desc),
-                    "foreign_currency": _extract_fx(desc),
-                    "authorization_code": _extract_auth(desc),
-                }
-            )
+            _append_wide_precio_installment_row(out, line, m)
             continue
         m = RE_WIDE_PLACE_DATE.match(line)
         if m:
@@ -1171,36 +1733,14 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
         m = RE_WIDE_DATE_FIRST.match(line)
         if m:
             fecha, desc, amt_raw = m.group(1), m.group(2), m.group(3)
-            if _is_installment_precio_summary_description(desc):
-                m_precio = RE_WIDE_PRECIO_SUMMARY.match(line)
-                if m_precio:
-                    rate = m_precio.group(3)
-                    tot1 = parse_clp_amount(m_precio.group(4))
-                    tot2 = parse_clp_amount(m_precio.group(5))
-                    nc, nt = int(m_precio.group(6)), int(m_precio.group(7))
-                    cuota = parse_clp_amount(m_precio.group(8))
-                    out.append(
-                        {
-                            "layout": "wide_master_precio_summary",
-                            "transaction_date": fecha,
-                            "posting_date": fecha,
-                            "place": "",
-                            "description_raw": line,
-                            "merchant": desc.strip(),
-                            "amount_clp": tot1 or 0,
-                            "monto_total_a_pagar_clp": tot2 or tot1 or 0,
-                            "monto_origen_operacion_clp": tot1 or 0,
-                            "valor_cuota_mensual_clp": cuota or "",
-                            "nro_cuota_current": nc,
-                            "nro_cuota_total": nt,
-                            "installment_flag": True,
-                            "interest_rate_text": rate,
-                            "tipo_cuota": _tipo_cuota_from_precio_description(desc),
-                            "foreign_currency": _extract_fx(desc),
-                            "authorization_code": _extract_auth(desc),
-                        }
-                    )
-                    continue
+            m_tcom = RE_WIDE_TCOM_CUOTAS_TASA.match(line)
+            if m_tcom:
+                _append_wide_tcom_cuotas_tasa_row(out, line, m_tcom)
+                continue
+            m_precio = RE_WIDE_PRECIO_SUMMARY.match(line)
+            if m_precio and _is_installment_precio_summary_description(m_precio.group(2)):
+                _append_wide_precio_installment_row(out, line, m_precio)
+                continue
             amt = parse_clp_amount(amt_raw)
             if amt is None:
                 continue
@@ -1228,17 +1768,55 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _date_iso_for_dedupe(d: str) -> str:
+    t = (d or "").strip()
+    if not t:
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", t):
+        return t
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$", t)
+    if not m:
+        return t
+    day, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if y < 100:
+        y += 1900 if y >= 70 else 2000
+    return f"{y:04d}-{mo:02d}-{day:02d}"
+
+
 def row_dedupe_key(card_group: str, r: Dict[str, Any]) -> str:
+    if str(r.get("layout", "")) == "international_usd" or r.get("amount_usd") not in (
+        None,
+        "",
+        0,
+    ):
+        m = _intl_merchant_core(
+            str(r.get("merchant", "")),
+            str(r.get("place", "")),
+        )
+        raw_d = r.get("transaction_date") or r.get("posting_date") or ""
+        d = _date_iso_for_dedupe(str(raw_d))
+        usd = r.get("amount_usd")
+        try:
+            usd_f = float(usd) if usd not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            usd_f = 0.0
+        cc = str(r.get("country", "")).upper().strip()
+        if usd_f <= 0:
+            stmt = _date_iso_for_dedupe(str(r.get("statement_date") or ""))
+            return _sha1(f"{card_group}|intl|pay|{m}|{cc}|{usd_f:.4f}|{d}|{stmt}")
+        return _sha1(f"{card_group}|intl|{m}|{cc}|{usd_f:.4f}|{d}")
     m = norm_merchant(str(r.get("merchant", "")))
     if r.get("installment_flag"):
         tot = r.get("monto_total_a_pagar_clp") or r.get("amount_clp") or ""
         nt = r.get("nro_cuota_total") or ""
         cur = r.get("nro_cuota_current") or ""
-        d = r.get("transaction_date") or r.get("posting_date") or ""
+        raw_d = r.get("transaction_date") or r.get("posting_date") or ""
+        d = _date_iso_for_dedupe(str(raw_d))
         cuota = r.get("valor_cuota_mensual_clp") or ""
-        return _sha1(f"{card_group}|inst|{m}|{tot}|{nt}|{d}|{cuota}")
+        return _sha1(f"{card_group}|inst|{m}|{tot}|{nt}|{d}|{cur}|{cuota}")
     amt = r.get("amount_clp") or ""
-    d = r.get("transaction_date") or r.get("posting_date") or ""
+    raw_d = r.get("transaction_date") or r.get("posting_date") or ""
+    d = _date_iso_for_dedupe(str(raw_d))
     return _sha1(f"{card_group}|one|{m}|{amt}|{d}")
 
 
@@ -1469,14 +2047,27 @@ RE_ORGANIZED_CC = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 
 
 def card_group_for_pdf_name(name: str) -> str:
-    """Heuristic card group for legacy parsers (A/B/INTL)."""
+    """Heuristic card group for legacy parsers (A/B/INTL/BCI)."""
     lower = name.lower()
     if "usd" in lower or "internacional" in lower:
         return "INTL"
+    if "eecc" in lower or re.search(r"\b4343\b", lower):
+        return "BCI"
     for token in ("4901", "4902", "4141"):
         if token in lower:
             return "B"
     return "A"
+
+
+def mark_pdf_corrupt(p: Path) -> Path:
+    """Rename an unreadable PDF so it is skipped on the next parse run."""
+    if p.stem.endswith("-CORRUPT"):
+        return p
+    dest = p.with_name(f"{p.stem}-CORRUPT{p.suffix}")
+    if dest.exists():
+        return dest
+    p.rename(dest)
+    return dest
 
 
 def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
@@ -1489,6 +2080,8 @@ def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
         if not entry.is_file() or entry.suffix.lower() != ".pdf":
             continue
         name = entry.name
+        if re.search(r"\(\d+\)\.pdf$", name, re.I):
+            continue
         lower = name.lower()
         if RE_ORGANIZED_CC.match(name):
             jobs.append((card_group_for_pdf_name(name), entry))
@@ -1532,64 +2125,103 @@ def fallback_downloads_jobs() -> List[Tuple[str, Path]]:
 
 
 def main() -> int:
-    pdfs_dir = CFRASER_DIR / "credit-card-statements"
+    load_repo_dotenv()
+    no_reconcile = "--no-reconcile" in sys.argv
+    no_cache = "--no-cache" in sys.argv
+    force_reparse = "--force-reparse" in sys.argv
+    pdfs_dir = Path(os.environ.get("CFRASER_PDFS_DIR", str(CFRASER_DIR / "credit-card-statements")))
+    out_all = os.environ.get("CC_PARSE_OUTPUT_CSV")
+    parser_version = parser_cache_version()
     jobs = discover_pdf_jobs(pdfs_dir)
     if not jobs:
         jobs = fallback_downloads_jobs()
         print(f"# pdf source: fallback ~/Downloads ({len(jobs)} candidates)")
     else:
         print(f"# pdf source: {pdfs_dir} ({len(jobs)} files)")
+    if no_cache:
+        print("# parse cache: disabled (--no-cache)")
+    else:
+        print(f"# parse cache: {PARSE_CACHE_PER_PDF_DIR} (version {parser_version})")
+        if force_reparse:
+            print("# parse cache: --force-reparse (ignore hits)")
+
+    if qpdf_available():
+        for name, note in repair_unreadable_pdfs_in_dir(
+            pdfs_dir, password=statement_pdf_password()
+        ):
+            print(f"# qpdf\t{name}\t{note}")
+    else:
+        print("# WARN qpdf not installed — skip PDF repair (brew install qpdf)")
 
     baseline = load_baseline_rows(BASELINE_CSV)
 
     per_pdf_counts: Dict[str, int] = {}
     failures: List[str] = []
     all_rows: List[Dict[str, Any]] = []
+    pdf_context: Dict[str, Dict[str, Any]] = {}
+    cache_hits = 0
+    cache_misses = 0
 
     for card_group, p in jobs:
+        if p.stem.endswith("-CORRUPT"):
+            continue
         if not p.is_file():
             failures.append(f"missing:{p}")
             continue
-        try:
-            parser = choose_parser(p)
-            _pages, full = extract_pdf_text(p, parser)
-        except Exception as e:
-            failures.append(f"read_error:{p}:{e}")
-            continue
-        effective_group = "INTL" if parser == "international_usd" else card_group
-        if parser == "international_usd":
-            try:
-                layout_run = subprocess.run(
-                    ["pdftotext", "-layout", str(p), "-"],
-                    capture_output=True,
-                    text=True,
-                )
-                full_layout = layout_run.stdout if layout_run.returncode == 0 else ""
-            except (FileNotFoundError, OSError):
-                full_layout = ""
-            parsed = parse_international_usd_document(full, full_layout)
-            meta = extract_meta_international(full, p.name)
-        else:
-            parsed = parse_clp_document(full, parser)
-            meta = extract_meta(full, p.name)
-        # Re-parse raw_line from description_raw stored
-        for i, pr in enumerate(parsed):
-            raw_line = str(pr.get("description_raw", ""))
-            rid = _sha1(f"{effective_group}|{p.name}|{i}|{raw_line}")
-            row = emit_row(
-                card_group=effective_group,
-                source_pdf=p.name,
-                meta=meta,
-                pr=pr,
-                raw_line=raw_line,
-                row_id=rid,
+        cached: Optional[Dict[str, Any]] = None
+        if not no_cache:
+            cached = load_parse_cache(
+                p, parser_version, force=force_reparse
             )
-            mk, conf, note = match_baseline(pr, baseline)
-            row["matched_excel_row"] = mk
-            row["match_confidence"] = conf
-            row["mismatch_notes"] = note
-            all_rows.append(row)
-        per_pdf_counts[p.name] = len(parsed)
+        try:
+            if cached is not None:
+                cache_hits += 1
+                meta = dict(cached.get("meta") or {})
+                parsed = list(cached.get("parsed") or [])
+                effective_group = str(cached.get("effective_group") or card_group)
+                rows = rows_from_parse_payload(
+                    effective_group=effective_group,
+                    source_pdf=p.name,
+                    meta=meta,
+                    parsed=parsed,
+                    baseline=baseline,
+                )
+                pdf_context[p.name] = {
+                    "meta": meta,
+                    "full": str(cached.get("full") or ""),
+                    "layout": str(cached.get("layout") or ""),
+                    "parser": str(cached.get("parser") or ""),
+                }
+            else:
+                cache_misses += 1
+                rows, ctx = parse_one_pdf(card_group, p, baseline)
+                effective_group = "INTL" if ctx["parser"] == "international_usd" else card_group
+                pdf_context[p.name] = ctx
+                if not no_cache:
+                    save_parse_cache(
+                        p,
+                        parser_version,
+                        {
+                            "source_pdf": p.name,
+                            "card_group": card_group,
+                            "effective_group": effective_group,
+                            "parser": ctx["parser"],
+                            "meta": ctx["meta"],
+                            "parsed": ctx["parsed"],
+                            "full": ctx["full"],
+                            "layout": ctx["layout"],
+                        },
+                    )
+            all_rows.extend(rows)
+            per_pdf_counts[p.name] = len(rows)
+        except Exception as e:
+            renamed = mark_pdf_corrupt(p)
+            failures.append(f"read_error:{renamed}:{e}")
+            print(f"# CORRUPT renamed {renamed.name} ({e})")
+            continue
+
+    if not no_cache:
+        print(f"# parse cache hits={cache_hits} misses={cache_misses}")
 
     # Dedupe across statements (oldest statement wins canonical)
     by_key_first: Dict[str, str] = {}
@@ -1625,7 +2257,51 @@ def main() -> int:
 
     all_rows_sorted = sorted(all_rows, key=orig_order_key)
 
-    write_csv(CFRASER_DIR / "cc-statements-parsed-all.csv", all_rows_sorted)
+    reconcile_results: List[Any] = []
+    reconcile_fail_count = 0
+    if not no_reconcile:
+        rows_by_pdf: Dict[str, List[Dict[str, Any]]] = {}
+        for r in all_rows_sorted:
+            pdf = str(r.get("source_pdf") or "")
+            rows_by_pdf.setdefault(pdf, []).append(r)
+        for pdf_name, ctx in sorted(pdf_context.items()):
+            meta = ctx.get("meta") or {}
+            full_text = str(ctx.get("full") or "")
+            layout_text = str(ctx.get("layout") or "")
+            stmt_rows = rows_by_pdf.get(pdf_name, [])
+            result = reconcile_statement(
+                pdf_name,
+                meta,
+                stmt_rows,
+                full_text,
+                parse_clp_amount,
+                parse_usd_amount,
+                layout_text=layout_text,
+            )
+            reconcile_results.append(result)
+            if (
+                reconcile_statement_required(pdf_name, full_text)
+                and result.skip_reason
+                not in ("zero_rows", "incomplete_parse")
+                and not result.ok
+            ):
+                reconcile_fail_count += 1
+            summary = result.mismatch_summary()
+            if summary:
+                for r in stmt_rows:
+                    if str(r.get("is_duplicate_across_statements") or "").lower() != "true":
+                        prev = str(r.get("mismatch_notes") or "").strip()
+                        r["mismatch_notes"] = f"{prev};{summary}" if prev else summary
+                        break
+        write_reconciliation_jsonl(
+            CFRASER_DIR / "cc-statements-parse-reconciliation.jsonl",
+            reconcile_results,
+        )
+
+    write_csv(Path(out_all) if out_all else CFRASER_DIR / "cc-statements-parsed-all.csv", all_rows_sorted)
+    if out_all:
+        print(f"# wrote {out_all} rows={len(all_rows_sorted)}")
+        return 0
     write_csv(
         CFRASER_DIR / "cc-statements-parsed-card-a.csv",
         [r for r in all_rows_sorted if r.get("card_group") == "A"],
@@ -1648,12 +2324,34 @@ def main() -> int:
     print(f"# baseline_rows={len(baseline)} from {BASELINE_CSV.name}")
     total = sum(per_pdf_counts.values())
     print(f"# total_parsed_rows={total} pdfs_ok={len(per_pdf_counts)} failures={len(failures)}")
+    zero_row_pdfs = [name for name, c in sorted(per_pdf_counts.items()) if c == 0]
     for name, c in sorted(per_pdf_counts.items()):
-        print(f"# rows={c}\t{name}")
+        mark = " ZERO_ROWS" if c == 0 else ""
+        print(f"# rows={c}\t{name}{mark}")
+    if zero_row_pdfs:
+        print(f"# WARN unparsed_pdfs={len(zero_row_pdfs)} (0 transaction rows)")
+        for name in zero_row_pdfs:
+            print(f"# WARN zero_rows\t{name}")
     if failures:
         for x in failures:
             print(f"# FAIL {x}")
-    return 0
+    if not no_reconcile and reconcile_results:
+        ok_n = sum(1 for r in reconcile_results if r.ok or r.skip_reason == "zero_rows")
+        fail_n = reconcile_fail_count
+        print(f"# RECONCILE ok={ok_n} fail={fail_n} total={len(reconcile_results)}")
+        for r in reconcile_results:
+            if r.skip_reason == "zero_rows":
+                continue
+            if not r.ok:
+                issues = ",".join(r.issue_codes) or "unknown"
+                print(f"# RECONCILE_FAIL\t{r.source_pdf}\t{issues}")
+                for ch in r.checks:
+                    if not ch.ok:
+                        print(
+                            f"#   {ch.code}: expected={ch.expected} actual={ch.actual} delta={ch.delta}"
+                        )
+    reconcile_exit = reconcile_fail_count > 0 if not no_reconcile else False
+    return 1 if failures or zero_row_pdfs or reconcile_exit else 0
 
 
 def _row_to_pr(r: Dict[str, Any]) -> Dict[str, Any]:
