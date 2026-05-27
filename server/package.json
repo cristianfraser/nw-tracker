@@ -13,7 +13,9 @@
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",
     "repair:checking-cartola-period-month": "tsx scripts/repair-checking-cartola-period-month.ts",
     "import:depto-expenses": "tsx scripts/import-depto-apartment-expenses.ts",
+    "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
     "parse:cc-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cc-statement-pdfs.py",
+    "restore:cc-corrupt-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/restore-cc-corrupt-pdfs.py",
     "parse:checking-cartola-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-checking-cartola-pdfs.py",
     "parse:cuenta-vista-cartola-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cuenta-vista-cartola-pdfs.py",
     "export:checking-cartola-screenshots-csv": "tsx scripts/export-checking-cartola-screenshots-csv.ts",
@@ -51,7 +53,7 @@
     "crypto:apply-valuation": "tsx scripts/crypto-apply-valuation.ts",
     "retag:fintual-state-contributions": "tsx scripts/retag-fintual-state-contributions.ts",
     "apv:apply-flow-overrides": "tsx scripts/apply-apv-a-flow-overrides.ts",
-    "test": "vitest run"
+    "test": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",

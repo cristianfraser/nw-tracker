@@ -170,26 +170,6 @@ export function useMarkCcExpenseLineUniqueMutation() {
   return usePatchCcExpenseLineCategoryMutation();
 }
 
-export function usePatchCcBillingFacturadoPlaceholderMutation(opts: {
-  accountId: number;
-  displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
-}) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { billing_month: string; estimated_facturado_clp: number | null }) =>
-      api.patchCcBillingFacturadoPlaceholder(opts.accountId, body),
-    onSettled: () => {
-      invalidateAccountDetailBundle(
-        queryClient,
-        opts.accountId,
-        opts.displayUnit,
-        opts.extraCcOffsetsKey
-      );
-    },
-  });
-}
-
 export function useCreateCcPurchaseMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;
@@ -270,6 +250,31 @@ export function useAccountImportMutation(opts: {
         opts.displayUnit,
         extraCcOffsetsKey
       );
+    },
+  });
+}
+
+export function useLinkRealEstateExpenseMutation() {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.flowsRealEstateExpenses();
+  return useMutation({
+    mutationFn: (body: { expense_entry_id: number; purchase_key: string }) =>
+      api.linkRealEstateExpense(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+    },
+  });
+}
+
+export function useUnmatchRealEstateExpenseMutation() {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.flowsRealEstateExpenses();
+  return useMutation({
+    mutationFn: (expenseEntryId: number) => api.unmatchRealEstateExpense(expenseEntryId),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
     },
   });
 }

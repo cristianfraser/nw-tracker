@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { SyncSourceDisplayStatus, SyncStatusResponse } from "../../types";
 import { cn } from "../../cn";
 import { useSyncForceStaleMutation } from "../../queries/hooks";
+import { Table } from "../ui/Table";
+import { formatDayKindLabel, formatNextSyncLabel } from "./formatSyncSchedule";
 import styles from "./SyncLogStatusPanel.module.css";
 
 function formatWhenEs(iso: string): string {
@@ -86,36 +88,54 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
     <div className={styles.panel}>
       <p className={cn("muted", styles.scheduleLine)}>{lastLine}</p>
       <p className={cn("muted", styles.scheduleLine)}>{nextLine}</p>
-      <ul className={styles.sourceList}>
-        {status.sources.map((row) => (
-          <li key={row.source} className={styles.sourceRow}>
-            <span className={styles.sourceName}>{t(`importSync.sync.sources.${row.source}`)}</span>
-            <span className={styles.sourceActions}>
-              <span
-                className={cn(
-                  row.status === "stale" && styles.badgeStale,
-                  row.status === "ok" && styles.badgeOk,
-                  row.status !== "stale" && row.status !== "ok" && styles.badgeMuted
-                )}
-              >
-                {statusLabel(t, row.status)}
-              </span>
-              {row.status === "ok" ? (
-                <button
-                  type="button"
-                  className={cn("btn", styles.forceStaleBtn)}
-                  disabled={forceStale.isPending}
-                  onClick={() => forceStale.mutate(row.source)}
+      <div className={styles.tableWrap}>
+        <Table
+          header={
+            <thead>
+              <tr>
+                <th>{t("importSync.sync.colSource")}</th>
+                <th>{t("importSync.sync.colNextSync")}</th>
+                <th>{t("importSync.sync.colHolidayToday")}</th>
+                <th>{t("importSync.sync.colStatus")}</th>
+                <th className={styles.colActions} />
+              </tr>
+            </thead>
+          }
+        >
+          {status.sources.map((row) => (
+            <tr key={row.source}>
+              <td>{t(`importSync.sync.sources.${row.source}`)}</td>
+              <td className="muted">{formatNextSyncLabel(row, t)}</td>
+              <td className="muted">{formatDayKindLabel(row.today_day_kind, t)}</td>
+              <td>
+                <span
+                  className={cn(
+                    row.status === "stale" && styles.badgeStale,
+                    row.status === "ok" && styles.badgeOk,
+                    row.status !== "stale" && row.status !== "ok" && styles.badgeMuted
+                  )}
                 >
-                  {forceStale.isPending && forceStale.variables === row.source
-                    ? t("importSync.sync.forceStalePending")
-                    : t("importSync.sync.forceStale")}
-                </button>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ul>
+                  {statusLabel(t, row.status)}
+                </span>
+              </td>
+              <td className={styles.colActions}>
+                {row.status === "ok" ? (
+                  <button
+                    type="button"
+                    className={cn("btn", styles.forceStaleBtn)}
+                    disabled={forceStale.isPending}
+                    onClick={() => forceStale.mutate(row.source)}
+                  >
+                    {forceStale.isPending && forceStale.variables === row.source
+                      ? t("importSync.sync.forceStalePending")
+                      : t("importSync.sync.forceStale")}
+                  </button>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </Table>
+      </div>
     </div>
   );
 }

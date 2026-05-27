@@ -265,13 +265,33 @@ export type CcStatementLineExpenseCtx = {
   parser_row_id: string | null;
 };
 
+/**
+ * Same `installment-h:` key as {@link stableCcExpensePurchaseKeyFromCtx} for installment contracts
+ * (manual ledger purchases without a statement line row).
+ */
+export function stableInstallmentHPurchaseKeyFromLedgerArgs(opts: {
+  accountId: number;
+  purchaseDateIso: string;
+  cuotasTotales: number;
+  merchant: string | null | undefined;
+}): string | null {
+  const merchantKey = normalizeCcExpenseMerchantKey(opts.merchant);
+  if (!opts.purchaseDateIso || !merchantKey || opts.cuotasTotales <= 0) return null;
+  return `installment-h:${opts.accountId}:${opts.purchaseDateIso}:${opts.cuotasTotales}:${merchantKey}`;
+}
+
 /** Stable across PDF reimports (uses parser_row_id / installment-h, not DB line id). */
 export function stableCcExpensePurchaseKeyFromCtx(ctx: CcStatementLineExpenseCtx): string {
   if (ctx.installment_flag === 1) {
     const purchaseIso = purchaseDateIsoFromLine(ctx);
-    const merchantKey = normalizeCcExpenseMerchantKey(ctx.merchant);
-    if (purchaseIso && merchantKey && ctx.nro_cuota_total != null && ctx.nro_cuota_total > 0) {
-      return `installment-h:${ctx.account_id}:${purchaseIso}:${ctx.nro_cuota_total}:${merchantKey}`;
+    if (purchaseIso && ctx.nro_cuota_total != null && ctx.nro_cuota_total > 0) {
+      const hKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+        accountId: ctx.account_id,
+        purchaseDateIso: purchaseIso,
+        cuotasTotales: ctx.nro_cuota_total,
+        merchant: ctx.merchant,
+      });
+      if (hKey) return hKey;
     }
     const parserRowId = String(ctx.parser_row_id ?? "").trim();
     if (parserRowId && !parserRowId.startsWith("synthetic:")) {
@@ -401,6 +421,65 @@ function listInstallmentSiblingIdsViaHeuristic(ctx: CcStatementLineExpenseCtx): 
   return out.sort((a, b) => a - b);
 }
 
+/**
+ * Statement line ids for an `installment-h:` purchase key (manual ledger contract).
+ * When `applyCuotaAmountFilter` is true, `anchorCuotaClp` disambiguates same-day contracts (statement anchor).
+ */
+function listInstallmentHHeuristicStatementLineIds(
+  accountId: number,
+  purchaseIso: string,
+  nroTotal: number,
+  merchantKey: string,
+  anchorCuotaClp: number | null | undefined,
+  applyCuotaAmountFilter: boolean
+): number[] {
+  const heuristicCtx: CcStatementLineExpenseCtx = {
+    account_id: accountId,
+    installment_flag: 1,
+    merchant: merchantKey,
+    transaction_date: null,
+    posting_date: null,
+    nro_cuota_total: nroTotal,
+    valor_cuota_mensual_clp:
+      anchorCuotaClp != null && Number.isFinite(anchorCuotaClp) ? anchorCuotaClp : null,
+    parser_row_id: null,
+  };
+  const candidates = db
+    .prepare(
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.valor_cuota_mensual_clp
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ? AND l.installment_flag = 1 AND l.nro_cuota_total = ?`
+    )
+    .all(accountId, nroTotal) as {
+    id: number;
+    merchant: string | null;
+    transaction_date: string | null;
+    posting_date: string | null;
+    valor_cuota_mensual_clp: number | null;
+  }[];
+  const out: number[] = [];
+  for (const row of candidates) {
+    if (normalizeCcExpenseMerchantKey(row.merchant) !== merchantKey) continue;
+    const rowCtx: CcStatementLineExpenseCtx = {
+      ...heuristicCtx,
+      merchant: row.merchant,
+      transaction_date: row.transaction_date,
+      posting_date: row.posting_date,
+      valor_cuota_mensual_clp: row.valor_cuota_mensual_clp,
+    };
+    if (purchaseDateIsoFromLine(rowCtx) !== purchaseIso) continue;
+    if (
+      applyCuotaAmountFilter &&
+      !cuotaAmountMatches(heuristicCtx.valor_cuota_mensual_clp, row.valor_cuota_mensual_clp)
+    ) {
+      continue;
+    }
+    out.push(row.id);
+  }
+  return out.sort((a, b) => a - b);
+}
+
 /** All statement lines for one logical purchase (installment contract or single charge). */
 export function listStatementLineIdsForPurchaseKey(
   statementLineId: number,
@@ -443,47 +522,15 @@ export function listStatementLineIdsForPurchaseKey(
       const nroTotal = Number(parts[3]);
       const merchantKey = parts[4]!;
       const cuotaClp = ctx.valor_cuota_mensual_clp;
-      const heuristicCtx: CcStatementLineExpenseCtx = {
-        account_id: accountId,
-        installment_flag: 1,
-        merchant: merchantKey,
-        transaction_date: null,
-        posting_date: null,
-        nro_cuota_total: nroTotal,
-        valor_cuota_mensual_clp: Number.isFinite(cuotaClp) ? cuotaClp : null,
-        parser_row_id: null,
-      };
-      const candidates = db
-        .prepare(
-          `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.valor_cuota_mensual_clp
-           FROM cc_statement_lines l
-           JOIN cc_statements s ON s.id = l.statement_id
-           WHERE s.account_id = ? AND l.installment_flag = 1 AND l.nro_cuota_total = ?`
-        )
-        .all(accountId, nroTotal) as {
-        id: number;
-        merchant: string | null;
-        transaction_date: string | null;
-        posting_date: string | null;
-        valor_cuota_mensual_clp: number | null;
-      }[];
-      const out: number[] = [];
-      for (const row of candidates) {
-        if (normalizeCcExpenseMerchantKey(row.merchant) !== merchantKey) continue;
-        const rowCtx: CcStatementLineExpenseCtx = {
-          ...heuristicCtx,
-          merchant: row.merchant,
-          transaction_date: row.transaction_date,
-          posting_date: row.posting_date,
-          valor_cuota_mensual_clp: row.valor_cuota_mensual_clp,
-        };
-        if (purchaseDateIsoFromLine(rowCtx) !== purchaseIso) continue;
-        if (!cuotaAmountMatches(heuristicCtx.valor_cuota_mensual_clp, row.valor_cuota_mensual_clp)) {
-          continue;
-        }
-        out.push(row.id);
-      }
-      if (out.length > 0) return out.sort((a, b) => a - b);
+      const out = listInstallmentHHeuristicStatementLineIds(
+        accountId,
+        purchaseIso,
+        nroTotal,
+        merchantKey,
+        Number.isFinite(cuotaClp as number) ? (cuotaClp as number) : null,
+        true
+      );
+      if (out.length > 0) return out;
     }
     return listInstallmentPurchaseSiblingStatementLineIds(statementLineId);
   }
@@ -544,6 +591,197 @@ export function ccStatementLineBelongsToCreditCardGroup(statementLineId: number)
   return { ok: true, account_id: row.account_id, merchant: row.merchant };
 }
 
+function executeCcExpenseCategoryAssignment(opts: {
+  accountId: number;
+  merchantKey: string;
+  purchaseKey: string;
+  purchaseLineIds: number[];
+  unique: boolean;
+  clearCategory: boolean;
+  hasCategory: boolean;
+  catId: number | null;
+  resolvedSlug: string;
+}): {
+  category_slug: string;
+  unique: boolean;
+  merchant_key: string;
+  purchase_key: string;
+} {
+  const {
+    accountId,
+    merchantKey,
+    purchaseKey,
+    purchaseLineIds,
+    unique,
+    clearCategory,
+    catId,
+    resolvedSlug,
+  } = opts;
+
+  const delLine = db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`);
+  const delUniquePurchase = db.prepare(
+    `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+  );
+  const upsertUniquePurchase = db.prepare(
+    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
+  );
+  const upsertMerchant = db.prepare(
+    `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT(account_id, merchant_key) DO UPDATE SET category_id = excluded.category_id`
+  );
+  const delMerchant = db.prepare(
+    `DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
+  );
+
+  const tx = db.transaction(() => {
+    for (const lineId of purchaseLineIds) {
+      delLine.run(lineId);
+    }
+
+    if (clearCategory) {
+      delUniquePurchase.run(accountId, purchaseKey);
+      for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
+        delMerchant.run(accountId, ruleKey);
+      }
+      return;
+    }
+
+    if (unique) {
+      delUniquePurchase.run(accountId, purchaseKey);
+      upsertUniquePurchase.run(accountId, purchaseKey, catId);
+    } else {
+      delUniquePurchase.run(accountId, purchaseKey);
+      if (catId != null && merchantKey) {
+        upsertMerchant.run(accountId, merchantKey, catId);
+      }
+    }
+  });
+  tx();
+
+  if (clearCategory) {
+    return {
+      category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
+      unique: false,
+      merchant_key: merchantKey,
+      purchase_key: purchaseKey,
+    };
+  }
+
+  return {
+    category_slug: resolvedSlug,
+    unique,
+    merchant_key: merchantKey,
+    purchase_key: purchaseKey,
+  };
+}
+
+function statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey: string): number[] {
+  if (!purchaseKey.startsWith("installment-h:")) return [];
+  const parts = purchaseKey.split(":");
+  if (parts.length < 5) return [];
+  const accountId = Number(parts[1]);
+  const purchaseIso = parts[2]!;
+  const nroTotal = Number(parts[3]);
+  const merchantKey = parts[4]!;
+  if (!Number.isFinite(accountId) || !Number.isFinite(nroTotal) || !merchantKey) return [];
+  return listInstallmentHHeuristicStatementLineIds(
+    accountId,
+    purchaseIso,
+    nroTotal,
+    merchantKey,
+    null,
+    false
+  );
+}
+
+/**
+ * Synthetic consolidated installment rows use `statement_line_id = -cc_installment_purchases.id`.
+ * Category PATCH uses that id; resolve the manual ledger purchase and apply the same rules as a real line.
+ */
+export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: {
+  purchaseId: number;
+  unique: boolean;
+  categorySlug?: string | null;
+  clearCategory?: boolean;
+}): {
+  category_slug: string;
+  unique: boolean;
+  merchant_key: string;
+  purchase_key: string;
+} {
+  const pr = db
+    .prepare(
+      `SELECT id, account_id, purchase_date, cuotas_totales, merchant FROM cc_installment_purchases WHERE id = ?`
+    )
+    .get(opts.purchaseId) as
+    | {
+        id: number;
+        account_id: number;
+        purchase_date: string;
+        cuotas_totales: number;
+        merchant: string | null;
+      }
+    | undefined;
+  if (!pr) {
+    throw new Error("manual installment purchase not found");
+  }
+
+  const categorySlug = opts.categorySlug != null ? String(opts.categorySlug).trim() : "";
+  const hasCategory = categorySlug.length > 0;
+  const clearCategory = opts.clearCategory === true;
+
+  if (hasCategory && categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG) {
+    throw new Error("cannot assign unclassified category");
+  }
+
+  const allowed = new Set(listCreditCardMasterAccountIds());
+  if (!allowed.has(pr.account_id)) {
+    throw new Error("account is not in credit card group");
+  }
+
+  const merchantKey = normalizeCcExpenseMerchantKey(pr.merchant);
+  if (!opts.unique && hasCategory && !merchantKey) {
+    throw new Error("merchant required for comercio-wide category");
+  }
+
+  let catId: number | null = null;
+  let resolvedSlug = UNCLASSIFIED_CC_EXPENSE_SLUG;
+  if (hasCategory) {
+    const cat = getCcExpenseCategoryBySlug(categorySlug);
+    if (!cat) throw new Error("unknown category");
+    catId = cat.id;
+    resolvedSlug = cat.slug;
+  }
+
+  const purchaseIso = pr.purchase_date.length >= 10 ? pr.purchase_date.slice(0, 10) : pr.purchase_date;
+  const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+    accountId: pr.account_id,
+    purchaseDateIso: purchaseIso,
+    cuotasTotales: pr.cuotas_totales,
+    merchant: pr.merchant,
+  });
+  if (!purchaseKey) {
+    throw new Error("merchant and contract details required to classify manual installment");
+  }
+
+  const purchaseLineIds = statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey);
+
+  return executeCcExpenseCategoryAssignment({
+    accountId: pr.account_id,
+    merchantKey,
+    purchaseKey,
+    purchaseLineIds,
+    unique: opts.unique,
+    clearCategory,
+    hasCategory,
+    catId,
+    resolvedSlug,
+  });
+}
+
 export function assignCcExpenseLineCategory(opts: {
   statementLineId: number;
   unique: boolean;
@@ -588,62 +826,15 @@ export function assignCcExpenseLineCategory(opts: {
     purchaseKey
   );
 
-  const delLine = db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`);
-  const delUniquePurchase = db.prepare(
-    `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-  );
-  const upsertUniquePurchase = db.prepare(
-    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-  const upsertMerchant = db.prepare(
-    `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, merchant_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-  const delMerchant = db.prepare(
-    `DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
-  );
-
-  const tx = db.transaction(() => {
-    for (const lineId of purchaseLineIds) {
-      delLine.run(lineId);
-    }
-
-    if (opts.clearCategory) {
-      delUniquePurchase.run(belong.account_id, purchaseKey);
-      for (const ruleKey of merchantRuleKeysMatchingLineMerchant(belong.account_id, merchantKey)) {
-        delMerchant.run(belong.account_id, ruleKey);
-      }
-      return;
-    }
-
-    if (opts.unique) {
-      delUniquePurchase.run(belong.account_id, purchaseKey);
-      upsertUniquePurchase.run(belong.account_id, purchaseKey, catId);
-    } else {
-      delUniquePurchase.run(belong.account_id, purchaseKey);
-      if (catId != null && merchantKey) {
-        upsertMerchant.run(belong.account_id, merchantKey, catId);
-      }
-    }
-  });
-  tx();
-
-  if (opts.clearCategory) {
-    return {
-      category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
-      unique: false,
-      merchant_key: merchantKey,
-      purchase_key: purchaseKey,
-    };
-  }
-
-  return {
-    category_slug: resolvedSlug,
+  return executeCcExpenseCategoryAssignment({
+    accountId: belong.account_id,
+    merchantKey,
+    purchaseKey,
+    purchaseLineIds,
     unique: opts.unique,
-    merchant_key: merchantKey,
-    purchase_key: purchaseKey,
-  };
+    clearCategory: opts.clearCategory === true,
+    hasCategory,
+    catId,
+    resolvedSlug,
+  });
 }

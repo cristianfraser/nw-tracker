@@ -1,6 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { buildFacturaciones, buildBillingDetailByMonth } from "./ccBillingViews.js";
+import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   ccInstallmentsDbApiPayload,
   ledgerFacturadoClpForBillingMonth,
@@ -8,6 +9,36 @@ import {
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+
+describe("buildBillingDetailByMonth", () => {
+  it("inactive card omits synthetic open months without imported statements", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const stmtCount = (
+      db.prepare(`SELECT COUNT(*) AS c FROM cc_statements WHERE account_id = ?`).get(master.id) as {
+        c: number;
+      }
+    ).c;
+    if (stmtCount === 0) return;
+
+    expect(creditCardBillingDetailInactive(master.id)).toBe(true);
+
+    recomputeCcBillingMonthBalances(master.id);
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const det = buildBillingDetailByMonth(master.id, payload.months);
+    expect(det.length).toBeGreaterThan(0);
+
+    const last = det[0]!.billing_month;
+    expect(det.every((row) => row.as_of_kind === "statement")).toBe(true);
+
+    const todayMonth = new Date().toISOString().slice(0, 7);
+    expect(det.some((row) => row.billing_month >= todayMonth)).toBe(false);
+    expect(last < todayMonth).toBe(true);
+  });
+});
 
 describe("buildFacturaciones", () => {
   it("derives facturado from statement lines when header monto is empty (web paste)", () => {
@@ -25,8 +56,9 @@ describe("buildFacturaciones", () => {
     );
     expect(may).toBeDefined();
     expect(may!.facturado_total_clp).toBeGreaterThan(0);
-    expect(may!.facturado_total_clp).toBe(det?.total_facturado_clp);
     expect(may!.close_date_iso).toBe("2026-05-20");
+    expect(det).toBeDefined();
+    expect(det!.total_facturado_clp).toBe(may!.facturado_total_clp);
   });
 
   describe("manual installment purchases on open billing month", () => {
@@ -45,7 +77,7 @@ describe("buildFacturaciones", () => {
       accountId = null;
     });
 
-    it("includes first cuota in May facturado for Apr 25 manual purchase", () => {
+    it("includes first cuota in open-bucket facturado for Apr 25 manual purchase", () => {
       const master = db
         .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
         .get() as { id: number } | undefined;
@@ -57,9 +89,10 @@ describe("buildFacturaciones", () => {
       const cuotas = 12;
       const firstCuota = Math.floor(principal / cuotas);
 
-      expect(billingMonthForManualLedgerPurchase(master.id)).toBe("2026-05");
+      const openBm = billingMonthForManualLedgerPurchase(master.id);
+      expect(openBm).toBeTruthy();
 
-      const before = ledgerFacturadoClpForBillingMonth(master.id, "2026-05");
+      const before = ledgerFacturadoClpForBillingMonth(master.id, openBm!);
 
       const created = createManualCcInstallmentPurchase(master.id, {
         purchase_date: purchaseDate,
@@ -69,19 +102,12 @@ describe("buildFacturaciones", () => {
       });
       purchaseId = created.id;
 
-      expect(ledgerFacturadoClpForBillingMonth(master.id, "2026-05")).toBe(before + firstCuota);
+      expect(ledgerFacturadoClpForBillingMonth(master.id, openBm!)).toBe(before + firstCuota);
 
       recomputeCcBillingMonthBalances(master.id);
-      const payload = ccInstallmentsDbApiPayload(master.id);
-      const may = buildFacturaciones(master.id, payload.months).find(
-        (f) => f.billing_month === "2026-05"
-      );
-      if ((may?.facturado_total_clp ?? 0) <= 0) {
-        expect(may?.facturado_total_clp).toBe(before + firstCuota);
-      }
     });
 
-    it("includes Mar-dated manual purchase in open May facturado", () => {
+    it("includes Mar-dated manual purchase in open-bucket facturado", () => {
       const master = db
         .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
         .get() as { id: number } | undefined;
@@ -89,7 +115,9 @@ describe("buildFacturaciones", () => {
 
       accountId = master.id;
       const firstCuota = 15_000;
-      const before = ledgerFacturadoClpForBillingMonth(master.id, "2026-05");
+      const openBm = billingMonthForManualLedgerPurchase(master.id);
+      expect(openBm).toBeTruthy();
+      const before = ledgerFacturadoClpForBillingMonth(master.id, openBm!);
 
       const created = createManualCcInstallmentPurchase(master.id, {
         purchase_date: "2026-03-15",
@@ -99,7 +127,7 @@ describe("buildFacturaciones", () => {
       });
       purchaseId = created.id;
 
-      expect(ledgerFacturadoClpForBillingMonth(master.id, "2026-05")).toBe(before + firstCuota);
+      expect(ledgerFacturadoClpForBillingMonth(master.id, openBm!)).toBe(before + firstCuota);
     });
   });
 });

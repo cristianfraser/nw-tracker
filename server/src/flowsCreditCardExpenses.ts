@@ -155,7 +155,13 @@ export type FlowCcExpenseLineRow = {
 
 };
 
-export type FlowCcExpenseLineRowDraft = Omit<FlowCcExpenseLineRow, "origin_label">;
+export type FlowCcExpenseLineRowDraft = Omit<
+  FlowCcExpenseLineRow,
+  "origin_label" | "purchase_key" | "purchase_notes"
+> & {
+  /** Checking-only: distinct purchase_key for deposit-paired portion of a movement. */
+  checking_purchase_portion?: "deposit";
+};
 
 export type FlowCcExpenseMonthRow = {
 

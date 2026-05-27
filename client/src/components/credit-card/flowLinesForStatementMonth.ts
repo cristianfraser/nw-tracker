@@ -11,13 +11,12 @@ export function flowLinesForBillingStatementMonth(
   const statementLineIds = new Set(
     mergedFacturacionLines(statements, billingMonth).map((ln) => ln.id)
   );
-  if (statementLineIds.size === 0) return [];
 
-  return flowsLines.filter(
-    (ln) =>
-      ln.account_id === accountId &&
-      (statementLineIds.has(ln.statement_line_id) ||
-        (ln.category_statement_line_id != null &&
-          statementLineIds.has(ln.category_statement_line_id)))
-  );
+  return flowsLines.filter((ln) => {
+    if (ln.account_id !== accountId) return false;
+    // Facturación = movements on this month's imported statements only (not gastos totals / ledger fill).
+    if (ln.line_role === "installment_purchase_total") return false;
+    if (statementLineIds.size === 0) return false;
+    return statementLineIds.has(ln.statement_line_id);
+  });
 }

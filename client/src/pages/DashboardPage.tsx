@@ -32,7 +32,7 @@ export function DashboardPage() {
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
   const netWorthNav = sidebarNav?.net_worth ?? null;
   const netWorthColorTarget = netWorthNav ? navColorTargetFromDto(netWorthNav) : undefined;
-  const { data, error, isPending, isFetching } = useDashboardBundle(displayUnit);
+  const { data, error, isPending, isFetching, isPlaceholderData } = useDashboardBundle(displayUnit);
 
   const dash = data?.dash ?? null;
   const ts = data?.ts ?? null;
@@ -41,14 +41,14 @@ export function DashboardPage() {
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const showUsd = displayUnit === "usd";
-  const unitSwitching = isFetching && !isPending;
+  const unitSwitching = isFetching && (isPlaceholderData || !isPending);
   const isYearly = metricsPeriod === "year";
   const xAxisGranularity = isYearly ? "year" : "month";
 
   useEffect(() => {
-    setLoading(isPending);
+    setLoading(isPending && data === undefined);
     return () => setLoading(false);
-  }, [isPending, setLoading]);
+  }, [isPending, data, setLoading]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {

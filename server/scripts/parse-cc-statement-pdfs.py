@@ -205,6 +205,7 @@ def parse_one_pdf(
         parsed = parse_clp_document(full, parser)
         meta = extract_meta(full, pdf_path.name)
         finalize_statement_meta(meta, pdf_path)
+    pdf_path = maybe_rename_parsed_cc_pdf(pdf_path, meta, full)
     rows = rows_from_parse_payload(
         effective_group=effective_group,
         source_pdf=canonical_cc_source_pdf_name(pdf_path.name),
@@ -218,6 +219,7 @@ def parse_one_pdf(
         "layout": full_layout,
         "parser": parser,
         "parsed": parsed,
+        "pdf_path": str(pdf_path),
     }
     return rows, ctx
 
@@ -1128,8 +1130,138 @@ def _clp_statement_looks_wide_layout(upper: str) -> bool:
     )
 
 
+def dd_mm_yyyy_to_iso(raw: str) -> str:
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
+    if not m:
+        return ""
+    return f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+
+
+def organized_cc_pdf_iso_prefix(meta: Dict[str, Any], full: str = "") -> str:
+    """Filename date: BCI uses period_to (facturación month end); others use statement close."""
+    if is_bci_lider_statement_text(full) or str(meta.get("card_product") or "") == "LIDER_BCI":
+        pt = dd_mm_yyyy_to_iso(str(meta.get("period_to") or ""))
+        if pt:
+            return pt
+    sd = dd_mm_yyyy_to_iso(str(meta.get("statement_date") or ""))
+    if sd:
+        return sd
+    return dd_mm_yyyy_to_iso(str(meta.get("period_to") or ""))
+
+
+def target_cc_pdf_filename(meta: Dict[str, Any], full: str = "") -> str:
+    iso = organized_cc_pdf_iso_prefix(meta, full)
+    if not iso:
+        return ""
+    stem = f"{iso} estado de cuenta tarjeta"
+    last4 = str(meta.get("card_last4") or "").strip()
+    if last4:
+        stem += f" {last4}"
+    return f"{stem}.pdf"
+
+
+def maybe_rename_parsed_cc_pdf(
+    pdf_path: Path, meta: Dict[str, Any], full: str = ""
+) -> Path:
+    """Rename on disk when YYYY-MM-DD prefix does not match statement metadata."""
+    target_name = target_cc_pdf_filename(meta, full)
+    if not target_name or pdf_path.name == target_name:
+        return pdf_path
+    dest = pdf_path.with_name(target_name)
+    if dest.exists() and dest.resolve() != pdf_path.resolve():
+        print(
+            f"# skip rename (target exists): {pdf_path.name} -> {dest.name}",
+            file=sys.stderr,
+        )
+        return pdf_path
+    print(f"# rename {pdf_path.name} -> {dest.name}")
+    pdf_path.rename(dest)
+    meta["source_pdf"] = dest.name
+    return dest
+
+
+def _bci_lider_charge_lines(full: str) -> List[Tuple[str, str]]:
+    """Lines in Período Actual (operaciones) and section 3 (cargos), in order."""
+    lines = [ln.strip() for ln in full.splitlines()]
+    collected: List[Tuple[str, str]] = []
+    section: Optional[str] = None
+    for line in lines:
+        if not line or line == ".":
+            continue
+        up = _ascii_upper(line)
+        if re.search(r"2\.\s*PER[IÍ]ODO\s+ACTUAL", up):
+            section = "operaciones"
+            continue
+        if re.search(r"3\.\s*CARGOS", up) and "COMISIONES" in up:
+            section = "cargos"
+            continue
+        if up.startswith("III.") or "MONTO TOTAL FACTURADO" in up:
+            section = None
+            continue
+        if section is None:
+            continue
+        if re.match(r"^\$\s*[\d.\-]+\s*$", line):
+            continue
+        if up in ("LIDER", "OTROS COMERCIOS") or re.search(r"1\.\s*TOTAL\s+OPERACIONES", up):
+            continue
+        if RE_BCI_LIDER_CHARGE.match(line):
+            collected.append((section, line))
+    return collected
+
+
+def _bci_row_from_charge_line(line: str, section: str) -> Optional[Dict[str, Any]]:
+    m = RE_BCI_LIDER_CHARGE.match(line.strip())
+    if not m:
+        return None
+    fecha, desc, amt_raw = m.group(1), m.group(2).strip(), m.group(3)
+    amt = parse_clp_amount(amt_raw)
+    if amt is None:
+        return None
+    merchant = re.sub(r"\s+", " ", desc).strip()
+    if not merchant:
+        return None
+    if re.match(r"^PAGO\b", merchant, re.I):
+        return None
+    layout = (
+        "bci_lider_cargos"
+        if section == "cargos"
+        else "bci_lider_operaciones"
+    )
+    return {
+        "layout": layout,
+        "transaction_date": fecha,
+        "posting_date": fecha,
+        "place": "",
+        "description_raw": line.strip(),
+        "merchant": merchant,
+        "amount_clp": amt,
+        "monto_total_a_pagar_clp": amt,
+        "monto_origen_operacion_clp": amt,
+        "valor_cuota_mensual_clp": "",
+        "nro_cuota_current": "",
+        "nro_cuota_total": "",
+        "installment_flag": False,
+        "interest_rate_text": "",
+        "tipo_cuota": "",
+        "foreign_currency": _extract_fx(merchant),
+        "authorization_code": _extract_auth(merchant),
+    }
+
+
+def parse_bci_lider_document(full: str) -> List[Dict[str, Any]]:
+    """BCI/Líder EECC: place+date lines and OTROS COMERCIOS (pdftotext often omits spaces)."""
+    out: List[Dict[str, Any]] = []
+    for section, line in _bci_lider_charge_lines(full):
+        row = _bci_row_from_charge_line(line, section)
+        if row:
+            out.append(row)
+    return out
+
+
 def parse_clp_document(full: str, parser: str) -> List[Dict[str, Any]]:
     """Parse CLP statement; fall back to wide when compact misses rows."""
+    if is_bci_lider_statement_text(full):
+        return parse_bci_lider_document(full)
     if parser == "wide":
         return parse_wide_document(full)
     compact_rows = parse_compact_document(full)
@@ -1417,7 +1549,10 @@ RE_COMPACT_SIMPLE = re.compile(
     r"^(\d{2}/\d{2}/\d{2})\s*(.*?)\s*\$\s*([-]?[\d.]+)\s*(.*)$"
 )
 RE_WIDE_PLACE_DATE = re.compile(
-    r"^([A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.\-]*?)\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$"
+    r"^([A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.\-]*?)\s+(\d{2}/\d{2}/\d{4})\s*(.+?)\s+\$\s*([-]?[\d.]+)\s*$"
+)
+RE_BCI_LIDER_CHARGE = re.compile(
+    r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
 )
 RE_WIDE_DATE_FIRST = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$"
@@ -2151,11 +2286,26 @@ def canonical_cc_source_pdf_name(filename: str) -> str:
     return name
 
 
+CC_UNREADABLE_SUBDIR = "unreadable"
+
+
 def mark_pdf_corrupt(p: Path) -> Path:
-    """Rename an unreadable PDF so it is skipped on the next parse run."""
-    if p.stem.endswith("-CORRUPT"):
+    """Move an unreadable PDF under `unreadable/` so the main folder parse scan skips it."""
+    if CC_UNREADABLE_SUBDIR in p.parts:
         return p
-    dest = p.with_name(f"{p.stem}-CORRUPT{p.suffix}")
+    if p.stem.endswith("-CORRUPT"):
+        stem = p.stem[: -len("-CORRUPT")]
+        dest_dir = p.parent / CC_UNREADABLE_SUBDIR
+        dest_dir.mkdir(exist_ok=True)
+        dest = dest_dir / f"{stem}{p.suffix}"
+        if not dest.exists():
+            p.rename(dest)
+        elif p.exists():
+            p.unlink()
+        return dest
+    dest_dir = p.parent / CC_UNREADABLE_SUBDIR
+    dest_dir.mkdir(exist_ok=True)
+    dest = dest_dir / p.name
     if dest.exists():
         return dest
     p.rename(dest)
@@ -2271,20 +2421,24 @@ def main() -> int:
                 effective_group = str(cached.get("effective_group") or card_group)
                 rows = rows_from_parse_payload(
                     effective_group=effective_group,
-                    source_pdf=p.name,
+                    source_pdf=canonical_cc_source_pdf_name(p.name),
                     meta=meta,
                     parsed=parsed,
                     baseline=baseline,
                 )
-                pdf_context[p.name] = {
+                ctx = {
                     "meta": meta,
                     "full": str(cached.get("full") or ""),
                     "layout": str(cached.get("layout") or ""),
                     "parser": str(cached.get("parser") or ""),
+                    "parsed": parsed,
+                    "pdf_path": str(p),
                 }
+                pdf_context[p.name] = ctx
             else:
                 cache_misses += 1
                 rows, ctx = parse_one_pdf(card_group, p, baseline)
+                p = Path(str(ctx.get("pdf_path") or p))
                 effective_group = "INTL" if ctx["parser"] == "international_usd" else card_group
                 pdf_context[p.name] = ctx
                 if not no_cache:
@@ -2303,11 +2457,11 @@ def main() -> int:
                         },
                     )
             all_rows.extend(rows)
-            per_pdf_counts[p.name] = len(rows)
+            per_pdf_counts[str(ctx.get("pdf_path") or p.name)] = len(rows)
         except Exception as e:
             renamed = mark_pdf_corrupt(p)
             failures.append(f"read_error:{renamed}:{e}")
-            print(f"# CORRUPT renamed {renamed.name} ({e})")
+            print(f"# unreadable moved {renamed} ({e})")
             continue
 
     if not no_cache:
@@ -2444,10 +2598,11 @@ def main() -> int:
 
     def ignorable_zero_row_pdf(name: str) -> bool:
         """Legacy month-end PDFs without card suffix; unreadable cartola scans, not in DB."""
+        base = Path(name).name
         return bool(
             re.match(
                 r"^\d{4}-\d{2}-\d{2} estado de cuenta tarjeta(?:-CORRUPT)?\.pdf$",
-                name,
+                base,
                 re.I,
             )
         )

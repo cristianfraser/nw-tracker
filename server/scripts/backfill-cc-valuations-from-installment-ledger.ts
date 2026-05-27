@@ -11,10 +11,8 @@
  *   npx tsx server/scripts/backfill-cc-valuations-from-installment-ledger.ts --account-id=15 --from=2025-03 --to=2026-05 --apply
  */
 import { db } from "../src/db.js";
-import {
-  ccInstallmentsDbApiPayload,
-  upsertCreditCardValuationsFromLedger,
-} from "../src/ccInstallmentLedgerDb.js";
+import { ccInstallmentsDbApiPayload } from "../src/ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 import { parseYearMonth } from "../src/ccYearMonth.js";
 
 function arg(name: string): string | undefined {

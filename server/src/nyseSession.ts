@@ -1,4 +1,4 @@
-import { isNyseTradingDay } from "./marketHolidays.js";
+import { isNyseTradingDay, priorNyseSessionYmd } from "./marketHolidays.js";
 
 const NY_TZ = "America/New_York";
 
@@ -79,6 +79,34 @@ export function isAfterNyseRegularClose(now: Date = new Date()): boolean {
   const ny = nyseWallClock(now);
   if (!isNyseTradingDay(ny.ymd)) return false;
   return ny.hour > 16 || (ny.hour === 16 && ny.minute >= 5);
+}
+
+/** NYSE regular session has not started yet (before 9:30 ET on a trading day). */
+export function isBeforeNyseRegularOpen(now: Date = new Date()): boolean {
+  const ny = nyseWallClock(now);
+  if (!isNyseTradingDay(ny.ymd)) return false;
+  return ny.hour < 9 || (ny.hour === 9 && ny.minute < 30);
+}
+
+/** Regular cash session 9:30–16:05 America/New_York on a scheduled trading day. */
+export function isNyseRegularSessionOpen(now: Date = new Date()): boolean {
+  const ny = nyseWallClock(now);
+  if (!isNyseTradingDay(ny.ymd)) return false;
+  if (isBeforeNyseRegularOpen(now)) return false;
+  return !isAfterNyseRegularClose(now);
+}
+
+/**
+ * NYSE session whose close (or live quote) the marquee shows when not in regular hours.
+ */
+export function nyseDisplaySessionYmd(now: Date = new Date()): string {
+  const ny = nyseWallClock(now);
+  if (!isNyseTradingDay(ny.ymd)) return nyseSessionYmd(now);
+  if (isBeforeNyseRegularOpen(now)) {
+    return priorNyseSessionYmd(ny.ymd) ?? nyseSessionYmd(now);
+  }
+  if (isAfterNyseRegularClose(now)) return ny.ymd;
+  return ny.ymd;
 }
 
 export function utcTodayYmd(now: Date = new Date()): string {

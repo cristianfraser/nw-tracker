@@ -1,10 +1,9 @@
 import { db } from "./db.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
-import { isNyseTradingDay, priorNyseSessionYmd } from "./marketHolidays.js";
+import { priorNyseSessionYmd } from "./marketHolidays.js";
 import {
-  isAfterNyseRegularClose,
+  isNyseRegularSessionOpen,
+  nyseDisplaySessionYmd,
   nyseSessionYmd,
-  nyseWallClock,
   utcTodayYmd,
 } from "./nyseSession.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
@@ -30,6 +29,9 @@ export type ResolvedEquityQuote = {
 
 const stmtEodClose = db.prepare(
   `SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
+);
+const stmtEodCloseOnDate = db.prepare(
+  `SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? AND trade_date = ?`
 );
 const stmtEodPrior = db.prepare(
   `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
@@ -57,6 +59,19 @@ function percentChange(live: number, prior: number | null | undefined): number |
   return ((live - prior) / prior) * 100;
 }
 
+function utcCalendarPrevYmd(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! - 1)).toISOString().slice(0, 10);
+}
+
+function eodCloseUsdOnDate(ticker: string, tradeDate: string): number | null {
+  const row = stmtEodCloseOnDate.get(ticker, tradeDate) as
+    | { trade_date: string; close_usd: number }
+    | undefined;
+  if (row == null || !Number.isFinite(row.close_usd)) return null;
+  return row.close_usd;
+}
+
 function eodQuote(ticker: string, asOfYmd: string): ResolvedEquityQuote | null {
   const row = stmtEodClose.get(ticker, asOfYmd) as
     | { trade_date: string; close_usd: number }
@@ -73,6 +88,64 @@ function eodQuote(ticker: string, asOfYmd: string): ResolvedEquityQuote | null {
   };
 }
 
+function sessionPairEodQuote(
+  ticker: string,
+  displayYmd: string,
+  priorYmd: string | null
+): ResolvedEquityQuote | null {
+  let price = eodCloseUsdOnDate(ticker, displayYmd);
+  let tradeDate = displayYmd;
+  if (price == null) {
+    const fallback = eodQuote(ticker, displayYmd);
+    if (fallback == null) return null;
+    price = fallback.price_usd;
+    tradeDate = fallback.trade_date;
+  }
+  const priorClose =
+    priorYmd != null ? eodCloseUsdOnDate(ticker, priorYmd) : null;
+  const priorFromStmt =
+    priorClose ??
+    (priorYmd == null
+      ? (stmtEodPrior.get(ticker, tradeDate) as { close_usd: number } | undefined)?.close_usd
+      : null);
+  return {
+    price_usd: price,
+    trade_date: tradeDate,
+    source: "eod",
+    previous_close_usd: priorFromStmt ?? null,
+    delta_pct: percentChange(price, priorFromStmt),
+  };
+}
+
+function resolveNyseEodQuote(ticker: string, now: Date): ResolvedEquityQuote | null {
+  const displayYmd = nyseDisplaySessionYmd(now);
+  const priorYmd = priorNyseSessionYmd(displayYmd);
+  return sessionPairEodQuote(ticker, displayYmd, priorYmd);
+}
+
+/** UTC display session for crypto when not using live (today if row exists, else latest ≤ today). */
+export function cryptoDisplaySessionYmd(ticker: string, now = new Date()): string {
+  const today = utcTodayYmd(now);
+  if (eodCloseUsdOnDate(ticker, today) != null) return today;
+  const row = stmtEodClose.get(ticker, today) as { trade_date: string } | undefined;
+  return row?.trade_date ?? today;
+}
+
+function priorCryptoSessionYmd(ticker: string, displayYmd: string): string | null {
+  let cur = utcCalendarPrevYmd(displayYmd);
+  for (let i = 0; i < 14; i++) {
+    if (eodCloseUsdOnDate(ticker, cur) != null) return cur;
+    cur = utcCalendarPrevYmd(cur);
+  }
+  return null;
+}
+
+function resolveCryptoEodQuote(ticker: string, now: Date): ResolvedEquityQuote | null {
+  const displayYmd = cryptoDisplaySessionYmd(ticker, now);
+  const priorYmd = priorCryptoSessionYmd(ticker, displayYmd);
+  return sessionPairEodQuote(ticker, displayYmd, priorYmd);
+}
+
 /** Whether `asOfYmd` is the active session and we should prefer Yahoo live over DB EOD. */
 export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = new Date()): boolean {
   const kind = equityMarketKind(ticker);
@@ -82,8 +155,7 @@ export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = 
   }
   const session = nyseSessionYmd(now);
   if (asOfYmd < session) return false;
-  if (!isNyseTradingDay(nyseWallClock(now).ymd)) return false;
-  return !isAfterNyseRegularClose(now);
+  return isNyseRegularSessionOpen(now);
 }
 
 /**
@@ -92,6 +164,19 @@ export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = 
 export function equitySessionYmdForTicker(ticker: string, now = new Date()): string {
   if (equityMarketKind(ticker) === "crypto24") return utcTodayYmd(now);
   return nyseSessionYmd(now);
+}
+
+async function priorCloseForLiveNyse(
+  ticker: string,
+  sessionYmd: string,
+  yahooPrior: number | null
+): Promise<number | null> {
+  if (yahooPrior != null && Number.isFinite(yahooPrior) && yahooPrior > 0) {
+    return yahooPrior;
+  }
+  const priorYmd = priorNyseSessionYmd(sessionYmd);
+  if (priorYmd == null) return null;
+  return eodCloseUsdOnDate(ticker, priorYmd);
 }
 
 /**
@@ -113,10 +198,14 @@ export async function resolveEquityQuote(
     }
     try {
       const live = await fetchYahooLiveQuote(ticker);
+      const kind = equityMarketKind(ticker);
       const prior =
-        live.previous_close_usd ??
-        (stmtEodPrior.get(ticker, live.session_ymd) as { close_usd: number } | undefined)?.close_usd ??
-        null;
+        kind === "nyse"
+          ? await priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close_usd)
+          : live.previous_close_usd ??
+            (stmtEodPrior.get(ticker, live.session_ymd) as { close_usd: number } | undefined)
+              ?.close_usd ??
+            null;
       const quote: ResolvedEquityQuote = {
         price_usd: live.price_usd,
         trade_date: live.session_ymd,
@@ -131,29 +220,10 @@ export async function resolveEquityQuote(
     }
   }
 
-  const eod = eodQuote(ticker, asOfYmd);
-  if (eod == null) return null;
-
-  const kind = equityMarketKind(ticker);
-  const chileToday = chileCalendarTodayYmd();
-  const sessionToday = equitySessionYmdForTicker(ticker, now);
-
-  if (kind === "nyse") {
-    const nyToday = nyseWallClock(now).ymd;
-    if (!isNyseTradingDay(nyToday)) {
-      return { ...eod, delta_pct: 0 };
-    }
-    if (eod.trade_date < sessionToday) {
-      return { ...eod, delta_pct: 0 };
-    }
-    if (eod.trade_date >= chileToday && !isAfterNyseRegularClose(now)) {
-      /* EOD row for today before close — should have used live; keep EOD delta */
-    }
-  } else if (eod.trade_date < utcTodayYmd(now)) {
-    return { ...eod, delta_pct: 0 };
+  if (equityMarketKind(ticker) === "crypto24") {
+    return resolveCryptoEodQuote(ticker, now);
   }
-
-  return eod;
+  return resolveNyseEodQuote(ticker, now);
 }
 
 /** Synchronous EOD-only close (historical month-ends). */
@@ -161,15 +231,14 @@ export function equityCloseUsdEod(ticker: string, asOfYmd: string): number | nul
   return eodQuote(ticker, asOfYmd)?.price_usd ?? null;
 }
 
-/** Prior NYSE session date before Chile today (for marquee / display). */
+/** Prior session before display session (marquee / display). */
 export function priorEquitySessionForMarquee(ticker: string, now = new Date()): string | null {
   if (equityMarketKind(ticker) === "crypto24") {
-    const today = utcTodayYmd(now);
-    const [y, m, d] = today.split("-").map(Number);
-    const prev = new Date(Date.UTC(y!, m! - 1, d! - 1)).toISOString().slice(0, 10);
-    return prev;
+    const display = cryptoDisplaySessionYmd(ticker, now);
+    return priorCryptoSessionYmd(ticker, display);
   }
-  return priorNyseSessionYmd(nyseWallClock(now).ymd);
+  const display = nyseDisplaySessionYmd(now);
+  return priorNyseSessionYmd(display);
 }
 
 export function clearEquityLiveQuoteCache(): void {

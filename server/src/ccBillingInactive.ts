@@ -1,0 +1,37 @@
+import { accountInactiveByValuationTail } from "./accountValuationTailInactive.js";
+import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import {
+  ccInstallmentLedgerRowCount,
+  liveCreditCardOutstandingClp,
+} from "./ccInstallmentLedgerDb.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+
+function lastImportedStatementBillingMonth(accountId: number): string | null {
+  let last: string | null = null;
+  for (const st of listCcStatementsForAccount(accountId)) {
+    const bm = st.billing_month;
+    if (!bm) continue;
+    if (!last || bm.localeCompare(last) > 0) last = bm;
+  }
+  return last;
+}
+
+/**
+ * True when detalle por mes should not show synthetic open months after the card stopped billing.
+ * Uses valuation tail when present; otherwise revolving-only cards with no installment ledger
+ * whose last imported statement is before the current billing month and $0 live outstanding.
+ */
+export function creditCardBillingDetailInactive(accountId: number): boolean {
+  if (accountInactiveByValuationTail(accountId)) return true;
+  if (ccInstallmentLedgerRowCount(accountId) > 0) return false;
+
+  const lastStatementMonth = lastImportedStatementBillingMonth(accountId);
+  if (!lastStatementMonth) return false;
+
+  const todayMonth = billingMonthForStatementDate(chileCalendarTodayYmd());
+  if (!todayMonth || todayMonth.localeCompare(lastStatementMonth) <= 0) return false;
+
+  const live = liveCreditCardOutstandingClp(accountId);
+  return live == null || live === 0;
+}

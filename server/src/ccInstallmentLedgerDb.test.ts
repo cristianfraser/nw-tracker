@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  ccLedgerStatementClosingPointsClp,
   cupoEnCuotasClpForCalendarMonth,
   filterLedgerPurchasesForSchedule,
   installmentRemainingClpByCalendarMonth,
   liveCreditCardOutstandingClp,
-  upsertCreditCardValuationsFromLedger,
 } from "./ccInstallmentLedgerDb.js";
+import {
+  ccLedgerStatementClosingPointsClp,
+  latestCreditCardBillingBalanceTotalClp,
+  upsertCreditCardValuationsFromLedger,
+} from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 
@@ -82,9 +85,10 @@ describe("card 4242 ledger valuations", () => {
       expect(cupo).toBeGreaterThan(plan);
     }
 
+    const valuationLive = latestCreditCardBillingBalanceTotalClp(master.id) ?? live;
     const pts = ccLedgerStatementClosingPointsClp(master.id);
     const curPt = pts?.find((p) => monthKeyFromYmd(p.as_of_date) === todayYm);
-    expect(curPt?.value_clp).toBe(live);
+    expect(curPt?.value_clp).toBe(valuationLive);
 
     upsertCreditCardValuationsFromLedger(master.id);
     const today = chileCalendarTodayYmd();
@@ -93,6 +97,6 @@ describe("card 4242 ledger valuations", () => {
         `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
       )
       .get(master.id, today) as { value_clp: number } | undefined;
-    expect(row?.value_clp).toBe(live);
+    expect(row?.value_clp).toBe(valuationLive);
   });
 });

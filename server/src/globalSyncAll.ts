@@ -1,10 +1,11 @@
 /**
  * Orchestrates external syncs with Chile-time rules:
  * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
- * - Fintual goals: from 18:00 America/Santiago on business days only; `as_of` is the fund publish date
- *   (may be the prior day after a holiday cuota or before today's cuota is on `/days`).
+ * - Fintual goals: from 18:00 America/Santiago on business days and the last day of each non-business block
+ *   (weekends/holidays); `as_of` is the fund publish date (may forward-publish before the block ends).
  * - USD / EUR (Banco Central BDE): stale from 18:00 Chile until today's observado is in DB (prior session on holidays).
- * - SPY / VEA / BTC / ETH EOD: Yahoo daily bars after NYSE close (16:05 ET); crypto daily every run.
+ * - NYSE stocks (SPY, VEA): Yahoo EOD after 16:05 ET on NYSE trading days (`stocks_nyse`).
+ * - Crypto (BTC, ETH): Yahoo daily from 23:55 Chile (`crypto_eod`).
  * - UF / UTM / IPC (BDE GetSeries): from the 9th of each month when stale.
  *
  * Env: `BCENTRAL_EMAIL`, `BCENTRAL_PASSWORD`, Fintual vars (see `fintualApiLib.ts`), AFP account.
@@ -20,7 +21,9 @@ import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   clearUserForcedStale,
-  isEquityEodStale,
+  isCryptoEodStale,
+  isFintualSyncStale,
+  isStocksNyseStale,
   isSbifMonthlyStale,
   shouldRunSyncSource,
   staleSyncSources,
@@ -102,8 +105,17 @@ import {
   upsertUfRows,
   upsertUtmRows,
 } from "./sbifSyncDb.js";
-import { EQUITY_DAILY_IMPORT_TICKERS } from "./brokerageEquityMtm.js";
-import { equityEodSyncSessionLabel, syncEquityEodFromYahoo } from "./equityEodSync.js";
+import {
+  EQUITY_CRYPTO_TICKERS,
+  EQUITY_NYSE_TICKERS,
+  equityEodCryptoStateYmd,
+  equityEodNyseStateYmd,
+  cryptoEodDueUtcYmd,
+  syncCryptoEodFromYahoo,
+  syncStocksNyseFromYahoo,
+  type EquityEodSyncResult,
+} from "./equityEodSync.js";
+import type { SyncChangeGroup } from "./syncRunLog.js";
 let syncDryRun = process.argv.includes("--dry-run");
 const FORCE_SBIF = process.argv.includes("--force-sbif");
 const FORCE = process.argv.includes("--force");
@@ -616,6 +628,7 @@ async function runSyncStepIfStale(
   step: string,
   errors: SyncStepError[],
   state: GlobalSyncStateFile,
+  cl: ReturnType<typeof chileWallClockNow>,
   fn: () => Promise<void>
 ): Promise<void> {
   if (!shouldRunSyncSource(source, stale)) {
@@ -624,34 +637,35 @@ async function runSyncStepIfStale(
   }
   const errorsBefore = errors.length;
   await runSyncStep(step, errors, fn);
-  if (errors.length === errorsBefore) clearUserForcedStale(state, source);
+  if (errors.length === errorsBefore) {
+    const now = new Date();
+    const keepForcedStale =
+      (source === "fintual" && isFintualSyncStale(cl, state)) ||
+      (source === "stocks_nyse" && isStocksNyseStale(state, { now })) ||
+      (source === "crypto_eod" && isCryptoEodStale(cl, state, { now }));
+    if (!keepForcedStale) clearUserForcedStale(state, source);
+  }
 }
 
-async function runEquityEod(state: GlobalSyncStateFile, changes: SyncFieldChange[]): Promise<void> {
-  if (!FORCE && !isEquityEodStale(state, { force: false })) {
-    console.log("sync: equity EOD — skip (NYSE session + crypto UTC day already synced).");
-    return;
-  }
-  const eodBefore = new Map<string, { trade_date: string; close_usd: number } | null>();
-  for (const ticker of EQUITY_DAILY_IMPORT_TICKERS) {
-    eodBefore.set(ticker, latestEquityEodRow(ticker));
-  }
-  const results = await syncEquityEodFromYahoo(undefined, {
-    dryRun: syncDryRun,
-    force: FORCE,
-  });
+function applyEquityEodResultsToChanges(
+  results: EquityEodSyncResult[],
+  eodBefore: Map<string, { trade_date: string; close_usd: number } | null>,
+  changes: SyncFieldChange[],
+  group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
+  logPrefix: string
+): void {
   for (const r of results) {
     if (r.skipped) {
-      console.log(`sync: equity EOD ${r.ticker} — skip (${r.skipped})`);
+      console.log(`sync: ${logPrefix} ${r.ticker} — skip (${r.skipped})`);
       continue;
     }
-    console.log(`sync: equity EOD ${r.ticker} — ${r.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
+    console.log(`sync: ${logPrefix} ${r.ticker} — ${r.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
     const before = eodBefore.get(r.ticker) ?? null;
     const after = latestEquityEodRow(r.ticker);
     if (after == null) continue;
     if (before != null && Math.abs(before.close_usd - after.close_usd) < 1e-8) continue;
     changes.push({
-      group: "tickers",
+      group,
       label: r.ticker,
       oldValue: before != null ? formatSyncUsdClose(before.close_usd) : "—",
       newValue: formatSyncUsdClose(after.close_usd),
@@ -659,10 +673,47 @@ async function runEquityEod(state: GlobalSyncStateFile, changes: SyncFieldChange
       newDate: after.trade_date,
     });
   }
+}
+
+function snapshotEodBefore(tickers: readonly string[]): Map<string, { trade_date: string; close_usd: number } | null> {
+  const m = new Map<string, { trade_date: string; close_usd: number } | null>();
+  for (const ticker of tickers) m.set(ticker, latestEquityEodRow(ticker));
+  return m;
+}
+
+async function runStocksNyse(state: GlobalSyncStateFile, changes: SyncFieldChange[]): Promise<void> {
+  const now = new Date();
+  if (!FORCE && !isStocksNyseStale(state, { force: false, now })) {
+    console.log("sync: NYSE stocks — skip (session EOD already in DB).");
+    return;
+  }
+  const eodBefore = snapshotEodBefore(EQUITY_NYSE_TICKERS);
+  const results = await syncStocksNyseFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
+  applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_nyse", "NYSE stocks");
   if (!syncDryRun) {
-    const labels = equityEodSyncSessionLabel();
-    if (labels.nyseSession) state.equityEodLastNySessionYmd = labels.nyseSession;
-    state.equityEodLastCryptoUtcYmd = labels.cryptoUtcDay;
+    const nyseYmd = equityEodNyseStateYmd(now);
+    if (nyseYmd) state.equityEodLastNySessionYmd = nyseYmd;
+  }
+}
+
+async function runCryptoEod(
+  cl: ReturnType<typeof chileWallClockNow>,
+  state: GlobalSyncStateFile,
+  changes: SyncFieldChange[]
+): Promise<void> {
+  const now = new Date();
+  if (!FORCE && !isCryptoEodStale(cl, state, { force: false, now })) {
+    console.log("sync: crypto EOD — skip (not stale).");
+    return;
+  }
+  const dueUtc = cryptoEodDueUtcYmd(cl, now);
+  if (dueUtc) console.log(`sync: crypto EOD — due UTC ${dueUtc}.`);
+  const eodBefore = snapshotEodBefore(EQUITY_CRYPTO_TICKERS);
+  const results = await syncCryptoEodFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
+  applyEquityEodResultsToChanges(results, eodBefore, changes, "crypto_eod", "crypto EOD");
+  if (!syncDryRun) {
+    const cryptoYmd = equityEodCryptoStateYmd(now);
+    if (cryptoYmd) state.equityEodLastCryptoUtcYmd = cryptoYmd;
   }
 }
 
@@ -809,11 +860,11 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
         (stale.length ? ` stale=[${stale.join(", ")}]` : " nothing stale")
     );
 
-    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, state!, async () => {
+    await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, state!, cl, async () => {
       await runUnoSpot(cl, state!, syncChanges);
     });
 
-    await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, async () => {
+    await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, cl, async () => {
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
     });
@@ -822,13 +873,16 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     if (!bcentral) {
       console.warn("sync: BCentral — skip (set BCENTRAL_EMAIL and BCENTRAL_PASSWORD in .env).");
     } else {
-      await runSyncStepIfStale("equity_eod", stale, "Equity EOD", stepErrors, state!, async () => {
-        await runEquityEod(state!, syncChanges);
+      await runSyncStepIfStale("stocks_nyse", stale, "NYSE stocks", stepErrors, state!, cl, async () => {
+        await runStocksNyse(state!, syncChanges);
       });
-      await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, state!, async () => {
+      await runSyncStepIfStale("crypto_eod", stale, "Crypto EOD", stepErrors, state!, cl, async () => {
+        await runCryptoEod(cl, state!, syncChanges);
+      });
+      await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, state!, cl, async () => {
         await runSbifUsd(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
-      await runSyncStepIfStale("sbif_eur", stale, "BCentral EUR", stepErrors, state!, async () => {
+      await runSyncStepIfStale("sbif_eur", stale, "BCentral EUR", stepErrors, state!, cl, async () => {
         await runSbifEur(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });
       if (cl.day < 9 && !FORCE_SBIF) {
@@ -836,13 +890,13 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
           "sync: BCentral — skip UF/UTM/IPC (before day 9; series often incomplete earlier — use --force-sbif to override)."
         );
       } else {
-        await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", stepErrors, state!, async () => {
+        await runSyncStepIfStale("sbif_uf", stale, "BCentral UF", stepErrors, state!, cl, async () => {
           await runSbifUf(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStepIfStale("sbif_utm", stale, "BCentral UTM", stepErrors, state!, async () => {
+        await runSyncStepIfStale("sbif_utm", stale, "BCentral UTM", stepErrors, state!, cl, async () => {
           await runSbifUtm(cl, bcentral, state!, syncChanges);
         });
-        await runSyncStepIfStale("sbif_ipc", stale, "BCentral IPC", stepErrors, state!, async () => {
+        await runSyncStepIfStale("sbif_ipc", stale, "BCentral IPC", stepErrors, state!, cl, async () => {
           await runSbifIpc(cl, bcentral, state!, syncChanges);
         });
       }

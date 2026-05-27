@@ -181,12 +181,6 @@
   padding: 0.2rem var(--space-2xs);
 }
 
-.facturadoPlaceholderInput {
-  width: 9rem;
-  max-width: 100%;
-  padding: 0.2rem var(--space-2xs);
-}
-
 .breakAll {
   word-break: break-all;
 }

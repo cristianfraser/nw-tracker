@@ -539,6 +539,86 @@ class BciLiderStatementTest(unittest.TestCase):
         )
         self.assertTrue(result.ok, result.mismatch_summary())
 
+    def test_parse_bci_jan_2026_4343_pdf(self) -> None:
+        root = Path(__file__).resolve().parent.parent.parent
+        pdf = root / "cfraser/credit-card-statements/2026-01-26 estado de cuenta tarjeta 4343.pdf"
+        if not pdf.is_file():
+            pdf = root / "cfraser/credit-card-statements/2026-01-27 estado de cuenta tarjeta 4343.pdf"
+        if not pdf.is_file():
+            self.skipTest("BCI Jan 2026 statement PDF not present")
+        parser = mod.choose_parser(pdf)
+        _pages, full = mod.extract_pdf_text(pdf, parser)
+        meta = mod.extract_meta(full, pdf.name)
+        mod.finalize_statement_meta(meta, pdf)
+        if meta.get("period_to") != "26/01/2026":
+            self.skipTest(f"not Jan 2026 billing period: period_to={meta.get('period_to')!r}")
+        self.assertEqual(meta.get("statement_date"), "27/01/2026")
+        self.assertEqual(
+            mod.organized_cc_pdf_iso_prefix(meta, full),
+            "2026-01-26",
+        )
+        self.assertEqual(
+            mod.target_cc_pdf_filename(meta),
+            "2026-01-26 estado de cuenta tarjeta 4343.pdf",
+        )
+        rows = mod.parse_clp_document(full, parser)
+        merchants = {str(r.get("merchant") or "").upper() for r in rows}
+        self.assertIn("ENEL (T)", merchants)
+        self.assertIn("METROGAS PAT (T)", merchants)
+        self.assertIn("ENTEL HOGAR (T)", merchants)
+        pos = sorted(
+            int(r["amount_clp"])
+            for r in rows
+            if int(r["amount_clp"]) > 0
+        )
+        self.assertEqual(sum(pos), 280_092 + 3_555)
+        recon_path = Path(__file__).resolve().parent / "cc_statement_reconcile.py"
+        spec = importlib.util.spec_from_file_location("cc_statement_reconcile", recon_path)
+        assert spec and spec.loader
+        recon_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(recon_mod)
+        emitted = [
+            {
+                "amount_clp": str(r["amount_clp"]),
+                "merchant": r.get("merchant", ""),
+                "installment_flag": "false",
+                "parser_layout": r.get("layout", ""),
+                "currency": "clp",
+            }
+            for r in rows
+        ]
+        result = recon_mod.reconcile_statement(
+            pdf.name,
+            meta,
+            emitted,
+            full,
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+        )
+        self.assertTrue(result.ok, result.mismatch_summary())
+        self.assertNotEqual(result.skip_reason, "incomplete_parse")
+
+    def test_parse_bci_lider_merged_line_layout(self) -> None:
+        """Regression: pypdf merges place+date without space (OTROS COMERCIOS)."""
+        sample = (
+            "2. Período Actual\n"
+            "LIDER\n"
+            "PROVIDENCIA 28/12/2025 EXPRESS LYON, SANTIAGO (T) $ 30.920\n"
+            "LAS CONDES 02/01/2026EXPRESS ESTORIL, SANTIAGO (T) $ 43.287\n"
+            "OTROS COMERCIOS\n"
+            "SANTIAGO CL 20/01/2026ENEL (T) $ 47.798\n"
+            "3. Cargos / Comisiones, Impuestos / Abonos\n"
+            "27/01/2026 -50% DCTO COM ADM|MANTENCION (T) $ 3.555\n"
+            "MONTO TOTAL FACTURADO $ 283.647\n"
+        )
+        rows = mod.parse_bci_lider_document(sample)
+        merchants = {str(r.get("merchant") or "").upper() for r in rows}
+        self.assertIn("ENEL (T)", merchants)
+        self.assertEqual(
+            sum(int(r["amount_clp"]) for r in rows if int(r["amount_clp"]) > 0),
+            30_920 + 43_287 + 47_798 + 3_555,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

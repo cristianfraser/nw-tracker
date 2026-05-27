@@ -13,6 +13,9 @@ export const queryKeys = {
   income: () => ["income"] as const,
   flowsDeposits: () => ["flowsDeposits"] as const,
   flowsExpenses: () => ["flowsExpenses"] as const,
+  flowsRealEstateExpenses: () => ["flowsRealEstateExpenses"] as const,
+  realEstateLinkCandidates: (expenseEntryId: number) =>
+    ["realEstateLinkCandidates", expenseEntryId] as const,
   flowsCreditCardExpenses: () => ["flowsCreditCardExpenses"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["portfolioGroup", group, subgroup ?? null, unit] as const,

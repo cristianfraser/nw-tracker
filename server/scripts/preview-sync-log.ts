@@ -19,7 +19,7 @@ function section(
 
 section(
   "Typical evening run",
-  ["afp_uno", "fintual", "equity_eod"],
+  ["afp_uno", "fintual", "stocks_nyse", "crypto_eod"],
   [
     {
       group: "afp",
@@ -46,7 +46,7 @@ section(
       newDate: "2026-05-19",
     },
     {
-      group: "tickers",
+      group: "stocks_nyse",
       label: "SPY",
       oldValue: "733.73",
       newValue: "735.12",
@@ -54,7 +54,7 @@ section(
       newDate: "2026-05-19",
     },
     {
-      group: "tickers",
+      group: "stocks_nyse",
       label: "VEA",
       oldValue: "68.99",
       newValue: "69.21",
@@ -62,7 +62,7 @@ section(
       newDate: "2026-05-19",
     },
     {
-      group: "tickers",
+      group: "crypto_eod",
       label: "BTC-USD",
       oldValue: "105420.50",
       newValue: "106100.00",
@@ -85,7 +85,7 @@ section("AFP only", ["afp_uno"], [
   },
 ]);
 
-section("Nothing changed", ["afp_uno", "fintual", "equity_eod"], []);
+section("Nothing changed", ["afp_uno", "fintual", "stocks_nyse", "crypto_eod"], []);
 
 section("SBIF USD only", [], [
   {

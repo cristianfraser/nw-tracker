@@ -18,7 +18,7 @@ import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
 
 import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
 
-import { Table } from "../ui/Table";
+import { PaginatedTable } from "../ui/PaginatedTable";
 
 import { Modal } from "../ui/Modal";
 
@@ -70,8 +70,6 @@ export function CreditCardGroupExpensesMonthTable({
 }) {
 
   const { t } = useTranslation();
-
-  const hidden = Math.max(0, rows.length - collapsedVisibleRows);
 
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -139,6 +137,21 @@ export function CreditCardGroupExpensesMonthTable({
 
   );
 
+  const pages = useMemo(() => {
+    const byYear = new Map<string, FlowCcExpenseMonthRow[]>();
+    for (const row of rows) {
+      const year = row.period_month.slice(0, 4);
+      const bucket = byYear.get(year) ?? [];
+      bucket.push(row);
+      byYear.set(year, bucket);
+    }
+    const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
+    return yearsAsc.map((year, pageNumber) => ({
+      pageNumber,
+      data: byYear.get(year) ?? [],
+    }));
+  }, [rows]);
+
 
 
   if (rows.length === 0) {
@@ -153,13 +166,12 @@ export function CreditCardGroupExpensesMonthTable({
 
     <>
 
-      <Table
-
+      <PaginatedTable
+        pages={pages}
         collapsedVisibleRows={collapsedVisibleRows}
-
-        showMoreLabel={t("table.showMoreMonths", { count: hidden })}
-
+        showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
         showLessLabel={t("table.showLessMonths")}
+        getPageLabel={(page) => page.data[0]?.period_month.slice(0, 4) ?? String(page.pageNumber)}
 
         header={
 
@@ -203,9 +215,9 @@ export function CreditCardGroupExpensesMonthTable({
 
         }
 
-      >
-
-        {rows.map((row) => (
+      renderBody={(pageRows) => (
+        <>
+        {pageRows.map((row) => (
 
           <tr
 
@@ -252,8 +264,9 @@ export function CreditCardGroupExpensesMonthTable({
           </tr>
 
         ))}
-
-      </Table>
+        </>
+      )}
+      />
 
 
 

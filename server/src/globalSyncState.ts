@@ -43,13 +43,33 @@ export function globalSyncStatePath(): string {
   return path.join(__dirname, "..", "data", ".global-sync-state.json");
 }
 
+function migrateUserForcedStaleSources(list: string[] | undefined): string[] | undefined {
+  if (!list?.includes("equity_eod")) return list;
+  const out = new Set<string>();
+  for (const s of list) {
+    if (s === "equity_eod") {
+      out.add("stocks_nyse");
+      out.add("crypto_eod");
+    } else {
+      out.add(s);
+    }
+  }
+  return [...out];
+}
+
+function migrateLoadedState(state: GlobalSyncStateFile): GlobalSyncStateFile {
+  const userForcedStale = migrateUserForcedStaleSources(state.userForcedStale);
+  if (userForcedStale === state.userForcedStale) return state;
+  return { ...state, userForcedStale };
+}
+
 export function loadGlobalSyncState(): GlobalSyncStateFile {
   const p = globalSyncStatePath();
   if (!fs.existsSync(p)) return {};
   try {
     const raw = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
     if (!raw || typeof raw !== "object") return {};
-    return raw as GlobalSyncStateFile;
+    return migrateLoadedState(raw as GlobalSyncStateFile);
   } catch {
     return {};
   }

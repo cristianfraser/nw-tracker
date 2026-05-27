@@ -10,9 +10,15 @@ import {
 } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 
-import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock } from "./nyseSession.js";
-import { isFintualFundPublishDay } from "./fintualPublishDate.js";
-import { isChileBusinessDay, isNyseTradingDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
+import {
+  cryptoEodDueUtcYmd,
+  equityCryptoEodCaughtUp,
+  equityEodNyseSyncDue,
+  equityNyseEodCaughtUp,
+} from "./equityEodSync.js";
+import { attachSyncSourceSchedule, type SyncSourceDayKind, type SyncWallTime } from "./syncSourceSchedule.js";
+import { fintualPublishLagsPollCalendarDay, isFintualFundPublishDay } from "./fintualPublishDate.js";
+import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { utcTodayYmd } from "./nyseSession.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { maxEurDateOnOrBefore, maxFxDateOnOrBefore } from "./sbifSyncDb.js";
@@ -25,7 +31,8 @@ export type GlobalSyncSource =
   | "sbif_uf"
   | "sbif_utm"
   | "sbif_ipc"
-  | "equity_eod";
+  | "stocks_nyse"
+  | "crypto_eod";
 
 export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "afp_uno",
@@ -35,11 +42,19 @@ export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "sbif_uf",
   "sbif_utm",
   "sbif_ipc",
-  "equity_eod",
+  "stocks_nyse",
+  "crypto_eod",
 ] as const;
+
+const LEGACY_EQUITY_EOD_SOURCE = "equity_eod";
 
 export function isGlobalSyncSource(value: string): value is GlobalSyncSource {
   return (GLOBAL_SYNC_SOURCES as readonly string[]).includes(value);
+}
+
+/** @deprecated UI/API used `equity_eod` before stocks/crypto split. */
+export function isLegacyEquityEodSyncSource(value: string): boolean {
+  return value === LEGACY_EQUITY_EOD_SOURCE;
 }
 
 function userForcedStaleSet(state: GlobalSyncStateFile): Set<GlobalSyncSource> {
@@ -139,6 +154,12 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   if (cl.hour < 18) return false;
   if (!isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) return false;
   if (
+    state.fintualLastPublishYmd != null &&
+    fintualPublishLagsPollCalendarDay(cl, state.fintualLastPublishYmd)
+  ) {
+    return true;
+  }
+  if (
     state.fintualEveningSettledYmd === cl.ymd &&
     state.fintualLastCheckYmd === cl.ymd &&
     state.fintualLastPublishYmd != null &&
@@ -162,20 +183,28 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   return false;
 }
 
-export function isEquityEodStale(
-  state: GlobalSyncStateFile,
+/** NYSE session EOD missing from `equity_daily` (after 16:05 ET on trading days). */
+export function isStocksNyseStale(
+  _state: GlobalSyncStateFile,
   opts?: { force?: boolean; now?: Date }
 ): boolean {
   if (opts?.force) return true;
   const now = opts?.now ?? new Date();
-  const ny = nyseWallClock(now);
-  if (isNyseTradingDay(ny.ymd) && isAfterNyseRegularClose(now)) {
-    const session = nyseSessionYmd(now);
-    if (state.equityEodLastNySessionYmd !== session) return true;
-  }
-  const utc = utcTodayYmd(now);
-  if (state.equityEodLastCryptoUtcYmd !== utc) return true;
+  const nyseDue = equityEodNyseSyncDue(now);
+  if (nyseDue != null && !equityNyseEodCaughtUp(nyseDue)) return true;
   return false;
+}
+
+/** Crypto daily EOD missing for the UTC day due at 23:55 Chile (carries over until caught up). */
+export function isCryptoEodStale(
+  cl: ChileWallClock,
+  _state: GlobalSyncStateFile,
+  opts?: { force?: boolean; now?: Date }
+): boolean {
+  if (opts?.force) return true;
+  const now = opts?.now ?? new Date();
+  const due = cryptoEodDueUtcYmd(cl, now);
+  return due != null && !equityCryptoEodCaughtUp(due);
 }
 
 export function isSbifMonthlyStale(
@@ -241,7 +270,8 @@ function naturalStaleSyncSources(
       if (isSbifMonthlyStale(cl, state.sbifIpcMonth, opts)) out.push("sbif_ipc");
     }
   }
-  if (isEquityEodStale(state, opts)) out.push("equity_eod");
+  if (isStocksNyseStale(state, opts)) out.push("stocks_nyse");
+  if (isCryptoEodStale(cl, state, opts)) out.push("crypto_eod");
   return out;
 }
 
@@ -261,7 +291,27 @@ export type SyncSourceStatusRow = {
   source: GlobalSyncSource;
   status: SyncSourceDisplayStatus;
   stale: boolean;
+  next_sync: SyncWallTime | null;
+  next_sync_imminent: boolean;
+  today_day_kind: SyncSourceDayKind;
 };
+
+function syncSourceRow(
+  source: GlobalSyncSource,
+  cl: ChileWallClock,
+  status: SyncSourceDisplayStatus,
+  stale: boolean
+): SyncSourceStatusRow {
+  const sched = attachSyncSourceSchedule(source, cl, stale, status === "disabled");
+  return {
+    source,
+    status,
+    stale,
+    next_sync: sched.next_sync,
+    next_sync_imminent: sched.next_sync_imminent,
+    today_day_kind: sched.today_day_kind,
+  };
+}
 
 export function allSyncSourceStatuses(
   cl: ChileWallClock,
@@ -277,43 +327,48 @@ export function allSyncSourceStatuses(
 
   const afpId = afpUnoAccountId();
   if (afpId == null) {
-    rows.push({ source: "afp_uno", status: "disabled", stale: false });
+    rows.push(syncSourceRow("afp_uno", cl, "disabled", false));
   } else {
     const stale = isAfpUnoSpotStale(cl, state, { force });
-    rows.push({ source: "afp_uno", status: stale ? "stale" : "ok", stale });
+    rows.push(syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale));
   }
 
   {
     const stale = cl.hour >= 18 && isFintualSyncStale(cl, state);
-    rows.push({ source: "fintual", status: stale ? "stale" : "ok", stale });
+    rows.push(syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale));
   }
 
   const sbifFx = (source: "sbif_usd" | "sbif_eur", maxYmd: string | null, lastErrorAt?: string) => {
     if (!bde) {
-      rows.push({ source, status: "disabled", stale: false });
+      rows.push(syncSourceRow(source, cl, "disabled", false));
       return;
     }
     const stale = isSbifObservedFxStale(maxYmd, cl, lastErrorAt);
-    rows.push({ source, status: stale ? "stale" : "ok", stale });
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
   };
   sbifFx("sbif_usd", maxFxDateOnOrBefore(cl.ymd), state.sbifUsdLastErrorAt);
   sbifFx("sbif_eur", maxEurDateOnOrBefore(cl.ymd), state.sbifEurLastErrorAt);
 
   const sbifMonthly = (source: "sbif_uf" | "sbif_utm" | "sbif_ipc", syncedMonth: string | undefined) => {
     if (!bde) {
-      rows.push({ source, status: "disabled", stale: false });
+      rows.push(syncSourceRow(source, cl, "disabled", false));
       return;
     }
     const stale = cl.day >= 9 || forceSbif ? isSbifMonthlyStale(cl, syncedMonth, { forceSbif }) : false;
-    rows.push({ source, status: stale ? "stale" : "ok", stale });
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
   };
   sbifMonthly("sbif_uf", state.sbifUfMonth);
   sbifMonthly("sbif_utm", state.sbifUtmMonth);
   sbifMonthly("sbif_ipc", state.sbifIpcMonth);
 
   {
-    const stale = isEquityEodStale(state, { force });
-    rows.push({ source: "equity_eod", status: stale ? "stale" : "ok", stale });
+    const stale = isStocksNyseStale(state, { force });
+    rows.push(syncSourceRow("stocks_nyse", cl, stale ? "stale" : "ok", stale));
+  }
+
+  {
+    const stale = isCryptoEodStale(cl, state, { force });
+    rows.push(syncSourceRow("crypto_eod", cl, stale ? "stale" : "ok", stale));
   }
 
   return applyUserForcedStaleToRows(rows, state);

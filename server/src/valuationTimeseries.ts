@@ -33,6 +33,10 @@ import { resolveOperationalAccountId } from "./accountSource.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
   ccLedgerStatementClosingPointsClp,
+  latestCreditCardBillingBalanceTotalClp,
+  latestCreditCardBillingBalanceTotalClpAndAsOfDate,
+} from "./ccCreditCardValuations.js";
+import {
   ccInstallmentLedgerRowCount,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
@@ -42,6 +46,7 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, fxRowOnOrBefore, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 import {
+  latestMortgageDisplayedBalance,
   latestValuationRowOnOrBefore,
   latestValuationRowOnOrBeforeChileToday,
   latestLiabilityValuationRowForSnapshot,
@@ -411,6 +416,26 @@ function augmentChartDatesForCheckingAccounts(
   return [...aug].sort();
 }
 
+function augmentChartDatesForCreditCardAccounts(
+  dateStrs: string[],
+  allIds: number[],
+  slugById: Map<number, string>
+): string[] {
+  const aug = new Set(dateStrs);
+  for (const id of allIds) {
+    if (slugById.get(id) !== "credit_card") continue;
+    if (ccInstallmentLedgerRowCount(id) === 0) continue;
+    const closes = ccLedgerStatementClosingPointsClp(id);
+    if (!closes?.length) continue;
+    for (const p of closes) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(p.as_of_date)) {
+        aug.add(p.as_of_date);
+      }
+    }
+  }
+  return [...aug].sort();
+}
+
 /**
  * Month-end CLP series from `depto-dividendos.csv` (same as Numbers: **valor neto** + **pago acumulado**),
  * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the same amortization timeline as the sheet.
@@ -462,7 +487,7 @@ function propertyDeptoClpSeriesBySnapshotDate(
  *
  * Keeps the **current month's month-end** row when present (e.g. tarjeta de crédito cierre from the PDF ledger
  * at `2026-05-31` while today is still mid-month). Without that, the series would forward-fill the prior month
- * onto `today` and disagree with historial de cuotas / `valuations` from {@link upsertCreditCardValuationsFromLedger}.
+ * onto `today` and disagree with `valuations` from {@link upsertCreditCardValuationsFromLedger} in `ccCreditCardValuations.ts`.
  */
 function sanitizeValuationChartDateStrs(sortedAsc: string[]): string[] {
   const today = chileCalendarTodayYmd();
@@ -534,7 +559,7 @@ function patchCreditCardLiveLastPoint(
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
   const today = chileCalendarTodayYmd();
-  const live = liveCreditCardOutstandingClp(accountId);
+  const live = latestCreditCardBillingBalanceTotalClp(accountId);
   if (live == null || !Number.isFinite(live)) return points;
 
   const dk = String(accountId);
@@ -664,6 +689,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     merge
   );
   dateStrs = expandSnapshotDatesForCryptoMtm(dateStrs, allIds);
+  const slugById = categorySlugByAccountId(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
   if (dateStrs.length > 0) {
@@ -679,9 +705,9 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
     dateStrs = [...aug].sort();
   }
-  dateStrs = sanitizeValuationChartDateStrs(dateStrs);
-  const slugById = categorySlugByAccountId(allIds);
+  dateStrs = augmentChartDatesForCreditCardAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
+  dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   const propertyAccountIds = allIds.filter((id) => slugById.get(id) === "property");
   const propertyDeptoSheets =
     propertyAccountIds.length === 1
@@ -763,6 +789,30 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const singleAccountDisplayDepSeen = new Map<number, boolean>();
   const trailingChartDate = dateStrs.length > 0 ? dateStrs[dateStrs.length - 1]! : "";
   const todayYmd = chileCalendarTodayYmd();
+  const ccCloseByAccAndDate = new Map<number, Map<string, number>>();
+  // Credit-card chart series must use ledger-derived "balance total" (saldo total / balance_total),
+  // not the stored `valuations.value_clp` rows (which can still be cupo-based for some months).
+  for (const id of allIds) {
+    if (slugById.get(id) !== "credit_card") continue;
+    if (ccInstallmentLedgerRowCount(id) === 0) continue;
+    const closes = ccLedgerStatementClosingPointsClp(id);
+    if (closes?.length) {
+      ccCloseByAccAndDate.set(id, new Map(closes.map((p) => [p.as_of_date, p.value_clp])));
+    }
+  }
+
+  const mtgCloseByAccAndDate = new Map<number, Map<string, number>>();
+  const mortgageChartIds = allIds.filter((id) => slugById.get(id) === "mortgage");
+  if (mortgageChartIds.length > 0 && dateStrs.length > 0) {
+    const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+    if (ledger.length > 0) {
+      const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
+      const closeByDate = deptoMortgageCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate);
+      for (const id of mortgageChartIds) {
+        mtgCloseByAccAndDate.set(id, closeByDate);
+      }
+    }
+  }
 
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
@@ -772,6 +822,14 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         continue;
       const aid = t.account_id;
       let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
+      if (slugById.get(aid) === "credit_card") {
+        const ccClose = ccCloseByAccAndDate.get(aid)?.get(d);
+        if (ccClose != null && Number.isFinite(ccClose)) raw = ccClose;
+      }
+      if (slugById.get(aid) === "mortgage") {
+        const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
+        if (mtgClose != null && Number.isFinite(mtgClose)) raw = mtgClose;
+      }
       if (slugById.get(aid) === "afp") {
         raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
       }
@@ -970,13 +1028,13 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   return { accounts: topOut, points };
 }
 
+/** Asset buckets for patrimonio overview (Pasivos uses {@link groupTabValuationTotalByDate}, not valuations). */
 type RawOverviewBuckets = {
   real_estate: number;
   retirement: number;
   brokerageNoMtm: number;
   cash: number;
   crypto: number;
-  liabilities: number;
   assets_ex_liab: number;
 };
 
@@ -1017,12 +1075,10 @@ function accountCategoryMetaById(): Map<
   return accountCategoryMetaCache;
 }
 
-import {
-  liabilitiesBreakdownClpAsOf,
-  liabilitiesGroupClpAsOf,
-} from "./liabilitiesValuation.js";
+import { liabilitiesBreakdownClpAsOf } from "./liabilitiesValuation.js";
+import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 
-export { liabilitiesBreakdownClpAsOf, liabilitiesGroupClpAsOf };
+export { liabilitiesBreakdownClpAsOf };
 
 function capChartDatesThroughChileToday(datesAsc: string[]): string[] {
   const today = chileCalendarTodayYmd();
@@ -1038,18 +1094,14 @@ function aggregateOverviewBucketsFromLastVal(
   let brokerageNoMtm = 0;
   let cash = 0;
   let crypto = 0;
-  let liabilities = 0;
   let assets_ex_liab = 0;
   for (const [id, clp] of lastVal) {
     if (!Number.isFinite(clp)) continue;
     const m = meta.get(id);
     if (!m) continue;
     if (m.exclude_from_group_totals) continue;
+    if (m.group_slug === "liabilities") continue;
     const { category_slug, group_slug } = m;
-    if (group_slug === "liabilities") {
-      liabilities += clp;
-      continue;
-    }
     assets_ex_liab += clp;
     if (group_slug === "real_estate") real_estate += clp;
     if (group_slug === "retirement") retirement += clp;
@@ -1057,7 +1109,7 @@ function aggregateOverviewBucketsFromLastVal(
     if (group_slug === "cash_eqs") cash += clp;
     if (category_slug === "bitcoin" || category_slug === "eth" || group_slug === "crypto") crypto += clp;
   }
-  return { real_estate, retirement, brokerageNoMtm, cash, crypto, liabilities, assets_ex_liab };
+  return { real_estate, retirement, brokerageNoMtm, cash, crypto, assets_ex_liab };
 }
 
 function forwardFilledOverviewRawByDatesAsc(datesAsc: string[]): Map<string, RawOverviewBuckets> {
@@ -1066,6 +1118,10 @@ function forwardFilledOverviewRawByDatesAsc(datesAsc: string[]): Map<string, Raw
     .prepare(
       `SELECT v.account_id, v.as_of_date, v.value_clp
        FROM valuations v
+       JOIN accounts a ON a.id = v.account_id
+       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = c.group_id
+       WHERE g.slug != 'liabilities'
        ORDER BY v.as_of_date, v.account_id`
     )
     .all() as { account_id: number; as_of_date: string; value_clp: number }[];
@@ -1175,6 +1231,11 @@ function buildOverviewDisplayPoints(
   veaId: number | undefined
 ): Record<string, string | number | null>[] {
   const rawByD = forwardFilledOverviewRawByDatesAsc(datesAsc);
+  /** Same total as Pasivos class tab (`__group_val_total` / sidebar bucket), not forward-filled valuations. */
+  const liabilitiesByDate = forwardFillTotalsToChartDates(
+    groupTabValuationTotalByDate("liabilities", unit, datesAsc),
+    datesAsc
+  );
   let ovRealEstateStarted = false;
   let ovLiabilitiesStarted = false;
   return datesAsc.map((d) => {
@@ -1187,7 +1248,7 @@ function buildOverviewDisplayPoints(
     const totalNwClp = assetsClp;
     const row: Record<string, string | number | null> = { as_of_date: d };
     const reClp = raw.real_estate;
-    const liabClp = liabilitiesGroupClpAsOf(d);
+    const liabClp = liabilitiesByDate.get(d) ?? 0;
     if (!ovRealEstateStarted && Math.abs(reClp) < 0.5) row.real_estate = null;
     else {
       ovRealEstateStarted = true;
@@ -1200,8 +1261,10 @@ function buildOverviewDisplayPoints(
     }
     row.retirement = convertTs(raw.retirement, d, unit);
     row.brokerage = convertTs(brokerageClp, d, unit);
-    row.cash = convertTs(raw.cash, d, unit);
-    row.total_nw = convertTs(totalNwClp, d, unit);
+    const linkedCcAtD = linkedCreditCardClpForCashCardAsOf(d);
+    const cashNetClp = raw.cash - linkedCcAtD;
+    row.cash = convertTs(cashNetClp, d, unit);
+    row.total_nw = convertTs(totalNwClp - linkedCcAtD, d, unit);
     const investedClp = raw.retirement + brokerageClp + raw.crypto;
     row.invested = convertTs(investedClp, d, unit);
     return row;
@@ -1255,6 +1318,14 @@ function latestAllocationPieForAccounts(
         clp = vrow?.value_clp;
         asOf = vrow?.as_of_date;
       }
+    } else if (slugById.get(a.account_id) === "credit_card") {
+      const v = latestCreditCardBillingBalanceTotalClpAndAsOfDate(a.account_id);
+      clp = v?.value_clp;
+      asOf = v?.as_of_date;
+    } else if (slugById.get(a.account_id) === "mortgage") {
+      const v = latestMortgageDisplayedBalance(a.account_id);
+      clp = v?.value_clp;
+      asOf = v?.as_of_date;
     } else {
       const vrow = latestValuationRowOnOrBeforeChileToday(a.account_id);
       clp = vrow?.value_clp;
@@ -1390,7 +1461,13 @@ function groupTabValuationTotalByDate(
       }
       v = any ? sum : null;
     }
-    if (typeof v === "number" && Number.isFinite(v)) out.set(d, v);
+    if (typeof v === "number" && Number.isFinite(v)) {
+      if (portfolioGroupSlug === "cash_eqs") {
+        const cc = convertTs(linkedCreditCardClpForCashCardAsOf(d), d, unit);
+        if (Number.isFinite(cc)) v -= cc;
+      }
+      out.set(d, v);
+    }
   }
   return out;
 }

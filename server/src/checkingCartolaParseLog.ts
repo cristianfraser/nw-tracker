@@ -83,9 +83,8 @@ export function formatCheckingCartolaImportLogBody(log: CheckingCartolaImportRun
 
 export function insertCheckingCartolaImportRunLog(log: CheckingCartolaImportRunLog): void {
   if (log.dry_run) return;
-  const title = `Checking cartola import ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`;
   const body = formatCheckingCartolaImportLogBody(log);
-  insertAppMessage("log", title, body);
+  insertAppMessage("log", "Checking cartola import", body);
 }
 
 export function logCheckingCartolaImportRun(log: CheckingCartolaImportRunLog): void {

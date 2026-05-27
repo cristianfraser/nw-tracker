@@ -3,6 +3,7 @@ import {
   canonicalCcLineDedupeKeys,
   dedupeFlowCcExpenseLines,
   flowCcExpenseLineFingerprint,
+  purchaseExpenseLinesMatchForDisplayDedupe,
 } from "./ccExpenseLineDedupe.js";
 import type { CcExpenseLineForDedupe } from "./ccExpenseLineDedupe.js";
 
@@ -56,5 +57,47 @@ describe("ccExpenseLineDedupe", () => {
     const a = line({ statement_line_id: 23605 });
     const b = line({ statement_line_id: 23694 });
     expect(flowCcExpenseLineFingerprint(a)).toBe(flowCcExpenseLineFingerprint(b));
+  });
+
+  it("dedupes web-paste vs PDF purchase when merchant suffix differs", () => {
+    const web = line({
+      statement_line_id: 86435,
+      merchant_key: "METLIFE CHILE SEGUROS DE",
+      amount_clp: 3_212_395,
+      purchase_on: "2026-05-11",
+      billing_month: "2026-05",
+      category_slug: "utilities",
+    });
+    const pdf = line({
+      statement_line_id: 140593,
+      merchant_key: "METLIFE CHILE SEGUROS",
+      amount_clp: 3_212_395,
+      purchase_on: "2026-05-11",
+      billing_month: "2026-05",
+    });
+    expect(purchaseExpenseLinesMatchForDisplayDedupe(web, pdf)).toBe(true);
+    const deduped = dedupeFlowCcExpenseLines([web, pdf]);
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0]?.category_slug).toBe("utilities");
+    expect(deduped[0]?.statement_line_id).toBe(86435);
+  });
+
+  it("uses different fingerprints for the same cuota in different billing months", () => {
+    const april = line({
+      line_role: "installment_cuota",
+      installment_flag: 1,
+      billing_month: "2026-04",
+      purchase_on: "2025-06-01",
+      nro_cuota_current: 10,
+      nro_cuota_total: 12,
+      amount_clp: 7416,
+      statement_line_id: 1,
+    });
+    const may = line({
+      ...april,
+      billing_month: "2026-05",
+      statement_line_id: -2,
+    });
+    expect(flowCcExpenseLineFingerprint(april)).not.toBe(flowCcExpenseLineFingerprint(may));
   });
 });

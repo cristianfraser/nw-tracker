@@ -10,6 +10,7 @@ import { cn } from "../../cn";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
+import { MortgageDividendosTableV2 } from "./MortgageDividendosTableV2";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import {
   ACCOUNT_FLOWS_COLLAPSED,
@@ -264,6 +265,10 @@ export function StandardAccountDetailPage({ data }: Props) {
       {mortgageLedger.source === "csv" && mortgageLedger.rows.length > 0 ? (
         <>
           <MortgageDividendosTable
+            ledger={mortgageLedger}
+            variant={isMortgageAccount ? "mortgage" : "property"}
+          />
+          <MortgageDividendosTableV2
             ledger={mortgageLedger}
             variant={isMortgageAccount ? "mortgage" : "property"}
           />

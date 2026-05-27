@@ -252,9 +252,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}
-            accountId={summary.account_id}
-            displayUnit={displayUnit}
-            extraCcOffsets={extraCcOffsets}
             collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
           />
         </>

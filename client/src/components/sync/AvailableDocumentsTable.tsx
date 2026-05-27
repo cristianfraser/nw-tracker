@@ -44,27 +44,44 @@ export function AvailableDocumentsTable({
             const cell = cells[monthIdx]?.[accIdx];
             const imported = cell?.imported === true;
             const filePath = cell?.file_path ?? null;
+            const hasFile = Boolean(filePath);
             const ariaLabel = imported
-              ? t("importSync.importedYes", { account: acc.label, month: ym })
+              ? hasFile
+                ? t("importSync.importedYes", { account: acc.label, month: ym })
+                : t("importSync.importedUnlinked", {
+                    account: acc.label,
+                    month: ym,
+                  })
               : t("importSync.importedNo", { account: acc.label, month: ym });
-            const mark = imported ? "✓" : "✗";
+            const checkMark = (
+              <span className={styles.ok} aria-hidden>
+                ✓
+              </span>
+            );
+            const crossMark = (
+              <span className={styles.missing} aria-hidden>
+                ✗
+              </span>
+            );
             return (
               <td key={acc.account_id} className={styles.cell}>
-                {imported && filePath ? (
+                {imported && hasFile ? (
                   <a
-                    href={absolutePathToFileUrl(filePath)}
-                    className={styles.ok}
-                    title={filePath}
+                    href={absolutePathToFileUrl(filePath!)}
+                    className={styles.cellLink}
+                    title={filePath!}
                     aria-label={ariaLabel}
                   >
-                    {mark}
+                    {checkMark}
                   </a>
+                ) : imported ? (
+                  <span className={styles.cellDual} aria-label={ariaLabel}>
+                    {checkMark}
+                    {crossMark}
+                  </span>
                 ) : (
-                  <span
-                    className={imported ? styles.ok : styles.missing}
-                    aria-label={ariaLabel}
-                  >
-                    {mark}
+                  <span className={styles.cellMissing} aria-label={ariaLabel}>
+                    {crossMark}
                   </span>
                 )}
               </td>

@@ -19,6 +19,7 @@ import {
 } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 
 export type CcBillingMonthBalanceRow = {
   id: number;
@@ -316,7 +317,7 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
 
   const today = chileCalendarTodayYmd();
   const todayMonth = billingMonthForStatementDate(today);
-  if (todayMonth) {
+  if (todayMonth && !creditCardBillingDetailInactive(accountId)) {
     const hasStatement = statements.some((s) => s.billing_month === todayMonth);
     if (!hasStatement) {
       upsertBalance.run({
