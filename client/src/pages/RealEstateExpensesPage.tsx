@@ -1,18 +1,35 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useFlowsExpenses } from "../queries/hooks";
 import { ExpensesByApartmentChart } from "../components/charts/ExpensesByApartmentChart";
+import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
 import { formatClp } from "../format";
 import { expenseApartmentLabel, expenseKindLabel, useTranslation } from "../i18n";
-import type { ExpenseApartmentSlug, FlowExpenseAccountBlock } from "../types";
+import { useRealEstateExpenses } from "../queries/hooks";
+import { useUnmatchRealEstateExpenseMutation } from "../queries/mutations";
+import type { ExpenseApartmentSlug, RealEstateBillSlot } from "../types";
 
 const ACCOUNT_ORDER: ExpenseApartmentSlug[] = ["el_vergel", "lastarria", "suecia"];
 
-function formatAmountCell(amount_clp: number): string {
-  if (amount_clp <= 0) return "—";
-  return formatClp(amount_clp);
+function formatAmountCell(slot: RealEstateBillSlot): string {
+  if (slot.kind === "kwh") return slot.note?.includes("kwh=") ? slot.note.split("kwh=")[1]?.split("|")[0] ?? "—" : "—";
+  if (slot.display_amount_clp <= 0 && slot.expected_amount_clp <= 0) return "—";
+  if (slot.link) return formatClp(slot.link.amount_clp);
+  return formatClp(slot.expected_amount_clp);
+}
+
+function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => string): string {
+  if (!slot.link) return t("expenses.realEstate.unlinked");
+  const parts = [
+    slot.link.merchant ?? "—",
+    slot.link.purchase_on ?? "",
+    slot.link.origin_label,
+    slot.link.source === "checking"
+      ? t("expenses.creditCard.sourceChecking")
+      : t("expenses.creditCard.sourceCreditCard"),
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 /** Gastos de arriendo / departamento (`/flows/expenses/real_estate`). */
@@ -20,7 +37,9 @@ export function RealEstateExpensesPage() {
   const { t } = useTranslation();
   const { accountSlug } = useParams<{ accountSlug?: string }>();
   const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
-  const { data, error } = useFlowsExpenses();
+  const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
+  const { data, error } = useRealEstateExpenses();
+  const unmatchMutation = useUnmatchRealEstateExpenseMutation();
   const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
   const chartPoints = useMemo(() => {
@@ -37,16 +56,16 @@ export function RealEstateExpensesPage() {
 
   const sections = useMemo(() => {
     if (!data) return [];
-    const block = data.by_group.real_estate;
-    if (!block) return [];
-    const accounts = ACCOUNT_ORDER.map((slug) => block.by_account[slug]).filter(
-      (a): a is FlowExpenseAccountBlock => a != null
+    const accounts = ACCOUNT_ORDER.map((slug) => data.by_account[slug]).filter(
+      (a) => a != null && a.slots.length > 0
     );
     const filtered = accountSlug
       ? accounts.filter((a) => a.account_slug === accountSlug)
       : accounts;
-    if (filtered.length === 0) return [];
-    return [{ group: "real_estate" as const, accounts: filtered }];
+    if (accountSlug && filtered.length === 0 && data.by_account[accountSlug as ExpenseApartmentSlug]) {
+      return [data.by_account[accountSlug as ExpenseApartmentSlug]!];
+    }
+    return filtered;
   }, [data, accountSlug]);
 
   if (err) {
@@ -59,6 +78,10 @@ export function RealEstateExpensesPage() {
 
   const titleSuffix =
     accountSlug != null ? expenseApartmentLabel(accountSlug as ExpenseApartmentSlug) : null;
+
+  const groupTotal = accountSlug
+    ? (data.by_account[accountSlug as ExpenseApartmentSlug]?.total_clp ?? 0)
+    : data.total_clp;
 
   return (
     <>
@@ -104,61 +127,113 @@ export function RealEstateExpensesPage() {
         />
       </div>
 
-      {sections.map(({ group, accounts }) => {
-        const groupBlock = data.by_group[group];
-        return (
-          <section key={group} style={{ marginBottom: "1.75rem" }}>
-            <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
-              {t(`expenses.groups.${group}`)}
+      <section style={{ marginBottom: "1.75rem" }}>
+        <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
+          {t("expenses.groups.real_estate")}
+          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+            {formatClp(groupTotal)}
+          </span>
+        </h3>
+        {sections.map((acc) => (
+          <div key={acc.account_slug} style={{ marginBottom: "1.25rem" }}>
+            <h4 style={{ fontSize: "1rem", marginBottom: "0.35rem" }}>
+              {expenseApartmentLabel(acc.account_slug)}
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
-                {formatClp(groupBlock?.total_clp ?? 0)}
+                {formatClp(acc.total_clp)}
               </span>
-            </h3>
-            {accounts.map((acc) => (
-              <div key={acc.account_slug} style={{ marginBottom: "1.25rem" }}>
-                <h4 style={{ fontSize: "1rem", marginBottom: "0.35rem" }}>
-                  {expenseApartmentLabel(acc.account_slug)}
-                  <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
-                    {formatClp(acc.total_clp)}
-                  </span>
-                </h4>
-                <Table
-                  tableStyle={{ fontSize: "0.85rem" }}
-                  header={
-                    <thead>
-                      <tr>
-                        <th>{t("expenses.colDate")}</th>
-                        <th>{t("expenses.colKind")}</th>
-                        <th>{t("expenses.colAmount")}</th>
-                        <th>{t("expenses.colDetail")}</th>
-                      </tr>
-                    </thead>
-                  }
-                >
-                  {acc.rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="muted">
-                        {t("expenses.emptyAccount")}
-                      </td>
-                    </tr>
-                  ) : (
-                    acc.rows.map((r, idx) => (
-                      <tr key={`${r.spent_on}-${r.category}-${idx}`}>
-                        <td className="mono">{r.spent_on}</td>
-                        <td>{expenseKindLabel(r.category)}</td>
-                        <td className="mono">{formatAmountCell(r.amount_clp)}</td>
-                        <td className="muted" style={{ fontSize: "0.8rem" }}>
-                          {r.note ?? "—"}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </Table>
-              </div>
-            ))}
-          </section>
-        );
-      })}
+            </h4>
+            <Table
+              tableStyle={{ fontSize: "0.85rem" }}
+              header={
+                <thead>
+                  <tr>
+                    <th>{t("expenses.colDate")}</th>
+                    <th>{t("expenses.colKind")}</th>
+                    <th>{t("expenses.colAmount")}</th>
+                    <th>{t("expenses.realEstate.colLinkedPurchase")}</th>
+                    <th>{t("expenses.realEstate.colActions")}</th>
+                  </tr>
+                </thead>
+              }
+            >
+              {acc.slots.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    {t("expenses.emptyAccount")}
+                  </td>
+                </tr>
+              ) : (
+                acc.slots.map((slot) => (
+                  <tr key={slot.expense_entry_id}>
+                    <td className="mono">{slot.bill_month}</td>
+                    <td>{expenseKindLabel(slot.kind)}</td>
+                    <td className="mono">
+                      {formatAmountCell(slot)}
+                      {slot.link &&
+                      slot.expected_amount_clp > 0 &&
+                      slot.link.amount_clp !== slot.expected_amount_clp ? (
+                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          {t("expenses.realEstate.expectedHint", {
+                            amount: formatClp(slot.expected_amount_clp),
+                          })}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td
+                      className={slot.link ? undefined : "muted"}
+                      style={{ fontSize: slot.link ? "0.85rem" : undefined }}
+                    >
+                      {slot.kind === "kwh" ? "—" : linkedPurchaseLabel(slot, t)}
+                      {slot.link ? (
+                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          {slot.link.link_source === "auto"
+                            ? t("expenses.realEstate.linkSourceAuto")
+                            : t("expenses.realEstate.linkSourceManual")}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {slot.can_link ? (
+                        slot.link ? (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={unmatchMutation.isPending}
+                            onClick={() =>
+                              void unmatchMutation.mutateAsync(slot.expense_entry_id)
+                            }
+                          >
+                            {t("expenses.realEstate.unlinkAction")}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => setLinkSlot(slot)}
+                          >
+                            {t("expenses.realEstate.linkAction")}
+                          </button>
+                        )
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </Table>
+          </div>
+        ))}
+        {sections.length === 0 ? (
+          <p className="muted">{t("expenses.emptyAccount")}</p>
+        ) : null}
+      </section>
+
+      <RealEstateExpenseLinkModal
+        slot={linkSlot}
+        open={linkSlot != null}
+        onClose={() => setLinkSlot(null)}
+      />
     </>
   );
 }

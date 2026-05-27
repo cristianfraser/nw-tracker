@@ -1,3 +1,4 @@
+import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
@@ -38,13 +39,14 @@ export function flowCcExpenseLineFingerprint(
     line.merchant_key,
     line.amount_clp,
     line.purchase_on ?? "",
+    line.billing_month,
+    cuota,
   ];
-  // Installment cuotas are one row per purchase+cuota; billing month differs between PDF and ledger.
-  if (role !== "installment_cuota") {
-    parts.push(line.billing_month);
-  }
-  parts.push(cuota);
   return parts.join("\t");
+}
+
+function lineRole(line: CcExpenseLineForDedupe & { line_role?: string }): string {
+  return line.line_role ?? (line.installment_flag ? "installment_cuota" : "purchase");
 }
 
 function lineKeepScore(line: CcExpenseLineForDedupe): number {
@@ -54,28 +56,57 @@ function lineKeepScore(line: CcExpenseLineForDedupe): number {
   return score;
 }
 
+function pickPreferredExpenseLine<T extends CcExpenseLineForDedupe>(prev: T, next: T): T {
+  const prevScore = lineKeepScore(prev);
+  const nextScore = lineKeepScore(next);
+  if (
+    nextScore > prevScore ||
+    (nextScore === prevScore && next.statement_line_id > prev.statement_line_id)
+  ) {
+    return next;
+  }
+  return prev;
+}
+
+/** Same one-shot purchase on web-paste vs PDF (merchant text often differs slightly). */
+export function purchaseExpenseLinesMatchForDisplayDedupe(
+  a: CcExpenseLineForDedupe,
+  b: CcExpenseLineForDedupe
+): boolean {
+  if (lineRole(a) !== "purchase" || lineRole(b) !== "purchase") return false;
+  if (a.account_id !== b.account_id) return false;
+  if (a.billing_month !== b.billing_month) return false;
+  if (a.amount_clp !== b.amount_clp) return false;
+  if ((a.purchase_on ?? "") !== (b.purchase_on ?? "")) return false;
+  return merchantsMatchForCrossDedupe(a.merchant_key, b.merchant_key);
+}
+
 /** Drop duplicate charges from re-imported PDFs / mixed date formats in dedupe keys. */
 export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
   lines: readonly T[]
 ): T[] {
-  const best = new Map<string, T>();
+  const nonPurchases: T[] = [];
+  const purchases: T[] = [];
   for (const line of lines) {
+    if (lineRole(line) === "purchase") purchases.push(line);
+    else nonPurchases.push(line);
+  }
+
+  const best = new Map<string, T>();
+  for (const line of nonPurchases) {
     const key = flowCcExpenseLineFingerprint(line);
     const prev = best.get(key);
-    if (!prev) {
-      best.set(key, line);
-      continue;
-    }
-    const prevScore = lineKeepScore(prev);
-    const nextScore = lineKeepScore(line);
-    if (
-      nextScore > prevScore ||
-      (nextScore === prevScore && line.statement_line_id > prev.statement_line_id)
-    ) {
-      best.set(key, line);
-    }
+    best.set(key, prev ? pickPreferredExpenseLine(prev, line) : line);
   }
-  return [...best.values()];
+
+  const purchaseBest: T[] = [];
+  for (const line of purchases) {
+    const idx = purchaseBest.findIndex((prev) => purchaseExpenseLinesMatchForDisplayDedupe(prev, line));
+    if (idx < 0) purchaseBest.push(line);
+    else purchaseBest[idx] = pickPreferredExpenseLine(purchaseBest[idx]!, line);
+  }
+
+  return [...best.values(), ...purchaseBest];
 }
 
 export type CcStatementCsvDedupeRow = {

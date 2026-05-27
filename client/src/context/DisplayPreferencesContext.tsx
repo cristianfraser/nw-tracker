@@ -1,12 +1,15 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import { prefetchBothDashboardBundles, prefetchDashboardBundle } from "../queries/displayUnitQueries";
 import type { DisplayUnit } from "../queries/keys";
 
 const LS_UNIT = "nw-tracker.displayUnit";
@@ -48,17 +51,26 @@ type DisplayPreferencesContextValue = {
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
 
 export function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [displayUnit, setDisplayUnitState] = useState<DisplayUnit>(readStoredUnit);
   const [metricsPeriod, setMetricsPeriodState] = useState<CardGroupMetricsPeriod>(readStoredMetricsPeriod);
 
-  const setDisplayUnit = useCallback((u: DisplayUnit) => {
-    setDisplayUnitState(u);
-    try {
-      localStorage.setItem(LS_UNIT, u);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  useEffect(() => {
+    void prefetchBothDashboardBundles(queryClient);
+  }, [queryClient]);
+
+  const setDisplayUnit = useCallback(
+    (u: DisplayUnit) => {
+      setDisplayUnitState(u);
+      try {
+        localStorage.setItem(LS_UNIT, u);
+      } catch {
+        /* ignore */
+      }
+      void prefetchDashboardBundle(queryClient, u);
+    },
+    [queryClient]
+  );
 
   const setMetricsPeriod = useCallback((p: CardGroupMetricsPeriod) => {
     setMetricsPeriodState(p);

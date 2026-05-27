@@ -33,6 +33,67 @@ describe("userForcedStale", () => {
   });
 });
 
+describe("isFintualSyncStale non-business block", () => {
+  it("is stale on Sunday evening after Friday sync (weekend block ends Sunday)", () => {
+    const sunday: ChileWallClock = {
+      ymd: "2026-05-24",
+      hour: 20,
+      minute: 0,
+      day: 24,
+      monthKey: "2026-05",
+    };
+    const state: GlobalSyncStateFile = {
+      fintualEveningSettledYmd: "2026-05-22",
+      fintualLastCheckYmd: "2026-05-22",
+      fintualLastPublishYmd: "2026-05-24",
+      fintualLastAppliedPublishYmd: "2026-05-24",
+      fintualLastCheckSig: "sig",
+      fintualLastAppliedSig: "sig",
+    };
+    expect(isFintualSyncStale(sunday, state)).toBe(true);
+  });
+
+  it("is not stale on Saturday evening (block not ended)", () => {
+    const saturday: ChileWallClock = {
+      ymd: "2026-05-23",
+      hour: 20,
+      minute: 0,
+      day: 23,
+      monthKey: "2026-05",
+    };
+    const state: GlobalSyncStateFile = {
+      fintualEveningSettledYmd: "2026-05-22",
+      fintualLastCheckYmd: "2026-05-22",
+      fintualLastPublishYmd: "2026-05-24",
+      fintualLastAppliedPublishYmd: "2026-05-24",
+      fintualLastCheckSig: "sig",
+      fintualLastAppliedSig: "sig",
+    };
+    expect(isFintualSyncStale(saturday, state)).toBe(false);
+  });
+});
+
+describe("isFintualSyncStale publish lag", () => {
+  it("stays stale after a no-change poll when API publish is before poll day", () => {
+    const monday: ChileWallClock = {
+      ymd: "2026-05-25",
+      hour: 20,
+      minute: 0,
+      day: 25,
+      monthKey: "2026-05",
+    };
+    const state: GlobalSyncStateFile = {
+      fintualLastCheckYmd: "2026-05-25",
+      fintualLastPublishYmd: "2026-05-24",
+      fintualLastAppliedPublishYmd: "2026-05-24",
+      fintualLastCheckSig: "sig",
+      fintualLastAppliedSig: "sig",
+      fintualEveningSettledYmd: "2026-05-22",
+    };
+    expect(isFintualSyncStale(monday, state)).toBe(true);
+  });
+});
+
 describe("isFintualSyncStale publish advance", () => {
   it("stays stale when poll publish is ahead of last applied", () => {
     const state: GlobalSyncStateFile = {

@@ -7,13 +7,15 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { backfillMissingInstallmentPaymentsForAccount } from "./ccInstallmentPaymentBackfill.js";
 import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import {
   importCcStatementsMerge,
   statementKeyFromRow,
   type CcStatementCsvRecord,
   type CcStatementsMergeOpts,
 } from "./ccStatementsImport.js";
+import { reconcileManualInstallmentPurchasesAfterStatementImport } from "./ccManualInstallmentStatementReconcile.js";
+import { assertCcImportReconcilesOrThrow } from "./ccStatementImportReconcile.js";
 import { loadCreditCardInstallmentPurchases } from "./creditCardInstallments.js";
 
 function parseInt10(s: string): number | null {
@@ -269,6 +271,8 @@ export function mergeInstallmentLedgerFromParsedRows(
 export type CcAccountImportMergeResult = {
   statements: ReturnType<typeof importCcStatementsMerge>;
   ledger: CcInstallmentLedgerMergeResult;
+  overlap_removed: number;
+  manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
@@ -282,6 +286,9 @@ export function mergeCcAccountFromParsedRows(
   }
 ): CcAccountImportMergeResult {
   const replaceKeys = opts?.replaceStatementKeys;
+  assertCcImportReconcilesOrThrow(accountId, records, {
+    replaceStatementKeys: replaceKeys,
+  });
   const statements = importCcStatementsMerge(accountId, records, {
     replaceAll: false,
     replaceStatementKeys: replaceKeys,
@@ -291,8 +298,12 @@ export function mergeCcAccountFromParsedRows(
   const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
     replaceLedger: opts?.replaceLedger ?? false,
   });
+  const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(
+    accountId,
+    records
+  );
   const overlap = removeOneShotLinesSupersededByInstallmentPurchases(accountId);
-  return { statements, ledger, overlap_removed: overlap.removed_count };
+  return { statements, ledger, overlap_removed: overlap.removed_count, manual_installment_reconcile };
 }
 
 export function replaceStatementKeysFromRecords(records: CcStatementCsvRecord[]): Set<string> {

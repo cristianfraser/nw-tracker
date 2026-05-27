@@ -902,7 +902,6 @@ export function cashCardBreakdownFromDash(
     }[];
   }
 ): CashCardBreakdown {
-  const lb = dash.liabilities_breakdown;
   const links = dash.cash_credit_card_links?.map((l) => ({
     operational_account_id: l.operational_account_id,
     name: l.name,
@@ -911,7 +910,7 @@ export function cashCardBreakdownFromDash(
   }));
   return buildCashCardBreakdown(
     accounts,
-    lb != null ? { clp: lb.credit_card_clp, usd: lb.credit_card_usd ?? null } : null,
+    null,
     links?.length ? links : undefined
   );
 }

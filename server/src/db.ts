@@ -5,7 +5,23 @@ import Database from "better-sqlite3";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, "..", "data");
-const dbPath = path.join(dataDir, "nw-tracker.db");
+
+/** SQLite file under `server/data/`. Set `NW_TRACKER_TEST_DB` (basename or absolute) for Vitest — see `vitest.config.ts` and `npm run test`. */
+function resolveDatabaseFilePath(): string {
+  const override = process.env.NW_TRACKER_TEST_DB?.trim();
+  if (override) {
+    if (override === ":memory:") {
+      return ":memory:";
+    }
+    if (path.isAbsolute(override)) {
+      return path.resolve(override);
+    }
+    return path.join(dataDir, override);
+  }
+  return path.join(dataDir, "nw-tracker.db");
+}
+
+const dbPath = resolveDatabaseFilePath();
 
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -112,6 +128,23 @@ export function initSchema() {
       UNIQUE (group_id, child_credit_card_group_id)
     );
 
+    CREATE TABLE IF NOT EXISTS expense_groups (
+      id INTEGER PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS expense_accounts (
+      id INTEGER PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES expense_groups(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      UNIQUE(group_id, slug)
+    );
+
     CREATE TABLE IF NOT EXISTS portfolio_groups (
       id INTEGER PRIMARY KEY,
       parent_id INTEGER REFERENCES portfolio_groups(id) ON DELETE CASCADE,
@@ -167,7 +200,6 @@ export function initSchema() {
       amount_clp REAL NOT NULL DEFAULT 0,
       occurred_on TEXT NOT NULL,
       note TEXT,
-      units_delta REAL,
       flow_kind TEXT,
       amount_usd REAL,
       ticker TEXT
@@ -317,6 +349,29 @@ function seedReferenceData() {
 
 const migrationsDir = path.join(__dirname, "..", "migrations");
 
+function splitMigrationStatements(sql: string): string[] {
+  const withoutComments = sql.replace(/--[^\n]*/g, "");
+  return withoutComments
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function execMigrationSql(sql: string): void {
+  for (const stmt of splitMigrationStatements(sql)) {
+    try {
+      db.exec(stmt);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // `initSchema()` already reflects many later migrations; re-applying ALTER ADD on a fresh DB is a no-op.
+      if (/duplicate column name/i.test(msg)) {
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 export function runMigrations() {
   if (!fs.existsSync(migrationsDir)) {
     return;
@@ -336,7 +391,7 @@ export function runMigrations() {
     const full = path.join(migrationsDir, file);
     const sql = fs.readFileSync(full, "utf8");
     const run = db.transaction(() => {
-      db.exec(sql);
+      execMigrationSql(sql);
       db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     });
     run();

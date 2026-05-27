@@ -1,13 +1,13 @@
 /**
  * Fetch recent Yahoo daily closes into `equity_daily` (SPY, VEA, BTC-USD, ETH-USD).
- * NYSE tickers only after 16:05 America/New_York on trading days; crypto every run.
+ * Prefer `npm run sync:all` (separate `stocks_nyse` and `crypto_eod` buckets).
  *
  * Usage:
  *   npm run sync:equity-eod -w nw-tracker-server
  *   npm run sync:equity-eod -w nw-tracker-server -- --force
  */
 import "../src/db.js";
-import { syncEquityEodFromYahoo } from "../src/equityEodSync.js";
+import { EQUITY_DAILY_IMPORT_TICKERS, syncEquityEodFromYahoo } from "../src/equityEodSync.js";
 import { loadRootDotenv } from "./fintualApiLib.js";
 
 const force = process.argv.includes("--force");
@@ -15,7 +15,7 @@ const dryRun = process.argv.includes("--dry-run");
 
 async function main(): Promise<void> {
   loadRootDotenv();
-  const results = await syncEquityEodFromYahoo(undefined, { dryRun, force });
+  const results = await syncEquityEodFromYahoo(EQUITY_DAILY_IMPORT_TICKERS, { dryRun, force });
   for (const r of results) {
     console.log(
       `${r.ticker}: ${r.skipped ? `skip (${r.skipped})` : `${r.rows} row(s) upserted`}`

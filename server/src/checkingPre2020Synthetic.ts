@@ -99,8 +99,7 @@ function insertPre2020SyntheticAppLog(result: Pre2020SyntheticRunResult): void {
         `delta=${m.known_delta_clp} mirror=${m.mirror_clp} real=${m.real_count}`
     );
   }
-  const title = `Checking pre-2020 synthetic ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`;
-  insertAppMessage("log", title, lines.join("\n"));
+  insertAppMessage("log", "Checking pre-2020 synthetic", lines.join("\n"));
 }
 
 export function buildPre2020SyntheticHistory(opts?: {

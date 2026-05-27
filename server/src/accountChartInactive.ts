@@ -1,31 +1,17 @@
-import { getAccountMonthlyPerformance, loadBookValuationsAsc } from "./accountPerformance.js";
+import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { db } from "./db.js";
+import {
+  CHART_TRAILING_ZERO_MONTHS_KEPT,
+  chartInactiveFromMonthlyClosingAsc,
+  accountInactiveByValuationTail,
+} from "./accountValuationTailInactive.js";
+import { loadBookValuationsAsc } from "./bookValuations.js";
 
-/**
- * Matches client {@link DEFAULT_TRAILING_ZERO_MONTHS_KEPT}: months of trailing **zero** balance
- * kept at the end of the monthly closing series before the rest is treated as inactive tail.
- */
-export const CHART_TRAILING_ZERO_MONTHS_KEPT = 3;
-
-/**
- * Same rule as client `trailingZeroTailClipStartIndex` on ascending monthly closes: more than
- * `monthsKept` consecutive zero balances at the **end** of the series → inactive for strip / nav.
- */
-export function chartInactiveFromMonthlyClosingAsc(
-  closingValuesAsc: readonly number[],
-  monthsKept = CHART_TRAILING_ZERO_MONTHS_KEPT
-): boolean {
-  let lastNonZeroIdx = -1;
-  for (let i = 0; i < closingValuesAsc.length; i++) {
-    const v = closingValuesAsc[i];
-    if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) > 1e-9) {
-      lastNonZeroIdx = i;
-    }
-  }
-  const n = closingValuesAsc.length;
-  const trailingLen = lastNonZeroIdx >= 0 ? n - 1 - lastNonZeroIdx : n;
-  return trailingLen > monthsKept;
-}
+export {
+  CHART_TRAILING_ZERO_MONTHS_KEPT,
+  chartInactiveFromMonthlyClosingAsc,
+  accountInactiveByValuationTail,
+} from "./accountValuationTailInactive.js";
 
 /** Month-end closes for tail-inactive detection (performance series, else stored valuations). */
 function monthEndClosingAscForInactiveCheck(accountId: number): number[] {

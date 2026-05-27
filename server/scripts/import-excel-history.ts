@@ -108,7 +108,8 @@ import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { ufClpBySnapshotDatesAsc } from "../src/fxRates.js";
 import { applyCryptoValuationsFromCoinHoldings } from "../src/cryptoValuation.js";
 import { db } from "../src/db.js";
-import { ccInstallmentLedgerRowCount, upsertCreditCardValuationsFromLedger } from "../src/ccInstallmentLedgerDb.js";
+import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { resolveBundledUfSiiDailyCsvPath } from "../src/ufSiiDailyPath.js";
 import {

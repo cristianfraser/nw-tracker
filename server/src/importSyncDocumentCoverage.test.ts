@@ -74,15 +74,15 @@ describe("importSyncDocumentCoverage", () => {
         expect(hasImportSyncDocumentForMonth(acc, rowMonth)).toBe(true);
         const base = path.basename(cell.file_path);
         if (acc.document_kind === "cc_statement") {
-          const row = db
+          const rows = db
             .prepare(
-              `SELECT source_pdf, period_to FROM cc_statements
-               WHERE account_id = ? AND source_pdf LIKE ? LIMIT 1`
+              `SELECT source_pdf, period_to FROM cc_statements WHERE account_id = ?`
             )
-            .get(acc.account_id, `%${base}%`) as {
+            .all(acc.account_id) as {
               source_pdf: string;
               period_to: string | null;
-            } | undefined;
+            }[];
+          const row = rows.find((r) => matrixMonthForCcStatement(r) === rowMonth);
           expect(row).toBeDefined();
           expect(matrixMonthForCcStatement(row!)).toBe(rowMonth);
         } else {

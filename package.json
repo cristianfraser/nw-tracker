@@ -17,6 +17,7 @@
     "repair:cc-metadata": "npm run repair:cc-metadata -w nw-tracker-server",
     "repair:cc-pdfs-qpdf": "python3 server/scripts/repair-cc-statement-pdfs-qpdf.py --inbox",
     "parse:cc-pdfs": "PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/parse-cc-statement-pdfs.py",
+    "restore:cc-corrupt-pdfs": "PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/restore-cc-corrupt-pdfs.py",
     "check:cc-parse": "PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/check-cc-statement-parse.py",
     "parse:checking-cartola-pdfs": "PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/parse-checking-cartola-pdfs.py",
     "export:checking-cartola-screenshots-csv": "npm run export:checking-cartola-screenshots-csv -w nw-tracker-server",

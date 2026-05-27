@@ -1,9 +1,17 @@
 {
-  "unoLastSpotYmd": "2026-05-18",
-  "fintualLastCheckYmd": "2026-05-15",
-  "fintualLastAppliedYmd": "2026-05-15",
-  "fintualLastAppliedSig": "1164983:27353778|16749:44323060|2859:10425498|78515:19951759",
+  "unoLastSpotYmd": "2026-05-27",
+  "fintualLastCheckYmd": "2026-05-27",
+  "fintualLastAppliedYmd": "2026-05-27",
+  "fintualLastAppliedSig": "1164983:27390867.62|16749:45290730.96|2859:10651067.5|78515:20387350.84",
   "sbifUfMonth": "2026-05",
   "sbifUtmMonth": "2026-05",
-  "sbifIpcMonth": "2026-05"
+  "sbifIpcMonth": "2026-05",
+  "fintualLastCheckSig": "1164983:27390867.62|16749:45290730.96|2859:10651067.5|78515:20387350.84",
+  "afpLastUnitDay": "2026-05-27",
+  "afpLastUnitClp": 95703.86,
+  "equityEodLastNySessionYmd": "2026-05-27",
+  "equityEodLastCryptoUtcYmd": "2026-05-27",
+  "fintualLastPublishYmd": "2026-05-27",
+  "fintualLastAppliedPublishYmd": "2026-05-27",
+  "fintualEveningSettledYmd": "2026-05-27"
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
   assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
@@ -13,6 +14,10 @@ import {
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import {
+  createManualCcInstallmentPurchase,
+  deleteManualCcInstallmentPurchase,
+} from "./ccInstallmentManual.js";
 
 describe("ccExpenseCategories", () => {
   it("listCreditCardMasterAccountIds includes active masters from every issuer group", () => {
@@ -325,6 +330,45 @@ describe("ccExpenseCategories", () => {
       const ln = afterUncheck.lines.find((l) => l.statement_line_id === lineId);
       expect(ln?.category_slug).toBe("fun");
       expect(ln?.category_unique).toBe(false);
+    }
+  });
+
+  it("assignCcExpenseCategoryForManualLedgerInstallmentPurchase handles consolidated manual (-purchaseId)", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const created = createManualCcInstallmentPurchase(master.id, {
+      purchase_date: "2026-05-10",
+      total_amount_clp: 50_000,
+      cuotas_totales: 10,
+      merchant: "TEST_MANUAL_CC_CONSOLIDATED_CAT",
+    });
+    let purchaseKeyForCleanup: string | null = null;
+    try {
+      const r = assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
+        purchaseId: created.id,
+        unique: true,
+        categorySlug: "supermarket",
+      });
+      purchaseKeyForCleanup = r.purchase_key;
+      expect(r.purchase_key.startsWith("installment-h:")).toBe(true);
+      expect(r.category_slug).toBe("supermarket");
+      const up = db
+        .prepare(
+          `SELECT 1 FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        )
+        .get(master.id, r.purchase_key);
+      expect(up).toBeDefined();
+    } finally {
+      if (purchaseKeyForCleanup) {
+        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).run(
+          master.id,
+          purchaseKeyForCleanup
+        );
+      }
+      deleteManualCcInstallmentPurchase(master.id, created.id);
     }
   });
 });

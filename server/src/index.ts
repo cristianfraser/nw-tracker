@@ -42,7 +42,10 @@ import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "./entityColors.js";
 import { db } from "./db.js";
 import { listRatesInstrumentSeries, listMarketDisplaySeries } from "./marketDisplaySeries.js";
-import { creditCardLiabilityLinkRowsForCashCard } from "./liabilityTree.js";
+import {
+  creditCardLiabilityLinkRowsForCashCard,
+  linkedCreditCardClpForCashCardAsOf,
+} from "./liabilityTree.js";
 import { getPortfolioTreeForCharts, getSidebarNavPayload } from "./navTree.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
@@ -56,7 +59,7 @@ import {
 import type { AccountPositionMeta } from "./accountPosition.js";
 import { getMarketSeriesPayload } from "./marketSeries.js";
 import { getMarketTickerPayload } from "./marketTicker.js";
-import { liabilitiesBreakdownClpAsOf, liabilitiesGroupClpAsOf } from "./valuationTimeseries.js";
+import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import {
   brokerageSubgroupMatchesCategory,
   getAccountValuationTimeseries,
@@ -85,10 +88,6 @@ import { patchCreditCardBillingConfig, recomputeCcBillingMonthBalances } from ".
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
-import {
-  isValidBillingMonthYm,
-  upsertCcFacturadoPlaceholder,
-} from "./ccBillingPlaceholders.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
 import { documentImportSpecsForAccount } from "./accountDocumentRegistry.js";
@@ -110,6 +109,7 @@ import {
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
 import {
+  assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
   assignCcExpenseLineCategory,
   ccStatementLineBelongsToCreditCardGroup,
 } from "./ccExpenseCategories.js";
@@ -122,6 +122,14 @@ import { setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
+  buildRealEstateExpensesPayload,
+  listRealEstateLinkCandidates,
+} from "./flowsRealEstateExpenses.js";
+import {
+  manualLinkRealEstateExpense,
+  unmatchRealEstateExpense,
+} from "./realEstateExpenseMatching.js";
+import {
   listAppMessages,
   markAllNotificationsRead,
   unreadNotificationCount,
@@ -129,12 +137,16 @@ import {
 import {
   forceSyncSourceStale,
   isGlobalSyncSource,
+  isLegacyEquityEodSyncSource,
   syncStatusPayload,
 } from "./globalSyncStale.js";
 import { buildImportSyncDocumentCoveragePayload } from "./importSyncDocumentCoverage.js";
 import { lastSyncRunCreatedAt } from "./syncRunLog.js";
-import { getGlobalSyncSchedulerSnapshot } from "./globalSyncScheduler.js";
-import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
+import {
+  getGlobalSyncSchedulerSnapshot,
+  notifyGlobalSyncScheduler,
+  startGlobalSyncScheduler,
+} from "./globalSyncScheduler.js";
 
 seedNavTree();
 
@@ -1018,40 +1030,6 @@ app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
   res.json({ billing_config: loadCreditCardBillingConfig(id) });
 });
 
-app.patch("/api/accounts/:id/cc-billing-facturado-placeholder", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
-  const cat = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
-  if (!cat || cat.category_slug !== "credit_card") {
-    res.status(400).json({ error: "account is not a credit card" });
-    return;
-  }
-  const body = req.body as Record<string, unknown>;
-  const billingMonth = String(body.billing_month ?? "").trim();
-  if (!isValidBillingMonthYm(billingMonth)) {
-    res.status(400).json({ error: "invalid billing_month" });
-    return;
-  }
-  const raw = body.estimated_facturado_clp;
-  const amount =
-    raw === null || raw === undefined || raw === ""
-      ? null
-      : Number(raw);
-  if (amount != null && (!Number.isFinite(amount) || amount < 0)) {
-    res.status(400).json({ error: "invalid estimated_facturado_clp" });
-    return;
-  }
-  try {
-    upsertCcFacturadoPlaceholder(id, billingMonth, amount);
-    res.json({ ok: true, billing_month: billingMonth, estimated_facturado_clp: amount });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "update failed" });
-  }
-});
-
 app.post("/api/accounts/:id/movements", (req, res) => {
   const accountId = operationalAccountIdFromReq(req);
   const account = accountRowForId(accountId);
@@ -1132,6 +1110,14 @@ app.get("/api/dashboard", async (req, res) => {
       JOIN asset_groups g ON g.id = c.group_id
       WHERE (a.notes IS NULL OR a.notes != ?)
         AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
+        AND NOT (
+          g.slug = 'liabilities'
+          AND COALESCE(a.account_kind, 'master') = 'master'
+          AND EXISTS (
+            SELECT 1 FROM accounts v
+            WHERE v.source_account_id = a.id AND v.account_kind = 'liability_view'
+          )
+        )
       ORDER BY g.sort_order, c.sort_order, a.name
     `
     )
@@ -1155,81 +1141,81 @@ app.get("/api/dashboard", async (req, res) => {
 
   const rowsBuilt: DashboardAccountStats[] = await Promise.all(
     accounts.map(async (a) => {
-    const deposits = depositsNetByAccount.get(a.id) ?? 0;
-    const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
-    const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(a.group_slug);
-    const perfClp = trackAssetMetrics ? accountCardPerformanceMetrics(a.id, "clp") : null;
-    const perfUsd =
-      trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
-    let v = await latestValuationDisplayForAccount(a.id, a.category_slug);
-    if (v == null && !isMovementBalanceCashCategory(a.category_slug)) {
-      const stored = latestValuationRowOnOrBeforeChileToday(a.id);
-      if (stored?.value_clp != null && stored.as_of_date) {
-        v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+      const deposits = depositsNetByAccount.get(a.id) ?? 0;
+      const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
+      const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(a.group_slug);
+      const perfClp = trackAssetMetrics ? accountCardPerformanceMetrics(a.id, "clp") : null;
+      const perfUsd =
+        trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
+      let v = await latestValuationDisplayForAccount(a.id, a.category_slug);
+      if (v == null && !isMovementBalanceCashCategory(a.category_slug)) {
+        const stored = latestValuationRowOnOrBeforeChileToday(a.id);
+        if (stored?.value_clp != null && stored.as_of_date) {
+          v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+        }
       }
-    }
-    const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
-    const positionMeta = getAccountPositionMeta(
-      a.id,
-      a.category_slug,
-      a.category_slug === "afp" ? { afpCuotasAsOfYmd: asOfCuotas } : undefined
-    );
-    const position = positionSnapshotFromMeta(a.category_slug, positionMeta, deposits, v ?? undefined);
-    let current_value_clp = v?.value_clp ?? null;
-    let valuation_as_of = v?.as_of_date ?? null;
-    if (a.category_slug === "afp" && position?.value_clp != null) {
-      current_value_clp = position.value_clp;
-      if (position.value_as_of != null) valuation_as_of = position.value_as_of;
-    }
-    const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
-    const current_value_usd =
-      includeUsd && current_value_clp != null && fxRow != null
-        ? current_value_clp / fxRow.clp_per_usd
-        : null;
-    const fx_date_used = fxRow?.date ?? null;
-    const fx_clp_per_usd = fxRow?.clp_per_usd ?? null;
-    const rowBeforeReconcile = {
-      account_id: a.id,
-      name: a.name,
-      group_slug: a.group_slug,
-      group_label: a.group_label,
-      category_slug: a.category_slug,
-      category_label: a.category_label,
-      deposits_clp: deposits,
-      deposits_usd: includeUsd ? deposits_usd : undefined,
-      delta_month_clp: perfClp?.delta_month,
-      delta_month_usd: perfUsd?.delta_month,
-      delta_year_clp: perfClp?.delta_year,
-      delta_year_usd: perfUsd?.delta_year,
-      delta_total_clp: perfClp?.delta_total,
-      delta_total_usd: perfUsd?.delta_total,
-      deposits_month_clp: trackAssetMetrics ? (depositsMonth.clp.get(a.id) ?? 0) : undefined,
-      deposits_month_usd: trackAssetMetrics
-        ? (depositsMonth.usd.get(a.id) ?? null)
-        : undefined,
-      deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
-      deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
-      prior_month_close_clp: trackAssetMetrics
-        ? accountPriorPeriodClose(a.id, "month", "clp")
-        : undefined,
-      prior_month_close_usd:
-        trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "month", "usd") : undefined,
-      prior_year_close_clp: trackAssetMetrics ? accountPriorPeriodClose(a.id, "year", "clp") : undefined,
-      prior_year_close_usd:
-        trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "year", "usd") : undefined,
-      current_value_clp,
-      valuation_as_of,
-      current_value_usd,
-      fx_clp_per_usd,
-      fx_date_used,
-      notes: a.notes ?? null,
-      exclude_from_group_totals: a.exclude_from_group_totals,
-      chart_inactive: accountChartInactive(a.id),
-      position,
-    };
-    const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, { includeUsd });
-    return { ...rowBeforeReconcile, ...reconciled };
-  })
+      const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
+      const positionMeta = getAccountPositionMeta(
+        a.id,
+        a.category_slug,
+        a.category_slug === "afp" ? { afpCuotasAsOfYmd: asOfCuotas } : undefined
+      );
+      const position = positionSnapshotFromMeta(a.category_slug, positionMeta, deposits, v ?? undefined);
+      let current_value_clp = v?.value_clp ?? null;
+      let valuation_as_of = v?.as_of_date ?? null;
+      if (a.category_slug === "afp" && position?.value_clp != null) {
+        current_value_clp = position.value_clp;
+        if (position.value_as_of != null) valuation_as_of = position.value_as_of;
+      }
+      const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
+      const current_value_usd =
+        includeUsd && current_value_clp != null && fxRow != null
+          ? current_value_clp / fxRow.clp_per_usd
+          : null;
+      const fx_date_used = fxRow?.date ?? null;
+      const fx_clp_per_usd = fxRow?.clp_per_usd ?? null;
+      const rowBeforeReconcile = {
+        account_id: a.id,
+        name: a.name,
+        group_slug: a.group_slug,
+        group_label: a.group_label,
+        category_slug: a.category_slug,
+        category_label: a.category_label,
+        deposits_clp: deposits,
+        deposits_usd: includeUsd ? deposits_usd : undefined,
+        delta_month_clp: perfClp?.delta_month,
+        delta_month_usd: perfUsd?.delta_month,
+        delta_year_clp: perfClp?.delta_year,
+        delta_year_usd: perfUsd?.delta_year,
+        delta_total_clp: perfClp?.delta_total,
+        delta_total_usd: perfUsd?.delta_total,
+        deposits_month_clp: trackAssetMetrics ? (depositsMonth.clp.get(a.id) ?? 0) : undefined,
+        deposits_month_usd: trackAssetMetrics
+          ? (depositsMonth.usd.get(a.id) ?? null)
+          : undefined,
+        deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
+        deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
+        prior_month_close_clp: trackAssetMetrics
+          ? accountPriorPeriodClose(a.id, "month", "clp")
+          : undefined,
+        prior_month_close_usd:
+          trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "month", "usd") : undefined,
+        prior_year_close_clp: trackAssetMetrics ? accountPriorPeriodClose(a.id, "year", "clp") : undefined,
+        prior_year_close_usd:
+          trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "year", "usd") : undefined,
+        current_value_clp,
+        valuation_as_of,
+        current_value_usd,
+        fx_clp_per_usd,
+        fx_date_used,
+        notes: a.notes ?? null,
+        exclude_from_group_totals: a.exclude_from_group_totals,
+        chart_inactive: accountChartInactive(a.id),
+        position,
+      };
+      const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, { includeUsd });
+      return { ...rowBeforeReconcile, ...reconciled };
+    })
   );
 
   function addToBucket(
@@ -1251,15 +1237,24 @@ app.get("/api/dashboard", async (req, res) => {
     addToBucket(bucketTotals, r.group_slug, r.current_value_clp, includeUsd ? r.current_value_usd : null);
   }
 
+  const asOfToday = chileCalendarTodayYmd();
+  const linkedCcClp = linkedCreditCardClpForCashCardAsOf(asOfToday);
+  const linkedCcUsd = includeUsd ? depositClpToUsdAtDate(linkedCcClp, asOfToday) : null;
+
+  const cashBucket = bucketTotals.get("cash_eqs");
+  if (cashBucket) {
+    cashBucket.clp -= linkedCcClp;
+    if (linkedCcUsd != null && Number.isFinite(linkedCcUsd)) {
+      cashBucket.usd -= linkedCcUsd;
+    }
+  }
+
   const getBucket = (slug: string) => bucketTotals.get(slug) ?? { clp: 0, usd: 0 };
   const re = getBucket("real_estate");
   const ret = getBucket("retirement");
   const bro = getBucket("brokerage");
   const cash = getBucket("cash_eqs");
   const lia = getBucket("liabilities");
-  const liabilities_clp_aligned = liabilitiesGroupClpAsOf(chileCalendarTodayYmd(), {
-    mortgageFromDeptoSheet: true,
-  });
 
   const netWorthClp = re.clp + ret.clp + bro.clp + cash.clp;
   const netWorthUsd = includeUsd ? re.usd + ret.usd + bro.usd + cash.usd : null;
@@ -1281,13 +1276,18 @@ app.get("/api/dashboard", async (req, res) => {
     if (r.current_value_usd != null && Number.isFinite(r.current_value_usd)) cur.value_usd += r.current_value_usd;
     byGroup.set(slug, cur);
   }
+  const cashGroup = byGroup.get("cash_eqs");
+  if (cashGroup) {
+    cashGroup.value_clp -= linkedCcClp;
+    if (linkedCcUsd != null && Number.isFinite(linkedCcUsd)) {
+      cashGroup.value_usd -= linkedCcUsd;
+    }
+  }
 
   const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
     ...rest,
     notes: notes ?? null,
   }));
-
-  const asOfToday = chileCalendarTodayYmd();
   const deptoLedger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
   const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfToday, deptoLedger);
   const suecia_snapshot = sueciaRaw
@@ -1301,6 +1301,7 @@ app.get("/api/dashboard", async (req, res) => {
   const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, {
     mortgageFromDeptoSheet: true,
   });
+  const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
   const liabilities_breakdown = {
     mortgage_clp: liabilitiesClp.mortgage_clp,
     credit_card_clp: liabilitiesClp.credit_card_clp,
@@ -1553,6 +1554,51 @@ app.get("/api/flows/expenses/credit-card", (_req, res) => {
   res.json(buildFlowsCreditCardExpensesPayload());
 });
 
+app.get("/api/flows/expenses/real-estate", (_req, res) => {
+  res.json(buildRealEstateExpensesPayload());
+});
+
+app.get("/api/flows/expenses/real-estate/candidates", (req, res) => {
+  const expenseEntryId = Number(req.query.expense_entry_id);
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
+    res.status(400).json({ error: "expense_entry_id required" });
+    return;
+  }
+  res.json({ candidates: listRealEstateLinkCandidates(expenseEntryId) });
+});
+
+app.put("/api/flows/expenses/real-estate/links", (req, res) => {
+  const body = req.body as { expense_entry_id?: number; purchase_key?: string };
+  const expenseEntryId = Number(body.expense_entry_id);
+  const purchaseKey = String(body.purchase_key ?? "").trim();
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0 || !purchaseKey) {
+    res.status(400).json({ error: "expense_entry_id and purchase_key required" });
+    return;
+  }
+  try {
+    const link = manualLinkRealEstateExpense(expenseEntryId, purchaseKey);
+    res.json(link);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "link failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.delete("/api/flows/expenses/real-estate/links/:expenseEntryId", (req, res) => {
+  const expenseEntryId = Number(req.params.expenseEntryId);
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
+    res.status(400).json({ error: "invalid expense entry id" });
+    return;
+  }
+  try {
+    unmatchRealEstateExpense(expenseEntryId);
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unmatch failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
 app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
   const body = req.body as {
     account_id?: number;
@@ -1583,13 +1629,20 @@ app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
     res.json({ account_id: accountId, purchase_key: purchaseKey, notes: result.notes });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "save failed";
+    console.error("PATCH /api/flows/expenses/credit-card/purchase-notes", {
+      body: req.body,
+      error: msg,
+      stack: e instanceof Error ? e.stack : undefined,
+    });
     res.status(400).json({ error: msg });
   }
 });
 
 app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) => {
+  const route = "PATCH /api/flows/expenses/credit-card/lines/:lineId/category";
   const lineId = Number(req.params.lineId);
-  if (!Number.isFinite(lineId) || lineId <= 0) {
+  if (!Number.isFinite(lineId) || lineId === 0) {
+    console.error(route, { lineId: req.params.lineId, reason: "line id must be non-zero finite" });
     res.status(400).json({ error: "invalid line id" });
     return;
   }
@@ -1598,6 +1651,16 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
   const unique = !!body.unique;
   const clearCategory = body.clear_category === true;
   try {
+    if (lineId < 0) {
+      const result = assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
+        purchaseId: -lineId,
+        unique,
+        categorySlug: categorySlug || null,
+        clearCategory,
+      });
+      res.json(result);
+      return;
+    }
     const belong = ccStatementLineBelongsToCreditCardGroup(lineId);
     const result = belong.ok
       ? assignCcExpenseLineCategory({
@@ -1621,6 +1684,12 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "assign failed";
+    console.error(route, {
+      lineId,
+      body: req.body,
+      error: msg,
+      stack: e instanceof Error ? e.stack : undefined,
+    });
     res.status(400).json({ error: msg });
   }
 });
@@ -1655,11 +1724,16 @@ app.get("/api/sync/status", (_req, res) => {
 
 app.post("/api/sync/force-stale", (req, res) => {
   const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
-  if (!isGlobalSyncSource(source)) {
+  if (isLegacyEquityEodSyncSource(source)) {
+    forceSyncSourceStale("stocks_nyse");
+    forceSyncSourceStale("crypto_eod");
+  } else if (!isGlobalSyncSource(source)) {
     res.status(400).json({ error: "invalid_source" });
     return;
+  } else {
+    forceSyncSourceStale(source);
   }
-  forceSyncSourceStale(source);
+  notifyGlobalSyncScheduler();
   res.json({
     ...syncStatusPayload(),
     scheduler: getGlobalSyncSchedulerSnapshot(),

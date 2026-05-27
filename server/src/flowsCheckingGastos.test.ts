@@ -345,6 +345,12 @@ describe("flowsCheckingGastos", () => {
     expect(months.has("2024-01")).toBe(true);
   });
 
+  it("excludes Fintual administrator wires from gastos", () => {
+    expect(
+      isExcludedCheckingWithdrawal("0768106274 Transf a FINTUAL ADMINISTRADORA G")
+    ).toBe(true);
+  });
+
   it("excludes internal transfer and cc payment descriptions", () => {
     expect(isExcludedCheckingWithdrawal("Cristian Fraser - Santander")).toBe(true);
     expect(isExcludedCheckingWithdrawal("MONTO CANCELADO")).toBe(true);
@@ -430,9 +436,11 @@ describe("flowsCheckingGastos", () => {
     ).toBe(false);
   });
 
-  it("excludes transf a otro bancos when paired with cuenta ahorro deposit in same month", () => {
+  it("shows transf a otro bancos paired with cuenta ahorro deposit as deposits category", () => {
     const lines = buildCheckingGastosLines();
-    expect(lines.some((l) => l.statement_line_id === 624)).toBe(false);
+    const hit = lines.find((l) => l.statement_line_id === 624);
+    expect(hit?.category_slug).toBe("deposits");
+    expect(hit?.checking_purchase_portion).toBe("deposit");
   });
 
   it("allocates two checking wires against one lump-sum reserva deposit on the same day", () => {
@@ -446,7 +454,11 @@ describe("flowsCheckingGastos", () => {
       },
     ];
     const pool = createSplittableInternalTransferPool(deposits);
-    const withdrawal = { occurred_on: "2025-01-09", amount_clp: -5_000_000 };
+    const withdrawal = {
+      occurred_on: "2025-01-09",
+      amount_clp: -5_000_000,
+      description: "TRASPASO A FONDO RESERVA",
+    };
     expect(withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, pool)).toBe(true);
     expect(withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, pool)).toBe(true);
     expect(pool.get("1|2025-01-09|10000000")).toBe(0);
@@ -477,7 +489,11 @@ describe("flowsCheckingGastos", () => {
   it("matches Jan 2025 Fintual wires against lump-sum reserva deposit in DB", () => {
     const deposits = loadDepositMatchCandidates();
     const pool = createSplittableInternalTransferPool(deposits);
-    const withdrawal = { occurred_on: "2025-01-09", amount_clp: -5_000_000 };
+    const withdrawal = {
+      occurred_on: "2025-01-09",
+      amount_clp: -5_000_000,
+      description: "0768106274 Transf a FINTUAL ADMINISTRADORA G",
+    };
     expect(
       deposits.some((d) => d.category_slug === "fondo_reserva" && d.amount_clp === 10_000_000)
     ).toBe(true);
@@ -515,6 +531,32 @@ describe("flowsCheckingGastos", () => {
     expect(split.investmentDeposit).toBeNull();
   });
 
+  it("does not consume fondo reserva pool for unrelated same-day spending (Nov 2025 comunidad)", () => {
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2025-11-17",
+        amount_clp: 100_000,
+        account_id: 21,
+        category_slug: "fondo_reserva",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const split = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2025-11-17",
+        amount_clp: -86_668,
+        description: "0560112904 Transf a COMUNIDAD EDIFICIO",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+      }
+    );
+    expect(split.internalClp).toBe(0);
+    expect(split.gastosClp).toBe(86_668);
+  });
+
   it("splits Dec 2024 wire: 4M reserva internal + 600k acciones gasto", () => {
     const deposits = loadDepositMatchCandidates();
     const pool = createSplittableInternalTransferPool(deposits);
@@ -528,11 +570,14 @@ describe("flowsCheckingGastos", () => {
     expect(split.gastosClp).toBe(600_000);
     expect(split.investmentDeposit?.category_slug).toBe("spy");
 
-    const lines = buildCheckingGastosLines();
-    const dec10 = lines.find((l) => l.statement_line_id === 1374);
-    expect(dec10?.amount_clp).toBe(600_000);
-    expect(dec10?.category_slug).toBe("deposits");
-    expect(dec10?.expense_month).toBe("2024-12");
+    const lines = buildCheckingGastosLines().filter((l) => l.statement_line_id === 1374);
+    const dec10Gastos = lines.find((l) => !l.checking_purchase_portion);
+    const dec10Deposit = lines.find((l) => l.checking_purchase_portion === "deposit");
+    expect(dec10Gastos?.amount_clp).toBe(600_000);
+    expect(dec10Gastos?.category_slug).toBe("deposits");
+    expect(dec10Deposit?.amount_clp).toBe(4_000_000);
+    expect(dec10Deposit?.category_slug).toBe("deposits");
+    expect(dec10Gastos?.expense_month).toBe("2024-12");
   });
 
   it("excludes duplicate Fintual reserva wires from Jan 2025 gastos", () => {

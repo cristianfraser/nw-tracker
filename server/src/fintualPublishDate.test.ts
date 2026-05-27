@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  fintualPublishLagsPollCalendarDay,
   isFintualFundPublishDay,
   isLastDayOfChileHolidayStreak,
+  isLastDayOfChileNonBusinessBlock,
   resolveFintualPublishYmd,
 } from "./fintualPublishDate.js";
 import { isChileHoliday } from "./marketHolidays.js";
@@ -18,7 +20,38 @@ describe("fintualPublishDate", () => {
     expect(isLastDayOfChileHolidayStreak("2026-04-03")).toBe(false);
     expect(isLastDayOfChileHolidayStreak("2026-04-04")).toBe(true);
     expect(isFintualFundPublishDay("2026-04-03")).toBe(false);
-    expect(isFintualFundPublishDay("2026-04-04")).toBe(true);
+    // Fri–Sat holidays, then Sunday — poll/stale on last non-business day (Sunday).
+    expect(isFintualFundPublishDay("2026-04-04")).toBe(false);
+    expect(isFintualFundPublishDay("2026-04-05")).toBe(true);
+  });
+
+  it("non-business block ends on Monday when Monday is a Chile holiday", () => {
+    expect(isChileHoliday("2026-10-12")).toBe(true);
+    expect(isLastDayOfChileNonBusinessBlock("2026-10-10")).toBe(false); // Sat
+    expect(isLastDayOfChileNonBusinessBlock("2026-10-11")).toBe(false); // Sun
+    expect(isLastDayOfChileNonBusinessBlock("2026-10-12")).toBe(true); // Mon holiday
+    expect(isFintualFundPublishDay("2026-10-12")).toBe(true);
+  });
+
+  it("non-business block ends on Sunday when Monday is a business day", () => {
+    expect(isLastDayOfChileNonBusinessBlock("2026-05-23")).toBe(false); // Sat
+    expect(isLastDayOfChileNonBusinessBlock("2026-05-24")).toBe(true); // Sun → Mon 2026-05-25 business
+    expect(isFintualFundPublishDay("2026-05-24")).toBe(true);
+    expect(isLastDayOfChileNonBusinessBlock("2026-06-06")).toBe(false); // Sat
+    expect(isLastDayOfChileNonBusinessBlock("2026-06-07")).toBe(true); // Sun → Mon business
+  });
+
+  it("publish lags poll calendar day on business evenings only", () => {
+    expect(fintualPublishLagsPollCalendarDay(cl("2026-05-25", 19), "2026-05-24")).toBe(true);
+    expect(fintualPublishLagsPollCalendarDay(cl("2026-05-25", 19), "2026-05-25")).toBe(false);
+    expect(fintualPublishLagsPollCalendarDay(cl("2026-05-25", 17), "2026-05-24")).toBe(false);
+    expect(fintualPublishLagsPollCalendarDay(cl("2026-05-24", 19), "2026-05-24")).toBe(false);
+  });
+
+  it("solo mid-week Chile holiday is the block end that evening", () => {
+    expect(isChileHoliday("2026-05-21")).toBe(true);
+    expect(isLastDayOfChileNonBusinessBlock("2026-05-21")).toBe(true);
+    expect(isFintualFundPublishDay("2026-05-21")).toBe(true);
   });
 
   it("uses today when the series has today's cuota on a business day", () => {

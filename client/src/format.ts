@@ -187,7 +187,8 @@ export function formatInstrumentUnits(n: number, kind: "shares" | "coin") {
 /** Values already in UF units (e.g. CLP / clp_per_uf) — suffix ` UF`, es-CL decimals. */
 export function formatUfUnits(uf: number): string {
   if (!Number.isFinite(uf)) return "—";
-  return `${normalizeIntlNum(ufUnitsFmt.format(uf))} UF`;
+  // NBSP keeps the unit attached to the number so line wrapping can't split "123,45 UF".
+  return `${normalizeIntlNum(ufUnitsFmt.format(uf))}\u00A0UF`;
 }
 
 /** UF with up to 4 decimals (tables / certificates). */
@@ -197,7 +198,8 @@ export function formatUfUnitsFine(uf: number | null | undefined): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
   }).format(uf);
-  return `${normalizeIntlNum(s)} UF`;
+  // NBSP keeps the unit attached to the number so line wrapping can't split "123,45 UF".
+  return `${normalizeIntlNum(s)}\u00A0UF`;
 }
 
 /** Mortgage / loan remaining balance — up to 4 UF decimals, no trailing zeros. */

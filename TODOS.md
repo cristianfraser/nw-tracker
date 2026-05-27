@@ -1,0 +1,1 @@
+Next steps you might want later (not done here): UI/API to edit credit_card_account_config, explicit “liabilities-only” balance projection on liability views, and a top-level nav entry for operational Credit cards under credit_cards if you want to manage cupo/purchases outside Pasivos.

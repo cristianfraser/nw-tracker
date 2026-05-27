@@ -206,9 +206,10 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
     [accountColorRgb]
   );
 
-  if (detailPending) return { detailPending: true };
+  if (detailPending && detail == null) return { detailPending: true };
   if (err) return { err };
   if (!summary || !ts || !depositInflows || !mortgageLedger || !ccLedger || invNavAccounts == null) {
+    if (detail == null && detailPending) return { detailPending: true };
     return { loading: true };
   }
 

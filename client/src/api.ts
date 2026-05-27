@@ -139,18 +139,6 @@ export const api = {
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, { method: "DELETE" }),
   deleteCcStatementLine: (id: string | number, lineId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-statement-lines/${lineId}`, { method: "DELETE" }),
-  patchCcBillingFacturadoPlaceholder: (
-    id: string | number,
-    body: { billing_month: string; estimated_facturado_clp: number | null }
-  ) =>
-    j<{ ok: boolean; billing_month: string; estimated_facturado_clp: number | null }>(
-      `/api/accounts/${id}/cc-billing-facturado-placeholder`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    ),
   accountValuationTimeseries: (
     id: string | number,
     unit: "clp" | "usd",
@@ -260,6 +248,19 @@ export const api = {
   income: () => j<{ income: unknown[] }>("/api/income"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),
+  flowsRealEstateExpenses: () =>
+    j<import("./types").RealEstateExpensesResponse>("/api/flows/expenses/real-estate"),
+  realEstateExpenseLinkCandidates: (expenseEntryId: number) =>
+    j<{ candidates: import("./types").RealEstateLinkCandidateDto[] }>(
+      `/api/flows/expenses/real-estate/candidates?expense_entry_id=${expenseEntryId}`
+    ),
+  linkRealEstateExpense: (body: { expense_entry_id: number; purchase_key: string }) =>
+    j<import("./types").RealEstateExpenseLinkDto>("/api/flows/expenses/real-estate/links", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  unmatchRealEstateExpense: (expenseEntryId: number) =>
+    j<void>(`/api/flows/expenses/real-estate/links/${expenseEntryId}`, { method: "DELETE" }),
   flowsCreditCardExpenses: () =>
     j<import("./types").FlowsCreditCardExpensesResponse>("/api/flows/expenses/credit-card"),
   assignCcExpenseLineCategory: (

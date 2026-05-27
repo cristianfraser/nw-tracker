@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { liabilitiesBreakdownClpAsOf } from "./liabilitiesValuation.js";
 import {
+  latestDisplayedBalanceForAccount,
   latestLiabilityValuationRowForSnapshot,
+  latestMortgageDisplayedBalance,
   latestValuationRowOnOrBefore,
   latestValuationRowOnOrBeforeChileToday,
 } from "./valuationLatest.js";
@@ -47,7 +51,7 @@ describe("valuationLatest", () => {
     }
   });
 
-  it("mortgage liability snapshot uses stored valuations, not live CC ledger", () => {
+  it("mortgage liability snapshot uses depto sheet crédito restante at today", () => {
     const view = db
       .prepare(
         `SELECT v.id, v.source_account_id FROM accounts v
@@ -57,11 +61,32 @@ describe("valuationLatest", () => {
       .get() as { id: number; source_account_id: number | null } | undefined;
     if (!view?.source_account_id) return;
 
-    const stored = latestValuationRowOnOrBefore(view.source_account_id, "2099-12-31");
-    if (!stored) return;
+    const today = chileCalendarTodayYmd();
+    const snap = latestLiabilityValuationRowForSnapshot(view.id, "mortgage", today);
+    const fromSheet = latestMortgageDisplayedBalance(view.source_account_id, today);
+    if (!fromSheet) return;
 
-    const snap = latestLiabilityValuationRowForSnapshot(view.id, "mortgage", stored.as_of_date);
-    expect(snap?.value_clp).toBe(stored.value_clp);
-    expect(snap?.as_of_date).toBe(stored.as_of_date);
+    expect(snap?.value_clp).toBeCloseTo(fromSheet.value_clp, 0);
+    expect(snap?.as_of_date).toBe(today);
+
+    const breakdown = liabilitiesBreakdownClpAsOf(today, { mortgageFromDeptoSheet: true });
+    if (breakdown.mortgage_clp > 0) {
+      expect(snap?.value_clp).toBeCloseTo(breakdown.mortgage_clp, 0);
+    }
+  });
+
+  it("latestDisplayedBalanceForAccount on mortgage matches sheet at today", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const today = chileCalendarTodayYmd();
+    const displayed = latestDisplayedBalanceForAccount(master.id);
+    const sheet = latestMortgageDisplayedBalance(master.id, today);
+    if (!sheet) return;
+
+    expect(displayed?.value_clp).toBeCloseTo(sheet.value_clp, 0);
+    expect(displayed?.as_of_date).toBe(today);
   });
 });

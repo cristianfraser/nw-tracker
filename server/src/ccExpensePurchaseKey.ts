@@ -14,10 +14,13 @@ export function resolvePurchaseKeyForGastosLine(
     | "purchase_on"
     | "merchant_key"
     | "nro_cuota_total"
-  >
+  > & { checking_purchase_portion?: "deposit" }
 ): string {
   if (line.source === "checking" && line.statement_line_id > 0) {
-    return checkingGastosMovementPurchaseKey(line.statement_line_id);
+    return checkingGastosMovementPurchaseKey(
+      line.statement_line_id,
+      line.checking_purchase_portion === "deposit" ? "deposit" : "gastos"
+    );
   }
   if (line.statement_line_id > 0) {
     return resolveCcExpensePurchaseKey(line.statement_line_id);

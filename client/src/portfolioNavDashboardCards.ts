@@ -55,6 +55,20 @@ export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
   return idSet;
 }
 
+/**
+ * Nav leaf `account_id` values only (not `source_account_id`).
+ * Use for dashboard row sums so Pasivos liability_view + master are not double-counted.
+ */
+export function navLeafAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
+  const idSet = new Set<number>();
+  const visit = (n: NavTreeNodeDto) => {
+    if (n.account_id != null && n.account_id > 0) idSet.add(n.account_id);
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(navNode);
+  return idSet;
+}
+
 /** Cash portfolio node: totals/metrics exclude linked liability reference children. */
 export function navNodeForCashAssetTotals(navNode: NavTreeNodeDto): NavTreeNodeDto {
   if (navNode.slug !== "cash_eqs") return navNode;
@@ -65,7 +79,7 @@ export function dashboardRowsForNavSubtree(
   all: DashboardAccountRow[],
   navNode: NavTreeNodeDto
 ): DashboardAccountRow[] {
-  const idSet = navAccountIdSet(navNode);
+  const idSet = navLeafAccountIdSet(navNode);
   return all.filter((a) => idSet.has(a.account_id) && isChartActiveAccount(a));
 }
 

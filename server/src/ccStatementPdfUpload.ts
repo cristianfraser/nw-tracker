@@ -4,6 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
+import { resolveCfraserPdfsDir } from "./cfraserPaths.js";
+import { db } from "./db.js";
+import {
+  archivedCreditCardStatementPdfFileName,
+  canonicalCcStatementPdfName,
+} from "./importSyncDocumentFilePath.js";
 import {
   mergeCcAccountFromParsedRows,
   replaceStatementKeysFromRecords,
@@ -22,7 +28,10 @@ export type CcPdfUploadFile = {
 
 export type CcStatementPdfImportResult = {
   account_id: number;
+  /** Original upload filenames. */
   files: string[];
+  /** Basenames written under `cfraser/credit-card-statements/` (may differ after rename). */
+  saved_pdfs: string[];
   csv_rows: number;
   statements: {
     statementCount: number;
@@ -60,6 +69,78 @@ function runParsePdfsInDir(pdfDir: string, outCsv: string): string[] {
   return failures;
 }
 
+function uniqueArchivePath(destDir: string, fileName: string): string {
+  const base = path.basename(fileName);
+  if (!base.toLowerCase().endsWith(".pdf")) {
+    return path.join(destDir, base);
+  }
+  const stem = base.slice(0, -4);
+  let dest = path.join(destDir, `${stem}.pdf`);
+  if (!fs.existsSync(dest)) return dest;
+  let n = 2;
+  for (;;) {
+    const cand = path.join(destDir, `${stem} (${n}).pdf`);
+    if (!fs.existsSync(cand)) return cand;
+    n += 1;
+  }
+}
+
+/**
+ * Copy parsed uploads into `resolveCfraserPdfsDir()` and align `source_pdf` / ledger sample fields
+ * with on-disk basenames when the name changes.
+ */
+function persistUploadedCcStatementPdfs(opts: {
+  tmpDir: string;
+  accountId: number;
+  bySourcePdf: Map<string, CcStatementCsvRecord[]>;
+}): string[] {
+  const destDir = resolveCfraserPdfsDir();
+  fs.mkdirSync(destDir, { recursive: true });
+  const saved: string[] = [];
+
+  const updStmt = db.prepare(
+    `UPDATE cc_statements SET source_pdf = ? WHERE account_id = ? AND source_pdf = ?`
+  );
+  const updPurch = db.prepare(
+    `UPDATE cc_installment_purchases SET source_pdf_sample = ? WHERE account_id = ? AND source_pdf_sample = ?`
+  );
+  const updPay = db.prepare(
+    `UPDATE cc_installment_payments SET source_pdf = ?
+     WHERE source_pdf = ? AND purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
+  );
+
+  for (const [oldName, rows] of opts.bySourcePdf) {
+    const tmpSrc = path.join(opts.tmpDir, oldName);
+    if (!fs.existsSync(tmpSrc)) continue;
+
+    const first = rows[0]!;
+    const last4 = String(first.card_last4 ?? "").trim();
+    let archiveBase =
+      archivedCreditCardStatementPdfFileName(first) ??
+      canonicalCcStatementPdfName(first.period_to, last4) ??
+      oldName;
+    if (!archiveBase.toLowerCase().endsWith(".pdf")) {
+      archiveBase = `${archiveBase}.pdf`;
+    }
+
+    const destPath = uniqueArchivePath(destDir, archiveBase);
+    fs.copyFileSync(tmpSrc, destPath);
+    const newBase = path.basename(destPath);
+    saved.push(newBase);
+
+    if (newBase !== oldName) {
+      const tx = db.transaction(() => {
+        updStmt.run(newBase, opts.accountId, oldName);
+        updPurch.run(newBase, opts.accountId, oldName);
+        updPay.run(newBase, oldName, opts.accountId);
+      });
+      tx();
+    }
+  }
+
+  return saved;
+}
+
 export function importCcStatementPdfsForAccount(
   accountId: number,
   files: CcPdfUploadFile[]
@@ -87,6 +168,7 @@ export function importCcStatementPdfsForAccount(
     const allRecords = readCommaCsvRecords(outCsv);
     const allowedNames = new Set(uploadedNames);
     const records: CcStatementCsvRecord[] = [];
+    const bySourcePdf = new Map<string, CcStatementCsvRecord[]>();
 
     for (const row of allRecords) {
       const src = String(row.source_pdf ?? "").trim();
@@ -95,6 +177,9 @@ export function importCcStatementPdfsForAccount(
       const target = resolveMasterAccountIdForImportCardLast4(l4);
       if (target !== accountId) continue;
       records.push(row);
+      const list = bySourcePdf.get(src) ?? [];
+      list.push(row);
+      bySourcePdf.set(src, list);
     }
 
     if (records.length === 0) {
@@ -107,9 +192,16 @@ export function importCcStatementPdfsForAccount(
       replaceLedger: false,
     });
 
+    const savedPdfs = persistUploadedCcStatementPdfs({
+      tmpDir: tmp,
+      accountId,
+      bySourcePdf,
+    });
+
     return {
       account_id: accountId,
       files: uploadedNames,
+      saved_pdfs: savedPdfs,
       csv_rows: records.length,
       statements: {
         statementCount: merged.statements.statementCount,

@@ -30,8 +30,12 @@ export function isInvestmentDepositTarget(groupSlug: string): boolean {
   return INVESTMENT_DEPOSIT_GROUPS.has(groupSlug);
 }
 
-export function checkingGastosMovementPurchaseKey(movementId: number): string {
-  return `checking-mv:${movementId}`;
+export function checkingGastosMovementPurchaseKey(
+  movementId: number,
+  portion: "gastos" | "deposit" = "gastos"
+): string {
+  if (portion === "gastos") return `checking-mv:${movementId}`;
+  return `checking-mv:${movementId}:deposit`;
 }
 
 export function checkingGastosMovementBelongs(movementId: number): {
@@ -71,14 +75,14 @@ export function checkingGastosMovementBelongs(movementId: number): {
   }
   const depositCandidates = loadDepositMatchCandidates();
   const split = splitCheckingWithdrawalAgainstDeposits(
-    { occurred_on: row.occurred_on, amount_clp: row.amount_clp },
+    { occurred_on: row.occurred_on, amount_clp: row.amount_clp, description },
     depositCandidates,
     {
       splittablePool: createSplittableInternalTransferPool(depositCandidates),
       usedDepositKeys: new Set<string>(),
     }
   );
-  if (split.gastosClp <= 0) {
+  if (split.gastosClp <= 0 && split.internalClp <= 0) {
     return { ok: false };
   }
   if (
@@ -211,6 +215,9 @@ export const CUENTA_VISTA_TRANSFER_DESC_RE =
 /** Transfers to Fondo reserva (internal, not consumption). */
 const RESERVA_TRANSFER_DESC_RE =
   /\bRESERVA\b|FONDO\s+RESERVA|TRASPASO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b|DEP[OÓ]SITO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b/i;
+
+/** Wires to Fintual (investment funding — excluded from gastos list). */
+const FINTUAL_TRANSFER_DESC_RE = /FINTUAL\s+ADMINISTRADORA/i;
 
 /** Santander capital-markets money order charge (downpayment rail). */
 const MERCADO_CAPITALES_CARGO_RE = /Cargo\s+Mercado\s+Capitales/i;
@@ -542,6 +549,15 @@ export function isExcludedCheckingWithdrawal(description: string): boolean {
   if (OWN_SANTANDER_TRANSFER_RE.test(d)) return true;
   if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
   if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  return false;
+}
+
+/** Lump-sum fondo reserva pool may only offset reserva / Fintual wires, not unrelated spending. */
+export function withdrawalMayUseSplittableReservaPool(description: string): boolean {
+  const d = description.trim();
+  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
   return false;
 }
 
@@ -635,7 +651,7 @@ export type CheckingWithdrawalDepositSplit = {
 
 /** Splits a checking outflow across internal cash and investment deposits; remainder is gastos. */
 export function splitCheckingWithdrawalAgainstDeposits(
-  withdrawal: { occurred_on: string; amount_clp: number },
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   opts: {
     splittablePool: Map<string, number>;
@@ -643,6 +659,7 @@ export function splitCheckingWithdrawalAgainstDeposits(
     maxDayGap?: number;
   }
 ): CheckingWithdrawalDepositSplit {
+  const description = withdrawal.description ?? "";
   const maxDayGap = opts.maxDayGap ?? 3;
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) {
@@ -684,7 +701,7 @@ export function splitCheckingWithdrawalAgainstDeposits(
     internalClp += depAmt;
   }
 
-  if (remaining > 0) {
+  if (remaining > 0 && withdrawalMayUseSplittableReservaPool(description)) {
     const fromPool = tryAllocateSplittableInternalTransferAmount(
       withdrawal,
       deposits,
@@ -714,13 +731,14 @@ export function splitCheckingWithdrawalAgainstDeposits(
 
 /** Checking outflow that pairs with an inflow on another cash/efectivo account (internal transfer). */
 export function withdrawalMatchesInternalCashTransfer(
-  withdrawal: { occurred_on: string; amount_clp: number },
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   maxDayGap = 3,
   splittablePool?: Map<string, number>
 ): boolean {
   if (withdrawalMatchesInternalCashTransferExact(withdrawal, deposits, maxDayGap)) return true;
   if (splittablePool == null) return false;
+  if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) return false;
   return tryAllocateSplittableInternalTransfer(withdrawal, deposits, splittablePool);
 }
 
@@ -847,6 +865,72 @@ export function buildCheckingGastosLines(opts?: {
 
   const lines: FlowCcExpenseLineRowDraft[] = [];
   const usedDepositKeys = new Set<string>();
+
+  const pushCheckingLine = (
+    row: (typeof rows)[number],
+    amountClp: number,
+    expenseMonth: string,
+    description: string,
+    opts: {
+      matchedDeposit?: DepositMatchCandidate | null;
+      forceDepositsCategory?: boolean;
+      purchasePortion?: "gastos" | "deposit";
+    } = {}
+  ) => {
+    if (amountClp <= 0) return;
+    const merchantKey = normalizeCcExpenseMerchantKey(description);
+    const purchaseKey = checkingGastosMovementPurchaseKey(
+      row.id,
+      opts.purchasePortion ?? "gastos"
+    );
+    let categorySlug = resolveCcExpenseCategorySlug({
+      statementLineId: row.id,
+      accountId,
+      merchantKey,
+      purchaseKey,
+      lineOverrides: new Map(),
+      merchantRules,
+      uniquePurchases,
+    });
+    const matchedDeposit = opts.matchedDeposit ?? null;
+    if (
+      opts.forceDepositsCategory ||
+      (categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG && matchedDeposit != null)
+    ) {
+      categorySlug = DEPOSITS_CC_EXPENSE_SLUG;
+    }
+    const categoryUnique = lineHasUniquePurchaseMode(
+      accountId,
+      purchaseKey,
+      uniquePurchases,
+      uniquePurchaseModeKeys
+    );
+    lines.push({
+      source: "checking",
+      statement_line_id: row.id,
+      account_id: accountId,
+      expense_month: expenseMonth,
+      billing_month: expenseMonth,
+      purchase_month: expenseMonth,
+      line_role: "purchase",
+      occurred_on: row.occurred_on,
+      purchase_on: row.occurred_on,
+      statement_date: "",
+      amount_clp: amountClp,
+      amount_usd: null,
+      merchant: description || null,
+      installment_flag: 0,
+      nro_cuota_current: null,
+      nro_cuota_total: null,
+      merchant_key: merchantKey,
+      category_slug: categorySlug,
+      category_unique: categoryUnique,
+      ...(opts.purchasePortion === "deposit"
+        ? { checking_purchase_portion: "deposit" as const }
+        : {}),
+    });
+  };
+
   for (const row of [...rows].reverse()) {
     const description = cartolaDescriptionFromNote(row.note);
     if (isExcludedCheckingWithdrawal(description)) continue;
@@ -872,81 +956,53 @@ export function buildCheckingGastosLines(opts?: {
       !isMercadoCapitalesCargoDescription(description) &&
       !LONG_NUMERIC_CARGO_REF_RE.test(description.replace(/\s/g, ""));
 
-    let amountClp: number;
-    let matchedDeposit: DepositMatchCandidate | null;
+    const withdrawal = {
+      occurred_on: row.occurred_on,
+      amount_clp: row.amount_clp,
+      description,
+    };
+
     if (useDepositSplit) {
-      const split = splitCheckingWithdrawalAgainstDeposits(
-        { occurred_on: row.occurred_on, amount_clp: row.amount_clp },
-        deposits,
-        { splittablePool, usedDepositKeys }
-      );
-      if (split.gastosClp <= 0) continue;
-      amountClp = split.gastosClp;
-      matchedDeposit = split.investmentDeposit;
+      const split = splitCheckingWithdrawalAgainstDeposits(withdrawal, deposits, {
+        splittablePool,
+        usedDepositKeys,
+      });
+      if (split.gastosClp <= 0 && split.internalClp <= 0) continue;
+
+      if (split.internalClp > 0) {
+        pushCheckingLine(row, split.internalClp, expenseMonth, description, {
+          forceDepositsCategory: true,
+          purchasePortion: "deposit",
+        });
+      }
+      if (split.gastosClp > 0) {
+        pushCheckingLine(row, split.gastosClp, expenseMonth, description, {
+          matchedDeposit: split.investmentDeposit,
+        });
+      }
     } else {
-      if (
-        withdrawalMatchesInternalCashTransfer(
-          { occurred_on: row.occurred_on, amount_clp: row.amount_clp },
-          deposits,
-          3,
-          splittablePool
-        )
-      ) {
+      if (withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, splittablePool)) {
+        const fullAbs = Math.round(Math.abs(row.amount_clp));
+        pushCheckingLine(row, fullAbs, expenseMonth, description, {
+          forceDepositsCategory: true,
+          purchasePortion: "deposit",
+        });
         continue;
       }
-      amountClp = Math.round(Math.abs(row.amount_clp));
-      matchedDeposit = matchWithdrawalToInvestmentDeposit(
-        { occurred_on: row.occurred_on, amount_clp: row.amount_clp },
+      const matchedDeposit = matchWithdrawalToInvestmentDeposit(
+        withdrawal,
         deposits,
         3,
         usedDepositKeys
       );
+      if (matchedDeposit != null) {
+        pushCheckingLine(row, Math.round(Math.abs(row.amount_clp)), expenseMonth, description, {
+          matchedDeposit,
+        });
+        continue;
+      }
+      pushCheckingLine(row, Math.round(Math.abs(row.amount_clp)), expenseMonth, description);
     }
-    const merchantKey = normalizeCcExpenseMerchantKey(description);
-    const purchaseKey = checkingGastosMovementPurchaseKey(row.id);
-    let categorySlug = resolveCcExpenseCategorySlug({
-      statementLineId: row.id,
-      accountId,
-      merchantKey,
-      purchaseKey,
-      lineOverrides: new Map(),
-      merchantRules,
-      uniquePurchases,
-    });
-    if (
-      categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG &&
-      matchedDeposit != null
-    ) {
-      categorySlug = DEPOSITS_CC_EXPENSE_SLUG;
-    }
-    const categoryUnique = lineHasUniquePurchaseMode(
-      accountId,
-      purchaseKey,
-      uniquePurchases,
-      uniquePurchaseModeKeys
-    );
-
-    lines.push({
-      source: "checking",
-      statement_line_id: row.id,
-      account_id: accountId,
-      expense_month: expenseMonth,
-      billing_month: expenseMonth,
-      purchase_month: expenseMonth,
-      line_role: "purchase",
-      occurred_on: row.occurred_on,
-      purchase_on: row.occurred_on,
-      statement_date: "",
-      amount_clp: amountClp,
-      amount_usd: null,
-      merchant: description || null,
-      installment_flag: 0,
-      nro_cuota_current: null,
-      nro_cuota_total: null,
-      merchant_key: merchantKey,
-      category_slug: categorySlug,
-      category_unique: categoryUnique,
-    });
   }
   return lines;
 }

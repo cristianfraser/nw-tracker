@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { GroupInfoNavHierarchyTable } from "../components/group/GroupInfoNavHierarchyTable";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
@@ -16,6 +17,7 @@ import { findBestNavNodeForPathname } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
+import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
 import {
   useDashboardBundle,
   usePortfolioGroupBundle,
@@ -43,12 +45,28 @@ export function GroupInfoPage() {
   const apiGroup = navMatchNode?.api_group ?? navMatchNode?.asset_group_slug ?? "";
   const apiSubgroup = navMatchNode?.api_subgroup ?? undefined;
 
-  const { data, error } = usePortfolioGroupBundle({
+  const queryClient = useQueryClient();
+  const { data, error, isPending: groupPending } = usePortfolioGroupBundle({
     group: apiGroup,
     subgroup: apiSubgroup,
     unit: displayUnit,
     enabled: Boolean(navMatchNode && apiGroup),
   });
+
+  useEffect(() => {
+    if (!apiGroup) return;
+    const otherUnit = displayUnit === "clp" ? "usd" : "clp";
+    void prefetchPortfolioGroupBundle(queryClient, {
+      group: apiGroup,
+      subgroup: apiSubgroup,
+      unit: displayUnit,
+    });
+    void prefetchPortfolioGroupBundle(queryClient, {
+      group: apiGroup,
+      subgroup: apiSubgroup,
+      unit: otherUnit,
+    });
+  }, [queryClient, apiGroup, apiSubgroup, displayUnit]);
 
   const [invRootGrouped, setInvRootGrouped] = useState(true);
   const [retiroGrouped, setRetiroGrouped] = useState(true);
@@ -153,7 +171,15 @@ export function GroupInfoPage() {
     );
   }
 
-  if (!ts?.accounts_in_group || !ts.group_allocation_pie) {
+  if (!data && groupPending) {
+    return (
+      <main>
+        <p className="muted">{t("common.loading")}</p>
+      </main>
+    );
+  }
+
+  if (data && (!ts?.accounts_in_group || !ts.group_allocation_pie)) {
     return (
       <main>
         <p className="muted">{t("common.loading")}</p>

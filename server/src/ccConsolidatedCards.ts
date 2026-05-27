@@ -1,5 +1,5 @@
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
 
