@@ -5,12 +5,14 @@ import {
   fetchDashboardBundle,
   fetchPortfolioGroupBundle,
 } from "./fetchers";
+import { displayUnitQueryBehavior } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
 
 export function useDashboardBundle(unit: DisplayUnit) {
   return useQuery({
     queryKey: queryKeys.dashboard(unit),
     queryFn: () => fetchDashboardBundle(unit),
+    ...displayUnitQueryBehavior,
   });
 }
 
@@ -25,6 +27,7 @@ export function usePortfolioGroupBundle(opts: {
     queryKey: queryKeys.portfolioGroup(group, subgroup, unit),
     queryFn: () => fetchPortfolioGroupBundle({ group, subgroup, unit }),
     enabled: enabled && Boolean(group),
+    ...displayUnitQueryBehavior,
   });
 }
 
@@ -135,6 +138,21 @@ export function useFlowsExpenses() {
   });
 }
 
+export function useRealEstateExpenses() {
+  return useQuery({
+    queryKey: queryKeys.flowsRealEstateExpenses(),
+    queryFn: () => api.flowsRealEstateExpenses(),
+  });
+}
+
+export function useRealEstateLinkCandidates(expenseEntryId: number | null, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.realEstateLinkCandidates(expenseEntryId ?? 0),
+    queryFn: () => api.realEstateExpenseLinkCandidates(expenseEntryId!),
+    enabled: enabled && expenseEntryId != null && expenseEntryId > 0,
+  });
+}
+
 export function useFlowsCreditCardExpenses() {
   return useQuery({
     queryKey: queryKeys.flowsCreditCardExpenses(),
@@ -145,13 +163,14 @@ export function useFlowsCreditCardExpenses() {
 export {
   useAssignCcExpenseLineCategory,
   useMarkCcExpenseLineUniqueMutation,
-  usePatchCcBillingFacturadoPlaceholderMutation,
   useCreateCcPurchaseMutation,
   useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
   useAccountImportMutation,
   usePatchCcExpenseLineCategoryMutation,
   usePatchCcExpensePurchaseNoteMutation,
+  useLinkRealEstateExpenseMutation,
+  useUnmatchRealEstateExpenseMutation,
 } from "./mutations";
 
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {
@@ -159,6 +178,7 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
     queryKey: queryKeys.accountMonthlyPerformance(id ?? "", unit),
     queryFn: () => api.accountMonthlyPerformance(id!, unit),
     enabled: Boolean(id),
+    ...displayUnitQueryBehavior,
   });
 }
 
@@ -176,6 +196,7 @@ export function useGroupAccountsMonthlyPerformance(
       queryKey: queryKeys.accountMonthlyPerformance(String(a.id), unit),
       queryFn: () => api.accountMonthlyPerformance(a.id, unit),
       enabled,
+      ...displayUnitQueryBehavior,
     })),
   });
 }
@@ -248,5 +269,6 @@ export function useAccountDetailBundle(
       };
     },
     enabled: Boolean(id),
+    ...displayUnitQueryBehavior,
   });
 }

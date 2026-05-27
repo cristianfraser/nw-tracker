@@ -11,7 +11,7 @@ import {
   purgeCcImportedDataForAccount,
   SANTANDER_CC_IMPORT_REDIRECT_LAST4,
 } from "../src/ccConsolidatedCards.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 import { resolveMasterAccountIdForCardLast4 } from "../src/creditCardTree.js";
 
 const apply = process.argv.includes("--apply");

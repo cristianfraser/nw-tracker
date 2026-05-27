@@ -62,6 +62,51 @@ export function chileCalendarAddDays(ymd: string, deltaDays: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/**
+ * Instant when wall clock in `timeZone` reads `ymd` HH:mm (DST-safe via Intl refinement).
+ */
+export function dateAtTimeZoneWallClock(
+  ymd: string,
+  hour: number,
+  minute: number,
+  timeZone: string
+): Date {
+  const [y, m, d] = ymd.split("-").map((x) => parseInt(x, 10));
+  if (!y || !m || !d || !Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    throw new Error(`Invalid YMD: ${ymd}`);
+  }
+  let ms = Date.UTC(y, m - 1, d, hour, minute);
+  for (let i = 0; i < 10; i++) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(ms));
+    const g = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value;
+    const wy = g("year");
+    const wmo = g("month");
+    const wd = g("day");
+    const wh = g("hour");
+    const wmin = g("minute");
+    if (!wy || !wmo || !wd || wh == null || wmin == null) break;
+    const wallYmd = `${wy}-${wmo}-${wd}`;
+    const wallHour = parseInt(wh, 10);
+    const wallMin = parseInt(wmin, 10);
+    if (wallYmd === ymd && wallHour === hour && wallMin === minute) return new Date(ms);
+    const targetMins = hour * 60 + minute;
+    const wallMins = wallHour * 60 + wallMin;
+    let dayDiff = 0;
+    if (wallYmd < ymd) dayDiff = 1;
+    else if (wallYmd > ymd) dayDiff = -1;
+    ms += (targetMins - wallMins + dayDiff * 24 * 60) * 60_000;
+  }
+  return new Date(ms);
+}
+
 export function chileCalendarTodayYmd(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Santiago",

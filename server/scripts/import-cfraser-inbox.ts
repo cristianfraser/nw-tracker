@@ -87,6 +87,15 @@ function main(): void {
     console.log("\n=== Organize PDFs (skipped) ===");
   }
 
+  if (!skipParse) {
+    const restoreCode = runStep(
+      "Restore false -CORRUPT credit-card PDF names",
+      "python3",
+      [path.join(SERVER_ROOT, "scripts", "restore-cc-corrupt-pdfs.py")]
+    );
+    if (restoreCode !== 0) process.exit(restoreCode);
+  }
+
   if (!skipQpdfRepair) {
     const repairArgs = [
       path.join(SERVER_ROOT, "scripts", "repair-cc-statement-pdfs-qpdf.py"),

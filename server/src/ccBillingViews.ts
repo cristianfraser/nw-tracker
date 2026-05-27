@@ -7,24 +7,19 @@ import {
   cupoEnCuotasClpForCalendarMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
+import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
-import { loadCcFacturadoPlaceholdersMap } from "./ccBillingPlaceholders.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
-
 export type CcBillingDetailMonthRow = {
   billing_month: string;
   as_of_date: string;
   as_of_kind: "statement" | "manual";
   /** Closed-statement facturado only; null when not yet closed. */
   total_facturado_actual_clp: number | null;
-  /** User estimate while actual is missing; null when not set. */
-  facturado_placeholder_clp: number | null;
-  /** Effective facturado for balance (actual or placeholder). */
+  /** Same as actual for balance math (no manual estimate). */
   total_facturado_clp: number | null;
-  facturado_is_placeholder: boolean;
-  facturado_editable: boolean;
   cupo_en_cuotas_clp: number;
   /** Ledger cuota due in the pay-by month (~10th of month after close). */
   cuota_a_pagar_next_mes_clp: number;
@@ -67,14 +62,13 @@ function cupoEnCuotasForBillingMonth(
   return cupoEnCuotasClpForCalendarMonth(accountId, billingMonth);
 }
 
-function statementSlotsByBillingMonth(accountId: number): Map<
-  string,
-  { clp: CcStatementRow | null; usd: CcStatementRow | null }
-> {
-  const byMonth = new Map<
-    string,
-    { clp: CcStatementRow | null; usd: CcStatementRow | null }
-  >();
+export type CcStatementSlotByCurrency = {
+  clp: CcStatementRow | null;
+  usd: CcStatementRow | null;
+};
+
+function statementSlotsByBillingMonth(accountId: number): Map<string, CcStatementSlotByCurrency> {
+  const byMonth = new Map<string, CcStatementSlotByCurrency>();
   for (const st of listCcStatementsForAccount(accountId)) {
     const bm = st.billing_month;
     if (!bm) continue;
@@ -89,10 +83,53 @@ function statementSlotsByBillingMonth(accountId: number): Map<
   return byMonth;
 }
 
+/** CLP+USD facturado for a billing month from imported statements (header or line-derived). */
+export function facturadoTotalClpForStatementSlot(
+  accountId: number,
+  slot: CcStatementSlotByCurrency
+): number | null {
+  const primary = slot.clp ?? slot.usd;
+  if (!primary) return null;
+
+  const clpDerived = slot.clp
+    ? facturadoFromStatement(
+        accountId,
+        slot.clp.statement_date,
+        slot.clp,
+        slot.clp.statement_date_iso
+      )
+    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+  const usdDerived = slot.usd
+    ? facturadoFromStatement(
+        accountId,
+        slot.usd.statement_date,
+        slot.usd,
+        slot.usd.statement_date_iso
+      )
+    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+
+  const facturadoClp =
+    slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
+      ? Math.round(slot.clp.monto_facturado)
+      : clpDerived.facturado_clp;
+  const facturadoUsd =
+    slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
+      ? slot.usd.monto_facturado
+      : usdDerived.facturado_usd;
+
+  const { pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
+  const facturadoUsdClp =
+    facturadoUsd != null
+      ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
+      : null;
+  const total = (facturadoClp ?? 0) + (facturadoUsdClp ?? 0);
+  return total > 0 ? total : null;
+}
+
 function cuotaAPagarNextMesClp(
   billingMonth: string,
   ledgerMonths: CcInstallmentMonthRow[],
-  slots: Map<string, { clp: CcStatementRow | null; usd: CcStatementRow | null }>
+  slots: Map<string, CcStatementSlotByCurrency>
 ): number {
   const slot = slots.get(billingMonth);
   const primary = slot?.clp ?? slot?.usd;
@@ -113,43 +150,61 @@ export function buildBillingDetailByMonth(
   const balances = listCcBillingMonthBalances(accountId).filter(
     (r) => r.as_of_kind !== "month_end"
   );
-  const placeholders = loadCcFacturadoPlaceholdersMap(accountId);
   const cupoLive = liveCreditCardOutstandingClp(accountId) ?? 0;
   const slots = statementSlotsByBillingMonth(accountId);
   const months = new Set<string>();
   for (const r of balances) {
     months.add(r.billing_month);
   }
+  for (const bm of slots.keys()) {
+    months.add(bm);
+  }
+
+  const inactive = creditCardBillingDetailInactive(accountId);
+  const lastStatementBillingMonth =
+    inactive && slots.size > 0
+      ? [...slots.keys()].sort((a, b) => a.localeCompare(b)).at(-1) ?? null
+      : null;
 
   const out: CcBillingDetailMonthRow[] = [];
   for (const billingMonth of months) {
+    const slot = slots.get(billingMonth);
+    const primary = slot?.clp ?? slot?.usd;
+    if (inactive) {
+      if (!primary) continue;
+      if (
+        lastStatementBillingMonth &&
+        billingMonth.localeCompare(lastStatementBillingMonth) > 0
+      ) {
+        continue;
+      }
+    }
     const snap = pickSnapshotRow(balances, billingMonth);
-    if (!snap) continue;
-    const kind = snap.as_of_kind === "manual" ? "manual" : "statement";
-    const totalFacturadoActual =
-      kind === "statement" && snap.facturado_clp != null && snap.facturado_clp > 0
+    if (!snap && !primary) continue;
+
+    const fromStatement = slot ? facturadoTotalClpForStatementSlot(accountId, slot) : null;
+    const fromBalance =
+      snap?.as_of_kind === "statement" &&
+      snap.facturado_clp != null &&
+      snap.facturado_clp > 0
         ? snap.facturado_clp
         : null;
-    const placeholder = placeholders.get(billingMonth) ?? null;
-    const facturadoEditable = totalFacturadoActual == null;
-    let totalFacturado: number | null = totalFacturadoActual;
-    let facturadoIsPlaceholder = false;
-    if (totalFacturado == null && placeholder != null && placeholder > 0) {
-      totalFacturado = placeholder;
-      facturadoIsPlaceholder = true;
-    }
+    const totalFacturado = fromStatement ?? fromBalance;
+
+    const kind: "statement" | "manual" =
+      primary != null ? "statement" : snap?.as_of_kind === "manual" ? "manual" : "statement";
+    const asOfDate =
+      primary?.statement_date_iso ?? snap?.as_of_date ?? `${billingMonth}-01`;
+
     const cupo = cupoEnCuotasForBillingMonth(accountId, billingMonth, cupoLive);
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
     const balanceTotal = (totalFacturado ?? 0) + cupo - cuotaNext;
     out.push({
       billing_month: billingMonth,
-      as_of_date: snap.as_of_date,
+      as_of_date: asOfDate,
       as_of_kind: kind,
-      total_facturado_actual_clp: totalFacturadoActual,
-      facturado_placeholder_clp: placeholder,
+      total_facturado_actual_clp: totalFacturado,
       total_facturado_clp: totalFacturado,
-      facturado_is_placeholder: facturadoIsPlaceholder,
-      facturado_editable: facturadoEditable,
       cupo_en_cuotas_clp: cupo,
       cuota_a_pagar_next_mes_clp: cuotaNext,
       balance_total_clp: balanceTotal,
@@ -175,7 +230,7 @@ function isoToDdMmYyyy(iso: string): string {
 
 /** Explicit PDF pay_by when present; else statement close + 10th of next month (see ccInstallmentPayBy). */
 function resolveFacturacionPayBy(
-  slot: { clp: CcStatementRow | null; usd: CcStatementRow | null },
+  slot: CcStatementSlotByCurrency,
   primary: CcStatementRow
 ): { pay_by: string | null; pay_by_iso: string | null } {
   for (const st of [slot.clp, slot.usd]) {
@@ -212,29 +267,7 @@ export function buildFacturaciones(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {
-  const statements = listCcStatementsForAccount(accountId);
-  const byMonth = new Map<
-    string,
-    {
-      clp: (typeof statements)[0] | null;
-      usd: (typeof statements)[0] | null;
-    }
-  >();
-
-  for (const st of statements) {
-    const bm = st.billing_month;
-    if (!bm) continue;
-    let slot = byMonth.get(bm);
-    if (!slot) {
-      slot = { clp: null, usd: null };
-      byMonth.set(bm, slot);
-    }
-    if (st.currency === "usd") {
-      slot.usd = st;
-    } else {
-      slot.clp = st;
-    }
-  }
+  const byMonth = statementSlotsByBillingMonth(accountId);
 
   const out: CcFacturacionRow[] = [];
   for (const [billingMonth, slot] of byMonth) {
@@ -242,10 +275,20 @@ export function buildFacturaciones(
     if (!primary) continue;
 
     const clpDerived = slot.clp
-      ? facturadoFromStatement(accountId, slot.clp.statement_date, slot.clp, slot.clp.statement_date_iso)
+      ? facturadoFromStatement(
+          accountId,
+          slot.clp.statement_date,
+          slot.clp,
+          slot.clp.statement_date_iso
+        )
       : { facturado_clp: null as number | null, facturado_usd: null as number | null };
     const usdDerived = slot.usd
-      ? facturadoFromStatement(accountId, slot.usd.statement_date, slot.usd, slot.usd.statement_date_iso)
+      ? facturadoFromStatement(
+          accountId,
+          slot.usd.statement_date,
+          slot.usd,
+          slot.usd.statement_date_iso
+        )
       : { facturado_clp: null as number | null, facturado_usd: null as number | null };
 
     const facturadoClp =
@@ -262,10 +305,7 @@ export function buildFacturaciones(
       facturadoUsd != null
         ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
-    const facturadoTotal =
-      (facturadoClp ?? 0) + (facturadoUsdClp ?? 0) > 0
-        ? (facturadoClp ?? 0) + (facturadoUsdClp ?? 0)
-        : null;
+    const facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
 
     out.push({
       billing_month: billingMonth,

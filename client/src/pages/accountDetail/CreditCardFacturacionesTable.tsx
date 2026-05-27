@@ -6,7 +6,7 @@ import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
 import { mergedFacturacionLines } from "./mergedFacturacionLines";
 import type { CcFacturacionDto, CcStatementDto } from "../../types";
-import { Table } from "../../components/ui/Table";
+import { PaginatedTable } from "../../components/ui/PaginatedTable";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
 import {
   buildFacturacionModalBucket,
@@ -41,7 +41,6 @@ export function CreditCardFacturacionesTable({
   const { t } = useTranslation();
   const { data: flows } = useFlowsCreditCardExpenses();
   const categories = flows?.categories ?? [];
-  const hidden = Math.max(0, rows.length - collapsedVisibleRows);
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
 
@@ -104,13 +103,29 @@ export function CreditCardFacturacionesTable({
     </>
   ) : null;
 
+  const pages = useMemo(() => {
+    const byYear = new Map<string, CcFacturacionDto[]>();
+    for (const row of rows) {
+      const year = row.billing_month.slice(0, 4);
+      const bucket = byYear.get(year) ?? [];
+      bucket.push(row);
+      byYear.set(year, bucket);
+    }
+
+    const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
+    return yearsAsc.map((year, pageNumber) => ({
+      pageNumber,
+      data: byYear.get(year) ?? [],
+    }));
+  }, [rows]);
+
   return (
     <>
-      <Table
+      <PaginatedTable
         wrapClassName={styles.tableWrapSpaced}
         tableClassName={styles.tableCompact}
         collapsedVisibleRows={collapsedVisibleRows}
-        showMoreLabel={t("table.showMoreMonths", { count: hidden })}
+        showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
         showLessLabel={t("table.showLessMonths")}
         header={
           <thead>
@@ -126,36 +141,41 @@ export function CreditCardFacturacionesTable({
             </tr>
           </thead>
         }
-      >
-        {rows.map((row) => (
-          <tr key={row.billing_month}>
-            <td className="mono">
-              <button
-                type="button"
-                className={linkStyles.dateLink}
-                onClick={() => openFacturacion(row)}
-              >
-                {row.billing_month} ({formatYmEs(row.billing_month)})
-              </button>
-            </td>
-            <td className="mono">{row.close_date}</td>
-            <td className="mono">{row.pay_by ?? "—"}</td>
-            <td className="mono">
-              {row.facturado_clp != null ? formatClp(row.facturado_clp) : "—"}
-            </td>
-            <td className="mono">{fmtUsd(row.facturado_usd)}</td>
-            <td className="mono">
-              {row.facturado_usd_clp != null ? formatClp(row.facturado_usd_clp) : "—"}
-            </td>
-            <td className="mono">
-              {row.facturado_total_clp != null ? formatClp(row.facturado_total_clp) : "—"}
-            </td>
-            <td className="mono">
-              {row.cuota_a_pagar_clp != null ? formatClp(row.cuota_a_pagar_clp) : "—"}
-            </td>
-          </tr>
-        ))}
-      </Table>
+        pages={pages}
+        getPageLabel={(page) => page.data[0]?.billing_month.slice(0, 4) ?? String(page.pageNumber)}
+        renderBody={(pageRows) => (
+          <>
+            {pageRows.map((row) => (
+              <tr key={row.billing_month}>
+                <td className="mono">
+                  <button
+                    type="button"
+                    className={linkStyles.dateLink}
+                    onClick={() => openFacturacion(row)}
+                  >
+                    {row.billing_month} ({formatYmEs(row.billing_month)})
+                  </button>
+                </td>
+                <td className="mono">{row.close_date}</td>
+                <td className="mono">{row.pay_by ?? "—"}</td>
+                <td className="mono">
+                  {row.facturado_clp != null ? formatClp(row.facturado_clp) : "—"}
+                </td>
+                <td className="mono">{fmtUsd(row.facturado_usd)}</td>
+                <td className="mono">
+                  {row.facturado_usd_clp != null ? formatClp(row.facturado_usd_clp) : "—"}
+                </td>
+                <td className="mono">
+                  {row.facturado_total_clp != null ? formatClp(row.facturado_total_clp) : "—"}
+                </td>
+                <td className="mono">
+                  {row.cuota_a_pagar_clp != null ? formatClp(row.cuota_a_pagar_clp) : "—"}
+                </td>
+              </tr>
+            ))}
+          </>
+        )}
+      />
 
       <Modal
         open={modalOpen}

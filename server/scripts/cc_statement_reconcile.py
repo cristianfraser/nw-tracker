@@ -637,11 +637,9 @@ def reconcile_statement(
     pdf_totals = extract_pdf_section_totals(text_for_totals, currency, parse_clp, parse_usd)
     op_pdf = pdf_totals.get("pdf_total_operaciones")
 
-    if (
-        op_pdf is not None
-        and op_pdf > 100_000
-        and len(active_rows) < 20
-    ):
+    parsed = sum_parsed_sections(rows, parse_clp, parse_usd)
+
+    if op_pdf is not None and op_pdf > 100_000 and len(active_rows) < 20:
         return ReconcileResult(
             source_pdf=source_pdf,
             currency=currency,
@@ -649,8 +647,33 @@ def reconcile_statement(
             skip_reason="incomplete_parse",
             row_count=len(active_rows),
             pdf_totals=pdf_totals,
+            parsed_sums=parsed,
         )
-    parsed = sum_parsed_sections(rows, parse_clp, parse_usd)
+
+    if is_bci_lider_statement(full) and op_pdf is not None:
+        op_parsed = float(parsed.get("parsed_operaciones") or 0)
+        op_expected = float(op_pdf)
+        if len(active_rows) < 12:
+            return ReconcileResult(
+                source_pdf=source_pdf,
+                currency=currency,
+                ok=True,
+                skip_reason="incomplete_parse",
+                row_count=len(active_rows),
+                pdf_totals=pdf_totals,
+                parsed_sums=parsed,
+            )
+        rel_gap = abs(op_parsed - op_expected) / max(op_expected, 1.0)
+        if rel_gap > 0.08:
+            return ReconcileResult(
+                source_pdf=source_pdf,
+                currency=currency,
+                ok=True,
+                skip_reason="incomplete_parse",
+                row_count=len(active_rows),
+                pdf_totals=pdf_totals,
+                parsed_sums=parsed,
+            )
 
     checks: List[ReconcileCheck] = []
     issue_codes: List[str] = []
@@ -701,11 +724,15 @@ def reconcile_statement(
             parsed.get("parsed_operaciones"),
             required=True,
         )
+    cargos_required = pdf_totals.get("pdf_total_cargos_abonos") is not None
+    if is_bci_lider_statement(full):
+        # PAGO lines in section 3 are not emitted as rows; PDF total still includes them.
+        cargos_required = False
     add_check(
         "cargos_abonos",
         pdf_totals.get("pdf_total_cargos_abonos"),
         parsed.get("parsed_cargos_abonos"),
-        required=pdf_totals.get("pdf_total_cargos_abonos") is not None,
+        required=cargos_required,
     )
     # Section 4 total is only "new installment" charges; parsed rows include all active cuotas.
     # Skip strict cuotas check until section-boundary parsing exists.

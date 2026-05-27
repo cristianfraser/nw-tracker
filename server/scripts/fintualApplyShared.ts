@@ -1,5 +1,8 @@
 import { type ChileWallClock } from "../src/chileDate.js";
-import { priorFintualPublishYmd } from "../src/fintualPublishDate.js";
+import {
+  fintualPublishLagsPollCalendarDay,
+  priorFintualPublishYmd,
+} from "../src/fintualPublishDate.js";
 import { db } from "../src/db.js";
 import type { GlobalSyncStateFile } from "../src/globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
@@ -205,6 +208,7 @@ export function fintualEveningCatchUpComplete(
   publishYmd: string
 ): boolean {
   if (cl.hour < 18) return true;
+  if (fintualPublishLagsPollCalendarDay(cl, publishYmd)) return false;
   const prior = priorFintualPublishYmd(publishYmd);
   const snapPub = buildGoalsSnapshot(rows, byGoalId, cl, publishYmd);
   if (!prior || prior === publishYmd) {
@@ -222,6 +226,7 @@ export function markFintualEveningSettledWhenCurrent(
   dryRun: boolean
 ): void {
   if (dryRun || cl.hour < 18) return;
+  if (fintualPublishLagsPollCalendarDay(cl, snap.asOfDate)) return;
   if (fintualSnapshotMatchesDb(snap)) state.fintualEveningSettledYmd = cl.ymd;
 }
 

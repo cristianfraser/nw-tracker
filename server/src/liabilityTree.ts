@@ -179,27 +179,49 @@ export type CreditCardCashLinkRow = {
   clp: number;
 };
 
-/** Pasivos > tarjeta de crédito → Santander cards (liability_view per master). */
-export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditCardCashLinkRow[] {
-  const views = db
+type LinkedCreditCardLiabilityViewRow = {
+  liability_account_id: number;
+  name: string;
+  source_account_id: number;
+};
+
+/** Liability views for CC masters under Pasivos → tarjeta de crédito (all linked issuers). */
+function linkedCreditCardLiabilityViews(): LinkedCreditCardLiabilityViewRow[] {
+  return db
     .prepare(
       `SELECT v.id AS liability_account_id, v.name, v.source_account_id
        FROM accounts v
        JOIN accounts m ON m.id = v.source_account_id
        JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
        JOIN credit_card_groups g ON g.id = i.group_id
-       WHERE g.slug = 'santander'
-         AND v.account_kind = 'liability_view'
+       JOIN liability_group_items lgi
+         ON lgi.child_credit_card_group_id = g.id AND lgi.item_kind = 'credit_card_group'
+       JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
+       WHERE v.account_kind = 'liability_view'
        ORDER BY v.name, v.id`
     )
-    .all() as {
-    liability_account_id: number;
-    name: string;
-    source_account_id: number;
-  }[];
+    .all() as LinkedCreditCardLiabilityViewRow[];
+}
 
+/** Sum linked tarjeta de crédito balances (same scope as cash card breakdown / Efectivo net). */
+export function linkedCreditCardClpForCashCardAsOf(asOfYmd: string): number {
+  let sum = 0;
+  for (const row of linkedCreditCardLiabilityViews()) {
+    const snap = latestLiabilityValuationRowForSnapshot(
+      row.liability_account_id,
+      "credit_card",
+      asOfYmd
+    );
+    const clp = snap?.value_clp;
+    if (clp != null && Number.isFinite(clp)) sum += clp;
+  }
+  return sum;
+}
+
+/** Pasivos > tarjeta de crédito → cards linked under liabilities_credit_card (liability_view per master). */
+export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditCardCashLinkRow[] {
   const out: CreditCardCashLinkRow[] = [];
-  for (const row of views) {
+  for (const row of linkedCreditCardLiabilityViews()) {
     const snap = latestLiabilityValuationRowForSnapshot(
       row.liability_account_id,
       "credit_card",

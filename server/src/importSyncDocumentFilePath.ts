@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 import {
   isCcStatementPdfSource,
   matrixMonthForCartolaPeriodMonth,
@@ -49,10 +51,92 @@ export function resolveCartolaFilePath(
   return resolveExistingFile(cartolaDirsForKind(kind), raw);
 }
 
-export function resolveCcStatementPdfPath(sourcePdf: string): string | null {
+export type ResolveCcStatementPdfOpts = {
+  /** Billing `period_to` (ISO or DD/MM/YYYY). Used to find renamed on-disk PDFs. */
+  periodTo?: string | null;
+};
+
+/** Last four digits from `… tarjeta 1234.pdf`. */
+export function ccCardLast4FromSourcePdf(sourcePdf: string): string | null {
+  const m = String(sourcePdf ?? "").match(/tarjeta\s+(\d{4})\.pdf$/i);
+  return m?.[1] ?? null;
+}
+
+function periodToIso(periodTo: string | null | undefined): string | null {
+  const t = String(periodTo ?? "").trim();
+  if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return parseDdMmYyToIso(t);
+}
+
+/** On-disk name after BCI parse rename (`period_to` date prefix). */
+export function canonicalCcStatementPdfName(
+  periodTo: string | null | undefined,
+  cardLast4: string
+): string | null {
+  const iso = periodToIso(periodTo);
+  const last4 = String(cardLast4 ?? "").trim();
+  if (!iso || !/^\d{4}$/.test(last4)) return null;
+  return `${iso} estado de cuenta tarjeta ${last4}.pdf`;
+}
+
+/**
+ * Target filename under `cfraser/credit-card-statements/` after import (aligned with
+ * `server/scripts/organize-cfraser-statement-pdfs.py` stems).
+ */
+export function archivedCreditCardStatementPdfFileName(
+  row: Record<string, string | undefined>
+): string | null {
+  const iso = periodToIso(String(row.period_to ?? "").trim());
+  const last4 = String(row.card_last4 ?? "").trim();
+  if (!iso || !/^\d{4}$/.test(last4)) return null;
+  const cur = String(row.currency ?? "").toLowerCase();
+  const layout = String(row.parser_layout ?? "").trim();
+  const usd = cur === "usd" || layout === "international_usd";
+  const mid = usd ? "estado de cuenta tarjeta usd" : "estado de cuenta tarjeta";
+  return `${iso} ${mid} ${last4}.pdf`;
+}
+
+function resolveCcPdfInMonthPrefix(
+  dir: string,
+  rowMonth: string,
+  cardLast4: string
+): string | null {
+  if (!/^\d{4}-\d{2}$/.test(rowMonth) || !/^\d{4}$/.test(cardLast4)) return null;
+  const prefix = `${rowMonth}-`;
+  const suffix = ` estado de cuenta tarjeta ${cardLast4}.pdf`;
+  let bestName: string | null = null;
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.toLowerCase().endsWith(".pdf")) continue;
+    if (!name.startsWith(prefix) || !name.endsWith(suffix)) continue;
+    if (!bestName || name > bestName) bestName = name;
+  }
+  return bestName ? path.resolve(dir, bestName) : null;
+}
+
+export function resolveCcStatementPdfPath(
+  sourcePdf: string,
+  opts?: ResolveCcStatementPdfOpts
+): string | null {
   const t = String(sourcePdf ?? "").trim();
   if (!t || t.startsWith("import:web-paste")) return null;
   const dir = resolveCfraserPdfsDir();
+  const last4 = ccCardLast4FromSourcePdf(t);
+  const periodIso = opts?.periodTo ? periodToIso(opts.periodTo) : null;
+  const rowMonth = periodIso ? monthKeyFromYmd(periodIso) : null;
+
+  if (last4 && opts?.periodTo) {
+    const canonical = canonicalCcStatementPdfName(opts.periodTo, last4);
+    if (canonical) {
+      const fromPeriodTo = resolveExistingFile([dir], canonical);
+      if (fromPeriodTo) return fromPeriodTo;
+    }
+    if (rowMonth) {
+      const fromMonth = resolveCcPdfInMonthPrefix(dir, rowMonth, last4);
+      if (fromMonth) return fromMonth;
+    }
+  }
+
   const direct = resolveExistingFile([dir], t);
   if (direct) return direct;
   if (/\.pdf$/i.test(t) && !/-CORRUPT\.pdf$/i.test(t)) {
@@ -67,11 +151,27 @@ type CcStmtRow = {
   period_to: string | null;
 };
 
+function ccStatementRowHasPdfOnDisk(row: CcStmtRow): boolean {
+  return (
+    resolveCcStatementPdfPath(row.source_pdf, { periodTo: row.period_to }) != null
+  );
+}
+
 function pickPrimaryCcStatement(rows: CcStmtRow[]): CcStmtRow | null {
   const pdfs = rows.filter((r) => isCcStatementPdfSource(r.source_pdf));
   if (pdfs.length === 0) return null;
-  const clp = pdfs.find((r) => String(r.currency ?? "").toLowerCase() === "clp");
-  return clp ?? pdfs[0] ?? null;
+  const clp = pdfs.filter((r) => String(r.currency ?? "").toLowerCase() === "clp");
+  const candidates = clp.length > 0 ? clp : pdfs;
+  let best: CcStmtRow | null = null;
+  let bestHasFile = false;
+  for (const row of candidates) {
+    const hasFile = ccStatementRowHasPdfOnDisk(row);
+    if (!best || (hasFile && !bestHasFile)) {
+      best = row;
+      bestHasFile = hasFile;
+    }
+  }
+  return best ?? candidates[0] ?? null;
 }
 
 /**
@@ -144,7 +244,9 @@ function buildCcDocumentPathsByMonth(accountId: number): Map<string, string> {
   for (const [ym, picks] of byMonth) {
     const pick = pickPrimaryCcStatement(picks);
     if (!pick) continue;
-    const abs = resolveCcStatementPdfPath(pick.source_pdf);
+    const abs = resolveCcStatementPdfPath(pick.source_pdf, {
+      periodTo: pick.period_to,
+    });
     if (abs) out.set(ym, abs);
   }
   return out;

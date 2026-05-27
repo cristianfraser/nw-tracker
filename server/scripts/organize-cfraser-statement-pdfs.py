@@ -226,6 +226,8 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> in
         row = by_pdf.get(p.name)
         fn_iso = iso_from_santander_80_filename(p.name)
         iso = dd_to_iso(row.get("statement_date", "")) if row else None
+        if row and not iso:
+            iso = dd_to_iso(row.get("period_to", ""))
         peek_iso, peek_intl, peek_l4 = peek_meta(p)
         if fn_iso:
             iso = fn_iso

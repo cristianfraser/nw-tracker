@@ -550,62 +550,6 @@ function installmentHistoryMonthsFromLedgerData(
   });
 }
 
-/**
- * Month-end closing balance (CLP) from parsed statement ledger only — no `valuations` blend.
- * Used for API series and for {@link upsertCreditCardValuationsFromLedger}.
- */
-export function ccLedgerStatementClosingPointsClp(accountId: number): { as_of_date: string; value_clp: number }[] | null {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
-  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  const rows = installmentHistoryMonthsFromLedgerData(purchasesRaw, paymentsByPurchase);
-  if (rows.length === 0) return null;
-  return rows.map((r) => ({
-    as_of_date: ccLedgerMonthEndIso(r.month),
-    value_clp: cupoEnCuotasClpForCalendarMonth(accountId, r.month),
-  }));
-}
-
-const upsertValuationMonth = db.prepare(`
-  INSERT INTO valuations (account_id, as_of_date, value_clp)
-  VALUES (@account_id, @as_of_date, @value_clp)
-  ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp
-`);
-
-/**
- * Persists month-end `valuations` from the PDF installment ledger (same series as historial de cuotas).
- * Run after loading `cc_installment_*` so Liabilities / dashboard read the same rows as account detail.
- */
-export function upsertCreditCardValuationsFromLedger(accountId: number): number {
-  const pts = ccLedgerStatementClosingPointsClp(accountId);
-  if (!pts || pts.length === 0) return 0;
-  const row = db
-    .prepare(
-      `SELECT c.slug AS slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(accountId) as { slug: string } | undefined;
-  if (row?.slug !== "credit_card") return 0;
-  let n = 0;
-  for (const p of pts) {
-    upsertValuationMonth.run({
-      account_id: accountId,
-      as_of_date: p.as_of_date,
-      value_clp: p.value_clp,
-    });
-    n += 1;
-  }
-  const today = chileCalendarTodayYmd();
-  const liveToday = liveCreditCardOutstandingClp(accountId);
-  if (liveToday != null && Number.isFinite(liveToday)) {
-    upsertValuationMonth.run({
-      account_id: accountId,
-      as_of_date: today,
-      value_clp: liveToday,
-    });
-    n += 1;
-  }
-  return n;
-}
-
 export function ccInstallmentsDbApiPayload(accountId: number): {
   account_id: number;
   source: "db";

@@ -5,7 +5,7 @@ import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 
 export type CcInstallmentPurchaseMatch = {
   id: number;

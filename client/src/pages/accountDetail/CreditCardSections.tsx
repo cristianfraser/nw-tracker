@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
-import type { AccountCcInstallmentsResponse } from "../../types";
+import { PaginatedTable } from "../../components/ui/PaginatedTable";
+import type { AccountCcInstallmentsResponse, CcInstallmentPurchaseComputed } from "../../types";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
@@ -94,7 +95,7 @@ function CreditCardInstallmentsSection({
   }, [purchasesCompleted]);
 
   const renderPurchaseRows = (
-    rows: typeof ledger.purchases,
+    rows: ReadonlyArray<CcInstallmentPurchaseComputed>,
     opts: { dueColumn: "next" | "last" | "none" }
   ) =>
     rows.map((p) => (
@@ -165,6 +166,25 @@ function CreditCardInstallmentsSection({
         ) : null}
       </tr>
     ));
+
+  const purchasesCompletedPages = useMemo(() => {
+    const pageSize = 10;
+    if (purchasesCompletedSorted.length === 0) {
+      return [{ pageNumber: 0, data: [] as CcInstallmentPurchaseComputed[] }];
+    }
+
+    const chunks: CcInstallmentPurchaseComputed[][] = [];
+    for (let i = 0; i < purchasesCompletedSorted.length; i += pageSize) {
+      chunks.push(purchasesCompletedSorted.slice(i, i + pageSize));
+    }
+
+    const totalChunks = chunks.length;
+    // PaginatedTable defaults to the last page; we want the last array element to be the newest chunk.
+    // Keep `pageNumber` aligned with "Página {pageNumber + 1}" where Página 1 is the newest chunk.
+    return chunks
+      .reverse()
+      .map((data, revIdx) => ({ pageNumber: totalChunks - 1 - revIdx, data }));
+  }, [purchasesCompletedSorted]);
 
   return (
     <>
@@ -360,11 +380,13 @@ function CreditCardInstallmentsSection({
             <span className="mono">nro_cuota_current</span> falte en filas resumen tipo{" "}
             <span className="mono">03 CUOTAS COMERC</span>).
           </p>
-          <Table
+          <PaginatedTable
             key={`cc-completed-${accountId}`}
-            collapsedVisibleRows={5}
+            pages={purchasesCompletedPages}
+            collapsedVisibleRows={10}
             wrapClassName={styles.tableWrapSpaced}
             tableClassName={styles.tableCompact}
+            getPageLabel={(page) => `${t("table.paginationPageAria")} ${page.pageNumber + 1}`}
             header={
               <thead>
                 <tr>
@@ -384,17 +406,18 @@ function CreditCardInstallmentsSection({
                 </tr>
               </thead>
             }
-          >
-            {purchasesCompletedSorted.length === 0 ? (
-              <tr>
-                <td colSpan={fromDb ? 9 : 13} className="muted">
-                  No hay compras en cuotas liquidadas en el ledger.
-                </td>
-              </tr>
-            ) : (
-              renderPurchaseRows(purchasesCompletedSorted, { dueColumn: "last" })
-            )}
-          </Table>
+            renderBody={(pageRows) =>
+              purchasesCompletedSorted.length === 0 ? (
+                <tr>
+                  <td colSpan={fromDb ? 9 : 13} className="muted">
+                    No hay compras en cuotas liquidadas en el ledger.
+                  </td>
+                </tr>
+              ) : (
+                renderPurchaseRows(pageRows, { dueColumn: "last" })
+              )
+            }
+          />
 
           <h3 className={styles.subsectionTitle}>Proyección por mes (una fila por mes)</h3>
           <Table

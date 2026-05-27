@@ -1,115 +1,44 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import { formatYmEs } from "./shared";
 import type { CcBillingDetailMonthDto } from "../../types";
-import { Table } from "../../components/ui/Table";
-import { usePatchCcBillingFacturadoPlaceholderMutation } from "../../queries/hooks";
-import { cn } from "../../cn";
-import styles from "../AccountDetailPage.module.css";
-
-function clpInputFromAmount(amount: number | null | undefined): string {
-  if (amount == null || amount <= 0) return "";
-  return String(Math.round(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-
-function parseClpInput(raw: string): number | null {
-  const digits = raw.replace(/\./g, "").trim();
-  if (!digits) return null;
-  const n = Number(digits);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n);
-}
-
-function FacturadoCell({
-  row,
-  accountId,
-  displayUnit,
-  extraCcOffsets,
-}: {
-  row: CcBillingDetailMonthDto;
-  accountId: number;
-  displayUnit: "clp" | "usd";
-  extraCcOffsets: Record<string, number>;
-}) {
-  const { t } = useTranslation();
-  const patchFacturado = usePatchCcBillingFacturadoPlaceholderMutation({
-    accountId,
-    displayUnit,
-    extraCcOffsetsKey: JSON.stringify(extraCcOffsets),
-  });
-  const [text, setText] = useState(() => clpInputFromAmount(row.facturado_placeholder_clp));
-
-  useEffect(() => {
-    setText(clpInputFromAmount(row.facturado_placeholder_clp));
-  }, [row.facturado_placeholder_clp]);
-
-  const save = () => {
-    const parsed = parseClpInput(text);
-    const stored = row.facturado_placeholder_clp;
-    if (parsed === stored || (parsed == null && (stored == null || stored <= 0))) return;
-    patchFacturado.mutate({
-      billing_month: row.billing_month,
-      estimated_facturado_clp: parsed,
-    });
-  };
-
-  if (!row.facturado_editable) {
-    return (
-      <>{row.total_facturado_clp != null ? formatClp(row.total_facturado_clp) : "—"}</>
-    );
-  }
-
-  const busy = patchFacturado.isPending;
-
-  return (
-    <>
-      <input
-        type="text"
-        inputMode="numeric"
-        className={cn("mono", styles.facturadoPlaceholderInput)}
-        value={text}
-        disabled={busy}
-        aria-label={t("accountDetail.creditCard.facturadoPlaceholderInputAria", {
-          month: row.billing_month,
-        })}
-        placeholder="0"
-        onChange={(e) => setText(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.currentTarget.blur();
-          }
-        }}
-      />
-      {row.facturado_is_placeholder ? (
-        <span className="muted"> · {t("accountDetail.creditCard.facturadoPlaceholderEstimated")}</span>
-      ) : null}
-    </>
-  );
-}
+import { PaginatedTable } from "../../components/ui/PaginatedTable";
 
 export function CreditCardDetallePorMesTable({
   rows,
-  accountId,
-  displayUnit,
-  extraCcOffsets = {},
   collapsedVisibleRows = 12,
 }: {
   rows: readonly CcBillingDetailMonthDto[];
-  accountId: number;
-  displayUnit: "clp" | "usd";
-  extraCcOffsets?: Record<string, number>;
   collapsedVisibleRows?: number;
 }) {
   const { t } = useTranslation();
-  const hidden = Math.max(0, rows.length - collapsedVisibleRows);
+
+  const pages = useMemo(() => {
+    const byYear = new Map<string, CcBillingDetailMonthDto[]>();
+
+    for (const row of rows) {
+      const year = row.billing_month.slice(0, 4);
+      const bucket = byYear.get(year) ?? [];
+      bucket.push(row);
+      byYear.set(year, bucket);
+    }
+
+    const yearsSorted = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
+
+    return yearsSorted.map((year, pageNumber) => ({
+      pageNumber,
+      data: byYear.get(year) ?? [],
+    }));
+  }, [rows]);
 
   return (
-    <Table
+    <PaginatedTable
+      pages={pages}
       collapsedVisibleRows={collapsedVisibleRows}
-      showMoreLabel={t("table.showMoreMonths", { count: hidden })}
+      showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
       showLessLabel={t("table.showLessMonths")}
+      getPageLabel={(page) => page.data[0]?.billing_month.slice(0, 4) ?? "—"}
       header={
         <thead>
           <tr>
@@ -120,27 +49,25 @@ export function CreditCardDetallePorMesTable({
           </tr>
         </thead>
       }
-    >
-      {rows.map((row) => (
-        <tr key={`${row.billing_month}-${row.as_of_date}`}>
-          <td className="mono">
-            {row.billing_month} ({formatYmEs(row.billing_month)})
-            {row.as_of_kind === "manual" ? (
-              <span className="muted"> · {t("accountDetail.creditCard.manualRowNote")}</span>
-            ) : null}
-          </td>
-          <td className="mono">
-            <FacturadoCell
-              row={row}
-              accountId={accountId}
-              displayUnit={displayUnit}
-              extraCcOffsets={extraCcOffsets}
-            />
-          </td>
-          <td className="mono">{formatClp(row.cupo_en_cuotas_clp)}</td>
-          <td className="mono">{formatClp(row.balance_total_clp)}</td>
-        </tr>
-      ))}
-    </Table>
+      renderBody={(pageRows) => (
+        <>
+          {pageRows.map((row) => (
+            <tr key={`${row.billing_month}-${row.as_of_date}`}>
+              <td className="mono">
+                {row.billing_month} ({formatYmEs(row.billing_month)})
+                {row.as_of_kind === "manual" ? (
+                  <span className="muted"> · {t("accountDetail.creditCard.manualRowNote")}</span>
+                ) : null}
+              </td>
+              <td className="mono">
+                {row.total_facturado_clp != null ? formatClp(row.total_facturado_clp) : "—"}
+              </td>
+              <td className="mono">{formatClp(row.cupo_en_cuotas_clp)}</td>
+              <td className="mono">{formatClp(row.balance_total_clp)}</td>
+            </tr>
+          ))}
+        </>
+      )}
+    />
   );
 }

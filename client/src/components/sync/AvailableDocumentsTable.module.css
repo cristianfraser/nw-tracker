@@ -25,18 +25,27 @@
   text-align: center;
 }
 
-.ok {
-  color: #4ade80;
-  font-weight: 600;
+.cellDual,
+.cellMissing,
+.cellLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
 }
 
-a.ok {
+.cellLink {
   text-decoration: none;
 }
 
-a.ok:hover {
+.cellLink:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.ok {
+  color: #4ade80;
+  font-weight: 600;
 }
 
 .missing {

@@ -355,10 +355,7 @@ export interface CcBillingDetailMonthDto {
   as_of_date: string;
   as_of_kind: "statement" | "manual";
   total_facturado_actual_clp: number | null;
-  facturado_placeholder_clp: number | null;
   total_facturado_clp: number | null;
-  facturado_is_placeholder: boolean;
-  facturado_editable: boolean;
   cupo_en_cuotas_clp: number;
   cuota_a_pagar_next_mes_clp: number;
   balance_total_clp: number;
@@ -775,6 +772,59 @@ export interface FlowsExpensesResponse {
   by_group: Record<ExpenseFlowGroupSlug, FlowExpenseGroupBlock>;
 }
 
+export type RealEstateExpenseLinkSource = "auto" | "manual";
+
+export interface RealEstateExpenseLinkDto {
+  purchase_key: string;
+  link_source: RealEstateExpenseLinkSource;
+  merchant: string | null;
+  purchase_on: string | null;
+  amount_clp: number;
+  origin_label: string;
+  source: FlowCcExpenseLineSource;
+}
+
+export interface RealEstateBillSlot {
+  expense_entry_id: number;
+  account_slug: ExpenseApartmentSlug;
+  bill_month: string;
+  spent_on: string;
+  kind: string;
+  expected_amount_clp: number;
+  link: RealEstateExpenseLinkDto | null;
+  display_amount_clp: number;
+  note: string | null;
+  can_link: boolean;
+}
+
+export interface RealEstateExpenseAccountBlock {
+  account_slug: ExpenseApartmentSlug;
+  label: string;
+  slots: RealEstateBillSlot[];
+  total_clp: number;
+}
+
+/** `GET /api/flows/expenses/real-estate` — bill slots linked to gastos purchases. */
+export interface RealEstateExpensesResponse {
+  slots: RealEstateBillSlot[];
+  by_account: Record<ExpenseApartmentSlug, RealEstateExpenseAccountBlock>;
+  chart_monthly: FlowExpenseChartPoint[];
+  chart_yearly: FlowExpenseChartPoint[];
+  total_clp: number;
+}
+
+export interface RealEstateLinkCandidateDto {
+  purchase_key: string;
+  merchant: string | null;
+  purchase_on: string | null;
+  amount_clp: number;
+  origin_label: string;
+  source: FlowCcExpenseLineSource;
+  merchant_matches: boolean;
+  /** Months from bill month (0 = same month, 1–2 = later card payment). */
+  purchase_month_offset: number;
+}
+
 export type SyncSourceId =
   | "afp_uno"
   | "fintual"
@@ -783,14 +833,27 @@ export type SyncSourceId =
   | "sbif_uf"
   | "sbif_utm"
   | "sbif_ipc"
-  | "equity_eod";
+  | "stocks_nyse"
+  | "crypto_eod";
 
 export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
+
+export type SyncSourceDayKind = "open" | "weekend" | "holiday";
+
+export interface SyncSourceWallTime {
+  ymd: string;
+  hour: number;
+  minute: number;
+  timeZone: "America/Santiago" | "America/New_York";
+}
 
 export interface SyncSourceStatusRow {
   source: SyncSourceId;
   status: SyncSourceDisplayStatus;
   stale: boolean;
+  next_sync: SyncSourceWallTime | null;
+  next_sync_imminent: boolean;
+  today_day_kind: SyncSourceDayKind;
 }
 
 export interface SyncSchedulerStatus {

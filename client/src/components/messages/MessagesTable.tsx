@@ -1,6 +1,13 @@
 import type { AppMessageRow } from "../../api";
 import { Table } from "../ui/Table";
 
+/** Legacy log titles appended ` YYYY-MM-DD HH:MM:SS UTC` (now stored in `created_at` only). */
+const LEGACY_LOG_TITLE_TIMESTAMP = / \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/;
+
+function logTitleForDisplay(title: string): string {
+  return title.replace(LEGACY_LOG_TITLE_TIMESTAMP, "");
+}
+
 function formatWhen(iso: string): string {
   const d = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`);
   if (Number.isNaN(d.getTime())) return iso;
@@ -63,7 +70,9 @@ export function MessagesTable({
             <td className="muted" style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
               {formatWhen(r.created_at)}
             </td>
-            <td style={{ verticalAlign: "top", fontWeight: r.read_at ? 400 : 600 }}>{r.title}</td>
+            <td style={{ verticalAlign: "top", fontWeight: r.read_at ? 400 : 600 }}>
+              {logTitleForDisplay(r.title)}
+            </td>
             <td style={{ verticalAlign: "top" }}>
               <MessageBody body={r.body} />
             </td>

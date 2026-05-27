@@ -6,10 +6,8 @@
  */
 import { db } from "../src/db.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
-import {
-  ccInstallmentLedgerRowCount,
-  upsertCreditCardValuationsFromLedger,
-} from "../src/ccInstallmentLedgerDb.js";
+import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 import { ccStatementRowCount } from "../src/ccStatementsDb.js";
 
 function arg(name: string): string | undefined {

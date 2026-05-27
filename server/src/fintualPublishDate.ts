@@ -9,13 +9,36 @@ export function isLastDayOfChileHolidayStreak(ymd: string): boolean {
 }
 
 /**
- * Days when Fintual may publish a new fund cuota: business days, plus the last day of a holiday streak.
- * Mid-streak holidays (e.g. Wed in Wed–Thu) are not publish days.
+ * Last calendar day before Chile business resumes (weekend, holiday, or mixed blocks).
+ * Fintual evening poll / stale applies here at 18:00 — not on earlier non-business days in the block.
+ */
+export function isLastDayOfChileNonBusinessBlock(ymd: string): boolean {
+  if (isChileBusinessDay(ymd)) return false;
+  return isChileBusinessDay(chileCalendarAddDays(ymd, 1));
+}
+
+/**
+ * Days when Fintual may publish a new fund cuota: Chile business days, plus the last day of each
+ * non-business block (e.g. Sunday after a weekend; Monday after Sat–Sun–Mon holidays).
  */
 export function isFintualFundPublishDay(ymd: string): boolean {
   if (isChileBusinessDay(ymd)) return true;
-  if (isChileHoliday(ymd)) return isLastDayOfChileHolidayStreak(ymd);
-  return false;
+  return isLastDayOfChileNonBusinessBlock(ymd);
+}
+
+/** Evening poll days when a new fund cuota may be expected (business day or end of a non-business block). */
+export function fintualExpectsCuotaOnPollDay(ymd: string): boolean {
+  return isFintualFundPublishDay(ymd);
+}
+
+/**
+ * After 18:00 Chile, API fund publish date is still before the poll calendar day — today's cuota is not out yet.
+ * A no-change poll must not clear stale or evening-settled in this case.
+ */
+export function fintualPublishLagsPollCalendarDay(cl: ChileWallClock, publishYmd: string): boolean {
+  if (cl.hour < 18) return false;
+  if (!fintualExpectsCuotaOnPollDay(cl.ymd)) return false;
+  return publishYmd < cl.ymd;
 }
 
 /** Latest Fintual publish day strictly before `beforeYmd`. */

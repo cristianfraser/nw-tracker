@@ -22,6 +22,8 @@ import {
 } from "./ccInstallmentLedgerDb.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
+import { loadBookValuationsAsc } from "./bookValuations.js";
+export { loadBookValuationsAsc } from "./bookValuations.js";
 import {
   colorRgbForSyntheticAccountLine,
   colorRgbForTimeseriesAccountLine,
@@ -204,13 +206,6 @@ function recomputeYtdAndCumulativeOnMonthlyRows(
     });
   }
   return out;
-}
-
-/** Stored `valuations` rows (ascending) for book / month-end snapshots. */
-export function loadBookValuationsAsc(accountId: number): { as_of_date: string; value_clp: number }[] {
-  return db
-    .prepare(`SELECT as_of_date, value_clp FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
-    .all(accountId) as { as_of_date: string; value_clp: number }[];
 }
 
 function lastStoredBookClpOnOrBefore(

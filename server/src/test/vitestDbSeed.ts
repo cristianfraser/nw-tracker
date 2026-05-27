@@ -1,0 +1,73 @@
+import { db } from "../db.js";
+import { seedCreditCardTree } from "../seedCreditCardTree.js";
+
+/** Isolated master account for Vitest (not used by real imports). */
+export const VITEST_SANTANDER_CC_MASTER_NOTES = "credit_card_master|santander|vitest-fixture";
+
+let vitestCreditCardFixturesApplied = false;
+
+/**
+ * Idempotent fixtures for Vitest: one Santander CC master so `importCcStatementsMerge` and similar
+ * tests have a stable account without relying on `nw-tracker.db`.
+ */
+export function ensureVitestCreditCardFixtures(): void {
+  if (!process.env.NW_TRACKER_TEST_DB?.trim()) {
+    return;
+  }
+  if (vitestCreditCardFixturesApplied) {
+    return;
+  }
+
+  const existing = db
+    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+
+  if (!existing) {
+    const cat = db
+      .prepare(
+        `SELECT c.id FROM categories c
+         JOIN asset_groups g ON g.id = c.group_id
+         WHERE g.slug = 'credit_cards' AND c.slug = 'credit_card'
+         LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!cat) {
+      throw new Error(
+        "Vitest DB seed failed: expected `credit_cards` / `credit_card` category (run migrations)."
+      );
+    }
+    db.prepare(
+      `INSERT INTO accounts (category_id, name, notes, account_kind)
+       VALUES (?, 'Vitest · santander · fixture', ?, 'master')`
+    ).run(cat.id, VITEST_SANTANDER_CC_MASTER_NOTES);
+  }
+
+  const accountId = (
+    db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(VITEST_SANTANDER_CC_MASTER_NOTES) as {
+      id: number;
+    }
+  ).id;
+
+  const hasConfig = db
+    .prepare(`SELECT 1 FROM credit_card_account_config WHERE account_id = ?`)
+    .get(accountId) as { 1: number } | undefined;
+  if (!hasConfig) {
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
+       VALUES (?, 21, 20, '0000')`
+    ).run(accountId);
+  }
+
+  seedCreditCardTree();
+  vitestCreditCardFixturesApplied = true;
+}
+
+export function getVitestSantanderCcMasterAccountId(): number | null {
+  if (!process.env.NW_TRACKER_TEST_DB?.trim()) {
+    return null;
+  }
+  const row = db
+    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+  return row?.id ?? null;
+}

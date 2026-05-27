@@ -164,25 +164,7 @@ function liabilityValuationContext(opts?: { mortgageFromDeptoSheet?: boolean }, 
   };
 }
 
-/**
- * Pasivos total as of `asOfYmd` — per-account latest valuation on or before the date (no forward
- * projection from the future). Matches the Liabilities class-tab chart when `mortgageFromDeptoSheet`
- * is false.
- */
-export function liabilitiesGroupClpAsOf(
-  asOfYmd: string,
-  opts?: { mortgageFromDeptoSheet?: boolean }
-): number {
-  const ctx = liabilityValuationContext(opts, asOfYmd);
-  let sum = 0;
-  for (const r of liabilityAccountsForValuation()) {
-    const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
-    if (clp != null) sum += clp;
-  }
-  return sum;
-}
-
-/** Per-category pasivos for dashboard card (same rules as {@link liabilitiesGroupClpAsOf}). */
+/** Per-category pasivos for dashboard / breakdown (liability_view series, sheet mortgage when opted in). */
 export function liabilitiesBreakdownClpAsOf(
   asOfYmd: string,
   opts?: { mortgageFromDeptoSheet?: boolean }

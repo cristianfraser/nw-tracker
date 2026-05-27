@@ -1,7 +1,7 @@
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { removeOneShotLinesForInstallmentPurchase } from "./ccCrossImportDedupe.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccInstallmentLedgerDb.js";
+import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 export type ManualCcPurchaseInput = {

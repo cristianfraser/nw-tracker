@@ -1,22 +1,27 @@
 /**
- * In-process scheduler: if any external source is stale, run `runGlobalSyncAll()` directly
- * (no child `npx` process — more reliable under `tsx watch`).
+ * In-process scheduler for external syncs.
+ *
+ * - While any source is stale: poll every `GLOBAL_SYNC_INTERVAL_MS` (default 15 min), sync immediately on start.
+ * - When all sources are fresh: stop polling; wake at the earliest source `next_sync` wall time.
  *
  * Env:
  * - `GLOBAL_SYNC_ENABLED` — default on; set `0` to disable.
- * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval (default 15 minutes).
- * - `GLOBAL_SYNC_STARTUP_DELAY_MS` — first check after server listen (default 30s).
+ * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval while stale (default 15 minutes).
  */
 import { chileWallClockNow } from "./chileDate.js";
-import { staleSyncSources } from "./globalSyncStale.js";
+import { runGlobalSyncAll } from "./globalSyncAll.js";
+import { allSyncSourceStatuses, staleSyncSources } from "./globalSyncStale.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
+import { syncWallTimeToMs } from "./syncSourceSchedule.js";
 
 let inFlight = false;
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let pollIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let wakeTimerHandle: ReturnType<typeof setTimeout> | null = null;
 let schedulerEnabled = false;
 let schedulerIntervalMs = 15 * 60 * 1000;
-/** Wall-clock ms when the next `schedulerTick` is scheduled (poll; runs sync if stale). */
+let pollLoopActive = false;
+/** Wall-clock ms for next poll (while stale) or idle wake (when fresh). */
 let nextCheckAtMs: number | null = null;
 
 export type GlobalSyncSchedulerSnapshot = {
@@ -38,8 +43,8 @@ export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
   };
 }
 
-function scheduleNextCheck(delayMs: number): void {
-  nextCheckAtMs = Date.now() + delayMs;
+function scheduleNextCheckAt(atMs: number): void {
+  nextCheckAtMs = atMs;
 }
 
 function envFlag(name: string, defaultOn: boolean): boolean {
@@ -54,8 +59,61 @@ function envMs(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-async function runGlobalSyncInProcess(): Promise<number> {
-  const { runGlobalSyncAll } = await import("./globalSyncAll.js");
+function clearWakeTimer(): void {
+  if (wakeTimerHandle != null) {
+    clearTimeout(wakeTimerHandle);
+    wakeTimerHandle = null;
+  }
+}
+
+function stopPollLoop(): void {
+  if (pollIntervalHandle != null) {
+    clearInterval(pollIntervalHandle);
+    pollIntervalHandle = null;
+  }
+  pollLoopActive = false;
+}
+
+function ensurePollInterval(): void {
+  if (pollIntervalHandle != null) return;
+  pollIntervalHandle = setInterval(() => {
+    scheduleNextCheckAt(Date.now() + schedulerIntervalMs);
+    void schedulerTick();
+  }, schedulerIntervalMs);
+}
+
+function earliestNextWakeMs(): number | null {
+  loadRootDotenv();
+  const cl = chileWallClockNow();
+  const state = loadGlobalSyncState();
+  const rows = allSyncSourceStatuses(cl, state);
+  let min: number | null = null;
+  for (const row of rows) {
+    if (row.status === "disabled") continue;
+    if (row.next_sync_imminent) return Date.now();
+    if (row.next_sync) {
+      const ms = syncWallTimeToMs(row.next_sync);
+      if (min == null || ms < min) min = ms;
+    }
+  }
+  return min;
+}
+
+function scheduleWakeTimer(atMs: number | null): void {
+  clearWakeTimer();
+  if (!schedulerEnabled || atMs == null) {
+    if (!pollLoopActive) nextCheckAtMs = null;
+    return;
+  }
+  const delay = Math.max(0, atMs - Date.now());
+  scheduleNextCheckAt(atMs);
+  wakeTimerHandle = setTimeout(() => {
+    wakeTimerHandle = null;
+    void rescheduleGlobalSyncScheduler();
+  }, delay);
+}
+
+function runGlobalSyncInProcess(): Promise<number> {
   return runGlobalSyncAll({ dryRun: false });
 }
 
@@ -84,10 +142,52 @@ async function schedulerTick(): Promise<void> {
     console.error(`sync:scheduler — error: ${e instanceof Error ? e.message : e}`);
   } finally {
     inFlight = false;
-    if (schedulerEnabled && intervalHandle != null) {
-      scheduleNextCheck(schedulerIntervalMs);
+    if (schedulerEnabled) {
+      await rescheduleGlobalSyncScheduler();
     }
   }
+}
+
+/** Re-evaluate stale sources: start/stop poll loop or schedule next wake. */
+export async function rescheduleGlobalSyncScheduler(): Promise<void> {
+  if (!schedulerEnabled) return;
+  loadRootDotenv();
+  const cl = chileWallClockNow();
+  const state = loadGlobalSyncState();
+  const stale = staleSyncSources(cl, state);
+  if (stale.length > 0) {
+    if (!pollLoopActive) {
+      pollLoopActive = true;
+      clearWakeTimer();
+      console.log(
+        `sync:scheduler — stale [${stale.join(", ")}]; polling every ${Math.round(schedulerIntervalMs / 1000)}s`
+      );
+      void schedulerTick();
+    } else {
+      ensurePollInterval();
+    }
+    scheduleNextCheckAt(Date.now() + schedulerIntervalMs);
+    return;
+  }
+  stopPollLoop();
+  const wakeAt = earliestNextWakeMs();
+  if (wakeAt != null) {
+    console.log(`sync:scheduler — all fresh; next wake ${new Date(wakeAt).toISOString()}`);
+  } else {
+    console.log("sync:scheduler — all fresh; no scheduled wake.");
+  }
+  scheduleWakeTimer(wakeAt);
+}
+
+/** Call after force-stale or other events that may require immediate polling. */
+export function notifyGlobalSyncScheduler(): void {
+  if (!schedulerEnabled) return;
+  if (pollLoopActive) {
+    scheduleNextCheckAt(Date.now());
+    void schedulerTick();
+    return;
+  }
+  void rescheduleGlobalSyncScheduler();
 }
 
 export function startGlobalSyncScheduler(): void {
@@ -98,28 +198,15 @@ export function startGlobalSyncScheduler(): void {
     return;
   }
   schedulerIntervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
-  const startupDelayMs = envMs("GLOBAL_SYNC_STARTUP_DELAY_MS", 30 * 1000);
-
   console.log(
-    `sync:scheduler — enabled; first check in ${Math.round(startupDelayMs / 1000)}s, then every ${Math.round(schedulerIntervalMs / 1000)}s`
+    `sync:scheduler — enabled; polls every ${Math.round(schedulerIntervalMs / 1000)}s while any source is stale`
   );
-
-  scheduleNextCheck(startupDelayMs);
-  setTimeout(() => {
-    void schedulerTick();
-    scheduleNextCheck(schedulerIntervalMs);
-    intervalHandle = setInterval(() => {
-      scheduleNextCheck(schedulerIntervalMs);
-      void schedulerTick();
-    }, schedulerIntervalMs);
-  }, startupDelayMs);
+  void rescheduleGlobalSyncScheduler();
 }
 
 export function stopGlobalSyncScheduler(): void {
-  if (intervalHandle) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
-  }
+  stopPollLoop();
+  clearWakeTimer();
   schedulerEnabled = false;
   nextCheckAtMs = null;
 }

@@ -1,5 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   lineHasUniquePurchaseMode,
   loadCcExpenseCategoryMaps,
@@ -151,8 +152,11 @@ export function buildInstallmentPaymentGastosLines(
 
     const payByIso =
       row.pay_by_date.length >= 10 ? row.pay_by_date.slice(0, 10) : row.pay_by_date;
+    const stmtIso = parseDdMmYyToIso(String(row.statement_date ?? "").trim());
     const billingMonth =
-      billingMonthForStatementDate(payByIso) ?? monthKeyFromYmd(payByIso);
+      (stmtIso ? billingMonthForStatementDate(stmtIso) : null) ??
+      billingMonthForStatementDate(payByIso) ??
+      monthKeyFromYmd(payByIso);
     if (!billingMonth) continue;
 
     const purchaseOn =

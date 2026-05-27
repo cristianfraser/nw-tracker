@@ -1,0 +1,21 @@
+.root {
+  white-space: nowrap;
+}
+
+.clp {
+  font-variant-numeric: tabular-nums;
+}
+
+.clpMuted {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.ufSup {
+  font-size: 0.62em;
+  font-weight: 500;
+  line-height: 0;
+  margin-left: 0.12em;
+  vertical-align: super;
+  color: var(--muted);
+}

@@ -29,6 +29,9 @@ export function MortgageDividendosTable({
 }) {
   const m = ledger.meta;
   const isMortgageView = variant === "mortgage";
+  // Display newest payments first. `occurred_on` is ISO-like (`YYYY-MM-DD`), so lexicographic
+  // order matches chronological order.
+  const rowsSorted = [...ledger.rows].sort((a, b) => String(b.occurred_on).localeCompare(String(a.occurred_on)));
   return (
     <>
       <h2 className={styles.sectionTitle}>
@@ -131,9 +134,9 @@ export function MortgageDividendosTable({
           </thead>
         }
       >
-        {ledger.rows.map((row, idx) => (
+        {rowsSorted.map((row, idx) => (
           <tr key={`${row.cuota}-${row.occurred_on}-${idx}`}>
-            <td className="mono">{row.cuota}</td>
+            <td className={cn("mono", styles.nowrap)}>{row.cuota}</td>
             <td>{row.occurred_on}</td>
             <td className="mono">{cellClp(row.pago_clp)}</td>
             <td className="mono">{formatUfUnitsFine(row.pago_uf)}</td>

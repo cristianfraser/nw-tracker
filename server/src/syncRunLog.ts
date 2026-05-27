@@ -9,6 +9,8 @@ export type SyncChangeGroup =
   | "sbif_utm"
   | "sbif_ipc"
   | "fintual"
+  | "stocks_nyse"
+  | "crypto_eod"
   | "tickers";
 
 export type SyncFieldChange = {
@@ -74,6 +76,8 @@ const FLAT_GROUP_ORDER: SyncChangeGroup[] = [
 
 const SECTION_GROUPS: { group: SyncChangeGroup; title: string }[] = [
   { group: "fintual", title: "Fintual" },
+  { group: "stocks_nyse", title: "NYSE stocks" },
+  { group: "crypto_eod", title: "Crypto" },
   { group: "tickers", title: "Tickers" },
 ];
 
@@ -158,12 +162,12 @@ export function formatSyncLogBody(
   return lines.join("\n");
 }
 
-/** Latest `global-sync` log row in `app_messages` (kind=log, title `Sync …`). */
+/** Latest `global-sync` log row in `app_messages` (kind=log, title `Sync`). */
 export function lastSyncRunCreatedAt(): string | null {
   const row = db
     .prepare(
       `SELECT created_at FROM app_messages
-       WHERE kind = 'log' AND title LIKE 'Sync %'
+       WHERE kind = 'log' AND title LIKE 'Sync%'
        ORDER BY created_at DESC, id DESC
        LIMIT 1`
     )
@@ -178,6 +182,5 @@ export function insertSyncRunLog(
   opts?: SyncRunLogOptions
 ): void {
   const body = formatSyncLogBody(staleSources, changes, opts);
-  const title = `Sync ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC`;
-  insertAppMessage("log", title, body, dryRun);
+  insertAppMessage("log", "Sync", body, dryRun);
 }
