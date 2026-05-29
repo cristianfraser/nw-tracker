@@ -1,3 +1,5 @@
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -65,20 +67,35 @@ type AccountRow = {
   category_slug: string;
 };
 
-function listDepositFlowAccounts(): AccountRow[] {
-  return db
+function listDepositFlowAccounts(includeExcludedFromGroupTotals = false): AccountRow[] {
+  const excludedClause = includeExcludedFromGroupTotals
+    ? ""
+    : "AND COALESCE(a.exclude_from_group_totals, 0) = 0";
+  const rows = db
     .prepare(
-      `SELECT a.id AS account_id, a.name, g.slug AS group_slug, c.slug AS category_slug
+      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
+       JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (a.notes IS NULL OR a.notes != ?)
-         AND COALESCE(a.exclude_from_group_totals, 0) = 0
-         AND g.slug IN ('real_estate', 'cash_eqs', 'brokerage', 'retirement')
-         AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
-       ORDER BY g.sort_order, c.sort_order, a.name`
+        ${excludedClause}
+         AND g.slug != 'individual_stocks'
+       ORDER BY g.sort_order, a.name`
     )
-    .all(NOTE_STOCKS_LEGACY) as AccountRow[];
+    .all(NOTE_STOCKS_LEGACY) as { account_id: number; name: string; bucket_slug: string }[];
+  return rows
+    .map((r) => {
+      const group_slug = dashboardBucketForAssetGroupSlug(r.bucket_slug);
+      if (!group_slug || !["real_estate", "cash_eqs", "brokerage", "retirement"].includes(group_slug)) {
+        return null;
+      }
+      return {
+        account_id: r.account_id,
+        name: r.name,
+        group_slug,
+        category_slug: accountBucketKindSlug(r.bucket_slug),
+      };
+    })
+    .filter((r): r is AccountRow => r != null);
 }
 
 /** CLP → USD using `fx_daily` on or before the event date (not latest FX). */
@@ -100,8 +117,9 @@ function periodEndFromOccurredOn(occurredOn: string, granularity: "month" | "yea
 
 function flowsDepositsNetTotalsByAccount(opts?: {
   period?: "month" | "year";
+  includeExcludedFromGroupTotals?: boolean;
 }): { clp: Map<number, number>; usd: Map<number, number> } {
-  const accounts = listDepositFlowAccounts();
+  const accounts = listDepositFlowAccounts(opts?.includeExcludedFromGroupTotals ?? false);
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDepositInflowEvents(ids);
   const today = chileCalendarTodayYmd();
@@ -133,21 +151,22 @@ export function flowsDepositsNetInPeriodByAccount(period: "month" | "year"): {
   clp: Map<number, number>;
   usd: Map<number, number>;
 } {
-  return flowsDepositsNetTotalsByAccount({ period });
+  return flowsDepositsNetTotalsByAccount({ period, includeExcludedFromGroupTotals: true });
 }
 
 /** Net capital (deposits − withdrawals) per account — same accounts as the flows deposits page. */
 export function flowsDepositsNetTotalByAccount(): Map<number, number> {
-  return flowsDepositsNetTotalsByAccount().clp;
+  return flowsDepositsNetTotalsByAccount({ includeExcludedFromGroupTotals: true }).clp;
 }
 
 /** Net deposits per account in USD (each event at its own FX date). */
 export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
-  return flowsDepositsNetTotalsByAccount().usd;
+  return flowsDepositsNetTotalsByAccount({ includeExcludedFromGroupTotals: true }).usd;
 }
 
+/** @heavy Scans deposit-flow accounts and merges inflow events for charts + net totals. */
 export function buildFlowsDepositsPayload(): FlowDepositsPayload {
-  const accounts = listDepositFlowAccounts();
+  const accounts = listDepositFlowAccounts(false);
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDepositInflowEvents(ids);
 

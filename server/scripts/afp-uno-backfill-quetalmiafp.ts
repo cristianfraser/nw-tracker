@@ -65,6 +65,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const dry = !process.argv.includes("--apply");
+  if (dry) {
+    console.warn(
+      "afp:uno:backfill-quetalmiafp is running in dry-run mode (no DB writes). Pass --apply to persist rows."
+    );
+  }
 
   const stats = await backfillAfpUnoCuotaQuetalmiChunks({
     apiKey: apiKey.trim(),

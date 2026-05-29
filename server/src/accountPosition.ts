@@ -17,6 +17,8 @@ import {
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { numCsv } from "./deptoDividendosLedger.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import { fundSeriesKeyFromImportNotes, isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { fintualGoalUnitsFromMovements, fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 
 /** Same resolution as mortgage API and `import-excel-history.ts`. */
 export function cfraserCsvDir(): string {
@@ -122,11 +124,44 @@ export type AccountPositionMeta = {
   afp_override_valor_cuota_clp?: number | null;
 };
 
+function fintualCertPositionMeta(
+  accountId: number,
+  importNotes: string,
+  displayTicker: string,
+  asOfYmd: string
+): AccountPositionMeta | null {
+  const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+  if (!seriesKey) return null;
+  const cuotas = fintualGoalUnitsFromMovementsThroughDate(accountId, asOfYmd);
+  const fu = latestFundUnitRowOnOrBefore(seriesKey, asOfYmd);
+  const px = fu?.unit_value_clp;
+  const pxDay = fu?.day;
+  const out: AccountPositionMeta = {
+    ticker: displayTicker,
+    units_kind: "shares",
+    units: cuotas != null && cuotas > 1e-9 ? cuotas : null,
+  };
+  if (cuotas != null && cuotas > 1e-9 && px != null && px > 0 && pxDay) {
+    out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
+    out.afp_override_value_as_of = pxDay;
+    out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+  }
+  return out;
+}
+
 export function getAccountPositionMeta(
   accountId: number,
   categorySlug: string,
-  opts?: { afpCuotasAsOfYmd?: string }
+  opts?: { afpCuotasAsOfYmd?: string; accountNotes?: string | null; accountName?: string | null }
 ): AccountPositionMeta | null {
+  const asOf =
+    opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
+      ? opts.afpCuotasAsOfYmd.trim()
+      : chileCalendarTodayYmd();
+  if (opts?.accountNotes && isFintualCertV2ValuationNotes(opts.accountNotes)) {
+    const ticker = (opts.accountName ?? "Fintual").trim() || "Fintual";
+    return fintualCertPositionMeta(accountId, opts.accountNotes, ticker, asOf);
+  }
   const ticker = tickerFromCategorySlug(categorySlug);
   if (ticker) {
     if (categorySlug === "spy" || categorySlug === "vea") {
@@ -175,12 +210,41 @@ export function getAccountPositionMeta(
       opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
         ? opts.afpCuotasAsOfYmd.trim()
         : chileCalendarTodayYmd();
-    const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
     const series = AFP_UNO_CUOTA_SERIES_KEY;
     let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
     if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
     const px = fu?.unit_value_clp;
     const pxDay = fu?.day;
+
+    // AFP values are stored monthly in `valuations`, but we also derive a live mark from
+    // `movements.units_delta × latest valor cuota`. If movements-derived cuotas drift
+    // (e.g. after re-import/backfills), that live mark can spike vs stored valuations.
+    // Prefer stored valuations when they disagree materially.
+    const stored = db
+      .prepare(
+        `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+      )
+      .get(accountId, asOfCuotas) as { value_clp: number } | undefined;
+
+    const cuotasFromMovements = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
+    let cuotas = cuotasFromMovements;
+    if (
+      stored?.value_clp != null &&
+      Number.isFinite(stored.value_clp) &&
+      px != null &&
+      Number.isFinite(px) &&
+      px > 0 &&
+      Number.isFinite(cuotasFromMovements) &&
+      cuotasFromMovements > 0
+    ) {
+      const derivedValue = Math.round(cuotasFromMovements * px * 100) / 100;
+      const relDiff = Math.abs(derivedValue - stored.value_clp) / stored.value_clp;
+      if (relDiff > 0.05) {
+        // Use implied cuotas so live mark matches stored monthly valuations.
+        cuotas = Math.round((stored.value_clp / px) * 1e4) / 1e4;
+      }
+    }
+
     const out: AccountPositionMeta = {
       ticker: "UNO-A",
       units_kind: "shares",
@@ -197,6 +261,28 @@ export function getAccountPositionMeta(
 }
 
 /** Live AFP mark: Σ cuotas × latest valor cuota (same as dashboard / account summary). */
+export function liveFintualCertDisplayValueClp(
+  accountId: number,
+  importNotes: string,
+  accountName: string | null | undefined,
+  asOfYmd?: string
+): { value_clp: number; as_of_date: string } | null {
+  const asOf =
+    asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
+  const meta = fintualCertPositionMeta(
+    accountId,
+    importNotes,
+    (accountName ?? "Fintual").trim() || "Fintual",
+    asOf
+  );
+  const clp = meta?.afp_override_value_clp;
+  const date = meta?.afp_override_value_as_of;
+  if (clp != null && Number.isFinite(clp) && date) {
+    return { value_clp: clp, as_of_date: date };
+  }
+  return null;
+}
+
 export function liveAfpDisplayValueClp(
   accountId: number,
   asOfYmd?: string
@@ -213,6 +299,19 @@ export function liveAfpDisplayValueClp(
 }
 
 /** Chart / pie trailing point: live AFP when requested, else stored valuation snapshot. */
+export function fintualCertValuationRawClpForChart(
+  accountId: number,
+  importNotes: string,
+  accountName: string | null | undefined,
+  asOfYmd: string,
+  storedClp: number | null | undefined,
+  useLiveMark: boolean
+): number | null {
+  const live = liveFintualCertDisplayValueClp(accountId, importNotes, accountName, asOfYmd);
+  if (live && (useLiveMark || storedClp == null || !Number.isFinite(storedClp))) return live.value_clp;
+  return storedClp != null && Number.isFinite(storedClp) ? storedClp : null;
+}
+
 export function afpValuationRawClpForChart(
   accountId: number,
   storedClp: number | null | undefined,
@@ -227,11 +326,17 @@ export function afpValuationRawClpForChart(
 
 export function applyLiveAfpToAccountValueMap(
   lastVal: Map<number, number>,
-  accountMeta: Map<number, { category_slug: string }>
+  accountMeta: Map<number, { category_slug: string; notes?: string | null; name?: string | null }>
 ): void {
   for (const [id, m] of accountMeta) {
-    if (m.category_slug !== "afp") continue;
-    const live = liveAfpDisplayValueClp(id);
-    if (live) lastVal.set(id, live.value_clp);
+    if (m.category_slug === "afp") {
+      const live = liveAfpDisplayValueClp(id);
+      if (live) lastVal.set(id, live.value_clp);
+      continue;
+    }
+    if (m.notes && isFintualCertV2ValuationNotes(m.notes)) {
+      const live = liveFintualCertDisplayValueClp(id, m.notes, m.name ?? null);
+      if (live) lastVal.set(id, live.value_clp);
+    }
   }
 }

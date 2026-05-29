@@ -1,0 +1,112 @@
+import { navAccountIdSet } from "./portfolioNavDashboardCards";
+import {
+  portfolioStripAccountChildren,
+  portfolioStripGroupChildren,
+} from "./portfolioNavFromApi";
+import { resolveNavTreeLabel } from "./sidebarNavFromApi";
+import type { NavTreeNodeDto } from "./types";
+
+export type NavChartBucketMeta = {
+  key: string;
+  accountId: number;
+  dataKey: string;
+  depKey: string;
+  barDataKey: string;
+  name: string;
+};
+
+function syntheticAccountId(index: number): number {
+  return -720 - index;
+}
+
+/**
+ * Nav nodes that become one chart series (portfolio strip children; drill when a sole
+ * group wraps multiple leaves). Same rules as Pasivos grouped charts.
+ */
+export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
+  const groupKids = portfolioStripGroupChildren(navNode);
+  const accountKids = portfolioStripAccountChildren(navNode);
+
+  if (groupKids.length >= 2) return groupKids;
+
+  if (groupKids.length === 1) {
+    const sole = groupKids[0]!;
+    const innerAccounts = portfolioStripAccountChildren(sole);
+    if (innerAccounts.length >= 2) return innerAccounts;
+    const innerGroups = portfolioStripGroupChildren(sole);
+    if (innerGroups.length >= 2) return innerGroups;
+    return [sole];
+  }
+
+  if (accountKids.length >= 2) return accountKids;
+  return [];
+}
+
+/** Sin agrupar: one nav level deeper than agrupado (flatten per grouped child). */
+export function navChartBucketNavNodesUngrouped(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
+  const groupedKids = stripChartBucketNavNodes(navNode);
+  const out: NavTreeNodeDto[] = [];
+  for (const child of groupedKids) {
+    const innerGroups = portfolioStripGroupChildren(child);
+    const innerAccounts = portfolioStripAccountChildren(child);
+    if (innerGroups.length >= 2) {
+      out.push(...innerGroups);
+    } else if (innerAccounts.length >= 2) {
+      out.push(...innerAccounts);
+    } else {
+      out.push(child);
+    }
+  }
+  return out;
+}
+
+export function navChartBucketNavNodes(navNode: NavTreeNodeDto, grouped: boolean): NavTreeNodeDto[] {
+  return grouped ? stripChartBucketNavNodes(navNode) : navChartBucketNavNodesUngrouped(navNode);
+}
+
+export function shouldShowNavGroupedChartToggle(navNode: NavTreeNodeDto): boolean {
+  return stripChartBucketNavNodes(navNode).length >= 2 || navChartBucketNavNodesUngrouped(navNode).length >= 2;
+}
+
+export function shouldAggregateNavCharts(navNode: NavTreeNodeDto, grouped: boolean): boolean {
+  return navChartBucketNavNodes(navNode, grouped).length >= 2;
+}
+
+export function buildNavChartBucketPlan(
+  navNode: NavTreeNodeDto,
+  grouped: boolean
+): {
+  orderedKeys: readonly string[];
+  meta: Record<string, NavChartBucketMeta>;
+  idToBucket: (accountId: number) => string | null;
+} {
+  const bucketNodes = navChartBucketNavNodes(navNode, grouped);
+  const orderedKeys: string[] = [];
+  const meta: Record<string, NavChartBucketMeta> = {};
+  const accountIdToKey = new Map<number, string>();
+
+  bucketNodes.forEach((child, index) => {
+    const key = child.slug;
+    const accountId = syntheticAccountId(index);
+    const safe = key.replace(/[^a-z0-9]/gi, "_");
+    const dataKey = `nav_${safe}`;
+    orderedKeys.push(key);
+    meta[key] = {
+      key,
+      accountId,
+      dataKey,
+      depKey: `${dataKey}_dep`,
+      barDataKey: `pl_${dataKey}`,
+      name: resolveNavTreeLabel(child),
+    };
+    for (const id of navAccountIdSet(child)) {
+      accountIdToKey.set(id, key);
+    }
+  });
+
+  return {
+    orderedKeys,
+    meta,
+    idToBucket: (id) => accountIdToKey.get(id) ?? null,
+  };
+}

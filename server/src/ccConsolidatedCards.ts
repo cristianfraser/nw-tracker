@@ -10,6 +10,8 @@ import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
  * Note: 4141 and 4242 are sequential cards (minimal overlap at switchover), not consolidation.
  */
 export const SANTANDER_CC_IMPORT_REDIRECT_LAST4: Readonly<Record<string, string>> = {
+  /** Predecessor card; statements import onto the 4141 master. */
+  "4113": "4141",
   "4111": "4242",
   "4112": "4242",
 };

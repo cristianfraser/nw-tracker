@@ -35,24 +35,16 @@ export function initSchema() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS asset_groups (
       id INTEGER PRIMARY KEY,
+      parent_id INTEGER REFERENCES asset_groups(id) ON DELETE RESTRICT,
       slug TEXT NOT NULL UNIQUE,
       label TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
       color_rgb TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS categories (
-      id INTEGER PRIMARY KEY,
-      group_id INTEGER NOT NULL REFERENCES asset_groups(id),
-      slug TEXT NOT NULL,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(group_id, slug)
-    );
-
     CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY,
-      category_id INTEGER NOT NULL REFERENCES categories(id),
+      asset_group_id INTEGER NOT NULL REFERENCES asset_groups(id),
       name TEXT NOT NULL,
       notes TEXT,
       color_rgb TEXT,
@@ -261,8 +253,16 @@ export function initSchema() {
   }
 }
 
+type SeedGroup = {
+  slug: string;
+  label: string;
+  sort: number;
+  parent_slug?: string;
+  cats: { slug: string; label: string }[];
+};
+
 function seedReferenceData() {
-  const groups: { slug: string; label: string; sort: number; cats: { slug: string; label: string }[] }[] = [
+  const groups: SeedGroup[] = [
     {
       slug: "net_worth",
       label: "Net worth",
@@ -273,23 +273,71 @@ function seedReferenceData() {
       slug: "retirement",
       label: "Retirement",
       sort: 10,
+      cats: [],
+    },
+    {
+      slug: "retirement_afp_afc",
+      label: "AFP + AFC",
+      sort: 10,
+      parent_slug: "retirement",
       cats: [
         { slug: "afp", label: "AFP" },
-        { slug: "apv", label: "APV" },
         { slug: "afc", label: "AFC" },
       ],
+    },
+    {
+      slug: "retirement_apv",
+      label: "APV",
+      sort: 20,
+      parent_slug: "retirement",
+      cats: [],
+    },
+    {
+      slug: "retirement_apv_a",
+      label: "APV A",
+      sort: 10,
+      parent_slug: "retirement_apv",
+      cats: [{ slug: "apv", label: "APV" }],
+    },
+    {
+      slug: "retirement_apv_b",
+      label: "APV B",
+      sort: 20,
+      parent_slug: "retirement_apv",
+      cats: [{ slug: "apv", label: "APV" }],
     },
     {
       slug: "brokerage",
       label: "Brokerage",
       sort: 20,
+      cats: [],
+    },
+    {
+      slug: "brokerage_acciones",
+      label: "Acciones",
+      sort: 10,
+      parent_slug: "brokerage",
       cats: [
-        { slug: "fintual_risky_norris", label: "Fintual RN" },
         { slug: "spy", label: "SPY" },
         { slug: "vea", label: "VEA" },
+        { slug: "individual_stocks", label: "Acciones (USD)" },
+      ],
+    },
+    {
+      slug: "brokerage_mutual_funds",
+      label: "Mutual funds",
+      sort: 20,
+      parent_slug: "brokerage",
+      cats: [{ slug: "fintual_risky_norris", label: "Fintual RN" }],
+    },
+    {
+      slug: "brokerage_crypto",
+      label: "Crypto",
+      sort: 30,
+      parent_slug: "brokerage",
+      cats: [
         { slug: "bitcoin", label: "Bitcoin" },
         { slug: "eth", label: "ETH" },
-        { slug: "individual_stocks", label: "Acciones (USD)" },
       ],
     },
     {
@@ -328,19 +376,32 @@ function seedReferenceData() {
   ];
 
   const insG = db.prepare(
-    "INSERT INTO asset_groups (slug, label, sort_order) VALUES (@slug, @label, @sort)"
+    "INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (@slug, @label, @sort, @parent_id)"
   );
-  const insC = db.prepare(
-    "INSERT INTO categories (group_id, slug, label, sort_order) VALUES (@group_id, @slug, @label, @so)"
-  );
+  const slugToId = new Map<string, number>();
 
   const tx = db.transaction(() => {
     for (const g of groups) {
-      const r = insG.run({ slug: g.slug, label: g.label, sort: g.sort });
+      const parentId =
+        g.parent_slug != null ? (slugToId.get(g.parent_slug) ?? null) : null;
+      const r = insG.run({
+        slug: g.slug,
+        label: g.label,
+        sort: g.sort,
+        parent_id: parentId,
+      });
       const gid = Number(r.lastInsertRowid);
+      slugToId.set(g.slug, gid);
       let so = 0;
       for (const c of g.cats) {
-        insC.run({ group_id: gid, slug: c.slug, label: c.label, so: so++ });
+        const leafSlug = g.slug === c.slug ? c.slug : `${g.slug}__${c.slug}`;
+        const cr = insG.run({
+          slug: leafSlug,
+          label: c.label,
+          sort: so++,
+          parent_id: gid,
+        });
+        slugToId.set(leafSlug, Number(cr.lastInsertRowid));
       }
     }
   });

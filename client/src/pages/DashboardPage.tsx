@@ -13,7 +13,7 @@ import {
   rollupTimeseriesBlockYearEnd,
 } from "../dashboardTimeseriesYearly";
 import { useLoading } from "../context/LoadingContext";
-import { useTranslation } from "../i18n";
+import { dashboardBucketLabel, useTranslation } from "../i18n";
 import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { useSidebarNav } from "../queries/hooks";
 import { formatMoneyForPie } from "../format";
@@ -188,7 +188,7 @@ export function DashboardPage() {
   const pieData = dash.allocation
     .filter((a) => isDashboardNwBucketSlug(a.group_slug))
     .map((a) => ({
-      name: a.group_label,
+      name: dashboardBucketLabel(a.group_slug),
       value: useUsdPie && a.value_usd != null ? a.value_usd : a.value_clp,
       group_slug: a.group_slug,
     }));
@@ -387,6 +387,7 @@ export function DashboardPage() {
         netWorthNav
           ? {
               navNode: netWorthNav,
+              groupSlug: "net_worth",
               dash,
               overviewPoints,
               metricsPeriod,

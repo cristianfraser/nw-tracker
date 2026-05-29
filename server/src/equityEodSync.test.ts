@@ -3,6 +3,7 @@ import type { ChileWallClock } from "./chileDate.js";
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
+  cryptoEodChangeLogDates,
   cryptoEodDueUtcYmd,
   equityEodNyseSyncDue,
   isCryptoEodSyncWindow,
@@ -47,6 +48,22 @@ describe("isCryptoEodSyncWindow", () => {
   it("uses configured hour constant", () => {
     expect(CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE).toBe(23);
     expect(CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE).toBe(55);
+  });
+});
+
+describe("cryptoEodChangeLogDates", () => {
+  it("maps evening-window due UTC day to prior bar and its predecessor", () => {
+    expect(cryptoEodChangeLogDates("2026-05-28")).toEqual({
+      oldDate: "2026-05-26",
+      newDate: "2026-05-27",
+    });
+  });
+
+  it("maps carryover due UTC day to that bar and its predecessor", () => {
+    expect(cryptoEodChangeLogDates("2026-05-27", { inSyncWindow: false })).toEqual({
+      oldDate: "2026-05-26",
+      newDate: "2026-05-27",
+    });
   });
 });
 

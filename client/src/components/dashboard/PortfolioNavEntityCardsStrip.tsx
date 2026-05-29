@@ -9,13 +9,12 @@ import {
   dashboardRowsForNavSubtree,
   filterNavChildrenForEntityStrip,
   navAccountIdSet,
-  navNodeForCashAssetTotals,
   parentTitleBalanceDelta,
   portfolioNavParentMainValue,
   portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
 } from "../../portfolioNavDashboardCards";
-import { cashCardBreakdownFromDash, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import { buildCashCardBreakdown, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
@@ -25,7 +24,7 @@ import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 export type PortfolioNavEntityCardsStripProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown"
   >;
   overviewPoints: Record<string, string | number | null>[];
   parentNavNode: NavTreeNodeDto;
@@ -51,9 +50,8 @@ export function PortfolioNavEntityCardsStrip({
 }: PortfolioNavEntityCardsStripProps) {
   const parentTitleMode = portfolioNavParentTitleModeForNavNode(parentNavNode);
   const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
-  const parentNavForTotals = navNodeForCashAssetTotals(parentNavNode);
-  const parentIds = navAccountIdSet(parentNavForTotals);
-  const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavForTotals);
+  const parentIds = navAccountIdSet(parentNavNode);
+  const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
   const parentTitleDelta = parentTitleBalanceDelta(
     dash,
     overviewPoints,
@@ -91,17 +89,15 @@ export function PortfolioNavEntityCardsStrip({
   const showAccountCompactSlots = filteredAccountChildren.length > 0;
 
   const isCashParent = parentNavNode.slug === "cash_eqs";
-  const cashBreakdown = useMemo(
-    () => (isCashParent ? cashCardBreakdownFromDash(dash.accounts, dash) : null),
-    [isCashParent, dash]
+  const cashBreakdownLines = useMemo(
+    () => (isCashParent ? buildCashCardBreakdown(dash.accounts) : null),
+    [isCashParent, dash.accounts]
   );
 
   const compactBreakdown =
-    cashBreakdown && (cashBreakdown.lines.length > 0 || cashBreakdown.bottomLines.length > 0) ? (
+    cashBreakdownLines && cashBreakdownLines.length > 0 ? (
       <DashboardCardBreakdown
-        lines={cashBreakdown.lines}
-        bottomLines={cashBreakdown.bottomLines}
-        pinBottomToCard
+        lines={cashBreakdownLines}
         showUsd={showUsd}
         cardSlug={compactCardSlug}
         animated={animated}

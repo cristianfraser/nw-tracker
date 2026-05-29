@@ -1,5 +1,9 @@
 import { keepPreviousData, type QueryClient } from "@tanstack/react-query";
-import { fetchDashboardBundle, fetchPortfolioGroupBundle } from "./fetchers";
+import {
+  fetchDashboardBundle,
+  fetchDashboardNavContext,
+  fetchPortfolioGroupBundle,
+} from "./fetchers";
 import { queryKeys, type DisplayUnit } from "./keys";
 
 /** Cached CLP/USD bundles stay warm while toggling display unit. */
@@ -18,11 +22,15 @@ export function prefetchDashboardBundle(queryClient: QueryClient, unit: DisplayU
   });
 }
 
-export function prefetchBothDashboardBundles(queryClient: QueryClient): Promise<unknown> {
-  return Promise.all([
-    prefetchDashboardBundle(queryClient, "clp"),
-    prefetchDashboardBundle(queryClient, "usd"),
-  ]);
+export function prefetchDashboardNavContext(
+  queryClient: QueryClient,
+  unit: DisplayUnit
+): Promise<void> {
+  return queryClient.prefetchQuery({
+    queryKey: queryKeys.dashboardNav(unit),
+    queryFn: () => fetchDashboardNavContext(unit),
+    staleTime: DISPLAY_UNIT_STALE_MS,
+  });
 }
 
 export function prefetchPortfolioGroupBundle(

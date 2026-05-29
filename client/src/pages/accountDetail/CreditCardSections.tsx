@@ -283,6 +283,13 @@ function CreditCardInstallmentsSection({
               ) : (
                 <div className={cn("card", styles.cardsBelow)}>
                   <div className="label">{t("account.creditCard.manualAdd")}</div>
+                  {ledger.open_billing_month ? (
+                    <p className={cn("muted", styles.proseSmTight)}>
+                      {t("account.creditCard.manualOpenBillingMonthHint", {
+                        month: formatYmEs(ledger.open_billing_month),
+                      })}
+                    </p>
+                  ) : null}
                   <div className={styles.manualFormGrid}>
                     <label>
                       {t("account.creditCard.manualDate")}

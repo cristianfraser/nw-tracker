@@ -91,10 +91,10 @@ function GroupColumnMuted({ node, ctx }: { node: NavTreeNodeDto; ctx: HierarchyL
   const { t } = useTranslation();
   const slug = node.slug;
   const ag = node.asset_group_slug ?? ctx.assetGroupSlug ?? ctx.apiGroup ?? "";
-  if (slug.startsWith("brokerage") || ag === "brokerage" || slug === "brokerage") {
+  if (ag === "brokerage" || node.api_group === "brokerage") {
     return <span className="muted">Brokerage</span>;
   }
-  if (slug.startsWith("retirement") || slug === "retirement" || ag === "retirement") {
+  if (ag === "retirement" || node.api_group === "retirement") {
     return <span className="muted">{t("dashboard.cards.retirement")}</span>;
   }
   if (ag === "credit_cards" || slug === "santander") {
@@ -149,6 +149,7 @@ function renderNavHierarchySubtree(
   ctx: HierarchyLabelContext
 ): ReactNode[] {
   if (node.account_id != null && node.account_id > 0 && !(node.children?.length ?? 0)) {
+    if (node.chart_inactive) return [];
     const a = accountForNavNode(node, accountsById);
     return a ? [accountRow(a, depth, ctx, node.node_id)] : [];
   }

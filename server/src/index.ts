@@ -26,6 +26,10 @@ import {
 } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
+import {
+  createPanelStockAccount,
+  type PanelStockAccountCreateBody,
+} from "./createPanelStockAccount.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
@@ -40,6 +44,8 @@ import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "./entityColors.js";
+import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
+import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { listRatesInstrumentSeries, listMarketDisplaySeries } from "./marketDisplaySeries.js";
 import {
@@ -61,12 +67,11 @@ import { getMarketSeriesPayload } from "./marketSeries.js";
 import { getMarketTickerPayload } from "./marketTicker.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import {
-  brokerageSubgroupMatchesCategory,
   getAccountValuationTimeseries,
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
+  listAccountsForGroupTab,
   listLiabilitiesTabAccountRows,
-  retirementSubgroupMatchesAccount,
   type TsUnit,
 } from "./valuationTimeseries.js";
 import {
@@ -75,9 +80,13 @@ import {
   getStocksLifetimeEarningsSeries,
 } from "./accountPerformance.js";
 import {
-  accountCardPerformanceMetrics,
-  accountPriorPeriodClose,
-} from "./dashboardAccountCardMetrics.js";
+  buildDashboardNavContext,
+  latestValuationDisplayForAccount,
+} from "./dashboardAccounts.js";
+import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
+import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
+import { buildAccountDetailBundle } from "./accountDetailBundle.js";
+import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import {
   createManualCcInstallmentPurchase,
   deleteManualCcInstallmentPurchase,
@@ -108,15 +117,8 @@ import {
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
-import {
-  assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
-  assignCcExpenseLineCategory,
-  ccStatementLineBelongsToCreditCardGroup,
-} from "./ccExpenseCategories.js";
-import {
-  assignCheckingGastosMovementCategory,
-  checkingGastosMovementBelongs,
-} from "./flowsCheckingGastos.js";
+import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "./ccExpenseCategories.js";
+import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
@@ -263,33 +265,89 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-/** Category tree: groups + nested categories */
+/** Recursive bucket tree: internal nodes have `children`; leaves have `accounts`. */
 app.get("/api/meta/asset-tree", (_req, res) => {
   const groups = db
     .prepare(
-      `SELECT id, slug, label, sort_order, color_rgb FROM asset_groups ORDER BY sort_order, id`
+      `SELECT id, slug, label, sort_order, color_rgb, parent_id FROM asset_groups ORDER BY sort_order, id`
     )
-    .all() as { id: number; slug: string; label: string; sort_order: number }[];
+    .all() as {
+    id: number;
+    slug: string;
+    label: string;
+    sort_order: number;
+    color_rgb: string | null;
+    parent_id: number | null;
+  }[];
 
-  const cats = db
+  const accounts = db
     .prepare(
-      `SELECT id, group_id, slug, label, sort_order FROM categories ORDER BY sort_order, id`
+      `SELECT a.id, a.name, a.notes, a.asset_group_id
+       FROM accounts a
+       WHERE a.asset_group_id IS NOT NULL
+       ORDER BY a.name`
     )
-    .all() as { id: number; group_id: number; slug: string; label: string; sort_order: number }[];
+    .all() as { id: number; name: string; notes: string | null; asset_group_id: number }[];
 
-  const byGroup = new Map<number, typeof cats>();
-  for (const c of cats) {
-    const arr = byGroup.get(c.group_id) ?? [];
-    arr.push(c);
-    byGroup.set(c.group_id, arr);
+  const childIds = new Set(
+    (
+      db.prepare(`SELECT DISTINCT parent_id AS pid FROM asset_groups WHERE parent_id IS NOT NULL`).all() as {
+        pid: number;
+      }[]
+    ).map((r) => r.pid)
+  );
+
+  const accountsByGroup = new Map<number, typeof accounts>();
+  for (const a of accounts) {
+    const arr = accountsByGroup.get(a.asset_group_id) ?? [];
+    arr.push(a);
+    accountsByGroup.set(a.asset_group_id, arr);
   }
 
-  res.json({
-    groups: groups.map((g) => ({
+  type TreeNode = {
+    id: number;
+    slug: string;
+    label: string;
+    sort_order: number;
+    color_rgb: string | null;
+    parent_id: number | null;
+    is_leaf: boolean;
+    children: TreeNode[];
+    accounts: { id: number; name: string; notes: string | null }[];
+  };
+
+  const nodes = new Map<number, TreeNode>();
+  for (const g of groups) {
+    nodes.set(g.id, {
       ...g,
-      categories: byGroup.get(g.id) ?? [],
-    })),
-  });
+      is_leaf: !childIds.has(g.id),
+      children: [],
+      accounts: (accountsByGroup.get(g.id) ?? []).map((a) => ({
+        id: a.id,
+        name: a.name,
+        notes: a.notes,
+      })),
+    });
+  }
+
+  const roots: TreeNode[] = [];
+  for (const g of groups) {
+    const node = nodes.get(g.id)!;
+    if (g.parent_id == null) {
+      roots.push(node);
+    } else {
+      const parent = nodes.get(g.parent_id);
+      if (parent) parent.children.push(node);
+    }
+  }
+
+  const sortTree = (list: TreeNode[]) => {
+    list.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+    for (const n of list) sortTree(n.children);
+  };
+  sortTree(roots);
+
+  res.json({ groups: roots });
 });
 
 /** Recursive portfolio groups (accounts + nested groups) with resolved colors. */
@@ -317,14 +375,12 @@ app.get("/api/accounts", (req, res) => {
     const rows = db
       .prepare(
         `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
-           c.slug AS category_slug, c.label AS category_label,
-           g.slug AS group_slug, g.label AS group_label
-    FROM accounts a
-    JOIN categories c ON c.id = a.category_id
-    JOIN asset_groups g ON g.id = c.group_id
-    WHERE (a.notes IS NULL OR a.notes != ?)
-      AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
-    ORDER BY g.sort_order, c.sort_order, a.name`
+                g.slug AS bucket_slug, g.label AS bucket_label
+         FROM accounts a
+         INNER JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE (a.notes IS NULL OR a.notes != ?)
+           AND g.slug != 'individual_stocks'
+         ORDER BY g.sort_order, a.id, a.name`
       )
       .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];
     res.json({ accounts: rows });
@@ -357,72 +413,98 @@ app.get("/api/accounts", (req, res) => {
       .prepare(
         `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
                 a.source_account_id,
-                c.slug AS category_slug, c.label AS category_label,
-                g.slug AS group_slug, g.label AS group_label
+                g.slug AS bucket_slug, g.label AS bucket_label
          FROM accounts a
-         JOIN categories c ON c.id = a.category_id
-         JOIN asset_groups g ON g.id = c.group_id
+         INNER JOIN asset_groups g ON g.id = a.asset_group_id
          WHERE a.id IN (${ph})
-         ORDER BY c.sort_order, c.id, a.name`
+         ORDER BY g.slug, a.id, a.name`
       )
       .all(...ids) as Record<string, unknown>[];
     res.json({ accounts: rows });
     return;
   }
 
-  let sql = `
-    SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
-           c.slug AS category_slug, c.label AS category_label,
-           g.slug AS group_slug, g.label AS group_label
-    FROM accounts a
-    JOIN categories c ON c.id = a.category_id
-    JOIN asset_groups g ON g.id = c.group_id
-    WHERE (a.notes IS NULL OR a.notes != ?)
-      AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
-  `;
-  const params: string[] = [NOTE_STOCKS_LEGACY];
-  if (groupSlug === "brokerage") {
-    sql += ` AND g.slug = 'brokerage' AND c.slug != 'individual_stocks'`;
-  } else if (groupSlug === "inversiones") {
-    sql += ` AND (g.slug = 'retirement' OR (g.slug = 'brokerage' AND c.slug != 'individual_stocks'))`;
-  } else if (groupSlug) {
-    sql += ` AND g.slug = ?`;
-    params.push(groupSlug);
+  const tabRows = listAccountsForGroupTab(
+    groupSlug,
+    typeof subRaw === "string" ? subRaw : undefined
+  );
+  const ids = tabRows.map((r) => r.account_id);
+  if (!ids.length) {
+    res.json({ accounts: [] });
+    return;
   }
-  sql += ` ORDER BY g.sort_order, c.sort_order, a.name`;
-  let rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
-  if (groupSlug === "brokerage" && typeof subRaw === "string") {
-    rows = rows.filter((r) => brokerageSubgroupMatchesCategory(String(r.category_slug), subRaw));
-  }
-  if (groupSlug === "retirement" && typeof subRaw === "string") {
-    rows = rows.filter((r) =>
-      retirementSubgroupMatchesAccount(
-        { category_slug: String(r.category_slug), notes: (r.notes as string | null) ?? null },
-        subRaw
-      )
-    );
-  }
+  const ph = ids.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
+              g.slug AS bucket_slug, g.label AS bucket_label
+       FROM accounts a
+       INNER JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id IN (${ph})
+       ORDER BY g.sort_order, a.id, a.name`
+    )
+    .all(...ids) as Record<string, unknown>[];
   res.json({ accounts: rows });
 });
 
 app.post("/api/accounts", (req, res) => {
-  const { category_id, name, notes } = req.body as {
-    category_id?: number;
+  const body = req.body as Record<string, unknown>;
+  if (body.account != null && typeof body.account === "object") {
+    try {
+      const result = createPanelStockAccount(body as PanelStockAccountCreateBody);
+      res.status(201).json(result);
+    } catch (e) {
+      const err = e as Error & { status?: number };
+      const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+      res.status(status).json({ error: err.message || "create account failed" });
+    }
+    return;
+  }
+
+  const { asset_group_id, name, notes } = body as {
+    asset_group_id?: number;
     name?: string;
     notes?: string;
   };
-  if (!category_id || !name?.trim()) {
-    res.status(400).json({ error: "category_id and name required" });
+  if (!asset_group_id || !name?.trim()) {
+    res.status(400).json({ error: "asset_group_id and name required" });
     return;
   }
   const r = db
     .prepare(
-      `INSERT INTO accounts (category_id, name, notes) VALUES (?, ?, ?)`
+      `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`
     )
-    .run(category_id, name.trim(), notes ?? null);
+    .run(asset_group_id, name.trim(), notes ?? null);
   const id = Number(r.lastInsertRowid);
   db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(id), id);
   res.status(201).json({ id });
+});
+
+app.delete("/api/accounts/:id", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const exists = db.prepare(`SELECT 1 AS o FROM accounts WHERE id = ?`).get(id) as { o: number } | undefined;
+  if (!exists) {
+    res.status(404).json({ error: "account not found" });
+    return;
+  }
+  try {
+    const r = db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    res.json({ ok: true, deleted: r.changes });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.toLowerCase().includes("foreign key")) {
+      res.status(409).json({
+        error:
+          "cannot delete account with linked records (movements, valuations, or related references)",
+      });
+      return;
+    }
+    res.status(500).json({ error: msg });
+  }
 });
 
 app.patch("/api/accounts/:id/color", (req, res) => {
@@ -484,6 +566,27 @@ app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
   res.json(attachColorsToValuationPayload(payload));
 });
 
+app.get("/api/accounts/:id/detail-bundle", async (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
+  let extraOffsets: Record<string, number> = {};
+  if (typeof req.query.extraOffsets === "string" && req.query.extraOffsets.trim()) {
+    extraOffsets = parseExtraOffsetsJson(req.query.extraOffsets);
+  }
+  const payload = await buildAccountDetailBundle(id, unit, granularity, extraOffsets);
+  if (!payload) {
+    res.status(404).json({ error: "account not found" });
+    return;
+  }
+  res.json(payload);
+});
+
 /** Month-on-month P/L from valuations + merged capital flows (not persisted). Empty for `cuenta_corriente`. */
 app.get("/api/accounts/:id/performance-monthly", (req, res) => {
   const id = operationalAccountIdFromReq(req);
@@ -527,15 +630,11 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
     res.status(404).json({ error: "account not found" });
     return;
   }
-  const catRow = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
+  const bucketSlug = bucketSlugForAccountId(id) ?? "";
   const events = getMergedDepositInflowEventsForAccount(id);
   const displayEvents = getMergedDisplayDepositInflowEventsForAccount(id);
   const stateEvents = getStateContributionInflowEventsForAccount(id);
-  const total_clp = totalDepositsClpWithStocksSheetFloor(id, catRow?.category_slug ?? "");
+  const total_clp = totalDepositsClpWithStocksSheetFloor(id, bucketSlug);
   const display_total_clp = totalDisplayDepositsClpForAccount(id);
   let cumulative_clp = 0;
   const events_with_cumulative = events.map((e) => {
@@ -563,117 +662,106 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
   });
 });
 
-async function latestValuationDisplayForAccount(
-  accountId: number,
-  categorySlug?: string | null
-): Promise<{ value_clp: number; as_of_date: string } | null> {
-  if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
-    return checkingMovementBalanceLive(accountId);
-  }
-  const eq = await computeLatestDisplayedEquityClp(accountId);
-  if (eq != null) return eq;
-  const crypto = await computeCryptoMtmClpLive(accountId);
-  if (crypto != null) return crypto;
-  const stored = latestDisplayedBalanceForAccount(accountId);
-  if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
-    return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
-  }
-  if (accountUsesEquityMtm(accountId)) {
-    const live = await computeEquityMtmClpLive(accountId);
-    if (live != null) return { value_clp: live.value_clp, as_of_date: live.as_of_date };
-  }
-  if (accountUsesCryptoMtm(accountId)) {
-    const live = await computeCryptoMtmClpLive(accountId);
-    if (live != null) return live;
-  }
-  return null;
-}
-
 app.get("/api/accounts/:id/summary", async (req, res) => {
   const id = operationalAccountIdFromReq(req);
   const withdrawals_clp = totalWithdrawalsClpForAccount(id);
-  const cat = db
+  const metaRow = db
     .prepare(
-      `SELECT c.slug AS category_slug, g.slug AS group_slug, g.label AS group_label,
-        (
-          SELECT COUNT(*) FROM accounts a2
-          JOIN categories c2 ON c2.id = a2.category_id
-          JOIN asset_groups g2 ON g2.id = c2.group_id
-          WHERE g2.slug = g.slug
-            AND (a2.notes IS NULL OR a2.notes != ?)
-            AND (g2.slug != 'brokerage' OR c2.slug != 'individual_stocks')
-            AND COALESCE(a2.exclude_from_group_totals, 0) = 0
-        ) AS group_peer_count
+      `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
+       JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id = ?`
     )
-    .get(NOTE_STOCKS_LEGACY, id) as
+    .get(id) as
     | {
-      category_slug: string;
-      group_slug: string;
-      group_label: string;
-      group_peer_count: number;
-    }
+        bucket_slug: string;
+        bucket_label: string;
+        account_name: string;
+        account_notes: string | null;
+      }
     | undefined;
-  const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, cat?.category_slug ?? "");
-  let latest = await latestValuationDisplayForAccount(id, cat?.category_slug ?? null);
-  if (latest == null && cat?.category_slug && !isMovementBalanceCashCategory(cat.category_slug)) {
+  const bucketSlug = metaRow?.bucket_slug ?? "";
+  const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : "";
+  const dashBucket = dashboardBucketForAssetGroupSlug(bucketSlug) ?? bucketSlug;
+  const group_peer_count = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug = ?
+           AND (a.notes IS NULL OR a.notes != ?)
+           AND g.slug != 'individual_stocks'
+           AND COALESCE(a.exclude_from_group_totals, 0) = 0`
+      )
+      .get(bucketSlug, NOTE_STOCKS_LEGACY) as { c: number }
+  ).c;
+  const accountRow = metaRow
+    ? ({
+        bucket_slug: bucketSlug,
+        group_slug: dashBucket,
+        notes: metaRow.account_notes,
+      } satisfies AccountRow)
+    : null;
+  const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, bucketSlug);
+  let latest = await latestValuationDisplayForAccount(id, bucketSlug || null, {
+    notes: metaRow?.account_notes ?? null,
+    name: metaRow?.account_name ?? null,
+  });
+  if (latest == null && bucketKind && !isMovementBalanceCashCategory(bucketKind)) {
     const stored = latestValuationRowOnOrBeforeChileToday(id);
     if (stored?.value_clp != null) latest = stored as { value_clp: number; as_of_date: string };
   }
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
-  const positionMeta = cat
-    ? getAccountPositionMeta(
-      id,
-      cat.category_slug,
-      cat.category_slug === "afp" ? { afpCuotasAsOfYmd: asOfCuotas } : undefined
-    )
+  const positionMeta = metaRow
+    ? getAccountPositionMeta(id, bucketSlug, {
+        afpCuotasAsOfYmd: bucketKind === "afp" ? asOfCuotas : undefined,
+        accountNotes: metaRow.account_notes,
+        accountName: metaRow.account_name,
+      })
     : null;
-  const position = positionSnapshotFromMeta(cat?.category_slug ?? null, positionMeta, deposits_clp, latest ?? undefined);
+  const position = positionSnapshotFromMeta(bucketSlug || null, positionMeta, deposits_clp, latest ?? undefined);
   let latest_valuation_clp = latest?.value_clp ?? null;
   let latest_valuation_date = latest?.as_of_date ?? null;
-  if (cat?.category_slug === "afp" && position?.value_clp != null) {
+  if (
+    metaRow &&
+    (bucketKind === "afp" || (metaRow.account_notes?.startsWith("import:fintual|cert|key=") ?? false)) &&
+    position?.value_clp != null
+  ) {
     latest_valuation_clp = position.value_clp;
     if (position.value_as_of != null) latest_valuation_date = position.value_as_of;
   }
   res.json({
     account_id: id,
-    category_slug: cat?.category_slug ?? null,
-    group_slug: cat?.group_slug ?? null,
-    group_label: cat?.group_label ?? null,
-    group_peer_count: cat?.group_peer_count ?? null,
+    bucket_slug: bucketSlug || null,
+    group_slug: dashBucket,
+    group_label: metaRow?.bucket_label ?? null,
+    group_peer_count,
     deposits_clp,
     withdrawals_clp,
     latest_valuation_clp,
     latest_valuation_date,
     position,
-    movement_create: cat ? movementCreateSchemaForAccount(cat) : null,
+    movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
   });
 });
 
 function accountRowForId(accountId: number): AccountRow | null {
   if (!Number.isFinite(accountId) || accountId <= 0) return null;
-  const row = db
-    .prepare(
-      `SELECT c.slug AS category_slug, g.slug AS group_slug
-       FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE a.id = ?`
-    )
-    .get(accountId) as AccountRow | undefined;
-  return row ?? null;
+  const bucket_slug = bucketSlugForAccountId(accountId);
+  if (!bucket_slug) return null;
+  const notesRow = db
+    .prepare(`SELECT notes FROM accounts WHERE id = ?`)
+    .get(accountId) as { notes: string | null } | undefined;
+  return {
+    bucket_slug,
+    group_slug: dashboardBucketForAssetGroupSlug(bucket_slug) ?? bucket_slug,
+    notes: notesRow?.notes ?? null,
+  };
 }
 
 app.get("/api/accounts/:id/movements", (req, res) => {
   const id = operationalAccountIdFromReq(req);
-  const cat = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
+  const bucketSlug = bucketSlugForAccountId(id);
   let rows = db
     .prepare(
       `SELECT id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker
@@ -689,7 +777,7 @@ app.get("/api/accounts/:id/movements", (req, res) => {
       amount_usd: number | null;
       ticker: string | null;
     }[];
-  if (cat?.category_slug === "mortgage") {
+  if (bucketSlug === "mortgage") {
     rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
   }
   res.json({
@@ -718,22 +806,18 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const row = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
-  if (!row) {
+  const bucketSlug = bucketSlugForAccountId(id);
+  if (!bucketSlug) {
     res.status(404).json({ error: "account not found" });
     return;
   }
   const csvRel = "cfraser/depto-dividendos.csv";
-  if (row.category_slug === "property" || row.category_slug === "mortgage") {
+  if (bucketSlug === "property" || bucketSlug === "mortgage") {
     const dir = resolveCfraserCsvDir();
     const absCsv = resolveDeptoDividendosCsvPath();
     const sheetRowsAll = loadDeptoDividendosSheetLedger(dir);
     const sheetRows =
-      row.category_slug === "mortgage"
+      bucketSlug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
         : sheetRowsAll;
     const payment_scenarios = buildDeptoPaymentScenarioRows(dir, sheetRowsAll);
@@ -766,16 +850,12 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const row = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
-  if (!row) {
+  const bucketSlug = bucketSlugForAccountId(id);
+  if (!bucketSlug) {
     res.status(404).json({ error: "account not found" });
     return;
   }
-  if (row.category_slug !== "credit_card") {
+  if (bucketSlug !== "credit_card") {
     res.json({
       account_id: id,
       source: "none" as const,
@@ -797,12 +877,8 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
 
 app.post("/api/accounts/:id/cc-purchases", (req, res) => {
   const id = operationalAccountIdFromReq(req);
-  const cat = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
-  if (!cat || cat.category_slug !== "credit_card") {
+  const bucketSlug = bucketSlugForAccountId(id);
+  if (!bucketSlug || bucketSlug !== "credit_card") {
     res.status(400).json({ error: "account is not a credit card" });
     return;
   }
@@ -881,20 +957,16 @@ app.get("/api/accounts/:id/import-specs", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const cat = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(id) as { category_slug: string } | undefined;
+  const bucketSlug = bucketSlugForAccountId(id);
   res.json({
     account_id: id,
-    category_slug: cat?.category_slug ?? null,
+    bucket_slug: bucketSlug,
     document_imports: documentImportSpecsForAccount(id),
-    supports_cc_web_paste: cat?.category_slug === "credit_card",
-    supports_cc_statement_pdf: cat?.category_slug === "credit_card",
-    supports_checking_recent_xlsx: cat?.category_slug === "cuenta_corriente",
-    supports_checking_cartola_xlsx: cat?.category_slug === "cuenta_corriente",
-    supports_cuenta_vista_cartola_pdf: cat?.category_slug === "cuenta_vista",
+    supports_cc_web_paste: bucketSlug === "credit_card",
+    supports_cc_statement_pdf: bucketSlug === "credit_card",
+    supports_checking_recent_xlsx: bucketSlug === "cuenta_corriente",
+    supports_checking_cartola_xlsx: bucketSlug === "cuenta_corriente",
+    supports_cuenta_vista_cartola_pdf: bucketSlug === "cuenta_vista",
   });
 });
 
@@ -1098,271 +1170,23 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/dashboard", async (req, res) => {
-  const accounts = db
-    .prepare(
-      `
-      SELECT a.id, a.name, a.notes, a.color_rgb, a.exclude_from_group_totals,
-             g.slug AS group_slug, g.label AS group_label,
-             c.slug AS category_slug, c.label AS category_label
-      FROM accounts a
-      JOIN categories c ON c.id = a.category_id
-      JOIN asset_groups g ON g.id = c.group_id
-      WHERE (a.notes IS NULL OR a.notes != ?)
-        AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
-        AND NOT (
-          g.slug = 'liabilities'
-          AND COALESCE(a.account_kind, 'master') = 'master'
-          AND EXISTS (
-            SELECT 1 FROM accounts v
-            WHERE v.source_account_id = a.id AND v.account_kind = 'liability_view'
-          )
-        )
-      ORDER BY g.sort_order, c.sort_order, a.name
-    `
-    )
-    .all(NOTE_STOCKS_LEGACY) as {
-      id: number;
-      name: string;
-      notes: string | null;
-      exclude_from_group_totals: number;
-      group_slug: string;
-      group_label: string;
-      category_slug: string;
-      category_label: string;
-    }[];
-
+/** Group/account nav strip: accounts + liabilities links + overview (one round-trip). */
+app.get("/api/dashboard/nav-context", async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
-  const depositsNetByAccount = flowsDepositsNetTotalByAccount();
-  const depositsNetUsdByAccount = includeUsd ? flowsDepositsNetTotalUsdByAccount() : null;
-  const depositsMonth = flowsDepositsNetInPeriodByAccount("month");
-  const depositsYear = flowsDepositsNetInPeriodByAccount("year");
-  const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  res.json(await buildDashboardNavContext(includeUsd, unit));
+});
 
-  const rowsBuilt: DashboardAccountStats[] = await Promise.all(
-    accounts.map(async (a) => {
-      const deposits = depositsNetByAccount.get(a.id) ?? 0;
-      const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
-      const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(a.group_slug);
-      const perfClp = trackAssetMetrics ? accountCardPerformanceMetrics(a.id, "clp") : null;
-      const perfUsd =
-        trackAssetMetrics && includeUsd ? accountCardPerformanceMetrics(a.id, "usd") : null;
-      let v = await latestValuationDisplayForAccount(a.id, a.category_slug);
-      if (v == null && !isMovementBalanceCashCategory(a.category_slug)) {
-        const stored = latestValuationRowOnOrBeforeChileToday(a.id);
-        if (stored?.value_clp != null && stored.as_of_date) {
-          v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
-        }
-      }
-      const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
-      const positionMeta = getAccountPositionMeta(
-        a.id,
-        a.category_slug,
-        a.category_slug === "afp" ? { afpCuotasAsOfYmd: asOfCuotas } : undefined
-      );
-      const position = positionSnapshotFromMeta(a.category_slug, positionMeta, deposits, v ?? undefined);
-      let current_value_clp = v?.value_clp ?? null;
-      let valuation_as_of = v?.as_of_date ?? null;
-      if (a.category_slug === "afp" && position?.value_clp != null) {
-        current_value_clp = position.value_clp;
-        if (position.value_as_of != null) valuation_as_of = position.value_as_of;
-      }
-      const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
-      const current_value_usd =
-        includeUsd && current_value_clp != null && fxRow != null
-          ? current_value_clp / fxRow.clp_per_usd
-          : null;
-      const fx_date_used = fxRow?.date ?? null;
-      const fx_clp_per_usd = fxRow?.clp_per_usd ?? null;
-      const rowBeforeReconcile = {
-        account_id: a.id,
-        name: a.name,
-        group_slug: a.group_slug,
-        group_label: a.group_label,
-        category_slug: a.category_slug,
-        category_label: a.category_label,
-        deposits_clp: deposits,
-        deposits_usd: includeUsd ? deposits_usd : undefined,
-        delta_month_clp: perfClp?.delta_month,
-        delta_month_usd: perfUsd?.delta_month,
-        delta_year_clp: perfClp?.delta_year,
-        delta_year_usd: perfUsd?.delta_year,
-        delta_total_clp: perfClp?.delta_total,
-        delta_total_usd: perfUsd?.delta_total,
-        deposits_month_clp: trackAssetMetrics ? (depositsMonth.clp.get(a.id) ?? 0) : undefined,
-        deposits_month_usd: trackAssetMetrics
-          ? (depositsMonth.usd.get(a.id) ?? null)
-          : undefined,
-        deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
-        deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
-        prior_month_close_clp: trackAssetMetrics
-          ? accountPriorPeriodClose(a.id, "month", "clp")
-          : undefined,
-        prior_month_close_usd:
-          trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "month", "usd") : undefined,
-        prior_year_close_clp: trackAssetMetrics ? accountPriorPeriodClose(a.id, "year", "clp") : undefined,
-        prior_year_close_usd:
-          trackAssetMetrics && includeUsd ? accountPriorPeriodClose(a.id, "year", "usd") : undefined,
-        current_value_clp,
-        valuation_as_of,
-        current_value_usd,
-        fx_clp_per_usd,
-        fx_date_used,
-        notes: a.notes ?? null,
-        exclude_from_group_totals: a.exclude_from_group_totals,
-        chart_inactive: accountChartInactive(a.id),
-        position,
-      };
-      const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, { includeUsd });
-      return { ...rowBeforeReconcile, ...reconciled };
-    })
-  );
+/** Home dashboard: one response (dash + valuation TS + FX + group perf). */
+app.get("/api/dashboard/page-bundle", async (req, res) => {
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  res.json(await buildDashboardPageBundle(unit));
+});
 
-  function addToBucket(
-    map: Map<string, { clp: number; usd: number }>,
-    slug: string,
-    clp: number,
-    usd: number | null
-  ) {
-    const cur = map.get(slug) ?? { clp: 0, usd: 0 };
-    cur.clp += clp;
-    if (usd != null && Number.isFinite(usd)) cur.usd += usd;
-    map.set(slug, cur);
-  }
-
-  const bucketTotals = new Map<string, { clp: number; usd: number }>();
-  for (const r of rowsBuilt) {
-    if (r.current_value_clp == null) continue;
-    if (!accountCountsTowardGroupTotals(r.account_id)) continue;
-    addToBucket(bucketTotals, r.group_slug, r.current_value_clp, includeUsd ? r.current_value_usd : null);
-  }
-
-  const asOfToday = chileCalendarTodayYmd();
-  const linkedCcClp = linkedCreditCardClpForCashCardAsOf(asOfToday);
-  const linkedCcUsd = includeUsd ? depositClpToUsdAtDate(linkedCcClp, asOfToday) : null;
-
-  const cashBucket = bucketTotals.get("cash_eqs");
-  if (cashBucket) {
-    cashBucket.clp -= linkedCcClp;
-    if (linkedCcUsd != null && Number.isFinite(linkedCcUsd)) {
-      cashBucket.usd -= linkedCcUsd;
-    }
-  }
-
-  const getBucket = (slug: string) => bucketTotals.get(slug) ?? { clp: 0, usd: 0 };
-  const re = getBucket("real_estate");
-  const ret = getBucket("retirement");
-  const bro = getBucket("brokerage");
-  const cash = getBucket("cash_eqs");
-  const lia = getBucket("liabilities");
-
-  const netWorthClp = re.clp + ret.clp + bro.clp + cash.clp;
-  const netWorthUsd = includeUsd ? re.usd + ret.usd + bro.usd + cash.usd : null;
-
-  const depositsFlow = buildFlowsDepositsPayload();
-  const totalDeposits = depositsFlow.net_total_clp;
-
-  const byGroup = new Map<string, { label: string; value_clp: number; value_usd: number }>();
-  for (const r of rowsBuilt) {
-    if (r.current_value_clp == null) continue;
-    if (!accountCountsTowardGroupTotals(r.account_id)) continue;
-    const slug = r.group_slug;
-    const cur = byGroup.get(slug) ?? {
-      label: r.group_label,
-      value_clp: 0,
-      value_usd: 0,
-    };
-    cur.value_clp += r.current_value_clp;
-    if (r.current_value_usd != null && Number.isFinite(r.current_value_usd)) cur.value_usd += r.current_value_usd;
-    byGroup.set(slug, cur);
-  }
-  const cashGroup = byGroup.get("cash_eqs");
-  if (cashGroup) {
-    cashGroup.value_clp -= linkedCcClp;
-    if (linkedCcUsd != null && Number.isFinite(linkedCcUsd)) {
-      cashGroup.value_usd -= linkedCcUsd;
-    }
-  }
-
-  const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
-    ...rest,
-    notes: notes ?? null,
-  }));
-  const deptoLedger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
-  const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfToday, deptoLedger);
-  const suecia_snapshot = sueciaRaw
-    ? {
-      ...sueciaRaw,
-      valor_usd: depositClpToUsdAtDate(sueciaRaw.valor_clp, asOfToday),
-      net_value_usd: depositClpToUsdAtDate(sueciaRaw.net_value_clp, asOfToday),
-      mortgage_usd: depositClpToUsdAtDate(sueciaRaw.mortgage_clp, asOfToday),
-    }
-    : null;
-  const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, {
-    mortgageFromDeptoSheet: true,
-  });
-  const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
-  const liabilities_breakdown = {
-    mortgage_clp: liabilitiesClp.mortgage_clp,
-    credit_card_clp: liabilitiesClp.credit_card_clp,
-    mortgage_usd: depositClpToUsdAtDate(liabilitiesClp.mortgage_clp, asOfToday),
-    credit_card_usd: depositClpToUsdAtDate(liabilitiesClp.credit_card_clp, asOfToday),
-  };
-  const cash_credit_card_links = creditCardLiabilityLinkRowsForCashCard(asOfToday).map((row) => ({
-    liability_account_id: row.liability_account_id,
-    operational_account_id: row.operational_account_id,
-    name: row.name,
-    clp: row.clp,
-    ...(includeUsd ? { usd: depositClpToUsdAtDate(row.clp, asOfToday) } : {}),
-  }));
-
-  res.json({
-    totals: {
-      net_worth_clp: netWorthClp,
-      deposits_clp: totalDeposits,
-      real_estate_clp: re.clp,
-      retirement_clp: ret.clp,
-      brokerage_clp: bro.clp,
-      cash_eqs_clp: cash.clp,
-      liabilities_clp: liabilities_clp_aligned,
-      ...(includeUsd
-        ? {
-          net_worth_usd: netWorthUsd,
-          deposits_usd: depositsFlow.net_total_usd,
-          real_estate_usd: re.usd,
-          retirement_usd: ret.usd,
-          brokerage_usd: bro.usd,
-          cash_eqs_usd: cash.usd,
-          liabilities_usd: lia.usd,
-        }
-        : {}),
-    },
-    dashboard_layout: getDashboardLayoutCards(),
-    allocation: [...byGroup.entries()]
-      .filter(([slug]) => DASHBOARD_ASSET_METRIC_GROUPS.has(slug))
-      .map(([slug, v]) => ({
-        group_slug: slug,
-        group_label: v.label,
-        value_clp: v.value_clp,
-        color_rgb: portfolioGroupColorRgbBySlug(slug) ?? undefined,
-        ...(includeUsd ? { value_usd: v.value_usd } : {}),
-      })),
-    accounts: clientAccounts,
-    suecia_snapshot,
-    liabilities_breakdown,
-    cash_credit_card_links,
-    deposits_by_category: depositsFlow.by_category,
-    inversiones_deposits_chart: {
-      monthly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly),
-      yearly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly),
-      ...(includeUsd
-        ? {
-          monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd),
-          yearly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly_usd),
-        }
-        : {}),
-    },
-  });
+app.get("/api/dashboard", async (req, res) => {
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  res.json(await buildDashboardPagePayload(includeUsd));
 });
 
 /**
@@ -1410,6 +1234,27 @@ app.get("/api/dashboard/stocks-earnings-monthly", (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(getStocksLifetimeEarningsSeries(unit));
+});
+
+/** Group consolidated tables: per-account monthly perf + movements in one response. */
+app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
+  const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
+  if (!isKnownClassTabGroup(slug)) {
+    res.status(400).json({ error: "unknown group slug" });
+    return;
+  }
+  const sub = parseClassTabSubgroupQuery(slug, req.query.subgroup);
+  if (sub !== undefined && sub !== null && !subgroupAllowedForGroup(slug)) {
+    res.status(400).json({ error: "subgroup is only valid for brokerage, retirement, or liabilities" });
+    return;
+  }
+  if (sub === null) {
+    res.status(400).json({ error: "invalid subgroup" });
+    return;
+  }
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  res.json(getGroupConsolidatedTables(slug, unit, typeof sub === "string" ? sub : undefined));
 });
 
 /** Per-class tab: month P/L bars per account + combined YTD area + ΣΔ line (derived, not stored). */
@@ -1646,7 +1491,12 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     res.status(400).json({ error: "invalid line id" });
     return;
   }
-  const body = req.body as { category_slug?: string; unique?: boolean; clear_category?: boolean };
+  const body = req.body as {
+    category_slug?: string;
+    unique?: boolean;
+    clear_category?: boolean;
+    source?: "cc" | "checking";
+  };
   const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
   const unique = !!body.unique;
   const clearCategory = body.clear_category === true;
@@ -1661,26 +1511,16 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
       res.json(result);
       return;
     }
-    const belong = ccStatementLineBelongsToCreditCardGroup(lineId);
-    const result = belong.ok
-      ? assignCcExpenseLineCategory({
-          statementLineId: lineId,
-          unique,
-          categorySlug: categorySlug || null,
-          clearCategory,
-        })
-      : (() => {
-          const checking = checkingGastosMovementBelongs(lineId);
-          if (!checking.ok) {
-            throw new Error("expense line not found");
-          }
-          return assignCheckingGastosMovementCategory({
-            movementId: lineId,
-            unique,
-            categorySlug: categorySlug || null,
-            clearCategory,
-          });
-        })();
+    const bodySource = body.source;
+    const source =
+      bodySource === "checking" || bodySource === "cc" ? bodySource : undefined;
+    const result = assignFlowExpenseLineCategory({
+      lineId,
+      source,
+      unique,
+      categorySlug: categorySlug || null,
+      clearCategory,
+    });
     res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "assign failed";

@@ -17,7 +17,7 @@ import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 export type PortfolioNavChildDetailCardsProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown"
   >;
   overviewPoints: Record<string, string | number | null>[];
   navChildren: NavTreeNodeDto[];

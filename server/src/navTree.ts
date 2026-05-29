@@ -25,6 +25,8 @@ export type NavTreeNodeDto = {
   color: string | null;
   /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
   group_kind: "normal" | "reference" | "nav_hub";
+  /** Long zero tail: keep in nav for bucket chart history; hide from strips / hierarchy tables. */
+  chart_inactive?: boolean;
   children: NavTreeNodeDto[];
 };
 
@@ -100,7 +102,7 @@ function buildNode(
       const child = groupsById.get(item.child_group_id);
       if (child) children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta));
     } else if (item.item_kind === "account" && item.account_id != null) {
-      if (accountChartInactive(item.account_id)) continue;
+      const chartInactive = accountChartInactive(item.account_id);
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
@@ -121,6 +123,7 @@ function buildNode(
         api_group: null,
         api_subgroup: null,
         group_kind: "normal",
+        ...(chartInactive ? { chart_inactive: true } : {}),
         color_rgb,
         color: rgbTripletToCss(color_rgb),
         children: [],

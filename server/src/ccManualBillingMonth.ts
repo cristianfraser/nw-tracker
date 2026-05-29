@@ -12,24 +12,50 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 
-function isPdfStatementSource(sourcePdf: string): boolean {
+export function isPdfStatementSource(sourcePdf: string): boolean {
   return !String(sourcePdf ?? "").trim().startsWith("import:web-paste");
 }
 
-/** Latest billing month (YYYY-MM) with an imported PDF statement for this card. */
-export function lastPdfBillingMonthForCard(
-  accountId: number,
-  cardLast4: string
-): string | null {
+function isoFromPeriodField(raw: string | null | undefined): string | null {
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return parseDdMmYyToIso(t);
+}
+
+/** Latest billing month (YYYY-MM) with an imported PDF statement on this master account. */
+export function lastPdfBillingMonthForAccount(accountId: number): string | null {
   let max: string | null = null;
   for (const st of listCcStatementsForAccount(accountId)) {
-    if (String(st.card_last4 ?? "").trim() !== cardLast4) continue;
     if (!isPdfStatementSource(st.source_pdf)) continue;
     const bm = st.billing_month;
     if (!bm) continue;
     if (!max || ymCompare(bm, max) > 0) max = bm;
   }
   return max;
+}
+
+/** @deprecated Prefer {@link lastPdfBillingMonthForAccount}; card_last4 is ignored (account-wide). */
+export function lastPdfBillingMonthForCard(
+  accountId: number,
+  _cardLast4: string
+): string | null {
+  return lastPdfBillingMonthForAccount(accountId);
+}
+
+/** Inclusive period end (ISO) for a billing month — PDF `period_to` when present, else config cycle. */
+export function periodToIsoForBillingMonth(
+  accountId: number,
+  billingMonth: string
+): string | null {
+  for (const st of listCcStatementsForAccount(accountId)) {
+    if (st.billing_month !== billingMonth) continue;
+    if (!isPdfStatementSource(st.source_pdf)) continue;
+    const iso = isoFromPeriodField(st.period_to);
+    if (iso) return iso;
+  }
+  const config = loadCreditCardBillingConfig(accountId);
+  return billingPeriodIsoRange(billingMonth, config)?.period_to ?? null;
 }
 
 /**
@@ -44,7 +70,7 @@ export function targetBillingMonthForManualImports(
   const currentBm =
     billingMonthForStatementDate(todayIso) ??
     todayIso.slice(0, 7);
-  const lastPdf = lastPdfBillingMonthForCard(accountId, cardLast4);
+  const lastPdf = lastPdfBillingMonthForAccount(accountId);
   if (!lastPdf) return currentBm;
   const nextAfterPdf = addCalendarMonths(lastPdf, 1);
   return ymCompare(currentBm, nextAfterPdf) >= 0 ? currentBm : nextAfterPdf;

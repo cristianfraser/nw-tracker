@@ -46,6 +46,7 @@ export function aggregateValuationByBucket(
   if (used.size === 0) return block;
 
   const ordered = orderedKeys.filter((k) => used.has(k));
+  const unmappedMembers = members.filter((a) => !idToBucket(a.account_id));
   const synth: TimeseriesAccountLine[] = ordered.map((k) => {
     const m = meta[k]!;
     const groupMembers = members.filter((a) => idToBucket(a.account_id) === k);
@@ -86,7 +87,7 @@ export function aggregateValuationByBucket(
   });
 
   const base: TimeseriesBlock = {
-    accounts: synth,
+    accounts: [...synth, ...unmappedMembers],
     points,
     ...(refLines.length ? { lines: refLines } : block.lines?.length ? { lines: block.lines } : {}),
   };

@@ -1,35 +1,86 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { FlowCcExpenseLineRow, FlowsCreditCardExpensesResponse } from "../types";
+import type {
+  FlowCcExpenseLineRow,
+  FlowCcExpenseLineSource,
+  FlowsCreditCardExpensesResponse,
+} from "../types";
 import {
+  expenseLineCategoryTargetId,
   expenseLineMatchesCategoryPatch,
+  expenseLineMatchesCategoryPurchaseKey,
   expenseLineMatchesPurchaseNotePatch,
 } from "../ccExpenseLineBuckets";
 import { queryKeys, type DisplayUnit } from "./keys";
 
 export type PatchCcExpenseLineCategoryVars = {
   lineId: number;
+  source: FlowCcExpenseLineSource;
   unique: boolean;
   category_slug?: string;
   clear_category?: boolean;
 };
+
+function lineMatchesCategoryTargetId(
+  ln: FlowCcExpenseLineRow,
+  targetLineId: number
+): boolean {
+  return (
+    expenseLineCategoryTargetId(ln) === targetLineId ||
+    ln.statement_line_id === targetLineId ||
+    ln.category_statement_line_id === targetLineId
+  );
+}
+
+function findCcExpenseCategoryPatchAnchor(
+  lines: readonly FlowCcExpenseLineRow[],
+  targetLineId: number,
+  source: FlowCcExpenseLineSource
+): FlowCcExpenseLineRow | undefined {
+  return lines.find((ln) => ln.source === source && lineMatchesCategoryTargetId(ln, targetLineId));
+}
 
 export function applyCcExpenseLineCategoryPatch(
   data: FlowsCreditCardExpensesResponse | undefined,
   vars: PatchCcExpenseLineCategoryVars
 ): FlowsCreditCardExpensesResponse | undefined {
   if (!data) return data;
-  const anchorLine = data.lines.find(
-    (ln) => ln.statement_line_id === vars.lineId
-  ) as FlowCcExpenseLineRow | undefined;
+  const anchorLine = findCcExpenseCategoryPatchAnchor(data.lines, vars.lineId, vars.source);
   return {
     ...data,
     lines: data.lines.map((ln) => {
-      if (!expenseLineMatchesCategoryPatch(ln, vars.lineId, anchorLine)) return ln;
+      if (!expenseLineMatchesCategoryPatch(ln, vars.lineId, anchorLine, vars.source)) {
+        return ln;
+      }
       let category_slug = ln.category_slug;
       if (vars.clear_category) category_slug = "unclassified";
       else if (vars.category_slug) category_slug = vars.category_slug;
       return { ...ln, category_slug, category_unique: vars.unique };
+    }),
+  };
+}
+
+export function applyCcExpenseLineCategoryPatchFromServer(
+  data: FlowsCreditCardExpensesResponse | undefined,
+  opts: {
+    accountId: number;
+    purchaseKey: string;
+    category_slug: string;
+    unique: boolean;
+  }
+): FlowsCreditCardExpensesResponse | undefined {
+  if (!data) return data;
+  return {
+    ...data,
+    lines: data.lines.map((ln) => {
+      if (!expenseLineMatchesCategoryPurchaseKey(ln, opts.accountId, opts.purchaseKey)) {
+        return ln;
+      }
+      return {
+        ...ln,
+        category_slug: opts.category_slug,
+        category_unique: opts.unique,
+      };
     }),
   };
 }
@@ -63,6 +114,7 @@ export function usePatchCcExpenseLineCategoryMutation() {
   return useMutation({
     mutationFn: (vars: PatchCcExpenseLineCategoryVars) =>
       api.assignCcExpenseLineCategory(vars.lineId, {
+        source: vars.source,
         unique: vars.unique,
         ...(vars.category_slug ? { category_slug: vars.category_slug } : {}),
         ...(vars.clear_category ? { clear_category: true } : {}),
@@ -74,6 +126,27 @@ export function usePatchCcExpenseLineCategoryMutation() {
         applyCcExpenseLineCategoryPatch(old, vars)
       );
       return { previous };
+    },
+    onSuccess: (result, vars) => {
+      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+        if (!old) return old;
+        const anchor = findCcExpenseCategoryPatchAnchor(old.lines, vars.lineId, vars.source);
+        if (anchor && result.purchase_key) {
+          return applyCcExpenseLineCategoryPatchFromServer(old, {
+            accountId: anchor.account_id,
+            purchaseKey: result.purchase_key,
+            category_slug: result.category_slug,
+            unique: result.unique,
+          });
+        }
+        return applyCcExpenseLineCategoryPatch(old, {
+          lineId: vars.lineId,
+          source: vars.source,
+          unique: result.unique,
+          category_slug: result.category_slug,
+          clear_category: vars.clear_category,
+        });
+      });
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {

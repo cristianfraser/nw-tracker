@@ -18,9 +18,11 @@ const GROUP_FLOWS_COLLAPSED = 10;
 
 export type GroupInfoPortfolioStrip = {
   navNode: NavTreeNodeDto;
+  groupSlug?: string;
+  subgroup?: string;
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown"
   >;
   overviewPoints: Record<string, string | number | null>[];
   metricsPeriod: CardGroupMetricsPeriod;
@@ -69,8 +71,14 @@ export function GroupInfoBase({
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const tablesEnabled = tableAccounts.length > 0;
-  const { consolidatedMonthlyPerf, consolidatedFlows, tableFlags, tablesLoading } =
-    useGroupInfoConsolidatedTables(tableAccounts, displayUnit, tablesEnabled);
+  const { consolidatedMonthlyPerf, consolidatedFlows, tableFlags, tablesLoading, tablesError } =
+    useGroupInfoConsolidatedTables(
+      portfolio?.groupSlug ?? "",
+      portfolio?.subgroup,
+      tableAccounts,
+      displayUnit,
+      tablesEnabled && Boolean(portfolio?.groupSlug)
+    );
 
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
 
@@ -98,7 +106,9 @@ export function GroupInfoBase({
           <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
             {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
           </p>
-          {tablesLoading ? (
+          {tablesError ? (
+            <p className="error">{tablesError}</p>
+          ) : tablesLoading ? (
             <p className="muted">{t("common.loading")}</p>
           ) : consolidatedMonthlyPerf.length > 0 ? (
             <MonthlyPerfDetailTable
@@ -116,7 +126,9 @@ export function GroupInfoBase({
           <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
             {flowsHint ?? t("groupPage.flowsHint")}
           </p>
-          {tablesLoading ? (
+          {tablesError ? (
+            <p className="error">{tablesError}</p>
+          ) : tablesLoading ? (
             <p className="muted">{t("common.loading")}</p>
           ) : (
             <AccountFlowsTable

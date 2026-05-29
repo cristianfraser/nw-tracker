@@ -376,24 +376,28 @@ function afpPositiveCuotasInflowByMonthKey(accountId: number): Map<string, numbe
  * The **first** month with a valuation row is included: `prior_closing` is null and `net_capital_flow` equals cumulative
  * aportes at that date (so e.g. VEA’s March 2026 wires appear in March, not folded into April as ΔcumDep=0).
  */
+/** @heavy Rebuilds monthly performance from valuation timeseries + capital flows (not cached). */
 export function getAccountMonthlyPerformance(
   accountId: number,
   unit: TsUnit = "clp"
-): { account_id: number; category_slug: string; monthly: AccountMonthlyPerformanceRow[] } | null {
+): { account_id: number; bucket_slug: string; monthly: AccountMonthlyPerformanceRow[] } | null {
   const row = db
     .prepare(
-      `SELECT a.id AS id, c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+      `SELECT a.id AS id, g.slug AS bucket_slug
+       FROM accounts a
+       INNER JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id = ?`
     )
-    .get(accountId) as { id: number; category_slug: string } | undefined;
+    .get(accountId) as { id: number; bucket_slug: string } | undefined;
   if (!row) return null;
 
-  if (isMovementBalanceCashCategory(row.category_slug) || row.category_slug === "cuenta_ahorro_vivienda") {
-    return { account_id: accountId, category_slug: row.category_slug, monthly: [] };
+  if (isMovementBalanceCashCategory(row.bucket_slug) || row.bucket_slug === "cuenta_ahorro_vivienda") {
+    return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
   }
 
   const ts = getAccountValuationTimeseries(accountId, unit, {});
   if (!ts || ts.granularity !== "monthly" || !ts.accounts.points.length) {
-    return { account_id: accountId, category_slug: row.category_slug, monthly: [] };
+    return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
   }
 
   const dk = String(accountId);
@@ -416,18 +420,18 @@ export function getAccountMonthlyPerformance(
   let cumPl = 0;
   const unitsByMonthEnd = stockUnitsInflowByMonthEnd(accountId);
   const afpCuotasByMonthKey =
-    row.category_slug === "afp" ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
+    row.bucket_slug === "afp" ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
   const cryptoInflowByMonthEnd =
-    cryptoAssetFromCategorySlug(row.category_slug) != null
+    cryptoAssetFromCategorySlug(row.bucket_slug) != null
       ? cryptoCoinInflowByMonthEnd(accountId)
       : null;
-  const cryptoAsset = cryptoAssetFromCategorySlug(row.category_slug);
+  const cryptoAsset = cryptoAssetFromCategorySlug(row.bucket_slug);
   const deptoLedger =
-    row.category_slug === "mortgage" || row.category_slug === "property"
+    row.bucket_slug === "mortgage" || row.bucket_slug === "property"
       ? loadDeptoDividendosSheetLedger(resolveCfraserCsvDir())
       : null;
-  const isMortgage = row.category_slug === "mortgage";
-  const isDeptoProperty = row.category_slug === "property";
+  const isMortgage = row.bucket_slug === "mortgage";
+  const isDeptoProperty = row.bucket_slug === "property";
   const deptoSnapshotDates = deptoLedger ? pts.map((p) => String(p.as_of_date)) : [];
   const mortgageUfByDate =
     deptoLedger && isMortgage
@@ -447,7 +451,7 @@ export function getAccountMonthlyPerformance(
       : null;
   const deptoCloseClpByDate = mortgageCloseClpByDate ?? propertyCloseClpByDate;
   const ccBillingPayByMonth =
-    row.category_slug === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
+    row.bucket_slug === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
       ? creditCardInstallmentPaymentsByBillingMonth(accountId)
       : null;
   const stockUnitsInflowForPerfRow = (asOf: string) =>
@@ -591,12 +595,59 @@ export function getAccountMonthlyPerformance(
   const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc);
   const withLive = applyLiveCloseToCurrentMonthPerfRows(
     accountId,
-    row.category_slug,
+    row.bucket_slug,
     collapsed,
     unit
   );
   const monthly = [...withLive].reverse();
-  return { account_id: accountId, category_slug: row.category_slug, monthly };
+  return { account_id: accountId, bucket_slug: row.bucket_slug, monthly };
+}
+
+/** Latest consolidated cierre per calendar month (`YYYY-MM`). */
+export function closingByCalendarMonthFromRaw(raw: Map<string, number>): Map<string, number> {
+  const latestInMonth = new Map<string, { as_of_date: string; closing_value: number }>();
+  for (const [d, v] of raw) {
+    if (!Number.isFinite(v)) continue;
+    const mk = monthKeyFromYmd(d);
+    const prev = latestInMonth.get(mk);
+    if (!prev || d >= prev.as_of_date) {
+      latestInMonth.set(mk, { as_of_date: d, closing_value: v });
+    }
+  }
+  const out = new Map<string, number>();
+  for (const [mk, bucket] of latestInMonth) {
+    out.set(mk, bucket.closing_value);
+  }
+  return out;
+}
+
+/**
+ * Map monthly perf cierre onto daily (or mixed) chart dates: each date uses that month's cierre,
+ * including when the snapshot is dated later in the same month (e.g. live close on Chile today).
+ */
+export function mapMonthlyClosingToChartDates(
+  raw: Map<string, number>,
+  datesAsc: string[]
+): Map<string, number> {
+  const byMonth = closingByCalendarMonthFromRaw(raw);
+  const monthsAsc = [...byMonth.keys()].sort();
+  const out = new Map<string, number>();
+  for (const d of datesAsc) {
+    const mk = monthKeyFromYmd(d);
+    const inMonth = byMonth.get(mk);
+    if (inMonth != null && Number.isFinite(inMonth)) {
+      out.set(d, inMonth);
+      continue;
+    }
+    let last: number | undefined;
+    for (const m of monthsAsc) {
+      if (m > mk) break;
+      const v = byMonth.get(m);
+      if (v != null && Number.isFinite(v)) last = v;
+    }
+    if (last != null && Number.isFinite(last)) out.set(d, last);
+  }
+  return out;
 }
 
 /** Latest calendar month nominal P/L (falls back to most recent month in the series). */
@@ -650,6 +701,7 @@ function bestPerformanceRowByMonthKey(
  * nominal for that month is taken from its latest performance row in that month, so brokerage / inversiones
  * tabs stay consistent when e.g. equities end on “today” mid-month and Fintual only on month-end.
  */
+/** @heavy One {@link getAccountMonthlyPerformance} per account in the group tab. */
 export function getGroupMonthlyPerformanceSeries(
   groupSlug: string,
   unit: TsUnit = "clp",
@@ -662,7 +714,7 @@ export function getGroupMonthlyPerformanceSeries(
 } {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const perfRows = rows.filter(
-    (r) => !isMovementBalanceCashCategory(r.category_slug) && r.category_slug !== "cuenta_ahorro_vivienda"
+    (r) => !isMovementBalanceCashCategory(r.bucket_slug) && r.bucket_slug !== "cuenta_ahorro_vivienda"
   );
 
   const byIdAsc = new Map<number, AccountMonthlyPerformanceRow[]>();
@@ -747,10 +799,16 @@ export function getStocksLifetimeEarningsSeries(unit: TsUnit = "clp"): {
   stock_accounts: { account_id: number; name: string }[];
   points: { as_of_date: string; delta_month: number; accumulated_earnings: number; ytd_merged: number }[];
 } {
-  const accStmt = db.prepare("SELECT id AS account_id, name FROM accounts WHERE notes = ?");
-  const spy = accStmt.get("import:excel|key=spy") as { account_id: number; name: string } | undefined;
-  const vea = accStmt.get("import:excel|key=vea") as { account_id: number; name: string } | undefined;
-  const stock_accounts = [spy, vea].filter((x): x is { account_id: number; name: string } => x != null);
+  const stock_accounts = db
+    .prepare(
+      `SELECT a.id AS account_id, a.name
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE g.slug = 'brokerage_acciones'
+         AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
+       ORDER BY a.name`
+    )
+    .all() as { account_id: number; name: string }[];
   if (stock_accounts.length === 0) {
     return { unit, stock_accounts: [], points: [] };
   }

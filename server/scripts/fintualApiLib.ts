@@ -19,12 +19,79 @@ import { chileWallClockNow, type ChileWallClock } from "../src/chileDate.js";
 import { fintualValuationAsOfYmd } from "../src/fintualSyncPolicy.js";
 
 export const FINTUAL_API_BASE = "https://fintual.cl/api";
+const FINTUAL_MAX_RETRIES = 5;
+const FINTUAL_BASE_BACKOFF_MS = 1500;
 
 const FINTUAL_FETCH_HEADERS = {
   Accept: "application/json",
   "Content-Type": "application/json",
   "User-Agent": "nw-tracker-fintual-scripts/1.0",
 } as const;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMsFromResponse(res: Response, body: unknown): number | null {
+  const h = res.headers.get("retry-after");
+  if (h) {
+    const s = Number(h);
+    if (Number.isFinite(s) && s > 0) return Math.round(s * 1000);
+  }
+  if (body && typeof body === "object") {
+    const v = (body as { retry_after?: unknown }).retry_after;
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.round(v * 1000);
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return Math.round(n * 1000);
+    }
+  }
+  return null;
+}
+
+function shouldRetryStatus(status: number): boolean {
+  return status === 429 || status === 408 || (status >= 500 && status <= 599);
+}
+
+/**
+ * Fintual HTTP helper with retry/backoff for transient failures (429/5xx/network).
+ */
+export async function fetchFintualWithBackoff(
+  url: string,
+  init: RequestInit,
+  label: string
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= FINTUAL_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (!shouldRetryStatus(res.status) || attempt === FINTUAL_MAX_RETRIES) return res;
+      let body: unknown = null;
+      try {
+        body = (await res.clone().json()) as unknown;
+      } catch {
+        body = null;
+      }
+      const hinted = retryAfterMsFromResponse(res, body);
+      const backoff = hinted ?? Math.round(FINTUAL_BASE_BACKOFF_MS * 2 ** attempt);
+      const waitMs = Math.min(backoff, 120_000);
+      console.warn(
+        `Fintual ${label}: HTTP ${res.status} (attempt ${attempt + 1}/${FINTUAL_MAX_RETRIES + 1}), retry in ${Math.round(waitMs / 1000)}s`
+      );
+      await sleep(waitMs);
+      continue;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === FINTUAL_MAX_RETRIES) break;
+      const waitMs = Math.min(Math.round(FINTUAL_BASE_BACKOFF_MS * 2 ** attempt), 120_000);
+      console.warn(
+        `Fintual ${label}: network error (attempt ${attempt + 1}/${FINTUAL_MAX_RETRIES + 1}), retry in ${Math.round(waitMs / 1000)}s`
+      );
+      await sleep(waitMs);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`Fintual ${label}: request failed after retries`);
+}
 
 export type FintualSession = {
   email: string;
@@ -119,11 +186,15 @@ export function extractAccessTokenFromLoginJson(body: unknown): string {
 /** POST /api/access_tokens */
 export async function loginFintualApi(email: string, password: string): Promise<{ token: string }> {
   const url = `${FINTUAL_API_BASE}/access_tokens`;
-  const res = await fetch(url, {
+  const res = await fetchFintualWithBackoff(
+    url,
+    {
     method: "POST",
     headers: { ...FINTUAL_FETCH_HEADERS },
     body: JSON.stringify({ user: { email, password } }),
-  });
+    },
+    "POST /access_tokens"
+  );
   const text = await res.text();
   let body: unknown;
   try {
@@ -206,9 +277,13 @@ function goalsFetchHeaders(email: string, token: string): Record<string, string>
 }
 
 async function fetchGoalsResponse(email: string, token: string): Promise<Response> {
-  return fetch(`${FINTUAL_API_BASE}/goals`, {
-    headers: goalsFetchHeaders(email, token),
-  });
+  return fetchFintualWithBackoff(
+    `${FINTUAL_API_BASE}/goals`,
+    {
+      headers: goalsFetchHeaders(email, token),
+    },
+    "GET /goals"
+  );
 }
 
 export async function fintualGoalsAuthorized(email: string, token: string): Promise<boolean> {

@@ -1,12 +1,9 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
+import { accountBelongsToDashboardBucket } from "./accountDashboardBucket";
 import {
-  buildBrokerageCardBreakdown,
-  cashCardBreakdownFromDash,
+  buildCashCardBreakdown,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
-  buildRetirementAfpAfcBreakdown,
-  buildRetirementApvBreakdown,
-  buildRetirementCardBreakdown,
   cardGroupMetricsForAccountSubset,
   cardGroupMetricsForGroup,
   cardGroupMetricsFromAccounts,
@@ -19,6 +16,7 @@ import {
   type CardGroupMetricsPeriod,
   type DashboardGroupSlug,
 } from "./dashboardCardBreakdown";
+import { buildNavCardBreakdown } from "./navCardBreakdown";
 import i18n from "./i18n";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import {
@@ -28,22 +26,6 @@ import {
   resolveDashboardBucketFromNavNode,
 } from "./portfolioNavFromApi";
 import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
-
-const CASH_DASHBOARD_CATEGORY_SLUGS = new Set(["fondo_reserva", "cuenta_corriente", "cuenta_vista"]);
-
-/** Nav subtree with optional first-level children removed (e.g. cash → credit card reference link). */
-export function navNodeWithoutChildSlugs(
-  navNode: NavTreeNodeDto,
-  excludeSlugs: ReadonlySet<string>
-): NavTreeNodeDto {
-  if (!excludeSlugs.size) return navNode;
-  return {
-    ...navNode,
-    children: navNode.children.filter((c) => !excludeSlugs.has(c.slug)),
-  };
-}
-
-const CASH_NAV_REFERENCE_CHILD_SLUGS = new Set(["liabilities_credit_card"]);
 
 /** Account ids referenced anywhere under `navNode` (including the node itself). */
 export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
@@ -59,6 +41,19 @@ export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
  * Nav leaf `account_id` values only (not `source_account_id`).
  * Use for dashboard row sums so Pasivos liability_view + master are not double-counted.
  */
+/** Account ids under `navNode` marked `chart_inactive` (history charts only). */
+export function navChartInactiveAccountIds(navNode: NavTreeNodeDto): Set<number> {
+  const ids = new Set<number>();
+  const visit = (n: NavTreeNodeDto) => {
+    if (n.chart_inactive && n.account_id != null && n.account_id > 0) {
+      ids.add(n.account_id);
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(navNode);
+  return ids;
+}
+
 export function navLeafAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
   const idSet = new Set<number>();
   const visit = (n: NavTreeNodeDto) => {
@@ -67,12 +62,6 @@ export function navLeafAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
   };
   visit(navNode);
   return idSet;
-}
-
-/** Cash portfolio node: totals/metrics exclude linked liability reference children. */
-export function navNodeForCashAssetTotals(navNode: NavTreeNodeDto): NavTreeNodeDto {
-  if (navNode.slug !== "cash_eqs") return navNode;
-  return navNodeWithoutChildSlugs(navNode, CASH_NAV_REFERENCE_CHILD_SLUGS);
 }
 
 export function dashboardRowsForNavSubtree(
@@ -136,17 +125,6 @@ export type NavChildTitleDeltaModel =
   | { mode: "dashboard_group"; group: DashboardGroupSlug; groupRowFilter?: (a: DashboardAccountRow) => boolean }
   | { mode: "subset" };
 
-export function cashEqsRowFilter(a: DashboardAccountRow): boolean {
-  return CASH_DASHBOARD_CATEGORY_SLUGS.has(a.category_slug) && accountCountsTowardGroupTotals(a);
-}
-
-/** Optional row filter for dashboard bucket cards (cash excludes savings categories). */
-export function dashboardGroupRowFilter(
-  group: DashboardGroupSlug
-): ((a: DashboardAccountRow) => boolean) | undefined {
-  return group === "cash_eqs" ? cashEqsRowFilter : undefined;
-}
-
 /** Main balance + deposits/Δ metrics for a nav child card (bucket totals or nav subtree). */
 export function mainValueAndMetricsForNavChild(
   dash: Pick<DashboardResponse, "accounts" | "totals">,
@@ -156,7 +134,7 @@ export function mainValueAndMetricsForNavChild(
 ): { clp: number; apiUsd: number | null; metrics: CardGroupMetrics } {
   const spec = titleDeltaModelForNavChild(navChild);
   if (spec.mode === "dashboard_group") {
-    const groupFilter = spec.groupRowFilter ?? dashboardGroupRowFilter(spec.group);
+    const groupFilter = spec.groupRowFilter;
     return {
       ...dashboardBucketMainValue(dash.totals, spec.group, showUsd),
       metrics: cardGroupMetricsForGroup(dash.accounts, spec.group, metricsPeriod, groupFilter),
@@ -166,6 +144,7 @@ export function mainValueAndMetricsForNavChild(
   const metricsRows = childRows.filter(
     (a) =>
       accountCountsTowardGroupTotals(a) &&
+      isChartActiveAccount(a) &&
       a.current_value_clp != null &&
       Number.isFinite(a.current_value_clp)
   );
@@ -176,24 +155,18 @@ export function mainValueAndMetricsForNavChild(
 }
 
 function dashboardGroupTitleDeltaModel(group: DashboardGroupSlug): NavChildTitleDeltaModel {
-  return {
-    mode: "dashboard_group",
-    group,
-    ...(group === "cash_eqs" ? { groupRowFilter: cashEqsRowFilter } : {}),
-  };
+  return { mode: "dashboard_group", group };
 }
 
-/** Title Δ for a strip/detail nav child — driven by `asset_group_slug` and nav subtree. */
+/**
+ * Title Δ / main balance for a strip detail card.
+ * Top-level dashboard buckets (`asset_group_slug` or slug) use API bucket totals; every
+ * deeper nav group (e.g. `brokerage_mutual_funds`, `retirement_apv`) sums its subtree only.
+ */
 export function titleDeltaModelForNavChild(navChild: NavTreeNodeDto): NavChildTitleDeltaModel {
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (bucket && bucket !== "net_worth") {
     return dashboardGroupTitleDeltaModel(bucket);
-  }
-  if (navChild.slug.startsWith("retirement_")) {
-    return dashboardGroupTitleDeltaModel("retirement");
-  }
-  if (navChild.slug.startsWith("brokerage_")) {
-    return dashboardGroupTitleDeltaModel("brokerage");
   }
   return { mode: "subset" };
 }
@@ -319,7 +292,7 @@ export function portfolioNavParentMetrics(
       dash.accounts,
       period,
       (a) =>
-        (mode.groups as readonly string[]).includes(a.group_slug) &&
+        (mode.groups as readonly string[]).some((g) => accountBelongsToDashboardBucket(a, g)) &&
         accountCountsTowardGroupTotals(a) &&
         a.current_value_clp != null &&
         Number.isFinite(a.current_value_clp)
@@ -336,11 +309,7 @@ export function portfolioNavParentTitleModeForNavNode(
 
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (bucket) {
-    return {
-      kind: "dashboard_group",
-      group: bucket,
-      ...(bucket === "cash_eqs" ? { groupRowFilter: cashEqsRowFilter } : {}),
-    };
+    return { kind: "dashboard_group", group: bucket };
   }
 
   if (isNavHubNode(node)) {
@@ -361,10 +330,7 @@ export type NavChildBreakdownResult = {
   pinBottom?: boolean;
 };
 
-type BreakdownDash = Pick<
-  DashboardResponse,
-  "suecia_snapshot" | "liabilities_breakdown" | "cash_credit_card_links"
->;
+type BreakdownDash = Pick<DashboardResponse, "suecia_snapshot" | "liabilities_breakdown">;
 
 function breakdownByAssetGroup(
   assetGroup: string,
@@ -374,13 +340,9 @@ function breakdownByAssetGroup(
   switch (assetGroup) {
     case "real_estate":
       return { lines: buildRealEstateCardBreakdown(rows, dash.suecia_snapshot ?? null) };
-    case "retirement":
-      return { lines: buildRetirementCardBreakdown(rows) };
-    case "brokerage":
-      return { lines: buildBrokerageCardBreakdown(rows) };
     case "cash_eqs": {
-      const b = cashCardBreakdownFromDash(rows, dash);
-      return { lines: b.lines, bottomLines: b.bottomLines, pinBottom: true };
+      const lines = buildCashCardBreakdown(rows);
+      return lines.length ? { lines } : null;
     }
     case "liabilities": {
       const lb = dash.liabilities_breakdown;
@@ -394,17 +356,9 @@ function breakdownByAssetGroup(
 
 function breakdownByNavSlug(
   slug: string,
-  rows: DashboardAccountRow[],
+  _rows: DashboardAccountRow[],
   dash: BreakdownDash
 ): NavChildBreakdownResult | null {
-  if (slug === "retirement_afp_afc") {
-    const lines = buildRetirementAfpAfcBreakdown(rows);
-    return lines.length ? { lines } : null;
-  }
-  if (slug === "retirement_apv") {
-    const lines = buildRetirementApvBreakdown(rows);
-    return lines.length ? { lines } : null;
-  }
   if (slug === "liabilities_credit_card") {
     const lb = dash.liabilities_breakdown;
     if (!lb || lb.credit_card_clp <= 0) return null;
@@ -438,7 +392,7 @@ function breakdownByNavSlug(
   return null;
 }
 
-/** Breakdown lines for a nav child — `asset_group_slug` first, then known subgroup slugs. */
+/** Breakdown lines for a nav child — domain-specific buckets, then nav-tree children. */
 export function breakdownForNavChild(
   navChild: NavTreeNodeDto,
   rows: DashboardAccountRow[],
@@ -448,20 +402,16 @@ export function breakdownForNavChild(
   if (bySlug) return bySlug;
 
   const asset = navChild.asset_group_slug;
-  if (asset) {
+  if (asset === "real_estate" || asset === "cash_eqs" || asset === "liabilities") {
     const byAsset = breakdownByAssetGroup(asset, rows, dash);
     if (byAsset) return byAsset;
-  }
-
-  if (navChild.slug.startsWith("retirement_")) {
-    return { lines: buildRetirementCardBreakdown(rows) };
-  }
-  if (navChild.slug.startsWith("brokerage_")) {
-    return { lines: buildBrokerageCardBreakdown(rows) };
   }
   if (navChild.slug.startsWith("liabilities_")) {
     return breakdownByAssetGroup("liabilities", rows, dash);
   }
+
+  const navLines = buildNavCardBreakdown(navChild, rows);
+  if (navLines?.length) return { lines: navLines };
 
   return null;
 }

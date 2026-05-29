@@ -1,5 +1,6 @@
 import { monthEndsBetweenInclusive, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { cryptoSheetMovementDeltas, type CryptoSheetMonthMovement } from "./cryptoSheetUnits.js";
+import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { equityCloseUsdEod, equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
@@ -23,10 +24,7 @@ export function cryptoEquityTickerForCategorySlug(slug: string): "BTC-USD" | "ET
 }
 
 function categorySlugForAccount(accountId: number): string | null {
-  const r = db
-    .prepare(`SELECT c.slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`)
-    .get(accountId) as { slug: string } | undefined;
-  return r?.slug ?? null;
+  return accountKindSlugForAccountId(accountId);
 }
 
 export function cryptoEquityTickerForAccount(accountId: number): "BTC-USD" | "ETH-USD" | null {

@@ -189,6 +189,7 @@ export function colorRgbForTimeseriesAccountLine(accountId: number): string | un
 
 /** Negative `account_id` on grouped valuation / performance charts → `portfolio_groups.slug`. */
 export const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, string>> = {
+  [-600]: "real_estate",
   [-201]: "brokerage_mutual_funds",
   [-202]: "brokerage_acciones",
   [-203]: "brokerage_crypto",

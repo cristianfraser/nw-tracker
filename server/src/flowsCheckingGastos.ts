@@ -1,7 +1,10 @@
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import { stripTrailingCartolaNoteTags } from "./checkingCartolaParse.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import {
   isMovementBalanceCashCategory,
@@ -361,10 +364,8 @@ export function cartolaDescriptionFromNote(note: string | null | undefined): str
   const secondBar = afterPeriod.indexOf("|");
   if (secondBar < 0) return afterPeriod.trim();
   let desc = afterPeriod.slice(secondBar + 1).trim();
-  const docIdx = desc.lastIndexOf("|doc:");
-  if (docIdx >= 0) desc = desc.slice(0, docIdx).trim();
-  else if (desc.startsWith("doc:")) desc = "";
-  return desc;
+  if (desc.startsWith("doc:")) desc = "";
+  return stripTrailingCartolaNoteTags(desc);
 }
 
 /** Document number from `import:cartola|…|description|doc:NNNN`. */
@@ -372,7 +373,9 @@ export function cartolaDocumentFromNote(note: string | null | undefined): string
   const n = String(note ?? "").trim();
   const idx = n.lastIndexOf("|doc:");
   if (idx < 0) return null;
-  const doc = n.slice(idx + "|doc:".length).trim();
+  let doc = n.slice(idx + "|doc:".length).trim();
+  const meta = doc.search(/\|(on:|amt:|idx:)/);
+  if (meta >= 0) doc = doc.slice(0, meta).trim();
   return doc.length > 0 ? doc : null;
 }
 
@@ -565,8 +568,8 @@ export function fondoReservaAccountId(): number | null {
   const row = db
     .prepare(
       `SELECT a.id FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       WHERE c.slug = 'fondo_reserva'
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE g.slug = 'fondo_reserva' OR g.slug LIKE '%__fondo_reserva'
        LIMIT 1`
     )
     .get() as { id: number } | undefined;
@@ -574,18 +577,29 @@ export function fondoReservaAccountId(): number | null {
 }
 
 function listDepositFlowAccounts(): { account_id: number; category_slug: string; group_slug: string }[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT a.id AS account_id, c.slug AS category_slug, g.slug AS group_slug
+      `SELECT a.id AS account_id, g.slug AS bucket_slug
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
+       JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (a.notes IS NULL OR a.notes != ?)
          AND COALESCE(a.exclude_from_group_totals, 0) = 0
-         AND g.slug IN ('real_estate', 'cash_eqs', 'brokerage', 'retirement')
-         AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')`
+         AND g.slug != 'individual_stocks'`
     )
-    .all(NOTE_STOCKS_LEGACY) as { account_id: number; category_slug: string; group_slug: string }[];
+    .all(NOTE_STOCKS_LEGACY) as { account_id: number; bucket_slug: string }[];
+  return rows
+    .map((r) => {
+      const dash = dashboardBucketForAssetGroupSlug(r.bucket_slug);
+      if (!dash || !["real_estate", "cash_eqs", "brokerage", "retirement"].includes(dash)) {
+        return null;
+      }
+      return {
+        account_id: r.account_id,
+        category_slug: accountBucketKindSlug(r.bucket_slug),
+        group_slug: dash,
+      };
+    })
+    .filter((r): r is { account_id: number; category_slug: string; group_slug: string } => r != null);
 }
 
 function withdrawalMatchesInternalCashTransferExact(

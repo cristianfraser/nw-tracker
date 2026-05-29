@@ -67,13 +67,16 @@ function ExpenseLineCategoryControls({
   const activeCategory = assignable.find((c) => c.slug === activeSlug);
   const categoryLineId = expenseLineCategoryTargetId(line);
   const rowPending =
-    assign.isPending && assign.variables?.lineId === categoryLineId;
+    assign.isPending &&
+    assign.variables?.lineId === categoryLineId &&
+    assign.variables?.source === line.source;
 
   const persistCategory = useCallback(
     (nextSlug: string) => {
       if (!nextSlug || nextSlug === "unclassified") {
         assign.mutate({
           lineId: categoryLineId,
+          source: line.source,
           unique: line.category_unique,
           clear_category: true,
         });
@@ -81,22 +84,24 @@ function ExpenseLineCategoryControls({
       }
       assign.mutate({
         lineId: categoryLineId,
+        source: line.source,
         unique: line.category_unique,
         category_slug: nextSlug,
       });
     },
-    [assign, categoryLineId, line.category_unique]
+    [assign, categoryLineId, line.category_unique, line.source]
   );
 
   const persistUnique = useCallback(
     (nextUnique: boolean) => {
       assign.mutate({
         lineId: categoryLineId,
+        source: line.source,
         unique: nextUnique,
         ...(activeSlug ? { category_slug: activeSlug } : {}),
       });
     },
-    [activeSlug, assign, categoryLineId]
+    [activeSlug, assign, categoryLineId, line.source]
   );
 
   const uniqueCheckbox = (

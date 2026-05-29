@@ -5,7 +5,12 @@ import { chileCalendarAddDays, type ChileWallClock } from "../src/chileDate.js";
 import { resolveFintualPublishYmd } from "../src/fintualPublishDate.js";
 import { fintualGoalUnitsFromMovements } from "../src/fintualGoalUnits.js";
 import { db } from "../src/db.js";
-import { FINTUAL_API_BASE, normalizeFintualCookieInput, loadRootDotenv } from "./fintualApiLib.js";
+import {
+  FINTUAL_API_BASE,
+  fetchFintualWithBackoff,
+  normalizeFintualCookieInput,
+  loadRootDotenv,
+} from "./fintualApiLib.js";
 import type { FintualGoalRow } from "./fintualApiLib.js";
 
 export type FintualGoalRowWithMatch = FintualGoalRow & { matchedNotes: string | null };
@@ -19,6 +24,7 @@ type RealAssetLastDay = { date: string; netAssetValue: number };
 
 const recentNavCache = new Map<number, Map<string, number>>();
 const lastDayCache = new Map<number, RealAssetLastDay | null>();
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export type FintualGoalNavResolution = {
   row: FintualGoalRowWithMatch;
@@ -55,9 +61,13 @@ async function fetchRealAssetLastDay(
   assetId: number
 ): Promise<RealAssetLastDay | null> {
   if (lastDayCache.has(assetId)) return lastDayCache.get(assetId) ?? null;
-  const res = await fetch(`${FINTUAL_API_BASE}/real_assets/${assetId}`, {
-    headers: authHeaders(email, token),
-  });
+  const res = await fetchFintualWithBackoff(
+    `${FINTUAL_API_BASE}/real_assets/${assetId}`,
+    {
+      headers: authHeaders(email, token),
+    },
+    `GET /real_assets/${assetId}`
+  );
   const text = await res.text();
   if (!res.ok) {
     lastDayCache.set(assetId, null);
@@ -86,6 +96,69 @@ async function fetchRealAssetLastDay(
   return out;
 }
 
+/** Full `GET /real_assets/:id/days` history (paginated) for backfill scripts. */
+export async function fetchRealAssetNavHistoryByDate(
+  email: string,
+  token: string,
+  assetId: number,
+  opts?: { pageDelayMs?: number; onRequestLog?: (msg: string) => void }
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  const delayMs = Math.max(0, Math.round(opts?.pageDelayMs ?? 0));
+  let page = 1;
+  for (;;) {
+    opts?.onRequestLog?.(`Fintual API -> GET /real_assets/${assetId}/days?page=${page}`);
+    const res = await fetchFintualWithBackoff(
+      `${FINTUAL_API_BASE}/real_assets/${assetId}/days?page=${page}`,
+      {
+        headers: authHeaders(email, token),
+      },
+      `GET /real_assets/${assetId}/days?page=${page}`
+    );
+    const text = await res.text();
+    opts?.onRequestLog?.(
+      `Fintual API <- GET /real_assets/${assetId}/days?page=${page} status=${res.status}`
+    );
+    if (!res.ok) break;
+    let body: unknown;
+    try {
+      body = JSON.parse(text) as unknown;
+    } catch {
+      break;
+    }
+    const data = (body as { data?: unknown[] }).data;
+    if (!Array.isArray(data) || data.length === 0) break;
+    const sizeBefore = map.size;
+    for (const item of data) {
+      if (!item || typeof item !== "object") continue;
+      const attrs = (item as { attributes?: { date?: string; net_asset_value?: number } }).attributes;
+      const date = typeof attrs?.date === "string" ? attrs.date : "";
+      const nav =
+        typeof attrs?.net_asset_value === "number" && Number.isFinite(attrs.net_asset_value)
+          ? attrs.net_asset_value
+          : NaN;
+      if (date && Number.isFinite(nav) && nav > 0) map.set(date, nav);
+    }
+    opts?.onRequestLog?.(
+      `Fintual API page parsed asset=${assetId} page=${page} rows=${data.length} accumulated_days=${map.size}`
+    );
+    if (map.size === sizeBefore) {
+      opts?.onRequestLog?.(
+        `Fintual API page added no new days; stop paging (asset=${assetId}, page=${page})`
+      );
+      break;
+    }
+    page += 1;
+    if (data.length < 30) break;
+    if (page > 500) break;
+    if (delayMs > 0) {
+      opts?.onRequestLog?.(`Fintual API sleep ${delayMs}ms before next page (asset=${assetId})`);
+      await sleep(delayMs);
+    }
+  }
+  return map;
+}
+
 async function recentNavByDate(
   email: string,
   token: string,
@@ -94,9 +167,13 @@ async function recentNavByDate(
   const cached = recentNavCache.get(assetId);
   if (cached) return cached;
 
-  const res = await fetch(`${FINTUAL_API_BASE}/real_assets/${assetId}/days`, {
-    headers: authHeaders(email, token),
-  });
+  const res = await fetchFintualWithBackoff(
+    `${FINTUAL_API_BASE}/real_assets/${assetId}/days`,
+    {
+      headers: authHeaders(email, token),
+    },
+    `GET /real_assets/${assetId}/days`
+  );
   const text = await res.text();
   const map = new Map<string, number>();
   if (!res.ok) {

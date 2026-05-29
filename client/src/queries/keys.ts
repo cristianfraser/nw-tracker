@@ -2,7 +2,14 @@ export type DisplayUnit = "clp" | "usd";
 
 export const queryKeys = {
   dashboard: (unit: DisplayUnit) => ["dashboard", unit] as const,
+  dashboardNav: (unit: DisplayUnit) => ["dashboardNav", unit] as const,
+  dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
+  groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
+    ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
   sidebarNav: () => ["sidebarNav"] as const,
+  accountsAll: () => ["accountsAll"] as const,
+  assetTree: () => ["assetTree"] as const,
+  portfolioTree: () => ["portfolioTree"] as const,
   ratesInstruments: () => ["ratesInstruments"] as const,
   marketTicker: () => ["marketTicker"] as const,
   marketSeries: () => ["marketSeries"] as const,

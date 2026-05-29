@@ -23,6 +23,7 @@
  *   **Import** calls Yahoo for SPY, VEA, BTC-USD, ETH-USD closes into `equity_daily` — needs **network** during `import:excel`.
  * - **`fund-unit-values.csv`** (optional): semicolon CSV with header `series_key;day;unit_value_clp;note` for valor-cuota
  *   series (e.g. `afp_uno_cuota_a`, `fintual_risky_norris`, `fintual_risky_norris_apv`). Upserts **`fund_unit_daily`**.
+ *   Wipe clears only `fund_unit_daily` rows with `series_key LIKE 'fintual%'` (AFP UNO history is preserved).
  * - Monthly snapshots (`valuations`, `fx_daily`, `uf_daily`, import movements tied to sheet months) use the **last calendar day** of each month.
  *   For **`compra_usd`** in lots CSV use dot decimals
  *   (`612.36`) — `numCsv` would misread that as 61236 USD.
@@ -135,9 +136,17 @@ import {
 import {
   aggregateFintualCertificado,
   insertFintualCertificadoMovementsFromAggregates,
+  legacyCertificadoAccountResolver,
   resolveFintualCertificadoCsvPath,
   type FintualCertificadoAccounts,
 } from "../src/fintualCertificadoTransacciones.js";
+import {
+  FINTUAL_CERT_MOVEMENT_NOTE_PREFIX,
+  FINTUAL_CERT_V2_ACCOUNT_NAMES,
+  FINTUAL_CERT_V2_CATEGORY_SLUG,
+  matchFintualCertGoalV2,
+} from "../src/fintualCertV2.js";
+import { backfillFintualCertValorCuotaFromScan } from "../src/fintualFundUnitDaily.js";
 import { loadGoalIdOverrides, matchGoalToImportNotes } from "./fintualApiLib.js";
 import { applyAfpUnoCertificadoCuotasToMovements } from "../src/afpUnoCertMovementSync.js";
 import {
@@ -151,12 +160,14 @@ import {
   tryReadModeloCotizacionesRows,
 } from "../src/afpModeloPriorCuotasBackfill.js";
 import { afpCuotasCumulativeThroughDate } from "../src/afpUnoValuation.js";
+import { seedNavTree } from "../src/seedNavTree.js";
 import {
   computeOrphanUnoCertMonthMovements,
   firstAfpCumulativeMovementMonth,
 } from "../src/afpUnoOrphanCertMonths.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ENABLE_LEGACY_FINTUAL_CERT_IMPORT = false;
 
 /** Default Fintual “certificado” goal id → `import:excel|key=…` (merged with `server/data/fintual-goal-map.json`). */
 const DEFAULT_FINTUAL_CERT_GOAL_IDS: Record<string, string> = {
@@ -1164,24 +1175,27 @@ async function main() {
     db.exec(`
       DELETE FROM valuations WHERE account_id IN (
         SELECT a.id FROM accounts a
-        JOIN categories c ON c.id = a.category_id
+        JOIN asset_groups g ON g.id = a.asset_group_id
         WHERE (a.notes LIKE 'import:excel%' OR a.notes LIKE 'import:cfraser%')
-          AND c.slug != 'cuenta_corriente'
+          AND g.slug != 'cuenta_corriente' AND g.slug NOT LIKE '%__cuenta_corriente'
       );
       DELETE FROM movements WHERE account_id IN (
         SELECT a.id FROM accounts a
-        JOIN categories c ON c.id = a.category_id
+        JOIN asset_groups g ON g.id = a.asset_group_id
         WHERE (a.notes LIKE 'import:excel%' OR a.notes LIKE 'import:cfraser%')
-          AND c.slug != 'cuenta_corriente'
+          AND g.slug != 'cuenta_corriente' AND g.slug NOT LIKE '%__cuenta_corriente'
+      );
+      DELETE FROM movements WHERE account_id IN (
+        SELECT id FROM accounts WHERE notes LIKE 'import:fintual|cert|key=%'
       );
       DELETE FROM accounts
       WHERE (notes LIKE 'import:excel%' OR notes LIKE 'import:cfraser%')
         AND NOT EXISTS (
           SELECT 1 FROM cc_installment_purchases p WHERE p.account_id = accounts.id
         )
-        AND NOT EXISTS (
-          SELECT 1 FROM categories c
-          WHERE c.id = accounts.category_id AND c.slug = 'cuenta_corriente'
+        AND asset_group_id NOT IN (
+          SELECT id FROM asset_groups
+          WHERE slug = 'cuenta_corriente' OR slug LIKE '%__cuenta_corriente'
         );
       DELETE FROM income_entries WHERE note LIKE 'import:excel%';
       DELETE FROM expense_entries WHERE note LIKE 'import:excel%';
@@ -1189,17 +1203,25 @@ async function main() {
       DELETE FROM uf_daily;
       DELETE FROM eur_daily;
       DELETE FROM ipc_daily;
-      DELETE FROM fund_unit_daily;
     `);
     deleteEquityDailyForImportTickers();
   });
   wipe();
 
-  const catStmt = db.prepare("SELECT id FROM categories WHERE slug = ?");
-  const catId = (slug: string) => (catStmt.get(slug) as { id: number }).id;
+  const leafBucketIdStmt = db.prepare(
+    `SELECT id FROM asset_groups
+     WHERE slug = ? OR slug LIKE '%__' || ?
+     ORDER BY CASE WHEN slug = ? THEN 0 ELSE 1 END, id
+     LIMIT 1`
+  );
+  const leafBucketId = (kindSlug: string) => {
+    const row = leafBucketIdStmt.get(kindSlug, kindSlug, kindSlug) as { id: number } | undefined;
+    if (!row) throw new Error(`no leaf asset group for kind ${kindSlug}`);
+    return row.id;
+  };
 
   const insAcc = db.prepare(
-    "INSERT INTO accounts (category_id, name, notes, exclude_from_group_totals) VALUES (?, ?, ?, ?)"
+    "INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals) VALUES (?, ?, ?, ?)"
   );
 
   const updAccName = db.prepare("UPDATE accounts SET name = ? WHERE id = ?");
@@ -1217,17 +1239,53 @@ async function main() {
       db.prepare("UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?").run(exclude, row.id);
       return row.id;
     }
-    const r = insAcc.run(catId(slug), name, note, exclude);
+    const r = insAcc.run(leafBucketId(slug), name, note, exclude);
     return Number(r.lastInsertRowid);
   }
 
+  function ensureFintualCertV2Account(importNotes: string): number {
+    const categorySlug = FINTUAL_CERT_V2_CATEGORY_SLUG[importNotes];
+    const displayName = FINTUAL_CERT_V2_ACCOUNT_NAMES[importNotes];
+    if (!categorySlug || !displayName) {
+      throw new Error(`Unknown Fintual cert v2 notes: ${importNotes}`);
+    }
+    const exclude = excludeFromGroupTotalsForCategory(categorySlug);
+    const row = db.prepare("SELECT id FROM accounts WHERE notes = ?").get(importNotes) as
+      | { id: number }
+      | undefined;
+    if (row) {
+      updAccName.run(displayName, row.id);
+      db.prepare("UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?").run(exclude, row.id);
+      return row.id;
+    }
+    const r = insAcc.run(leafBucketId(categorySlug), displayName, importNotes, exclude);
+    return Number(r.lastInsertRowid);
+  }
+
+  const fintualCertV2: Record<string, number> = {};
+  for (const importNotes of Object.keys(FINTUAL_CERT_V2_ACCOUNT_NAMES)) {
+    fintualCertV2[importNotes] = ensureFintualCertV2Account(importNotes);
+  }
+
+  const cfraserDir = resolveCfraserCsvDir();
+  const fintualCertCsvPath = resolveFintualCertificadoCsvPath(cfraserDir);
+  const useFintualCertificado = Boolean(fintualCertCsvPath);
+
   const accounts = {
     afp: ensureAccount("afp", "AFP", "afp"),
-    apv_a: ensureAccount("apv", "APV régimen A", "apv_a"),
-    apv_b: ensureAccount("apv", "APV régimen B", "apv_b"),
+    apv_a: useFintualCertificado
+      ? fintualCertV2["import:fintual|cert|key=apv_a"]!
+      : ensureAccount("apv", "APV régimen A", "apv_a"),
+    apv_b: useFintualCertificado
+      ? fintualCertV2["import:fintual|cert|key=apv_b"]!
+      : ensureAccount("apv", "APV régimen B", "apv_b"),
     afc: ensureAccount("afc", "AFC", "afc"),
-    fintual_rn: ensureAccount("fintual_risky_norris", "Fintual RN", "fintual_rn"),
-    fondo_reserva: ensureAccount("fondo_reserva", "Reserva (Fintual / sheet)", "fondo_reserva"),
+    fintual_rn: useFintualCertificado
+      ? fintualCertV2["import:fintual|cert|key=risky_norris"]!
+      : ensureAccount("fintual_risky_norris", "Fintual RN", "fintual_rn"),
+    fondo_reserva: useFintualCertificado
+      ? fintualCertV2["import:fintual|cert|key=reserva2"]!
+      : ensureAccount("fondo_reserva", "Reserva (Fintual / sheet)", "fondo_reserva"),
     cuenta_corriente: ensureAccount("cuenta_corriente", "Cuenta corriente", "cuenta_corriente"),
     cuenta_ahorro_vivienda: ensureAccount(
       "cuenta_ahorro_vivienda",
@@ -1293,8 +1351,6 @@ async function main() {
     byMonth.set(mk, cur);
   }
 
-  const cfraserDir = resolveCfraserCsvDir();
-
   const buf = fs.readFileSync(excelPath);
   const wb = XLSX.read(buf, { type: "buffer", cellDates: true });
 
@@ -1357,17 +1413,20 @@ async function main() {
 
   const monthsSorted = [...byMonth.keys()].sort();
 
-  const fintualCertCsvPath = resolveFintualCertificadoCsvPath(cfraserDir);
-  const useFintualCertificado = Boolean(fintualCertCsvPath);
   const fintualCertGoalMap: Record<string, string> = {
     ...DEFAULT_FINTUAL_CERT_GOAL_IDS,
     ...loadGoalIdOverrides(),
   };
   const matchFintualCertGoal = (goalId: string, name: string) =>
     matchGoalToImportNotes(goalId, name, fintualCertGoalMap);
+  const matchFintualCertGoalV2Fn = (goalId: string, name: string) => matchFintualCertGoalV2(goalId, name);
   const fintualCertScan =
     useFintualCertificado && fintualCertCsvPath
       ? aggregateFintualCertificado(fintualCertCsvPath, maxMonth, matchFintualCertGoal)
+      : null;
+  const fintualCertV2Scan =
+    useFintualCertificado && fintualCertCsvPath
+      ? aggregateFintualCertificado(fintualCertCsvPath, maxMonth, matchFintualCertGoalV2Fn)
       : null;
   const fintualApvACutMk = fintualCertScan?.apvACutMonth ?? null;
   const apv_a_principal =
@@ -1818,8 +1877,13 @@ async function main() {
       );
     }
 
-    let fintualCertMovementRows = 0;
-    if (useFintualCertificado && fintualCertCsvPath != null && fintualCertScan != null) {
+  let fintualCertMovementRows = 0;
+  if (
+    ENABLE_LEGACY_FINTUAL_CERT_IMPORT &&
+    useFintualCertificado &&
+    fintualCertCsvPath != null &&
+    fintualCertScan != null
+  ) {
       const certAcc: FintualCertificadoAccounts = {
         fondo_reserva: accounts.fondo_reserva,
         fintual_rn: accounts.fintual_rn,
@@ -1828,7 +1892,7 @@ async function main() {
       };
       fintualCertMovementRows = insertFintualCertificadoMovementsFromAggregates(
         fintualCertScan,
-        certAcc,
+        legacyCertificadoAccountResolver(certAcc),
         insMov,
         matchFintualCertGoal
       );
@@ -1928,9 +1992,33 @@ async function main() {
     console.log(
       `import:excel: crypto MTM valuations (units × BTC-USD/ETH-USD × FX): BTC ${cryptoVal.btcRows} rows (units recalc ${cryptoVal.btcUnitsBackfill}), ETH ${cryptoVal.ethRows} rows (units recalc ${cryptoVal.ethUnitsBackfill})`
     );
+    let fintualCertV2MovementRows = 0;
+    let fintualCertV2FundUnitRows = 0;
+    if (useFintualCertificado && fintualCertV2Scan != null) {
+      const v2Resolver = (importNote: string | null) =>
+        importNote != null ? fintualCertV2[importNote] : undefined;
+      fintualCertV2MovementRows = insertFintualCertificadoMovementsFromAggregates(
+        fintualCertV2Scan,
+        v2Resolver,
+        insMov,
+        matchFintualCertGoalV2Fn,
+        FINTUAL_CERT_MOVEMENT_NOTE_PREFIX
+      );
+      fintualCertV2FundUnitRows = backfillFintualCertValorCuotaFromScan(
+        fintualCertV2Scan,
+        matchFintualCertGoalV2Fn,
+        false
+      );
+    }
+
     if (useFintualCertificado && fintualCertMovementRows > 0) {
       console.log(
         `import:excel: Fintual certificado de transacciones → ${fintualCertMovementRows} dated movements (${fintualCertCsvPath}); APV-a split at month: ${fintualApvACutMk ?? "—"}`
+      );
+    }
+    if (useFintualCertificado && fintualCertV2MovementRows > 0) {
+      console.log(
+        `import:excel: Fintual certificado v2 → ${fintualCertV2MovementRows} movements, ${fintualCertV2FundUnitRows} fund_unit_daily hints (cuotas × valor cuota)`
       );
     }
     console.log(
@@ -1962,6 +2050,20 @@ async function main() {
     console.warn(
       `import:excel: Tarjeta de crédito (account_id=${ccAcc.id}) has no PDF installment ledger in DB, but ${ccCsv} exists. ` +
       `Run: npm run import:cc-parsed -w nw-tracker-server`
+    );
+  }
+
+  seedNavTree();
+  console.log("import:excel: re-seeded portfolio nav tree (sidebar + dashboard bucket cards)");
+
+  const afpFundRows = db
+    .prepare(`SELECT COUNT(*) AS c FROM fund_unit_daily WHERE series_key = 'afp_uno_cuota_a'`)
+    .get() as { c: number };
+  if ((afpFundRows?.c ?? 0) < 30) {
+    console.warn(
+      `import:excel: fund_unit_daily for AFP UNO has ${afpFundRows?.c ?? 0} row(s) — ` +
+        "`import:excel` no longer wipes AFP series. To restore history after an earlier full wipe, run: " +
+        "npm run afp:uno:backfill-quetalmiafp -w nw-tracker-server"
     );
   }
 

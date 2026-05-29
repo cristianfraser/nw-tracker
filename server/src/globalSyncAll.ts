@@ -75,6 +75,7 @@ import {
   fintualSnapshotMatchesDb,
   markFintualEveningSettledWhenCurrent,
   pickFintualApplySnapshot,
+  priorAccountValuation,
   syncFintualFundUnitsFromResolutions,
 } from "../scripts/fintualApplyShared.js";
 import {
@@ -110,7 +111,9 @@ import {
   EQUITY_NYSE_TICKERS,
   equityEodCryptoStateYmd,
   equityEodNyseStateYmd,
+  cryptoEodChangeLogDates,
   cryptoEodDueUtcYmd,
+  isCryptoEodSyncWindow,
   syncCryptoEodFromYahoo,
   syncStocksNyseFromYahoo,
   type EquityEodSyncResult,
@@ -141,6 +144,16 @@ function latestEquityEodRow(
     .get(ticker) as { trade_date: string; close_usd: number } | undefined;
   if (row?.close_usd == null || !Number.isFinite(row.close_usd)) return null;
   return { trade_date: row.trade_date, close_usd: row.close_usd };
+}
+
+function equityEodCloseOnDate(ticker: string, tradeDate: string): number | null {
+  const row = db
+    .prepare(
+      `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date = ?`
+    )
+    .get(ticker, tradeDate) as { close_usd: number } | undefined;
+  if (row?.close_usd == null || !Number.isFinite(row.close_usd)) return null;
+  return row.close_usd;
 }
 
 function latestEquityCloseUsd(ticker: string): number | null {
@@ -281,13 +294,14 @@ async function runUnoSpot(
     nextRounded != null &&
     (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1)
   ) {
+    const prior = priorAccountValuation(row.id, asOf);
     changes.push({
       group: "afp",
       label: "AFP UNO",
-      oldValue: prevRounded != null ? formatSyncClp(prevRounded) : "—",
+      oldValue: prior != null ? formatSyncClp(Math.round(prior.value_clp)) : "—",
       newValue: formatSyncClp(nextRounded),
-      oldDate: asOf,
-      newDate: asOf,
+      oldDate: prior?.as_of_date ?? null,
+      newDate: fundUnitDay,
     });
   }
   if (!syncDryRun) {
@@ -652,7 +666,8 @@ function applyEquityEodResultsToChanges(
   eodBefore: Map<string, { trade_date: string; close_usd: number } | null>,
   changes: SyncFieldChange[],
   group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
-  logPrefix: string
+  logPrefix: string,
+  opts?: { cryptoDueUtcYmd?: string | null; cryptoLogInSyncWindow?: boolean }
 ): void {
   for (const r of results) {
     if (r.skipped) {
@@ -661,6 +676,31 @@ function applyEquityEodResultsToChanges(
     }
     console.log(`sync: ${logPrefix} ${r.ticker} — ${r.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
     const before = eodBefore.get(r.ticker) ?? null;
+    if (group === "crypto_eod" && opts?.cryptoDueUtcYmd) {
+      const { oldDate, newDate } = cryptoEodChangeLogDates(opts.cryptoDueUtcYmd, {
+        inSyncWindow: opts.cryptoLogInSyncWindow,
+      });
+      const oldClose = equityEodCloseOnDate(r.ticker, oldDate);
+      const newClose = equityEodCloseOnDate(r.ticker, newDate);
+      if (newClose == null) continue;
+      if (oldClose != null && Math.abs(oldClose - newClose) < 1e-8) continue;
+      if (
+        before != null &&
+        before.trade_date === newDate &&
+        Math.abs(before.close_usd - newClose) < 1e-8
+      ) {
+        continue;
+      }
+      changes.push({
+        group,
+        label: r.ticker,
+        oldValue: oldClose != null ? formatSyncUsdClose(oldClose) : "—",
+        newValue: formatSyncUsdClose(newClose),
+        oldDate,
+        newDate,
+      });
+      continue;
+    }
     const after = latestEquityEodRow(r.ticker);
     if (after == null) continue;
     if (before != null && Math.abs(before.close_usd - after.close_usd) < 1e-8) continue;
@@ -710,7 +750,10 @@ async function runCryptoEod(
   if (dueUtc) console.log(`sync: crypto EOD — due UTC ${dueUtc}.`);
   const eodBefore = snapshotEodBefore(EQUITY_CRYPTO_TICKERS);
   const results = await syncCryptoEodFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
-  applyEquityEodResultsToChanges(results, eodBefore, changes, "crypto_eod", "crypto EOD");
+  applyEquityEodResultsToChanges(results, eodBefore, changes, "crypto_eod", "crypto EOD", {
+    cryptoDueUtcYmd: dueUtc,
+    cryptoLogInSyncWindow: isCryptoEodSyncWindow(cl),
+  });
   if (!syncDryRun) {
     const cryptoYmd = equityEodCryptoStateYmd(now);
     if (cryptoYmd) state.equityEodLastCryptoUtcYmd = cryptoYmd;

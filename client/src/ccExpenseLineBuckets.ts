@@ -1,5 +1,5 @@
 import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth";
-import type { FlowCcExpenseLineRow } from "./types";
+import type { FlowCcExpenseLineRow, FlowCcExpenseLineSource } from "./types";
 
 export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 
@@ -39,13 +39,24 @@ function sameInstallmentPurchaseGroup(
 export function expenseLineMatchesCategoryPatch(
   ln: FlowCcExpenseLineRow,
   targetLineId: number,
-  anchorLine?: FlowCcExpenseLineRow
+  anchorLine?: FlowCcExpenseLineRow,
+  source?: FlowCcExpenseLineSource
 ): boolean {
+  if (source != null && ln.source !== source) return false;
   if (expenseLineCategoryTargetId(ln) === targetLineId) return true;
   if (ln.statement_line_id === targetLineId) return true;
   if (ln.category_statement_line_id === targetLineId) return true;
   if (anchorLine && sameInstallmentPurchaseGroup(ln, anchorLine)) return true;
   return false;
+}
+
+/** All gastos lines for one purchase (cuotas, consolidated total, checking split). */
+export function expenseLineMatchesCategoryPurchaseKey(
+  ln: FlowCcExpenseLineRow,
+  accountId: number,
+  purchaseKey: string
+): boolean {
+  return ln.account_id === accountId && ln.purchase_key === purchaseKey;
 }
 
 export function expenseLineMatchesPurchaseNotePatch(

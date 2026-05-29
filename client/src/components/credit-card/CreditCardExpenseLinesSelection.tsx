@@ -137,6 +137,7 @@ export function CreditCardExpenseLinesBulkFooter({
           const existing = existingCategorySlugForAssign(line);
           return assign.mutateAsync({
             lineId: expenseLineCategoryTargetId(line),
+            source: line.source,
             unique: true,
             ...(existing ? { category_slug: existing } : {}),
           });
@@ -146,6 +147,7 @@ export function CreditCardExpenseLinesBulkFooter({
         selectedLines.map((line) =>
           assign.mutateAsync({
             lineId: expenseLineCategoryTargetId(line),
+            source: line.source,
             unique: true,
             category_slug: slug,
           })

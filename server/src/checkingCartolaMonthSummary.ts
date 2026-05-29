@@ -1,5 +1,6 @@
 import { checkingMovementBalanceAtMonthEnd } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import {
   expandYearMonthsInclusive,
@@ -89,11 +90,12 @@ function collectTimelineMonthKeys(accountId: number): string[] {
 export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMonthsResponse | null {
   const cat = db
     .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a
-       JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+      `SELECT g.slug AS bucket_slug FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id = ?`
     )
-    .get(accountId) as { category_slug: string } | undefined;
-  if (!cat || !isMovementBalanceCashCategory(cat.category_slug)) return null;
+    .get(accountId) as { bucket_slug: string } | undefined;
+  if (!cat || !isMovementBalanceCashCategory(accountBucketKindSlug(cat.bucket_slug))) return null;
 
   const importByMonth = new Map<
     string,

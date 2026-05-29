@@ -2,9 +2,39 @@ import { Link } from "react-router-dom";
 import { formatMonthLabelFromYm } from "../../formatMonthLabel";
 import { useTranslation } from "../../i18n";
 import { absolutePathToFileUrl } from "../../localFileUrl";
-import type { ImportSyncDocumentCoverageResponse } from "../../types";
+import type {
+  ImportSyncDocumentAccount,
+  ImportSyncDocumentCoverageResponse,
+} from "../../types";
 import { Table } from "../ui/Table";
 import styles from "./AvailableDocumentsTable.module.css";
+
+function columnKey(acc: ImportSyncDocumentAccount): string {
+  return acc.cc_statement_currency
+    ? `${acc.account_id}-${acc.cc_statement_currency}`
+    : String(acc.account_id);
+}
+
+function currencySlotLabel(
+  acc: ImportSyncDocumentAccount,
+  t: (key: string) => string
+): string {
+  if (acc.cc_statement_currency === "clp") {
+    return t("importSync.ccStatementCurrencyClp");
+  }
+  if (acc.cc_statement_currency === "usd") {
+    return t("importSync.ccStatementCurrencyUsd");
+  }
+  return "";
+}
+
+function columnAriaAccount(
+  acc: ImportSyncDocumentAccount,
+  t: (key: string) => string
+): string {
+  const slot = currencySlotLabel(acc, t);
+  return slot ? `${acc.label} (${slot})` : acc.label;
+}
 
 export function AvailableDocumentsTable({
   data,
@@ -26,13 +56,26 @@ export function AvailableDocumentsTable({
         <thead>
           <tr>
             <th>{t("importSync.colMonth")}</th>
-            {accounts.map((acc) => (
-              <th key={acc.account_id} className={styles.accountCol} title={acc.label}>
-                <Link to={`/account/${acc.account_id}`} className={styles.accountLink}>
-                  {acc.label}
-                </Link>
-              </th>
-            ))}
+            {accounts.map((acc) => {
+              const slot = currencySlotLabel(acc, t);
+              return (
+                <th
+                  key={columnKey(acc)}
+                  className={slot ? styles.splitAccountCol : styles.accountCol}
+                  title={columnAriaAccount(acc, t)}
+                >
+                  <Link
+                    to={`/account/${acc.account_id}`}
+                    className={styles.accountLink}
+                  >
+                    {acc.label}
+                  </Link>
+                  {slot ? (
+                    <span className={styles.currencySlot}>{slot}</span>
+                  ) : null}
+                </th>
+              );
+            })}
           </tr>
         </thead>
       }
@@ -45,14 +88,15 @@ export function AvailableDocumentsTable({
             const imported = cell?.imported === true;
             const filePath = cell?.file_path ?? null;
             const hasFile = Boolean(filePath);
+            const ariaAccount = columnAriaAccount(acc, t);
             const ariaLabel = imported
               ? hasFile
-                ? t("importSync.importedYes", { account: acc.label, month: ym })
+                ? t("importSync.importedYes", { account: ariaAccount, month: ym })
                 : t("importSync.importedUnlinked", {
-                    account: acc.label,
+                    account: ariaAccount,
                     month: ym,
                   })
-              : t("importSync.importedNo", { account: acc.label, month: ym });
+              : t("importSync.importedNo", { account: ariaAccount, month: ym });
             const checkMark = (
               <span className={styles.ok} aria-hidden>
                 ✓
@@ -64,7 +108,7 @@ export function AvailableDocumentsTable({
               </span>
             );
             return (
-              <td key={acc.account_id} className={styles.cell}>
+              <td key={columnKey(acc)} className={styles.cell}>
                 {imported && hasFile ? (
                   <a
                     href={absolutePathToFileUrl(filePath!)}

@@ -69,7 +69,11 @@ function expandYearMonthsInclusive(minYm: string, maxYm: string): string[] {
 }
 
 /** First installment month (YYYY-MM): cuota 1 from PDF, else earliest payment month, else purchase month. */
-export function purchaseFirstDueYm(pr: PurchaseRow, payList: PaymentRow[]): string {
+export function purchaseFirstDueYm(
+  pr: PurchaseRow,
+  payList: PaymentRow[],
+  accountId?: number
+): string {
   const cuota1 = payList.find((p) => p.cuota_current === 1);
   if (cuota1) {
     const ym = ymFromIsoDate(cuota1.pay_by_date);
@@ -86,6 +90,10 @@ export function purchaseFirstDueYm(pr: PurchaseRow, payList: PaymentRow[]): stri
     const sorted = [...payList].sort((a, b) => a.pay_by_date.localeCompare(b.pay_by_date));
     const ym = ymFromIsoDate(sorted[0]!.pay_by_date);
     if (ym) return ym;
+  }
+  if (pr.source === "manual" && accountId != null) {
+    const openBm = billingMonthForLedgerPurchase(accountId, pr);
+    if (openBm) return openBm;
   }
   return parseYearMonth(pr.purchase_date.slice(0, 7)) ?? "1970-01";
 }
@@ -193,11 +201,12 @@ type PurchaseInstallmentSchedule = {
 function buildPurchaseInstallmentSchedule(
   pr: PurchaseRow,
   payList: PaymentRow[],
-  referenceYm?: string
+  referenceYm?: string,
+  accountId?: number
 ): PurchaseInstallmentSchedule | null {
   const n = pr.cuotas_totales;
   if (n <= 0 || pr.total_amount_clp <= 0) return null;
-  const firstDueYm = purchaseFirstDueYm(pr, payList);
+  const firstDueYm = purchaseFirstDueYm(pr, payList, accountId);
   const installmentsPaid = ledgerInstallmentsPaid(pr, payList, referenceYm);
   const planSlotsConsumed = planInstallmentsConsumed(pr, payList, referenceYm);
   return {
@@ -256,14 +265,16 @@ function scheduledRemainingPrincipalAfterYm(sched: PurchaseInstallmentSchedule, 
 function buildSchedulesByPurchaseId(
   purchasesRaw: PurchaseRow[],
   paymentsByPurchase: Map<number, PaymentRow[]>,
-  referenceYm?: string
+  referenceYm?: string,
+  accountId?: number
 ): Map<number, PurchaseInstallmentSchedule> {
   const out = new Map<number, PurchaseInstallmentSchedule>();
   for (const pr of purchasesRaw) {
     const sched = buildPurchaseInstallmentSchedule(
       pr,
       paymentsByPurchase.get(pr.id) ?? [],
-      referenceYm
+      referenceYm,
+      accountId
     );
     if (sched) out.set(pr.id, sched);
   }
@@ -297,9 +308,10 @@ function collectScheduleTimelineBounds(
  */
 function scheduledPaymentsDueByMonth(
   purchasesRaw: PurchaseRow[],
-  paymentsByPurchase: Map<number, PaymentRow[]>
+  paymentsByPurchase: Map<number, PaymentRow[]>,
+  accountId?: number
 ): Map<string, number> {
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase);
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
   const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
   const out = new Map<string, number>();
   if (!bounds) return out;
@@ -316,9 +328,10 @@ function scheduledPaymentsDueByMonth(
 /** Plan cuotas due each month (all indices — for month-end saldo / historial). */
 function scheduledPaymentsPlanDueByMonth(
   purchasesRaw: PurchaseRow[],
-  paymentsByPurchase: Map<number, PaymentRow[]>
+  paymentsByPurchase: Map<number, PaymentRow[]>,
+  accountId?: number
 ): Map<string, number> {
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase);
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
   const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
   const out = new Map<string, number>();
   if (!bounds) return out;
@@ -335,9 +348,10 @@ function scheduledPaymentsPlanDueByMonth(
 /** End-of-month plan saldo: Σ cuotas with due month after `ym` (matches flujos historial / chart tail). */
 function scheduledTotalRemainingByMonth(
   purchasesRaw: PurchaseRow[],
-  paymentsByPurchase: Map<number, PaymentRow[]>
+  paymentsByPurchase: Map<number, PaymentRow[]>,
+  accountId?: number
 ): Map<string, number> {
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase);
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
   const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
   const out = new Map<string, number>();
   if (!bounds) return out;
@@ -444,7 +458,7 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
 export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): Map<string, number> {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  return scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase);
+  return scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
 }
 
 /**
@@ -454,7 +468,7 @@ export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): 
 export function installmentRemainingClpByCalendarMonth(accountId: number): Map<string, number> {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  return scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase);
+  return scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase, accountId);
 }
 
 /**
@@ -477,7 +491,7 @@ export function liveCreditCardOutstandingClp(accountId: number): number | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const nowYm = currentCalendarYm();
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm);
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
   let total = 0;
   for (const sched of schedules.values()) {
     total += scheduledOutstandingPrincipal(sched);
@@ -494,7 +508,11 @@ export function ledgerFacturadoClpForBillingMonth(
   const config = loadCreditCardBillingConfig(accountId);
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const schedules = buildSchedulesByPurchaseId(
-    purchasesRaw, paymentsByPurchase, billingMonth);
+    purchasesRaw,
+    paymentsByPurchase,
+    billingMonth,
+    accountId
+  );
   let sum = 0;
   for (const pr of purchasesRaw) {
     if (billingMonthForLedgerPurchase(accountId, pr, config) !== billingMonth) continue;
@@ -526,16 +544,17 @@ const SALDO_LINE_META =
 
 function installmentHistoryMonthsFromLedgerData(
   purchasesRaw: PurchaseRow[],
-  paymentsByPurchase: Map<number, PaymentRow[]>
+  paymentsByPurchase: Map<number, PaymentRow[]>,
+  accountId?: number
 ): {
   month: string;
   remaining_balance_clp: number;
   installment_payments_clp: number;
   ledger_remaining_installments_clp: number;
 }[] {
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase);
-  const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase);
-  const remainingByMonth = scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase);
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
+  const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
+  const remainingByMonth = scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase, accountId);
   const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
   if (!bounds) return [];
 
@@ -581,7 +600,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   let db_payment_count = 0;
   for (const pays of paymentsByPurchase.values()) db_payment_count += pays.length;
   const nowYm = currentCalendarYm();
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm);
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
 
   const computed: CcInstallmentPurchaseComputed[] = [];
   for (const pr of purchasesRaw) {
@@ -590,7 +609,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     const sched = schedules.get(pr.id);
     const installments_paid =
       sched?.installmentsPaid ?? ledgerInstallmentsPaid(pr, payList, nowYm);
-    const first_due_month = sched?.firstDueYm ?? purchaseFirstDueYm(pr, payList);
+    const first_due_month = sched?.firstDueYm ?? purchaseFirstDueYm(pr, payList, accountId);
     const cuotaAmounts =
       sched?.cuotaAmounts ?? cuotaAmountsForPurchase(pr, payList);
     const planSlotsConsumed =
@@ -650,7 +669,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     });
   }
 
-  const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase);
+  const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
   const months: CcInstallmentMonthRow[] = [...payByMonth.keys()].sort(ymCompare).map((month) => ({
     month,
     total_clp: payByMonth.get(month) ?? 0,
@@ -659,7 +678,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
 
   const installment_history_months = installmentHistoryMonthsFromLedgerData(
     purchasesRaw,
-    paymentsByPurchase
+    paymentsByPurchase,
+    accountId
   );
 
   let total_remaining_principal_clp = 0;

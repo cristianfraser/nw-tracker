@@ -21,8 +21,9 @@ import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
+import { dashPickForNavStrip } from "../queries/fetchers";
 import {
-  useDashboardBundle,
+  useDashboardNavContext,
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
@@ -42,9 +43,9 @@ export function LiabilitiesGroupPage() {
   const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
-  const { data: dashBundle } = useDashboardBundle(displayUnit);
-  const dash = dashBundle?.dash ?? null;
-  const overviewPoints = dashBundle?.ts?.overview?.points ?? [];
+  const { data: navCtx } = useDashboardNavContext(displayUnit);
+  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
+  const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const navMatchNode = useMemo(
     () =>
@@ -67,16 +68,10 @@ export function LiabilitiesGroupPage() {
 
   useEffect(() => {
     if (!navMatchNode) return;
-    const otherUnit = displayUnit === "clp" ? "usd" : "clp";
     void prefetchPortfolioGroupBundle(queryClient, {
       group: "liabilities",
       subgroup: liabilitiesSubgroup,
       unit: displayUnit,
-    });
-    void prefetchPortfolioGroupBundle(queryClient, {
-      group: "liabilities",
-      subgroup: liabilitiesSubgroup,
-      unit: otherUnit,
     });
   }, [queryClient, navMatchNode, liabilitiesSubgroup, displayUnit]);
 
@@ -201,6 +196,8 @@ export function LiabilitiesGroupPage() {
         dash && charts.valuationBlockForChart && accounts.length > 0
           ? {
               navNode: navMatchNode,
+              groupSlug: "liabilities",
+              subgroup: liabilitiesSubgroup,
               dash,
               overviewPoints,
               metricsPeriod,

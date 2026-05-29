@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
-import { prefetchBothDashboardBundles, prefetchDashboardBundle } from "../queries/displayUnitQueries";
+import { prefetchDashboardBundle } from "../queries/displayUnitQueries";
 import type { DisplayUnit } from "../queries/keys";
 
 const LS_UNIT = "nw-tracker.displayUnit";
@@ -56,8 +56,8 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   const [metricsPeriod, setMetricsPeriodState] = useState<CardGroupMetricsPeriod>(readStoredMetricsPeriod);
 
   useEffect(() => {
-    void prefetchBothDashboardBundles(queryClient);
-  }, [queryClient]);
+    void prefetchDashboardBundle(queryClient, displayUnit);
+  }, [queryClient, displayUnit]);
 
   const setDisplayUnit = useCallback(
     (u: DisplayUnit) => {

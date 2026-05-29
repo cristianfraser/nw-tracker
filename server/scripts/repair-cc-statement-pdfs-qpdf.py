@@ -64,7 +64,9 @@ def main() -> int:
             continue
         print(f"# repair-cc-pdfs-qpdf: {directory}")
         if args.dry_run:
-            for path in sorted(directory.glob("*.pdf")):
+            for path in sorted(directory.rglob("*.pdf")):
+                if "unreadable" in path.parts:
+                    continue
                 if path.stem.endswith("-CORRUPT"):
                     continue
                 text = peek_pdf_text(path)

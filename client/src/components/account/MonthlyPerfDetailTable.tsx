@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatInstrumentUnits, formatUfBalance, formatUsdFine } from "../../format";
-import type { ConsolidatedMonthlyPerfRow } from "../../groupPageConsolidatedTables";
-import type { AccountMonthlyPerformanceRow } from "../../types";
+import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { PaginatedTable } from "../ui/PaginatedTable";
 
 function cellPct(p: number | null | undefined) {
