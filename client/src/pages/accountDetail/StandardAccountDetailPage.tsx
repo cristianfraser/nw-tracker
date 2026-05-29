@@ -7,7 +7,9 @@ import { Table } from "../../components/ui/Table";
 import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
 import { formatClp, formatInstrumentUnits } from "../../format";
 import { cn } from "../../cn";
+import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
+import { supportsBrokerageMovements } from "../../accountMovementCreate";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
 import { MortgageDividendosTableV2 } from "./MortgageDividendosTableV2";
@@ -47,7 +49,11 @@ export function StandardAccountDetailPage({ data }: Props) {
     displayedFlows,
     allFlows,
     checkingCartolaMonths,
+    extraCcOffsets,
   } = data;
+
+  const showBrokerageMovementsForm = supportsBrokerageMovements(summary.movement_create);
+  const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
@@ -320,11 +326,25 @@ export function StandardAccountDetailPage({ data }: Props) {
         </>
       ) : null}
 
+      {showBrokerageMovementsForm ? (
+        <AccountBrokerageMovementsForm
+          accountId={summary.account_id}
+          ticker={summary.position?.ticker ?? null}
+          displayUnit={displayUnit}
+          extraCcOffsetsKey={extraCcOffsetsKey}
+        />
+      ) : null}
+
       <h2>{t("accountDetail.flowsTitle")}</h2>
       <p className={cn("muted", styles.proseMutedXs)}>
         Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
         <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
-        Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
+        {showBrokerageMovementsForm ? null : (
+          <>
+            {" "}
+            Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
+          </>
+        )}
       </p>
       <label className={styles.flowsFilterToggle}>
         <input

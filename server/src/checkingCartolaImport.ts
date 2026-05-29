@@ -1,10 +1,13 @@
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import {
+  cartolaMovementDedupeKey,
+  cartolaMovementMatchesImportedRow,
   listCheckingCartolaXlsxFiles,
   movementNote,
   parseCheckingCartolaFile,
   type ParsedCheckingCartola,
+  type ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
 import {
   fileLogFromCartola,
@@ -100,23 +103,46 @@ export function importCheckingCartola(
     `SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ? LIMIT 1`
   );
 
+  function countMatchingInDb(mv: ParsedCheckingMovement, periodMonth: string): number {
+    const rows = dbHandle
+      .prepare(
+        `SELECT note FROM movements
+         WHERE account_id = ? AND occurred_on = ? AND amount_clp = ?
+           AND note LIKE ?`
+      )
+      .all(accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${periodMonth}|%`) as {
+      note: string;
+    }[];
+    let n = 0;
+    for (const r of rows) {
+      if (cartolaMovementMatchesImportedRow(mv, r.note)) n += 1;
+    }
+    return n;
+  }
+
   let movementsInserted = 0;
   let movementsSkipped = 0;
   const tx = dbHandle.transaction(() => {
-    for (const mv of cartola.movements) {
-      const note = movementNote(
-        cartola.period_month,
-        mv.branch,
-        mv.description,
-        mv.document_no
-      );
+    cartola.movements.forEach((mv, cartolaIndex) => {
+      const note = movementNote(cartola.period_month, mv.branch, mv.description, mv.document_no, {
+        occurredOn: mv.occurred_on,
+        amountClp: mv.amount_clp,
+        cartolaIndex,
+      });
       if (noteExists.get(accountId, note)) {
         movementsSkipped += 1;
-        continue;
+        return;
+      }
+      const sameKeyIndex = cartola.movements
+        .slice(0, cartolaIndex)
+        .filter((prior) => cartolaMovementDedupeKey(prior) === cartolaMovementDedupeKey(mv)).length;
+      if (countMatchingInDb(mv, cartola.period_month) >= sameKeyIndex + 1) {
+        movementsSkipped += 1;
+        return;
       }
       insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
       movementsInserted += 1;
-    }
+    });
     markImported.run(
       accountId,
       cartola.period_month,
@@ -366,4 +392,101 @@ export function importCheckingCartolasFromScreenshots(opts?: {
   }
 
   return finishCartolaImportRun(accountId, { wipe: opts?.wipe, dryRun: opts?.dryRun }, fileLogs);
+}
+
+/** Insert cartola movements missing from DB (same date/amount/description/doc), using new note keys. */
+export function backfillMissingCheckingCartolaMovements(opts?: {
+  accountId?: number;
+  dir?: string;
+  dryRun?: boolean;
+}): {
+  accountId: number;
+  dryRun: boolean;
+  inserted: number;
+  skipped: number;
+  byMonth: { period_month: string; inserted: number; missing_before: number }[];
+} {
+  const accountId = opts?.accountId ?? checkingAccountId();
+  const dir = opts?.dir ?? resolveCfraserCheckingCartolasDir();
+  const dryRun = !!opts?.dryRun;
+  const files = listCheckingCartolaXlsxFiles(dir);
+  let inserted = 0;
+  let skipped = 0;
+  const byMonth: { period_month: string; inserted: number; missing_before: number }[] = [];
+
+  const insMov = db.prepare(
+    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+     VALUES (?, ?, ?, ?, NULL)`
+  );
+  const updateImportCount = db.prepare(
+    `UPDATE checking_cartola_imports
+     SET movement_count = movement_count + ?, imported_at = datetime('now')
+     WHERE account_id = ? AND period_month = ?`
+  );
+
+  const tx = db.transaction(() => {
+    for (const filePath of files) {
+      const cartola = parseCheckingCartolaFile(filePath);
+      const pm = cartola.period_month;
+      let missingBefore = 0;
+      let monthInserted = 0;
+
+      cartola.movements.forEach((mv, cartolaIndex) => {
+        const note = movementNote(pm, mv.branch, mv.description, mv.document_no, {
+          occurredOn: mv.occurred_on,
+          amountClp: mv.amount_clp,
+          cartolaIndex,
+        });
+        const existsExact = db
+          .prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ?`)
+          .get(accountId, note);
+        if (existsExact) {
+          skipped += 1;
+          return;
+        }
+        const sameKeyIndex = cartola.movements
+          .slice(0, cartolaIndex)
+          .filter((prior) => cartolaMovementDedupeKey(prior) === cartolaMovementDedupeKey(mv)).length;
+        const rows = db
+          .prepare(
+            `SELECT note FROM movements
+             WHERE account_id = ? AND occurred_on = ? AND amount_clp = ?
+               AND note LIKE ?`
+          )
+          .all(accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${pm}|%`) as {
+          note: string;
+        }[];
+        let matchCount = 0;
+        for (const r of rows) {
+          if (cartolaMovementMatchesImportedRow(mv, r.note)) matchCount += 1;
+        }
+        if (matchCount >= sameKeyIndex + 1) {
+          skipped += 1;
+          return;
+        }
+        missingBefore += 1;
+        if (!dryRun) {
+          insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
+          monthInserted += 1;
+        }
+        inserted += 1;
+      });
+
+      if (monthInserted > 0 && !dryRun) {
+        updateImportCount.run(monthInserted, accountId, pm);
+      }
+      if (missingBefore > 0) {
+        byMonth.push({
+          period_month: pm,
+          inserted: dryRun ? missingBefore : monthInserted,
+          missing_before: missingBefore,
+        });
+      }
+    }
+  });
+  tx();
+  if (!dryRun && inserted > 0) {
+    clearCheckingBalanceCache(accountId);
+  }
+  return { accountId, dryRun, inserted, skipped, byMonth };
 }

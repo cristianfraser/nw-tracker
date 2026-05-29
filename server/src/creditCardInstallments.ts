@@ -16,6 +16,7 @@ import {
   type CcStatementRow,
   type CcStatementLineRow,
 } from "./ccStatementsDb.js";
+import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { numCsv, readSemicolonCsv } from "./deptoDividendosLedger.js";
@@ -367,12 +368,16 @@ export function creditCardInstallmentsResponse(
   billing_detail_by_month?: CcBillingDetailMonthRow[];
   facturaciones?: CcFacturacionRow[];
   billing_config?: CreditCardBillingConfig;
+  /** Current open facturación month for manual / web-paste entries (`YYYY-MM`). */
+  open_billing_month?: string | null;
 } {
+  const open_billing_month = billingMonthForManualLedgerPurchase(accountId);
   if (ccInstallmentLedgerRowCount(accountId) > 0) {
     const db = ccInstallmentsDbApiPayload(accountId);
     return {
       account_id: accountId,
       source: "db",
+      open_billing_month,
       meta: {
         csv_path: "SQLite · cc_installment_purchases / cc_installment_payments",
         csv_absolute_path: "",
@@ -404,6 +409,7 @@ export function creditCardInstallmentsResponse(
     return {
       account_id: accountId,
       source: "db",
+      open_billing_month,
       meta: {
         csv_path: "SQLite · cc_statements / cc_statement_lines",
         csv_absolute_path: "",

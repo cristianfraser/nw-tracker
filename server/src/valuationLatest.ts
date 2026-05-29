@@ -1,6 +1,6 @@
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
-import { latestCreditCardBillingBalanceTotalClp } from "./ccCreditCardValuations.js";
+import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -8,6 +8,7 @@ import {
   firstDeptoPropertyOwnershipYmd,
   loadDeptoDividendosSheetLedger,
 } from "./deptoDividendosLedger.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 
@@ -26,8 +27,9 @@ const stmtFallback = db.prepare(
 );
 
 const stmtCategorySlug = db.prepare(
-  `SELECT c.slug AS category_slug FROM accounts a
-   JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+  `SELECT g.slug AS bucket_slug FROM accounts a
+   JOIN asset_groups g ON g.id = a.asset_group_id
+   WHERE a.id = ?`
 );
 
 /** Latest valuation on or before `asOfYmd`. Returns `undefined` when the account has no history yet. */
@@ -62,9 +64,12 @@ export function latestCreditCardDisplayedBalance(
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const today = chileCalendarTodayYmd();
   if (asOfYmd >= today && ccInstallmentLedgerRowCount(accountId) > 0) {
-    const live = latestCreditCardBillingBalanceTotalClp(accountId);
-    if (live != null && Number.isFinite(live)) {
-      return { value_clp: live, as_of_date: today };
+    const live = creditCardBillingBalanceTotalClpAsOf(accountId, asOfYmd);
+    if (live && Number.isFinite(live.value_clp)) {
+      return {
+        value_clp: live.value_clp,
+        as_of_date: live.as_of_date,
+      };
     }
   }
   return latestValuationRowOnOrBefore(accountId, asOfYmd);
@@ -90,8 +95,8 @@ export function latestMortgageDisplayedBalance(
 ): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const effectiveId = resolveOperationalAccountId(accountId);
-  const cat = stmtCategorySlug.get(effectiveId) as { category_slug: string } | undefined;
-  if (cat?.category_slug !== "mortgage") {
+  const cat = stmtCategorySlug.get(effectiveId) as { bucket_slug: string } | undefined;
+  if (!cat || accountBucketKindSlug(cat.bucket_slug) !== "mortgage") {
     return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
   }
   const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
@@ -128,11 +133,12 @@ export function latestLiabilityValuationRowForSnapshot(
 export function latestDisplayedBalanceForAccount(accountId: number): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const effectiveId = resolveOperationalAccountId(accountId);
-  const cat = stmtCategorySlug.get(effectiveId) as { category_slug: string } | undefined;
-  if (cat?.category_slug === "credit_card") {
+  const cat = stmtCategorySlug.get(effectiveId) as { bucket_slug: string } | undefined;
+  const kind = cat ? accountBucketKindSlug(cat.bucket_slug) : "";
+  if (kind === "credit_card") {
     return latestCreditCardDisplayedBalance(effectiveId, chileCalendarTodayYmd());
   }
-  if (cat?.category_slug === "mortgage") {
+  if (kind === "mortgage") {
     return latestMortgageDisplayedBalance(effectiveId, chileCalendarTodayYmd());
   }
   return latestValuationRowOnOrBeforeChileToday(effectiveId);

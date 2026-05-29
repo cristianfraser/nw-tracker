@@ -345,6 +345,7 @@ function isLiabilitiesMortgageAccountName(name: string): boolean {
  * `SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG`).
  */
 const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, string>> = {
+  [-600]: "real_estate",
   [-201]: "brokerage_mutual_funds",
   [-202]: "brokerage_acciones",
   [-203]: "brokerage_crypto",

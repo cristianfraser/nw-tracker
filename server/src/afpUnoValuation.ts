@@ -1,3 +1,4 @@
+import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -131,13 +132,9 @@ export function revalueAfpAccountFromCuotas(opts: {
   let updated = 0;
   let skipped = 0;
 
-  const slug = db
-    .prepare(
-      `SELECT c.slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(opts.accountId) as { slug: string } | undefined;
-  if (slug?.slug !== "afp") {
-    throw new Error(`Account ${opts.accountId} is not category "afp" (got ${slug?.slug ?? "missing"})`);
+  const kind = accountKindSlugForAccountId(opts.accountId);
+  if (kind !== "afp") {
+    throw new Error(`Account ${opts.accountId} is not category "afp" (got ${kind ?? "missing"})`);
   }
 
   const vals = db

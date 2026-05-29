@@ -1,4 +1,5 @@
 import type { Database } from "better-sqlite3";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import {
@@ -72,30 +73,36 @@ function countsAsSourceDeposit(row: {
 }
 
 export function listPre2020SourceDeposits(dbHandle: Database = db): Pre2020SourceDeposit[] {
-  const ph = SOURCE_SLUGS.map(() => "?").join(",");
   const rows = dbHandle
     .prepare(
-      `SELECT m.id AS movement_id, m.account_id, c.slug AS category_slug,
+      `SELECT m.id AS movement_id, m.account_id, g.slug AS bucket_slug,
               m.occurred_on, m.amount_clp, m.note, m.flow_kind
        FROM movements m
        JOIN accounts a ON a.id = m.account_id
-       JOIN categories c ON c.id = a.category_id
-       WHERE c.slug IN (${ph})
-         AND m.occurred_on >= ?
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE m.occurred_on >= ?
          AND m.occurred_on <= ?
        ORDER BY m.occurred_on, m.id`
     )
-    .all(...SOURCE_SLUGS, RANGE_START, RANGE_END) as Pre2020SourceDeposit & {
+    .all(RANGE_START, RANGE_END) as {
+    movement_id: number;
+    account_id: number;
+    bucket_slug: string;
+    occurred_on: string;
+    amount_clp: number;
+    note: string | null;
     flow_kind: string | null;
   }[];
 
   const out: Pre2020SourceDeposit[] = [];
   for (const r of rows) {
-    if (!countsAsSourceDeposit(r)) continue;
+    const row = { ...r, category_slug: accountBucketKindSlug(r.bucket_slug) };
+    if (!SOURCE_SLUGS.includes(row.category_slug as (typeof SOURCE_SLUGS)[number])) continue;
+    if (!countsAsSourceDeposit(row)) continue;
     out.push({
       movement_id: r.movement_id,
       account_id: r.account_id,
-      category_slug: r.category_slug,
+      category_slug: row.category_slug,
       occurred_on: r.occurred_on,
       amount_clp: r.amount_clp,
       note: r.note,

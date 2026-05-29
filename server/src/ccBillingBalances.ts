@@ -20,6 +20,7 @@ import {
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 
 export type CcBillingMonthBalanceRow = {
   id: number;
@@ -316,13 +317,15 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
   }
 
   const today = chileCalendarTodayYmd();
-  const todayMonth = billingMonthForStatementDate(today);
-  if (todayMonth && !creditCardBillingDetailInactive(accountId)) {
-    const hasStatement = statements.some((s) => s.billing_month === todayMonth);
-    if (!hasStatement) {
+  const openBm = billingMonthForManualLedgerPurchase(accountId);
+  if (openBm && !creditCardBillingDetailInactive(accountId)) {
+    const hasPdfForOpen = statements.some(
+      (s) => s.billing_month === openBm && !String(s.source_pdf ?? "").startsWith("import:web-paste")
+    );
+    if (!hasPdfForOpen) {
       upsertBalance.run({
         account_id: accountId,
-        billing_month: todayMonth,
+        billing_month: openBm,
         as_of_date: today,
         as_of_kind: "manual",
         facturado_clp: null,

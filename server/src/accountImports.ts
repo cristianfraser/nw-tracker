@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { parseAfpCertificadoBody } from "./afpUnoCertMovimientosParse.js";
 import { applyAfpUnoCertificadoCuotasToMovements } from "./afpUnoCertMovementSync.js";
@@ -35,10 +36,10 @@ import XLSX from "xlsx";
 function assertCreditCardAccount(accountId: number): void {
   const row = db
     .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+      `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
     )
-    .get(accountId) as { category_slug: string } | undefined;
-  if (row?.category_slug !== "credit_card") {
+    .get(accountId) as { bucket_slug: string } | undefined;
+  if (!row || accountBucketKindSlug(row.bucket_slug) !== "credit_card") {
     throw new Error("Account is not a credit card");
   }
 }
@@ -109,10 +110,10 @@ export function importCheckingRecentXlsx(
   if (accountId !== checkingId) {
     const row = db
       .prepare(
-        `SELECT c.slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+        `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
       )
-      .get(accountId) as { slug: string } | undefined;
-    if (row?.slug !== "cuenta_corriente") {
+      .get(accountId) as { bucket_slug: string } | undefined;
+    if (!row || accountBucketKindSlug(row.bucket_slug) !== "cuenta_corriente") {
       throw new Error("Account is not cuenta corriente");
     }
   }
@@ -261,10 +262,10 @@ export function importAccountDocument(
   if (type === "afp_uno_cert") {
     const slug = db
       .prepare(
-        `SELECT c.slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+        `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
       )
-      .get(accountId) as { slug: string } | undefined;
-    if (slug?.slug !== "afp") throw new Error("Account is not AFP");
+      .get(accountId) as { bucket_slug: string } | undefined;
+    if (!slug || accountBucketKindSlug(slug.bucket_slug) !== "afp") throw new Error("Account is not AFP");
 
     const body = readCertBodyFromUpload(buffer, filename, mimetype);
     const parsed = parseAfpCertificadoBody(body, filename);

@@ -7,7 +7,10 @@ import {
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+import { ensureCreditCardLiabilityViews, ensureMortgageLiabilityView } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
@@ -24,24 +27,22 @@ function accountCategoryMetaById(): AccountCategoryMeta {
   if (accountCategoryMetaCache) return accountCategoryMetaCache;
   const rows = db
     .prepare(
-      `SELECT a.id, c.slug AS category_slug, g.slug AS group_slug,
+      `SELECT a.id, g.slug AS bucket_slug,
               a.exclude_from_group_totals AS exclude_from_group_totals
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id`
+       JOIN asset_groups g ON g.id = a.asset_group_id`
     )
     .all() as {
     id: number;
-    category_slug: string;
-    group_slug: string;
+    bucket_slug: string;
     exclude_from_group_totals: number;
   }[];
   accountCategoryMetaCache = new Map(
     rows.map((r) => [
       r.id,
       {
-        category_slug: r.category_slug,
-        group_slug: r.group_slug,
+        category_slug: accountBucketKindSlug(r.bucket_slug),
+        group_slug: dashboardBucketForAssetGroupSlug(r.bucket_slug) ?? r.bucket_slug,
         exclude_from_group_totals: r.exclude_from_group_totals === 1,
       },
     ])
@@ -69,18 +70,24 @@ function santanderPerCardCreditCardMastersExist(): boolean {
 
 /** Same membership as {@link listLiabilitiesTabAccountRows} — liability_view only, one series per debt. */
 function liabilityAccountsForValuation(): LiabilityValuationRow[] {
+  ensureCreditCardLiabilityViews();
+  ensureMortgageLiabilityView();
   const rows = db
     .prepare(
-      `SELECT a.id AS account_id, c.slug AS category_slug,
+      `SELECT a.id AS account_id, g.slug AS bucket_slug,
               a.exclude_from_group_totals AS exclude_from_group_totals,
               a.source_account_id AS source_account_id
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = 'liabilities'
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE (
+           g.slug IN ('mortgage', 'credit_card', 'other_debt')
+           OR g.slug LIKE '%__mortgage'
+           OR g.slug LIKE '%__credit_card'
+           OR g.slug LIKE '%__other_debt'
+         )
          AND a.account_kind = 'liability_view'
          AND (a.notes IS NULL OR a.notes != ?)
-       ORDER BY c.sort_order, c.id, a.name`
+       ORDER BY g.slug, a.id, a.name`
     )
     .all(NOTE_STOCKS_LEGACY) as (LiabilityValuationRow & {
     exclude_from_group_totals: number;
@@ -109,7 +116,7 @@ function liabilityAccountsForValuation(): LiabilityValuationRow[] {
     const seriesId = resolveOperationalAccountId(r.account_id);
     if (seenSeries.has(seriesId)) continue;
     seenSeries.add(seriesId);
-    out.push({ account_id: r.account_id, category_slug: r.category_slug });
+    out.push({ account_id: r.account_id, category_slug: accountBucketKindSlug(r.bucket_slug) });
   }
   return out;
 }

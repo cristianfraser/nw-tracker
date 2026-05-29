@@ -1,15 +1,10 @@
 import { db } from "./db.js";
 
-let excludedAccountIdsCache: Set<number> | null = null;
-
 function accountIdsExcludedFromGroupTotals(): ReadonlySet<number> {
-  if (!excludedAccountIdsCache) {
-    const rows = db
-      .prepare(`SELECT id FROM accounts WHERE exclude_from_group_totals = 1`)
-      .all() as { id: number }[];
-    excludedAccountIdsCache = new Set(rows.map((r) => r.id));
-  }
-  return excludedAccountIdsCache;
+  const rows = db
+    .prepare(`SELECT id FROM accounts WHERE exclude_from_group_totals = 1`)
+    .all() as { id: number }[];
+  return new Set(rows.map((r) => r.id));
 }
 
 export function accountCountsTowardGroupTotals(accountId: number): boolean {

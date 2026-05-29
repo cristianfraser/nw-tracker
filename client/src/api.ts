@@ -73,6 +73,17 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
+  accountsAll: () => j<{ accounts: import("./types").AccountListRow[] }>("/api/accounts"),
+  createStockAccount: (body: import("./panelAccounts/stockAccountFormTypes").StockAccountCreatePreview) =>
+    j<{
+      account_id: number;
+      category_id: number;
+      movement_ids: number[];
+      created_category: boolean;
+    }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
+  deleteAccount: (id: number) => j<{ ok: boolean; deleted: number }>(`/api/accounts/${id}`, { method: "DELETE" }),
+  assetTree: () => j<import("./types").AssetTreeResponse>("/api/meta/asset-tree"),
+  portfolioTree: () => j<import("./types").PortfolioTreeResponse>("/api/meta/portfolio-tree"),
   updateAccountColor: (id: number, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
       method: "PATCH",
@@ -88,6 +99,20 @@ export const api = {
     j<import("./types").DashboardResponse>(
       includeUsd ? "/api/dashboard?include_usd=true" : "/api/dashboard"
     ),
+  dashboardNavContext: (unit: "clp" | "usd") => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    const qs = q.toString();
+    return j<import("./types").DashboardNavContextResponse>(
+      `/api/dashboard/nav-context${qs ? `?${qs}` : ""}`
+    );
+  },
+  dashboardPageBundle: (unit: "clp" | "usd") => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    const qs = q.toString();
+    return j<import("./types").DashboardPageBundleResponse>(`/api/dashboard/page-bundle${qs ? `?${qs}` : ""}`);
+  },
   valuationTimeseries: (unit: "clp" | "usd", opts?: { group?: string; subgroup?: string }) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
@@ -221,6 +246,31 @@ export const api = {
     form.append("type", type);
     return jForm<Record<string, unknown>>(`/api/accounts/${id}/imports/document`, form);
   },
+  groupConsolidatedTables: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    if (subgroup) q.set("subgroup", subgroup);
+    const qs = q.toString();
+    return j<import("./types").GroupConsolidatedTablesResponse>(
+      `/api/groups/${encodeURIComponent(slug)}/consolidated-tables${qs ? `?${qs}` : ""}`
+    );
+  },
+  accountDetailBundle: (
+    id: string | number,
+    unit: "clp" | "usd",
+    opts?: { granularity?: "monthly" | "daily"; extraOffsets?: Record<string, number> }
+  ) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    if (opts?.granularity === "daily") q.set("granularity", "daily");
+    if (opts?.extraOffsets && Object.keys(opts.extraOffsets).length > 0) {
+      q.set("extraOffsets", JSON.stringify(opts.extraOffsets));
+    }
+    const qs = q.toString();
+    return j<import("./types").AccountDetailBundleResponse>(
+      `/api/accounts/${id}/detail-bundle${qs ? `?${qs}` : ""}`
+    );
+  },
   groupMonthlyPerformance: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
@@ -245,6 +295,11 @@ export const api = {
         flow_type_label: string;
       }[];
     }>(`/api/accounts/${id}/movements`),
+  createAccountMovement: (id: string | number, body: Record<string, unknown>) =>
+    j<{ id: number; units_delta: number | null; flow_kind?: string }>(
+      `/api/accounts/${id}/movements`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
   income: () => j<{ income: unknown[] }>("/api/income"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),
@@ -265,7 +320,12 @@ export const api = {
     j<import("./types").FlowsCreditCardExpensesResponse>("/api/flows/expenses/credit-card"),
   assignCcExpenseLineCategory: (
     lineId: number,
-    body: { unique: boolean; category_slug?: string; clear_category?: boolean }
+    body: {
+      unique: boolean;
+      category_slug?: string;
+      clear_category?: boolean;
+      source?: import("./types").FlowCcExpenseLineSource;
+    }
   ) =>
     j<{ category_slug: string; unique: boolean; merchant_key: string; purchase_key: string }>(
       `/api/flows/expenses/credit-card/lines/${lineId}/category`,

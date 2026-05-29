@@ -164,6 +164,7 @@ function isMovementStopRow(row: unknown[]): boolean {
   const c2 = cell(row, 2).toLowerCase();
   if (!c0 && !c2) return true;
   if (c0 === "mensajes" || c0.startsWith("sr.cliente")) return true;
+  // Some Santander xlsx files repeat the full movement table 2–3× after this footer.
   if (c2.includes("resumen de comisiones") || c2.startsWith("***")) return true;
   return false;
 }
@@ -179,11 +180,30 @@ export function cartolaMovementDedupeKey(mv: {
   return `${mv.occurred_on}\t${mv.amount_clp}\t${mv.description}\t${doc}`;
 }
 
+export type MovementNoteOpts = {
+  occurredOn: string;
+  amountClp: number;
+  /** Stable position in the parsed cartola (disambiguates identical rows). */
+  cartolaIndex: number;
+};
+
+/** Strip trailing `|doc:…`, `|on:…`, `|amt:…`, `|idx:…` tags from a description fragment. */
+export function stripTrailingCartolaNoteTags(desc: string): string {
+  let d = desc.trim();
+  for (;;) {
+    const m = /\|(doc:[^|]*|on:\d{4}-\d{2}-\d{2}|amt:-?\d+|idx:\d+)$/.exec(d);
+    if (!m) break;
+    d = d.slice(0, m.index).trim();
+  }
+  return d;
+}
+
 export function movementNote(
   periodMonth: string,
   branch: string,
   description: string,
-  documentNo: string
+  documentNo: string,
+  opts: MovementNoteOpts
 ): string {
   const parts = [
     `import:cartola|${periodMonth}`,
@@ -191,7 +211,46 @@ export function movementNote(
     description.slice(0, 180),
   ];
   if (documentNo) parts.push(`doc:${documentNo}`);
+  parts.push(`on:${opts.occurredOn}`);
+  parts.push(`amt:${opts.amountClp}`);
+  parts.push(`idx:${opts.cartolaIndex}`);
   return parts.join("|");
+}
+
+export function cartolaMovementMatchesImportedRow(
+  mv: ParsedCheckingMovement,
+  note: string
+): boolean {
+  if (!note.startsWith("import:cartola|")) return false;
+  const desc = stripTrailingCartolaNoteTags(
+    cartolaDescriptionFragmentFromNote(note)
+  );
+  if (desc !== mv.description.trim()) return false;
+  const doc = cartolaDocumentFragmentFromNote(note) ?? "";
+  return doc === String(mv.document_no ?? "").trim();
+}
+
+/** Description segment only (after period and branch), including trailing meta tags. */
+function cartolaDescriptionFragmentFromNote(note: string): string {
+  const rest = note.slice("import:cartola|".length);
+  const firstBar = rest.indexOf("|");
+  if (firstBar < 0) return rest.trim();
+  const afterPeriod = rest.slice(firstBar + 1);
+  const secondBar = afterPeriod.indexOf("|");
+  if (secondBar < 0) return afterPeriod.trim();
+  return afterPeriod.slice(secondBar + 1).trim();
+}
+
+function cartolaDocumentFragmentFromNote(note: string): string | null {
+  const desc = cartolaDescriptionFragmentFromNote(note);
+  const docInDesc = desc.match(/\|doc:([^|]+)$/);
+  if (docInDesc) return docInDesc[1]!.trim() || null;
+  const idx = note.lastIndexOf("|doc:");
+  if (idx < 0) return null;
+  const tail = note.slice(idx + "|doc:".length);
+  const end = tail.search(/\|(on:|amt:|idx:)/);
+  const doc = (end >= 0 ? tail.slice(0, end) : tail).trim();
+  return doc.length > 0 ? doc : null;
 }
 
 type RowAmountEntry = { kind: "cargo" | "abono"; amount: number };

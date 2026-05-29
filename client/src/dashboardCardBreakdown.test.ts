@@ -115,6 +115,19 @@ describe("dashboard card accounting identity", () => {
     expect(titleDelta).toBe(120_000);
   });
 
+  it("sums period deposits without requiring a prior-month close", () => {
+    const row = baseRow({
+      account_id: 40,
+      deposits_clp: 3_000_000,
+      delta_total_clp: 41_502,
+      current_value_clp: 3_041_502,
+      deposits_month_clp: 3_000_000,
+      delta_month_clp: undefined,
+    });
+    const metrics = cardGroupMetricsFromAccounts([row], "month");
+    expect(metrics.deposits_period_clp).toBe(3_000_000);
+  });
+
   it("subset title delta matches period metrics for nav-scoped rows", () => {
     const row = baseRow({
       account_id: 30,

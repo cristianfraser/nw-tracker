@@ -26,7 +26,7 @@ section(
       label: "AFP UNO",
       oldValue: "27943901",
       newValue: "28012845",
-      oldDate: "2026-05-19",
+      oldDate: "2026-05-18",
       newDate: "2026-05-19",
     },
     {
@@ -42,7 +42,7 @@ section(
       label: "Risky Norris",
       oldValue: "15234567",
       newValue: "15310200",
-      oldDate: "2026-05-19",
+      oldDate: "2026-05-18",
       newDate: "2026-05-19",
     },
     {
@@ -80,7 +80,7 @@ section("AFP only", ["afp_uno"], [
     label: "AFP UNO",
     oldValue: "27943901",
     newValue: "28012845",
-    oldDate: "2026-05-19",
+    oldDate: "2026-05-18",
     newDate: "2026-05-19",
   },
 ]);

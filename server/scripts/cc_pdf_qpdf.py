@@ -171,7 +171,9 @@ def repair_unreadable_pdfs_in_dir(
         return []
     pw = password if password is not None else statement_pdf_password()
     results: List[Tuple[str, str]] = []
-    for path in sorted(directory.glob("*.pdf")):
+    for path in sorted(directory.rglob("*.pdf")):
+        if "unreadable" in path.parts:
+            continue
         if path.stem.endswith("-CORRUPT"):
             continue
         note = ensure_readable_for_parse(path, password=pw)

@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { closingByCalendarMonthFromRaw } from "./accountPerformance.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
+import {
+  consolidatedClosingRawByDate,
+  getGroupConsolidatedMonthlyPerfForRows,
+} from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
+import { listFirstLevelPortfolioGroupChildren } from "./portfolioGroups.js";
 import {
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
   liabilitiesBreakdownClpAsOf,
+  listAccountsForGroupTab,
   listLiabilitiesTabAccountRows,
   seriesAccountIdForGroupTab,
 } from "./valuationTimeseries.js";
+import { portfolioGroupApiForValuation } from "./portfolioGroupReference.js";
 
 function liabilitiesTotalClpAsOf(
   asOfYmd: string,
@@ -70,7 +80,7 @@ describe("listLiabilitiesTabAccountRows", () => {
     for (const r of tabRows) {
       const snap = latestLiabilityValuationRowForSnapshot(
         r.account_id,
-        r.category_slug,
+        accountBucketKindSlug(r.bucket_slug),
         row.as_of_date
       );
       if (snap?.value_clp != null && Number.isFinite(snap.value_clp)) tabSum += snap.value_clp;
@@ -81,32 +91,114 @@ describe("listLiabilitiesTabAccountRows", () => {
     );
   });
 
-  it("overview Pasivos line matches Pasivos class-tab total at the same as-of date", () => {
+  it("primary chart lines match brokerage and retirement first-level portfolio children", () => {
+    const ts = getDashboardValuationTimeseries("clp");
+    const accounts = ts.accounts_ex_property?.accounts ?? [];
+    const expectedSlugs = [
+      ...listFirstLevelPortfolioGroupChildren("brokerage").map((c) => c.slug),
+      ...listFirstLevelPortfolioGroupChildren("retirement").map((c) => c.slug),
+      "cash_eqs",
+    ];
+    expect(expectedSlugs.length).toBeGreaterThanOrEqual(6);
+    expect(accounts.length).toBe(expectedSlugs.length);
+    const labels = new Set(accounts.map((a) => a.name));
+    for (const child of [
+      ...listFirstLevelPortfolioGroupChildren("brokerage"),
+      ...listFirstLevelPortfolioGroupChildren("retirement"),
+    ]) {
+      expect(labels.has(child.label)).toBe(true);
+    }
+  });
+
+  it("overview brokerage on a mid-month chart date uses that month's cierre, not prior month", () => {
     const tsDash = getDashboardValuationTimeseries("clp");
-    const tsLiab = getGroupValuationTimeseries("liabilities", "clp");
     const ovPoints = tsDash.overview?.points ?? [];
-    const liabPoints = tsLiab.accounts_in_group?.points ?? [];
-    if (ovPoints.length === 0 || liabPoints.length === 0) return;
+    const today = chileCalendarTodayYmd();
+    const curMk = monthKeyFromYmd(today);
+    const midMonthPoint = ovPoints.find((p) => {
+      const d = String(p.as_of_date);
+      return monthKeyFromYmd(d) === curMk && d < today;
+    });
+    if (!midMonthPoint) return;
+
+    const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation("brokerage");
+    const byMonth = closingByCalendarMonthFromRaw(
+      consolidatedClosingRawByDate(
+        getGroupConsolidatedMonthlyPerfForRows(
+          listAccountsForGroupTab(groupSlug, tabSubgroup),
+          groupSlug,
+          "clp"
+        )
+      )
+    );
+    const curCierre = byMonth.get(curMk);
+    const ovBro = midMonthPoint.brokerage;
+    if (
+      curCierre == null ||
+      typeof ovBro !== "number" ||
+      !Number.isFinite(ovBro) ||
+      !Number.isFinite(curCierre)
+    ) {
+      return;
+    }
+    expect(ovBro).toBeCloseTo(curCierre, 0);
+  });
+
+  it("overview bucket lines match group monthly perf cierre on the last chart date", () => {
+    const tsDash = getDashboardValuationTimeseries("clp");
+    const ovPoints = tsDash.overview?.points ?? [];
+    if (ovPoints.length === 0) return;
 
     const lastOv = ovPoints[ovPoints.length - 1]!;
     const asOf = String(lastOv.as_of_date);
-    const liabPt = liabPoints.find((p) => String(p.as_of_date) === asOf);
-    if (!liabPt) return;
 
-    const tabTotal = liabPt.__group_val_total;
-    let tabSum = 0;
-    if (typeof tabTotal === "number" && Number.isFinite(tabTotal)) {
-      tabSum = tabTotal;
-    } else {
-      for (const a of tsLiab.accounts_in_group?.accounts ?? []) {
-        if (a.account_id <= 0) continue;
-        const v = liabPt[a.dataKey];
-        if (typeof v === "number" && Number.isFinite(v)) tabSum += v;
+    const closingAtChartDate = (portfolioSlug: string, chartDate: string): number | undefined => {
+      const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioSlug);
+      const byMonth = closingByCalendarMonthFromRaw(
+        consolidatedClosingRawByDate(
+          getGroupConsolidatedMonthlyPerfForRows(
+            listAccountsForGroupTab(groupSlug, tabSubgroup),
+            groupSlug,
+            "clp"
+          )
+        )
+      );
+      const mk = monthKeyFromYmd(chartDate);
+      const inMonth = byMonth.get(mk);
+      if (inMonth != null && Number.isFinite(inMonth)) return inMonth;
+      let last: number | undefined;
+      for (const m of [...byMonth.keys()].sort()) {
+        if (m > mk) break;
+        const v = byMonth.get(m);
+        if (v != null && Number.isFinite(v)) last = v;
       }
+      return last;
+    };
+
+    const ovBro = lastOv.brokerage;
+    const detalleBro = closingAtChartDate("brokerage", asOf);
+    if (typeof ovBro !== "number" || !Number.isFinite(ovBro) || detalleBro == null) return;
+    expect(ovBro).toBeCloseTo(detalleBro, 0);
+
+    const ovRet = lastOv.retirement;
+    const detalleRet = closingAtChartDate("retirement", asOf);
+    if (typeof ovRet === "number" && Number.isFinite(ovRet) && detalleRet != null) {
+      expect(ovRet).toBeCloseTo(detalleRet, 0);
     }
+  });
+
+  it("overview Pasivos line matches liabilities breakdown total at the same as-of date", () => {
+    const tsDash = getDashboardValuationTimeseries("clp");
+    const ovPoints = tsDash.overview?.points ?? [];
+    if (ovPoints.length === 0) return;
+
+    const lastOv = ovPoints[ovPoints.length - 1]!;
+    const asOf = String(lastOv.as_of_date);
+    const breakdown = liabilitiesBreakdownClpAsOf(asOf, { mortgageFromDeptoSheet: true });
+    const breakdownTotal = breakdown.mortgage_clp + breakdown.credit_card_clp;
     const ovLiab = lastOv.liabilities;
     if (typeof ovLiab !== "number" || !Number.isFinite(ovLiab)) return;
-    expect(ovLiab).toBeCloseTo(tabSum, 0);
+    expect(ovLiab).toBeCloseTo(breakdownTotal, 0);
   });
 
   it("hipoteca tab chart point matches liabilities breakdown mortgage_clp at the same as-of date", () => {
@@ -140,7 +232,11 @@ describe("listLiabilitiesTabAccountRows", () => {
     const mtgRows = listLiabilitiesTabAccountRows("mortgage");
     let snapSum = 0;
     for (const r of mtgRows) {
-      const snap = latestLiabilityValuationRowForSnapshot(r.account_id, r.category_slug, today);
+      const snap = latestLiabilityValuationRowForSnapshot(
+        r.account_id,
+        accountBucketKindSlug(r.bucket_slug),
+        today
+      );
       if (snap?.value_clp != null && Number.isFinite(snap.value_clp)) snapSum += snap.value_clp;
     }
     expect(snapSum).toBeCloseTo(breakdown.mortgage_clp, 0);

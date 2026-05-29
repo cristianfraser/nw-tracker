@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
+import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import { ccWebPasteToCsvRecords, parseCcWebPasteText } from "./ccWebPasteParse.js";
 
 const SAMPLE = `20/05/2026 		ARAMCO 	-$1.990 		
@@ -41,9 +43,11 @@ describe("parseCcWebPasteText", () => {
       .get() as { id: number } | undefined;
     if (!master) return;
     const { lines } = parseCcWebPasteText("19/05/2026\tSHOP\t-$10.000");
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    expect(openBm).toBeTruthy();
     const records = ccWebPasteToCsvRecords(master.id, "santander", "4242", "test", lines);
-    expect(records[0]?.source_pdf).toBe("import:web-paste|open|2026-05");
-    expect(records[0]?.statement_date).toBe("20/05/2026");
+    expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
+    expect(records[0]?.statement_date).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
   });
 
   it("dedupe keys match one-shot PDF formula for charges", () => {

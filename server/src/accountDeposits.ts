@@ -37,9 +37,9 @@ function equityAccountIdsUsingFlowLedger(accountIds: number[]): Set<number> {
     .prepare(
       `SELECT DISTINCT a.id AS id
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
+       JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})
-         AND c.slug IN ('spy', 'vea')
+         AND (g.slug IN ('spy', 'vea') OR g.slug LIKE '%__spy' OR g.slug LIKE '%__vea')
          AND EXISTS (
            SELECT 1 FROM movements m
            WHERE m.account_id = a.id AND m.flow_kind IS NOT NULL

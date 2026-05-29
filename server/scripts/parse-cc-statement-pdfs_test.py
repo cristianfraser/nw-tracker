@@ -8,11 +8,20 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "parse-cc-statement-pdfs.py"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 spec = importlib.util.spec_from_file_location("parse_cc_pdfs", SCRIPT)
 mod = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 sys.modules["parse_cc_pdfs"] = mod
 spec.loader.exec_module(mod)
+
+
+def cc_statement_pdf(card: str, slot: str, name: str) -> Path:
+    nested = REPO_ROOT / "cfraser" / "credit-card-statements" / card / slot / name
+    if nested.is_file():
+        return nested
+    return REPO_ROOT / "cfraser" / "credit-card-statements" / name
 
 
 class IntlUsdAmountAssignmentTest(unittest.TestCase):
@@ -175,9 +184,8 @@ class IntlUsdLayout2024Test(unittest.TestCase):
         )
 
     def test_jan_2024_usd_sidecar_parses_table_rows(self) -> None:
-        path = (
-            Path(__file__).resolve().parent.parent
-            / "cfraser/credit-card-statements/2024-01-24 estado de cuenta tarjeta usd 4141.pdf"
+        path = cc_statement_pdf(
+            "4141", "usd", "2024-01-24 estado de cuenta tarjeta usd 4141.pdf"
         )
         if not path.is_file():
             self.skipTest("fixture PDF missing")
@@ -193,10 +201,7 @@ class IntlUsdLayout2024Test(unittest.TestCase):
 
 class ClpParseFallbackTest(unittest.TestCase):
     def test_mar_2025_compact_falls_back_to_wide(self) -> None:
-        path = (
-            Path(__file__).resolve().parent.parent
-            / "cfraser/credit-card-statements/2025-03-25 estado de cuenta tarjeta 4141.pdf"
-        )
+        path = cc_statement_pdf("4141", "clp", "2025-03-25 estado de cuenta tarjeta 4141.pdf")
         if not path.is_file():
             self.skipTest("fixture PDF missing")
         _, full = mod.extract_pdf_text(path, "compact")
@@ -283,9 +288,8 @@ class StatementReconcileTest(unittest.TestCase):
         spec_r.loader.exec_module(cls.recon)
 
     def test_extract_usd_section_totals_dec_2023(self) -> None:
-        pdf = (
-            SCRIPT.parent.parent.parent
-            / "cfraser/credit-card-statements/2023-12-22 estado de cuenta tarjeta usd 4141.pdf"
+        pdf = cc_statement_pdf(
+            "4141", "usd", "2023-12-22 estado de cuenta tarjeta usd 4141.pdf"
         )
         if not pdf.is_file():
             self.skipTest("fixture PDF not in repo")
@@ -301,10 +305,7 @@ class StatementReconcileTest(unittest.TestCase):
         self.assertAlmostEqual(totals["pdf_compras_cargos"] or 0, 2311.85, places=2)
 
     def test_extract_clp_section_totals_dec_2023(self) -> None:
-        pdf = (
-            SCRIPT.parent.parent.parent
-            / "cfraser/credit-card-statements/2023-12-22 estado de cuenta tarjeta 4141.pdf"
-        )
+        pdf = cc_statement_pdf("4141", "clp", "2023-12-22 estado de cuenta tarjeta 4141.pdf")
         if not pdf.is_file():
             self.skipTest("fixture PDF not in repo")
         import subprocess
@@ -452,10 +453,36 @@ class ParseCacheTest(unittest.TestCase):
             self.assertIsNone(mod.load_parse_cache(pdf, "deadbeef00000000"))
 
 
+class IntlUsdCardLast4Test(unittest.TestCase):
+    def test_line_broken_pan_after_tarjeta_label(self) -> None:
+        sample = (
+            "ESTADO DE CUENTA INTERNACIONAL DE TARJETA DE CRÉDITO\n"
+            "NOMBRE DEL TITULAR\n"
+            "CRISTIAN FRASER CARRANZA\n"
+            "Nº DE TARJETA DE CRÉDITO 5218\n"
+            "9210\n"
+            "0445\n"
+            "4113\n"
+            "WORLDMEMBER MASTERCARD\n"
+            "FECHA ESTADO DE CUENTA 24/01/2018\n"
+        )
+        self.assertEqual(mod.extract_card_last4(sample), "4113")
+        meta = mod.extract_meta_international(sample, "2018-01-24 estado de cuenta tarjeta.pdf")
+        self.assertEqual(meta.get("card_last4"), "4113")
+
+    def test_masked_pan_still_works(self) -> None:
+        sample = "Número tarjeta XXXX XXXX XXXX 4242\nFECHA ESTADO DE CUENTA 22/05/2025\n"
+        self.assertEqual(mod.extract_card_last4(sample), "4242")
+
+
 class IntlUsdPeriodMetaTest(unittest.TestCase):
     def test_corrupt_usd_4141_layout_period(self) -> None:
         root = Path(__file__).resolve().parent.parent.parent
-        pdf = root / "cfraser/credit-card-statements/2018-11-22 estado de cuenta tarjeta usd 4141-CORRUPT.pdf"
+        pdf = cc_statement_pdf(
+            "4141", "usd", "2018-11-22 estado de cuenta tarjeta usd 4141-CORRUPT.pdf"
+        )
+        if not pdf.is_file():
+            pdf = root / "cfraser/credit-card-statements/2018-11-22 estado de cuenta tarjeta usd 4141-CORRUPT.pdf"
         if not pdf.is_file():
             self.skipTest("2018-11 USD 4141 CORRUPT PDF not present")
         _rows, ctx = mod.parse_one_pdf("INTL", pdf, [])
@@ -469,7 +496,7 @@ class IntlUsdPeriodMetaTest(unittest.TestCase):
 class SantanderStatementMetaTest(unittest.TestCase):
     def test_may_2025_4242_period_from_layout(self) -> None:
         root = Path(__file__).resolve().parent.parent.parent
-        pdf = root / "cfraser/credit-card-statements/2025-05-22 estado de cuenta tarjeta 4242.pdf"
+        pdf = cc_statement_pdf("4242", "clp", "2025-05-22 estado de cuenta tarjeta 4242.pdf")
         if not pdf.is_file():
             self.skipTest("2025-05-22 4242 PDF not present")
         _rows, ctx = mod.parse_one_pdf("A", pdf, [])
@@ -497,7 +524,9 @@ class BciLiderStatementTest(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent.parent
         pdf = root / "cfraser/pdfs/EECC abril 2026.pdf"
         if not pdf.is_file():
-            pdf = root / "cfraser/credit-card-statements/2026-03-27 estado de cuenta tarjeta 4343.pdf"
+            pdf = cc_statement_pdf(
+                "4343", "clp", "2026-03-27 estado de cuenta tarjeta 4343.pdf"
+            )
         if not pdf.is_file():
             self.skipTest("BCI statement PDF not present")
         parser = mod.choose_parser(pdf)
@@ -541,9 +570,9 @@ class BciLiderStatementTest(unittest.TestCase):
 
     def test_parse_bci_jan_2026_4343_pdf(self) -> None:
         root = Path(__file__).resolve().parent.parent.parent
-        pdf = root / "cfraser/credit-card-statements/2026-01-26 estado de cuenta tarjeta 4343.pdf"
+        pdf = cc_statement_pdf("4343", "clp", "2026-01-26 estado de cuenta tarjeta 4343.pdf")
         if not pdf.is_file():
-            pdf = root / "cfraser/credit-card-statements/2026-01-27 estado de cuenta tarjeta 4343.pdf"
+            pdf = cc_statement_pdf("4343", "clp", "2026-01-27 estado de cuenta tarjeta 4343.pdf")
         if not pdf.is_file():
             self.skipTest("BCI Jan 2026 statement PDF not present")
         parser = mod.choose_parser(pdf)

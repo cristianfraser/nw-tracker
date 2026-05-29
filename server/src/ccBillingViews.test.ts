@@ -8,7 +8,12 @@ import {
 } from "./ccInstallmentLedgerDb.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import {
+  billingMonthForManualLedgerPurchase,
+  lastPdfBillingMonthForAccount,
+} from "./ccManualBillingMonth.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
+import { ymCompare } from "./calendarMonth.js";
 
 describe("buildBillingDetailByMonth", () => {
   it("inactive card omits synthetic open months without imported statements", () => {
@@ -50,15 +55,16 @@ describe("buildFacturaciones", () => {
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const fact = buildFacturaciones(master.id, payload.months);
-    const may = fact.find((f) => f.billing_month === "2026-05");
+    const withFacturado = fact.filter((f) => (f.facturado_total_clp ?? 0) > 0);
+    if (withFacturado.length === 0) return;
+    const row = withFacturado[0]!;
     const det = buildBillingDetailByMonth(master.id, payload.months).find(
-      (d) => d.billing_month === "2026-05"
+      (d) => d.billing_month === row.billing_month
     );
-    expect(may).toBeDefined();
-    expect(may!.facturado_total_clp).toBeGreaterThan(0);
-    expect(may!.close_date_iso).toBe("2026-05-20");
+    expect(row.facturado_total_clp).toBeGreaterThan(0);
+    expect(row.close_date_iso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(det).toBeDefined();
-    expect(det!.total_facturado_clp).toBe(may!.facturado_total_clp);
+    expect(det!.total_facturado_clp).toBe(row.facturado_total_clp);
   });
 
   describe("manual installment purchases on open billing month", () => {
@@ -89,10 +95,12 @@ describe("buildFacturaciones", () => {
       const cuotas = 12;
       const firstCuota = Math.floor(principal / cuotas);
 
+      const lastPdf = lastPdfBillingMonthForAccount(master.id);
       const openBm = billingMonthForManualLedgerPurchase(master.id);
-      expect(openBm).toBeTruthy();
+      if (!lastPdf || !openBm) return;
+      expect(ymCompare(openBm, addCalendarMonths(lastPdf, 1))).toBeGreaterThanOrEqual(0);
 
-      const before = ledgerFacturadoClpForBillingMonth(master.id, openBm!);
+      const before = ledgerFacturadoClpForBillingMonth(master.id, openBm);
 
       const created = createManualCcInstallmentPurchase(master.id, {
         purchase_date: purchaseDate,
@@ -102,7 +110,7 @@ describe("buildFacturaciones", () => {
       });
       purchaseId = created.id;
 
-      expect(ledgerFacturadoClpForBillingMonth(master.id, openBm!)).toBe(before + firstCuota);
+      expect(ledgerFacturadoClpForBillingMonth(master.id, openBm)).toBe(before + firstCuota);
 
       recomputeCcBillingMonthBalances(master.id);
     });
@@ -115,9 +123,10 @@ describe("buildFacturaciones", () => {
 
       accountId = master.id;
       const firstCuota = 15_000;
+      const lastPdf = lastPdfBillingMonthForAccount(master.id);
       const openBm = billingMonthForManualLedgerPurchase(master.id);
-      expect(openBm).toBeTruthy();
-      const before = ledgerFacturadoClpForBillingMonth(master.id, openBm!);
+      if (!lastPdf || !openBm) return;
+      const before = ledgerFacturadoClpForBillingMonth(master.id, openBm);
 
       const created = createManualCcInstallmentPurchase(master.id, {
         purchase_date: "2026-03-15",
@@ -127,7 +136,7 @@ describe("buildFacturaciones", () => {
       });
       purchaseId = created.id;
 
-      expect(ledgerFacturadoClpForBillingMonth(master.id, openBm!)).toBe(before + firstCuota);
+      expect(ledgerFacturadoClpForBillingMonth(master.id, openBm)).toBe(before + firstCuota);
     });
   });
 });

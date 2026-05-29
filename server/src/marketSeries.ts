@@ -5,6 +5,10 @@ const MAX_POINTS = 25_000;
 const EQUITY_TICKER_ORDER = ["SPY", "VEA", "BTC-USD", "ETH-USD"] as const;
 
 const FUND_SERIES_ORDER = [
+  "fintual_cert_reserva2",
+  "fintual_cert_risky_norris",
+  "fintual_cert_apv_a",
+  "fintual_cert_apv_b",
   "fintual_risky_norris",
   "fintual_risky_norris_apv",
   "afp_uno_cuota_a",

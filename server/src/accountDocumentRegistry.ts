@@ -1,3 +1,4 @@
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 
 export type DocumentImportType = "afp_uno_cert";
@@ -21,11 +22,12 @@ export const DOCUMENT_IMPORT_SPECS: DocumentImportSpec[] = [
 export function documentImportSpecsForAccount(accountId: number): DocumentImportSpec[] {
   const row = db
     .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+      `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
     )
-    .get(accountId) as { category_slug: string } | undefined;
+    .get(accountId) as { bucket_slug: string } | undefined;
   if (!row) return [];
-  return DOCUMENT_IMPORT_SPECS.filter((s) => s.categorySlugs.includes(row.category_slug));
+  const kind = accountBucketKindSlug(row.bucket_slug);
+  return DOCUMENT_IMPORT_SPECS.filter((s) => s.categorySlugs.includes(kind));
 }
 
 export function listDocumentImportTypesForAccount(accountId: number): DocumentImportType[] {

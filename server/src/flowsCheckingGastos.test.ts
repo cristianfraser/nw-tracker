@@ -39,6 +39,10 @@ describe("flowsCheckingGastos", () => {
       "import:cartola|2024-03|Las Condes|TRASPASO A FINTUAL|doc:123";
     expect(cartolaDescriptionFromNote(note)).toBe("TRASPASO A FINTUAL");
     expect(cartolaDocumentFromNote(note)).toBe("123");
+    const withMeta =
+      "import:cartola|2023-02|Agustinas|Transf. Internet a otro Bancos|on:2023-02-03|amt:-555000|idx:1";
+    expect(cartolaDescriptionFromNote(withMeta)).toBe("Transf. Internet a otro Bancos");
+    expect(cartolaDocumentFromNote(withMeta)).toBeNull();
   });
 
   it("detects mercado capitales cargo and DAP abono descriptions", () => {

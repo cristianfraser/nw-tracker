@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { resolveCcStatementPdfPath } from "./importSyncDocumentFilePath.js";
+import { requireCcStatementPdfPath } from "./importSyncDocumentFilePath.js";
 
 export type CcStatementMissingPeriodRow = {
   account_id: number;
@@ -10,15 +10,27 @@ export type CcStatementMissingPeriodRow = {
 export function listCcStatementsMissingPeriodTo(): CcStatementMissingPeriodRow[] {
   const rows = db
     .prepare(
-      `SELECT DISTINCT s.account_id, a.name AS account_name, s.source_pdf
+      `SELECT DISTINCT s.account_id, a.name AS account_name, s.source_pdf,
+              s.currency, s.layout, s.card_last4
        FROM cc_statements s
        JOIN accounts a ON a.id = s.account_id
        WHERE s.source_pdf NOT LIKE 'import:web-paste%'
          AND TRIM(COALESCE(s.period_to, '')) = ''
        ORDER BY s.source_pdf`
     )
-    .all() as CcStatementMissingPeriodRow[];
-  return rows.filter((r) => resolveCcStatementPdfPath(r.source_pdf) != null);
+    .all() as (CcStatementMissingPeriodRow & {
+    currency: string;
+    layout: string | null;
+    card_last4: string | null;
+  })[];
+  return rows.filter((r) => {
+    try {
+      requireCcStatementPdfPath(r.source_pdf, r);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /** Fail before document-coverage UI when imported PDFs lack billing-period metadata. */

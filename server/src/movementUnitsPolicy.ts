@@ -2,15 +2,18 @@
  * Which accounts require `units_delta` (shares, coin, Fintual/AFP cuotas) on manual API creates.
  */
 
+import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import {
   BROKERAGE_FLOW_KINDS,
   BROKERAGE_UNITS_REQUIRED_FLOW_KINDS,
   signedAmountClpForBrokerageFlow,
 } from "./brokerageFlowMovement.js";
+import { parsePanelAccountNotes } from "./panelAccountNotes.js";
 
 export type AccountRow = {
-  category_slug: string;
+  bucket_slug: string;
   group_slug: string;
+  notes?: string | null;
 };
 
 export type UnitsFieldRequirement = "required" | "optional";
@@ -35,10 +38,8 @@ const MOVEMENTS_UNITS_BY_CATEGORY: Record<string, { unit_label: string }> = {
   apv: { unit_label: "cuotas" },
 };
 
-const BROKERAGE_TICKER_SLUGS = new Set(["spy", "vea"]);
-
 export function movementCreateSchemaForAccount(account: AccountRow): MovementCreateSchema | null {
-  if (BROKERAGE_TICKER_SLUGS.has(account.category_slug)) {
+  if (accountUsesBrokerageFlowKinds(account, account.notes)) {
     return {
       ledger: "movements",
       units_delta: "optional",
@@ -47,7 +48,7 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
       units_required_for_flow_kinds: BROKERAGE_UNITS_REQUIRED_FLOW_KINDS,
     };
   }
-  const spec = MOVEMENTS_UNITS_BY_CATEGORY[account.category_slug];
+  const spec = MOVEMENTS_UNITS_BY_CATEGORY[account.bucket_slug];
   if (!spec) {
     return { ledger: "movements", units_delta: "optional", unit_label: "unidades" };
   }
@@ -100,14 +101,15 @@ export type MovementCreateValidation =
 
 function validateBrokerageMovementCreate(
   account: AccountRow,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  defaultTicker: string | null
 ): MovementCreateValidation {
   const schema = movementCreateSchemaForAccount(account);
   if (!schema?.brokerage_flow_kinds) {
     return {
       ok: false,
       status: 400,
-      error: "Brokerage flows are only supported for SPY and VEA accounts.",
+      error: "Brokerage flows are only supported for equity brokerage accounts.",
     };
   }
 
@@ -134,16 +136,29 @@ function validateBrokerageMovementCreate(
         ? body.amount_usd
         : Number(body.amount_usd);
 
+  const unitsRawEarly = parseUnitsDeltaField(body);
+  const unitsProvidedEarly = unitsRawEarly !== undefined && unitsRawEarly !== null;
+  const sharePurchaseCompraUsd =
+    flow_kind === "compra_usd" && unitsProvidedEarly && !unitsValueInvalid(unitsRawEarly!);
+
   if ((amount_clp == null || amount_clp === 0) && (amount_usd == null || amount_usd === 0)) {
-    return { ok: false, status: 400, error: "amount_clp or amount_usd is required." };
+    if (!sharePurchaseCompraUsd && flow_kind !== "dividend_usd") {
+      return { ok: false, status: 400, error: "amount_clp or amount_usd is required." };
+    }
   }
 
-  const ticker = typeof body.ticker === "string" ? body.ticker : body.ticker == null ? null : String(body.ticker);
+  const tickerRaw = body.ticker;
+  const ticker =
+    typeof tickerRaw === "string" && tickerRaw.trim()
+      ? tickerRaw.trim().toUpperCase()
+      : defaultTicker;
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
 
-  const unitsRequired = (BROKERAGE_UNITS_REQUIRED_FLOW_KINDS as readonly string[]).includes(flow_kind);
   const unitsRaw = parseUnitsDeltaField(body);
   const unitsProvided = unitsRaw !== undefined;
+  const unitsRequired =
+    flow_kind === "dividend_usd" ||
+    (flow_kind === "compra_usd" && unitsProvided && unitsRaw !== null);
 
   if (unitsRequired) {
     if (!unitsProvided || unitsRaw === null) {
@@ -198,8 +213,9 @@ export function validateMovementCreate(
   account: AccountRow,
   body: Record<string, unknown>
 ): MovementCreateValidation {
-  if (BROKERAGE_TICKER_SLUGS.has(account.category_slug)) {
-    return validateBrokerageMovementCreate(account, body);
+  if (accountUsesBrokerageFlowKinds(account, account.notes)) {
+    const defaultTicker = parsePanelAccountNotes(account.notes)?.ticker ?? null;
+    return validateBrokerageMovementCreate(account, body, defaultTicker);
   }
 
   const amount_clp = typeof body.amount_clp === "number" ? body.amount_clp : Number(body.amount_clp);

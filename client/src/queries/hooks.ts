@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { api } from "../api";
 import {
   fetchDashboardBundle,
+  fetchDashboardNavContext,
   fetchPortfolioGroupBundle,
 } from "./fetchers";
 import { displayUnitQueryBehavior } from "./displayUnitQueries";
@@ -12,6 +13,32 @@ export function useDashboardBundle(unit: DisplayUnit) {
   return useQuery({
     queryKey: queryKeys.dashboard(unit),
     queryFn: () => fetchDashboardBundle(unit),
+    ...displayUnitQueryBehavior,
+  });
+}
+
+export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.dashboardNav(unit),
+    queryFn: async () => {
+      const ctx = await fetchDashboardNavContext(unit);
+      return ctx;
+    },
+    enabled,
+    ...displayUnitQueryBehavior,
+  });
+}
+
+export function useGroupConsolidatedTables(
+  group: string,
+  subgroup: string | undefined,
+  unit: DisplayUnit,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: queryKeys.groupConsolidatedTables(group, subgroup, unit),
+    queryFn: () => api.groupConsolidatedTables(group, unit, subgroup),
+    enabled: enabled && Boolean(group),
     ...displayUnitQueryBehavior,
   });
 }
@@ -35,6 +62,30 @@ export function useSidebarNav() {
   return useQuery({
     queryKey: queryKeys.sidebarNav(),
     queryFn: () => api.sidebarNav(),
+    staleTime: 60_000,
+  });
+}
+
+export function useAccountsAll() {
+  return useQuery({
+    queryKey: queryKeys.accountsAll(),
+    queryFn: () => api.accountsAll(),
+    staleTime: 60_000,
+  });
+}
+
+export function useAssetTree() {
+  return useQuery({
+    queryKey: queryKeys.assetTree(),
+    queryFn: () => api.assetTree(),
+    staleTime: 60_000,
+  });
+}
+
+export function usePortfolioTree() {
+  return useQuery({
+    queryKey: queryKeys.portfolioTree(),
+    queryFn: () => api.portfolioTree(),
     staleTime: 60_000,
   });
 }
@@ -182,7 +233,6 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
   });
 }
 
-const MOVEMENT_CARTOLA_CATEGORY_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
 const SKIP_MONTHLY_PERF_SLUGS = new Set(["cuenta_corriente", "cuenta_vista", "cuenta_ahorro_vivienda"]);
 
 export function useGroupAccountsMonthlyPerformance(
@@ -227,47 +277,11 @@ export function useAccountDetailBundle(
 
   return useQuery({
     queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity, ccOffsetsKey),
-    queryFn: async () => {
-      const s = await api.accountSummary(id!);
-      const isMovementCartola = s.category_slug != null && MOVEMENT_CARTOLA_CATEGORY_SLUGS.has(s.category_slug);
-
-      const [m, series, dep, ml, cc, inv, checkingMonths] = await Promise.all([
-        api.accountMovements(id!),
-        api.accountValuationTimeseries(id!, unit, { granularity: chartGranularity }),
-        api.accountDepositInflows(id!),
-        api.accountMortgageLedger(id!).catch(() => ({
-          account_id: Number(id),
-          source: "none" as const,
-          meta: null,
-          rows: [],
-        })),
-        api.accountCcInstallments(id!, extraCcOffsets).catch(() => ({
-          account_id: Number(id),
-          source: "none" as const,
-          meta: null,
-          purchases: [],
-          purchases_completed: [],
-          months: [],
-          totals: {
-            total_remaining_principal_clp: 0,
-            next_calendar_month_total_clp: null,
-            next_calendar_month: null,
-          },
-        })),
-        api.accountsByGroup("inversiones"),
-        isMovementCartola ? api.accountCheckingCartolaMonths(id!) : Promise.resolve(null),
-      ]);
-      return {
-        summary: s,
-        movements: m.movements ?? [],
-        ts: series,
-        depositInflows: dep,
-        mortgageLedger: ml,
-        ccLedger: cc,
-        invNavAccounts: inv.accounts,
-        checkingCartolaMonths: checkingMonths,
-      };
-    },
+    queryFn: () =>
+      api.accountDetailBundle(id!, unit, {
+        granularity: chartGranularity,
+        extraOffsets: extraCcOffsets,
+      }),
     enabled: Boolean(id),
     ...displayUnitQueryBehavior,
   });

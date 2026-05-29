@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   cartolaMovementDedupeKey,
+  movementNote,
   parseCartolaAmount,
   parseCheckingCartolaFile,
   periodMonthFromCartolaFileName,
@@ -119,6 +120,27 @@ describe("checkingCartolaParse", () => {
     expect(cartola.skipped.filter((s) => s.reason === "no_amount" && s.fecha === "21/03")).toHaveLength(
       0
     );
+  });
+
+  it("parses Feb 2023 without tripling repeated Santander tables", () => {
+    const sample = path.join(
+      resolveCfraserCheckingCartolasDir(),
+      "2023-02-28 Cartola de cuenta Corriente - Febrero 2023.xlsx"
+    );
+    const cartola = parseCheckingCartolaFile(sample);
+    expect(cartola.period_month).toBe("2023-02");
+    expect(cartola.movements).toHaveLength(16);
+    expect(
+      cartola.movements.some((m) => m.occurred_on === "2023-02-03" && m.amount_clp === -555_000)
+    ).toBe(true);
+    const notes = cartola.movements.map((m, idx) =>
+      movementNote(cartola.period_month, m.branch, m.description, m.document_no, {
+        occurredOn: m.occurred_on,
+        amountClp: m.amount_clp,
+        cartolaIndex: idx,
+      })
+    );
+    expect(new Set(notes).size).toBe(cartola.movements.length);
   });
 
   it("cartolaMovementDedupeKey treats different document numbers as distinct", () => {

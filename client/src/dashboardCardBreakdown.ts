@@ -1,33 +1,16 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
 import {
-  BROKERAGE_GROUP_ORDER,
-  brokeragePortfolioGroupFromCategorySlug,
-  brokeragePortfolioGroupLabel,
-  brokeragePortfolioGroupPath,
-  type BrokeragePortfolioGroup,
-} from "./brokerageGroupedAggregation";
+  accountBelongsToDashboardBucket,
+  accountDashboardBucketSlug,
+  isDashboardNwBucketSlug,
+} from "./accountDashboardBucket";
 import { dashboardBucketRoutePath } from "./portfolioDashboardBuckets";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import i18n from "./i18n";
-import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
 import type {
-  AccountListRow,
   DashboardAccountRow,
   DashboardResponse,
 } from "./types";
-
-function asNavRow(a: DashboardAccountRow): AccountListRow {
-  return {
-    id: a.account_id,
-    name: a.name,
-    notes: a.notes ?? null,
-    created_at: "",
-    category_slug: a.category_slug,
-    category_label: a.category_label,
-    group_slug: a.group_slug,
-    group_label: a.group_label,
-  };
-}
 
 export type CardGroupMetrics = {
   /** Lifetime net deposits. */
@@ -177,9 +160,18 @@ export function cardGroupMetricsFromAccounts(
       anyUsdTotalDelta = true;
     }
 
+    const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
+    if (periodDepClp != null && Number.isFinite(periodDepClp)) {
+      deposits_period_clp += periodDepClp;
+    }
+
+    const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
+    if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
+      deposits_period_usd += periodDepUsd;
+      anyUsdPeriodDep = true;
+    }
+
     if (accountHasFinitePriorClose(r, period, "clp")) {
-      const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
-      deposits_period_clp += periodDepClp ?? 0;
       const periodDeltaClp = period === "month" ? r.delta_month_clp : r.delta_year_clp;
       if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
         delta_period_clp += periodDeltaClp;
@@ -188,11 +180,6 @@ export function cardGroupMetricsFromAccounts(
     }
 
     if (accountHasFinitePriorClose(r, period, "usd")) {
-      const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
-      if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
-        deposits_period_usd += periodDepUsd;
-        anyUsdPeriodDep = true;
-      }
       const periodDeltaUsd = period === "month" ? r.delta_month_usd : r.delta_year_usd;
       if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
         delta_period_usd += periodDeltaUsd;
@@ -225,7 +212,7 @@ export function cardGroupMetricsForGroup(
   }
   const rows = accounts.filter(
     (a) =>
-      a.group_slug === groupSlug &&
+      accountBelongsToDashboardBucket(a, groupSlug) &&
       accountCountsTowardGroupTotals(a) &&
       isChartActiveAccount(a) &&
       a.current_value_clp != null &&
@@ -237,19 +224,19 @@ export function cardGroupMetricsForGroup(
 
 const NW_BUCKET_ORDER = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
 
-const CASH_CARD_SLUGS = new Set(["fondo_reserva", "cuenta_corriente", "cuenta_vista"]);
-
 /** Patrimonio neto: sum metrics across RE, retiro, brokerage, efectivo (same scope as NW total). */
 export function cardGroupMetricsNetWorth(
   accounts: DashboardAccountRow[],
   period: CardGroupMetricsPeriod
 ): CardGroupMetrics {
   const rows = accounts.filter((a) => {
-    if (!(NW_BUCKET_ORDER as readonly string[]).includes(a.group_slug)) return false;
+    const dashBucket = accountDashboardBucketSlug(a);
+    if (!isDashboardNwBucketSlug(dashBucket) || !(NW_BUCKET_ORDER as readonly string[]).includes(dashBucket)) {
+      return false;
+    }
     if (!accountCountsTowardGroupTotals(a)) return false;
     if (!isChartActiveAccount(a)) return false;
     if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) return false;
-    if (a.group_slug === "cash_eqs" && !CASH_CARD_SLUGS.has(a.category_slug)) return false;
     return true;
   });
   return cardGroupMetricsFromAccounts(rows, period);
@@ -286,146 +273,6 @@ function valueRows(accounts: DashboardAccountRow[]): DashboardAccountRow[] {
 
 function sortGroupsDesc<T extends { clp: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.clp - a.clp);
-}
-
-function flattenRetirementApv(apv: DashboardAccountRow[]): CardBreakdownLine[] {
-  const principal = apv.filter((a) => a.notes === "import:excel|key=apv_a_principal");
-  const fintual = apv.filter((a) => a.notes === "import:excel|key=apv_a");
-  const apvB = apv.filter((a) => a.notes === "import:excel|key=apv_b");
-
-  const lines: CardBreakdownLine[] = [];
-  lines.push({
-    label: i18n.t("retirement.apv"),
-    clp: sumClp(apv, (r) => r.current_value_clp ?? 0),
-    usd: sumUsd(apv),
-    depth: 0,
-    to: "/inversiones/retiro/apv",
-  });
-
-  const pushSubgroup = (label: string, rows: DashboardAccountRow[], to: string) => {
-    if (!rows.length) return;
-    lines.push({
-      label,
-      clp: sumClp(rows, (r) => r.current_value_clp ?? 0),
-      usd: sumUsd(rows),
-      depth: 1,
-      to,
-    });
-    for (const leaf of sortGroupsDesc(
-      rows.map((r) => ({
-        label: retirementAccountNavLabel(asNavRow(r)),
-        clp: r.current_value_clp ?? 0,
-        usd: r.current_value_usd ?? null,
-        to: accountDetailPath(r.account_id),
-      }))
-    )) {
-      lines.push({ ...leaf, depth: 2 });
-    }
-  };
-
-  pushSubgroup("apv-a", [...principal, ...fintual], "/inversiones/retiro/apv/apv-a");
-  pushSubgroup("apv-b", apvB, "/inversiones/retiro/apv/apv-b");
-  return lines;
-}
-
-function flattenAfpAfc(afp: DashboardAccountRow[], afc: DashboardAccountRow[]): CardBreakdownLine[] {
-  const lines: CardBreakdownLine[] = [];
-  const all = [...afp, ...afc];
-  const groupClp = sumClp(all, (r) => r.current_value_clp ?? 0);
-  const groupUsd = sumUsd(all);
-  lines.push({
-    label: i18n.t("retirement.afpAfc"),
-    clp: groupClp,
-    usd: groupUsd,
-    depth: 0,
-    to: "/inversiones/retiro/afp-afc",
-  });
-  const children = sortGroupsDesc(
-    all.map((r) => ({
-      label: retirementAccountNavLabel(asNavRow(r)),
-      clp: r.current_value_clp ?? 0,
-      usd: r.current_value_usd ?? null,
-      to: accountDetailPath(r.account_id),
-    }))
-  );
-  for (const c of children) {
-    lines.push({ ...c, depth: 1 });
-  }
-  return lines;
-}
-
-/** AFP + AFC block only (portfolio nav child / scoped breakdown). */
-export function buildRetirementAfpAfcBreakdown(rows: DashboardAccountRow[]): CardBreakdownLine[] {
-  const active = valueRows(rows);
-  const afp = active.filter((a) => a.category_slug === "afp");
-  const afc = active.filter((a) => a.category_slug === "afc");
-  if (!afp.length && !afc.length) return [];
-  return flattenAfpAfc(afp, afc);
-}
-
-/** APV block only (portfolio nav child / scoped breakdown). */
-export function buildRetirementApvBreakdown(rows: DashboardAccountRow[]): CardBreakdownLine[] {
-  const active = valueRows(rows.filter((a) => a.category_slug === "apv"));
-  if (!active.length) return [];
-  return flattenRetirementApv(active);
-}
-
-/** Retirement card: APV and AFP + AFC (nav order), each sorted by amount among top-level groups. */
-export function buildRetirementCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
-  const ret = valueRows(accounts.filter((a) => a.group_slug === "retirement"));
-  const apv = ret.filter((a) => a.category_slug === "apv");
-  const afp = ret.filter((a) => a.category_slug === "afp");
-  const afc = ret.filter((a) => a.category_slug === "afc");
-
-  const groups: { clp: number; lines: CardBreakdownLine[] }[] = [];
-  if (apv.length) groups.push({ clp: sumClp(apv, (r) => r.current_value_clp ?? 0), lines: flattenRetirementApv(apv) });
-  if (afp.length || afc.length) {
-    groups.push({
-      clp: sumClp([...afp, ...afc], (r) => r.current_value_clp ?? 0),
-      lines: flattenAfpAfc(afp, afc),
-    });
-  }
-  return sortGroupsDesc(groups).flatMap((g) => g.lines);
-}
-
-/** Brokerage card: mutual funds / equities / crypto subgroups with account leaves (active only). */
-export function buildBrokerageCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
-  const bro = valueRows(accounts.filter((a) => a.group_slug === "brokerage"));
-  const byGroup = new Map<BrokeragePortfolioGroup, DashboardAccountRow[]>();
-  for (const r of bro) {
-    const g = brokeragePortfolioGroupFromCategorySlug(r.category_slug);
-    if (!g) continue;
-    const list = byGroup.get(g) ?? [];
-    list.push(r);
-    byGroup.set(g, list);
-  }
-
-  const groupBlocks = BROKERAGE_GROUP_ORDER.filter((g) => byGroup.has(g)).map((g) => {
-    const rows = byGroup.get(g)!;
-    const clp = sumClp(rows, (r) => r.current_value_clp ?? 0);
-    const usd = sumUsd(rows);
-    const children = sortGroupsDesc(
-      rows.map((r) => ({
-        label: brokerageAccountNavLabel(asNavRow(r)),
-        clp: r.current_value_clp ?? 0,
-        usd: r.current_value_usd ?? null,
-        to: accountDetailPath(r.account_id),
-      }))
-    );
-    const lines: CardBreakdownLine[] = [
-      {
-        label: brokeragePortfolioGroupLabel(g),
-        clp,
-        usd,
-        depth: 0,
-        to: brokeragePortfolioGroupPath(g),
-      },
-      ...children.map((c) => ({ ...c, depth: 1 as const })),
-    ];
-    return { clp, lines };
-  });
-
-  return sortGroupsDesc(groupBlocks).flatMap((b) => b.lines);
 }
 
 function overviewBalanceAt(
@@ -622,7 +469,7 @@ export function groupPeriodBalanceDeltaFromAccounts(
     period,
     unit,
     (a) =>
-      a.group_slug === groupSlug &&
+      accountBelongsToDashboardBucket(a, groupSlug) &&
       accountCountsTowardGroupTotals(a) &&
       a.current_value_clp != null &&
       Number.isFinite(a.current_value_clp) &&
@@ -809,110 +656,27 @@ const CASH_CATEGORY_KEYS: Record<string, string> = {
   cuenta_vista: "cash.cuentaVista",
 };
 
-export type CashCardBreakdown = {
-  lines: CardBreakdownLine[];
-  /** Credit-card liability pinned to the bottom of the cash dashboard card. */
-  bottomLines: CardBreakdownLine[];
-};
+const LINKED_CC_CATEGORY_SLUG = "linked_credit_card";
 
-export type CashCreditCardLinkRow = {
-  operational_account_id: number;
-  name: string;
-  clp: number;
-  usd?: number | null;
-};
-
-function buildCashCreditCardBottomLines(
-  links: CashCreditCardLinkRow[] | undefined,
-  aggregate: { clp: number; usd?: number | null } | null | undefined
-): CardBreakdownLine[] {
-  const linkRows = links ?? [];
-  let clp = 0;
-  let usd: number | null | undefined = null;
-  let anyUsd = false;
-  for (const l of linkRows) {
-    clp += l.clp;
-    if (l.usd != null && Number.isFinite(l.usd)) {
-      usd = (usd ?? 0) + l.usd;
-      anyUsd = true;
-    }
-  }
-  if (linkRows.length > 0) {
-    return [
-      {
-        label: i18n.t("liabilities.creditCard"),
-        clp,
-        usd: anyUsd ? usd ?? null : null,
-        depth: 0,
-        to: liabilitiesSubgroupPath("credit_card"),
-      },
-    ];
-  }
-  if (aggregate != null) {
-    return [
-      {
-        label: i18n.t("liabilities.creditCard"),
-        clp: aggregate.clp,
-        usd: aggregate.usd ?? null,
-        depth: 0,
-        to: liabilitiesSubgroupPath("credit_card"),
-      },
-    ];
-  }
-  return [];
-}
-
-/** Cash card: reserva and cuenta corriente; optional tarjeta de crédito rows at the bottom. */
-export function buildCashCardBreakdown(
-  accounts: DashboardAccountRow[],
-  creditCard?: { clp: number; usd?: number | null } | null,
-  creditCardLinks?: CashCreditCardLinkRow[]
-): CashCardBreakdown {
-  const cash = valueRows(
-    accounts.filter((a) => a.group_slug === "cash_eqs" && CASH_CARD_SLUGS.has(a.category_slug))
-  );
-  const lines = sortGroupsDesc(
+/** Cash card: all Efectivo bucket rows (cash accounts + linked tarjeta de crédito as negative). */
+export function buildCashCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
+  const cash = valueRows(accounts.filter((a) => accountBelongsToDashboardBucket(a, "cash_eqs")));
+  return sortGroupsDesc(
     cash.map((r) => ({
-      label: CASH_CATEGORY_KEYS[r.category_slug]
-        ? i18n.t(CASH_CATEGORY_KEYS[r.category_slug]!)
-        : r.name,
+      label:
+        r.category_slug === LINKED_CC_CATEGORY_SLUG
+          ? i18n.t("liabilities.creditCard")
+          : CASH_CATEGORY_KEYS[r.category_slug]
+            ? i18n.t(CASH_CATEGORY_KEYS[r.category_slug]!)
+            : r.name,
       clp: r.current_value_clp ?? 0,
       usd: r.current_value_usd ?? null,
-      to: cashAccountPath(r),
+      to:
+        r.category_slug === LINKED_CC_CATEGORY_SLUG
+          ? liabilitiesSubgroupPath("credit_card")
+          : cashAccountPath(r),
     }))
   ).map((r) => ({ ...r, depth: 0 as const }));
-
-  const bottomLines = buildCashCreditCardBottomLines(creditCardLinks, creditCard ?? null);
-  return { lines, bottomLines };
-}
-
-/** Cash detail card breakdown including linked Pasivos > tarjeta de crédito leaves when present. */
-export function cashCardBreakdownFromDash(
-  accounts: DashboardAccountRow[],
-  dash: {
-    liabilities_breakdown?: {
-      credit_card_clp: number;
-      credit_card_usd?: number | null;
-    } | null;
-    cash_credit_card_links?: {
-      operational_account_id: number;
-      name: string;
-      clp: number;
-      usd?: number | null;
-    }[];
-  }
-): CashCardBreakdown {
-  const links = dash.cash_credit_card_links?.map((l) => ({
-    operational_account_id: l.operational_account_id,
-    name: l.name,
-    clp: l.clp,
-    usd: l.usd ?? null,
-  }));
-  return buildCashCardBreakdown(
-    accounts,
-    null,
-    links?.length ? links : undefined
-  );
 }
 
 const LIABILITY_KEYS = {

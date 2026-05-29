@@ -38,11 +38,25 @@ export function resolveDeptoDividendosCsvPath(): string {
   return path.join(resolveCfraserCsvDir(), DEPTO_CSV);
 }
 
-/** Credit-card statement PDFs (`cfraser/credit-card-statements/`, `yyyy-mm-dd estado de cuenta tarjeta….pdf`). */
+/** Credit-card statement PDF root (`cfraser/credit-card-statements/`). */
 export function resolveCfraserPdfsDir(): string {
   const env = process.env.CFRASER_PDFS_DIR?.trim();
   if (env) return path.resolve(env);
   return path.resolve(__dirname, "..", "..", "cfraser", "credit-card-statements");
+}
+
+/** `credit-card-statements/<last4>/clp|usd/` for archived statement PDFs. */
+export function resolveCcStatementSlotDir(cardLast4: string, usd: boolean): string {
+  const last4 = String(cardLast4 ?? "").trim();
+  if (!/^\d{4}$/.test(last4)) {
+    throw new Error(`resolveCcStatementSlotDir: invalid card last4 "${cardLast4}"`);
+  }
+  return path.join(resolveCfraserPdfsDir(), last4, usd ? "usd" : "clp");
+}
+
+/** Directory for a statement PDF (`<last4>/clp` or `<last4>/usd` only). */
+export function ccStatementPdfSearchDirs(cardLast4: string, usd: boolean): string[] {
+  return [resolveCcStatementSlotDir(cardLast4, usd)];
 }
 
 /** Santander checking-account cartola `.xlsx` files (`cfraser/excels/cuenta corriente/`). */

@@ -1,0 +1,289 @@
+import {
+  getMergedDepositInflowEventsForAccount,
+  getMergedDisplayDepositInflowEventsForAccount,
+  getStateContributionInflowEventsForAccount,
+  totalDepositsClpWithStocksSheetFloor,
+  totalDisplayDepositsClpForAccount,
+  totalStateContributionsClpForAccount,
+} from "./accountDeposits.js";
+import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
+import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import {
+  isDeptoMortgagePaymentCuota,
+  loadDeptoDividendosSheetLedger,
+  mortgageMetaFromSheetRows,
+} from "./deptoDividendosLedger.js";
+import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
+import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
+import fs from "node:fs";
+import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
+import { getAccountPositionMeta } from "./accountPosition.js";
+import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
+import { dashboardBucketForAssetGroupSlug, leafAssetGroupIdsUnder } from "./assetGroupTree.js";
+import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { attachColorsToValuationPayload } from "./chartColorRgb.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { db } from "./db.js";
+import {
+  getAccountValuationTimeseries,
+  type TsUnit,
+} from "./valuationTimeseries.js";
+import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
+import { latestValuationDisplayForAccount } from "./dashboardAccounts.js";
+import { totalWithdrawalsClpForAccount } from "./accountDeposits.js";
+
+const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
+
+import { listAccountMovementsForApi } from "./accountMovementsApi.js";
+
+function positionSnapshotFromMeta(
+  categorySlug: string | null | undefined,
+  meta: ReturnType<typeof getAccountPositionMeta>,
+  deposits_clp: number,
+  latest: { value_clp: number; as_of_date: string } | null | undefined
+) {
+  if (meta == null) return null;
+  const afp = categorySlug === "afp";
+  const crypto = categorySlug === "bitcoin" || categorySlug === "eth";
+  const v = latest?.value_clp;
+  const units = meta.units;
+  const ovc = meta.afp_override_value_clp;
+  const fundUnitMark =
+    ovc != null &&
+    Number.isFinite(ovc) &&
+    ovc > 0 &&
+    meta.afp_override_valor_cuota_clp != null &&
+    Number.isFinite(meta.afp_override_valor_cuota_clp);
+  const mtmMark =
+    fundUnitMark ||
+    ((afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0)));
+  const value_clp = mtmMark ? ovc : v != null && Number.isFinite(v) ? v : null;
+  const value_as_of = mtmMark ? meta.afp_override_value_as_of ?? null : latest?.as_of_date ?? null;
+  const value_per_unit_clp =
+    fundUnitMark && meta.afp_override_valor_cuota_clp != null
+      ? meta.afp_override_valor_cuota_clp
+      : afp && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
+        ? meta.afp_override_valor_cuota_clp
+        : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
+          ? v / units
+          : null;
+  return {
+    ticker: meta.ticker,
+    units_kind: meta.units_kind,
+    units,
+    deposited_clp: deposits_clp,
+    value_clp,
+    value_as_of,
+    value_per_unit_clp,
+  };
+}
+
+export async function buildAccountDetailBundle(
+  accountId: number,
+  unit: TsUnit,
+  granularity: "monthly" | "daily",
+  extraOffsets: Record<string, number>
+) {
+  const withdrawals_clp = totalWithdrawalsClpForAccount(accountId);
+  const cat = db
+    .prepare(
+      `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes,
+        (
+          SELECT COUNT(*) FROM accounts a2
+          JOIN asset_groups g2 ON g2.id = a2.asset_group_id
+          WHERE g2.slug = g.slug
+            AND (a2.notes IS NULL OR a2.notes != ?)
+            AND g2.slug != 'individual_stocks'
+            AND COALESCE(a2.exclude_from_group_totals, 0) = 0
+        ) AS group_peer_count
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id = ?`
+    )
+    .get(NOTE_STOCKS_LEGACY, accountId) as
+    | {
+        bucket_slug: string;
+        bucket_label: string;
+        group_peer_count: number;
+        account_name: string;
+        account_notes: string | null;
+      }
+    | undefined;
+
+  if (!cat) return null;
+
+  const category_slug = accountBucketKindSlug(cat.bucket_slug);
+  const dashSlug = dashboardBucketForAssetGroupSlug(cat.bucket_slug);
+  const group_slug = dashSlug ?? cat.bucket_slug;
+  const group_label =
+    dashSlug != null
+      ? (db.prepare(`SELECT label FROM asset_groups WHERE slug = ?`).get(dashSlug) as { label: string } | undefined)
+          ?.label ?? cat.bucket_label
+      : cat.bucket_label;
+
+  const deposits_clp = totalDepositsClpWithStocksSheetFloor(accountId, category_slug);
+  let latest = await latestValuationDisplayForAccount(accountId, category_slug, {
+    notes: cat.account_notes,
+    name: cat.account_name,
+  });
+  if (latest == null && !isMovementBalanceCashCategory(category_slug)) {
+    const stored = latestValuationRowOnOrBeforeChileToday(accountId);
+    if (stored?.value_clp != null) latest = stored as { value_clp: number; as_of_date: string };
+  }
+  const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
+  const positionMeta = getAccountPositionMeta(accountId, category_slug, {
+    afpCuotasAsOfYmd: category_slug === "afp" ? asOfCuotas : undefined,
+    accountNotes: cat.account_notes,
+    accountName: cat.account_name,
+  });
+  const position = positionSnapshotFromMeta(category_slug, positionMeta, deposits_clp, latest ?? undefined);
+  let latest_valuation_clp = latest?.value_clp ?? null;
+  let latest_valuation_date = latest?.as_of_date ?? null;
+  if (
+    (category_slug === "afp" || isFintualCertV2ValuationNotes(cat.account_notes)) &&
+    position?.value_clp != null
+  ) {
+    latest_valuation_clp = position.value_clp;
+    if (position.value_as_of != null) latest_valuation_date = position.value_as_of;
+  }
+
+  const summary = {
+    account_id: accountId,
+    category_slug,
+    group_slug,
+    group_label,
+    group_peer_count: cat.group_peer_count,
+    deposits_clp,
+    withdrawals_clp,
+    latest_valuation_clp,
+    latest_valuation_date,
+    position,
+    movement_create: movementCreateSchemaForAccount({
+      bucket_slug: category_slug,
+      group_slug,
+      notes: cat.account_notes,
+    }),
+  };
+
+  const movements = listAccountMovementsForApi(accountId);
+  const tsRaw = getAccountValuationTimeseries(accountId, unit, { granularity });
+  const ts = tsRaw ? attachColorsToValuationPayload(tsRaw) : null;
+
+  const events = getMergedDepositInflowEventsForAccount(accountId);
+  const displayEvents = getMergedDisplayDepositInflowEventsForAccount(accountId);
+  const stateEvents = getStateContributionInflowEventsForAccount(accountId);
+  const total_clp = totalDepositsClpWithStocksSheetFloor(accountId, category_slug);
+  const display_total_clp = totalDisplayDepositsClpForAccount(accountId);
+  let cumulative_clp = 0;
+  const events_with_cumulative = events.map((e) => {
+    cumulative_clp += e.amt;
+    return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp };
+  });
+  let display_cumulative_clp = 0;
+  const display_events = displayEvents.map((e) => {
+    display_cumulative_clp += e.amt;
+    return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp: display_cumulative_clp };
+  });
+  let state_cumulative_clp = 0;
+  const state_contribution_events = stateEvents.map((e) => {
+    state_cumulative_clp += e.amt;
+    return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp: state_cumulative_clp };
+  });
+  const depositInflows = {
+    account_id: accountId,
+    total_clp,
+    display_total_clp,
+    events: events_with_cumulative,
+    display_events,
+    state_contribution_total_clp: totalStateContributionsClpForAccount(accountId),
+    state_contribution_events,
+  };
+
+  let mortgageLedger: {
+    account_id: number;
+    source: string;
+    meta: unknown;
+    rows: unknown[];
+    payment_scenarios?: unknown[];
+  } = { account_id: accountId, source: "none", meta: null, rows: [] };
+  if (category_slug === "property" || category_slug === "mortgage") {
+    const csvRel = "cfraser/depto-dividendos.csv";
+    const dir = resolveCfraserCsvDir();
+    const absCsv = resolveDeptoDividendosCsvPath();
+    const sheetRowsAll = loadDeptoDividendosSheetLedger(dir);
+    const sheetRows =
+      category_slug === "mortgage"
+        ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
+        : sheetRowsAll;
+    mortgageLedger = {
+      account_id: accountId,
+      source: "csv",
+      meta: {
+        ...mortgageMetaFromSheetRows(sheetRowsAll, csvRel),
+        csv_absolute_path: absCsv,
+        csv_file_exists: fs.existsSync(absCsv),
+      },
+      rows: sheetRows,
+      payment_scenarios: buildDeptoPaymentScenarioRows(dir, sheetRowsAll),
+    };
+  }
+
+  let ccLedger: Awaited<ReturnType<typeof creditCardInstallmentsResponse>> = {
+    account_id: accountId,
+    source: "none",
+    meta: null,
+    purchases: [],
+    purchases_completed: [],
+    months: [],
+    totals: {
+      total_remaining_principal_clp: 0,
+      next_calendar_month_total_clp: null,
+      next_calendar_month: null,
+    },
+  };
+  if (category_slug === "credit_card") {
+    try {
+      ccLedger = creditCardInstallmentsResponse(accountId, extraOffsets);
+    } catch {
+      /* keep empty */
+    }
+  }
+
+  const retirementBucketIds = leafAssetGroupIdsUnder("retirement");
+  const retPh = retirementBucketIds.map(() => "?").join(",");
+  const invNavAccounts =
+    retirementBucketIds.length === 0
+      ? []
+      : db
+          .prepare(
+            `SELECT a.id, a.name, a.notes, a.color_rgb, a.exclude_from_group_totals,
+                    g.slug AS bucket_slug, g.label AS bucket_label
+             FROM accounts a
+             JOIN asset_groups g ON g.id = a.asset_group_id
+             WHERE a.asset_group_id IN (${retPh})
+               AND (a.notes IS NULL OR a.notes != ?)
+             ORDER BY g.sort_order, a.name`
+          )
+          .all(...retirementBucketIds, NOTE_STOCKS_LEGACY);
+
+  const checkingCartolaMonths = MOVEMENT_CARTOLA_SLUGS.has(category_slug)
+    ? getCheckingCartolaMonths(accountId)
+    : null;
+
+  const monthly_performance = getAccountMonthlyPerformance(accountId, unit);
+
+  return {
+    summary,
+    movements,
+    ts,
+    depositInflows,
+    mortgageLedger,
+    ccLedger,
+    invNavAccounts: { accounts: invNavAccounts },
+    checkingCartolaMonths,
+    monthly_performance,
+  };
+}

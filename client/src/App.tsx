@@ -15,6 +15,7 @@ import { RealEstateExpensesPage } from "./pages/RealEstateExpensesPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
 import { IncomePage } from "./pages/IncomePage";
 import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
+import { AccountsPanelPage } from "./pages/panel/AccountsPanelPage";
 import { ImportSyncPage } from "./pages/panel/ImportSyncPage";
 import { NotificationsPage } from "./pages/panel/NotificationsPage";
 import { RatesPage } from "./pages/RatesPage";
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />
               <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="accounts" element={<AccountsPanelPage />} />
               <Route path="import-sync" element={<ImportSyncPage />} />
             </Route>
             <Route path="/messages" element={<Navigate to="/panel/notifications" replace />} />
