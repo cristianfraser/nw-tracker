@@ -8,8 +8,8 @@ describe("getCheckingCartolaMonths", () => {
     const row = db
       .prepare(
         `SELECT a.id FROM accounts a
-         JOIN categories c ON c.id = a.category_id
-         WHERE c.slug = 'cuenta_corriente' LIMIT 1`
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug = 'cuenta_corriente' OR g.slug LIKE '%__cuenta_corriente' LIMIT 1`
       )
       .get() as { id: number } | undefined;
     if (!row) return;
@@ -31,8 +31,8 @@ describe("getCheckingCartolaMonths", () => {
     const row = db
       .prepare(
         `SELECT a.id FROM accounts a
-         JOIN categories c ON c.id = a.category_id
-         WHERE c.slug = 'fondo_reserva' LIMIT 1`
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug = 'fondo_reserva' OR g.slug LIKE '%__fondo_reserva' LIMIT 1`
       )
       .get() as { id: number } | undefined;
     if (!row) return;

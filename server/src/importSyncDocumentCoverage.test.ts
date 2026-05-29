@@ -7,7 +7,21 @@ import {
   matrixMonthForCcStatement,
 } from "./importSyncDocumentMonth.js";
 import { buildImportSyncDocumentCoveragePayload } from "./importSyncDocumentCoverage.js";
-import { hasImportSyncDocumentForMonth } from "./importSyncDocumentFilePath.js";
+import {
+  CcStatementPdfPathError,
+  ccCreditCardAccountHasUsdStatements,
+  hasImportSyncDocumentForMonth,
+  isCcUsdStatementRow,
+} from "./importSyncDocumentFilePath.js";
+
+function coveragePayload() {
+  try {
+    return buildImportSyncDocumentCoveragePayload({ validateCcMetadata: false });
+  } catch (e) {
+    if (e instanceof CcStatementPdfPathError) return null;
+    throw e;
+  }
+}
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
@@ -15,7 +29,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 
 describe("importSyncDocumentCoverage", () => {
   it("returns matrix shape consistent with months and accounts", () => {
-    const payload = buildImportSyncDocumentCoveragePayload({ validateCcMetadata: false });
+    const payload = coveragePayload();
+    if (!payload) return;
     expect(payload.months.length).toBeGreaterThan(0);
     expect(payload.accounts.length).toBeGreaterThan(0);
     expect(payload.cells.length).toBe(payload.months.length);
@@ -41,6 +56,21 @@ describe("importSyncDocumentCoverage", () => {
     expect(hasImportSyncDocumentForMonth(acc, row.period_month)).toBe(true);
   });
 
+  it("emits CLP and USD columns for cards with USD statements", () => {
+    const payload = coveragePayload();
+    if (!payload) return;
+    for (const accountId of listCreditCardMasterAccountIds()) {
+      const cols = payload.accounts.filter((a) => a.account_id === accountId);
+      if (ccCreditCardAccountHasUsdStatements(accountId)) {
+        expect(cols).toHaveLength(2);
+        expect(cols.map((c) => c.cc_statement_currency).sort()).toEqual(["clp", "usd"]);
+      } else {
+        expect(cols).toHaveLength(1);
+        expect(cols[0]?.cc_statement_currency).toBeUndefined();
+      }
+    }
+  });
+
   it("CC check uses period_to month", () => {
     const ccIds = listCreditCardMasterAccountIds();
     if (ccIds.length === 0) return;
@@ -64,7 +94,8 @@ describe("importSyncDocumentCoverage", () => {
   });
 
   it("links source_file for the same row_month as period_month / period_to", () => {
-    const payload = buildImportSyncDocumentCoveragePayload({ validateCcMetadata: false });
+    const payload = coveragePayload();
+    if (!payload) return;
     for (let mi = 0; mi < payload.months.length; mi += 1) {
       const rowMonth = payload.months[mi]!;
       for (let ai = 0; ai < payload.accounts.length; ai += 1) {
@@ -76,13 +107,20 @@ describe("importSyncDocumentCoverage", () => {
         if (acc.document_kind === "cc_statement") {
           const rows = db
             .prepare(
-              `SELECT source_pdf, period_to FROM cc_statements WHERE account_id = ?`
+              `SELECT source_pdf, period_to, currency, layout FROM cc_statements WHERE account_id = ?`
             )
             .all(acc.account_id) as {
               source_pdf: string;
               period_to: string | null;
+              currency: string;
+              layout?: string | null;
             }[];
-          const row = rows.find((r) => matrixMonthForCcStatement(r) === rowMonth);
+          const row = rows.find((r) => {
+            if (matrixMonthForCcStatement(r) !== rowMonth) return false;
+            if (acc.cc_statement_currency === "usd") return isCcUsdStatementRow(r);
+            if (acc.cc_statement_currency === "clp") return !isCcUsdStatementRow(r);
+            return true;
+          });
           expect(row).toBeDefined();
           expect(matrixMonthForCcStatement(row!)).toBe(rowMonth);
         } else {

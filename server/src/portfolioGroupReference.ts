@@ -87,8 +87,11 @@ export function portfolioGroupApiForValuation(slug: string): {
     | { slug: string; api_group: string | null; asset_group_slug: string | null; api_subgroup: string | null }
     | undefined;
   if (!row) return { groupSlug: slug, tabSubgroup: undefined };
+  if (row.asset_group_slug) {
+    return { groupSlug: row.asset_group_slug, tabSubgroup: undefined };
+  }
   return {
-    groupSlug: row.api_group ?? row.asset_group_slug ?? row.slug,
+    groupSlug: row.api_group ?? row.slug,
     tabSubgroup: row.api_subgroup ?? undefined,
   };
 }

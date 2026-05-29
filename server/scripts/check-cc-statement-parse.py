@@ -122,7 +122,7 @@ def main() -> int:
         )
         results.append(result)
         if (
-            reconcile_statement_required(pdf_name, full_text)
+            reconcile_statement_required(pdf_name, full)
             and result.skip_reason not in _SKIP_REASONS
             and not result.ok
         ):

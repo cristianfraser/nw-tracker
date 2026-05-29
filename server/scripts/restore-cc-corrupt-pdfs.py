@@ -14,12 +14,12 @@ import sys
 from pathlib import Path
 
 from cc_pdf_qpdf import is_readable_cc_statement_text, load_repo_dotenv, peek_pdf_text
+from cc_statement_pdf_paths import UNREADABLE_DIR
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CFRASER_DIR = REPO_ROOT / "cfraser"
 
 CORRUPT_SUFFIX = "-CORRUPT"
-UNREADABLE_DIR = "unreadable"
 
 
 def normal_name_from_corrupt(filename: str) -> str:
@@ -41,10 +41,12 @@ def restore_corrupt_pdfs(
     if not dry_run:
         unreadable_root.mkdir(exist_ok=True)
 
-    corrupt_files = sorted(statements_dir.glob(f"*{CORRUPT_SUFFIX}.pdf"))
+    corrupt_files = sorted(statements_dir.rglob(f"*{CORRUPT_SUFFIX}.pdf"))
     for src in corrupt_files:
+        if UNREADABLE_DIR in src.parts:
+            continue
         good_name = normal_name_from_corrupt(src.name)
-        dest = statements_dir / good_name
+        dest = src.parent / good_name
         text = peek_pdf_text(src)
         readable = is_readable_cc_statement_text(text)
         if readable:

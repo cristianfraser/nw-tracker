@@ -1,4 +1,6 @@
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildBillingDetailByMonth } from "./ccBillingViews.js";
 import {
@@ -41,6 +43,28 @@ export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
 }
 
 /**
+ * Billing-detail balance total as of a calendar date.
+ * Uses the latest `billing_month` <= month(`asOfYmd`) to avoid pulling future-filled months.
+ */
+export function creditCardBillingBalanceTotalClpAsOf(
+  accountId: number,
+  asOfYmd: string
+): { value_clp: number; as_of_date: string } | null {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  const asOfMonth = monthKeyFromYmd(asOfYmd);
+  if (!asOfMonth) return null;
+  const payload = ccInstallmentsDbApiPayload(accountId);
+  const detail = buildBillingDetailByMonth(accountId, payload.months);
+  if (detail.length === 0) return null;
+  const row = detail.find((r) => r.billing_month <= asOfMonth);
+  if (!row || !Number.isFinite(row.balance_total_clp)) return null;
+  return {
+    value_clp: Math.round(row.balance_total_clp),
+    as_of_date: row.as_of_date,
+  };
+}
+
+/**
  * Month-end valuation points: **balance total** per billing month (Detalle por mes / summary card),
  * not cupo en cuotas alone. Falls back to ledger cupo when no billing row exists for that month.
  */
@@ -75,10 +99,10 @@ export function upsertCreditCardValuationsFromLedger(accountId: number): number 
   if (!pts || pts.length === 0) return 0;
   const row = db
     .prepare(
-      `SELECT c.slug AS slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+      `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
     )
-    .get(accountId) as { slug: string } | undefined;
-  if (row?.slug !== "credit_card") return 0;
+    .get(accountId) as { bucket_slug: string } | undefined;
+  if (!row || accountBucketKindSlug(row.bucket_slug) !== "credit_card") return 0;
   let n = 0;
   for (const p of pts) {
     upsertValuationMonth.run({

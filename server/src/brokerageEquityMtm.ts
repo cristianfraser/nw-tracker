@@ -1,7 +1,9 @@
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { readSpyVeaShareUnitsFromStocksCsv } from "./accountPosition.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
+import { parsePanelAccountNotes } from "./panelAccountNotes.js";
 import {
   equityCloseUsdEod,
   equitySessionYmdForTicker,
@@ -47,14 +49,19 @@ export function accountUsesEquityMtm(accountId: number): boolean {
   );
 }
 
-const stmtSlug = db.prepare(
-  `SELECT c.slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
+const stmtBucket = db.prepare(
+  `SELECT g.slug, a.notes FROM accounts a
+   JOIN asset_groups g ON g.id = a.asset_group_id
+   WHERE a.id = ?`
 );
 
-export function equityTickerForAccount(accountId: number): "SPY" | "VEA" | null {
-  const r = stmtSlug.get(accountId) as { slug: string } | undefined;
-  if (r?.slug === "spy") return "SPY";
-  if (r?.slug === "vea") return "VEA";
+export function equityTickerForAccount(accountId: number): string | null {
+  const r = stmtBucket.get(accountId) as { slug: string; notes: string | null } | undefined;
+  const panel = parsePanelAccountNotes(r?.notes);
+  if (panel) return panel.ticker;
+  const kind = r?.slug ? accountBucketKindSlug(r.slug) : "";
+  if (kind === "spy") return "SPY";
+  if (kind === "vea") return "VEA";
   return null;
 }
 

@@ -134,10 +134,8 @@ export function listCreditCardMasterAccountIds(): number[] {
     .prepare(
       `SELECT a.id
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = 'credit_cards'
-         AND c.slug = 'credit_card'
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE (g.slug = 'credit_card' OR g.slug LIKE '%__credit_card')
          AND a.account_kind = 'master'
          AND a.notes LIKE 'credit_card_master|%'
        ORDER BY a.notes`

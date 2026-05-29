@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { consolidateAccountFlowRows } from "./accountFlows";
-import { consolidateAccountMonthlyPerf } from "./groupPageConsolidatedTables";
-import { useGroupAccountMovements, useGroupAccountsMonthlyPerformance } from "./queries/hooks";
+import { useGroupConsolidatedTables } from "./queries/hooks";
 import type { DisplayUnit } from "./queries/keys";
 
 export type GroupInfoTableAccount = {
@@ -11,50 +10,54 @@ export type GroupInfoTableAccount = {
 };
 
 export function useGroupInfoConsolidatedTables(
-  accounts: readonly GroupInfoTableAccount[],
+  groupSlug: string,
+  subgroup: string | undefined,
+  _accounts: readonly GroupInfoTableAccount[],
   displayUnit: DisplayUnit,
   enabled: boolean
 ) {
-  const groupPerfQueries = useGroupAccountsMonthlyPerformance(accounts, displayUnit, enabled);
-  const groupMovementsQueries = useGroupAccountMovements(accounts, enabled);
+  const { data, isPending, isFetching, isError, error } = useGroupConsolidatedTables(
+    groupSlug,
+    subgroup,
+    displayUnit,
+    enabled
+  );
+  const tablesLoading = enabled && (isPending || isFetching);
 
-  const consolidatedMonthlyPerf = useMemo(() => {
-    const payloads = groupPerfQueries
-      .map((q) => q.data)
-      .filter((d): d is NonNullable<typeof d> => d != null && d.monthly.length > 0);
-    if (!payloads.length) return [];
-    return consolidateAccountMonthlyPerf(payloads);
-  }, [groupPerfQueries]);
+  const consolidatedMonthlyPerf = useMemo(
+    () => data?.consolidated_monthly ?? [],
+    [data?.consolidated_monthly]
+  );
 
   const consolidatedFlows = useMemo(() => {
-    const byAccount = groupMovementsQueries
-      .map((q) => q.data)
-      .filter((d): d is NonNullable<typeof d> => d != null);
+    const byAccount = data?.account_movements ?? [];
     if (!byAccount.length) return [];
     return consolidateAccountFlowRows(
       byAccount.map((d) => ({
-        id: d.account.id,
-        name: d.account.name,
-        category_slug: d.account.category_slug,
+        id: d.account_id,
+        name: d.name,
+        category_slug: d.category_slug,
         movements: d.movements,
       }))
     );
-  }, [groupMovementsQueries]);
+  }, [data?.account_movements]);
 
   const tableFlags = useMemo(() => {
-    const slugs = accounts.map((a) => a.category_slug);
+    const slugs = _accounts.map((a) => a.category_slug);
     return {
       isMortgageAccount: slugs.length > 0 && slugs.every((s) => s === "mortgage"),
     };
-  }, [accounts]);
-
-  const tablesLoading =
-    groupPerfQueries.some((q) => q.isPending) || groupMovementsQueries.some((q) => q.isPending);
+  }, [_accounts]);
 
   return {
     consolidatedMonthlyPerf,
     consolidatedFlows,
     tableFlags,
     tablesLoading,
+    tablesError: isError
+      ? error instanceof Error
+        ? error.message
+        : "Failed to load tables"
+      : null,
   };
 }

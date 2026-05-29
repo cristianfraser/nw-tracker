@@ -6,8 +6,10 @@ export interface DashboardAccountStats {
   name: string;
   group_slug: string;
   group_label: string;
-  category_slug: string;
-  category_label: string;
+  bucket_slug: string;
+  bucket_label: string;
+  /** Top-level NW dashboard bucket from asset_groups ancestry. */
+  dashboard_bucket_slug: string;
   deposits_clp: number;
   deposits_usd?: number | null;
   /** Nominal P/L for the current calendar month (or latest month in series). */

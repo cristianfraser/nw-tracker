@@ -246,7 +246,7 @@ export function promoteLineToInstallmentPurchaseTotal(
     merchant,
     merchant_key: synth.merchant_key || ln.merchant_key,
     category_slug: synth.category_slug || ln.category_slug,
-    category_unique: synth.category_unique,
+    category_unique: ln.category_unique || synth.category_unique,
     category_statement_line_id:
       synth.category_statement_line_id ?? ln.category_statement_line_id ?? null,
   };

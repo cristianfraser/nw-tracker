@@ -29,36 +29,30 @@ function bestPerformanceCloseInMonth(
   return v != null && Number.isFinite(v) ? v : null;
 }
 
-/** Month-end / prior year-end close from the same performance series as Retiro P/L charts. */
-export function accountPriorPeriodClose(
-  accountId: number,
+/** Month-end / prior year-end close from an already-loaded performance series. */
+export function accountPriorPeriodCloseFromPerf(
+  perf: { monthly: AccountMonthlyPerformanceRow[] },
   period: AccountPeriodClosePeriod,
-  unit: TsUnit = "clp"
+  todayYmd: string = chileCalendarTodayYmd()
 ): number | null {
-  const perf = getAccountMonthlyPerformance(accountId, unit);
-  if (!perf?.monthly.length) return null;
-
-  const today = chileCalendarTodayYmd();
+  if (!perf.monthly.length) return null;
 
   if (period === "month") {
-    const priorMk = priorCalendarMonthKeyFromToday(today);
+    const priorMk = priorCalendarMonthKeyFromToday(todayYmd);
     const exact = bestPerformanceCloseInMonth(perf.monthly, priorMk);
     if (exact != null) return exact;
 
-    // No prior-calendar-month close: do not substitute an older month (new position / first month).
-    const curMk = today.slice(0, 7);
+    const curMk = todayYmd.slice(0, 7);
     const hasBalanceInOrAfterPriorMonth = perf.monthly.some((row) => {
       const mk = monthKeyFromYmd(row.as_of_date);
-      return (
-        mk >= priorMk && row.closing_value != null && Number.isFinite(row.closing_value)
-      );
+      return mk >= priorMk && row.closing_value != null && Number.isFinite(row.closing_value);
     });
     if (hasBalanceInOrAfterPriorMonth) return 0;
 
     return null;
   }
 
-  const y0 = today.slice(0, 4);
+  const y0 = todayYmd.slice(0, 4);
   let best: AccountMonthlyPerformanceRow | null = null;
   for (const row of perf.monthly) {
     if (row.as_of_date.slice(0, 4) >= y0) continue;
@@ -79,25 +73,34 @@ export function accountPriorPeriodClose(
   return hasCurrentYearClose ? 0 : null;
 }
 
+/** Month-end / prior year-end close from the same performance series as Retiro P/L charts. */
+export function accountPriorPeriodClose(
+  accountId: number,
+  period: AccountPeriodClosePeriod,
+  unit: TsUnit = "clp"
+): number | null {
+  const perf = getAccountMonthlyPerformance(accountId, unit);
+  if (!perf) return null;
+  return accountPriorPeriodCloseFromPerf(perf, period);
+}
+
 export type AccountCardPerformanceMetrics = {
   delta_month: number | null;
   delta_year: number | null;
   delta_total: number | null;
 };
 
-/** Month / year / cumulative nominal P/L from one performance series read. */
-export function accountCardPerformanceMetrics(
-  accountId: number,
-  unit: TsUnit = "clp"
+/** Month / year / cumulative nominal P/L from an already-loaded performance series. */
+export function accountCardPerformanceMetricsFromPerf(
+  perf: { monthly: AccountMonthlyPerformanceRow[] },
+  todayYmd: string = chileCalendarTodayYmd()
 ): AccountCardPerformanceMetrics {
-  const perf = getAccountMonthlyPerformance(accountId, unit);
-  if (!perf?.monthly.length) {
+  if (!perf.monthly.length) {
     return { delta_month: null, delta_year: null, delta_total: null };
   }
 
-  const today = chileCalendarTodayYmd();
-  const currentMk = monthKeyFromYmd(today);
-  const currentY = today.slice(0, 4);
+  const currentMk = monthKeyFromYmd(todayYmd);
+  const currentY = todayYmd.slice(0, 4);
   const latest = perf.monthly[0];
 
   let delta_month: number | null = null;
@@ -124,5 +127,41 @@ export function accountCardPerformanceMetrics(
     delta_month,
     delta_year: anyYear ? delta_year : null,
     delta_total: total != null && Number.isFinite(total) ? total : null,
+  };
+}
+
+/** Month / year / cumulative nominal P/L from one performance series read. */
+export function accountCardPerformanceMetrics(
+  accountId: number,
+  unit: TsUnit = "clp"
+): AccountCardPerformanceMetrics {
+  const perf = getAccountMonthlyPerformance(accountId, unit);
+  if (!perf) {
+    return { delta_month: null, delta_year: null, delta_total: null };
+  }
+  return accountCardPerformanceMetricsFromPerf(perf);
+}
+
+/** Card metrics + prior closes from one performance fetch per unit. */
+export function dashboardAccountPerfDerived(
+  accountId: number,
+  unit: TsUnit,
+  trackAssetMetrics: boolean
+): {
+  metrics: AccountCardPerformanceMetrics | null;
+  prior_month_close: number | undefined;
+  prior_year_close: number | undefined;
+} {
+  if (!trackAssetMetrics) {
+    return { metrics: null, prior_month_close: undefined, prior_year_close: undefined };
+  }
+  const perf = getAccountMonthlyPerformance(accountId, unit);
+  if (!perf) {
+    return { metrics: null, prior_month_close: undefined, prior_year_close: undefined };
+  }
+  return {
+    metrics: accountCardPerformanceMetricsFromPerf(perf),
+    prior_month_close: accountPriorPeriodCloseFromPerf(perf, "month") ?? undefined,
+    prior_year_close: accountPriorPeriodCloseFromPerf(perf, "year") ?? undefined,
   };
 }

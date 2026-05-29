@@ -15,7 +15,7 @@ From repo root:
   npm run import:cc-parsed -w nw-tracker-server
   # add --wipe only to replace all statements/ledger for that account
 
-PDFs are read from `cfraser/credit-card-statements/` (override with CFRASER_PDFS_DIR).
+PDFs are read from `cfraser/credit-card-statements/<card>/clp|usd/` (override with CFRASER_PDFS_DIR).
 
 Writes:
   cfraser/cc-statements-parsed-all.csv
@@ -1361,6 +1361,27 @@ def _fill_period_and_pay_by(meta: Dict[str, Any], full: str) -> None:
             meta["pay_by"] = m.group(1)
 
 
+def extract_card_last4(full: str) -> str:
+    """Last four digits from statement header (masked XXXX… or full PAN on international PDFs)."""
+    m = re.search(r"X{4}\s*X{4}\s*X{4}\s*(\d{4})", full, re.I)
+    if m:
+        return m.group(1)
+    m = re.search(r"XXXXXXXXXXXX(\d{4})", full, re.I)
+    if m:
+        return m.group(1)
+    # International USD: pdftotext often breaks the 16-digit PAN across lines after TARJETA DE CRÉDITO.
+    m = re.search(
+        r"TARJETA(?:\s+DE\s+CR[EÉ]DITO)?.*?(?=FECHA\s+ESTADO|WORLDMEMBER|\n\s*Consideramos)",
+        full,
+        re.I | re.S,
+    )
+    if m:
+        quads = re.findall(r"\b\d{4}\b", m.group(0))
+        if len(quads) >= 4:
+            return quads[-1]
+    return ""
+
+
 def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
     meta: Dict[str, Any] = {
         "source_pdf": source_pdf,
@@ -1411,9 +1432,9 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
     m = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", full, re.I)
     if m:
         meta["pay_by"] = m.group(1)
-    m = re.search(r"X{4}\s*X{4}\s*X{4}\s*(\d{4})", full)
-    if m:
-        meta["card_last4"] = m.group(1)
+    last4 = extract_card_last4(full)
+    if last4:
+        meta["card_last4"] = last4
     if re.search(r"WORLDMEMBER\s+MASTER", full, re.I):
         meta["card_product"] = "WORLDMEMBER_MASTER"
     elif re.search(r"W\.\s*LIMITED\s+VISA", full, re.I):
@@ -2312,17 +2333,30 @@ def mark_pdf_corrupt(p: Path) -> Path:
     return dest
 
 
+def skip_numbered_duplicate_pdf(entry: Path, _pdfs_dir: Path) -> bool:
+    """
+  Skip `… (2).pdf` when a non-numbered sibling exists in the same folder.
+    """
+    name = entry.name
+    if not re.search(r"\(\d+\)\.pdf$", name, re.I):
+        return False
+    plain = re.sub(r"\s*\(\d+\)\.pdf$", ".pdf", name, flags=re.I)
+    return (entry.parent / plain).is_file()
+
+
 def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
     """Scan credit-card statement PDF dir. Returns (card_group, path) jobs."""
     jobs: List[Tuple[str, Path]] = []
     if not pdfs_dir.is_dir():
         return jobs
     clp_numeric: List[Tuple[int, Path]] = []
-    for entry in sorted(pdfs_dir.iterdir()):
-        if not entry.is_file() or entry.suffix.lower() != ".pdf":
+    for entry in sorted(pdfs_dir.rglob("*.pdf")):
+        if "unreadable" in entry.parts:
+            continue
+        if not entry.is_file():
             continue
         name = entry.name
-        if re.search(r"\(\d+\)\.pdf$", name, re.I):
+        if skip_numbered_duplicate_pdf(entry, pdfs_dir):
             continue
         lower = name.lower()
         if RE_ORGANIZED_CC.match(name):

@@ -232,6 +232,12 @@ export function AppSidebar() {
       children: [
         notifications,
         {
+          id: "panel.accounts",
+          label: t("sidebar.accounts"),
+          to: "/panel/accounts",
+          end: true,
+        },
+        {
           id: "panel.import-sync",
           label: t("sidebar.importSync"),
           to: "/panel/import-sync",

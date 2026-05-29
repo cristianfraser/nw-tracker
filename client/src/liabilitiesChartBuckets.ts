@@ -1,8 +1,5 @@
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
-import {
-  portfolioStripAccountChildren,
-  portfolioStripGroupChildren,
-} from "./portfolioNavFromApi";
+import { stripChartBucketNavNodes } from "./navChartBuckets";
 import { resolveNavTreeLabel } from "./sidebarNavFromApi";
 import type { NavTreeNodeDto } from "./types";
 
@@ -21,22 +18,7 @@ function syntheticAccountId(index: number): number {
 
 /** Nav nodes that should each become one chart series (child groups or cards). */
 export function liabilitiesChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
-  const groupKids = portfolioStripGroupChildren(navNode);
-  const accountKids = portfolioStripAccountChildren(navNode);
-
-  if (groupKids.length >= 2) return groupKids;
-
-  if (groupKids.length === 1) {
-    const sole = groupKids[0]!;
-    const innerAccounts = portfolioStripAccountChildren(sole);
-    if (innerAccounts.length >= 2) return innerAccounts;
-    const innerGroups = portfolioStripGroupChildren(sole);
-    if (innerGroups.length >= 2) return innerGroups;
-    return [sole];
-  }
-
-  if (accountKids.length >= 2) return accountKids;
-  return [];
+  return stripChartBucketNavNodes(navNode);
 }
 
 export function isLiabilitiesNavPage(navNode: NavTreeNodeDto): boolean {

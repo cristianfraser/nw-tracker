@@ -3,7 +3,7 @@
  *
  * 1. Organize PDFs from `cfraser/pdfs/`:
  *    - CUENTAMATICA → `cfraser/cartolas-cuenta-vista/`
- *    - credit-card → `cfraser/credit-card-statements/`
+ *    - credit-card → `cfraser/credit-card-statements/<card>/clp|usd/`
  *    - checking cartola PDFs → `cfraser/cartolas-cuenta-corriente/`
  * 2. qpdf repair on unreadable credit-card PDFs (`repair:cc-pdfs-qpdf`, skippable)
  * 3. Parse all credit-card statement PDFs → `cfraser/cc-statements-parsed-all.csv`
@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 
 import { importCheckingCartolasFromDir } from "../src/checkingCartolaImport.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
+import { processFintualCertificadoInboxPdf } from "../src/fintualCertificadoInbox.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,6 +76,26 @@ function main(): void {
   const skipExcel = hasFlag("skip-excel");
   const runExcel = hasFlag("excel");
   const accountId = argValue("account-id");
+  const skipFintualCert = hasFlag("skip-fintual-cert");
+
+  if (!skipFintualCert) {
+    console.log("\n=== Fintual certificado de transacciones (PDF → CSV) ===");
+    try {
+      const r = processFintualCertificadoInboxPdf({ dryRun });
+      if (r.pdfPath) {
+        console.log(
+          `  ${r.rows} row(s) → ${r.csvPath}${r.archivedTo ? `; archived ${r.archivedTo}` : ""}`
+        );
+      } else {
+        console.log("  (no certificado PDF in cfraser/pdfs/)");
+      }
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
+  } else {
+    console.log("\n=== Fintual certificado PDF (skipped) ===");
+  }
 
   if (!skipOrganize) {
     const organizeArgs = [

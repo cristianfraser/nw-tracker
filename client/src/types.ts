@@ -1,3 +1,5 @@
+import type { MovementCreateSchema } from "./accountMovementCreate";
+
 export type AssetGroupSlug =
   | "retirement"
   | "brokerage"
@@ -16,12 +18,71 @@ export interface AccountListRow {
   category_label: string;
   group_slug: string;
   group_label: string;
+  /** Leaf bucket placement (`asset_groups.slug`). */
+  bucket_slug?: string;
+  bucket_label?: string;
   /** When 1, account is listed in nav but omitted from class totals and dashboard buckets. */
   exclude_from_group_totals?: number;
   /** Chart line color as `r,g,b` (0–255). */
   color_rgb?: string | null;
   /** Pasivos liability_view → master account for valuations / P/L. */
   source_account_id?: number | null;
+}
+
+export interface AssetTreeCategoryRow {
+  id: number;
+  group_id: number;
+  slug: string;
+  label: string;
+  sort_order: number;
+}
+
+export interface AssetTreeAccountRow {
+  id: number;
+  name: string;
+  notes: string | null;
+}
+
+export interface AssetTreeGroupRow {
+  id: number;
+  slug: string;
+  label: string;
+  sort_order: number;
+  color_rgb?: string | null;
+  parent_id?: number | null;
+  is_leaf?: boolean;
+  children?: AssetTreeGroupRow[];
+  accounts?: AssetTreeAccountRow[];
+  /** @deprecated legacy category rows; empty on nested bucket tree */
+  categories?: AssetTreeCategoryRow[];
+}
+
+export interface AssetTreeResponse {
+  groups: AssetTreeGroupRow[];
+}
+
+export type PortfolioTreeNodeDto =
+  | {
+      kind: "group";
+      id: number;
+      slug: string;
+      label: string;
+      sort_order: number;
+      color_rgb: string;
+      color: string;
+      children: PortfolioTreeNodeDto[];
+    }
+  | {
+      kind: "account";
+      account_id: number;
+      name: string;
+      sort_order: number;
+      color_rgb: string;
+      color: string;
+    };
+
+export interface PortfolioTreeResponse {
+  roots: PortfolioTreeNodeDto[];
 }
 
 export interface AccountPositionSnapshot {
@@ -40,6 +101,10 @@ export interface DashboardAccountRow {
   notes?: string | null;
   group_slug: string;
   group_label: string;
+  bucket_slug?: string;
+  bucket_label?: string;
+  /** Top-level NW dashboard bucket from asset_groups ancestry (server-computed). */
+  dashboard_bucket_slug?: string;
   category_slug: string;
   category_label: string;
   deposits_clp: number;
@@ -453,6 +518,8 @@ export interface AccountCcInstallmentsResponse {
   billing_detail_by_month?: CcBillingDetailMonthDto[];
   facturaciones?: CcFacturacionDto[];
   billing_config?: CreditCardBillingConfigDto;
+  /** Open facturación month for manual / web-paste (`YYYY-MM`). */
+  open_billing_month?: string | null;
 }
 
 /** `GET /api/accounts/:id/valuation-timeseries` */
@@ -493,6 +560,45 @@ export interface AccountMonthlyPerformanceResponse {
   monthly: AccountMonthlyPerformanceRow[];
 }
 
+/** `GET /api/accounts/:id/summary` */
+export interface AccountSummaryResponse {
+  account_id: number;
+  category_slug: string | null;
+  group_slug: string | null;
+  group_label: string | null;
+  group_peer_count: number | null;
+  deposits_clp: number;
+  withdrawals_clp: number;
+  latest_valuation_clp: number | null;
+  latest_valuation_date: string | null;
+  position: AccountPositionSnapshot | null;
+  movement_create?: MovementCreateSchema;
+}
+
+/** `GET /api/accounts/:id/detail-bundle` */
+export interface AccountDetailBundleResponse {
+  summary: AccountSummaryResponse;
+  movements: {
+    id: number;
+    amount_clp: number;
+    occurred_on: string;
+    note: string | null;
+    units_delta: number | null;
+    flow_kind: string | null;
+    amount_usd: number | null;
+    ticker: string | null;
+    flow_type: string;
+    flow_type_label: string;
+  }[];
+  ts: AccountValuationTimeseriesResponse | null;
+  depositInflows: AccountDepositInflowsResponse;
+  mortgageLedger: AccountMortgageLedgerResponse;
+  ccLedger: AccountCcInstallmentsResponse;
+  invNavAccounts: { accounts: AccountListRow[] };
+  checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
+  monthly_performance: AccountMonthlyPerformanceResponse | null;
+}
+
 export interface CheckingCartolaMonthRowDto {
   period_month: string;
   as_of_date: string;
@@ -526,6 +632,53 @@ export interface GroupMonthlyPerformanceResponse {
   group_slug: string;
   bar_accounts: GroupMonthlyPerformanceBarAccount[];
   points: Record<string, string | number | null>[];
+}
+
+/** `GET /api/dashboard/nav-context` — nav strip + overview in one response. */
+export interface DashboardNavContextResponse {
+  accounts: DashboardAccountRow[];
+  liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
+  cash_credit_card_links: DashboardResponse["cash_credit_card_links"];
+  overview: ValuationTimeseriesResponse["overview"];
+}
+
+/** `GET /api/dashboard/page-bundle` — home dashboard in one response. */
+export interface DashboardPageBundleResponse {
+  dash: DashboardResponse;
+  ts: ValuationTimeseriesResponse;
+  fx: FxLatest | null;
+  retirementPerf: GroupMonthlyPerformanceResponse | null;
+  brokeragePerf: GroupMonthlyPerformanceResponse | null;
+}
+
+export type ConsolidatedMonthlyPerfRow = {
+  as_of_date: string;
+  closing_value: number;
+  prior_closing: number | null;
+  net_capital_flow: number;
+  stock_units_inflow: number;
+  nominal_pl: number | null;
+  pct_month: number | null;
+  ytd_nominal_pl: number | null;
+  cumulative_nominal_pl: number | null;
+};
+
+export interface GroupConsolidatedTablesResponse {
+  unit: "clp" | "usd" | "uf";
+  group_slug: string;
+  account_monthly: {
+    account_id: number;
+    name: string;
+    category_slug: string;
+    monthly: AccountMonthlyPerformanceRow[];
+  }[];
+  consolidated_monthly: ConsolidatedMonthlyPerfRow[];
+  account_movements: {
+    account_id: number;
+    name: string;
+    category_slug: string;
+    movements: AccountDetailBundleResponse["movements"];
+  }[];
 }
 
 /** `GET /api/dashboard/stocks-earnings-monthly` — merged SPY+VEA (or single), derived. */
@@ -606,6 +759,8 @@ export interface NavTreeNodeDto {
   color: string | null;
   /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
   group_kind: "normal" | "reference" | "nav_hub";
+  /** Long zero tail: listed for chart history; omitted from group tables and strip cards. */
+  chart_inactive?: boolean;
   children: NavTreeNodeDto[];
 }
 
@@ -868,10 +1023,14 @@ export type ImportSyncDocumentKind =
   | "cuenta_vista_cartola"
   | "cc_statement";
 
+export type CcStatementCoverageCurrency = "clp" | "usd";
+
 export interface ImportSyncDocumentAccount {
   account_id: number;
   label: string;
   document_kind: ImportSyncDocumentKind;
+  /** CLP/USD column when this card has at least one USD PDF statement. */
+  cc_statement_currency?: CcStatementCoverageCurrency;
 }
 
 export interface ImportSyncDocumentCell {

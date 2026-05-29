@@ -74,7 +74,7 @@ function layoutFromRow(row: CcStatementCsvRecord): string {
   return "compact";
 }
 
-function currencyFromRow(row: CcStatementCsvRecord): string {
+export function currencyFromRow(row: CcStatementCsvRecord): string {
   if (String(row.currency ?? "").toLowerCase() === "usd") return "usd";
   if (layoutFromRow(row) === "international_usd") return "usd";
   return "clp";
@@ -104,11 +104,12 @@ const findStmtId = db.prepare(
    WHERE account_id = ? AND card_group = ? AND source_pdf = ? AND statement_date = ?`
 );
 
-/** Same billing close re-imported from a different PDF filename. */
+/** Same billing close re-imported from a different PDF filename (CLP vs USD stay separate). */
 const findStmtByClose = db.prepare(
   `SELECT id FROM cc_statements
    WHERE account_id = ? AND card_group = ? AND statement_date = ?
      AND COALESCE(card_last4, '') = COALESCE(?, '')
+     AND currency = ?
    ORDER BY id ASC
    LIMIT 1`
 );
@@ -237,9 +238,13 @@ export function importCcStatementsMerge(
       | { id: number }
       | undefined;
     if (!existing) {
-      existing = findStmtByClose.get(accountId, cardGroup, statementDate, cardLast4) as
-        | { id: number }
-        | undefined;
+      existing = findStmtByClose.get(
+        accountId,
+        cardGroup,
+        statementDate,
+        cardLast4,
+        currency
+      ) as { id: number } | undefined;
     }
 
     if (existing) {

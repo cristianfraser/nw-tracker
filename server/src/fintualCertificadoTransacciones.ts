@@ -53,12 +53,7 @@ export type FintualCertificadoApplyResult = {
 
 const NOTE_PREFIX = "import:excel|fintual-certificado";
 
-const TRACKED_IMPORT_NOTES = new Set([
-  "import:excel|key=fondo_reserva",
-  "import:excel|key=fintual_rn",
-  "import:excel|key=apv_a",
-  "import:excel|key=apv_b",
-]);
+export type CertificadoAccountResolver = (importNote: string | null) => number | undefined;
 
 function accountIdForImportNote(note: string | null, acc: FintualCertificadoAccounts): number | undefined {
   if (!note) return undefined;
@@ -74,6 +69,12 @@ function accountIdForImportNote(note: string | null, acc: FintualCertificadoAcco
     default:
       return undefined;
   }
+}
+
+export function legacyCertificadoAccountResolver(
+  acc: FintualCertificadoAccounts
+): CertificadoAccountResolver {
+  return (note) => accountIdForImportNote(note, acc);
 }
 
 export type GoalToImportNote = (goalId: string, investmentName: string) => string | null;
@@ -152,7 +153,7 @@ export function aggregateFintualCertificado(
     if (!goalId) continue;
     const nombre = String(r.nombre_inversión ?? r.nombre_inversion ?? "").trim();
     const importNote = matchGoal(goalId, nombre);
-    if (!importNote || !TRACKED_IMPORT_NOTES.has(importNote)) continue;
+    if (!importNote) continue;
 
     const aporteClp = parseFintualCertMoneyCell(r.aporte_pesos_chilenos) ?? 0;
     const rescateClp = parseFintualCertMoneyCell(r.rescate_pesos_chilenos) ?? 0;
@@ -214,15 +215,16 @@ export function aggregateFintualCertificado(
 
 export function insertFintualCertificadoMovementsFromAggregates(
   scan: FintualCertificadoAggregateScan,
-  acc: FintualCertificadoAccounts,
+  resolveAccountId: CertificadoAccountResolver,
   insMov: Statement<[number, number, string, string, number | null]>,
-  matchGoal: GoalToImportNote
+  matchGoal: GoalToImportNote,
+  notePrefix: string = NOTE_PREFIX
 ): number {
   let movementsInserted = 0;
   for (const a of scan.sortedAggregates) {
     const importNote = matchGoal(a.goalId, a.name);
     if (!importNote) continue;
-    const accountId = accountIdForImportNote(importNote, acc);
+    const accountId = resolveAccountId(importNote);
     if (accountId == null) continue;
 
     let impliedClp = a.clpNet;
@@ -232,7 +234,7 @@ export function insertFintualCertificadoMovementsFromAggregates(
     if (impliedClp === 0) continue;
 
     const medio = [...a.medios].sort().join("; ");
-    const note = `${NOTE_PREFIX}|goal=${a.goalId}|day=${a.ymd}|flow_kind=${a.flowKind}${medio ? `|medio=${medio}` : ""}`;
+    const note = `${notePrefix}|goal=${a.goalId}|day=${a.ymd}|flow_kind=${a.flowKind}${medio ? `|medio=${medio}` : ""}`;
     const ud = a.cuotasNet !== 0 ? a.cuotasNet : null;
     insMov.run(accountId, impliedClp, a.ymd, note, ud);
     movementsInserted += 1;
@@ -251,7 +253,12 @@ export function applyFintualCertificadoMovements(
   if (!scan) {
     return { movementsInserted: 0, apvACutMonth: null, apvAFirstFlowYmd: null, apvAFirstMonthNetClp: 0 };
   }
-  const movementsInserted = insertFintualCertificadoMovementsFromAggregates(scan, acc, insMov, matchGoal);
+  const movementsInserted = insertFintualCertificadoMovementsFromAggregates(
+    scan,
+    legacyCertificadoAccountResolver(acc),
+    insMov,
+    matchGoal
+  );
   return {
     movementsInserted,
     apvACutMonth: scan.apvACutMonth,

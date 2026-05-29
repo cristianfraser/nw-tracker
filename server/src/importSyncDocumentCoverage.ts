@@ -5,8 +5,10 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { assertCcStatementsHavePeriodTo } from "./ccStatementMetadata.js";
 import { db } from "./db.js";
 import {
+  assertAllCcStatementPdfsResolvable,
   buildImportSyncDocumentMonths,
   buildImportSyncDocumentPathsByMonth,
+  ccCreditCardAccountHasUsdStatements,
   hasImportSyncDocumentForMonth,
 } from "./importSyncDocumentFilePath.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
@@ -16,10 +18,14 @@ export type ImportSyncDocumentKind =
   | "cuenta_vista_cartola"
   | "cc_statement";
 
+export type CcStatementCoverageCurrency = "clp" | "usd";
+
 export type ImportSyncDocumentAccount = {
   account_id: number;
   label: string;
   document_kind: ImportSyncDocumentKind;
+  /** CLP/USD column when this card has at least one USD PDF statement. */
+  cc_statement_currency?: CcStatementCoverageCurrency;
 };
 
 export type ImportSyncDocumentCell = {
@@ -59,11 +65,27 @@ function listDocumentAccounts(): ImportSyncDocumentAccount[] {
     });
   }
   for (const accountId of listCreditCardMasterAccountIds()) {
-    accounts.push({
-      account_id: accountId,
-      label: accountLabel(accountId),
-      document_kind: "cc_statement",
-    });
+    const label = accountLabel(accountId);
+    if (ccCreditCardAccountHasUsdStatements(accountId)) {
+      accounts.push({
+        account_id: accountId,
+        label,
+        document_kind: "cc_statement",
+        cc_statement_currency: "clp",
+      });
+      accounts.push({
+        account_id: accountId,
+        label,
+        document_kind: "cc_statement",
+        cc_statement_currency: "usd",
+      });
+    } else {
+      accounts.push({
+        account_id: accountId,
+        label,
+        document_kind: "cc_statement",
+      });
+    }
   }
   return accounts;
 }
@@ -92,6 +114,7 @@ export function buildImportSyncDocumentCoveragePayload(
 ): ImportSyncDocumentCoveragePayload {
   if (opts?.validateCcMetadata !== false) {
     assertCcStatementsHavePeriodTo();
+    assertAllCcStatementPdfsResolvable();
   }
   const accounts = listDocumentAccounts();
   const currentYm = monthKeyFromYmd(chileCalendarTodayYmd());

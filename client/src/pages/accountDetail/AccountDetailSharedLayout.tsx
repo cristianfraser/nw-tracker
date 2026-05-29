@@ -8,7 +8,7 @@ import type { EntityColorTarget } from "../../entityColor";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { accountCardTitleBalanceDelta } from "../../dashboardCardBreakdown";
 import type { cardGroupMetricsFromAccounts } from "../../dashboardCardBreakdown";
-import type { DashboardResponse } from "../../types";
+import type { dashPickForNavStrip } from "../../queries/fetchers";
 
 type LayoutProps = {
   title: string;
@@ -22,7 +22,7 @@ type LayoutProps = {
   metricsPeriod: CardGroupMetricsPeriod;
   heroClp: number;
   heroApiUsd: number | null;
-  dash: DashboardResponse | null;
+  dash: ReturnType<typeof dashPickForNavStrip> | null;
   overviewPoints: Record<string, string | number | null>[];
   accountNavChildren: NonNullable<
     ReturnType<typeof import("../../portfolioNavFromApi").findNavTreeNodeByAccountId>

@@ -42,9 +42,14 @@ function main() {
     process.exit(1);
   }
   const slug = db
-    .prepare(`SELECT c.slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`)
-    .get(accountId) as { slug: string } | undefined;
-  if (slug?.slug !== "afp") {
+    .prepare(
+      `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
+    )
+    .get(accountId) as { bucket_slug: string } | undefined;
+  const kind = slug?.bucket_slug?.includes("__")
+    ? slug.bucket_slug.slice(slug.bucket_slug.lastIndexOf("__") + 2)
+    : slug?.bucket_slug;
+  if (kind !== "afp") {
     console.error(`Account ${accountId} is not category afp`);
     process.exit(1);
   }

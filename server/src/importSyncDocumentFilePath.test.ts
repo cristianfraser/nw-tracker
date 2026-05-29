@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as cfraserPaths from "./cfraserPaths.js";
-import { resolveCfraserPdfsDir } from "./cfraserPaths.js";
 import {
   archivedCreditCardStatementPdfFileName,
+  assertCcStatementSourcePdfBasename,
   canonicalCcStatementPdfName,
   ccCardLast4FromSourcePdf,
+  CcStatementPdfPathError,
+  requireCcStatementPdfPath,
   resolveCartolaFilePath,
   resolveCcStatementPdfPath,
 } from "./importSyncDocumentFilePath.js";
@@ -17,26 +19,73 @@ describe("importSyncDocumentFilePath", () => {
     vi.restoreAllMocks();
   });
 
-  it("resolves CC statement PDF under cfraser/credit-card-statements", () => {
-    const dir = resolveCfraserPdfsDir();
-    if (!fs.existsSync(dir)) return;
-    const names = fs.readdirSync(dir).filter((n) => n.toLowerCase().endsWith(".pdf"));
-    if (names.length === 0) return;
-    const name = names[0]!;
-    const abs = resolveCcStatementPdfPath(name);
-    expect(abs).toBe(path.resolve(dir, name));
+  it("resolves CC statement PDF under card slot dir", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-slot-"));
+    const clpDir = path.join(root, "4343", "clp");
+    fs.mkdirSync(clpDir, { recursive: true });
+    const name = "2026-03-26 estado de cuenta tarjeta 4343.pdf";
+    fs.writeFileSync(path.join(clpDir, name), "");
+    vi.spyOn(cfraserPaths, "ccStatementPdfSearchDirs").mockImplementation((last4, usd) => {
+      const slot = usd ? "usd" : "clp";
+      return [path.join(root, last4 ?? "", slot)];
+    });
+
+    const abs = resolveCcStatementPdfPath(name, { usd: false });
+    expect(abs).toBe(path.join(clpDir, name));
   });
 
-  it("prefers period_to canonical name over stale source_pdf basename", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-resolve-"));
-    vi.spyOn(cfraserPaths, "resolveCfraserPdfsDir").mockReturnValue(dir);
+  it("does not resolve stale basename when only canonical file exists", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-stale-"));
+    const clpDir = path.join(root, "4343", "clp");
+    fs.mkdirSync(clpDir, { recursive: true });
     const stale = "2025-12-27 estado de cuenta tarjeta 4343.pdf";
     const canonical = "2026-01-26 estado de cuenta tarjeta 4343.pdf";
-    fs.writeFileSync(path.join(dir, stale), "");
-    fs.writeFileSync(path.join(dir, canonical), "");
+    fs.writeFileSync(path.join(clpDir, canonical), "");
+    vi.spyOn(cfraserPaths, "ccStatementPdfSearchDirs").mockImplementation((last4, usd) => {
+      const slot = usd ? "usd" : "clp";
+      return [path.join(root, last4 ?? "", slot)];
+    });
 
-    const abs = resolveCcStatementPdfPath(stale, { periodTo: "26/01/2026" });
-    expect(abs).toBe(path.resolve(dir, canonical));
+    expect(resolveCcStatementPdfPath(stale, { usd: false })).toBeNull();
+    expect(resolveCcStatementPdfPath(canonical, { usd: false })).toBe(
+      path.join(clpDir, canonical)
+    );
+  });
+
+  it("rejects numbered copy suffix in source_pdf", () => {
+    expect(() =>
+      assertCcStatementSourcePdfBasename("2024-12-23 estado de cuenta tarjeta usd 4141 (2).pdf", {
+        card_last4: "4141",
+        currency: "usd",
+      })
+    ).toThrow(CcStatementPdfPathError);
+  });
+
+  it("rejects basename without last4 suffix", () => {
+    expect(() =>
+      assertCcStatementSourcePdfBasename("2018-04-23 estado de cuenta tarjeta.pdf", {
+        card_last4: "4141",
+        currency: "clp",
+      })
+    ).toThrow(/basename must end with/);
+  });
+
+  it("requireCcStatementPdfPath throws when file is missing", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-missing-"));
+    vi.spyOn(cfraserPaths, "resolveCcStatementSlotDir").mockImplementation((last4, usd) =>
+      path.join(root, last4, usd ? "usd" : "clp")
+    );
+    vi.spyOn(cfraserPaths, "ccStatementPdfSearchDirs").mockImplementation((last4, usd) => [
+      path.join(root, last4, usd ? "usd" : "clp"),
+    ]);
+
+    const name = "2026-01-26 estado de cuenta tarjeta 4343.pdf";
+    expect(() =>
+      requireCcStatementPdfPath(name, {
+        card_last4: "4343",
+        currency: "clp",
+      })
+    ).toThrow(/missing PDF/);
   });
 
   it("builds canonical BCI PDF name from period_to", () => {
@@ -46,6 +95,9 @@ describe("importSyncDocumentFilePath", () => {
     expect(ccCardLast4FromSourcePdf("2026-03-27 estado de cuenta tarjeta 4343.pdf")).toBe(
       "4343"
     );
+    expect(
+      ccCardLast4FromSourcePdf("2026-03-26 estado de cuenta tarjeta usd 4141.pdf")
+    ).toBe("4141");
   });
 
   it("builds archived CC PDF name for CLP and USD rows", () => {
@@ -73,7 +125,7 @@ describe("importSyncDocumentFilePath", () => {
   });
 
   it("returns null for web-paste statement sources", () => {
-    expect(resolveCcStatementPdfPath("import:web-paste|open|2026-05")).toBeNull();
+    expect(resolveCcStatementPdfPath("import:web-paste|open|2026-05", { usd: false })).toBeNull();
   });
 
   it("returns null for screenshot cartola labels", () => {

@@ -125,19 +125,20 @@ function linkGroup(parentSlug: string, childSlug: string, sort: number) {
   insertGroupChild.run(pid, cid, sort);
 }
 
-function linkAccountsByAssetGroup(parentSlug: string, assetGroupSlug: string, sortStart = 0) {
+/** Link accounts on `bucketSlug` or any leaf under it (`parent__kind` after categories removal). */
+function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortStart = 0) {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
   const rows = db
     .prepare(
-      `SELECT a.id, c.sort_order AS cso
+      `SELECT a.id
        FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = ?
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE (g.slug = ? OR g.slug LIKE ? || '__%')
+         AND a.account_kind != 'liability_view'
          AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
-       ORDER BY c.sort_order, c.id, a.name`
+       ORDER BY a.name COLLATE NOCASE`
     )
-    .all(assetGroupSlug) as { id: number; cso: number }[];
+    .all(bucketSlug, bucketSlug) as { id: number }[];
   rows.forEach((r, i) => insertAccountChild.run(pid, r.id, sortStart + i * 10));
 }
 
@@ -179,17 +180,13 @@ function rebuildRetirementNav() {
   }
 
   linkGroup("retirement", "retirement_afp_afc", 0);
-  linkAccountsByNotes("retirement_afp_afc", ["import:excel|key=afp"], 0);
-  linkAccountsByNotes("retirement_afp_afc", ["import:excel|key=afc"], 10);
+  linkAccountsByAssetGroup("retirement_afp_afc", "retirement_afp_afc", 0);
 
   linkGroup("retirement", "retirement_apv", 20);
   linkGroup("retirement_apv", "retirement_apv_a", 0);
   linkGroup("retirement_apv", "retirement_apv_b", 10);
-  linkAccountsByNotes("retirement_apv_a", [
-    "import:excel|key=apv_a_principal",
-    "import:excel|key=apv_a",
-  ]);
-  linkAccountsByNotes("retirement_apv_b", ["import:excel|key=apv_b"]);
+  linkAccountsByAssetGroup("retirement_apv_a", "retirement_apv_a", 0);
+  linkAccountsByAssetGroup("retirement_apv_b", "retirement_apv_b", 0);
 
   deleteRetiredPortfolioGroups.run();
 }
@@ -200,9 +197,9 @@ function rebuildBrokerageNav() {
   linkGroup("brokerage", "brokerage_mutual_funds", 0);
   linkGroup("brokerage", "brokerage_acciones", 10);
   linkGroup("brokerage", "brokerage_crypto", 20);
-  linkAccountsByNotes("brokerage_mutual_funds", ["import:excel|key=fintual_rn"]);
-  linkAccountsByNotes("brokerage_acciones", ["import:excel|key=spy", "import:excel|key=vea"]);
-  linkAccountsByNotes("brokerage_crypto", ["import:excel|key=bitcoin", "import:excel|key=eth"]);
+  linkAccountsByAssetGroup("brokerage_mutual_funds", "brokerage_mutual_funds", 0);
+  linkAccountsByAssetGroup("brokerage_acciones", "brokerage_acciones", 0);
+  linkAccountsByAssetGroup("brokerage_crypto", "brokerage_crypto", 0);
 }
 
 /** Idempotent full sidebar + inversiones nav tree (matches legacy layout). */

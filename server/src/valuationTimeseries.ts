@@ -41,7 +41,10 @@ import {
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { syntheticGroupColorRgbMapForValuationGroup } from "./chartColorRgb.js";
-import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
+import {
+  listFirstLevelPortfolioGroupChildren,
+  portfolioGroupColorRgbBySlug,
+} from "./portfolioGroups.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, fxRowOnOrBefore, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
@@ -53,14 +56,24 @@ import {
 } from "./valuationLatest.js";
 import {
   afpValuationRawClpForChart,
-  applyLiveAfpToAccountValueMap,
+  fintualCertValuationRawClpForChart,
   liveAfpDisplayValueClp,
+  liveFintualCertDisplayValueClp,
 } from "./accountPosition.js";
+import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
   portfolioGroupApiForValuation,
 } from "./portfolioGroupReference.js";
+import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
+import {
+  applyConsolidatedTotalToGroupTabBlock,
+  consolidatedClosingRawByDate,
+  getGroupConsolidatedMonthlyPerfForRows,
+} from "./groupMonthlyPerfConsolidation.js";
+import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
 
@@ -308,17 +321,38 @@ type MergePairOpts = {
   mutualFundsIds?: number[];
 };
 
-function categorySlugByAccountId(accountIds: number[]): Map<number, string> {
+function bucketSlugByAccountId(accountIds: number[]): Map<number, string> {
   const uniq = [...new Set(accountIds.filter((id) => id > 0))];
   const m = new Map<number, string>();
   if (uniq.length === 0) return m;
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT a.id AS id, c.slug AS slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id IN (${ph})`
+      `SELECT a.id AS id, g.slug AS slug FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id IN (${ph})`
     )
     .all(...uniq) as { id: number; slug: string }[];
   for (const r of rows) m.set(r.id, r.slug);
+  return m;
+}
+
+function accountChartMetaById(
+  accountIds: number[]
+): Map<number, { slug: string; notes: string | null; name: string }> {
+  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
+  const m = new Map<number, { slug: string; notes: string | null; name: string }>();
+  if (uniq.length === 0) return m;
+  const ph = uniq.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT a.id AS id, g.slug AS slug, a.notes AS notes, a.name AS name
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id IN (${ph})`
+    )
+    .all(...uniq) as { id: number; slug: string; notes: string | null; name: string }[];
+  for (const r of rows) m.set(r.id, { slug: r.slug, notes: r.notes, name: r.name });
   return m;
 }
 
@@ -647,13 +681,13 @@ function patchEquityLiveLastPoint(
 }
 
 function patchLiveAfpMarksOnPoints(
-  rows: { account_id: number; category_slug: string }[],
+  rows: { account_id: number; bucket_slug: string }[],
   unit: TsUnit,
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
   let next = points;
   for (const r of rows) {
-    if (r.category_slug === "afp") {
+    if (r.bucket_slug === "afp") {
       next = patchAfpLiveLastPoint(r.account_id, unit, next);
     } else if (accountUsesEquityMtm(r.account_id)) {
       next = patchEquityLiveLastPoint(r.account_id, unit, next);
@@ -689,7 +723,8 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     merge
   );
   dateStrs = expandSnapshotDatesForCryptoMtm(dateStrs, allIds);
-  const slugById = categorySlugByAccountId(allIds);
+  const slugById = bucketSlugByAccountId(allIds);
+  const chartMetaById = accountChartMetaById(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
   if (dateStrs.length > 0) {
@@ -832,6 +867,17 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       }
       if (slugById.get(aid) === "afp") {
         raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
+      }
+      const chartMeta = chartMetaById.get(aid);
+      if (chartMeta?.notes && isFintualCertV2ValuationNotes(chartMeta.notes)) {
+        raw = fintualCertValuationRawClpForChart(
+          aid,
+          chartMeta.notes,
+          chartMeta.name,
+          d,
+          raw,
+          useLiveAfpOnDate
+        );
       }
       if (propertyAccountIds.length === 1 && slugById.get(aid) === "property") {
         const fromDepto = propertyDeptoCloseByDate.get(d);
@@ -1028,118 +1074,13 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   return { accounts: topOut, points };
 }
 
-/** Asset buckets for patrimonio overview (Pasivos uses {@link groupTabValuationTotalByDate}, not valuations). */
-type RawOverviewBuckets = {
-  real_estate: number;
-  retirement: number;
-  brokerageNoMtm: number;
-  cash: number;
-  crypto: number;
-  assets_ex_liab: number;
-};
-
-let accountCategoryMetaCache: Map<
-  number,
-  { category_slug: string; group_slug: string; exclude_from_group_totals: boolean }
-> | null = null;
-
-function accountCategoryMetaById(): Map<
-  number,
-  { category_slug: string; group_slug: string; exclude_from_group_totals: boolean }
-> {
-  if (accountCategoryMetaCache) return accountCategoryMetaCache;
-  const rows = db
-    .prepare(
-      `SELECT a.id AS account_id, c.slug AS category_slug, g.slug AS group_slug,
-              a.exclude_from_group_totals AS exclude_from_group_totals
-       FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id`
-    )
-    .all() as {
-    account_id: number;
-    category_slug: string;
-    group_slug: string;
-    exclude_from_group_totals: number;
-  }[];
-  accountCategoryMetaCache = new Map(
-    rows.map((r) => [
-      r.account_id,
-      {
-        category_slug: r.category_slug,
-        group_slug: r.group_slug,
-        exclude_from_group_totals: r.exclude_from_group_totals === 1,
-      },
-    ])
-  );
-  return accountCategoryMetaCache;
-}
-
 import { liabilitiesBreakdownClpAsOf } from "./liabilitiesValuation.js";
-import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 
 export { liabilitiesBreakdownClpAsOf };
 
 function capChartDatesThroughChileToday(datesAsc: string[]): string[] {
   const today = chileCalendarTodayYmd();
   return datesAsc.filter((d) => d <= today);
-}
-
-function aggregateOverviewBucketsFromLastVal(
-  lastVal: Map<number, number>,
-  meta: Map<number, { category_slug: string; group_slug: string; exclude_from_group_totals: boolean }>
-): RawOverviewBuckets {
-  let real_estate = 0;
-  let retirement = 0;
-  let brokerageNoMtm = 0;
-  let cash = 0;
-  let crypto = 0;
-  let assets_ex_liab = 0;
-  for (const [id, clp] of lastVal) {
-    if (!Number.isFinite(clp)) continue;
-    const m = meta.get(id);
-    if (!m) continue;
-    if (m.exclude_from_group_totals) continue;
-    if (m.group_slug === "liabilities") continue;
-    const { category_slug, group_slug } = m;
-    assets_ex_liab += clp;
-    if (group_slug === "real_estate") real_estate += clp;
-    if (group_slug === "retirement") retirement += clp;
-    if (group_slug === "brokerage" && category_slug !== "bitcoin" && category_slug !== "eth") brokerageNoMtm += clp;
-    if (group_slug === "cash_eqs") cash += clp;
-    if (category_slug === "bitcoin" || category_slug === "eth" || group_slug === "crypto") crypto += clp;
-  }
-  return { real_estate, retirement, brokerageNoMtm, cash, crypto, assets_ex_liab };
-}
-
-function forwardFilledOverviewRawByDatesAsc(datesAsc: string[]): Map<string, RawOverviewBuckets> {
-  const meta = accountCategoryMetaById();
-  const events = db
-    .prepare(
-      `SELECT v.account_id, v.as_of_date, v.value_clp
-       FROM valuations v
-       JOIN accounts a ON a.id = v.account_id
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug != 'liabilities'
-       ORDER BY v.as_of_date, v.account_id`
-    )
-    .all() as { account_id: number; as_of_date: string; value_clp: number }[];
-  let ei = 0;
-  const lastVal = new Map<number, number>();
-  const out = new Map<string, RawOverviewBuckets>();
-  const trailingOverviewDate = datesAsc.length > 0 ? datesAsc[datesAsc.length - 1]! : "";
-  for (const d of datesAsc) {
-    while (ei < events.length && events[ei].as_of_date <= d) {
-      lastVal.set(events[ei].account_id, events[ei].value_clp);
-      ei += 1;
-    }
-    if (d === trailingOverviewDate) {
-      applyLiveAfpToAccountValueMap(lastVal, meta);
-    }
-    out.set(d, aggregateOverviewBucketsFromLastVal(lastVal, meta));
-  }
-  return out;
 }
 
 /** USD notionals for patrimonio chart reference lines (CLP = USD × FX on or before each date). */
@@ -1164,12 +1105,9 @@ function appendUsdMilestoneClpFields(
  * Patrimonio neto + invested (CLP) with USD milestone reference lines (always CLP; FX per date).
  * Y-axis on the client uses only the two `data` series; milestones may extend above the scale.
  */
-function buildPatrimonioUsdMilestoneChartBlock(
-  datesAsc: string[],
-  spyId: number | undefined,
-  veaId: number | undefined
+function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
+  overviewClp: Record<string, string | number | null>[]
 ): GroupTabValuationBlock {
-  const overviewClp = buildOverviewDisplayPoints(datesAsc, "clp", spyId, veaId);
   const points = overviewClp.map((row) => {
     const d = String(row.as_of_date);
     const out: Record<string, string | number | null> = {
@@ -1190,6 +1128,37 @@ function buildPatrimonioUsdMilestoneChartBlock(
     })),
   ];
   return { accounts: [], lines, points };
+}
+
+/** Overview + primary chart blocks from `portfolio_groups` net-worth buckets (one TS build). */
+function buildDashboardOverviewSlice(unit: TsUnit): {
+  accounts_ex_property: { accounts: AccountLine[]; points: Record<string, string | number | null>[] };
+  overview: { lines: ReturnType<typeof buildDashboardOverviewLines>; points: Record<string, string | number | null>[] };
+  chartDates: string[];
+} {
+  const { datesAsc, totalsBySlug } = buildDashboardPortfolioGroupTotals(unit);
+  const today = chileCalendarTodayYmd();
+  const chartDates = datesAsc.filter((d) => d <= today);
+  const accountsExProperty = buildDashboardPrimaryFromTotals(unit, chartDates, totalsBySlug);
+  const totalsBySlugClp =
+    unit === "clp" ? totalsBySlug : buildDashboardPortfolioGroupTotals("clp").totalsBySlug;
+  const overviewPoints = buildOverviewDisplayPointsFromPortfolioTotals(chartDates, unit, totalsBySlug);
+  const overviewPointsClp = buildOverviewDisplayPointsFromPortfolioTotals(
+    chartDates,
+    "clp",
+    totalsBySlugClp
+  );
+  return {
+    accounts_ex_property: accountsExProperty,
+    overview: { lines: buildDashboardOverviewLines(), points: overviewPoints },
+    chartDates,
+    overviewPointsClp,
+  };
+}
+
+/** @heavy Nav / group pages: overview chart only (skips patrimonio USD milestone block). */
+export function getDashboardOverviewBlock(unit: TsUnit) {
+  return buildDashboardOverviewSlice(unit).overview;
 }
 
 /** Overview chart `dataKey` → `portfolio_groups.slug` (cash uses `cash_eqs`). */
@@ -1224,31 +1193,23 @@ function buildDashboardOverviewLines(): NonNullable<GroupTabValuationBlock["line
   });
 }
 
-function buildOverviewDisplayPoints(
+/** Overview lines use portfolio bucket totals (monthly perf cierre, forward-filled to chart dates). */
+function buildOverviewDisplayPointsFromPortfolioTotals(
   datesAsc: string[],
   unit: TsUnit,
-  spyId: number | undefined,
-  veaId: number | undefined
+  totalsBySlug: Map<string, Map<string, number>>
 ): Record<string, string | number | null>[] {
-  const rawByD = forwardFilledOverviewRawByDatesAsc(datesAsc);
-  /** Same total as Pasivos class tab (`__group_val_total` / sidebar bucket), not forward-filled valuations. */
-  const liabilitiesByDate = forwardFillTotalsToChartDates(
-    groupTabValuationTotalByDate("liabilities", unit, datesAsc),
-    datesAsc
-  );
+  const bucketClp = (slug: string, d: string) => totalsBySlug.get(slug)?.get(d) ?? 0;
   let ovRealEstateStarted = false;
   let ovLiabilitiesStarted = false;
   return datesAsc.map((d) => {
-    const raw = rawByD.get(d)!;
-    let mtmAdd = 0;
-    if (spyId != null) mtmAdd += computeEquityMtmClp(spyId, d) ?? 0;
-    if (veaId != null) mtmAdd += computeEquityMtmClp(veaId, d) ?? 0;
-    const brokerageClp = raw.brokerageNoMtm + mtmAdd;
-    const assetsClp = raw.assets_ex_liab + mtmAdd;
-    const totalNwClp = assetsClp;
+    const reClp = bucketClp("real_estate", d);
+    const retClp = bucketClp("retirement", d);
+    const broClp = bucketClp("brokerage", d);
+    const cashClp = bucketClp("cash_eqs", d);
+    const liabClp = bucketClp("liabilities", d);
+    const totalNwClp = reClp + retClp + broClp + cashClp;
     const row: Record<string, string | number | null> = { as_of_date: d };
-    const reClp = raw.real_estate;
-    const liabClp = liabilitiesByDate.get(d) ?? 0;
     if (!ovRealEstateStarted && Math.abs(reClp) < 0.5) row.real_estate = null;
     else {
       ovRealEstateStarted = true;
@@ -1259,14 +1220,11 @@ function buildOverviewDisplayPoints(
       ovLiabilitiesStarted = true;
       row.liabilities = convertTs(liabClp, d, unit);
     }
-    row.retirement = convertTs(raw.retirement, d, unit);
-    row.brokerage = convertTs(brokerageClp, d, unit);
-    const linkedCcAtD = linkedCreditCardClpForCashCardAsOf(d);
-    const cashNetClp = raw.cash - linkedCcAtD;
-    row.cash = convertTs(cashNetClp, d, unit);
-    row.total_nw = convertTs(totalNwClp - linkedCcAtD, d, unit);
-    const investedClp = raw.retirement + brokerageClp + raw.crypto;
-    row.invested = convertTs(investedClp, d, unit);
+    row.retirement = convertTs(retClp, d, unit);
+    row.brokerage = convertTs(broClp, d, unit);
+    row.cash = convertTs(cashClp, d, unit);
+    row.total_nw = convertTs(totalNwClp, d, unit);
+    row.invested = convertTs(retClp + broClp, d, unit);
     return row;
   });
 }
@@ -1276,117 +1234,148 @@ function latestAllocationPieForAccounts(
   unit: TsUnit
 ): { name: string; account_id: number; value: number }[] {
   const out: { name: string; account_id: number; value: number }[] = [];
-  const stmtMd = db.prepare(`SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`);
   const pieIds = accounts.map((a) => a.account_id).filter((id) => id > 0);
-  const slugById = categorySlugByAccountId(pieIds);
+  const slugById = bucketSlugByAccountId(pieIds);
+  const pieMetaById = accountChartMetaById(pieIds);
   for (const a of accounts) {
     if (a.account_id <= 0) continue;
     if (!accountCountsTowardGroupTotals(a.account_id)) continue;
-    let clp: number | undefined;
-    let asOf: string | undefined;
-    if (accountUsesEquityMtm(a.account_id)) {
-      const t = equityTickerForAccount(a.account_id);
-      if (t) {
-        const md = stmtMd.get(t) as { md: string | null } | undefined;
-        if (md?.md) {
-          const c = computeEquityMtmClp(a.account_id, md.md);
-          if (c != null) {
-            clp = c;
-            asOf = md.md;
-          }
-        }
-      }
-    } else if (accountUsesCryptoMtm(a.account_id)) {
-      const t = cryptoEquityTickerForAccount(a.account_id);
-      if (t) {
-        const md = stmtMd.get(t) as { md: string | null } | undefined;
-        if (md?.md) {
-          const c = computeCryptoMtmClp(a.account_id, md.md);
-          if (c != null) {
-            clp = c;
-            asOf = md.md;
-          }
-        }
-      }
-    } else if (slugById.get(a.account_id) === "afp") {
-      const live = liveAfpDisplayValueClp(a.account_id);
-      if (live) {
-        clp = live.value_clp;
-        asOf = live.as_of_date;
-      } else {
-        const vrow = latestValuationRowOnOrBeforeChileToday(a.account_id);
-        clp = vrow?.value_clp;
-        asOf = vrow?.as_of_date;
-      }
-    } else if (slugById.get(a.account_id) === "credit_card") {
-      const v = latestCreditCardBillingBalanceTotalClpAndAsOfDate(a.account_id);
-      clp = v?.value_clp;
-      asOf = v?.as_of_date;
-    } else if (slugById.get(a.account_id) === "mortgage") {
-      const v = latestMortgageDisplayedBalance(a.account_id);
-      clp = v?.value_clp;
-      asOf = v?.as_of_date;
-    } else {
-      const vrow = latestValuationRowOnOrBeforeChileToday(a.account_id);
-      clp = vrow?.value_clp;
-      asOf = vrow?.as_of_date;
-    }
-    if (clp != null && clp > 0 && asOf) {
-      out.push({ name: a.name, account_id: a.account_id, value: convertTs(clp, asOf, unit) });
+    const meta = pieMetaById.get(a.account_id);
+    const categorySlug = slugById.get(a.account_id) ?? meta?.slug ?? "";
+    const live = syncLatestDisplayValueClp(a.account_id, categorySlug, {
+      notes: meta?.notes ?? null,
+      name: meta?.name ?? a.name,
+    });
+    if (live && live.value_clp > 0) {
+      out.push({
+        name: a.name,
+        account_id: a.account_id,
+        value: convertTs(live.value_clp, live.as_of_date, unit),
+      });
     }
   }
   return out;
 }
 
-/**
- * Dashboard “Cuentas principales”: one line per portfolio group (same totals as class-tab charts).
- * Negative `account_id` values map to `portfolio_groups.slug` in `colorRgbForSyntheticAccountLine`.
- */
-const DASHBOARD_PRIMARY_PORTFOLIO_GROUPS = [
-  { slug: "retirement_apv", chartAccountId: -9102 },
-  { slug: "retirement_afp_afc", chartAccountId: -9101 },
-  { slug: "cash_eqs", chartAccountId: -9201 },
-  { slug: "brokerage_mutual_funds", chartAccountId: -201 },
-  { slug: "brokerage_acciones", chartAccountId: -202 },
-  { slug: "brokerage_crypto", chartAccountId: -203 },
+/** Overview patrimonio chart: net-worth bucket totals (same as sidebar cards). */
+const DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS = [
+  "real_estate",
+  "retirement",
+  "brokerage",
+  "cash_eqs",
+  "liabilities",
 ] as const;
+
+/** Stable negative `account_id` for “Cuentas principales” lines (see `SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG`). */
+const DASHBOARD_PRIMARY_CHART_ACCOUNT_ID: Record<string, number> = {
+  brokerage_mutual_funds: -201,
+  brokerage_acciones: -202,
+  brokerage_crypto: -203,
+  retirement_afp_afc: -9101,
+  retirement_apv: -9102,
+  cash_eqs: -9201,
+};
+
+type DashboardPrimaryLineSpec = { slug: string; chartAccountId: number };
+
+/**
+ * “Cuentas principales”: brokerage + retirement first-level portfolio children + cash_eqs.
+ * Totals from each child’s class-tab valuation (`groupTabValuationTotalFromBuilt`).
+ */
+function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
+  const specs: DashboardPrimaryLineSpec[] = [];
+  for (const parentSlug of ["brokerage", "retirement"] as const) {
+    for (const child of listFirstLevelPortfolioGroupChildren(parentSlug)) {
+      const chartAccountId =
+        DASHBOARD_PRIMARY_CHART_ACCOUNT_ID[child.slug] ?? -10_000 - child.group_id;
+      specs.push({ slug: child.slug, chartAccountId });
+    }
+  }
+  specs.push({
+    slug: "cash_eqs",
+    chartAccountId: DASHBOARD_PRIMARY_CHART_ACCOUNT_ID.cash_eqs,
+  });
+  return specs;
+}
+
+function dashboardChartPortfolioSlugs(): string[] {
+  const primary = listDashboardPrimaryPortfolioGroupSpecs().map((s) => s.slug);
+  return [...new Set([...DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS, ...primary])];
+}
 
 const portfolioGroupLabelStmt = db.prepare(
   `SELECT label FROM portfolio_groups WHERE slug = ?`
 );
 
-function collectChartDatesForPortfolioGroupSlugs(slugs: readonly string[], unit: TsUnit): string[] {
-  const dates = new Set<string>();
-  for (const slug of slugs) {
+type BuiltGroupValuationTimeseries = ReturnType<typeof getGroupValuationTimeseries>;
+
+function buildDashboardPortfolioGroupTotals(unit: TsUnit): {
+  datesAsc: string[];
+  totalsBySlug: Map<string, Map<string, number>>;
+} {
+  const chartDates = new Set<string>();
+  const closingRawBySlug = new Map<string, Map<string, number>>();
+
+  for (const slug of dashboardChartPortfolioSlugs()) {
     const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(slug);
     const built = getGroupValuationTimeseries(groupSlug, unit, tabSubgroup);
     for (const p of built.accounts_in_group?.points ?? []) {
       const d = String(p.as_of_date ?? "");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) dates.add(d);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) chartDates.add(d);
+    }
+    if (slug !== "liabilities") {
+      const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(slug);
+      const tabRows = listAccountsForGroupTab(groupSlug, tabSubgroup);
+      const consolidated = getGroupConsolidatedMonthlyPerfForRows(tabRows, groupSlug, unit);
+      const raw = consolidatedClosingRawByDate(consolidated);
+      closingRawBySlug.set(slug, raw);
+      for (const d of raw.keys()) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) chartDates.add(d);
+      }
     }
   }
-  return capChartDatesThroughChileToday([...dates].sort());
+
+  const datesAsc = capChartDatesThroughChileToday([...chartDates].sort());
+  const totalsBySlug = new Map<string, Map<string, number>>();
+  if (datesAsc.length === 0) {
+    return { datesAsc, totalsBySlug };
+  }
+
+  const liabilitiesByDate = liabilitiesBucketTotalByDates(datesAsc, unit);
+  for (const slug of dashboardChartPortfolioSlugs()) {
+    if (slug === "liabilities") {
+      totalsBySlug.set(slug, liabilitiesByDate);
+      continue;
+    }
+    const raw = closingRawBySlug.get(slug)!;
+    totalsBySlug.set(slug, mapMonthlyClosingToChartDates(raw, datesAsc));
+  }
+  return { datesAsc, totalsBySlug };
 }
 
-/** Valuation totals per portfolio group (replaces legacy account / synthetic `*_total` lines). */
-function buildDashboardPrimaryFromPortfolioGroups(unit: TsUnit): {
-  accounts: AccountLine[];
-  points: Record<string, string | number | null>[];
-} {
-  const slugs = DASHBOARD_PRIMARY_PORTFOLIO_GROUPS.map((g) => g.slug);
-  const datesAsc = collectChartDatesForPortfolioGroupSlugs(slugs, unit);
+function liabilitiesBucketTotalByDates(datesAsc: string[], unit: TsUnit): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const d of datesAsc) {
+    const breakdown = liabilitiesBreakdownClpAsOf(d, { mortgageFromDeptoSheet: true });
+    const totalClp = breakdown.mortgage_clp + breakdown.credit_card_clp;
+    const totalUnit = convertTs(totalClp, d, unit);
+    if (Number.isFinite(totalUnit)) out.set(d, totalUnit);
+  }
+  return out;
+}
+
+function buildDashboardPrimaryFromTotals(
+  unit: TsUnit,
+  datesAsc: string[],
+  totalsBySlug: Map<string, Map<string, number>>
+): { accounts: AccountLine[]; points: Record<string, string | number | null>[] } {
   if (datesAsc.length === 0) {
     return { accounts: [], points: [] };
   }
 
-  const totalsBySlug = new Map<string, Map<string, number>>();
-  for (const spec of DASHBOARD_PRIMARY_PORTFOLIO_GROUPS) {
-    const raw = groupTabValuationTotalByDate(spec.slug, unit, datesAsc);
-    totalsBySlug.set(spec.slug, forwardFillTotalsToChartDates(raw, datesAsc));
-  }
-
+  const primarySpecs = listDashboardPrimaryPortfolioGroupSpecs();
   const accounts: AccountLine[] = [];
-  for (const spec of DASHBOARD_PRIMARY_PORTFOLIO_GROUPS) {
+  for (const spec of primarySpecs) {
     const row = portfolioGroupLabelStmt.get(spec.slug) as { label: string } | undefined;
     const dk = String(spec.chartAccountId);
     accounts.push({
@@ -1399,7 +1388,7 @@ function buildDashboardPrimaryFromPortfolioGroups(unit: TsUnit): {
 
   const points = datesAsc.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
-    for (const spec of DASHBOARD_PRIMARY_PORTFOLIO_GROUPS) {
+    for (const spec of primarySpecs) {
       const dk = String(spec.chartAccountId);
       const v = totalsBySlug.get(spec.slug)?.get(d);
       row[dk] = v != null && Number.isFinite(v) ? v : null;
@@ -1408,6 +1397,15 @@ function buildDashboardPrimaryFromPortfolioGroups(unit: TsUnit): {
   });
 
   return { accounts, points };
+}
+
+/** @heavy Net-worth portfolio groups × {@link getGroupValuationTimeseries} (dominant cost on dashboard load). */
+function buildDashboardPrimaryFromPortfolioGroups(unit: TsUnit): {
+  accounts: AccountLine[];
+  points: Record<string, string | number | null>[];
+} {
+  const { datesAsc, totalsBySlug } = buildDashboardPortfolioGroupTotals(unit);
+  return buildDashboardPrimaryFromTotals(unit, datesAsc, totalsBySlug);
 }
 
 /** Carry each source group’s last valuation on or before each chart date (month-ends may differ). */
@@ -1430,13 +1428,12 @@ function forwardFillTotalsToChartDates(
   return out;
 }
 
-function groupTabValuationTotalByDate(
-  portfolioGroupSlug: string,
-  unit: TsUnit,
-  datesAsc: string[]
+function groupTabValuationTotalFromBuilt(
+  _portfolioGroupSlug: string,
+  _unit: TsUnit,
+  datesAsc: string[],
+  built: BuiltGroupValuationTimeseries
 ): Map<string, number> {
-  const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioGroupSlug);
-  const built = getGroupValuationTimeseries(groupSlug, unit, tabSubgroup);
   const block = built.accounts_in_group;
   if (!block?.points.length) return new Map();
 
@@ -1444,10 +1441,11 @@ function groupTabValuationTotalByDate(
     .filter((a) => a.account_id > 0 && a.valueSeriesType === "data")
     .map((a) => a.dataKey);
 
+  const dateSet = new Set(datesAsc);
   const out = new Map<string, number>();
   for (const row of block.points) {
     const d = String(row.as_of_date);
-    if (!datesAsc.includes(d)) continue;
+    if (!dateSet.has(d)) continue;
     let v = row[GROUP_TAB_VAL_TOTAL];
     if (typeof v !== "number" || !Number.isFinite(v)) {
       let sum = 0;
@@ -1462,14 +1460,20 @@ function groupTabValuationTotalByDate(
       v = any ? sum : null;
     }
     if (typeof v === "number" && Number.isFinite(v)) {
-      if (portfolioGroupSlug === "cash_eqs") {
-        const cc = convertTs(linkedCreditCardClpForCashCardAsOf(d), d, unit);
-        if (Number.isFinite(cc)) v -= cc;
-      }
       out.set(d, v);
     }
   }
   return out;
+}
+
+function groupTabValuationTotalByDate(
+  portfolioGroupSlug: string,
+  unit: TsUnit,
+  datesAsc: string[]
+): Map<string, number> {
+  const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioGroupSlug);
+  const built = getGroupValuationTimeseries(groupSlug, unit, tabSubgroup);
+  return groupTabValuationTotalFromBuilt(portfolioGroupSlug, unit, datesAsc, built);
 }
 
 /** Reference overlay lines for a chart host (e.g. Pasivos root tab). */
@@ -1522,235 +1526,75 @@ function appendChartHostReferenceOverlays(
   };
 }
 
+/** @heavy Builds primary portfolio lines, overview, and USD milestone chart for the home page. */
 export function getDashboardValuationTimeseries(unit: TsUnit) {
-  const accByNote = db.prepare("SELECT id AS account_id, name FROM accounts WHERE notes = ?");
-  const spyRow = accByNote.get("import:excel|key=spy") as { account_id: number } | undefined;
-  const veaRow = accByNote.get("import:excel|key=vea") as { account_id: number } | undefined;
-  const spyId = spyRow?.account_id;
-  const veaId = veaRow?.account_id;
-
-  let accountsExProperty = buildDashboardPrimaryFromPortfolioGroups(unit);
-
-  const overviewLines = buildDashboardOverviewLines();
-
-  const today = chileCalendarTodayYmd();
-  const cappedPoints = accountsExProperty.points.filter((p) => String(p.as_of_date) <= today);
-  accountsExProperty = { ...accountsExProperty, points: cappedPoints };
-  const chartDates = capChartDatesThroughChileToday(
-    cappedPoints.map((p) => String(p.as_of_date))
-  );
-  const overviewPoints = buildOverviewDisplayPoints(chartDates, unit, spyId, veaId);
-  const patrimonio_usd_milestones_chart = buildPatrimonioUsdMilestoneChartBlock(chartDates, spyId, veaId);
+  const slice = buildDashboardOverviewSlice(unit);
+  const overviewClp = slice.overviewPointsClp;
+  const patrimonio_usd_milestones_chart =
+    buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(overviewClp);
 
   return {
     unit,
-    accounts_ex_property: accountsExProperty,
-    overview: { lines: overviewLines, points: overviewPoints },
+    accounts_ex_property: slice.accounts_ex_property,
+    overview: slice.overview,
     patrimonio_usd_milestones_chart,
   };
 }
 
-/** Same membership as the class-tab valuation chart (brokerage excludes legacy `individual_stocks`). */
-export type GroupTabAccountRow = {
-  account_id: number;
-  name: string;
-  category_slug: string;
-  category_label: string;
-  cso: number;
-  notes: string | null;
-  exclude_from_group_totals: number;
-};
+import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
+export type { GroupTabAccountRow };
 
-/** Optional slice of the Brokerage class tab (all accounts live under the brokerage asset group). */
-export type BrokerageTabSubgroup = "acciones" | "mutual_funds" | "crypto";
+import { bucketSlugForAccountId } from "./accountBucket.js";
+import {
+  leafAssetGroupIdsUnder,
+  listAccountsForBucketIds,
+  listAccountsForBucketSlug,
+} from "./assetGroupTree.js";
 
-export function brokerageSubgroupMatchesCategory(
-  categorySlug: string,
-  subgroup: string
-): boolean {
-  if (subgroup === "acciones") return categorySlug === "spy" || categorySlug === "vea";
-  if (subgroup === "mutual_funds") return categorySlug === "fintual_risky_norris";
-  if (subgroup === "crypto") return categorySlug === "bitcoin" || categorySlug === "eth";
-  return false;
-}
+import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
+export { listLiabilitiesTabAccountRows };
 
-function filterBrokerageSubgroupRows(
-  rows: GroupTabAccountRow[],
-  subgroup: string | undefined
-): GroupTabAccountRow[] {
-  if (!subgroup) return rows;
-  return rows.filter((r) => brokerageSubgroupMatchesCategory(r.category_slug, subgroup));
-}
+/** Dashboard home + `GET …/consolidated-tables?group=net_worth` (same scope as dashboard bucket cards). */
+const NET_WORTH_DASHBOARD_BUCKET_SLUGS = [
+  "real_estate",
+  "retirement",
+  "brokerage",
+  "cash_eqs",
+] as const;
 
-/** `subgroup` for `group=retirement`: afp | afc | afp_afc (both) | apv | apv_a | apv_b (APV legs split by import note key). */
-export function retirementSubgroupMatchesAccount(
-  row: { category_slug: string; notes?: string | null },
-  sub: string
-): boolean {
-  if (sub === "afp_afc") return row.category_slug === "afp" || row.category_slug === "afc";
-  if (sub === "afp") return row.category_slug === "afp";
-  if (sub === "afc") return row.category_slug === "afc";
-  if (sub === "apv") return row.category_slug === "apv";
-  if (sub === "apv_a") {
-    return (
-      row.category_slug === "apv" &&
-      row.notes === "import:excel|key=apv_a"
-    );
-  }
-  if (sub === "apv_a_principal") {
-    return row.category_slug === "apv" && row.notes === "import:excel|key=apv_a_principal";
-  }
-  if (sub === "apv_b") {
-    return row.category_slug === "apv" && row.notes === "import:excel|key=apv_b";
-  }
-  return false;
-}
-
-function filterRetirementSubgroupRows(
-  rows: GroupTabAccountRow[],
-  subgroup: string | undefined
-): GroupTabAccountRow[] {
-  if (!subgroup) return rows;
-  return rows.filter((r) => retirementSubgroupMatchesAccount(r, subgroup));
-}
-
-const LIST_TAB_ACCOUNTS_SINGLE_GROUP = `
-      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso, a.notes AS notes,
-             a.exclude_from_group_totals AS exclude_from_group_totals
-      FROM accounts a
-      JOIN categories c ON c.id = a.category_id
-      JOIN asset_groups g ON g.id = c.group_id
-      WHERE g.slug = ?
-        AND (a.notes IS NULL OR a.notes != ?)
-        AND (g.slug != 'brokerage' OR c.slug != 'individual_stocks')
-      ORDER BY c.sort_order, c.id, a.name
-    `;
-
-const LIST_TAB_ACCOUNTS_BROKERAGE_TAB = `
-      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso, a.notes AS notes,
-             a.exclude_from_group_totals AS exclude_from_group_totals
-      FROM accounts a
-      JOIN categories c ON c.id = a.category_id
-      JOIN asset_groups g ON g.id = c.group_id
-      WHERE (a.notes IS NULL OR a.notes != ?)
-        AND g.slug = 'brokerage'
-        AND c.slug != 'individual_stocks'
-      ORDER BY c.sort_order, c.id, a.name
-    `;
-
-const LIST_TAB_INVERSIONES_UNION = `
-      SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label, c.sort_order AS cso, a.notes AS notes,
-             a.exclude_from_group_totals AS exclude_from_group_totals
-      FROM accounts a
-      JOIN categories c ON c.id = a.category_id
-      JOIN asset_groups g ON g.id = c.group_id
-      WHERE (a.notes IS NULL OR a.notes != ?)
-        AND (
-          g.slug = 'retirement'
-          OR (g.slug = 'brokerage' AND c.slug != 'individual_stocks')
-        )
-      ORDER BY g.sort_order, c.sort_order, c.id, a.name
-    `;
-
-function santanderPerCardCreditCardMastersExist(): boolean {
-  const row = db
-    .prepare(
-      `SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`
-    )
-    .get() as { o: number } | undefined;
-  return row != null;
-}
-
-/** Pasivos tab: one liability_view row per operational card; drop superseded combined worldmember. */
-export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAccountRow[] {
-  const rows = db
-    .prepare(
-      `SELECT a.id AS account_id, a.name, c.slug AS category_slug, c.label AS category_label,
-              c.sort_order AS cso, a.notes AS notes, a.exclude_from_group_totals AS exclude_from_group_totals,
-              a.source_account_id AS source_account_id
-       FROM accounts a
-       JOIN categories c ON c.id = a.category_id
-       JOIN asset_groups g ON g.id = c.group_id
-       WHERE g.slug = 'liabilities'
-         AND a.account_kind = 'liability_view'
-         AND (a.notes IS NULL OR a.notes != ?)
-       ORDER BY c.sort_order, c.id, a.name`
-    )
-    .all(NOTE_STOCKS_LEGACY) as (GroupTabAccountRow & { source_account_id: number | null })[];
-
-  const perCard = santanderPerCardCreditCardMastersExist();
-  let kept = rows;
-  if (perCard) {
-    const legacyMasterIds = new Set(
-      (
-        db
-          .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=credit_card'`)
-          .all() as { id: number }[]
-      ).map((r) => r.id)
-    );
-    kept = rows.filter((r) => {
-      if (r.exclude_from_group_totals === 1) return false;
-      const src = r.source_account_id;
-      return src == null || !legacyMasterIds.has(src);
-    });
-  }
-
-  if (tabSubgroup) {
-    kept = kept.filter((r) => r.category_slug === tabSubgroup);
-  }
-
-  const seenSeries = new Set<number>();
-  const out: GroupTabAccountRow[] = [];
-  for (const r of kept) {
-    const seriesId = resolveOperationalAccountId(r.account_id);
-    if (seenSeries.has(seriesId)) continue;
-    seenSeries.add(seriesId);
-    out.push({
-      account_id: r.account_id,
-      name: r.name,
-      category_slug: r.category_slug,
-      category_label: r.category_label,
-      cso: r.cso,
-      notes: r.notes,
-      exclude_from_group_totals: r.exclude_from_group_totals,
-    });
-  }
-  return out;
+function toGroupTabAccountRows(rows: ReturnType<typeof listAccountsForBucketIds>): GroupTabAccountRow[] {
+  return rows.map((r) => ({
+    account_id: r.account_id,
+    name: r.name,
+    bucket_slug: r.bucket_slug,
+    exclude_from_group_totals: r.exclude_from_group_totals,
+  }));
 }
 
 export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
   if (groupSlug === "liabilities") {
     return listLiabilitiesTabAccountRows(tabSubgroup);
   }
-  if (groupSlug === "brokerage") {
-    const rows = db
-      .prepare(LIST_TAB_ACCOUNTS_BROKERAGE_TAB)
-      .all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
-    return filterBrokerageSubgroupRows(rows, tabSubgroup);
-  }
   if (groupSlug === "inversiones") {
-    return db.prepare(LIST_TAB_INVERSIONES_UNION).all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
+    const broIds = leafAssetGroupIdsUnder("brokerage");
+    const retIds = leafAssetGroupIdsUnder("retirement");
+    return toGroupTabAccountRows(listAccountsForBucketIds([...broIds, ...retIds], NOTE_STOCKS_LEGACY));
   }
-  if (groupSlug === "retirement") {
-    const rows = db
-      .prepare(LIST_TAB_ACCOUNTS_SINGLE_GROUP)
-      .all("retirement", NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
-    return filterRetirementSubgroupRows(rows, tabSubgroup);
+  if (groupSlug === "net_worth") {
+    const bucketIds = new Set<number>();
+    for (const slug of NET_WORTH_DASHBOARD_BUCKET_SLUGS) {
+      for (const id of leafAssetGroupIdsUnder(slug)) bucketIds.add(id);
+    }
+    return toGroupTabAccountRows(listAccountsForBucketIds([...bucketIds], NOTE_STOCKS_LEGACY));
   }
-  const rows = db
-    .prepare(LIST_TAB_ACCOUNTS_SINGLE_GROUP)
-    .all(groupSlug, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
-  return rows;
+  return toGroupTabAccountRows(
+    listAccountsForBucketSlug(groupSlug, tabSubgroup, NOTE_STOCKS_LEGACY)
+  );
 }
 
-/** Pasivos liability_view leaves: valuations/CC ledger live on `source_account_id`. */
-export function seriesAccountIdForGroupTab(row: GroupTabAccountRow, groupSlug: string): number {
-  if (groupSlug === "liabilities") {
-    return resolveOperationalAccountId(row.account_id);
-  }
-  return row.account_id;
-}
+export { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 
+/** @heavy Builds class-tab or portfolio-group valuation points for all accounts in the group. */
 export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tabSubgroup?: string) {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
 
@@ -1776,6 +1620,10 @@ export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tab
     points: patchLiveAfpMarksOnPoints(rows, unit, collapsed.points),
   };
   let accounts_in_group = appendGroupTabTotals(withLiveAfp);
+  const consolidated = getGroupConsolidatedMonthlyPerfForRows(rows, groupSlug, unit);
+  if (consolidated.length > 0) {
+    accounts_in_group = applyConsolidatedTotalToGroupTabBlock(accounts_in_group, consolidated);
+  }
   if (groupSlug === "liabilities" && !tabSubgroup && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "liabilities", unit);
   }
@@ -1783,7 +1631,7 @@ export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tab
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "cash_eqs", unit);
   }
   if (groupSlug === "real_estate") {
-    const propertyRows = rows.filter((x) => x.category_slug === "property");
+    const propertyRows = rows.filter((x) => x.bucket_slug === "property");
     if (propertyRows.length === 1 && accounts_in_group.points.length > 0) {
       const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
       if (ledger.length > 0) {
@@ -1883,13 +1731,9 @@ export function getAccountValuationTimeseries(
   ];
   let accounts = buildPointsForAccounts(top, [], unit, undefined);
 
-  const cat = db
-    .prepare(
-      `SELECT c.slug AS category_slug FROM accounts a JOIN categories c ON c.id = a.category_id WHERE a.id = ?`
-    )
-    .get(accountId) as { category_slug: string } | undefined;
+  const bucketSlug = bucketSlugForAccountId(accountId);
 
-  if (cat?.category_slug === "mortgage" && accounts.points.length > 0) {
+  if (bucketSlug === "mortgage" && accounts.points.length > 0) {
     const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
@@ -1908,7 +1752,7 @@ export function getAccountValuationTimeseries(
     }
   }
 
-  if (cat?.category_slug === "credit_card" && accounts.points.length > 0) {
+  if (bucketSlug === "credit_card" && accounts.points.length > 0) {
     if (ccInstallmentLedgerRowCount(accountId) > 0) {
       const ledgerCloses = ccLedgerStatementClosingPointsClp(accountId);
       if (ledgerCloses?.length) {
@@ -1940,7 +1784,7 @@ export function getAccountValuationTimeseries(
     }
   }
 
-  if (cat?.category_slug === "property" && accounts.points.length > 0) {
+  if (bucketSlug === "property" && accounts.points.length > 0) {
     const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
@@ -1973,7 +1817,7 @@ export function getAccountValuationTimeseries(
 
   if (accounts.points.length > 0) {
     let points = accounts.points;
-    if (cat?.category_slug === "afp") {
+    if (bucketSlug === "afp") {
       points = patchAfpLiveLastPoint(row.account_id, unit, points);
     } else if (accountUsesEquityMtm(row.account_id)) {
       points = patchEquityLiveLastPoint(row.account_id, unit, points);

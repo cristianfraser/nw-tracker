@@ -23,23 +23,20 @@ export function ensureVitestCreditCardFixtures(): void {
     .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
 
   if (!existing) {
-    const cat = db
+    const bucket = db
       .prepare(
-        `SELECT c.id FROM categories c
-         JOIN asset_groups g ON g.id = c.group_id
-         WHERE g.slug = 'credit_cards' AND c.slug = 'credit_card'
-         LIMIT 1`
+        `SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`
       )
       .get() as { id: number } | undefined;
-    if (!cat) {
+    if (!bucket) {
       throw new Error(
-        "Vitest DB seed failed: expected `credit_cards` / `credit_card` category (run migrations)."
+        "Vitest DB seed failed: expected credit_card asset group (run migrations)."
       );
     }
     db.prepare(
-      `INSERT INTO accounts (category_id, name, notes, account_kind)
+      `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
        VALUES (?, 'Vitest · santander · fixture', ?, 'master')`
-    ).run(cat.id, VITEST_SANTANDER_CC_MASTER_NOTES);
+    ).run(bucket.id, VITEST_SANTANDER_CC_MASTER_NOTES);
   }
 
   const accountId = (

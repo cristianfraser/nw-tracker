@@ -1,4 +1,5 @@
 import { upsertEquityDailySeries, EQUITY_DAILY_IMPORT_TICKERS } from "./brokerageEquityMtm.js";
+import { listNyseEquityTickersForEodSync } from "./panelAccountNotes.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
@@ -75,6 +76,21 @@ export function utcYmdAtChileWallClock(chileYmd: string, hour: number, minute: n
  * UTC day whose crypto EOD must be in `equity_daily` now, or null if not due.
  * After 23:55 Chile, due is today's UTC day; before 23:55, may carry over yesterday's window.
  */
+/**
+ * Sync-log dates for crypto EOD.
+ * - Evening window (23:55 Chile): due is today's UTC day; log the prior UTC bar and its predecessor.
+ * - Carryover before 23:55: due is the missing UTC day; log that bar and its predecessor.
+ */
+export function cryptoEodChangeLogDates(
+  dueUtcYmd: string,
+  opts?: { inSyncWindow?: boolean }
+): { oldDate: string; newDate: string } {
+  const newDate =
+    opts?.inSyncWindow === false ? dueUtcYmd : chileCalendarAddDays(dueUtcYmd, -1);
+  const oldDate = chileCalendarAddDays(newDate, -1);
+  return { oldDate, newDate };
+}
+
 export function cryptoEodDueUtcYmd(cl: ChileWallClock, now: Date = new Date()): string | null {
   if (isCryptoEodSyncWindow(cl)) return utcTodayYmd(now);
   const nowMins = cl.hour * 60 + cl.minute;
@@ -139,7 +155,7 @@ export async function syncEquityEodFromYahoo(
 export function syncStocksNyseFromYahoo(
   opts?: { dryRun?: boolean; now?: Date; force?: boolean }
 ): Promise<EquityEodSyncResult[]> {
-  return syncEquityEodFromYahoo(EQUITY_NYSE_TICKERS, opts);
+  return syncEquityEodFromYahoo(listNyseEquityTickersForEodSync(), opts);
 }
 
 export function syncCryptoEodFromYahoo(

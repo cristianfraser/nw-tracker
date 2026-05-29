@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
-import { resolveCfraserPdfsDir } from "./cfraserPaths.js";
+import { resolveCcStatementSlotDir } from "./cfraserPaths.js";
 import { db } from "./db.js";
 import {
   archivedCreditCardStatementPdfFileName,
@@ -14,7 +14,7 @@ import {
   mergeCcAccountFromParsedRows,
   replaceStatementKeysFromRecords,
 } from "./ccInstallmentLedgerMerge.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { currencyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +30,7 @@ export type CcStatementPdfImportResult = {
   account_id: number;
   /** Original upload filenames. */
   files: string[];
-  /** Basenames written under `cfraser/credit-card-statements/` (may differ after rename). */
+  /** Basenames written under `cfraser/credit-card-statements/<card>/clp|usd/` (may differ after rename). */
   saved_pdfs: string[];
   csv_rows: number;
   statements: {
@@ -69,20 +69,9 @@ function runParsePdfsInDir(pdfDir: string, outCsv: string): string[] {
   return failures;
 }
 
-function uniqueArchivePath(destDir: string, fileName: string): string {
-  const base = path.basename(fileName);
-  if (!base.toLowerCase().endsWith(".pdf")) {
-    return path.join(destDir, base);
-  }
-  const stem = base.slice(0, -4);
-  let dest = path.join(destDir, `${stem}.pdf`);
-  if (!fs.existsSync(dest)) return dest;
-  let n = 2;
-  for (;;) {
-    const cand = path.join(destDir, `${stem} (${n}).pdf`);
-    if (!fs.existsSync(cand)) return cand;
-    n += 1;
-  }
+function archivePath(destDir: string, fileName: string): string {
+  const base = path.basename(fileName).replace(/\s*\(\d+\)(?=\.pdf$)/i, "");
+  return path.join(destDir, base);
 }
 
 /**
@@ -94,8 +83,6 @@ function persistUploadedCcStatementPdfs(opts: {
   accountId: number;
   bySourcePdf: Map<string, CcStatementCsvRecord[]>;
 }): string[] {
-  const destDir = resolveCfraserPdfsDir();
-  fs.mkdirSync(destDir, { recursive: true });
   const saved: string[] = [];
 
   const updStmt = db.prepare(
@@ -115,15 +102,18 @@ function persistUploadedCcStatementPdfs(opts: {
 
     const first = rows[0]!;
     const last4 = String(first.card_last4 ?? "").trim();
+    const usd = currencyFromRow(first) === "usd";
+    const destDir = resolveCcStatementSlotDir(last4, usd);
+    fs.mkdirSync(destDir, { recursive: true });
     let archiveBase =
       archivedCreditCardStatementPdfFileName(first) ??
-      canonicalCcStatementPdfName(first.period_to, last4) ??
+      canonicalCcStatementPdfName(first.period_to, last4, { usd }) ??
       oldName;
     if (!archiveBase.toLowerCase().endsWith(".pdf")) {
       archiveBase = `${archiveBase}.pdf`;
     }
 
-    const destPath = uniqueArchivePath(destDir, archiveBase);
+    const destPath = archivePath(destDir, archiveBase);
     fs.copyFileSync(tmpSrc, destPath);
     const newBase = path.basename(destPath);
     saved.push(newBase);

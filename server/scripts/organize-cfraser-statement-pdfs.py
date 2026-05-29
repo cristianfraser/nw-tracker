@@ -2,7 +2,7 @@
 """
 Rename/move statement PDFs under cfraser/ to:
 
-  credit-card-statements/YYYY-MM-DD estado de cuenta tarjeta[ usd][ suffix].pdf
+  credit-card-statements/<card-last4>/clp|usd/YYYY-MM-DD estado de cuenta tarjeta[ usd][ suffix].pdf
   cartolas-cuenta-corriente/YYYY-MM-DD cartola cuenta corriente [tag].pdf
 
 Uses `cc-statements-parsed-all.csv` when present for credit-card statement dates;
@@ -22,6 +22,15 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from cc_statement_pdf_paths import (
+    UNREADABLE_DIR,
+    cc_dest_path,
+    clean_numbered_copy_filenames,
+    is_organized_cc_pdf_name,
+    pdf_already_in_card_slot,
+    relocate_all_cc_pdfs_to_card_slots,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
@@ -84,7 +93,7 @@ def build_santander_80_iso_groups(
             groups.setdefault(iso, []).append(p)
     if cc_dir is not None and cc_dir.is_dir():
         for iso in list(groups):
-            for existing in cc_dir.glob(f"{iso} estado de cuenta tarjeta*.pdf"):
+            for existing in cc_dir.rglob(f"{iso} estado de cuenta tarjeta*.pdf"):
                 if existing.resolve() not in {q.resolve() for q in groups[iso]}:
                     groups[iso].append(existing)
     return groups
@@ -189,22 +198,26 @@ def cc_suffix(name: str, row: dict[str, str] | None, peek_l4: str | None = None)
     return None
 
 
-def unique_dest(folder: Path, stem: str) -> Path:
-    dest = folder / f"{stem}.pdf"
-    if not dest.exists():
-        return dest
-    n = 2
-    while True:
-        cand = folder / f"{stem} ({n}).pdf"
-        if not cand.exists():
-            return cand
-        n += 1
-
-
 def is_cuenta_vista_pdf(path: Path) -> bool:
     """CUENTAMATICA cartolas must not be filed under credit-card-statements."""
     hasta, _ = peek_cuenta_vista_meta(path)
     return hasta is not None
+
+
+def is_fintual_certificado_pdf(path: Path) -> bool:
+    name = path.name.lower()
+    if "certificado" in name and "transacciones" in name:
+        return True
+    try:
+        text = subprocess.check_output(
+            ["pdftotext", str(path), "-"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        return False
+    upper = text.upper()
+    return "CERTIFICADO DE TRANSACCIONES" in upper and "FINTUAL" in upper
 
 
 def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> int:
@@ -212,9 +225,14 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> in
     sources = []
     if LEGACY_CC_DIR.is_dir():
         sources.extend(sorted(LEGACY_CC_DIR.glob("*.pdf")))
-    for p in sorted(CC_DIR.glob("*.pdf")):
-        if not RE_ORGANIZED.match(p.name):
-            sources.append(p)
+    for p in sorted(CC_DIR.rglob("*.pdf")):
+        if UNREADABLE_DIR in p.parts:
+            continue
+        if pdf_already_in_card_slot(CC_DIR, p):
+            continue
+        if is_organized_cc_pdf_name(p.name):
+            continue
+        sources.append(p)
     iso_groups_80 = build_santander_80_iso_groups(sources, CC_DIR)
     intl_by_path_80 = build_intl_flags_for_santander_80_pairs(iso_groups_80)
     moved = 0
@@ -222,6 +240,8 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> in
         if RE_ORGANIZED.match(p.name) and p.parent.resolve() == CC_DIR.resolve():
             continue
         if is_cuenta_vista_pdf(p):
+            continue
+        if is_fintual_certificado_pdf(p):
             continue
         row = by_pdf.get(p.name)
         fn_iso = iso_from_santander_80_filename(p.name)
@@ -244,9 +264,12 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> in
             )
         stem = f"{iso} {cc_doc_type(row, intl)}"
         suf = cc_suffix(p.name, row, peek_l4)
+        if not suf:
+            print(f"skip (no card id): {p}", file=sys.stderr)
+            continue
         if suf:
             stem += f" {suf}"
-        dest = unique_dest(CC_DIR, stem)
+        dest = cc_dest_path(CC_DIR, suf, intl, stem)
         if dest.exists() and p.resolve() != dest.resolve():
             print(f"skip (already exists): {dest.relative_to(CFRASER)}")
             if not dry_run:
@@ -261,6 +284,12 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> in
             shutil.move(str(p), str(dest))
         moved += 1
     return moved
+
+
+def finalize_credit_card_layout(dry_run: bool) -> tuple[int, int]:
+    cleaned = clean_numbered_copy_filenames(CC_DIR, dry_run=dry_run)
+    relocated = relocate_all_cc_pdfs_to_card_slots(CC_DIR, dry_run=dry_run)
+    return cleaned, relocated
 
 
 def peek_cuenta_vista_meta(path: Path) -> tuple[str | None, str | None]:
@@ -356,8 +385,12 @@ def main() -> int:
     # Vista PDFs in cfraser/pdfs/ must be filed before credit-card organize reads the same inbox.
     n_vista = organize_cuenta_vista(args.dry_run)
     n_cc = organize_credit_card(args.dry_run, by_pdf)
+    n_clean, n_reloc = finalize_credit_card_layout(args.dry_run)
     n_cart = organize_cartolas(args.dry_run)
-    print(f"cuenta-vista: {n_vista} file(s); credit-card: {n_cc} file(s); cartolas: {n_cart} file(s)")
+    print(
+        f"cuenta-vista: {n_vista} file(s); credit-card: {n_cc} file(s); "
+        f"cc-clean (n): {n_clean}; cc-relocate: {n_reloc}; cartolas: {n_cart} file(s)"
+    )
     return 0
 
 

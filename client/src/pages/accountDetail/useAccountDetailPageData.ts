@@ -8,7 +8,8 @@ import {
   buildLineChartTailClipOptions,
   trimLeadingInactivePoints,
 } from "../../components/charts/ValuationLineCharts";
-import { useAccountDetailBundle, useAccountMonthlyPerformance, useDashboardBundle, useSidebarNav } from "../../queries/hooks";
+import { useAccountDetailBundle, useDashboardNavContext, useSidebarNav } from "../../queries/hooks";
+import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
 import { filterAccountFlowsPersonalOnly, accountMovementsToFlowRows } from "../../accountFlows";
@@ -19,7 +20,12 @@ import {
   accountCardTitleBalanceDelta,
   cardGroupMetricsFromAccounts,
 } from "../../dashboardCardBreakdown";
-import type { AccountCcInstallmentsResponse, CheckingCartolaMonthsResponse } from "../../types";
+import type {
+  AccountCcInstallmentsResponse,
+  AccountMonthlyPerformanceResponse,
+  CheckingCartolaMonthsResponse,
+  DashboardAccountRow,
+} from "../../types";
 import { CC_EXTRA_OFFSET_LS } from "./shared";
 
 type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"]>;
@@ -35,15 +41,11 @@ export type AccountDetailPageData = {
   mortgageLedger: NonNullable<DetailBundle["mortgageLedger"]>;
   ccLedger: AccountCcInstallmentsResponse;
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
-  invNavAccounts: NonNullable<DetailBundle["invNavAccounts"]>;
+  invNavAccounts: DetailBundle["invNavAccounts"]["accounts"];
   movements: DetailBundle["movements"];
-  dash: ReturnType<typeof useDashboardBundle>["data"] extends infer D
-    ? D extends { dash: infer Dd }
-      ? Dd
-      : null
-    : null;
+  dash: ReturnType<typeof dashPickForNavStrip> | null;
   overviewPoints: Record<string, string | number | null>[];
-  monthlyPerf: ReturnType<typeof useAccountMonthlyPerformance>["data"];
+  monthlyPerf: AccountMonthlyPerformanceResponse | null;
   displayUnit: "clp" | "usd";
   metricsPeriod: "month" | "year";
   isYearly: boolean;
@@ -53,7 +55,7 @@ export type AccountDetailPageData = {
   extraCcOffsets: Record<string, number>;
   setExtraCcOffsets: (next: Record<string, number>) => void;
   valuationTailClipEndDate: string | null;
-  monthlyPerfRows: NonNullable<ReturnType<typeof useAccountMonthlyPerformance>["data"]>["monthly"];
+  monthlyPerfRows: AccountMonthlyPerformanceResponse["monthly"];
   ytdChartPoints: Record<string, string | number | null>[];
   accChartPoints: Record<string, string | number | null>[];
   valuationBlockForChart: NonNullable<DetailBundle["ts"]>["accounts"] | null;
@@ -63,13 +65,7 @@ export type AccountDetailPageData = {
   accountColorRgb: string | null;
   pageColorTarget: EntityColorTarget | undefined;
   accountChartTheme: { bar: string; areaStroke: string; areaFill: string };
-  accountDashRow: ReturnType<typeof useDashboardBundle>["data"] extends infer D
-    ? D extends { dash: { accounts: infer A } }
-      ? A extends (infer Row)[]
-        ? Row | null
-        : null
-      : null
-    : null;
+  accountDashRow: DashboardAccountRow | null;
   accountTitleDelta: ReturnType<typeof accountCardTitleBalanceDelta>;
   accountMetricsAgg: ReturnType<typeof cardGroupMetricsFromAccounts>;
   accountNavChildren: NonNullable<ReturnType<typeof findNavTreeNodeByAccountId>>["children"];
@@ -91,9 +87,10 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
     "monthly",
     deferredCcOffsets
   );
-  const { data: monthlyPerf, error: monthlyPerfError } = useAccountMonthlyPerformance(id, displayUnit);
   const { data: sidebarNav } = useSidebarNav();
-  const { data: dashBundle } = useDashboardBundle(displayUnit);
+  const { data: navCtx } = useDashboardNavContext(displayUnit);
+  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
+  const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const summary = detail?.summary ?? null;
   const movements = detail?.movements ?? [];
@@ -101,9 +98,8 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
   const depositInflows = detail?.depositInflows ?? null;
   const mortgageLedger = detail?.mortgageLedger ?? null;
   const ccLedger = detail?.ccLedger ?? null;
-  const invNavAccounts = detail?.invNavAccounts ?? null;
-  const dash = dashBundle?.dash ?? null;
-  const overviewPoints = dashBundle?.ts?.overview?.points ?? [];
+  const invNavAccounts = detail?.invNavAccounts?.accounts ?? null;
+  const monthlyPerf = detail?.monthly_performance ?? null;
 
   const err =
     detailError instanceof Error
@@ -111,12 +107,7 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
       : detailError
         ? "Failed to load"
         : null;
-  const monthlyPerfErr =
-    monthlyPerfError instanceof Error
-      ? monthlyPerfError.message
-      : monthlyPerfError
-        ? "No se pudo cargar el rendimiento mensual."
-        : null;
+  const monthlyPerfErr: string | null = null;
 
   const valuationTailClipEndDate = useMemo(() => {
     if (!ts?.accounts?.points?.length) return null;

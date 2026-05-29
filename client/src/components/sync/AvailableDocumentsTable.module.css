@@ -9,6 +9,22 @@
   vertical-align: bottom;
 }
 
+.splitAccountCol {
+  min-width: 4.5rem;
+  max-width: 7rem;
+  text-align: center;
+  vertical-align: bottom;
+}
+
+.currencySlot {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--muted, #94a3b8);
+}
+
 .accountLink {
   color: inherit;
   text-decoration: none;

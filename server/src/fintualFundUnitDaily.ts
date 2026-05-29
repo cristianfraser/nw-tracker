@@ -2,11 +2,19 @@
  * Append Fintual goal NAV polls to `fund_unit_daily` (marquee, rates charts).
  */
 import { db } from "./db.js";
+import {
+  fintualCertV2SeriesKeyFromImportNotes,
+  isFintualCertV2AccountNotes,
+} from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import { latestFundUnitRow, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
+import type { FintualCertificadoAggregateScan } from "./fintualCertificadoTransacciones.js";
+import type { GoalToImportNote } from "./fintualCertificadoTransacciones.js";
 
-/** `import:excel|key=…` → rates chart series key. */
+/** `import:excel|key=…` or `import:fintual|cert|key=…` → rates chart series key. */
 export function fundSeriesKeyFromImportNotes(importNotes: string): string | null {
+  const v2 = fintualCertV2SeriesKeyFromImportNotes(importNotes);
+  if (v2) return v2;
   const key = importNotes.match(/import:excel\|key=([\w_]+)/)?.[1];
   if (!key) return null;
   switch (key) {
@@ -17,6 +25,10 @@ export function fundSeriesKeyFromImportNotes(importNotes: string): string | null
     default:
       return null;
   }
+}
+
+export function isFintualCertV2ValuationNotes(importNotes: string | null | undefined): boolean {
+  return isFintualCertV2AccountNotes(importNotes);
 }
 
 function latestValuationClp(accountId: number, onOrBefore: string): number | null {
@@ -124,4 +136,32 @@ export function recordFintualGoalFundUnitDaily(opts: {
   });
 
   return { recorded: true, unitClp, gapDaysFilled };
+}
+
+/** Upsert historical valor cuota from certificado row hints (v2 series). */
+export function backfillFintualCertValorCuotaFromScan(
+  scan: FintualCertificadoAggregateScan,
+  matchGoal: GoalToImportNote,
+  dryRun: boolean
+): number {
+  let n = 0;
+  for (const a of scan.sortedAggregates) {
+    const importNote = matchGoal(a.goalId, a.name);
+    if (!importNote || !isFintualCertV2AccountNotes(importNote)) continue;
+    const seriesKey = fundSeriesKeyFromImportNotes(importNote);
+    const vq = a.valorCuotaHint;
+    if (!seriesKey || vq == null || !(vq > 0)) continue;
+    if (!dryRun) {
+      upsertFundUnitSpotPreservingHistory({
+        seriesKey,
+        observationDay: a.ymd,
+        unitValueClp: Math.round(vq * 10000) / 10000,
+        note: `fintual:certificado|${importNote}`,
+        carryNote: "fintual:cert-carry-forward",
+        dryRun: false,
+      });
+    }
+    n += 1;
+  }
+  return n;
 }

@@ -34,7 +34,9 @@ function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): Inst
     return [
       { kind: "eq", id: "SPY", title: "SPY" },
       { kind: "eq", id: "VEA", title: "VEA" },
-      { kind: "fund", id: "fintual_risky_norris", title: "Risky Norris (valor cuota)" },
+      { kind: "fund", id: "fintual_cert_reserva2", title: "Reserva (valor cuota)" },
+      { kind: "fund", id: "fintual_cert_risky_norris", title: "Risky Norris (valor cuota)" },
+      { kind: "fund", id: "fintual_cert_apv_a", title: "Risky Norris APV (valor cuota)" },
       { kind: "fund", id: "afp_uno_cuota_a", title: "AFP Uno — valor cuota" },
       { kind: "eq", id: "BTC-USD", title: "BTC" },
       { kind: "eq", id: "ETH-USD", title: "ETH" },
@@ -302,8 +304,9 @@ export function RatesPage() {
       </p>
       <h1>Rates</h1>
       <p className="muted">
-        FX tab: reference rates and IPC index. Instruments tab: SPY, VEA, Risky Norris and AFP Uno valor cuota, BTC,
-        and ETH — each in CLP (via USD/CLP) or native USD per the toggle.
+        FX tab: reference rates and IPC index. Instruments tab: SPY, VEA, Reserva valor cuota, Risky Norris valor
+        cuota, Risky Norris APV valor cuota, AFP Uno valor cuota, BTC, and ETH — each in CLP (via USD/CLP) or native
+        USD per the toggle.
       </p>
 
       <nav className="flow-subnav" aria-label="Rates sections">

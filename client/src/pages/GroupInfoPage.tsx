@@ -12,14 +12,15 @@ import {
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
 import type { AssetGroupSlug } from "../types";
-import { navAccountIdSet } from "../portfolioNavDashboardCards";
+import { navAccountIdSet, navChartInactiveAccountIds } from "../portfolioNavDashboardCards";
 import { findBestNavNodeForPathname } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
+import { dashPickForNavStrip } from "../queries/fetchers";
 import {
-  useDashboardBundle,
+  useDashboardNavContext,
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
@@ -33,9 +34,9 @@ export function GroupInfoPage() {
   const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
-  const { data: dashBundle } = useDashboardBundle(displayUnit);
-  const dash = dashBundle?.dash ?? null;
-  const overviewPoints = dashBundle?.ts?.overview?.points ?? [];
+  const { data: navCtx } = useDashboardNavContext(displayUnit);
+  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
+  const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const navMatchNode = useMemo(
     () => findBestNavNodeForPathname(sidebarNav?.main, pathname),
@@ -55,41 +56,26 @@ export function GroupInfoPage() {
 
   useEffect(() => {
     if (!apiGroup) return;
-    const otherUnit = displayUnit === "clp" ? "usd" : "clp";
     void prefetchPortfolioGroupBundle(queryClient, {
       group: apiGroup,
       subgroup: apiSubgroup,
       unit: displayUnit,
     });
-    void prefetchPortfolioGroupBundle(queryClient, {
-      group: apiGroup,
-      subgroup: apiSubgroup,
-      unit: otherUnit,
-    });
   }, [queryClient, apiGroup, apiSubgroup, displayUnit]);
 
-  const [invRootGrouped, setInvRootGrouped] = useState(true);
-  const [retiroGrouped, setRetiroGrouped] = useState(true);
-  const [brokerageGroupedAll, setBrokerageGroupedAll] = useState(true);
-  const [apvGrouped, setApvGrouped] = useState(true);
+  const [chartsGrouped, setChartsGrouped] = useState(true);
   const [showValuationDeposits, setShowValuationDeposits] = useState(true);
+
+  useEffect(() => {
+    setChartsGrouped(true);
+  }, [pathname]);
 
   const chartCtx = useMemo(
     () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode) : null),
     [navMatchNode]
   );
 
-  const groupedToggleOn = chartCtx
-    ? chartCtx.rootInvTodas
-      ? invRootGrouped
-      : chartCtx.apvTodas
-        ? apvGrouped
-        : chartCtx.retiroTodas
-          ? retiroGrouped
-          : chartCtx.brokerageTodas
-            ? brokerageGroupedAll
-            : false
-    : false;
+  const groupedToggleOn = chartCtx?.showGroupedToggle ? chartsGrouped : false;
 
   const accounts = data?.accounts ?? [];
 
@@ -98,9 +84,17 @@ export function GroupInfoPage() {
     return new Set(accounts.map((a) => a.id));
   }, [navMatchNode, accounts]);
 
+  const inactiveNavAccountIds = useMemo(
+    () => (navMatchNode ? navChartInactiveAccountIds(navMatchNode) : new Set<number>()),
+    [navMatchNode]
+  );
+
   const tableAccounts = useMemo(
-    () => accounts.filter((a) => chartAccountIds.has(a.id)),
-    [accounts, chartAccountIds]
+    () =>
+      accounts.filter(
+        (a) => chartAccountIds.has(a.id) && !inactiveNavAccountIds.has(a.id)
+      ),
+    [accounts, chartAccountIds, inactiveNavAccountIds]
   );
 
   const tableAccountsForPerf = useMemo(
@@ -201,13 +195,7 @@ export function GroupInfoPage() {
               <input
                 type="checkbox"
                 checked={groupedToggleOn}
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  if (chartCtx.rootInvTodas) setInvRootGrouped(v);
-                  else if (chartCtx.apvTodas) setApvGrouped(v);
-                  else if (chartCtx.retiroTodas) setRetiroGrouped(v);
-                  else setBrokerageGroupedAll(v);
-                }}
+                onChange={(e) => setChartsGrouped(e.target.checked)}
               />
               <span>Agrupado</span>
             </label>
@@ -229,6 +217,8 @@ export function GroupInfoPage() {
         dash && charts.valuationBlockForChart && accounts.length > 0
           ? {
               navNode: navMatchNode,
+              groupSlug: apiGroup,
+              subgroup: apiSubgroup,
               dash,
               overviewPoints,
               metricsPeriod,

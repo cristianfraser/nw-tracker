@@ -9,6 +9,7 @@ server/data/*.db
 server/data/*.db-journal
 server/data/*.db-wal
 server/data/*.db-shm
+server/data/snapshots/
 server/data/.fintual-api-session.json
 server/data/.fintual-goals-latest.json
 server/data/.sbif-api-gate.json

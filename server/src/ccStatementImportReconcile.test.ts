@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { db } from "./db.js";
 import {
   assertCcImportReconcilesOrThrow,
@@ -110,7 +111,9 @@ describe("ccStatementImportReconcile", () => {
       | undefined;
     if (!st?.monto_facturado) return;
 
-    const rows = buildProjectedReconcileRows(master.id, "2026-05", [], new Set());
+    const rows = buildProjectedReconcileRows(master.id, "2026-05", [], new Set(), {
+      pdfReconcileOnly: true,
+    });
     const result = reconcileBillingMonthMovements("2026-05", rows, {
       monto_facturado: st.monto_facturado,
       compras_cargos: st.compras_cargos,
@@ -126,5 +129,45 @@ describe("ccStatementImportReconcile", () => {
     if (!master) return;
 
     expect(() => assertCcImportReconcilesOrThrow(master.id, [])).not.toThrow();
+  });
+
+  it("assertCcImportReconcilesOrThrow skips web-paste-only import when closed PDF exists", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const anchor = db
+      .prepare(
+        `SELECT statement_date, period_to FROM cc_statements
+         WHERE account_id = ? AND source_pdf NOT LIKE 'import:web-paste%'
+           AND monto_facturado IS NOT NULL AND monto_facturado > 0
+         ORDER BY statement_date DESC LIMIT 1`
+      )
+      .get(master.id) as { statement_date: string; period_to: string | null } | undefined;
+    if (!anchor) return;
+
+    const closedBm = billingMonthForCcStatement({
+      statement_date: anchor.statement_date,
+      period_to: anchor.period_to,
+    });
+    if (!closedBm) return;
+
+    const incoming: CcStatementCsvRecord[] = [
+      {
+        card_group: "santander",
+        source_pdf: `import:web-paste|open|${closedBm}`,
+        statement_date: "20/05/2026",
+        transaction_date: "28/05/2026",
+        merchant: "TEST WEB PASTE ONLY",
+        amount_clp: "99999",
+        installment_flag: "false",
+        dedupe_key: `vitest-wp-only-${Date.now()}`,
+        currency: "clp",
+        parser_layout: "compact",
+      },
+    ];
+
+    expect(() => assertCcImportReconcilesOrThrow(master.id, incoming)).not.toThrow();
   });
 });

@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { ensureMortgageLiabilityView } from "./liabilityTabAccounts.js";
 
 const upsertGroup = db.prepare(`
   INSERT INTO liability_groups (parent_id, slug, label, sort_order, label_i18n_key, route_path, liability_kind)
@@ -72,18 +73,8 @@ export function seedLiabilitiesTree(): void {
     const mtgMaster = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)
       .get() as { id: number } | undefined;
+    ensureMortgageLiabilityView();
     if (mtgMaster) {
-      db.prepare(
-        `INSERT INTO accounts (category_id, name, notes, account_kind, source_account_id, color_rgb)
-         SELECT
-           (SELECT c.id FROM categories c JOIN asset_groups g ON g.id = c.group_id
-            WHERE g.slug = 'liabilities' AND c.slug = 'mortgage' LIMIT 1),
-           m.name, 'liability_view|mortgage', 'liability_view', m.id, m.color_rgb
-         FROM accounts m WHERE m.id = ?
-           AND NOT EXISTS (
-             SELECT 1 FROM accounts v WHERE v.source_account_id = m.id AND v.account_kind = 'liability_view'
-           )`
-      ).run(mtgMaster.id);
       const mtgLeaf = db
         .prepare(
           `SELECT v.id FROM accounts v

@@ -130,14 +130,18 @@ export async function getMarketTickerPayloadFromDb(): Promise<MarketTickerPayloa
         }
         continue;
       }
-      if (row.series_key === "fintual_risky_norris") {
-        const rnRow = latestFundUnitRowOnOrBefore("fintual_risky_norris", today);
+      if (
+        row.series_key === "fintual_risky_norris" ||
+        row.series_key === "fintual_cert_risky_norris"
+      ) {
+        const riskySeries = row.series_key;
+        const rnRow = latestFundUnitRowOnOrBefore(riskySeries, today);
         if (rnRow != null && Number.isFinite(rnRow.unit_value_clp) && rnRow.unit_value_clp > 0) {
           const stale = rnRow.day < today;
           const prior = stale
             ? null
             : (
-                stmtFundUnitPriorTo.get("fintual_risky_norris", rnRow.day) as
+                stmtFundUnitPriorTo.get(riskySeries, rnRow.day) as
                   | { unit_value_clp: number }
                   | undefined
               )?.unit_value_clp;
