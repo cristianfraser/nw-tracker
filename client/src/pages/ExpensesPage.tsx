@@ -3,6 +3,7 @@ import { useFlowsCreditCardExpenses } from "../queries/hooks";
 import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
 import { CreditCardGroupExpensesMonthTable } from "../components/credit-card/CreditCardGroupExpensesMonthTable";
 import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/CreditCardUnclassifiedExpensesTable";
+import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
 import { formatClp } from "../format";
 import { useTranslation } from "../i18n";
 import { aggregateGastosFromLines, computeExpensesTotalClp } from "../ccExpenseGastosAggregate";
@@ -112,6 +113,8 @@ export function ExpensesPage() {
       />
 
       <CreditCardUnclassifiedExpensesTable lines={data.lines} categories={data.categories} />
+
+      <CreditCardDepositMatchedExpensesTable lines={data.lines} categories={data.categories} />
     </>
   );
 }

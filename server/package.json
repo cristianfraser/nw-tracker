@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/src/index.js",
     "migrate": "tsx -e \"import './src/db.ts'\"",
+    "backfill:generic-transfer-unique": "tsx -e \"import { backfillGenericTransferUniquePurchases } from './src/ccExpenseGenericTransferBackfill.ts'; console.log(backfillGenericTransferUniquePurchases())\"",
+    "backfill:deposit-match-notes": "tsx -e \"import { backfillDepositMatchNotes } from './src/ccExpenseDepositMatchNotesBackfill.ts'; console.log(backfillDepositMatchNotes())\"",
     "import:excel": "tsx scripts/import-excel-history.ts",
     "import:cfraser-inbox": "tsx scripts/import-cfraser-inbox.ts",
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",

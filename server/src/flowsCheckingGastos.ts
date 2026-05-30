@@ -13,19 +13,40 @@ import {
 import { db } from "./db.js";
 import {
   getCcExpenseCategoryBySlug,
-  lineHasUniquePurchaseMode,
+  categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
   merchantRuleKeysMatchingLineMerchant,
+  registerGenericUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
   UNCLASSIFIED_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import {
+  formatAutoDepositMatchNote,
+  type DepositMatchAllocation,
+} from "./ccExpenseDepositMatchNotes.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 
 /** Asset group for cash / efectivo accounts (internal transfer targets from checking). */
 export const CHECKING_GASTOS_CASH_GROUP = "cash_eqs";
+
+export function stripCheckingBranchPrefix(description: string): string {
+  const trimmed = description.trim();
+  const m = trimmed.match(
+    /^(?:\S+\s+)*((?:Transf|Traspaso|Giro|Egreso|COMPRA|TRANSF|TRASPASO|GIRO).*)$/i
+  );
+  return m?.[1] ?? trimmed;
+}
+
+/** ATM cash withdrawals must not pair with internal deposit inflows. */
+export function checkingOutflowIsAtmWithdrawal(description: string): boolean {
+  const key = normalizeCcExpenseMerchantKey(stripCheckingBranchPrefix(description));
+  return /^GIRO\s+(?:EN\s+)?CAJERO|^GIRO\s+POR\s+CAJAS/.test(key);
+}
+
+export type { DepositMatchAllocation };
 
 const INVESTMENT_DEPOSIT_GROUPS = new Set(["real_estate", "brokerage", "retirement"]);
 
@@ -631,9 +652,9 @@ function tryAllocateSplittableInternalTransferAmount(
   deposits: readonly DepositMatchCandidate[],
   pool: Map<string, number>,
   maxTake: number
-): number {
+): { take: number; deposit: DepositMatchCandidate | null } {
   const cap = Math.round(maxTake);
-  if (cap <= 0) return 0;
+  if (cap <= 0) return { take: 0, deposit: null };
   for (const d of deposits) {
     if (!SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES.has(d.category_slug)) continue;
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
@@ -643,9 +664,9 @@ function tryAllocateSplittableInternalTransferAmount(
     if (poolRemaining == null || poolRemaining <= 0) continue;
     const take = Math.min(cap, poolRemaining);
     pool.set(key, poolRemaining - take);
-    return take;
+    return { take, deposit: d };
   }
-  return 0;
+  return { take: 0, deposit: null };
 }
 
 function tryAllocateSplittableInternalTransfer(
@@ -654,12 +675,59 @@ function tryAllocateSplittableInternalTransfer(
   pool: Map<string, number>
 ): boolean {
   const want = Math.round(Math.abs(withdrawal.amount_clp));
-  return tryAllocateSplittableInternalTransferAmount(withdrawal, deposits, pool, want) === want;
+  return tryAllocateSplittableInternalTransferAmount(withdrawal, deposits, pool, want).take === want;
+}
+
+function findExactInternalCashTransferDeposit(
+  withdrawal: { occurred_on: string; amount_clp: number },
+  deposits: readonly DepositMatchCandidate[],
+  maxDayGap: number
+): DepositMatchCandidate | null {
+  const want = Math.round(Math.abs(withdrawal.amount_clp));
+  if (want <= 0) return null;
+  for (const d of deposits) {
+    if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
+    if (d.category_slug === "cuenta_corriente") continue;
+    if (Math.round(d.amount_clp) !== want) continue;
+    if (depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) return d;
+  }
+  return null;
+}
+
+function resolveInternalCashTransferMatch(
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
+  deposits: readonly DepositMatchCandidate[],
+  splittablePool: Map<string, number>,
+  maxDayGap = 3
+): { matched: boolean; allocations: DepositMatchAllocation[] } {
+  if (checkingOutflowIsAtmWithdrawal(withdrawal.description ?? "")) {
+    return { matched: false, allocations: [] };
+  }
+  const want = Math.round(Math.abs(withdrawal.amount_clp));
+  const exact = findExactInternalCashTransferDeposit(withdrawal, deposits, maxDayGap);
+  if (exact != null) {
+    return { matched: true, allocations: [{ deposit: exact, amount_clp: want }] };
+  }
+  if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) {
+    return { matched: false, allocations: [] };
+  }
+  const { take, deposit } = tryAllocateSplittableInternalTransferAmount(
+    withdrawal,
+    deposits,
+    splittablePool,
+    want
+  );
+  if (take === want && deposit != null) {
+    return { matched: true, allocations: [{ deposit, amount_clp: take }] };
+  }
+  return { matched: false, allocations: [] };
 }
 
 export type CheckingWithdrawalDepositSplit = {
   internalClp: number;
+  internalMatchedDeposits: DepositMatchAllocation[];
   investmentDeposit: DepositMatchCandidate | null;
+  investmentMatchClp: number;
   gastosClp: number;
 };
 
@@ -677,21 +745,39 @@ export function splitCheckingWithdrawalAgainstDeposits(
   const maxDayGap = opts.maxDayGap ?? 3;
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) {
-    return { internalClp: 0, investmentDeposit: null, gastosClp: 0 };
+    return {
+      internalClp: 0,
+      internalMatchedDeposits: [],
+      investmentDeposit: null,
+      investmentMatchClp: 0,
+      gastosClp: 0,
+    };
+  }
+
+  if (checkingOutflowIsAtmWithdrawal(description)) {
+    return {
+      internalClp: 0,
+      internalMatchedDeposits: [],
+      investmentDeposit: null,
+      investmentMatchClp: 0,
+      gastosClp: want,
+    };
   }
 
   let internalClp = 0;
   let remaining = want;
+  const internalMatchedDeposits: DepositMatchAllocation[] = [];
 
-  if (withdrawalMatchesInternalCashTransferExact(withdrawal, deposits, maxDayGap)) {
-    for (const d of deposits) {
-      if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP || d.category_slug === "cuenta_corriente") continue;
-      if (Math.round(d.amount_clp) !== want) continue;
-      if (!depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) continue;
-      opts.usedDepositKeys.add(splittableDepositPoolKey(d));
-      break;
-    }
-    return { internalClp: want, investmentDeposit: null, gastosClp: 0 };
+  const exactDeposit = findExactInternalCashTransferDeposit(withdrawal, deposits, maxDayGap);
+  if (exactDeposit != null) {
+    opts.usedDepositKeys.add(splittableDepositPoolKey(exactDeposit));
+    return {
+      internalClp: want,
+      internalMatchedDeposits: [{ deposit: exactDeposit, amount_clp: want }],
+      investmentDeposit: null,
+      investmentMatchClp: 0,
+      gastosClp: 0,
+    };
   }
 
   // Month-bucket cash accounts (ahorro vivienda) only pair on exact amount — not greedy partials.
@@ -713,17 +799,21 @@ export function splitCheckingWithdrawalAgainstDeposits(
     opts.usedDepositKeys.add(key);
     remaining -= depAmt;
     internalClp += depAmt;
+    internalMatchedDeposits.push({ deposit: d, amount_clp: depAmt });
   }
 
   if (remaining > 0 && withdrawalMayUseSplittableReservaPool(description)) {
-    const fromPool = tryAllocateSplittableInternalTransferAmount(
+    const { take, deposit } = tryAllocateSplittableInternalTransferAmount(
       withdrawal,
       deposits,
       opts.splittablePool,
       remaining
     );
-    internalClp += fromPool;
-    remaining = want - internalClp;
+    if (take > 0 && deposit != null) {
+      internalClp += take;
+      internalMatchedDeposits.push({ deposit, amount_clp: take });
+      remaining = want - internalClp;
+    }
   }
 
   const investmentDeposit =
@@ -736,11 +826,19 @@ export function splitCheckingWithdrawalAgainstDeposits(
         )
       : null;
 
+  let investmentMatchClp = 0;
   if (investmentDeposit != null) {
     opts.usedDepositKeys.add(splittableDepositPoolKey(investmentDeposit));
+    investmentMatchClp = remaining;
   }
 
-  return { internalClp, investmentDeposit, gastosClp: remaining };
+  return {
+    internalClp,
+    internalMatchedDeposits,
+    investmentDeposit,
+    investmentMatchClp,
+    gastosClp: remaining,
+  };
 }
 
 /** Checking outflow that pairs with an inflow on another cash/efectivo account (internal transfer). */
@@ -750,6 +848,7 @@ export function withdrawalMatchesInternalCashTransfer(
   maxDayGap = 3,
   splittablePool?: Map<string, number>
 ): boolean {
+  if (checkingOutflowIsAtmWithdrawal(withdrawal.description ?? "")) return false;
   if (withdrawalMatchesInternalCashTransferExact(withdrawal, deposits, maxDayGap)) return true;
   if (splittablePool == null) return false;
   if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) return false;
@@ -889,6 +988,7 @@ export function buildCheckingGastosLines(opts?: {
       matchedDeposit?: DepositMatchCandidate | null;
       forceDepositsCategory?: boolean;
       purchasePortion?: "gastos" | "deposit";
+      autoMatchedDeposits?: DepositMatchAllocation[];
     } = {}
   ) => {
     if (amountClp <= 0) return;
@@ -896,6 +996,13 @@ export function buildCheckingGastosLines(opts?: {
     const purchaseKey = checkingGastosMovementPurchaseKey(
       row.id,
       opts.purchasePortion ?? "gastos"
+    );
+    registerGenericUniquePurchaseMode(
+      accountId,
+      purchaseKey,
+      merchantKey,
+      uniquePurchaseModeKeys,
+      { statementLineId: row.id }
     );
     let categorySlug = resolveCcExpenseCategorySlug({
       statementLineId: row.id,
@@ -907,18 +1014,29 @@ export function buildCheckingGastosLines(opts?: {
       uniquePurchases,
     });
     const matchedDeposit = opts.matchedDeposit ?? null;
-    if (
+    const isAutoDepositMatch =
       opts.forceDepositsCategory ||
-      (categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG && matchedDeposit != null)
-    ) {
+      (categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG && matchedDeposit != null);
+    if (isAutoDepositMatch) {
       categorySlug = DEPOSITS_CC_EXPENSE_SLUG;
     }
-    const categoryUnique = lineHasUniquePurchaseMode(
+    const categoryUnique = categoryUniqueForExpenseLine(
       accountId,
       purchaseKey,
+      merchantKey,
       uniquePurchases,
       uniquePurchaseModeKeys
     );
+    let autoDepositMatchNote: string | undefined;
+    if (isAutoDepositMatch) {
+      const allocations =
+        opts.autoMatchedDeposits ??
+        (matchedDeposit != null
+          ? [{ deposit: matchedDeposit, amount_clp: amountClp }]
+          : []);
+      const note = formatAutoDepositMatchNote(allocations);
+      if (note) autoDepositMatchNote = note;
+    }
     lines.push({
       source: "checking",
       statement_line_id: row.id,
@@ -942,6 +1060,7 @@ export function buildCheckingGastosLines(opts?: {
       ...(opts.purchasePortion === "deposit"
         ? { checking_purchase_portion: "deposit" as const }
         : {}),
+      ...(autoDepositMatchNote ? { auto_deposit_match_note: autoDepositMatchNote } : {}),
     });
   };
 
@@ -987,19 +1106,40 @@ export function buildCheckingGastosLines(opts?: {
         pushCheckingLine(row, split.internalClp, expenseMonth, description, {
           forceDepositsCategory: true,
           purchasePortion: "deposit",
+          autoMatchedDeposits: split.internalMatchedDeposits,
         });
       }
       if (split.gastosClp > 0) {
         pushCheckingLine(row, split.gastosClp, expenseMonth, description, {
           matchedDeposit: split.investmentDeposit,
+          autoMatchedDeposits:
+            split.investmentDeposit != null
+              ? [
+                  {
+                    deposit: split.investmentDeposit,
+                    amount_clp: split.investmentMatchClp,
+                  },
+                ]
+              : undefined,
         });
       }
     } else {
-      if (withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, splittablePool)) {
+      if (checkingOutflowIsAtmWithdrawal(description)) {
+        pushCheckingLine(row, Math.round(Math.abs(row.amount_clp)), expenseMonth, description);
+        continue;
+      }
+      const internalMatch = resolveInternalCashTransferMatch(
+        withdrawal,
+        deposits,
+        splittablePool,
+        3
+      );
+      if (internalMatch.matched) {
         const fullAbs = Math.round(Math.abs(row.amount_clp));
         pushCheckingLine(row, fullAbs, expenseMonth, description, {
           forceDepositsCategory: true,
           purchasePortion: "deposit",
+          autoMatchedDeposits: internalMatch.allocations,
         });
         continue;
       }
@@ -1012,6 +1152,9 @@ export function buildCheckingGastosLines(opts?: {
       if (matchedDeposit != null) {
         pushCheckingLine(row, Math.round(Math.abs(row.amount_clp)), expenseMonth, description, {
           matchedDeposit,
+          autoMatchedDeposits: [
+            { deposit: matchedDeposit, amount_clp: Math.round(Math.abs(row.amount_clp)) },
+          ],
         });
         continue;
       }
