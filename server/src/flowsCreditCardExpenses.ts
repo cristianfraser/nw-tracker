@@ -8,7 +8,7 @@ import {
 
   isCcExpenseTotalsExcludedSlug,
 
-  lineHasUniquePurchaseMode,
+  categoryUniqueForExpenseLine,
 
   listCcExpenseCategories,
 
@@ -17,6 +17,8 @@ import {
   normalizeCcExpenseMerchantKey,
 
   primaryCreditCardExpensesGroupSlug,
+
+  registerGenericUniquePurchaseMode,
 
   resolveCcExpenseCategorySlug,
 
@@ -161,6 +163,8 @@ export type FlowCcExpenseLineRowDraft = Omit<
 > & {
   /** Checking-only: distinct purchase_key for deposit-paired portion of a movement. */
   checking_purchase_portion?: "deposit";
+  /** Ephemeral auto-match note merged into purchase_notes at enrich time. */
+  auto_deposit_match_note?: string;
 };
 
 export type FlowCcExpenseMonthRow = {
@@ -676,6 +680,14 @@ export function buildCcExpenseLines(
 
     const purchaseKey = resolveCcExpensePurchaseKey(row.statement_line_id);
 
+    registerGenericUniquePurchaseMode(
+      row.account_id,
+      purchaseKey,
+      merchantKey,
+      uniquePurchaseModeKeys,
+      { statementLineId: row.statement_line_id }
+    );
+
     const categorySlug = resolveCcExpenseCategorySlug({
 
       statementLineId: row.statement_line_id,
@@ -694,16 +706,12 @@ export function buildCcExpenseLines(
 
     });
 
-    const categoryUnique = lineHasUniquePurchaseMode(
-
+    const categoryUnique = categoryUniqueForExpenseLine(
       row.account_id,
-
       purchaseKey,
-
+      merchantKey,
       uniquePurchases,
-
       uniquePurchaseModeKeys
-
     );
 
 

@@ -2,6 +2,7 @@ import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
+import { mergeAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
 export function purchaseNotesMapKey(accountId: number, purchaseKey: string): string {
@@ -78,7 +79,9 @@ export function setCcExpensePurchaseNote(opts: {
 export type FlowCcExpenseLineBeforeNotes = Omit<
   FlowCcExpenseLineRow,
   "purchase_key" | "purchase_notes" | "origin_label"
->;
+> & {
+  auto_deposit_match_note?: string;
+};
 
 export function enrichFlowLinesWithPurchaseNotes(
   lines: FlowCcExpenseLineBeforeNotes[],
@@ -91,8 +94,12 @@ export function enrichFlowLinesWithPurchaseNotes(
       accountIds.length > 0 ? accountIds : listCreditCardMasterAccountIds()
     );
   return lines.map((ln) => {
-    const purchase_key = resolvePurchaseKeyForGastosLine(ln);
-    const purchase_notes = notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ?? "";
-    return { ...ln, purchase_key, purchase_notes };
+    const { auto_deposit_match_note, ...rest } = ln;
+    const purchase_key = resolvePurchaseKeyForGastosLine(rest);
+    const dbNotes = notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ?? "";
+    const purchase_notes = auto_deposit_match_note
+      ? mergeAutoDepositMatchNote(dbNotes, auto_deposit_match_note)
+      : dbNotes;
+    return { ...rest, purchase_key, purchase_notes };
   });
 }
