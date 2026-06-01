@@ -7,8 +7,12 @@ import {
   snapshotCcExpenseCategories,
 } from "./ccExpenseCategoryPersist.js";
 import {
+  applyAdditionalCardNoCuentaForLine,
+} from "./ccAdditionalCardExpenseMatch.js";
+import {
   canonicalCcLineDedupeKeys,
   ccLineDedupeKeyExistsOnAccount,
+  patchCcLineOriginCardOnDedupeHit,
 } from "./ccExpenseLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
@@ -87,6 +91,10 @@ export type CcStatementsMergeResult = {
   linesSkippedDuplicate: number;
   /** One-shot line skipped — same purchase already in installment ledger. */
   linesSkippedInstallmentOverlap: number;
+  /** Existing lines whose origin_card_last4 was updated on dedupe skip. */
+  linesOriginCardPatched: number;
+  /** Adicional-card lines auto-tagged Único + no_cuenta during import. */
+  additionalCardCategoriesApplied: number;
   categoriesRestored: number;
 };
 
@@ -113,6 +121,30 @@ const findStmtByClose = db.prepare(
    ORDER BY id ASC
    LIMIT 1`
 );
+
+function originCardLast4FromCsvRow(
+  row: CcStatementCsvRecord,
+  primaryCardLast4: string | null
+): string | null {
+  const v = String(row.origin_card_last4 ?? "").trim();
+  if (v.length > 0) return v;
+  return primaryCardLast4;
+}
+
+function maybeApplyAdditionalCardNoCuenta(
+  accountId: number,
+  statementLineId: number,
+  originCardLast4: string | null,
+  primaryCardLast4: string | null
+): boolean {
+  const result = applyAdditionalCardNoCuentaForLine({
+    accountId,
+    statementLineId,
+    originCardLast4,
+    primaryCardLast4,
+  });
+  return result.applied;
+}
 
 export function importCcStatementsMerge(
   accountId: number,
@@ -173,12 +205,12 @@ export function importCcStatementsMerge(
       statement_id, transaction_date, posting_date, place, merchant, description_merged,
       country, amount_orig, orig_currency, amount_clp, amount_usd, installment_flag,
       nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, valor_cuota_mensual_usd,
-      interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line
+      interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line, origin_card_last4
     ) VALUES (
       @statement_id, @transaction_date, @posting_date, @place, @merchant, @description_merged,
       @country, @amount_orig, @orig_currency, @amount_clp, @amount_usd, @installment_flag,
       @nro_cuota_current, @nro_cuota_total, @valor_cuota_mensual_clp, @valor_cuota_mensual_usd,
-      @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line
+      @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4
     )
   `);
 
@@ -187,6 +219,8 @@ export function importCcStatementsMerge(
   let linesInserted = 0;
   let linesSkippedDuplicate = 0;
   let linesSkippedInstallmentOverlap = 0;
+  let linesOriginCardPatched = 0;
+  let additionalCardCategoriesApplied = 0;
 
   for (const [key, rows] of byStmt) {
     const first = rows[0]!;
@@ -276,6 +310,21 @@ export function importCcStatementsMerge(
         }
         for (const k of dedupeKeys) seenDedupeInBatch.add(k);
         if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys)) {
+          const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
+          const patch = patchCcLineOriginCardOnDedupeHit(accountId, dedupeKeys, originCardLast4);
+          if (patch.patched) linesOriginCardPatched += 1;
+          if (patch.lineId != null) {
+            if (
+              maybeApplyAdditionalCardNoCuenta(
+                accountId,
+                patch.lineId,
+                originCardLast4,
+                cardLast4
+              )
+            ) {
+              additionalCardCategoriesApplied += 1;
+            }
+          }
           linesSkippedDuplicate += 1;
           continue;
         }
@@ -298,7 +347,9 @@ export function importCcStatementsMerge(
         }
       }
 
-      insLine.run({
+      const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
+
+      const ins = insLine.run({
         statement_id: statementId,
         transaction_date: String(row.transaction_date ?? "").trim() || null,
         posting_date: String(row.posting_date ?? "").trim() || null,
@@ -320,7 +371,14 @@ export function importCcStatementsMerge(
         dedupe_key: dedupeKeys[dedupeKeys.length - 1] ?? null,
         parser_row_id: String(row.row_id ?? "").trim() || null,
         raw_line: String(row.raw_line ?? "").trim() || null,
+        origin_card_last4: originCardLast4,
       });
+      const statementLineId = Number(ins.lastInsertRowid);
+      if (
+        maybeApplyAdditionalCardNoCuenta(accountId, statementLineId, originCardLast4, cardLast4)
+      ) {
+        additionalCardCategoriesApplied += 1;
+      }
       lineCount += 1;
       linesInserted += 1;
     }
@@ -334,6 +392,8 @@ export function importCcStatementsMerge(
     linesInserted,
     linesSkippedDuplicate,
     linesSkippedInstallmentOverlap,
+    linesOriginCardPatched,
+    additionalCardCategoriesApplied,
     categoriesRestored: restored.lineCategories + restored.uniquePurchases,
   };
 }

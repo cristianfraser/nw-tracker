@@ -16,17 +16,28 @@ import {
 
   normalizeCcExpenseMerchantKey,
 
+  NO_CUENTA_CC_EXPENSE_SLUG,
+
   primaryCreditCardExpensesGroupSlug,
 
   registerGenericUniquePurchaseMode,
+
+  registerUniquePurchaseMode,
 
   resolveCcExpenseCategorySlug,
 
   resolveCcExpensePurchaseKey,
 
+  getCcExpenseCategoryBySlug,
+
   type CcExpenseCategoryRow,
 
 } from "./ccExpenseCategories.js";
+import {
+  applyAdditionalCardNoCuentaForLine,
+  formatAutoAdditionalCardNote,
+  isAdditionalCardExpenseLine,
+} from "./ccAdditionalCardExpenseMatch.js";
 
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 
@@ -70,7 +81,7 @@ import {
 export type { CcExpenseLineRole, CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 
-import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 
 
 
@@ -155,6 +166,12 @@ export type FlowCcExpenseLineRow = {
   /** Display label for origin column (card last4 or account name). */
   origin_label: string;
 
+  /** Physical card that made the charge (CLP statement line); null = primary / unknown. */
+  origin_card_last4: string | null;
+
+  /** Statement billing card (`cc_statements.card_last4`); null for checking / synthetic lines. */
+  primary_card_last4: string | null;
+
 };
 
 export type FlowCcExpenseLineRowDraft = Omit<
@@ -165,6 +182,7 @@ export type FlowCcExpenseLineRowDraft = Omit<
   checking_purchase_portion?: "deposit";
   /** Ephemeral auto-match note merged into purchase_notes at enrich time. */
   auto_deposit_match_note?: string;
+  auto_additional_card_note?: string;
 };
 
 export type FlowCcExpenseMonthRow = {
@@ -503,6 +521,8 @@ export function buildCcExpenseLines(
 
 
 
+  const userClearedUniqueAtLoad = new Set(uniquePurchaseModeKeys);
+
   const ph = accountIds.map(() => "?").join(",");
 
   const dbLines = db
@@ -511,9 +531,9 @@ export function buildCcExpenseLines(
 
       `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date,
 
-              s.currency AS statement_currency,
+              s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
 
-              l.transaction_date, l.posting_date,
+              l.transaction_date, l.posting_date, l.origin_card_last4,
 
               l.amount_clp, l.amount_usd, l.merchant, l.installment_flag,
 
@@ -554,6 +574,10 @@ export function buildCcExpenseLines(
     statement_date: string;
 
     statement_currency: string;
+
+    primary_card_last4: string | null;
+
+    origin_card_last4: string | null;
 
     transaction_date: string | null;
 
@@ -706,13 +730,43 @@ export function buildCcExpenseLines(
 
     });
 
-    const categoryUnique = categoryUniqueForExpenseLine(
+    let resolvedCategorySlug = categorySlug;
+    let categoryUnique = categoryUniqueForExpenseLine(
       row.account_id,
       purchaseKey,
       merchantKey,
       uniquePurchases,
       uniquePurchaseModeKeys
     );
+    let autoAdditionalCardNote: string | undefined;
+
+    const purchaseMapKey = `${row.account_id}|${purchaseKey}`;
+    const userClearedUnique = userClearedUniqueAtLoad.has(purchaseMapKey);
+    if (
+      isAdditionalCardExpenseLine(row.origin_card_last4, row.primary_card_last4) &&
+      !userClearedUnique
+    ) {
+      applyAdditionalCardNoCuentaForLine({
+        accountId: row.account_id,
+        statementLineId: row.statement_line_id,
+        originCardLast4: row.origin_card_last4,
+        primaryCardLast4: row.primary_card_last4,
+        skipIfUserCleared: false,
+      });
+      const noCuenta = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG);
+      registerUniquePurchaseMode(
+        row.account_id,
+        purchaseKey,
+        noCuenta?.id ?? null,
+        uniquePurchaseModeKeys
+      );
+      resolvedCategorySlug = NO_CUENTA_CC_EXPENSE_SLUG;
+      categoryUnique = true;
+      const origin = String(row.origin_card_last4 ?? "").trim();
+      const primary = String(row.primary_card_last4 ?? "").trim();
+      const note = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
+      if (note) autoAdditionalCardNote = note;
+    }
 
 
 
@@ -752,9 +806,15 @@ export function buildCcExpenseLines(
 
       merchant_key: merchantKey,
 
-      category_slug: categorySlug,
+      category_slug: resolvedCategorySlug,
 
       category_unique: categoryUnique,
+
+      origin_card_last4: row.origin_card_last4,
+
+      primary_card_last4: row.primary_card_last4,
+
+      ...(autoAdditionalCardNote ? { auto_additional_card_note: autoAdditionalCardNote } : {}),
 
     });
 
@@ -775,17 +835,24 @@ export function buildCcExpenseLines(
 }
 
 function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
-  const checkingId = cartolaCashAccountIdOptional("cuenta_corriente");
-  if (checkingId == null) return [];
+  const accountIds = listMovementBalanceCashAccountIds();
+  if (accountIds.length === 0) return [];
 
   const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
-    loadCcExpenseCategoryMaps([checkingId]);
+    loadCcExpenseCategoryMaps(accountIds);
 
-  return buildCheckingGastosLines({
-    merchantRules,
-    uniquePurchases,
-    uniquePurchaseModeKeys,
-  });
+  const lines: FlowCcExpenseLineRowDraft[] = [];
+  for (const accountId of accountIds) {
+    lines.push(
+      ...buildCheckingGastosLines({
+        accountId,
+        merchantRules,
+        uniquePurchases,
+        uniquePurchaseModeKeys,
+      })
+    );
+  }
+  return lines;
 }
 
 export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPayload {

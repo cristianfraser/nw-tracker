@@ -1,8 +1,10 @@
 import { db } from "./db.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { mergeAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
+import { mergeAutoAdditionalCardNote } from "./ccAdditionalCardExpenseMatch.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
 export function purchaseNotesMapKey(accountId: number, purchaseKey: string): string {
@@ -11,11 +13,7 @@ export function purchaseNotesMapKey(accountId: number, purchaseKey: string): str
 
 function accountAllowedForExpensePurchaseNotes(accountId: number): boolean {
   if (listCreditCardMasterAccountIds().includes(accountId)) return true;
-  try {
-    return accountId === checkingAccountId();
-  } catch {
-    return false;
-  }
+  return listMovementBalanceCashAccountIds().includes(accountId);
 }
 
 export function loadCcExpensePurchaseNotes(accountIds: number[]): Map<string, string> {
@@ -81,6 +79,7 @@ export type FlowCcExpenseLineBeforeNotes = Omit<
   "purchase_key" | "purchase_notes" | "origin_label"
 > & {
   auto_deposit_match_note?: string;
+  auto_additional_card_note?: string;
 };
 
 export function enrichFlowLinesWithPurchaseNotes(
@@ -94,12 +93,29 @@ export function enrichFlowLinesWithPurchaseNotes(
       accountIds.length > 0 ? accountIds : listCreditCardMasterAccountIds()
     );
   return lines.map((ln) => {
-    const { auto_deposit_match_note, ...rest } = ln;
+    const { auto_deposit_match_note, auto_additional_card_note, ...rest } = ln;
     const purchase_key = resolvePurchaseKeyForGastosLine(rest);
-    const dbNotes = notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ?? "";
-    const purchase_notes = auto_deposit_match_note
-      ? mergeAutoDepositMatchNote(dbNotes, auto_deposit_match_note)
-      : dbNotes;
+    const dbNotes =
+      notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ??
+      (purchase_key.startsWith("checking-cartola:") && ln.statement_line_id > 0
+        ? notes.get(
+            purchaseNotesMapKey(
+              ln.account_id,
+              legacyCheckingGastosPurchaseKey(
+                ln.statement_line_id,
+                rest.checking_purchase_portion === "deposit" ? "deposit" : "gastos"
+              )
+            )
+          )
+        : undefined) ??
+      "";
+    let purchase_notes = dbNotes;
+    if (auto_deposit_match_note) {
+      purchase_notes = mergeAutoDepositMatchNote(purchase_notes, auto_deposit_match_note);
+    }
+    if (auto_additional_card_note) {
+      purchase_notes = mergeAutoAdditionalCardNote(purchase_notes, auto_additional_card_note);
+    }
     return { ...rest, purchase_key, purchase_notes };
   });
 }
