@@ -48,7 +48,7 @@ async function main() {
   console.log("buildDashboardPrimaryFromPortfolioGroups, getGroupValuationTimeseries,");
   console.log("getAccountMonthlyPerformance, getGroupMonthlyPerformanceSeries,");
   console.log("buildDashboardAccountRows, buildFlowsDepositsPayload.");
-  console.log("\nServer: DEBUG_PERF=1 logs [heavy] spans per HTTP request.");
+  console.log("\nServer: DEBUG_VERBOSE=1 or DEBUG_PERF=1 logs [heavy] spans per HTTP request.");
 }
 
 main().catch((e) => {

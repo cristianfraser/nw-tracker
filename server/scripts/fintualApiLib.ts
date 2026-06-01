@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fetchOut } from "../src/httpOut.js";
 import { chileWallClockNow, type ChileWallClock } from "../src/chileDate.js";
 import { fintualValuationAsOfYmd } from "../src/fintualSyncPolicy.js";
 
@@ -64,7 +65,7 @@ export async function fetchFintualWithBackoff(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= FINTUAL_MAX_RETRIES; attempt++) {
     try {
-      const res = await fetch(url, init);
+      const res = await fetchOut(`fintual:${label}`, url, init);
       if (!shouldRetryStatus(res.status) || attempt === FINTUAL_MAX_RETRIES) return res;
       let body: unknown = null;
       try {

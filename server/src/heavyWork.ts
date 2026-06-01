@@ -2,6 +2,8 @@
  * Labels for expensive server work (dashboard / group loads).
  * Use with {@link timeHeavy} / {@link timeHeavyAsync} when `DEBUG_PERF=1` or `profile-dashboard` script.
  */
+import { logHeavyEnabled, logServer } from "./serverLog.js";
+
 export const HeavyWork = {
   dashboardAccountRows: "dashboard.account_rows",
   dashboardPayload: "dashboard.payload",
@@ -18,16 +20,13 @@ export const HeavyWork = {
 
 export type HeavyWorkLabel = (typeof HeavyWork)[keyof typeof HeavyWork];
 
-const perfEnabled = (): boolean =>
-  process.env.DEBUG_PERF === "1" || process.env.DEBUG_PERF === "true";
-
 export function timeHeavy<T>(label: HeavyWorkLabel | string, fn: () => T): T {
-  if (!perfEnabled()) return fn();
+  if (!logHeavyEnabled()) return fn();
   const t0 = performance.now();
   try {
     return fn();
   } finally {
-    console.error(`[heavy] ${label} ${(performance.now() - t0).toFixed(1)}ms`);
+    logServer("heavy", `${label} ${(performance.now() - t0).toFixed(1)}ms`);
   }
 }
 
@@ -35,11 +34,11 @@ export async function timeHeavyAsync<T>(
   label: HeavyWorkLabel | string,
   fn: () => Promise<T>
 ): Promise<T> {
-  if (!perfEnabled()) return fn();
+  if (!logHeavyEnabled()) return fn();
   const t0 = performance.now();
   try {
     return await fn();
   } finally {
-    console.error(`[heavy] ${label} ${(performance.now() - t0).toFixed(1)}ms`);
+    logServer("heavy", `${label} ${(performance.now() - t0).toFixed(1)}ms`);
   }
 }

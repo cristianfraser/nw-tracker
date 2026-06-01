@@ -3,6 +3,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
 
 const require = createRequire(import.meta.url);
 
@@ -30,12 +31,12 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+const dbInternal = new Database(dbPath);
+dbInternal.pragma("journal_mode = WAL");
+dbInternal.pragma("foreign_keys = ON");
 
 export function initSchema() {
-  db.exec(`
+  dbInternal.exec(`
     CREATE TABLE IF NOT EXISTS asset_groups (
       id INTEGER PRIMARY KEY,
       parent_id INTEGER REFERENCES asset_groups(id) ON DELETE RESTRICT,
@@ -250,7 +251,7 @@ export function initSchema() {
     );
   `);
 
-  const count = db.prepare("SELECT COUNT(*) AS c FROM asset_groups").get() as { c: number };
+  const count = dbInternal.prepare("SELECT COUNT(*) AS c FROM asset_groups").get() as { c: number };
   if (count.c === 0) {
     seedReferenceData();
   }
@@ -393,12 +394,12 @@ function seedReferenceData() {
     },
   ];
 
-  const insG = db.prepare(
+  const insG = dbInternal.prepare(
     "INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (@slug, @label, @sort, @parent_id)"
   );
   const slugToId = new Map<string, number>();
 
-  const tx = db.transaction(() => {
+  const tx = dbInternal.transaction(() => {
     for (const g of groups) {
       const parentId =
         g.parent_slug != null ? (slugToId.get(g.parent_slug) ?? null) : null;
@@ -442,7 +443,7 @@ function splitMigrationStatements(sql: string): string[] {
 function execMigrationSql(sql: string): void {
   for (const stmt of splitMigrationStatements(sql)) {
     try {
-      db.exec(stmt);
+      dbInternal.exec(stmt);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // `initSchema()` already reflects many later migrations; re-applying ALTER ADD on a fresh DB is a no-op.
@@ -462,7 +463,7 @@ export function runMigrations() {
     .readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  const appliedRows = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
+  const appliedRows = dbInternal.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
   const done = new Set(appliedRows.map((r) => r.id));
   let appliedCount = 0;
 
@@ -472,9 +473,9 @@ export function runMigrations() {
     }
     const full = path.join(migrationsDir, file);
     const sql = fs.readFileSync(full, "utf8");
-    db.transaction(() => {
+    dbInternal.transaction(() => {
       execMigrationSql(sql);
-      db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
+      dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     })();
     if (file === GENERIC_TRANSFER_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
       const { backfillGenericTransferUniquePurchases } = require(
@@ -520,21 +521,21 @@ const MOVEMENTS_SIGNED_MIGRATION_ID = "008_movements_signed_amount.sql";
 
 /** Legacy rows used kind + strictly positive amount; new model is signed amount_clp (withdrawal = negative). */
 function migrateMovementsSignedIfNeeded() {
-  const already = db.prepare("SELECT 1 FROM schema_migrations WHERE id = ?").get(MOVEMENTS_SIGNED_MIGRATION_ID) as
+  const already = dbInternal.prepare("SELECT 1 FROM schema_migrations WHERE id = ?").get(MOVEMENTS_SIGNED_MIGRATION_ID) as
     | { 1: number }
     | undefined;
   if (already) return;
 
-  const cols = db.prepare("PRAGMA table_info(movements)").all() as { name: string }[];
+  const cols = dbInternal.prepare("PRAGMA table_info(movements)").all() as { name: string }[];
   const hasKind = cols.some((c) => c.name === "kind");
 
   if (!hasKind) {
-    db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
+    dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
     return;
   }
 
-  const tx = db.transaction(() => {
-    db.exec(`
+  const tx = dbInternal.transaction(() => {
+    dbInternal.exec(`
       CREATE TABLE movements__signed (
         id INTEGER PRIMARY KEY,
         account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -556,7 +557,7 @@ function migrateMovementsSignedIfNeeded() {
       DROP TABLE movements;
       ALTER TABLE movements__signed RENAME TO movements;
     `);
-    db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
+    dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
   });
   tx();
   console.log(`migration applied: ${MOVEMENTS_SIGNED_MIGRATION_ID} (movements → signed amount_clp)`);
@@ -565,5 +566,7 @@ function migrateMovementsSignedIfNeeded() {
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();
+
+const db = wrapDatabaseForVerboseLog(dbInternal);
 
 export { db };
