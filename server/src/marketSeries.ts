@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { buildFxCoverage, type FxCoverage } from "./fxCoverage.js";
 
 const MAX_POINTS = 25_000;
 
@@ -55,6 +56,10 @@ export function getMarketSeriesPayload(): {
   }[];
   equity_tickers: string[];
   fund_series_keys: string[];
+  /** Direct `fx_daily` rows for Rates FX charts (one point per observation). */
+  fx_usd_clp: { date: string; value: number }[];
+  eur_clp: { date: string; value: number }[];
+  fx_coverage: FxCoverage;
 } {
   type FxR = { date: string; clp_per_usd: number };
   type UfR = { date: string; clp_per_uf: number };
@@ -245,5 +250,12 @@ export function getMarketSeriesPayload(): {
     });
   }
 
-  return { points, equity_tickers: equityTickers, fund_series_keys: fundKeys };
+  return {
+    points,
+    equity_tickers: equityTickers,
+    fund_series_keys: fundKeys,
+    fx_usd_clp: fxRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
+    eur_clp: eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur })),
+    fx_coverage: buildFxCoverage(),
+  };
 }

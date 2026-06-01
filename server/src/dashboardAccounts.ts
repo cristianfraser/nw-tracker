@@ -23,13 +23,14 @@ import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
+import { buildFxCoverage } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
   getDashboardOverviewBlock,
   liabilitiesBreakdownClpAsOf,
   type TsUnit,
 } from "./valuationTimeseries.js";
-import { appendLinkedCreditCardDashboardRows } from "./cashEqsBucketNet.js";
+import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
@@ -205,6 +206,10 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
         includeUsd && current_value_clp != null && fxRow != null
           ? current_value_clp / fxRow.clp_per_usd
           : null;
+      const fx_missing =
+        includeUsd &&
+        ((current_value_clp != null && fxRow == null) ||
+          (deposits !== 0 && deposits_usd == null));
       const rowBeforeReconcile = {
         account_id: a.id,
         name: a.name,
@@ -234,6 +239,7 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
         current_value_usd,
         fx_clp_per_usd: fxRow?.clp_per_usd ?? null,
         fx_date_used: fxRow?.date ?? null,
+        fx_missing: includeUsd ? fx_missing : undefined,
         notes: a.notes ?? null,
         exclude_from_group_totals: a.exclude_from_group_totals,
         chart_inactive: accountChartInactive(a.id),
@@ -243,7 +249,7 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
       return { ...rowBeforeReconcile, ...reconciled };
     })
   );
-  return appendLinkedCreditCardDashboardRows(
+  return applyCashSavingsShortfallToDashboardRows(
     rowsBuilt,
     chileCalendarTodayYmd(),
     includeUsd
@@ -284,5 +290,6 @@ export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     overview: ts,
+    fx_coverage: includeUsd ? buildFxCoverage() : null,
   };
 }

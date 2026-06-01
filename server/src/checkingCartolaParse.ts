@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import XLSX from "xlsx";
+import { assertCheckingCartolaSaldoIdentity } from "./checkingCartolaSaldoValidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 
 const SPANISH_MONTH: Record<string, number> = {
@@ -59,6 +60,8 @@ export type ParsedCheckingCartola = {
   period_to: string | null;
   saldo_inicial_clp: number | null;
   saldo_final_clp: number | null;
+  /** Per calendar month end reference from Saldo Dia (multi-month vista PDFs). */
+  month_saldo_final_clp?: Record<string, number>;
   movements: ParsedCheckingMovement[];
   skipped: CartolaSkippedRow[];
   notes: CartolaParseNote[];
@@ -90,6 +93,41 @@ export function parseCartolaAmount(raw: string): number | null {
 export function cartolaFileNameDatePrefix(year: number, month1to12: number): string {
   const lastDay = new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
   return `${year}-${String(month1to12).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
+const SPANISH_MONTH_LABEL: Record<number, string> = {
+  1: "Enero",
+  2: "Febrero",
+  3: "Marzo",
+  4: "Abril",
+  5: "Mayo",
+  6: "Junio",
+  7: "Julio",
+  8: "Agosto",
+  9: "Septiembre",
+  10: "Octubre",
+  11: "Noviembre",
+  12: "Diciembre",
+};
+
+export function isCheckingCartolaXlsxFileName(fileName: string): boolean {
+  if (!fileName.toLowerCase().endsWith(".xlsx")) return false;
+  if (periodMonthFromCartolaFileName(fileName)) return true;
+  return /cartola/i.test(fileName) && /corriente/i.test(fileName);
+}
+
+/** Canonical archived name under `cfraser/excels/cuenta corriente/`. */
+export function canonicalCheckingCartolaXlsxFileName(fileName: string): string | null {
+  const periodMonth = periodMonthFromCartolaFileName(fileName);
+  if (!periodMonth) return null;
+  const [ys, ms] = periodMonth.split("-");
+  const year = Number(ys);
+  const month = Number(ms);
+  if (!Number.isFinite(year) || month < 1 || month > 12) return null;
+  const label = SPANISH_MONTH_LABEL[month];
+  if (!label) return null;
+  const prefix = cartolaFileNameDatePrefix(year, month);
+  return `${prefix} Cartola de cuenta Corriente - ${label} ${year}.xlsx`;
 }
 
 export function periodMonthFromCartolaFileName(fileName: string): string | null {
@@ -215,6 +253,23 @@ export function movementNote(
   parts.push(`amt:${opts.amountClp}`);
   parts.push(`idx:${opts.cartolaIndex}`);
   return parts.join("|");
+}
+
+/** Stable expense category key from cartola movement note (survives movement id changes on re-import). */
+export function checkingCartolaStablePurchaseKey(
+  accountId: number,
+  note: string | null | undefined,
+  portion: "gastos" | "deposit" = "gastos"
+): string | null {
+  const n = String(note ?? "").trim();
+  if (!n.startsWith("import:cartola|")) return null;
+  const periodMonth = n.split("|")[1]?.trim();
+  const occurredOn = n.match(/\|on:([^|]+)/)?.[1]?.trim();
+  const amountClp = n.match(/\|amt:([^|]+)/)?.[1]?.trim();
+  const cartolaIndex = n.match(/\|idx:(\d+)/)?.[1]?.trim();
+  if (!periodMonth || !occurredOn || amountClp == null || cartolaIndex == null) return null;
+  const base = `checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:${cartolaIndex}`;
+  return portion === "deposit" ? `${base}:deposit` : base;
 }
 
 export function cartolaMovementMatchesImportedRow(
@@ -479,7 +534,7 @@ export function parseCheckingCartolaWorkbook(
     });
   }
 
-  return {
+  const result: ParsedCheckingCartola = {
     source_file: sourceFile,
     period_month: periodMonth,
     period_from: periodFrom,
@@ -490,6 +545,16 @@ export function parseCheckingCartolaWorkbook(
     skipped,
     notes,
   };
+
+  const balanceMismatch = skipped.some((s) => s.reason === "balance_mismatch");
+  if (balanceMismatch) {
+    const detail = skipped.find((s) => s.reason === "balance_mismatch")?.detail ?? "balance mismatch";
+    throw new Error(`${sourceFile}: ${detail}`);
+  }
+
+  assertCheckingCartolaSaldoIdentity(result);
+
+  return result;
 }
 
 export function parseCheckingCartolaFile(filePath: string): ParsedCheckingCartola {

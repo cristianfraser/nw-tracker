@@ -6,7 +6,7 @@ Usage (repo root):
   npm run repair:cc-pdfs-qpdf
   python3 server/scripts/repair-cc-statement-pdfs-qpdf.py [--dir=...] [--dry-run]
 
-Also runs automatically before parse in `import:cfraser-inbox` (skip with --skip-qpdf-repair).
+Also runs automatically before organize in `import:cfraser-inbox` (inbox only; skip with --skip-qpdf-repair).
 """
 from __future__ import annotations
 
@@ -26,11 +26,17 @@ from cc_pdf_qpdf import (  # noqa: E402
     peek_pdf_text,
     qpdf_available,
     repair_unreadable_pdfs_in_dir,
-    statement_pdf_password,
 )
 
 DEFAULT_DIR = REPO_ROOT / "cfraser" / "credit-card-statements"
-INBOX_DIR = REPO_ROOT / "cfraser" / "pdfs"
+INBOX_DIR = REPO_ROOT / "cfraser" / "inbox"
+LEGACY_INBOX_DIR = REPO_ROOT / "cfraser" / "pdfs"
+
+
+def resolve_inbox_dir() -> Path:
+    if INBOX_DIR.is_dir():
+        return INBOX_DIR
+    return LEGACY_INBOX_DIR
 
 
 def main() -> int:
@@ -44,7 +50,7 @@ def main() -> int:
     parser.add_argument(
         "--inbox",
         action="store_true",
-        help="Also scan cfraser/pdfs/ for Santander 80_* downloads",
+        help="Also scan cfraser/inbox/ for Santander 80_* downloads",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -55,7 +61,7 @@ def main() -> int:
 
     dirs = [Path(args.dir)]
     if args.inbox:
-        dirs.append(INBOX_DIR)
+        dirs.append(resolve_inbox_dir())
 
     exit_code = 0
     for directory in dirs:
@@ -76,7 +82,7 @@ def main() -> int:
                 print(f"# would repair\t{path.name}\t(unreadable, {enc})")
             continue
 
-        notes = repair_unreadable_pdfs_in_dir(directory, password=statement_pdf_password())
+        notes = repair_unreadable_pdfs_in_dir(directory)
         for name, note in notes:
             print(f"# qpdf\t{name}\t{note}")
             if "still unreadable" in note or "repair failed" in note:

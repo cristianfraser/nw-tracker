@@ -1,70 +1,122 @@
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
+import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import {
   creditCardLiabilityLinkRowsForCashCard,
   linkedCreditCardClpForCashCardAsOf,
   linkedCreditCardClpForCashCardByDates,
 } from "./liabilityTree.js";
+import { isCheckingAccountKindSlug } from "./assetGroupTree.js";
+import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 import type { TsUnit } from "./groupMonthlyPerfConsolidation.js";
 
-/** Synthetic dashboard rows for linked Pasivos → tarjeta de crédito (negative in Efectivo bucket). */
+/** Synthetic row category when CC shortfall is drawn from savings. */
+export const CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG = "credit_card_shortfall_from_savings";
+
+/** @deprecated Linked CC rows replaced by conditional shortfall on savings NW. */
 export const LINKED_CC_DASHBOARD_CATEGORY_SLUG = "linked_credit_card";
 
-const SYNTHETIC_CC_ACCOUNT_ID_BASE = -950_000_000;
+const SYNTHETIC_SHORTFALL_ACCOUNT_ID = -950_000_001;
 
-export function syntheticLinkedCreditCardAccountId(liabilityAccountId: number): number {
-  return SYNTHETIC_CC_ACCOUNT_ID_BASE - liabilityAccountId;
+export function syntheticCashSavingsShortfallAccountId(): number {
+  return SYNTHETIC_SHORTFALL_ACCOUNT_ID;
+}
+
+/** Uncovered tarjeta balance when checking accounts cannot cover it. Overdraft checking (negative) counts as zero coverage. */
+export function creditCardShortfallClp(checkingTotalClp: number, ccBalanceClp: number): number {
+  const checking = Math.max(0, Math.round(checkingTotalClp));
+  const cc = Math.round(ccBalanceClp);
+  if (cc <= 0) return 0;
+  return Math.max(0, cc - checking);
+}
+
+export function applyCashSavingsNwAdjustment(
+  rawSavingsClp: number,
+  checkingTotalClp: number,
+  ccBalanceClp: number
+): number {
+  return Math.round(rawSavingsClp) - creditCardShortfallClp(checkingTotalClp, ccBalanceClp);
+}
+
+export function sumCheckingAccountsBalanceClp(
+  rows: readonly Pick<DashboardAccountStats, "bucket_slug" | "current_value_clp">[]
+): number {
+  let total = 0;
+  for (const r of rows) {
+    const slug = r.bucket_slug ?? "";
+    if (!isCheckingAccountKindSlug(slug)) continue;
+    total += Math.round(r.current_value_clp ?? 0);
+  }
+  return total;
+}
+
+export function checkingAccountsBalanceClpAt(asOfYmd: string): number {
+  let total = 0;
+  for (const accountId of listMovementBalanceCashAccountIds()) {
+    total += checkingMovementBalanceClpAtCached(accountId, asOfYmd);
+  }
+  return total;
 }
 
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clp;
   if (unit === "usd") {
     const usd = depositClpToUsdAtDate(clp, asOf);
-    return Number.isFinite(usd) ? usd : Number.NaN;
+    return usd != null && Number.isFinite(usd) ? usd : Number.NaN;
   }
   return clp;
 }
 
-function linkedCcAt(asOf: string, unit: TsUnit): number {
-  const clp = linkedCreditCardClpForCashCardAsOf(asOf);
-  const v = convertLinkedCc(clp, asOf, unit);
-  return Number.isFinite(v) ? v : 0;
+/** Optional synthetic breakdown row when shortfall reduces savings NW. */
+export function cashSavingsShortfallDashboardRow(
+  shortfallClp: number,
+  asOfYmd: string,
+  includeUsd: boolean
+): DashboardAccountStats | null {
+  if (shortfallClp <= 0) return null;
+  const usdRaw = includeUsd ? depositClpToUsdAtDate(shortfallClp, asOfYmd) : null;
+  return {
+    account_id: syntheticCashSavingsShortfallAccountId(),
+    name: "CC shortfall from savings",
+    group_slug: "cash_eqs",
+    group_label: "Cash & equivalents",
+    bucket_slug: "cash_eqs__cash_savings",
+    bucket_label: "Cash savings",
+    dashboard_bucket_slug: "cash_eqs",
+    category_slug: CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
+    deposits_clp: 0,
+    current_value_clp: -shortfallClp,
+    valuation_as_of: asOfYmd,
+    current_value_usd:
+      includeUsd && usdRaw != null && Number.isFinite(usdRaw) ? -usdRaw : null,
+    fx_clp_per_usd: null,
+    fx_date_used: null,
+    notes: null,
+    chart_inactive: false,
+  };
 }
 
-/** Append negative-value rows so Efectivo bucket sums include linked tarjeta de crédito. */
+/** @deprecated Use {@link applyCashSavingsShortfallToDashboardRows}. */
 export function appendLinkedCreditCardDashboardRows(
   rows: DashboardAccountStats[],
   asOfYmd: string,
   includeUsd: boolean
 ): DashboardAccountStats[] {
-  const links = creditCardLiabilityLinkRowsForCashCard(asOfYmd);
-  if (!links.length) return rows;
+  return applyCashSavingsShortfallToDashboardRows(rows, asOfYmd, includeUsd);
+}
 
-  const extras: DashboardAccountStats[] = links.map((link) => {
-    const usdRaw = includeUsd ? depositClpToUsdAtDate(link.clp, asOfYmd) : null;
-    const current_value_usd =
-      includeUsd && usdRaw != null && Number.isFinite(usdRaw) ? -usdRaw : null;
-    return {
-      account_id: syntheticLinkedCreditCardAccountId(link.liability_account_id),
-      name: link.name,
-      group_slug: "liabilities_credit_card",
-      group_label: "Tarjeta de crédito",
-      bucket_slug: "cash_eqs",
-      bucket_label: "Cash & equivalents",
-      dashboard_bucket_slug: "cash_eqs",
-      deposits_clp: 0,
-      current_value_clp: -link.clp,
-      valuation_as_of: asOfYmd,
-      current_value_usd,
-      fx_clp_per_usd: null,
-      fx_date_used: null,
-      notes: null,
-      chart_inactive: false,
-    };
-  });
-
-  return [...rows, ...extras];
+/** Append shortfall breakdown row; savings NW adjustment is applied in payload totals. */
+export function applyCashSavingsShortfallToDashboardRows(
+  rows: DashboardAccountStats[],
+  asOfYmd: string,
+  includeUsd: boolean
+): DashboardAccountStats[] {
+  const checkingTotal = sumCheckingAccountsBalanceClp(rows);
+  const ccBalance = linkedCreditCardClpForCashCardAsOf(asOfYmd);
+  const shortfall = creditCardShortfallClp(checkingTotal, ccBalance);
+  const extra = cashSavingsShortfallDashboardRow(shortfall, asOfYmd, includeUsd);
+  return extra != null ? [...rows, extra] : rows;
 }
 
 function priorMonthEndYmd(asOf: string): string | null {
@@ -117,28 +169,32 @@ function recomputeYtdAndCumulative(
   });
 }
 
-/** Subtract linked tarjeta de crédito from consolidated Efectivo month cierres (charts / overview). */
+function shortfallAt(asOf: string, unit: TsUnit): number {
+  const checking = checkingAccountsBalanceClpAt(asOf);
+  const ccClp = linkedCreditCardClpForCashCardAsOf(asOf);
+  const shortfallClp = creditCardShortfallClp(checking, ccClp);
+  const v = convertLinkedCc(shortfallClp, asOf, unit);
+  return Number.isFinite(v) ? v : 0;
+}
+
+/** Apply conditional CC shortfall to consolidated cash_savings month cierres (charts / overview). */
 export function netLinkedCreditCardFromCashConsolidated(
   rows: readonly ConsolidatedMonthlyPerfRow[],
   unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
   if (!rows.length) return [...rows];
 
-  const datesAsc = [...rows].map((r) => r.as_of_date).sort();
-  const ccClpByDate = linkedCreditCardClpForCashCardByDates(datesAsc);
-
   const asc = [...rows]
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))
     .map((row) => {
-      const ccClp = ccClpByDate.get(row.as_of_date) ?? 0;
-      const cc = convertLinkedCc(ccClp, row.as_of_date, unit);
+      const shortfall = shortfallAt(row.as_of_date, unit);
       const priorEnd = priorMonthEndYmd(row.as_of_date);
-      const priorCc = priorEnd != null ? linkedCcAt(priorEnd, unit) : 0;
+      const priorShortfall = priorEnd != null ? shortfallAt(priorEnd, unit) : 0;
 
-      const closing_value = row.closing_value - cc;
+      const closing_value = row.closing_value - shortfall;
       const prior_closing =
         row.prior_closing != null && Number.isFinite(row.prior_closing)
-          ? row.prior_closing - priorCc
+          ? row.prior_closing - priorShortfall
           : row.prior_closing;
 
       return recomputeNominalFromCloses({
@@ -150,3 +206,6 @@ export function netLinkedCreditCardFromCashConsolidated(
 
   return recomputeYtdAndCumulative(asc).reverse();
 }
+
+/** @deprecated alias kept for imports */
+export { netLinkedCreditCardFromCashConsolidated as applyCashSavingsShortfallToConsolidated };

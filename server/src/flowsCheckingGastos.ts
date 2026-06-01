@@ -4,23 +4,29 @@ import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { stripTrailingCartolaNoteTags } from "./checkingCartolaParse.js";
-import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
+import { checkingCartolaStablePurchaseKey, stripTrailingCartolaNoteTags } from "./checkingCartolaParse.js";
 import {
-  isMovementBalanceCashCategory,
-  listMovementBalanceCashAccountIds,
-} from "./movementBalanceCashAccounts.js";
+  legacyCheckingGastosPurchaseKey,
+  parseLegacyCheckingGastosPurchaseKey,
+} from "./checkingGastosCategoryPersist.js";
+import { cartolaCashAccountIdOptional, isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
+import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
 import {
   getCcExpenseCategoryBySlug,
   categoryUniqueForExpenseLine,
+  isCcExpenseTotalsExcludedSlug,
+  isGenericTransferMerchantKey,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
   merchantRuleKeysMatchingLineMerchant,
   registerGenericUniquePurchaseMode,
+  registerUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
   UNCLASSIFIED_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
+  CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import {
@@ -58,21 +64,25 @@ export function checkingGastosMovementPurchaseKey(
   movementId: number,
   portion: "gastos" | "deposit" = "gastos"
 ): string {
-  if (portion === "gastos") return `checking-mv:${movementId}`;
-  return `checking-mv:${movementId}:deposit`;
+  const row = db
+    .prepare(`SELECT account_id, note FROM movements WHERE id = ?`)
+    .get(movementId) as { account_id: number; note: string | null } | undefined;
+  if (row?.note) {
+    const stable = checkingCartolaStablePurchaseKey(row.account_id, row.note, portion);
+    if (stable) return stable;
+  }
+  return legacyCheckingGastosPurchaseKey(movementId, portion);
 }
+
+export { legacyCheckingGastosPurchaseKey, parseLegacyCheckingGastosPurchaseKey };
 
 export function checkingGastosMovementBelongs(movementId: number): {
   ok: boolean;
   account_id?: number;
   merchant_key?: string;
 } {
-  let checkingId: number;
-  try {
-    checkingId = checkingAccountId();
-  } catch {
-    return { ok: false };
-  }
+  const checkingIds = new Set(listMovementBalanceCashAccountIds());
+  if (checkingIds.size === 0) return { ok: false };
 
   const row = db
     .prepare(
@@ -84,12 +94,12 @@ export function checkingGastosMovementBelongs(movementId: number): {
     | { account_id: number; occurred_on: string; amount_clp: number; note: string | null }
     | undefined;
 
-  if (!row || row.account_id !== checkingId || row.amount_clp >= 0) {
+  if (!row || !checkingIds.has(row.account_id) || row.amount_clp >= 0) {
     return { ok: false };
   }
 
   const note = String(row.note ?? "").trim();
-  if (!note.startsWith("import:cartola|") || note.startsWith("import:checking-synthetic|")) {
+  if (!note.startsWith("import:cartola|") || isCheckingLedgerAnchorNote(note)) {
     return { ok: false };
   }
 
@@ -104,6 +114,8 @@ export function checkingGastosMovementBelongs(movementId: number): {
     {
       splittablePool: createSplittableInternalTransferPool(depositCandidates),
       usedDepositKeys: new Set<string>(),
+      withdrawalAccountId: row.account_id,
+      withdrawalCategorySlug: checkingGastosAccountCategorySlug(row.account_id),
     }
   );
   if (split.gastosClp <= 0 && split.internalClp <= 0) {
@@ -118,7 +130,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
     return { ok: false };
   }
   const deposits = loadDepositMatchCandidates();
-  const internalMcMonths = computeMercadoCapitalesInternalTransferMonths(checkingId, deposits);
+  const internalMcMonths = computeMercadoCapitalesInternalTransferMonths(row.account_id, deposits);
   const expenseMonth = monthKeyFromYmd(row.occurred_on);
   if (
     expenseMonth &&
@@ -130,7 +142,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
 
   return {
     ok: true,
-    account_id: checkingId,
+    account_id: row.account_id,
     merchant_key: normalizeCcExpenseMerchantKey(description),
   };
 }
@@ -173,6 +185,12 @@ export function assignCheckingGastosMovementCategory(opts: {
   }
 
   const purchaseKey = checkingGastosMovementPurchaseKey(opts.movementId);
+  const purchaseKeys = [
+    purchaseKey,
+    ...(purchaseKey !== checkingGastosMovementPurchaseKey(opts.movementId, "deposit")
+      ? [checkingGastosMovementPurchaseKey(opts.movementId, "deposit")]
+      : []),
+  ];
   const delUniquePurchase = db.prepare(
     `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
   );
@@ -192,7 +210,15 @@ export function assignCheckingGastosMovementCategory(opts: {
 
   const tx = db.transaction(() => {
     if (opts.clearCategory) {
-      delUniquePurchase.run(belong.account_id, purchaseKey);
+      if (opts.unique) {
+        for (const key of purchaseKeys) {
+          upsertUniquePurchase.run(belong.account_id, key, null);
+        }
+      } else {
+        for (const key of purchaseKeys) {
+          delUniquePurchase.run(belong.account_id, key);
+        }
+      }
       for (const ruleKey of merchantRuleKeysMatchingLineMerchant(belong.account_id, merchantKey)) {
         delMerchant.run(belong.account_id, ruleKey);
       }
@@ -200,10 +226,14 @@ export function assignCheckingGastosMovementCategory(opts: {
     }
 
     if (opts.unique) {
-      delUniquePurchase.run(belong.account_id, purchaseKey);
+      for (const key of purchaseKeys) {
+        delUniquePurchase.run(belong.account_id, key);
+      }
       upsertUniquePurchase.run(belong.account_id, purchaseKey, catId);
     } else {
-      delUniquePurchase.run(belong.account_id, purchaseKey);
+      for (const key of purchaseKeys) {
+        delUniquePurchase.run(belong.account_id, key);
+      }
       if (catId != null && merchantKey) {
         upsertMerchant.run(belong.account_id, merchantKey, catId);
       }
@@ -214,7 +244,7 @@ export function assignCheckingGastosMovementCategory(opts: {
   if (opts.clearCategory) {
     return {
       category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
-      unique: false,
+      unique: opts.unique,
       merchant_key: merchantKey,
       purchase_key: purchaseKey,
     };
@@ -242,6 +272,83 @@ const RESERVA_TRANSFER_DESC_RE =
 
 /** Wires to Fintual (investment funding — excluded from gastos list). */
 const FINTUAL_TRANSFER_DESC_RE = /FINTUAL\s+ADMINISTRADORA/i;
+
+/** Vista ↔ corriente internet traspaso (both directions on cartola). */
+export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE =
+  /TRASPASO\s+INTERNET\s+(?:A\s+CTA\.?\s*CTE?\.?|DESDE\s+CTA\.?\s*CT\.?)/i;
+
+/** Vista (or checking) outflow wiring money to cuenta corriente — always an internal move. */
+export const CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE =
+  /TRASPASO\s+INTERNET\s+A\s+CTA\.?\s*CTE?\.?/i;
+
+export function isCheckingCorrienteVistaTraspasoOutflow(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  return CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE.test(d);
+}
+
+/** Only generic internal-transfer cartola descriptions may auto-pair with deposit inflows. */
+export function checkingWithdrawalMayAutoMatchDeposit(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  if (!d) return false;
+  if (isCheckingCorrienteVistaTraspasoOutflow(d)) return true;
+  if (INTERNAL_TRANSFER_RE.test(d)) return true;
+  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
+  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  const merchantKey = normalizeCcExpenseMerchantKey(d);
+  if (isExactGenericUniqueMerchantKey(merchantKey)) return true;
+  if (isGenericTransferMerchantKey(merchantKey)) return true;
+  return false;
+}
+
+export function autoMatchCategorySlugForDeposit(
+  deposit: Pick<DepositMatchCandidate, "category_slug" | "group_slug">
+): string {
+  if (isInvestmentDepositTarget(deposit.group_slug)) return DEPOSITS_CC_EXPENSE_SLUG;
+  if (SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES.has(deposit.category_slug)) {
+    return DEPOSITS_CC_EXPENSE_SLUG;
+  }
+  if (MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(deposit.category_slug)) {
+    return DEPOSITS_CC_EXPENSE_SLUG;
+  }
+  if (
+    deposit.group_slug === CHECKING_GASTOS_CASH_GROUP &&
+    isMovementBalanceCashCategory(deposit.category_slug)
+  ) {
+    return CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG;
+  }
+  return DEPOSITS_CC_EXPENSE_SLUG;
+}
+
+export function autoMatchCategorySlugForAllocations(
+  allocations: readonly DepositMatchAllocation[]
+): string {
+  if (allocations.length === 0) return DEPOSITS_CC_EXPENSE_SLUG;
+  return autoMatchCategorySlugForDeposit(allocations[0]!.deposit);
+}
+
+export function resolveAutoMatchCategorySlugForCheckingWithdrawal(
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
+  deposits: readonly DepositMatchCandidate[],
+  withdrawalAccountId: number
+): string | null {
+  const description = withdrawal.description ?? "";
+  if (isCheckingCorrienteVistaTraspasoOutflow(description)) {
+    return CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG;
+  }
+  if (!checkingWithdrawalMayAutoMatchDeposit(description)) return null;
+  const split = splitCheckingWithdrawalAgainstDeposits(withdrawal, deposits, {
+    splittablePool: createSplittableInternalTransferPool(deposits),
+    usedDepositKeys: new Set<string>(),
+    withdrawalAccountId,
+    withdrawalCategorySlug: checkingGastosAccountCategorySlug(withdrawalAccountId),
+  });
+  if (split.internalClp > 0) {
+    return autoMatchCategorySlugForAllocations(split.internalMatchedDeposits);
+  }
+  if (split.investmentDeposit != null) return DEPOSITS_CC_EXPENSE_SLUG;
+  return null;
+}
 
 /** Santander capital-markets money order charge (downpayment rail). */
 const MERCADO_CAPITALES_CARGO_RE = /Cargo\s+Mercado\s+Capitales/i;
@@ -426,7 +533,7 @@ export function loadCheckingCartolaCredits(accountId: number): CheckingCartolaCr
        WHERE account_id = ?
          AND amount_clp > 0
          AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:checking-synthetic|%'
+         AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
     )
     .all(accountId) as CheckingCartolaCredit[];
@@ -455,7 +562,7 @@ export function loadCheckingCartolaWithdrawals(accountId: number): CheckingCarto
        WHERE account_id = ?
          AND amount_clp < 0
          AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:checking-synthetic|%'
+         AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
     )
     .all(accountId) as CheckingCartolaWithdrawal[];
@@ -565,7 +672,7 @@ export function withdrawalIsAnnulledMoneyOrder(
 }
 
 export function isExcludedCheckingWithdrawal(description: string): boolean {
-  const d = description.trim();
+  const d = stripCheckingBranchPrefix(description).trim();
   if (!d) return true;
   if (INTERNAL_TRANSFER_RE.test(d)) return true;
   if (isCcPaymentMerchant(d)) return true;
@@ -623,16 +730,24 @@ function listDepositFlowAccounts(): { account_id: number; category_slug: string;
     .filter((r): r is { account_id: number; category_slug: string; group_slug: string } => r != null);
 }
 
+function depositIsCrossAccountInternalTransfer(
+  deposit: Pick<DepositMatchCandidate, "account_id">,
+  withdrawalAccountId: number
+): boolean {
+  return deposit.account_id !== withdrawalAccountId;
+}
+
 function withdrawalMatchesInternalCashTransferExact(
   withdrawal: { occurred_on: string; amount_clp: number },
   deposits: readonly DepositMatchCandidate[],
-  maxDayGap: number
+  maxDayGap: number,
+  withdrawalAccountId: number
 ): boolean {
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) return false;
   for (const d of deposits) {
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
-    if (d.category_slug === "cuenta_corriente") continue;
+    if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
     if (depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) return true;
   }
@@ -681,13 +796,14 @@ function tryAllocateSplittableInternalTransfer(
 function findExactInternalCashTransferDeposit(
   withdrawal: { occurred_on: string; amount_clp: number },
   deposits: readonly DepositMatchCandidate[],
-  maxDayGap: number
+  maxDayGap: number,
+  withdrawalAccountId: number
 ): DepositMatchCandidate | null {
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) return null;
   for (const d of deposits) {
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
-    if (d.category_slug === "cuenta_corriente") continue;
+    if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
     if (depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) return d;
   }
@@ -698,15 +814,23 @@ function resolveInternalCashTransferMatch(
   withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   splittablePool: Map<string, number>,
-  maxDayGap = 3
+  maxDayGap: number,
+  withdrawalAccountId: number
 ): { matched: boolean; allocations: DepositMatchAllocation[] } {
   if (checkingOutflowIsAtmWithdrawal(withdrawal.description ?? "")) {
     return { matched: false, allocations: [] };
   }
   const want = Math.round(Math.abs(withdrawal.amount_clp));
-  const exact = findExactInternalCashTransferDeposit(withdrawal, deposits, maxDayGap);
-  if (exact != null) {
-    return { matched: true, allocations: [{ deposit: exact, amount_clp: want }] };
+  if (checkingWithdrawalMayAutoMatchDeposit(withdrawal.description ?? "")) {
+    const exact = findExactInternalCashTransferDeposit(
+      withdrawal,
+      deposits,
+      maxDayGap,
+      withdrawalAccountId
+    );
+    if (exact != null) {
+      return { matched: true, allocations: [{ deposit: exact, amount_clp: want }] };
+    }
   }
   if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) {
     return { matched: false, allocations: [] };
@@ -731,6 +855,49 @@ export type CheckingWithdrawalDepositSplit = {
   gastosClp: number;
 };
 
+/**
+ * Partial internal + gastos on a generic wire (no investment/reserva backing) leaves a
+ * computed gastos amount that is not a cartola outflow — reject and use full withdrawal.
+ */
+export function isOrphanCheckingWithdrawalSplit(
+  withdrawal: { description?: string },
+  split: Pick<
+    CheckingWithdrawalDepositSplit,
+    "internalClp" | "gastosClp" | "investmentDeposit" | "investmentMatchClp"
+  >
+): boolean {
+  if (split.internalClp <= 0 || split.gastosClp <= 0) return false;
+  if (
+    split.investmentDeposit != null &&
+    split.investmentMatchClp === split.gastosClp
+  ) {
+    return false;
+  }
+  if (withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) {
+    return false;
+  }
+  return true;
+}
+
+function rollbackCheckingWithdrawalSplitSideEffects(
+  opts: {
+    splittablePool: Map<string, number>;
+    usedDepositKeys: Set<string>;
+  },
+  before: {
+    depositKeys: Set<string>;
+    pool: Map<string, number>;
+  }
+): void {
+  for (const key of opts.usedDepositKeys) {
+    if (!before.depositKeys.has(key)) opts.usedDepositKeys.delete(key);
+  }
+  opts.splittablePool.clear();
+  for (const [k, v] of before.pool) {
+    opts.splittablePool.set(k, v);
+  }
+}
+
 /** Splits a checking outflow across internal cash and investment deposits; remainder is gastos. */
 export function splitCheckingWithdrawalAgainstDeposits(
   withdrawal: { occurred_on: string; amount_clp: number; description?: string },
@@ -738,6 +905,8 @@ export function splitCheckingWithdrawalAgainstDeposits(
   opts: {
     splittablePool: Map<string, number>;
     usedDepositKeys: Set<string>;
+    withdrawalAccountId: number;
+    withdrawalCategorySlug: string;
     maxDayGap?: number;
   }
 ): CheckingWithdrawalDepositSplit {
@@ -768,7 +937,15 @@ export function splitCheckingWithdrawalAgainstDeposits(
   let remaining = want;
   const internalMatchedDeposits: DepositMatchAllocation[] = [];
 
-  const exactDeposit = findExactInternalCashTransferDeposit(withdrawal, deposits, maxDayGap);
+  const mayAutoMatchDeposit = checkingWithdrawalMayAutoMatchDeposit(description);
+  const exactDeposit = mayAutoMatchDeposit
+    ? findExactInternalCashTransferDeposit(
+        withdrawal,
+        deposits,
+        maxDayGap,
+        opts.withdrawalAccountId
+      )
+    : null;
   if (exactDeposit != null) {
     opts.usedDepositKeys.add(splittableDepositPoolKey(exactDeposit));
     return {
@@ -780,27 +957,10 @@ export function splitCheckingWithdrawalAgainstDeposits(
     };
   }
 
-  // Month-bucket cash accounts (ahorro vivienda) only pair on exact amount — not greedy partials.
-  const partialInternal = deposits
-    .filter(
-      (d) =>
-        d.group_slug === CHECKING_GASTOS_CASH_GROUP &&
-        d.category_slug !== "cuenta_corriente" &&
-        !MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(d.category_slug) &&
-        depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)
-    )
-    .sort((a, b) => b.amount_clp - a.amount_clp);
-
-  for (const d of partialInternal) {
-    if (remaining <= 0) break;
-    const key = splittableDepositPoolKey(d);
-    const depAmt = Math.round(d.amount_clp);
-    if (depAmt <= 0 || depAmt > remaining || opts.usedDepositKeys.has(key)) continue;
-    opts.usedDepositKeys.add(key);
-    remaining -= depAmt;
-    internalClp += depAmt;
-    internalMatchedDeposits.push({ deposit: d, amount_clp: depAmt });
-  }
+  const sideEffectsBefore = {
+    depositKeys: new Set(opts.usedDepositKeys),
+    pool: new Map(opts.splittablePool),
+  };
 
   if (remaining > 0 && withdrawalMayUseSplittableReservaPool(description)) {
     const { take, deposit } = tryAllocateSplittableInternalTransferAmount(
@@ -817,7 +977,7 @@ export function splitCheckingWithdrawalAgainstDeposits(
   }
 
   const investmentDeposit =
-    remaining > 0
+    remaining > 0 && mayAutoMatchDeposit
       ? matchWithdrawalToInvestmentDeposit(
           { occurred_on: withdrawal.occurred_on, amount_clp: -remaining },
           deposits,
@@ -832,13 +992,32 @@ export function splitCheckingWithdrawalAgainstDeposits(
     investmentMatchClp = remaining;
   }
 
-  return {
+  const split: CheckingWithdrawalDepositSplit = {
     internalClp,
     internalMatchedDeposits,
     investmentDeposit,
     investmentMatchClp,
     gastosClp: remaining,
   };
+
+  if (isOrphanCheckingWithdrawalSplit(withdrawal, split)) {
+    rollbackCheckingWithdrawalSplitSideEffects(
+      {
+        splittablePool: opts.splittablePool,
+        usedDepositKeys: opts.usedDepositKeys,
+      },
+      sideEffectsBefore
+    );
+    return {
+      internalClp: 0,
+      internalMatchedDeposits: [],
+      investmentDeposit: null,
+      investmentMatchClp: 0,
+      gastosClp: want,
+    };
+  }
+
+  return split;
 }
 
 /** Checking outflow that pairs with an inflow on another cash/efectivo account (internal transfer). */
@@ -846,10 +1025,14 @@ export function withdrawalMatchesInternalCashTransfer(
   withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   maxDayGap = 3,
-  splittablePool?: Map<string, number>
+  splittablePool?: Map<string, number>,
+  withdrawalAccountId?: number
 ): boolean {
   if (checkingOutflowIsAtmWithdrawal(withdrawal.description ?? "")) return false;
-  if (withdrawalMatchesInternalCashTransferExact(withdrawal, deposits, maxDayGap)) return true;
+  const accountId = withdrawalAccountId ?? -1;
+  if (withdrawalMatchesInternalCashTransferExact(withdrawal, deposits, maxDayGap, accountId)) {
+    return true;
+  }
   if (splittablePool == null) return false;
   if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) return false;
   return tryAllocateSplittableInternalTransfer(withdrawal, deposits, splittablePool);
@@ -878,6 +1061,17 @@ function loadCuentaVistaInternalTransferCredits(): DepositMatchCandidate[] {
       category_slug: "cuenta_vista",
       group_slug: CHECKING_GASTOS_CASH_GROUP,
     }));
+}
+
+function checkingGastosAccountCategorySlug(accountId: number): string {
+  const row = db
+    .prepare(
+      `SELECT g.slug AS bucket_slug FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id = ?`
+    )
+    .get(accountId) as { bucket_slug: string } | undefined;
+  return row ? accountBucketKindSlug(row.bucket_slug) : "";
 }
 
 export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
@@ -934,16 +1128,18 @@ export function matchWithdrawalToDeposit(
 }
 
 export function buildCheckingGastosLines(opts?: {
+  accountId?: number;
   depositCandidates?: readonly DepositMatchCandidate[];
   checkingCredits?: readonly CheckingCartolaCredit[];
   merchantRules?: Map<string, string>;
   uniquePurchases?: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
 }): FlowCcExpenseLineRowDraft[] {
-  const accountId = checkingAccountId();
+  const accountId = opts?.accountId ?? checkingAccountId();
   const deposits = opts?.depositCandidates ?? loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
   const checkingCredits = opts?.checkingCredits ?? loadMovementBalanceCashCartolaCredits();
+  const withdrawalCategorySlug = checkingGastosAccountCategorySlug(accountId);
   const categoryMaps =
     opts?.merchantRules != null
       ? {
@@ -953,6 +1149,8 @@ export function buildCheckingGastosLines(opts?: {
         }
       : loadCcExpenseCategoryMaps([accountId]);
   const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } = categoryMaps;
+  /** NULL-category Único rows from DB — do not treat in-request generic Único registration as cleared. */
+  const userClearedUniqueAtLoad = new Set(uniquePurchaseModeKeys);
 
   const rows = db
     .prepare(
@@ -961,7 +1159,6 @@ export function buildCheckingGastosLines(opts?: {
        WHERE account_id = ?
          AND amount_clp < 0
          AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:checking-synthetic|%'
        ORDER BY occurred_on DESC, id DESC`
     )
     .all(accountId) as {
@@ -986,7 +1183,7 @@ export function buildCheckingGastosLines(opts?: {
     description: string,
     opts: {
       matchedDeposit?: DepositMatchCandidate | null;
-      forceDepositsCategory?: boolean;
+      autoMatchCategorySlug?: string;
       purchasePortion?: "gastos" | "deposit";
       autoMatchedDeposits?: DepositMatchAllocation[];
     } = {}
@@ -997,13 +1194,6 @@ export function buildCheckingGastosLines(opts?: {
       row.id,
       opts.purchasePortion ?? "gastos"
     );
-    registerGenericUniquePurchaseMode(
-      accountId,
-      purchaseKey,
-      merchantKey,
-      uniquePurchaseModeKeys,
-      { statementLineId: row.id }
-    );
     let categorySlug = resolveCcExpenseCategorySlug({
       statementLineId: row.id,
       accountId,
@@ -1013,22 +1203,65 @@ export function buildCheckingGastosLines(opts?: {
       merchantRules,
       uniquePurchases,
     });
+    const purchaseMapKey = `${accountId}|${purchaseKey}`;
+    const userClearedUnique = userClearedUniqueAtLoad.has(purchaseMapKey);
+    const persistedCategorySlug = uniquePurchases.get(purchaseMapKey);
+    const userAssignedCategorySlug =
+      persistedCategorySlug != null &&
+      !isCcExpenseTotalsExcludedSlug(persistedCategorySlug);
     const matchedDeposit = opts.matchedDeposit ?? null;
-    const isAutoDepositMatch =
-      opts.forceDepositsCategory ||
-      (categorySlug === UNCLASSIFIED_CC_EXPENSE_SLUG && matchedDeposit != null);
-    if (isAutoDepositMatch) {
-      categorySlug = DEPOSITS_CC_EXPENSE_SLUG;
+
+    let derivedAutoMatchSlug: string | null = null;
+    if (opts.autoMatchCategorySlug) {
+      derivedAutoMatchSlug = opts.autoMatchCategorySlug;
+    } else if (opts.autoMatchedDeposits != null && opts.autoMatchedDeposits.length > 0) {
+      derivedAutoMatchSlug = autoMatchCategorySlugForAllocations(opts.autoMatchedDeposits);
+    } else if (matchedDeposit != null) {
+      derivedAutoMatchSlug = autoMatchCategorySlugForDeposit(matchedDeposit);
     }
-    const categoryUnique = categoryUniqueForExpenseLine(
+
+    const gateAllowsAutoMatch =
+      isCheckingCorrienteVistaTraspasoOutflow(description) ||
+      checkingWithdrawalMayAutoMatchDeposit(description);
+
+    const isAutoExcludedMatch =
+      !userClearedUnique &&
+      !userAssignedCategorySlug &&
+      gateAllowsAutoMatch &&
+      derivedAutoMatchSlug != null &&
+      isCcExpenseTotalsExcludedSlug(derivedAutoMatchSlug);
+
+    if (isAutoExcludedMatch && derivedAutoMatchSlug != null) {
+      categorySlug = derivedAutoMatchSlug;
+    }
+
+    registerGenericUniquePurchaseMode(
+      accountId,
+      purchaseKey,
+      merchantKey,
+      uniquePurchaseModeKeys,
+      { statementLineId: row.id }
+    );
+
+    let categoryUnique = categoryUniqueForExpenseLine(
       accountId,
       purchaseKey,
       merchantKey,
       uniquePurchases,
       uniquePurchaseModeKeys
     );
+    if (isAutoExcludedMatch) {
+      const autoCat = getCcExpenseCategoryBySlug(categorySlug);
+      registerUniquePurchaseMode(
+        accountId,
+        purchaseKey,
+        autoCat?.id ?? null,
+        uniquePurchaseModeKeys
+      );
+      categoryUnique = true;
+    }
     let autoDepositMatchNote: string | undefined;
-    if (isAutoDepositMatch) {
+    if (isAutoExcludedMatch) {
       const allocations =
         opts.autoMatchedDeposits ??
         (matchedDeposit != null
@@ -1057,6 +1290,8 @@ export function buildCheckingGastosLines(opts?: {
       merchant_key: merchantKey,
       category_slug: categorySlug,
       category_unique: categoryUnique,
+      origin_card_last4: null,
+      primary_card_last4: null,
       ...(opts.purchasePortion === "deposit"
         ? { checking_purchase_portion: "deposit" as const }
         : {}),
@@ -1095,16 +1330,34 @@ export function buildCheckingGastosLines(opts?: {
       description,
     };
 
+    if (isCheckingCorrienteVistaTraspasoOutflow(description)) {
+      const fullAbs = Math.round(Math.abs(row.amount_clp));
+      const split = splitCheckingWithdrawalAgainstDeposits(withdrawal, deposits, {
+        splittablePool,
+        usedDepositKeys,
+        withdrawalAccountId: accountId,
+        withdrawalCategorySlug,
+      });
+      pushCheckingLine(row, fullAbs, expenseMonth, description, {
+        autoMatchCategorySlug: CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
+        purchasePortion: "deposit",
+        autoMatchedDeposits:
+          split.internalMatchedDeposits.length > 0 ? split.internalMatchedDeposits : undefined,
+      });
+      continue;
+    }
+
     if (useDepositSplit) {
       const split = splitCheckingWithdrawalAgainstDeposits(withdrawal, deposits, {
         splittablePool,
         usedDepositKeys,
+        withdrawalAccountId: accountId,
+        withdrawalCategorySlug,
       });
       if (split.gastosClp <= 0 && split.internalClp <= 0) continue;
 
       if (split.internalClp > 0) {
         pushCheckingLine(row, split.internalClp, expenseMonth, description, {
-          forceDepositsCategory: true,
           purchasePortion: "deposit",
           autoMatchedDeposits: split.internalMatchedDeposits,
         });
@@ -1132,12 +1385,12 @@ export function buildCheckingGastosLines(opts?: {
         withdrawal,
         deposits,
         splittablePool,
-        3
+        3,
+        accountId
       );
       if (internalMatch.matched) {
         const fullAbs = Math.round(Math.abs(row.amount_clp));
         pushCheckingLine(row, fullAbs, expenseMonth, description, {
-          forceDepositsCategory: true,
           purchasePortion: "deposit",
           autoMatchedDeposits: internalMatch.allocations,
         });

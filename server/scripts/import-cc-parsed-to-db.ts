@@ -21,10 +21,6 @@
  *
  * After a successful load, upserts month-end `valuations` for this account from the same PDF-derived
  * balances (so Liabilities / patrimonio charts read `valuations`, not a separate runtime series).
- *
- * Pre-2020 checking: when cartola months are missing, `MONTO CANCELADO` payment rows can mirror to
- * cuenta corriente via `createCheckingRealSyntheticFromCcPayment` in `checkingPre2020Synthetic.ts`
- * (not wired yet — add when importing CC history before 2020).
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,6 +41,12 @@ import {
   resolveImportAccountIds,
 } from "../src/ccParsedImportAccounts.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
+import {
+  buildCcStatementImportAccountLog,
+  logCcStatementImportRun,
+  type CcStatementImportAccountLog,
+} from "../src/ccStatementImportLog.js";
+import type { CcStatementCsvRecord } from "../src/ccStatementsImport.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -151,10 +153,29 @@ function logAccountRouting(
     console.warn(
       `# CSV rows skipped — no master account for last4: ${discovery.unknownLast4.join(", ")}`
     );
+    const skippedRows = records.filter((row) => {
+      const l4 = cardLast4FromParsedRow(row);
+      return l4 && discovery.unknownLast4.includes(l4);
+    }).length;
+    if (skippedRows > 0 && !dry) {
+      console.error(
+        `# FAIL: ${skippedRows} CSV row(s) skipped for unknown last4 — add ccConsolidatedCards redirect or master account, then re-run.`
+      );
+      process.exit(1);
+    }
   }
   if (discovery.rowsWithoutCard > 0) {
     console.warn(`# CSV rows skipped — missing card_last4 / source_pdf last4: ${discovery.rowsWithoutCard}`);
   }
+}
+
+function accountLabelForId(accountId: number): string {
+  const row = db
+    .prepare(`SELECT name, notes FROM accounts WHERE id = ?`)
+    .get(accountId) as { name: string; notes: string | null } | undefined;
+  const m = /credit_card_master\|[^|]+\|(\d{4})/.exec(String(row?.notes ?? ""));
+  const l4 = m?.[1] ?? "?";
+  return `${l4} ${row?.name ?? ""}`.trim();
 }
 
 function main() {
@@ -216,6 +237,7 @@ function main() {
   let totalVal = 0;
   let totalBilling = 0;
   let totalCategoriesRestored = 0;
+  const importRunAccounts: CcStatementImportAccountLog[] = [];
 
   for (const accountId of accountIds) {
     const accountRecords = byAccountRecords.get(accountId) ?? [];
@@ -232,12 +254,16 @@ function main() {
     let statementLineCount = 0;
     let categoriesRestored = 0;
     let billingSnapshots = 0;
+    let linesSkippedDuplicate = 0;
+    let linesSkippedInstallmentOverlap = 0;
 
     if (!dry) {
       if (replaceAccount) {
         const st = importCcStatementsFromCsvRecords(accountId, accountRecords);
         statementCount = st.statementCount;
-        statementLineCount = st.lineCount;
+        statementLineCount = st.linesInserted;
+        linesSkippedDuplicate = st.linesSkippedDuplicate;
+        linesSkippedInstallmentOverlap = st.linesSkippedInstallmentOverlap;
         categoriesRestored += st.categoriesRestored;
         const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
           replaceLedger: true,
@@ -254,6 +280,8 @@ function main() {
         });
         statementCount = merged.statements.statementCount;
         statementLineCount = merged.statements.linesInserted;
+        linesSkippedDuplicate = merged.statements.linesSkippedDuplicate;
+        linesSkippedInstallmentOverlap = merged.statements.linesSkippedInstallmentOverlap;
         categoriesRestored += merged.statements.categoriesRestored;
         gapFilled = merged.ledger.gapFilled;
         valuationMonthsSynced = merged.ledger.valuationMonthsSynced;
@@ -292,6 +320,17 @@ function main() {
       }
     }
 
+    importRunAccounts.push(
+      buildCcStatementImportAccountLog(accountId, accountLabelForId(accountId), accountRecords, {
+        statements_merged: statementCount,
+        lines_inserted: statementLineCount,
+        lines_skipped_duplicate: linesSkippedDuplicate,
+        lines_skipped_installment_overlap: linesSkippedInstallmentOverlap,
+        purchase_upserts: purchaseUpserts,
+        payment_upserts: paymentUpserts,
+      })
+    );
+
     console.log(
       dry
         ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountRecords.length} csv rows`
@@ -306,6 +345,10 @@ function main() {
     totalVal += valuationMonthsSynced;
     totalBilling += billingSnapshots;
     totalCategoriesRestored += categoriesRestored;
+  }
+
+  if (importRunAccounts.length > 0) {
+    logCcStatementImportRun({ dry_run: dry, accounts: importRunAccounts });
   }
 
   if (accountIds.length > 1) {

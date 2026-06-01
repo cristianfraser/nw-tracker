@@ -1,7 +1,8 @@
 /**
  * Loads monthly history from cfraser.xlsx + companion CSVs in cfraser/ (Numbers CSV export).
  *
- * - Wipes prior import accounts/valuations/movements, fx_daily, uf_daily, import:excel income/expense.
+ * - Wipes prior import accounts/valuations/movements, uf_daily, import:excel income/expense.
+ *   Does **not** wipe `fx_daily` / `eur_daily` (BCentral backfill + sync are the only sources).
  * - Valuations from xlsx; retirement cumulative deps from Table 1-3; brokerage/cash movements from CSVs.
  * - **Real estate (property) capital flows:** one movement per payment from **`cfraser/depto-dividendos.csv`**
  *   (Numbers export of the “dividendos” / amortization sheet). Dates are actual payment days; CLP/UF/UF día, crédito
@@ -29,7 +30,8 @@
  *   (`612.36`) — `numCsv` would misread that as 61236 USD.
  * - **UF (CLF):** only from committed **`server/data/uf-sii-daily.csv`** (SII [valores y fechas / UF](https://www.sii.cl/valores_y_fechas/uf/uf2026.htm)).
  *   Not from Excel or `variables-Table 1-1.csv`. Refresh with `npm run fetch-uf -w nw-tracker-server`.
- *   USD/EUR daily observado: SBIF (`npm run backfill:sbif-fx-eur -w nw-tracker-server`, `sync:all`). Excel variables sheet seeds month-end only when SBIF is absent.
+ *   USD/EUR daily observado: Banco Central only (`npm run backfill:sbif-fx-eur -w nw-tracker-server`, `sync:all`).
+ *   Not from Excel or `variables-Table 1-1.csv`.
  * - Optional **`ipc-index.csv`**: semicolon `date;ipc_index` (month-ends) → **`ipc_daily`** (IPC price index level).
  * - AFC: balance from Table 1-3 col 35. **Valuations** allow 0 after a full withdrawal (no stale forward-fill).
  *   **Movements** combine that balance series with `net worth-retiro.csv` col 14 when signs match (retiro amount for
@@ -610,24 +612,6 @@ function importUfDailyCsvFile(csvPath: string, upsertUf: ReturnType<typeof db.pr
   return n;
 }
 
-function mergeEurFromVariablesCsv(
-  cfraserDir: string,
-  maxMonth: MonthKey,
-  upsertEur: ReturnType<typeof db.prepare>
-) {
-  const rows = readSemicolonCsv(path.join(cfraserDir, "variables-Table 1-1.csv"));
-  for (let i = 3; i < rows.length; i++) {
-    const row = rows[i];
-    const d = parseSheetMonthCell(String(row[0] ?? ""));
-    if (!d) continue;
-    const mk = monthKey(d);
-    if (mk > maxMonth) continue;
-    const eur = numCsv(row[2]);
-    if (eur == null || eur < 50 || eur > 50000) continue;
-    upsertEur.run({ date: monthEndDate(mk), clp_per_eur: eur });
-  }
-}
-
 /** Monthly Fintual RN cash flows from Numbers CSV (col 5). Acciones use Table 1-3 cumulative stocks depositado only to avoid double counting. */
 /** One CLP `deposit_clp` per ticker from Numbers `net worth-stocks.csv` “depositado” (not cumulative Table 1-3). */
 function importSpyVeaDepositadoFromStocksCsv(
@@ -1199,9 +1183,7 @@ async function main() {
         );
       DELETE FROM income_entries WHERE note LIKE 'import:excel%';
       DELETE FROM expense_entries WHERE note LIKE 'import:excel%';
-      DELETE FROM fx_daily;
       DELETE FROM uf_daily;
-      DELETE FROM eur_daily;
       DELETE FROM ipc_daily;
     `);
     deleteEquityDailyForImportTickers();
@@ -1309,16 +1291,6 @@ async function main() {
     INSERT INTO valuations (account_id, as_of_date, value_clp)
     VALUES (@account_id, @as_of_date, @value_clp)
     ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp
-  `);
-
-  const upsertFx = db.prepare(`
-    INSERT INTO fx_daily (date, clp_per_usd) VALUES (@date, @clp_per_usd)
-    ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd
-  `);
-
-  const upsertEur = db.prepare(`
-    INSERT INTO eur_daily (date, clp_per_eur) VALUES (@date, @clp_per_eur)
-    ON CONFLICT(date) DO UPDATE SET clp_per_eur = excluded.clp_per_eur
   `);
 
   const upsertUf = db.prepare(`
@@ -1630,12 +1602,6 @@ async function main() {
         }
       }
 
-      if (b.fx != null && b.fx > 50 && b.fx < 50000) {
-        upsertFx.run({ date: monthEndDate(mk), clp_per_usd: b.fx });
-      }
-      if (b.eur != null && b.eur > 50 && b.eur < 50000) {
-        upsertEur.run({ date: monthEndDate(mk), clp_per_eur: b.eur });
-      }
     }
 
     const ufCsv = resolveBundledUfSiiDailyCsvPath();
@@ -1674,7 +1640,6 @@ async function main() {
       }
     }
 
-    mergeEurFromVariablesCsv(cfraserDir, maxMonth, upsertEur);
     importFundUnitDailyCsv(cfraserDir);
     importIpcDailyCsv(cfraserDir);
 
@@ -1798,7 +1763,14 @@ async function main() {
         const reconDay = monthEndDate("2017-06");
         const cuotasTarget =
           readOptionalAfpUnoWebsiteCuotasTarget(cfraserDir) ?? AFP_UNO_WEBSITE_CUOTAS_TARGET;
-        const cuotasSum = afpCuotasCumulativeThroughDate(accounts.afp, reconDay);
+        db.prepare(
+          `DELETE FROM movements WHERE account_id = ? AND (
+            note LIKE 'import:excel|afp-cuotas-website-reconcile%'
+            OR note LIKE 'import:excel|afp-cuotas-synthetic-trim%'
+          )`
+        ).run(accounts.afp);
+        const reconAsOf = chileCalendarTodayYmd();
+        const cuotasSum = afpCuotasCumulativeThroughDate(accounts.afp, reconAsOf);
         const reconDelta = computeAfpCuotasWebsiteReconciliationDelta(cuotasSum, cuotasTarget);
         if (reconDelta != null) {
           insMov.run(
@@ -1809,7 +1781,7 @@ async function main() {
             reconDelta
           );
           console.log(
-            `import:excel: AFP cuotas website reconcile: ${reconDelta >= 0 ? "+" : ""}${reconDelta} on ${reconDay} (Σ ${cuotasSum.toFixed(2)} → ${cuotasTarget})`
+            `import:excel: AFP cuotas website reconcile: ${reconDelta >= 0 ? "+" : ""}${reconDelta} on ${reconDay} (Σ ${cuotasSum.toFixed(2)} → ${cuotasTarget} as-of ${reconAsOf})`
           );
         } else {
           console.log(
@@ -2064,6 +2036,14 @@ async function main() {
       `import:excel: fund_unit_daily for AFP UNO has ${afpFundRows?.c ?? 0} row(s) — ` +
         "`import:excel` no longer wipes AFP series. To restore history after an earlier full wipe, run: " +
         "npm run afp:uno:backfill-quetalmiafp -w nw-tracker-server"
+    );
+  }
+
+  const fxDailyCount = db.prepare(`SELECT COUNT(*) AS c FROM fx_daily`).get() as { c: number };
+  if ((fxDailyCount?.c ?? 0) < 500) {
+    console.warn(
+      `import:excel: fx_daily has ${fxDailyCount?.c ?? 0} row(s). USD/EUR are not loaded from Excel. Run: ` +
+        "npm run backfill:sbif-fx-eur -w nw-tracker-server"
     );
   }
 

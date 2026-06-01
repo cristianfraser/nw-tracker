@@ -94,6 +94,40 @@ export function inversionesLeafBucketSlugs(): string[] {
   return [...bro, ...ret];
 }
 
+/** Cash & equivalents sub-buckets (migration 078). */
+export const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
+export const CASH_SAVINGS_BUCKET = "cash_eqs__cash_savings";
+export const CHECKING_ACCOUNTS_KIND = "checking_accounts";
+export const CASH_SAVINGS_KIND = "cash_savings";
+
+function assetGroupKindSlug(slug: string): string {
+  const sep = slug.lastIndexOf("__");
+  return sep >= 0 ? slug.slice(sep + 2) : slug;
+}
+
+/** @internal test hook */
+export function invalidateDashboardBucketCache(): void {
+  dashboardBucketBySlugCache = null;
+}
+
+/** Leaf kind slugs for cartola checking accounts (corriente + vista). */
+export function isCheckingAccountKindSlug(kindOrLeafSlug: string): boolean {
+  const kind = assetGroupKindSlug(kindOrLeafSlug);
+  return kind === "cuenta_corriente" || kind === "cuenta_vista";
+}
+
+export function listCheckingAccountRows(
+  excludeLegacyStocksNote: string
+): BucketAccountRow[] {
+  return listAccountsForBucketSlug(CHECKING_ACCOUNTS_BUCKET, undefined, excludeLegacyStocksNote);
+}
+
+export function listCashSavingsAccountRows(
+  excludeLegacyStocksNote: string
+): BucketAccountRow[] {
+  return listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, excludeLegacyStocksNote);
+}
+
 /** Top-level net-worth dashboard card buckets (asset_groups roots for NW cards). */
 export const DASHBOARD_NW_BUCKET_SLUGS = new Set([
   "real_estate",
@@ -115,15 +149,34 @@ function buildDashboardBucketBySlugCache(): Map<string, string | null> {
 
   for (const row of rows) {
     let cur: AssetGroupParentRow | undefined = row;
-    let dashboard: string | null = null;
+    let underChecking = false;
+    let underSavings = false;
     const seen = new Set<number>();
     while (cur && !seen.has(cur.id)) {
       seen.add(cur.id);
-      if (DASHBOARD_NW_BUCKET_SLUGS.has(cur.slug)) {
-        dashboard = cur.slug;
-        break;
-      }
+      const kind = assetGroupKindSlug(cur.slug);
+      if (kind === CHECKING_ACCOUNTS_KIND) underChecking = true;
+      if (kind === CASH_SAVINGS_KIND) underSavings = true;
       cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
+    }
+    let dashboard: string | null = null;
+    if (underChecking) {
+      dashboard = null;
+    } else if (underSavings) {
+      dashboard = "cash_eqs";
+    } else if (row.slug === "cash_eqs" || assetGroupKindSlug(row.slug) === "cash_eqs") {
+      dashboard = null;
+    } else {
+      cur = row;
+      seen.clear();
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        if (DASHBOARD_NW_BUCKET_SLUGS.has(cur.slug) && cur.slug !== "cash_eqs") {
+          dashboard = cur.slug;
+          break;
+        }
+        cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
+      }
     }
     cache.set(row.slug, dashboard);
   }
@@ -212,8 +265,6 @@ export function ensureChildAssetGroupId(
   dashboardBucketBySlugCache = null;
   return { id: Number(r.lastInsertRowid), created: true };
 }
-
-/** Accounts placed on leaf buckets whose id is in `bucketIds`. */
 export function listAccountsForBucketIds(
   bucketIds: number[],
   excludeLegacyStocksNote: string

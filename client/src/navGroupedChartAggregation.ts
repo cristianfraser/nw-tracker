@@ -22,6 +22,7 @@ function toGroupMeta(meta: Record<string, NavChartBucketMeta>): Record<string, G
       depKey: m.depKey,
       barDataKey: m.barDataKey,
       name: m.name,
+      color_rgb: m.color_rgb,
     };
   }
   return out;

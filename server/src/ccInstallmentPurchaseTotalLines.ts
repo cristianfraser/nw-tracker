@@ -4,9 +4,10 @@ import {
   purchaseAmountsMatch,
 } from "./ccCrossImportDedupe.js";
 import {
-  lineHasUniquePurchaseMode,
+  categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
+  registerGenericUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
@@ -183,6 +184,8 @@ function buildSyntheticRow(opts: {
     nro_cuota_total: opts.cuotasTotales,
     line_role: "installment_purchase_total",
     category_statement_line_id: opts.categoryStatementLineId,
+    origin_card_last4: null,
+    primary_card_last4: null,
   };
 }
 
@@ -331,6 +334,16 @@ export function buildInstallmentPurchaseTotalLines(
       ? resolveCcExpensePurchaseKey(matchCuota.statement_line_id)
       : syntheticPurchaseKey(pr.account_id, purchaseOn, pr.cuotas_totales, merchantKey);
 
+    if (!matchCuota) {
+      registerGenericUniquePurchaseMode(
+        pr.account_id,
+        purchaseKey,
+        merchantKey,
+        uniquePurchaseModeKeys,
+        { statementLineId: -pr.id }
+      );
+    }
+
     const categorySlug =
       matchCuota?.category_slug ??
       resolveCcExpenseCategorySlug({
@@ -345,7 +358,13 @@ export function buildInstallmentPurchaseTotalLines(
 
     const categoryUnique =
       matchCuota?.category_unique ??
-      lineHasUniquePurchaseMode(pr.account_id, purchaseKey, uniquePurchases, uniquePurchaseModeKeys);
+      categoryUniqueForExpenseLine(
+        pr.account_id,
+        purchaseKey,
+        merchantKey,
+        uniquePurchases,
+        uniquePurchaseModeKeys
+      );
 
     const categoryStatementLineId = resolveCategoryStatementLineId(cuotaLines, {
       accountId: pr.account_id,

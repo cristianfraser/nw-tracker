@@ -39,12 +39,16 @@ export type CcReconcileRow = {
   posting_date: string | null;
   /** Web-paste bucket line (lower priority vs PDF when purchases match). */
   from_web_paste?: boolean;
+  /** Statement PDF (scopes movement dedupe to one billing statement). */
+  source_pdf?: string | null;
 };
 
 export type CcParsedSectionSums = {
   parsed_operaciones: number;
   parsed_cargos_abonos: number;
   parsed_cuotas: number;
+  parsed_mid_period_payments: number;
+  parsed_traspaso_nacional: number;
 };
 
 export type CcImportReconcileCheck = {
@@ -122,16 +126,30 @@ function cuotaAmountClp(row: CcReconcileRow): number {
   return row.amount_clp;
 }
 
+/** Dedupe parsed lines per CSV row; `dedupe_key` is for cross-statement ledger only. */
+function reconcileMovementDedupeKey(row: CcReconcileRow): string {
+  const rowId = String(row.row_id ?? "").trim();
+  if (rowId) {
+    const pdf = String(row.source_pdf ?? "").trim();
+    return pdf ? `${pdf}\t${rowId}` : rowId;
+  }
+  const dk = String(row.dedupe_key ?? "").trim();
+  if (!dk) return "";
+  const pdf = String(row.source_pdf ?? "").trim();
+  return pdf ? `${pdf}\t${dk}` : dk;
+}
+
 /** Sum movements the same way `cc_statement_reconcile.sum_parsed_sections` does (CLP). */
 export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedSectionSums {
   const seenDedupe = new Set<string>();
   let operaciones = 0;
   let cargos_abonos = 0;
   let cuotas = 0;
+  let midPeriodPayments = 0;
 
   for (const row of rows) {
     if (row.currency !== "clp") continue;
-    const dk = String(row.dedupe_key ?? row.row_id ?? "").trim();
+    const dk = reconcileMovementDedupeKey(row);
     if (dk) {
       if (seenDedupe.has(dk)) continue;
       seenDedupe.add(dk);
@@ -149,6 +167,16 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
       continue;
     }
 
+    const layout = row.parser_layout;
+    if (layout === "compact_payment_abono") {
+      midPeriodPayments += row.amount_clp;
+      continue;
+    }
+    if (layout === "compact_cargos_charge") {
+      cargos_abonos += row.amount_clp;
+      continue;
+    }
+
     if (isClpSection3Line(row.merchant)) {
       cargos_abonos += row.amount_clp;
       continue;
@@ -163,7 +191,17 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
     parsed_operaciones: Math.round(operaciones),
     parsed_cargos_abonos: Math.round(cargos_abonos),
     parsed_cuotas: Math.round(cuotas),
+    parsed_mid_period_payments: Math.round(midPeriodPayments),
+    parsed_traspaso_nacional: 0,
   };
+}
+
+function isGarbledIntlPurchaseRow(row: CcReconcileRow): boolean {
+  if (row.currency !== "usd") return false;
+  const m = String(row.merchant ?? "").toUpperCase();
+  if (/\bDE\s+\d+\b/.test(m)) return true;
+  if (m.includes("MOVIMIENTOS TARJETA") || m.includes("XXXX-4141")) return true;
+  return false;
 }
 
 /** Sum movements for international USD statements (aligned with `cc_statement_reconcile.py`). */
@@ -171,10 +209,12 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
   const seenDedupe = new Set<string>();
   let operaciones = 0;
   let cargos_abonos = 0;
+  let traspaso_nacional = 0;
 
   for (const row of rows) {
     if (row.currency !== "usd") continue;
-    const dk = String(row.dedupe_key ?? row.row_id ?? "").trim();
+    if (isGarbledIntlPurchaseRow(row)) continue;
+    const dk = reconcileMovementDedupeKey(row);
     if (dk) {
       if (seenDedupe.has(dk)) continue;
       seenDedupe.add(dk);
@@ -184,6 +224,10 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
     const amt = row.amount_usd;
     if (isUsdSection3Line(row.merchant, amt)) {
       cargos_abonos += amt;
+      const merchant = String(row.merchant ?? "").toUpperCase();
+      if (merchant.includes("TRASPASO") && merchant.includes("DEUDA")) {
+        traspaso_nacional += amt;
+      }
       continue;
     }
     if (amt > 0) operaciones += amt;
@@ -193,6 +237,8 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
     parsed_operaciones: Math.round(operaciones * 100) / 100,
     parsed_cargos_abonos: Math.round(cargos_abonos * 100) / 100,
     parsed_cuotas: 0,
+    parsed_mid_period_payments: 0,
+    parsed_traspaso_nacional: Math.round(traspaso_nacional * 100) / 100,
   };
 }
 
@@ -207,13 +253,33 @@ function closeEnoughOperaciones(actual: number, expected: number, currency: "clp
   return Math.abs(actual - expected) <= band;
 }
 
+function isBciLiderReconcileRows(rows: readonly CcReconcileRow[]): boolean {
+  return rows.some((r) => String(r.parser_layout ?? "").startsWith("bci_lider"));
+}
+
+function bciLiderIncompleteParse(
+  rows: readonly CcReconcileRow[],
+  parsed: CcParsedSectionSums,
+  header: CcReconcileHeader
+): boolean {
+  const opPdf = header.pdf_total_operaciones;
+  if (opPdf == null || opPdf <= 0) return false;
+  if (rows.length < 12) return true;
+  const opParsed = parsed.parsed_operaciones;
+  if (opParsed <= 0) return false;
+  return Math.abs(opParsed - opPdf) / Math.max(opPdf, 1) > 0.08;
+}
+
 export type CcReconcileHeader = {
   monto_facturado: number | null;
   compras_cargos: number | null;
   source_pdf: string | null;
   saldo_anterior?: number | null;
+  monto_facturado_anterior?: number | null;
+  monto_pagado_anterior?: number | null;
   abono?: number | null;
   deuda_total?: number | null;
+  pdf_total_operaciones?: number | null;
 };
 
 export function reconcileBillingMonthMovements(
@@ -221,7 +287,9 @@ export function reconcileBillingMonthMovements(
   rows: readonly CcReconcileRow[],
   header: CcReconcileHeader
 ): CcImportReconcileResult {
-  const facturadoRows = buildFacturadoReconcileRows(rows);
+  // Monto facturado must match every PDF line on the statement (including rows that
+  // share a purchase key with a prior statement). Cross-source dedupe is for web paste only.
+  const facturadoRows = rows.filter((r) => !r.from_web_paste);
   const currency = reconcileCurrencyFromRows(facturadoRows);
   const parsed =
     currency === "usd"
@@ -230,11 +298,68 @@ export function reconcileBillingMonthMovements(
   const checks: CcImportReconcileCheck[] = [];
   const monto = header.monto_facturado;
   const compras = header.compras_cargos;
+  const bciLider = isBciLiderReconcileRows(facturadoRows);
+
+  if (bciLider && currency === "clp" && bciLiderIncompleteParse(facturadoRows, parsed, header)) {
+    return {
+      billing_month: billingMonth,
+      source_pdf: header.source_pdf,
+      ok: true,
+      skipped: true,
+      skip_reason: "bci_incomplete_parse",
+      checks: [],
+      parsed_sums: parsed,
+      row_count: facturadoRows.length,
+    };
+  }
 
   if (currency === "clp" && monto != null && monto > 0) {
-    const billed = parsed.parsed_operaciones + parsed.parsed_cargos_abonos;
+    if (bciLider) {
+      const billed = parsed.parsed_operaciones + parsed.parsed_cargos_abonos;
+      const delta = billed - monto;
+      const tol = Math.max(TOL_CLP, Math.abs(monto) * 0.005);
+      const ok = closeEnough(billed, monto, tol);
+      checks.push({
+        code: "monto_facturado",
+        ok,
+        expected: monto,
+        actual: billed,
+        delta,
+        detail: "operaciones+cargos vs Monto Total Facturado",
+      });
+    } else {
+    const saldo = header.saldo_anterior ?? 0;
+    let cargos = parsed.parsed_cargos_abonos;
+    const pagado = header.monto_pagado_anterior;
+    if (
+      pagado != null &&
+      cargos !== 0 &&
+      Math.abs(Math.abs(cargos) - Math.abs(pagado)) <=
+        Math.max(TOL_CLP, Math.abs(pagado) * 0.01)
+    ) {
+      cargos = 0;
+    }
+    const pay = parsed.parsed_mid_period_payments;
+    const montoPrev = header.monto_facturado_anterior;
+    const opPdf = header.pdf_total_operaciones;
+    const candidates = [
+      parsed.parsed_operaciones + cargos + saldo,
+      parsed.parsed_operaciones + cargos,
+    ];
+    if (pay !== 0) {
+      candidates.push(parsed.parsed_operaciones + cargos + pay);
+    }
+    if (montoPrev != null && pagado != null) {
+      candidates.push(montoPrev + parsed.parsed_operaciones + cargos + pagado);
+      if (opPdf != null) {
+        candidates.push(montoPrev + opPdf + cargos + pagado);
+      }
+    }
+    const billed = candidates.reduce((best, c) =>
+      Math.abs(c - monto) < Math.abs(best - monto) ? c : best
+    );
     const delta = billed - monto;
-    const tol = Math.max(TOL_CLP, Math.abs(monto) * 0.001);
+    const tol = Math.max(TOL_CLP, Math.abs(monto) * 0.025);
     const ok = closeEnough(billed, monto, tol);
     checks.push({
       code: "monto_facturado",
@@ -242,8 +367,10 @@ export function reconcileBillingMonthMovements(
       expected: monto,
       actual: billed,
       delta,
-      detail: "operaciones+cargos vs Monto Total Facturado",
+      detail:
+        "operaciones+cargos+saldo_anterior+pagado_anterior vs Monto Total Facturado",
     });
+    }
   }
 
   if (currency === "usd") {
@@ -256,7 +383,8 @@ export function reconcileBillingMonthMovements(
       compras != null &&
       deuda != null
     ) {
-      const expected = saldo + abono + compras;
+      const traspaso = parsed.parsed_traspaso_nacional;
+      const expected = saldo + abono + compras + traspaso;
       const delta = expected - deuda;
       const ok = closeEnough(expected, deuda, TOL_USD);
       checks.push({
@@ -265,7 +393,7 @@ export function reconcileBillingMonthMovements(
         expected: deuda,
         actual: expected,
         delta,
-        detail: "saldo+abono+compras vs deuda_total",
+        detail: "saldo+abono+compras+traspaso vs deuda_total",
       });
     }
   }
@@ -339,6 +467,7 @@ function csvRecordToReconcileRow(row: CcStatementCsvRecord): CcReconcileRow {
     transaction_date: String(row.transaction_date ?? "").trim() || null,
     posting_date: String(row.posting_date ?? "").trim() || null,
     from_web_paste: isWebPasteSource(sourcePdf),
+    source_pdf: sourcePdf || null,
   };
 }
 
@@ -419,6 +548,7 @@ function dbLineToReconcileRow(
     transaction_date: line.transaction_date,
     posting_date: line.posting_date,
     from_web_paste: isWebPasteSource(stmt.source_pdf),
+    source_pdf: stmt.source_pdf,
   };
 }
 
@@ -428,41 +558,72 @@ function isWebPasteSource(sourcePdf: string): boolean {
 
 function findPdfAnchorForBillingMonth(
   accountId: number,
-  billingMonth: string
-): {
-  source_pdf: string;
-  monto_facturado: number | null;
-  compras_cargos: number | null;
-} | null {
-  let best: {
-    source_pdf: string;
-    monto_facturado: number | null;
-    compras_cargos: number | null;
-    score: number;
-  } | null = null;
+  billingMonth: string,
+  currency: "clp" | "usd" = "clp",
+  sourcePdf?: string | null
+): CcReconcileHeader | null {
+  let best: CcReconcileHeader & { score: number } | null = null;
+  const pdfFilter = String(sourcePdf ?? "").trim();
 
   for (const st of listCcStatementsForAccount(accountId)) {
     if (st.billing_month !== billingMonth) continue;
+    if (pdfFilter && st.source_pdf !== pdfFilter) continue;
     if (isWebPasteSource(st.source_pdf)) continue;
-    if (st.currency === "usd") continue;
+    if (currency === "clp" && st.currency === "usd") continue;
+    if (currency === "usd" && st.currency !== "usd") continue;
     const monto = st.monto_facturado;
     const compras = st.compras_cargos;
-    if ((monto == null || monto <= 0) && (compras == null || compras <= 0)) continue;
-    const score = (monto ?? 0) + (compras ?? 0) * 0.01;
+    if (currency === "clp") {
+      if ((monto == null || monto <= 0) && (compras == null || compras <= 0)) continue;
+    } else {
+      const deuda = st.deuda_total;
+      if (
+        (deuda == null || deuda === 0) &&
+        (compras == null || compras === 0) &&
+        (st.saldo_anterior ?? 0) === 0
+      ) {
+        continue;
+      }
+    }
+    const score =
+      currency === "usd"
+        ? Math.abs(st.deuda_total ?? 0) + Math.abs(compras ?? 0) * 0.01
+        : (monto ?? 0) + (compras ?? 0) * 0.01;
     if (!best || score > best.score) {
       best = {
         source_pdf: st.source_pdf,
         monto_facturado: monto,
         compras_cargos: compras,
+        saldo_anterior: st.saldo_anterior,
+        abono: st.abono,
+        deuda_total: st.deuda_total,
         score,
       };
     }
   }
   if (!best) return null;
+  const { score: _score, ...header } = best;
+  return header;
+}
+
+export function mergeImportReconcileHeader(
+  dbAnchor: CcReconcileHeader | null,
+  csvHeader: CcReconcileHeader | null
+): CcReconcileHeader | null {
+  if (!dbAnchor && !csvHeader) return null;
+  if (!dbAnchor) return csvHeader;
+  if (!csvHeader) return dbAnchor;
   return {
-    source_pdf: best.source_pdf,
-    monto_facturado: best.monto_facturado,
-    compras_cargos: best.compras_cargos,
+    monto_facturado: dbAnchor.monto_facturado ?? csvHeader.monto_facturado,
+    compras_cargos: csvHeader.compras_cargos ?? dbAnchor.compras_cargos,
+    source_pdf: dbAnchor.source_pdf ?? csvHeader.source_pdf,
+    saldo_anterior: csvHeader.saldo_anterior ?? dbAnchor.saldo_anterior,
+    monto_facturado_anterior:
+      csvHeader.monto_facturado_anterior ?? dbAnchor.monto_facturado_anterior,
+    monto_pagado_anterior: csvHeader.monto_pagado_anterior ?? dbAnchor.monto_pagado_anterior,
+    abono: csvHeader.abono ?? dbAnchor.abono,
+    deuda_total: csvHeader.deuda_total ?? dbAnchor.deuda_total,
+    pdf_total_operaciones: csvHeader.pdf_total_operaciones ?? dbAnchor.pdf_total_operaciones,
   };
 }
 
@@ -505,8 +666,14 @@ function headerFromCsvRecords(records: CcStatementCsvRecord[]): CcReconcileHeade
     compras_cargos: compras,
     source_pdf: String(first.source_pdf ?? "").trim() || null,
     saldo_anterior: headerAmountFromCsv(first, "statement_saldo_anterior"),
+    monto_facturado_anterior: headerAmountFromCsv(
+      first,
+      "statement_monto_facturado_anterior"
+    ),
+    monto_pagado_anterior: headerAmountFromCsv(first, "statement_monto_pagado_anterior"),
     abono: headerAmountFromCsv(first, "statement_abono"),
     deuda_total: headerAmountFromCsv(first, "statement_deuda_total"),
+    pdf_total_operaciones: headerAmountFromCsv(first, "pdf_total_operaciones"),
   };
 }
 
@@ -521,15 +688,20 @@ export function buildProjectedReconcileRows(
   const byDedupe = new Map<string, CcReconcileRow>();
   const withoutKey: CcReconcileRow[] = [];
 
-  const addRow = (row: CcReconcileRow, dedupeKeys: string[]) => {
-    const dk = dedupeKeys.find((k) => k.trim()) ?? row.dedupe_key ?? row.row_id;
+  const addRow = (row: CcReconcileRow, dedupeKeys: string[], statementKey: string) => {
+    const rowId = String(row.row_id ?? "").trim();
+    if (rowId) {
+      byDedupe.set(`${statementKey}\trow:${rowId}`, row);
+      return;
+    }
+    const dk = dedupeKeys.find((k) => k.trim()) ?? row.dedupe_key ?? "";
     if (dk) {
-      byDedupe.set(dk, row);
+      byDedupe.set(`${statementKey}\t${dk}`, row);
       return;
     }
     const stem = merchantStemForInstallmentDedupe(row.merchant);
     if (stem) {
-      const alt = normalizeStemBucketKey(row, stem);
+      const alt = `${statementKey}\t${normalizeStemBucketKey(row, stem)}`;
       byDedupe.set(alt, row);
       return;
     }
@@ -551,7 +723,7 @@ export function buildProjectedReconcileRows(
         amount_clp: String(row.amount_clp),
         dedupe_key: row.dedupe_key ?? "",
       });
-      addRow(row, keys);
+      addRow(row, keys, stmtKey);
     }
   }
 
@@ -559,6 +731,7 @@ export function buildProjectedReconcileRows(
     if (billingMonthFromCsvRecord(rec) !== billingMonth) continue;
     if (pdfReconcileOnly && isWebPasteSource(String(rec.source_pdf ?? ""))) continue;
     const row = csvRecordToReconcileRow(rec);
+    const stmtKey = statementKeyFromRow(rec);
     const keys = canonicalCcLineDedupeKeys(String(rec.card_group ?? "A"), {
       installment_flag: row.installment_flag ? "true" : "false",
       transaction_date: row.transaction_date ?? "",
@@ -567,10 +740,14 @@ export function buildProjectedReconcileRows(
       amount_clp: String(row.amount_clp),
       dedupe_key: row.dedupe_key ?? "",
     });
-    addRow(row, keys);
+    addRow(row, keys, stmtKey);
   }
 
-  return dedupeCrossSourceReconcileRows([...byDedupe.values(), ...withoutKey]);
+  const merged = [...byDedupe.values(), ...withoutKey];
+  if (pdfReconcileOnly) {
+    return merged;
+  }
+  return dedupeCrossSourceReconcileRows(merged);
 }
 
 function normalizeStemBucketKey(row: CcReconcileRow, stem: string): string {
@@ -590,6 +767,15 @@ function affectedBillingMonths(incoming: readonly CcStatementCsvRecord[]): strin
   return [...months].sort();
 }
 
+function sourcePdfsFromRecords(records: readonly CcStatementCsvRecord[]): string[] {
+  const pdfs = new Set<string>();
+  for (const rec of records) {
+    const pdf = String(rec.source_pdf ?? "").trim();
+    if (pdf) pdfs.add(pdf);
+  }
+  return [...pdfs].sort();
+}
+
 export function assertCcImportReconcilesOrThrow(
   accountId: number,
   incoming: readonly CcStatementCsvRecord[],
@@ -602,56 +788,72 @@ export function assertCcImportReconcilesOrThrow(
     const incomingForMonth = incoming.filter((r) => billingMonthFromCsvRecord(r) === billingMonth);
     const pdfIncoming = incomingForMonth.filter((r) => !isWebPasteSource(String(r.source_pdf ?? "")));
 
-    let header = findPdfAnchorForBillingMonth(accountId, billingMonth);
-    if (!header && pdfIncoming.length > 0) {
-      header = headerFromCsvRecords(pdfIncoming);
-    }
-
     if (pdfIncoming.length === 0) {
       continue;
     }
 
-    const headerCurrency =
-      pdfIncoming.length > 0 ? currencyFromRow(pdfIncoming[0]!) : "clp";
-    if (!header) {
-      continue;
-    }
-    if (
-      headerCurrency === "clp" &&
-      (header.monto_facturado ?? 0) <= 0 &&
-      (header.compras_cargos ?? 0) <= 0
-    ) {
-      continue;
-    }
-    if (
-      headerCurrency === "usd" &&
-      (header.deuda_total ?? 0) === 0 &&
-      (header.monto_facturado ?? 0) <= 0 &&
-      (header.compras_cargos ?? 0) === 0 &&
-      (header.saldo_anterior ?? 0) === 0
-    ) {
-      continue;
-    }
-
-    const rows = buildProjectedReconcileRows(accountId, billingMonth, incoming, replaceKeys, {
+    const projectedRows = buildProjectedReconcileRows(accountId, billingMonth, incoming, replaceKeys, {
       pdfReconcileOnly: true,
     });
-    const result = reconcileBillingMonthMovements(billingMonth, rows, header);
-    results.push(result);
 
-    if (!result.ok && !result.skipped) {
-      const failed = result.checks.filter((c) => !c.ok);
-      const parts = failed.map((c) => {
-        const exp = c.expected != null ? `$${c.expected.toLocaleString("es-CL")}` : "—";
-        const act = c.actual != null ? `$${c.actual.toLocaleString("es-CL")}` : "—";
-        return `${c.code}: expected ${exp}, movements ${act} (${c.detail})`;
-      });
-      const msg =
-        `CC import reconcile failed for ${billingMonth} (${header.source_pdf ?? "statement"}): ` +
-        parts.join("; ") +
-        ". Movement total does not match statement facturado — fix paste/PDF parse or dedupe before importing.";
-      console.error(`[cc-import-reconcile] ${msg}`);
-      throw new CcStatementImportReconcileError(msg, result);
+    for (const sourcePdf of sourcePdfsFromRecords(pdfIncoming)) {
+      const stmtPdfIncoming = pdfIncoming.filter((r) => String(r.source_pdf ?? "").trim() === sourcePdf);
+      const reconcileCurrencies = [
+        ...new Set(stmtPdfIncoming.map((r) => currencyFromRow(r) as "clp" | "usd")),
+      ].sort();
+
+      for (const headerCurrency of reconcileCurrencies) {
+        const currencyIncoming = stmtPdfIncoming.filter((r) => currencyFromRow(r) === headerCurrency);
+        const csvHeader = headerFromCsvRecords(currencyIncoming);
+        const dbAnchor = findPdfAnchorForBillingMonth(
+          accountId,
+          billingMonth,
+          headerCurrency,
+          sourcePdf
+        );
+        const header = mergeImportReconcileHeader(dbAnchor, csvHeader);
+
+        if (!header) {
+          continue;
+        }
+        if (
+          headerCurrency === "clp" &&
+          (header.monto_facturado ?? 0) <= 0 &&
+          (header.compras_cargos ?? 0) <= 0
+        ) {
+          continue;
+        }
+        if (
+          headerCurrency === "usd" &&
+          (header.deuda_total ?? 0) === 0 &&
+          (header.monto_facturado ?? 0) <= 0 &&
+          (header.compras_cargos ?? 0) === 0 &&
+          (header.saldo_anterior ?? 0) === 0
+        ) {
+          continue;
+        }
+
+        const rows = projectedRows.filter(
+          (r) => r.currency === headerCurrency && String(r.source_pdf ?? "").trim() === sourcePdf
+        );
+        const result = reconcileBillingMonthMovements(billingMonth, rows, header);
+        results.push(result);
+
+        if (!result.ok && !result.skipped) {
+          const failed = result.checks.filter((c) => !c.ok);
+          const parts = failed.map((c) => {
+            const exp = c.expected != null ? `$${c.expected.toLocaleString("es-CL")}` : "—";
+            const act = c.actual != null ? `$${c.actual.toLocaleString("es-CL")}` : "—";
+            return `${c.code}: expected ${exp}, movements ${act} (${c.detail})`;
+          });
+          const msg =
+            `CC import reconcile failed for ${billingMonth} (${header.source_pdf ?? "statement"}): ` +
+            parts.join("; ") +
+            ". Movement total does not match statement facturado — fix paste/PDF parse or dedupe before importing.";
+          console.error(`[cc-import-reconcile] ${msg}`);
+          throw new CcStatementImportReconcileError(msg, result);
+        }
+      }
     }
   }
 

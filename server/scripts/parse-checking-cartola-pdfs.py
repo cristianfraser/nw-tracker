@@ -40,10 +40,23 @@ CFRASER_DIR = REPO_ROOT / "cfraser"
 PDF_DEPS = SCRIPT_DIR / ".pdf_deps"
 if PDF_DEPS.is_dir():
     sys.path.insert(0, str(PDF_DEPS))
+sys.path.insert(0, str(SCRIPT_DIR))
+
+from cartola_layout import (
+    AmountColumnBounds,
+    RE_SMALL_INLINE,
+    RE_SMALL_TRAILING,
+    amounts_by_column,
+    detect_checking_column_bounds,
+    parse_checking_summary_totals,
+    reconcile_cartola_movements,
+    strip_amounts_from_line,
+)
 
 RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
 RE_AMOUNT_FULL = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
 RE_MOVEMENT_LINE = re.compile(r"^(\d{2}/\d{2})\s+(.+)$")
+RE_DATE_ONLY = re.compile(r"^\s*(\d{2}/\d{2})\s*$")
 RE_PERIOD_PAIR = re.compile(
     r"CARTOLA\s+DESDE\s+HASTA.*?(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
     re.I | re.S,
@@ -68,11 +81,6 @@ def movement_dedupe_key(
     document_no: str = "",
 ) -> tuple:
     return (occurred_on, amount_clp, description, (document_no or "").strip())
-
-# pdftotext -layout column starts (Santander cartola).
-CARGO_COL_MAX = 115
-ABONO_COL_MAX = 145
-SALDO_COL_MIN = 145
 
 # OCR word x-positions (dpi=300, ~letter width).
 OCR_CARGO_X_MAX = 450
@@ -306,7 +314,12 @@ def movement_from_amounts(
     return out
 
 
-def parse_movement_line_layout(line: str, desde_iso: str, hasta_iso: str) -> List[Movement]:
+def parse_movement_line_layout(
+    line: str,
+    desde_iso: str,
+    hasta_iso: str,
+    bounds: AmountColumnBounds,
+) -> List[Movement]:
     m = RE_MOVEMENT_LINE.match(line.rstrip())
     if not m:
         return []
@@ -315,33 +328,176 @@ def parse_movement_line_layout(line: str, desde_iso: str, hasta_iso: str) -> Lis
     if not occurred_on:
         return []
 
-    amounts: List[Tuple[int, str, int]] = []
-    balance: Optional[int] = None
-    for am in RE_AMOUNT.finditer(line):
-        pos = am.start()
-        val = parse_clp_amount(am.group())
-        if val is None:
-            continue
-        if pos >= SALDO_COL_MIN:
-            balance = val
-            continue
-        if pos < CARGO_COL_MAX:
-            amounts.append((pos, "cargo", val))
-        elif pos < ABONO_COL_MAX:
-            amounts.append((pos, "abono", val))
-
-    if not amounts:
+    cargo, abono = amounts_by_column(line, bounds)
+    if cargo is None and abono is None:
         return []
 
-    first_amount_pos = amounts[0][0]
+    first_amount_pos = next(
+        (am.start() for am in RE_AMOUNT.finditer(line) if am.start() < bounds.saldo_min),
+        len(line),
+    )
     middle = line[m.end(1) : first_amount_pos].rstrip()
     branch, description, document_no = split_branch_description(middle)
 
-    cargo = next((v for _p, k, v in amounts if k == "cargo"), None)
-    abono = next((v for _p, k, v in amounts if k == "abono"), None)
     return movement_from_amounts(
-        occurred_on, branch, description, document_no, cargo, abono, balance
+        occurred_on, branch, description, document_no, cargo, abono, None
     )
+
+
+def first_amount_position(line: str, bounds: AmountColumnBounds) -> int:
+    positions = [
+        m.start()
+        for m in RE_AMOUNT.finditer(line)
+        if m.start() < bounds.saldo_min
+    ]
+    for pat in (RE_SMALL_INLINE, RE_SMALL_TRAILING):
+        sm = pat.search(line)
+        if sm is not None:
+            pos = sm.start(2 if pat is RE_SMALL_INLINE else 1)
+            if pos < bounds.saldo_min:
+                positions.append(pos)
+    return min(positions) if positions else len(line)
+
+
+def is_checking_branch_line(line: str, bounds: AmountColumnBounds) -> bool:
+    stripped = line.strip()
+    if not stripped or len(stripped) > 22:
+        return False
+    if RE_DATE_ONLY.match(line):
+        return False
+    cargo, abono = amounts_by_column(line, bounds)
+    if cargo is not None or abono is not None:
+        return False
+    return bool(re.match(r"^[A-Z0-9][\w.]*(?:\s[\w.]+){0,2}$", stripped, re.I))
+
+
+def split_document_from_description(text: str) -> Tuple[str, str]:
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if not cleaned:
+        return "", ""
+    dm = RE_DOC_IN_DESC.match(cleaned)
+    if dm:
+        return dm.group(1), dm.group(2).strip()
+    trailing = re.search(r"\s(\d{6,10})\s*$", cleaned)
+    if trailing:
+        return trailing.group(1), cleaned[: trailing.start()].strip()
+    return "", cleaned
+
+
+def parse_multiline_checking_movements(
+    text: str,
+    desde_iso: str,
+    hasta_iso: str,
+    bounds: AmountColumnBounds,
+) -> List[Movement]:
+    """Parse stacked FECHA / SUCURSAL / DESCRIPCION rows (legacy single-page layout)."""
+    movements: List[Movement] = []
+    in_table = False
+    pending_date: Optional[str] = None
+    pending_branch = ""
+    desc_parts: List[str] = []
+
+    def emit_from_amount_line(line: str) -> None:
+        nonlocal pending_date, pending_branch, desc_parts
+        if pending_date is None:
+            return
+        cargo, abono = amounts_by_column(line, bounds)
+        if cargo is None and abono is None:
+            return
+
+        prefix = strip_amounts_from_line(line[: first_amount_position(line, bounds)]).strip()
+        parts = [p for p in desc_parts if p.strip()]
+        document_no = ""
+        if prefix:
+            if re.fullmatch(r"\d{6,10}", prefix):
+                document_no = prefix
+            else:
+                parts.append(prefix)
+
+        document_no, description = split_document_from_description(" ".join(parts))
+        if not description and document_no:
+            description = f"Doc {document_no}"
+            document_no = ""
+
+        for mv in movement_from_amounts(
+            pending_date,
+            pending_branch,
+            description,
+            document_no,
+            cargo,
+            abono,
+            None,
+        ):
+            movements.append(mv)
+        desc_parts = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        upper = line.upper()
+        if "DETALLE DE MOVIMIENTOS" in upper:
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if "RESUMEN DE COMISIONES" in upper or upper.strip().startswith("MENSAJES"):
+            break
+        if not line.strip():
+            continue
+        if upper.startswith("FECHA") or "CHEQUES Y OTROS" in upper:
+            continue
+
+        dm = RE_DATE_ONLY.match(line)
+        if dm:
+            iso = dd_mm_to_iso(dm.group(1), desde_iso, hasta_iso)
+            if iso:
+                pending_date = iso
+                pending_branch = ""
+                desc_parts = []
+            continue
+
+        if pending_date is None:
+            continue
+
+        cargo, abono = amounts_by_column(line, bounds)
+        if cargo is not None or abono is not None:
+            emit_from_amount_line(line)
+            continue
+
+        if not pending_branch and is_checking_branch_line(line, bounds):
+            pending_branch = line.strip()
+            desc_parts = []
+            continue
+
+        stripped = line.strip()
+        if stripped:
+            desc_parts.append(stripped)
+
+    return movements
+
+
+def parse_single_line_checking_movements(
+    text: str,
+    desde_iso: str,
+    hasta_iso: str,
+    bounds: AmountColumnBounds,
+) -> List[Movement]:
+    movements: List[Movement] = []
+    in_table = False
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        upper = line.upper()
+        if "DETALLE DE MOVIMIENTOS" in upper:
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if "RESUMEN DE COMISIONES" in upper or upper.strip().startswith("MENSAJES"):
+            break
+        if not RE_MOVEMENT_LINE.match(line):
+            continue
+        for mv in parse_movement_line_layout(line, desde_iso, hasta_iso, bounds):
+            movements.append(mv)
+    return movements
 
 
 def parse_ocr_word_rows(
@@ -444,6 +600,91 @@ def extract_pdf_text_ocr(pdf_path: Path) -> Tuple[str, List[Tuple[float, float, 
     return flat, words
 
 
+def finalize_checking_cartola(
+    source_file: str,
+    period_month: str,
+    period_from: str,
+    period_to: str,
+    flat: str,
+    saldo_inicial: Optional[int],
+    saldo_final: Optional[int],
+    cartola_no: Optional[str],
+    movements: List[Movement],
+    extractor: str,
+) -> ParsedCartola:
+    summary = parse_checking_summary_totals(flat)
+    if summary is None and movements:
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=saldo_inicial,
+            saldo_final_clp=saldo_final,
+            cartola_no=cartola_no,
+            movements=movements,
+            parse_status="error",
+            parse_error="Could not parse INFORMACION DE CUENTA CORRIENTE summary totals",
+            extractor=extractor,
+        )
+    if summary is not None:
+        err = reconcile_cartola_movements(summary, movements)
+        if err:
+            return ParsedCartola(
+                source_file=source_file,
+                period_month=period_month,
+                period_from=period_from,
+                period_to=period_to,
+                saldo_inicial_clp=summary.saldo_inicial_clp,
+                saldo_final_clp=summary.saldo_final_clp,
+                cartola_no=cartola_no,
+                movements=movements,
+                parse_status="error",
+                parse_error=err,
+                extractor=extractor,
+            )
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=summary.saldo_inicial_clp,
+            saldo_final_clp=summary.saldo_final_clp,
+            cartola_no=cartola_no,
+            movements=movements,
+            parse_status="ok",
+            parse_error=None,
+            extractor=extractor,
+        )
+    if not movements:
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=saldo_inicial,
+            saldo_final_clp=saldo_final,
+            cartola_no=cartola_no,
+            movements=[],
+            parse_status="ok",
+            parse_error=None,
+            extractor=extractor,
+        )
+    return ParsedCartola(
+        source_file=source_file,
+        period_month=period_month,
+        period_from=period_from,
+        period_to=period_to,
+        saldo_inicial_clp=saldo_inicial,
+        saldo_final_clp=saldo_final,
+        cartola_no=cartola_no,
+        movements=movements,
+        parse_status="error",
+        parse_error="Could not parse INFORMACION DE CUENTA CORRIENTE summary totals",
+        extractor=extractor,
+    )
+
+
 def parse_cartola_text(text: str, source_file: str, extractor: str) -> ParsedCartola:
     flat = re.sub(r"\s+", " ", text)
     period_month, period_from, period_to, saldo_inicial, saldo_final, cartola_no = (
@@ -465,41 +706,26 @@ def parse_cartola_text(text: str, source_file: str, extractor: str) -> ParsedCar
         )
 
     movements: List[Movement] = []
-    seen = set()
-    in_table = False
-    for raw_line in text.splitlines():
-        line = raw_line.rstrip()
-        upper = line.upper()
-        if "DETALLE DE MOVIMIENTOS" in upper:
-            in_table = True
-            continue
-        if not in_table:
-            continue
-        if "RESUMEN DE COMISIONES" in upper or upper.strip().startswith("MENSAJES"):
-            break
-        if not RE_MOVEMENT_LINE.match(line):
-            continue
-        for mv in parse_movement_line_layout(line, period_from, period_to):
-            key = movement_dedupe_key(
-                mv.occurred_on, mv.amount_clp, mv.description, mv.document_no
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            movements.append(mv)
+    column_bounds = detect_checking_column_bounds(text)
+    movements = parse_single_line_checking_movements(
+        text, period_from, period_to, column_bounds
+    )
+    if not movements:
+        movements = parse_multiline_checking_movements(
+            text, period_from, period_to, column_bounds
+        )
 
-    return ParsedCartola(
-        source_file=source_file,
-        period_month=period_month,
-        period_from=period_from,
-        period_to=period_to,
-        saldo_inicial_clp=saldo_inicial,
-        saldo_final_clp=saldo_final,
-        cartola_no=cartola_no,
-        movements=movements,
-        parse_status="ok",
-        parse_error=None,
-        extractor=extractor,
+    return finalize_checking_cartola(
+        source_file,
+        period_month,
+        period_from,
+        period_to,
+        flat,
+        saldo_inicial,
+        saldo_final,
+        cartola_no,
+        movements,
+        extractor,
     )
 
 
@@ -524,18 +750,17 @@ def parse_cartola_ocr(pdf_path: Path) -> ParsedCartola:
         )
 
     movements = parse_ocr_word_rows(words, period_from, period_to)
-    return ParsedCartola(
-        source_file=pdf_path.name,
-        period_month=period_month,
-        period_from=period_from,
-        period_to=period_to,
-        saldo_inicial_clp=saldo_inicial,
-        saldo_final_clp=saldo_final,
-        cartola_no=cartola_no,
-        movements=movements,
-        parse_status="ok",
-        parse_error=None,
-        extractor="ocr",
+    return finalize_checking_cartola(
+        pdf_path.name,
+        period_month,
+        period_from,
+        period_to,
+        flat,
+        saldo_inicial,
+        saldo_final,
+        cartola_no,
+        movements,
+        "ocr",
     )
 
 

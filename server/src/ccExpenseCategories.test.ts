@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
   assignCcExpenseLineCategory,
+  categoryUniqueForExpenseLine,
   countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
   listStatementLineIdsForPurchaseKey,
@@ -10,6 +11,7 @@ import {
   resolveCcExpenseCategorySlug,
   resolveCcExpensePurchaseKey,
   resolveMerchantCategorySlug,
+  isGenericTransferMerchantKey,
 } from "./ccExpenseCategories.js";
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
@@ -50,6 +52,12 @@ describe("ccExpenseCategories", () => {
     ).toBe(false);
     expect(
       countsTowardCcExpenseGastosMes("deposits", {
+        installment_flag: 0,
+        nro_cuota_current: null,
+      })
+    ).toBe(false);
+    expect(
+      countsTowardCcExpenseGastosMes("checking_internal_transfer", {
         installment_flag: 0,
         nro_cuota_current: null,
       })
@@ -113,11 +121,61 @@ describe("ccExpenseCategories", () => {
     ).toBe("unclassified");
   });
 
-  it("matches merchant rules by prefix when statement merchant name is longer", () => {
+  it("matches merchant rules by exact merchant_key only", () => {
     const rules = new Map([["32|METLIFE CHILE SEGUROS", "bills"]]);
     expect(
       resolveMerchantCategorySlug(32, "METLIFE CHILE SEGUROS DE VIDA", rules)
-    ).toBe("bills");
+    ).toBeNull();
+    expect(resolveMerchantCategorySlug(32, "METLIFE CHILE SEGUROS", rules)).toBe("bills");
+  });
+
+  it("does not apply UBER rule to UBER EATS", () => {
+    const rules = new Map([["32|UBER", "transportation"]]);
+    expect(resolveMerchantCategorySlug(32, "UBER EATS", rules)).toBeNull();
+    expect(resolveMerchantCategorySlug(32, "UBER", rules)).toBe("transportation");
+  });
+
+  it("detects generic transfer merchant keys", () => {
+    expect(isGenericTransferMerchantKey("TRANSFERENCIA")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRANSF")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRANSF. INTERNET A OTRO BANCOS")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRANSF.INTERNET A 3O MISMO BCO")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRANSFERENCIA A 3RO MISMO BANCO")).toBe(true);
+    expect(isGenericTransferMerchantKey("MACH ONE CLICK")).toBe(true);
+    expect(isGenericTransferMerchantKey("MACH WEBPAY ONECLICK")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRASPASO A CUENTA DE OTRO BANCO")).toBe(true);
+    expect(isGenericTransferMerchantKey("1234567890 CARGO MERCADO CAPITALES")).toBe(true);
+    expect(isGenericTransferMerchantKey("CARGO MERCADO CAPITALES")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRANSFERENCIA A JUAN PEREZ")).toBe(false);
+    expect(isGenericTransferMerchantKey("TRANSF 123456")).toBe(false);
+    expect(isGenericTransferMerchantKey("TRANSF. A PEDRO PAINEL GAJARDO")).toBe(false);
+    expect(isGenericTransferMerchantKey("0768106274 TRANSF A FINTUAL")).toBe(false);
+  });
+
+  it("generic transfer merchants skip merchant rules", () => {
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 1,
+        accountId: 15,
+        merchantKey: "TRANSF. INTERNET A OTRO BANCOS",
+        purchaseKey: "checking-mv:1",
+        lineOverrides: new Map(),
+        merchantRules: new Map([["15|TRANSF. INTERNET A OTRO BANCOS", "deposits"]]),
+        uniquePurchases: new Map(),
+      })
+    ).toBe("unclassified");
+  });
+
+  it("categoryUniqueForExpenseLine is true for generic transfers without persisted row", () => {
+    expect(
+      categoryUniqueForExpenseLine(
+        15,
+        "checking-mv:99",
+        "TRANSF. INTERNET A OTRO BANCOS",
+        new Map(),
+        new Set()
+      )
+    ).toBe(true);
   });
 
   it("can enable unique purchase mode before a category is chosen", () => {

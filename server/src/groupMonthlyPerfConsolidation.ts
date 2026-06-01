@@ -169,8 +169,7 @@ function movementBalanceMonthlyPerfRows(
   const monthEndsAsc = monthEndsBetweenInclusive(bounds.min_d, maxD);
   const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
     const clp = checkingMovementBalanceClpAtCached(accountId, asOf);
-    const v = unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-    return Number.isFinite(v) ? v : clp;
+    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
   });
   return [...asc].reverse();
 }
@@ -187,8 +186,7 @@ function bookValuationMonthlyPerfRows(
   const clpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));
   const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
     const clp = clpByDate.get(asOf) ?? 0;
-    const v = unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-    return Number.isFinite(v) ? v : clp;
+    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
   });
 
   const today = chileCalendarTodayYmd();
@@ -197,8 +195,7 @@ function bookValuationMonthlyPerfRows(
   if (curIdx >= 0) {
     const liveMark = syncLatestDisplayValueClp(accountId, categorySlug, { notes: null, name: "" });
     let liveClp = liveMark?.value_clp ?? bookAsc[bookAsc.length - 1]!.value_clp;
-    let live = unit === "usd" ? convertTs(liveClp, today, "usd") : liveClp;
-    if (!Number.isFinite(live)) live = liveClp;
+    const live = unit === "usd" ? convertTs(liveClp, today, "usd") : liveClp;
     const row = asc[curIdx]!;
     const prior = row.prior_closing;
     const net = row.net_capital_flow;
@@ -350,7 +347,7 @@ export function getGroupConsolidatedMonthlyPerfForRows(
   const consolidated = consolidateGroupMonthlyPerf(
     payloads.map((p) => ({ account_id: p.account_id, monthly: p.monthly }))
   );
-  if (groupSlug === "cash_eqs") {
+  if (groupSlug === "cash_eqs" || groupSlug === "cash_savings") {
     return netLinkedCreditCardFromCashConsolidated(consolidated, unit);
   }
   return consolidated;

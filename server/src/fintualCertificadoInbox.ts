@@ -1,11 +1,11 @@
 /**
- * Inbox hook: `cfraser/pdfs/certificado_de_transacciones.pdf` → CSV + archive PDF.
+ * Inbox hook: `cfraser/inbox/certificado_de_transacciones.pdf` → CSV + archive PDF.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import { resolveCfraserCsvDir, resolveCfraserInboxDir } from "./cfraserPaths.js";
 import {
   fintualCertificadoPdfRowsToCsv,
   isFintualCertificadoTransaccionesText,
@@ -20,7 +20,7 @@ export function fintualCertificadoArchiveDir(cfraserDir: string): string {
 }
 
 export function findFintualCertificadoInboxPdf(cfraserDir: string): string | null {
-  const inbox = path.join(cfraserDir, "pdfs");
+  const inbox = resolveCfraserInboxDir();
   if (!fs.existsSync(inbox)) return null;
   const exact = path.join(inbox, "certificado_de_transacciones.pdf");
   if (fs.existsSync(exact)) return exact;

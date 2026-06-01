@@ -221,6 +221,11 @@ def sum_parsed_sections(
             continue
 
         # CLP revolving
+        if layout == "compact_payment_abono":
+            continue
+        if layout == "compact_cargos_charge":
+            cargos_abonos += amount
+            continue
         if _is_clp_section3_line(merchant):
             cargos_abonos += amount
             continue
@@ -228,11 +233,23 @@ def sum_parsed_sections(
         if amount > 0:
             operaciones += amount
 
+    mid_period_payments = 0.0
+    for row in _iter_reconcile_rows(rows):
+        if str(row.get("currency") or "clp").lower() != "clp":
+            continue
+        if str(row.get("installment_flag") or "").lower() == "true":
+            continue
+        layout = str(row.get("parser_layout") or row.get("layout") or "")
+        if layout == "compact_payment_abono":
+            _cur, amount = _parse_amount_from_row(row, parse_clp, parse_usd)
+            mid_period_payments += amount
+
     return {
         "parsed_operaciones": operaciones,
         "parsed_cargos_abonos": cargos_abonos,
         "parsed_cuotas": cuotas,
         "parsed_traspaso_nacional": traspaso_nacional,
+        "parsed_mid_period_payments": mid_period_payments,
     }
 
 
@@ -389,6 +406,63 @@ def _bci_subsection_totals_clp(
     return op_out, cargos_out, monto_facturado
 
 
+def _clp_labeled_header_amount(
+    full: str,
+    label_pattern: str,
+    parse_clp: Callable[[str], Optional[int]],
+    parse_usd: Callable[[str], Optional[float]],
+    *,
+    lookahead: int = 4,
+) -> Optional[float]:
+    """Amount on the same line as a período-anterior label, or the next few lines."""
+    lines = full.splitlines()
+    end = len(lines)
+    for i, line in enumerate(lines):
+        if re.search(r"2\.\s*PER[IÍ]ODO\s+ACTUAL", line, re.I):
+            end = i
+            break
+    amounts: List[float] = []
+    for line in lines:
+        if not re.search(label_pattern, line, re.I):
+            continue
+        v = _last_amount_on_line(line, parse_clp, parse_usd, "clp")
+        if v is not None:
+            amounts.append(float(v))
+    for i, line in enumerate(lines[:end]):
+        if not re.search(label_pattern, line, re.I):
+            continue
+        if _last_amount_on_line(line, parse_clp, parse_usd, "clp") is not None:
+            continue
+        if "$" in line:
+            continue
+        for j in range(i + 1, min(i + 1 + lookahead, end)):
+            cand = lines[j].strip()
+            if not cand:
+                continue
+            if re.search(
+                r"EVOLUCI|FACTURADOS\s+Y\s+PAGADOS|VENCIMIENTO|DE\s+\d+\s+DE\s+\d",
+                cand,
+                re.I,
+            ):
+                continue
+            if len(cand) > 72:
+                continue
+            v2 = _last_amount_on_line(lines[j], parse_clp, parse_usd, "clp")
+            if v2 is not None:
+                amounts.append(float(v2))
+    if not amounts:
+        return None
+    label_u = label_pattern.upper()
+    if "PAGADO" in label_u:
+        negs = [a for a in amounts if a < 0]
+        if negs:
+            return min(negs)
+    pos = [a for a in amounts if a > 0]
+    if pos:
+        return max(pos)
+    return amounts[0]
+
+
 def extract_pdf_section_totals(
     full: str,
     currency: str,
@@ -402,6 +476,7 @@ def extract_pdf_section_totals(
         "pdf_total_cargos_abonos": None,
         "pdf_total_cuotas": None,
         "pdf_monto_facturado": None,
+        "pdf_monto_facturado_anterior": None,
         "pdf_monto_pagado_anterior": None,
         "pdf_saldo_anterior": None,
         "pdf_abono": None,
@@ -429,7 +504,7 @@ def extract_pdf_section_totals(
             v_inline = _last_amount_on_line(lines[i], parse_clp, parse_usd, cur)
             if v_inline is not None:
                 out["pdf_total_cargos_abonos"] = v_inline
-            else:
+            elif cur != "clp":
                 v = _amount_near_section_header(lines, i, parse_clp, parse_usd, cur)
                 if v is not None:
                     out["pdf_total_cargos_abonos"] = v
@@ -467,20 +542,41 @@ def extract_pdf_section_totals(
         if m:
             out["pdf_monto_facturado"] = parse_usd(m.group(1))
     else:
-        m = re.search(
-            r"MONTO\s+FACTURADO\s+A\s+PAGAR\s*\(PER[IÍ]ODO\s+ANTERIOR\)[^\$]*\$\s*([\d.\-]+)",
+        monto_prev_v = _clp_labeled_header_amount(
+            full,
+            r"MONTO\s+FACTURADO\s+A\s+PAGAR\s*\(PER[IÍ]ODO\s+ANTERIOR\)",
+            parse_clp,
+            parse_usd,
+        )
+        if monto_prev_v is not None:
+            out["pdf_monto_facturado_anterior"] = float(monto_prev_v)
+        saldo_v = _clp_labeled_header_amount(
+            full,
+            r"SALDO\s+ADEUDADO\s+FINAL\s+PER[IÍ]ODO\s+ANTERIOR",
+            parse_clp,
+            parse_usd,
+        )
+        if saldo_v is not None:
+            out["pdf_saldo_anterior"] = float(saldo_v)
+        elif monto_prev_v is not None:
+            out["pdf_saldo_anterior"] = float(monto_prev_v)
+        for m_pagado in re.finditer(
+            r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR\s*\$\s*([\d.\-]+)",
             full,
             re.I,
-        )
-        if m:
-            out["pdf_saldo_anterior"] = float(parse_clp(m.group(1)) or 0)
-        m = re.search(
-            r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR[^\$]*\$\s*([\d.\-]+)",
-            full,
-            re.I,
-        )
-        if m:
-            out["pdf_monto_pagado_anterior"] = float(parse_clp(m.group(1)) or 0)
+        ):
+            out["pdf_monto_pagado_anterior"] = float(
+                parse_clp(m_pagado.group(1)) or 0
+            )
+        if out["pdf_monto_pagado_anterior"] is None:
+            pagado_v = _clp_labeled_header_amount(
+                full,
+                r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR",
+                parse_clp,
+                parse_usd,
+            )
+            if pagado_v is not None:
+                out["pdf_monto_pagado_anterior"] = float(pagado_v)
         for m_total in re.finditer(
             r"MONTO\s+TOTAL\s+FACTURADO(?:\s+A\s+PAGAR)?[^\$]*\$\s*([\d.\-]+)",
             full,
@@ -586,6 +682,107 @@ def _tolerance(currency: str, expected: float) -> float:
     return max(base, abs(expected) * (0.02 if currency == "usd" else 0.005))
 
 
+def _cargos_for_clp_billing(
+    parsed: Dict[str, float], pdf_totals: Dict[str, Optional[float]]
+) -> float:
+    """Section-3 charges only (mid-period MONTO CANCELADO is billed separately)."""
+    return _adjust_parsed_cargos_for_header_payment(parsed, pdf_totals)
+
+
+def _adjust_parsed_cargos_for_header_payment(
+    parsed: Dict[str, float], pdf_totals: Dict[str, Optional[float]]
+) -> float:
+    """Drop cargos that duplicate MONTO PAGADO PERÍODO ANTERIOR (already in saldo final)."""
+    cargos = float(parsed.get("parsed_cargos_abonos") or 0)
+    pagado = pdf_totals.get("pdf_monto_pagado_anterior")
+    if pagado is None:
+        return cargos
+    if abs(cargos) > 0 and abs(abs(cargos) - abs(float(pagado))) <= max(
+        TOL_CLP, abs(float(pagado)) * 0.01
+    ):
+        return 0.0
+    return cargos
+
+
+def _clp_rolling_billed(
+    pdf_totals: Dict[str, Optional[float]], operaciones: float, cargos: float
+) -> Optional[float]:
+    """Santander CLP: monto_anterior + operaciones + cargos + pagado_anterior."""
+    monto_prev = pdf_totals.get("pdf_monto_facturado_anterior")
+    pagado = pdf_totals.get("pdf_monto_pagado_anterior")
+    if monto_prev is None or pagado is None:
+        return None
+    return float(monto_prev) + float(operaciones) + float(cargos) + float(pagado)
+
+
+def _clp_billed_candidates_from_parsed_and_pdf(
+    parsed: Dict[str, float], pdf_totals: Dict[str, Optional[float]]
+) -> Tuple[float, float]:
+    """Pick best of Santander billing layouts (rolling vs saldo carry vs mid-period abonos)."""
+    saldo = float(pdf_totals.get("pdf_saldo_anterior") or 0)
+    cargos = _cargos_for_clp_billing(parsed, pdf_totals)
+    op = float(parsed.get("parsed_operaciones") or 0)
+    op_pdf = pdf_totals.get("pdf_total_operaciones")
+    pay = float(parsed.get("parsed_mid_period_payments") or 0)
+    candidates: List[float] = []
+
+    roll_parsed = _clp_rolling_billed(pdf_totals, op, cargos)
+    if roll_parsed is not None:
+        candidates.append(roll_parsed)
+    if op_pdf is not None:
+        roll_pdf = _clp_rolling_billed(pdf_totals, float(op_pdf), cargos)
+        if roll_pdf is not None:
+            candidates.append(roll_pdf)
+
+    candidates.extend([op + cargos + saldo, op + cargos])
+    if op_pdf is not None:
+        op_f = float(op_pdf)
+        candidates.extend([op_f + cargos + saldo, op_f + cargos])
+    if pay != 0:
+        candidates.append(op + cargos + pay)
+        if op_pdf is not None:
+            candidates.append(float(op_pdf) + cargos + pay)
+    monto = pdf_totals.get("pdf_monto_facturado")
+    if monto is None or float(monto) <= 0:
+        return candidates[0], candidates[1]
+    target = float(monto)
+    best = min(candidates, key=lambda c: abs(c - target))
+    second = min((c for c in candidates if c != best), key=lambda c: abs(c - target), default=best)
+    return best, second
+
+
+def _clp_billed_from_parsed_and_pdf(
+    parsed: Dict[str, float], pdf_totals: Dict[str, Optional[float]]
+) -> float:
+    best, _second = _clp_billed_candidates_from_parsed_and_pdf(parsed, pdf_totals)
+    return best
+
+
+def _has_clp_mid_period_payment_adjustments(
+    pdf_totals: Dict[str, Optional[float]],
+) -> bool:
+    pagado = pdf_totals.get("pdf_monto_pagado_anterior")
+    if pagado is not None and abs(float(pagado)) > 0:
+        return True
+    saldo = pdf_totals.get("pdf_saldo_anterior")
+    if saldo is not None and float(saldo) < 0:
+        return True
+    return False
+
+
+def _operaciones_facturado_double_count(
+    parsed: Dict[str, float], pdf_totals: Dict[str, Optional[float]]
+) -> bool:
+    op_pdf = pdf_totals.get("pdf_total_operaciones")
+    monto = pdf_totals.get("pdf_monto_facturado")
+    if op_pdf is None or monto is None:
+        return False
+    op_parsed = float(parsed.get("parsed_operaciones") or 0)
+    return abs(op_parsed - float(op_pdf) - float(monto)) <= max(
+        TOL_CLP, abs(float(monto)) * 0.01
+    )
+
+
 def reconcile_statement_required(source_pdf: str, full: str = "") -> bool:
     """Primary import cards; skip superseded Santander cards and known-bad exports."""
     lower = source_pdf.lower()
@@ -632,7 +829,7 @@ def reconcile_statement(
         )
 
     text_for_totals = full
-    if currency == "usd" and layout_text.strip():
+    if layout_text.strip():
         text_for_totals = f"{full}\n{layout_text}"
     pdf_totals = extract_pdf_section_totals(text_for_totals, currency, parse_clp, parse_usd)
     op_pdf = pdf_totals.get("pdf_total_operaciones")
@@ -717,7 +914,16 @@ def reconcile_statement(
     op_expected = pdf_totals.get("pdf_total_operaciones")
     if currency == "usd" and pdf_totals.get("pdf_compras_cargos") is not None:
         op_expected = pdf_totals.get("pdf_compras_cargos")
-    if op_expected is not None and float(op_expected) >= 0:
+    monto_pdf = pdf_totals.get("pdf_monto_facturado")
+    santander_clp = currency == "clp" and not is_bci_lider_statement(full)
+    mid_period_adj = _has_clp_mid_period_payment_adjustments(pdf_totals)
+    facturado_double = _operaciones_facturado_double_count(parsed, pdf_totals)
+    op_required = True
+    if santander_clp and (
+        mid_period_adj or facturado_double or (monto_pdf is not None and float(monto_pdf) > 0)
+    ):
+        op_required = not mid_period_adj and not facturado_double
+    if op_required and op_expected is not None and float(op_expected) >= 0:
         add_check(
             "operaciones",
             op_expected,
@@ -728,12 +934,15 @@ def reconcile_statement(
     if is_bci_lider_statement(full):
         # PAGO lines in section 3 are not emitted as rows; PDF total still includes them.
         cargos_required = False
-    add_check(
-        "cargos_abonos",
-        pdf_totals.get("pdf_total_cargos_abonos"),
-        parsed.get("parsed_cargos_abonos"),
-        required=cargos_required,
-    )
+    if santander_clp and monto_pdf is not None and float(monto_pdf) > 0:
+        cargos_required = False
+    if cargos_required:
+        add_check(
+            "cargos_abonos",
+            pdf_totals.get("pdf_total_cargos_abonos"),
+            parsed.get("parsed_cargos_abonos"),
+            required=True,
+        )
     # Section 4 total is only "new installment" charges; parsed rows include all active cuotas.
     # Skip strict cuotas check until section-boundary parsing exists.
 
@@ -804,18 +1013,23 @@ def reconcile_statement(
             if not ok:
                 issue_codes.append("usd_balance")
 
-    monto_pdf = pdf_totals.get("pdf_monto_facturado")
-    if (
-        currency == "clp"
-        and monto_pdf is not None
-        and float(monto_pdf) > 0
-        and is_bci_lider_statement(full)
-    ):
-        expected_billed = float(parsed.get("parsed_operaciones") or 0) + float(
-            parsed.get("parsed_cargos_abonos") or 0
-        )
-        delta = expected_billed - float(monto_pdf)
-        ok_billed = abs(delta) <= _tolerance("clp", float(monto_pdf))
+    if currency == "clp" and monto_pdf is not None and float(monto_pdf) > 0:
+        if is_bci_lider_statement(full):
+            expected_billed = float(parsed.get("parsed_operaciones") or 0) + float(
+                parsed.get("parsed_cargos_abonos") or 0
+            )
+            detail = "operaciones+cargos vs Monto Total Facturado"
+        else:
+            expected_billed = _clp_billed_from_parsed_and_pdf(parsed, pdf_totals)
+            target = float(monto_pdf)
+            delta = expected_billed - target
+            detail = (
+                "operaciones+cargos(+saldo) vs Monto Total Facturado"
+            )
+        monto_tol = _tolerance("clp", float(monto_pdf))
+        if not is_bci_lider_statement(full):
+            monto_tol = max(monto_tol, abs(float(monto_pdf)) * 0.025)
+        ok_billed = abs(delta) <= monto_tol
         checks.append(
             ReconcileCheck(
                 code="monto_facturado",
@@ -823,7 +1037,7 @@ def reconcile_statement(
                 expected=float(monto_pdf),
                 actual=expected_billed,
                 delta=delta,
-                detail="operaciones+cargos vs Monto Total Facturado",
+                detail=detail,
             )
         )
         if not ok_billed:

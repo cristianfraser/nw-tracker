@@ -1,5 +1,6 @@
 import type { CardBreakdownLine } from "./dashboardCardBreakdown";
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
+import i18n from "./i18n";
 import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
 import { stripChartBucketNavNodes } from "./navChartBuckets";
@@ -9,6 +10,22 @@ import {
 } from "./portfolioNavFromApi";
 import { resolveNavTreeLabel } from "./sidebarNavFromApi";
 import type { AccountListRow, DashboardAccountRow, NavTreeNodeDto } from "./types";
+
+const RETIREMENT_AFP_AFC_CATEGORY_ORDER = ["afp", "afc"] as const;
+const RETIREMENT_AFP_AFC_BUCKET_PREFIX = "retirement_afp_afc";
+
+function leafBucketKindSlug(row: DashboardAccountRow): string {
+  const slug = row.bucket_slug ?? row.category_slug ?? "";
+  const sep = slug.lastIndexOf("__");
+  return sep >= 0 ? slug.slice(sep + 2) : slug;
+}
+
+function rowsInRetirementAfpAfcBucket(rows: DashboardAccountRow[]): DashboardAccountRow[] {
+  return rows.filter((r) => {
+    const slug = r.bucket_slug ?? "";
+    return slug === RETIREMENT_AFP_AFC_BUCKET_PREFIX || slug.startsWith(`${RETIREMENT_AFP_AFC_BUCKET_PREFIX}__`);
+  });
+}
 
 function accountDetailPath(accountId: number): string {
   return `/account/${accountId}`;
@@ -78,12 +95,34 @@ function accountLines(rows: DashboardAccountRow[], depth: 1 | 2): CardBreakdownL
   );
 }
 
+function retirementAfpAfcCategoryLabel(slug: (typeof RETIREMENT_AFP_AFC_CATEGORY_ORDER)[number]): string {
+  return i18n.t(`retirement.subgroups.${slug}`);
+}
+
+/** Flat AFP+AFC nav: roll up by category (mirrors APV → apv-a / apv-b sub-groups on the card). */
+function retirementAfpAfcCategoryLines(nodeRows: DashboardAccountRow[]): CardBreakdownLine[] {
+  const lines: CardBreakdownLine[] = [];
+  for (const slug of RETIREMENT_AFP_AFC_CATEGORY_ORDER) {
+    const catRows = nodeRows.filter((r) => leafBucketKindSlug(r) === slug);
+    if (!catRows.length) continue;
+    lines.push({
+      label: retirementAfpAfcCategoryLabel(slug),
+      clp: sumClp(catRows),
+      usd: sumUsd(catRows),
+      depth: 1,
+    });
+  }
+  return lines;
+}
+
 function breakdownBlockForNavNode(
   node: NavTreeNodeDto,
   activeRows: DashboardAccountRow[]
 ): CardBreakdownLine[] | null {
-  const ids = navAccountIdSet(node);
-  const nodeRows = activeRows.filter((r) => ids.has(r.account_id));
+  const nodeRows =
+    node.slug === "retirement_afp_afc"
+      ? rowsInRetirementAfpAfcBucket(activeRows)
+      : activeRows.filter((r) => navAccountIdSet(node).has(r.account_id));
   if (!nodeRows.length) return null;
 
   const rp = node.route_path?.trim();
@@ -124,6 +163,14 @@ function breakdownBlockForNavNode(
       }
     }
     return lines;
+  }
+
+  if (node.slug === "retirement_afp_afc") {
+    const catLines = retirementAfpAfcCategoryLines(nodeRows);
+    if (catLines.length > 0) {
+      lines.push(...catLines);
+      return lines;
+    }
   }
 
   lines.push(...accountLines(nodeRows, 1));

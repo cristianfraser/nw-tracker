@@ -151,6 +151,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
             }
           : {}),
       },
+      ...(includeUsd ? { fx_conversion_error: depositsFlow.fx_conversion_error } : {}),
     };
   });
 }

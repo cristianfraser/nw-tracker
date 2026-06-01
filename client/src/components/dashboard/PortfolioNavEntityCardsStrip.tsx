@@ -18,6 +18,7 @@ import { buildCashCardBreakdown, type CardGroupMetricsPeriod } from "../../dashb
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
+  resolveDashboardBucketFromNavNode,
 } from "../../portfolioNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 
@@ -88,7 +89,9 @@ export function PortfolioNavEntityCardsStrip({
   const showDetailSlots = filteredGroupChildren.length > 0;
   const showAccountCompactSlots = filteredAccountChildren.length > 0;
 
-  const isCashParent = parentNavNode.slug === "cash_eqs";
+  const isCashParent =
+    resolveDashboardBucketFromNavNode(parentNavNode) === "cash_eqs" ||
+    parentNavNode.slug === "cash_savings";
   const cashBreakdownLines = useMemo(
     () => (isCashParent ? buildCashCardBreakdown(dash.accounts) : null),
     [isCashParent, dash.accounts]

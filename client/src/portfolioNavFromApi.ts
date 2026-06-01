@@ -117,10 +117,22 @@ export function isNavHubNode(node: NavTreeNodeDto): boolean {
   return node.group_kind === "nav_hub";
 }
 
+/** Pasivos root — sidebar / group page only; excluded from net-worth dashboard bucket cards. */
+export function isLiabilityGroupNavNode(node: NavTreeNodeDto): boolean {
+  return node.group_kind === "liability_group";
+}
+
 /** Dashboard bucket slug for a nav node (from `asset_group_slug` or top-level bucket slug). */
 export function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): DashboardGroupSlug | null {
   const asset = node.asset_group_slug;
   if (asset === "net_worth") return "net_worth";
+  if (
+    node.slug === "cash_savings" ||
+    asset === "cash_eqs__cash_savings" ||
+    (asset != null && asset.endsWith("__cash_savings"))
+  ) {
+    return "cash_eqs";
+  }
   if (asset && isDashboardNwBucketSlug(asset)) return asset;
   if (isDashboardNwBucketSlug(node.slug)) return node.slug;
   return null;
@@ -138,7 +150,7 @@ export function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): Dashboar
 
 /** Routable portfolio group row for a detail card (bucket, pasivos, or inversiones sub-routes). */
 export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
-  if (!node.route_path?.trim() || isNavHubNode(node)) return false;
+  if (!node.route_path?.trim() || isNavHubNode(node) || isLiabilityGroupNavNode(node)) return false;
   if (node.account_id != null || node.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(node) != null) return true;
   if (node.asset_group_slug === "liabilities") return true;
@@ -172,34 +184,4 @@ export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDt
 /** Direct account leaves for strip row 3 (compact cards). */
 export function portfolioStripAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   return (root.children ?? []).filter(isPortfolioStripAccountNode);
-}
-
-/** Top-level nav children for the group “Grupos y cuentas” hierarchy table (matches child-card strip rules). */
-export function navHierarchyTableChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
-  let children = (root.children ?? []).filter((c) => c.route_path?.trim());
-  if (isNavHubNode(root)) {
-    return children;
-  }
-  if (root.slug === "cash_eqs") {
-    children = children.filter((c) => c.slug !== "liabilities_credit_card");
-  }
-  return children;
-}
-
-/**
- * Hierarchy table rows: drill one level when a single intermediate group wraps several leaves
- * (e.g. tarjeta de crédito → Santander → cards).
- */
-export function navHierarchyTableChildrenForDisplay(root: NavTreeNodeDto): NavTreeNodeDto[] {
-  const children = navHierarchyTableChildren(root);
-  if (children.length === 1) {
-    const sole = children[0]!;
-    const inner = navHierarchyTableChildren(sole);
-    if (inner.length > 0) return inner;
-    const accountKids = (sole.children ?? []).filter(
-      (c) => c.route_path?.trim() || (c.account_id != null && c.account_id > 0)
-    );
-    if (accountKids.length > 0) return accountKids;
-  }
-  return children;
 }

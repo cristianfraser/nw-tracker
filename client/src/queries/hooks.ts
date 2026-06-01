@@ -9,10 +9,11 @@ import {
 import { displayUnitQueryBehavior } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
 
-export function useDashboardBundle(unit: DisplayUnit) {
+export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboard(unit),
     queryFn: () => fetchDashboardBundle(unit),
+    enabled,
     ...displayUnitQueryBehavior,
   });
 }
@@ -116,6 +117,15 @@ export function useMarketSeries() {
   });
 }
 
+export function useFxCoverage(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.fxCoverage(),
+    queryFn: () => api.fxCoverage(),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
 export function useMessagesUnreadCount() {
   return useQuery({
     queryKey: queryKeys.messagesUnread(),
@@ -144,6 +154,44 @@ export function useImportSyncDocumentCoverage() {
   return useQuery({
     queryKey: queryKeys.importSyncDocumentCoverage(),
     queryFn: () => api.importSyncDocumentCoverage(),
+  });
+}
+
+export function useGenericUniqueMerchants() {
+  return useQuery({
+    queryKey: queryKeys.genericUniqueMerchants(),
+    queryFn: () => api.genericUniqueMerchants(),
+  });
+}
+
+export function useCreateGenericUniqueMerchantMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (merchant: string) => api.createGenericUniqueMerchant(merchant),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.genericUniqueMerchants() });
+    },
+  });
+}
+
+export function useUpdateGenericUniqueMerchantMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, merchant }: { id: number; merchant: string }) =>
+      api.updateGenericUniqueMerchant(id, merchant),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.genericUniqueMerchants() });
+    },
+  });
+}
+
+export function useDeleteGenericUniqueMerchantMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteGenericUniqueMerchant(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.genericUniqueMerchants() });
+    },
   });
 }
 

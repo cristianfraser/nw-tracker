@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { seedCreditCardTree } from "./seedCreditCardTree.js";
 import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
@@ -17,7 +18,7 @@ type GroupUpsert = {
   sidebar_section?: "main" | "flows" | "link" | "nested";
   parent_slug?: string;
   color_rgb?: string;
-  group_kind?: "normal" | "reference" | "nav_hub";
+  group_kind?: "normal" | "reference" | "nav_hub" | "liability_group";
   chart_host_slug?: string | null;
 };
 
@@ -125,20 +126,22 @@ function linkGroup(parentSlug: string, childSlug: string, sort: number) {
   insertGroupChild.run(pid, cid, sort);
 }
 
-/** Link accounts on `bucketSlug` or any leaf under it (`parent__kind` after categories removal). */
+/** Link accounts on leaf asset groups under `bucketSlug` (handles reparented sub-buckets). */
 function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortStart = 0) {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
+  const leafIds = leafAssetGroupIdsUnder(bucketSlug);
+  if (leafIds.length === 0) return;
+  const ph = leafIds.map(() => "?").join(",");
   const rows = db
     .prepare(
       `SELECT a.id
        FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (g.slug = ? OR g.slug LIKE ? || '__%')
+       WHERE a.asset_group_id IN (${ph})
          AND a.account_kind != 'liability_view'
          AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
        ORDER BY a.name COLLATE NOCASE`
     )
-    .all(bucketSlug, bucketSlug) as { id: number }[];
+    .all(...leafIds) as { id: number }[];
   rows.forEach((r, i) => insertAccountChild.run(pid, r.id, sortStart + i * 10));
 }
 
@@ -170,6 +173,8 @@ function rebuildRetirementNav() {
 
   const groups = [
     "retirement_afp_afc",
+    "retirement_afp_afc__afp",
+    "retirement_afp_afc__afc",
     "retirement_apv",
     "retirement_apv_a",
     "retirement_apv_b",
@@ -180,7 +185,10 @@ function rebuildRetirementNav() {
   }
 
   linkGroup("retirement", "retirement_afp_afc", 0);
-  linkAccountsByAssetGroup("retirement_afp_afc", "retirement_afp_afc", 0);
+  linkGroup("retirement_afp_afc", "retirement_afp_afc__afp", 0);
+  linkGroup("retirement_afp_afc", "retirement_afp_afc__afc", 10);
+  linkAccountsByAssetGroup("retirement_afp_afc__afp", "retirement_afp_afc__afp", 0);
+  linkAccountsByAssetGroup("retirement_afp_afc__afc", "retirement_afp_afc__afc", 0);
 
   linkGroup("retirement", "retirement_apv", 20);
   linkGroup("retirement_apv", "retirement_apv_a", 0);
@@ -233,13 +241,43 @@ export function seedNavTree(): void {
       label_i18n_key: "dashboard.buckets.cash_eqs",
       sort_order: 10,
       route_path: "/cash_eqs",
-      asset_group_slug: "cash_eqs",
+      active_prefix: "/cash_eqs",
+      group_kind: "nav_hub",
+      sidebar_section: "main",
+    });
+    upsert({
+      slug: "cash_savings",
+      label: "Cash savings",
+      label_i18n_key: "dashboard.buckets.cash_savings",
+      parent_slug: "cash_eqs",
+      sort_order: 10,
+      route_path: "/cash_eqs",
+      asset_group_slug: "cash_eqs__cash_savings",
+      sidebar_section: "main",
+    });
+    upsert({
+      slug: "checking_accounts",
+      label: "Checking accounts",
+      label_i18n_key: "sidebar.checking_accounts",
+      parent_slug: "cash_eqs",
+      sort_order: 20,
+      route_path: "/cash_eqs/checking",
+      active_prefix: "/cash_eqs/checking",
+      asset_group_slug: "cash_eqs__checking_accounts",
       sidebar_section: "main",
     });
     const cashId = (groupIdBySlug.get("cash_eqs") as { id: number }).id;
     deleteGroupItems.run(cashId);
-    linkAccountsByAssetGroup("cash_eqs", "cash_eqs");
-    linkLinkedGroup("cash_eqs", "liabilities_credit_card", 100, 1);
+    linkGroup("cash_eqs", "cash_savings", 10);
+    linkGroup("cash_eqs", "checking_accounts", 20);
+    const savingsNavId = (groupIdBySlug.get("cash_savings") as { id: number }).id;
+    deleteGroupItems.run(savingsNavId);
+    linkAccountsByAssetGroup("cash_savings", "cash_eqs__cash_savings");
+    const checkingNavId = (groupIdBySlug.get("checking_accounts") as { id: number }).id;
+    deleteGroupItems.run(checkingNavId);
+    linkAccountsByAssetGroup("checking_accounts", "cash_eqs__checking_accounts");
+
+    db.prepare(`UPDATE portfolio_groups SET asset_group_slug = NULL WHERE slug = 'cash_eqs'`).run();
 
     upsert({
       slug: "liabilities",
@@ -248,6 +286,7 @@ export function seedNavTree(): void {
       sort_order: 20,
       route_path: "/liabilities",
       asset_group_slug: "liabilities",
+      group_kind: "liability_group",
       sidebar_section: "main",
     });
     upsert({
@@ -363,6 +402,28 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro/afp-afc",
       api_group: "retirement",
       api_subgroup: "afp_afc",
+    });
+    upsert({
+      slug: "retirement_afp_afc__afp",
+      label: "afp",
+      parent_slug: "retirement_afp_afc",
+      sort_order: 0,
+      route_path: "/inversiones/retiro/afp-afc/afp",
+      active_prefix: "/inversiones/retiro/afp-afc/afp",
+      api_group: "retirement",
+      api_subgroup: "afp",
+      asset_group_slug: "retirement_afp_afc__afp",
+    });
+    upsert({
+      slug: "retirement_afp_afc__afc",
+      label: "afc",
+      parent_slug: "retirement_afp_afc",
+      sort_order: 10,
+      route_path: "/inversiones/retiro/afp-afc/afc",
+      active_prefix: "/inversiones/retiro/afp-afc/afc",
+      api_group: "retirement",
+      api_subgroup: "afc",
+      asset_group_slug: "retirement_afp_afc__afc",
     });
     upsert({
       slug: "retirement_apv",
@@ -537,7 +598,7 @@ function rebuildNetWorthDashboardLinks() {
     deleteGroupItems.run(nw.id);
     linkGroup("net_worth", "real_estate", 10);
     linkGroup("net_worth", "inversiones", 20);
-    linkGroup("net_worth", "cash_eqs", 30);
+    linkGroup("net_worth", "cash_savings", 30);
     linkGroup("net_worth", "liabilities", 40);
   } catch (e) {
     console.warn("rebuildNetWorthDashboardLinks:", e instanceof Error ? e.message : e);
@@ -571,6 +632,12 @@ function applyDashboardBucketLayout() {
         dashboard_card_kind = 'bucket',
         dashboard_bucket_slug = 'cash_eqs',
         dashboard_card_css = 'cash'
+      WHERE slug = 'cash_savings';
+      UPDATE portfolio_groups SET
+        dashboard_sort_order = NULL,
+        dashboard_card_kind = NULL,
+        dashboard_bucket_slug = NULL,
+        dashboard_card_css = NULL
       WHERE slug = 'cash_eqs';
       UPDATE portfolio_groups
       SET dashboard_card_label_i18n_key = 'dashboard.cards.inversiones'

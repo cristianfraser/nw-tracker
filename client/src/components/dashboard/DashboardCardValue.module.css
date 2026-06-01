@@ -27,3 +27,9 @@
 :global(number-flow-react).valueBreakdown::part(number) {
   transform-origin: right top;
 }
+
+.valueFxError {
+  color: var(--error, #e55);
+  opacity: 1;
+  font-weight: 700;
+}

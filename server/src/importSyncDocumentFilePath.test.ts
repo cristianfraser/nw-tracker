@@ -6,6 +6,8 @@ import * as cfraserPaths from "./cfraserPaths.js";
 import {
   archivedCreditCardStatementPdfFileName,
   assertCcStatementSourcePdfBasename,
+  buildCartolaPathsFromParsedPdfJson,
+  buildCartolaPathsFromParsedPdfEntries,
   canonicalCcStatementPdfName,
   ccCardLast4FromSourcePdf,
   CcStatementPdfPathError,
@@ -124,11 +126,158 @@ describe("importSyncDocumentFilePath", () => {
     ).toBe("2026-03-26 estado de cuenta tarjeta usd 4141.pdf");
   });
 
+  it("resolves CC statement PDF from legacy slot when card dir is empty", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-legacy-"));
+    const legacyDir = path.join(root, "legacy", "clp");
+    fs.mkdirSync(legacyDir, { recursive: true });
+    const name = "2017-09-22 estado de cuenta tarjeta 4113.pdf";
+    fs.writeFileSync(path.join(legacyDir, name), "");
+    vi.spyOn(cfraserPaths, "ccStatementPdfSearchDirs").mockImplementation((last4, usd) => {
+      const slot = usd ? "usd" : "clp";
+      return [path.join(root, last4 ?? "", slot), path.join(root, "legacy", slot)];
+    });
+
+    expect(resolveCcStatementPdfPath(name, { usd: false })).toBe(path.join(legacyDir, name));
+  });
+
+  it("resolves predecessor-card PDF under successor slot dir (4113 -> 4141)", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-redirect-"));
+    const masterDir = path.join(root, "4141", "usd");
+    fs.mkdirSync(masterDir, { recursive: true });
+    const name = "2017-09-22 estado de cuenta tarjeta usd 4113.pdf";
+    fs.writeFileSync(path.join(masterDir, name), "");
+    vi.spyOn(cfraserPaths, "ccStatementPdfSearchDirs").mockImplementation((last4, usd) => {
+      const slot = usd ? "usd" : "clp";
+      const dirs = [path.join(root, last4 ?? "", slot)];
+      if (last4 === "4113") dirs.push(path.join(root, "4141", slot));
+      dirs.push(path.join(root, "legacy", slot));
+      return dirs;
+    });
+
+    expect(resolveCcStatementPdfPath(name, { usd: true })).toBe(path.join(masterDir, name));
+  });
+
   it("returns null for web-paste statement sources", () => {
     expect(resolveCcStatementPdfPath("import:web-paste|open|2026-05", { usd: false })).toBeNull();
   });
 
   it("returns null for screenshot cartola labels", () => {
     expect(resolveCartolaFilePath("checking_cartola", "screenshot:foo.png")).toBeNull();
+  });
+
+  it("treats parsed zero-movement cartola PDF as covered month", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cartola-pdf-json-"));
+    const pdfDir = path.join(root, "cartolas-cuenta-vista");
+    fs.mkdirSync(pdfDir, { recursive: true });
+    const pdfName = "2021-04-30 cartola cuenta vista.pdf";
+    fs.writeFileSync(path.join(pdfDir, pdfName), "");
+    vi.spyOn(cfraserPaths, "resolveCfraserCuentaVistaCartolaPdfsDir").mockReturnValue(pdfDir);
+
+    const abs = path.join(pdfDir, pdfName);
+    const paths = buildCartolaPathsFromParsedPdfEntries(
+      [
+        {
+          source_file: pdfName,
+          period_month: "2021-04",
+          parse_status: "ok",
+          movements: [],
+        },
+      ],
+      "cuenta_vista_cartola"
+    );
+    expect(paths.get("2021-04")?.path).toBe(abs);
+    expect(paths.has("2021-03")).toBe(false);
+  });
+
+  it("does not map prior-month DESDE to a single-month April statement", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cartola-pdf-apr2024-"));
+    const pdfDir = path.join(root, "cartolas-cuenta-vista");
+    fs.mkdirSync(pdfDir, { recursive: true });
+    const pdfName = "2024-04-30 cartola cuenta vista 59.pdf";
+    const abs = path.join(pdfDir, pdfName);
+    fs.writeFileSync(abs, "");
+    vi.spyOn(cfraserPaths, "resolveCfraserCuentaVistaCartolaPdfsDir").mockReturnValue(pdfDir);
+
+    const paths = buildCartolaPathsFromParsedPdfEntries(
+      [
+        {
+          source_file: pdfName,
+          period_month: "2024-04",
+          period_from: "2024-03-28",
+          period_to: "2024-04-30",
+          parse_status: "ok",
+          movements: [{ occurred_on: "2024-04-07" }],
+        },
+      ],
+      "cuenta_vista_cartola"
+    );
+    expect(paths.get("2024-04")?.path).toBe(abs);
+    expect(paths.has("2024-03")).toBe(false);
+  });
+
+  it("covers every month in a multi-month vista cartola period range", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cartola-pdf-multimonth-"));
+    const pdfDir = path.join(root, "cartolas-cuenta-vista");
+    fs.mkdirSync(pdfDir, { recursive: true });
+    const pdfName = "2019-10-31 cartola cuenta vista 65.pdf";
+    fs.writeFileSync(path.join(pdfDir, pdfName), "");
+    vi.spyOn(cfraserPaths, "resolveCfraserCuentaVistaCartolaPdfsDir").mockReturnValue(pdfDir);
+
+    const paths = buildCartolaPathsFromParsedPdfEntries(
+      [
+        {
+          source_file: pdfName,
+          period_month: "2019-10",
+          period_from: "2018-11-01",
+          period_to: "2019-10-31",
+          parse_status: "ok",
+          movements: [
+            { occurred_on: "2018-11-05" },
+            { occurred_on: "2019-03-15" },
+            { occurred_on: "2019-10-20" },
+          ],
+        },
+      ],
+      "cuenta_vista_cartola"
+    );
+    expect(paths.get("2019-03")?.path).toBe(path.join(pdfDir, pdfName));
+    expect(paths.get("2018-11")?.path).toBe(path.join(pdfDir, pdfName));
+    expect(paths.has("2019-11")).toBe(false);
+  });
+
+  it("keeps sin-mov monthly PDF for its statement month when multi-month PDF has no Feb movements", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cartola-pdf-sinmov-tie-"));
+    const pdfDir = path.join(root, "cartolas-cuenta-vista");
+    fs.mkdirSync(pdfDir, { recursive: true });
+    const sinMovName = "2019-02-28 cartola cuenta vista.pdf";
+    const multiName = "2019-10-31 cartola cuenta vista.pdf";
+    const sinMovPath = path.join(pdfDir, sinMovName);
+    const multiPath = path.join(pdfDir, multiName);
+    fs.writeFileSync(sinMovPath, "");
+    fs.writeFileSync(multiPath, "");
+    vi.spyOn(cfraserPaths, "resolveCfraserCuentaVistaCartolaPdfsDir").mockReturnValue(pdfDir);
+
+    const paths = buildCartolaPathsFromParsedPdfEntries(
+      [
+        {
+          source_file: sinMovName,
+          period_month: "2019-02",
+          parse_status: "ok",
+          movements: [],
+          cartola_sin_movimientos: true,
+        },
+        {
+          source_file: multiName,
+          period_month: "2019-10",
+          period_from: "2018-11-01",
+          period_to: "2019-10-31",
+          parse_status: "ok",
+          movements: [{ occurred_on: "2019-03-15" }],
+        },
+      ],
+      "cuenta_vista_cartola"
+    );
+    expect(paths.get("2019-02")?.path).toBe(sinMovPath);
+    expect(paths.get("2019-03")?.path).toBe(multiPath);
   });
 });

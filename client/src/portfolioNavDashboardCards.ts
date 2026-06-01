@@ -401,8 +401,14 @@ export function breakdownForNavChild(
   const bySlug = breakdownByNavSlug(navChild.slug, rows, dash);
   if (bySlug) return bySlug;
 
+  const bucket = resolveDashboardBucketFromNavNode(navChild);
+  if (bucket === "cash_eqs") {
+    const byCash = breakdownByAssetGroup("cash_eqs", rows, dash);
+    if (byCash) return byCash;
+  }
+
   const asset = navChild.asset_group_slug;
-  if (asset === "real_estate" || asset === "cash_eqs" || asset === "liabilities") {
+  if (asset === "real_estate" || asset === "liabilities") {
     const byAsset = breakdownByAssetGroup(asset, rows, dash);
     if (byAsset) return byAsset;
   }

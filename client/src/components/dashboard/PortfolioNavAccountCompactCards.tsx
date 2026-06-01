@@ -48,6 +48,7 @@ export function PortfolioNavAccountCompactCards({
         const titleDelta =
           row != null ? accountCardTitleBalanceDelta(row, metricsPeriod, showUsd) : null;
         const metrics = cardGroupMetricsFromAccounts(rows, metricsPeriod);
+        const fxMissing = showUsd && rows.some((r) => r.fx_missing);
         const rp = child.route_path?.trim() ?? "";
         const cardSlug = `nav-acc-${child.slug}-${child.node_id}`;
 
@@ -63,6 +64,7 @@ export function PortfolioNavAccountCompactCards({
               showUsd={showUsd}
               clp={clp}
               apiUsd={apiUsd}
+              fxMissing={fxMissing}
               cardSlug={cardSlug}
               animated={animated}
               stripInner

@@ -4,7 +4,10 @@ import { db } from "./db.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries, type TsUnit } from "./valuationTimeseries.js";
+import { buildFxCoverage, type FxCoverage } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
+
+export type { FxCoverage };
 
 function fxLatestRow() {
   return db
@@ -45,6 +48,7 @@ export async function buildDashboardPageBundle(unit: TsUnit) {
     dash,
     ts: tsRaw,
     fx,
+    fx_coverage: includeUsd ? buildFxCoverage() : null,
     retirementPerf,
     brokeragePerf,
   };

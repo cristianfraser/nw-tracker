@@ -3,6 +3,7 @@ import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPer
 import { AccountFlowsTable } from "../../components/account/AccountFlowsTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
+import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
 import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
 import { formatClp, formatInstrumentUnits } from "../../format";
@@ -166,6 +167,13 @@ export function StandardAccountDetailPage({ data }: Props) {
           <p className={cn("muted", styles.proseSmTight)}>
             {t("accountDetail.checking.cartolaMonthHint")}
           </p>
+          <CheckingLedgerAnchorForm
+            accountId={summary.account_id}
+            displayUnit={displayUnit}
+            extraCcOffsetsKey={extraCcOffsetsKey}
+            ledgerAnchor={checkingCartolaMonths?.ledger_anchor ?? null}
+            cartolaDerivedAnchor={checkingCartolaMonths?.cartola_derived_anchor ?? null}
+          />
           <CheckingCartolaMonthTable
             rows={checkingCartolaMonths?.rows ?? []}
             importedMonthCount={checkingCartolaMonths?.imported_months.length ?? 0}

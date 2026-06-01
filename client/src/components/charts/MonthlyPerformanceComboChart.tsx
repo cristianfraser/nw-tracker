@@ -213,10 +213,10 @@ export function MonthlyPerformanceComboChart({
   points: Record<string, string | number | null>[];
   displayUnit: ChartDisplayUnit;
   barSeries: MonthlyPlBarSeries[];
-  areaKey: string;
-  areaName: string;
-  areaFill: string;
-  areaStroke: string;
+  areaKey?: string;
+  areaName?: string;
+  areaFill?: string;
+  areaStroke?: string;
   lineKey?: string;
   lineName?: string;
   lineSeries?: MonthlyPlLineSeries[];
@@ -243,7 +243,8 @@ export function MonthlyPerformanceComboChart({
   }, [lineSeries, lineKey, lineName]);
 
   const yKeys = useMemo(() => {
-    const k = [...barSeries.map((b) => b.dataKey), areaKey, ...resolvedLineSeries.map((l) => l.dataKey)];
+    const k = [...barSeries.map((b) => b.dataKey), ...resolvedLineSeries.map((l) => l.dataKey)];
+    if (areaKey) k.push(areaKey);
     return k;
   }, [barSeries, areaKey, resolvedLineSeries]);
 
@@ -254,7 +255,9 @@ export function MonthlyPerformanceComboChart({
 
   const plotPoints = useMemo(
     () =>
-      alternateYearAreaStripes ? augmentPointsWithYearStripeAreas(densePoints, areaKey) : densePoints,
+      areaKey && alternateYearAreaStripes
+        ? augmentPointsWithYearStripeAreas(densePoints, areaKey)
+        : densePoints,
     [densePoints, areaKey, alternateYearAreaStripes]
   );
 
@@ -267,7 +270,7 @@ export function MonthlyPerformanceComboChart({
   }, [densePoints, xAxisGranularity]);
 
   const [fillEvenYear, fillOddYear] = useMemo(
-    () => pairAlternatingYearAreaFills(areaFill),
+    () => pairAlternatingYearAreaFills(areaFill ?? "rgba(148, 163, 184, 0.22)"),
     [areaFill]
   );
 
@@ -313,9 +316,9 @@ export function MonthlyPerformanceComboChart({
                 <ComboTooltip
                   {...(props as TooltipProps<number, string>)}
                   displayUnit={displayUnit}
-                  areaKey={areaKey}
-                  areaName={areaName}
-                  areaStroke={areaStroke}
+                  areaKey={areaKey ?? ""}
+                  areaName={areaName ?? ""}
+                  areaStroke={areaStroke ?? "#64748b"}
                   xAxisGranularity={xAxisGranularity}
                 />
               )}
@@ -324,50 +327,52 @@ export function MonthlyPerformanceComboChart({
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
               formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
             />
-            {alternateYearAreaStripes ? (
-              <>
+            {areaKey && areaFill && areaStroke && areaName ? (
+              alternateYearAreaStripes ? (
+                <>
+                  <Area
+                    type="monotone"
+                    dataKey={AREA_STRIPE_EVEN}
+                    name=""
+                    stroke={areaStroke}
+                    fill={fillEvenYear}
+                    fillOpacity={1}
+                    strokeWidth={1.2}
+                    connectNulls={false}
+                    legendType="none"
+                    isAnimationActive
+                    animationDuration={CHART_ANIM_MS}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey={AREA_STRIPE_ODD}
+                    name={areaName}
+                    stroke={areaStroke}
+                    fill={fillOddYear}
+                    fillOpacity={1}
+                    strokeWidth={1.2}
+                    connectNulls={false}
+                    legendType="rect"
+                    isAnimationActive
+                    animationDuration={CHART_ANIM_MS}
+                  />
+                </>
+              ) : (
                 <Area
                   type="monotone"
-                  dataKey={AREA_STRIPE_EVEN}
-                  name=""
-                  stroke={areaStroke}
-                  fill={fillEvenYear}
-                  fillOpacity={1}
-                  strokeWidth={1.2}
-                  connectNulls={false}
-                  legendType="none"
-                  isAnimationActive
-                  animationDuration={CHART_ANIM_MS}
-                />
-                <Area
-                  type="monotone"
-                  dataKey={AREA_STRIPE_ODD}
+                  dataKey={areaKey}
                   name={areaName}
                   stroke={areaStroke}
-                  fill={fillOddYear}
+                  fill={areaFill}
                   fillOpacity={1}
                   strokeWidth={1.2}
-                  connectNulls={false}
+                  connectNulls
                   legendType="rect"
                   isAnimationActive
                   animationDuration={CHART_ANIM_MS}
                 />
-              </>
-            ) : (
-              <Area
-                type="monotone"
-                dataKey={areaKey}
-                name={areaName}
-                stroke={areaStroke}
-                fill={areaFill}
-                fillOpacity={1}
-                strokeWidth={1.2}
-                connectNulls
-                legendType="rect"
-                isAnimationActive
-                animationDuration={CHART_ANIM_MS}
-              />
-            )}
+              )
+            ) : null}
             {barSeries.map((b) => (
               <Bar
                 key={b.dataKey}
