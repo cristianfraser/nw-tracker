@@ -95,6 +95,18 @@ export interface AccountPositionSnapshot {
   value_per_unit_clp: number | null;
 }
 
+export interface FxCoverage {
+  complete: boolean;
+  first_missing_date: string | null;
+  missing_count: number;
+  fx_min: string | null;
+  fx_max: string | null;
+  daily_count: number;
+  row_count: number;
+  is_sparse: boolean;
+  max_gap_days: number;
+}
+
 export interface DashboardAccountRow {
   account_id: number;
   name: string;
@@ -129,6 +141,8 @@ export interface DashboardAccountRow {
   current_value_usd?: number | null;
   fx_clp_per_usd?: number | null;
   fx_date_used?: string | null;
+  /** USD display could not resolve FX for balance or deposits. */
+  fx_missing?: boolean;
   position?: AccountPositionSnapshot | null;
   /** True when monthly closes show a long zero tail (same rule as chart tail clip). From `/api/dashboard`. */
   chart_inactive?: boolean;
@@ -156,7 +170,7 @@ export interface DashboardResponse {
     cash_eqs_clp: number;
     liabilities_clp: number;
     net_worth_usd?: number | null;
-    deposits_usd?: number;
+    deposits_usd?: number | null;
     real_estate_usd?: number;
     retirement_usd?: number;
     brokerage_usd?: number;
@@ -197,7 +211,7 @@ export interface DashboardResponse {
   }[];
   deposits_by_category?: Record<
     DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
+    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
   >;
   /** Retiro + brokerage net deposits per period (flows chart aggregation). */
   inversiones_deposits_chart?: {
@@ -208,6 +222,8 @@ export interface DashboardResponse {
   };
   /** Home bucket cards (order + bucket) from `portfolio_groups`; Patrimonio neto hero is not included. */
   dashboard_layout?: DashboardLayoutCardRow[];
+  /** True when deposit USD totals could not be converted (missing fx_daily). */
+  fx_conversion_error?: boolean;
 }
 
 export interface FxLatest {
@@ -609,14 +625,33 @@ export interface CheckingCartolaMonthRowDto {
   balance_end_clp: number | null;
   /** Parsed cartola saldo final (reference only). */
   cartola_saldo_final_clp: number | null;
+  /** Parsed cartola saldo inicial (prior month-end per statement). */
+  cartola_saldo_inicial_clp: number | null;
   movement_count: number;
   imported_at: string | null;
+}
+
+export interface CheckingLedgerAnchorDto {
+  movement_id: number;
+  amount_clp: number;
+  occurred_on: string;
+  anchor_period_month: string;
+  cartola_saldo_final_clp: number;
+  cartola_derived_amount_clp: number;
+}
+
+export interface CartolaDerivedAnchorDto {
+  period_month: string;
+  occurred_on: string;
+  amount_clp: number;
 }
 
 export interface CheckingCartolaMonthsResponse {
   account_id: number;
   imported_months: string[];
   rows: CheckingCartolaMonthRowDto[];
+  ledger_anchor: CheckingLedgerAnchorDto | null;
+  cartola_derived_anchor: CartolaDerivedAnchorDto | null;
 }
 
 /** `GET /api/groups/:slug/performance-monthly` — derived, not stored. */
@@ -640,6 +675,7 @@ export interface DashboardNavContextResponse {
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   cash_credit_card_links: DashboardResponse["cash_credit_card_links"];
   overview: ValuationTimeseriesResponse["overview"];
+  fx_coverage: FxCoverage | null;
 }
 
 /** `GET /api/dashboard/page-bundle` — home dashboard in one response. */
@@ -647,6 +683,7 @@ export interface DashboardPageBundleResponse {
   dash: DashboardResponse;
   ts: ValuationTimeseriesResponse;
   fx: FxLatest | null;
+  fx_coverage: FxCoverage | null;
   retirementPerf: GroupMonthlyPerformanceResponse | null;
   brokeragePerf: GroupMonthlyPerformanceResponse | null;
 }
@@ -705,6 +742,9 @@ export interface MarketSeriesResponse {
   points: MarketSeriesPoint[];
   equity_tickers: string[];
   fund_series_keys: string[];
+  fx_usd_clp: { date: string; value: number }[];
+  eur_clp: { date: string; value: number }[];
+  fx_coverage: FxCoverage;
 }
 
 /** `GET /api/market-ticker` — Chile-today snapshot for the marquee (not forward-filled series tail). */
@@ -758,7 +798,7 @@ export interface NavTreeNodeDto {
   color_rgb: string | null;
   color: string | null;
   /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
-  group_kind: "normal" | "reference" | "nav_hub";
+  group_kind: "normal" | "reference" | "nav_hub" | "liability_group";
   /** Long zero tail: listed for chart history; omitted from group tables and strip cards. */
   chart_inactive?: boolean;
   children: NavTreeNodeDto[];
@@ -898,6 +938,10 @@ export interface FlowCcExpenseLineRow {
   purchase_notes: string;
   /** Card last4 (CC) or full account name (checking). */
   origin_label: string;
+  /** Physical card that made the charge; null = primary / unknown / checking. */
+  origin_card_last4?: string | null;
+  /** Statement billing card; null for checking / synthetic lines. */
+  primary_card_last4?: string | null;
 }
 
 export type FlowCcExpenseCategoryChartPoint = {
@@ -1037,6 +1081,8 @@ export interface ImportSyncDocumentCell {
   imported: boolean;
   /** Absolute local path to the source PDF/XLSX when present on disk. */
   file_path: string | null;
+  /** PDF text includes `** CARTOLA SIN MOVIMIENTOS **`. */
+  file_sin_movimientos?: boolean;
 }
 
 /** `GET /api/import-sync/document-coverage` */
@@ -1044,6 +1090,23 @@ export interface ImportSyncDocumentCoverageResponse {
   months: string[];
   accounts: ImportSyncDocumentAccount[];
   cells: ImportSyncDocumentCell[][];
+}
+
+export interface CcExpenseGenericUniqueMerchantRow {
+  id: number;
+  merchant_key: string;
+  sort_order: number;
+}
+
+/** `GET /api/import-sync/generic-unique-merchants` */
+export interface GenericUniqueMerchantsResponse {
+  merchants: CcExpenseGenericUniqueMerchantRow[];
+}
+
+/** `POST|PATCH /api/import-sync/generic-unique-merchants` */
+export interface GenericUniqueMerchantMutationResponse {
+  row: CcExpenseGenericUniqueMerchantRow;
+  backfill: { inserted: number; merchant_rules_removed: number };
 }
 
 /** `GET /api/sync/status` */
@@ -1063,11 +1126,12 @@ export interface FlowsDepositsResponse {
   chart_yearly: FlowDepositChartPoint[];
   /** Sum of all row amounts (matches dashboard “Total deposits”). */
   net_total_clp: number;
-  net_total_usd: number;
+  net_total_usd: number | null;
+  fx_conversion_error?: boolean;
   chart_monthly_usd: FlowDepositChartPoint[];
   chart_yearly_usd: FlowDepositChartPoint[];
   by_category: Record<
     DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
+    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
   >;
 }

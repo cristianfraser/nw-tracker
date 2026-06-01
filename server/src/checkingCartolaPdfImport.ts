@@ -25,6 +25,7 @@ export type CheckingCartolaPdfEntry = {
   period_to: string | null;
   saldo_inicial_clp: number | null;
   saldo_final_clp: number | null;
+  month_saldo_final_clp?: Record<string, number> | null;
   movements: ParsedCheckingMovement[];
   skipped?: CartolaSkippedRow[];
   parse_status: "ok" | "unreadable" | "error";
@@ -70,6 +71,7 @@ export function pdfEntryToParsedCartola(entry: CheckingCartolaPdfEntry): ParsedC
     period_to: entry.period_to,
     saldo_inicial_clp: entry.saldo_inicial_clp,
     saldo_final_clp: entry.saldo_final_clp,
+    month_saldo_final_clp: entry.month_saldo_final_clp ?? undefined,
     movements: entry.movements,
     skipped: entry.skipped ?? [],
     notes: [],

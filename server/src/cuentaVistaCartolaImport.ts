@@ -1,10 +1,14 @@
 import {
+  deleteCheckingCartolaImportsForSourceFile,
   finishCartolaImportRun,
   importCartolaList,
   isCheckingCartolaMonthImported,
+  prunePhantomBoundaryMonthCartolaImports,
+  pruneStaleCartolaMonthImportsForSourceFile,
   type ImportCheckingCartolasResult,
   wipeCheckingAccountData,
 } from "./checkingCartolaImport.js";
+import { cartolaCalendarMonths, splitCuentaVistaCartolaByCalendarMonth } from "./cuentaVistaCartolaSplit.js";
 import { pdfEntryToParsedCartola } from "./checkingCartolaPdfImport.js";
 import type { CheckingCartolaFileImportLog } from "./checkingCartolaParseLog.js";
 import {
@@ -38,6 +42,7 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
   dryRun?: boolean;
   skipPdfParse?: boolean;
   pdfsDir?: string;
+  forceReimport?: boolean;
 }): ImportCheckingCartolasResult {
   const accountId = opts?.accountId ?? cuentaVistaAccountId();
   const fileLogs: CheckingCartolaFileImportLog[] = [];
@@ -49,6 +54,10 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
     );
   } else if (opts?.wipe && opts?.dryRun) {
     console.log(`[dry-run] Would wipe movements/valuations/imports for account ${accountId}.`);
+  }
+
+  if (!opts?.dryRun && !opts?.wipe) {
+    prunePhantomBoundaryMonthCartolaImports(accountId);
   }
 
   try {
@@ -63,6 +72,10 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
       [];
     for (const entry of pdfData.cartolas) {
       const label = `pdf:${entry.source_file}`;
+      if (entry.parse_status === "skipped") {
+        console.warn(`  skip ${label}: ${entry.parse_error ?? "skipped"}`);
+        continue;
+      }
       if (entry.parse_status !== "ok") {
         fileLogs.push({
           file: label,
@@ -78,12 +91,33 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
         continue;
       }
       try {
-        pdfCartolas.push({ cartola: pdfEntryToParsedCartola(entry), label });
+        const cartola = pdfEntryToParsedCartola(entry);
+        if (!opts?.dryRun && !opts?.wipe) {
+          pruneStaleCartolaMonthImportsForSourceFile(
+            accountId,
+            cartola.source_file,
+            cartolaCalendarMonths(cartola)
+          );
+        }
+        if (opts?.forceReimport && !opts?.dryRun) {
+          const cleared = deleteCheckingCartolaImportsForSourceFile(accountId, cartola.source_file);
+          if (cleared.imports > 0 || cleared.movements > 0) {
+            console.log(
+              `  cleared prior import for ${cartola.source_file}: ${cleared.movements} movement(s), ${cleared.imports} registry row(s)`
+            );
+          }
+        }
+        for (const slice of splitCuentaVistaCartolaByCalendarMonth(cartola)) {
+          pdfCartolas.push({
+            cartola: slice,
+            label: `${label}|${slice.period_month}`,
+          });
+        }
       } catch (e) {
         fileLogs.push(logParseError(label, e));
       }
     }
-    importCartolaList(accountId, pdfCartolas, opts ?? {}, fileLogs);
+    importCartolaList(accountId, pdfCartolas, { ...opts, forceReimport: false }, fileLogs);
   } catch (e) {
     fileLogs.push(logParseError("cuenta-vista-pdf", e));
   }

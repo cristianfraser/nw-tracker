@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+
+const require = createRequire(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, "..", "data");
@@ -344,9 +347,24 @@ function seedReferenceData() {
       slug: "cash_eqs",
       label: "Cash & equivalents",
       sort: 30,
+      cats: [],
+    },
+    {
+      slug: "cash_eqs__checking_accounts",
+      label: "Checking accounts",
+      sort: 10,
+      parent_slug: "cash_eqs",
       cats: [
         { slug: "cuenta_corriente", label: "Cuenta corriente" },
         { slug: "cuenta_vista", label: "Cuenta vista" },
+      ],
+    },
+    {
+      slug: "cash_eqs__cash_savings",
+      label: "Cash savings",
+      sort: 20,
+      parent_slug: "cash_eqs",
+      cats: [
         { slug: "cuenta_ahorro_vivienda", label: "Cuenta de ahorro para la vivienda — BancoEstado" },
         { slug: "fondo_reserva", label: "Fondo reserva" },
       ],
@@ -409,6 +427,9 @@ function seedReferenceData() {
 }
 
 const migrationsDir = path.join(__dirname, "..", "migrations");
+const GENERIC_TRANSFER_UNIQUE_MIGRATION = "075_generic_transfer_unique_purchases.sql";
+const GENERIC_UNIQUE_MERCHANTS_MIGRATION = "076_cc_expense_generic_unique_merchants.sql";
+const CARGO_MERCADO_UNIQUE_MIGRATION = "077_cargo_mercado_capitales_unique.sql";
 
 function splitMigrationStatements(sql: string): string[] {
   const withoutComments = sql.replace(/--[^\n]*/g, "");
@@ -451,11 +472,37 @@ export function runMigrations() {
     }
     const full = path.join(migrationsDir, file);
     const sql = fs.readFileSync(full, "utf8");
-    const run = db.transaction(() => {
+    db.transaction(() => {
       execMigrationSql(sql);
       db.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
-    });
-    run();
+    })();
+    if (file === GENERIC_TRANSFER_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
+      const { backfillGenericTransferUniquePurchases } = require(
+        path.join(__dirname, "ccExpenseGenericTransferBackfill.ts")
+      ) as typeof import("./ccExpenseGenericTransferBackfill.js");
+      const r = backfillGenericTransferUniquePurchases();
+      console.log(
+        `generic-transfer unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
+      );
+    }
+    if (file === GENERIC_UNIQUE_MERCHANTS_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
+      const { backfillGenericTransferUniquePurchases } = require(
+        path.join(__dirname, "ccExpenseGenericTransferBackfill.ts")
+      ) as typeof import("./ccExpenseGenericTransferBackfill.js");
+      const r = backfillGenericTransferUniquePurchases();
+      console.log(
+        `generic-unique merchants backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
+      );
+    }
+    if (file === CARGO_MERCADO_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
+      const { backfillGenericTransferUniquePurchases } = require(
+        path.join(__dirname, "ccExpenseGenericTransferBackfill.ts")
+      ) as typeof import("./ccExpenseGenericTransferBackfill.js");
+      const r = backfillGenericTransferUniquePurchases();
+      console.log(
+        `cargo mercado capitales unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
+      );
+    }
     appliedCount += 1;
     console.log(`migration applied: ${file}`);
   }

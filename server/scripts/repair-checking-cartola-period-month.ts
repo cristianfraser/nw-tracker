@@ -12,6 +12,7 @@ import {
   resolveCfraserCheckingCartolaPdfsDir,
   resolveCfraserCheckingCartolasDir,
 } from "../src/cfraserPaths.js";
+import { rewriteCartolaMovementNotesPeriodMonth } from "../src/checkingCartolaImport.js";
 import { db } from "../src/db.js";
 
 function resolveCartolaPath(sourceFile: string): string | null {
@@ -61,6 +62,7 @@ function main(): void {
       `account ${row.account_id}: ${row.period_month} -> ${docMonth} (${row.source_file})`
     );
     if (!dryRun) {
+      rewriteCartolaMovementNotesPeriodMonth(row.account_id, row.period_month, docMonth);
       upd.run(docMonth, row.account_id, row.period_month);
     }
     patched += 1;

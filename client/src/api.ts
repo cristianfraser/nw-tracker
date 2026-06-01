@@ -200,6 +200,17 @@ export const api = {
     j<import("./types").CheckingCartolaMonthsResponse>(
       `/api/accounts/${id}/checking-cartola-months`
     ),
+  putCheckingLedgerAnchor: (
+    id: string | number,
+    body: { amount_clp: number; occurred_on: string } | { clear: true }
+  ) =>
+    j<{
+      ledger_anchor: import("./types").CheckingLedgerAnchorDto | null;
+      cartola_derived_anchor: import("./types").CartolaDerivedAnchorDto | null;
+    }>(`/api/accounts/${id}/checking-ledger-anchor`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   accountImportSpecs: (id: string | number) =>
     j<{
       account_id: number;
@@ -342,6 +353,7 @@ export const api = {
       { method: "PATCH", body: JSON.stringify(body) }
     ),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
+  fxCoverage: () => j<import("./types").FxCoverage>("/api/fx/coverage"),
   marketTicker: () => j<import("./types").MarketTickerResponse>("/api/market-ticker"),
   messagesUnreadCount: () => j<{ count: number }>("/api/messages/unread-count"),
   messages: (kind: "notification" | "log") =>
@@ -357,6 +369,22 @@ export const api = {
     j<import("./types").ImportSyncDocumentCoverageResponse>(
       "/api/import-sync/document-coverage"
     ),
+  genericUniqueMerchants: () =>
+    j<import("./types").GenericUniqueMerchantsResponse>(
+      "/api/import-sync/generic-unique-merchants"
+    ),
+  createGenericUniqueMerchant: (merchant: string) =>
+    j<import("./types").GenericUniqueMerchantMutationResponse>(
+      "/api/import-sync/generic-unique-merchants",
+      { method: "POST", body: JSON.stringify({ merchant }) }
+    ),
+  updateGenericUniqueMerchant: (id: number, merchant: string) =>
+    j<import("./types").GenericUniqueMerchantMutationResponse>(
+      `/api/import-sync/generic-unique-merchants/${id}`,
+      { method: "PATCH", body: JSON.stringify({ merchant }) }
+    ),
+  deleteGenericUniqueMerchant: (id: number) =>
+    j<void>(`/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" }),
 };
 
 export type AppMessageRow = {

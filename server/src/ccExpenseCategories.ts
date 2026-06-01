@@ -1,6 +1,8 @@
 import { db } from "./db.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
+import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 
 /** Asset group slug for `GET /api/flows/expenses/credit-card` (all issuers, not one `credit_card_groups` row). */
 export function primaryCreditCardExpensesGroupSlug(): string {
@@ -15,9 +17,13 @@ export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 /** Internal transfers to investments — same exclusion bucket as no_cuenta. */
 export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
 
+/** Corriente ↔ vista and other checking cash auto-matches — excluded from gastos totals. */
+export const CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG = "checking_internal_transfer";
+
 export const CC_EXPENSE_TOTALS_EXCLUDED_SLUGS = new Set([
   NO_CUENTA_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
+  CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 ]);
 
 export function isCcExpenseTotalsExcludedSlug(categorySlug: string): boolean {
@@ -58,6 +64,68 @@ export type CcExpenseCategoryRow = {
 export function normalizeCcExpenseMerchantKey(merchant: string | null | undefined): string {
   const t = String(merchant ?? "").trim().replace(/\s+/g, " ");
   return t ? t.toUpperCase() : "";
+}
+
+/** Words in Santander transfer templates — not treated as a payee name. */
+const GENERIC_TRANSFER_BOILERPLATE = new Set([
+  "A",
+  "AL",
+  "BANCO",
+  "BANCOS",
+  "BCO",
+  "DE",
+  "E",
+  "EL",
+  "EN",
+  "INTERNET",
+  "LA",
+  "LAS",
+  "LOS",
+  "MISMO",
+  "O",
+  "OTRO",
+  "OTROS",
+  "TERCERO",
+  "TERCEROS",
+  "TRANSF",
+  "TRANSFERENCIA",
+  "Y",
+  "3O",
+  "3RO",
+]);
+
+function matchesKnownGenericTransferTemplate(key: string): boolean {
+  return (
+    /^TRANSF\.?\s+INTERNET\s+A\s+OTRO\s+BANCOS?$/.test(key) ||
+    /^TRANSF\.?\s*INTERNET\s+A\s+3O?\s+MISMO\s+BCO$/.test(key) ||
+    /^TRANSFERENCIA\s+INTERNET\s+A\s+OTRO\s+BANCOS?$/.test(key) ||
+    /^TRANSFERENCIA\s+A\s+3RO?\s+MISMO\s+BANCO$/.test(key) ||
+    /^TRANSFERENCIA\s+INTERNET\s+A\s+3RO?\s+MISMO\s+BANCO$/.test(key) ||
+    /CARGO\s+MERCADO\s+CAPITALES/.test(key)
+  );
+}
+
+/** Generic bank transfer or other template merchants — used for Único backfill only. */
+export function isGenericTransferMerchantKey(merchantKey: string): boolean {
+  const key = merchantKey.trim();
+  if (!key) return false;
+  if (isExactGenericUniqueMerchantKey(key)) return true;
+  if (/^(TRANSFERENCIA|TRANSF)$/.test(key)) return true;
+  if (matchesKnownGenericTransferTemplate(key)) return true;
+
+  const m = key.match(/^(TRANSFERENCIA|TRANSF)\.?\s+(.+)$/);
+  if (!m) return false;
+  const tail = m[2]!.trim();
+  if (!tail) return true;
+  if (/\d{3,}/.test(tail)) return false;
+
+  for (const raw of tail.split(/\s+/)) {
+    const token = raw.replace(/[^A-ZÁÉÍÓÚÑ0-9]/gi, "").toUpperCase();
+    if (!token || token.length < 3) continue;
+    if (GENERIC_TRANSFER_BOILERPLATE.has(token)) continue;
+    return false;
+  }
+  return true;
 }
 
 export function listCcExpenseCategories(): CcExpenseCategoryRow[] {
@@ -161,58 +229,29 @@ function uniquePurchaseMapKey(accountId: number, purchaseKey: string): string {
   return `${accountId}|${purchaseKey}`;
 }
 
-/** Longest stored merchant_key that matches exactly or as a prefix (statement names often truncate). */
+/** Merchant rule for this account: exact normalized `merchant_key` match only. */
 export function resolveMerchantCategorySlug(
   accountId: number,
   merchantKey: string,
   merchantRules: Map<string, string>
 ): string | null {
   if (!merchantKey) return null;
-  const exact = merchantRules.get(`${accountId}|${merchantKey}`);
-  if (exact) return exact;
-
-  const prefix = `${accountId}|`;
-  let bestLen = 0;
-  let bestSlug: string | null = null;
-  for (const [mapKey, slug] of merchantRules) {
-    if (!mapKey.startsWith(prefix)) continue;
-    const ruleKey = mapKey.slice(prefix.length);
-    if (!ruleKey) continue;
-    if (merchantKey.startsWith(ruleKey) || ruleKey.startsWith(merchantKey)) {
-      const len = Math.min(ruleKey.length, merchantKey.length);
-      if (len > bestLen) {
-        bestLen = len;
-        bestSlug = slug;
-      }
-    }
-  }
-  return bestSlug;
+  return merchantRules.get(`${accountId}|${merchantKey}`) ?? null;
 }
 
-/** Merchant rule keys on this account that would classify `merchantKey` (exact or prefix). */
+/** Stored merchant rule keys equal to `merchantKey` (exact match). */
 export function merchantRuleKeysMatchingLineMerchant(
   accountId: number,
   merchantKey: string
 ): string[] {
   if (!merchantKey) return [];
-  const rows = db
+  const row = db
     .prepare(
-      `SELECT merchant_key FROM cc_expense_merchant_categories WHERE account_id = ?`
+      `SELECT merchant_key FROM cc_expense_merchant_categories
+       WHERE account_id = ? AND merchant_key = ?`
     )
-    .all(accountId) as { merchant_key: string }[];
-
-  const matched = new Set<string>();
-  for (const { merchant_key: ruleKey } of rows) {
-    if (!ruleKey) continue;
-    if (
-      ruleKey === merchantKey ||
-      merchantKey.startsWith(ruleKey) ||
-      ruleKey.startsWith(merchantKey)
-    ) {
-      matched.add(ruleKey);
-    }
-  }
-  return [...matched];
+    .get(accountId, merchantKey) as { merchant_key: string } | undefined;
+  return row ? [row.merchant_key] : [];
 }
 
 export function resolveCcExpenseCategorySlug(opts: {
@@ -225,18 +264,30 @@ export function resolveCcExpenseCategorySlug(opts: {
   uniquePurchases: Map<string, string>;
 }): string {
   const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
-  const uniqueSlug = opts.uniquePurchases.get(uniqueKey);
+  let uniqueSlug = opts.uniquePurchases.get(uniqueKey);
+  if (uniqueSlug == null && opts.purchaseKey.startsWith("checking-cartola:")) {
+    const portion: "gastos" | "deposit" = opts.purchaseKey.endsWith(":deposit")
+      ? "deposit"
+      : "gastos";
+    const legacyKey = uniquePurchaseMapKey(
+      opts.accountId,
+      legacyCheckingGastosPurchaseKey(opts.statementLineId, portion)
+    );
+    uniqueSlug = opts.uniquePurchases.get(legacyKey) ?? null;
+  }
   if (uniqueSlug != null) return uniqueSlug;
 
   const lineSlug = opts.lineOverrides.get(opts.statementLineId);
   if (lineSlug) return lineSlug;
 
-  const merchantSlug = resolveMerchantCategorySlug(
-    opts.accountId,
-    opts.merchantKey,
-    opts.merchantRules
-  );
-  if (merchantSlug) return merchantSlug;
+  if (!isGenericTransferMerchantKey(opts.merchantKey)) {
+    const merchantSlug = resolveMerchantCategorySlug(
+      opts.accountId,
+      opts.merchantKey,
+      opts.merchantRules
+    );
+    if (merchantSlug) return merchantSlug;
+  }
 
   return UNCLASSIFIED_CC_EXPENSE_SLUG;
 }
@@ -252,6 +303,93 @@ export function lineHasUniquePurchaseMode(
     uniquePurchases.has(key) ||
     (uniquePurchaseModeKeys?.has(key) ?? false)
   );
+}
+
+/** Único from persisted row or generic transfer / Mercado Capitales template merchants. */
+export function categoryUniqueForExpenseLine(
+  accountId: number,
+  purchaseKey: string,
+  merchantKey: string,
+  uniquePurchases: Map<string, string>,
+  uniquePurchaseModeKeys?: Set<string>
+): boolean {
+  if (
+    lineHasUniquePurchaseMode(
+      accountId,
+      purchaseKey,
+      uniquePurchases,
+      uniquePurchaseModeKeys
+    )
+  ) {
+    return true;
+  }
+  return isGenericTransferMerchantKey(merchantKey);
+}
+
+/**
+ * Persist Único row for generic merchants (idempotent). Keeps merchant rules from
+ * applying comercio-wide after cartola imports that post-date the one-time migration backfill.
+ */
+export function ensureGenericUniquePurchaseRow(
+  accountId: number,
+  purchaseKey: string,
+  merchantKey: string,
+  opts?: { statementLineId?: number; categoryId?: number | null }
+): boolean {
+  if (!isGenericTransferMerchantKey(merchantKey)) return false;
+  const exists = db
+    .prepare(
+      `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+    )
+    .get(accountId, purchaseKey) as { o: number } | undefined;
+  if (exists) return false;
+
+  let categoryId: number | null = opts?.categoryId ?? null;
+  if (categoryId == null && opts?.statementLineId != null) {
+    const lc = db
+      .prepare(
+        `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
+      )
+      .get(opts.statementLineId) as { category_id: number } | undefined;
+    categoryId = lc?.category_id ?? null;
+  }
+
+  return (
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+         VALUES (?, ?, ?)`
+      )
+      .run(accountId, purchaseKey, categoryId).changes > 0
+  );
+}
+
+/** Persist + register Único mode for generic merchants (same request + DB). */
+export function registerGenericUniquePurchaseMode(
+  accountId: number,
+  purchaseKey: string,
+  merchantKey: string,
+  uniquePurchaseModeKeys: Set<string>,
+  opts?: { statementLineId?: number; categoryId?: number | null }
+): void {
+  if (!isGenericTransferMerchantKey(merchantKey)) return;
+  ensureGenericUniquePurchaseRow(accountId, purchaseKey, merchantKey, opts);
+  uniquePurchaseModeKeys.add(uniquePurchaseMapKey(accountId, purchaseKey));
+}
+
+/** Persist + register Único for auto deposit-match lines (any merchant key). */
+export function registerUniquePurchaseMode(
+  accountId: number,
+  purchaseKey: string,
+  categoryId: number | null,
+  uniquePurchaseModeKeys: Set<string>
+): void {
+  db.prepare(
+    `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
+  ).run(accountId, purchaseKey, categoryId);
+  uniquePurchaseModeKeys.add(uniquePurchaseMapKey(accountId, purchaseKey));
 }
 
 export type CcStatementLineExpenseCtx = {

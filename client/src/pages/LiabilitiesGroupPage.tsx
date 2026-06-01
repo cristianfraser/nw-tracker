@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
-import { GroupInfoNavHierarchyTable } from "../components/group/GroupInfoNavHierarchyTable";
+import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { filterTimeseriesBlockByAccountIds } from "../filterTimeseriesBlock";
@@ -230,11 +230,12 @@ export function LiabilitiesGroupPage() {
       monthlyDetailHint={t("groupPage.monthlyDetailHintLiabilities")}
       flowsHint={t("groupPage.flowsHintLiabilities")}
       accountsTree={
-        <GroupInfoNavHierarchyTable
-          rootNode={navMatchNode}
-          accounts={accounts}
-          titleI18nKey="groupPage.accountsTreeTitleLiabilities"
-        />
+        navMatchNode ? (
+          <NavAccountsTree
+            root={navMatchNode}
+            titleI18nKey="groupPage.accountsTreeTitleLiabilities"
+          />
+        ) : null
       }
     />
   );

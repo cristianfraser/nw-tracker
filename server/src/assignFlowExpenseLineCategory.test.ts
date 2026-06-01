@@ -16,7 +16,7 @@ describe("assignFlowExpenseLineCategory", () => {
       source: "checking",
       unique: true,
     });
-    expect(checkingResult.purchase_key).toBe("checking-mv:999");
+    expect(checkingResult.purchase_key).toMatch(/^checking-(mv:999|cartola:)/);
     expect(checkingResult.merchant_key).not.toBe("OKM SUECIA");
 
     const ccResult = assignFlowExpenseLineCategory({

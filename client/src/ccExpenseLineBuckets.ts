@@ -6,9 +6,13 @@ export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 /** Internal transfers to investments — excluded from gastos totals and chart stacks. */
 export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
 
+/** Corriente ↔ vista checking auto-matches — excluded from gastos totals and chart stacks. */
+export const CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG = "checking_internal_transfer";
+
 export const CC_EXPENSE_TOTALS_EXCLUDED_SLUGS = new Set([
   NO_CUENTA_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
+  CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 ]);
 
 export function isCcExpenseTotalsExcludedSlug(categorySlug: string): boolean {

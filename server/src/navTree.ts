@@ -23,8 +23,8 @@ export type NavTreeNodeDto = {
   api_subgroup: string | null;
   color_rgb: string | null;
   color: string | null;
-  /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
-  group_kind: "normal" | "reference" | "nav_hub";
+  /** `nav_hub` = routing only (e.g. inversiones); `liability_group` = Pasivos root (sidebar only, no NW bucket card). */
+  group_kind: "normal" | "reference" | "nav_hub" | "liability_group";
   /** Long zero tail: keep in nav for bucket chart history; hide from strips / hierarchy tables. */
   chart_inactive?: boolean;
   children: NavTreeNodeDto[];
@@ -84,7 +84,13 @@ function loadItems(): ItemRow[] {
 function pruneEmptyNavGroups(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
   return nodes
     .map((n) => ({ ...n, children: pruneEmptyNavGroups(n.children) }))
-    .filter((n) => n.account_id != null || n.expense_account_id != null || n.children.length > 0);
+    .filter(
+      (n) =>
+        n.account_id != null ||
+        n.expense_account_id != null ||
+        n.children.length > 0 ||
+        (n.portfolio_group_id != null && Boolean(n.route_path?.trim()))
+    );
 }
 
 function buildNode(
@@ -157,7 +163,9 @@ function buildNode(
   }
 
   const groupKind =
-    group.group_kind === "reference" || group.group_kind === "nav_hub"
+    group.group_kind === "reference" ||
+    group.group_kind === "nav_hub" ||
+    group.group_kind === "liability_group"
       ? group.group_kind
       : "normal";
 

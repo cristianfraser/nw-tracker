@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { MessagesTable } from "../../components/messages/MessagesTable";
 import { AvailableDocumentsTable } from "../../components/sync/AvailableDocumentsTable";
+import { GenericUniqueMerchantsPanel } from "../../components/sync/GenericUniqueMerchantsPanel";
 import { SyncLogStatusPanel } from "../../components/sync/SyncLogStatusPanel";
 import {
+  useGenericUniqueMerchants,
   useImportSyncDocumentCoverage,
   useMessages,
   useSyncStatus,
@@ -21,6 +23,11 @@ export function ImportSyncPage() {
     error: coverageError,
     isPending: coveragePending,
   } = useImportSyncDocumentCoverage();
+  const {
+    data: genericMerchants,
+    error: genericMerchantsError,
+    isPending: genericMerchantsPending,
+  } = useGenericUniqueMerchants();
 
   const logs = logsData?.messages ?? [];
   const err =
@@ -30,11 +37,13 @@ export function ImportSyncPage() {
         ? syncStatusError.message
         : coverageError instanceof Error
           ? coverageError.message
-          : logsError || syncStatusError || coverageError
-            ? t("common.loadFailed")
-            : null;
+          : genericMerchantsError instanceof Error
+            ? genericMerchantsError.message
+            : logsError || syncStatusError || coverageError || genericMerchantsError
+              ? t("common.loadFailed")
+              : null;
 
-  if (logsPending || syncStatusPending || coveragePending) {
+  if (logsPending || syncStatusPending || coveragePending || genericMerchantsPending) {
     return <p className="muted">{t("common.loading")}</p>;
   }
 
@@ -69,6 +78,13 @@ export function ImportSyncPage() {
         {t("importSync.availableDocumentsHint")}
       </p>
       {coverage ? <AvailableDocumentsTable data={coverage} /> : null}
+
+      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
+        {t("importSync.genericUniqueMerchantsTitle")}
+      </h2>
+      {genericMerchants ? (
+        <GenericUniqueMerchantsPanel merchants={genericMerchants.merchants} />
+      ) : null}
     </>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { LineChartPanel, ValuationLineCharts } from "../components/charts/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
-import { GroupInfoNavHierarchyTable } from "../components/group/GroupInfoNavHierarchyTable";
+import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { useDashboardBundle } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -18,7 +18,6 @@ import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavF
 import { useSidebarNav } from "../queries/hooks";
 import { formatMoneyForPie } from "../format";
 import {
-  dashboardAccountsForNavHierarchy,
   isDashboardNwBucketSlug,
   netWorthTableAccountsFromDash,
 } from "../portfolioDashboardBuckets";
@@ -164,11 +163,6 @@ export function DashboardPage() {
     [dash]
   );
 
-  const navHierarchyAccounts = useMemo(
-    () => (dash ? dashboardAccountsForNavHierarchy(dash.accounts) : []),
-    [dash]
-  );
-
   if (err) {
     return (
       <main>
@@ -282,7 +276,45 @@ export function DashboardPage() {
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={
-                isYearly ? t("dashboard.sections.accumChartTitleYearly") : t("dashboard.sections.accumChartTitleMonthly")
+                isYearly
+                  ? t("dashboard.sections.accumEarningsChartTitleYearly")
+                  : t("dashboard.sections.accumEarningsChartTitleMonthly")
+              }
+              titleAs="h3"
+              points={retirementBrokerageAccumChart}
+              displayUnit={displayUnit}
+              xAxisGranularity={xAxisGranularity}
+              barSeries={[
+                {
+                  dataKey: "delta_combined",
+                  name: isYearly
+                    ? t("dashboard.sections.deltaCombinedYearly")
+                    : t("dashboard.sections.deltaCombinedMonthly"),
+                  color: "#38bdf8",
+                },
+              ]}
+              areaKey="accumulated_earnings"
+              areaName={t("dashboard.sections.accumulatedEarnings")}
+              areaFill="rgba(148, 163, 184, 0.22)"
+              areaStroke="#64748b"
+              alternateYearAreaStripes={false}
+              lineSeries={[
+                {
+                  dataKey: "delta_combined_ma3",
+                  name: isYearly
+                    ? t("dashboard.sections.ma3DeltaCombinedYearly")
+                    : t("dashboard.sections.ma3DeltaCombinedMonthly"),
+                  stroke: "#38bdf8",
+                  strokeWidth: 1.5,
+                  showDot: false,
+                },
+              ]}
+            />
+            <MonthlyPerformanceComboChart
+              title={
+                isYearly
+                  ? t("dashboard.sections.accumFlowsChartTitleYearly")
+                  : t("dashboard.sections.accumFlowsChartTitleMonthly")
               }
               titleAs="h3"
               points={retirementBrokerageAccumChart}
@@ -304,11 +336,6 @@ export function DashboardPage() {
                   color: "#a78bfa",
                 },
               ]}
-              areaKey="accumulated_earnings"
-              areaName={t("dashboard.sections.accumulatedEarnings")}
-              areaFill="rgba(148, 163, 184, 0.22)"
-              areaStroke="#64748b"
-              alternateYearAreaStripes={false}
               lineSeries={[
                 {
                   dataKey: "delta_combined_ma3",
@@ -402,9 +429,8 @@ export function DashboardPage() {
       flowsHint={t("dashboard.flowsHint")}
       accountsTree={
         netWorthNav ? (
-          <GroupInfoNavHierarchyTable
-            rootNode={netWorthNav}
-            accounts={navHierarchyAccounts}
+          <NavAccountsTree
+            root={netWorthNav}
             titleI18nKey="dashboard.accountsTreeTitle"
             emptyI18nKey="dashboard.accountsTreeEmpty"
           />

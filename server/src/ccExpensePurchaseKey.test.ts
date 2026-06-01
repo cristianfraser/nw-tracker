@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
+import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
 import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
 
 function line(partial: Partial<FlowCcExpenseLineBeforeNotes> = {}): FlowCcExpenseLineBeforeNotes {
@@ -47,10 +48,10 @@ describe("resolvePurchaseKeyForGastosLine", () => {
     expect(key).toBe("installment-h:1:2024-12-15:6:TEST SHOP");
   });
 
-  it("uses checking-mv key for cuenta corriente gastos lines", () => {
+  it("uses stable checking cartola key for cuenta corriente gastos lines", () => {
     const key = resolvePurchaseKeyForGastosLine(
       line({ source: "checking", statement_line_id: 42, line_role: "purchase" })
     );
-    expect(key).toBe("checking-mv:42");
+    expect(key).toBe(checkingGastosMovementPurchaseKey(42));
   });
 });

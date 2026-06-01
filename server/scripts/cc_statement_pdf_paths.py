@@ -9,6 +9,13 @@ from typing import Iterator
 CLP_SLOT = "clp"
 USD_SLOT = "usd"
 UNREADABLE_DIR = "unreadable"
+# Folder under credit-card-statements/ (successor master); PDF stem may keep predecessor last4.
+SANTANDER_CC_SLOT_REDIRECT = {
+    "4113": "4141",
+    "4114": "4141",
+    "4111": "4242",
+    "4112": "4242",
+}
 RE_ORGANIZED_CC = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 RE_NUMBERED_COPY = re.compile(r"\s*\(\d+\)\.pdf$", re.I)
 RE_CC_STEM = re.compile(
@@ -57,8 +64,12 @@ def cc_slot_name(usd: bool) -> str:
     return USD_SLOT if usd else CLP_SLOT
 
 
+def cc_slot_key(card_key: str) -> str:
+    return SANTANDER_CC_SLOT_REDIRECT.get(str(card_key).strip(), str(card_key).strip())
+
+
 def cc_slot_dir(cc_root: Path, card_key: str, usd: bool) -> Path:
-    return cc_root / card_key / cc_slot_name(usd)
+    return cc_root / cc_slot_key(card_key) / cc_slot_name(usd)
 
 
 def cc_dest_path(cc_root: Path, card_key: str, usd: bool, stem: str) -> Path:

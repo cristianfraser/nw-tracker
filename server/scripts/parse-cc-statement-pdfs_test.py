@@ -199,6 +199,82 @@ class IntlUsdLayout2024Test(unittest.TestCase):
         self.assertTrue(any("APPLE" in m for m in merchants))
 
 
+class MultiCardLayoutBodyTest(unittest.TestCase):
+    def test_dec_2024_4242_uses_layout_body(self) -> None:
+        path = cc_statement_pdf(
+            "4242", "clp", "2024-12-23 estado de cuenta tarjeta 4242.pdf"
+        )
+        if not path.is_file():
+            self.skipTest("fixture PDF missing")
+        _, pypdf = mod.extract_pdf_text(path, "compact")
+        layout = mod.pdftotext_layout_full(path)
+        body = mod.choose_clp_parse_body(pypdf, layout, "compact")
+        self.assertIs(layout, body)
+        rows = mod.parse_clp_document(body, "compact")
+        self.assertGreaterEqual(len(rows), 108)
+        impto = [r for r in rows if "IMPTO" in str(r.get("merchant", "")).upper()]
+        self.assertEqual(sorted(int(r["amount_clp"]) for r in impto), [230, 237])
+
+    def test_may_2026_4111_uses_pypdf_body(self) -> None:
+        path = cc_statement_pdf(
+            "4111", "clp", "2026-05-25 estado de cuenta tarjeta 4111.pdf"
+        )
+        if not path.is_file():
+            self.skipTest("fixture PDF missing")
+        _, pypdf = mod.extract_pdf_text(path, "compact")
+        layout = mod.pdftotext_layout_full(path)
+        body = mod.choose_clp_parse_body(pypdf, layout, "compact")
+        self.assertIs(pypdf, body)
+        rows = mod.parse_clp_document(body, "compact")
+        self.assertGreaterEqual(len(rows), 55)
+
+    def test_aug_2024_4141_uses_pypdf_body(self) -> None:
+        path = cc_statement_pdf(
+            "4141", "clp", "2024-08-23 estado de cuenta tarjeta 4141.pdf"
+        )
+        if not path.is_file():
+            self.skipTest("fixture PDF missing")
+        _, pypdf = mod.extract_pdf_text(path, "compact")
+        layout = mod.pdftotext_layout_full(path)
+        body = mod.choose_clp_parse_body(pypdf, layout, "compact")
+        self.assertIs(pypdf, body)
+        rows = mod.parse_clp_document(body, "compact")
+        self.assertGreaterEqual(len(rows), 50)
+
+
+class OriginCardLast4Test(unittest.TestCase):
+    def test_additional_card_section_stamps_origin_card_last4(self) -> None:
+        sample = (
+            "Número tarjeta XXXX XXXX XXXX 4242\n"
+            "FECHA ESTADO DE CUENTA 22/01/2025\n"
+            "2. PERÍODO ACTUAL\n"
+            "VITACURA 23/01/2025 PAYU *UBER EATS $ 17.484\n"
+            "MOVIMIENTOS TARJETA XXXX-3670 $ 383.930\n"
+            "SANTIAGO 22/01/2025 LONDON COFFEE ALCANTARA $ 3.150\n"
+            "SANTIAGO 29/01/2025 RESTAURANT DON CARLOS $ 103.740\n"
+        )
+        rows = mod.parse_wide_document(sample)
+        self.assertEqual(len(rows), 3)
+        uber = next(r for r in rows if "UBER" in str(r.get("merchant", "")).upper())
+        london = next(
+            r for r in rows if "LONDON COFFEE" in str(r.get("merchant", "")).upper()
+        )
+        don = next(r for r in rows if "DON CARLOS" in str(r.get("merchant", "")).upper())
+        self.assertEqual(uber.get("origin_card_last4"), "4242")
+        self.assertEqual(london.get("origin_card_last4"), "3670")
+        self.assertEqual(don.get("origin_card_last4"), "3670")
+
+    def test_jan_2025_4242_pdf_has_additional_card_rows(self) -> None:
+        path = cc_statement_pdf(
+            "4242", "clp", "2025-01-22 estado de cuenta tarjeta 4242.pdf"
+        )
+        if not path.is_file():
+            self.skipTest("fixture PDF missing")
+        rows, _ctx = mod.parse_one_pdf("A", path, [])
+        adicional = [r for r in rows if str(r.get("origin_card_last4") or "") == "3670"]
+        self.assertGreater(len(adicional), 0)
+
+
 class ClpParseFallbackTest(unittest.TestCase):
     def test_mar_2025_compact_falls_back_to_wide(self) -> None:
         path = cc_statement_pdf("4141", "clp", "2025-03-25 estado de cuenta tarjeta 4141.pdf")
@@ -256,6 +332,61 @@ class WideCuotaFijaTest(unittest.TestCase):
         self.assertNotIn("CUOTA FIJA", r["merchant"].upper())
 
 
+class WideDeferredAmountTest(unittest.TestCase):
+    def test_amount_on_next_line_after_date_merchant(self) -> None:
+        text = (
+            "04/11/2024 ALMACENES BILBAO\n"
+            "$ 4.080\n"
+            "07/11/2024 ALMACENES BILBAO\n"
+            "$ 1.960\n"
+        )
+        rows = mod.parse_wide_document(text)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(sum(int(r["amount_clp"]) for r in rows), 4080 + 1960)
+
+    def test_orphan_amount_before_date_merchant(self) -> None:
+        text = "$ 2.660\n22/10/2024 ALMACENES BILBAO\n"
+        rows = mod.parse_wide_document(text)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["amount_clp"], 2660)
+        self.assertIn("BILBAO", rows[0]["merchant"])
+
+    def test_continuation_amount_after_deferred_pair(self) -> None:
+        text = (
+            "26/10/2024 JUMBO ALTO LAS CONDES\n"
+            "$ 49.482\n"
+            "$ 770\n"
+        )
+        rows = mod.parse_wide_document(text)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["amount_clp"], 49482)
+        self.assertEqual(rows[1]["amount_clp"], 770)
+
+    def test_mcc_date_merchant_amount_on_one_line(self) -> None:
+        line = "11001SANTIAG 22/10/2024 ALMACENES BILBAO $ 2.660"
+        rows = mod.parse_wide_document(line + "\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["amount_clp"], 2660)
+        self.assertEqual(rows[0]["merchant"], "ALMACENES BILBAO")
+        self.assertEqual(rows[0]["place"], "11001SANTIAG")
+
+
+class CompactJammedMccDateTest(unittest.TestCase):
+    def test_pypdf_merged_yy_with_mcc_digits(self) -> None:
+        """Regression: 13/05/25 + 11001SANTIAG → 13/05/2511001SANTIAG in pypdf."""
+        line = "13/05/2511001SANTIAG $2.200ALMACENES BILBAO"
+        row = mod.try_parse_compact_simple(line)
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row["transaction_date"], "13/05/25")
+        self.assertEqual(row["amount_clp"], 2200)
+        self.assertEqual(row["merchant"], "ALMACENES BILBAO")
+
+    def test_normalize_tx_date_keeps_real_four_digit_year(self) -> None:
+        self.assertEqual(mod.normalize_tx_date("22/10/2024"), "22/10/2024")
+        self.assertEqual(mod.normalize_tx_date("13/05/2511"), "13/05/25")
+
+
 class WideTcomCuotasTasaTest(unittest.TestCase):
     def test_tcom_cuotas_tasa_parsed_as_installment(self) -> None:
         line = (
@@ -275,6 +406,223 @@ class WideTcomCuotasTasaTest(unittest.TestCase):
         self.assertEqual(r["nro_cuota_current"], "")
         self.assertEqual(r["tipo_cuota"], "03 CUOTAS TCOM")
         self.assertEqual(r["interest_rate_text"], "3,01 %")
+
+
+class SantanderClpSectionParseTest(unittest.TestCase):
+    """Santander Worldmember CLP: section-aware compact + billing identity."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        spec_r = importlib.util.spec_from_file_location(
+            "cc_statement_reconcile", SCRIPT.parent / "cc_statement_reconcile.py"
+        )
+        cls.recon = importlib.util.module_from_spec(spec_r)
+        assert spec_r.loader is not None
+        spec_r.loader.exec_module(cls.recon)
+
+    def _parse_clp_statement(
+        self, card: str, name: str
+    ) -> tuple[Path, str, list[dict]]:
+        pdf = cc_statement_pdf(card, "clp", name)
+        if not pdf.is_file():
+            self.skipTest(f"fixture PDF not in repo: {name}")
+        _pages, full = mod.extract_pdf_text(pdf, "compact")
+        layout = mod.pdftotext_layout_full(pdf)
+        body = mod.choose_clp_parse_body(full, layout, "compact")
+        rows = mod.parse_clp_document(
+            full, "compact", movement_full=body, layout_full=layout
+        )
+        meta = mod.extract_meta(full, pdf.name)
+        pagado_hdr = meta.get("pdf_monto_pagado_anterior") or meta.get(
+            "statement_monto_pagado_anterior"
+        )
+        monto_hdr = meta.get("pdf_monto_facturado") or meta.get(
+            "statement_monto_facturado"
+        )
+        monto_cap = (
+            max(int(abs(int(monto_hdr)) * 1.3), 800_000)
+            if monto_hdr is not None
+            else None
+        )
+        if mod._santander_worldmember_clp_text(full):
+            traspaso_abs: set[int] = set()
+            pagado_abs = (
+                abs(int(pagado_hdr)) if pagado_hdr is not None else None
+            )
+            seen_pay: set[str] = set()
+            seen_traspaso: set[int] = set()
+            filtered: list[dict] = []
+            for pr in rows:
+                merchant_u = str(pr.get("merchant") or "").upper()
+                if "TRASPASO" in merchant_u and "DEUDA" in merchant_u:
+                    amt_abs = abs(int(pr.get("amount_clp") or 0))
+                    if amt_abs in seen_traspaso:
+                        continue
+                    seen_traspaso.add(amt_abs)
+                if pr.get("layout") == "compact_payment_abono":
+                    amt_abs = abs(int(pr.get("amount_clp") or 0))
+                    if pagado_abs is not None and amt_abs == pagado_abs:
+                        continue
+                    if monto_cap is not None and amt_abs > monto_cap:
+                        continue
+                    if amt_abs in traspaso_abs:
+                        continue
+                    key = f"{pr.get('transaction_date')}|{amt_abs}"
+                    if key in seen_pay:
+                        continue
+                    seen_pay.add(key)
+                filtered.append(pr)
+            rows = filtered
+        return pdf, f"{full}\n{layout}", rows
+
+    def test_may_2021_no_facturado_ghost_row(self) -> None:
+        pdf, text, rows = self._parse_clp_statement(
+            "4141", "2021-05-24 estado de cuenta tarjeta 4141.pdf"
+        )
+        totals = self.recon.extract_pdf_section_totals(
+            text, "clp", mod.parse_clp_amount, mod.parse_usd_amount
+        )
+        monto = int(totals.get("pdf_monto_facturado") or 0)
+        self.assertEqual(monto, 415_613)
+        for row in rows:
+            self.assertNotEqual(abs(int(row.get("amount_clp") or 0)), monto)
+        meta = {"currency": "clp", "source_pdf": pdf.name}
+        result = self.recon.reconcile_statement(
+            pdf.name,
+            meta,
+            rows,
+            text,
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+        )
+        self.assertTrue(result.ok, result.mismatch_summary())
+
+    def test_dec_2023_cargos_include_traspaso(self) -> None:
+        _pdf, text, rows = self._parse_clp_statement(
+            "4141", "2023-12-22 estado de cuenta tarjeta 4141.pdf"
+        )
+        sums = self.recon.sum_parsed_sections(
+            rows, mod.parse_clp_amount, mod.parse_usd_amount
+        )
+        self.assertEqual(sums["parsed_operaciones"], 1_002_505.0)
+        self.assertEqual(sums["parsed_cargos_abonos"], 562_018.0)
+        traspaso = [
+            r
+            for r in rows
+            if "TRASPASO" in str(r.get("merchant") or "").upper()
+            and "DEUDA" in str(r.get("merchant") or "").upper()
+        ]
+        self.assertEqual(len(traspaso), 1)
+        self.assertEqual(int(traspaso[0]["amount_clp"]), 545_584)
+        meta = {"currency": "clp"}
+        result = self.recon.reconcile_statement(
+            _pdf.name,
+            meta,
+            rows,
+            text,
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+        )
+        self.assertTrue(result.ok, result.mismatch_summary())
+
+    def test_sep_2021_billing_identity(self) -> None:
+        pdf, text, rows = self._parse_clp_statement(
+            "4141", "2021-09-22 estado de cuenta tarjeta 4141.pdf"
+        )
+        meta = {"currency": "clp", "source_pdf": pdf.name}
+        result = self.recon.reconcile_statement(
+            pdf.name,
+            meta,
+            rows,
+            text,
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+        )
+        self.assertTrue(result.ok, result.mismatch_summary())
+
+    def test_legacy_4113_billing_identity(self) -> None:
+        pdf = REPO_ROOT / "cfraser" / "credit-card-statements" / "legacy" / "clp" / (
+            "2017-09-22 estado de cuenta tarjeta 4113.pdf"
+        )
+        if not pdf.is_file():
+            self.skipTest("legacy 4113 fixture not in repo")
+        _pages, full = mod.extract_pdf_text(pdf, "compact")
+        layout = mod.pdftotext_layout_full(pdf)
+        body = mod.choose_clp_parse_body(full, layout, "compact")
+        rows = mod.parse_clp_document(
+            full, "compact", movement_full=body, layout_full=layout
+        )
+        text = f"{full}\n{layout}"
+        meta = {"currency": "clp", "source_pdf": pdf.name}
+        result = self.recon.reconcile_statement(
+            pdf.name,
+            meta,
+            rows,
+            text,
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+        )
+        self.assertTrue(result.ok, result.mismatch_summary())
+        totals = self.recon.extract_pdf_section_totals(
+            text, "clp", mod.parse_clp_amount, mod.parse_usd_amount
+        )
+        self.assertEqual(totals.get("pdf_monto_facturado"), 121_388.0)
+        self.assertEqual(totals.get("pdf_monto_facturado_anterior"), 208_093.0)
+        self.assertEqual(totals.get("pdf_monto_pagado_anterior"), -317_804.0)
+
+    def test_cell_int_meta_float_not_scrambled(self) -> None:
+        self.assertEqual(mod._cell_int(231099.0), 231099)
+        self.assertEqual(mod.fmt_clp(mod._cell_int(231099.0)), "231099")
+
+
+    def test_apr_2023_rolling_billing_identity(self) -> None:
+        pdf, text, rows = self._parse_clp_statement(
+            "4141", "2023-04-24 estado de cuenta tarjeta 4141.pdf"
+        )
+        totals = self.recon.extract_pdf_section_totals(
+            text, "clp", mod.parse_clp_amount, mod.parse_usd_amount
+        )
+        self.assertEqual(totals.get("pdf_monto_facturado_anterior"), 715_173.0)
+        self.assertEqual(totals.get("pdf_monto_pagado_anterior"), -1_007_817.0)
+        roll = self.recon._clp_rolling_billed(
+            totals,
+            float(totals["pdf_total_operaciones"] or 0),
+            float(totals.get("pdf_total_cargos_abonos") or 0),
+        )
+        self.assertEqual(roll, 950_440.0)
+        meta = {"currency": "clp", "source_pdf": pdf.name}
+        result = self.recon.reconcile_statement(
+            pdf.name,
+            meta,
+            rows,
+            text,
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+        )
+        self.assertTrue(result.ok, result.mismatch_summary())
+
+    def test_feb_2025_zero_activity_payment_echo_not_fatal(self) -> None:
+        """Zero-activity month: prior-period payment echo in movimientos, no import rows."""
+        pdf = cc_statement_pdf(
+            "4141", "clp", "2025-02-24 estado de cuenta tarjeta 4141.pdf"
+        )
+        if not pdf.is_file():
+            self.skipTest("fixture PDF not in repo")
+        rows, ctx = mod.parse_one_pdf("4141", pdf, [])
+        meta = ctx["meta"]
+        self.assertEqual(len(rows), 0)
+        self.assertTrue(mod.is_zero_activity_statement_meta(meta))
+        result = self.recon.reconcile_statement(
+            ctx["source_pdf"],
+            meta,
+            rows,
+            ctx["full"],
+            mod.parse_clp_amount,
+            mod.parse_usd_amount,
+            layout_text=ctx["layout"],
+        )
+        self.assertTrue(result.ok)
+        self.assertEqual(result.skip_reason, "zero_rows")
 
 
 class StatementReconcileTest(unittest.TestCase):
@@ -647,6 +995,44 @@ class BciLiderStatementTest(unittest.TestCase):
             sum(int(r["amount_clp"]) for r in rows if int(r["amount_clp"]) > 0),
             30_920 + 43_287 + 47_798 + 3_555,
         )
+
+
+class IntlUsd4113Jan2018Test(unittest.TestCase):
+    def test_usd_headers_and_operaciones_match_pdf(self) -> None:
+        pdf = (
+            REPO_ROOT
+            / "cfraser"
+            / "credit-card-statements"
+            / "4113"
+            / "usd"
+            / "2018-01-24 estado de cuenta tarjeta usd 4113.pdf"
+        )
+        if not pdf.is_file():
+            self.skipTest("4113 USD fixture not in repo")
+        rows, ctx = mod.parse_one_pdf("A", pdf, [])
+        meta = ctx["meta"]
+        self.assertEqual(len(rows), 10)
+        self.assertAlmostEqual(float(meta["statement_saldo_anterior"]), 35.29, places=2)
+        self.assertAlmostEqual(float(meta["statement_abono"]), -68.39, places=2)
+        self.assertAlmostEqual(float(meta["statement_compras_cargos"]), 94.66, places=2)
+        self.assertAlmostEqual(float(meta["statement_deuda_total"]), 61.56, places=2)
+        pos = sum(
+            float(str(r.get("amount_usd") or "0").replace(",", "."))
+            for r in rows
+            if float(str(r.get("amount_usd") or "0").replace(",", ".")) > 0
+        )
+        self.assertAlmostEqual(pos, 94.66, places=2)
+
+
+class UnreadablePdfSkipTest(unittest.TestCase):
+    def test_is_unreadable_pdf_error(self) -> None:
+        self.assertTrue(
+            mod.is_unreadable_pdf_error(
+                "repaired (rewritten) but text still unreadable — re-download"
+            )
+        )
+        self.assertTrue(mod.is_unreadable_pdf_error("unreadable PDF and qpdf not installed"))
+        self.assertFalse(mod.is_unreadable_pdf_error("KeyError: 'period_to'"))
 
 
 if __name__ == "__main__":

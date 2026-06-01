@@ -1,7 +1,7 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
 import { dashboardCardMainSortKey, type DashboardGroupSlug } from "./dashboardCardBreakdown";
 import type { GroupInfoTableAccount } from "./useGroupInfoConsolidatedTables";
-import type { AccountListRow, DashboardAccountRow, DashboardResponse } from "./types";
+import type { DashboardAccountRow, DashboardResponse } from "./types";
 
 export const DASHBOARD_NET_WORTH_BUCKET_SLUGS: readonly DashboardGroupSlug[] = [
   "real_estate",
@@ -12,22 +12,6 @@ export const DASHBOARD_NET_WORTH_BUCKET_SLUGS: readonly DashboardGroupSlug[] = [
 
 export function isDashboardNwBucketSlug(slug: string): slug is DashboardGroupSlug {
   return (DASHBOARD_NET_WORTH_BUCKET_SLUGS as readonly string[]).includes(slug);
-}
-
-/** Dashboard account rows as {@link AccountListRow} for the nav hierarchy table. */
-export function dashboardAccountsForNavHierarchy(
-  accounts: readonly DashboardAccountRow[]
-): AccountListRow[] {
-  return accounts.map((a) => ({
-    id: a.account_id,
-    name: a.name,
-    notes: a.notes ?? null,
-    created_at: "",
-    category_slug: a.category_slug,
-    category_label: a.category_label,
-    group_slug: a.group_slug,
-    group_label: a.group_label,
-  }));
 }
 
 /** Accounts under net-worth buckets for consolidated monthly detail + flows on the home page. */

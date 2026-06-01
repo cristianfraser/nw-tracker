@@ -69,8 +69,12 @@ function BreakdownNodeRow({
   rowKeyPrefix: string;
 }) {
   const isGroup = depth === 0;
-  /** One leaf under a group: show the group total only (same as brokerage “Fondos mutuos”). */
-  const hideOnlyChild = node.children.length === 1;
+  /** One account leaf under a group: show the group total only (same as brokerage “Fondos mutuos”). */
+  const soleChild = node.children.length === 1 ? node.children[0]! : null;
+  const hideOnlyChild =
+    soleChild != null &&
+    soleChild.children.length === 0 &&
+    Boolean(soleChild.to?.startsWith("/account/"));
   const liClass = isGroup ? styles.group : styles.child;
   const mountSeedKey = `${cardSlug}:${rowKeyPrefix}:${depth}:${index}:${node.label}`;
   const label = node.to ? (

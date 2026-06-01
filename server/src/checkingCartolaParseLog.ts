@@ -8,7 +8,7 @@ import type {
 export type CheckingCartolaFileImportLog = {
   file: string;
   period_month: string;
-  status: "imported" | "skipped_already_imported" | "parse_error" | "dry_run";
+  status: "imported" | "skipped_already_imported" | "updated_saldo_ref" | "parse_error" | "dry_run";
   movements_parsed: number;
   movements_imported: number;
   skipped_rows: CartolaSkippedRow[];
@@ -108,6 +108,12 @@ export function logCheckingCartolaImportRun(log: CheckingCartolaImportRunLog): v
       }
       continue;
     }
+    if (f.status === "updated_saldo_ref") {
+      console.log(
+        `  UPDATE saldo ref ${f.file} (${f.period_month}): saldo cartola ref ${f.saldo_final_clp ?? "—"} CLP.`
+      );
+      continue;
+    }
     const tag = f.status === "dry_run" ? "WOULD IMPORT" : "IMPORTED";
     console.log(
       `  ${tag} ${f.file} (${f.period_month}): ${f.movements_imported} movement(s) imported, ` +
@@ -125,10 +131,11 @@ export function logCheckingCartolaImportRun(log: CheckingCartolaImportRunLog): v
   const imported = log.files.filter((f) => f.status === "imported" || f.status === "dry_run");
   const errors = log.files.filter((f) => f.status === "parse_error");
   const skippedMonths = log.files.filter((f) => f.status === "skipped_already_imported");
+  const saldoUpdates = log.files.filter((f) => f.status === "updated_saldo_ref");
   const totalSkippedRows = log.files.reduce((n, f) => n + f.skipped_rows.length, 0);
   console.log(
     `${prefix}Summary: ${imported.length} file(s) processed, ${skippedMonths.length} month(s) already imported, ` +
-      `${errors.length} error(s), ${totalSkippedRows} parse skip(s) logged.`
+      `${saldoUpdates.length} saldo ref update(s), ${errors.length} error(s), ${totalSkippedRows} parse skip(s) logged.`
   );
   insertCheckingCartolaImportRunLog(log);
 }

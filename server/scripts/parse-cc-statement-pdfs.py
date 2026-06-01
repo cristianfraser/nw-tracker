@@ -67,10 +67,12 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from pypdf import PdfReader  # type: ignore  # noqa: E402
 from cc_pdf_qpdf import (  # noqa: E402
+    ensure_readable_for_parse,
+    is_readable_cc_statement_text,
     load_repo_dotenv,
+    peek_pdf_text,
     qpdf_available,
     repair_unreadable_pdfs_in_dir,
-    statement_pdf_password,
 )
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
@@ -184,6 +186,15 @@ def parse_one_pdf(
     baseline: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Extract text, parse lines, return CSV rows and pdf_context entry."""
+    load_repo_dotenv()
+    if qpdf_available():
+        note = ensure_readable_for_parse(pdf_path)
+        if note and ("repair failed" in note or "still unreadable" in note):
+            raise RuntimeError(f"{pdf_path.name}: {note}")
+    elif not is_readable_cc_statement_text(peek_pdf_text(pdf_path)):
+        raise RuntimeError(
+            f"{pdf_path.name}: unreadable PDF and qpdf not installed (brew install qpdf)"
+        )
     parser = choose_parser(pdf_path)
     _pages, full = extract_pdf_text(pdf_path, parser)
     effective_group = "INTL" if parser == "international_usd" else card_group
@@ -201,14 +212,116 @@ def parse_one_pdf(
         parsed = parse_international_usd_document(full, full_layout)
         meta = extract_meta_international(full, pdf_path.name)
         finalize_statement_meta(meta, pdf_path)
+        if full_layout.strip():
+            merge_section_totals_into_meta(
+                meta,
+                f"{full}\n{full_layout}",
+                parse_clp_amount,
+                parse_usd_amount,
+            )
+        _sync_statement_billing_headers_from_pdf(meta)
     else:
-        parsed = parse_clp_document(full, parser)
+        full_layout = pdftotext_layout_full(pdf_path)
+        body = choose_clp_parse_body(full, full_layout, parser)
+        parsed = parse_clp_document(
+            full,
+            parser,
+            movement_full=body,
+            layout_full=full_layout,
+        )
         meta = extract_meta(full, pdf_path.name)
         finalize_statement_meta(meta, pdf_path)
+        if full_layout.strip():
+            merge_section_totals_into_meta(
+                meta,
+                f"{full}\n{full_layout}",
+                parse_clp_amount,
+                parse_usd_amount,
+            )
+        else:
+            merge_section_totals_into_meta(
+                meta, full, parse_clp_amount, parse_usd_amount
+            )
+        _sync_statement_billing_headers_from_pdf(meta)
+        pagado_hdr = meta.get("pdf_monto_pagado_anterior") or meta.get(
+            "statement_monto_pagado_anterior"
+        )
+        if _santander_worldmember_clp_text(full):
+            traspaso_abs: set[int] = set()
+            pagado_abs = (
+                abs(int(pagado_hdr)) if pagado_hdr is not None else None
+            )
+            monto_hdr = meta.get("pdf_monto_facturado") or meta.get(
+                "statement_monto_facturado"
+            )
+            monto_cap = None
+            if monto_hdr is not None:
+                # Drop chart-scale spurious MONTO CANCELADO, keep in-period payments.
+                monto_cap = max(int(abs(int(monto_hdr)) * 1.3), 800_000)
+            seen_pay: set[str] = set()
+            seen_traspaso: set[int] = set()
+            payment_rows: List[Dict[str, Any]] = [
+                pr for pr in parsed if pr.get("layout") == "compact_payment_abono"
+            ]
+            pay_sum = sum(int(pr.get("amount_clp") or 0) for pr in payment_rows)
+            payment_keep_ids: set[int] = {id(pr) for pr in payment_rows}
+            monto_f = meta.get("pdf_monto_facturado") or meta.get(
+                "statement_monto_facturado"
+            )
+            op_f = meta.get("pdf_total_operaciones")
+            car_f = meta.get("pdf_total_cargos_abonos")
+            if (
+                len(payment_rows) >= 2
+                and pagado_hdr is not None
+                and pay_sum != 0
+                and abs(int(pay_sum)) == abs(int(pagado_hdr))
+                and monto_f is not None
+                and op_f is not None
+            ):
+                kept = list(payment_rows)
+                target = float(monto_f)
+                op_v = float(op_f)
+                car_v = float(car_f or 0)
+                tol = max(1000.0, abs(target) * 0.005)
+                while len(kept) > 1:
+                    pay_s = float(sum(int(p["amount_clp"]) for p in kept))
+                    if abs(op_v + car_v + pay_s - target) <= tol:
+                        break
+                    kept.pop(0)
+                payment_keep_ids = {id(p) for p in kept}
+            filtered: List[Dict[str, Any]] = []
+            for pr in parsed:
+                merchant_u = str(pr.get("merchant") or "").upper()
+                if "TRASPASO" in merchant_u and "DEUDA" in merchant_u:
+                    amt_abs = abs(int(pr.get("amount_clp") or 0))
+                    if amt_abs in seen_traspaso:
+                        continue
+                    seen_traspaso.add(amt_abs)
+                if pr.get("layout") == "compact_payment_abono":
+                    if id(pr) not in payment_keep_ids:
+                        continue
+                    amt_abs = abs(int(pr.get("amount_clp") or 0))
+                    if pagado_abs is not None and amt_abs == pagado_abs:
+                        continue
+                    if monto_cap is not None and amt_abs > monto_cap:
+                        continue
+                    if amt_abs in traspaso_abs:
+                        continue
+                    key = f"{pr.get('transaction_date')}|{amt_abs}"
+                    if key in seen_pay:
+                        continue
+                    seen_pay.add(key)
+                filtered.append(pr)
+            parsed = filtered
+        full = body
+    meta["_parser"] = parser
     pdf_path = maybe_rename_parsed_cc_pdf(pdf_path, meta, full)
+    meta.pop("_parser", None)
+    source_pdf = statement_source_pdf_name(meta, pdf_path.name, parser, full)
+    meta["source_pdf"] = source_pdf
     rows = rows_from_parse_payload(
         effective_group=effective_group,
-        source_pdf=canonical_cc_source_pdf_name(pdf_path.name),
+        source_pdf=source_pdf,
         meta=meta,
         parsed=parsed,
         baseline=baseline,
@@ -220,6 +333,7 @@ def parse_one_pdf(
         "parser": parser,
         "parsed": parsed,
         "pdf_path": str(pdf_path),
+        "source_pdf": source_pdf,
     }
     return rows, ctx
 
@@ -654,7 +768,11 @@ def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
             return parse_usd_amount(m2.group(1))
         for i, ln in enumerate(lines):
             if label.upper() in ln.upper():
+                if re.search(r"\bCUPO\b", ln, re.I):
+                    continue
                 for j in range(i - 1, max(i - 6, -1), -1):
+                    if re.search(r"\bCUPO\b", lines[j], re.I):
+                        continue
                     m3 = re.match(r"^US\$\s*([\d.,\-]+)$", lines[j], re.I)
                     if m3:
                         return parse_usd_amount(m3.group(1))
@@ -937,6 +1055,22 @@ def _intl_row_parse_quality(r: Dict[str, Any]) -> Tuple[int, float]:
     return (score, -usd if has_orig else usd)
 
 
+def _vertical_intl_usd_amount_owned_by_layout(
+    vertical_row: Dict[str, Any], layout_rows: List[Dict[str, Any]]
+) -> bool:
+    """Drop vertical ghost when layout already has the same MONTO US$ on another date."""
+    usd = float(vertical_row.get("amount_usd") or 0)
+    if usd <= 0 or not layout_rows:
+        return False
+    vdate = str(vertical_row.get("transaction_date") or "")
+    for layout_row in layout_rows:
+        if float(layout_row.get("amount_usd") or 0) != usd:
+            continue
+        if str(layout_row.get("transaction_date") or "") != vdate:
+            return True
+    return False
+
+
 def _merge_intl_parsed_rows(
     vertical_rows: List[Dict[str, Any]],
     layout_rows: List[Dict[str, Any]],
@@ -945,6 +1079,8 @@ def _merge_intl_parsed_rows(
     merged: Dict[str, Dict[str, Any]] = {}
     for r in vertical_rows:
         if _vertical_intl_row_superseded_by_layout(r, layout_rows):
+            continue
+        if _vertical_intl_usd_amount_owned_by_layout(r, layout_rows):
             continue
         k = _intl_row_merge_key(r)
         prev = merged.get(k)
@@ -1149,11 +1285,37 @@ def organized_cc_pdf_iso_prefix(meta: Dict[str, Any], full: str = "") -> str:
     return dd_mm_yyyy_to_iso(str(meta.get("period_to") or ""))
 
 
-def target_cc_pdf_filename(meta: Dict[str, Any], full: str = "") -> str:
+def _statement_is_usd(meta: Dict[str, Any], parser: str = "") -> bool:
+    if parser == "international_usd":
+        return True
+    return str(meta.get("currency") or "").lower() == "usd"
+
+
+def statement_source_pdf_name(
+    meta: Dict[str, Any],
+    disk_filename: str,
+    parser: str = "",
+    full: str = "",
+) -> str:
+    """CSV/DB basename; USD statements use ``tarjeta usd`` (see importSyncDocumentFilePath)."""
+    if _statement_is_usd(meta, parser):
+        iso = organized_cc_pdf_iso_prefix(meta, full)
+        last4 = str(meta.get("card_last4") or "").strip()
+        if iso and re.fullmatch(r"\d{4}", last4):
+            return f"{iso} estado de cuenta tarjeta usd {last4}.pdf"
+    return canonical_cc_source_pdf_name(disk_filename)
+
+
+def target_cc_pdf_filename(meta: Dict[str, Any], full: str = "", parser: str = "") -> str:
     iso = organized_cc_pdf_iso_prefix(meta, full)
     if not iso:
         return ""
-    stem = f"{iso} estado de cuenta tarjeta"
+    mid = (
+        "estado de cuenta tarjeta usd"
+        if _statement_is_usd(meta, parser)
+        else "estado de cuenta tarjeta"
+    )
+    stem = f"{iso} {mid}"
     last4 = str(meta.get("card_last4") or "").strip()
     if last4:
         stem += f" {last4}"
@@ -1164,7 +1326,8 @@ def maybe_rename_parsed_cc_pdf(
     pdf_path: Path, meta: Dict[str, Any], full: str = ""
 ) -> Path:
     """Rename on disk when YYYY-MM-DD prefix does not match statement metadata."""
-    target_name = target_cc_pdf_filename(meta, full)
+    parser = str(meta.get("_parser") or "")
+    target_name = target_cc_pdf_filename(meta, full, parser)
     if not target_name or pdf_path.name == target_name:
         return pdf_path
     dest = pdf_path.with_name(target_name)
@@ -1258,19 +1421,83 @@ def parse_bci_lider_document(full: str) -> List[Dict[str, Any]]:
     return out
 
 
-def parse_clp_document(full: str, parser: str) -> List[Dict[str, Any]]:
+def _santander_worldmember_clp_text(full: str) -> bool:
+    upper = _ascii_upper(full)
+    return "WORLDMEMBER" in upper or "MONTO ORIGEN OPERAC" in upper
+
+
+def _santander_clp_row_merge_rank(layout: str) -> int:
+    if layout in ("compact_cargos_charge", "compact_payment_abono"):
+        return 2
+    return 1
+
+
+def _merge_santander_clp_row_lists(
+    compact_rows: List[Dict[str, Any]], wide_rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Compact supplies section-3 / payment lines; wide supplies place+date movimientos."""
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for row in compact_rows + wide_rows:
+        key = "|".join(
+            [
+                str(row.get("transaction_date") or ""),
+                str(row.get("merchant") or ""),
+                str(row.get("amount_clp") or ""),
+            ]
+        )
+        prev = by_key.get(key)
+        if prev is None or _santander_clp_row_merge_rank(
+            str(row.get("layout") or "")
+        ) >= _santander_clp_row_merge_rank(str(prev.get("layout") or "")):
+            by_key[key] = row
+    return list(by_key.values())
+
+
+def _finish_clp_parsed_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    sanitize_parsed_rows_dates(rows)
+    return rows
+
+
+def parse_clp_document(
+    full: str,
+    parser: str,
+    *,
+    movement_full: str = "",
+    layout_full: str = "",
+) -> List[Dict[str, Any]]:
     """Parse CLP statement; fall back to wide when compact misses rows."""
     if is_bci_lider_statement_text(full):
-        return parse_bci_lider_document(full)
+        return _finish_clp_parsed_rows(parse_bci_lider_document(full))
     if parser == "wide":
-        return parse_wide_document(full)
+        return _finish_clp_parsed_rows(parse_wide_document(full))
+    move_text = movement_full.strip() or full
     compact_rows = parse_compact_document(full)
-    wide_rows = parse_wide_document(full)
+    if layout_full.strip() and layout_full.strip() != full.strip():
+        compact_rows = _merge_santander_clp_row_lists(
+            compact_rows, parse_compact_document(layout_full)
+        )
+    wide_rows = parse_wide_document(move_text)
+    if _santander_worldmember_clp_text(full) or _santander_worldmember_clp_text(move_text):
+        wide_rows = [
+            r
+            for r in wide_rows
+            if not _compact_should_skip_purchase_row(
+                {
+                    "place": r.get("place", ""),
+                    "merchant": r.get("merchant", ""),
+                    "description_raw": r.get("description_raw", ""),
+                }
+            )
+            and not RE_COMPACT_PAYMENT_MERCHANT.match(str(r.get("merchant") or ""))
+        ]
+        merged = _merge_santander_clp_row_lists(compact_rows, wide_rows)
+        if merged:
+            return _finish_clp_parsed_rows(merged)
     if not compact_rows:
-        return wide_rows
+        return _finish_clp_parsed_rows(wide_rows)
     if len(wide_rows) > len(compact_rows):
-        return wide_rows
-    return compact_rows
+        return _finish_clp_parsed_rows(wide_rows)
+    return _finish_clp_parsed_rows(compact_rows)
 
 
 def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
@@ -1293,6 +1520,32 @@ def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
 
 
 RE_STMT_DATE_CELL = re.compile(r"^(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})$")
+RE_TX_DATE = re.compile(r"^(\d{2})/(\d{2})/(\d{2}|\d{4})$")
+# pypdf merges DD/MM/YY with MCC city (e.g. 13/05/25 + 11001SANTIAG → 13/05/2511001SANTIAG).
+_TX_DATE_MAX_PLAUSIBLE_YEAR = 2038
+
+
+def normalize_tx_date(raw: str) -> str:
+    """Fix transaction/posting dates when a 2-digit year was jammed with following digits."""
+    s = str(raw or "").strip()
+    m = RE_TX_DATE.match(s)
+    if not m:
+        return s
+    d, mo, ypart = m.group(1), m.group(2), m.group(3)
+    if len(ypart) == 2:
+        return s
+    y = int(ypart)
+    if 1990 <= y <= _TX_DATE_MAX_PLAUSIBLE_YEAR:
+        return s
+    yy = int(ypart[:2])
+    return f"{d}/{mo}/{yy:02d}"
+
+
+def sanitize_parsed_rows_dates(rows: List[Dict[str, Any]]) -> None:
+    for row in rows:
+        for key in ("transaction_date", "posting_date"):
+            if row.get(key):
+                row[key] = normalize_tx_date(str(row[key]))
 
 
 def normalize_statement_date(raw: str) -> str:
@@ -1469,25 +1722,69 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
     m_deuda = re.search(r"DEUDA\s+TOTAL[^\$]*\$\s*([\d.\-]+)", full, re.I)
     if m_deuda:
         meta["statement_deuda_total"] = parse_clp_amount(m_deuda.group(1))
+    m_adeudado = re.search(
+        r"SALDO\s+ADEUDADO\s+FINAL\s+PER[IÍ]ODO\s+ANTERIOR\s*\$\s*([\d.\-]+)",
+        full,
+        re.I,
+    )
+    if m_adeudado:
+        meta["statement_saldo_anterior"] = parse_clp_amount(m_adeudado.group(1))
     m_prev = re.search(
-        r"MONTO\s+FACTURADO\s+A\s+PAGAR\s*\(PER[IÍ]ODO\s+ANTERIOR\)[^\$]*\$\s*([\d.\-]+)",
+        r"MONTO\s+FACTURADO\s+A\s+PAGAR\s*\(PER[IÍ]ODO\s+ANTERIOR\)\s*\$\s*([\d.\-]+)",
         full,
         re.I,
     )
     if m_prev:
-        meta["statement_saldo_anterior"] = parse_clp_amount(m_prev.group(1))
+        meta["statement_monto_facturado_anterior"] = parse_clp_amount(m_prev.group(1))
+        if meta.get("statement_saldo_anterior") is None:
+            meta["statement_saldo_anterior"] = parse_clp_amount(m_prev.group(1))
     m_pagado = re.search(
-        r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR[^\$]*\$\s*([\d.\-]+)",
+        r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR\s*\$\s*([\d.\-]+)",
         full,
         re.I,
     )
     if m_pagado:
-        meta["pdf_monto_pagado_anterior"] = parse_clp_amount(m_pagado.group(1))
+        pagado_val = parse_clp_amount(m_pagado.group(1))
+        meta["pdf_monto_pagado_anterior"] = pagado_val
+        meta["statement_monto_pagado_anterior"] = pagado_val
         if meta.get("statement_abono") is None:
-            meta["statement_abono"] = parse_clp_amount(m_pagado.group(1))
+            meta["statement_abono"] = pagado_val
     merge_section_totals_into_meta(meta, full, parse_clp_amount, parse_usd_amount)
     meta["raw_header_snippet"] = full[:400].replace("\n", " ")
     return meta
+
+
+RE_MOVIMIENTOS_TARJETA = re.compile(
+    r"MOVIMIENTOS\s+TARJETA\s+XXXX-\d{4}", re.IGNORECASE
+)
+RE_MOVIMIENTOS_TARJETA_SECTION = re.compile(
+    r"MOVIMIENTOS\s+TARJETA\s+XXXX-(\d{4})", re.IGNORECASE
+)
+
+
+def _clp_parse_row_count(full: str, parser: str) -> int:
+    return len(parse_clp_document(full, parser))
+
+
+def choose_clp_parse_body(pypdf_full: str, layout_full: str, parser: str = "compact") -> str:
+    """
+    Santander multi-card statements: pypdf sometimes scrambles page order (use layout), but
+    pdftotext -layout line breaks often yield far fewer compact rows (use pypdf). Compare
+    parse yields and pick the fuller body.
+    """
+    layout = str(layout_full or "")
+    pypdf = str(pypdf_full or "")
+    if not layout.strip():
+        return pypdf
+    if RE_MOVIMIENTOS_TARJETA.search(layout):
+        pypdf_rows = _clp_parse_row_count(pypdf, parser)
+        layout_rows = _clp_parse_row_count(layout, parser)
+        if layout_rows >= max(12, int(pypdf_rows * 0.5)) and layout_rows >= pypdf_rows - 2:
+            return layout
+        return pypdf
+    if len(pypdf) < max(4000, int(len(layout) * 0.35)):
+        return layout
+    return pypdf
 
 
 def pdftotext_layout_full(pdf_path: Path) -> str:
@@ -1567,10 +1864,15 @@ def statement_sort_key(meta: Dict[str, Any]) -> Tuple[int, int, int]:
 
 RE_RATE_SPLIT = re.compile(r"(\d,\d{2}\s*%)")
 RE_COMPACT_SIMPLE = re.compile(
-    r"^(\d{2}/\d{2}/\d{2})\s*(.*?)\s*\$\s*([-]?[\d.]+)\s*(.*)$"
+    r"^(\d{2}/\d{2}/\d{2,4})\s*(.*?)\s*\$\s*([-]?[\d.]+)\s*(.*)$"
 )
 RE_WIDE_PLACE_DATE = re.compile(
     r"^([A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.\-]*?)\s+(\d{2}/\d{2}/\d{4})\s*(.+?)\s+\$\s*([-]?[\d.]+)\s*$"
+)
+# pypdf often merges MCC token + date + merchant + amount on one line (e.g. `11001SANTIAG 22/10/2024 … $ 2.660`).
+RE_WIDE_MCC_DATE = re.compile(
+    r"^(\d{4,}[A-ZÁ-ÿ]*)\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$",
+    re.I,
 )
 RE_BCI_LIDER_CHARGE = re.compile(
     r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
@@ -1578,6 +1880,8 @@ RE_BCI_LIDER_CHARGE = re.compile(
 RE_WIDE_DATE_FIRST = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$"
 )
+RE_WIDE_DATE_DESC_ONLY = re.compile(r"^(\d{2}/\d{2}/\d{4})\s+(.+)$")
+RE_WIDE_AMOUNT_ONLY_LINE = re.compile(r"^\$\s*([-]?[\d.]+)\s*$")
 RE_WIDE_INST = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+CUOTA\s+COMERCIO\s+(\d,\d{2})\s*%\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+(\d{1,2})/(\d{1,2})\s+\$\s*([\d.]+)\s*$",
     re.I,
@@ -1641,7 +1945,7 @@ def _is_tcom_cuotas_tasa_description(desc: str) -> bool:
 
 
 def _append_wide_tcom_cuotas_tasa_row(
-    out: List[Dict[str, Any]], line: str, m: re.Match[str]
+    out: List[Dict[str, Any]], line: str, m: re.Match[str], origin_card_last4: str = ""
 ) -> None:
     fecha = m.group(1)
     merchant_base = m.group(2).strip()
@@ -1652,7 +1956,8 @@ def _append_wide_tcom_cuotas_tasa_row(
     tot2 = parse_clp_amount(m.group(7))
     cuota = parse_clp_amount(m.group(8))
     merchant = f"{merchant_base} TCOM {tcom_plan}".strip()
-    out.append(
+    _append_origin_row(
+        out,
         {
             "layout": "wide_master_tcom_cuotas_tasa",
             "transaction_date": fecha,
@@ -1671,12 +1976,13 @@ def _append_wide_tcom_cuotas_tasa_row(
             "tipo_cuota": f"{nplan:02d} CUOTAS TCOM",
             "foreign_currency": _extract_fx(merchant_base),
             "authorization_code": _extract_auth(merchant_base),
-        }
+        },
+        origin_card_last4,
     )
 
 
 def _append_wide_precio_installment_row(
-    out: List[Dict[str, Any]], line: str, m: re.Match[str]
+    out: List[Dict[str, Any]], line: str, m: re.Match[str], origin_card_last4: str = ""
 ) -> None:
     fecha = m.group(1)
     desc = m.group(2).strip()
@@ -1686,7 +1992,8 @@ def _append_wide_precio_installment_row(
     nc, nt = int(m.group(6)), int(m.group(7))
     cuota = parse_clp_amount(m.group(8))
     merchant = _wide_installment_merchant_from_desc(desc)
-    out.append(
+    _append_origin_row(
+        out,
         {
             "layout": "wide_master_precio_summary",
             "transaction_date": fecha,
@@ -1705,7 +2012,8 @@ def _append_wide_precio_installment_row(
             "tipo_cuota": _tipo_cuota_from_precio_description(desc),
             "foreign_currency": _extract_fx(desc),
             "authorization_code": _extract_auth(desc),
-        }
+        },
+        origin_card_last4,
     )
 
 
@@ -1800,6 +2108,9 @@ def try_parse_compact_simple(line: str) -> Optional[Dict[str, Any]]:
         return None
     place = place_chunk
     merchant = (tail or "").strip()
+    if not merchant and place:
+        merchant = place
+        place = ""
     country = ""
     merchant, cc = _split_trailing_country_code(merchant)
     if cc:
@@ -1807,6 +2118,12 @@ def try_parse_compact_simple(line: str) -> Optional[Dict[str, Any]]:
     place, cc2 = _split_trailing_country_code(place)
     if cc2 and not country:
         country = cc2
+    combined = _compact_combined_text(place, merchant, tail)
+    if RE_COMPACT_SKIP_LINE.search(combined):
+        return None
+    if not merchant.strip() and not tail.strip() and not place.strip():
+        return None
+    fecha = normalize_tx_date(fecha)
     return {
         "layout": "compact_de_simple",
         "transaction_date": fecha,
@@ -1841,35 +2158,424 @@ def _extract_auth(s: str) -> str:
     return m.group(1) if m else ""
 
 
+RE_CLP_SECTION3_CHARGE = re.compile(
+    r"IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\.|SERVICIO\s+USO\s+INTERNACIONAL|"
+    r"IVA\s+USO\s+INTERNACIONAL|NOTA\s+DE\s+CREDITO|DCTO\s+COM|ADM\|MANTENCION",
+    re.I,
+)
+RE_COMPACT_PAYMENT_MERCHANT = re.compile(r"^(PAGO|MONTO\s+CANCELADO|ABONO\b)", re.I)
+RE_COMPACT_SKIP_LINE = re.compile(
+    r"MONTO\s+TOTAL\s+FACTURADO|MONTO\s+M[IÍ]NIMO|DEUDA\s+TOTAL|PAGAR\s+HASTA|"
+    r"NUMERO\s+TARJETA|INFORMACION\s+DE\s+PAGO|CHEQUE|EFECTIVO|TIMBRE",
+    re.I,
+)
+RE_COMPACT_DATE_DESC = re.compile(r"^(\d{2}/\d{2}/\d{2,4})\s+(.+)$")
+RE_COMPACT_LONE_CLP = re.compile(r"^\$\s*([-]?[\d.]+)\s*$")
+
+
+def _compact_combined_text(*parts: str) -> str:
+    return _ascii_upper(" ".join(p for p in parts if p))
+
+
+def _compact_line_is_summary_header(up: str) -> bool:
+    if RE_COMPACT_SKIP_LINE.search(up):
+        return True
+    if re.search(r"1\.\s*TOTAL\s+OPERACIONES", up):
+        return True
+    if re.search(r"2\.\s*PRODUCTOS", up) and "VOLUNTARIAMENTE" in up:
+        return True
+    if re.search(r"1\.\s*PER[IÍ]ODO\s+ANTERIOR", up):
+        return True
+    if re.match(r"^\$\s*[\d.\-]+\s*$", up):
+        return True
+    return False
+
+
+def _advance_santander_compact_section(up: str, current: str) -> str:
+    if re.search(r"III\.\s*INFORMACI", up) or (
+        "INFORMACION DE PAGO" in up.replace("Ó", "O")
+    ):
+        return "skip"
+    if "MONTO TOTAL FACTURADO" in up and "MOVIMIENTOS" not in up:
+        return "skip"
+    if re.search(r"2\.\s*PER[IÍ]ODO\s+ACTUAL", up):
+        return "movimientos"
+    if re.search(r"3\.\s*CARGOS", up) and "COMISIONES" in up:
+        return "cargos"
+    if "4." in up and "INFORMACION COMPRAS EN CUOTAS" in up:
+        return "cuotas"
+    if re.search(r"1\.\s*PER[IÍ]ODO\s+ANTERIOR", up):
+        return "skip"
+    return current
+
+
+def _compact_should_skip_purchase_row(row: Dict[str, Any]) -> bool:
+    combined = _compact_combined_text(
+        str(row.get("place") or ""),
+        str(row.get("merchant") or ""),
+        str(row.get("description_raw") or ""),
+    )
+    if RE_COMPACT_SKIP_LINE.search(combined):
+        return True
+    merchant = str(row.get("merchant") or "").strip()
+    place = str(row.get("place") or "").strip()
+    if not merchant and not place:
+        return True
+    if re.match(r"^\$\s*[\d.\-]", merchant):
+        return True
+    if " BANCO" in combined and re.search(
+        r"MONTO\s+(TOTAL|M[IÍ]NIMO|CANCELADO)", combined
+    ):
+        return True
+    if RE_COMPACT_PAYMENT_MERCHANT.match(merchant):
+        return True
+    return False
+
+
+def _compact_row_from_parts(
+    *,
+    fecha: str,
+    merchant: str,
+    amt: int,
+    layout: str,
+    description_raw: str,
+    place: str = "",
+) -> Dict[str, Any]:
+    fecha = normalize_tx_date(fecha)
+    return {
+        "layout": layout,
+        "transaction_date": fecha,
+        "posting_date": fecha,
+        "place": place,
+        "description_raw": description_raw,
+        "merchant": merchant,
+        "amount_clp": amt,
+        "monto_total_a_pagar_clp": amt,
+        "monto_origen_operacion_clp": amt,
+        "valor_cuota_mensual_clp": "",
+        "nro_cuota_current": "",
+        "nro_cuota_total": "",
+        "installment_flag": False,
+        "interest_rate_text": "",
+        "tipo_cuota": "",
+        "foreign_currency": _extract_fx(merchant),
+        "authorization_code": _extract_auth(merchant),
+        "country": "",
+    }
+
+
+def _peek_compact_adjacent_clp_amount(
+    lines: List[str], idx: int, *, look_back: int = 3, look_fwd: int = 3
+) -> Optional[int]:
+    for j in range(idx - 1, max(idx - look_back - 1, -1), -1):
+        m = RE_COMPACT_LONE_CLP.match(lines[j].strip())
+        if m:
+            return parse_clp_amount(m.group(1))
+    for j in range(idx + 1, min(idx + look_fwd + 1, len(lines))):
+        m = RE_COMPACT_LONE_CLP.match(lines[j].strip())
+        if m:
+            return parse_clp_amount(m.group(1))
+    return None
+
+
+def _try_parse_compact_cargos_multiline(
+    lines: List[str], idx: int, line: str
+) -> Optional[Dict[str, Any]]:
+    m = RE_COMPACT_DATE_DESC.match(line.strip())
+    if not m or "$" in line:
+        return None
+    fecha, desc = m.group(1), m.group(2).strip()
+    if not RE_CLP_SECTION3_CHARGE.search(desc):
+        return None
+    amt = _peek_compact_adjacent_clp_amount(lines, idx)
+    if amt is None or amt == 0:
+        return None
+    merchant = re.sub(r"\s+", " ", desc).strip()
+    signed = int(amt)
+    if RE_COMPACT_PAYMENT_MERCHANT.match(merchant) and signed > 0:
+        signed = -signed
+    return _compact_row_from_parts(
+        fecha=fecha,
+        merchant=merchant,
+        amt=signed,
+        layout="compact_cargos_charge",
+        description_raw=line.strip(),
+    )
+
+
+def _try_parse_compact_payment_line(line: str) -> Optional[Dict[str, Any]]:
+    m = RE_COMPACT_SIMPLE.match(line.strip())
+    if not m:
+        return None
+    fecha, place_chunk, amt_raw, tail = (
+        m.group(1),
+        m.group(2).strip(),
+        m.group(3),
+        m.group(4).strip(),
+    )
+    merchant = (tail or place_chunk or "").strip()
+    if not RE_COMPACT_PAYMENT_MERCHANT.match(merchant):
+        return None
+    amt = parse_clp_amount(amt_raw)
+    if amt is None or amt == 0:
+        return None
+    signed = -abs(int(amt))
+    return _compact_row_from_parts(
+        fecha=fecha,
+        merchant=merchant,
+        amt=signed,
+        layout="compact_payment_abono",
+        description_raw=line.strip(),
+        place=place_chunk if tail else "",
+    )
+
+
+def _append_origin_row(
+    out: List[Dict[str, Any]], row: Dict[str, Any], origin_card_last4: str
+) -> None:
+    row["origin_card_last4"] = origin_card_last4
+    out.append(row)
+
+
+def _append_compact_origin_row(
+    out: List[Dict[str, Any]], row: Dict[str, Any], origin_card_last4: str
+) -> None:
+    _append_origin_row(out, row, origin_card_last4)
+
+
 def parse_compact_document(full: str) -> List[Dict[str, Any]]:
+    """Santander Worldmember CLP: parse only período-actual movimientos + cargos (+ cuotas)."""
+    if is_bci_lider_statement_text(full):
+        return parse_bci_lider_document(full)
+
+    lines = [ln.strip() for ln in full.splitlines()]
     out: List[Dict[str, Any]] = []
-    for raw in full.splitlines():
-        line = raw.strip()
-        if not line:
+    section = "skip"
+    primary_origin_card = extract_card_last4(full)
+    current_origin_card = primary_origin_card
+
+    for idx, line in enumerate(lines):
+        if not line or len(line) < 6:
             continue
-        if len(line) < 10:
+        up = _ascii_upper(line)
+        section = _advance_santander_compact_section(up, section)
+        section_header = RE_MOVIMIENTOS_TARJETA_SECTION.search(up)
+        if section_header:
+            current_origin_card = section_header.group(1)
             continue
+        if _compact_line_is_summary_header(up):
+            continue
+        if section in ("skip", ""):
+            continue
+
+        if section == "cargos":
+            if RE_COMPACT_LONE_CLP.match(line):
+                continue
+            cargos_row = _try_parse_compact_cargos_multiline(lines, idx, line)
+            if cargos_row:
+                _append_compact_origin_row(out, cargos_row, current_origin_card)
+                continue
+            if RE_COMPACT_SIMPLE.match(line):
+                row = try_parse_compact_simple(line)
+                if row:
+                    label = _compact_combined_text(
+                        str(row.get("merchant") or ""),
+                        str(row.get("place") or ""),
+                    )
+                    if RE_CLP_SECTION3_CHARGE.search(label):
+                        if "$" not in line:
+                            adj = _peek_compact_adjacent_clp_amount(lines, idx)
+                            if adj is not None:
+                                row["amount_clp"] = int(adj)
+                        row["layout"] = "compact_cargos_charge"
+                        _append_compact_origin_row(out, row, current_origin_card)
+                continue
+            continue
+
+        if section not in ("movimientos", "cuotas"):
+            continue
+
+        pay_row = _try_parse_compact_payment_line(line)
+        if pay_row:
+            _append_compact_origin_row(out, pay_row, current_origin_card)
+            continue
+
         inst = try_parse_compact_installment(line)
         if inst:
-            out.append(inst)
+            if section == "cuotas" or section == "movimientos":
+                _append_compact_origin_row(out, inst, current_origin_card)
             continue
-        # Avoid classifying installment rows as "simple" — compact simple regex matches the first $…
-        # before the rate marker (e.g. "…$ 163.980$ 163.9800,00 %N/CUOTAS…").
         if re.search(r"\d,\d{2}\s*%", line):
             continue
-        if RE_COMPACT_SIMPLE.match(line):
-            row = try_parse_compact_simple(line)
-            if row:
-                out.append(row)
+        if not RE_COMPACT_SIMPLE.match(line):
+            continue
+        row = try_parse_compact_simple(line)
+        if not row:
+            continue
+        if _compact_should_skip_purchase_row(row):
+            continue
+        _append_compact_origin_row(out, row, current_origin_card)
     return out
+
+
+def _wide_line_looks_like_place(line: str) -> bool:
+    if RE_WIDE_DATE_DESC_ONLY.match(line) or RE_WIDE_AMOUNT_ONLY_LINE.match(line):
+        return False
+    if "$" in line:
+        return False
+    return bool(re.match(r"^[A-Z0-9][A-Z0-9\s\.'\*]{0,24}$", line, re.I))
+
+
+def _try_wide_date_desc_only(line: str) -> Optional[Tuple[str, str]]:
+    if re.search(r"\$\s*[\d.]", line):
+        return None
+    m = RE_WIDE_DATE_DESC_ONLY.match(line)
+    if not m:
+        return None
+    desc = m.group(2).strip()
+    if not desc or re.match(r"^(?:MONTO|CARGO|OPERACION|LUGAR|FECHA|TOTAL)\b", desc, re.I):
+        return None
+    return m.group(1), desc
+
+
+def _peek_wide_following_amount(
+    lines: List[str], start: int, *, max_lookahead: int = 6
+) -> Tuple[Optional[int], int]:
+    consumed = 0
+    for j in range(start, min(start + max_lookahead, len(lines))):
+        cand = lines[j].strip()
+        if not cand:
+            consumed += 1
+            continue
+        if _wide_line_looks_like_place(cand):
+            consumed += 1
+            continue
+        m = RE_WIDE_AMOUNT_ONLY_LINE.match(cand)
+        if m:
+            amt = parse_clp_amount(m.group(1))
+            if amt is not None:
+                return amt, consumed + 1
+        break
+    return None, 0
+
+
+def _append_wide_one_shot_row(
+    out: List[Dict[str, Any]],
+    *,
+    fecha: str,
+    place: str,
+    merchant: str,
+    amt: int,
+    description_raw: str,
+    layout: str,
+    origin_card_last4: str = "",
+) -> None:
+    _append_origin_row(
+        out,
+        {
+            "layout": layout,
+            "transaction_date": fecha,
+            "posting_date": fecha,
+            "place": place,
+            "description_raw": description_raw,
+            "merchant": merchant,
+            "amount_clp": amt,
+            "monto_total_a_pagar_clp": amt,
+            "monto_origen_operacion_clp": amt,
+            "valor_cuota_mensual_clp": "",
+            "nro_cuota_current": "",
+            "nro_cuota_total": "",
+            "installment_flag": False,
+            "interest_rate_text": "",
+            "tipo_cuota": "",
+            "foreign_currency": _extract_fx(merchant),
+            "authorization_code": _extract_auth(merchant),
+        },
+        origin_card_last4,
+    )
 
 
 def parse_wide_document(full: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    for raw in full.splitlines():
-        line = raw.strip()
+    raw_lines = [raw.strip() for raw in full.splitlines()]
+    i = 0
+    orphan_amount: Optional[int] = None
+    expect_continuation = False
+    primary_origin_card = extract_card_last4(full)
+    current_origin_card = primary_origin_card
+
+    while i < len(raw_lines):
+        line = raw_lines[i]
+        i += 1
         if not line:
             continue
+
+        up = _ascii_upper(line)
+        section_header = RE_MOVIMIENTOS_TARJETA_SECTION.search(up)
+        if section_header:
+            current_origin_card = section_header.group(1)
+            continue
+
+        m_amt_only = RE_WIDE_AMOUNT_ONLY_LINE.match(line)
+        if m_amt_only:
+            amt = parse_clp_amount(m_amt_only.group(1))
+            if amt is not None and amt > 500_000:
+                expect_continuation = False
+                continue
+            if amt is not None and amt > 0:
+                if expect_continuation and out and not out[-1].get("installment_flag"):
+                    prev = out[-1]
+                    _append_wide_one_shot_row(
+                        out,
+                        fecha=str(prev["transaction_date"]),
+                        place="",
+                        merchant=str(prev["merchant"]),
+                        amt=amt,
+                        description_raw=line,
+                        layout="wide_master_amount_continuation",
+                        origin_card_last4=current_origin_card,
+                    )
+                    expect_continuation = False
+                    orphan_amount = None
+                    continue
+                orphan_amount = amt
+                expect_continuation = False
+            continue
+
+        date_only = _try_wide_date_desc_only(line)
+        if date_only:
+            fecha, desc = date_only
+            amt, consumed = _peek_wide_following_amount(raw_lines, i)
+            i += consumed
+            if amt is not None:
+                _append_wide_one_shot_row(
+                    out,
+                    fecha=fecha,
+                    place="",
+                    merchant=desc,
+                    amt=amt,
+                    description_raw=line,
+                    layout="wide_master_date_deferred",
+                    origin_card_last4=current_origin_card,
+                )
+                orphan_amount = None
+                expect_continuation = True
+                continue
+            if orphan_amount is not None:
+                _append_wide_one_shot_row(
+                    out,
+                    fecha=fecha,
+                    place="",
+                    merchant=desc,
+                    amt=orphan_amount,
+                    description_raw=line,
+                    layout="wide_master_date_deferred",
+                    origin_card_last4=current_origin_card,
+                )
+                orphan_amount = None
+                expect_continuation = False
+            continue
+
         if len(line) < 12:
             continue
         m = RE_WIDE_INST.match(line)
@@ -1881,7 +2587,8 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
             tot2 = parse_clp_amount(m.group(5))
             nc, nt = int(m.group(6)), int(m.group(7))
             cuota = parse_clp_amount(m.group(8))
-            out.append(
+            _append_origin_row(
+                out,
                 {
                     "layout": "wide_master_installment",
                     "transaction_date": fecha,
@@ -1900,8 +2607,10 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
                     "tipo_cuota": "CUOTA COMERCIO",
                     "foreign_currency": _extract_fx(desc),
                     "authorization_code": _extract_auth(desc),
-                }
+                },
+                current_origin_card,
             )
+            expect_continuation = False
             continue
         m = RE_WIDE_PERIODIC.match(line)
         if m:
@@ -1912,7 +2621,8 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
             a = parse_clp_amount(m.group(5))
             b = parse_clp_amount(m.group(6))
             cuota = parse_clp_amount(m.group(7))
-            out.append(
+            _append_origin_row(
+                out,
                 {
                     "layout": "wide_master_periodic_summary",
                     "transaction_date": fecha,
@@ -1931,44 +2641,57 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
                     "tipo_cuota": f"{nplan:02d} CUOTAS COMERC",
                     "foreign_currency": _extract_fx(desc),
                     "authorization_code": _extract_auth(desc),
-                }
+                },
+                current_origin_card,
             )
+            expect_continuation = False
             continue
         m = RE_WIDE_TCOM_CUOTAS_TASA.match(line)
         if m:
-            _append_wide_tcom_cuotas_tasa_row(out, line, m)
+            _append_wide_tcom_cuotas_tasa_row(out, line, m, current_origin_card)
+            expect_continuation = False
             continue
         m = RE_WIDE_PRECIO_SUMMARY.match(line)
         if m and _is_installment_precio_summary_description(m.group(2)):
-            _append_wide_precio_installment_row(out, line, m)
+            _append_wide_precio_installment_row(out, line, m, current_origin_card)
+            expect_continuation = False
             continue
+        m = RE_WIDE_MCC_DATE.match(line)
+        if m:
+            mcc, fecha, desc, amt_raw = m.group(1), m.group(2), m.group(3), m.group(4)
+            amt = parse_clp_amount(amt_raw)
+            if amt is not None and amt <= 500_000:
+                _append_wide_one_shot_row(
+                    out,
+                    fecha=fecha,
+                    place=mcc.strip(),
+                    merchant=desc.strip(),
+                    amt=amt,
+                    description_raw=line,
+                    layout="wide_master_mcc_date",
+                    origin_card_last4=current_origin_card,
+                )
+                orphan_amount = None
+                expect_continuation = False
+                continue
         m = RE_WIDE_PLACE_DATE.match(line)
         if m:
             place, fecha, desc, amt_raw = m.group(1), m.group(2), m.group(3), m.group(4)
             amt = parse_clp_amount(amt_raw)
             if amt is None:
                 continue
-            out.append(
-                {
-                    "layout": "wide_master_simple",
-                    "transaction_date": fecha,
-                    "posting_date": fecha,
-                    "place": place.strip(),
-                    "description_raw": line,
-                    "merchant": desc.strip(),
-                    "amount_clp": amt,
-                    "monto_total_a_pagar_clp": amt,
-                    "monto_origen_operacion_clp": amt,
-                    "valor_cuota_mensual_clp": "",
-                    "nro_cuota_current": "",
-                    "nro_cuota_total": "",
-                    "installment_flag": False,
-                    "interest_rate_text": "",
-                    "tipo_cuota": "",
-                    "foreign_currency": _extract_fx(desc),
-                    "authorization_code": _extract_auth(desc),
-                }
+            _append_wide_one_shot_row(
+                out,
+                fecha=fecha,
+                place=place.strip(),
+                merchant=desc.strip(),
+                amt=amt,
+                description_raw=line,
+                layout="wide_master_simple",
+                origin_card_last4=current_origin_card,
             )
+            orphan_amount = None
+            expect_continuation = False
             continue
         m = RE_WIDE_DATE_FIRST.match(line)
         if m:
@@ -1976,40 +2699,38 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
             m_tcom = RE_WIDE_TCOM_CUOTAS_TASA.match(line)
             if m_tcom:
                 _append_wide_tcom_cuotas_tasa_row(out, line, m_tcom)
+                expect_continuation = False
                 continue
             m_precio = RE_WIDE_PRECIO_SUMMARY.match(line)
             if m_precio and _is_installment_precio_summary_description(m_precio.group(2)):
                 _append_wide_precio_installment_row(out, line, m_precio)
+                expect_continuation = False
                 continue
             amt = parse_clp_amount(amt_raw)
-            if amt is None:
+            if amt is None or amt > 500_000:
                 continue
-            out.append(
-                {
-                    "layout": "wide_master_date_first",
-                    "transaction_date": fecha,
-                    "posting_date": fecha,
-                    "place": "",
-                    "description_raw": line,
-                    "merchant": desc.strip(),
-                    "amount_clp": amt,
-                    "monto_total_a_pagar_clp": amt,
-                    "monto_origen_operacion_clp": amt,
-                    "valor_cuota_mensual_clp": "",
-                    "nro_cuota_current": "",
-                    "nro_cuota_total": "",
-                    "installment_flag": False,
-                    "interest_rate_text": "",
-                    "tipo_cuota": "",
-                    "foreign_currency": _extract_fx(desc),
-                    "authorization_code": _extract_auth(desc),
-                }
+            desc_stripped = desc.strip()
+            if re.match(r"^\$?\s*[\d.]+$", desc_stripped.replace(" ", "")):
+                continue
+            _append_wide_one_shot_row(
+                out,
+                fecha=fecha,
+                place="",
+                merchant=desc_stripped,
+                amt=amt,
+                description_raw=line,
+                layout="wide_master_date_first",
+                origin_card_last4=current_origin_card,
             )
+            orphan_amount = None
+            expect_continuation = False
+            continue
+
     return out
 
 
 def _date_iso_for_dedupe(d: str) -> str:
-    t = (d or "").strip()
+    t = normalize_tx_date((d or "").strip())
     if not t:
         return ""
     if re.match(r"^\d{4}-\d{2}-\d{2}$", t):
@@ -2151,6 +2872,7 @@ CSV_COLUMNS: List[str] = [
     "period_to",
     "pay_by",
     "card_last4",
+    "origin_card_last4",
     "card_product",
     "parser_layout",
     "raw_line",
@@ -2183,19 +2905,42 @@ CSV_COLUMNS: List[str] = [
     "orig_currency",
     "country",
     "statement_saldo_anterior",
+    "statement_monto_facturado_anterior",
+    "statement_monto_pagado_anterior",
     "statement_abono",
     "statement_compras_cargos",
     "statement_deuda_total",
     "statement_monto_facturado",
+    "pdf_total_operaciones",
 ]
 
 
 def _cell_int(v: Any) -> Optional[int]:
     if isinstance(v, int):
         return v
+    if isinstance(v, float):
+        return int(round(v))
     if v is None or v == "":
         return None
     return parse_clp_amount(str(v))
+
+
+def _sync_statement_billing_headers_from_pdf(meta: Dict[str, Any]) -> None:
+    """Prefer PDF section totals over header regex (pypdf often mis-anchors USD labels)."""
+    for stmt_key, pdf_key in (
+        ("statement_monto_facturado_anterior", "pdf_monto_facturado_anterior"),
+        ("statement_monto_pagado_anterior", "pdf_monto_pagado_anterior"),
+        ("statement_saldo_anterior", "pdf_saldo_anterior"),
+        ("statement_abono", "pdf_abono"),
+        ("statement_compras_cargos", "pdf_compras_cargos"),
+        ("statement_deuda_total", "pdf_deuda_total"),
+    ):
+        if meta.get(pdf_key) is not None:
+            meta[stmt_key] = meta[pdf_key]
+    if meta.get("pdf_monto_facturado") is not None:
+        meta["statement_monto_facturado"] = meta["pdf_monto_facturado"]
+    elif meta.get("pdf_deuda_total") is not None:
+        meta["statement_monto_facturado"] = meta["pdf_deuda_total"]
 
 
 def emit_row(
@@ -2215,6 +2960,7 @@ def emit_row(
         "period_to": meta.get("period_to", ""),
         "pay_by": meta.get("pay_by", ""),
         "card_last4": meta.get("card_last4", ""),
+        "origin_card_last4": str(pr.get("origin_card_last4") or "").strip(),
         "card_product": meta.get("card_product", ""),
         "parser_layout": pr.get("layout", ""),
         "raw_line": raw_line,
@@ -2253,6 +2999,16 @@ def emit_row(
         "statement_saldo_anterior": fmt_usd(meta.get("statement_saldo_anterior"))
         if meta.get("currency") == "usd"
         else fmt_clp(_cell_int(meta.get("statement_saldo_anterior"))),
+        "statement_monto_facturado_anterior": fmt_usd(
+            meta.get("statement_monto_facturado_anterior")
+        )
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_monto_facturado_anterior"))),
+        "statement_monto_pagado_anterior": fmt_usd(
+            meta.get("statement_monto_pagado_anterior")
+        )
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("statement_monto_pagado_anterior"))),
         "statement_abono": fmt_usd(meta.get("statement_abono"))
         if meta.get("currency") == "usd"
         else fmt_clp(_cell_int(meta.get("statement_abono"))),
@@ -2265,6 +3021,9 @@ def emit_row(
         "statement_monto_facturado": fmt_usd(meta.get("statement_monto_facturado"))
         if meta.get("currency") == "usd"
         else fmt_clp(_cell_int(meta.get("statement_monto_facturado"))),
+        "pdf_total_operaciones": fmt_usd(meta.get("pdf_total_operaciones"))
+        if meta.get("currency") == "usd"
+        else fmt_clp(_cell_int(meta.get("pdf_total_operaciones"))),
     }
 
 
@@ -2331,6 +3090,22 @@ def mark_pdf_corrupt(p: Path) -> Path:
         return dest
     p.rename(dest)
     return dest
+
+
+def is_unreadable_pdf_error(msg: str) -> bool:
+    lower = str(msg or "").lower()
+    return (
+        "still unreadable" in lower
+        or "unreadable pdf" in lower
+        or "repair failed" in lower
+    )
+
+
+def skip_unreadable_pdf(p: Path, reason: str) -> Path:
+    """Quarantine image-only PDFs; log and continue without failing the parse run."""
+    renamed = mark_pdf_corrupt(p)
+    print(f"# skip unreadable\t{renamed}\t({reason})", file=sys.stderr)
+    return renamed
 
 
 def skip_numbered_duplicate_pdf(entry: Path, _pdfs_dir: Path) -> bool:
@@ -2400,6 +3175,63 @@ def fallback_downloads_jobs() -> List[Tuple[str, Path]]:
     return jobs
 
 
+_LEGACY_ZERO_ROW_PDF_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2} estado de cuenta tarjeta(?:-CORRUPT)?\.pdf$",
+    re.I,
+)
+_ACCEPTABLE_ZERO_ROW_SKIP = frozenset({"zero_rows", "excluded_pdf"})
+
+
+def is_legacy_zero_row_pdf_name(name: str) -> bool:
+    """Legacy month-end PDFs without card suffix; unreadable cartola scans, not in DB."""
+    return bool(_LEGACY_ZERO_ROW_PDF_RE.match(Path(name).name))
+
+
+def is_zero_activity_statement_meta(meta: Dict[str, Any]) -> bool:
+    """Santander CLP statement with $0 billed and no section totals (payment-only echo)."""
+    if not meta.get("period_to") or not meta.get("statement_date"):
+        return False
+    monto = meta.get("pdf_monto_facturado")
+    if monto is None:
+        monto = meta.get("statement_monto_facturado")
+    if monto is None or abs(float(monto)) > 0.5:
+        return False
+    for key in ("pdf_total_operaciones", "pdf_total_cargos_abonos"):
+        val = meta.get(key)
+        if val is not None and abs(float(val)) > 0.5:
+            return False
+    return True
+
+
+def ctx_for_pdf_path_key(
+    pdf_path_key: str, pdf_context: Dict[str, Dict[str, Any]]
+) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    base = Path(pdf_path_key).name
+    for source_pdf, ctx in pdf_context.items():
+        if str(ctx.get("pdf_path") or "") == pdf_path_key or source_pdf == base:
+            return source_pdf, ctx
+    return None, None
+
+
+def acceptable_zero_row_pdf(
+    pdf_path_key: str,
+    *,
+    pdf_context: Dict[str, Dict[str, Any]],
+    reconcile_by_source: Dict[str, Any],
+    no_reconcile: bool,
+) -> bool:
+    if is_legacy_zero_row_pdf_name(pdf_path_key):
+        return True
+    source_pdf, ctx = ctx_for_pdf_path_key(pdf_path_key, pdf_context)
+    if ctx is None:
+        return False
+    if not no_reconcile:
+        rec = reconcile_by_source.get(source_pdf or "")
+        if rec and rec.ok and rec.skip_reason in _ACCEPTABLE_ZERO_ROW_SKIP:
+            return True
+    return is_zero_activity_statement_meta(ctx.get("meta") or {})
+
+
 def main() -> int:
     load_repo_dotenv()
     no_reconcile = "--no-reconcile" in sys.argv
@@ -2422,9 +3254,7 @@ def main() -> int:
             print("# parse cache: --force-reparse (ignore hits)")
 
     if qpdf_available():
-        for name, note in repair_unreadable_pdfs_in_dir(
-            pdfs_dir, password=statement_pdf_password()
-        ):
+        for name, note in repair_unreadable_pdfs_in_dir(pdfs_dir):
             print(f"# qpdf\t{name}\t{note}")
     else:
         print("# WARN qpdf not installed — skip PDF repair (brew install qpdf)")
@@ -2442,6 +3272,9 @@ def main() -> int:
         if not p.is_file():
             failures.append(f"missing:{p}")
             continue
+        if not is_readable_cc_statement_text(peek_pdf_text(p)):
+            skip_unreadable_pdf(p, "still unreadable after qpdf (image-only scan?)")
+            continue
         cached: Optional[Dict[str, Any]] = None
         if not no_cache:
             cached = load_parse_cache(
@@ -2453,28 +3286,34 @@ def main() -> int:
                 meta = dict(cached.get("meta") or {})
                 parsed = list(cached.get("parsed") or [])
                 effective_group = str(cached.get("effective_group") or card_group)
+                parser = str(cached.get("parser") or "")
+                full_text = str(cached.get("full") or "")
+                source_pdf = statement_source_pdf_name(meta, p.name, parser, full_text)
+                meta["source_pdf"] = source_pdf
                 rows = rows_from_parse_payload(
                     effective_group=effective_group,
-                    source_pdf=canonical_cc_source_pdf_name(p.name),
+                    source_pdf=source_pdf,
                     meta=meta,
                     parsed=parsed,
                     baseline=baseline,
                 )
                 ctx = {
                     "meta": meta,
-                    "full": str(cached.get("full") or ""),
+                    "full": full_text,
                     "layout": str(cached.get("layout") or ""),
-                    "parser": str(cached.get("parser") or ""),
+                    "parser": parser,
                     "parsed": parsed,
                     "pdf_path": str(p),
+                    "source_pdf": source_pdf,
                 }
-                pdf_context[p.name] = ctx
+                pdf_context[source_pdf] = ctx
             else:
                 cache_misses += 1
                 rows, ctx = parse_one_pdf(card_group, p, baseline)
                 p = Path(str(ctx.get("pdf_path") or p))
                 effective_group = "INTL" if ctx["parser"] == "international_usd" else card_group
-                pdf_context[p.name] = ctx
+                source_pdf = str(ctx.get("source_pdf") or p.name)
+                pdf_context[source_pdf] = ctx
                 if not no_cache:
                     save_parse_cache(
                         p,
@@ -2493,6 +3332,9 @@ def main() -> int:
             all_rows.extend(rows)
             per_pdf_counts[str(ctx.get("pdf_path") or p.name)] = len(rows)
         except Exception as e:
+            if is_unreadable_pdf_error(str(e)):
+                skip_unreadable_pdf(p, str(e))
+                continue
             renamed = mark_pdf_corrupt(p)
             failures.append(f"read_error:{renamed}:{e}")
             print(f"# unreadable moved {renamed} ({e})")
@@ -2630,20 +3472,21 @@ def main() -> int:
                         )
     reconcile_exit = reconcile_fail_count > 0 if not no_reconcile else False
 
-    def ignorable_zero_row_pdf(name: str) -> bool:
-        """Legacy month-end PDFs without card suffix; unreadable cartola scans, not in DB."""
-        base = Path(name).name
-        return bool(
-            re.match(
-                r"^\d{4}-\d{2}-\d{2} estado de cuenta tarjeta(?:-CORRUPT)?\.pdf$",
-                base,
-                re.I,
-            )
+    reconcile_by_source = {r.source_pdf: r for r in reconcile_results}
+    zero_row_fatal = [
+        n
+        for n in zero_row_pdfs
+        if not acceptable_zero_row_pdf(
+            n,
+            pdf_context=pdf_context,
+            reconcile_by_source=reconcile_by_source,
+            no_reconcile=no_reconcile,
         )
-
-    zero_row_fatal = [n for n in zero_row_pdfs if not ignorable_zero_row_pdf(n)]
+    ]
     if zero_row_fatal:
         print(f"# WARN zero_rows_fatal={len(zero_row_fatal)}")
+        for name in zero_row_fatal:
+            print(f"# WARN zero_rows_fatal\t{name}")
     return 1 if failures or zero_row_fatal or reconcile_exit else 0
 
 

@@ -1,8 +1,26 @@
+import { useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import type { AppMessageRow } from "../../api";
+import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 
 /** Legacy log titles appended ` YYYY-MM-DD HH:MM:SS UTC` (now stored in `created_at` only). */
 const LEGACY_LOG_TITLE_TIMESTAMP = / \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/;
+
+const MAX_DETAIL_LINES = 5;
+
+const showMoreDetailBtnStyle: CSSProperties = {
+  margin: "0.25rem 0 0",
+  padding: "0.15rem 0",
+  border: "none",
+  background: "none",
+  cursor: "pointer",
+  font: "inherit",
+  fontSize: "0.82rem",
+  color: "var(--muted)",
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+};
 
 function logTitleForDisplay(title: string): string {
   return title.replace(LEGACY_LOG_TITLE_TIMESTAMP, "");
@@ -17,8 +35,61 @@ function formatWhen(iso: string): string {
   });
 }
 
-function MessageBody({ body }: { body: string }) {
+function detailLineCount(body: string): number {
+  if (!body) return 0;
+  return body.split(/\r?\n/).length;
+}
+
+function detailFirstLines(body: string, maxLines: number): string {
+  const lines = body.split(/\r?\n/);
+  if (lines.length <= maxLines) return body;
+  return lines.slice(0, maxLines).join("\n");
+}
+
+function MessageBodyPre({ body }: { body: string }) {
   return <pre className="messages-body-pre">{body}</pre>;
+}
+
+function MessageDetailCell({
+  body,
+  title,
+  createdAt,
+}: {
+  body: string;
+  title: string;
+  createdAt: string;
+}) {
+  const { t } = useTranslation();
+  const [modalOpen, setModalOpen] = useState(false);
+  const lines = detailLineCount(body);
+  const truncated = lines > MAX_DETAIL_LINES;
+  const displayBody = truncated ? detailFirstLines(body, MAX_DETAIL_LINES) : body;
+  const displayTitle = logTitleForDisplay(title);
+
+  return (
+    <>
+      <MessageBodyPre body={displayBody} />
+      {truncated ? (
+        <button
+          type="button"
+          className="muted"
+          style={showMoreDetailBtnStyle}
+          onClick={() => setModalOpen(true)}
+        >
+          {t("messages.showMoreDetail")}
+        </button>
+      ) : null}
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={displayTitle}
+        subtitle={formatWhen(createdAt)}
+        closeAriaLabel={t("messages.detailModalClose")}
+      >
+        <MessageBodyPre body={body} />
+      </Modal>
+    </>
+  );
 }
 
 export function MessagesTable({
@@ -74,7 +145,7 @@ export function MessagesTable({
               {logTitleForDisplay(r.title)}
             </td>
             <td style={{ verticalAlign: "top" }}>
-              <MessageBody body={r.body} />
+              <MessageDetailCell body={r.body} title={r.title} createdAt={r.created_at} />
             </td>
             {showReadAt ? (
               <td className="muted" style={{ verticalAlign: "top" }}>

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeCcImportCardLast4 } from "./ccConsolidatedCards.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,9 +55,34 @@ export function resolveCcStatementSlotDir(cardLast4: string, usd: boolean): stri
   return path.join(resolveCfraserPdfsDir(), last4, usd ? "usd" : "clp");
 }
 
-/** Directory for a statement PDF (`<last4>/clp` or `<last4>/usd` only). */
+/** Directory for a statement PDF (`<last4>/clp|usd`, redirected master slot, then `legacy/clp|usd`). */
 export function ccStatementPdfSearchDirs(cardLast4: string, usd: boolean): string[] {
-  return [resolveCcStatementSlotDir(cardLast4, usd)];
+  const last4 = String(cardLast4 ?? "").trim();
+  const masterLast4 = normalizeCcImportCardLast4(last4);
+  const dirs: string[] = [];
+  const seen = new Set<string>();
+  for (const key of [last4, masterLast4]) {
+    if (!/^\d{4}$/.test(key)) continue;
+    const slot = resolveCcStatementSlotDir(key, usd);
+    if (seen.has(slot)) continue;
+    seen.add(slot);
+    dirs.push(slot);
+  }
+  const legacy = path.join(resolveCfraserPdfsDir(), "legacy", usd ? "usd" : "clp");
+  dirs.push(legacy);
+  return dirs;
+}
+
+/** Drop zone for new PDFs, cartola xlsx, etc. (`cfraser/inbox/`; legacy `cfraser/pdfs/`). */
+export function resolveCfraserInboxDir(): string {
+  const env = process.env.CFRASER_INBOX_DIR?.trim();
+  if (env) return path.resolve(env);
+  const cfraser = resolveCfraserCsvDir();
+  const inbox = path.join(cfraser, "inbox");
+  const legacy = path.join(cfraser, "pdfs");
+  if (fs.existsSync(inbox)) return inbox;
+  if (fs.existsSync(legacy)) return legacy;
+  return inbox;
 }
 
 /** Santander checking-account cartola `.xlsx` files (`cfraser/excels/cuenta corriente/`). */

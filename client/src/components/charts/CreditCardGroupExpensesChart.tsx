@@ -16,7 +16,7 @@ import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { formatClp } from "../../format";
 import { ccExpenseCategoryLabel, useTranslation } from "../../i18n";
 import type { CcExpenseCategoryDto, FlowCcExpenseCategoryChartPoint } from "../../types";
-import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../../ccExpenseLineBuckets";
+import { chartCcExpenseCategories } from "../../ccExpenseCategories";
 import {
   buildNiceYAxis,
   computeRegularMonthXAxisTicks,
@@ -31,15 +31,6 @@ const CHART_ANIM_MS = 90;
 
 type ExpenseChartStyle = "stacked_bar" | "line";
 
-/** Categories shown as stacked bars (excludes no_cuenta/deposits and puts unclassified last). */
-function chartCategories(categories: readonly CcExpenseCategoryDto[]): CcExpenseCategoryDto[] {
-  const assignable = categories.filter(
-    (c) => c.slug !== "unclassified" && !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(c.slug)
-  );
-  const unclassified = categories.find((c) => c.slug === "unclassified");
-  return unclassified ? [...assignable, unclassified] : assignable;
-}
-
 export function CreditCardGroupExpensesChart({
   title,
   points,
@@ -50,7 +41,10 @@ export function CreditCardGroupExpensesChart({
   categories: readonly CcExpenseCategoryDto[];
 }) {
   const { t } = useTranslation();
-  const bars = useMemo(() => chartCategories(categories), [categories]);
+  const bars = useMemo(
+    () => chartCcExpenseCategories(categories, points),
+    [categories, points]
+  );
   const [chartStyle, setChartStyle] = useState<ExpenseChartStyle>("stacked_bar");
   const [hiddenSlugs, setHiddenSlugs] = useState<Set<string>>(() => new Set());
 

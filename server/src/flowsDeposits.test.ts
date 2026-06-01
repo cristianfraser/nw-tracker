@@ -6,6 +6,11 @@ describe("buildFlowsDepositsPayload", () => {
     const payload = buildFlowsDepositsPayload();
     const rowSum = payload.rows.reduce((s, r) => s + r.amount_clp, 0);
     expect(payload.net_total_clp).toBe(rowSum);
+    if (payload.fx_conversion_error) {
+      expect(payload.net_total_usd).toBeNull();
+    } else if (payload.rows.some((r) => r.amount_usd != null)) {
+      expect(payload.net_total_usd).not.toBeNull();
+    }
   });
 
   it("by_category totals match filtered rows", () => {

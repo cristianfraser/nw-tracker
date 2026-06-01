@@ -11,6 +11,7 @@ import {
   ccCreditCardAccountHasUsdStatements,
   hasImportSyncDocumentForMonth,
 } from "./importSyncDocumentFilePath.js";
+import { importSyncCartolaSinMovimientosForMonth } from "./importSyncCartolaSinMovimientos.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
 export type ImportSyncDocumentKind =
@@ -31,6 +32,8 @@ export type ImportSyncDocumentAccount = {
 export type ImportSyncDocumentCell = {
   imported: boolean;
   file_path: string | null;
+  /** Cartola for this month has no imported movements (○ marker). */
+  file_sin_movimientos?: boolean;
 };
 
 export type ImportSyncDocumentCoveragePayload = {
@@ -134,11 +137,18 @@ export function buildImportSyncDocumentCoveragePayload(
   const monthList = buildMonthRangeDesc(currentYm, earliestYm);
   const cells = monthList.map((rowMonth) =>
     accounts.map((acc, accIdx) => {
+      const file_path = byAccount[accIdx]?.filePaths.get(rowMonth) ?? null;
       const imported = hasImportSyncDocumentForMonth(acc, rowMonth);
-      const file_path = imported
-        ? (byAccount[accIdx]?.filePaths.get(rowMonth) ?? null)
-        : null;
-      return { imported, file_path };
+      const file_sin_movimientos =
+        acc.document_kind === "checking_cartola" ||
+        acc.document_kind === "cuenta_vista_cartola"
+          ? importSyncCartolaSinMovimientosForMonth({
+              accountId: acc.account_id,
+              documentKind: acc.document_kind,
+              filePath: file_path,
+            })
+          : false;
+      return { imported, file_path, file_sin_movimientos };
     })
   );
 

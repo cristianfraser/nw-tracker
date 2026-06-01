@@ -7,7 +7,8 @@ import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
 import { useAccountsAll, useAssetTree, useSidebarNav } from "../../queries/hooks";
 import { countAccountsInBucketTree } from "../../panelAccounts/assetTreeBuckets";
-import type { AssetTreeGroupRow, NavTreeNodeDto } from "../../types";
+import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
+import type { AssetTreeGroupRow } from "../../types";
 
 function BucketTreeRows({
   node,
@@ -39,37 +40,6 @@ function BucketTreeRows({
         <BucketTreeRows key={child.id} node={child} depth={depth + 1} />
       ))}
     </>
-  );
-}
-
-function treeGuidePrefix(depth: number): string {
-  if (depth <= 0) return "";
-  return "└─ ";
-}
-
-function AccountsTreeNode({ node, depth = 0 }: { node: NavTreeNodeDto; depth?: number }) {
-  const indentPx = 32;
-  const prefix = treeGuidePrefix(depth);
-  if (node.account_id != null) {
-    return (
-      <li style={{ marginLeft: `${indentPx}px` }}>
-        {prefix ? <span className="muted mono">{prefix}</span> : null}
-        <span className="mono">#{node.account_id}</span> {node.label}
-      </li>
-    );
-  }
-  return (
-    <li style={{ marginLeft: `${indentPx}px` }}>
-      {prefix ? <span className="muted mono">{prefix}</span> : null}
-      <strong>{node.label}</strong> <span className="muted mono">({node.slug})</span>
-      {node.children.length > 0 ? (
-        <ul style={{ marginTop: "0.35rem", marginLeft: 0, paddingLeft: 0, listStyle: "none" }}>
-          {node.children.map((child) => (
-            <AccountsTreeNode key={child.node_id} node={child} depth={depth + 1} />
-          ))}
-        </ul>
-      ) : null}
-    </li>
   );
 }
 
@@ -204,9 +174,7 @@ export function AccountsPanelPage() {
         {t("panelAccounts.netWorthTreeTitle")}
       </h2>
       {netWorthNode ? (
-        <ul style={{ marginLeft: 0, paddingLeft: 0, listStyle: "none" }}>
-          <AccountsTreeNode node={netWorthNode} />
-        </ul>
+        <NavAccountsTree root={netWorthNode} />
       ) : (
         <p className="muted">{t("panelAccounts.emptyTree")}</p>
       )}

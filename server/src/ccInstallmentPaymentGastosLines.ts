@@ -2,9 +2,10 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
-  lineHasUniquePurchaseMode,
+  categoryUniqueForExpenseLine,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
+  registerGenericUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
 } from "./ccExpenseCategories.js";
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
@@ -184,6 +185,13 @@ export function buildInstallmentPaymentGastosLines(
         ? `installment-h:${row.account_id}:${purchaseOn}:${row.cuota_total}:${merchantKey}`
         : `line-fallback:${row.account_id}:${merchantKey}:${purchaseOn}`;
     const lineId = installmentPaymentGastosLineId(row.payment_id);
+    registerGenericUniquePurchaseMode(
+      row.account_id,
+      purchaseKey,
+      merchantKey,
+      uniquePurchaseModeKeys,
+      { statementLineId: lineId }
+    );
     const categorySlug = resolveCcExpenseCategorySlug({
       statementLineId: lineId,
       accountId: row.account_id,
@@ -193,9 +201,10 @@ export function buildInstallmentPaymentGastosLines(
       merchantRules,
       uniquePurchases,
     });
-    const categoryUnique = lineHasUniquePurchaseMode(
+    const categoryUnique = categoryUniqueForExpenseLine(
       row.account_id,
       purchaseKey,
+      merchantKey,
       uniquePurchases,
       uniquePurchaseModeKeys
     );
@@ -225,6 +234,8 @@ export function buildInstallmentPaymentGastosLines(
       merchant_key: merchantKey,
       category_slug: categorySlug,
       category_unique: categoryUnique,
+      origin_card_last4: null,
+      primary_card_last4: null,
     });
   }
 

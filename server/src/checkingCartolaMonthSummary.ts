@@ -1,9 +1,16 @@
-import { checkingMovementBalanceAtMonthEnd } from "./checkingCartolaBalances.js";
+import {
+  checkingMovementBalanceAtMonthEnd,
+  getCartolaDerivedAnchor,
+  getCheckingLedgerAnchor,
+  type CartolaDerivedAnchorDto,
+  type CheckingLedgerAnchorDto,
+} from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import {
   expandYearMonthsInclusive,
+  isCartolaDesdeBoundaryPhantomMonth,
   monthEndUtcYmd,
   monthKeyFromYmd,
   ymCompare,
@@ -20,6 +27,8 @@ export type CheckingCartolaMonthRow = {
   balance_end_clp: number | null;
   /** Parsed cartola saldo final — reference only, not used in calculations. */
   cartola_saldo_final_clp: number | null;
+  /** Parsed cartola saldo inicial from the statement header. */
+  cartola_saldo_inicial_clp: number | null;
   movement_count: number;
   imported_at: string | null;
 };
@@ -28,6 +37,8 @@ export type CheckingCartolaMonthsResponse = {
   account_id: number;
   imported_months: string[];
   rows: CheckingCartolaMonthRow[];
+  ledger_anchor: CheckingLedgerAnchorDto | null;
+  cartola_derived_anchor: CartolaDerivedAnchorDto | null;
 };
 
 function movementTotalsForCartolaMonth(
@@ -58,9 +69,29 @@ function collectTimelineMonthKeys(accountId: number): string[] {
 
   try {
     const imports = db
-      .prepare(`SELECT period_month FROM checking_cartola_imports WHERE account_id = ?`)
-      .all(accountId) as { period_month: string }[];
-    for (const r of imports) keys.add(r.period_month);
+      .prepare(
+        `SELECT period_month, period_from, period_to, movement_count
+         FROM checking_cartola_imports WHERE account_id = ?`
+      )
+      .all(accountId) as {
+      period_month: string;
+      period_from: string | null;
+      period_to: string | null;
+      movement_count: number;
+    }[];
+    for (const r of imports) {
+      if (
+        isCartolaDesdeBoundaryPhantomMonth({
+          period_month: r.period_month,
+          period_from: r.period_from,
+          period_to: r.period_to,
+          movement_count: Number(r.movement_count) || 0,
+        })
+      ) {
+        continue;
+      }
+      keys.add(r.period_month);
+    }
   } catch {
     /* migration not applied */
   }
@@ -103,13 +134,15 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
       source_file: string;
       movement_count: number;
       saldo_final_clp: number | null;
+      saldo_inicial_clp: number | null;
       imported_at: string;
     }
   >();
   try {
     const imports = db
       .prepare(
-        `SELECT period_month, source_file, movement_count, saldo_final_clp, imported_at
+        `SELECT period_month, source_file, movement_count, saldo_final_clp, saldo_inicial_clp, imported_at,
+                period_from, period_to
          FROM checking_cartola_imports WHERE account_id = ?`
       )
       .all(accountId) as {
@@ -117,9 +150,22 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
       source_file: string;
       movement_count: number;
       saldo_final_clp: number | null;
+      saldo_inicial_clp: number | null;
       imported_at: string;
+      period_from: string | null;
+      period_to: string | null;
     }[];
     for (const imp of imports) {
+      if (
+        isCartolaDesdeBoundaryPhantomMonth({
+          period_month: imp.period_month,
+          period_from: imp.period_from,
+          period_to: imp.period_to,
+          movement_count: Number(imp.movement_count) || 0,
+        })
+      ) {
+        continue;
+      }
       importByMonth.set(imp.period_month, imp);
     }
   } catch {
@@ -128,7 +174,13 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
 
   const monthKeys = collectTimelineMonthKeys(accountId);
   if (monthKeys.length === 0) {
-    return { account_id: accountId, imported_months: [], rows: [] };
+    return {
+      account_id: accountId,
+      imported_months: [],
+      rows: [],
+      ledger_anchor: getCheckingLedgerAnchor(accountId),
+      cartola_derived_anchor: getCartolaDerivedAnchor(accountId),
+    };
   }
 
   const minYm = monthKeys[0]!;
@@ -149,6 +201,10 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
       imp?.saldo_final_clp != null && Number.isFinite(imp.saldo_final_clp)
         ? imp.saldo_final_clp
         : null;
+    const cartolaSaldoInicial =
+      imp?.saldo_inicial_clp != null && Number.isFinite(imp.saldo_inicial_clp)
+        ? imp.saldo_inicial_clp
+        : null;
     rows.push({
       period_month: periodMonth,
       as_of_date: asOf,
@@ -158,6 +214,7 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
       withdrawals_clp: totals.withdrawals_clp,
       balance_end_clp: balanceEnd,
       cartola_saldo_final_clp: cartolaSaldo,
+      cartola_saldo_inicial_clp: cartolaSaldoInicial,
       movement_count: totals.movement_count || imp?.movement_count || 0,
       imported_at: imp?.imported_at ?? null,
     });
@@ -169,5 +226,7 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
     account_id: accountId,
     imported_months: importedMonths,
     rows,
+    ledger_anchor: getCheckingLedgerAnchor(accountId),
+    cartola_derived_anchor: getCartolaDerivedAnchor(accountId),
   };
 }

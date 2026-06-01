@@ -10,6 +10,8 @@ export type LiabilitiesChartBucketMeta = {
   depKey: string;
   barDataKey: string;
   name: string;
+  /** Nav / portfolio group color (`r,g,b`). */
+  color_rgb?: string | null;
 };
 
 function syntheticAccountId(index: number): number {
@@ -58,6 +60,7 @@ export function buildLiabilitiesBucketPlan(navNode: NavTreeNodeDto): {
       depKey: `${dataKey}_dep`,
       barDataKey: `pl_${dataKey}`,
       name: resolveNavTreeLabel(child),
+      color_rgb: child.color_rgb ?? null,
     };
     for (const id of navAccountIdSet(child)) {
       accountIdToKey.set(id, key);

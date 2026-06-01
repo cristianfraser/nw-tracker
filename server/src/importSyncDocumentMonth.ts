@@ -1,4 +1,7 @@
-import { monthKeyFromYmd } from "./calendarMonth.js";
+import {
+  cartolaStatementMonths,
+  monthKeyFromYmd,
+} from "./calendarMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 function isoFromPeriodField(raw: string | null | undefined): string | null {
@@ -33,4 +36,32 @@ export function matrixMonthForCcStatement(row: {
 export function matrixMonthForCartolaPeriodMonth(periodMonth: string): string | null {
   const t = String(periodMonth ?? "").trim();
   return /^\d{4}-\d{2}$/.test(t) ? t : null;
+}
+
+/** Every matrix month covered by a cartola (movements + statement month). */
+export function matrixMonthsForCartolaPeriodRange(
+  periodFrom: string | null | undefined,
+  periodTo: string | null | undefined,
+  fallbackPeriodMonth?: string | null,
+  movements?: { occurred_on?: string }[]
+): string[] {
+  return cartolaStatementMonths({
+    period_from: periodFrom,
+    period_to: periodTo,
+    period_month: fallbackPeriodMonth,
+    movements,
+  });
+}
+
+/** True when `rowMonth` matches the cartola import's `period_month`. */
+export function cartolaPeriodRangeCoversMonth(
+  row: {
+    period_month?: string | null;
+    period_from?: string | null;
+    period_to?: string | null;
+  },
+  rowMonth: string
+): boolean {
+  const pm = matrixMonthForCartolaPeriodMonth(String(row.period_month ?? ""));
+  return pm === rowMonth;
 }

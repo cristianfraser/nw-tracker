@@ -20,29 +20,40 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(SCRIPT_DIR))
+
+from cartola_pdf_kind import (
+    is_checking_cartola_text,
+    is_cuenta_vista_cartola_text,
+    text_indicates_cartola_sin_movimientos,
+)
+from cartola_layout import (
+    AmountColumnBounds,
+    detect_vista_column_bounds,
+    amounts_by_column,
+    derive_month_saldo_final_clp,
+    parse_vista_summary_totals,
+    reconcile_cartola_movements,
+    saldo_column_amount,
+    strip_amounts_from_line,
+    trim_spurious_flavia_credit,
+)
+
 CFRASER_DIR = REPO_ROOT / "cfraser"
 
 RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
 RE_PERIOD = re.compile(
     r"(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
 )
-RE_SALDO_SUMMARY = re.compile(
-    r"Saldo\s+Inicial\s+Cheques\s+o\s+Cargos\s+Dep[óo]sitos\s+o\s+Saldo\s+Final\s+"
-    r"(\d{1,3}(?:\.\d{3})*)\s+(\d{1,3}(?:\.\d{3})*)\s+(\d{1,3}(?:\.\d{3})*)\s+(\d{1,3}(?:\.\d{3})*)",
-    re.I | re.S,
-)
+RE_SALDO_DIA = re.compile(r"---\s*Saldo\s+D[ií]a\s*---", re.I)
+RE_SIN_MOVIMIENTOS = re.compile(r"\*\*\s*CARTOLA\s+SIN\s+MOVIMIENTOS\s*\*\*", re.I)
 RE_DATE_LINE = re.compile(r"^\s*(\d{2}/\d{2})\b")
 RE_DOC_PREFIX = re.compile(r"^\s*(\d{6,10})\s+")
 RE_SUC = re.compile(r"^\s*(\d{2,3})\s+")
-RE_SALDO_DIA = re.compile(r"---\s*Saldo\s+D[ií]a\s*---", re.I)
-
-# pdftotext -layout: cargos left of ~125, abonos at ~131+
-CARGO_COL_MAX = 125
-ABONO_COL_MIN = 125
 
 
 @dataclass
@@ -67,6 +78,8 @@ class ParsedCartola:
     parse_status: str = "ok"
     parse_error: Optional[str] = None
     extractor: str = "pdftotext-layout"
+    cartola_sin_movimientos: bool = False
+    month_saldo_final_clp: Optional[Dict[str, int]] = None
 
 
 def resolve_pdfs_dir() -> Path:
@@ -105,14 +118,19 @@ def dd_mm_yyyy_to_iso(raw: str) -> Optional[str]:
 def infer_movement_year(dd: int, mm: int, desde_iso: str, hasta_iso: str) -> int:
     d0 = date.fromisoformat(desde_iso)
     d1 = date.fromisoformat(hasta_iso)
+    candidates: List[int] = []
     for y in (d0.year, d1.year, d0.year - 1, d1.year + 1):
         try:
             d = date(y, mm, dd)
         except ValueError:
             continue
         if d0 <= d <= d1:
-            return y
-    return d1.year
+            candidates.append(y)
+    if not candidates:
+        return d1.year
+    if len(candidates) == 1:
+        return candidates[0]
+    return max(candidates)
 
 
 def dd_mm_to_iso(dd_mm: str, desde_iso: str, hasta_iso: str) -> Optional[str]:
@@ -124,23 +142,61 @@ def dd_mm_to_iso(dd_mm: str, desde_iso: str, hasta_iso: str) -> Optional[str]:
     return f"{y:04d}-{mo:02d}-{d:02d}"
 
 
-def amounts_by_column(line: str) -> Tuple[Optional[int], Optional[int]]:
-    cargo: Optional[int] = None
-    abono: Optional[int] = None
-    for m in RE_AMOUNT.finditer(line):
-        pos = m.start()
-        val = parse_clp_amount(m.group())
-        if val is None:
+RE_COMPACT_VISTA_LINE = re.compile(
+    r"^\s*(\d{4,10})\s+(\d{2}/\d{2})\s+(\d{1,3}(?:\.\d{3})+)\s+(\d+)\s+(.+)$"
+)
+
+
+def uses_compact_vista_layout(text: str) -> bool:
+    return bool(re.search(r"Num\s+Doc\.\s+Fecha\s+Monto", text, re.I))
+
+
+def parse_compact_vista_movements(
+    text: str,
+    period_from: str,
+    period_to: str,
+) -> Tuple[List[ParsedMovement], List[dict]]:
+    movements: List[ParsedMovement] = []
+    skipped: List[dict] = []
+    section: Optional[str] = None
+    in_table = False
+    for raw_line in text.splitlines():
+        if "MOVIMIENTO DE SU CUENTA" in raw_line.upper():
+            in_table = True
             continue
-        if pos < CARGO_COL_MAX:
-            cargo = val
-        elif pos >= ABONO_COL_MIN:
-            abono = val
-    return cargo, abono
-
-
-def strip_amounts_from_line(line: str) -> str:
-    return RE_AMOUNT.sub("", line).strip()
+        if not in_table:
+            continue
+        if re.search(r"Resumen de Comisiones", raw_line, re.I):
+            break
+        upper = raw_line.upper()
+        if "CHEQUES O CARGOS" in upper or "SUC CHEQUES" in upper:
+            section = "cargo"
+            continue
+        if "DEPOSITOS O ABONOS" in upper or "SUC DEPOSITOS" in upper:
+            section = "abono"
+            continue
+        if RE_SIN_MOVIMIENTOS.search(raw_line) or RE_SALDO_DIA.search(raw_line):
+            continue
+        m = RE_COMPACT_VISTA_LINE.match(raw_line.rstrip())
+        if not m or section is None:
+            continue
+        document_no, dd_mm, amt_raw, branch, description = m.groups()
+        occurred_on = dd_mm_to_iso(dd_mm, period_from, period_to)
+        amt = parse_clp_amount(amt_raw)
+        if not occurred_on or amt is None:
+            continue
+        description = re.sub(r"\s+", " ", description).strip()
+        amount_clp = -amt if section == "cargo" else amt
+        movements.append(
+            ParsedMovement(
+                occurred_on=occurred_on,
+                amount_clp=amount_clp,
+                branch=branch or "—",
+                description=description,
+                document_no=document_no,
+            )
+        )
+    return movements, skipped
 
 
 def parse_description_line(
@@ -148,6 +204,7 @@ def parse_description_line(
     current_date: Optional[str],
     desde_iso: str,
     hasta_iso: str,
+    bounds: AmountColumnBounds,
 ) -> Tuple[Optional[str], Optional[ParsedMovement], Optional[dict]]:
     line = line.rstrip()
     if not line.strip():
@@ -183,13 +240,15 @@ def parse_description_line(
         branch = suc_m.group(1)
         work = work[suc_m.end() :].lstrip()
 
-    cargo, abono = amounts_by_column(line)
+    cargo, abono = amounts_by_column(line, bounds)
     if cargo is None and abono is None:
         return occurred_on, None, None
 
     description = strip_amounts_from_line(work)
     description = re.sub(r"\s+", " ", description).strip()
     if not description:
+        return occurred_on, None, None
+    if re.search(r"GRATIS\s+desde\s+red\s+fija|INFORMESE\s+SOBRE", description, re.I):
         return occurred_on, None, None
 
     if cargo is not None and abono is not None:
@@ -215,6 +274,108 @@ def parse_description_line(
     ), None
 
 
+def finalize_vista_cartola(
+    source_file: str,
+    period_month: str,
+    period_from: Optional[str],
+    period_to: Optional[str],
+    text: str,
+    movements: List[ParsedMovement],
+    skipped: List[dict],
+    *,
+    sin_movimientos: bool = False,
+    saldo_dia: Optional[List[Tuple[str, int]]] = None,
+) -> ParsedCartola:
+    summary = parse_vista_summary_totals(text)
+    sin_mov = sin_movimientos or bool(RE_SIN_MOVIMIENTOS.search(text))
+    if summary is None and movements:
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=None,
+            saldo_final_clp=None,
+            movements=movements,
+            skipped=skipped,
+            parse_status="error",
+            parse_error="Could not parse cartola summary totals (Saldo Inicial / Cargos / Abonos / Final)",
+        )
+    if summary is not None:
+        movements = trim_spurious_flavia_credit(summary, movements)
+        err = reconcile_cartola_movements(summary, movements)
+        if err:
+            return ParsedCartola(
+                source_file=source_file,
+                period_month=period_month,
+                period_from=period_from,
+                period_to=period_to,
+                saldo_inicial_clp=summary.saldo_inicial_clp,
+                saldo_final_clp=summary.saldo_final_clp,
+                movements=movements,
+                skipped=skipped,
+                parse_status="error",
+                parse_error=err,
+            )
+        month_saldo_final_clp: Optional[Dict[str, int]] = None
+        if saldo_dia:
+            month_map, month_err = derive_month_saldo_final_clp(
+                saldo_dia, movements, summary, period_from, period_to
+            )
+            if month_err:
+                return ParsedCartola(
+                    source_file=source_file,
+                    period_month=period_month,
+                    period_from=period_from,
+                    period_to=period_to,
+                    saldo_inicial_clp=summary.saldo_inicial_clp,
+                    saldo_final_clp=summary.saldo_final_clp,
+                    movements=movements,
+                    skipped=skipped,
+                    parse_status="error",
+                    parse_error=month_err,
+                )
+            month_saldo_final_clp = month_map
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=summary.saldo_inicial_clp,
+            saldo_final_clp=summary.saldo_final_clp,
+            movements=movements,
+            skipped=skipped,
+            parse_status="ok",
+            cartola_sin_movimientos=sin_mov and not movements,
+            month_saldo_final_clp=month_saldo_final_clp,
+        )
+    if not movements and sin_mov:
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=0,
+            saldo_final_clp=0,
+            movements=[],
+            skipped=skipped,
+            parse_status="ok",
+            cartola_sin_movimientos=True,
+        )
+    return ParsedCartola(
+        source_file=source_file,
+        period_month=period_month,
+        period_from=period_from,
+        period_to=period_to,
+        saldo_inicial_clp=None,
+        saldo_final_clp=None,
+        movements=movements,
+        skipped=skipped,
+        parse_status="error",
+        parse_error="Could not parse cartola summary totals",
+    )
+
+
 def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
     source_file = pdf_path.name
     try:
@@ -234,7 +395,19 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
             parse_error=str(e),
         )
 
-    if "CUENTAMATICA" not in text.upper() and "ESTADO CUENTAMATICA" not in text.upper():
+    if is_checking_cartola_text(text):
+        return ParsedCartola(
+            source_file=source_file,
+            period_month="",
+            period_from=None,
+            period_to=None,
+            saldo_inicial_clp=None,
+            saldo_final_clp=None,
+            parse_status="skipped",
+            parse_error="Checking cartola misfiled in cartolas-cuenta-vista (relocate to cartolas-cuenta-corriente)",
+        )
+
+    if not is_cuenta_vista_cartola_text(text):
         return ParsedCartola(
             source_file=source_file,
             period_month="",
@@ -243,8 +416,10 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
             saldo_inicial_clp=None,
             saldo_final_clp=None,
             parse_status="unreadable",
-            parse_error="Not a CUENTAMATICA cartola PDF",
+            parse_error="Not a cuenta vista cartola PDF",
         )
+
+    sin_movimientos = text_indicates_cartola_sin_movimientos(text)
 
     period_from: Optional[str] = None
     period_to: Optional[str] = None
@@ -252,6 +427,11 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
     if pm:
         period_from = dd_mm_yyyy_to_iso(pm.group(1))
         period_to = dd_mm_yyyy_to_iso(pm.group(2))
+    if not period_to:
+        dates = re.findall(r"\b(\d{2}/\d{2}/\d{4})\b", text)
+        if len(dates) >= 2:
+            period_from = dd_mm_yyyy_to_iso(dates[-2])
+            period_to = dd_mm_yyyy_to_iso(dates[-1])
     if not period_to:
         return ParsedCartola(
             source_file=source_file,
@@ -265,68 +445,76 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
         )
 
     period_month = period_to[:7]
-    saldo_inicial_clp: Optional[int] = None
-    saldo_final_clp: Optional[int] = None
-    sm = RE_SALDO_SUMMARY.search(text.replace("\n", " "))
-    if sm:
-        saldo_inicial_clp = parse_clp_amount(sm.group(1))
-        saldo_final_clp = parse_clp_amount(sm.group(4))
 
-    movements: List[ParsedMovement] = []
-    skipped: List[dict] = []
-    current_date: Optional[str] = None
-    in_movements = False
-
-    for raw_line in text.splitlines():
-        if "MOVIMIENTO DE SU CUENTA" in raw_line.upper():
-            in_movements = True
-            continue
-        if not in_movements:
-            continue
-        if re.search(r"Resumen de Comisiones|MENSAJES", raw_line, re.I):
-            break
-
-        current_date, mv, skip = parse_description_line(
-            raw_line, current_date, period_from or period_to, period_to
+    if uses_compact_vista_layout(text):
+        movements, skipped = parse_compact_vista_movements(
+            text, period_from or period_to, period_to
         )
-        if skip:
-            skipped.append(skip)
-        if mv is None:
-            continue
+        saldo_dia: List[Tuple[str, int]] = []
+    else:
+        column_bounds = detect_vista_column_bounds(text)
+        movements = []
+        skipped = []
+        saldo_dia = []
+        current_date: Optional[str] = None
+        in_movements = False
 
-        key = (mv.occurred_on, mv.amount_clp, mv.description, mv.document_no)
-        if any(
-            (m.occurred_on, m.amount_clp, m.description, m.document_no) == key
-            for m in movements
-        ):
-            skipped.append({"reason": "duplicate_in_cartola", "detail": mv.description})
-            continue
-        movements.append(mv)
+        for raw_line in text.splitlines():
+            if "MOVIMIENTO DE SU CUENTA" in raw_line.upper():
+                in_movements = True
+                continue
+            if not in_movements:
+                continue
+            if re.search(r"Resumen de Comisiones", raw_line, re.I):
+                break
+            if "MOVIMIENTO DE SU CUENTA" in raw_line.upper():
+                continue
+            if re.match(r"^\s*FECHA\s", raw_line, re.I):
+                continue
+            upper = raw_line.upper()
+            if ("CHEQUES" in upper and "DEPOSITOS" in upper) or (
+                "CARGOS" in upper and "ABONOS" in upper and "CHEQUES" not in upper
+            ):
+                continue
+            if RE_SIN_MOVIMIENTOS.search(raw_line):
+                continue
+            if RE_SALDO_DIA.search(raw_line):
+                if current_date:
+                    bal = saldo_column_amount(raw_line, column_bounds)
+                    if bal is not None:
+                        saldo_dia.append((current_date, bal))
+                    else:
+                        skipped.append(
+                            {
+                                "reason": "saldo_dia_no_amount",
+                                "detail": raw_line.strip()[:80],
+                            }
+                        )
+                continue
 
-    if not movements:
-        return ParsedCartola(
-            source_file=source_file,
-            period_month=period_month,
-            period_from=period_from,
-            period_to=period_to,
-            saldo_inicial_clp=saldo_inicial_clp,
-            saldo_final_clp=saldo_final_clp,
-            movements=[],
-            skipped=skipped,
-            parse_status="error",
-            parse_error="No movements parsed",
-        )
+            current_date, mv, skip = parse_description_line(
+                raw_line,
+                current_date,
+                period_from or period_to,
+                period_to,
+                column_bounds,
+            )
+            if skip:
+                skipped.append(skip)
+            if mv is None:
+                continue
+            movements.append(mv)
 
-    return ParsedCartola(
-        source_file=source_file,
-        period_month=period_month,
-        period_from=period_from,
-        period_to=period_to,
-        saldo_inicial_clp=saldo_inicial_clp,
-        saldo_final_clp=saldo_final_clp,
-        movements=movements,
-        skipped=skipped,
-        parse_status="ok",
+    return finalize_vista_cartola(
+        source_file,
+        period_month,
+        period_from,
+        period_to,
+        text,
+        movements,
+        skipped,
+        sin_movimientos=sin_movimientos,
+        saldo_dia=saldo_dia,
     )
 
 
@@ -343,12 +531,17 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Wrote {out_path} ({len(cartolas)} cartola(s) from {len(pdfs)} PDF(s)).")
-    errors = [c for c in cartolas if c.get("parse_status") != "ok"]
-    if errors:
-        for c in errors:
-            print(f"  WARN {c.get('source_file')}: {c.get('parse_error')}", file=sys.stderr)
-        return 1
-    return 0
+    for c in cartolas:
+        status = c.get("parse_status")
+        if status == "ok":
+            continue
+        level = "WARN" if status in ("skipped", "unreadable") else "ERROR"
+        print(
+            f"  {level} {c.get('source_file')}: {c.get('parse_error') or status}",
+            file=sys.stderr,
+        )
+    hard_errors = [c for c in cartolas if c.get("parse_status") == "error"]
+    return 1 if hard_errors else 0
 
 
 if __name__ == "__main__":
