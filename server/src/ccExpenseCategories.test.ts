@@ -166,6 +166,54 @@ describe("ccExpenseCategories", () => {
     ).toBe("unclassified");
   });
 
+  it("marks cancelled installment purchase as no_cuenta when no explicit override exists", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|vitest-fixture' LIMIT 1`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
+         purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id, source
+       ) VALUES (?, 'A', 'cat-cancelled-1', NULL, NULL, NULL, '2025-02-07', 54990, 6, 'MP MERCADO LIBRE', 'MP MERCADO LIBRE', NULL, 'pdf')`
+    ).run(master.id);
+    const pid = (
+      db.prepare(
+        `SELECT id FROM cc_installment_purchases WHERE account_id = ? AND canonical_row_id = 'cat-cancelled-1'`
+      ).get(master.id) as { id: number } | undefined
+    )?.id;
+    if (!pid) return;
+
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
+       VALUES (?, 'A', 'cat-cancelled-note.pdf', '25/03/2025', '24/02/2025', '25/03/2025')`
+    ).run(master.id);
+    const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    try {
+      db.prepare(
+        `INSERT INTO cc_statement_lines (statement_id, merchant, description_merged, amount_clp, installment_flag)
+         VALUES (?, 'NOTA DE CREDITO', 'SANTIAGO | NOTA DE CREDITO', -54990, 0)`
+      ).run(sid);
+
+      const resolved = resolveCcExpenseCategorySlug({
+        statementLineId: 1,
+        accountId: master.id,
+        merchantKey: "MP MERCADO LIBRE",
+        purchaseKey: `installment:${pid}`,
+        lineOverrides: new Map(),
+        merchantRules: new Map(),
+        uniquePurchases: new Map(),
+      });
+      expect(resolved).toBe("no_cuenta");
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(sid);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(sid);
+      db.prepare(`DELETE FROM cc_installment_payments WHERE purchase_id = ?`).run(pid);
+      db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(pid);
+    }
+  });
+
   it("categoryUniqueForExpenseLine is true for generic transfers without persisted row", () => {
     expect(
       categoryUniqueForExpenseLine(
@@ -180,7 +228,10 @@ describe("ccExpenseCategories", () => {
 
   it("can enable unique purchase mode before a category is chosen", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
-    const line = payload.lines.find((ln) => ln.amount_clp > 0);
+    const allowed = new Set(listCreditCardMasterAccountIds());
+    const line = payload.lines.find(
+      (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && allowed.has(ln.account_id)
+    );
     if (!line) return;
 
     const result = assignCcExpenseLineCategory({
@@ -269,7 +320,10 @@ describe("ccExpenseCategories", () => {
 
   it("clear_category removes merchant and unique overrides", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
-    const line = payload.lines.find((ln) => ln.amount_clp > 0 && ln.merchant);
+    const allowed = new Set(listCreditCardMasterAccountIds());
+    const line = payload.lines.find(
+      (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
+    );
     if (!line) return;
 
     assignCcExpenseLineCategory({
@@ -396,6 +450,17 @@ describe("ccExpenseCategories", () => {
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
       .get() as { id: number } | undefined;
     if (!master) return;
+
+    const stale = db
+      .prepare(
+        `SELECT id FROM cc_installment_purchases
+         WHERE account_id = ? AND merchant = 'TEST_MANUAL_CC_CONSOLIDATED_CAT'`
+      )
+      .all(master.id) as { id: number }[];
+    for (const row of stale) {
+      db.prepare(`DELETE FROM cc_installment_payments WHERE purchase_id = ?`).run(row.id);
+      db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(row.id);
+    }
 
     const created = createManualCcInstallmentPurchase(master.id, {
       purchase_date: "2026-05-10",

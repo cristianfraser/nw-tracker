@@ -31,6 +31,7 @@
     "parse:cuenta-vista-cartola-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cuenta-vista-cartola-pdfs.py",
     "export:checking-cartola-screenshots-csv": "tsx scripts/export-checking-cartola-screenshots-csv.ts",
     "import:cc-parsed": "tsx scripts/import-cc-parsed-to-db.ts",
+    "repair:cc-installment-duplicate-purchases": "tsx scripts/repair-cc-installment-duplicate-purchases.ts",
     "import:checking-cartolas": "tsx scripts/import-checking-cartolas.ts",
     "import:cuenta-vista-cartolas": "tsx scripts/import-cuenta-vista-cartolas.ts",
     "import:checking-cartola-screenshots": "tsx scripts/import-checking-cartola-screenshots.ts",

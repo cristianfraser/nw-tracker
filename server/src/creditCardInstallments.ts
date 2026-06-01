@@ -53,6 +53,20 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   last_paid_month: string | null;
   /** Constant cuota for upcoming months (CLP). */
   upcoming_cuota_clp: number;
+  /** Payment rows linked to this purchase (DB source only), for manual audit in UI. */
+  payment_statements?: {
+    pay_by_date: string;
+    statement_date: string | null;
+    source_pdf: string | null;
+    cuota_current: number | null;
+    amount_clp: number;
+  }[];
+  /** Canonical + sibling purchase ids merged by logical fingerprint dedupe. */
+  merged_purchase_ids?: number[];
+  /** Why sibling IDs were merged. */
+  merge_reason?: string | null;
+  /** Human-readable notes for heuristics used in this logical row. */
+  heuristic_hints?: string[];
   /** `pdf` from statement import; `manual` from UI/API. Omitted on CSV fallback. */
   purchase_source?: "pdf" | "manual";
 };
@@ -355,6 +369,7 @@ export function creditCardInstallmentsResponse(
   meta: CcInstallmentsMeta | null;
   purchases: CcInstallmentPurchaseComputed[];
   purchases_completed: CcInstallmentPurchaseComputed[];
+  hidden_cancelled_purchases?: CcInstallmentPurchaseComputed[];
   months: CcInstallmentMonthRow[];
   totals: CcInstallmentsTotals;
   installment_history_months?: {
@@ -389,6 +404,7 @@ export function creditCardInstallmentsResponse(
       },
       purchases: db.purchases,
       purchases_completed: db.purchases_completed,
+      hidden_cancelled_purchases: db.hidden_cancelled_purchases,
       months: db.months,
       totals: db.totals,
       installment_history_months: db.installment_history_months,
@@ -419,6 +435,7 @@ export function creditCardInstallmentsResponse(
       },
       purchases: [],
       purchases_completed: [],
+      hidden_cancelled_purchases: [],
       months: [],
       totals: {
         total_remaining_principal_clp: latestCupo,
@@ -445,6 +462,7 @@ export function creditCardInstallmentsResponse(
       meta,
       purchases: [],
       purchases_completed: [],
+      hidden_cancelled_purchases: [],
       months: [],
       totals: {
         total_remaining_principal_clp: 0,
@@ -468,6 +486,7 @@ export function creditCardInstallmentsResponse(
     meta: { csv_path, csv_absolute_path, csv_file_exists },
     purchases,
     purchases_completed,
+    hidden_cancelled_purchases: [],
     months,
     totals,
   };
