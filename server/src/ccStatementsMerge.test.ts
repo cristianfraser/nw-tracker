@@ -2,18 +2,26 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCcStatementsMerge } from "./ccStatementsImport.js";
+import {
+  NO_CUENTA_CC_EXPENSE_SLUG,
+  getCcExpenseCategoryBySlug,
+  resolveCcExpensePurchaseKey,
+} from "./ccExpenseCategories.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 /** Reserved web-paste keys for this file only; cleaned up so a failed run does not pollute dev DB. */
 const SRC_DEDUPE = "import:web-paste|vitest-cc-merge-dedupe";
 const SRC_OVERLAP = "import:web-paste|vitest-cc-merge-overlap";
+const SRC_ADDITIONAL = "import:web-paste|vitest-cc-merge-additional";
 
 function cleanupVitestCcMergeRows(): void {
+  const sources = [SRC_DEDUPE, SRC_OVERLAP, SRC_ADDITIONAL];
+  const ph = sources.map(() => "?").join(",");
   db.prepare(
     `DELETE FROM cc_statement_lines WHERE statement_id IN (
-       SELECT id FROM cc_statements WHERE source_pdf IN (?, ?)
+       SELECT id FROM cc_statements WHERE source_pdf IN (${ph})
      )`
-  ).run(SRC_DEDUPE, SRC_OVERLAP);
-  db.prepare(`DELETE FROM cc_statements WHERE source_pdf IN (?, ?)`).run(SRC_DEDUPE, SRC_OVERLAP);
+  ).run(...sources);
+  db.prepare(`DELETE FROM cc_statements WHERE source_pdf IN (${ph})`).run(...sources);
   /** Legacy keys from an older version of this test. */
   db.prepare(
     `DELETE FROM cc_statement_lines WHERE statement_id IN (
@@ -112,6 +120,70 @@ describe("importCcStatementsMerge", () => {
       if (purchaseId > 0) {
         db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(purchaseId);
       }
+      cleanupVitestCcMergeRows();
+    }
+  });
+
+  it("patches origin_card_last4 on dedupe skip and applies no_cuenta for adicional lines", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+
+    const dedupeKey = `vitest-addl-dedupe-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const rowId = `t-addl-${dedupeKey}`;
+    const records = [
+      {
+        card_group: "santander",
+        source_pdf: SRC_ADDITIONAL,
+        statement_date: "20/05/2026",
+        period_from: "01/05/2026",
+        period_to: "19/05/2026",
+        card_last4: "4242",
+        transaction_date: "19/05/2026",
+        merchant: "Additional card merge fixture",
+        amount_clp: "54321",
+        installment_flag: "false",
+        dedupe_key: dedupeKey,
+        row_id: rowId,
+        origin_card_last4: "3670",
+        currency: "clp",
+        parser_layout: "compact",
+      },
+    ];
+
+    try {
+      const first = importCcStatementsMerge(accountId, records, { replaceAll: false });
+      expect(first.linesInserted).toBe(1);
+      expect(first.additionalCardCategoriesApplied).toBe(1);
+
+      const line = db
+        .prepare(
+          `SELECT l.id, l.origin_card_last4 FROM cc_statement_lines l
+           JOIN cc_statements s ON s.id = l.statement_id
+           WHERE s.account_id = ? AND l.parser_row_id = ?`
+        )
+        .get(accountId, rowId) as { id: number; origin_card_last4: string | null };
+      const purchaseKey = resolveCcExpensePurchaseKey(line.id);
+      const noCuentaId = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG)?.id;
+      const unique = db
+        .prepare(
+          `SELECT category_id FROM cc_expense_unique_purchases
+           WHERE account_id = ? AND purchase_key = ?`
+        )
+        .get(accountId, purchaseKey) as { category_id: number } | undefined;
+      expect(unique?.category_id).toBe(noCuentaId);
+
+      db.prepare(`UPDATE cc_statement_lines SET origin_card_last4 = NULL WHERE id = ?`).run(line.id);
+
+      const second = importCcStatementsMerge(accountId, records, { replaceAll: false });
+      expect(second.linesInserted).toBe(0);
+      expect(second.linesSkippedDuplicate).toBe(1);
+      expect(second.linesOriginCardPatched).toBe(1);
+
+      const patched = db
+        .prepare(`SELECT origin_card_last4 FROM cc_statement_lines WHERE id = ?`)
+        .get(line.id) as { origin_card_last4: string | null };
+      expect(patched.origin_card_last4).toBe("3670");
+    } finally {
       cleanupVitestCcMergeRows();
     }
   });

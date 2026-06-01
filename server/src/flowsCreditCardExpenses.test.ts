@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
+import { randomUUID } from "node:crypto";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  NO_CUENTA_CC_EXPENSE_SLUG,
+  countsTowardCcExpenseGastosMes,
+  getCcExpenseCategoryBySlug,
+  resolveCcExpensePurchaseKey,
+} from "./ccExpenseCategories.js";
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
@@ -9,6 +15,7 @@ import {
   resolveExpenseMonth,
 } from "./flowsCreditCardExpenses.js";
 import { gastosSumMonthForLine, lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
 describe("effectiveCcExpenseLineAmountClp", () => {
   it("uses valor_cuota_mensual_clp for installment lines", () => {
@@ -55,6 +62,28 @@ describe("resolveExpenseMonth", () => {
 });
 
 describe("flowsCreditCardExpenses", () => {
+  const SRC_ADDITIONAL_FIXTURE = "import:web-paste|vitest-flows-additional-card";
+
+  function cleanupAdditionalFixture(): void {
+    db.prepare(
+      `DELETE FROM cc_statement_lines WHERE statement_id IN (
+         SELECT id FROM cc_statements WHERE source_pdf = ?
+       )`
+    ).run(SRC_ADDITIONAL_FIXTURE);
+    db.prepare(`DELETE FROM cc_statements WHERE source_pdf = ?`).run(SRC_ADDITIONAL_FIXTURE);
+    // Unique purchase rows (and notes) are keyed by purchase_key; delete any that reference our parser row ids.
+    db.prepare(
+      `DELETE FROM cc_expense_purchase_notes
+       WHERE purchase_key LIKE 'line-pr:vitest-addl-%'`
+    ).run();
+    db.prepare(
+      `DELETE FROM cc_expense_unique_purchases
+       WHERE purchase_key LIKE 'line-pr:vitest-addl-%'`
+    ).run();
+  }
+
+  afterEach(() => cleanupAdditionalFixture());
+
   it("listCreditCardMasterAccountIds drives the gastos payload", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
@@ -104,6 +133,84 @@ describe("flowsCreditCardExpenses", () => {
       (ln) => ln.source === "cc" && ln.account_id === id4242 && ln.amount_clp > 0
     );
     expect(cc4242.length).toBeGreaterThan(0);
+  });
+
+  it("auto-tags adicional-card lines as no_cuenta + unique in the payload", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+    const stmt = db
+      .prepare(
+        `INSERT INTO cc_statements (
+           account_id, card_group, source_pdf, statement_date, period_from, period_to,
+           card_last4, layout, currency
+         ) VALUES (?, 'santander', ?, '20/05/2026', '01/05/2026', '19/05/2026', '4242', 'compact', 'clp')`
+      )
+      .run(accountId, SRC_ADDITIONAL_FIXTURE);
+    const statementId = Number(stmt.lastInsertRowid);
+
+    const line = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag,
+           parser_row_id, origin_card_last4, dedupe_key
+         ) VALUES (?, '19/05/2026', 'Additional card payload fixture', 12345, 0, ?, '3670', ?)`
+      )
+      .run(statementId, parserRowId, `vitest-addl-dedupe-${parserRowId}`);
+    const lineId = Number(line.lastInsertRowid);
+
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
+    expect(found).toBeDefined();
+    expect(found!.category_slug).toBe(NO_CUENTA_CC_EXPENSE_SLUG);
+    expect(found!.category_unique).toBe(true);
+    expect(found!.origin_card_last4).toBe("3670");
+    expect(found!.primary_card_last4).toBe("4242");
+  });
+
+  it("does not force additional-card no_cuenta when the user cleared unique category", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+    const stmt = db
+      .prepare(
+        `INSERT INTO cc_statements (
+           account_id, card_group, source_pdf, statement_date, period_from, period_to,
+           card_last4, layout, currency
+         ) VALUES (?, 'santander', ?, '20/05/2026', '01/05/2026', '19/05/2026', '4242', 'compact', 'clp')`
+      )
+      .run(accountId, SRC_ADDITIONAL_FIXTURE);
+    const statementId = Number(stmt.lastInsertRowid);
+
+    const line = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag,
+           parser_row_id, origin_card_last4, dedupe_key
+         ) VALUES (?, '19/05/2026', 'Additional card cleared fixture', 22222, 0, ?, '3670', ?)`
+      )
+      .run(statementId, parserRowId, `vitest-addl-dedupe-${parserRowId}`);
+    const lineId = Number(line.lastInsertRowid);
+
+    const purchaseKey = resolveCcExpensePurchaseKey(lineId);
+    const noCuentaId = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG)?.id;
+    expect(noCuentaId).toBeTruthy();
+
+    // Simulate user-cleared unique: category_id NULL exists in DB at load.
+    db.prepare(
+      `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+       VALUES (?, ?, NULL)
+       ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = NULL`
+    ).run(accountId, purchaseKey);
+
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
+    expect(found).toBeDefined();
+
+    // We should not override to no_cuenta when the user explicitly cleared unique.
+    expect(found!.category_slug).not.toBe(NO_CUENTA_CC_EXPENSE_SLUG);
   });
 
   it("builds monthly rows with cumulative gastos when statement lines exist", () => {
