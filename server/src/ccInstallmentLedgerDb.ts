@@ -2,6 +2,9 @@ import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
+import { isCcStatementPdfSource } from "./importSyncDocumentMonth.js";
 import {
   billingMonthForLedgerPurchase,
 } from "./ccManualBillingMonth.js";
@@ -10,6 +13,7 @@ import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
+import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./ccNotaDeCreditoPairing.js";
 import type { CcInstallmentMonthRow, CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
 
 type PurchaseRow = {
@@ -29,6 +33,10 @@ type PaymentRow = {
   id: number;
   purchase_id: number;
   pay_by_date: string;
+  statement_date: string | null;
+  statement_period_month: string | null;
+  period_to_join: string | null;
+  source_pdf: string | null;
   amount_clp: number;
   cuota_current: number | null;
 };
@@ -46,6 +54,15 @@ function ymFromIsoDate(iso: string): string | null {
   const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(iso ?? "").trim());
   if (!m) return null;
   return `${m[1]}-${m[2]}`;
+}
+
+function parseDateLikeToIso(raw: string | null | undefined): string | null {
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m4 = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (m4) return `${m4[3]}-${m4[2]}-${m4[1]}`;
+  return parseDdMmYyToIso(t);
 }
 
 function ymCompare(a: string, b: string): number {
@@ -68,7 +85,74 @@ function expandYearMonthsInclusive(minYm: string, maxYm: string): string[] {
   return out;
 }
 
-/** First installment month (YYYY-MM): cuota 1 from PDF, else earliest payment month, else purchase month. */
+function paymentBillingMonth(p: PaymentRow): string | null {
+  return paymentStatementMonthYm(p);
+}
+
+/** Latest `period_to` month (YYYY-MM) among imported PDF cartolas (excludes web-paste / synthetic buckets). */
+export function latestUploadedStatementMonthYm(accountId: number): string | null {
+  const rows = db
+    .prepare(
+      `SELECT source_pdf, period_to, statement_date FROM cc_statements
+       WHERE account_id = ?`
+    )
+    .all(accountId) as { source_pdf: string | null; period_to: string | null; statement_date: string | null }[];
+  let maxYm: string | null = null;
+  for (const row of rows) {
+    if (!isCcStatementPdfSource(row.source_pdf)) continue;
+    const ym = statementPeriodMonthFromParsedRow(row);
+    if (ym && (maxYm == null || ymCompare(ym, maxYm) > 0)) maxYm = ym;
+  }
+  return maxYm;
+}
+
+/** Statement month of the highest-index installment payment row (final cuota when indexed). */
+export function lastInstallmentPaymentStatementMonthYm(payList: PaymentRow[]): string | null {
+  let bestCuota = 0;
+  let bestYm: string | null = null;
+  for (const p of payList) {
+    const cuota = p.cuota_current ?? 0;
+    if (cuota <= 0) continue;
+    const ym = paymentBillingMonth(p);
+    if (!ym) continue;
+    if (cuota > bestCuota) {
+      bestCuota = cuota;
+      bestYm = ym;
+    } else if (cuota === bestCuota && bestYm != null && ymCompare(ym, bestYm) > 0) {
+      bestYm = ym;
+    }
+  }
+  if (bestYm != null) return bestYm;
+  for (const p of payList) {
+    const ym = paymentBillingMonth(p);
+    if (ym && (bestYm == null || ymCompare(ym, bestYm) > 0)) bestYm = ym;
+  }
+  return bestYm;
+}
+
+/**
+ * Active purchases table: keep fully settled contracts visible through the statement month
+ * of their final cuota; drop to completed only after a later statement is uploaded.
+ */
+export function installmentPurchaseShowsActive(
+  summary: {
+    remaining_installments: number;
+    remaining_principal_clp: number;
+    installments_paid: number;
+    installment_count: number;
+  },
+  payList: PaymentRow[],
+  latestStatementYm: string | null
+): boolean {
+  if (summary.remaining_installments > 0 || summary.remaining_principal_clp > 0) return true;
+  if (latestStatementYm == null) return false;
+  if (summary.installments_paid < summary.installment_count) return false;
+  const lastStmtYm = lastInstallmentPaymentStatementMonthYm(payList);
+  if (lastStmtYm == null) return false;
+  return ymCompare(lastStmtYm, latestStatementYm) >= 0;
+}
+
+/** First installment month (YYYY-MM): cuota 1 statement month, else earliest payment statement month, else purchase month. */
 export function purchaseFirstDueYm(
   pr: PurchaseRow,
   payList: PaymentRow[],
@@ -76,19 +160,23 @@ export function purchaseFirstDueYm(
 ): string {
   const cuota1 = payList.find((p) => p.cuota_current === 1);
   if (cuota1) {
-    const ym = ymFromIsoDate(cuota1.pay_by_date);
+    const ym = paymentBillingMonth(cuota1);
     if (ym) return ym;
   }
   const withCuota = payList
     .filter((p) => p.cuota_current != null && p.cuota_current > 0)
     .sort((a, b) => a.cuota_current! - b.cuota_current!);
   if (withCuota.length > 0) {
-    const ym = ymFromIsoDate(withCuota[0]!.pay_by_date);
+    const ym = paymentBillingMonth(withCuota[0]!);
     if (ym) return ym;
   }
   if (payList.length > 0) {
-    const sorted = [...payList].sort((a, b) => a.pay_by_date.localeCompare(b.pay_by_date));
-    const ym = ymFromIsoDate(sorted[0]!.pay_by_date);
+    const sorted = [...payList].sort((a, b) => {
+      const ya = paymentBillingMonth(a) ?? a.pay_by_date;
+      const yb = paymentBillingMonth(b) ?? b.pay_by_date;
+      return ya.localeCompare(yb);
+    });
+    const ym = paymentBillingMonth(sorted[0]!);
     if (ym) return ym;
   }
   if (pr.source === "manual" && accountId != null) {
@@ -103,9 +191,55 @@ function installmentProgressPayments(payList: PaymentRow[]): PaymentRow[] {
   return payList.filter((p) => p.cuota_current != null && p.cuota_current > 0);
 }
 
+function indexedInstallmentPaymentStatements(payList: PaymentRow[]) {
+  return installmentProgressPayments(payList).map((p) => ({
+    pay_by_date: p.pay_by_date,
+    statement_date: p.statement_date,
+    source_pdf: p.source_pdf,
+    cuota_current: p.cuota_current,
+    amount_clp: p.amount_clp,
+  }));
+}
+
+/** Unindexed row counts toward full principal only when it completes the contract (not «00/N» preamble). */
+function unindexedPaymentCompletesContract(
+  p: PaymentRow,
+  payList: PaymentRow[],
+  installmentCount: number,
+  principal: number,
+  referenceYm: string
+): boolean {
+  if (p.cuota_current != null && p.cuota_current > 0) return false;
+  const stmtYm = paymentBillingMonth(p);
+  if (!stmtYm || ymCompare(stmtYm, referenceYm) > 0) return false;
+
+  const indexed = installmentProgressPayments(payList);
+  if (indexed.length === 0) return false;
+
+  const maxCuota = Math.max(...indexed.map((row) => row.cuota_current!));
+  if (maxCuota < installmentCount - 1) return false;
+
+  let maxIndexedStmtYm: string | null = null;
+  for (const row of indexed) {
+    const ym = paymentBillingMonth(row);
+    if (ym && (maxIndexedStmtYm == null || ymCompare(ym, maxIndexedStmtYm) > 0)) {
+      maxIndexedStmtYm = ym;
+    }
+  }
+  if (maxIndexedStmtYm != null && ymCompare(stmtYm, maxIndexedStmtYm) < 0) return false;
+
+  const indexedSum = indexed.reduce((sum, row) => {
+    const ym = paymentBillingMonth(row);
+    if (!ym || ymCompare(ym, referenceYm) > 0) return sum;
+    return sum + row.amount_clp;
+  }, 0);
+  const tol = Math.max(2000, Math.round(principal * 0.001));
+  return indexedSum + p.amount_clp >= principal - tol;
+}
+
 /**
  * Installments settled through prior statements (PAGADAS).
- * Indexed rows count when pay-by month is before the reference month, or same month with cuota > 1.
+ * Indexed rows count when statement month is before the reference month, or same month with cuota > 1.
  * Cuota 1 on the current month's statement is still outstanding (plan not started yet).
  */
 export function ledgerInstallmentsPaid(
@@ -116,17 +250,25 @@ export function ledgerInstallmentsPaid(
   const nowYm = referenceYm ?? currentCalendarYm();
   const principal = pr.total_amount_clp;
   const progress = installmentProgressPayments(payList);
-  const totalPaid = progress.reduce((s, x) => s + x.amount_clp, 0);
+  const totalPaid = payList.reduce((sum, p) => {
+    if (p.cuota_current == null || p.cuota_current <= 0) return sum;
+    const stmtYm = paymentBillingMonth(p);
+    if (!stmtYm) return sum;
+    if (ymCompare(stmtYm, nowYm) <= 0) return sum + p.amount_clp;
+    return sum;
+  }, 0);
+  const unindexedSettled = payList.reduce((sum, p) => {
+    if (!unindexedPaymentCompletesContract(p, payList, pr.cuotas_totales, principal, nowYm)) return sum;
+    return sum + p.amount_clp;
+  }, 0);
   const tol = Math.max(2000, Math.round(principal * 0.001));
-  if (totalPaid >= principal - tol) return pr.cuotas_totales;
+  if (totalPaid + unindexedSettled >= principal - tol) return pr.cuotas_totales;
 
   let paid = 0;
   for (const p of progress) {
-    const payYm = ymFromIsoDate(p.pay_by_date);
-    if (!payYm) continue;
-    if (ymCompare(payYm, nowYm) < 0) {
-      paid = Math.max(paid, p.cuota_current!);
-    } else if (ymCompare(payYm, nowYm) === 0 && p.cuota_current! > 1) {
+    const stmtYm = paymentBillingMonth(p);
+    if (!stmtYm) continue;
+    if (ymCompare(stmtYm, nowYm) <= 0) {
       paid = Math.max(paid, p.cuota_current!);
     }
   }
@@ -135,22 +277,14 @@ export function ledgerInstallmentsPaid(
 
 /**
  * Plan slots already billed on statements (for RESTAN / saldo).
- * Includes «03 CUOTAS COMERC» resumen rows (sin índice) as one slot when present.
+ * Tracks indexed cuotas paid only — «00/N» resumen rows are informational and do not consume a slot.
  */
 export function planInstallmentsConsumed(
   pr: PurchaseRow,
   payList: PaymentRow[],
   referenceYm?: string
 ): number {
-  const paid = ledgerInstallmentsPaid(pr, payList, referenceYm);
-  if (paid > 0) return paid;
-  const nowYm = referenceYm ?? currentCalendarYm();
-  const hasUnindexedBill = payList.some((p) => {
-    if (p.cuota_current != null && p.cuota_current > 0) return false;
-    const payYm = ymFromIsoDate(p.pay_by_date);
-    return payYm != null && ymCompare(payYm, nowYm) <= 0;
-  });
-  return hasUnindexedBill ? 1 : 0;
+  return ledgerInstallmentsPaid(pr, payList, referenceYm);
 }
 
 /** Unpaid installments from the plan with due month ≥ reference month. */
@@ -379,7 +513,51 @@ export function installmentPurchaseLedgerDedupeKey(pr: {
   ].join("\t");
 }
 
-/** Collapse duplicate PDF ledger rows (same purchase, different merchant suffix / canonical_row_id). */
+/** Fail fast when multiple DB purchases share the same logical fingerprint. */
+export function assertNoDuplicateInstallmentPurchaseFingerprints(
+  accountId: number,
+  purchases: readonly Pick<
+    PurchaseRow,
+    | "id"
+    | "canonical_row_id"
+    | "purchase_date"
+    | "total_amount_clp"
+    | "cuotas_totales"
+    | "merchant"
+  >[]
+): void {
+  const byKey = new Map<string, { ids: number[]; canonical_row_ids: string[] }>();
+  for (const pr of purchases) {
+    const key = installmentPurchaseLedgerDedupeKey(pr);
+    const entry = byKey.get(key) ?? { ids: [], canonical_row_ids: [] };
+    entry.ids.push(pr.id);
+    entry.canonical_row_ids.push(pr.canonical_row_id);
+    byKey.set(key, entry);
+  }
+  for (const [fingerprint, entry] of byKey) {
+    if (entry.ids.length <= 1) continue;
+    const sortedIds = [...entry.ids].sort((a, b) => a - b);
+    throw new Error(
+      `duplicate installment purchase fingerprint for account ${accountId}: fingerprint=${JSON.stringify(fingerprint)} purchase_ids=${sortedIds.join(",")} canonical_row_ids=${entry.canonical_row_ids.join(",")}`
+    );
+  }
+}
+
+/** Drop contract-summary purchases when a non-summary row exists for the same fingerprint. */
+export function filterInstallmentContractSummaryPurchases(purchases: PurchaseRow[]): PurchaseRow[] {
+  const detailKeys = new Set<string>();
+  for (const pr of purchases) {
+    if (!isInstallmentContractSummaryMerchant(pr.merchant)) {
+      detailKeys.add(installmentPurchaseLedgerDedupeKey(pr));
+    }
+  }
+  return purchases.filter((pr) => {
+    if (!isInstallmentContractSummaryMerchant(pr.merchant)) return true;
+    return !detailKeys.has(installmentPurchaseLedgerDedupeKey(pr));
+  });
+}
+
+/** Collapse duplicate PDF ledger rows (import/repair tooling only — not for API load). */
 export function dedupeInstallmentPurchaseLedgerRows<
   T extends {
     id: number;
@@ -409,12 +587,9 @@ export function dedupeInstallmentPurchaseLedgerRows<
   return [...byKey.values()];
 }
 
-/**
- * Drop PDF contract-summary purchases (N/CUOTAS PRECIO, etc.) when indexed cuota rows exist.
- * Those summaries duplicate the full contract principal and inflated cupo / valuations (e.g. card 4242).
- */
+/** Schedule load: contract-summary filter only (no fingerprint dedupe). */
 export function filterLedgerPurchasesForSchedule(purchases: PurchaseRow[]): PurchaseRow[] {
-  return dedupeInstallmentPurchaseLedgerRows(purchases);
+  return filterInstallmentContractSummaryPurchases(purchases);
 }
 
 function loadLedgerPurchasesAndPayments(accountId: number): {
@@ -431,27 +606,94 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
     )
     .all(accountId) as PurchaseRow[];
 
+  assertNoDuplicateInstallmentPurchaseFingerprints(accountId, purchasesDb);
   const purchasesRaw = filterLedgerPurchasesForSchedule(purchasesDb);
-  const keptIds = new Set(purchasesRaw.map((p) => p.id));
 
   const allPayments = db
     .prepare(
-      `SELECT p.id, p.purchase_id, p.pay_by_date, p.amount_clp, p.cuota_current
+      `SELECT p.id, p.purchase_id, p.pay_by_date, p.statement_date, p.statement_period_month,
+              p.source_pdf, p.amount_clp, p.cuota_current, s.period_to AS period_to_join
        FROM cc_installment_payments p
-       JOIN cc_installment_purchases s ON s.id = p.purchase_id
-       WHERE s.account_id = ?
+       JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
+       LEFT JOIN cc_statement_lines l ON l.parser_row_id IS NOT NULL AND l.parser_row_id != ''
+         AND l.parser_row_id = p.parser_row_id
+       LEFT JOIN cc_statements s ON s.id = l.statement_id AND s.account_id = pr.account_id
+       WHERE pr.account_id = ?
        ORDER BY p.pay_by_date, p.id`
     )
     .all(accountId) as PaymentRow[];
 
   const paymentsByPurchase = new Map<number, PaymentRow[]>();
   for (const row of allPayments) {
-    if (!keptIds.has(row.purchase_id)) continue;
     const list = paymentsByPurchase.get(row.purchase_id) ?? [];
     list.push(row);
     paymentsByPurchase.set(row.purchase_id, list);
   }
   return { purchasesRaw, paymentsByPurchase };
+}
+
+function purchaseDateIso(iso: string): string {
+  return String(iso ?? "").trim().slice(0, 10);
+}
+
+type NotaCreditRow = {
+  amountAbs: number;
+  occurredIso: string;
+};
+
+export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
+  purchases: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[];
+  notaCredits: readonly NotaCreditRow[];
+}): Set<number> {
+  const cancelled = new Set<number>();
+  const usedCreditIdx = new Set<number>();
+  const purchases = [...opts.purchases]
+    .filter((p) => p.total_amount_clp > 0)
+    .sort((a, b) => purchaseDateIso(a.purchase_date).localeCompare(purchaseDateIso(b.purchase_date)));
+  const credits = [...opts.notaCredits]
+    .filter((c) => c.amountAbs >= NOTA_DE_CREDITO_MATCH_MIN_CLP)
+    .sort((a, b) => a.occurredIso.localeCompare(b.occurredIso));
+
+  for (const purchase of purchases) {
+    const pDate = purchaseDateIso(purchase.purchase_date);
+    for (let i = 0; i < credits.length; i++) {
+      if (usedCreditIdx.has(i)) continue;
+      const c = credits[i]!;
+      if (c.amountAbs !== purchase.total_amount_clp) continue;
+      if (c.occurredIso <= pDate) continue;
+      cancelled.add(purchase.id);
+      usedCreditIdx.add(i);
+      break;
+    }
+  }
+  return cancelled;
+}
+
+function loadCancelledInstallmentPurchaseIds(
+  accountId: number,
+  purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[]
+): Set<number> {
+  const notaRows = db
+    .prepare(
+      `SELECT l.merchant, l.amount_clp, COALESCE(s.period_to, s.statement_date, l.posting_date, l.transaction_date) AS occurred
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ?
+         AND l.installment_flag = 0
+         AND l.amount_clp < 0`
+    )
+    .all(accountId) as { merchant: string | null; amount_clp: number; occurred: string | null }[];
+  const notaCredits: NotaCreditRow[] = [];
+  for (const row of notaRows) {
+    if (!isNotaDeCreditoMerchant(row.merchant)) continue;
+    const occurredIso = parseDateLikeToIso(row.occurred);
+    if (!occurredIso || !/^\d{4}-\d{2}-\d{2}$/.test(occurredIso)) continue;
+    notaCredits.push({ amountAbs: Math.abs(Math.round(row.amount_clp)), occurredIso });
+  }
+  return cancelledInstallmentPurchaseIdsByNotaCredit({
+    purchases: purchasesRaw,
+    notaCredits,
+  });
 }
 
 /** Plan cuotas due in each calendar month (for tarjeta monthly P/L when saldo is flat). */
@@ -583,6 +825,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   };
   purchases: CcInstallmentPurchaseComputed[];
   purchases_completed: CcInstallmentPurchaseComputed[];
+  hidden_cancelled_purchases: CcInstallmentPurchaseComputed[];
   months: CcInstallmentMonthRow[];
   installment_history_months: {
     month: string;
@@ -601,6 +844,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   for (const pays of paymentsByPurchase.values()) db_payment_count += pays.length;
   const nowYm = currentCalendarYm();
   const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
+  const cancelledPurchaseIds = loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw);
 
   const computed: CcInstallmentPurchaseComputed[] = [];
   for (const pr of purchasesRaw) {
@@ -626,11 +870,10 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       ? scheduledOutstandingPrincipal(sched)
       : Math.max(0, principal - installmentProgressPayments(payList).reduce((s, x) => s + x.amount_clp, 0));
 
-    const remaining_installments = sched
-      ? remainingInstallmentsOnPlan(sched, pr.cuotas_totales, nowYm)
-      : Math.max(0, pr.cuotas_totales - planSlotsConsumed);
+    const remaining_installments = Math.max(0, pr.cuotas_totales - installments_paid);
 
     const label = (pr.description_merged ?? pr.merchant ?? "Compra").trim() || "Compra";
+    const payment_statements = indexedInstallmentPaymentStatements(payList);
 
     let next_due_month: string | null = null;
     let next_installment_index: number | null = null;
@@ -666,6 +909,10 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       next_installment_index,
       last_paid_month,
       upcoming_cuota_clp: cuota_clp,
+      payment_statements,
+      merged_purchase_ids: [pr.id],
+      merge_reason: null,
+      heuristic_hints: [],
     });
   }
 
@@ -683,16 +930,32 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   );
 
   let total_remaining_principal_clp = 0;
-  const purchases_active = computed.filter((c) => c.remaining_principal_clp > 0 || c.remaining_installments > 0);
+  const latestStatementYm = latestUploadedStatementMonthYm(accountId);
+  const purchaseIsActive = (c: CcInstallmentPurchaseComputed): boolean => {
+    if (cancelledPurchaseIds.has(c.purchase_db_id ?? -1)) return false;
+    const payList = paymentsByPurchase.get(c.purchase_db_id ?? -1) ?? [];
+    return installmentPurchaseShowsActive(
+      {
+        remaining_installments: c.remaining_installments,
+        remaining_principal_clp: c.remaining_principal_clp,
+        installments_paid: c.installments_paid,
+        installment_count: c.installment_count,
+      },
+      payList,
+      latestStatementYm
+    );
+  };
+  const purchases_active = computed.filter(purchaseIsActive);
   for (const c of purchases_active) total_remaining_principal_clp += c.remaining_principal_clp;
 
   const purchases_completed = computed
-    .filter((c) => c.remaining_principal_clp <= 0 && c.remaining_installments <= 0)
+    .filter((c) => !cancelledPurchaseIds.has(c.purchase_db_id ?? -1) && !purchaseIsActive(c))
     .sort((a, b) => {
       const cmp = ymCompare(b.purchase_month ?? "1970-01", a.purchase_month ?? "1970-01");
       if (cmp !== 0) return cmp;
       return a.label.localeCompare(b.label);
     });
+  const hidden_cancelled_purchases = computed.filter((c) => cancelledPurchaseIds.has(c.purchase_db_id ?? -1));
 
   let next_calendar_month: string | null = null;
   let next_calendar_month_total_clp: number | null = null;
@@ -720,6 +983,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     },
     purchases: purchases_active,
     purchases_completed,
+    hidden_cancelled_purchases,
     months,
     installment_history_months,
     totals: {

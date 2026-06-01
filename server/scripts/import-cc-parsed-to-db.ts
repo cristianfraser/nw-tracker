@@ -11,6 +11,7 @@
  *
  * Default: **merge** — upsert statements/lines and installment ledger without wiping existing months.
  * Pass `--wipe` to delete all statements and reload the installment ledger for the account(s).
+ * Pass `--replace-ledger` to refresh installment purchases/payments only (statements kept).
  *
  * Requires migration `020_cc_installment_ledger.sql` applied (`npm run migrate`).
  *
@@ -183,8 +184,13 @@ function main() {
   const accountIdArg = Number(arg("account-id"));
   const dry = process.argv.includes("--dry-run");
   const wipe = process.argv.includes("--wipe");
+  const replaceLedgerOnly = process.argv.includes("--replace-ledger");
   if (process.argv.includes("--merge")) {
     console.warn("# --merge is the default since 2026-05; flag is optional.");
+  }
+  if (wipe && replaceLedgerOnly) {
+    console.error("Use either --wipe or --replace-ledger, not both.");
+    process.exit(1);
   }
   const replaceAccount = wipe;
   const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
@@ -223,7 +229,9 @@ function main() {
   }
 
   if (!dry) {
-    console.log(`# import-cc-parsed mode: ${wipe ? "wipe (full account reload)" : "merge (default)"}`);
+    console.log(
+      `# import-cc-parsed mode: ${wipe ? "wipe (full account reload)" : replaceLedgerOnly ? "replace-ledger (installment ledger only)" : "merge (default)"}`
+    );
     logAccountRouting(discovery, accountIds);
   }
 
@@ -265,6 +273,15 @@ function main() {
         linesSkippedDuplicate = st.linesSkippedDuplicate;
         linesSkippedInstallmentOverlap = st.linesSkippedInstallmentOverlap;
         categoriesRestored += st.categoriesRestored;
+        const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
+          replaceLedger: true,
+        });
+        purchaseUpserts = ledger.purchaseUpserts;
+        paymentUpserts = ledger.paymentUpserts;
+        gapFilled = ledger.gapFilled;
+        valuationMonthsSynced = ledger.valuationMonthsSynced;
+        billingSnapshots = ledger.billingSnapshots;
+      } else if (replaceLedgerOnly) {
         const ledger = mergeInstallmentLedgerFromParsedRows(accountId, accountRecords, {
           replaceLedger: true,
         });
