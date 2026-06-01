@@ -5,6 +5,7 @@
  * Env: `BCENTRAL_EMAIL`, `BCENTRAL_PASSWORD` (repo-root `.env`).
  */
 import { BCENTRAL_SERIES } from "./bcentralSeries.js";
+import { fetchOut } from "./httpOut.js";
 import {
   acquireSbifRequestSlot,
   recordSbifRequestFailure,
@@ -105,7 +106,7 @@ function buildUrl(creds: BcentralCredentials, params: Record<string, string>): s
 export async function fetchBcentralJson(url: string): Promise<unknown> {
   await acquireSbifRequestSlot();
   try {
-    const res = await fetch(url, {
+    const res = await fetchOut("bcentral", url, {
       headers: { Accept: "application/json", "User-Agent": "nw-tracker-bcentral/1.0" },
     });
     const text = await res.text();
