@@ -42,9 +42,10 @@ import {
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { buildFxCoverage } from "./fxCoverage.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "./entityColors.js";
-import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
+import { accountBucketKindSlug, accountKindSlugForAccountId, bucketSlugForAccountId } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { listRatesInstrumentSeries, listMarketDisplaySeries } from "./marketDisplaySeries.js";
@@ -94,7 +95,13 @@ import {
 } from "./ccInstallmentManual.js";
 import { deleteCcWebPasteStatementLine } from "./ccStatementLineDelete.js";
 import { patchCreditCardBillingConfig, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
+import {
+  checkingMovementBalanceLive,
+  clearCheckingLedgerAnchor,
+  isCheckingLedgerAnchorNote,
+  maybeSyncCheckingLedgerAnchor,
+  upsertCheckingLedgerAnchor,
+} from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -143,6 +150,14 @@ import {
   syncStatusPayload,
 } from "./globalSyncStale.js";
 import { buildImportSyncDocumentCoveragePayload } from "./importSyncDocumentCoverage.js";
+import {
+  createCcExpenseGenericUniqueMerchant,
+  deleteCcExpenseGenericUniqueMerchant,
+  listCcExpenseGenericUniqueMerchants,
+  updateCcExpenseGenericUniqueMerchant,
+} from "./ccExpenseGenericUniqueMerchants.js";
+import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
+import { backfillGenericTransferUniquePurchases } from "./ccExpenseGenericTransferBackfill.js";
 import { lastSyncRunCreatedAt } from "./syncRunLog.js";
 import {
   getGlobalSyncSchedulerSnapshot,
@@ -613,10 +628,54 @@ app.get("/api/accounts/:id/checking-cartola-months", (req, res) => {
   }
   const payload = getCheckingCartolaMonths(id);
   if (!payload) {
-    res.status(400).json({ error: "account is not cuenta corriente" });
+    res.status(400).json({ error: "account is not a cash cartola account (cuenta corriente or cuenta vista)" });
     return;
   }
   res.json(payload);
+});
+
+app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
+  const accountId = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const payload = getCheckingCartolaMonths(accountId);
+  if (!payload) {
+    res.status(400).json({ error: "account is not a cash cartola account (cuenta corriente or cuenta vista)" });
+    return;
+  }
+  const body = req.body as { clear?: boolean; amount_clp?: number; occurred_on?: string };
+  if (body.clear === true) {
+    clearCheckingLedgerAnchor(accountId);
+    res.json({
+      ledger_anchor: null,
+      cartola_derived_anchor: getCheckingCartolaMonths(accountId)?.cartola_derived_anchor ?? null,
+    });
+    return;
+  }
+  const amount = body.amount_clp;
+  const occurredOn = body.occurred_on;
+  if (amount == null || !Number.isFinite(amount)) {
+    res.status(400).json({ error: "amount_clp required (number, 0 allowed)" });
+    return;
+  }
+  if (!occurredOn || !/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) {
+    res.status(400).json({ error: "occurred_on required (YYYY-MM-DD)" });
+    return;
+  }
+  const saved = upsertCheckingLedgerAnchor(accountId, {
+    amount_clp: Math.round(amount),
+    occurred_on: occurredOn,
+  });
+  if (!saved) {
+    res.status(400).json({ error: "no cartola saldo final to anchor against" });
+    return;
+  }
+  res.json({
+    ledger_anchor: saved,
+    cartola_derived_anchor: getCheckingCartolaMonths(accountId)?.cartola_derived_anchor ?? null,
+  });
 });
 
 app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
@@ -855,7 +914,7 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
     res.status(404).json({ error: "account not found" });
     return;
   }
-  if (bucketSlug !== "credit_card") {
+  if (accountKindSlugForAccountId(id) !== "credit_card") {
     res.json({
       account_id: id,
       source: "none" as const,
@@ -877,8 +936,7 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
 
 app.post("/api/accounts/:id/cc-purchases", (req, res) => {
   const id = operationalAccountIdFromReq(req);
-  const bucketSlug = bucketSlugForAccountId(id);
-  if (!bucketSlug || bucketSlug !== "credit_card") {
+  if (accountKindSlugForAccountId(id) !== "credit_card") {
     res.status(400).json({ error: "account is not a credit card" });
     return;
   }
@@ -958,15 +1016,16 @@ app.get("/api/accounts/:id/import-specs", (req, res) => {
     return;
   }
   const bucketSlug = bucketSlugForAccountId(id);
+  const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : "";
   res.json({
     account_id: id,
     bucket_slug: bucketSlug,
     document_imports: documentImportSpecsForAccount(id),
-    supports_cc_web_paste: bucketSlug === "credit_card",
-    supports_cc_statement_pdf: bucketSlug === "credit_card",
-    supports_checking_recent_xlsx: bucketSlug === "cuenta_corriente",
-    supports_checking_cartola_xlsx: bucketSlug === "cuenta_corriente",
-    supports_cuenta_vista_cartola_pdf: bucketSlug === "cuenta_vista",
+    supports_cc_web_paste: bucketKind === "credit_card",
+    supports_cc_statement_pdf: bucketKind === "credit_card",
+    supports_checking_recent_xlsx: bucketKind === "cuenta_corriente",
+    supports_checking_cartola_xlsx: bucketKind === "cuenta_corriente",
+    supports_cuenta_vista_cartola_pdf: bucketKind === "cuenta_vista",
   });
 });
 
@@ -1143,6 +1202,10 @@ app.post("/api/accounts/:id/movements", (req, res) => {
       `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta) VALUES (?, ?, ?, ?, ?)`
     )
     .run(accountId, amount_clp, occurred_on, note, units_delta);
+  const bucketKind = accountBucketKindSlug(account.bucket_slug);
+  if (!isCheckingLedgerAnchorNote(note)) {
+    maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
+  }
   res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
 });
 
@@ -1288,6 +1351,10 @@ app.get("/api/fx/latest", (_req, res) => {
     .prepare(`SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
     .get(chileCalendarTodayYmd()) as { date: string; clp_per_usd: number } | undefined;
   res.json(row ?? null);
+});
+
+app.get("/api/fx/coverage", (_req, res) => {
+  res.json(buildFxCoverage());
 });
 
 app.get("/api/fx", (_req, res) => {
@@ -1583,6 +1650,73 @@ app.post("/api/sync/force-stale", (req, res) => {
 
 app.get("/api/import-sync/document-coverage", (_req, res) => {
   res.json(buildImportSyncDocumentCoveragePayload());
+});
+
+app.get("/api/import-sync/generic-unique-merchants", (_req, res) => {
+  res.json({ merchants: listCcExpenseGenericUniqueMerchants() });
+});
+
+app.post("/api/import-sync/generic-unique-merchants", (req, res) => {
+  const raw = req.body?.merchant;
+  if (typeof raw !== "string") {
+    res.status(400).json({ error: "merchant required" });
+    return;
+  }
+  const merchantKey = normalizeCcExpenseMerchantKey(raw);
+  if (!merchantKey) {
+    res.status(400).json({ error: "merchant required" });
+    return;
+  }
+  try {
+    const row = createCcExpenseGenericUniqueMerchant(merchantKey);
+    const backfill = backfillGenericTransferUniquePurchases();
+    res.json({ row, backfill });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(msg.includes("already exists") ? 409 : 400).json({ error: msg });
+  }
+});
+
+app.patch("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  const raw = req.body?.merchant;
+  if (typeof raw !== "string") {
+    res.status(400).json({ error: "merchant required" });
+    return;
+  }
+  const merchantKey = normalizeCcExpenseMerchantKey(raw);
+  if (!merchantKey) {
+    res.status(400).json({ error: "merchant required" });
+    return;
+  }
+  try {
+    const row = updateCcExpenseGenericUniqueMerchant(id, merchantKey);
+    const backfill = backfillGenericTransferUniquePurchases();
+    res.json({ row, backfill });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const status = msg === "not found" ? 404 : msg.includes("already exists") ? 409 : 400;
+    res.status(status).json({ error: msg });
+  }
+});
+
+app.delete("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  try {
+    deleteCcExpenseGenericUniqueMerchant(id);
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(msg === "not found" ? 404 : 400).json({ error: msg });
+  }
 });
 
 app.get("/api/messages/unread-count", (_req, res) => {

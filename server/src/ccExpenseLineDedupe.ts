@@ -24,6 +24,17 @@ const dbCheckDedupeKey = db.prepare(
    LIMIT 1`
 );
 
+const dbFindLineByDedupeKey = db.prepare(
+  `SELECT l.id, l.origin_card_last4 FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
+   LIMIT 1`
+);
+
+const dbUpdateLineOriginCard = db.prepare(
+  `UPDATE cc_statement_lines SET origin_card_last4 = ? WHERE id = ?`
+);
+
 /** Stable display key for gastos lines (normalized purchase date). */
 export function flowCcExpenseLineFingerprint(
   line: CcExpenseLineForDedupe & { line_role?: string }
@@ -153,4 +164,40 @@ export function ccLineDedupeKeyExistsOnAccount(accountId: number, keys: readonly
     if (row) return true;
   }
   return false;
+}
+
+export function findCcStatementLineIdByDedupeKey(
+  accountId: number,
+  keys: readonly string[]
+): number | null {
+  for (const key of keys) {
+    if (!key) continue;
+    const row = dbFindLineByDedupeKey.get(accountId, key) as { id: number } | undefined;
+    if (row) return row.id;
+  }
+  return null;
+}
+
+/** Patch origin_card_last4 on an existing line matched by dedupe key (re-import path). */
+export function patchCcLineOriginCardOnDedupeHit(
+  accountId: number,
+  dedupeKeys: readonly string[],
+  originCardLast4: string | null
+): { lineId: number | null; patched: boolean } {
+  if (!originCardLast4) {
+    return { lineId: findCcStatementLineIdByDedupeKey(accountId, dedupeKeys), patched: false };
+  }
+  for (const key of dedupeKeys) {
+    if (!key) continue;
+    const row = dbFindLineByDedupeKey.get(accountId, key) as
+      | { id: number; origin_card_last4: string | null }
+      | undefined;
+    if (!row) continue;
+    if (row.origin_card_last4 === originCardLast4) {
+      return { lineId: row.id, patched: false };
+    }
+    dbUpdateLineOriginCard.run(originCardLast4, row.id);
+    return { lineId: row.id, patched: true };
+  }
+  return { lineId: null, patched: false };
 }
