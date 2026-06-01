@@ -17,6 +17,8 @@ import {
 import { reconcileManualInstallmentPurchasesAfterStatementImport } from "./ccManualInstallmentStatementReconcile.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { assertCcImportReconcilesOrThrow } from "./ccStatementImportReconcile.js";
+import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
+import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { loadCreditCardInstallmentPurchases } from "./creditCardInstallments.js";
 
 function parseInt10(s: string): number | null {
@@ -135,12 +137,13 @@ export function mergeInstallmentLedgerFromParsedRows(
 
   const insPay = db.prepare(
     `INSERT INTO cc_installment_payments (
-       purchase_id, pay_by_date, statement_date, source_pdf, amount_clp, cuota_current, cuota_total, parser_row_id
+       purchase_id, pay_by_date, statement_date, statement_period_month, source_pdf, amount_clp, cuota_current, cuota_total, parser_row_id
      ) VALUES (
-       @purchase_id, @pay_by_date, @statement_date, @source_pdf, @amount_clp, @cuota_current, @cuota_total, @parser_row_id
+       @purchase_id, @pay_by_date, @statement_date, @statement_period_month, @source_pdf, @amount_clp, @cuota_current, @cuota_total, @parser_row_id
      )
      ON CONFLICT(purchase_id, pay_by_date) DO UPDATE SET
        statement_date = excluded.statement_date,
+       statement_period_month = excluded.statement_period_month,
        source_pdf = excluded.source_pdf,
        amount_clp = excluded.amount_clp,
        cuota_current = excluded.cuota_current,
@@ -165,7 +168,25 @@ export function mergeInstallmentLedgerFromParsedRows(
       );
     }
 
-    for (const agg of byLoan.values()) {
+    const purchaseIdByFingerprint = new Map<string, number>();
+    for (const row of db
+      .prepare(
+        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant
+         FROM cc_installment_purchases WHERE account_id = ?`
+      )
+      .all(accountId) as {
+      id: number;
+      purchase_date: string;
+      total_amount_clp: number;
+      cuotas_totales: number;
+      merchant: string | null;
+    }[]) {
+      const fp = installmentPurchaseLedgerDedupeKey(row);
+      const prev = purchaseIdByFingerprint.get(fp);
+      if (prev == null || row.id < prev) purchaseIdByFingerprint.set(fp, row.id);
+    }
+
+    for (const [loanKey, agg] of byLoan.entries()) {
       const sorted = [...agg.rows].sort(
         (a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? "")
       );
@@ -190,23 +211,59 @@ export function mergeInstallmentLedgerFromParsedRows(
       const matched = String(first.matched_excel_row ?? "").trim();
       const matched_baseline = baselineIds.has(matched) ? matched : null;
 
-      insP.run({
-        account_id: accountId,
-        card_group: agg.card_group,
-        canonical_row_id: agg.canonical_row_id,
-        dedupe_key: String(first.dedupe_key ?? "").trim() || null,
-        parser_row_id_sample: String(first.row_id ?? "").trim() || null,
-        source_pdf_sample: String(first.source_pdf ?? "").trim() || null,
+      const merchant = String(first.merchant ?? "").trim() || null;
+      const fingerprint = installmentPurchaseLedgerDedupeKey({
         purchase_date: purchaseDate,
         total_amount_clp: maxTotal,
         cuotas_totales: maxCuotas,
-        merchant: String(first.merchant ?? "").trim() || null,
-        description_merged: String(first.description_merged ?? "").trim() || null,
-        matched_baseline_purchase_id: matched_baseline,
+        merchant,
       });
-      purchaseUpserts++;
-
-      const pid = (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
+      let pid = purchaseIdByFingerprint.get(fingerprint);
+      if (pid == null) {
+        insP.run({
+          account_id: accountId,
+          card_group: agg.card_group,
+          canonical_row_id: agg.canonical_row_id,
+          dedupe_key: String(first.dedupe_key ?? "").trim() || loanKey,
+          parser_row_id_sample: String(first.row_id ?? "").trim() || null,
+          source_pdf_sample: String(first.source_pdf ?? "").trim() || null,
+          purchase_date: purchaseDate,
+          total_amount_clp: maxTotal,
+          cuotas_totales: maxCuotas,
+          merchant,
+          description_merged: String(first.description_merged ?? "").trim() || null,
+          matched_baseline_purchase_id: matched_baseline,
+        });
+        purchaseUpserts++;
+        pid = (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
+        purchaseIdByFingerprint.set(fingerprint, pid);
+      } else {
+        db.prepare(
+          `UPDATE cc_installment_purchases SET
+             purchase_date = @purchase_date,
+             total_amount_clp = @total_amount_clp,
+             cuotas_totales = @cuotas_totales,
+             merchant = COALESCE(NULLIF(merchant, ''), @merchant),
+             description_merged = COALESCE(NULLIF(description_merged, ''), @description_merged),
+             dedupe_key = COALESCE(@dedupe_key, dedupe_key),
+             parser_row_id_sample = COALESCE(@parser_row_id_sample, parser_row_id_sample),
+             source_pdf_sample = COALESCE(@source_pdf_sample, source_pdf_sample),
+             matched_baseline_purchase_id = COALESCE(@matched_baseline_purchase_id, matched_baseline_purchase_id)
+           WHERE id = @id`
+        ).run({
+          id: pid,
+          purchase_date: purchaseDate,
+          total_amount_clp: maxTotal,
+          cuotas_totales: maxCuotas,
+          merchant,
+          description_merged: String(first.description_merged ?? "").trim() || null,
+          dedupe_key: String(first.dedupe_key ?? "").trim() || loanKey,
+          parser_row_id_sample: String(first.row_id ?? "").trim() || null,
+          source_pdf_sample: String(first.source_pdf ?? "").trim() || null,
+          matched_baseline_purchase_id: matched_baseline,
+        });
+        purchaseUpserts++;
+      }
 
       const payGroups = new Map<string, CcStatementCsvRecord[]>();
       for (const r of sorted) {
@@ -242,6 +299,7 @@ export function mergeInstallmentLedgerFromParsedRows(
           purchase_id: pid,
           pay_by_date: payBy,
           statement_date: String(chosen.statement_date ?? "").trim() || null,
+          statement_period_month: statementPeriodMonthFromParsedRow(chosen),
           source_pdf: String(chosen.source_pdf ?? "").trim() || null,
           amount_clp: cuotaAmt,
           cuota_current,

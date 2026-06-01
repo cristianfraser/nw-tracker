@@ -481,6 +481,16 @@ export interface CcInstallmentPurchaseComputed {
   /** YYYY-MM from last payment row (DB) or schedule (CSV). */
   last_paid_month: string | null;
   upcoming_cuota_clp: number;
+  payment_statements?: {
+    pay_by_date: string;
+    statement_date: string | null;
+    source_pdf: string | null;
+    cuota_current: number | null;
+    amount_clp: number;
+  }[];
+  merged_purchase_ids?: number[];
+  merge_reason?: string | null;
+  heuristic_hints?: string[];
 }
 
 export interface CcInstallmentMonthBreakdown {
@@ -521,6 +531,8 @@ export interface AccountCcInstallmentsResponse {
   purchases: CcInstallmentPurchaseComputed[];
   /** Compras en cuotas ya liquidadas (restan 0 y saldo 0). */
   purchases_completed: CcInstallmentPurchaseComputed[];
+  /** Hidden from cuotas tables because they were cancelled/reimbursed by later credit notes. */
+  hidden_cancelled_purchases?: CcInstallmentPurchaseComputed[];
   months: CcInstallmentMonthRow[];
   totals: {
     total_remaining_principal_clp: number;

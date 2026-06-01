@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
 import { PaginatedTable } from "../../components/ui/PaginatedTable";
 import type { AccountCcInstallmentsResponse, CcInstallmentPurchaseComputed } from "../../types";
@@ -98,74 +98,101 @@ function CreditCardInstallmentsSection({
     rows: ReadonlyArray<CcInstallmentPurchaseComputed>,
     opts: { dueColumn: "next" | "last" | "none" }
   ) =>
-    rows.map((p) => (
-      <tr key={p.purchase_id}>
-        <td>
-          <div>{p.label}</div>
-          <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
-          {p.purchase_source === "manual" ? (
-            <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.sourceManual")}</div>
-          ) : fromDb ? (
-            <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.sourcePdf")}</div>
+    rows.map((p) => {
+      const detailColSpan = fromDb ? (opts.dueColumn === "none" ? 9 : 10) : opts.dueColumn === "none" ? 12 : 13;
+      return (
+        <Fragment key={p.purchase_id}>
+          <tr>
+            <td>
+              <div>{p.label}</div>
+              <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
+              {p.purchase_source === "manual" ? (
+                <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.sourceManual")}</div>
+              ) : fromDb ? (
+                <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.sourcePdf")}</div>
+              ) : null}
+              {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
+              {fromDb && p.purchase_source === "manual" && p.purchase_db_id != null ? (
+                <button
+                  type="button"
+                  className={cn("muted", styles.purchaseMeta)}
+                  disabled={manualBusy}
+                  onClick={() => {
+                    deletePurchase.mutate(p.purchase_db_id!);
+                  }}
+                >
+                  {t("account.creditCard.manualDelete")}
+                </button>
+              ) : null}
+            </td>
+            <td className="mono">{p.installment_count}</td>
+            <td className="mono">{p.installments_paid}</td>
+            <td className="mono">{p.remaining_installments}</td>
+            <td className="mono">{formatClp(p.principal_clp)}</td>
+            {!fromDb ? (
+              <td className="mono">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
+            ) : null}
+            <td className="mono">{p.purchase_month ?? "—"}</td>
+            <td className="mono">{p.first_due_month}</td>
+            {!fromDb ? <td className="mono">{p.schedule_offset_months}</td> : null}
+            {!fromDb ? (
+              <td>
+                <input
+                  type="number"
+                  step={1}
+                  className={cn("mono", styles.offsetInput)}
+                  value={extraOffsets[p.purchase_id] ?? 0}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = raw === "" || raw === "-" ? 0 : Math.trunc(Number(raw));
+                    const v = Number.isFinite(n) ? n : 0;
+                    const next = { ...extraOffsets, [p.purchase_id]: v };
+                    persistExtraCcOffsets(accountId, next);
+                    onExtraOffsetsChange(next);
+                  }}
+                  aria-label={`Meses de offset adicionales para ${p.label}`}
+                />
+              </td>
+            ) : null}
+            <td className="mono">{formatClp(p.cuota_clp)}</td>
+            <td className="mono">{formatClp(p.remaining_principal_clp)}</td>
+            {opts.dueColumn !== "none" ? (
+              <td className="mono">
+                {opts.dueColumn === "last"
+                  ? p.last_paid_month
+                    ? `${p.last_paid_month} (${formatYmEs(p.last_paid_month)})`
+                    : "—"
+                  : p.next_due_month
+                    ? `${p.next_due_month} (${formatYmEs(p.next_due_month)})`
+                    : "—"}
+              </td>
+            ) : null}
+          </tr>
+          {opts.dueColumn === "none" && p.payment_statements && p.payment_statements.length > 0 ? (
+            <tr>
+              <td colSpan={detailColSpan} className={cn("muted", styles.purchaseMeta)}>
+                {p.merged_purchase_ids && p.merged_purchase_ids.length > 1 ? (
+                  <div className="mono">
+                    duplicate purchase ids merged: {p.merged_purchase_ids.join(", ")}
+                  </div>
+                ) : null}
+                {p.merge_reason ? <div className="mono">merge reason: {p.merge_reason}</div> : null}
+                {p.heuristic_hints && p.heuristic_hints.length > 0 ? (
+                  <div className="mono">heuristics: {p.heuristic_hints.join(" | ")}</div>
+                ) : null}
+                <div>Estado(s) con cuota para esta compra:</div>
+                {p.payment_statements.map((st, idx) => (
+                  <div key={`${p.purchase_id}:st:${idx}`} className="mono">
+                    {st.statement_date ?? "sin fecha estado"} · {st.source_pdf ?? "sin source_pdf"} · pay_by{" "}
+                    {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
+                  </div>
+                ))}
+              </td>
+            </tr>
           ) : null}
-          {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
-          {fromDb && p.purchase_source === "manual" && p.purchase_db_id != null ? (
-            <button
-              type="button"
-              className={cn("muted", styles.purchaseMeta)}
-              disabled={manualBusy}
-              onClick={() => {
-                deletePurchase.mutate(p.purchase_db_id!);
-              }}
-            >
-              {t("account.creditCard.manualDelete")}
-            </button>
-          ) : null}
-        </td>
-        <td className="mono">{p.installment_count}</td>
-        <td className="mono">{p.installments_paid}</td>
-        <td className="mono">{p.remaining_installments}</td>
-        <td className="mono">{formatClp(p.principal_clp)}</td>
-        {!fromDb ? (
-          <td className="mono">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
-        ) : null}
-        <td className="mono">{p.purchase_month ?? "—"}</td>
-        <td className="mono">{p.first_due_month}</td>
-        {!fromDb ? <td className="mono">{p.schedule_offset_months}</td> : null}
-        {!fromDb ? (
-          <td>
-            <input
-              type="number"
-              step={1}
-              className={cn("mono", styles.offsetInput)}
-              value={extraOffsets[p.purchase_id] ?? 0}
-              onChange={(e) => {
-                const raw = e.target.value;
-                const n = raw === "" || raw === "-" ? 0 : Math.trunc(Number(raw));
-                const v = Number.isFinite(n) ? n : 0;
-                const next = { ...extraOffsets, [p.purchase_id]: v };
-                persistExtraCcOffsets(accountId, next);
-                onExtraOffsetsChange(next);
-              }}
-              aria-label={`Meses de offset adicionales para ${p.label}`}
-            />
-          </td>
-        ) : null}
-        <td className="mono">{formatClp(p.cuota_clp)}</td>
-        <td className="mono">{formatClp(p.remaining_principal_clp)}</td>
-        {opts.dueColumn !== "none" ? (
-          <td className="mono">
-            {opts.dueColumn === "last"
-              ? p.last_paid_month
-                ? `${p.last_paid_month} (${formatYmEs(p.last_paid_month)})`
-                : "—"
-              : p.next_due_month
-                ? `${p.next_due_month} (${formatYmEs(p.next_due_month)})`
-                : "—"}
-          </td>
-        ) : null}
-      </tr>
-    ));
+        </Fragment>
+      );
+    });
 
   const purchasesCompletedPages = useMemo(() => {
     const pageSize = 10;

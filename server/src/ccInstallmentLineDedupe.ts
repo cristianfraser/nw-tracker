@@ -41,7 +41,7 @@ export function isInstallmentContractSummaryMerchant(
 export function merchantStemForInstallmentDedupe(
   merchant: string | null | undefined
 ): string {
-  const s = String(merchant ?? "").trim();
+  const s = String(merchant ?? "").trim().replace(/\s+/g, " ");
   if (!s) return "";
   const upper = s.toUpperCase();
   const markers = [
