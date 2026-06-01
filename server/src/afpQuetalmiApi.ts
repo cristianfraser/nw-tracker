@@ -7,6 +7,8 @@
  * Query: listaAFPs=UNO, listaFondos=A, fechaInicial, fechaFinal (dd/mm/yyyy)
  */
 
+import { fetchOut } from "./httpOut.js";
+
 export const AFP_UNO_CUOTA_SERIES_KEY = "afp_uno_cuota_a";
 
 export function toDdMmYyyy(ymd: string): string | null {
@@ -171,7 +173,7 @@ export async function fetchQuetalmiCuotas(params: {
   u.searchParams.set("listaFondos", params.listaFondos);
   u.searchParams.set("fechaInicial", params.fechaInicialDdMmYyyy);
   u.searchParams.set("fechaFinal", params.fechaFinalDdMmYyyy);
-  const res = await fetch(u.toString(), {
+  const res = await fetchOut("quetalmiafp", u.toString(), {
     headers: {
       "X-API-Key": params.apiKey,
       Accept: "application/json",

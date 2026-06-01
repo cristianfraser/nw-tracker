@@ -3,6 +3,7 @@
  * Requires a normal browser User-Agent or Yahoo returns 401.
  */
 
+import { fetchOut } from "./httpOut.js";
 import { nyseYmdFromUnix } from "./nyseSession.js";
 
 export type EodCloseSeries = { dates: string[]; closes: number[] };
@@ -40,7 +41,7 @@ type YahooChartJson = {
 async function fetchYahooChart(symbol: string, query: string): Promise<YahooChartResult> {
   const sym = encodeURIComponent(symbol);
   const url = `https://query2.finance.yahoo.com/v8/finance/chart/${sym}?${query}`;
-  const res = await fetch(url, {
+  const res = await fetchOut(`yahoo:${symbol}`, url, {
     headers: { "User-Agent": CHART_UA, Accept: "application/json" },
   });
   if (!res.ok) {

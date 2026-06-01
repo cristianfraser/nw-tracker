@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { httpRequestLogMiddleware } from "./httpRequestLog.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,7 @@ import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
   getStateContributionInflowEventsForAccount,
-  totalDepositsClpWithStocksSheetFloor,
+  totalDepositsClpForAccount,
   totalDisplayDepositsClpForAccount,
   totalStateContributionsClpForAccount,
   totalWithdrawalsClpForAccount,
@@ -215,8 +216,14 @@ function subgroupAllowedForGroup(group: string): boolean {
 
 function isKnownClassTabGroup(group: string): boolean {
   if (group === "inversiones") return true;
-  const ok = db.prepare(`SELECT 1 AS o FROM asset_groups WHERE slug = ?`).get(group) as { o: number } | undefined;
-  return Boolean(ok);
+  const ag = db.prepare(`SELECT 1 AS o FROM asset_groups WHERE slug = ?`).get(group) as
+    | { o: number }
+    | undefined;
+  if (ag) return true;
+  const pg = db.prepare(`SELECT 1 AS o FROM portfolio_groups WHERE slug = ?`).get(group) as
+    | { o: number }
+    | undefined;
+  return Boolean(pg);
 }
 
 /**
@@ -275,6 +282,7 @@ const PORT = Number(process.env.PORT) || 3001;
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
+app.use(httpRequestLogMiddleware);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
@@ -693,7 +701,7 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
   const events = getMergedDepositInflowEventsForAccount(id);
   const displayEvents = getMergedDisplayDepositInflowEventsForAccount(id);
   const stateEvents = getStateContributionInflowEventsForAccount(id);
-  const total_clp = totalDepositsClpWithStocksSheetFloor(id, bucketSlug);
+  const total_clp = totalDepositsClpForAccount(id);
   const display_total_clp = totalDisplayDepositsClpForAccount(id);
   let cumulative_clp = 0;
   const events_with_cumulative = events.map((e) => {
@@ -761,7 +769,7 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
         notes: metaRow.account_notes,
       } satisfies AccountRow)
     : null;
-  const deposits_clp = totalDepositsClpWithStocksSheetFloor(id, bucketSlug);
+  const deposits_clp = totalDepositsClpForAccount(id);
   let latest = await latestValuationDisplayForAccount(id, bucketSlug || null, {
     notes: metaRow?.account_notes ?? null,
     name: metaRow?.account_name ?? null,
@@ -783,7 +791,9 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
   let latest_valuation_date = latest?.as_of_date ?? null;
   if (
     metaRow &&
-    (bucketKind === "afp" || (metaRow.account_notes?.startsWith("import:fintual|cert|key=") ?? false)) &&
+    (bucketKind === "afp" ||
+      (metaRow.account_notes?.startsWith("import:fintual|cert|key=") ?? false) ||
+      accountUsesEquityMtm(id)) &&
     position?.value_clp != null
   ) {
     latest_valuation_clp = position.value_clp;

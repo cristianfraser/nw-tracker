@@ -3,6 +3,8 @@
  * Historical series stay on ¿Qué tal mi AFP?; the site refreshes around midnight Chile time.
  */
 
+import { fetchOut } from "./httpOut.js";
+
 const UNO_HOMEPAGE = "https://www.uno.cl/";
 
 const ES_MONTH_TO_MM: Record<string, string> = {
@@ -69,7 +71,7 @@ export function parseUnoClHomepageFondoAValorCuota(html: string): UnoClFondoACuo
 }
 
 export async function fetchUnoClHomepageHtml(opts?: { signal?: AbortSignal }): Promise<string> {
-  const res = await fetch(UNO_HOMEPAGE, {
+  const res = await fetchOut("uno.cl", UNO_HOMEPAGE, {
     redirect: "follow",
     signal: opts?.signal,
     headers: {
