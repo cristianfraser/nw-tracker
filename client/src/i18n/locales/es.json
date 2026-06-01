@@ -5,6 +5,15 @@
       "displayCurrency": "Divisa: "
     }
   },
+  "fxCoverage": {
+    "title": "Tipo de cambio USD/CLP incompleto",
+    "missingFromDate": "Sin tipo de cambio desde {{date}} para convertir saldos y gráficos en US$.",
+    "sparseHistory": "Historial diario escaso ({{daily}} días observados de {{rows}} filas en fx_daily).",
+    "hint": "Ejecuta el backfill o revisa la sincronización en",
+    "depositConversionError": "Al menos un depósito no pudo convertirse a US$ (falta fx_daily en la fecha del movimiento).",
+    "syncStale": "La sincronización USD/EUR con Banco Central está desactualizada o falló.",
+    "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en US$"
+  },
   "rates": {
     "instrumentDisplayHint": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD.",
     "recentColDate": "Fecha",
@@ -24,7 +33,11 @@
   },
   "retirement": {
     "apv": "APV",
-    "afpAfc": "AFP + AFC"
+    "afpAfc": "AFP + AFC",
+    "subgroups": {
+      "afp": "afp",
+      "afc": "afc"
+    }
   },
   "cash": {
     "reserva": "reserva",
@@ -68,7 +81,8 @@
       "real_estate": "Inmuebles",
       "retirement": "Retiro",
       "brokerage": "Brokerage",
-      "cash_eqs": "Efectivo"
+      "cash_eqs": "Efectivo",
+      "cash_savings": "Ahorros y reservas"
     },
     "sections": {
       "primaryAccountsTitle": "Cuentas principales",
@@ -84,10 +98,14 @@
       "perfChartTitleYearly": "Δ anual por clase, total anual inversiones y Δ anual combinado",
       "accumSectionTitleMonthly": "Inversiones — ganancias acumuladas",
       "accumSectionTitleYearly": "Inversiones — acumulado (pasos anuales)",
-      "accumSectionHintMonthly": "Barras = Δ mensual y depósitos (inversiones); líneas MM3; área = ganancias acumuladas desde el primer mes.",
-      "accumSectionHintYearly": "Barras = Δ anual y depósitos (inversiones); líneas MM3; área = ganancias acumuladas desde el primer año.",
+      "accumSectionHintMonthly": "Arriba: ganancias acumuladas con Δ mensual y MM3. Abajo: Δ mensual, depósitos y sus MM3 (misma escala).",
+      "accumSectionHintYearly": "Arriba: ganancias acumuladas con Δ anual y MM3. Abajo: Δ anual, depósitos y sus MM3 (misma escala).",
       "accumChartTitleMonthly": "Δ mensual (inversiones), depósitos y ganancias acumuladas",
       "accumChartTitleYearly": "Δ anual (inversiones), depósitos y ganancias acumuladas",
+      "accumEarningsChartTitleMonthly": "Ganancias acumuladas y Δ mensual (inversiones)",
+      "accumEarningsChartTitleYearly": "Ganancias acumuladas y Δ anual (inversiones)",
+      "accumFlowsChartTitleMonthly": "Δ mensual y depósitos (inversiones)",
+      "accumFlowsChartTitleYearly": "Δ anual y depósitos (inversiones)",
       "deltaRetirementMonthly": "Δ mensual retiro",
       "deltaRetirementYearly": "Δ anual retiro",
       "deltaBrokerageMonthly": "Δ mensual brokerage",
@@ -125,13 +143,15 @@
       "periodDepositsYear": "Depósitos del año",
       "periodDeltaMonth": "P/L del mes",
       "periodDeltaYear": "P/L del año",
-      "summaryAria": "Depósitos y Δ total y del período"
+      "summaryAria": "Depósitos y Δ total y del período",
+      "creditCardShortfallFromSavings": "Cobertura tarjeta desde ahorros"
     }
   },
   "sidebar": {
     "openMenu": "Abrir menú",
     "closeMenu": "Cerrar menú",
     "inversiones": "Inversiones",
+    "checking_accounts": "Cuentas corrientes",
     "afp": "AFP",
     "afc": "AFC",
     "flows": "Flujos",
@@ -208,6 +228,10 @@
       "previewInvalid": "Completa nombre, ticker, categoría y fecha en cada movimiento con fila."
     }
   },
+  "messages": {
+    "showMoreDetail": "Ver más…",
+    "detailModalClose": "Cerrar"
+  },
   "notifications": {
     "pageHint": "Avisos de validación (p. ej. Fintual) y otras alertas del sistema.",
     "unreadBadge": "{{count}} sin leer",
@@ -248,6 +272,7 @@
     "colMonth": "Mes",
     "colAccount": "Cuenta",
     "importedYes": "{{account}}: documento de {{month}} importado",
+    "cartolaSinMovimientosOnFile": "{{account}}: cartola en disco sin movimientos ({{month}})",
     "importedUnlinked": "{{account}}: {{month}} importado, PDF no enlazado",
     "importedNo": "{{account}}: falta documento de {{month}}",
     "showMore": "Mostrar más…",
@@ -395,11 +420,23 @@
       "cartolaNo": "Sin cartola",
       "colDeposits": "Abonos",
       "colWithdrawals": "Cargos",
+      "colMovements": "Movimientos",
+      "cartolaRegisteredNoMovements": "Cartola registrada sin movimientos importados",
       "colBalanceEnd": "Saldo fin de mes",
       "colCartolaSaldo": "Saldo cartola (ref.)",
       "colDiff": "Diferencia",
       "colCartola": "Cartola",
-      "cartolaYes": "Importada"
+      "cartolaYes": "Importada",
+      "ledgerAnchorTitle": "Ancla del ledger",
+      "ledgerAnchorHint": "Ajuste único al inicio del historial (mes anterior al primero) para alinear el ledger con el saldo final de la última cartola importada. Se recalcula al importar cartolas o al agregar movimientos manuales.",
+      "ledgerAnchorAmount": "Monto (CLP)",
+      "ledgerAnchorDate": "Fecha",
+      "ledgerAnchorDerived": "Objetivo cartola {{month}}: {{amount}} · fecha sugerida {{date}} (mes anterior al primero)",
+      "ledgerAnchorSave": "Guardar",
+      "ledgerAnchorClear": "Quitar ancla",
+      "ledgerAnchorSaved": "Ancla guardada.",
+      "ledgerAnchorCleared": "Ancla eliminada.",
+      "ledgerAnchorNoCartola": "Sin cartola con saldo final — no hay ancla automática."
     },
     "creditCard": {
       "lastFacturado": "Último facturado",
@@ -550,7 +587,8 @@
         "fun": "Ocio",
         "trees": "Jardín / plantas",
         "others": "Otros",
-        "deposits": "Depósitos (a inversiones)"
+        "deposits": "Depósitos (a inversiones)",
+        "checking_internal_transfer": "Traspaso interno (cuentas)"
       },
       "monthlyDetailHint": "Una fila por mes calendario. Compras: mes de la compra (cargos únicos y total en cuotas). Cuotas: mes en que se factura cada cuota. Gasto del mes excluye «No cuenta» y cuota 0.",
       "colMonthExpense": "Gasto del mes",
@@ -570,6 +608,8 @@
       "modalSectionExcluded": "No cuenta y cuota 0",
       "modalSectionEmpty": "Sin movimientos.",
       "lineColSource": "Origen",
+      "lineColOriginCard": "Tarjeta",
+      "originCardAdditional": "{{last4}} (adicional)",
       "sourceCreditCard": "Tarjeta",
       "sourceChecking": "Cuenta corriente",
       "lineColStatementClose": "Cierre estado",
@@ -619,7 +659,7 @@
       "colCupo": "Cupo en cuotas",
       "colSaldoTotal": "Saldo total",
       "statementsTitle": "Movimientos del estado de cuenta",
-      "statementsEmpty": "Sin estados de cuenta importados. Ejecuta `npm run import:cfraser-inbox` (organiza PDFs en cfraser/pdfs, parsea e importa).",
+      "statementsEmpty": "Sin estados de cuenta importados. Ejecuta `npm run import:cfraser-inbox` (organiza PDFs/xlsx en cfraser/inbox, parsea e importa).",
       "statementPeriod": "Período",
       "statementPayBy": "Pagar hasta",
       "lineDate": "Fecha",

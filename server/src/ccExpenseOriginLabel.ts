@@ -1,3 +1,4 @@
+import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { cardLast4ForCreditCardAccount } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import type {
@@ -31,6 +32,8 @@ export function expenseLineOriginLabel(
     if (last4) return last4;
     return names.get(accountId) ?? "Tarjeta";
   }
+  const kind = accountKindSlugForAccountId(accountId);
+  if (kind === "cuenta_vista") return names.get(accountId) ?? "Cuenta vista";
   return names.get(accountId) ?? "Cuenta corriente";
 }
 

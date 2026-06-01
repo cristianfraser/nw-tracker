@@ -656,23 +656,23 @@ const CASH_CATEGORY_KEYS: Record<string, string> = {
   cuenta_vista: "cash.cuentaVista",
 };
 
-const LINKED_CC_CATEGORY_SLUG = "linked_credit_card";
+const CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG = "credit_card_shortfall_from_savings";
 
-/** Cash card: all Efectivo bucket rows (cash accounts + linked tarjeta de crédito as negative). */
+/** Cash card: savings bucket rows plus optional CC shortfall line. */
 export function buildCashCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
   const cash = valueRows(accounts.filter((a) => accountBelongsToDashboardBucket(a, "cash_eqs")));
   return sortGroupsDesc(
     cash.map((r) => ({
       label:
-        r.category_slug === LINKED_CC_CATEGORY_SLUG
-          ? i18n.t("liabilities.creditCard")
+        r.category_slug === CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG
+          ? i18n.t("dashboard.cardBreakdown.creditCardShortfallFromSavings")
           : CASH_CATEGORY_KEYS[r.category_slug]
             ? i18n.t(CASH_CATEGORY_KEYS[r.category_slug]!)
             : r.name,
       clp: r.current_value_clp ?? 0,
       usd: r.current_value_usd ?? null,
       to:
-        r.category_slug === LINKED_CC_CATEGORY_SLUG
+        r.category_slug === CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG
           ? liabilitiesSubgroupPath("credit_card")
           : cashAccountPath(r),
     }))

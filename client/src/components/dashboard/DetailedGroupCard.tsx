@@ -21,6 +21,7 @@ export type DetailedGroupCardProps = {
   className?: string;
   /** Outer wrapper classes (default: stretched detail card). */
   outerClassName?: string;
+  fxMissing?: boolean;
 };
 
 /**
@@ -39,6 +40,7 @@ export function DetailedGroupCard({
   breakdown,
   className,
   outerClassName = "card card--detail card--detail-stretch",
+  fxMissing = false,
 }: DetailedGroupCardProps) {
   return (
     <div className={cn(outerClassName, className)}>
@@ -57,6 +59,7 @@ export function DetailedGroupCard({
           showUsd={showUsd}
           animated={animated}
           mountSeedKey={cardSlug}
+          fxMissing={fxMissing}
         />
       </div>
       {metrics ? <div>{metrics}</div> : null}

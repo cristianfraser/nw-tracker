@@ -48,7 +48,7 @@ export type GroupInfoBaseProps = {
   charts: ReactNode;
   /** Accounts included in monthly detail + flows tables. */
   tableAccounts: readonly GroupInfoTableAccount[];
-  /** Accounts tree table at the bottom. */
+  /** Accounts tree at the bottom. */
   accountsTree: ReactNode;
   monthlyDetailHint?: string;
   flowsHint?: string;

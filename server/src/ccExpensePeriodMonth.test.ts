@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   gastosSumMonthForLine,
   installmentModalLines,
@@ -166,5 +167,13 @@ describe("ccExpensePeriodMonth", () => {
     expect(mar?.line_count).toBe(1);
     expect(apr?.gastos_mes_clp).toBe(1_000);
     expect(mar?.gastos_mes_clp).toBe(3_000);
+  });
+});
+
+describe("parseDdMmYyToIso jammed MCC dates", () => {
+  it("unwraps pypdf merged YY + MCC prefix digits", () => {
+    expect(parseDdMmYyToIso("13/05/2511")).toBe("2025-05-13");
+    expect(parseDdMmYyToIso("08/01/2611")).toBe("2026-01-08");
+    expect(parseDdMmYyToIso("22/10/2024")).toBe("2024-10-22");
   });
 });

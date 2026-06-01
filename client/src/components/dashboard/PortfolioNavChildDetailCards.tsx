@@ -11,6 +11,7 @@ import {
 } from "../../portfolioNavDashboardCards";
 import { compareDashboardCardMainDesc, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import { useMemo } from "react";
+import { resolveDashboardBucketFromNavNode } from "../../portfolioNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 
@@ -68,8 +69,10 @@ export function PortfolioNavChildDetailCards({
         );
         const br = breakdownForNavChild(child, childRows, dash);
         const rp = child.route_path?.trim() ?? "";
-        const cashClass = child.slug === "cash_eqs" ? "card--cash" : "";
+        const cashClass =
+          resolveDashboardBucketFromNavNode(child) === "cash_eqs" ? "card--cash" : "";
         const cardSlug = `nav-${child.slug}-${child.node_id}`;
+        const fxMissing = showUsd && childRows.some((r) => r.fx_missing);
 
         return (
           <DetailedGroupCard
@@ -80,6 +83,7 @@ export function PortfolioNavChildDetailCards({
             showUsd={showUsd}
             clp={clp}
             apiUsd={apiUsd}
+            fxMissing={fxMissing}
             cardSlug={cardSlug}
             animated={animated}
             className={cashClass}

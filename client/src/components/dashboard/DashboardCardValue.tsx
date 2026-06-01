@@ -1,6 +1,7 @@
 import { NumberFlowElement, NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { accountingCurrencyNumberFlowParts } from "../../format";
+import { useTranslation } from "../../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { cn } from "../../cn";
 import styles from "./DashboardCardValue.module.css";
@@ -104,6 +105,8 @@ type Props = {
   animated?: boolean;
   variant?: DashboardCardValueVariant;
   mountSeedKey?: string;
+  /** When true in USD mode, show conversion error instead of em dash. */
+  fxMissing?: boolean;
 };
 
 export function DashboardCardValue({
@@ -113,7 +116,9 @@ export function DashboardCardValue({
   animated = true,
   variant = "main",
   mountSeedKey,
+  fxMissing = false,
 }: Props) {
+  const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
   const target = resolvedAmount(clp, apiUsd, showUsd);
   const { duration, transformTiming, spinTiming } = VARIANT_TIMING[variant];
@@ -151,7 +156,16 @@ export function DashboardCardValue({
       transformTiming={transformTiming}
       spinTiming={spinTiming}
       emptyFallback={
-        <span className={cn(valueClass, styles.valueEmpty, "dashboard-card-value-empty")}>—</span>
+        showUsd && fxMissing ? (
+          <span
+            className={cn(valueClass, styles.valueEmpty, "dashboard-card-value-empty", styles.valueFxError)}
+            title={t("fxCoverage.cardMissingFx")}
+          >
+            !
+          </span>
+        ) : (
+          <span className={cn(valueClass, styles.valueEmpty, "dashboard-card-value-empty")}>—</span>
+        )
       }
     />
   );

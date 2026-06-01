@@ -46,6 +46,16 @@ class CcStatementPdfPathsTest(unittest.TestCase):
             root / "4141" / "usd" / "2026-03-26 estado de cuenta tarjeta usd 4141.pdf",
         )
 
+    def test_dest_path_predecessor_card_uses_successor_folder(self) -> None:
+        root = Path("/tmp/cc-test-root")
+        dest = mod.cc_dest_path(
+            root, "4114", True, "2018-02-22 estado de cuenta tarjeta usd 4114"
+        )
+        self.assertEqual(
+            dest,
+            root / "4141" / "usd" / "2018-02-22 estado de cuenta tarjeta usd 4114.pdf",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

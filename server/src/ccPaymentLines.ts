@@ -1,12 +1,11 @@
 import { normCcMerchant } from "./ccDedupeKey.js";
 
-/** Statement lines that reduce the balance (payments), not purchases. */
-const PAYMENT_MERCHANT_RE = /^(PAGO|MONTO CANCELADO|ABONO\b)/i;
+/** CC statement / web-paste payment merchants (exact literals, not checking-cartola descriptions). */
+const CC_PAYMENT_MERCHANTS = new Set(["PAGO", "MONTO CANCELADO", "ABONO"]);
 
 export function isCcPaymentMerchant(merchant: string | null | undefined): boolean {
   const m = normCcMerchant(String(merchant ?? ""));
-  if (!m) return false;
-  return PAYMENT_MERCHANT_RE.test(m);
+  return m.length > 0 && CC_PAYMENT_MERCHANTS.has(m);
 }
 
 /**

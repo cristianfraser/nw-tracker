@@ -7,8 +7,8 @@
  *
  * `--wipe` deletes all movements, valuations, and import registry for cuenta corriente, then loads every file.
  * Without `--wipe`, only months not yet in `checking_cartola_imports` are imported (safe when adding new files).
- * `--pdf` runs the PDF parser then imports readable cartolas from `cfraser/cartolas-cuenta-corriente/`.
- * `--skip-pdf-parse` imports existing JSON only (with `--pdf`).
+ * `--pdf` is the default; pass `--xlsx-only` to skip PDF parse/import.
+ * `--skip-pdf-parse` imports existing JSON only (when PDF import is enabled).
  *
  * Env: CFRASER_CHECKING_CARTOLAS_DIR, CFRASER_CHECKING_CARTOLA_PDFS_DIR (optional overrides).
  */
@@ -17,12 +17,20 @@ import { importCheckingCartolasFromDir } from "../src/checkingCartolaImport.js";
 function main() {
   const wipe = process.argv.includes("--wipe");
   const dryRun = process.argv.includes("--dry-run");
-  const pdf = process.argv.includes("--pdf");
+  const pdf = !process.argv.includes("--xlsx-only");
   const skipPdfParse = process.argv.includes("--skip-pdf-parse");
+  const forceReimport = process.argv.includes("--force-reimport");
   const dirArg = process.argv.find((a) => a.startsWith("--dir="));
   const dir = dirArg?.slice("--dir=".length);
 
-  const result = importCheckingCartolasFromDir({ dir, wipe, dryRun, pdf, skipPdfParse });
+  const result = importCheckingCartolasFromDir({
+    dir,
+    wipe,
+    dryRun,
+    pdf,
+    skipPdfParse,
+    forceReimport,
+  });
 
   if (result.errors.length) {
     process.exit(1);

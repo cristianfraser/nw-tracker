@@ -15,6 +15,8 @@ export type GroupChartBucketMeta = {
   depKey: string;
   barDataKey: string;
   name: string;
+  /** Nav / portfolio group color (`r,g,b`). */
+  color_rgb?: string | null;
 };
 
 function accountColorRgbFromLine(
@@ -52,6 +54,7 @@ export function aggregateValuationByBucket(
     const groupMembers = members.filter((a) => idToBucket(a.account_id) === k);
     const fromServer = block.synthetic_group_color_rgb?.[String(m.accountId)];
     const color_rgb =
+      m.color_rgb ??
       fromServer ??
       averageRgbTriplets(groupMembers.map((a) => accountColorRgbFromLine(a, listRows)));
     return {
@@ -138,7 +141,12 @@ export function aggregatePerformanceByBucket(
   const ordered = orderedKeys.filter((k) => used.has(k));
   const bar_accounts: GroupMonthlyPerformanceBarAccount[] = ordered.map((k) => {
     const m = meta[k]!;
-    return { account_id: m.accountId, name: m.name, bar_data_key: m.barDataKey };
+    return {
+      account_id: m.accountId,
+      name: m.name,
+      bar_data_key: m.barDataKey,
+      ...(m.color_rgb ? { color_rgb: m.color_rgb } : {}),
+    };
   });
 
   const points = perf.points.map((row) => {

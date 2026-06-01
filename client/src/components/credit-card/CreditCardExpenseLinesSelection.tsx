@@ -9,6 +9,7 @@ import {
 import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { expenseLineCategoryTargetId } from "../../ccExpenseLineBuckets";
+import { assignableCcExpenseCategories } from "../../ccExpenseCategories";
 import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
 import styles from "./CreditCardExpenseLinesSelection.module.css";
 
@@ -28,12 +29,6 @@ const SelectionContext = createContext<SelectionContextValue | null>(null);
 
 export function useCreditCardExpenseLinesSelection(): SelectionContextValue | null {
   return useContext(SelectionContext);
-}
-
-function assignableCategories(
-  categories: readonly CcExpenseCategoryDto[]
-): CcExpenseCategoryDto[] {
-  return categories.filter((c) => c.slug !== "unclassified");
 }
 
 function existingCategorySlugForAssign(line: FlowCcExpenseLineRow): string | undefined {
@@ -117,7 +112,7 @@ export function CreditCardExpenseLinesBulkFooter({
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
   const assign = useAssignCcExpenseLineCategory();
-  const assignable = assignableCategories(categories);
+  const assignable = assignableCcExpenseCategories(categories);
 
   if (!selection || selection.selectedKeys.size === 0) {
     return null;

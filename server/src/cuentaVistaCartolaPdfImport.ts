@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import type { CheckingCartolaPdfEntry } from "./checkingCartolaPdfImport.js";
@@ -28,11 +28,21 @@ export function resolveParseCuentaVistaCartolaPdfsScript(): string {
 export function runParseCuentaVistaCartolaPdfs(): void {
   const script = resolveParseCuentaVistaCartolaPdfsScript();
   const deps = path.join(REPO_ROOT, "server", "scripts", ".pdf_deps");
-  execSync(`python3 "${script}"`, {
+  const jsonPath = resolveCuentaVistaCartolasFromPdfJsonPath();
+  const result = spawnSync("python3", [script], {
     cwd: REPO_ROOT,
     env: { ...process.env, PYTHONPATH: deps },
     stdio: "inherit",
   });
+  if (result.status === 0) return;
+  if (fs.existsSync(jsonPath)) {
+    console.warn(
+      "Cuenta vista PDF parser exited non-zero; continuing with partial JSON output."
+    );
+    return;
+  }
+  const detail = result.error?.message ?? `exit code ${result.status ?? "unknown"}`;
+  throw new Error(`parse-cuenta-vista-cartola-pdfs.py failed: ${detail}`);
 }
 
 export function loadCuentaVistaCartolasFromPdfJson(

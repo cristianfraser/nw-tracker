@@ -9,6 +9,10 @@ function fmtMoney(n: number, hasCartola: boolean): string {
   return formatClp(n);
 }
 
+function cartolaMonthHasEmptyImport(row: CheckingCartolaMonthRowDto): boolean {
+  return row.has_cartola && row.deposits_clp === 0 && row.withdrawals_clp === 0;
+}
+
 /** Ledger month-end balance minus parsed cartola saldo final (reference). */
 function cartolaBalanceDiff(row: CheckingCartolaMonthRowDto): number | null {
   if (row.balance_end_clp == null || row.cartola_saldo_final_clp == null) return null;
@@ -49,6 +53,7 @@ export function CheckingCartolaMonthTable({
               <th>{t("accountDetail.monthCloseColumn")}</th>
               <th>{t("accountDetail.checking.colDeposits")}</th>
               <th>{t("accountDetail.checking.colWithdrawals")}</th>
+              <th>{t("accountDetail.checking.colMovements")}</th>
               <th>{t("accountDetail.checking.colBalanceEnd")}</th>
               <th>{t("accountDetail.checking.colCartolaSaldo")}</th>
               <th>{t("accountDetail.checking.colDiff")}</th>
@@ -59,6 +64,7 @@ export function CheckingCartolaMonthTable({
       >
         {rows.map((row) => {
           const diff = cartolaBalanceDiff(row);
+          const emptyImport = cartolaMonthHasEmptyImport(row);
           return (
           <tr key={row.period_month}>
             <td className="mono">
@@ -66,6 +72,12 @@ export function CheckingCartolaMonthTable({
             </td>
             <td className="mono">{fmtMoney(row.deposits_clp, row.has_cartola)}</td>
             <td className="mono">{fmtMoney(row.withdrawals_clp, row.has_cartola)}</td>
+            <td
+              className="mono"
+              title={emptyImport ? t("accountDetail.checking.cartolaRegisteredNoMovements") : undefined}
+            >
+              {row.has_cartola ? row.movement_count : "—"}
+            </td>
             <td className="mono">
               {row.balance_end_clp != null ? formatClp(row.balance_end_clp) : "—"}
             </td>

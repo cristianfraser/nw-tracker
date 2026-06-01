@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildNavChartBucketPlan,
   navChartBucketNavNodes,
   navChartBucketNavNodesUngrouped,
   stripChartBucketNavNodes,
@@ -9,7 +10,8 @@ import type { NavTreeNodeDto } from "./types";
 function groupNode(
   slug: string,
   children: NavTreeNodeDto[] = [],
-  route = `/g/${slug}`
+  route = `/g/${slug}`,
+  color_rgb?: string | null
 ): NavTreeNodeDto {
   return {
     slug,
@@ -17,6 +19,7 @@ function groupNode(
     route_path: route,
     portfolio_group_id: 1,
     api_group: "brokerage",
+    color_rgb: color_rgb ?? null,
     children,
   };
 }
@@ -68,5 +71,18 @@ describe("navChartBuckets", () => {
       "retirement_afp_afc",
       "retirement_apv",
     ]);
+  });
+
+  it("buildNavChartBucketPlan copies color_rgb from nav children", () => {
+    const brokerage = groupNode("brokerage", [
+      groupNode("brokerage_mutual_funds", [], "/mf", "120,80,200"),
+      groupNode("brokerage_acciones", [], "/eq", "40,120,60"),
+      groupNode("brokerage_crypto", [], "/cr", "200,50,50"),
+    ]);
+
+    const { meta } = buildNavChartBucketPlan(brokerage, true);
+    expect(meta.brokerage_mutual_funds?.color_rgb).toBe("120,80,200");
+    expect(meta.brokerage_acciones?.color_rgb).toBe("40,120,60");
+    expect(meta.brokerage_crypto?.color_rgb).toBe("200,50,50");
   });
 });

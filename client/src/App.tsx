@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
+import { FxCoverageAlert } from "./components/layout/FxCoverageAlert";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext";
 import { LoadingProvider } from "./context/LoadingContext";
@@ -32,6 +33,7 @@ export default function App() {
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
+          <FxCoverageAlert />
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
@@ -39,7 +41,7 @@ export default function App() {
             <Route path="/retirement/*" element={<Navigate to="/inversiones/retiro" replace />} />
             <Route path="/brokerage" element={<Navigate to="/inversiones/brokerage" replace />} />
             <Route path="/brokerage/*" element={<Navigate to="/inversiones/brokerage" replace />} />
-            <Route path="/cash_eqs" element={<GroupInfoPage />} />
+            <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />

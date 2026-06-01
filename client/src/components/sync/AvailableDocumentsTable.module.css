@@ -2,6 +2,10 @@
   font-size: 0.88rem;
 }
 
+.monthCol {
+  vertical-align: middle;
+}
+
 .accountCol {
   min-width: 6.5rem;
   max-width: 10rem;
@@ -9,20 +13,39 @@
   vertical-align: bottom;
 }
 
-.splitAccountCol {
-  min-width: 4.5rem;
-  max-width: 7rem;
+.groupAccountCol {
+  min-width: 5.5rem;
   text-align: center;
   vertical-align: bottom;
+  border-bottom: 1px solid var(--border, rgba(148, 163, 184, 0.2));
 }
 
-.currencySlot {
-  display: block;
-  margin-top: 0.2rem;
-  font-size: 0.75rem;
+.slotCol {
+  min-width: 2.75rem;
+  max-width: 4rem;
+  padding-top: 0.35rem;
+  padding-bottom: 0.45rem;
+  text-align: center;
+  vertical-align: bottom;
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
   color: var(--muted, #94a3b8);
+}
+
+.slotColUsd {
+  border-left: 1px solid var(--border, rgba(148, 163, 184, 0.15));
+}
+
+.slotColClp {
+  border-right: 1px solid var(--border, rgba(148, 163, 184, 0.15));
+}
+
+.splitCell {
+  min-width: 2.75rem;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
 }
 
 .accountLink {
@@ -67,4 +90,10 @@
 .missing {
   color: #f87171;
   font-weight: 600;
+}
+
+.sinMovimientos {
+  color: #fbbf24;
+  font-weight: 600;
+  font-size: 0.95em;
 }

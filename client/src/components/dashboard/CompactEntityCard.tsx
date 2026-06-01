@@ -15,6 +15,7 @@ export type CompactEntityCardProps = {
   apiUsd?: number | null;
   cardSlug: string;
   animated?: boolean;
+  fxMissing?: boolean;
   subtitle?: ReactNode;
   /** Deposits / Δ rows (e.g. `DashboardCardGroupMetrics`). */
   metrics?: ReactNode;
@@ -43,6 +44,7 @@ export function CompactEntityCard({
   valueVariant = "breakdown",
   stripInner = false,
   breakdown,
+  fxMissing = false,
 }: CompactEntityCardProps) {
   return (
     <div
@@ -69,6 +71,7 @@ export function CompactEntityCard({
           animated={animated}
           variant={valueVariant}
           mountSeedKey={`${cardSlug}:compact`}
+          fxMissing={fxMissing}
         />
       </div>
       {metrics ? <div>{metrics}</div> : null}

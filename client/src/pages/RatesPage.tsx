@@ -8,7 +8,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useMarketSeries, useRatesInstruments } from "../queries/hooks";
+import { FxCoverageBanner } from "../components/layout/FxCoverageBanner";
+import { useMarketSeries, useRatesInstruments, useSyncStatus } from "../queries/hooks";
 import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { MarketDisplaySeriesRow } from "../types";
@@ -257,6 +258,7 @@ export function RatesPage() {
   const [tab, setTab] = useState<RatesTab>("fx");
   const { displayUnit } = useDisplayPreferences();
   const { data: payload, error } = useMarketSeries();
+  const { data: syncStatus } = useSyncStatus();
   const { data: ratesInstruments } = useRatesInstruments();
   const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
@@ -267,10 +269,15 @@ export function RatesPage() {
 
   const points = useMemo(() => payload?.points ?? [], [payload]);
 
-  const fxUsdClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_usd), [points]);
+  const fxUsdClp = useMemo(() => payload?.fx_usd_clp ?? [], [payload]);
   const fxUfClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_uf), [points]);
   const fxIpc = useMemo(() => seriesFromPoints(points, (p) => p.ipc_index), [points]);
-  const fxEurClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_eur), [points]);
+  const fxEurClp = useMemo(() => payload?.eur_clp ?? [], [payload]);
+
+  const fxSyncStale = useMemo(() => {
+    const stale = syncStatus?.stale ?? [];
+    return stale.includes("sbif_usd") || stale.includes("sbif_eur");
+  }, [syncStatus]);
 
   const recentColDate = t("rates.recentColDate");
   const recentColValue = t("rates.recentColValue");
@@ -303,6 +310,12 @@ export function RatesPage() {
         <Link to="/">← Dashboard</Link>
       </p>
       <h1>Rates</h1>
+      <FxCoverageBanner coverage={payload.fx_coverage} />
+      {fxSyncStale ? (
+        <p className="error" role="alert" style={{ maxWidth: "58rem", marginBottom: "1rem" }}>
+          {t("fxCoverage.syncStale")}
+        </p>
+      ) : null}
       <p className="muted">
         FX tab: reference rates and IPC index. Instruments tab: SPY, VEA, Reserva valor cuota, Risky Norris valor
         cuota, Risky Norris APV valor cuota, AFP Uno valor cuota, BTC, and ETH — each in CLP (via USD/CLP) or native

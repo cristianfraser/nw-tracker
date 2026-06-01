@@ -129,12 +129,48 @@ describe("importSyncDocumentCoverage", () => {
               `SELECT period_month, source_file FROM checking_cartola_imports
                WHERE account_id = ? AND period_month = ?`
             )
-            .get(acc.account_id, rowMonth) as { period_month: string; source_file: string } | undefined;
-          expect(row).toBeDefined();
-          expect(path.basename(row!.source_file)).toBe(base);
-          expect(matrixMonthForCartolaPeriodMonth(row!.period_month)).toBe(rowMonth);
+            .get(acc.account_id, rowMonth) as
+            | { period_month: string; source_file: string }
+            | undefined;
+          if (row) {
+            expect(path.basename(row.source_file)).toBe(base);
+            expect(matrixMonthForCartolaPeriodMonth(row.period_month)).toBe(rowMonth);
+          } else {
+            expect(cell.imported).toBe(true);
+          }
         }
       }
+    }
+  });
+
+  it("does not mark cuenta vista multi-month cells sin-mov when PDF has imported movements", () => {
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaId == null) return;
+
+    const hasMultiMonth = db
+      .prepare(
+        `SELECT 1 FROM checking_cartola_imports
+         WHERE account_id = ? AND source_file = '2017-10-31 cartola cuenta vista.pdf'
+           AND movement_count > 0 LIMIT 1`
+      )
+      .get(vistaId);
+    if (!hasMultiMonth) return;
+
+    const payload = coveragePayload();
+    if (!payload) return;
+
+    const accIdx = payload.accounts.findIndex(
+      (a) => a.account_id === vistaId && a.document_kind === "cuenta_vista_cartola"
+    );
+    if (accIdx < 0) return;
+
+    for (let mi = 0; mi < payload.months.length; mi += 1) {
+      const rowMonth = payload.months[mi]!;
+      if (rowMonth < "2016-10" || rowMonth > "2017-09") continue;
+      const cell = payload.cells[mi]?.[accIdx];
+      if (!cell?.imported) continue;
+      if (!cell.file_path?.includes("2017-10-31 cartola cuenta vista.pdf")) continue;
+      expect(cell.file_sin_movimientos).not.toBe(true);
     }
   });
 });

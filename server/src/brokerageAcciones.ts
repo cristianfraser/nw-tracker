@@ -36,6 +36,8 @@ export interface DashboardAccountStats {
   current_value_usd: number | null;
   fx_clp_per_usd: number | null;
   fx_date_used: string | null;
+  /** USD display could not resolve FX for balance or deposits. */
+  fx_missing?: boolean;
   notes: string | null;
   /**
    * True when monthly closing values end with more than three trailing zero months (same tail rule as

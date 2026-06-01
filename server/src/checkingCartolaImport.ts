@@ -1,3 +1,4 @@
+import { isCartolaDesdeBoundaryPhantomMonth, monthKeyFromYmd } from "./calendarMonth.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import {
@@ -23,11 +24,21 @@ import {
 import {
   clearCheckingAccountValuations,
   clearCheckingBalanceCache,
-  ensureCheckingOpeningBalance,
+  ensureCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
 import { loadParsedCheckingCartolasFromScreenshots } from "./checkingCartolaScreenshotImport.js";
 import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
+import {
+  preserveCheckingGastosCategoriesForCartolaNotes,
+} from "./checkingGastosCategoryPersist.js";
+import {
+  assertCheckingCartolaSaldoIdentity,
+  validateCartolaSaldoChain,
+} from "./checkingCartolaSaldoValidation.js";
+import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
+import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
+import { resolveCartolaFilePath } from "./importSyncDocumentFilePath.js";
 
 export function checkingAccountId(dbHandle: Database = db): number {
   return cartolaCashAccountId("cuenta_corriente", dbHandle);
@@ -46,17 +57,197 @@ export function isCheckingCartolaMonthImported(
   return row != null;
 }
 
+function countExistingCartolaMovementsForMonth(
+  accountId: number,
+  periodMonth: string,
+  dbHandle: Database
+): number {
+  const row = dbHandle
+    .prepare(
+      `SELECT COUNT(*) AS c FROM movements
+       WHERE account_id = ? AND note LIKE ?`
+    )
+    .get(accountId, `import:cartola|${periodMonth}|%`) as { c: number };
+  return Number(row.c) || 0;
+}
+
+/** Rewrite movement note prefixes after `checking_cartola_imports.period_month` is corrected. */
+export function rewriteCartolaMovementNotesPeriodMonth(
+  accountId: number,
+  oldPeriodMonth: string,
+  newPeriodMonth: string,
+  dbHandle: Database = db
+): number {
+  if (oldPeriodMonth === newPeriodMonth) return 0;
+  const fromPrefix = `import:cartola|${oldPeriodMonth}|`;
+  const toPrefix = `import:cartola|${newPeriodMonth}|`;
+  const rows = dbHandle
+    .prepare(
+      `SELECT id, note FROM movements
+       WHERE account_id = ? AND note LIKE ?`
+    )
+    .all(accountId, `${fromPrefix}%`) as { id: number; note: string }[];
+  const upd = dbHandle.prepare(`UPDATE movements SET note = ? WHERE id = ?`);
+  let changed = 0;
+  for (const r of rows) {
+    if (!r.note.startsWith(fromPrefix)) continue;
+    upd.run(toPrefix + r.note.slice(fromPrefix.length), r.id);
+    changed += 1;
+  }
+  if (changed > 0) clearCheckingBalanceCache(accountId);
+  return changed;
+}
+
+function cartolaSourceFileBasename(sourceFile: string): string {
+  const t = String(sourceFile ?? "").trim().replace(/^pdf:/, "");
+  if (!t) return "";
+  return t.split(/[/\\]/).pop() ?? t;
+}
+
+/** Remove all registry rows + movements for every month imported from the same PDF. */
+export function deleteCheckingCartolaImportsForSourceFile(
+  accountId: number,
+  sourceFile: string,
+  dbHandle: Database = db
+): { movements: number; imports: number } {
+  const base = cartolaSourceFileBasename(sourceFile);
+  if (!base) return { movements: 0, imports: 0 };
+  const rows = dbHandle
+    .prepare(
+      `SELECT period_month, source_file FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(accountId) as { period_month: string; source_file: string }[];
+  let movements = 0;
+  let imports = 0;
+  for (const row of rows) {
+    if (cartolaSourceFileBasename(row.source_file) !== base) continue;
+    const r = deleteCheckingCartolaMonthImport(accountId, row.period_month, dbHandle);
+    movements += r.movements;
+    imports += r.imports;
+  }
+  return { movements, imports };
+}
+
+/** Remove imported cartola registry + movement rows for one period (re-import after parser fix). */
+export function deleteCheckingCartolaMonthImport(
+  accountId: number,
+  periodMonth: string,
+  dbHandle: Database = db
+): { movements: number; imports: number } {
+  preserveCheckingGastosCategoriesForCartolaNotes(
+    accountId,
+    `import:cartola|${periodMonth}|%`,
+    dbHandle
+  );
+  const delMov = dbHandle
+    .prepare(
+      `DELETE FROM movements
+       WHERE account_id = ? AND note LIKE ?`
+    )
+    .run(accountId, `import:cartola|${periodMonth}|%`);
+  let delImp = { changes: 0 };
+  try {
+    delImp = dbHandle
+      .prepare(
+        `DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`
+      )
+      .run(accountId, periodMonth);
+  } catch {
+    /* migration 052 not applied yet */
+  }
+  clearCheckingBalanceCache(accountId);
+  return { movements: delMov.changes, imports: delImp.changes };
+}
+
+/** Import row for a boundary month wrongly created by old multi-month split (0 movements). */
+export function isPhantomBoundaryMonthImport(row: {
+  period_month: string;
+  period_from: string | null;
+  period_to: string | null;
+  movement_count: number;
+}): boolean {
+  return isCartolaDesdeBoundaryPhantomMonth(row);
+}
+
+/** Parsed monthly slice that should not be imported (ledger anchor covers the gap). */
+export function isPhantomBoundaryCartolaSlice(cartola: ParsedCheckingCartola): boolean {
+  return isCartolaDesdeBoundaryPhantomMonth({
+    period_month: cartola.period_month,
+    period_from: cartola.period_from,
+    period_to: cartola.period_to,
+    movement_count: cartola.movements.length,
+  });
+}
+
+/** Remove phantom boundary-month registry rows (no movements deleted). */
+export function prunePhantomBoundaryMonthCartolaImports(
+  accountId: number,
+  dbHandle: Database = db
+): { pruned: string[] } {
+  const rows = dbHandle
+    .prepare(
+      `SELECT period_month, period_from, period_to, movement_count
+       FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(accountId) as {
+    period_month: string;
+    period_from: string | null;
+    period_to: string | null;
+    movement_count: number;
+  }[];
+  const pruned: string[] = [];
+  for (const row of rows) {
+    if (!isPhantomBoundaryMonthImport(row)) continue;
+    const existingMoves = countExistingCartolaMovementsForMonth(
+      accountId,
+      row.period_month,
+      dbHandle
+    );
+    if (existingMoves > 0) continue;
+    deleteCheckingCartolaMonthImport(accountId, row.period_month, dbHandle);
+    pruned.push(row.period_month);
+    console.log(`  pruned phantom boundary month ${row.period_month} (0 movements)`);
+  }
+  return { pruned };
+}
+
+/** Remove import rows for months no longer covered by a parsed cartola (same source PDF). */
+export function pruneStaleCartolaMonthImportsForSourceFile(
+  accountId: number,
+  sourceFile: string,
+  validMonths: Iterable<string>,
+  dbHandle: Database = db
+): { pruned: string[]; movements: number } {
+  const valid = new Set(validMonths);
+  const base = cartolaSourceFileBasename(sourceFile);
+  if (!base) return { pruned: [], movements: 0 };
+  const rows = dbHandle
+    .prepare(
+      `SELECT period_month, source_file FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(accountId) as { period_month: string; source_file: string }[];
+  const pruned: string[] = [];
+  let movements = 0;
+  for (const row of rows) {
+    if (cartolaSourceFileBasename(row.source_file) !== base) continue;
+    if (valid.has(row.period_month)) continue;
+    const r = deleteCheckingCartolaMonthImport(accountId, row.period_month, dbHandle);
+    movements += r.movements;
+    pruned.push(row.period_month);
+    console.log(
+      `  pruned stale cartola month ${row.period_month} from ${base} (${r.movements} movement(s))`
+    );
+  }
+  return { pruned, movements };
+}
+
 /** Remove all movements, valuations, and cartola import registry for checking account. */
 export function wipeCheckingAccountData(accountId: number, dbHandle: Database = db): {
   movements: number;
   valuations: number;
   imports: number;
 } {
-  const delMov = dbHandle
-    .prepare(
-      `DELETE FROM movements WHERE account_id = ? AND note NOT LIKE 'import:checking-synthetic|%'`
-    )
-    .run(accountId);
+  const delMov = dbHandle.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
   const delVal = dbHandle
     .prepare(`DELETE FROM valuations WHERE account_id = ?`)
     .run(accountId);
@@ -80,6 +271,12 @@ export function importCheckingCartola(
   cartola: ParsedCheckingCartola,
   dbHandle: Database = db
 ): { movementsInserted: number; movementsSkipped: number } {
+  assertCheckingCartolaSaldoIdentity(cartola);
+  const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
+  if (chainErr) {
+    throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
+  }
+
   const insMov = dbHandle.prepare(
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
      VALUES (?, ?, ?, ?, NULL)`
@@ -87,15 +284,16 @@ export function importCheckingCartola(
   const markImported = dbHandle.prepare(
     `INSERT INTO checking_cartola_imports (
        account_id, period_month, source_file, movement_count,
-       saldo_final_clp, saldo_inicial_clp, period_from
+       saldo_final_clp, saldo_inicial_clp, period_from, period_to
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(account_id, period_month) DO UPDATE SET
        source_file = excluded.source_file,
        movement_count = excluded.movement_count,
        saldo_final_clp = excluded.saldo_final_clp,
        saldo_inicial_clp = excluded.saldo_inicial_clp,
        period_from = excluded.period_from,
+       period_to = excluded.period_to,
        imported_at = datetime('now')`
   );
 
@@ -143,6 +341,35 @@ export function importCheckingCartola(
       insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
       movementsInserted += 1;
     });
+    if (cartola.movements.length > 0 && movementsInserted === 0) {
+      const existing = countExistingCartolaMovementsForMonth(
+        accountId,
+        cartola.period_month,
+        dbHandle
+      );
+      if (existing === 0) {
+        throw new Error(
+          `Cartola ${cartola.period_month} (${cartola.source_file}): parsed ${cartola.movements.length} movement(s) but inserted 0`
+        );
+      }
+    }
+    if (
+      cartola.movements.length === 0 &&
+      cartola.saldo_inicial_clp != null &&
+      cartola.saldo_final_clp != null &&
+      cartola.saldo_inicial_clp !== cartola.saldo_final_clp
+    ) {
+      const existing = countExistingCartolaMovementsForMonth(
+        accountId,
+        cartola.period_month,
+        dbHandle
+      );
+      if (existing === 0) {
+        throw new Error(
+          `Cartola ${cartola.period_month} (${cartola.source_file}): no movements parsed but saldo changed (${cartola.saldo_inicial_clp} → ${cartola.saldo_final_clp})`
+        );
+      }
+    }
     markImported.run(
       accountId,
       cartola.period_month,
@@ -150,7 +377,8 @@ export function importCheckingCartola(
       movementsInserted,
       cartola.saldo_final_clp,
       cartola.saldo_inicial_clp,
-      cartola.period_from
+      cartola.period_from,
+      cartola.period_to
     );
   });
   tx();
@@ -192,25 +420,155 @@ function logParseError(file: string, e: unknown): CheckingCartolaFileImportLog {
   };
 }
 
+function cartolaDocumentKindForAccount(accountId: number): ImportSyncDocumentAccount["document_kind"] {
+  if (accountId === cartolaCashAccountId("cuenta_vista")) {
+    return "cuenta_vista_cartola";
+  }
+  return "checking_cartola";
+}
+
+/** Replace a prior sin-movimientos / empty import when a new PDF has real movements. */
+export function cartolaImportShouldReplaceExisting(
+  accountId: number,
+  cartola: ParsedCheckingCartola,
+  dbHandle: Database = db
+): boolean {
+  if (!isCheckingCartolaMonthImported(accountId, cartola.period_month, dbHandle)) {
+    return false;
+  }
+  const row = dbHandle
+    .prepare(
+      `SELECT movement_count, source_file FROM checking_cartola_imports
+       WHERE account_id = ? AND period_month = ?`
+    )
+    .get(accountId, cartola.period_month) as
+    | { movement_count: number; source_file: string }
+    | undefined;
+  if (!row) return false;
+
+  const kind = cartolaDocumentKindForAccount(accountId);
+  const newCount = cartola.movements.length;
+  const oldCount = Number(row.movement_count) || 0;
+  if (newCount > oldCount) return true;
+  if (newCount > 0 && oldCount === 0) return true;
+
+  const oldPath = resolveCartolaFilePath(kind, row.source_file);
+  const newPath = resolveCartolaFilePath(kind, cartola.source_file);
+  const oldSin = oldPath ? cartolaPdfIndicatesSinMovimientos(oldPath) : false;
+  const newSin = newPath ? cartolaPdfIndicatesSinMovimientos(newPath) : false;
+  if (oldSin && !newSin && newCount > 0) return true;
+  if (oldSin && newCount > 0) return true;
+  return false;
+}
+
+/** Update reference saldos on an already-imported month (movements unchanged). */
+export function updateCheckingCartolaImportSaldos(
+  accountId: number,
+  cartola: ParsedCheckingCartola,
+  dbHandle: Database = db
+): void {
+  assertCheckingCartolaSaldoIdentity(cartola);
+  dbHandle
+    .prepare(
+      `UPDATE checking_cartola_imports SET
+         saldo_final_clp = ?,
+         saldo_inicial_clp = COALESCE(?, saldo_inicial_clp),
+         imported_at = datetime('now')
+       WHERE account_id = ? AND period_month = ?`
+    )
+    .run(
+      cartola.saldo_final_clp,
+      cartola.saldo_inicial_clp,
+      accountId,
+      cartola.period_month
+    );
+}
+
+export function shouldBackfillCartolaSaldoRef(
+  accountId: number,
+  cartola: ParsedCheckingCartola,
+  dbHandle: Database = db
+): boolean {
+  if (cartola.saldo_final_clp == null) return false;
+  const row = dbHandle
+    .prepare(
+      `SELECT source_file, saldo_final_clp FROM checking_cartola_imports
+       WHERE account_id = ? AND period_month = ?`
+    )
+    .get(accountId, cartola.period_month) as
+    | { source_file: string; saldo_final_clp: number | null }
+    | undefined;
+  if (!row) return false;
+  if (cartolaSourceFileBasename(row.source_file) !== cartolaSourceFileBasename(cartola.source_file)) {
+    return false;
+  }
+  const existingMoves = countExistingCartolaMovementsForMonth(
+    accountId,
+    cartola.period_month,
+    dbHandle
+  );
+  if (cartola.movements.length > 0 && existingMoves !== cartola.movements.length) {
+    return false;
+  }
+  if (row.saldo_final_clp == null) return true;
+  return row.saldo_final_clp !== cartola.saldo_final_clp;
+}
+
 export function importCartolaList(
   accountId: number,
   cartolas: { cartola: ParsedCheckingCartola; label: string }[],
-  opts: { wipe?: boolean; dryRun?: boolean },
+  opts: { wipe?: boolean; dryRun?: boolean; forceReimport?: boolean },
   fileLogs: CheckingCartolaFileImportLog[]
 ): void {
   for (const { cartola, label } of cartolas) {
-    if (!opts.wipe && isCheckingCartolaMonthImported(accountId, cartola.period_month)) {
-      fileLogs.push({
-        file: label,
-        period_month: cartola.period_month,
-        status: "skipped_already_imported",
-        movements_parsed: cartola.movements.length,
-        movements_imported: 0,
-        skipped_rows: cartola.skipped,
-        saldo_final_clp: cartola.saldo_final_clp,
-        saldo_inicial_clp: cartola.saldo_inicial_clp,
-      });
+    if (isPhantomBoundaryCartolaSlice(cartola)) {
+      console.log(
+        `  skip phantom boundary month ${cartola.period_month} (${cartola.source_file}, 0 movements)`
+      );
       continue;
+    }
+    if (
+      opts.forceReimport &&
+      !opts.dryRun &&
+      isCheckingCartolaMonthImported(accountId, cartola.period_month)
+    ) {
+      deleteCheckingCartolaMonthImport(accountId, cartola.period_month);
+    }
+    if (
+      !opts.wipe &&
+      !opts.forceReimport &&
+      isCheckingCartolaMonthImported(accountId, cartola.period_month)
+    ) {
+      if (!opts.dryRun && cartolaImportShouldReplaceExisting(accountId, cartola)) {
+        const cleared = deleteCheckingCartolaMonthImport(accountId, cartola.period_month);
+        console.log(
+          `  replace empty/sin-movimientos cartola ${cartola.period_month}: cleared ${cleared.movements} movement(s)`
+        );
+      } else if (!cartolaImportShouldReplaceExisting(accountId, cartola)) {
+        if (shouldBackfillCartolaSaldoRef(accountId, cartola)) {
+          if (!opts.dryRun) {
+            updateCheckingCartolaImportSaldos(accountId, cartola);
+          }
+          fileLogs.push(
+            fileLogFromCartola(label, cartola, {
+              status: "updated_saldo_ref",
+              movements_imported: 0,
+            })
+          );
+          continue;
+        }
+        fileLogs.push({
+          file: label,
+          period_month: cartola.period_month,
+          status: "skipped_already_imported",
+          movements_parsed: cartola.movements.length,
+          movements_imported: 0,
+          skipped_rows: cartola.skipped,
+          saldo_final_clp: cartola.saldo_final_clp,
+          saldo_inicial_clp: cartola.saldo_inicial_clp,
+        });
+        continue;
+      }
     }
 
     if (opts.dryRun) {
@@ -243,18 +601,28 @@ export function finishCartolaImportRun(
   fileLogs: CheckingCartolaFileImportLog[],
   accountLabel = "cuenta corriente"
 ): ImportCheckingCartolasResult {
-  if (!opts.dryRun && fileLogs.some((f) => f.status === "imported")) {
+  if (!opts.dryRun && fileLogs.some((f) => f.status === "imported" || f.status === "updated_saldo_ref")) {
     const cleared = clearCheckingAccountValuations(accountId);
     if (cleared > 0) {
       console.log(
         `Cleared ${cleared} persisted valuation row(s) for ${accountLabel} (balances computed at runtime).`
       );
     }
-    const opening = ensureCheckingOpeningBalance(accountId);
-    if (opening.inserted) {
+    const { pruned } = prunePhantomBoundaryMonthCartolaImports(accountId);
+    if (pruned.length > 0) {
+      console.log(`  pruned phantom boundary month(s): ${pruned.join(", ")}`);
+    }
+    const anchor = ensureCheckingLedgerAnchor(accountId);
+    if (anchor.inserted) {
       console.log(
-        `Inserted opening balance ${opening.amount_clp} CLP on ${opening.occurred_on} (saldo inicial from earliest cartola).`
+        `Inserted ledger anchor ${anchor.amount_clp} CLP on ${anchor.occurred_on} (${anchor.anchor_period_month} saldo final).`
       );
+    } else if (anchor.updated) {
+      console.log(
+        `Updated ledger anchor to ${anchor.amount_clp} CLP on ${anchor.occurred_on} (${anchor.anchor_period_month}).`
+      );
+    } else if (anchor.cleared) {
+      console.log(`Cleared ledger anchor (no cartola saldo final).`);
     }
   }
 
@@ -294,6 +662,7 @@ export function importCheckingCartolasFromDir(opts: {
   dryRun?: boolean;
   pdf?: boolean;
   skipPdfParse?: boolean;
+  forceReimport?: boolean;
 }): ImportCheckingCartolasResult {
   const dir = opts.dir ?? resolveCfraserCheckingCartolasDir();
   const accountId = opts.accountId ?? checkingAccountId();
@@ -306,6 +675,10 @@ export function importCheckingCartolasFromDir(opts: {
     );
   } else if (opts.wipe && opts.dryRun) {
     console.log(`[dry-run] Would wipe movements/valuations/imports for account ${accountId}.`);
+  }
+
+  if (!opts?.dryRun && !opts?.wipe) {
+    prunePhantomBoundaryMonthCartolaImports(accountId);
   }
 
   const files = listCheckingCartolaXlsxFiles(dir);

@@ -13,9 +13,22 @@
  */
 
 const DD_MM = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/;
+/** pypdf can merge DD/MM/YY with MCC digits (e.g. 13/05/2511001SANTIAG). */
+const TX_DATE_MAX_PLAUSIBLE_YEAR = 2038;
+
+function normalizeTxDateDdMm(raw: string): string {
+  const t = String(raw ?? "").trim();
+  const m = DD_MM.exec(t);
+  if (!m) return t;
+  const ypart = m[3]!;
+  if (ypart.length === 2) return t;
+  const y = Number(ypart);
+  if (y >= 1990 && y <= TX_DATE_MAX_PLAUSIBLE_YEAR) return t;
+  return `${m[1]}/${m[2]}/${ypart.slice(0, 2)}`;
+}
 
 export function parseDdMmYyToIso(raw: string): string | null {
-  const t = String(raw ?? "").trim();
+  const t = normalizeTxDateDdMm(String(raw ?? "").trim());
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
   const m = DD_MM.exec(t);
   if (!m) return null;

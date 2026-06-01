@@ -85,60 +85,90 @@ const groupItemsStmt = db.prepare(
 
 const resolvedGroupColorCache = new Map<number, string>();
 
-function collectAccountIdsUnderGroup(groupId: number, visiting = new Set<number>()): number[] {
-  if (visiting.has(groupId)) return [];
+const FALLBACK_GROUP_COLOR = "148,163,184";
+
+function accountBalanceClp(accountId: number): number {
+  const row = latestValuationRowOnOrBeforeChileToday(accountId);
+  return row?.value_clp != null && Number.isFinite(row.value_clp) ? row.value_clp : 0;
+}
+
+/** Sum of latest balances for all accounts under a group (recursive). */
+function totalBalanceClpUnderGroup(groupId: number, visiting = new Set<number>()): number {
+  if (visiting.has(groupId)) return 0;
   visiting.add(groupId);
   const items = groupItemsStmt.all(groupId) as {
     item_kind: "group" | "account";
     child_group_id: number | null;
     account_id: number | null;
   }[];
-  const ids: number[] = [];
+  let sum = 0;
   for (const item of items) {
     if (item.item_kind === "account" && item.account_id != null) {
-      ids.push(item.account_id);
+      sum += accountBalanceClp(item.account_id);
     } else if (item.item_kind === "group" && item.child_group_id != null) {
-      ids.push(...collectAccountIdsUnderGroup(item.child_group_id, visiting));
+      sum += totalBalanceClpUnderGroup(item.child_group_id, visiting);
     }
   }
-  return ids;
+  return sum;
 }
 
-/** Color of the descendant account with the largest latest valuation (CLP). */
-function groupColorFromLargestBalanceAccount(groupId: number): string {
-  const accountIds = collectAccountIdsUnderGroup(groupId);
-  if (accountIds.length === 0) return "148,163,184";
+/**
+ * Color of the direct child (subgroup or account) with the largest total balance.
+ * Unset child groups resolve recursively.
+ */
+function groupColorFromLargestBalanceChild(groupId: number, visiting: Set<number>): string {
+  const items = groupItemsStmt.all(groupId) as {
+    item_kind: "group" | "account";
+    child_group_id: number | null;
+    account_id: number | null;
+  }[];
 
-  let bestId = accountIds[0]!;
   let bestBalance = -Infinity;
-  for (const accountId of accountIds) {
-    const row = latestValuationRowOnOrBeforeChileToday(accountId);
-    const balance =
-      row?.value_clp != null && Number.isFinite(row.value_clp) ? row.value_clp : 0;
-    if (balance > bestBalance) {
-      bestBalance = balance;
-      bestId = accountId;
+  let bestColor: string | null = null;
+
+  for (const item of items) {
+    if (item.item_kind === "account" && item.account_id != null) {
+      const balance = accountBalanceClp(item.account_id);
+      if (balance > bestBalance) {
+        bestBalance = balance;
+        bestColor = getAccountColorRgb(item.account_id);
+      }
+    } else if (item.item_kind === "group" && item.child_group_id != null) {
+      const balance = totalBalanceClpUnderGroup(item.child_group_id);
+      const color = resolvePortfolioGroupColorRgbInner(item.child_group_id, visiting);
+      if (balance > bestBalance) {
+        bestBalance = balance;
+        bestColor = color;
+      }
     }
   }
-  return getAccountColorRgb(bestId);
+
+  return bestColor ?? FALLBACK_GROUP_COLOR;
 }
 
-/** Explicit group color, else color of the child account with the largest latest balance. */
-export function resolvePortfolioGroupColorRgb(groupId: number): string {
-  const cached = resolvedGroupColorCache.get(groupId);
-  if (cached) return cached;
+function resolvePortfolioGroupColorRgbInner(groupId: number, visiting: Set<number>): string {
+  if (visiting.has(groupId)) return FALLBACK_GROUP_COLOR;
+  visiting.add(groupId);
 
   const group = db
     .prepare(`SELECT id, slug, color_rgb FROM portfolio_groups WHERE id = ?`)
     .get(groupId) as PortfolioGroupRow | undefined;
-  if (!group) return "148,163,184";
+  if (!group) return FALLBACK_GROUP_COLOR;
 
   if (group.color_rgb) {
     resolvedGroupColorCache.set(groupId, group.color_rgb);
     return group.color_rgb;
   }
 
-  const resolved = groupColorFromLargestBalanceAccount(groupId);
+  return groupColorFromLargestBalanceChild(groupId, visiting);
+}
+
+/** Explicit group color, else color of the child group/account with the largest total balance (recursive). */
+export function resolvePortfolioGroupColorRgb(groupId: number): string {
+  const cached = resolvedGroupColorCache.get(groupId);
+  if (cached) return cached;
+
+  const resolved = resolvePortfolioGroupColorRgbInner(groupId, new Set());
   resolvedGroupColorCache.set(groupId, resolved);
   return resolved;
 }

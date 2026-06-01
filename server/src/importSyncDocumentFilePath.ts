@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 import {
+  cartolaPeriodRangeCoversMonth,
   isCcStatementPdfSource,
   matrixMonthForCartolaPeriodMonth,
   matrixMonthForCcStatement,
+  matrixMonthsForCartolaPeriodRange,
 } from "./importSyncDocumentMonth.js";
 import {
   ccStatementPdfSearchDirs,
@@ -13,8 +17,23 @@ import {
   resolveCfraserCuentaVistaCartolaPdfsDir,
   resolveCcStatementSlotDir,
 } from "./cfraserPaths.js";
+import { cartolaPdfPreferenceScore } from "./cartolaSinMovimientos.js";
+import { normalizeCcImportCardLast4 } from "./ccConsolidatedCards.js";
 import { db } from "./db.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+
+export type CartolaParsedPdfJsonEntry = {
+  source_file: string;
+  period_month: string;
+  period_from?: string | null;
+  period_to?: string | null;
+  parse_status: string;
+  movements?: { occurred_on?: string }[];
+  cartola_sin_movimientos?: boolean;
+};
 
 function basenameOnly(name: string): string {
   const t = String(name ?? "").trim();
@@ -41,6 +60,117 @@ function cartolaDirsForKind(kind: ImportSyncDocumentAccount["document_kind"]): s
     return [resolveCfraserCuentaVistaCartolaPdfsDir()];
   }
   return [resolveCfraserCheckingCartolasDir(), resolveCfraserCheckingCartolaPdfsDir()];
+}
+
+export function resolveCartolaParsedPdfJsonPath(
+  kind: ImportSyncDocumentAccount["document_kind"]
+): string {
+  const fileName =
+    kind === "cuenta_vista_cartola"
+      ? "cuenta-vista-cartolas-from-pdf.json"
+      : "checking-cartolas-from-pdf.json";
+  return path.join(REPO_ROOT, "cfraser", fileName);
+}
+
+export function loadCartolaParsedPdfJsonEntries(
+  kind: ImportSyncDocumentAccount["document_kind"]
+): CartolaParsedPdfJsonEntry[] {
+  const jsonPath = resolveCartolaParsedPdfJsonPath(kind);
+  if (!fs.existsSync(jsonPath)) return [];
+  try {
+    const raw = JSON.parse(fs.readFileSync(jsonPath, "utf8")) as {
+      cartolas?: CartolaParsedPdfJsonEntry[];
+    };
+    return raw.cartolas ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Build month → PDF path map from parsed cartola JSON entries (testable without disk JSON). */
+export function buildCartolaPathsFromParsedPdfEntries(
+  entries: CartolaParsedPdfJsonEntry[],
+  kind: ImportSyncDocumentAccount["document_kind"]
+): Map<string, { path: string; movementCount: number }> {
+  const out = new Map<string, { path: string; movementCount: number; score: number }>();
+  for (const entry of entries) {
+    if (entry.parse_status !== "ok") continue;
+    const abs = resolveCartolaFilePath(kind, entry.source_file);
+    if (!abs) continue;
+    const months = matrixMonthsForCartolaPeriodRange(
+      entry.period_from,
+      entry.period_to,
+      entry.period_month,
+      entry.movements
+    );
+    const byMonth = new Map<string, number>();
+    for (const mv of entry.movements ?? []) {
+      const ym = monthKeyFromYmd(String(mv.occurred_on ?? ""));
+      if (!ym) continue;
+      byMonth.set(ym, (byMonth.get(ym) ?? 0) + 1);
+    }
+    const totalMovements = entry.movements?.length ?? 0;
+    for (const ym of months) {
+      const movementCount = byMonth.get(ym) ?? 0;
+      const candidateScore = cartolaParsedEntryPreferenceScore(
+        abs,
+        movementCount,
+        totalMovements,
+        entry.cartola_sin_movimientos === true
+      );
+      const prev = out.get(ym);
+      if (
+        !prev ||
+        candidateScore > prev.score ||
+        (candidateScore === prev.score && movementCount > prev.movementCount)
+      ) {
+        out.set(ym, { path: abs, movementCount, score: candidateScore });
+      }
+    }
+  }
+  return new Map([...out.entries()].map(([ym, row]) => [ym, { path: row.path, movementCount: row.movementCount }]));
+}
+
+function cartolaParsedEntryPreferenceScore(
+  abs: string,
+  movementCount: number,
+  totalMovementsInCartola: number,
+  parserSinMov: boolean
+): number {
+  if (totalMovementsInCartola > 0) return 1_000_000 + totalMovementsInCartola;
+  if (parserSinMov) return 0;
+  return cartolaPdfPreferenceScore(abs, movementCount);
+}
+
+function cartolaPathMapPathsOnly(
+  map: Map<string, { path: string; movementCount: number }>
+): Map<string, string> {
+  return new Map([...map.entries()].map(([ym, row]) => [ym, row.path]));
+}
+
+/** Parsed cartola PDFs (`parse_status=ok`) on disk — includes zero-movement months. */
+export function buildCartolaPathsFromParsedPdfJson(
+  kind: ImportSyncDocumentAccount["document_kind"]
+): Map<string, string> {
+  return cartolaPathMapPathsOnly(
+    buildCartolaPathsFromParsedPdfEntries(loadCartolaParsedPdfJsonEntries(kind), kind)
+  );
+}
+
+function mergeCartolaPathMaps(
+  ...maps: Map<string, { path: string; movementCount: number }>[]
+): Map<string, string> {
+  const out = new Map<string, { path: string; score: number }>();
+  for (const map of maps) {
+    for (const [ym, row] of map) {
+      const score = cartolaPdfPreferenceScore(row.path, row.movementCount);
+      const prev = out.get(ym);
+      if (!prev || score > prev.score) {
+        out.set(ym, { path: row.path, score });
+      }
+    }
+  }
+  return new Map([...out.entries()].map(([ym, row]) => [ym, row.path]));
 }
 
 export function resolveCartolaFilePath(
@@ -190,8 +320,11 @@ export function requireCcStatementPdfPath(
   assertCcStatementSourcePdfBasename(sourcePdf, row);
   const abs = resolveCcStatementPdfPath(sourcePdf, { usd: isCcUsdStatementRow(row) });
   if (!abs) {
-    const last4 = String(row.card_last4 ?? "").trim();
-    const slotDir = resolveCcStatementSlotDir(last4, isCcUsdStatementRow(row));
+    const last4 = ccCardLast4FromSourcePdf(sourcePdf) ?? String(row.card_last4 ?? "").trim();
+    const slotDir = resolveCcStatementSlotDir(
+      normalizeCcImportCardLast4(last4),
+      isCcUsdStatementRow(row)
+    );
     throw new CcStatementPdfPathError(
       `missing PDF for source_pdf=${basenameOnly(sourcePdf)} (expected under ${slotDir})`
     );
@@ -316,18 +449,34 @@ function buildCartolaDocumentPathsByMonth(
 ): Map<string, string> {
   const rows = db
     .prepare(
-      `SELECT period_month, source_file FROM checking_cartola_imports WHERE account_id = ?`
+      `SELECT period_month, source_file, period_from, period_to, movement_count
+       FROM checking_cartola_imports WHERE account_id = ?`
     )
-    .all(accountId) as { period_month: string; source_file: string }[];
+    .all(accountId) as {
+    period_month: string;
+    source_file: string;
+    period_from: string | null;
+    period_to: string | null;
+    movement_count: number;
+  }[];
 
-  const out = new Map<string, string>();
+  const fromDb = new Map<string, { path: string; movementCount: number }>();
   for (const row of rows) {
+    const abs = resolveCartolaFilePath(kind, row.source_file);
+    if (!abs) continue;
     const ym = matrixMonthForCartolaPeriodMonth(row.period_month);
     if (!ym) continue;
-    const abs = resolveCartolaFilePath(kind, row.source_file);
-    if (abs) out.set(ym, abs);
+    const movementCount = Number(row.movement_count) || 0;
+    const prev = fromDb.get(ym);
+    if (!prev || movementCount > prev.movementCount) {
+      fromDb.set(ym, { path: abs, movementCount });
+    }
   }
-  return out;
+  const fromJson = buildCartolaPathsFromParsedPdfEntries(
+    loadCartolaParsedPdfJsonEntries(kind),
+    kind
+  );
+  return mergeCartolaPathMaps(fromDb, fromJson);
 }
 
 function buildCcDocumentMonthsSet(
@@ -393,12 +542,21 @@ export function buildImportSyncDocumentMonths(
     return buildCcDocumentMonthsSet(account.account_id, account.cc_statement_currency);
   }
   const rows = db
-    .prepare(`SELECT period_month FROM checking_cartola_imports WHERE account_id = ?`)
-    .all(account.account_id) as { period_month: string }[];
+    .prepare(
+      `SELECT period_month, period_from, period_to FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(account.account_id) as {
+    period_month: string;
+    period_from: string | null;
+    period_to: string | null;
+  }[];
   const months = new Set<string>();
   for (const row of rows) {
     const ym = matrixMonthForCartolaPeriodMonth(row.period_month);
     if (ym) months.add(ym);
+  }
+  for (const ym of buildCartolaPathsFromParsedPdfJson(account.document_kind).keys()) {
+    months.add(ym);
   }
   return months;
 }
@@ -412,11 +570,17 @@ export function hasImportSyncDocumentForMonth(
       rowMonth
     );
   }
-  const row = db
+  const rows = db
     .prepare(
-      `SELECT 1 AS o FROM checking_cartola_imports
-       WHERE account_id = ? AND period_month = ? LIMIT 1`
+      `SELECT period_month, period_from, period_to FROM checking_cartola_imports WHERE account_id = ?`
     )
-    .get(account.account_id, rowMonth);
-  return row != null;
+    .all(account.account_id) as {
+    period_month: string;
+    period_from: string | null;
+    period_to: string | null;
+  }[];
+  for (const row of rows) {
+    if (cartolaPeriodRangeCoversMonth(row, rowMonth)) return true;
+  }
+  return buildCartolaPathsFromParsedPdfJson(account.document_kind).has(rowMonth);
 }

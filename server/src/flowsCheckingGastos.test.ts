@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
+import { db } from "./db.js";
 import {
   assignCheckingGastosMovementCategory,
+  autoMatchCategorySlugForDeposit,
+  checkingWithdrawalMayAutoMatchDeposit,
   cartolaDescriptionFromNote,
   cartolaDocumentFromNote,
   checkingGastosMovementBelongs,
@@ -11,9 +15,11 @@ import {
   depositMatchesInternalTransferTiming,
   fondoReservaAccountId,
   loadDepositMatchCandidates,
+  loadCheckingCartolaCredits,
   splitCheckingWithdrawalAgainstDeposits,
   isDapAbonoDescription,
   isExcludedCheckingWithdrawal,
+  isCheckingCorrienteVistaTraspasoOutflow,
   isInvestmentDepositTarget,
   isMercadoCapitalesCargoDescription,
   matchWithdrawalToDeposit,
@@ -32,14 +38,99 @@ import {
   parseAutoDepositMatchNote,
 } from "./ccExpenseDepositMatchNotes.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
+import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { checkingAccountId } from "./checkingCartolaImport.js";
+import { checkingLedgerAnchorNote } from "./checkingCartolaBalances.js";
+
+function insertCheckingCartolaWithdrawal(
+  accountId: number,
+  occurredOn: string,
+  amountClp: number,
+  description: string,
+  opts: { cartolaMonth: string; branch?: string; doc?: string; idx: number }
+): number {
+  const branch = opts.branch ?? "Agustinas";
+  const docPart = opts.doc ? `|doc:${opts.doc}` : "";
+  const note =
+    `import:cartola|${opts.cartolaMonth}|${branch}|${description}` +
+    `${docPart}|on:${occurredOn}|amt:${amountClp}|idx:${opts.idx}`;
+  const ins = db
+    .prepare(
+      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+       VALUES (?, ?, ?, ?, NULL)`
+    )
+    .run(accountId, amountClp, occurredOn, note);
+  return Number(ins.lastInsertRowid);
+}
+
+function deleteCheckingMovements(ids: readonly number[]): void {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => "?").join(", ");
+  db.prepare(`DELETE FROM movements WHERE id IN (${placeholders})`).run(...ids);
+}
 
 describe("flowsCheckingGastos", () => {
-  it("builds checking gastos lines when cuenta corriente exists", () => {
-    const lines = buildCheckingGastosLines();
-    if (lines.length === 0) return;
-    expect(lines.length).toBeGreaterThan(0);
-    const deposits = lines.filter((l) => l.category_slug === "deposits");
-    expect(deposits.length).toBeGreaterThan(0);
+  it("builds checking-internal lines for exactly paired corriente/vista transfers", () => {
+    const corrienteId = checkingAccountId();
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaId == null) return;
+
+    const movementId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-07-01",
+      -500_000,
+      "Transf. Internet a otro Bancos",
+      { cartolaMonth: "2099-07", idx: 9998801 }
+    );
+    for (const portion of ["gastos", "deposit"] as const) {
+      const key = checkingGastosMovementPurchaseKey(movementId, portion);
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(corrienteId, key);
+    }
+
+    const depositCandidates: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2099-07-01",
+        amount_clp: 500_000,
+        account_id: vistaId,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+    ];
+
+    const lines = buildCheckingGastosLines({
+      accountId: corrienteId,
+      depositCandidates,
+      checkingCredits: [],
+    });
+
+    const internalLines = lines.filter(
+      (l) =>
+        l.category_slug === "checking_internal_transfer" && l.statement_line_id === movementId
+    );
+    expect(internalLines).toHaveLength(1);
+    expect(internalLines[0]?.amount_clp).toBe(500_000);
+    expect(internalLines[0]?.checking_purchase_portion).toBe("deposit");
+    expect(internalLines[0]?.category_unique).toBe(true);
+
+    deleteCheckingMovements([movementId]);
+    for (const portion of ["gastos", "deposit"] as const) {
+      const key = checkingGastosMovementPurchaseKey(movementId, portion);
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(corrienteId, key);
+    }
+  });
+
+  it("builds gastos lines per checking account including cuenta vista when present", () => {
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaId == null) return;
+    const vistaLines = buildCheckingGastosLines({ accountId: vistaId });
+    for (const line of vistaLines) {
+      expect(line.account_id).toBe(vistaId);
+      expect(line.source).toBe("checking");
+    }
   });
 
   it("parses cartola description from movement note", () => {
@@ -298,9 +389,51 @@ describe("flowsCheckingGastos", () => {
     expect(matched).toEqual([]);
   });
 
-  it("excludes known DAP-reversed MC cargos from checking gastos lines", () => {
-    const lines = buildCheckingGastosLines();
-    if (lines.length === 0) return;
+  it("excludes DAP-reversed MC cargos from checking gastos lines", () => {
+    const corrienteId = checkingAccountId();
+    const checkingCredits: CheckingCartolaCredit[] = [
+      {
+        occurred_on: "2099-03-11",
+        amount_clp: 30_621_285,
+        note: "import:cartola|2099-03|PENALOLEN|DAP 026433811444 ABONADO|doc:3811444",
+      },
+      {
+        occurred_on: "2099-09-09",
+        amount_clp: 903_255,
+        note: "import:cartola|2099-09|PENALOLEN|DAP 026438818234 ABONADO|doc:8818234",
+      },
+    ];
+
+    const movementIds = [
+      insertCheckingCartolaWithdrawal(
+        corrienteId,
+        "2099-03-04",
+        -30_589_409,
+        "00350323026433811444",
+        { cartolaMonth: "2099-03", branch: "O.Gerencia", doc: "3811444", idx: 8802 }
+      ),
+      insertCheckingCartolaWithdrawal(
+        corrienteId,
+        "2099-08-09",
+        -900_000,
+        "00350323026438818234",
+        { cartolaMonth: "2099-08", branch: "O.Gerencia", doc: "8818234", idx: 8803 }
+      ),
+      insertCheckingCartolaWithdrawal(
+        corrienteId,
+        "2099-11-18",
+        -19_799_625,
+        "Cargo Mercado Capitales",
+        { cartolaMonth: "2099-11", branch: "Providenci", doc: "6665868", idx: 8804 }
+      ),
+    ];
+
+    const lines = buildCheckingGastosLines({
+      accountId: corrienteId,
+      depositCandidates: [],
+      checkingCredits,
+    });
+
     const mcMerchants = (month: string) =>
       lines
         .filter(
@@ -312,11 +445,17 @@ describe("flowsCheckingGastos", () => {
         )
         .map((l) => ({ id: l.statement_line_id, amount: l.amount_clp, merchant: l.merchant }));
 
-    expect(mcMerchants("2024-03")).toEqual([]);
-    expect(mcMerchants("2024-08")).toEqual([]);
-    expect(mcMerchants("2024-11")).toEqual([
-      expect.objectContaining({ amount: 19_799_625, merchant: "Cargo Mercado Capitales" }),
+    expect(mcMerchants("2099-03")).toEqual([]);
+    expect(mcMerchants("2099-08")).toEqual([]);
+    expect(mcMerchants("2099-11")).toEqual([
+      expect.objectContaining({
+        id: movementIds[2],
+        amount: 19_799_625,
+        merchant: "Cargo Mercado Capitales",
+      }),
     ]);
+
+    deleteCheckingMovements(movementIds);
   });
 
   it("excludes Mercado Capitales month when cargos sum to cash/efectivo inflows (Jan 2024)", () => {
@@ -374,9 +513,16 @@ describe("flowsCheckingGastos", () => {
     expect(isExcludedCheckingWithdrawal("Traspaso a Cuenta Vista 10%")).toBe(true);
     expect(isExcludedCheckingWithdrawal("Egreso por Compra de Divisas")).toBe(true);
     expect(isExcludedCheckingWithdrawal("Traspaso Internet a Línea Crédito")).toBe(true);
+    expect(isExcludedCheckingWithdrawal("Traspaso Internet a Cta. Cte.")).toBe(false);
+    expect(isExcludedCheckingWithdrawal("Traspaso Internet desde Cta.Ct")).toBe(false);
+    expect(isCheckingCorrienteVistaTraspasoOutflow("Traspaso Internet a Cta. Cte.")).toBe(true);
+    expect(isCheckingCorrienteVistaTraspasoOutflow("Traspaso Internet desde Cta.Ct")).toBe(
+      false
+    );
     expect(isExcludedCheckingWithdrawal("TRASPASO A FINTUAL")).toBe(false);
     expect(isExcludedCheckingWithdrawal("TRASPASO A FONDO RESERVA")).toBe(true);
     expect(isExcludedCheckingWithdrawal("DEPOSITO A RESERVA FINTUAL")).toBe(true);
+    expect(isExcludedCheckingWithdrawal("PAGO EN LINEA PROM. CMR FALABE")).toBe(false);
   });
 
   it("treats checking outflows paired with cash/efectivo deposits as internal", () => {
@@ -488,6 +634,8 @@ describe("flowsCheckingGastos", () => {
       {
         splittablePool: createSplittableInternalTransferPool(deposits),
         usedDepositKeys: new Set(),
+        withdrawalAccountId: 41,
+        withdrawalCategorySlug: "cuenta_vista",
       }
     );
     expect(split.internalClp).toBe(0);
@@ -503,6 +651,290 @@ describe("flowsCheckingGastos", () => {
       3,
       createSplittableInternalTransferPool(deposits)
     )).toBe(false);
+  });
+
+  it("does not net same-day cuenta vista deposits against vista withdrawals (Aug 2019)", () => {
+    const vistaId = 99;
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2019-08-01",
+        amount_clp: 23_370,
+        account_id: vistaId,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+      {
+        occurred_on: "2019-08-01",
+        amount_clp: 2_124_100,
+        account_id: vistaId,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const split = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2019-08-01",
+        amount_clp: -800_000,
+        description: "Transf. Internet a otro Bancos",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: vistaId,
+        withdrawalCategorySlug: "cuenta_vista",
+      }
+    );
+    expect(split.internalClp).toBe(0);
+    expect(split.gastosClp).toBe(800_000);
+    expect(split.investmentDeposit).toBeNull();
+  });
+
+  it("shows both Jul 2019 cuenta vista $700k outflows when not exactly paired (Jul 2019)", () => {
+    const vistaId = 99;
+    const corrienteId = 10;
+    const splitOpts = {
+      splittablePool: createSplittableInternalTransferPool([]),
+      usedDepositKeys: new Set<string>(),
+      withdrawalAccountId: vistaId,
+      withdrawalCategorySlug: "cuenta_vista",
+    };
+
+    const splitJul1 = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2019-07-01",
+        amount_clp: -700_000,
+        description: "Transf. Internet a otro Bancos",
+      },
+      [],
+      splitOpts
+    );
+    expect(splitJul1.internalClp).toBe(0);
+    expect(splitJul1.gastosClp).toBe(700_000);
+
+    const splitJul2 = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2019-07-02",
+        amount_clp: -700_000,
+        description: "Traspaso Internet a Cta. Cte.",
+      },
+      [],
+      {
+        ...splitOpts,
+        usedDepositKeys: new Set(),
+      }
+    );
+    expect(splitJul2.internalClp).toBe(0);
+    expect(splitJul2.gastosClp).toBe(700_000);
+
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2019-07-02",
+        amount_clp: 700_000,
+        account_id: corrienteId,
+        category_slug: "cuenta_corriente",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const splitJul2Paired = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2019-07-02",
+        amount_clp: -700_000,
+        description: "Traspaso Internet a Cta. Cte.",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: vistaId,
+        withdrawalCategorySlug: "cuenta_vista",
+      }
+    );
+    expect(splitJul2Paired.internalClp).toBe(700_000);
+    expect(splitJul2Paired.gastosClp).toBe(0);
+
+    const vistaIdReal = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaIdReal != null) {
+      const movId = insertCheckingCartolaWithdrawal(
+        vistaIdReal,
+        "2099-07-02",
+        -700_000,
+        "Traspaso Internet a Cta. Cte.",
+        { cartolaMonth: "2099-07", idx: 8805 }
+      );
+      const lines = buildCheckingGastosLines({
+        accountId: vistaIdReal,
+        depositCandidates: [],
+        checkingCredits: [],
+      });
+      const hit = lines.find((l) => l.statement_line_id === movId);
+      expect(hit?.category_slug).toBe("checking_internal_transfer");
+      expect(hit?.checking_purchase_portion).toBe("deposit");
+      expect(hit?.category_unique).toBe(true);
+      expect(hit?.amount_clp).toBe(700_000);
+      deleteCheckingMovements([movId]);
+    }
+  });
+
+  it("does not partial-match cross-account vista inflows against corriente wires (Nov 2017)", () => {
+    const corrienteId = 10;
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2017-11-27",
+        amount_clp: 30_000,
+        account_id: 99,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+      {
+        occurred_on: "2017-11-30",
+        amount_clp: 37_914,
+        account_id: 99,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const splitNov27 = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2017-11-27",
+        amount_clp: -300_000,
+        description: "Agustinas Transf. Internet a otro Bancos",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: corrienteId,
+        withdrawalCategorySlug: "cuenta_corriente",
+      }
+    );
+    expect(splitNov27.internalClp).toBe(0);
+    expect(splitNov27.gastosClp).toBe(300_000);
+
+    const splitNov30 = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2017-11-30",
+        amount_clp: -300_000,
+        description: "Agustinas Transf. Internet a otro Bancos",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: corrienteId,
+        withdrawalCategorySlug: "cuenta_corriente",
+      }
+    );
+    expect(splitNov30.internalClp).toBe(0);
+    expect(splitNov30.gastosClp).toBe(300_000);
+  });
+
+  it("does not emit orphan gastos on cuenta vista Nov 2017 wire", () => {
+    const vistaId = 99;
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2017-11-30",
+        amount_clp: 37_914,
+        account_id: 10,
+        category_slug: "cuenta_corriente",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const split = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2017-11-30",
+        amount_clp: -200_000,
+        description: "Transf. Internet a otro Bancos",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: vistaId,
+        withdrawalCategorySlug: "cuenta_vista",
+      }
+    );
+    expect(split.internalClp).toBe(0);
+    expect(split.gastosClp).toBe(200_000);
+    expect(split.investmentDeposit).toBeNull();
+  });
+
+  it("treats Jul 2019 CMR Falabella payment as gastos despite same-day vista traspaso credit", () => {
+    const vistaId = 99;
+    const split = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2019-07-15",
+        amount_clp: -365_970,
+        description: "PAGO EN LINEA PROM. CMR FALABE",
+      },
+      [],
+      {
+        splittablePool: createSplittableInternalTransferPool([]),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: vistaId,
+        withdrawalCategorySlug: "cuenta_vista",
+      }
+    );
+    expect(split.internalClp).toBe(0);
+    expect(split.gastosClp).toBe(365_970);
+    expect(isExcludedCheckingWithdrawal("PAGO EN LINEA PROM. CMR FALABE")).toBe(false);
+
+    const vistaIdReal = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaIdReal == null) return;
+    const movId = insertCheckingCartolaWithdrawal(
+      vistaIdReal,
+      "2099-07-15",
+      -365_970,
+      "PAGO EN LINEA PROM. CMR FALABE",
+      { cartolaMonth: "2099-07", branch: "93", doc: "0114200", idx: 8811 }
+    );
+    const lines = buildCheckingGastosLines({
+      accountId: vistaIdReal,
+      depositCandidates: [],
+      checkingCredits: [
+        {
+          occurred_on: "2099-07-15",
+          amount_clp: 365_970,
+          note:
+            "import:cartola|2099-07|401|Traspaso Internet desde Cta.Ct|on:2099-07-15|amt:365970|idx:10",
+        },
+      ],
+    });
+    const hit = lines.find((l) => l.statement_line_id === movId);
+    expect(hit?.amount_clp).toBe(365_970);
+    expect(hit?.category_slug).not.toBe("deposits");
+    expect(hit?.checking_purchase_portion).toBeUndefined();
+    deleteCheckingMovements([movId]);
+  });
+
+  it("pairs cross-account wire with cuenta vista inflow on same day", () => {
+    const corrienteId = 10;
+    const vistaId = 99;
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2019-08-01",
+        amount_clp: 800_000,
+        account_id: vistaId,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const split = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2019-08-01",
+        amount_clp: -800_000,
+        description: "Transf. Internet a otro Bancos",
+      },
+      deposits,
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: corrienteId,
+        withdrawalCategorySlug: "cuenta_corriente",
+      }
+    );
+    expect(split.internalClp).toBe(800_000);
+    expect(split.gastosClp).toBe(0);
   });
 
   it("attaches auto deposit-match notes to paired checking gastos lines", () => {
@@ -603,6 +1035,8 @@ describe("flowsCheckingGastos", () => {
       {
         splittablePool: createSplittableInternalTransferPool(deposits),
         usedDepositKeys: new Set(),
+        withdrawalAccountId: 1,
+        withdrawalCategorySlug: "cuenta_corriente",
       }
     );
     expect(split.internalClp).toBe(0);
@@ -630,6 +1064,8 @@ describe("flowsCheckingGastos", () => {
       {
         splittablePool: createSplittableInternalTransferPool(deposits),
         usedDepositKeys: new Set(),
+        withdrawalAccountId: 99,
+        withdrawalCategorySlug: "cuenta_corriente",
       }
     );
     expect(split.internalClp).toBe(0);
@@ -644,7 +1080,7 @@ describe("flowsCheckingGastos", () => {
     const split = splitCheckingWithdrawalAgainstDeposits(
       { occurred_on: "2024-12-10", amount_clp: -4_600_000 },
       deposits,
-      { splittablePool: pool, usedDepositKeys: used }
+      { splittablePool: pool, usedDepositKeys: used, withdrawalAccountId: checkingAccountId(), withdrawalCategorySlug: "cuenta_corriente" }
     );
     if (split.internalClp === 0 && split.investmentDeposit == null) return;
     expect(split.internalClp).toBe(4_000_000);
@@ -725,6 +1161,16 @@ describe("flowsCheckingGastos", () => {
 
   it("uses stable purchase keys for checking gastos lines", () => {
     expect(checkingGastosMovementPurchaseKey(42)).toBe("checking-mv:42");
+    const row = db
+      .prepare(`SELECT id FROM movements WHERE note LIKE 'import:cartola|%' LIMIT 1`)
+      .get() as { id: number } | undefined;
+    if (!row) return;
+    const full = db
+      .prepare(`SELECT account_id, note FROM movements WHERE id = ?`)
+      .get(row.id) as { account_id: number; note: string };
+    const key = checkingGastosMovementPurchaseKey(row.id);
+    expect(key.startsWith(`checking-cartola:${full.account_id}:`)).toBe(true);
+    expect(key).toBe(checkingCartolaStablePurchaseKey(full.account_id, full.note));
   });
 
   it("assigns category to checking gastos movement when present in DB", () => {
@@ -776,5 +1222,150 @@ describe("flowsCheckingGastos", () => {
         deposits
       )
     ).toBeNull();
+  });
+
+  it("excludes ledger anchor movements from gastos and cartola credit matching", () => {
+    const accountId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (accountId == null) return;
+
+    const depositId = db
+      .prepare(
+        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+         VALUES (?, ?, ?, ?, NULL)`
+      )
+      .run(accountId, 583_492, "2099-01-01", checkingLedgerAnchorNote("2099-02")).lastInsertRowid as number;
+
+    const withdrawalId = db
+      .prepare(
+        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+         VALUES (?, ?, ?, ?, NULL)`
+      )
+      .run(accountId, -583_492, "2099-01-02", checkingLedgerAnchorNote("2099-02")).lastInsertRowid as number;
+
+    expect(checkingGastosMovementBelongs(Number(depositId)).ok).toBe(false);
+    expect(checkingGastosMovementBelongs(Number(withdrawalId)).ok).toBe(false);
+
+    const credits = loadCheckingCartolaCredits(accountId);
+    expect(credits.some((c) => c.note === checkingLedgerAnchorNote("2099-02"))).toBe(false);
+
+    deleteCheckingMovements([Number(depositId), Number(withdrawalId)]);
+  });
+
+  it("checkingWithdrawalMayAutoMatchDeposit rejects named payee wires", () => {
+    expect(checkingWithdrawalMayAutoMatchDeposit("Agustinas Transf a CORRADI DELGADO")).toBe(
+      false
+    );
+    expect(checkingWithdrawalMayAutoMatchDeposit("Agustinas Transf. Internet a otro Bancos")).toBe(
+      true
+    );
+  });
+
+  it("autoMatchCategorySlugForDeposit splits checking vs investment targets", () => {
+    expect(
+      autoMatchCategorySlugForDeposit({
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      })
+    ).toBe("checking_internal_transfer");
+    expect(
+      autoMatchCategorySlugForDeposit({
+        category_slug: "cuenta_ahorro_vivienda",
+        group_slug: "cash_eqs",
+      })
+    ).toBe("deposits");
+    expect(
+      autoMatchCategorySlugForDeposit({
+        category_slug: "spy",
+        group_slug: "brokerage",
+      })
+    ).toBe("deposits");
+  });
+
+  it("does not auto-match CORRADI wire against coincident cross-account inflow (Aug 2017)", () => {
+    const corrienteId = 10;
+    const split = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2017-08-29",
+        amount_clp: -30_000,
+        description: "Agustinas Transf a CORRADI DELGADO",
+      },
+      [
+        {
+          occurred_on: "2017-08-29",
+          amount_clp: 30_000,
+          account_id: 99,
+          category_slug: "cuenta_vista",
+          group_slug: "cash_eqs",
+        },
+      ],
+      {
+        splittablePool: createSplittableInternalTransferPool([]),
+        usedDepositKeys: new Set(),
+        withdrawalAccountId: corrienteId,
+        withdrawalCategorySlug: "cuenta_corriente",
+      }
+    );
+    expect(split.internalClp).toBe(0);
+    expect(split.gastosClp).toBe(30_000);
+  });
+
+  it("persists cleared category across payload rebuild", () => {
+    const corrienteId = checkingAccountId();
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaId == null) return;
+
+    const movementId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-08-10",
+      -120_000,
+      "Transf. Internet a otro Bancos",
+      { cartolaMonth: "2099-08", idx: 9998812 }
+    );
+    for (const portion of ["gastos", "deposit"] as const) {
+      const key = checkingGastosMovementPurchaseKey(movementId, portion);
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(corrienteId, key);
+    }
+    const depositCandidates: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2099-08-10",
+        amount_clp: 120_000,
+        account_id: vistaId,
+        category_slug: "cuenta_vista",
+        group_slug: "cash_eqs",
+      },
+    ];
+
+    const before = buildCheckingGastosLines({
+      accountId: corrienteId,
+      depositCandidates,
+      checkingCredits: [],
+    });
+    const line = before.find((l) => l.statement_line_id === movementId);
+    expect(line?.category_slug).toBe("checking_internal_transfer");
+
+    assignCheckingGastosMovementCategory({
+      movementId,
+      unique: true,
+      clearCategory: true,
+    });
+
+    const after = buildCheckingGastosLines({
+      accountId: corrienteId,
+      depositCandidates,
+      checkingCredits: [],
+    });
+    const updated = after.find((l) => l.statement_line_id === movementId);
+    expect(updated?.category_slug).toBe("unclassified");
+    expect(updated?.category_unique).toBe(true);
+
+    deleteCheckingMovements([movementId]);
+    for (const portion of ["gastos", "deposit"] as const) {
+      const key = checkingGastosMovementPurchaseKey(movementId, portion);
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(corrienteId, key);
+    }
   });
 });

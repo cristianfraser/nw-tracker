@@ -1546,6 +1546,8 @@ export type { GroupTabAccountRow };
 
 import { bucketSlugForAccountId } from "./accountBucket.js";
 import {
+  CASH_SAVINGS_BUCKET,
+  CHECKING_ACCOUNTS_BUCKET,
   leafAssetGroupIdsUnder,
   listAccountsForBucketIds,
   listAccountsForBucketSlug,
@@ -1586,6 +1588,16 @@ export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string)
       for (const id of leafAssetGroupIdsUnder(slug)) bucketIds.add(id);
     }
     return toGroupTabAccountRows(listAccountsForBucketIds([...bucketIds], NOTE_STOCKS_LEGACY));
+  }
+  if (groupSlug === "cash_eqs" || groupSlug === "cash_savings") {
+    return toGroupTabAccountRows(
+      listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, NOTE_STOCKS_LEGACY)
+    );
+  }
+  if (groupSlug === "checking_accounts") {
+    return toGroupTabAccountRows(
+      listAccountsForBucketSlug(CHECKING_ACCOUNTS_BUCKET, undefined, NOTE_STOCKS_LEGACY)
+    );
   }
   return toGroupTabAccountRows(
     listAccountsForBucketSlug(groupSlug, tabSubgroup, NOTE_STOCKS_LEGACY)
