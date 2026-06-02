@@ -113,9 +113,13 @@ export const api = {
     const qs = q.toString();
     return j<import("./types").DashboardPageBundleResponse>(`/api/dashboard/page-bundle${qs ? `?${qs}` : ""}`);
   },
-  valuationTimeseries: (unit: "clp" | "usd", opts?: { group?: string; subgroup?: string }) => {
+  valuationTimeseries: (
+    unit: "clp" | "usd",
+    opts?: { portfolio_group?: string; group?: string; subgroup?: string }
+  ) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
+    if (opts?.portfolio_group) q.set("portfolio_group", opts.portfolio_group);
     if (opts?.group) q.set("group", opts.group);
     if (opts?.subgroup) q.set("subgroup", opts.subgroup);
     const qs = q.toString();
@@ -124,6 +128,11 @@ export const api = {
     );
   },
   fxLatest: () => j<import("./types").FxLatest | null>("/api/fx/latest"),
+  accountsByPortfolioGroup: (portfolioGroup: string) => {
+    const q = new URLSearchParams();
+    q.set("portfolio_group", portfolioGroup);
+    return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${q.toString()}`);
+  },
   accountsByGroup: (groupSlug: string, subgroup?: string) => {
     const q = new URLSearchParams();
     q.set("group", groupSlug);

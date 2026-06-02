@@ -18,7 +18,9 @@ type GroupUpsert = {
   sidebar_section?: "main" | "flows" | "link" | "nested";
   parent_slug?: string;
   color_rgb?: string;
-  group_kind?: "normal" | "reference" | "nav_hub" | "liability_group";
+  group_kind?: "bucket" | "reference" | "nav_bucket" | "liability_group";
+  kind_slug?: string;
+  exclude_from_parent_total?: boolean;
   chart_host_slug?: string | null;
 };
 
@@ -26,12 +28,12 @@ const upsertGroup = db.prepare(`
   INSERT INTO portfolio_groups (
     parent_id, slug, label, sort_order, color_rgb, route_path, active_prefix,
     nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
-    group_kind, chart_host_slug
+    group_kind, chart_host_slug, kind_slug, exclude_from_parent_total
   )
   VALUES (
     @parent_id, @slug, @label, @sort_order, @color_rgb, @route_path, @active_prefix,
     @nav_end, @show_leaf_hyphen, @label_i18n_key, @api_group, @api_subgroup, @asset_group_slug, @sidebar_section,
-    @group_kind, @chart_host_slug
+    @group_kind, @chart_host_slug, @kind_slug, @exclude_from_parent_total
   )
   ON CONFLICT(slug) DO UPDATE SET
     parent_id = excluded.parent_id,
@@ -48,7 +50,9 @@ const upsertGroup = db.prepare(`
     sidebar_section = excluded.sidebar_section,
     color_rgb = COALESCE(excluded.color_rgb, portfolio_groups.color_rgb),
     group_kind = excluded.group_kind,
-    chart_host_slug = excluded.chart_host_slug
+    chart_host_slug = excluded.chart_host_slug,
+    kind_slug = COALESCE(excluded.kind_slug, portfolio_groups.kind_slug),
+    exclude_from_parent_total = excluded.exclude_from_parent_total
 `);
 
 const groupIdBySlug = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`);
@@ -56,7 +60,8 @@ const groupIdBySlug = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?
 const deleteGroupItems = db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ?`);
 
 const deleteRetiredPortfolioGroups = db.prepare(`
-  DELETE FROM portfolio_groups WHERE slug IN ('retirement_afp', 'retirement_afc')
+  DELETE FROM portfolio_groups
+  WHERE slug IN ('retirement_afp', 'retirement_afc', 'retirement_afp_afc__afp', 'retirement_afp_afc__afc')
 `);
 
 const insertGroupChild = db.prepare(`
@@ -108,8 +113,10 @@ function upsert(g: GroupUpsert): number {
     api_subgroup: g.api_subgroup ?? null,
     asset_group_slug: g.asset_group_slug ?? null,
     sidebar_section: g.sidebar_section ?? "nested",
-    group_kind: g.group_kind ?? "normal",
+    group_kind: g.group_kind ?? "bucket",
     chart_host_slug: g.chart_host_slug ?? null,
+    kind_slug: g.kind_slug ?? null,
+    exclude_from_parent_total: g.exclude_from_parent_total ? 1 : 0,
   });
   return (groupIdBySlug.get(g.slug) as { id: number }).id;
 }
@@ -142,7 +149,10 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
        ORDER BY a.name COLLATE NOCASE`
     )
     .all(...leafIds) as { id: number }[];
-  rows.forEach((r, i) => insertAccountChild.run(pid, r.id, sortStart + i * 10));
+  rows.forEach((r, i) => {
+    insertAccountChild.run(pid, r.id, sortStart + i * 10);
+    db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(pid, r.id);
+  });
 }
 
 function linkAccountsByNotes(parentSlug: string, notes: string[], sortStart = 0) {
@@ -173,8 +183,6 @@ function rebuildRetirementNav() {
 
   const groups = [
     "retirement_afp_afc",
-    "retirement_afp_afc__afp",
-    "retirement_afp_afc__afc",
     "retirement_apv",
     "retirement_apv_a",
     "retirement_apv_b",
@@ -185,10 +193,7 @@ function rebuildRetirementNav() {
   }
 
   linkGroup("retirement", "retirement_afp_afc", 0);
-  linkGroup("retirement_afp_afc", "retirement_afp_afc__afp", 0);
-  linkGroup("retirement_afp_afc", "retirement_afp_afc__afc", 10);
-  linkAccountsByAssetGroup("retirement_afp_afc__afp", "retirement_afp_afc__afp", 0);
-  linkAccountsByAssetGroup("retirement_afp_afc__afc", "retirement_afp_afc__afc", 0);
+  linkAccountsByAssetGroup("retirement_afp_afc", "retirement_afp_afc", 0);
 
   linkGroup("retirement", "retirement_apv", 20);
   linkGroup("retirement_apv", "retirement_apv_a", 0);
@@ -242,7 +247,7 @@ export function seedNavTree(): void {
       sort_order: 10,
       route_path: "/cash_eqs",
       active_prefix: "/cash_eqs",
-      group_kind: "nav_hub",
+      group_kind: "nav_bucket",
       sidebar_section: "main",
     });
     upsert({
@@ -251,8 +256,11 @@ export function seedNavTree(): void {
       label_i18n_key: "dashboard.buckets.cash_savings",
       parent_slug: "cash_eqs",
       sort_order: 10,
-      route_path: "/cash_eqs",
+      route_path: "/cash_eqs/savings",
+      active_prefix: "/cash_eqs/savings",
       asset_group_slug: "cash_eqs__cash_savings",
+      kind_slug: "cash_savings",
+      group_kind: "bucket",
       sidebar_section: "main",
     });
     upsert({
@@ -264,6 +272,9 @@ export function seedNavTree(): void {
       route_path: "/cash_eqs/checking",
       active_prefix: "/cash_eqs/checking",
       asset_group_slug: "cash_eqs__checking_accounts",
+      kind_slug: "checking_accounts",
+      group_kind: "nav_bucket",
+      exclude_from_parent_total: true,
       sidebar_section: "main",
     });
     const cashId = (groupIdBySlug.get("cash_eqs") as { id: number }).id;
@@ -334,7 +345,7 @@ export function seedNavTree(): void {
       route_path: "/inversiones",
       active_prefix: "/inversiones",
       api_group: "inversiones",
-      group_kind: "nav_hub",
+      group_kind: "nav_bucket",
       sidebar_section: "main",
     });
 
@@ -358,6 +369,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/brokerage/mutual-funds",
       api_group: "brokerage",
       api_subgroup: "mutual_funds",
+      kind_slug: "mutual_funds",
+      group_kind: "bucket",
     });
     upsert({
       slug: "brokerage_acciones",
@@ -368,6 +381,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/brokerage/acciones",
       api_group: "brokerage",
       api_subgroup: "acciones",
+      kind_slug: "acciones",
+      group_kind: "bucket",
     });
     upsert({
       slug: "brokerage_crypto",
@@ -378,6 +393,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/brokerage/crypto",
       api_group: "brokerage",
       api_subgroup: "crypto",
+      kind_slug: "crypto",
+      group_kind: "bucket",
       color_rgb: "234,179,8",
     });
 
@@ -402,28 +419,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro/afp-afc",
       api_group: "retirement",
       api_subgroup: "afp_afc",
-    });
-    upsert({
-      slug: "retirement_afp_afc__afp",
-      label: "afp",
-      parent_slug: "retirement_afp_afc",
-      sort_order: 0,
-      route_path: "/inversiones/retiro/afp-afc/afp",
-      active_prefix: "/inversiones/retiro/afp-afc/afp",
-      api_group: "retirement",
-      api_subgroup: "afp",
-      asset_group_slug: "retirement_afp_afc__afp",
-    });
-    upsert({
-      slug: "retirement_afp_afc__afc",
-      label: "afc",
-      parent_slug: "retirement_afp_afc",
-      sort_order: 10,
-      route_path: "/inversiones/retiro/afp-afc/afc",
-      active_prefix: "/inversiones/retiro/afp-afc/afc",
-      api_group: "retirement",
-      api_subgroup: "afc",
-      asset_group_slug: "retirement_afp_afc__afc",
+      kind_slug: "afp_afc",
+      group_kind: "bucket",
     });
     upsert({
       slug: "retirement_apv",
@@ -435,6 +432,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro/apv",
       api_group: "retirement",
       api_subgroup: "apv",
+      kind_slug: "apv",
+      group_kind: "bucket",
     });
     upsert({
       slug: "retirement_apv_a",
@@ -445,6 +444,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro/apv/apv-a",
       api_group: "retirement",
       api_subgroup: "apv_a",
+      kind_slug: "apv_a",
+      group_kind: "bucket",
     });
     upsert({
       slug: "retirement_apv_b",
@@ -455,6 +456,8 @@ export function seedNavTree(): void {
       active_prefix: "/inversiones/retiro/apv/apv-b",
       api_group: "retirement",
       api_subgroup: "apv_b",
+      kind_slug: "apv_b",
+      group_kind: "bucket",
     });
 
     const invId = (groupIdBySlug.get("inversiones") as { id: number }).id;
@@ -546,7 +549,7 @@ function seedCashReferenceChartGroups() {
     label_i18n_key: "liabilities.creditCard",
     sort_order: 10,
     group_kind: "reference",
-    chart_host_slug: "cash_eqs",
+    chart_host_slug: "cash_savings",
     sidebar_section: "nested",
     nav_end: true,
   });
@@ -598,7 +601,7 @@ function rebuildNetWorthDashboardLinks() {
     deleteGroupItems.run(nw.id);
     linkGroup("net_worth", "real_estate", 10);
     linkGroup("net_worth", "inversiones", 20);
-    linkGroup("net_worth", "cash_savings", 30);
+    linkGroup("net_worth", "cash_eqs", 30);
     linkGroup("net_worth", "liabilities", 40);
   } catch (e) {
     console.warn("rebuildNetWorthDashboardLinks:", e instanceof Error ? e.message : e);

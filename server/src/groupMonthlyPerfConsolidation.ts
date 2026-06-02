@@ -1,6 +1,7 @@
 import {
   getAccountMonthlyPerformance,
   mapMonthlyClosingToChartDates,
+  patchOrInsertLiveCurrentMonthPerfRows,
   type AccountMonthlyPerformanceRow,
 } from "./accountPerformance.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
@@ -9,12 +10,19 @@ import {
   checkingMovementBalanceClpAtCached,
   checkingMovementBalanceLive,
 } from "./checkingCartolaBalances.js";
-import { monthEndsBetweenInclusive, monthKeyFromYmd } from "./calendarMonth.js";
+import { monthEndsBetweenInclusive, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import {
+  monthEndCloseClpForAccount,
+  monthEndCloseFromPerfRows,
+  priorCalendarMonthKey,
+} from "./accountPeriodMarks.js";
 import { db } from "./db.js";
 import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import { isCashSavingsValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 
@@ -24,6 +32,7 @@ export type GroupTabAccountRow = {
   account_id: number;
   name: string;
   bucket_slug: string;
+  notes?: string | null;
   exclude_from_group_totals: number;
 };
 
@@ -54,11 +63,6 @@ export type ConsolidatedMonthlyPerfRow = {
 
 const MONTH_ROW_EPS = 0.01;
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
-
-function addNullable(a: number | null, b: number | null): number | null {
-  if (a == null && b == null) return null;
-  return (a ?? 0) + (b ?? 0);
-}
 
 function recomputeYtdAndCumulative(
   rowsAsc: ConsolidatedMonthlyPerfRow[]
@@ -123,29 +127,10 @@ function balanceOnlyMonthlyRowsAsc(
   }
 
   if (isMovementBalanceCashCategory(categorySlug)) {
-    const today = chileCalendarTodayYmd();
-    const curMk = monthKeyFromYmd(today);
-    const curIdx = outAsc.findIndex((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-    if (curIdx >= 0) {
-      const row = outAsc[curIdx]!;
-      const prior = row.prior_closing;
-      if (prior != null && Number.isFinite(prior)) {
-        const live = checkingMovementBalanceLive(accountId);
-        let liveVal = live.value_clp;
-        if (unit === "usd") {
-          const usd = convertTs(liveVal, today, "usd");
-          liveVal = Number.isFinite(usd) ? usd : liveVal;
-        }
-        const net = row.net_capital_flow;
-        const nominal = liveVal - prior - net;
-        outAsc[curIdx] = {
-          ...row,
-          as_of_date: today,
-          closing_value: liveVal,
-          nominal_pl: nominal,
-        };
-      }
-    }
+    return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, outAsc, unit, () => {
+      const live = checkingMovementBalanceLive(accountId);
+      return live.value_clp;
+    });
   }
 
   return outAsc;
@@ -189,27 +174,13 @@ function bookValuationMonthlyPerfRows(
     return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
   });
 
-  const today = chileCalendarTodayYmd();
-  const curMk = monthKeyFromYmd(today);
-  const curIdx = asc.findIndex((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-  if (curIdx >= 0) {
+  const patched = patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, asc, unit, () => {
     const liveMark = syncLatestDisplayValueClp(accountId, categorySlug, { notes: null, name: "" });
-    let liveClp = liveMark?.value_clp ?? bookAsc[bookAsc.length - 1]!.value_clp;
-    const live = unit === "usd" ? convertTs(liveClp, today, "usd") : liveClp;
-    const row = asc[curIdx]!;
-    const prior = row.prior_closing;
-    const net = row.net_capital_flow;
-    const nominal =
-      prior != null && Number.isFinite(prior) ? live - prior - net : row.nominal_pl;
-    asc[curIdx] = {
-      ...row,
-      as_of_date: today,
-      closing_value: live,
-      nominal_pl: nominal,
-    };
-  }
+    const liveClp = liveMark?.value_clp ?? bookAsc[bookAsc.length - 1]!.value_clp;
+    return liveClp;
+  });
 
-  return [...asc].reverse();
+  return [...patched].reverse();
 }
 
 /** Per-account month-end rows for group consolidation (full cash bucket incl. cartola / ahorro). */
@@ -228,25 +199,81 @@ export function loadAccountRowsForGroupConsolidation(
   return perf?.monthly ?? [];
 }
 
+/** One row per account per calendar month (same rules as account monthly perf collapse). */
+function pickAccountMonthlyRowForConsolidation(
+  monthRows: readonly AccountMonthlyPerformanceRow[],
+  monthKey: string
+): AccountMonthlyPerformanceRow {
+  if (monthRows.length === 1) return monthRows[0]!;
+  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
+  if (monthKey === currentMk) {
+    const picked = pickRepresentativeMonthlyPerfRow([...monthRows], monthKey);
+    const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
+    return { ...picked, net_capital_flow: totalFlow };
+  }
+  return monthRows.reduce((best, r) =>
+    !best || String(r.as_of_date).localeCompare(String(best.as_of_date)) > 0 ? r : best
+  )!;
+}
+
 /**
- * Sum each account's monthly performance by calendar month (latest snapshot in the month per account).
+ * Sum each account's monthly performance by calendar month (one representative row per account).
  * Canonical source for detalle por mes cierre and dashboard bucket lines.
  */
+function monthEndCloseForConsolidation(
+  acct: {
+    account_id: number;
+    bucket_slug: string;
+    monthly: readonly AccountMonthlyPerformanceRow[];
+    notes?: string | null;
+    name?: string | null;
+  },
+  priorMk: string,
+  unit: TsUnit
+): number | null {
+  const clp = monthEndCloseClpForAccount(
+    acct.account_id,
+    acct.bucket_slug,
+    acct.monthly,
+    priorMk,
+    { notes: acct.notes, name: acct.name }
+  );
+  if (clp == null || !Number.isFinite(clp)) return null;
+  if (unit === "clp") return clp;
+  if (unit === "usd") {
+    const usd = convertTs(clp, monthEndUtcYmd(priorMk), "usd");
+    return Number.isFinite(usd) ? usd : null;
+  }
+  return clp;
+}
+
 export function consolidateGroupMonthlyPerf(
   byAccount: readonly {
     account_id: number;
+    bucket_slug: string;
     monthly: readonly AccountMonthlyPerformanceRow[];
-  }[]
+    notes?: string | null;
+    name?: string | null;
+  }[],
+  unit: TsUnit = "clp"
 ): ConsolidatedMonthlyPerfRow[] {
+  const today = chileCalendarTodayYmd();
+  const currentMk = monthKeyFromYmd(today);
+
   const latestByAccountMonth = new Map<string, AccountMonthlyPerformanceRow>();
   for (const acct of byAccount) {
+    const byMonth = new Map<string, AccountMonthlyPerformanceRow[]>();
     for (const row of acct.monthly) {
       const mk = monthKeyFromYmd(row.as_of_date);
-      const key = `${acct.account_id}:${mk}`;
-      const prev = latestByAccountMonth.get(key);
-      if (!prev || row.as_of_date > prev.as_of_date) {
-        latestByAccountMonth.set(key, row);
-      }
+      const arr = byMonth.get(mk) ?? [];
+      arr.push(row);
+      byMonth.set(mk, arr);
+    }
+    for (const [mk, monthRows] of byMonth) {
+      latestByAccountMonth.set(
+        `${acct.account_id}:${mk}`,
+        pickAccountMonthlyRowForConsolidation(monthRows, mk)
+      );
     }
   }
 
@@ -256,7 +283,7 @@ export function consolidateGroupMonthlyPerf(
     const bucket =
       monthBuckets.get(mk) ??
       ({
-        as_of_date: row.as_of_date,
+        as_of_date: mk === currentMk ? today : row.as_of_date,
         closing_value: 0,
         prior_closing: null as number | null,
         net_capital_flow: 0,
@@ -267,14 +294,38 @@ export function consolidateGroupMonthlyPerf(
         cumulative_nominal_pl: null,
       } satisfies ConsolidatedMonthlyPerfRow);
 
-    bucket.as_of_date =
-      bucket.as_of_date >= row.as_of_date ? bucket.as_of_date : row.as_of_date;
+    if (mk !== currentMk) {
+      bucket.as_of_date =
+        bucket.as_of_date >= row.as_of_date ? bucket.as_of_date : row.as_of_date;
+    }
     bucket.closing_value += row.closing_value;
-    bucket.prior_closing = addNullable(bucket.prior_closing, row.prior_closing);
     bucket.net_capital_flow += row.net_capital_flow;
     bucket.stock_units_inflow += row.stock_units_inflow;
-    bucket.nominal_pl = addNullable(bucket.nominal_pl, row.nominal_pl);
+    if (row.nominal_pl != null && Number.isFinite(row.nominal_pl)) {
+      bucket.nominal_pl = (bucket.nominal_pl ?? 0) + row.nominal_pl;
+    }
     monthBuckets.set(mk, bucket);
+  }
+
+  for (const [mk, bucket] of monthBuckets) {
+    const priorMk = priorCalendarMonthKey(mk);
+    let sumPrior = 0;
+    let anyPrior = false;
+    for (const acct of byAccount) {
+      let priorClose = monthEndCloseForConsolidation(acct, priorMk, unit);
+      if (priorClose == null) {
+        priorClose = monthEndCloseFromPerfRows(acct.monthly, priorMk);
+      }
+      if (priorClose == null) {
+        const row = latestByAccountMonth.get(`${acct.account_id}:${mk}`);
+        priorClose = row?.prior_closing ?? null;
+      }
+      if (priorClose != null && Number.isFinite(priorClose)) {
+        sumPrior += priorClose;
+        anyPrior = true;
+      }
+    }
+    bucket.prior_closing = anyPrior ? sumPrior : null;
   }
 
   const asc = [...monthBuckets.entries()]
@@ -282,6 +333,7 @@ export function consolidateGroupMonthlyPerf(
     .map(([, bucket]) => {
       const prior = bucket.prior_closing;
       const net = bucket.net_capital_flow;
+      /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
       const nominal = bucket.nominal_pl;
       const denom = (prior ?? 0) + net;
       const pct =
@@ -291,7 +343,7 @@ export function consolidateGroupMonthlyPerf(
         Number.isFinite(nominal / denom)
           ? nominal / denom
           : null;
-      return { ...bucket, pct_month: pct };
+      return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 
   return recomputeYtdAndCumulative(asc).reverse();
@@ -313,11 +365,18 @@ function buildConsolidationPayloads(
   rows: GroupTabAccountRow[],
   groupSlug: string,
   unit: TsUnit
-): { account_id: number; name: string; category_slug: string; monthly: AccountMonthlyPerformanceRow[] }[] {
-  const   account_monthly: {
+): {
+  account_id: number;
+  name: string;
+  bucket_slug: string;
+  notes: string | null;
+  monthly: AccountMonthlyPerformanceRow[];
+}[] {
+  const account_monthly: {
     account_id: number;
     name: string;
     bucket_slug: string;
+    notes: string | null;
     monthly: AccountMonthlyPerformanceRow[];
   }[] = [];
 
@@ -331,6 +390,7 @@ function buildConsolidationPayloads(
       account_id: seriesId,
       name: r.name,
       bucket_slug: r.bucket_slug,
+      notes: r.notes ?? null,
       monthly,
     });
   }
@@ -345,9 +405,16 @@ export function getGroupConsolidatedMonthlyPerfForRows(
 ): ConsolidatedMonthlyPerfRow[] {
   const payloads = buildConsolidationPayloads(rows, groupSlug, unit);
   const consolidated = consolidateGroupMonthlyPerf(
-    payloads.map((p) => ({ account_id: p.account_id, monthly: p.monthly }))
+    payloads.map((p) => ({
+      account_id: p.account_id,
+      bucket_slug: p.bucket_slug,
+      monthly: p.monthly,
+      notes: p.notes,
+      name: p.name,
+    })),
+    unit
   );
-  if (groupSlug === "cash_eqs" || groupSlug === "cash_savings") {
+  if (isCashSavingsValuationGroupSlug(groupSlug)) {
     return netLinkedCreditCardFromCashConsolidated(consolidated, unit);
   }
   return consolidated;

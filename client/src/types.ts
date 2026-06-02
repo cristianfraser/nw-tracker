@@ -1,4 +1,5 @@
 import type { MovementCreateSchema } from "./accountMovementCreate";
+import type { DataOrigin } from "./dataOrigin";
 
 export type AssetGroupSlug =
   | "retirement"
@@ -150,6 +151,15 @@ export interface DashboardAccountRow {
   exclude_from_group_totals?: number;
 }
 
+export interface DashboardLinkedBalanceRow {
+  slug: string;
+  label: string;
+  label_i18n_key: string;
+  clp: number;
+  usd?: number | null;
+  route_path: string;
+}
+
 export interface DashboardLayoutCardRow {
   slug: string;
   label: string;
@@ -158,6 +168,7 @@ export interface DashboardLayoutCardRow {
   bucket_slug: string;
   card_css: string | null;
   route_path?: string | null;
+  linked_balances?: DashboardLinkedBalanceRow[];
 }
 
 export interface DashboardResponse {
@@ -351,9 +362,8 @@ export interface AccountMortgageLedgerMeta {
   pie_clp: number | null;
   pie_uf: number | null;
   row_count: number;
+  /** Import provenance label (not a runtime file path). */
   csv_path: string;
-  csv_absolute_path?: string;
-  csv_file_exists?: boolean;
 }
 
 export type DeptoPaymentScenarioTerm = 30 | 25 | 20 | 15 | 12 | 10 | 5 | "max";
@@ -378,13 +388,13 @@ export interface DeptoPaymentScenarioRow {
 
 export interface AccountMortgageLedgerResponse {
   account_id: number;
-  source: "csv" | "none";
+  has_sheet_rows: boolean;
   meta: AccountMortgageLedgerMeta | null;
   rows: DeptoMortgageSheetRow[];
   payment_scenarios?: DeptoPaymentScenarioRow[];
 }
 
-/** `GET /api/accounts/:id/cc-installments` — credit_card: installment purchases from CSV + monthly projection. */
+/** `GET /api/accounts/:id/cc-installments` — credit_card: installment purchases from SQLite (PDF/ledger import). */
 export interface CcStatementLineDto {
   id: number;
   statement_id: number;
@@ -463,6 +473,8 @@ export interface CreditCardBillingConfigDto {
 export interface CcInstallmentPurchaseComputed {
   purchase_id: string;
   purchase_db_id?: number;
+  origin: DataOrigin;
+  /** @deprecated Use `origin`. */
   purchase_source?: "pdf" | "manual";
   label: string;
   principal_clp: number;
@@ -507,11 +519,8 @@ export interface CcInstallmentMonthRow {
 }
 
 export interface AccountCcInstallmentsMeta {
-  csv_path: string;
-  csv_absolute_path: string;
-  csv_file_exists: boolean;
-  db_purchase_count?: number;
-  db_payment_count?: number;
+  installment_purchase_count?: number;
+  installment_payment_count?: number;
   pay_by_rule?: string;
   remaining_balance_line_rule?: string;
 }
@@ -520,13 +529,14 @@ export interface CcInstallmentHistoryMonthPoint {
   month: string;
   remaining_balance_clp: number;
   installment_payments_clp: number;
-  /** PDF ledger only (sin sustituir por valorización); solo cuando `source === "db"`. */
+  /** Ledger historial only when `has_installment_ledger`. */
   ledger_remaining_installments_clp?: number;
 }
 
 export interface AccountCcInstallmentsResponse {
   account_id: number;
-  source: "csv" | "db" | "none";
+  has_installment_ledger: boolean;
+  has_imported_statements: boolean;
   meta: AccountCcInstallmentsMeta | null;
   purchases: CcInstallmentPurchaseComputed[];
   /** Compras en cuotas ya liquidadas (restan 0 y saldo 0). */
@@ -539,7 +549,7 @@ export interface AccountCcInstallmentsResponse {
     next_calendar_month_total_clp: number | null;
     next_calendar_month: string | null;
   };
-  /** Present for `source === "db"`: end-of-month outstanding installment principal vs cuotas pagadas en ese mes. */
+  /** End-of-month outstanding installment principal vs cuotas pagadas (ledger import). */
   installment_history_months?: CcInstallmentHistoryMonthPoint[];
   statements?: CcStatementDto[];
   billing_month_balances?: CcBillingMonthBalanceDto[];
@@ -685,6 +695,7 @@ export interface GroupMonthlyPerformanceResponse {
 export interface DashboardNavContextResponse {
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
+  dashboard_layout?: DashboardResponse["dashboard_layout"];
   cash_credit_card_links: DashboardResponse["cash_credit_card_links"];
   overview: ValuationTimeseriesResponse["overview"];
   fx_coverage: FxCoverage | null;
@@ -805,12 +816,15 @@ export interface NavTreeNodeDto {
   expense_account_id: number | null;
   expense_account_slug: string | null;
   asset_group_slug: string | null;
+  kind_slug: string | null;
+  dashboard_bucket_slug: string | null;
+  exclude_from_parent_total?: boolean;
   api_group: string | null;
   api_subgroup: string | null;
   color_rgb: string | null;
   color: string | null;
-  /** `nav_hub` = routing only (e.g. inversiones); balances use child asset groups. */
-  group_kind: "normal" | "reference" | "nav_hub" | "liability_group";
+  /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo). */
+  group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
   /** Long zero tail: listed for chart history; omitted from group tables and strip cards. */
   chart_inactive?: boolean;
   children: NavTreeNodeDto[];

@@ -4,20 +4,15 @@ import {
   assetGroupBySlug,
   dashboardBucketForAssetGroupSlug,
   isLeafAssetGroupSlug,
+  leafAssetGroupIdForKindSlug,
   leafAssetGroupIdsUnder,
   leafAssetGroupSlugsUnder,
+  leafAssetGroupSlugForKindSlug,
   listAccountsForBucketSlug,
-  resolveLegacyTabBucketSlug,
 } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 
 describe("assetGroupTree", () => {
-  it("resolves legacy brokerage tab queries to leaf buckets", () => {
-    expect(resolveLegacyTabBucketSlug("brokerage", "acciones")).toBe("brokerage_acciones");
-    expect(resolveLegacyTabBucketSlug("brokerage", "mutual_funds")).toBe("brokerage_mutual_funds");
-    expect(resolveLegacyTabBucketSlug("retirement", "apv_a")).toBe("retirement_apv_a");
-  });
-
   it("has nested brokerage leaves after migration", () => {
     expect(assetGroupBySlug("brokerage_acciones")).toBeTruthy();
     expect(isLeafAssetGroupSlug("brokerage_acciones")).toBe(false);
@@ -52,16 +47,22 @@ describe("assetGroupTree", () => {
     ).toBe(false);
   });
 
-  it("lists acciones tab accounts from leaf bucket placement", () => {
-    const rows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
+  it("lists acciones tab accounts from portfolio brokerage_acciones group", () => {
+    const rows = listAccountsForBucketSlug("brokerage_acciones", undefined, NOTE_STOCKS_LEGACY);
     const slugs = new Set(rows.map((r) => r.bucket_slug));
     for (const s of slugs) {
       expect(s === "brokerage_acciones" || s.startsWith("brokerage_acciones__")).toBe(true);
     }
   });
 
-  it("lists AFP + AFC tab including accounts on intermediate buckets", () => {
-    const rows = listAccountsForBucketSlug("retirement", "afp_afc", NOTE_STOCKS_LEGACY);
+  it("resolves afc kind to leaf bucket, not retirement_afp_afc parent", () => {
+    expect(leafAssetGroupSlugForKindSlug("afc")).toBe("retirement_afp_afc__afc");
+    expect(leafAssetGroupSlugForKindSlug("afp")).toBe("retirement_afp_afc__afp");
+    expect(leafAssetGroupIdForKindSlug("afc")).toBeGreaterThan(0);
+  });
+
+  it("lists AFP + AFC from retirement_afp_afc portfolio group", () => {
+    const rows = listAccountsForBucketSlug("retirement_afp_afc", undefined, NOTE_STOCKS_LEGACY);
     const names = rows.map((r) => r.name);
     expect(names).toContain("AFP");
     expect(names).toContain("AFC");

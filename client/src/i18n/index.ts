@@ -23,6 +23,7 @@ export function brokerageGroupLabel(group: BrokeragePortfolioGroup): string {
 }
 
 export function dashboardBucketLabel(bucket: "real_estate" | "retirement" | "brokerage" | "cash_eqs"): string {
+  if (bucket === "cash_eqs") return i18n.t("dashboard.buckets.cash_savings");
   return i18n.t(`dashboard.buckets.${bucket}`);
 }
 

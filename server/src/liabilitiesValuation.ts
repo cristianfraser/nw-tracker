@@ -1,7 +1,7 @@
 import {
   deptoMortgageCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromDb,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
@@ -54,7 +54,7 @@ let mortgageLedgerForOverview: DeptoMortgageSheetRow[] | null = null;
 
 function mortgageLedgerForLiabilitiesOverview(): DeptoMortgageSheetRow[] {
   if (mortgageLedgerForOverview == null) {
-    mortgageLedgerForOverview = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+    mortgageLedgerForOverview = loadDeptoDividendosSheetLedgerFromDb();
   }
   return mortgageLedgerForOverview;
 }

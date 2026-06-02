@@ -23,8 +23,11 @@ export type NavTreeNodeDto = {
   api_subgroup: string | null;
   color_rgb: string | null;
   color: string | null;
-  /** `nav_hub` = routing only (e.g. inversiones); `liability_group` = Pasivos root (sidebar only, no NW bucket card). */
-  group_kind: "normal" | "reference" | "nav_hub" | "liability_group";
+  kind_slug: string | null;
+  dashboard_bucket_slug: string | null;
+  exclude_from_parent_total: boolean;
+  /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo); `liability_group` = Pasivos root. */
+  group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
   /** Long zero tail: keep in nav for bucket chart history; hide from strips / hierarchy tables. */
   chart_inactive?: boolean;
   children: NavTreeNodeDto[];
@@ -47,6 +50,9 @@ type GroupRow = {
   asset_group_slug: string | null;
   sidebar_section: string;
   group_kind: string;
+  kind_slug: string | null;
+  dashboard_bucket_slug: string | null;
+  exclude_from_parent_total: number;
 };
 
 type ItemRow = {
@@ -63,7 +69,7 @@ function loadGroups(): GroupRow[] {
     .prepare(
       `SELECT id, parent_id, slug, label, sort_order, color_rgb, route_path, active_prefix,
               nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
-              group_kind
+              group_kind, kind_slug, dashboard_bucket_slug, exclude_from_parent_total
        FROM portfolio_groups
        ORDER BY sort_order, id`
     )
@@ -128,7 +134,10 @@ function buildNode(
         asset_group_slug: null,
         api_group: null,
         api_subgroup: null,
-        group_kind: "normal",
+        group_kind: "bucket",
+        kind_slug: null,
+        dashboard_bucket_slug: null,
+        exclude_from_parent_total: false,
         ...(chartInactive ? { chart_inactive: true } : {}),
         color_rgb,
         color: rgbTripletToCss(color_rgb),
@@ -154,7 +163,10 @@ function buildNode(
         asset_group_slug: null,
         api_group: null,
         api_subgroup: null,
-        group_kind: "normal",
+        group_kind: "bucket",
+        kind_slug: null,
+        dashboard_bucket_slug: null,
+        exclude_from_parent_total: false,
         color_rgb: null,
         color: null,
         children: [],
@@ -164,10 +176,13 @@ function buildNode(
 
   const groupKind =
     group.group_kind === "reference" ||
+    group.group_kind === "nav_bucket" ||
     group.group_kind === "nav_hub" ||
     group.group_kind === "liability_group"
-      ? group.group_kind
-      : "normal";
+      ? group.group_kind === "nav_hub"
+        ? "nav_bucket"
+        : group.group_kind
+      : "bucket";
 
   /** Explicit `portfolio_groups.color_rgb` wins; otherwise same resolver as charts (largest child balance). */
   const resolved = group.color_rgb ?? resolvePortfolioGroupColorRgb(group.id);
@@ -189,6 +204,9 @@ function buildNode(
     asset_group_slug: group.asset_group_slug,
     api_group: group.api_group,
     api_subgroup: group.api_subgroup,
+    kind_slug: group.kind_slug,
+    dashboard_bucket_slug: group.dashboard_bucket_slug,
+    exclude_from_parent_total: group.exclude_from_parent_total === 1,
     color_rgb: resolved,
     color: rgbTripletToCss(resolved),
     group_kind: groupKind,

@@ -3,9 +3,17 @@ import { cryptoSheetMovementDeltas, type CryptoSheetMonthMovement } from "./cryp
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { equityCloseUsdEod, equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import {
+  cryptoDisplaySessionYmd,
+  equityCloseUsdEod,
+  equitySessionYmdForTicker,
+  getLiveEquityQuoteFromDb,
+  shouldUseLiveEquityQuote,
+} from "./equityQuote.js";
+import { equityTickerForAccount } from "./accountEquityTicker.js";
+import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
 
+/** @deprecated Import/backfill only — runtime uses `equity_ticker` + `units_delta`. */
 export const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
 
 export type CryptoAsset = "BTC" | "ETH";
@@ -28,17 +36,19 @@ function categorySlugForAccount(accountId: number): string | null {
 }
 
 export function cryptoEquityTickerForAccount(accountId: number): "BTC-USD" | "ETH-USD" | null {
+  const fromCol = equityTickerForAccount(accountId);
+  if (fromCol === "BTC-USD" || fromCol === "ETH-USD") return fromCol;
   const slug = categorySlugForAccount(accountId);
   return slug ? cryptoEquityTickerForCategorySlug(slug) : null;
 }
 
-const stmtHasCryptoLedger = db.prepare(
-  `SELECT 1 FROM movements WHERE account_id = ? AND ${CRYPTO_IMPORT_NOTE_SQL} LIMIT 1`
+const stmtHasCryptoUnits = db.prepare(
+  `SELECT 1 FROM movements WHERE account_id = ? AND units_delta IS NOT NULL LIMIT 1`
 );
 
 export function accountUsesCryptoMtm(accountId: number): boolean {
   if (!cryptoEquityTickerForAccount(accountId)) return false;
-  return stmtHasCryptoLedger.get(accountId) != null;
+  return stmtHasCryptoUnits.get(accountId) != null;
 }
 
 const coinFromNoteRe = /coin=([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/;
@@ -86,64 +96,115 @@ export function cryptoCoinCumulativeThroughDate(
   asOfYmd: string,
   asset?: CryptoAsset
 ): number {
-  const resolved =
-    asset ?? cryptoAssetFromCategorySlug(categorySlugForAccount(accountId) ?? "") ?? null;
-  if (!resolved) return 0;
+  if (!cryptoEquityTickerForAccount(accountId)) return 0;
+  if (asset) {
+    const ticker = cryptoEquityTickerForAccount(accountId);
+    const expected = asset === "BTC" ? "BTC-USD" : "ETH-USD";
+    if (ticker !== expected) return 0;
+  }
 
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(COALESCE(units_delta, 0)), 0) AS u
        FROM movements
-       WHERE account_id = ?
-         AND ${CRYPTO_IMPORT_NOTE_SQL}
-         AND note LIKE ?
-         AND date(occurred_on) <= date(?)`
+       WHERE account_id = ? AND date(occurred_on) <= date(?)`
     )
-    .get(accountId, `%cripto-sheet|${resolved}|%`, asOfYmd) as { u: number };
+    .get(accountId, asOfYmd) as { u: number };
 
-  const hasExplicit = db
-    .prepare(
-      `SELECT 1 FROM movements
-       WHERE account_id = ? AND ${CRYPTO_IMPORT_NOTE_SQL} AND note LIKE ? AND units_delta IS NOT NULL
-       LIMIT 1`
-    )
-    .get(accountId, `%cripto-sheet|${resolved}|%`);
+  const sum = row?.u ?? 0;
+  if (sum !== 0) return sum;
 
-  if (hasExplicit) return row?.u ?? 0;
-  return netCryptoCoinFromLedgerNotes(accountId, resolved, asOfYmd);
+  const legacyAsset =
+    asset ?? cryptoAssetFromCategorySlug(categorySlugForAccount(accountId) ?? "") ?? null;
+  if (!legacyAsset) return 0;
+  return netCryptoCoinFromLedgerNotes(accountId, legacyAsset, asOfYmd);
 }
 
 /** CLP MTM: coin units through `asOfYmd` × USD price × FX. */
 export function computeCryptoMtmClp(
   accountId: number,
   asOfYmd: string,
-  priceUsd?: number | null
+  priceUsd?: number | null,
+  now: Date = new Date()
 ): number | null {
   const ticker = cryptoEquityTickerForAccount(accountId);
   if (!ticker) return null;
   const asset = ticker === "BTC-USD" ? "BTC" : "ETH";
-  const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd, asset);
+  const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd);
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
   const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
   if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
-  const fx = fxMonthEndForBalanceUsd(asOfYmd);
+  const fx =
+    priceUsd != null && Number.isFinite(priceUsd)
+      ? fxForLiveMtm(asOfYmd, now)
+      : fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = units * closeUsd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
 }
 
-export async function computeCryptoMtmClpLive(
+export function computeCryptoMtmClpLive(
   accountId: number,
-  asOfYmd?: string
-): Promise<{ value_clp: number; as_of_date: string } | null> {
+  now: Date = new Date()
+): { value_clp: number; as_of_date: string } | null {
   const ticker = cryptoEquityTickerForAccount(accountId);
   if (!ticker) return null;
-  const session = asOfYmd ?? equitySessionYmdForTicker(ticker);
-  const quote = await resolveEquityQuote(ticker, session, { preferLive: true });
+  const session = equitySessionYmdForTicker(ticker, now);
+  const quote = getLiveEquityQuoteFromDb(ticker);
   if (!quote) return null;
-  const clp = computeCryptoMtmClp(accountId, session, quote.price_usd);
+  const clp = computeCryptoMtmClp(accountId, session, quote.price_usd, now);
   if (clp == null || !Number.isFinite(clp)) return null;
   return { value_clp: clp, as_of_date: quote.trade_date };
+}
+
+/** Cached live crypto MTM when today's UTC session allows live quotes. */
+export function computeCryptoMtmClpCachedLive(
+  accountId: number,
+  now: Date = new Date()
+): number | null {
+  const ticker = cryptoEquityTickerForAccount(accountId);
+  if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
+  const session = equitySessionYmdForTicker(ticker, now);
+  if (!shouldUseLiveEquityQuote(ticker, session, now)) return null;
+  const cached = getLiveEquityQuoteFromDb(ticker);
+  if (!cached) return null;
+  return computeCryptoMtmClp(accountId, session, cached.price_usd, now);
+}
+
+/** Synchronous display mark: live when allowed, else last EOD for display session. */
+export function computeCryptoMtmClpDisplaySync(
+  accountId: number,
+  now: Date = new Date()
+): { value_clp: number; as_of_date: string } | null {
+  const ticker = cryptoEquityTickerForAccount(accountId);
+  if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
+
+  const session = equitySessionYmdForTicker(ticker, now);
+  if (shouldUseLiveEquityQuote(ticker, session, now)) {
+    const cached = computeCryptoMtmClpCachedLive(accountId, now);
+    if (cached != null && Number.isFinite(cached)) {
+      return { value_clp: cached, as_of_date: session };
+    }
+    const fromSession = computeCryptoMtmClp(accountId, session, null, now);
+    if (fromSession != null && Number.isFinite(fromSession)) {
+      return { value_clp: fromSession, as_of_date: session };
+    }
+  }
+
+  const displayYmd = cryptoDisplaySessionYmd(ticker, now);
+  const fromDisplay = computeCryptoMtmClp(accountId, displayYmd, null, now);
+  if (fromDisplay != null && Number.isFinite(fromDisplay)) {
+    return { value_clp: fromDisplay, as_of_date: displayYmd };
+  }
+
+  const mdRow = db
+    .prepare(`SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`)
+    .get(ticker) as { md: string | null } | undefined;
+  const md = mdRow?.md;
+  if (!md) return null;
+  const c = computeCryptoMtmClp(accountId, md, null, now);
+  if (c == null || !Number.isFinite(c)) return null;
+  return { value_clp: c, as_of_date: md };
 }
 
 /**
@@ -180,9 +241,7 @@ function snapshotDatesForCryptoAccount(accountId: number, equityTicker: "BTC-USD
   const s = new Set<string>();
   const movDates = db
     .prepare(
-      `SELECT occurred_on AS d FROM movements
-       WHERE account_id = ? AND ${CRYPTO_IMPORT_NOTE_SQL}
-       ORDER BY occurred_on`
+      `SELECT occurred_on AS d FROM movements WHERE account_id = ? ORDER BY occurred_on`
     )
     .all(accountId) as { d: string }[];
   for (const r of movDates) {

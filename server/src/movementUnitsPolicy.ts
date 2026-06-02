@@ -8,12 +8,11 @@ import {
   BROKERAGE_UNITS_REQUIRED_FLOW_KINDS,
   signedAmountClpForBrokerageFlow,
 } from "./brokerageFlowMovement.js";
-import { parsePanelAccountNotes } from "./panelAccountNotes.js";
-
 export type AccountRow = {
   bucket_slug: string;
   group_slug: string;
   notes?: string | null;
+  equity_ticker?: string | null;
 };
 
 export type UnitsFieldRequirement = "required" | "optional";
@@ -39,7 +38,7 @@ const MOVEMENTS_UNITS_BY_CATEGORY: Record<string, { unit_label: string }> = {
 };
 
 export function movementCreateSchemaForAccount(account: AccountRow): MovementCreateSchema | null {
-  if (accountUsesBrokerageFlowKinds(account, account.notes)) {
+  if (accountUsesBrokerageFlowKinds(account)) {
     return {
       ledger: "movements",
       units_delta: "optional",
@@ -213,8 +212,8 @@ export function validateMovementCreate(
   account: AccountRow,
   body: Record<string, unknown>
 ): MovementCreateValidation {
-  if (accountUsesBrokerageFlowKinds(account, account.notes)) {
-    const defaultTicker = parsePanelAccountNotes(account.notes)?.ticker ?? null;
+  if (accountUsesBrokerageFlowKinds(account)) {
+    const defaultTicker = account.equity_ticker?.trim().toUpperCase() ?? null;
     return validateBrokerageMovementCreate(account, body, defaultTicker);
   }
 

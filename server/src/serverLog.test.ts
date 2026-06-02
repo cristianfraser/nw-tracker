@@ -6,7 +6,9 @@ import {
   logHeavyEnabled,
   logHttpInEnabled,
   logHttpOutEnabled,
+  formatLogServerLine,
   redactUrlForLog,
+  serverLogTimestamp,
   verboseAllEnabled,
 } from "./serverLog.js";
 
@@ -43,6 +45,16 @@ describe("serverLog env flags", () => {
     process.env.DEBUG_DB_ALL = "1";
     expect(logDbAllStatements()).toBe(true);
     expect(dbSlowThresholdMs()).toBe(0);
+  });
+});
+
+describe("formatLogServerLine", () => {
+  it("prefixes channel lines with Chile wall clock and UTC offset", () => {
+    const fixed = new Date("2026-06-01T19:58:14.640Z");
+    expect(serverLogTimestamp(fixed, "America/Santiago")).toBe("[2026-06-01 -- 15:58:14 (-4)]");
+    expect(formatLogServerLine("api", "--> GET /api/health", fixed)).toBe(
+      "[2026-06-01 -- 15:58:14 (-4)] [api] --> GET /api/health"
+    );
   });
 });
 

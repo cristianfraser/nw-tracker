@@ -23,7 +23,6 @@ function fxLatestRow() {
  */
 export async function buildDashboardPageBundle(unit: TsUnit) {
   const includeUsd = unit === "usd";
-
   const [dash, tsRaw, fx, retirementPerf, brokeragePerf] = await Promise.all([
     timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd)),
     Promise.resolve().then(() =>

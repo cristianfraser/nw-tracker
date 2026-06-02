@@ -6,6 +6,7 @@ import {
   cardMetricsMainBalanceDiff,
   cardPeriodChangeFromMetrics,
   cardGroupTitleBalanceDelta,
+  roundedMetricDelta,
   subsetTitleBalanceDeltaRounded,
 } from "./dashboardCardBreakdown";
 import type { DashboardAccountRow } from "./types";
@@ -111,6 +112,7 @@ describe("dashboard card accounting identity", () => {
       "month",
       false
     );
+    expect(roundedMetricDelta(metrics, false, "period")).toBe(50_000);
     expect(cardPeriodChangeFromMetrics(metrics, false)).toBe(titleDelta);
     expect(titleDelta).toBe(120_000);
   });
@@ -128,7 +130,7 @@ describe("dashboard card accounting identity", () => {
     expect(metrics.deposits_period_clp).toBe(3_000_000);
   });
 
-  it("subset title delta matches period metrics for nav-scoped rows", () => {
+  it("title balance change differs from period P/L when period deposits are non-zero", () => {
     const row = baseRow({
       account_id: 30,
       deposits_clp: 26_409_638,
@@ -140,6 +142,8 @@ describe("dashboard card accounting identity", () => {
     });
     const metrics = cardGroupMetricsFromAccounts([row], "month");
     const title = subsetTitleBalanceDeltaRounded([row], "month", false, () => true);
-    expect(cardPeriodChangeFromMetrics(metrics, false)).toBe(title);
+    expect(roundedMetricDelta(metrics, false, "period")).toBe(61_370);
+    expect(title).toBe(-2_638_630);
+    expect(title).not.toBe(roundedMetricDelta(metrics, false, "period"));
   });
 });

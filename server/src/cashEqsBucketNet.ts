@@ -23,7 +23,7 @@ export function syntheticCashSavingsShortfallAccountId(): number {
   return SYNTHETIC_SHORTFALL_ACCOUNT_ID;
 }
 
-/** Uncovered tarjeta balance when checking accounts cannot cover it. Overdraft checking (negative) counts as zero coverage. */
+/** @deprecated Ahorros card uses full linked CC balance total, not checking shortfall. */
 export function creditCardShortfallClp(checkingTotalClp: number, ccBalanceClp: number): number {
   const checking = Math.max(0, Math.round(checkingTotalClp));
   const cc = Math.round(ccBalanceClp);
@@ -31,12 +31,11 @@ export function creditCardShortfallClp(checkingTotalClp: number, ccBalanceClp: n
   return Math.max(0, cc - checking);
 }
 
-export function applyCashSavingsNwAdjustment(
-  rawSavingsClp: number,
-  checkingTotalClp: number,
-  ccBalanceClp: number
-): number {
-  return Math.round(rawSavingsClp) - creditCardShortfallClp(checkingTotalClp, ccBalanceClp);
+/** Ahorros y reservas NW: Σ savings − linked tarjeta balance total (same as card footer). */
+export function applyCashSavingsNwAdjustment(rawSavingsClp: number, ccBalanceClp: number): number {
+  const cc = Math.round(ccBalanceClp);
+  if (cc <= 0) return Math.round(rawSavingsClp);
+  return Math.round(rawSavingsClp) - cc;
 }
 
 export function sumCheckingAccountsBalanceClp(
@@ -106,17 +105,79 @@ export function appendLinkedCreditCardDashboardRows(
   return applyCashSavingsShortfallToDashboardRows(rows, asOfYmd, includeUsd);
 }
 
-/** Append shortfall breakdown row; savings NW adjustment is applied in payload totals. */
-export function applyCashSavingsShortfallToDashboardRows(
-  rows: DashboardAccountStats[],
+export type DashboardRowForCashSum = Pick<
+  DashboardAccountStats,
+  "account_id" | "current_value_clp" | "current_value_usd" | "exclude_from_group_totals" | "bucket_slug"
+>;
+
+/** NW cash card total: Σ savings accounts − uncovered tarjeta after checking (matches card header). */
+export function sumCashSavingsNwAdjusted(
+  rows: readonly DashboardRowForCashSum[],
   asOfYmd: string,
   includeUsd: boolean
+): { clp: number; usd: number } {
+  let rawClp = 0;
+  let rawUsd = 0;
+  let anyUsd = false;
+  for (const r of rows) {
+    if (r.exclude_from_group_totals === 1) continue;
+    const bucket = r.bucket_slug ?? "";
+    if (!bucket.startsWith("cash_eqs__cash_savings") && !bucket.includes("fondo_reserva")) continue;
+    if (r.current_value_clp == null || !Number.isFinite(r.current_value_clp)) continue;
+    rawClp += r.current_value_clp;
+    if (includeUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
+      rawUsd += r.current_value_usd;
+      anyUsd = true;
+    }
+  }
+  const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
+  const clp = applyCashSavingsNwAdjustment(rawClp, cc);
+  const usd =
+    includeUsd && anyUsd
+      ? (() => {
+          const u = depositClpToUsdAtDate(clp, asOfYmd);
+          return u != null && Number.isFinite(u) ? u : 0;
+        })()
+      : 0;
+  return { clp, usd };
+}
+
+export type DashboardLinkedBalanceDto = {
+  slug: string;
+  label: string;
+  label_i18n_key: string;
+  clp: number;
+  usd: number | null;
+  route_path: string;
+};
+
+/** Tarjeta de crédito balance shown linked to the Ahorros y reservas home card. */
+export function cashSavingsLinkedBalances(
+  asOfYmd: string,
+  includeUsd: boolean
+): DashboardLinkedBalanceDto[] {
+  const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
+  if (cc <= 0) return [];
+  const usd = includeUsd ? depositClpToUsdAtDate(cc, asOfYmd) : null;
+  return [
+    {
+      slug: "credit_card",
+      label: "Credit card",
+      label_i18n_key: "liabilities.creditCard",
+      clp: cc,
+      usd: usd != null && Number.isFinite(usd) ? usd : null,
+      route_path: "/liabilities/credit_card",
+    },
+  ];
+}
+
+/** No-op: CC offset is header total + `linked_balances` footer, not a synthetic account row. */
+export function applyCashSavingsShortfallToDashboardRows(
+  rows: DashboardAccountStats[],
+  _asOfYmd: string,
+  _includeUsd: boolean
 ): DashboardAccountStats[] {
-  const checkingTotal = sumCheckingAccountsBalanceClp(rows);
-  const ccBalance = linkedCreditCardClpForCashCardAsOf(asOfYmd);
-  const shortfall = creditCardShortfallClp(checkingTotal, ccBalance);
-  const extra = cashSavingsShortfallDashboardRow(shortfall, asOfYmd, includeUsd);
-  return extra != null ? [...rows, extra] : rows;
+  return rows;
 }
 
 function priorMonthEndYmd(asOf: string): string | null {
@@ -169,15 +230,13 @@ function recomputeYtdAndCumulative(
   });
 }
 
-function shortfallAt(asOf: string, unit: TsUnit): number {
-  const checking = checkingAccountsBalanceClpAt(asOf);
+function linkedCcOffsetAt(asOf: string, unit: TsUnit): number {
   const ccClp = linkedCreditCardClpForCashCardAsOf(asOf);
-  const shortfallClp = creditCardShortfallClp(checking, ccClp);
-  const v = convertLinkedCc(shortfallClp, asOf, unit);
+  const v = convertLinkedCc(ccClp, asOf, unit);
   return Number.isFinite(v) ? v : 0;
 }
 
-/** Apply conditional CC shortfall to consolidated cash_savings month cierres (charts / overview). */
+/** Subtract linked tarjeta balance total from consolidated cash_savings month cierres (charts / overview). */
 export function netLinkedCreditCardFromCashConsolidated(
   rows: readonly ConsolidatedMonthlyPerfRow[],
   unit: TsUnit
@@ -187,14 +246,14 @@ export function netLinkedCreditCardFromCashConsolidated(
   const asc = [...rows]
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))
     .map((row) => {
-      const shortfall = shortfallAt(row.as_of_date, unit);
+      const linkedCc = linkedCcOffsetAt(row.as_of_date, unit);
       const priorEnd = priorMonthEndYmd(row.as_of_date);
-      const priorShortfall = priorEnd != null ? shortfallAt(priorEnd, unit) : 0;
+      const priorLinkedCc = priorEnd != null ? linkedCcOffsetAt(priorEnd, unit) : 0;
 
-      const closing_value = row.closing_value - shortfall;
+      const closing_value = row.closing_value - linkedCc;
       const prior_closing =
         row.prior_closing != null && Number.isFinite(row.prior_closing)
-          ? row.prior_closing - priorShortfall
+          ? row.prior_closing - priorLinkedCc
           : row.prior_closing;
 
       return recomputeNominalFromCloses({

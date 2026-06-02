@@ -7,11 +7,9 @@ import {
   type DeptoPaymentScenarioTerm,
   isDeptoMortgagePaymentCuota,
   numCsv,
-  readSemicolonCsv,
 } from "./deptoDividendosLedger.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
-import path from "node:path";
 
 /** Model annual rate (4,95%) — monthly = /12/100. */
 const DEFAULT_ANNUAL_RATE = 0.0495;
@@ -220,24 +218,12 @@ function buildScenarioRow(
  * Appends a projected next-payment row at the end (shown first in the UI).
  */
 export function buildDeptoPaymentScenarioRows(
-  cfraserDir: string,
   ledger: readonly DeptoMortgageSheetRow[]
 ): DeptoPaymentScenarioRow[] {
   const firstSchedule = firstMortgageScheduleYmd(ledger);
   if (!firstSchedule) return [];
 
-  const fp = path.join(cfraserDir, "depto-dividendos.csv");
-  const csvRows = readSemicolonCsv(fp);
   const byDateCuota = new Map<string, string[]>();
-  for (let i = 3; i < csvRows.length; i++) {
-    const raw = csvRows[i] ?? [];
-    const occurred_on = String(raw[1] ?? "")
-      .trim()
-      .replace(/^\ufeff/, "");
-    const cuota = String(raw[0] ?? "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) continue;
-    byDateCuota.set(`${occurred_on}|${cuota}`, raw);
-  }
 
   const paymentRows = [...ledger]
     .filter((r) => isDeptoMortgagePaymentCuota(r.cuota))

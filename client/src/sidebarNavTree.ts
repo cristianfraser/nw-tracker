@@ -1,3 +1,13 @@
+/** Non-expandable (leaf) siblings first, then expandable; stable order within each group. */
+export function sortNavTreeLeavesFirst<T extends { children?: readonly unknown[] }>(nodes: T[]): T[] {
+  return [...nodes].sort((a, b) => {
+    const aExpandable = (a.children?.length ?? 0) > 0;
+    const bExpandable = (b.children?.length ?? 0) > 0;
+    if (aExpandable === bExpandable) return 0;
+    return aExpandable ? 1 : -1;
+  });
+}
+
 export type SidebarNavNode = {
   id: string;
   label: string;

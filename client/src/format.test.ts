@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClp, formatCcExpenseLineAmount } from "./format";
+import { formatClp, formatCcExpenseLineAmount, titleBalanceDeltaNumberFlowParts } from "./format";
 
 describe("formatClp", () => {
   it("formats negatives with accounting parentheses", () => {
@@ -8,6 +8,14 @@ describe("formatClp", () => {
 
   it("returns em dash for non-finite values", () => {
     expect(formatClp(Number.NaN)).toBe("—");
+  });
+});
+
+describe("titleBalanceDeltaNumberFlowParts", () => {
+  it("uses + prefix for gains and parentheses for losses", () => {
+    expect(titleBalanceDeltaNumberFlowParts(4_822_484, "clp", "$").prefix).toBe("+$");
+    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "$").prefix).toBe("($");
+    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "$").suffix).toBe(")");
   });
 });
 

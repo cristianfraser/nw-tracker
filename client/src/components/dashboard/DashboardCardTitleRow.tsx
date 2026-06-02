@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { DeltaMetricFlow } from "./DeltaMetricFlow";
+import { TitleBalanceDeltaFlow } from "./TitleBalanceDeltaFlow";
 
 type Props = {
   label: string;
@@ -25,12 +25,11 @@ export function DashboardCardTitleRow({
     <div className="card-title-row title-container">
       <span className="title card-title-row__label">{labelNode}</span>
       <div className="number-container">
-        <DeltaMetricFlow
+        <TitleBalanceDeltaFlow
           delta={balanceDelta}
           showUsd={showUsd}
           animated={animated}
           mountSeedId={`${cardSlug}:title-balance-delta`}
-          deltaFormat="absolute"
           className="card-title-row__delta"
         />
       </div>

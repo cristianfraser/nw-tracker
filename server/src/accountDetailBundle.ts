@@ -2,7 +2,7 @@ import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
   getStateContributionInflowEventsForAccount,
-  totalDepositsClpWithStocksSheetFloor,
+  totalDepositsClpForAccount,
   totalDisplayDepositsClpForAccount,
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
@@ -11,18 +11,19 @@ import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import {
   isDeptoMortgagePaymentCuota,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromDb,
   mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
-import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
-import fs from "node:fs";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { dashboardBucketForAssetGroupSlug, leafAssetGroupIdsUnder } from "./assetGroupTree.js";
+import { kindSlugForAccount } from "./portfolioGroupTree.js";
+import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
+import { dashboardBucketSlugForAccountId } from "./portfolioGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -115,8 +116,8 @@ export async function buildAccountDetailBundle(
 
   if (!cat) return null;
 
-  const category_slug = accountBucketKindSlug(cat.bucket_slug);
-  const dashSlug = dashboardBucketForAssetGroupSlug(cat.bucket_slug);
+  const category_slug = kindSlugForAccount(accountId) ?? accountBucketKindSlug(cat.bucket_slug);
+  const dashSlug = dashboardBucketSlugForAccountId(accountId);
   const group_slug = dashSlug ?? cat.bucket_slug;
   const group_label =
     dashSlug != null
@@ -124,7 +125,7 @@ export async function buildAccountDetailBundle(
           ?.label ?? cat.bucket_label
       : cat.bucket_label;
 
-  const deposits_clp = totalDepositsClpWithStocksSheetFloor(accountId, category_slug);
+  const deposits_clp = totalDepositsClpForAccount(accountId);
   let latest = await latestValuationDisplayForAccount(accountId, category_slug, {
     notes: cat.account_notes,
     name: cat.account_name,
@@ -143,7 +144,9 @@ export async function buildAccountDetailBundle(
   let latest_valuation_clp = latest?.value_clp ?? null;
   let latest_valuation_date = latest?.as_of_date ?? null;
   if (
-    (category_slug === "afp" || isFintualCertV2ValuationNotes(cat.account_notes)) &&
+    (category_slug === "afp" ||
+      isFintualCertV2ValuationNotes(cat.account_notes) ||
+      (accountUsesEquityMtm(accountId) && position?.value_clp != null)) &&
     position?.value_clp != null
   ) {
     latest_valuation_clp = position.value_clp;
@@ -175,7 +178,7 @@ export async function buildAccountDetailBundle(
   const events = getMergedDepositInflowEventsForAccount(accountId);
   const displayEvents = getMergedDisplayDepositInflowEventsForAccount(accountId);
   const stateEvents = getStateContributionInflowEventsForAccount(accountId);
-  const total_clp = totalDepositsClpWithStocksSheetFloor(accountId, category_slug);
+  const total_clp = totalDepositsClpForAccount(accountId);
   const display_total_clp = totalDisplayDepositsClpForAccount(accountId);
   let cumulative_clp = 0;
   const events_with_cumulative = events.map((e) => {
@@ -204,36 +207,30 @@ export async function buildAccountDetailBundle(
 
   let mortgageLedger: {
     account_id: number;
-    source: string;
+    has_sheet_rows: boolean;
     meta: unknown;
     rows: unknown[];
     payment_scenarios?: unknown[];
-  } = { account_id: accountId, source: "none", meta: null, rows: [] };
+  } = { account_id: accountId, has_sheet_rows: false, meta: null, rows: [] };
   if (category_slug === "property" || category_slug === "mortgage") {
-    const csvRel = "cfraser/depto-dividendos.csv";
-    const dir = resolveCfraserCsvDir();
-    const absCsv = resolveDeptoDividendosCsvPath();
-    const sheetRowsAll = loadDeptoDividendosSheetLedger(dir);
+    const sheetRowsAll = loadDeptoDividendosSheetLedgerFromDb();
     const sheetRows =
       category_slug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
         : sheetRowsAll;
     mortgageLedger = {
       account_id: accountId,
-      source: "csv",
-      meta: {
-        ...mortgageMetaFromSheetRows(sheetRowsAll, csvRel),
-        csv_absolute_path: absCsv,
-        csv_file_exists: fs.existsSync(absCsv),
-      },
+      has_sheet_rows: sheetRowsAll.length > 0,
+      meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
       rows: sheetRows,
-      payment_scenarios: buildDeptoPaymentScenarioRows(dir, sheetRowsAll),
+      payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll),
     };
   }
 
   let ccLedger: Awaited<ReturnType<typeof creditCardInstallmentsResponse>> = {
     account_id: accountId,
-    source: "none",
+    has_installment_ledger: false,
+    has_imported_statements: false,
     meta: null,
     purchases: [],
     purchases_completed: [],

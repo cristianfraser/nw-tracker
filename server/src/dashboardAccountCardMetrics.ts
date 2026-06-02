@@ -2,32 +2,11 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
+import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import { priorCloseFromPerfRows } from "./accountPeriodMarks.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 export type AccountPeriodClosePeriod = "month" | "year";
-
-function priorCalendarMonthKeyFromToday(todayYmd: string): string {
-  const y = Number(todayYmd.slice(0, 4));
-  const m = Number(todayYmd.slice(5, 7));
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return todayYmd.slice(0, 7);
-  if (m === 1) return `${y - 1}-12`;
-  return `${y}-${String(m - 1).padStart(2, "0")}`;
-}
-
-function bestPerformanceCloseInMonth(
-  monthly: AccountMonthlyPerformanceRow[],
-  monthKey: string
-): number | null {
-  let best: AccountMonthlyPerformanceRow | null = null;
-  for (const row of monthly) {
-    if (monthKeyFromYmd(row.as_of_date) !== monthKey) continue;
-    if (!best || String(row.as_of_date).localeCompare(String(best.as_of_date)) > 0) {
-      best = row;
-    }
-  }
-  const v = best?.closing_value;
-  return v != null && Number.isFinite(v) ? v : null;
-}
 
 /** Month-end / prior year-end close from an already-loaded performance series. */
 export function accountPriorPeriodCloseFromPerf(
@@ -36,41 +15,8 @@ export function accountPriorPeriodCloseFromPerf(
   todayYmd: string = chileCalendarTodayYmd()
 ): number | null {
   if (!perf.monthly.length) return null;
-
-  if (period === "month") {
-    const priorMk = priorCalendarMonthKeyFromToday(todayYmd);
-    const exact = bestPerformanceCloseInMonth(perf.monthly, priorMk);
-    if (exact != null) return exact;
-
-    const curMk = todayYmd.slice(0, 7);
-    const hasBalanceInOrAfterPriorMonth = perf.monthly.some((row) => {
-      const mk = monthKeyFromYmd(row.as_of_date);
-      return mk >= priorMk && row.closing_value != null && Number.isFinite(row.closing_value);
-    });
-    if (hasBalanceInOrAfterPriorMonth) return 0;
-
-    return null;
-  }
-
-  const y0 = todayYmd.slice(0, 4);
-  let best: AccountMonthlyPerformanceRow | null = null;
-  for (const row of perf.monthly) {
-    if (row.as_of_date.slice(0, 4) >= y0) continue;
-    if (row.closing_value == null || !Number.isFinite(row.closing_value)) continue;
-    if (!best || String(row.as_of_date).localeCompare(String(best.as_of_date)) > 0) {
-      best = row;
-    }
-  }
-  const v = best?.closing_value;
-  if (v != null && Number.isFinite(v)) return v;
-
-  const hasCurrentYearClose = perf.monthly.some(
-    (row) =>
-      row.as_of_date.slice(0, 4) === y0 &&
-      row.closing_value != null &&
-      Number.isFinite(row.closing_value)
-  );
-  return hasCurrentYearClose ? 0 : null;
+  const anchor = period === "month" ? "mtd" : "ytd";
+  return priorCloseFromPerfRows(perf.monthly, anchor, todayYmd);
 }
 
 /** Month-end / prior year-end close from the same performance series as Retiro P/L charts. */
@@ -107,19 +53,31 @@ export function accountCardPerformanceMetricsFromPerf(
   let delta_year = 0;
   let anyYear = false;
 
+  const byMonth = new Map<string, AccountMonthlyPerformanceRow[]>();
   for (const row of perf.monthly) {
-    if (monthKeyFromYmd(row.as_of_date) === currentMk) {
-      delta_month = row.nominal_pl;
-    }
-    if (row.as_of_date.slice(0, 4) === currentY && row.nominal_pl != null && Number.isFinite(row.nominal_pl)) {
+    const mk = monthKeyFromYmd(row.as_of_date);
+    const arr = byMonth.get(mk) ?? [];
+    arr.push(row);
+    byMonth.set(mk, arr);
+  }
+
+  const currentMonthRows = byMonth.get(currentMk);
+  if (currentMonthRows?.length) {
+    delta_month = pickRepresentativeMonthlyPerfRow(currentMonthRows, currentMk).nominal_pl;
+  }
+
+  for (const [mk, monthRows] of byMonth) {
+    if (mk.slice(0, 4) !== currentY) continue;
+    const row =
+      mk === currentMk
+        ? pickRepresentativeMonthlyPerfRow(monthRows, mk)
+        : monthRows.reduce((best, r) =>
+            !best || String(r.as_of_date).localeCompare(String(best.as_of_date)) > 0 ? r : best
+          )!;
+    if (row.nominal_pl != null && Number.isFinite(row.nominal_pl)) {
       delta_year += row.nominal_pl;
       anyYear = true;
     }
-  }
-
-  if (delta_month == null) {
-    const fallback = latest?.nominal_pl;
-    delta_month = fallback != null && Number.isFinite(fallback) ? fallback : null;
   }
 
   const total = latest?.cumulative_nominal_pl;

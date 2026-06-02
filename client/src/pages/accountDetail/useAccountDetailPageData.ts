@@ -15,6 +15,7 @@ import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dash
 import { filterAccountFlowsPersonalOnly, accountMovementsToFlowRows } from "../../accountFlows";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
+import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
 import type { EntityColorTarget } from "../../entityColor";
 import {
   accountCardTitleBalanceDelta,
@@ -32,7 +33,7 @@ type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"
 
 export type AccountDetailPageData = {
   id: string | undefined;
-  detailPending: boolean;
+  contentLoading: boolean;
   err: string | null;
   monthlyPerfErr: string | null;
   summary: NonNullable<DetailBundle["summary"]>;
@@ -72,7 +73,7 @@ export type AccountDetailPageData = {
   chartUsdVal: number | null;
 };
 
-export function useAccountDetailPageData(): AccountDetailPageData | { detailPending: true } | { err: string } | { loading: true } {
+export function useAccountDetailPageData(): AccountDetailPageData {
   const { id } = useParams();
   const [extraCcOffsets, setExtraCcOffsets] = useState<Record<string, number>>({});
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
@@ -81,6 +82,8 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
   const [movementsOnlyPersonalDeposits, setMovementsOnlyPersonalDeposits] = useState(false);
   const deferredCcOffsets = useDeferredValue(extraCcOffsets);
 
+  const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
+
   const { data: detail, error: detailError, isPending: detailPending } = useAccountDetailBundle(
     id,
     displayUnit,
@@ -88,18 +91,11 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
     deferredCcOffsets
   );
   const { data: sidebarNav } = useSidebarNav();
-  const { data: navCtx } = useDashboardNavContext(displayUnit);
-  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
-  const overviewPoints = navCtx?.overviewPoints ?? [];
 
-  const summary = detail?.summary ?? null;
-  const movements = detail?.movements ?? [];
-  const ts = detail?.ts ?? null;
-  const depositInflows = detail?.depositInflows ?? null;
-  const mortgageLedger = detail?.mortgageLedger ?? null;
-  const ccLedger = detail?.ccLedger ?? null;
-  const invNavAccounts = detail?.invNavAccounts?.accounts ?? null;
-  const monthlyPerf = detail?.monthly_performance ?? null;
+  const placeholder = useMemo(
+    () => buildPlaceholderAccountDetailBundle(accountIdNum > 0 ? accountIdNum : 1, displayUnit),
+    [accountIdNum, displayUnit]
+  );
 
   const err =
     detailError instanceof Error
@@ -107,6 +103,39 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
       : detailError
         ? "Failed to load"
         : null;
+
+  const bundleReady =
+    detail?.summary != null &&
+    detail.ts != null &&
+    detail.depositInflows != null &&
+    detail.mortgageLedger != null &&
+    detail.ccLedger != null &&
+    detail.invNavAccounts?.accounts != null;
+
+  const contentLoading = detailPending || !bundleReady;
+
+  const summary = detail?.summary ?? placeholder.summary;
+  const movements = detail?.movements ?? placeholder.movements;
+  const ts: NonNullable<DetailBundle["ts"]> = detail?.ts ?? placeholder.ts!;
+  const depositInflows = detail?.depositInflows ?? placeholder.depositInflows;
+  const mortgageLedger = detail?.mortgageLedger ?? placeholder.mortgageLedger;
+  const ccLedger = (detail?.ccLedger ?? placeholder.ccLedger) as AccountCcInstallmentsResponse;
+  const invNavAccounts = detail?.invNavAccounts?.accounts ?? placeholder.invNavAccounts.accounts;
+  const monthlyPerf = detail?.monthly_performance ?? placeholder.monthly_performance;
+  const checkingCartolaMonths = detail?.checkingCartolaMonths ?? null;
+
+  const accountIdForNav = accountIdNum > 0 ? accountIdNum : summary.account_id;
+  const navSelfEarly = useMemo(() => {
+    if (!Number.isFinite(accountIdForNav) || accountIdForNav <= 0) return null;
+    return findNavTreeNodeByAccountId(sidebarNav?.main ?? [], accountIdForNav);
+  }, [sidebarNav?.main, accountIdForNav]);
+  const needsNavChildCards =
+    (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
+
+  const { data: navCtx } = useDashboardNavContext(displayUnit, needsNavChildCards);
+  const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
+  const overviewPoints = navCtx?.overviewPoints ?? [];
+
   const monthlyPerfErr: string | null = null;
 
   const valuationTailClipEndDate = useMemo(() => {
@@ -171,22 +200,17 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
     }
   }, [id]);
 
-  const navSelf = useMemo(() => {
-    const accountId = summary?.account_id ?? (id ? Number(id) : NaN);
-    if (!Number.isFinite(accountId) || accountId <= 0) return null;
-    return findNavTreeNodeByAccountId(sidebarNav?.main ?? [], accountId);
-  }, [sidebarNav?.main, summary?.account_id, id]);
+  const navSelf = navSelfEarly;
 
   const accountColorRgb = useMemo(() => {
-    if (summary == null || ts == null) return null;
     return ts.accounts.accounts?.find((a) => a.account_id === summary.account_id)?.color_rgb ?? null;
-  }, [summary, ts?.accounts.accounts]);
+  }, [summary.account_id, ts.accounts.accounts]);
 
   const pageColorTarget = useMemo((): EntityColorTarget | undefined => {
-    const accountId = summary?.account_id ?? (id ? Number(id) : NaN);
+    const accountId = summary.account_id;
     if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
     return { kind: "account", accountId };
-  }, [summary?.account_id, id]);
+  }, [summary.account_id]);
 
   const accountChartTheme = useMemo(
     () => ({
@@ -196,13 +220,6 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
     }),
     [accountColorRgb]
   );
-
-  if (detailPending && detail == null) return { detailPending: true };
-  if (err) return { err };
-  if (!summary || !ts || !depositInflows || !mortgageLedger || !ccLedger || invNavAccounts == null) {
-    if (detail == null && detailPending) return { detailPending: true };
-    return { loading: true };
-  }
 
   const lastChartRow =
     ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
@@ -225,15 +242,15 @@ export function useAccountDetailPageData(): AccountDetailPageData | { detailPend
 
   return {
     id,
-    detailPending: false,
+    contentLoading: err != null ? false : contentLoading,
     err: null,
     monthlyPerfErr,
     summary,
     ts,
     depositInflows,
     mortgageLedger,
-    ccLedger: ccLedger as AccountCcInstallmentsResponse,
-    checkingCartolaMonths: detail?.checkingCartolaMonths ?? null,
+    ccLedger,
+    checkingCartolaMonths,
     invNavAccounts,
     movements,
     dash,

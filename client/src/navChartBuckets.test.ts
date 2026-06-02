@@ -47,7 +47,7 @@ describe("navChartBuckets", () => {
     const inversiones: NavTreeNodeDto = {
       slug: "inversiones",
       label: "Inversiones",
-      group_kind: "nav_hub",
+      group_kind: "nav_bucket",
       children: [
         groupNode("brokerage", [
           groupNode("brokerage_mutual_funds", [], "/mf"),

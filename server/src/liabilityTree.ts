@@ -5,6 +5,8 @@ import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
+import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
 export type { NavTreeNodeDto };
@@ -204,7 +206,31 @@ function linkedCreditCardLiabilityViews(): LinkedCreditCardLiabilityViewRow[] {
     .all() as LinkedCreditCardLiabilityViewRow[];
 }
 
-/** Sum linked tarjeta de crédito balances (same scope as cash card breakdown / Efectivo net). */
+/**
+ * Linked CC balance for one card: billing **balance total** (Detalle por mes) when the ledger exists;
+ * otherwise liability valuation on or before `asOfYmd`.
+ */
+function linkedCreditCardBalanceTotalClpAsOf(
+  view: LinkedCreditCardLiabilityViewRow,
+  valuationRowsAsc: { as_of_date: string; value_clp: number }[],
+  asOfYmd: string,
+  todayYmd: string
+): number | null {
+  const masterId = view.source_account_id;
+  if (ccInstallmentLedgerRowCount(masterId) > 0) {
+    const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
+    if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
+  }
+  if (asOfYmd >= todayYmd) {
+    return (
+      latestLiabilityValuationRowForSnapshot(view.liability_account_id, "credit_card", asOfYmd)
+        ?.value_clp ?? null
+    );
+  }
+  return latestValuationClpFromAscRows(valuationRowsAsc, asOfYmd);
+}
+
+/** Sum linked tarjeta balances (billing balance total; same number on Ahorros card footer). */
 export function linkedCreditCardClpForCashCardAsOf(asOfYmd: string): number {
   return linkedCreditCardClpForCashCardByDates([asOfYmd]).get(asOfYmd) ?? 0;
 }
@@ -250,16 +276,7 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
   for (const d of datesAsc) {
     let sum = 0;
     for (const { view, rows } of perViewRows) {
-      let clp: number | null = null;
-      if (d >= today) {
-        clp = latestLiabilityValuationRowForSnapshot(
-          view.liability_account_id,
-          "credit_card",
-          d
-        )?.value_clp ?? null;
-      } else {
-        clp = latestValuationClpFromAscRows(rows, d);
-      }
+      const clp = linkedCreditCardBalanceTotalClpAsOf(view, rows, d, today);
       if (clp != null && Number.isFinite(clp)) sum += clp;
     }
     out.set(d, sum);
@@ -270,13 +287,14 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
 /** Pasivos > tarjeta de crédito → cards linked under liabilities_credit_card (liability_view per master). */
 export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditCardCashLinkRow[] {
   const out: CreditCardCashLinkRow[] = [];
+  const today = chileCalendarTodayYmd();
   for (const row of linkedCreditCardLiabilityViews()) {
-    const snap = latestLiabilityValuationRowForSnapshot(
-      row.liability_account_id,
-      "credit_card",
-      asOfYmd
-    );
-    const clp = snap?.value_clp;
+    const effectiveId = resolveOperationalAccountId(row.liability_account_id);
+    const rows = stmtValuationsOnOrBefore.all(effectiveId, asOfYmd) as {
+      as_of_date: string;
+      value_clp: number;
+    }[];
+    const clp = linkedCreditCardBalanceTotalClpAsOf(row, rows, asOfYmd, today);
     if (clp == null || !Number.isFinite(clp)) continue;
     out.push({
       liability_account_id: row.liability_account_id,

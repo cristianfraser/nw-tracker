@@ -1,6 +1,6 @@
 import i18n from "./i18n";
 import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
-import type { SidebarNavNode } from "./sidebarNavTree";
+import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
 import type { EntityColorTarget } from "./entityColor";
 
 export function resolveNavTreeLabel(dto: NavTreeNodeDto): string {
@@ -21,7 +21,9 @@ export function navColorTargetFromDto(dto: NavTreeNodeDto): EntityColorTarget | 
 }
 
 function mapNode(dto: NavTreeNodeDto): SidebarNavNode {
-  const children = dto.children.length > 0 ? dto.children.map(mapNode) : undefined;
+  const childDtos =
+    dto.children.length > 0 ? sortNavTreeLeavesFirst(dto.children).map(mapNode) : undefined;
+  const children = childDtos && childDtos.length > 0 ? childDtos : undefined;
   return {
     id: dto.node_id,
     label: resolveNavTreeLabel(dto),

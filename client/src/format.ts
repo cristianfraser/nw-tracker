@@ -126,6 +126,23 @@ export function accountingCurrencyNumberFlowParts(
   };
 }
 
+/** Card title balance Δ: `+$…` / `($…)` / `$0` (muted row; no ▲/▼ or green/red). */
+export function titleBalanceDeltaNumberFlowParts(
+  n: number,
+  unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp",
+  symbolOverride?: string
+): ReturnType<typeof accountingCurrencyNumberFlowParts> {
+  const rounded = Math.round(n);
+  if (rounded < 0) {
+    return accountingCurrencyNumberFlowParts(rounded, unit, symbolOverride);
+  }
+  const base = accountingCurrencyNumberFlowParts(rounded, unit, symbolOverride);
+  if (rounded > 0) {
+    return { ...base, prefix: `+${base.prefix}` };
+  }
+  return base;
+}
+
 /** Plain percent for NumberFlow (no sign) — direction via ▲/▼; suffix `%`. */
 export function plainPercentNumberFlowParts(
   n: number,

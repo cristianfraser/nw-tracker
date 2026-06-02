@@ -7,7 +7,8 @@ import {
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
+import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
 
 export type MarketDisplaySeriesRow = {
   id: number;
@@ -66,6 +67,17 @@ export type MarketTickerEquityRow = {
   source: "live" | "eod";
 };
 
+const CRYPTO_MARQUEE_TICKERS = ["BTC-USD", "ETH-USD"] as const;
+
+/** Yahoo live/EOD symbols for the marquee: DB config + built-in/panel NYSE + crypto. */
+export function equityTickersForMarqueeQuotes(marqueeSeries: MarketDisplaySeriesRow[]): string[] {
+  const fromConfig = marqueeSeries
+    .filter((r) => r.kind === "equity" && r.series_key?.trim())
+    .map((r) => r.series_key!.trim().toUpperCase());
+  const fromAccounts = listDistinctEquityTickersForSync();
+  return [...new Set([...fromConfig, ...fromAccounts, ...CRYPTO_MARQUEE_TICKERS])];
+}
+
 export type MarketTickerPayload = {
   chile_today: string;
   uf: { date: string; clp_per_uf: number } | null;
@@ -80,7 +92,7 @@ export type MarketTickerPayload = {
 /**
  * Marquee snapshot driven by `market_display_series` rows with `show_in_marquee = 1`.
  */
-export async function getMarketTickerPayloadFromDb(): Promise<MarketTickerPayload> {
+export function getMarketTickerPayloadFromDb(): MarketTickerPayload {
   const today = chileCalendarTodayYmd();
   const now = new Date();
   const marquee_series = listMarqueeSeries();
@@ -100,7 +112,7 @@ export async function getMarketTickerPayloadFromDb(): Promise<MarketTickerPayloa
       continue;
     }
     if (row.kind === "fx_usd") {
-      const fxRow = fxRowOnOrBefore(today);
+      const fxRow = fxForLiveMtm(today, now) ?? fxRowOnOrBefore(today);
       if (fxRow != null && Number.isFinite(fxRow.clp_per_usd) && fxRow.clp_per_usd > 0) {
         const fxStale = fxRow.date < today;
         const prior = fxStale
@@ -154,20 +166,19 @@ export async function getMarketTickerPayloadFromDb(): Promise<MarketTickerPayloa
         continue;
       }
     }
-    if (row.kind === "equity" && row.series_key) {
-      const ticker = row.series_key;
-      const sessionYmd = equitySessionYmdForTicker(ticker, now);
-      const q = await resolveEquityQuote(ticker, sessionYmd, { preferLive: true, now });
-      if (q != null && Number.isFinite(q.price_usd) && q.price_usd > 0) {
-        equities.push({
-          ticker,
-          trade_date: q.trade_date,
-          value_usd: q.price_usd,
-          delta_pct: q.delta_pct,
-          source: q.source,
-        });
-      }
-    }
+  }
+
+  for (const ticker of equityTickersForMarqueeQuotes(marquee_series)) {
+    const sessionYmd = equitySessionYmdForTicker(ticker, now);
+    const q = resolveEquityQuote(ticker, sessionYmd, { preferLive: true, now });
+    if (q == null || !Number.isFinite(q.price_usd) || q.price_usd <= 0) continue;
+    equities.push({
+      ticker,
+      trade_date: q.trade_date,
+      value_usd: q.price_usd,
+      delta_pct: q.delta_pct,
+      source: q.source,
+    });
   }
 
   return {

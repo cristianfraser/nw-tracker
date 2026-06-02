@@ -1,20 +1,20 @@
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
-import { readSpyVeaShareUnitsFromStocksCsv } from "./accountPosition.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
-import { parsePanelAccountNotes } from "./panelAccountNotes.js";
+import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
+export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   equityCloseUsdEod,
   equitySessionYmdForTicker,
-  getCachedLiveEquityQuote,
-  resolveEquityQuote,
+  getLiveEquityQuoteFromDb,
+  shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
 /** Yahoo chart symbols loaded at `import:excel` into `equity_daily` (USD close per share/coin). */
-export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "BTC-USD", "ETH-USD"] as const;
+export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
 
 const insEod = db.prepare(
   `INSERT INTO equity_daily (ticker, trade_date, close_usd) VALUES (?,?,?)
@@ -49,22 +49,6 @@ export function accountUsesEquityMtm(accountId: number): boolean {
   );
 }
 
-const stmtBucket = db.prepare(
-  `SELECT g.slug, a.notes FROM accounts a
-   JOIN asset_groups g ON g.id = a.asset_group_id
-   WHERE a.id = ?`
-);
-
-export function equityTickerForAccount(accountId: number): string | null {
-  const r = stmtBucket.get(accountId) as { slug: string; notes: string | null } | undefined;
-  const panel = parsePanelAccountNotes(r?.notes);
-  if (panel) return panel.ticker;
-  const kind = r?.slug ? accountBucketKindSlug(r.slug) : "";
-  if (kind === "spy") return "SPY";
-  if (kind === "vea") return "VEA";
-  return null;
-}
-
 const stmtUnits = db.prepare(
   `SELECT COALESCE(SUM(units_delta), 0) AS u
    FROM movements
@@ -73,15 +57,27 @@ const stmtUnits = db.prepare(
      AND flow_kind IN (${shareUnitsFlowPh})`
 );
 
+/** Share units held on or before `asOfYmd` (brokerage acciones / crypto with unit flows). */
+export function equityShareUnitsThroughYmd(accountId: number, asOfYmd: string): number {
+  if (!accountUsesEquityMtm(accountId)) return 0;
+  const urow = stmtUnits.get(
+    accountId,
+    asOfYmd,
+    ...BROKERAGE_SHARE_UNITS_FLOW_KINDS
+  ) as { u: number } | undefined;
+  const units = urow?.u ?? 0;
+  return Number.isFinite(units) ? units : 0;
+}
+
 /** CLP MTM: shares through `asOfYmd` × USD price × FX. Uses EOD from DB unless `priceUsd` passed. */
 export function computeEquityMtmClp(
   accountId: number,
   asOfYmd: string,
-  priceUsd?: number | null
+  priceUsd?: number | null,
+  now: Date = new Date()
 ): number | null {
-  const ticker = equityTickerForAccount(accountId);
-  if (!ticker) return null;
   if (!accountUsesEquityMtm(accountId)) return null;
+  const ticker = requireEquityTicker(accountId);
   const urow = stmtUnits.get(
     accountId,
     asOfYmd,
@@ -91,33 +87,81 @@ export function computeEquityMtmClp(
   if (units <= 0 || !Number.isFinite(units)) return null;
   const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
   if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
-  const fx = fxMonthEndForBalanceUsd(asOfYmd);
+  const fx =
+    priceUsd != null && Number.isFinite(priceUsd)
+      ? fxForLiveMtm(asOfYmd, now)
+      : fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = units * closeUsd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
 }
 
-/** Sync MTM using a fresh cached live quote when the dashboard has already loaded one. */
-export function computeEquityMtmClpCachedLive(accountId: number): number | null {
-  const ticker = equityTickerForAccount(accountId);
-  if (!ticker || !accountUsesEquityMtm(accountId)) return null;
-  const session = equitySessionYmdForTicker(ticker);
-  const cached = getCachedLiveEquityQuote(ticker);
+/** Sync MTM using a fresh cached live quote only during NYSE regular session. */
+export function computeEquityMtmClpCachedLive(
+  accountId: number,
+  now: Date = new Date()
+): number | null {
+  if (!accountUsesEquityMtm(accountId)) return null;
+  const ticker = requireEquityTicker(accountId);
+  const session = equitySessionYmdForTicker(ticker, now);
+  if (!shouldUseLiveEquityQuote(ticker, session, now)) return null;
+  const cached = getLiveEquityQuoteFromDb(ticker);
   if (!cached) return null;
-  return computeEquityMtmClp(accountId, session, cached.price_usd);
+  return computeEquityMtmClp(accountId, session, cached.price_usd, now);
 }
 
-/** MTM with live Yahoo quote when session is open (dashboard / account summary). */
-export async function computeEquityMtmClpLive(
+/**
+ * Synchronous display mark for acciones: live MTM in session, else last EOD for
+ * {@link nyseDisplaySessionYmd} (prior close before open; same-day close after close).
+ */
+export function computeEquityMtmClpDisplaySync(
   accountId: number,
-  asOfYmd?: string
-): Promise<{ value_clp: number; as_of_date: string; source: string } | null> {
-  const ticker = equityTickerForAccount(accountId);
-  if (!ticker) return null;
-  const session = asOfYmd ?? equitySessionYmdForTicker(ticker);
-  const quote = await resolveEquityQuote(ticker, session, { preferLive: true });
+  now: Date = new Date()
+): { value_clp: number; as_of_date: string } | null {
+  if (!accountUsesEquityMtm(accountId)) return null;
+  const ticker = requireEquityTicker(accountId);
+
+  const session = equitySessionYmdForTicker(ticker, now);
+  if (shouldUseLiveEquityQuote(ticker, session, now)) {
+    const cached = computeEquityMtmClpCachedLive(accountId, now);
+    if (cached != null && Number.isFinite(cached) && cached > 0) {
+      return { value_clp: cached, as_of_date: session };
+    }
+    const fromSession = computeEquityMtmClp(accountId, session, null, now);
+    if (fromSession != null && Number.isFinite(fromSession) && fromSession > 0) {
+      return { value_clp: fromSession, as_of_date: session };
+    }
+  }
+
+  const displayYmd = nyseDisplaySessionYmd(now);
+  const fromDisplay = computeEquityMtmClp(accountId, displayYmd, null, now);
+  if (fromDisplay != null && Number.isFinite(fromDisplay) && fromDisplay > 0) {
+    return { value_clp: fromDisplay, as_of_date: displayYmd };
+  }
+
+  const mdRow = stmtMaxEqDate.get(ticker) as { md: string | null } | undefined;
+  const md = mdRow?.md;
+  if (md) {
+    const fromEod = computeEquityMtmClp(accountId, md);
+    if (fromEod != null && Number.isFinite(fromEod) && fromEod > 0) {
+      return { value_clp: fromEod, as_of_date: md };
+    }
+  }
+
+  return null;
+}
+
+/** MTM from scheduler-persisted live quote (no Yahoo on HTTP). */
+export function computeEquityMtmClpLive(
+  accountId: number,
+  now: Date = new Date()
+): { value_clp: number; as_of_date: string; source: string } | null {
+  if (!accountUsesEquityMtm(accountId)) return null;
+  const ticker = requireEquityTicker(accountId);
+  const session = equitySessionYmdForTicker(ticker, now);
+  const quote = getLiveEquityQuoteFromDb(ticker);
   if (!quote) return null;
-  const clp = computeEquityMtmClp(accountId, session, quote.price_usd);
+  const clp = computeEquityMtmClp(accountId, session, quote.price_usd, now);
   if (clp == null || !Number.isFinite(clp) || clp <= 0) return null;
   return { value_clp: clp, as_of_date: quote.trade_date, source: quote.source };
 }
@@ -126,20 +170,17 @@ const stmtMaxEqDate = db.prepare(
   `SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`
 );
 
-/**
- * Latest CLP mark for SPY/VEA on the dashboard: prefer flows-based MTM; if that is unavailable (no `units_delta`
- * yet, or stale `valuations` row with 0), use share count from `net worth-stocks.csv` × last EOD × FX.
- */
-export async function computeLatestDisplayedEquityClp(
-  accountId: number
-): Promise<{ value_clp: number; as_of_date: string } | null> {
-  const live = await computeEquityMtmClpLive(accountId);
-  if (live != null && live.value_clp > 0) {
-    return { value_clp: live.value_clp, as_of_date: live.as_of_date };
-  }
+/** Latest CLP mark for brokerage equities (live from DB scheduler, else EOD display session). */
+export function computeLatestDisplayedEquityClp(
+  accountId: number,
+  now: Date = new Date()
+): { value_clp: number; as_of_date: string } | null {
+  if (!accountUsesEquityMtm(accountId)) return null;
+  const ticker = requireEquityTicker(accountId);
 
-  const ticker = equityTickerForAccount(accountId);
-  if (!ticker) return null;
+  const sync = computeEquityMtmClpDisplaySync(accountId, now);
+  if (sync != null && sync.value_clp > 0) return sync;
+
   const mdRow = stmtMaxEqDate.get(ticker) as { md: string | null } | undefined;
   const md = mdRow?.md;
   if (!md) return null;
@@ -149,17 +190,7 @@ export async function computeLatestDisplayedEquityClp(
     return { value_clp: fromFlows, as_of_date: md };
   }
 
-  const slug = ticker === "SPY" ? "spy" : "vea";
-  const u = readSpyVeaShareUnitsFromStocksCsv(slug);
-  if (u == null || !Number.isFinite(u) || u <= 0) return null;
-
-  const closeUsd = equityCloseUsdEod(ticker, md);
-  if (closeUsd == null) return null;
-  const fx = fxMonthEndForBalanceUsd(md);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = u * closeUsd * fx.clp_per_usd;
-  if (!Number.isFinite(clp) || clp <= 0) return null;
-  return { value_clp: clp, as_of_date: md };
+  return null;
 }
 
 export function deleteEquityDailyForImportTickers(): void {
@@ -174,7 +205,7 @@ export function expandSnapshotDatesForEquityMtm(
   merge: { spyId?: number; veaId?: number } | undefined
 ): string[] {
   const s = new Set(baseDates);
-  const addTickerMonths = (accountId: number | undefined, ticker: "SPY" | "VEA") => {
+  const addTickerMonths = (accountId: number | undefined, ticker: string) => {
     if (accountId == null || !accountUsesEquityMtm(accountId)) return;
     const r = db
       .prepare(`SELECT min(trade_date) AS a, max(trade_date) AS b FROM equity_daily WHERE ticker = ?`)
