@@ -1,20 +1,12 @@
-import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import type { AccountRow } from "./movementUnitsPolicy.js";
-import { parsePanelAccountNotes } from "./panelAccountNotes.js";
 
-const LEGACY_BROKERAGE_CATEGORY_SLUGS = new Set(["spy", "vea"]);
+const BROKERAGE_BUCKET_SLUGS = new Set(["brokerage_acciones", "brokerage_crypto"]);
+const LEGACY_EQUITY_LEAF_KINDS = new Set(["spy", "vea", "oilk"]);
 
-export function accountUsesBrokerageFlowKinds(
-  account: AccountRow,
-  notes?: string | null
-): boolean {
-  const noteText = notes ?? account.notes ?? null;
-  if (LEGACY_BROKERAGE_CATEGORY_SLUGS.has(account.bucket_slug)) return true;
-  const dashBucket =
-    dashboardBucketForAssetGroupSlug(account.group_slug) ??
-    dashboardBucketForAssetGroupSlug(account.bucket_slug);
-  if (dashBucket === "brokerage" && parsePanelAccountNotes(noteText) != null) {
-    return true;
-  }
-  return false;
+/** Brokerage share ledger (panel stocks, legacy SPY/VEA/OILK, or any account with `equity_ticker`). */
+export function accountUsesBrokerageFlowKinds(account: AccountRow): boolean {
+  if (account.equity_ticker?.trim()) return true;
+  if (BROKERAGE_BUCKET_SLUGS.has(account.bucket_slug)) return true;
+  return LEGACY_EQUITY_LEAF_KINDS.has(accountBucketKindSlug(account.bucket_slug));
 }

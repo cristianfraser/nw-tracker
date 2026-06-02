@@ -3,9 +3,13 @@ import {
   breakdownForNavChild,
   mainValueAndMetricsForNavChild,
   navLeafAccountIdSet,
+  portfolioNavParentMainValue,
+  portfolioNavParentMetrics,
+  portfolioNavParentTitleModeForNavNode,
   titleDeltaModelForNavChild,
 } from "./portfolioNavDashboardCards";
-import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode } from "./portfolioNavFromApi";
+import { sumCardGroupMetrics } from "./dashboardCardBreakdown";
+import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode, portfolioStripGroupChildren } from "./portfolioNavFromApi";
 import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
 
 function leafAccount(id: number): NavTreeNodeDto {
@@ -33,14 +37,21 @@ describe("navLeafAccountIdSet", () => {
   });
 });
 
-function dashRow(id: number, clp: number, groupSlug: string): DashboardAccountRow {
+function dashRow(
+  id: number,
+  clp: number,
+  bucketSlug: string,
+  name = `Account ${id}`
+): DashboardAccountRow {
+  const kind = bucketSlug.includes("fondo_reserva") ? "fondo_reserva" : "mutual_fund";
   return {
     account_id: id,
-    name: `Account ${id}`,
-    category_slug: "mutual_fund",
-    category_label: "Fund",
-    group_slug: groupSlug,
-    group_label: groupSlug,
+    name,
+    category_slug: kind,
+    category_label: kind,
+    group_slug: bucketSlug,
+    group_label: bucketSlug,
+    bucket_slug: bucketSlug,
     current_value_clp: clp,
     current_value_usd: null,
     deposits_clp: 0,
@@ -49,7 +60,7 @@ function dashRow(id: number, clp: number, groupSlug: string): DashboardAccountRo
 }
 
 describe("titleDeltaModelForNavChild", () => {
-  it("uses dashboard bucket mode only for top-level bucket nodes", () => {
+  it("always uses nav subtree (subset) mode", () => {
     expect(
       titleDeltaModelForNavChild({
         slug: "brokerage",
@@ -57,7 +68,7 @@ describe("titleDeltaModelForNavChild", () => {
         asset_group_slug: "brokerage",
         children: [],
       }).mode
-    ).toBe("dashboard_group");
+    ).toBe("subset");
     expect(
       titleDeltaModelForNavChild({
         slug: "brokerage_mutual_funds",
@@ -67,23 +78,6 @@ describe("titleDeltaModelForNavChild", () => {
         children: [leafAccount(10)],
       }).mode
     ).toBe("subset");
-    expect(
-      titleDeltaModelForNavChild({
-        slug: "retirement_afp_afc",
-        label: "AFP",
-        api_group: "retirement",
-        children: [leafAccount(20)],
-      }).mode
-    ).toBe("subset");
-    expect(
-      titleDeltaModelForNavChild({
-        slug: "cash_savings",
-        label: "Ahorros y reservas",
-        asset_group_slug: "cash_eqs__cash_savings",
-        route_path: "/cash_eqs",
-        children: [leafAccount(30)],
-      }).mode
-    ).toBe("dashboard_group");
   });
 });
 
@@ -93,8 +87,9 @@ describe("resolveDashboardBucketFromNavNode cash_savings", () => {
       resolveDashboardBucketFromNavNode({
         slug: "cash_savings",
         label: "Ahorros y reservas",
+        dashboard_bucket_slug: "cash_eqs",
         asset_group_slug: "cash_eqs__cash_savings",
-        route_path: "/cash_eqs",
+        route_path: "/cash_eqs/savings",
         children: [],
       })
     ).toBe("cash_eqs");
@@ -117,9 +112,11 @@ describe("isPortfolioStripCardNode", () => {
       isPortfolioStripCardNode({
         slug: "cash_savings",
         label: "Ahorros y reservas",
-        route_path: "/cash_eqs",
+        route_path: "/cash_eqs/savings",
+        portfolio_group_id: 1,
+        dashboard_bucket_slug: "cash_eqs",
         asset_group_slug: "cash_eqs__cash_savings",
-        group_kind: "normal",
+        group_kind: "bucket",
         children: [],
       })
     ).toBe(true);
@@ -127,12 +124,52 @@ describe("isPortfolioStripCardNode", () => {
 });
 
 describe("breakdownForNavChild cash_savings", () => {
-  it("builds cash card breakdown for savings nav node", () => {
+  it("builds savings account lines and linked tarjeta bottom row", () => {
+    const dash = {
+      suecia_snapshot: null,
+      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 500_000 },
+      dashboard_layout: [
+        {
+          slug: "cash_savings",
+          label: "Ahorros",
+          label_i18n_key: null,
+          sort_order: 40,
+          bucket_slug: "cash_eqs",
+          card_css: "cash",
+          linked_balances: [
+            {
+              slug: "credit_card",
+              label: "Tarjeta",
+              label_i18n_key: "liabilities.creditCard",
+              clp: 500_000,
+              route_path: "/liabilities/credit_card",
+            },
+          ],
+        },
+      ],
+    };
+    const br = breakdownForNavChild(
+      {
+        slug: "cash_savings",
+        label: "Ahorros",
+        asset_group_slug: "cash_eqs__cash_savings",
+        children: [leafAccount(1)],
+      },
+      [dashRow(1, 2_000_000, "cash_eqs__fondo_reserva", "Reserva2")],
+      dash
+    );
+    expect(br?.lines).toHaveLength(1);
+    expect(br?.lines?.[0]?.clp).toBe(2_000_000);
+    expect(br?.bottomLines?.[0]?.clp).toBe(500_000);
+    expect(br?.pinBottom).toBe(true);
+  });
+
+  it("builds savings breakdown (not full cash hub) for savings nav node", () => {
     const node: NavTreeNodeDto = {
       slug: "cash_savings",
       label: "Ahorros y reservas",
       asset_group_slug: "cash_eqs__cash_savings",
-      route_path: "/cash_eqs",
+      route_path: "/cash_eqs/savings",
       children: [leafAccount(1)],
     };
     const br = breakdownForNavChild(
@@ -160,15 +197,165 @@ describe("breakdownForNavChild cash_savings", () => {
   });
 });
 
+describe("portfolioNavParentMainValue", () => {
+  it("uses dashboard bucket totals for net_worth root (not raw cash savings accounts)", () => {
+    const netWorthNode: NavTreeNodeDto = {
+      slug: "net_worth",
+      label: "Patrimonio neto",
+      asset_group_slug: "net_worth",
+      children: [
+        {
+          slug: "cash_savings",
+          label: "Ahorros",
+          asset_group_slug: "cash_eqs__cash_savings",
+          children: [leafAccount(99)],
+        },
+      ],
+    };
+    const dash: Pick<DashboardResponse, "totals"> = {
+      totals: {
+        net_worth_clp: 270_525_274,
+        deposits_clp: 0,
+        real_estate_clp: 144_818_228,
+        retirement_clp: 95_651_400,
+        brokerage_clp: 16_343_745,
+        cash_eqs_clp: 13_711_901,
+        liabilities_clp: 0,
+      },
+    };
+    const mode = portfolioNavParentTitleModeForNavNode(netWorthNode);
+    expect(mode.kind).toBe("sum_dashboard_groups");
+    const parentRows = [
+      {
+        account_id: 99,
+        name: "Reserva2",
+        current_value_clp: 24_403_210,
+        current_value_usd: null,
+        exclude_from_group_totals: 0,
+      } as DashboardAccountRow,
+    ];
+    const { clp } = portfolioNavParentMainValue(dash, mode, parentRows, false);
+    expect(clp).toBe(270_525_274);
+    expect(clp).not.toBe(144_818_228 + 95_651_400 + 16_343_745 + 24_403_210);
+  });
+
+  it("sums strip child metrics for net_worth deposit / period rows", () => {
+    const netWorthNode: NavTreeNodeDto = {
+      slug: "net_worth",
+      label: "Patrimonio neto",
+      asset_group_slug: "net_worth",
+      children: [
+        {
+          slug: "real_estate",
+          label: "Inmuebles",
+          route_path: "/real_estate",
+          portfolio_group_id: 1,
+          children: [leafAccount(1)],
+        },
+        {
+          slug: "cash_savings",
+          label: "Ahorros",
+          route_path: "/cash_eqs/savings",
+          asset_group_slug: "cash_eqs__cash_savings",
+          dashboard_bucket_slug: "cash_eqs",
+          portfolio_group_id: 2,
+          children: [leafAccount(2)],
+        },
+      ],
+    };
+    const row = (id: number, deposits: number, deltaTotal: number, deltaMonth: number): DashboardAccountRow =>
+      ({
+        account_id: id,
+        name: `Account ${id}`,
+        group_slug: id === 1 ? "real_estate" : "cash_eqs__fondo_reserva",
+        group_label: "g",
+        category_slug: id === 1 ? "property" : "fondo_reserva",
+        category_label: "c",
+        bucket_slug: id === 1 ? "real_estate" : "cash_eqs__fondo_reserva",
+        deposits_clp: deposits,
+        delta_total_clp: deltaTotal,
+        delta_month_clp: deltaMonth,
+        deposits_month_clp: 0,
+        current_value_clp: deposits + deltaTotal,
+        prior_month_close_clp: deposits + deltaTotal - deltaMonth,
+        exclude_from_group_totals: 0,
+      }) as DashboardAccountRow;
+    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
+      accounts: [row(1, 100, 50, 10), row(2, 200, 80, 20)],
+      dashboard_layout: [],
+      totals: {
+        net_worth_clp: 430,
+        deposits_clp: 0,
+        real_estate_clp: 150,
+        retirement_clp: 0,
+        brokerage_clp: 0,
+        cash_eqs_clp: 280,
+        liabilities_clp: 0,
+      },
+    };
+    const mode = portfolioNavParentTitleModeForNavNode(netWorthNode);
+    const metrics = portfolioNavParentMetrics(dash, mode, dash.accounts, "month", netWorthNode, false);
+    const childMetrics = sumCardGroupMetrics(
+      portfolioStripGroupChildren(netWorthNode).map((child) =>
+        mainValueAndMetricsForNavChild(dash, child, "month", false).metrics
+      )
+    );
+    expect(metrics.deposits_clp).toBe(childMetrics.deposits_clp);
+    expect(metrics.deposits_clp).toBe(300);
+    expect(metrics.delta_total_clp).toBe(130);
+    expect(metrics.delta_period_clp).toBe(30);
+  });
+});
+
 describe("mainValueAndMetricsForNavChild", () => {
+  it("sums nav subtree for top-level brokerage strip card, not server totals alone", () => {
+    const brokerageNode: NavTreeNodeDto = {
+      slug: "brokerage",
+      label: "Inversiones",
+      route_path: "/inversiones",
+      children: [leafAccount(1), leafAccount(2)],
+    };
+    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
+      accounts: [
+        {
+          ...dashRow(1, 10_000_000, "brokerage_mutual_funds"),
+          prior_year_close_clp: 8_000_000,
+          delta_year_clp: 1_500_000,
+          deposits_year_clp: 500_000,
+        },
+        {
+          ...dashRow(2, 6_000_000, "brokerage_crypto"),
+          prior_year_close_clp: 5_000_000,
+          delta_year_clp: 800_000,
+          deposits_year_clp: 200_000,
+        },
+      ],
+      dashboard_layout: [],
+      totals: {
+        net_worth_clp: 99_000_000,
+        deposits_clp: 0,
+        real_estate_clp: 0,
+        retirement_clp: 0,
+        brokerage_clp: 99_000_000,
+        cash_eqs_clp: 0,
+        liabilities_clp: 0,
+      },
+    };
+    const { clp, metrics } = mainValueAndMetricsForNavChild(dash, brokerageNode, "year", false);
+    expect(clp).toBe(16_000_000);
+    expect(clp).not.toBe(dash.totals.brokerage_clp);
+    expect(metrics.delta_period_clp).toBe(2_300_000);
+  });
+
   it("sums subtree accounts for brokerage subgroups, not the whole bucket", () => {
     const mutualFundsNode: NavTreeNodeDto = {
       slug: "brokerage_mutual_funds",
       label: "Mutual funds",
       children: [leafAccount(1)],
     };
-    const dash: Pick<DashboardResponse, "accounts" | "totals"> = {
+    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
       accounts: [dashRow(1, 10_000_000, "brokerage_mutual_funds"), dashRow(2, 5_000_000, "brokerage_crypto")],
+      dashboard_layout: [],
       totals: {
         net_worth_clp: 15_000_000,
         deposits_clp: 0,

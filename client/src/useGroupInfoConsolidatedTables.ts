@@ -10,15 +10,13 @@ export type GroupInfoTableAccount = {
 };
 
 export function useGroupInfoConsolidatedTables(
-  groupSlug: string,
-  subgroup: string | undefined,
+  portfolioGroupSlug: string,
   _accounts: readonly GroupInfoTableAccount[],
   displayUnit: DisplayUnit,
   enabled: boolean
 ) {
   const { data, isPending, isFetching, isError, error } = useGroupConsolidatedTables(
-    groupSlug,
-    subgroup,
+    portfolioGroupSlug,
     displayUnit,
     enabled
   );

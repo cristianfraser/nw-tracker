@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyCashSavingsNwAdjustment,
   cashSavingsShortfallDashboardRow,
   creditCardShortfallClp,
   CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
   netLinkedCreditCardFromCashConsolidated,
   syntheticCashSavingsShortfallAccountId,
 } from "./cashEqsBucketNet.js";
+
+describe("applyCashSavingsNwAdjustment", () => {
+  it("subtracts full linked CC balance from savings", () => {
+    expect(applyCashSavingsNwAdjustment(24_403_210, 4_700_303)).toBe(19_702_907);
+  });
+
+  it("returns raw savings when CC balance is zero", () => {
+    expect(applyCashSavingsNwAdjustment(1_000_000, 0)).toBe(1_000_000);
+  });
+});
 
 describe("creditCardShortfallClp", () => {
   it("returns zero when checking covers the card", () => {
@@ -41,8 +52,8 @@ describe("cash savings NW shortfall rows", () => {
   });
 });
 
-describe("netLinkedCreditCardFromCashConsolidated shortfall", () => {
-  it("subtracts only conditional shortfall from closing and prior", () => {
+describe("netLinkedCreditCardFromCashConsolidated", () => {
+  it("subtracts linked CC balance total from closing and prior", () => {
     const consolidated = netLinkedCreditCardFromCashConsolidated(
       [
         {

@@ -5,11 +5,13 @@ import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
   mainValueAndMetricsForNavChild,
-  navAccountIdSet,
-  titleBalanceDeltaForAccountIds,
-  titleDeltaModelForNavChild,
 } from "../../portfolioNavDashboardCards";
-import { compareDashboardCardMainDesc, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import {
+  compareDashboardCardMainDesc,
+  periodBalanceChangeFromAccountRows,
+  type CardGroupMetricsPeriod,
+} from "../../dashboardCardBreakdown";
+import { accountCountsTowardGroupTotals, isChartActiveAccount } from "../../accountGroupTotals";
 import { useMemo } from "react";
 import { resolveDashboardBucketFromNavNode } from "../../portfolioNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
@@ -18,7 +20,7 @@ import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 export type PortfolioNavChildDetailCardsProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown"
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
   >;
   overviewPoints: Record<string, string | number | null>[];
   navChildren: NavTreeNodeDto[];
@@ -30,7 +32,7 @@ export type PortfolioNavChildDetailCardsProps = {
 /** Second-row dashboard-style cards for first-level portfolio nav children (subset of dashboard accounts). */
 export function PortfolioNavChildDetailCards({
   dash,
-  overviewPoints,
+  overviewPoints: _overviewPoints,
   navChildren,
   showUsd,
   metricsPeriod,
@@ -51,19 +53,21 @@ export function PortfolioNavChildDetailCards({
     <>
       {sorted.map((child) => {
         const childRows = dashboardRowsForNavSubtree(dash.accounts, child);
-        const childIds = navAccountIdSet(child);
-        const spec = titleDeltaModelForNavChild(child);
-        const childTitleDelta = titleBalanceDeltaForAccountIds(
-          dash,
-          overviewPoints,
-          childIds,
-          metricsPeriod,
-          showUsd,
-          spec
+        const metricsRows = childRows.filter(
+          (a) =>
+            accountCountsTowardGroupTotals(a) &&
+            isChartActiveAccount(a) &&
+            a.current_value_clp != null &&
+            Number.isFinite(a.current_value_clp)
         );
         const { clp, apiUsd, metrics: childMetrics } = mainValueAndMetricsForNavChild(
           dash,
           child,
+          metricsPeriod,
+          showUsd
+        );
+        const childTitleDelta = periodBalanceChangeFromAccountRows(
+          metricsRows,
           metricsPeriod,
           showUsd
         );

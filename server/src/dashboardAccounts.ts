@@ -1,13 +1,15 @@
 import {
   accountUsesEquityMtm,
-  computeEquityMtmClpLive,
   computeLatestDisplayedEquityClp,
 } from "./brokerageEquityMtm.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
-import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation.js";
+import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
 import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
 import { dashboardAccountPerfDerived } from "./dashboardAccountCardMetrics.js";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import {
   flowsDepositsNetInPeriodByAccount,
@@ -20,6 +22,7 @@ import {
   type AccountPositionMeta,
 } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
@@ -32,7 +35,13 @@ import {
 } from "./valuationTimeseries.js";
 import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
+import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
+import { getDashboardLayoutCards } from "./dashboardLayout.js";
+import {
+  kindSlugForAccount,
+  leafPortfolioGroupSlugForAccount,
+  nwDashboardMetricGroupForAccount,
+} from "./portfolioGroupTree.js";
 import { db } from "./db.js";
 import {
   latestDisplayedBalanceForAccount,
@@ -133,21 +142,19 @@ export async function latestValuationDisplayForAccount(
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
     return checkingMovementBalanceLive(accountId);
   }
-  const eq = await computeLatestDisplayedEquityClp(accountId);
-  if (eq != null) return eq;
-  const crypto = await computeCryptoMtmClpLive(accountId);
-  if (crypto != null) return crypto;
+  const equityTicker = equityTickerForAccount(accountId);
+  if (equityTicker != null && accountUsesEquityMtm(accountId)) {
+    const eq = computeLatestDisplayedEquityClp(accountId);
+    if (eq != null) return eq;
+  }
+  const isCryptoSlug = categorySlug === "bitcoin" || categorySlug === "eth";
+  if (isCryptoSlug || accountUsesCryptoMtm(accountId)) {
+    const crypto = computeCryptoMtmClpDisplaySync(accountId);
+    if (crypto != null) return crypto;
+  }
   const stored = latestDisplayedBalanceForAccount(accountId);
   if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
     return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
-  }
-  if (accountUsesEquityMtm(accountId)) {
-    const live = await computeEquityMtmClpLive(accountId);
-    if (live != null) return { value_clp: live.value_clp, as_of_date: live.as_of_date };
-  }
-  if (accountUsesCryptoMtm(accountId)) {
-    const live = await computeCryptoMtmClpLive(accountId);
-    if (live != null) return live;
   }
   return null;
 }
@@ -160,43 +167,69 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
   const depositsMonth = flowsDepositsNetInPeriodByAccount("month");
   const depositsYear = flowsDepositsNetInPeriodByAccount("year");
 
+  const today = chileCalendarTodayYmd();
+  const priorMonthEnd = priorPeriodEndYmd("mtd", today);
+  const priorYearEnd = priorPeriodEndYmd("ytd", today);
+
   const rowsBuilt: DashboardAccountStats[] = await Promise.all(
     accounts.map(async (a) => {
       const deposits = depositsNetByAccount.get(a.id) ?? 0;
       const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
       const leafSlug = a.bucket_slug;
-      const dashboard_bucket_slug = dashboardBucketForAssetGroupSlug(leafSlug) ?? leafSlug;
-      const metricGroup = DASHBOARD_ASSET_METRIC_GROUPS.has(dashboard_bucket_slug)
-        ? dashboard_bucket_slug
-        : leafSlug;
+      const kindSlug = kindSlugForAccount(a.id) ?? leafSlug;
+      const portfolioLeafSlug = leafPortfolioGroupSlugForAccount(a.id);
+      const metricGroup = nwDashboardMetricGroupForAccount(a.id) ?? leafSlug;
       const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(metricGroup);
       const derivedClp = dashboardAccountPerfDerived(a.id, "clp", trackAssetMetrics);
       const derivedUsd =
         trackAssetMetrics && includeUsd ? dashboardAccountPerfDerived(a.id, "usd", true) : null;
       const perfClp = derivedClp.metrics;
       const perfUsd = derivedUsd?.metrics ?? null;
-      let v = await latestValuationDisplayForAccount(a.id, leafSlug, {
-        notes: a.notes,
-        name: a.name,
-      });
-      if (v == null && !isMovementBalanceCashCategory(leafSlug)) {
-        const stored = latestValuationRowOnOrBeforeChileToday(a.id);
-        if (stored?.value_clp != null && stored.as_of_date) {
-          v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+      const perfSeriesClp = trackAssetMetrics ? getAccountMonthlyPerformance(a.id, "clp") : null;
+      const markOpts = { notes: a.notes, name: a.name };
+
+      let v: { value_clp: number; as_of_date: string } | null = null;
+      if (trackAssetMetrics) {
+        v = accountMarkClpAtYmd(a.id, today, kindSlug, markOpts);
+      } else {
+        v = await latestValuationDisplayForAccount(a.id, kindSlug, markOpts);
+        if (v == null && !isMovementBalanceCashCategory(kindSlug)) {
+          const stored = latestValuationRowOnOrBeforeChileToday(a.id);
+          if (stored?.value_clp != null && stored.as_of_date) {
+            v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+          }
         }
       }
+
+      const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, kindSlug, markOpts);
+      const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, kindSlug, markOpts);
+      const prior_month_close_clp =
+        priorMonthMark?.value_clp ??
+        (trackAssetMetrics
+          ? priorCloseFromPerfRows(perfSeriesClp?.monthly ?? [], "mtd", today) ?? undefined
+          : derivedClp.prior_month_close);
+      const prior_year_close_clp =
+        priorYearMark?.value_clp ??
+        (trackAssetMetrics
+          ? priorCloseFromPerfRows(perfSeriesClp?.monthly ?? [], "ytd", today) ?? undefined
+          : derivedClp.prior_year_close);
       const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
-      const positionMeta = getAccountPositionMeta(a.id, leafSlug, {
-        afpCuotasAsOfYmd: leafSlug === "afp" ? asOfCuotas : undefined,
+      const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
+        afpCuotasAsOfYmd: kindSlug === "afp" ? asOfCuotas : undefined,
         accountNotes: a.notes,
         accountName: a.name,
       });
-      const position = positionSnapshotFromMeta(leafSlug, positionMeta, deposits, v ?? undefined);
+      const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v ?? undefined);
       let current_value_clp = v?.value_clp ?? null;
       let valuation_as_of = v?.as_of_date ?? null;
+      const equityMtm =
+        equityTickerForAccount(a.id) != null && accountUsesEquityMtm(a.id);
       if (
-        (leafSlug === "afp" || isFintualCertV2ValuationNotes(a.notes)) &&
-        position?.value_clp != null
+        (kindSlug === "afp" ||
+          isFintualCertV2ValuationNotes(a.notes) ||
+          ((kindSlug === "bitcoin" || kindSlug === "eth") && accountUsesCryptoMtm(a.id))) &&
+        position?.value_clp != null &&
+        !equityMtm
       ) {
         current_value_clp = position.value_clp;
         if (position.value_as_of != null) valuation_as_of = position.value_as_of;
@@ -213,11 +246,11 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
       const rowBeforeReconcile = {
         account_id: a.id,
         name: a.name,
-        group_slug: dashboard_bucket_slug,
+        group_slug: portfolioLeafSlug ?? leafSlug,
         group_label: a.bucket_label,
         bucket_slug: leafSlug,
         bucket_label: a.bucket_label,
-        dashboard_bucket_slug,
+        dashboard_bucket_slug: null,
         deposits_clp: deposits,
         deposits_usd: includeUsd ? deposits_usd : undefined,
         delta_month_clp: perfClp?.delta_month,
@@ -230,9 +263,9 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
         deposits_month_usd: trackAssetMetrics ? (depositsMonth.usd.get(a.id) ?? null) : undefined,
         deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
         deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
-        prior_month_close_clp: derivedClp.prior_month_close,
+        prior_month_close_clp,
         prior_month_close_usd: derivedUsd?.prior_month_close,
-        prior_year_close_clp: derivedClp.prior_year_close,
+        prior_year_close_clp,
         prior_year_close_usd: derivedUsd?.prior_year_close,
         current_value_clp,
         valuation_as_of,
@@ -272,7 +305,15 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     mortgage_usd: depositClpToUsdAtDate(liabilitiesClp.mortgage_clp, asOfToday),
     credit_card_usd: depositClpToUsdAtDate(liabilitiesClp.credit_card_clp, asOfToday),
   };
-  return { accounts: clientAccounts, liabilities_breakdown };
+  const dashboard_layout = getDashboardLayoutCards().map((card) =>
+    card.slug === "cash_savings"
+      ? {
+          ...card,
+          linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd),
+        }
+      : card
+  );
+  return { accounts: clientAccounts, liabilities_breakdown, dashboard_layout };
 }
 
 /**
@@ -289,6 +330,7 @@ export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit
   return {
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
+    dashboard_layout: nav.dashboard_layout,
     overview: ts,
     fx_coverage: includeUsd ? buildFxCoverage() : null,
   };

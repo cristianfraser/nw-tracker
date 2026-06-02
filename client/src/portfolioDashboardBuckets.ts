@@ -41,7 +41,7 @@ export function dashboardBucketRoutePath(bucketSlug: string): string | undefined
     case "brokerage":
       return "/inversiones/brokerage";
     case "cash_eqs":
-      return "/cash_eqs";
+      return "/cash_eqs/savings";
     case "liabilities":
       return "/liabilities";
     default:

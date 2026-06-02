@@ -24,23 +24,30 @@ const fallbackBucketCardsQuery = `
   ORDER BY dashboard_sort_order ASC, id ASC
 `;
 
-/** Bucket cards under `net_worth`, flattening `nav_hub` children (e.g. inversiones → brokerage + retirement). */
+/** Bucket cards under `net_worth`: unwrap `nav_bucket` nodes (inversiones → brokerage + retirement; cash_eqs → cash_savings). */
 const netWorthBucketCardsQuery = `
-  SELECT c.slug, c.label,
-         COALESCE(c.dashboard_card_label_i18n_key, c.label_i18n_key) AS label_i18n_key,
-         c.dashboard_sort_order AS sort_order,
-         c.dashboard_bucket_slug AS bucket_slug,
-         c.dashboard_card_css AS card_css,
-         c.route_path
-  FROM portfolio_groups p
-  JOIN portfolio_group_items i ON i.group_id = p.id AND i.item_kind = 'group'
-  JOIN portfolio_groups child ON child.id = i.child_group_id
-  LEFT JOIN portfolio_group_items i2
-    ON i2.group_id = child.id AND i2.item_kind = 'group' AND child.group_kind = 'nav_hub'
-  JOIN portfolio_groups c ON c.id = COALESCE(i2.child_group_id, child.id)
-  WHERE p.slug = 'net_worth'
-    AND c.dashboard_bucket_slug IS NOT NULL
-  ORDER BY c.dashboard_sort_order ASC, c.id ASC
+  WITH RECURSIVE nw_tree(id, slug, group_kind, depth) AS (
+    SELECT pg.id, pg.slug, pg.group_kind, 0
+    FROM portfolio_groups pg
+    WHERE pg.slug = 'net_worth'
+    UNION ALL
+    SELECT c.id, c.slug, c.group_kind, t.depth + 1
+    FROM nw_tree t
+    JOIN portfolio_group_items i ON i.group_id = t.id AND i.item_kind = 'group'
+    JOIN portfolio_groups c ON c.id = i.child_group_id
+  )
+  SELECT pg.slug, pg.label,
+         COALESCE(pg.dashboard_card_label_i18n_key, pg.label_i18n_key) AS label_i18n_key,
+         pg.dashboard_sort_order AS sort_order,
+         pg.dashboard_bucket_slug AS bucket_slug,
+         pg.dashboard_card_css AS card_css,
+         pg.route_path
+  FROM nw_tree t
+  JOIN portfolio_groups pg ON pg.id = t.id
+  WHERE pg.dashboard_bucket_slug IS NOT NULL
+    AND pg.dashboard_sort_order IS NOT NULL
+    AND t.slug != 'net_worth'
+  ORDER BY pg.dashboard_sort_order ASC, pg.id ASC
 `;
 
 const legacyBucketCardsQuery = `

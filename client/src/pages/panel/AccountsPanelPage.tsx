@@ -5,40 +5,45 @@ import { AddStockAccountForm } from "../../components/panel/AddStockAccountForm"
 import { Table } from "../../components/ui/Table";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
-import { useAccountsAll, useAssetTree, useSidebarNav } from "../../queries/hooks";
-import { countAccountsInBucketTree } from "../../panelAccounts/assetTreeBuckets";
+import { useAccountsAll, useSidebarNav } from "../../queries/hooks";
+import { countAccountsInNavSubtree } from "../../panelAccounts/portfolioNavBuckets";
 import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
-import type { AssetTreeGroupRow } from "../../types";
+import type { NavTreeNodeDto } from "../../types";
 
-function BucketTreeRows({
+function PortfolioGroupTableRows({
   node,
   depth = 0,
 }: {
-  node: AssetTreeGroupRow;
+  node: NavTreeNodeDto;
   depth?: number;
 }) {
   const indent = depth * 16;
-  const accountCount = countAccountsInBucketTree(node);
-  const childCount = node.children?.length ?? 0;
+  const accountCount = countAccountsInNavSubtree(node);
+  const childGroups = node.children.filter(
+    (c) => c.portfolio_group_id != null && c.account_id == null
+  ).length;
   return (
     <>
       <tr>
-        <td className="mono">{node.id}</td>
+        <td className="mono">{node.portfolio_group_id}</td>
         <td style={{ paddingLeft: indent }}>
           {depth > 0 ? <span className="muted mono">└─ </span> : null}
           {node.label}
-          {node.is_leaf ? (
-            <span className="muted"> ({accountCount} accounts)</span>
+          {childGroups > 0 ? (
+            <span className="muted"> ({childGroups} sub-groups)</span>
           ) : (
-            <span className="muted"> ({childCount} sub-buckets)</span>
+            <span className="muted"> ({accountCount} accounts)</span>
           )}
         </td>
         <td className="mono">{node.slug}</td>
-        <td className="mono">{node.is_leaf ? accountCount : "—"}</td>
+        <td className="mono">{node.group_kind}</td>
+        <td className="mono">{accountCount}</td>
       </tr>
-      {(node.children ?? []).map((child) => (
-        <BucketTreeRows key={child.id} node={child} depth={depth + 1} />
-      ))}
+      {node.children
+        .filter((c) => c.portfolio_group_id != null && c.account_id == null)
+        .map((child) => (
+          <PortfolioGroupTableRows key={child.node_id} node={child} depth={depth + 1} />
+        ))}
     </>
   );
 }
@@ -48,23 +53,19 @@ export function AccountsPanelPage() {
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const { data: accountsData, error: accountsError, isPending: accountsPending } = useAccountsAll();
-  const { data: assetTreeData, error: assetTreeError, isPending: assetTreePending } = useAssetTree();
   const { data: sidebarNavData, error: sidebarNavError, isPending: sidebarNavPending } = useSidebarNav();
 
   const err =
     accountsError instanceof Error
       ? accountsError.message
-      : assetTreeError instanceof Error
-        ? assetTreeError.message
-        : sidebarNavError instanceof Error
-          ? sidebarNavError.message
-          : accountsError || assetTreeError || sidebarNavError
-            ? t("common.loadFailed")
-            : null;
+      : sidebarNavError instanceof Error
+        ? sidebarNavError.message
+        : accountsError || sidebarNavError
+          ? t("common.loadFailed")
+          : null;
 
   const netWorthNode = useMemo(() => sidebarNavData?.net_worth ?? null, [sidebarNavData]);
-
-  if (accountsPending || assetTreePending || sidebarNavPending) {
+  if (accountsPending || sidebarNavPending) {
     return <p className="muted">{t("common.loading")}</p>;
   }
 
@@ -73,7 +74,6 @@ export function AccountsPanelPage() {
   }
 
   const accounts = accountsData?.accounts ?? [];
-  const buckets = assetTreeData?.groups ?? [];
 
   async function onDeleteAccount(id: number, name: string) {
     const ok = window.confirm(t("panelAccounts.deleteConfirm", { id, name }));
@@ -99,7 +99,7 @@ export function AccountsPanelPage() {
       </p>
 
       <h2 className="flow-section-title">{t("panelAccounts.addAccountTitle")}</h2>
-      <AddStockAccountForm assetGroups={buckets} />
+      <AddStockAccountForm netWorthRoot={netWorthNode} />
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("panelAccounts.accountsTitle")}
@@ -145,7 +145,7 @@ export function AccountsPanelPage() {
       </Table>
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("panelAccounts.bucketsTitle")}
+        {t("panelAccounts.portfolioGroupsTitle")}
       </h2>
       <Table
         header={
@@ -154,19 +154,20 @@ export function AccountsPanelPage() {
               <th>ID</th>
               <th>{t("panelAccounts.colBucket")}</th>
               <th>{t("panelAccounts.colSlug")}</th>
+              <th>{t("panelAccounts.colGroupKind")}</th>
               <th>{t("panelAccounts.colAccounts")}</th>
             </tr>
           </thead>
         }
       >
-        {buckets.length === 0 ? (
+        {!netWorthNode ? (
           <tr>
-            <td colSpan={4} className="muted">
-              {t("panelAccounts.emptyBuckets")}
+            <td colSpan={5} className="muted">
+              {t("panelAccounts.emptyTree")}
             </td>
           </tr>
         ) : (
-          buckets.map((g) => <BucketTreeRows key={g.id} node={g} />)
+          <PortfolioGroupTableRows node={netWorthNode} />
         )}
       </Table>
 
@@ -181,4 +182,3 @@ export function AccountsPanelPage() {
     </>
   );
 }
-

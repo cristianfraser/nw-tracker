@@ -126,6 +126,7 @@ export function shadesForGroupSlug(slug: string): string[] {
     case "crypto":
       return CRYPTO;
     case "cash_eqs":
+    case "cash_savings":
       return CASH;
     case "real_estate":
       return REAL_ESTATE;
@@ -146,6 +147,7 @@ const BUCKET_STROKE: Record<string, string> = {
   brokerage: BROKERAGE[3],
   inversiones: "#94a3b8",
   cash_eqs: CASH[4],
+  cash_savings: CASH[4],
   crypto: CRYPTO[3],
   liabilities: LIABILITIES[4],
   /** Overview line keys (not always same string as allocation slug). */
@@ -176,7 +178,11 @@ export function groupTabTotalStroke(
 }
 
 export function overviewLineColor(dataKey: string): string {
-  return BUCKET_STROKE[dataKey] ?? shadesForGroupSlug(dataKey === "cash" ? "cash_eqs" : dataKey)[3] ?? "#94a3b8";
+  return (
+    BUCKET_STROKE[dataKey] ??
+    shadesForGroupSlug(dataKey === "cash" ? "cash_savings" : dataKey)[3] ??
+    "#94a3b8"
+  );
 }
 
 export type ChartColorPlan =
@@ -362,7 +368,7 @@ const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, string>> =
   [-704]: "retirement_apv_b",
   [-9101]: "retirement_afp_afc",
   [-9102]: "retirement_apv",
-  [-9201]: "cash_eqs",
+  [-9201]: "cash_savings",
 };
 
 /** Fallback stroke when `color_rgb` is not on the series (matches legend families). */
@@ -387,6 +393,7 @@ function syntheticPortfolioGroupStroke(portfolioGroupSlug: string): string {
     case "retirement_apv_b":
       return RETIREMENT[2]!;
     case "cash_eqs":
+    case "cash_savings":
       return CASH[4]!;
     default:
       return allocationBucketColor(portfolioGroupSlug as AssetGroupSlug);

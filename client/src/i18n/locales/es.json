@@ -173,11 +173,12 @@
     "importSyncTitle": "Import sync"
   },
   "panelAccounts": {
-    "pageHint": "Vista de referencia para inspeccionar cuentas, buckets (asset groups) y la jerarquía del árbol de patrimonio.",
+    "pageHint": "Vista de referencia: cuentas y la misma jerarquía de Patrimonio neto que el sidebar (portfolio_groups).",
     "addAccountTitle": "Nueva cuenta",
     "accountsTitle": "Lista de cuentas",
-    "bucketsTitle": "Lista de buckets",
-    "netWorthTreeTitle": "Árbol de cuentas desde Patrimonio neto",
+    "portfolioGroupsTitle": "Grupos de portfolio (desde Patrimonio neto)",
+    "netWorthTreeTitle": "Árbol de cuentas (Patrimonio neto)",
+    "colGroupKind": "Tipo",
     "colAccount": "Cuenta",
     "colCategory": "Categoría",
     "colBucket": "Bucket",
@@ -206,7 +207,7 @@
       "categorySlug": "Categoría",
       "categoryNewOption": "Nueva categoría…",
       "categoryNewSlug": "Slug de la nueva categoría",
-      "bucket": "Bucket (asset group)",
+      "bucket": "Grupo portfolio (hoja)",
       "priceSource": "Fuente de precio / sync",
       "priceSource.stocksNyse": "NYSE — stocks_nyse (Yahoo EOD, como SPY/VEA)",
       "priceSource.cryptoEod": "Cripto — crypto_eod (BTC-USD, ETH-USD)",
@@ -336,6 +337,8 @@
       "daily": "Diario"
     },
     "monthlyDetailTitle": "Detalle por mes",
+    "positionHint": "Acciones y cripto: ticker y unidades (acciones o moneda) desde movimientos en la base (<1>movements.units_delta</1> y notas de import).",
+    "positionHintAfp": " AFP UNO Fondo A: cuotas desde <1>movements.units_delta</1> (certificado en <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> o <3>.txt</3> al correr <4>import:excel</4>, o <5>npm run afp:uno:cert-sync</5>).",
     "brokerageMovements": {
       "title": "Añadir movimientos",
       "hint": "Misma lógica que SPY/VEA: flow_kind, montos CLP/USD y acciones (units_delta) cuando corresponda.",
@@ -463,7 +466,7 @@
       "chartFacturado": "Facturado",
       "chartFacturadoClose": "Facturado (cierre)",
       "flowsHint": "Aportes, retiros y movimientos registrados en la cuenta.",
-      "detallePorMesBillingHint": "Una fila por mes de facturación. Total facturado = cierre del estado (~20); en meses sin cierre aparece vacío hasta que cierre. Balance total = facturado + cupo en cuotas − cuota a pagar del mes siguiente.",
+      "detallePorMesBillingHint": "Una fila por mes de facturación. Total facturado = cierre del estado (~20); en el mes abierto (sin PDF) incluye el arrastre del mes anterior cerrado más cargos del mes, menos abonos (PAGO) hasta el próximo cierre. Balance total = facturado + cupo en cuotas − cuota a pagar del mes siguiente.",
       "colTotalFacturado": "Total facturado",
       "colBalanceTotal": "Balance total",
       "colCupoEnCuotas": "Cupo en cuotas",
@@ -493,6 +496,7 @@
     }
   },
   "groupPage": {
+    "notFound": "No se encontró la vista de grupo para esta ruta.",
     "monthlyDetailTitle": "Detalle por mes",
     "flowsTitle": "Flujos",
     "flowsAccountColumn": "Cuenta",
@@ -677,7 +681,12 @@
       "manualMerchant": "Comercio / nota",
       "manualDelete": "Eliminar",
       "sourcePdf": "PDF",
-      "sourceManual": "Manual"
+      "sourceManual": "Manual",
+      "originImportDocument": "Importado (documento)",
+      "originManual": "Manual",
+      "installmentsLedgerHint": "Datos importados a la base desde estados de cuenta (cuotas).",
+      "installmentsEmpty": "No hay cupos en cuotas ni estados importados. Importa PDF con npm run import:cfraser-inbox o carga el ledger con import:cc-parsed.",
+      "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import)."
     }
   }
 }

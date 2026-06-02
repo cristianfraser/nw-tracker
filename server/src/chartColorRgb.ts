@@ -236,7 +236,7 @@ export const SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG: Readonly<Record<number, str
   [-704]: "retirement_apv_b",
   [-9101]: "retirement_afp_afc",
   [-9102]: "retirement_apv",
-  [-9201]: "cash_eqs",
+  [-9201]: "cash_savings",
 };
 
 /** Synthetic grouped lines (brokerage / inversiones / retiro tabs, dashboard primary). */

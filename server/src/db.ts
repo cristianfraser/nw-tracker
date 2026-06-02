@@ -55,6 +55,9 @@ export function initSchema() {
       source_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
       account_kind TEXT NOT NULL DEFAULT 'master' CHECK (account_kind IN ('master', 'liability_view')),
       exclude_from_group_totals INTEGER NOT NULL DEFAULT 0 CHECK (exclude_from_group_totals IN (0, 1)),
+      /** Yahoo symbol for brokerage/crypto MTM (e.g. SPY, OILK, BTC-USD). Set at import or panel create. */
+      equity_ticker TEXT,
+      fund_series_key TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 

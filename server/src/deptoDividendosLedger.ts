@@ -1,5 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import {
+  loadDeptoDividendosSheetRowsRawFromDb,
+  replaceDeptoDividendosSheetRowsInDb,
+} from "./deptoSheetDb.js";
 import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 
 /** Semicolon CSV + es-CL number parsing (aligned with `cfraserCsv.ts`). */
@@ -408,7 +413,32 @@ export type DeptoSueciaDashboardSnapshot = {
   mortgage_clp: number;
 };
 
-/** Latest Suecia property snapshot for dashboard RE card (dividendos sheet + UF día). */
+export type DeptoAccountMarkAtYmd = { value_clp: number; as_of_date: string };
+
+/**
+ * Suecia property or mortgage CLP mark at a calendar date: sheet UF balance × `uf_daily` on or before `asOfYmd`.
+ * Same source as perf charts and dashboard Suecia snapshot (not stale `valuations` rows).
+ */
+export function deptoAccountMarkClpAtYmd(
+  categorySlug: string,
+  asOfYmd: string
+): DeptoAccountMarkAtYmd | null {
+  if (categorySlug !== "property" && categorySlug !== "mortgage") return null;
+  const ledger = loadDeptoDividendosSheetLedgerFromDb();
+  if (!ledger.length) return null;
+
+  const dates = [asOfYmd] as const;
+  const ufMap = ufClpBySnapshotDatesAsc(dates);
+  const closeBy =
+    categorySlug === "property"
+      ? deptoSueciaPropertyCloseClpBySnapshotDates(dates, ledger, ufMap)
+      : deptoMortgageCloseClpBySnapshotDates(dates, ledger, ufMap);
+  const clp = closeBy.get(asOfYmd);
+  if (clp == null || !Number.isFinite(clp)) return null;
+  return { value_clp: clp, as_of_date: asOfYmd };
+}
+
+/** Latest Suecia property snapshot for dashboard RE card (UF día × net equity UF, same as perf charts). */
 export function deptoSueciaDashboardSnapshotAt(
   asOfYmd: string,
   ledger: readonly DeptoMortgageSheetRow[]
@@ -416,23 +446,13 @@ export function deptoSueciaDashboardSnapshotAt(
   if (!ledger.length) return null;
   const dates = [asOfYmd] as const;
   const ufMap = ufClpBySnapshotDatesAsc(dates);
-  const netBy = deptoNumericFieldBySnapshotDates(dates, ledger, (r) => r.valor_neto_clp);
-  const valorBy = deptoNumericFieldBySnapshotDates(dates, ledger, (r) => r.valor_vivienda_clp);
+  const netBy = deptoSueciaPropertyCloseClpBySnapshotDates(dates, ledger, ufMap);
   const mortgageBy = deptoMortgageCloseClpBySnapshotDates(dates, ledger, ufMap);
 
-  let net = netBy.get(asOfYmd) ?? null;
-  let valor = valorBy.get(asOfYmd) ?? null;
-  let mortgage = mortgageBy.get(asOfYmd) ?? null;
-
-  if (valor == null) {
-    const ufClp = ufMap.get(asOfYmd);
-    if (ufClp != null && Number.isFinite(ufClp)) valor = Math.round(DEPTO_PROPERTY_VALOR_UF * ufClp);
-  }
-  if (valor != null && net != null && mortgage == null) mortgage = Math.max(0, valor - net);
-  if (valor != null && mortgage != null && net == null) net = Math.max(0, valor - mortgage);
-  if (valor == null && net != null && mortgage != null) valor = net + mortgage;
-  if (net == null || mortgage == null || valor == null) return null;
-  return { valor_clp: valor, net_value_clp: net, mortgage_clp: mortgage };
+  const net = netBy.get(asOfYmd) ?? null;
+  const mortgage = mortgageBy.get(asOfYmd) ?? null;
+  if (net == null || mortgage == null) return null;
+  return { valor_clp: net + mortgage, net_value_clp: net, mortgage_clp: mortgage };
 }
 
 /** Net equity UF = {@link DEPTO_PROPERTY_VALOR_UF} − mortgage balance UF (only on/after pie / compra). */
@@ -656,7 +676,8 @@ function mergeSupplementalPrepaymentsIntoLedger(
   return merged;
 }
 
-export function loadDeptoDividendosSheetLedger(cfraserDir: string): DeptoMortgageSheetRow[] {
+/** Import scripts only — parses `cfraser/depto-dividendos.csv` (+ Table 1-1 supplementals). */
+export function loadDeptoDividendosSheetLedgerFromFile(cfraserDir: string): DeptoMortgageSheetRow[] {
   const fp = path.join(cfraserDir, "depto-dividendos.csv");
   const rows = readSemicolonCsv(fp);
   const out: DeptoMortgageSheetRow[] = [];
@@ -666,6 +687,17 @@ export function loadDeptoDividendosSheetLedger(cfraserDir: string): DeptoMortgag
   }
   return enrichDeptoRowsUfClpFromDb(mergeSupplementalPrepaymentsIntoLedger(out, cfraserDir));
 }
+
+/** @deprecated Import-only. Runtime uses `loadDeptoDividendosSheetLedgerFromDb`. */
+export function loadDeptoDividendosSheetLedger(cfraserDir: string): DeptoMortgageSheetRow[] {
+  return loadDeptoDividendosSheetLedgerFromFile(cfraserDir);
+}
+
+export function loadDeptoDividendosSheetLedgerFromDb(): DeptoMortgageSheetRow[] {
+  return enrichDeptoRowsUfClpFromDb(loadDeptoDividendosSheetRowsRawFromDb());
+}
+
+export { replaceDeptoDividendosSheetRowsInDb };
 
 /** Σ mortgage payments (cuotas + prepagos) in the calendar month of `asOf`, from the merged dividendos ledger. */
 export function mortgageSheetPaymentsClpInMonth(
@@ -706,7 +738,7 @@ export function enrichDeptoRowsUfClpFromDb<T extends { occurred_on: string; uf_c
   });
 }
 
-export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[], csvPath: string): DeptoMortgageCsvMeta {
+export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[]): DeptoMortgageCsvMeta {
   const pie = rows.find((r) => r.cuota.toLowerCase() === "pie");
   return {
     valor_vivienda_uf: DEPTO_PROPERTY_VALOR_UF,
@@ -714,13 +746,13 @@ export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[], csvPath
     pie_clp: pie?.pago_clp ?? null,
     pie_uf: pie?.pago_uf ?? null,
     row_count: rows.length,
-    csv_path: csvPath,
+    csv_path: "import:excel|depto-dividendos",
   };
 }
 
 /** Rows for `import:excel` property movements (subset of the sheet). */
 export function loadDeptoDividendosPaymentRows(cfraserDir: string): DeptoDividendosPaymentRow[] {
-  return loadDeptoDividendosSheetLedger(cfraserDir).map(sheetRowToPaymentRow);
+  return loadDeptoDividendosSheetLedgerFromFile(cfraserDir).map(sheetRowToPaymentRow);
 }
 
 /** Down payment row — property (inmueble) capital, not a mortgage installment. */

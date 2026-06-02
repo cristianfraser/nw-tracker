@@ -197,3 +197,12 @@
   font-size: var(--font-size-ui);
   cursor: pointer;
 }
+
+.contentShell {
+  transition: opacity 0.2s ease;
+}
+
+.contentShellLoading {
+  opacity: 0.55;
+  pointer-events: none;
+}

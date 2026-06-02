@@ -2,6 +2,8 @@
  * Brokerage equity flows (SPY/VEA) stored in `movements` with `flow_kind` set.
  */
 
+import { db } from "./db.js";
+
 export const BROKERAGE_FLOW_KINDS = [
   "deposit_clp",
   "compra_usd",
@@ -27,6 +29,36 @@ export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
 
 export function isBrokerageFlowKind(flowKind: string | null | undefined): flowKind is BrokerageFlowKind {
   return flowKind != null && (BROKERAGE_FLOW_KINDS as readonly string[]).includes(flowKind);
+}
+
+const shareUnitsFlowPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
+
+/** Cumulative share units through `asOfYmd` (Σ `units_delta` on compra/dividend flows). */
+export function brokerageShareUnitsThroughDate(accountId: number, asOfYmd: string): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(units_delta), 0) AS u
+       FROM movements
+       WHERE account_id = ?
+         AND occurred_on <= ?
+         AND flow_kind IN (${shareUnitsFlowPh})`
+    )
+    .get(accountId, asOfYmd, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) as { u: number } | undefined;
+  return row?.u ?? 0;
+}
+
+export function accountHasBrokerageShareUnits(accountId: number): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM movements
+         WHERE account_id = ?
+           AND flow_kind IN (${shareUnitsFlowPh})
+           AND COALESCE(units_delta, 0) != 0
+         LIMIT 1`
+      )
+      .get(accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
+  );
 }
 
 /** Signed CLP for charts / deposit merge (`deposit_clp` +, `withdrawal_clp` −, trades often 0). */

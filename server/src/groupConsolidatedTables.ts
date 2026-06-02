@@ -40,7 +40,14 @@ export function getGroupConsolidatedTables(
   }
   const account_monthly = getGroupConsolidationAccountMonthly(rows, groupSlug, unit);
   const consolidated_monthly = consolidateGroupMonthlyPerf(
-    account_monthly.map((p) => ({ account_id: p.account_id, monthly: p.monthly }))
+    account_monthly.map((p) => ({
+      account_id: p.account_id,
+      bucket_slug: p.bucket_slug,
+      monthly: p.monthly,
+      notes: p.notes,
+      name: p.name,
+    })),
+    unit
   );
 
   const account_movements: GroupConsolidatedTablesResponse["account_movements"] = [];

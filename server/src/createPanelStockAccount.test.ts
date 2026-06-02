@@ -55,10 +55,11 @@ describe("createPanelStockAccount", () => {
       .get(result.account_id) as { o: number } | undefined;
     expect(navLink).toBeDefined();
 
-    const notes = db
-      .prepare(`SELECT notes FROM accounts WHERE id = ?`)
-      .get(result.account_id) as { notes: string };
-    expect(parsePanelAccountNotes(notes.notes)?.ticker).toBe("QQQ");
+    const acc = db
+      .prepare(`SELECT notes, equity_ticker FROM accounts WHERE id = ?`)
+      .get(result.account_id) as { notes: string; equity_ticker: string };
+    expect(acc.equity_ticker).toBe("QQQ");
+    expect(parsePanelAccountNotes(acc.notes)?.ticker).toBe("QQQ");
 
     const bucket = db
       .prepare(

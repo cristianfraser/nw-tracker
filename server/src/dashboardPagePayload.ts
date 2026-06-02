@@ -1,9 +1,9 @@
-import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
+import { clearCreditCardBillingDetailCache } from "./ccBillingDetailCache.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import {
   deptoSueciaDashboardSnapshotAt,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromDb,
 } from "./deptoDividendosLedger.js";
 import {
   buildFlowsDepositsPayload,
@@ -13,6 +13,11 @@ import {
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
+import {
+  cashSavingsLinkedBalances,
+  sumCashSavingsNwAdjusted,
+} from "./cashEqsBucketNet.js";
+import { sumDashboardRowsForPortfolioGroup } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 
@@ -20,44 +25,19 @@ const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "bro
 
 /** @heavy Account rows, flows deposits payload, liabilities breakdown, Suecia snapshot. */
 export async function buildDashboardPagePayload(includeUsd: boolean) {
+  clearCreditCardBillingDetailCache();
   const rowsBuilt = await timeHeavyAsync(HeavyWork.dashboardAccountRows, () =>
     buildDashboardAccountRows(includeUsd)
   );
 
   return timeHeavy(HeavyWork.dashboardPayload, () => {
-    function addToBucket(
-      map: Map<string, { clp: number; usd: number }>,
-      slug: string,
-      clp: number,
-      usd: number | null
-    ) {
-      const cur = map.get(slug) ?? { clp: 0, usd: 0 };
-      cur.clp += clp;
-      if (usd != null && Number.isFinite(usd)) cur.usd += usd;
-      map.set(slug, cur);
-    }
-
-    const bucketTotals = new Map<string, { clp: number; usd: number }>();
-    for (const r of rowsBuilt) {
-      if (r.current_value_clp == null) continue;
-      if (!accountCountsTowardGroupTotals(r.account_id)) continue;
-      const dashBucket = r.dashboard_bucket_slug ?? r.bucket_slug ?? r.group_slug;
-      addToBucket(
-        bucketTotals,
-        dashBucket,
-        r.current_value_clp,
-        includeUsd ? r.current_value_usd : null
-      );
-    }
-
     const asOfToday = chileCalendarTodayYmd();
 
-    const getBucket = (slug: string) => bucketTotals.get(slug) ?? { clp: 0, usd: 0 };
-    const re = getBucket("real_estate");
-    const ret = getBucket("retirement");
-    const bro = getBucket("brokerage");
-    const cash = getBucket("cash_eqs");
-    const lia = getBucket("liabilities");
+    const re = sumDashboardRowsForPortfolioGroup("real_estate", rowsBuilt, includeUsd);
+    const ret = sumDashboardRowsForPortfolioGroup("retirement", rowsBuilt, includeUsd);
+    const bro = sumDashboardRowsForPortfolioGroup("brokerage", rowsBuilt, includeUsd);
+    const cash = sumCashSavingsNwAdjusted(rowsBuilt, asOfToday, includeUsd);
+    const lia = { clp: 0, usd: 0 };
 
     const netWorthClp = re.clp + ret.clp + bro.clp + cash.clp;
     const netWorthUsd = includeUsd ? re.usd + ret.usd + bro.usd + cash.usd : null;
@@ -68,25 +48,28 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const bucketLabelBySlug = new Map(
       getDashboardLayoutCards().map((c) => [c.bucket_slug, c.label])
     );
+    const layoutCards = getDashboardLayoutCards().map((card) =>
+      card.slug === "cash_savings"
+        ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd) }
+        : card
+    );
     const byGroup = new Map<string, { label: string; value_clp: number; value_usd: number }>();
-    for (const r of rowsBuilt) {
-      if (r.current_value_clp == null) continue;
-      if (!accountCountsTowardGroupTotals(r.account_id)) continue;
-      const slug = r.dashboard_bucket_slug ?? r.bucket_slug ?? r.group_slug;
-      const cur = byGroup.get(slug) ?? {
-        label: bucketLabelBySlug.get(slug) ?? r.group_label,
-        value_clp: 0,
-        value_usd: 0,
-      };
-      cur.value_clp += r.current_value_clp;
-      if (r.current_value_usd != null && Number.isFinite(r.current_value_usd)) cur.value_usd += r.current_value_usd;
-      byGroup.set(slug, cur);
+    for (const card of layoutCards) {
+      const sum =
+        card.slug === "cash_savings"
+          ? sumCashSavingsNwAdjusted(rowsBuilt, asOfToday, includeUsd)
+          : sumDashboardRowsForPortfolioGroup(card.slug, rowsBuilt, includeUsd);
+      byGroup.set(card.bucket_slug, {
+        label: bucketLabelBySlug.get(card.bucket_slug) ?? card.label,
+        value_clp: sum.clp,
+        value_usd: sum.usd,
+      });
     }
     const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
       ...rest,
       notes: notes ?? null,
     }));
-    const deptoLedger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+    const deptoLedger = loadDeptoDividendosSheetLedgerFromDb();
     const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfToday, deptoLedger);
     const suecia_snapshot = sueciaRaw
       ? {
@@ -127,7 +110,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
             }
           : {}),
       },
-      dashboard_layout: getDashboardLayoutCards(),
+      dashboard_layout: layoutCards,
       allocation: [...byGroup.entries()]
         .filter(([slug]) => DASHBOARD_ASSET_METRIC_GROUPS.has(slug))
         .map(([slug, v]) => ({

@@ -6,7 +6,7 @@ import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   deptoMortgageCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromDb,
 } from "./deptoDividendosLedger.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
@@ -99,7 +99,7 @@ export function latestMortgageDisplayedBalance(
   if (!cat || accountBucketKindSlug(cat.bucket_slug) !== "mortgage") {
     return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
   }
-  const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+  const ledger = loadDeptoDividendosSheetLedgerFromDb();
   if (ledger.length > 0) {
     const firstOwn = firstDeptoPropertyOwnershipYmd(ledger);
     if (firstOwn != null && asOfYmd >= firstOwn) {

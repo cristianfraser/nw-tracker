@@ -37,6 +37,18 @@ describe("accountCardPerformanceMetricsFromPerf", () => {
     expect(m.delta_total).toBe(500);
   });
 
+  it("returns null delta_month on month rollover when perf has no current-month row", () => {
+    const perf = {
+      monthly: [
+        perfRow({ as_of_date: "2026-05-31", nominal_pl: 2_371_544, cumulative_nominal_pl: 500 }),
+        perfRow({ as_of_date: "2026-04-30", nominal_pl: 10, cumulative_nominal_pl: 458 }),
+      ],
+    };
+    const m = accountCardPerformanceMetricsFromPerf(perf, "2026-06-01");
+    expect(m.delta_month).toBeNull();
+    expect(m.delta_total).toBe(500);
+  });
+
   it("sums nominal_pl in the current calendar year for delta_year", () => {
     const perf = {
       monthly: [

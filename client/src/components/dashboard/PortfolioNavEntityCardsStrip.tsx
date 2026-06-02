@@ -6,26 +6,29 @@ import { PortfolioEntityCardsStrip } from "./PortfolioEntityCardsStrip";
 import { PortfolioNavAccountCompactCards } from "./PortfolioNavAccountCompactCards";
 import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
+  breakdownForNavChild,
   dashboardRowsForNavSubtree,
   filterNavChildrenForEntityStrip,
-  navAccountIdSet,
-  parentTitleBalanceDelta,
   portfolioNavParentMainValue,
   portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
 } from "../../portfolioNavDashboardCards";
-import { buildCashCardBreakdown, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import {
+  buildCashEqsCardBreakdown,
+  periodBalanceChangeFromAccountRows,
+  type CardGroupMetricsPeriod,
+} from "../../dashboardCardBreakdown";
+import { accountCountsTowardGroupTotals, isChartActiveAccount } from "../../accountGroupTotals";
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
-  resolveDashboardBucketFromNavNode,
 } from "../../portfolioNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 
 export type PortfolioNavEntityCardsStripProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown"
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
   >;
   overviewPoints: Record<string, string | number | null>[];
   parentNavNode: NavTreeNodeDto;
@@ -51,18 +54,28 @@ export function PortfolioNavEntityCardsStrip({
 }: PortfolioNavEntityCardsStripProps) {
   const parentTitleMode = portfolioNavParentTitleModeForNavNode(parentNavNode);
   const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
-  const parentIds = navAccountIdSet(parentNavNode);
   const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
-  const parentTitleDelta = parentTitleBalanceDelta(
-    dash,
-    overviewPoints,
-    parentIds,
-    metricsPeriod,
-    showUsd,
-    parentTitleMode
-  );
   const parentTotals = portfolioNavParentMainValue(dash, parentTitleMode, parentRows, showUsd);
-  const parentMetrics = portfolioNavParentMetrics(dash, parentTitleMode, parentRows, metricsPeriod);
+  const parentMetrics = portfolioNavParentMetrics(
+    dash,
+    parentTitleMode,
+    parentRows,
+    metricsPeriod,
+    parentNavNode,
+    showUsd
+  );
+  const parentMetricsRows = parentRows.filter(
+    (a) =>
+      accountCountsTowardGroupTotals(a) &&
+      isChartActiveAccount(a) &&
+      a.current_value_clp != null &&
+      Number.isFinite(a.current_value_clp)
+  );
+  const parentTitleDelta = periodBalanceChangeFromAccountRows(
+    parentMetricsRows,
+    metricsPeriod,
+    showUsd
+  );
 
   const stripGroupChildren = useMemo(
     () => portfolioStripGroupChildren(parentNavNode),
@@ -89,23 +102,31 @@ export function PortfolioNavEntityCardsStrip({
   const showDetailSlots = filteredGroupChildren.length > 0;
   const showAccountCompactSlots = filteredAccountChildren.length > 0;
 
-  const isCashParent =
-    resolveDashboardBucketFromNavNode(parentNavNode) === "cash_eqs" ||
-    parentNavNode.slug === "cash_savings";
-  const cashBreakdownLines = useMemo(
-    () => (isCashParent ? buildCashCardBreakdown(dash.accounts) : null),
-    [isCashParent, dash.accounts]
-  );
+  const isCashEqsHub = parentNavNode.slug === "cash_eqs";
+  const isCashSavings = parentNavNode.slug === "cash_savings";
+  const isCashParent = isCashEqsHub || isCashSavings;
+  const cashBreakdown = useMemo(() => {
+    if (isCashSavings) {
+      const rows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
+      return breakdownForNavChild(parentNavNode, rows, dash);
+    }
+    if (isCashEqsHub) {
+      const lines = buildCashEqsCardBreakdown(dash.accounts);
+      return lines.length ? { lines } : null;
+    }
+    return null;
+  }, [isCashSavings, isCashEqsHub, dash, parentNavNode]);
 
-  const compactBreakdown =
-    cashBreakdownLines && cashBreakdownLines.length > 0 ? (
-      <DashboardCardBreakdown
-        lines={cashBreakdownLines}
-        showUsd={showUsd}
-        cardSlug={compactCardSlug}
-        animated={animated}
-      />
-    ) : undefined;
+  const compactBreakdown = cashBreakdown ? (
+    <DashboardCardBreakdown
+      lines={cashBreakdown.lines}
+      bottomLines={cashBreakdown.bottomLines}
+      pinBottomToCard={cashBreakdown.pinBottom}
+      showUsd={showUsd}
+      cardSlug={compactCardSlug}
+      animated={animated}
+    />
+  ) : undefined;
 
   const compactTitleToResolved =
     compactTitleTo ?? (parentNavNode.route_path?.trim() ? parentNavNode.route_path.trim() : undefined);

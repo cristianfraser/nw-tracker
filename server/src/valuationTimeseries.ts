@@ -6,17 +6,19 @@ import {
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
-  computeEquityMtmClpCachedLive,
+  computeEquityMtmClpDisplaySync,
   equityTickerForAccount,
   expandSnapshotDatesForEquityMtm,
 } from "./brokerageEquityMtm.js";
 import {
   accountUsesCryptoMtm,
   computeCryptoMtmClp,
+  computeCryptoMtmClpDisplaySync,
   cryptoEquityTickerForAccount,
   expandSnapshotDatesForCryptoMtm,
 } from "./cryptoValuation.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+import { accountIdsInPortfolioGroup } from "./portfolioGroupTree.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
@@ -26,7 +28,7 @@ import {
   deptoMortgageCloseClpBySnapshotDates,
   deptoSueciaPropertyCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromDb,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
@@ -436,7 +438,7 @@ function augmentChartDatesForCheckingAccounts(
   const aug = new Set(dateStrs);
   const today = chileCalendarTodayYmd();
   for (const id of allIds) {
-    if (isMovementBalanceCashCategory(slugById.get(id) ?? "")) continue;
+    if (!isMovementBalanceCashCategory(slugById.get(id) ?? "")) continue;
     const bounds = db
       .prepare(
         `SELECT MIN(occurred_on) AS min_d, MAX(occurred_on) AS max_d
@@ -533,9 +535,11 @@ function sanitizeValuationChartDateStrs(sortedAsc: string[]): string[] {
   });
   const uniq = [...new Set(out)].sort();
   const hasCurrentMonthEnd = uniq.includes(currentMonthEnd);
-  if (uniq.length > 0 && !uniq.includes(today) && !hasCurrentMonthEnd) {
-    uniq.push(today);
-    uniq.sort();
+  if (uniq.length > 0 && !uniq.includes(today)) {
+    if (!hasCurrentMonthEnd || monthKeyFromYmd(today) === todayYm) {
+      uniq.push(today);
+      uniq.sort();
+    }
   }
   return uniq;
 }
@@ -633,19 +637,17 @@ function patchCreditCardLiveLastPoint(
   return out;
 }
 
-/** Rightmost chart point for SPY/VEA = cached live MTM when available (same as dashboard). */
-function patchEquityLiveLastPoint(
+function patchMtmDisplayLastPoint(
   accountId: number,
   unit: TsUnit,
-  points: Record<string, string | number | null>[]
+  points: Record<string, string | number | null>[],
+  mark: { value_clp: number; as_of_date: string } | null
 ): Record<string, string | number | null>[] {
-  if (!accountUsesEquityMtm(accountId)) return points;
-  const liveClp = computeEquityMtmClpCachedLive(accountId);
-  if (liveClp == null || !Number.isFinite(liveClp)) return points;
+  if (mark == null || !Number.isFinite(mark.value_clp)) return points;
 
   const dk = String(accountId);
   const today = chileCalendarTodayYmd();
-  const plotValue = convertTs(liveClp, today, unit);
+  const plotValue = convertTs(mark.value_clp, today, unit);
 
   if (points.length === 0) {
     return [{ as_of_date: today, [dk]: plotValue }];
@@ -680,6 +682,26 @@ function patchEquityLiveLastPoint(
   return out;
 }
 
+/** Rightmost chart point for SPY/VEA = session-gated display MTM (same as dashboard). */
+function patchEquityLiveLastPoint(
+  accountId: number,
+  unit: TsUnit,
+  points: Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  if (!accountUsesEquityMtm(accountId)) return points;
+  return patchMtmDisplayLastPoint(accountId, unit, points, computeEquityMtmClpDisplaySync(accountId));
+}
+
+/** Rightmost chart point for crypto = 24/7 live when allowed, else display-session EOD. */
+function patchCryptoLiveLastPoint(
+  accountId: number,
+  unit: TsUnit,
+  points: Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  if (!accountUsesCryptoMtm(accountId)) return points;
+  return patchMtmDisplayLastPoint(accountId, unit, points, computeCryptoMtmClpDisplaySync(accountId));
+}
+
 function patchLiveAfpMarksOnPoints(
   rows: { account_id: number; bucket_slug: string }[],
   unit: TsUnit,
@@ -691,6 +713,8 @@ function patchLiveAfpMarksOnPoints(
       next = patchAfpLiveLastPoint(r.account_id, unit, next);
     } else if (accountUsesEquityMtm(r.account_id)) {
       next = patchEquityLiveLastPoint(r.account_id, unit, next);
+    } else if (accountUsesCryptoMtm(r.account_id)) {
+      next = patchCryptoLiveLastPoint(r.account_id, unit, next);
     }
   }
   return next;
@@ -747,7 +771,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const propertyDeptoSheets =
     propertyAccountIds.length === 1
       ? (() => {
-        const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+        const ledger = loadDeptoDividendosSheetLedgerFromDb();
         const sheetSeries = propertyDeptoClpSeriesBySnapshotDate(dateStrs, ledger);
         const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
         return {
@@ -839,7 +863,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const mtgCloseByAccAndDate = new Map<number, Map<string, number>>();
   const mortgageChartIds = allIds.filter((id) => slugById.get(id) === "mortgage");
   if (mortgageChartIds.length > 0 && dateStrs.length > 0) {
-    const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+    const ledger = loadDeptoDividendosSheetLedgerFromDb();
     if (ledger.length > 0) {
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
       const closeByDate = deptoMortgageCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate);
@@ -1161,15 +1185,18 @@ export function getDashboardOverviewBlock(unit: TsUnit) {
   return buildDashboardOverviewSlice(unit).overview;
 }
 
-/** Overview chart `dataKey` → `portfolio_groups.slug` (cash uses `cash_eqs`). */
+/** Overview chart `dataKey` → `portfolio_groups.slug` (cash line = ahorros y reservas). */
 const OVERVIEW_LINE_PORTFOLIO_SLUG: Record<string, string> = {
   real_estate: "real_estate",
   retirement: "retirement",
   brokerage: "brokerage",
-  cash: "cash_eqs",
+  cash: "cash_savings",
   liabilities: "liabilities",
   total_nw: "net_worth",
 };
+
+/** Portfolio slug for NW-linked cash on dashboard charts (not `cash_eqs` hub). */
+const DASHBOARD_NW_CASH_PORTFOLIO_SLUG = "cash_savings";
 
 function overviewLineColorRgb(dataKey: string): string | undefined {
   const slug = OVERVIEW_LINE_PORTFOLIO_SLUG[dataKey];
@@ -1178,12 +1205,19 @@ function overviewLineColorRgb(dataKey: string): string | undefined {
 }
 
 function buildDashboardOverviewLines(): NonNullable<GroupTabValuationBlock["lines"]> {
+  const cashSavingsLabel = (
+    portfolioGroupLabelStmt.get(DASHBOARD_NW_CASH_PORTFOLIO_SLUG) as { label: string } | undefined
+  )?.label;
   const specs: { dataKey: string; name: string; valueSeriesType: "data" | "reference" }[] = [
     { dataKey: "real_estate", name: "Inmuebles", valueSeriesType: "data" },
     { dataKey: "retirement", name: "Retiro", valueSeriesType: "data" },
     { dataKey: "brokerage", name: "Brokerage", valueSeriesType: "data" },
     { dataKey: "invested", name: "Invested", valueSeriesType: "reference" },
-    { dataKey: "cash", name: "Cash", valueSeriesType: "data" },
+    {
+      dataKey: "cash",
+      name: cashSavingsLabel ?? "Cash savings",
+      valueSeriesType: "data",
+    },
     { dataKey: "liabilities", name: "Pasivos", valueSeriesType: "data" },
     { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
   ];
@@ -1206,7 +1240,7 @@ function buildOverviewDisplayPointsFromPortfolioTotals(
     const reClp = bucketClp("real_estate", d);
     const retClp = bucketClp("retirement", d);
     const broClp = bucketClp("brokerage", d);
-    const cashClp = bucketClp("cash_eqs", d);
+    const cashClp = bucketClp(DASHBOARD_NW_CASH_PORTFOLIO_SLUG, d);
     const liabClp = bucketClp("liabilities", d);
     const totalNwClp = reClp + retClp + broClp + cashClp;
     const row: Record<string, string | number | null> = { as_of_date: d };
@@ -1262,7 +1296,7 @@ const DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS = [
   "real_estate",
   "retirement",
   "brokerage",
-  "cash_eqs",
+  DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
   "liabilities",
 ] as const;
 
@@ -1273,13 +1307,13 @@ const DASHBOARD_PRIMARY_CHART_ACCOUNT_ID: Record<string, number> = {
   brokerage_crypto: -203,
   retirement_afp_afc: -9101,
   retirement_apv: -9102,
-  cash_eqs: -9201,
+  cash_savings: -9201,
 };
 
 type DashboardPrimaryLineSpec = { slug: string; chartAccountId: number };
 
 /**
- * “Cuentas principales”: brokerage + retirement first-level portfolio children + cash_eqs.
+ * “Cuentas principales”: brokerage + retirement first-level portfolio children + ahorros y reservas.
  * Totals from each child’s class-tab valuation (`groupTabValuationTotalFromBuilt`).
  */
 function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
@@ -1292,8 +1326,8 @@ function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
     }
   }
   specs.push({
-    slug: "cash_eqs",
-    chartAccountId: DASHBOARD_PRIMARY_CHART_ACCOUNT_ID.cash_eqs,
+    slug: DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
+    chartAccountId: DASHBOARD_PRIMARY_CHART_ACCOUNT_ID.cash_savings,
   });
   return specs;
 }
@@ -1548,6 +1582,7 @@ import { bucketSlugForAccountId } from "./accountBucket.js";
 import {
   CASH_SAVINGS_BUCKET,
   CHECKING_ACCOUNTS_BUCKET,
+  isCashSavingsValuationGroupSlug,
   leafAssetGroupIdsUnder,
   listAccountsForBucketIds,
   listAccountsForBucketSlug,
@@ -1561,7 +1596,7 @@ const NET_WORTH_DASHBOARD_BUCKET_SLUGS = [
   "real_estate",
   "retirement",
   "brokerage",
-  "cash_eqs",
+  DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
 ] as const;
 
 function toGroupTabAccountRows(rows: ReturnType<typeof listAccountsForBucketIds>): GroupTabAccountRow[] {
@@ -1569,13 +1604,50 @@ function toGroupTabAccountRows(rows: ReturnType<typeof listAccountsForBucketIds>
     account_id: r.account_id,
     name: r.name,
     bucket_slug: r.bucket_slug,
+    notes: r.notes,
     exclude_from_group_totals: r.exclude_from_group_totals,
   }));
+}
+
+function listAccountsForPortfolioGroupSlug(portfolioGroupSlug: string): GroupTabAccountRow[] {
+  const ids = accountIdsInPortfolioGroup(portfolioGroupSlug);
+  if (!ids.length) return [];
+  const ph = ids.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug, a.notes, a.exclude_from_group_totals
+       FROM accounts a
+       INNER JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id IN (${ph})
+         AND (a.notes IS NULL OR a.notes != ?)
+         AND g.slug != 'individual_stocks'
+       ORDER BY g.sort_order, g.id, a.name`
+    )
+    .all(...ids, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
+  return rows;
 }
 
 export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
   if (groupSlug === "liabilities") {
     return listLiabilitiesTabAccountRows(tabSubgroup);
+  }
+  const pgRow = db.prepare(`SELECT slug FROM portfolio_groups WHERE slug = ?`).get(groupSlug) as
+    | { slug: string }
+    | undefined;
+  if (pgRow && tabSubgroup == null) {
+    return listAccountsForPortfolioGroupSlug(groupSlug);
+  }
+  if (pgRow && tabSubgroup != null && tabSubgroup !== "") {
+    const child = db
+      .prepare(
+        `SELECT c.slug FROM portfolio_groups p
+         JOIN portfolio_group_items i ON i.group_id = p.id AND i.item_kind = 'group'
+         JOIN portfolio_groups c ON c.id = i.child_group_id
+         WHERE p.slug = ? AND (c.kind_slug = ? OR c.api_subgroup = ? OR c.slug = ?)
+         LIMIT 1`
+      )
+      .get(groupSlug, tabSubgroup, tabSubgroup, tabSubgroup) as { slug: string } | undefined;
+    if (child) return listAccountsForPortfolioGroupSlug(child.slug);
   }
   if (groupSlug === "inversiones") {
     const broIds = leafAssetGroupIdsUnder("brokerage");
@@ -1585,11 +1657,24 @@ export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string)
   if (groupSlug === "net_worth") {
     const bucketIds = new Set<number>();
     for (const slug of NET_WORTH_DASHBOARD_BUCKET_SLUGS) {
-      for (const id of leafAssetGroupIdsUnder(slug)) bucketIds.add(id);
+      if (slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG) {
+        for (const id of leafAssetGroupIdsUnder(CASH_SAVINGS_BUCKET)) bucketIds.add(id);
+      } else {
+        for (const id of leafAssetGroupIdsUnder(slug)) bucketIds.add(id);
+      }
     }
     return toGroupTabAccountRows(listAccountsForBucketIds([...bucketIds], NOTE_STOCKS_LEGACY));
   }
-  if (groupSlug === "cash_eqs" || groupSlug === "cash_savings") {
+  if (groupSlug === "cash_eqs") {
+    const savings = listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, NOTE_STOCKS_LEGACY);
+    const checking = listAccountsForBucketSlug(
+      CHECKING_ACCOUNTS_BUCKET,
+      undefined,
+      NOTE_STOCKS_LEGACY
+    );
+    return toGroupTabAccountRows([...savings, ...checking]);
+  }
+  if (isCashSavingsValuationGroupSlug(groupSlug)) {
     return toGroupTabAccountRows(
       listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, NOTE_STOCKS_LEGACY)
     );
@@ -1639,13 +1724,17 @@ export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tab
   if (groupSlug === "liabilities" && !tabSubgroup && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "liabilities", unit);
   }
-  if (groupSlug === "cash_eqs" && accounts_in_group.points.length > 0) {
-    accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "cash_eqs", unit);
+  if (isCashSavingsValuationGroupSlug(groupSlug) && accounts_in_group.points.length > 0) {
+    accounts_in_group = appendChartHostReferenceOverlays(
+      accounts_in_group,
+      DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
+      unit
+    );
   }
   if (groupSlug === "real_estate") {
     const propertyRows = rows.filter((x) => x.bucket_slug === "property");
     if (propertyRows.length === 1 && accounts_in_group.points.length > 0) {
-      const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+      const ledger = loadDeptoDividendosSheetLedgerFromDb();
       if (ledger.length > 0) {
         const dateStrsAsc = accounts_in_group.points.map((p) => String(p.as_of_date));
         const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
@@ -1746,7 +1835,7 @@ export function getAccountValuationTimeseries(
   const bucketSlug = bucketSlugForAccountId(accountId);
 
   if (bucketSlug === "mortgage" && accounts.points.length > 0) {
-    const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+    const ledger = loadDeptoDividendosSheetLedgerFromDb();
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
@@ -1797,7 +1886,7 @@ export function getAccountValuationTimeseries(
   }
 
   if (bucketSlug === "property" && accounts.points.length > 0) {
-    const ledger = loadDeptoDividendosSheetLedger(resolveCfraserCsvDir());
+    const ledger = loadDeptoDividendosSheetLedgerFromDb();
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);

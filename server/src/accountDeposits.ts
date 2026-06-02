@@ -1,5 +1,4 @@
 import { movementIsApvAStateBonus } from "./apvAStateBonusInference.js";
-import { readSpyVeaDepositadoClpFromStocksCsv } from "./accountPosition.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { db } from "./db.js";
 
@@ -187,19 +186,6 @@ export function totalDepositsClpForAccount(accountId: number): number {
 
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
   return getMergedDisplayDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
-}
-
-/**
- * Same as {@link totalDepositsClpForAccount} but for SPY/VEA never below the Numbers **`depositado`** cell in
- * `net worth-stocks.csv` (import used to skip row 1; DB can lack the main CLP wire while the sheet is correct).
- */
-export function totalDepositsClpWithStocksSheetFloor(accountId: number, categorySlug: string): number {
-  const base = totalDepositsClpForAccount(accountId);
-  if (categorySlug !== "spy" && categorySlug !== "vea") return base;
-  const slug = categorySlug === "spy" ? "spy" : "vea";
-  const sheet = readSpyVeaDepositadoClpFromStocksCsv(slug);
-  if (sheet == null || sheet <= 0) return base;
-  return Math.max(base, sheet);
 }
 
 const wdwSumStmt = db.prepare(

@@ -1,6 +1,10 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
-import { buildFacturaciones, buildBillingDetailByMonth } from "./ccBillingViews.js";
+import {
+  buildBillingDetailByMonth,
+  buildFacturaciones,
+  paymentAbonosClpForBillingMonth,
+} from "./ccBillingViews.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   ccInstallmentsDbApiPayload,
@@ -14,8 +18,76 @@ import {
 } from "./ccManualBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { ymCompare } from "./calendarMonth.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 
 describe("buildBillingDetailByMonth", () => {
+  it("open month rolls prior PDF facturado into total_facturado and balance_total", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    recomputeCcBillingMonthBalances(master.id);
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const lastPdf = lastPdfBillingMonthForAccount(master.id);
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    if (!lastPdf || !openBm) return;
+    if (ymCompare(openBm, addCalendarMonths(lastPdf, 1)) < 0) return;
+
+    const det = buildBillingDetailByMonth(master.id, payload.months);
+    const may = det.find((d) => d.billing_month === lastPdf);
+    const openRow = det.find((d) => d.billing_month === openBm);
+    if (!may?.total_facturado_clp || !openRow) return;
+
+    expect(openRow.total_facturado_clp).toBeGreaterThanOrEqual(may.total_facturado_clp);
+    expect(openRow.balance_total_clp).toBeGreaterThan(may.balance_total_clp * 0.9);
+    const incrementalOnly =
+      (openRow.total_facturado_clp ?? 0) - (may.total_facturado_clp ?? 0);
+    expect(incrementalOnly).toBeGreaterThan(0);
+  });
+
+  it("PAGO in open month reduces rolled facturado and balance_total", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    const lastPdf = lastPdfBillingMonthForAccount(master.id);
+    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
+
+    const stmt = listCcStatementsForAccount(master.id).find((s) => s.billing_month === openBm);
+    if (!stmt) return;
+
+    recomputeCcBillingMonthBalances(master.id);
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const before = buildBillingDetailByMonth(master.id, payload.months).find(
+      (d) => d.billing_month === openBm
+    );
+    if (!before) return;
+
+    const pagoClp = 50_000;
+    const ins = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+         ) VALUES (?, ?, 'PAGO', ?, 0, ?)`
+      )
+      .run(stmt.id, `${openBm}-05`, "PAGO", -pagoClp, `vitest-pago-${Date.now()}`);
+
+    try {
+      expect(paymentAbonosClpForBillingMonth(master.id, openBm)).toBeGreaterThanOrEqual(pagoClp);
+      const after = buildBillingDetailByMonth(master.id, payload.months).find(
+        (d) => d.billing_month === openBm
+      );
+      expect(after).toBeDefined();
+      expect(after!.total_facturado_clp).toBe((before.total_facturado_clp ?? 0) - pagoClp);
+      expect(after!.balance_total_clp).toBe(before.balance_total_clp - pagoClp);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
+    }
+  });
+
   it("inactive card omits synthetic open months without imported statements", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)

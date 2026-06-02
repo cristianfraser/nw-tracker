@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "../../cn";
 import { AccountFlowsTable } from "../account/AccountFlowsTable";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { PageTitleRow } from "../layout/PageTitleRow";
@@ -12,6 +13,7 @@ import {
 } from "../../useGroupInfoConsolidatedTables";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
+import pageShellStyles from "../../pages/AccountDetailPage.module.css";
 
 const GROUP_MONTHLY_PERF_COLLAPSED = 12;
 const GROUP_FLOWS_COLLAPSED = 10;
@@ -22,7 +24,7 @@ export type GroupInfoPortfolioStrip = {
   subgroup?: string;
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown"
+    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
   >;
   overviewPoints: Record<string, string | number | null>[];
   metricsPeriod: CardGroupMetricsPeriod;
@@ -52,6 +54,8 @@ export type GroupInfoBaseProps = {
   accountsTree: ReactNode;
   monthlyDetailHint?: string;
   flowsHint?: string;
+  /** Dims charts + tables while bundle data is loading (title / strip stay full opacity). */
+  loading?: boolean;
 };
 
 export function GroupInfoBase({
@@ -67,20 +71,24 @@ export function GroupInfoBase({
   accountsTree,
   monthlyDetailHint,
   flowsHint,
+  loading = false,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const tablesEnabled = tableAccounts.length > 0;
+  const tablesEnabled =
+    tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug));
   const { consolidatedMonthlyPerf, consolidatedFlows, tableFlags, tablesLoading, tablesError } =
     useGroupInfoConsolidatedTables(
       portfolio?.groupSlug ?? "",
-      portfolio?.subgroup,
       tableAccounts,
       displayUnit,
-      tablesEnabled && Boolean(portfolio?.groupSlug)
+      tablesEnabled && Boolean(portfolio?.groupSlug) && !loading
     );
 
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
+  const showTablesLoading = loading || tablesLoading;
+  const monthlyRows = showTablesLoading ? [] : consolidatedMonthlyPerf;
+  const flowRows = showTablesLoading ? [] : consolidatedFlows;
 
   return (
     <main className={mainClassName}>
@@ -99,49 +107,49 @@ export function GroupInfoBase({
         />
       ) : null}
       {notice}
-      {charts}
-      {tablesEnabled ? (
-        <>
-          <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.monthlyDetailTitle")}</h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
-          </p>
-          {tablesError ? (
-            <p className="error">{tablesError}</p>
-          ) : tablesLoading ? (
-            <p className="muted">{t("common.loading")}</p>
-          ) : consolidatedMonthlyPerf.length > 0 ? (
-            <MonthlyPerfDetailTable
-              rows={consolidatedMonthlyPerf}
-              displayUnit={displayUnit}
-              collapsedVisibleRows={GROUP_MONTHLY_PERF_COLLAPSED}
-              isMortgageAccount={tableFlags.isMortgageAccount}
-              showStockInflowsColumn={false}
-            />
-          ) : (
-            <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>
-          )}
+      <div
+        className={cn(pageShellStyles.contentShell, loading && pageShellStyles.contentShellLoading)}
+      >
+        {charts}
+        {tablesEnabled ? (
+          <>
+            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.monthlyDetailTitle")}</h2>
+            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
+              {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
+            </p>
+            {tablesError ? (
+              <p className="error">{tablesError}</p>
+            ) : monthlyRows.length > 0 ? (
+              <MonthlyPerfDetailTable
+                rows={monthlyRows}
+                displayUnit={displayUnit}
+                collapsedVisibleRows={GROUP_MONTHLY_PERF_COLLAPSED}
+                isMortgageAccount={tableFlags.isMortgageAccount}
+                showStockInflowsColumn={false}
+              />
+            ) : (
+              <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>
+            )}
 
-          <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.flowsTitle")}</h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {flowsHint ?? t("groupPage.flowsHint")}
-          </p>
-          {tablesError ? (
-            <p className="error">{tablesError}</p>
-          ) : tablesLoading ? (
-            <p className="muted">{t("common.loading")}</p>
-          ) : (
-            <AccountFlowsTable
-              rows={consolidatedFlows}
-              collapsedVisibleRows={GROUP_FLOWS_COLLAPSED}
-              showAccountColumn
-              showUnitsColumn={false}
-              emptyMessage={t("accountDetail.flowsEmpty")}
-            />
-          )}
-        </>
-      ) : null}
-      {accountsTree}
+            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.flowsTitle")}</h2>
+            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
+              {flowsHint ?? t("groupPage.flowsHint")}
+            </p>
+            {tablesError ? (
+              <p className="error">{tablesError}</p>
+            ) : (
+              <AccountFlowsTable
+                rows={flowRows}
+                collapsedVisibleRows={GROUP_FLOWS_COLLAPSED}
+                showAccountColumn
+                showUnitsColumn={false}
+                emptyMessage={t("accountDetail.flowsEmpty")}
+              />
+            )}
+          </>
+        ) : null}
+        {accountsTree}
+      </div>
     </main>
   );
 }

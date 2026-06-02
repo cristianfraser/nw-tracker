@@ -15,6 +15,7 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./ccNotaDeCreditoPairing.js";
 import type { CcInstallmentMonthRow, CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
+import { ccPurchaseSourceLegacyFromOrigin, dataOriginFromCcPurchaseSource } from "./dataOrigin.js";
 
 type PurchaseRow = {
   id: number;
@@ -813,13 +814,9 @@ function installmentHistoryMonthsFromLedgerData(
 
 export function ccInstallmentsDbApiPayload(accountId: number): {
   account_id: number;
-  source: "db";
   meta: {
-    csv_path: string;
-    csv_absolute_path: string;
-    csv_file_exists: boolean;
-    db_purchase_count: number;
-    db_payment_count: number;
+    installment_purchase_count: number;
+    installment_payment_count: number;
     pay_by_rule: string;
     remaining_balance_line_rule: string;
   };
@@ -889,10 +886,12 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       last_paid_month = installmentDueYm(first_due_month, nextIndex - 1);
     }
 
+    const origin = dataOriginFromCcPurchaseSource(pr.source);
     computed.push({
       purchase_db_id: pr.id,
       purchase_id: pr.canonical_row_id,
-      purchase_source: pr.source === "manual" ? "manual" : "pdf",
+      origin,
+      purchase_source: ccPurchaseSourceLegacyFromOrigin(origin),
       label,
       principal_clp: principal,
       installment_count: pr.cuotas_totales,
@@ -971,13 +970,9 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
 
   return {
     account_id: accountId,
-    source: "db",
     meta: {
-      csv_path: "",
-      csv_absolute_path: "",
-      csv_file_exists: false,
-      db_purchase_count: purchasesRaw.length,
-      db_payment_count,
+      installment_purchase_count: purchasesRaw.length,
+      installment_payment_count: db_payment_count,
       pay_by_rule: PAY_BY_META,
       remaining_balance_line_rule: SALDO_LINE_META,
     },

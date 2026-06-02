@@ -2,6 +2,8 @@ import { db } from "./db.js";
 
 export type FxRow = { date: string; clp_per_usd: number };
 
+export { fxForLiveMtm, shouldUseLiveFxQuote, LIVE_FX_YAHOO_SYMBOL } from "./fxLive.js";
+
 export type FxLookupOptions = {
   /**
    * When true, only month-end `fx_daily` rows are considered (official monthly snapshots).

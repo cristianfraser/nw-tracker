@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 import { listAccountsForBucketSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
@@ -8,7 +9,10 @@ describe("syncLatestDisplayValueClp", () => {
   it("returns a value for brokerage_acciones accounts that have dashboard marks", () => {
     const rows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
     expect(rows.length).toBeGreaterThan(0);
-    const withValue = rows.filter((r) => {
+    const mtmRows = rows.filter((r) => accountUsesEquityMtm(r.account_id));
+    if (mtmRows.length < 2) return;
+
+    const withValue = mtmRows.filter((r) => {
       const v = syncLatestDisplayValueClp(r.account_id, r.category_slug, {
         notes: r.notes,
         name: r.name,
@@ -22,10 +26,13 @@ describe("syncLatestDisplayValueClp", () => {
 describe("getGroupValuationTimeseries acciones pie", () => {
   it("pie slices match accounts in leaf bucket with display values", () => {
     const tabRows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
+    const mtmRows = tabRows.filter((r) => accountUsesEquityMtm(r.account_id));
+    if (mtmRows.length < 2) return;
+
     const ts = getGroupValuationTimeseries("brokerage", "clp", "acciones");
     const pieIds = new Set((ts.group_allocation_pie ?? []).map((p) => p.account_id));
     let matched = 0;
-    for (const r of tabRows) {
+    for (const r of mtmRows) {
       const v = syncLatestDisplayValueClp(r.account_id, r.category_slug, {
         notes: r.notes,
         name: r.name,

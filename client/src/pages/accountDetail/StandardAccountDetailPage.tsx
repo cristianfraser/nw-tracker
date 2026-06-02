@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { Trans, useTranslation } from "../../i18n";
 import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
 import { AccountFlowsTable } from "../../components/account/AccountFlowsTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
@@ -38,7 +38,6 @@ export function StandardAccountDetailPage({ data }: Props) {
     displayUnit,
     metricsPeriod,
     xAxisGranularity,
-    monthlyPerf,
     monthlyPerfErr,
     monthlyPerfRows,
     ytdChartPoints,
@@ -62,7 +61,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const isAfpAccount = summary.category_slug === "afp";
   const isMortgageAccount = summary.category_slug === "mortgage";
   const ccChartsFromParsedLedger =
-    summary.category_slug === "credit_card" && data.ccLedger.source === "db";
+    summary.category_slug === "credit_card" && data.ccLedger.has_installment_ledger;
 
   return (
     <AccountDetailSharedLayout
@@ -86,6 +85,7 @@ export function StandardAccountDetailPage({ data }: Props) {
       dash={data.dash}
       overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
+      loading={data.contentLoading}
     >
       {(isMovementCartolaAccount || isAfpAccount) && (
         <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
@@ -94,16 +94,21 @@ export function StandardAccountDetailPage({ data }: Props) {
       <div className={styles.positionBlock}>
         <h2 className={styles.sectionTitleCompact}>Posición (ticker y cuotas)</h2>
         <p className={cn("muted", styles.proseMutedXs)}>
-          Acciones: cuotas desde <span className="mono">cfraser/net worth-stocks.csv</span> (columna valor
-          acción). Cripto: saldo neto de moneda desde notas de movimientos del import.
+          <Trans
+            i18nKey="accountDetail.positionHint"
+            components={{ 1: <span className="mono" /> }}
+          />
           {isAfpAccount ? (
-            <>
-              {" "}
-              AFP UNO Fondo A: cuotas totales desde <span className="mono">movements.units_delta</span> (certificado
-              en <span className="mono">cfraser/afp-uno-certificado-cotizaciones.csv</span> o{" "}
-              <span className="mono">.txt</span> al correr <span className="mono">import:excel</span>, o{" "}
-              <span className="mono">npm run afp:uno:cert-sync</span>).
-            </>
+            <Trans
+              i18nKey="accountDetail.positionHintAfp"
+              components={{
+                1: <span className="mono" />,
+                2: <span className="mono" />,
+                3: <span className="mono" />,
+                4: <span className="mono" />,
+                5: <span className="mono" />,
+              }}
+            />
           ) : null}
         </p>
         <Table
@@ -209,8 +214,6 @@ export function StandardAccountDetailPage({ data }: Props) {
           </p>
           {monthlyPerfErr ? (
             <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
-          ) : monthlyPerf == null ? (
-            <p className="muted">Cargando rendimiento…</p>
           ) : monthlyPerfRows.length === 0 ? (
             <p className="muted">
               Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un
@@ -276,7 +279,7 @@ export function StandardAccountDetailPage({ data }: Props) {
         </>
       ) : null}
 
-      {mortgageLedger.source === "csv" && mortgageLedger.rows.length > 0 ? (
+      {mortgageLedger.has_sheet_rows && mortgageLedger.rows.length > 0 ? (
         <>
           <MortgageDividendosTable
             ledger={mortgageLedger}
@@ -290,19 +293,12 @@ export function StandardAccountDetailPage({ data }: Props) {
             <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios} />
           ) : null}
         </>
-      ) : mortgageLedger.source === "csv" ? (
-        <p className={cn("muted", styles.marginTopBase)}>
-          No hay filas con pago CLP en <span className="mono">cfraser/depto-dividendos.csv</span>
-          {mortgageLedger.meta?.csv_absolute_path ? (
-            <>
-              . El servidor leyó{" "}
-              <span className={cn("mono", styles.breakAll)}>{mortgageLedger.meta.csv_absolute_path}</span>
-              {mortgageLedger.meta.csv_file_exists === false ? " (archivo no encontrado)" : ""}.
-            </>
-          ) : null}{" "}
-          Re-exporta la hoja dividendos desde Numbers o revisa <span className="mono">CFRASER_CSV_DIR</span> si apunta
-          a otra carpeta.
-        </p>
+      ) : isMortgageAccount || summary.category_slug === "property" ? (
+        !mortgageLedger.has_sheet_rows ? (
+          <p className={cn("muted", styles.marginTopBase)}>
+            {t("account.creditCard.mortgageSheetEmpty")}
+          </p>
+        ) : null
       ) : null}
 
       {depositInflows != null && depositInflows.state_contribution_events.length > 0 ? (

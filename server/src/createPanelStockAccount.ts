@@ -106,10 +106,10 @@ export function createPanelStockAccount(
     const exclude = acc.exclude_from_group_totals ? 1 : 0;
     const insAcc = db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals, equity_ticker)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(assetGroupId, name, notes, exclude);
+      .run(assetGroupId, name, notes, exclude, ticker);
     accountId = Number(insAcc.lastInsertRowid);
     db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(
       prettyRgbTripletForAccountId(accountId),
@@ -118,19 +118,25 @@ export function createPanelStockAccount(
 
     const accountMeta = db
       .prepare(
-        `SELECT g.slug AS bucket_slug, a.notes AS notes
+        `SELECT g.slug AS bucket_slug, a.notes AS notes, a.equity_ticker AS equity_ticker
          FROM accounts a
          JOIN asset_groups g ON g.id = a.asset_group_id
          WHERE a.id = ?`
       )
-      .get(accountId) as { bucket_slug: string; notes: string | null };
+      .get(accountId) as {
+      bucket_slug: string;
+      notes: string | null;
+      equity_ticker: string | null;
+    };
 
     if (
       !accountMeta ||
-      !accountUsesBrokerageFlowKinds(
-        { group_slug: parentBucketSlug, bucket_slug: accountMeta.bucket_slug },
-        accountMeta.notes
-      )
+      !accountUsesBrokerageFlowKinds({
+        group_slug: parentBucketSlug,
+        bucket_slug: accountMeta.bucket_slug,
+        notes: accountMeta.notes,
+        equity_ticker: accountMeta.equity_ticker,
+      })
     ) {
       fail(400, "panel stock accounts must be brokerage accounts with import:panel notes");
     }
@@ -146,7 +152,12 @@ export function createPanelStockAccount(
         ticker,
       };
       const validated = validateMovementCreate(
-        { group_slug: parentBucketSlug, bucket_slug: accountMeta.bucket_slug },
+        {
+          group_slug: parentBucketSlug,
+          bucket_slug: accountMeta.bucket_slug,
+          notes: accountMeta.notes,
+          equity_ticker: accountMeta.equity_ticker,
+        },
         payload
       );
       if (!validated.ok) {

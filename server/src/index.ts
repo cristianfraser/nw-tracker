@@ -5,6 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  normalizeLegacyTabSubgroup,
+  portfolioGroupBySlug,
+  resolvePortfolioGroupSlugForLegacyTab,
+} from "./portfolioGroupTree.js";
+import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
   getStateContributionInflowEventsForAccount,
@@ -20,12 +25,8 @@ import {
   type AccountRow,
 } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
-import {
-  accountUsesEquityMtm,
-  computeEquityMtmClpLive,
-  computeLatestDisplayedEquityClp,
-} from "./brokerageEquityMtm.js";
-import { accountUsesCryptoMtm, computeCryptoMtmClpLive } from "./cryptoValuation.js";
+import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import { accountUsesCryptoMtm } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
   createPanelStockAccount,
@@ -37,7 +38,7 @@ import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.j
 import {
   deptoSueciaDashboardSnapshotAt,
   isDeptoMortgagePaymentCuota,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromDb,
   mortgageMetaFromSheetRows,
   noteIsDeptoPiePayment,
 } from "./deptoDividendosLedger.js";
@@ -165,6 +166,7 @@ import {
   notifyGlobalSyncScheduler,
   startGlobalSyncScheduler,
 } from "./globalSyncScheduler.js";
+import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
 
 seedNavTree();
 
@@ -176,54 +178,13 @@ function operationalAccountIdFromReq(req: { params: { id?: string } }): number {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** `subgroup` for `group=brokerage` | `group=retirement`. Not used for `group=inversiones`. */
-function parseClassTabSubgroupQuery(group: string, raw: unknown): string | undefined | null {
-  if (raw == null || raw === "") return undefined;
-  if (typeof raw !== "string") return null;
-  const t = raw.trim();
-  if (t === "") return undefined;
-  if (group === "brokerage") {
-    if (t === "fondos_mutuos") return "mutual_funds";
-    if (t === "acciones" || t === "mutual_funds" || t === "crypto") return t;
-    return null;
-  }
-  if (group === "retirement") {
-    if (
-      t === "afp" ||
-      t === "afc" ||
-      t === "afp_afc" ||
-      t === "apv" ||
-      t === "apv_a" ||
-      t === "apv_a_principal" ||
-      t === "apv_b"
-    )
-      return t;
-    return null;
-  }
-  if (group === "inversiones") {
-    return null;
-  }
-  if (group === "liabilities") {
-    if (t === "credit_card" || t === "mortgage") return t;
-    return null;
-  }
-  return null;
-}
-
-function subgroupAllowedForGroup(group: string): boolean {
-  return group === "brokerage" || group === "retirement" || group === "liabilities";
-}
-
 function isKnownClassTabGroup(group: string): boolean {
   if (group === "inversiones") return true;
+  if (portfolioGroupBySlug(group)) return true;
   const ag = db.prepare(`SELECT 1 AS o FROM asset_groups WHERE slug = ?`).get(group) as
     | { o: number }
     | undefined;
-  if (ag) return true;
-  const pg = db.prepare(`SELECT 1 AS o FROM portfolio_groups WHERE slug = ?`).get(group) as
-    | { o: number }
-    | undefined;
-  return Boolean(pg);
+  return Boolean(ag);
 }
 
 /**
@@ -288,7 +249,10 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-/** Recursive bucket tree: internal nodes have `children`; leaves have `accounts`. */
+/**
+ * Legacy `asset_groups` tree (import placement). Prefer `GET /api/meta/sidebar-nav` (`net_worth`).
+ * @deprecated
+ */
 app.get("/api/meta/asset-tree", (_req, res) => {
   const groups = db
     .prepare(
@@ -393,6 +357,34 @@ app.get("/api/meta/rates-instruments", (_req, res) => {
 });
 
 app.get("/api/accounts", (req, res) => {
+  const portfolioGroupSlug =
+    typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
+  if (portfolioGroupSlug) {
+    if (!portfolioGroupBySlug(portfolioGroupSlug)) {
+      res.status(400).json({ error: "unknown portfolio_group" });
+      return;
+    }
+    const tabRows = listAccountsForGroupTab(portfolioGroupSlug);
+    const ids = tabRows.map((r) => r.account_id);
+    if (!ids.length) {
+      res.json({ accounts: [] });
+      return;
+    }
+    const ph = ids.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
+                g.slug AS bucket_slug, g.label AS bucket_label
+         FROM accounts a
+         INNER JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE a.id IN (${ph})
+         ORDER BY g.sort_order, a.id, a.name`
+      )
+      .all(...ids) as Record<string, unknown>[];
+    res.json({ accounts: rows });
+    return;
+  }
+
   const groupSlug = req.query.group as string | undefined;
   if (!groupSlug) {
     const rows = db
@@ -409,48 +401,21 @@ app.get("/api/accounts", (req, res) => {
     res.json({ accounts: rows });
     return;
   }
-  const subRaw = parseClassTabSubgroupQuery(groupSlug, req.query.subgroup);
-  if (subRaw !== undefined && subRaw !== null && !subgroupAllowedForGroup(groupSlug)) {
-    res.status(400).json({
-      error: "subgroup is only valid with group=brokerage, group=retirement, or group=liabilities",
-    });
-    return;
-  }
+
+  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
   if (subRaw === null) {
-    res.status(400).json({
-      error:
-        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b; liabilities: credit_card, mortgage)",
-    });
+    res.status(400).json({ error: "invalid subgroup" });
+    return;
+  }
+  const resolvedSlug =
+    resolvePortfolioGroupSlugForLegacyTab(groupSlug, subRaw) ??
+    (portfolioGroupBySlug(groupSlug) ? groupSlug : null);
+  if (!resolvedSlug) {
+    res.status(400).json({ error: "unknown group or subgroup" });
     return;
   }
 
-  if (groupSlug === "liabilities") {
-    const tabRows = listLiabilitiesTabAccountRows(typeof subRaw === "string" ? subRaw : undefined);
-    const ids = tabRows.map((r) => r.account_id);
-    if (!ids.length) {
-      res.json({ accounts: [] });
-      return;
-    }
-    const ph = ids.map(() => "?").join(",");
-    const rows = db
-      .prepare(
-        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
-                a.source_account_id,
-                g.slug AS bucket_slug, g.label AS bucket_label
-         FROM accounts a
-         INNER JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE a.id IN (${ph})
-         ORDER BY g.slug, a.id, a.name`
-      )
-      .all(...ids) as Record<string, unknown>[];
-    res.json({ accounts: rows });
-    return;
-  }
-
-  const tabRows = listAccountsForGroupTab(
-    groupSlug,
-    typeof subRaw === "string" ? subRaw : undefined
-  );
+  const tabRows = listAccountsForGroupTab(resolvedSlug);
   const ids = tabRows.map((r) => r.account_id);
   if (!ids.length) {
     res.json({ accounts: [] });
@@ -762,11 +727,15 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
       )
       .get(bucketSlug, NOTE_STOCKS_LEGACY) as { c: number }
   ).c;
+  const equityRow = db
+    .prepare(`SELECT equity_ticker FROM accounts WHERE id = ?`)
+    .get(id) as { equity_ticker: string | null } | undefined;
   const accountRow = metaRow
     ? ({
         bucket_slug: bucketSlug,
         group_slug: dashBucket,
         notes: metaRow.account_notes,
+        equity_ticker: equityRow?.equity_ticker ?? null,
       } satisfies AccountRow)
     : null;
   const deposits_clp = totalDepositsClpForAccount(id);
@@ -818,13 +787,14 @@ function accountRowForId(accountId: number): AccountRow | null {
   if (!Number.isFinite(accountId) || accountId <= 0) return null;
   const bucket_slug = bucketSlugForAccountId(accountId);
   if (!bucket_slug) return null;
-  const notesRow = db
-    .prepare(`SELECT notes FROM accounts WHERE id = ?`)
-    .get(accountId) as { notes: string | null } | undefined;
+  const row = db
+    .prepare(`SELECT notes, equity_ticker FROM accounts WHERE id = ?`)
+    .get(accountId) as { notes: string | null; equity_ticker: string | null } | undefined;
   return {
     bucket_slug,
     group_slug: dashboardBucketForAssetGroupSlug(bucket_slug) ?? bucket_slug,
-    notes: notesRow?.notes ?? null,
+    notes: row?.notes ?? null,
+    equity_ticker: row?.equity_ticker ?? null,
   };
 }
 
@@ -868,7 +838,7 @@ app.get("/api/accounts/:id/movements", (req, res) => {
   });
 });
 
-/** Inmuebles: full “dividendos” sheet from `cfraser/depto-dividendos.csv` (not DB movements). */
+/** Inmuebles: dividendos sheet snapshot from SQLite (`depto_dividendos_sheet_rows`, filled at import:excel). */
 app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
   const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
@@ -880,25 +850,17 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
     res.status(404).json({ error: "account not found" });
     return;
   }
-  const csvRel = "cfraser/depto-dividendos.csv";
   if (bucketSlug === "property" || bucketSlug === "mortgage") {
-    const dir = resolveCfraserCsvDir();
-    const absCsv = resolveDeptoDividendosCsvPath();
-    const sheetRowsAll = loadDeptoDividendosSheetLedger(dir);
+    const sheetRowsAll = loadDeptoDividendosSheetLedgerFromDb();
     const sheetRows =
       bucketSlug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
         : sheetRowsAll;
-    const payment_scenarios = buildDeptoPaymentScenarioRows(dir, sheetRowsAll);
-    const meta = {
-      ...mortgageMetaFromSheetRows(sheetRowsAll, csvRel),
-      csv_absolute_path: absCsv,
-      csv_file_exists: fs.existsSync(absCsv),
-    };
+    const payment_scenarios = buildDeptoPaymentScenarioRows(sheetRowsAll);
     res.json({
       account_id: id,
-      source: "csv" as const,
-      meta,
+      has_sheet_rows: sheetRowsAll.length > 0,
+      meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
       rows: sheetRows,
       payment_scenarios,
     });
@@ -906,13 +868,13 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
   }
   res.json({
     account_id: id,
-    source: "none" as const,
+    has_sheet_rows: false,
     meta: null,
     rows: [] as unknown[],
   });
 });
 
-/** Tarjeta de crédito: cupos desde SQLite (PDF import) si hay filas; si no, desde `cfraser/credit-card-installments.csv`. */
+/** Tarjeta de crédito: cupos desde SQLite (`cc_installment_*` o estados PDF); sin lectura runtime del CSV. */
 app.get("/api/accounts/:id/cc-installments", (req, res) => {
   const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
@@ -927,7 +889,8 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
   if (accountKindSlugForAccountId(id) !== "credit_card") {
     res.json({
       account_id: id,
-      source: "none" as const,
+      has_installment_ledger: false,
+      has_imported_statements: false,
       meta: null,
       purchases: [],
       purchases_completed: [],
@@ -1271,30 +1234,25 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
   const includeUf = req.query.include_uf === "1" || req.query.include_uf === "true";
   const unit: TsUnit = includeUsd ? "usd" : includeUf ? "uf" : "clp";
 
+  const portfolioGroup =
+    typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
   const group = typeof req.query.group === "string" ? req.query.group.trim() : "";
-  if (group) {
-    if (!isKnownClassTabGroup(group)) {
+  if (portfolioGroup || group) {
+    const subRaw = group ? normalizeLegacyTabSubgroup(req.query.subgroup) : undefined;
+    if (subRaw === null) {
+      res.status(400).json({ error: "invalid subgroup" });
+      return;
+    }
+    const tabSlug = portfolioGroup
+      ? portfolioGroup
+      : resolvePortfolioGroupSlugForLegacyTab(group, subRaw) ??
+        (portfolioGroupBySlug(group) ? group : null);
+    if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
       res.status(400).json({ error: "unknown group slug" });
       return;
     }
-    const sub = parseClassTabSubgroupQuery(group, req.query.subgroup);
-    if (sub !== undefined && sub !== null && !subgroupAllowedForGroup(group)) {
-      res.status(400).json({
-        error: "subgroup is only valid with group=brokerage, group=retirement, or group=liabilities",
-      });
-      return;
-    }
-    if (sub === null) {
-      res.status(400).json({
-        error:
-          "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b; liabilities: credit_card, mortgage)",
-      });
-      return;
-    }
     res.json(
-      attachColorsToValuationPayload(
-        getGroupValuationTimeseries(group, unit, typeof sub === "string" ? sub : undefined)
-      )
+      attachColorsToValuationPayload(getGroupValuationTimeseries(tabSlug, unit, undefined))
     );
     return;
   }
@@ -1316,18 +1274,20 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const sub = parseClassTabSubgroupQuery(slug, req.query.subgroup);
-  if (sub !== undefined && sub !== null && !subgroupAllowedForGroup(slug)) {
-    res.status(400).json({ error: "subgroup is only valid for brokerage, retirement, or liabilities" });
+  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
+  if (subRaw === null) {
+    res.status(400).json({ error: "invalid subgroup" });
     return;
   }
-  if (sub === null) {
-    res.status(400).json({ error: "invalid subgroup" });
+  const tabSlug =
+    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ?? (portfolioGroupBySlug(slug) ? slug : null);
+  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
+    res.status(400).json({ error: "unknown group slug" });
     return;
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getGroupConsolidatedTables(slug, unit, typeof sub === "string" ? sub : undefined));
+  res.json(getGroupConsolidatedTables(tabSlug, unit, undefined));
 });
 
 /** Per-class tab: month P/L bars per account + combined YTD area + ΣΔ line (derived, not stored). */
@@ -1337,23 +1297,20 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
     res.status(400).json({ error: "unknown group slug" });
     return;
   }
-  const sub = parseClassTabSubgroupQuery(slug, req.query.subgroup);
-  if (sub !== undefined && sub !== null && !subgroupAllowedForGroup(slug)) {
-    res.status(400).json({
-      error: "subgroup is only valid for brokerage, retirement, or liabilities",
-    });
+  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
+  if (subRaw === null) {
+    res.status(400).json({ error: "invalid subgroup" });
     return;
   }
-  if (sub === null) {
-    res.status(400).json({
-      error:
-        "invalid subgroup (brokerage: acciones, mutual_funds, fondos_mutuos alias, crypto; retirement: afp, afp_afc, apv, afc, apv_a, apv_a_principal, apv_b; liabilities: credit_card, mortgage)",
-    });
+  const tabSlug =
+    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ?? (portfolioGroupBySlug(slug) ? slug : null);
+  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
+    res.status(400).json({ error: "unknown group slug" });
     return;
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getGroupMonthlyPerformanceSeries(slug, unit, typeof sub === "string" ? sub : undefined));
+  res.json(getGroupMonthlyPerformanceSeries(tabSlug, unit, undefined));
 });
 
 app.get("/api/fx/latest", (_req, res) => {
@@ -1418,9 +1375,9 @@ app.get("/api/market-series", (_req, res) => {
   res.json(getMarketSeriesPayload());
 });
 
-app.get("/api/market-ticker", async (_req, res) => {
+app.get("/api/market-ticker", (_req, res) => {
   try {
-    res.json(await getMarketTickerPayload());
+    res.json(getMarketTickerPayload());
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
   }
@@ -1757,4 +1714,5 @@ app.post("/api/imports/bank-statement", (req, res) => {
 app.listen(PORT, () => {
   console.log(`nw-tracker API http://localhost:${PORT}`);
   startGlobalSyncScheduler();
+  startLiveMarketQuotesScheduler();
 });
