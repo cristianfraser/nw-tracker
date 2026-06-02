@@ -110,6 +110,7 @@ import {
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { ufClpBySnapshotDatesAsc } from "../src/fxRates.js";
 import { applyCryptoValuationsFromCoinHoldings } from "../src/cryptoValuation.js";
+import { assetGroupIdForImportKind } from "../src/portfolioGroupTree.js";
 import { db } from "../src/db.js";
 import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
@@ -128,7 +129,8 @@ import {
   firstDeptoPropertyOwnershipYmd,
   isDeptoMortgagePaymentCuota,
   loadDeptoDividendosPaymentRows,
-  loadDeptoDividendosSheetLedger,
+  loadDeptoDividendosSheetLedgerFromFile,
+  replaceDeptoDividendosSheetRowsInDb,
 } from "../src/deptoDividendosLedger.js";
 import {
   fetchYahooDailyCloses,
@@ -146,6 +148,7 @@ import {
   FINTUAL_CERT_MOVEMENT_NOTE_PREFIX,
   FINTUAL_CERT_V2_ACCOUNT_NAMES,
   FINTUAL_CERT_V2_CATEGORY_SLUG,
+  fintualCertV2SeriesKeyFromImportNotes,
   matchFintualCertGoalV2,
 } from "../src/fintualCertV2.js";
 import { backfillFintualCertValorCuotaFromScan } from "../src/fintualFundUnitDaily.js";
@@ -884,7 +887,7 @@ function importBrokerageCsvMovements(
  */
 /** Mortgage (pasivo): one movement per dividendos payment — positive CLP (capital pagado al crédito). */
 function importDeptoDividendosMortgagePayments(
-  ledger: ReturnType<typeof loadDeptoDividendosSheetLedger>,
+  ledger: ReturnType<typeof loadDeptoDividendosSheetLedgerFromFile>,
   maxMonth: MonthKey,
   mortgageId: number,
   insMov: MovStmt
@@ -1190,23 +1193,34 @@ async function main() {
   });
   wipe();
 
-  const leafBucketIdStmt = db.prepare(
-    `SELECT id FROM asset_groups
-     WHERE slug = ? OR slug LIKE '%__' || ?
-     ORDER BY CASE WHEN slug = ? THEN 0 ELSE 1 END, id
-     LIMIT 1`
-  );
-  const leafBucketId = (kindSlug: string) => {
-    const row = leafBucketIdStmt.get(kindSlug, kindSlug, kindSlug) as { id: number } | undefined;
-    if (!row) throw new Error(`no leaf asset group for kind ${kindSlug}`);
-    return row.id;
+  const leafBucketId = (kindSlug: string) => assetGroupIdForImportKind(kindSlug);
+
+  const EXCEL_ACCOUNT_EQUITY_TICKER: Record<string, string> = {
+    spy: "SPY",
+    vea: "VEA",
+    oilk: "OILK",
+    bitcoin: "BTC-USD",
+    eth: "ETH-USD",
+  };
+
+  const EXCEL_FUND_SERIES_KEY: Record<string, string> = {
+    fintual_rn: "fintual_risky_norris",
+    apv_a: "fintual_risky_norris_apv",
+    apv_b: "fintual_risky_norris_apv",
   };
 
   const insAcc = db.prepare(
-    "INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals) VALUES (?, ?, ?, ?)"
+    "INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals, equity_ticker, fund_series_key) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  const updAccEquityTicker = db.prepare(
+    "UPDATE accounts SET equity_ticker = ? WHERE id = ?"
+  );
+  const updAccFundSeriesKey = db.prepare(
+    "UPDATE accounts SET fund_series_key = ? WHERE id = ?"
   );
 
   const updAccName = db.prepare("UPDATE accounts SET name = ? WHERE id = ?");
+  const updAccAssetGroup = db.prepare("UPDATE accounts SET asset_group_id = ? WHERE id = ?");
 
   function excludeFromGroupTotalsForCategory(categorySlug: string): number {
     return categorySlug === "cuenta_corriente" || categorySlug === "cuenta_vista" ? 1 : 0;
@@ -1215,13 +1229,30 @@ async function main() {
   function ensureAccount(slug: string, name: string, key: string): number {
     const note = `import:excel|key=${key}`;
     const exclude = excludeFromGroupTotalsForCategory(slug);
+    const equityTicker = EXCEL_ACCOUNT_EQUITY_TICKER[key] ?? EXCEL_ACCOUNT_EQUITY_TICKER[slug] ?? null;
+    const fundSeriesKey = EXCEL_FUND_SERIES_KEY[key] ?? null;
+    const bucketId = leafBucketId(slug);
     const row = db.prepare("SELECT id FROM accounts WHERE notes = ?").get(note) as { id: number } | undefined;
     if (row) {
       updAccName.run(name, row.id);
+      updAccAssetGroup.run(bucketId, row.id);
+      const pgId = db
+        .prepare(
+          `SELECT id FROM portfolio_groups WHERE kind_slug = ? ORDER BY LENGTH(slug) DESC LIMIT 1`
+        )
+        .get(key) as { id: number } | undefined;
+      if (pgId) {
+        db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(
+          pgId.id,
+          row.id
+        );
+      }
       db.prepare("UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?").run(exclude, row.id);
+      if (equityTicker) updAccEquityTicker.run(equityTicker, row.id);
+      if (fundSeriesKey) updAccFundSeriesKey.run(fundSeriesKey, row.id);
       return row.id;
     }
-    const r = insAcc.run(leafBucketId(slug), name, note, exclude);
+    const r = insAcc.run(bucketId, name, note, exclude, equityTicker, fundSeriesKey);
     return Number(r.lastInsertRowid);
   }
 
@@ -1235,12 +1266,16 @@ async function main() {
     const row = db.prepare("SELECT id FROM accounts WHERE notes = ?").get(importNotes) as
       | { id: number }
       | undefined;
+    const fundSeriesKey = fintualCertV2SeriesKeyFromImportNotes(importNotes);
+    const bucketId = leafBucketId(categorySlug);
     if (row) {
       updAccName.run(displayName, row.id);
+      updAccAssetGroup.run(bucketId, row.id);
       db.prepare("UPDATE accounts SET exclude_from_group_totals = ? WHERE id = ?").run(exclude, row.id);
+      if (fundSeriesKey) updAccFundSeriesKey.run(fundSeriesKey, row.id);
       return row.id;
     }
-    const r = insAcc.run(leafBucketId(categorySlug), displayName, importNotes, exclude);
+    const r = insAcc.run(bucketId, displayName, importNotes, exclude, null, fundSeriesKey);
     return Number(r.lastInsertRowid);
   }
 
@@ -1498,7 +1533,11 @@ async function main() {
     const todayChile = chileCalendarTodayYmd();
     const curMk = todayChile.slice(0, 7) as MonthKey;
 
-    const deptoLedger = loadDeptoDividendosSheetLedger(cfraserDir);
+    const deptoLedger = loadDeptoDividendosSheetLedgerFromFile(cfraserDir);
+    if (deptoLedger.length > 0) {
+      const nSheet = replaceDeptoDividendosSheetRowsInDb(deptoLedger);
+      console.log(`import:excel: depto-dividendos → ${nSheet} sheet rows in SQLite`);
+    }
     const bankPath = resolveBankDividendosHistoricosPath();
     const bankEnriched = enrichDeptoLedgerFromBankFile(deptoLedger, bankPath);
     if (bankEnriched > 0) {

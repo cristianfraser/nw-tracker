@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
@@ -9,103 +7,31 @@ import {
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
 import {
+  accountUsesCryptoMtm,
   computeCryptoMtmClp,
   cryptoCoinCumulativeThroughDate,
-  cryptoEquityTickerForCategorySlug,
+  cryptoEquityTickerForAccount,
   type CryptoAsset,
 } from "./cryptoValuation.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
-import { numCsv } from "./deptoDividendosLedger.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
-import { fundSeriesKeyFromImportNotes, isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
-import { fintualGoalUnitsFromMovements, fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
+import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
+import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
+import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import { equityTickerForAccount } from "./accountEquityTicker.js";
+import {
+  equityCloseUsdEod,
+  equitySessionYmdForTicker,
+  getLiveEquityQuoteFromDb,
+  shouldUseLiveEquityQuote,
+} from "./equityQuote.js";
+import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
+import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 
-/** Same resolution as mortgage API and `import-excel-history.ts`. */
-export function cfraserCsvDir(): string {
-  return resolveCfraserCsvDir();
-}
-
-/**
- * Numbers-exported “valor acción” cell: comma as decimal separator (`1,027327209`).
- * (Do not use Chilean thousands-with-dots here; that column is a plain fraction.)
- */
-function parseStocksSheetShareCell(raw: string): number | null {
-  const s = raw.replace(/[^\d,]/g, "").trim();
-  if (!s) return null;
-  const parts = s.split(",");
-  if (parts.length === 2) {
-    const n = Number(`${parts[0]}.${parts[1]}`);
-    return Number.isFinite(n) ? n : null;
-  }
-  const n = Number(s.replace(/\./g, ""));
-  return Number.isFinite(n) ? n : null;
-}
-
-export function readSpyVeaShareUnitsFromStocksCsv(slug: "spy" | "vea"): number | null {
-  const fp = path.join(cfraserCsvDir(), "net worth-stocks.csv");
-  if (!fs.existsSync(fp)) return null;
-  const lines = fs.readFileSync(fp, "utf8").split(/\r?\n/);
-  // Row 0 = header (`;goal;current;…`); row 1 = first ticker (`spy`, `vea`, …).
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i]!.split(";");
-    const key = String(cols[0] ?? "")
-      .trim()
-      .replace(/^\ufeff/, "")
-      .toLowerCase();
-    if (key !== slug) continue;
-    const raw = cols[5];
-    if (!raw?.trim()) return null;
-    return parseStocksSheetShareCell(raw);
-  }
-  return null;
-}
-
-/** CLP “depositado” (col 3) from `net worth-stocks.csv` for the SPY or VEA row — same Numbers field the import uses. */
-export function readSpyVeaDepositadoClpFromStocksCsv(slug: "spy" | "vea"): number | null {
-  const fp = path.join(cfraserCsvDir(), "net worth-stocks.csv");
-  if (!fs.existsSync(fp)) return null;
-  const lines = fs.readFileSync(fp, "utf8").split(/\r?\n/);
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line?.trim()) continue;
-    const cols = line.split(";");
-    const key = String(cols[0] ?? "")
-      .trim()
-      .replace(/^\ufeff/, "")
-      .toLowerCase();
-    if (key !== slug) continue;
-    const dep = numCsv(cols[3]);
-    if (dep == null || !Number.isFinite(dep) || dep <= 0) return null;
-    return dep;
-  }
-  return null;
-}
-
-/** Net coin held today from cripto-sheet ledger (Σ `units_delta`, or legacy `coin=` notes). */
-export function netCryptoCoinFromMovements(accountId: number, asset: CryptoAsset): number | null {
-  const has = db
-    .prepare(
-      `SELECT 1 FROM movements WHERE account_id = ? AND note LIKE ? LIMIT 1`
-    )
-    .get(accountId, `%cripto-sheet|${asset}|%`);
-  if (!has) return null;
-  const units = cryptoCoinCumulativeThroughDate(accountId, chileCalendarTodayYmd(), asset);
+/** Net coin held today (Σ `units_delta` on crypto MTM accounts). */
+export function netCryptoCoinFromMovements(accountId: number, _asset: CryptoAsset): number | null {
+  if (!cryptoEquityTickerForAccount(accountId)) return null;
+  const units = cryptoCoinCumulativeThroughDate(accountId, chileCalendarTodayYmd());
   return Number.isFinite(units) ? units : null;
-}
-
-export function tickerFromCategorySlug(slug: string): string | null {
-  switch (slug) {
-    case "spy":
-      return "SPY";
-    case "vea":
-      return "VEA";
-    case "bitcoin":
-      return "BTC";
-    case "eth":
-      return "ETH";
-    default:
-      return null;
-  }
 }
 
 export type UnitsKind = "shares" | "coin";
@@ -130,7 +56,7 @@ function fintualCertPositionMeta(
   displayTicker: string,
   asOfYmd: string
 ): AccountPositionMeta | null {
-  const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+  const seriesKey = fundSeriesKeyForAccount(accountId);
   if (!seriesKey) return null;
   const cuotas = fintualGoalUnitsFromMovementsThroughDate(accountId, asOfYmd);
   const fu = latestFundUnitRowOnOrBefore(seriesKey, asOfYmd);
@@ -149,6 +75,61 @@ function fintualCertPositionMeta(
   return out;
 }
 
+/** All brokerage equities (SPY, VEA, panel tickers): live quote today in session, else `equity_daily` EOD. */
+export function equityBrokeragePositionMeta(
+  accountId: number,
+  ticker: string,
+  asOfYmd: string,
+  now: Date = new Date()
+): AccountPositionMeta | null {
+  const units = brokerageShareUnitsThroughDate(accountId, asOfYmd);
+  const out: AccountPositionMeta = {
+    ticker,
+    units_kind: "shares",
+    units: units > 1e-12 && Number.isFinite(units) ? units : null,
+  };
+
+  const today = chileCalendarTodayYmd();
+  const session = equitySessionYmdForTicker(ticker, now);
+  const useLive = asOfYmd === today && shouldUseLiveEquityQuote(ticker, session, now);
+
+  let closeUsd: number | null = null;
+  let markDate = asOfYmd;
+
+  if (useLive) {
+    const live = getLiveEquityQuoteFromDb(ticker);
+    if (live) {
+      closeUsd = live.price_usd;
+      markDate = live.trade_date;
+    }
+  }
+
+  if (closeUsd == null) {
+    const closeRow = db
+      .prepare(
+        `SELECT trade_date, close_usd FROM equity_daily
+         WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
+      )
+      .get(ticker, asOfYmd) as { trade_date: string; close_usd: number } | undefined;
+    closeUsd = closeRow?.close_usd ?? equityCloseUsdEod(ticker, asOfYmd);
+    markDate = closeRow?.trade_date ?? asOfYmd;
+  }
+
+  if (closeUsd == null || !Number.isFinite(closeUsd)) return out;
+
+  const fx = useLive ? fxForLiveMtm(asOfYmd, now) : fxRowOnOrBefore(markDate);
+  if (!fx || fx.clp_per_usd <= 0) return out;
+
+  const u = out.units;
+  if (u == null || u <= 1e-12) return out;
+
+  const mtm = Math.round(u * closeUsd * fx.clp_per_usd * 100) / 100;
+  out.afp_override_value_clp = mtm;
+  out.afp_override_value_as_of = markDate;
+  out.afp_override_valor_cuota_clp = Math.round(closeUsd * fx.clp_per_usd * 10000) / 10000;
+  return out;
+}
+
 export function getAccountPositionMeta(
   accountId: number,
   categorySlug: string,
@@ -162,29 +143,27 @@ export function getAccountPositionMeta(
     const ticker = (opts.accountName ?? "Fintual").trim() || "Fintual";
     return fintualCertPositionMeta(accountId, opts.accountNotes, ticker, asOf);
   }
-  const ticker = tickerFromCategorySlug(categorySlug);
-  if (ticker) {
-    if (categorySlug === "spy" || categorySlug === "vea") {
-      const units = readSpyVeaShareUnitsFromStocksCsv(categorySlug);
-      return { ticker, units_kind: "shares", units: units ?? null };
-    }
-    if (categorySlug === "bitcoin" || categorySlug === "eth") {
-      const asset: CryptoAsset = categorySlug === "bitcoin" ? "BTC" : "ETH";
-      const asOf =
-        opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
-          ? opts.afpCuotasAsOfYmd.trim()
-          : chileCalendarTodayYmd();
+
+  const equityTicker = equityTickerForAccount(accountId);
+  if (equityTicker && accountUsesEquityMtm(accountId)) {
+    return equityBrokeragePositionMeta(accountId, equityTicker, asOf);
+  }
+
+  if (equityTicker && accountUsesCryptoMtm(accountId)) {
+    const asset: CryptoAsset | null =
+      equityTicker === "BTC-USD" ? "BTC" : equityTicker === "ETH-USD" ? "ETH" : null;
+    if (asset) {
       const units = cryptoCoinCumulativeThroughDate(accountId, asOf, asset);
-      const equityTicker = cryptoEquityTickerForCategorySlug(categorySlug)!;
+      const equityTickerRow = equityTicker;
       const mtm = computeCryptoMtmClp(accountId, asOf);
       const closeRow = db
         .prepare(
           `SELECT trade_date, close_usd FROM equity_daily
            WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
         )
-        .get(equityTicker, asOf) as { trade_date: string; close_usd: number } | undefined;
+        .get(equityTickerRow, asOf) as { trade_date: string; close_usd: number } | undefined;
       const out: AccountPositionMeta = {
-        ticker,
+        ticker: asset === "BTC" ? "BTC" : "ETH",
         units_kind: "coin",
         units: units > 1e-12 && Number.isFinite(units) ? units : null,
       };
@@ -216,10 +195,6 @@ export function getAccountPositionMeta(
     const px = fu?.unit_value_clp;
     const pxDay = fu?.day;
 
-    // AFP values are stored monthly in `valuations`, but we also derive a live mark from
-    // `movements.units_delta × latest valor cuota`. If movements-derived cuotas drift
-    // (e.g. after re-import/backfills), that live mark can spike vs stored valuations.
-    // Prefer stored valuations when they disagree materially.
     const stored = db
       .prepare(
         `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
@@ -240,7 +215,6 @@ export function getAccountPositionMeta(
       const derivedValue = Math.round(cuotasFromMovements * px * 100) / 100;
       const relDiff = Math.abs(derivedValue - stored.value_clp) / stored.value_clp;
       if (relDiff > 0.05) {
-        // Use implied cuotas so live mark matches stored monthly valuations.
         cuotas = Math.round((stored.value_clp / px) * 1e4) / 1e4;
       }
     }

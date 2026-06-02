@@ -72,7 +72,7 @@ function visibleBreakdownLabels(lines: ReturnType<typeof buildNavCardBreakdown>)
 }
 
 describe("buildNavCardBreakdown retirement", () => {
-  it("groups AFP + AFC by bucket kind when nav is flat", () => {
+  it("lists flat AFP and AFC accounts under AFP+AFC bucket", () => {
     const retirement: NavTreeNodeDto = {
       slug: "retirement",
       label: "Retiro",
@@ -105,8 +105,8 @@ describe("buildNavCardBreakdown retirement", () => {
     ]);
 
     expect(lines).not.toBeNull();
-    const afpLine = lines!.find((l) => l.label === "afp" && l.depth === 1);
-    const afcLine = lines!.find((l) => l.label === "afc" && l.depth === 1);
+    const afpLine = lines!.find((l) => l.label === "AFP UNO" && l.depth === 1);
+    const afcLine = lines!.find((l) => l.label === "AFC Banco" && l.depth === 1);
     expect(afpLine?.clp).toBe(20_000_000);
     expect(afcLine?.clp).toBe(8_000_000);
   });

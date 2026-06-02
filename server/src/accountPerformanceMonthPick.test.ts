@@ -1,28 +1,27 @@
-import { describe, expect, it } from "vitest";
-import {
-  pickRepresentativeMonthlyPerfRow,
-  type MonthlyPerfPickRow,
-} from "./accountPerformanceMonthPick.js";
+import { describe, expect, it, vi } from "vitest";
 
-function row(
-  as_of_date: string,
-  nominal_pl: number | null,
-  net_capital_flow = 0
-): MonthlyPerfPickRow {
-  return { as_of_date, net_capital_flow, nominal_pl };
-}
+const chileToday = vi.hoisted(() => ({ ymd: "2026-06-01" }));
+
+vi.mock("./chileDate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./chileDate.js")>();
+  return {
+    ...actual,
+    chileCalendarTodayYmd: () => chileToday.ymd,
+  };
+});
+
+import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 
 describe("pickRepresentativeMonthlyPerfRow", () => {
-  it("keeps the only row when one snapshot exists in the month", () => {
-    const r = row("2025-03-31", 5000);
-    expect(pickRepresentativeMonthlyPerfRow([r], "2025-03").as_of_date).toBe("2025-03-31");
-  });
+  it("prefers latest on-or-before-today row in the current month", () => {
+    chileToday.ymd = "2026-06-01";
 
-  it("prefers the row with material P/L over a trailing zero-delta month-end duplicate", () => {
-    const early = row("2025-02-15", 120_000, 0);
-    const trailing = row("2025-02-28", 0, 0);
-    const picked = pickRepresentativeMonthlyPerfRow([early, trailing], "2025-02");
-    expect(picked.as_of_date).toBe("2025-02-15");
-    expect(picked.nominal_pl).toBe(120_000);
+    const rows = [
+      { as_of_date: "2026-06-01", net_capital_flow: 0, nominal_pl: 100 },
+      { as_of_date: "2026-06-30", net_capital_flow: 0, nominal_pl: 0 },
+    ];
+    const picked = pickRepresentativeMonthlyPerfRow(rows, "2026-06");
+    expect(picked.as_of_date).toBe("2026-06-01");
+    expect(picked.nominal_pl).toBe(100);
   });
 });

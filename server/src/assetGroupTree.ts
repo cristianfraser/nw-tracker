@@ -1,3 +1,4 @@
+import { accountIdsInPortfolioGroup, portfolioGroupBySlug } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
 
 export type AssetGroupRow = {
@@ -16,31 +17,36 @@ const childCountStmt = db.prepare(
   `SELECT COUNT(*) AS c FROM asset_groups WHERE parent_id = ?`
 );
 
-/** Legacy `group` + `subgroup` query params → leaf bucket slug. */
-export function resolveLegacyTabBucketSlug(
-  groupSlug: string,
-  tabSubgroup?: string
-): string {
-  if (!tabSubgroup) return groupSlug;
-  if (groupSlug === "brokerage") {
-    if (tabSubgroup === "mutual_funds" || tabSubgroup === "fondos_mutuos") {
-      return "brokerage_mutual_funds";
-    }
-    if (tabSubgroup === "crypto") return "brokerage_crypto";
-    if (tabSubgroup === "acciones") return "brokerage_acciones";
-  }
-  if (groupSlug === "retirement") {
-    if (tabSubgroup === "afp_afc") return "retirement_afp_afc";
-    if (tabSubgroup === "afp" || tabSubgroup === "afc") return "retirement_afp_afc";
-    if (tabSubgroup === "apv_a" || tabSubgroup === "apv_a_principal") return "retirement_apv_a";
-    if (tabSubgroup === "apv_b") return "retirement_apv_b";
-    if (tabSubgroup === "apv") return "retirement_apv";
-  }
-  return groupSlug;
-}
 
 export function assetGroupBySlug(slug: string): AssetGroupRow | null {
   return (groupBySlugStmt.get(slug) as AssetGroupRow | undefined) ?? null;
+}
+
+const leafAssetGroupForKindStmt = db.prepare(
+  `SELECT id, slug FROM asset_groups
+   WHERE slug = ? OR slug LIKE '%\_\_' || ? ESCAPE '\\'
+   ORDER BY LENGTH(slug) DESC, id DESC
+   LIMIT 1`
+);
+
+/**
+ * Leaf `asset_groups.id` for a category/kind slug (e.g. `afc` → `retirement_afp_afc__afc`).
+ * Uses escaped `__` in LIKE — unescaped `_` is a single-char wildcard and would match parent buckets like `retirement_afp_afc`.
+ */
+export function leafAssetGroupIdForKindSlug(kindSlug: string): number {
+  const row = leafAssetGroupForKindStmt.get(kindSlug, kindSlug) as
+    | { id: number; slug: string }
+    | undefined;
+  if (!row) throw new Error(`no leaf asset group for kind ${kindSlug}`);
+  return row.id;
+}
+
+export function leafAssetGroupSlugForKindSlug(kindSlug: string): string {
+  const row = leafAssetGroupForKindStmt.get(kindSlug, kindSlug) as
+    | { id: number; slug: string }
+    | undefined;
+  if (!row) throw new Error(`no leaf asset group for kind ${kindSlug}`);
+  return row.slug;
 }
 
 export function isLeafAssetGroupId(groupId: number): boolean {
@@ -99,6 +105,11 @@ export const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
 export const CASH_SAVINGS_BUCKET = "cash_eqs__cash_savings";
 export const CHECKING_ACCOUNTS_KIND = "checking_accounts";
 export const CASH_SAVINGS_KIND = "cash_savings";
+
+/** NW dashboard charts / consolidation: ahorros y reservas (not the cash_eqs hub or checking). */
+export function isCashSavingsValuationGroupSlug(groupSlug: string): boolean {
+  return groupSlug === CASH_SAVINGS_KIND || groupSlug === CASH_SAVINGS_BUCKET;
+}
 
 function assetGroupKindSlug(slug: string): string {
   const sep = slug.lastIndexOf("__");
@@ -275,12 +286,31 @@ export function listAccountsForBucketIds(
   return db.prepare(sql).all(excludeLegacyStocksNote, ...bucketIds) as BucketAccountRow[];
 }
 
+const LIST_BY_ACCOUNT_IDS = `
+  SELECT a.id AS account_id, a.name,
+         g.slug AS bucket_slug, g.label AS bucket_label,
+         a.notes AS notes,
+         a.exclude_from_group_totals AS exclude_from_group_totals
+  FROM accounts a
+  INNER JOIN asset_groups g ON g.id = a.asset_group_id
+  WHERE (a.notes IS NULL OR a.notes != ?)
+    AND a.id IN (__IDS__)
+    AND g.slug != 'individual_stocks'
+  ORDER BY g.sort_order, g.id, a.name
+`;
+
 export function listAccountsForBucketSlug(
   bucketSlug: string,
-  tabSubgroup: string | undefined,
+  _tabSubgroup: string | undefined,
   excludeLegacyStocksNote: string
 ): BucketAccountRow[] {
-  const resolved = resolveLegacyTabBucketSlug(bucketSlug, tabSubgroup);
-  const ids = assetGroupIdsInSubtree(resolved);
+  if (portfolioGroupBySlug(bucketSlug)) {
+    const ids = accountIdsInPortfolioGroup(bucketSlug);
+    if (ids.length === 0) return [];
+    const ph = ids.map(() => "?").join(",");
+    const sql = LIST_BY_ACCOUNT_IDS.replace("__IDS__", ph);
+    return db.prepare(sql).all(excludeLegacyStocksNote, ...ids) as BucketAccountRow[];
+  }
+  const ids = assetGroupIdsInSubtree(bucketSlug);
   return listAccountsForBucketIds(ids, excludeLegacyStocksNote);
 }

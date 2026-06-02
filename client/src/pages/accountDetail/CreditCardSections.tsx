@@ -35,7 +35,12 @@ function CreditCardInstallmentsSection({
   const createPurchase = useCreateCcPurchaseMutation(mutationOpts);
   const deletePurchase = useDeleteCcPurchaseMutation(mutationOpts);
   const m = ledger.meta;
-  const fromDb = ledger.source === "db";
+  const hasLedger = ledger.has_installment_ledger;
+  const hasData =
+    hasLedger ||
+    ledger.has_imported_statements ||
+    ledger.purchases.length > 0 ||
+    (ledger.purchases_completed?.length ?? 0) > 0;
   const statements = ledger.statements ?? [];
   const facturaciones = ledger.facturaciones ?? [];
   const [manualOpen, setManualOpen] = useState(false);
@@ -99,20 +104,20 @@ function CreditCardInstallmentsSection({
     opts: { dueColumn: "next" | "last" | "none" }
   ) =>
     rows.map((p) => {
-      const detailColSpan = fromDb ? (opts.dueColumn === "none" ? 9 : 10) : opts.dueColumn === "none" ? 12 : 13;
+      const detailColSpan = hasLedger ? (opts.dueColumn === "none" ? 9 : 10) : opts.dueColumn === "none" ? 12 : 13;
       return (
         <Fragment key={p.purchase_id}>
           <tr>
             <td>
               <div>{p.label}</div>
               <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
-              {p.purchase_source === "manual" ? (
-                <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.sourceManual")}</div>
-              ) : fromDb ? (
-                <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.sourcePdf")}</div>
-              ) : null}
+              <div className={cn("muted", styles.purchaseMeta)}>
+                {p.origin === "manual"
+                  ? t("account.creditCard.originManual")
+                  : t("account.creditCard.originImportDocument")}
+              </div>
               {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
-              {fromDb && p.purchase_source === "manual" && p.purchase_db_id != null ? (
+              {hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
                 <button
                   type="button"
                   className={cn("muted", styles.purchaseMeta)}
@@ -129,13 +134,13 @@ function CreditCardInstallmentsSection({
             <td className="mono">{p.installments_paid}</td>
             <td className="mono">{p.remaining_installments}</td>
             <td className="mono">{formatClp(p.principal_clp)}</td>
-            {!fromDb ? (
+            {!hasLedger ? (
               <td className="mono">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
             ) : null}
             <td className="mono">{p.purchase_month ?? "—"}</td>
             <td className="mono">{p.first_due_month}</td>
-            {!fromDb ? <td className="mono">{p.schedule_offset_months}</td> : null}
-            {!fromDb ? (
+            {!hasLedger ? <td className="mono">{p.schedule_offset_months}</td> : null}
+            {!hasLedger ? (
               <td>
                 <input
                   type="number"
@@ -216,60 +221,22 @@ function CreditCardInstallmentsSection({
   return (
     <>
       <h2 className={styles.sectionTitle}>Cupos en cuotas (tarjeta)</h2>
-      {fromDb ? (
+      {hasLedger ? (
         <p className={cn("muted", styles.proseMuted)}>
-          Datos importados a la base desde los PDF de estado de cuenta (cuotas).{" "}
-          {m?.db_purchase_count != null && m?.db_payment_count != null ? (
+          {t("account.creditCard.installmentsLedgerHint")}{" "}
+          {m?.installment_purchase_count != null && m?.installment_payment_count != null ? (
             <>
-              <span className="mono">{m.db_purchase_count}</span> compras en cuotas,{" "}
-              <span className="mono">{m.db_payment_count}</span> pagos de cuota registrados.
+              <span className="mono">{m.installment_purchase_count}</span> compras en cuotas,{" "}
+              <span className="mono">{m.installment_payment_count}</span> pagos de cuota registrados.
             </>
           ) : null}{" "}
           {m?.pay_by_rule ? (
             <span className={cn("muted", styles.stateNote)}>{m.pay_by_rule}</span>
           ) : null}
         </p>
-      ) : (
-        <>
-          <p className={cn("muted", styles.proseMuted)}>
-            Datos desde <span className="mono">{m?.csv_path ?? "cfraser/credit-card-installments.csv"}</span>. Tasa anual
-            nominal por compra (por defecto <strong>0%</strong> = cuota fija); si en el futuro cargas cupos con interés,
-            el saldo restante usa amortización mensual estándar. El campo <strong>Offset UI</strong> suma meses solo en
-            esta vista (y en el navegador) para correr el calendario si el estado de cuenta llegó un mes después; el offset
-            persistente va en la columna CSV <span className="mono">schedule_offset_months</span>.
-          </p>
-          {m && (
-            <p className={cn("muted", styles.proseSm)}>
-              Archivo:{" "}
-              <span className={cn("mono", styles.breakAll)}>
-                {m.csv_absolute_path}
-              </span>
-              {m.csv_file_exists === false ? " (no encontrado)" : null}
-            </p>
-          )}
-        </>
-      )}
-      {ledger.source === "none" &&
-      ledger.purchases.length === 0 &&
-      (ledger.purchases_completed?.length ?? 0) === 0 ? (
-        <p className={cn("muted", styles.marginBottomBase)}>
-          No hay datos en la base ni CSV de cupos. Opciones: importar PDF parseados con{" "}
-          <span className="mono">npm run import:cfraser-inbox</span> (o{" "}
-          <span className="mono">import:cc-parsed</span> si el CSV ya está parseado), o crear{" "}
-          <span className="mono">cfraser/credit-card-installments.csv</span> con cabecera{" "}
-          <span className="mono">
-            purchase_id;label;principal_clp;installment_count;installments_paid;cuota_clp;annual_interest_pct;first_due_month;schedule_offset_months;purchase_month;note
-          </span>
-          .
-        </p>
-      ) : ledger.source === "csv" &&
-        ledger.purchases.length === 0 &&
-        (ledger.purchases_completed?.length ?? 0) === 0 ? (
-        <p className={cn("muted", styles.marginBottomBase)}>
-          El CSV existe pero no hay filas válidas: revisa cabecera y números (principal positivo, cuotas ≥ 1,{" "}
-          <span className="mono">first_due_month</span> en formato <span className="mono">YYYY-MM</span>, pagadas ≤
-          total).
-        </p>
+      ) : null}
+      {!hasData ? (
+        <p className={cn("muted", styles.marginBottomBase)}>{t("account.creditCard.installmentsEmpty")}</p>
       ) : (
         <>
           <div className={cn("cards", styles.cardsBelow)}>
@@ -287,7 +254,7 @@ function CreditCardInstallmentsSection({
             </div>
           </div>
 
-          {fromDb && facturaciones.length > 0 ? (
+          {hasLedger && facturaciones.length > 0 ? (
             <>
               <h3 className={styles.subsectionTitle}>{t("accountDetail.creditCard.facturacionesTitle")}</h3>
               <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.facturacionesHint")}</p>
@@ -301,7 +268,7 @@ function CreditCardInstallmentsSection({
             </>
           ) : null}
 
-          {fromDb ? (
+          {hasLedger ? (
             <div className={styles.marginBottomBase}>
               {!manualOpen ? (
                 <button type="button" onClick={() => setManualOpen(true)}>
@@ -386,11 +353,11 @@ function CreditCardInstallmentsSection({
                   <th>Pagadas</th>
                   <th>Restan</th>
                   <th>Principal</th>
-                  {!fromDb ? <th>Tasa % anual</th> : null}
+                  {!hasLedger ? <th>Tasa % anual</th> : null}
                   <th>Mes compra</th>
                   <th>1.ª cuota (MES)</th>
-                  {!fromDb ? <th>Offset CSV (meses)</th> : null}
-                  {!fromDb ? <th>Offset UI (meses)</th> : null}
+                  {!hasLedger ? <th>Offset CSV (meses)</th> : null}
+                  {!hasLedger ? <th>Offset UI (meses)</th> : null}
                   <th>Cuota CLP</th>
                   <th>Restante CLP</th>
                 </tr>
@@ -399,7 +366,7 @@ function CreditCardInstallmentsSection({
           >
             {ledger.purchases.length === 0 ? (
               <tr>
-                <td colSpan={fromDb ? 8 : 12} className="muted">
+                <td colSpan={hasLedger ? 8 : 12} className="muted">
                   No hay compras en cuotas con saldo pendiente.
                 </td>
               </tr>
@@ -429,11 +396,11 @@ function CreditCardInstallmentsSection({
                   <th>Pagadas</th>
                   <th>Restan</th>
                   <th>Principal</th>
-                  {!fromDb ? <th>Tasa % anual</th> : null}
+                  {!hasLedger ? <th>Tasa % anual</th> : null}
                   <th>Mes compra</th>
                   <th>1.ª cuota (MES)</th>
-                  {!fromDb ? <th>Offset CSV (meses)</th> : null}
-                  {!fromDb ? <th>Offset UI (meses)</th> : null}
+                  {!hasLedger ? <th>Offset CSV (meses)</th> : null}
+                  {!hasLedger ? <th>Offset UI (meses)</th> : null}
                   <th>Cuota CLP</th>
                   <th>Restante CLP</th>
                   <th>Mes último pago</th>
@@ -443,7 +410,7 @@ function CreditCardInstallmentsSection({
             renderBody={(pageRows) =>
               purchasesCompletedSorted.length === 0 ? (
                 <tr>
-                  <td colSpan={fromDb ? 9 : 13} className="muted">
+                  <td colSpan={hasLedger ? 9 : 13} className="muted">
                     No hay compras en cuotas liquidadas en el ledger.
                   </td>
                 </tr>

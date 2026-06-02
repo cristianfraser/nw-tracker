@@ -2,10 +2,9 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { buildBillingDetailByMonth } from "./ccBillingViews.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import {
   ccInstallmentLedgerRowCount,
-  ccInstallmentsDbApiPayload,
   ccLedgerMonthEndIso,
   cupoEnCuotasClpForCalendarMonth,
   liveCreditCardOutstandingClp,
@@ -20,8 +19,7 @@ const upsertValuationMonth = db.prepare(`
 /** Latest billing-detail balance total (facturado + cupo − cuota próxima), same as account «Balance total». */
 export function latestCreditCardBillingBalanceTotalClp(accountId: number): number | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
-  const payload = ccInstallmentsDbApiPayload(accountId);
-  const detail = buildBillingDetailByMonth(accountId, payload.months);
+  const { detail } = billingDetailCacheForAccount(accountId);
   if (detail.length === 0) return null;
   const v = detail[0]!.balance_total_clp;
   return Number.isFinite(v) ? Math.round(v) : null;
@@ -31,8 +29,7 @@ export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
   accountId: number
 ): { value_clp: number; as_of_date: string } | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
-  const payload = ccInstallmentsDbApiPayload(accountId);
-  const detail = buildBillingDetailByMonth(accountId, payload.months);
+  const { detail } = billingDetailCacheForAccount(accountId);
   if (detail.length === 0) return null;
   const row = detail[0]!;
   if (!Number.isFinite(row.balance_total_clp)) return null;
@@ -53,8 +50,7 @@ export function creditCardBillingBalanceTotalClpAsOf(
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
   const asOfMonth = monthKeyFromYmd(asOfYmd);
   if (!asOfMonth) return null;
-  const payload = ccInstallmentsDbApiPayload(accountId);
-  const detail = buildBillingDetailByMonth(accountId, payload.months);
+  const { detail } = billingDetailCacheForAccount(accountId);
   if (detail.length === 0) return null;
   const row = detail.find((r) => r.billing_month <= asOfMonth);
   if (!row || !Number.isFinite(row.balance_total_clp)) return null;
@@ -72,12 +68,11 @@ export function ccLedgerStatementClosingPointsClp(
   accountId: number
 ): { as_of_date: string; value_clp: number }[] | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
-  const payload = ccInstallmentsDbApiPayload(accountId);
-  const detail = buildBillingDetailByMonth(accountId, payload.months);
+  const { months: ledgerMonths, detail } = billingDetailCacheForAccount(accountId);
   const balanceByMonth = new Map(detail.map((d) => [d.billing_month, d.balance_total_clp]));
   const months = [
     ...new Set([
-      ...payload.installment_history_months.map((h) => h.month),
+      ...ledgerMonths.map((h) => h.month),
       ...balanceByMonth.keys(),
     ]),
   ].sort((a, b) => a.localeCompare(b));

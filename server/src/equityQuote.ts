@@ -6,13 +6,15 @@ import {
   nyseSessionYmd,
   utcTodayYmd,
 } from "./nyseSession.js";
-import { fetchYahooLiveQuote } from "./equityYahooEod.js";
+import { getLatestLiveEquityQuoteRow } from "./liveMarketQuotesDb.js";
+import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 
 export type EquityMarketKind = "nyse" | "crypto24";
 
 const TICKER_MARKET: Record<string, EquityMarketKind> = {
   SPY: "nyse",
   VEA: "nyse",
+  OILK: "nyse",
   "BTC-USD": "crypto24",
   "ETH-USD": "crypto24",
 };
@@ -36,23 +38,6 @@ const stmtEodCloseOnDate = db.prepare(
 const stmtEodPrior = db.prepare(
   `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
 );
-
-const LIVE_TTL_MS = 45_000;
-const liveCache = new Map<string, { at: number; quote: ResolvedEquityQuote }>();
-
-/** Fresh Yahoo live quote from the in-process cache (populated by `resolveEquityQuote` with `preferLive`). */
-export function getCachedLiveEquityQuote(
-  ticker: string,
-  maxAgeMs = LIVE_TTL_MS
-): ResolvedEquityQuote | null {
-  const entry = liveCache.get(ticker);
-  if (!entry || Date.now() - entry.at > maxAgeMs) return null;
-  return entry.quote.source === "live" ? entry.quote : null;
-}
-
-export function equityMarketKind(ticker: string): EquityMarketKind {
-  return TICKER_MARKET[ticker] ?? "nyse";
-}
 
 function percentChange(live: number, prior: number | null | undefined): number | null {
   if (prior == null || !Number.isFinite(prior) || prior === 0 || !Number.isFinite(live)) return null;
@@ -146,7 +131,35 @@ function resolveCryptoEodQuote(ticker: string, now: Date): ResolvedEquityQuote |
   return sessionPairEodQuote(ticker, displayYmd, priorYmd);
 }
 
-/** Whether `asOfYmd` is the active session and we should prefer Yahoo live over DB EOD. */
+export function equityMarketKind(ticker: string): EquityMarketKind {
+  return TICKER_MARKET[ticker] ?? "nyse";
+}
+
+/** Latest scheduler-persisted live quote (no Yahoo on HTTP paths). */
+export function getLiveEquityQuoteFromDb(
+  ticker: string,
+  maxAgeMs = liveQuotesMaxAgeMs()
+): ResolvedEquityQuote | null {
+  const row = getLatestLiveEquityQuoteRow(ticker, maxAgeMs);
+  if (!row) return null;
+  return {
+    price_usd: row.value,
+    trade_date: row.session_ymd,
+    source: "live",
+    previous_close_usd: row.previous_value,
+    delta_pct: percentChange(row.value, row.previous_value),
+  };
+}
+
+/** @deprecated Use {@link getLiveEquityQuoteFromDb}. */
+export function getCachedLiveEquityQuote(
+  ticker: string,
+  maxAgeMs = liveQuotesMaxAgeMs()
+): ResolvedEquityQuote | null {
+  return getLiveEquityQuoteFromDb(ticker, maxAgeMs);
+}
+
+/** Whether `asOfYmd` is the active session and we should prefer stored live quotes over DB EOD. */
 export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = new Date()): boolean {
   const kind = equityMarketKind(ticker);
   if (kind === "crypto24") {
@@ -166,58 +179,21 @@ export function equitySessionYmdForTicker(ticker: string, now = new Date()): str
   return nyseSessionYmd(now);
 }
 
-async function priorCloseForLiveNyse(
-  ticker: string,
-  sessionYmd: string,
-  yahooPrior: number | null
-): Promise<number | null> {
-  if (yahooPrior != null && Number.isFinite(yahooPrior) && yahooPrior > 0) {
-    return yahooPrior;
-  }
-  const priorYmd = priorNyseSessionYmd(sessionYmd);
-  if (priorYmd == null) return null;
-  return eodCloseUsdOnDate(ticker, priorYmd);
-}
-
 /**
- * USD price for MTM / marquee: live during session when requested; otherwise last EOD ≤ `asOfYmd`.
+ * USD price for MTM / marquee: stored live quote during session when requested; otherwise last EOD.
  */
-export async function resolveEquityQuote(
+export function resolveEquityQuote(
   ticker: string,
   asOfYmd: string,
   opts?: { preferLive?: boolean; now?: Date }
-): Promise<ResolvedEquityQuote | null> {
+): ResolvedEquityQuote | null {
   const now = opts?.now ?? new Date();
   const preferLive = opts?.preferLive ?? false;
   const useLive = preferLive && shouldUseLiveEquityQuote(ticker, asOfYmd, now);
 
   if (useLive) {
-    const cached = liveCache.get(ticker);
-    if (cached && Date.now() - cached.at < LIVE_TTL_MS) {
-      return cached.quote;
-    }
-    try {
-      const live = await fetchYahooLiveQuote(ticker);
-      const kind = equityMarketKind(ticker);
-      const prior =
-        kind === "nyse"
-          ? await priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close_usd)
-          : live.previous_close_usd ??
-            (stmtEodPrior.get(ticker, live.session_ymd) as { close_usd: number } | undefined)
-              ?.close_usd ??
-            null;
-      const quote: ResolvedEquityQuote = {
-        price_usd: live.price_usd,
-        trade_date: live.session_ymd,
-        source: "live",
-        previous_close_usd: prior,
-        delta_pct: percentChange(live.price_usd, prior),
-      };
-      liveCache.set(ticker, { at: Date.now(), quote });
-      return quote;
-    } catch {
-      /* fall through to EOD */
-    }
+    const live = getLiveEquityQuoteFromDb(ticker);
+    if (live) return live;
   }
 
   if (equityMarketKind(ticker) === "crypto24") {
@@ -241,6 +217,7 @@ export function priorEquitySessionForMarquee(ticker: string, now = new Date()): 
   return priorNyseSessionYmd(display);
 }
 
+/** No-op: live quotes are persisted in `live_market_quotes` (cleared on EOD sync is unnecessary). */
 export function clearEquityLiveQuoteCache(): void {
-  liveCache.clear();
+  /* retained for callers after equity EOD sync */
 }

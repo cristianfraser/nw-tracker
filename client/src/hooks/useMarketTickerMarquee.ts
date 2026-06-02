@@ -4,7 +4,7 @@ import { useTranslation } from "../i18n";
 import { useMarketTicker } from "../queries/hooks";
 import type { MarketDisplaySeriesRow, MarketTickerResponse } from "../types";
 
-const EQUITY_TICKER_ORDER = ["SPY", "VEA", "BTC-USD", "ETH-USD"] as const;
+const EQUITY_TICKER_ORDER = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
 
 export type TickerMarqueeItem =
   | { kind: "uf"; label: string; value: string }

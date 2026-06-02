@@ -5,9 +5,14 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { facturadoFromStatement } from "./ccBillingBalances.js";
 import {
   cupoEnCuotasClpForCalendarMonth,
+  ledgerFacturadoClpForBillingMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
+import { isPdfStatementSource, lastPdfBillingMonthForAccount } from "./ccManualBillingMonth.js";
+import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import { ymCompare } from "./calendarMonth.js";
+import { db } from "./db.js";
 import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
@@ -126,6 +131,76 @@ export function facturadoTotalClpForStatementSlot(
   return total > 0 ? total : null;
 }
 
+/** True when an imported PDF (not web-paste) closed this billing month. */
+export function hasPdfStatementCloseForBillingMonth(
+  slot: CcStatementSlotByCurrency | undefined
+): boolean {
+  if (!slot) return false;
+  for (const st of [slot.clp, slot.usd]) {
+    if (st && isPdfStatementSource(st.source_pdf)) return true;
+  }
+  return false;
+}
+
+const stmtPaymentLinesForStatement = db.prepare(`
+  SELECT merchant, amount_clp FROM cc_statement_lines WHERE statement_id = ?
+`);
+
+/** Sum PAGO / ABONO lines in a billing month (DB stores payments as negative CLP). */
+export function paymentAbonosClpForBillingMonth(
+  accountId: number,
+  billingMonth: string
+): number {
+  let sum = 0;
+  for (const st of listCcStatementsForAccount(accountId)) {
+    if (st.billing_month !== billingMonth) continue;
+    const rows = stmtPaymentLinesForStatement.all(st.id) as {
+      merchant: string | null;
+      amount_clp: number | null;
+    }[];
+    for (const r of rows) {
+      if (!isCcPaymentMerchant(r.merchant)) continue;
+      const amt = r.amount_clp;
+      if (amt == null || !Number.isFinite(amt)) continue;
+      sum += Math.round(Math.abs(amt));
+    }
+  }
+  return sum;
+}
+
+function closedFacturadoClpForPdfBillingMonth(
+  accountId: number,
+  priorPdfMonth: string,
+  slots: Map<string, CcStatementSlotByCurrency>
+): number | null {
+  const slot = slots.get(priorPdfMonth);
+  if (!slot) return null;
+  return facturadoTotalClpForStatementSlot(accountId, slot);
+}
+
+/**
+ * Open month before PDF close: prior closed facturado + incremental charges − abonos.
+ * Returns null when there is no prior PDF month to roll forward.
+ */
+export function rolledFacturadoForOpenBillingMonth(
+  accountId: number,
+  openBillingMonth: string,
+  slots: Map<string, CcStatementSlotByCurrency>,
+  statementOrBalanceFacturado: number | null
+): number | null {
+  const priorPdf = lastPdfBillingMonthForAccount(accountId);
+  if (!priorPdf || ymCompare(openBillingMonth, priorPdf) <= 0) return null;
+
+  const priorFacturado = closedFacturadoClpForPdfBillingMonth(accountId, priorPdf, slots);
+  if (priorFacturado == null || priorFacturado <= 0) return null;
+
+  const ledgerIncremental = ledgerFacturadoClpForBillingMonth(accountId, openBillingMonth);
+  const statementIncremental = statementOrBalanceFacturado ?? 0;
+  const incremental = Math.max(ledgerIncremental, statementIncremental);
+  const payments = paymentAbonosClpForBillingMonth(accountId, openBillingMonth);
+  return Math.round(priorFacturado + incremental - payments);
+}
+
 function cuotaAPagarNextMesClp(
   billingMonth: string,
   ledgerMonths: CcInstallmentMonthRow[],
@@ -189,7 +264,18 @@ export function buildBillingDetailByMonth(
       snap.facturado_clp > 0
         ? snap.facturado_clp
         : null;
-    const totalFacturado = fromStatement ?? fromBalance;
+    let totalFacturado = fromStatement ?? fromBalance;
+
+    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
+    if (!hasPdfClose && !inactive) {
+      const rolled = rolledFacturadoForOpenBillingMonth(
+        accountId,
+        billingMonth,
+        slots,
+        fromStatement ?? fromBalance
+      );
+      if (rolled != null) totalFacturado = rolled;
+    }
 
     const kind: "statement" | "manual" =
       primary != null ? "statement" : snap?.as_of_kind === "manual" ? "manual" : "statement";

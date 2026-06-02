@@ -1,4 +1,9 @@
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
+import {
+  dashboardBucketSlugForAccountId,
+  kindSlugForAccount,
+  portfolioGroupBySlug,
+} from "./portfolioGroupTree.js";
 import { db } from "./db.js";
 
 const bucketSlugStmt = db.prepare(
@@ -7,8 +12,10 @@ const bucketSlugStmt = db.prepare(
    WHERE a.id = ?`
 );
 
-/** Legacy category segment from a leaf bucket slug (`parent__kind` → `kind`). */
+/** Behavior kind from portfolio leaf slug, else legacy `parent__kind` segment. */
 export function accountBucketKindSlug(leafBucketSlug: string): string {
+  const pg = portfolioGroupBySlug(leafBucketSlug);
+  if (pg?.kind_slug) return pg.kind_slug;
   const sep = leafBucketSlug.lastIndexOf("__");
   return sep >= 0 ? leafBucketSlug.slice(sep + 2) : leafBucketSlug;
 }
@@ -19,10 +26,17 @@ export function bucketSlugForAccountId(accountId: number): string | null {
   return row?.slug ?? null;
 }
 
-/** Legacy category kind for an account (`afp`, `spy`, `cuenta_corriente`, …). */
+/** Account behavior kind (`afp`, `spy`, `cuenta_corriente`, …) from portfolio leaf, not slug parsing. */
 export function accountKindSlugForAccountId(accountId: number): string | null {
-  const leaf = bucketSlugForAccountId(accountId);
-  return leaf ? accountBucketKindSlug(leaf) : null;
+  return kindSlugForAccount(accountId);
+}
+
+export function dashboardBucketSlugForPortfolioGroupSlug(portfolioGroupSlug: string): string | null {
+  const pg = portfolioGroupBySlug(portfolioGroupSlug);
+  if (!pg) return null;
+  if (pg.dashboard_bucket_slug) return pg.dashboard_bucket_slug;
+  if (pg.asset_group_slug) return dashboardBucketForAssetGroupSlug(pg.asset_group_slug);
+  return null;
 }
 
 export function requireBucketSlugForAccountId(accountId: number): string {
@@ -31,9 +45,5 @@ export function requireBucketSlugForAccountId(accountId: number): string {
   return slug;
 }
 
-/** Top-level NW bucket for an account (walks leaf bucket ancestry). */
-export function dashboardBucketSlugForAccountId(accountId: number): string | null {
-  const leaf = bucketSlugForAccountId(accountId);
-  if (!leaf) return null;
-  return dashboardBucketForAssetGroupSlug(leaf);
-}
+/** Top-level NW bucket for an account (portfolio group, then asset placement). */
+export { dashboardBucketSlugForAccountId } from "./portfolioGroupTree.js";

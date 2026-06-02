@@ -20,7 +20,9 @@ import { findLiabilitiesNavNodeForPathname } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
+import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
+import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPagePlaceholders";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import {
   useDashboardNavContext,
@@ -43,8 +45,11 @@ export function LiabilitiesGroupPage() {
   const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
-  const { data: navCtx } = useDashboardNavContext(displayUnit);
-  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
+  const { data: navCtx } = useDashboardNavContext(
+    displayUnit,
+    pathnameUsesDashboardNavContext(pathname)
+  );
+  const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
   const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const navMatchNode = useMemo(
@@ -58,10 +63,15 @@ export function LiabilitiesGroupPage() {
   );
 
   const queryClient = useQueryClient();
-  const liabilitiesSubgroup = categoryFilter ?? undefined;
+  const portfolioGroup =
+    navMatchNode?.slug ??
+    (categoryFilter === "credit_card"
+      ? "liabilities_credit_card"
+      : categoryFilter === "mortgage"
+        ? "liabilities_mortgage"
+        : "liabilities");
   const { data, error, isPending: groupPending } = usePortfolioGroupBundle({
-    group: "liabilities",
-    subgroup: liabilitiesSubgroup,
+    portfolio_group: portfolioGroup,
     unit: displayUnit,
     enabled: Boolean(navMatchNode),
   });
@@ -69,18 +79,25 @@ export function LiabilitiesGroupPage() {
   useEffect(() => {
     if (!navMatchNode) return;
     void prefetchPortfolioGroupBundle(queryClient, {
-      group: "liabilities",
-      subgroup: liabilitiesSubgroup,
+      portfolio_group: portfolioGroup,
       unit: displayUnit,
     });
-  }, [queryClient, navMatchNode, liabilitiesSubgroup, displayUnit]);
+  }, [queryClient, navMatchNode, portfolioGroup, displayUnit]);
 
   const chartCtx = useMemo(
     () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode) : null),
     [navMatchNode]
   );
 
-  const accounts = data?.accounts ?? [];
+  const placeholderBundle = useMemo(
+    () => buildPlaceholderPortfolioGroupBundle(displayUnit),
+    [displayUnit]
+  );
+  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_pie);
+  const contentLoading = groupPending || !bundleReady;
+  const resolved = bundleReady && data ? data : placeholderBundle;
+
+  const accounts = resolved.accounts;
 
   const chartAccountIds = useMemo(
     () => (navMatchNode ? navAccountIdSet(navMatchNode) : new Set<number>()),
@@ -97,8 +114,8 @@ export function LiabilitiesGroupPage() {
     [accounts]
   );
 
-  const ts = data?.ts ?? null;
-  const groupPerfRaw = data?.groupPerf ?? null;
+  const ts = resolved.ts;
+  const groupPerfRaw = resolved.groupPerf;
 
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group || !chartCtx || !navMatchNode) return null;
@@ -171,33 +188,18 @@ export function LiabilitiesGroupPage() {
     );
   }
 
-  if (!data && groupPending) {
-    return (
-      <main>
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
-  if (data && (!ts?.accounts_in_group || !ts.group_allocation_pie)) {
-    return (
-      <main>
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
   return (
     <GroupInfoBase
       title={title}
       colorRgb={navMatchNode.color_rgb}
       colorTarget={pageColorTarget}
+      loading={contentLoading}
       portfolio={
-        dash && charts.valuationBlockForChart && accounts.length > 0
+        dash
           ? {
               navNode: navMatchNode,
               groupSlug: "liabilities",
-              subgroup: liabilitiesSubgroup,
+              subgroup: categoryFilter ?? undefined,
               dash,
               overviewPoints,
               metricsPeriod,

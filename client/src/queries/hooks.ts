@@ -8,6 +8,7 @@ import {
 } from "./fetchers";
 import { displayUnitQueryBehavior } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
+import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 
 export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
   return useQuery({
@@ -31,30 +32,28 @@ export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
 }
 
 export function useGroupConsolidatedTables(
-  group: string,
-  subgroup: string | undefined,
+  portfolioGroup: string,
   unit: DisplayUnit,
   enabled: boolean
 ) {
   return useQuery({
-    queryKey: queryKeys.groupConsolidatedTables(group, subgroup, unit),
-    queryFn: () => api.groupConsolidatedTables(group, unit, subgroup),
-    enabled: enabled && Boolean(group),
+    queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit),
+    queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
+    enabled: enabled && Boolean(portfolioGroup),
     ...displayUnitQueryBehavior,
   });
 }
 
 export function usePortfolioGroupBundle(opts: {
-  group: string;
-  subgroup?: string;
+  portfolio_group: string;
   unit: DisplayUnit;
   enabled?: boolean;
 }) {
-  const { group, subgroup, unit, enabled = true } = opts;
+  const { portfolio_group, unit, enabled = true } = opts;
   return useQuery({
-    queryKey: queryKeys.portfolioGroup(group, subgroup, unit),
-    queryFn: () => fetchPortfolioGroupBundle({ group, subgroup, unit }),
-    enabled: enabled && Boolean(group),
+    queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
+    queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }),
+    enabled: enabled && Boolean(portfolio_group),
     ...displayUnitQueryBehavior,
   });
 }
@@ -62,7 +61,12 @@ export function usePortfolioGroupBundle(opts: {
 export function useSidebarNav() {
   return useQuery({
     queryKey: queryKeys.sidebarNav(),
-    queryFn: () => api.sidebarNav(),
+    queryFn: async () => {
+      const data = await api.sidebarNav();
+      writeSidebarNavCache(data);
+      return data;
+    },
+    initialData: readSidebarNavCache,
     staleTime: 60_000,
   });
 }

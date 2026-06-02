@@ -55,6 +55,9 @@ export function findBestNavNodeForPathname(
   let best: NavTreeNodeDto | null = null;
   let bestScore = -1;
 
+  const isGroupPageNode = (n: NavTreeNodeDto) =>
+    n.account_id == null && n.expense_account_id == null;
+
   const visit = (n: NavTreeNodeDto) => {
     const sr = prefixScore(n.route_path);
     const sa = prefixScore(n.active_prefix);
@@ -62,6 +65,14 @@ export function findBestNavNodeForPathname(
     if (s > bestScore) {
       bestScore = s;
       best = n;
+    } else if (s === bestScore && s >= 0 && best) {
+      if (isGroupPageNode(n) && !isGroupPageNode(best)) {
+        best = n;
+      } else {
+        const nPath = (n.route_path ?? "").trim();
+        const bPath = (best.route_path ?? "").trim();
+        if (nPath.length > bPath.length) best = n;
+      }
     }
     for (const c of n.children ?? []) visit(c);
   };
@@ -113,26 +124,35 @@ export function findLiabilitiesNavNodeForPathname(
   return findBestNavNodeForPathname(main, pathname) ?? root;
 }
 
-export function isNavHubNode(node: NavTreeNodeDto): boolean {
-  return node.group_kind === "nav_hub";
+export function isNavBucketNode(node: NavTreeNodeDto): boolean {
+  return node.group_kind === "nav_bucket" || node.group_kind === "nav_hub";
 }
+
+/** @deprecated Use {@link isNavBucketNode}. */
+export const isNavHubNode = isNavBucketNode;
 
 /** Pasivos root — sidebar / group page only; excluded from net-worth dashboard bucket cards. */
 export function isLiabilityGroupNavNode(node: NavTreeNodeDto): boolean {
   return node.group_kind === "liability_group";
 }
 
-/** Dashboard bucket slug for a nav node (from `asset_group_slug` or top-level bucket slug). */
+/**
+ * `group` / `subgroup` query params for class-tab APIs (`/api/accounts`, valuation TS, perf).
+ * Prefer `api_group`; else asset group slug; else portfolio `slug` (e.g. `cash_eqs` hub, `brokerage_mutual_funds`).
+ */
+export function resolveGroupPageApiParams(
+  node: NavTreeNodeDto
+): { portfolio_group: string; group?: string; subgroup?: string } | null {
+  const slug = typeof node.slug === "string" ? node.slug.trim() : "";
+  if (!slug) return null;
+  return { portfolio_group: slug };
+}
+
+/** Dashboard bucket slug for a nav node (`dashboard_bucket_slug` on portfolio group). */
 export function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): DashboardGroupSlug | null {
-  const asset = node.asset_group_slug;
-  if (asset === "net_worth") return "net_worth";
-  if (
-    node.slug === "cash_savings" ||
-    asset === "cash_eqs__cash_savings" ||
-    (asset != null && asset.endsWith("__cash_savings"))
-  ) {
-    return "cash_eqs";
-  }
+  const dash = node.dashboard_bucket_slug?.trim();
+  if (dash && isDashboardNwBucketSlug(dash)) return dash;
+  const asset = node.asset_group_slug?.trim();
   if (asset && isDashboardNwBucketSlug(asset)) return asset;
   if (isDashboardNwBucketSlug(node.slug)) return node.slug;
   return null;

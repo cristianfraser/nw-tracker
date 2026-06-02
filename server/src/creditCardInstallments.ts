@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
 import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
@@ -18,6 +17,8 @@ import {
 } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
+import type { DataOrigin } from "./dataOrigin.js";
+import { ccPurchaseSourceLegacyFromOrigin } from "./dataOrigin.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { numCsv, readSemicolonCsv } from "./deptoDividendosLedger.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
@@ -67,7 +68,9 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   merge_reason?: string | null;
   /** Human-readable notes for heuristics used in this logical row. */
   heuristic_hints?: string[];
-  /** `pdf` from statement import; `manual` from UI/API. Omitted on CSV fallback. */
+  /** How this purchase entered the system. */
+  origin: DataOrigin;
+  /** @deprecated Use `origin`. */
   purchase_source?: "pdf" | "manual";
 };
 
@@ -92,15 +95,12 @@ export type CcInstallmentsTotals = {
 };
 
 export type CcInstallmentsMeta = {
-  csv_path: string;
-  csv_absolute_path: string;
-  csv_file_exists: boolean;
-  /** Populated when `source === "db"` (ledger from PDF import). */
-  db_purchase_count?: number;
-  db_payment_count?: number;
+  installment_purchase_count?: number;
+  installment_payment_count?: number;
   pay_by_rule?: string;
   remaining_balance_line_rule?: string;
 };
+
 
 function normHeader(s: string): string {
   return String(s ?? "")
@@ -286,8 +286,11 @@ function computePurchase(
   const last_paid_month =
     paid >= 1 ? addCalendarMonths(p.first_due_month, paid - 1 + off) : null;
 
+  const origin: DataOrigin = "import_document";
   return {
     ...p,
+    origin,
+    purchase_source: ccPurchaseSourceLegacyFromOrigin(origin),
     remaining_installments,
     remaining_principal_clp,
     next_due_month,
@@ -365,7 +368,8 @@ export function creditCardInstallmentsResponse(
   extraOffsets: Record<string, number>
 ): {
   account_id: number;
-  source: "csv" | "db" | "none";
+  has_installment_ledger: boolean;
+  has_imported_statements: boolean;
   meta: CcInstallmentsMeta | null;
   purchases: CcInstallmentPurchaseComputed[];
   purchases_completed: CcInstallmentPurchaseComputed[];
@@ -391,14 +395,12 @@ export function creditCardInstallmentsResponse(
     const db = ccInstallmentsDbApiPayload(accountId);
     return {
       account_id: accountId,
-      source: "db",
+      has_installment_ledger: true,
+      has_imported_statements: ccStatementRowCount(accountId) > 0,
       open_billing_month,
       meta: {
-        csv_path: "SQLite · cc_installment_purchases / cc_installment_payments",
-        csv_absolute_path: "",
-        csv_file_exists: true,
-        db_purchase_count: db.meta.db_purchase_count,
-        db_payment_count: db.meta.db_payment_count,
+        installment_purchase_count: db.meta.installment_purchase_count,
+        installment_payment_count: db.meta.installment_payment_count,
         pay_by_rule: db.meta.pay_by_rule,
         remaining_balance_line_rule: db.meta.remaining_balance_line_rule,
       },
@@ -424,12 +426,10 @@ export function creditCardInstallmentsResponse(
         : 0;
     return {
       account_id: accountId,
-      source: "db",
+      has_installment_ledger: false,
+      has_imported_statements: true,
       open_billing_month,
       meta: {
-        csv_path: "SQLite · cc_statements / cc_statement_lines",
-        csv_absolute_path: "",
-        csv_file_exists: true,
         pay_by_rule:
           "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP.",
       },
@@ -450,44 +450,20 @@ export function creditCardInstallmentsResponse(
     };
   }
 
-  const csv_absolute_path = resolveCreditCardInstallmentsCsvPath();
-  const csv_file_exists = fs.existsSync(csv_absolute_path);
-  const csv_path = `cfraser/${CREDIT_CARD_INSTALLMENTS_CSV}`;
-  const raw = loadCreditCardInstallmentPurchases();
-  const meta: CcInstallmentsMeta = { csv_path, csv_absolute_path, csv_file_exists };
-  if (raw.length === 0) {
-    return {
-      account_id: accountId,
-      source: csv_file_exists ? ("csv" as const) : ("none" as const),
-      meta,
-      purchases: [],
-      purchases_completed: [],
-      hidden_cancelled_purchases: [],
-      months: [],
-      totals: {
-        total_remaining_principal_clp: 0,
-        next_calendar_month_total_clp: null,
-        next_calendar_month: null,
-      },
-    };
-  }
-  const { purchases: allPurchases, months, totals } = buildCreditCardInstallmentSchedule(raw, extraOffsets);
-  const purchases = allPurchases.filter((p) => p.remaining_principal_clp > 0 || p.remaining_installments > 0);
-  const purchases_completed = allPurchases
-    .filter((p) => p.remaining_principal_clp <= 0 && p.remaining_installments <= 0)
-    .sort((a, b) => {
-      const cmp = ymCompare(b.purchase_month ?? "1970-01", a.purchase_month ?? "1970-01");
-      if (cmp !== 0) return cmp;
-      return a.label.localeCompare(b.label);
-    });
   return {
     account_id: accountId,
-    source: "csv",
-    meta: { csv_path, csv_absolute_path, csv_file_exists },
-    purchases,
-    purchases_completed,
+    has_installment_ledger: false,
+    has_imported_statements: false,
+    open_billing_month,
+    meta: null,
+    purchases: [],
+    purchases_completed: [],
     hidden_cancelled_purchases: [],
-    months,
-    totals,
+    months: [],
+    totals: {
+      total_remaining_principal_clp: 0,
+      next_calendar_month_total_clp: null,
+      next_calendar_month: null,
+    },
   };
 }

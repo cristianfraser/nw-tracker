@@ -86,7 +86,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     displayUnit,
     metricsPeriod,
     xAxisGranularity,
-    monthlyPerf,
     monthlyPerfErr,
     monthlyPerfRows,
     ytdChartPoints,
@@ -101,7 +100,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     setExtraCcOffsets,
   } = data;
 
-  const ccChartsFromParsedLedger = ccLedger.source === "db";
+  const ccChartsFromParsedLedger = ccLedger.has_installment_ledger;
   const hist = ccLedger.installment_history_months ?? [];
   const historialChartRows = useMemo(
     () =>
@@ -133,7 +132,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       : data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? ccLedger.totals.total_remaining_principal_clp;
 
   const heroSubtitle =
-    ccLedger.source === "db" ? (
+    ccLedger.has_installment_ledger ? (
       <>
         {t("accountDetail.creditCard.heroCupoHint")}{" "}
         <span className="mono">{formatClp(ccLedger.totals.total_remaining_principal_clp)}</span>
@@ -163,10 +162,11 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
       heroSubtitle={heroSubtitle}
+      loading={data.contentLoading}
     >
       <CreditCardSummaryCards data={data} />
 
-      {ccLedger.source === "db" && historialChartRows.length > 0 ? (
+      {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
           <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.historialHint")}</p>
@@ -190,8 +190,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       </p>
       {monthlyPerfErr ? (
         <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
-      ) : monthlyPerf == null ? (
-        <p className="muted">{t("accountDetail.creditCard.monthlyPerfLoading")}</p>
       ) : monthlyPerfRows.length === 0 ? (
         <p className="muted">{t("accountDetail.creditCard.monthlyPerfEmpty")}</p>
       ) : (

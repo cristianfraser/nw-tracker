@@ -1,31 +1,15 @@
 /**
  * Append Fintual goal NAV polls to `fund_unit_daily` (marquee, rates charts).
  */
+import { fundSeriesKeyForAccount, fundSeriesKeyFromImportNotes } from "./accountFundSeriesKey.js";
 import { db } from "./db.js";
-import {
-  fintualCertV2SeriesKeyFromImportNotes,
-  isFintualCertV2AccountNotes,
-} from "./fintualCertV2.js";
+import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
+
+export { fundSeriesKeyFromImportNotes } from "./accountFundSeriesKey.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import { latestFundUnitRow, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 import type { FintualCertificadoAggregateScan } from "./fintualCertificadoTransacciones.js";
 import type { GoalToImportNote } from "./fintualCertificadoTransacciones.js";
-
-/** `import:excel|key=…` or `import:fintual|cert|key=…` → rates chart series key. */
-export function fundSeriesKeyFromImportNotes(importNotes: string): string | null {
-  const v2 = fintualCertV2SeriesKeyFromImportNotes(importNotes);
-  if (v2) return v2;
-  const key = importNotes.match(/import:excel\|key=([\w_]+)/)?.[1];
-  if (!key) return null;
-  switch (key) {
-    case "fintual_rn":
-      return "fintual_risky_norris";
-    case "apv_a":
-      return "fintual_risky_norris_apv";
-    default:
-      return null;
-  }
-}
 
 export function isFintualCertV2ValuationNotes(importNotes: string | null | undefined): boolean {
   return isFintualCertV2AccountNotes(importNotes);
@@ -106,7 +90,8 @@ export function recordFintualGoalFundUnitDaily(opts: {
   fundPriceClp?: number | null;
   units?: number | null;
 }): { recorded: boolean; unitClp: number | null; gapDaysFilled: number } {
-  const seriesKey = fundSeriesKeyFromImportNotes(opts.importNotes);
+  const seriesKey =
+    fundSeriesKeyForAccount(opts.accountId) ?? fundSeriesKeyFromImportNotes(opts.importNotes);
   if (!seriesKey) return { recorded: false, unitClp: null, gapDaysFilled: 0 };
 
   const unitClp = resolveFintualUnitClp({

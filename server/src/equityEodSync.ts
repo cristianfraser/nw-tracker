@@ -1,5 +1,5 @@
 import { upsertEquityDailySeries, EQUITY_DAILY_IMPORT_TICKERS } from "./brokerageEquityMtm.js";
-import { listNyseEquityTickersForEodSync } from "./panelAccountNotes.js";
+import { listNyseEquityTickersForEodSync } from "./accountEquityTicker.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
