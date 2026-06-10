@@ -56,8 +56,10 @@ export function getMarketSeriesPayload(): {
   }[];
   equity_tickers: string[];
   fund_series_keys: string[];
-  /** Direct `fx_daily` rows for Rates FX charts (one point per observation). */
+  /** Yahoo CLP=X EOD (`fx_daily`) for Rates FX charts and conversions. */
   fx_usd_clp: { date: string; value: number }[];
+  /** BCentral dólar observado (`fx_daily_bcentral`) — reference line on Rates FX chart. */
+  fx_usd_clp_bcentral: { date: string; value: number }[];
   eur_clp: { date: string; value: number }[];
   fx_coverage: FxCoverage;
 } {
@@ -70,6 +72,14 @@ export function getMarketSeriesPayload(): {
   type FuR = { series_key: string; day: string; unit_value_clp: number };
 
   const fxRows = db.prepare(`SELECT date, clp_per_usd FROM fx_daily ORDER BY date ASC`).all() as FxR[];
+  let fxBcentralRows: FxR[] = [];
+  try {
+    fxBcentralRows = db
+      .prepare(`SELECT date, clp_per_usd FROM fx_daily_bcentral ORDER BY date ASC`)
+      .all() as FxR[];
+  } catch {
+    fxBcentralRows = [];
+  }
   const ufRows = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date ASC`).all() as UfR[];
   const eurRows = db.prepare(`SELECT date, clp_per_eur FROM eur_daily ORDER BY date ASC`).all() as EurR[];
   const ipcRows = db.prepare(`SELECT date, ipc_index FROM ipc_daily ORDER BY date ASC`).all() as IpcR[];
@@ -255,6 +265,7 @@ export function getMarketSeriesPayload(): {
     equity_tickers: equityTickers,
     fund_series_keys: fundKeys,
     fx_usd_clp: fxRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
+    fx_usd_clp_bcentral: fxBcentralRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
     eur_clp: eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur })),
     fx_coverage: buildFxCoverage(),
   };

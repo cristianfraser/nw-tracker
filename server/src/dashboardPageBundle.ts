@@ -2,6 +2,7 @@ import { getGroupMonthlyPerformanceSeries } from "./accountPerformance.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
+import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries, type TsUnit } from "./valuationTimeseries.js";
 import { buildFxCoverage, type FxCoverage } from "./fxCoverage.js";
@@ -22,6 +23,10 @@ function fxLatestRow() {
  * @heavy Runs account rows, full valuation TS, group perf charts, and flows deposits.
  */
 export async function buildDashboardPageBundle(unit: TsUnit) {
+  return withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit));
+}
+
+async function buildDashboardPageBundleInner(unit: TsUnit) {
   const includeUsd = unit === "usd";
   const [dash, tsRaw, fx, retirementPerf, brokeragePerf] = await Promise.all([
     timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd)),

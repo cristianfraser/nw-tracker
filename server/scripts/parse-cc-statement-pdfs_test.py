@@ -332,6 +332,40 @@ class WideCuotaFijaTest(unittest.TestCase):
         self.assertNotIn("CUOTA FIJA", r["merchant"].upper())
 
 
+class BciLiderInstallmentLineTest(unittest.TestCase):
+    def test_bci_lider_installment_row_parses_cuota_columns(self) -> None:
+        line = (
+            "SANTIAGO SCLCHL 16/09/2025 LIDER LIDER DOMICILIO VENTAS 0,00%(T) "
+            "$ 75.880 $ 75.879 02/03 $ 25.293"
+        )
+        row = mod._bci_row_from_charge_line(line, "operaciones")
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row["layout"], "bci_lider_operaciones")
+        self.assertTrue(row["installment_flag"])
+        self.assertEqual(row["transaction_date"], "16/09/2025")
+        self.assertEqual(row["amount_clp"], 75880)
+        self.assertEqual(row["monto_total_a_pagar_clp"], 75879)
+        self.assertEqual(row["nro_cuota_current"], 2)
+        self.assertEqual(row["nro_cuota_total"], 3)
+        self.assertEqual(row["valor_cuota_mensual_clp"], 25293)
+        self.assertEqual(row["interest_rate_text"], "0,00%(T)")
+        self.assertEqual(row["tipo_cuota"], "CUOTA COMERCIO")
+        self.assertIn("LIDER DOMICILIO VENTAS", row["merchant"].upper())
+
+    def test_bci_lider_non_installment_row_keeps_legacy_shape(self) -> None:
+        line = "PROVIDENCIA 26/01/2026 EXPRESS LYON, SANTIAGO (T) $ 20.160"
+        row = mod._bci_row_from_charge_line(line, "operaciones")
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row["layout"], "bci_lider_operaciones")
+        self.assertFalse(row["installment_flag"])
+        self.assertEqual(row["amount_clp"], 20160)
+        self.assertEqual(row["monto_total_a_pagar_clp"], 20160)
+        self.assertEqual(row["nro_cuota_current"], "")
+        self.assertEqual(row["nro_cuota_total"], "")
+
+
 class WideDeferredAmountTest(unittest.TestCase):
     def test_amount_on_next_line_after_date_merchant(self) -> None:
         text = (

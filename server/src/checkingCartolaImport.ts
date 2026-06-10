@@ -1,3 +1,4 @@
+import { clearAggregationCache } from "./aggregationCache.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthKeyFromYmd } from "./calendarMonth.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
@@ -624,6 +625,7 @@ export function finishCartolaImportRun(
     } else if (anchor.cleared) {
       console.log(`Cleared ledger anchor (no cartola saldo final).`);
     }
+    clearAggregationCache();
   }
 
   const runLog: CheckingCartolaImportRunLog = {

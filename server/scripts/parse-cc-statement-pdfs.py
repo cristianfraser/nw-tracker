@@ -1367,12 +1367,34 @@ def _bci_lider_charge_lines(full: str) -> List[Tuple[str, str]]:
             continue
         if up in ("LIDER", "OTROS COMERCIOS") or re.search(r"1\.\s*TOTAL\s+OPERACIONES", up):
             continue
-        if RE_BCI_LIDER_CHARGE.match(line):
+        if RE_BCI_LIDER_CHARGE.match(line) or RE_BCI_LIDER_INSTALLMENT_ROW.match(line):
             collected.append((section, line))
     return collected
 
 
 def _bci_row_from_charge_line(line: str, section: str) -> Optional[Dict[str, Any]]:
+    inst = _parse_bci_lider_installment_line(line)
+    if inst is not None:
+        return {
+            "layout": "bci_lider_operaciones",
+            "transaction_date": inst["transaction_date"],
+            "posting_date": inst["transaction_date"],
+            "place": "",
+            "description_raw": line.strip(),
+            "merchant": inst["merchant"],
+            "amount_clp": inst["monto_origen_operacion_clp"],
+            "monto_total_a_pagar_clp": inst["monto_total_a_pagar_clp"],
+            "monto_origen_operacion_clp": inst["monto_origen_operacion_clp"],
+            "valor_cuota_mensual_clp": inst["valor_cuota_mensual_clp"],
+            "nro_cuota_current": inst["nro_cuota_current"],
+            "nro_cuota_total": inst["nro_cuota_total"],
+            "installment_flag": True,
+            "interest_rate_text": inst["interest_rate_text"],
+            "tipo_cuota": inst["tipo_cuota"],
+            "foreign_currency": _extract_fx(inst["merchant"]),
+            "authorization_code": _extract_auth(inst["merchant"]),
+        }
+
     m = RE_BCI_LIDER_CHARGE.match(line.strip())
     if not m:
         return None
@@ -1877,6 +1899,20 @@ RE_WIDE_MCC_DATE = re.compile(
 RE_BCI_LIDER_CHARGE = re.compile(
     r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
 )
+RE_BCI_LIDER_INSTALLMENT_ROW = re.compile(
+    r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?"
+    r"(?P<date>\d{2}/\d{2}/\d{4})\s*"
+    r"(?P<prefix>.+?)"
+    r"\$\s*(?P<orig>[\d.]+)\s+"
+    r"\$\s*(?P<total>[\d.]+)\s+"
+    r"(?P<cur>\d{1,2})/(?P<tot>\d{1,2})\s+"
+    r"\$\s*(?P<cuota>[\d.]+)\s*$",
+    re.I,
+)
+RE_BCI_LIDER_INSTALLMENT_RATE_SUFFIX = re.compile(
+    r"^(?P<merchant>.+?)\s+(?P<rate>\d,\d{2}\s*%\s*(?:\(T\))?)$",
+    re.I,
+)
 RE_WIDE_DATE_FIRST = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$"
 )
@@ -1911,6 +1947,61 @@ def _wide_installment_merchant_from_desc(desc: str) -> str:
         flags=re.I,
     ).strip()
     return stripped or s
+
+
+def _bci_lider_tipo_cuota_from_description(desc: str) -> str:
+    u = _ascii_upper(desc)
+    if "CUOTA FIJA" in u:
+        return "CUOTA FIJA"
+    if "CUOTA VARIABLE" in u:
+        return "CUOTA VARIABLE"
+    if "N/CUOTAS PRECIO" in u:
+        return "N/CUOTAS PRECIO"
+    m = re.search(r"(\d{1,2})\s+CUOTAS\s+COMERC", u)
+    if m:
+        return f"{int(m.group(1)):02d} CUOTAS COMERC"
+    if "CUOTA COMERCIO" in u:
+        return "CUOTA COMERCIO"
+    return "CUOTA COMERCIO"
+
+
+def _parse_bci_lider_installment_line(line: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Líder BCI installment lines with explicit cuota index (e.g. 02/03).
+    Expected tail shape: $ monto_origen $ monto_total NN/MM $ valor_cuota.
+    """
+    m = RE_BCI_LIDER_INSTALLMENT_ROW.match(line.strip())
+    if not m:
+        return None
+    orig = parse_clp_amount(m.group("orig"))
+    total = parse_clp_amount(m.group("total"))
+    cuota = parse_clp_amount(m.group("cuota"))
+    cur = int(m.group("cur"))
+    tot = int(m.group("tot"))
+    if orig is None or total is None or cuota is None or cur <= 0 or tot <= 0:
+        return None
+    prefix = re.sub(r"\s+", " ", m.group("prefix")).strip()
+    if not prefix:
+        return None
+    rate = ""
+    merchant = prefix
+    mr = RE_BCI_LIDER_INSTALLMENT_RATE_SUFFIX.match(prefix)
+    if mr:
+        merchant = mr.group("merchant").strip()
+        rate = mr.group("rate").strip()
+    if not merchant or re.match(r"^PAGO\b", merchant, re.I):
+        return None
+    return {
+        "transaction_date": m.group("date"),
+        "merchant": merchant,
+        "monto_origen_operacion_clp": orig,
+        "monto_total_a_pagar_clp": total,
+        "valor_cuota_mensual_clp": cuota,
+        "nro_cuota_current": cur,
+        "nro_cuota_total": tot,
+        "interest_rate_text": rate,
+        "tipo_cuota": _bci_lider_tipo_cuota_from_description(prefix),
+    }
 
 
 def _tipo_cuota_from_precio_description(desc: str) -> str:

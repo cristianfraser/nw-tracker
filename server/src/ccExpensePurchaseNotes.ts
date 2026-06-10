@@ -76,7 +76,7 @@ export function setCcExpensePurchaseNote(opts: {
 
 export type FlowCcExpenseLineBeforeNotes = Omit<
   FlowCcExpenseLineRow,
-  "purchase_key" | "purchase_notes" | "origin_label"
+  "purchase_key" | "purchase_notes" | "origin_label" | "big_group_slug"
 > & {
   auto_deposit_match_note?: string;
   auto_additional_card_note?: string;

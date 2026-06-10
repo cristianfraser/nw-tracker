@@ -1,5 +1,5 @@
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import { db } from "./db.js";
+import { getAccountSourceRow } from "./accountSource.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
   chartInactiveFromMonthlyClosingAsc,
@@ -22,26 +22,28 @@ function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
   return loadBookValuationsAsc(accountId).map((r) => r.value_clp);
 }
 
-/** Per-card Santander masters stay in sidebar/group charts even when balance is currently $0. */
-function isRegisteredCreditCardMaster(accountId: number): boolean {
-  const hit = db
-    .prepare(
-      `SELECT 1 AS o FROM credit_card_group_items
-       WHERE account_id = ? AND item_kind = 'account'
-       LIMIT 1`
-    )
-    .get(accountId) as { o: number } | undefined;
-  return hit != null;
+/** Operational master id for inactivity (liability_view CC rows use master valuations). */
+export function accountIdForInactiveCheck(accountId: number): number {
+  const row = getAccountSourceRow(accountId);
+  if (row?.account_kind === "liability_view" && row.source_account_id != null) {
+    return row.source_account_id;
+  }
+  return accountId;
 }
 
 /**
  * True when month-end closes show a long trailing-zero tail (chart tail-clip rule).
- * Uses performance closes when available; otherwise stored `valuations` (e.g. cash accounts
- * that skip monthly P/L but still have month-end book balances).
+ * Uses performance closes when available; otherwise stored `valuations`.
  */
 export function accountChartInactive(accountId: number): boolean {
-  if (isRegisteredCreditCardMaster(accountId)) return false;
-  const closing = monthEndClosingAscForInactiveCheck(accountId);
+  const effectiveId = accountIdForInactiveCheck(accountId);
+  const closing = monthEndClosingAscForInactiveCheck(effectiveId);
   if (!closing.length) return false;
   return chartInactiveFromMonthlyClosingAsc(closing, CHART_TRAILING_ZERO_MONTHS_KEPT);
+}
+
+/** Nav bucket/group is inactive when every account in the subtree is inactive (empty → inactive). */
+export function navBucketChartInactive(accountIds: readonly number[]): boolean {
+  if (!accountIds.length) return true;
+  return accountIds.every((id) => accountChartInactive(id));
 }

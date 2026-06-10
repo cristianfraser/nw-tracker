@@ -217,6 +217,18 @@ export function initSchema() {
       clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)
     );
 
+    CREATE TABLE IF NOT EXISTS fx_daily_bcentral (
+      date TEXT PRIMARY KEY,
+      clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS fx_daily_yahoo_rejected (
+      date TEXT PRIMARY KEY,
+      raw_clp_per_usd REAL NOT NULL,
+      reason TEXT NOT NULL,
+      rejected_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS uf_daily (
       date TEXT PRIMARY KEY,
       clp_per_uf REAL NOT NULL CHECK (clp_per_uf > 0)
@@ -434,6 +446,7 @@ const migrationsDir = path.join(__dirname, "..", "migrations");
 const GENERIC_TRANSFER_UNIQUE_MIGRATION = "075_generic_transfer_unique_purchases.sql";
 const GENERIC_UNIQUE_MERCHANTS_MIGRATION = "076_cc_expense_generic_unique_merchants.sql";
 const CARGO_MERCADO_UNIQUE_MIGRATION = "077_cargo_mercado_capitales_unique.sql";
+const ACCOUNT_SYNC_SOURCES_MIGRATION = "109_account_sync_sources.sql";
 
 function splitMigrationStatements(sql: string): string[] {
   const withoutComments = sql.replace(/--[^\n]*/g, "");
@@ -507,6 +520,13 @@ export function runMigrations() {
         `cargo mercado capitales unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
       );
     }
+    if (file === ACCOUNT_SYNC_SOURCES_MIGRATION) {
+      const { reseedAllAccountSyncSources } = require(
+        path.join(__dirname, "accountSyncSources.ts")
+      ) as typeof import("./accountSyncSources.js");
+      const r = reseedAllAccountSyncSources();
+      console.log(`account_sync_sources backfill: accounts=${r.accounts} links=${r.links}`);
+    }
     appliedCount += 1;
     console.log(`migration applied: ${file}`);
   }
@@ -566,9 +586,36 @@ function migrateMovementsSignedIfNeeded() {
   console.log(`migration applied: ${MOVEMENTS_SIGNED_MIGRATION_ID} (movements → signed amount_clp)`);
 }
 
+const ACCOUNT_SYNC_SOURCES_TABLE = "account_sync_sources";
+
+/** Backfill when migration 109 ran before the post-migration hook existed. */
+function ensureAccountSyncSourcesSeeded() {
+  const table = dbInternal
+    .prepare(
+      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+    )
+    .get(ACCOUNT_SYNC_SOURCES_TABLE) as { 1: number } | undefined;
+  if (!table) return;
+
+  const linkCount = dbInternal
+    .prepare(`SELECT COUNT(*) AS c FROM account_sync_sources`)
+    .get() as { c: number };
+  if (linkCount.c > 0) return;
+
+  const accountCount = dbInternal.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number };
+  if (accountCount.c === 0) return;
+
+  const { reseedAllAccountSyncSources } = require(
+    path.join(__dirname, "accountSyncSources.ts")
+  ) as typeof import("./accountSyncSources.js");
+  const r = reseedAllAccountSyncSources();
+  console.log(`account_sync_sources seed: accounts=${r.accounts} links=${r.links}`);
+}
+
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();
+ensureAccountSyncSourcesSeeded();
 
 const db = wrapDatabaseForVerboseLog(dbInternal);
 

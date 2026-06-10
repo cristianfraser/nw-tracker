@@ -37,8 +37,56 @@ export function supersededCcTargetLast4(accountId: number): string | null {
   return m?.[1] ?? null;
 }
 
+const SUPERSEDED_SANTANDER_MASTER_NOTES = new Set([
+  "credit_card_master|santander|4111",
+  "credit_card_master|santander|4112",
+]);
+
 export function isSupersededSantanderCcMaster(accountId: number): boolean {
-  return supersededCcTargetLast4(accountId) != null;
+  if (supersededCcTargetLast4(accountId) != null) return true;
+
+  const row = db
+    .prepare(`SELECT notes, exclude_from_group_totals FROM accounts WHERE id = ?`)
+    .get(accountId) as { notes: string | null; exclude_from_group_totals: number } | undefined;
+  if (!row) return false;
+  const notes = String(row.notes ?? "").trim();
+  if (!SUPERSEDED_SANTANDER_MASTER_NOTES.has(notes)) return false;
+  if (row.exclude_from_group_totals !== 1) return false;
+  const last4 = notes.slice(notes.lastIndexOf("|") + 1);
+  const targetLast4 = SANTANDER_CC_IMPORT_REDIRECT_LAST4[last4];
+  return targetLast4 != null && resolveMasterAccountIdForCardLast4(targetLast4) != null;
+}
+
+/** Physical card last4s billed on one CC master (titular + distinct statement card_last4). */
+export function associatedCardLast4sForMaster(masterId: number): string[] {
+  const row = db
+    .prepare(`SELECT notes FROM accounts WHERE id = ?`)
+    .get(masterId) as { notes: string | null } | undefined;
+  const notes = String(row?.notes ?? "").trim();
+  const titularMatch = /^credit_card_master\|[^|]+\|(\d{4})$/.exec(notes);
+  const titular = titularMatch?.[1] ?? null;
+
+  const statementRows = db
+    .prepare(
+      `SELECT DISTINCT card_last4 FROM cc_statements
+       WHERE account_id = ? AND card_last4 IS NOT NULL AND TRIM(card_last4) != ''`
+    )
+    .all(masterId) as { card_last4: string }[];
+
+  const last4s = new Set<string>();
+  if (titular) last4s.add(titular);
+  for (const { card_last4 } of statementRows) {
+    const l4 = String(card_last4).trim();
+    if (l4) last4s.add(l4);
+  }
+
+  return [...last4s].sort((a, b) => {
+    if (titular != null) {
+      if (a === titular && b !== titular) return -1;
+      if (b === titular && a !== titular) return 1;
+    }
+    return a.localeCompare(b);
+  });
 }
 
 /** Remove imported CC statements, ledger, and billing rows for one master account. */

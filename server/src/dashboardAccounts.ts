@@ -5,7 +5,10 @@ import {
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
-import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
+import {
+  dashboardCardReconcilePeriodDeltas,
+  reconcileDashboardCardMetrics,
+} from "./dashboardCardMetricsReconcile.js";
 import { dashboardAccountPerfDerived } from "./dashboardAccountCardMetrics.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
@@ -22,6 +25,8 @@ import {
   type AccountPositionMeta,
 } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
+import { syncStatusPayload } from "./globalSyncStale.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
@@ -36,12 +41,19 @@ import {
 import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
+import { buildDashboardNwBucketTotalsFromRows } from "./dashboardNwBucketTotals.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
+import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   kindSlugForAccount,
-  leafPortfolioGroupSlugForAccount,
+  leafPortfolioGroupSlugByAccountIds,
   nwDashboardMetricGroupForAccount,
+  withPortfolioGroupIndex,
 } from "./portfolioGroupTree.js";
+import {
+  deptoSueciaDashboardSnapshotAt,
+  loadDeptoDividendosSheetLedgerFromDb,
+} from "./deptoDividendosLedger.js";
 import { db } from "./db.js";
 import {
   latestDisplayedBalanceForAccount,
@@ -161,7 +173,12 @@ export async function latestValuationDisplayForAccount(
 
 /** Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit). */
 export async function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
+  return withAccountValuationTsCache(() => buildDashboardAccountRowsInner(includeUsd));
+}
+
+async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<DashboardAccountStats[]> {
   const accounts = listDashboardSourceAccounts();
+  const leafSlugByAccount = leafPortfolioGroupSlugByAccountIds(accounts.map((a) => a.id));
   const depositsNetByAccount = flowsDepositsNetTotalByAccount();
   const depositsNetUsdByAccount = includeUsd ? flowsDepositsNetTotalUsdByAccount() : null;
   const depositsMonth = flowsDepositsNetInPeriodByAccount("month");
@@ -170,6 +187,7 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
   const today = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", today);
   const priorYearEnd = priorPeriodEndYmd("ytd", today);
+  const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
 
   const rowsBuilt: DashboardAccountStats[] = await Promise.all(
     accounts.map(async (a) => {
@@ -177,8 +195,9 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
       const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
       const leafSlug = a.bucket_slug;
       const kindSlug = kindSlugForAccount(a.id) ?? leafSlug;
-      const portfolioLeafSlug = leafPortfolioGroupSlugForAccount(a.id);
+      const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
       const metricGroup = nwDashboardMetricGroupForAccount(a.id) ?? leafSlug;
+      const dashboard_bucket_slug = nwDashboardMetricGroupForAccount(a.id);
       const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(metricGroup);
       const derivedClp = dashboardAccountPerfDerived(a.id, "clp", trackAssetMetrics);
       const derivedUsd =
@@ -188,9 +207,12 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
       const perfSeriesClp = trackAssetMetrics ? getAccountMonthlyPerformance(a.id, "clp") : null;
       const markOpts = { notes: a.notes, name: a.name };
 
+      /** Asset-group leaf slug (`real_estate__property`), not nav bucket (`real_estate`) — required for depto UF marks. */
+      const markCategorySlug = leafSlug;
+
       let v: { value_clp: number; as_of_date: string } | null = null;
       if (trackAssetMetrics) {
-        v = accountMarkClpAtYmd(a.id, today, kindSlug, markOpts);
+        v = accountMarkClpAtYmd(a.id, today, markCategorySlug, markOpts);
       } else {
         v = await latestValuationDisplayForAccount(a.id, kindSlug, markOpts);
         if (v == null && !isMovementBalanceCashCategory(kindSlug)) {
@@ -201,8 +223,8 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
         }
       }
 
-      const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, kindSlug, markOpts);
-      const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, kindSlug, markOpts);
+      const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
+      const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
       const prior_month_close_clp =
         priorMonthMark?.value_clp ??
         (trackAssetMetrics
@@ -250,7 +272,7 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
         group_label: a.bucket_label,
         bucket_slug: leafSlug,
         bucket_label: a.bucket_label,
-        dashboard_bucket_slug: null,
+        dashboard_bucket_slug: dashboard_bucket_slug ?? null,
         deposits_clp: deposits,
         deposits_usd: includeUsd ? deposits_usd : undefined,
         delta_month_clp: perfClp?.delta_month,
@@ -277,8 +299,12 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
         exclude_from_group_totals: a.exclude_from_group_totals,
         chart_inactive: accountChartInactive(a.id),
         position,
+        sync_stale: staleAccountIds.has(a.id),
       };
-      const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, { includeUsd });
+      const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, {
+        includeUsd,
+        reconcilePeriodDeltas: dashboardCardReconcilePeriodDeltas(metricGroup),
+      });
       return { ...rowBeforeReconcile, ...reconciled };
     })
   );
@@ -287,6 +313,32 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
     chileCalendarTodayYmd(),
     includeUsd
   );
+}
+
+export type DashboardSueciaSnapshot = {
+  valor_clp: number;
+  net_value_clp: number;
+  mortgage_clp: number;
+  valor_usd?: number | null;
+  net_value_usd?: number | null;
+  mortgage_usd?: number | null;
+};
+
+/** Suecia RE card snapshot from `depto_dividendos_sheet_rows` (import:excel → SQLite). */
+export function buildDashboardSueciaSnapshot(
+  asOfYmd: string,
+  includeUsd: boolean
+): DashboardSueciaSnapshot | null {
+  const deptoLedger = loadDeptoDividendosSheetLedgerFromDb();
+  const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfYmd, deptoLedger);
+  if (!sueciaRaw) return null;
+  if (!includeUsd) return sueciaRaw;
+  return {
+    ...sueciaRaw,
+    valor_usd: depositClpToUsdAtDate(sueciaRaw.valor_clp, asOfYmd),
+    net_value_usd: depositClpToUsdAtDate(sueciaRaw.net_value_clp, asOfYmd),
+    mortgage_usd: depositClpToUsdAtDate(sueciaRaw.mortgage_clp, asOfYmd),
+  };
 }
 
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
@@ -298,6 +350,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     notes: notes ?? null,
   }));
   const asOfToday = chileCalendarTodayYmd();
+  const suecia_snapshot = buildDashboardSueciaSnapshot(asOfToday, includeUsd);
   const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, { mortgageFromDeptoSheet: true });
   const liabilities_breakdown = {
     mortgage_clp: liabilitiesClp.mortgage_clp,
@@ -313,7 +366,14 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
         }
       : card
   );
-  return { accounts: clientAccounts, liabilities_breakdown, dashboard_layout };
+  const nw_bucket_totals = buildDashboardNwBucketTotalsFromRows(clientAccounts, includeUsd);
+  return {
+    accounts: clientAccounts,
+    liabilities_breakdown,
+    dashboard_layout,
+    suecia_snapshot,
+    nw_bucket_totals,
+  };
 }
 
 /**
@@ -321,6 +381,10 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
  * Runs account rows and full dashboard valuation TS in parallel on the server.
  */
 export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit) {
+  return withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd, unit));
+}
+
+async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) {
   const [nav, ts] = await Promise.all([
     timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd)),
     Promise.resolve().then(() =>
@@ -331,6 +395,8 @@ export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
+    suecia_snapshot: nav.suecia_snapshot,
+    nw_bucket_totals: nav.nw_bucket_totals,
     overview: ts,
     fx_coverage: includeUsd ? buildFxCoverage() : null,
   };

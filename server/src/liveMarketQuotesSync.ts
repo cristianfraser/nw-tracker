@@ -1,24 +1,18 @@
 import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
-import { chileCalendarTodayYmd, chileWallClockNow } from "./chileDate.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import {
-  fetchDolarAfterDate,
-  isBcentralNoDataError,
-  isBcentralConfigured,
-  loadBcentralCredentials,
-} from "./bcentralApi.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { fetchYahooLiveUsdClpPerUsd, shouldUseLiveFxQuote } from "./fxLive.js";
+import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
-import { portfolioStartYmd } from "./portfolioStart.js";
 import {
   insertLiveMarketQuote,
   pruneLiveMarketQuotes,
   type LiveMarketQuoteRow,
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
-import { maxFxDateOnOrBefore, upsertFxRows } from "./sbifSyncDb.js";
+import { maxFxDateOnOrBefore } from "./sbifSyncDb.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 
 const EQUITY_DAILY_IMPORT_TICKERS = ["BTC-USD", "ETH-USD"] as const;
@@ -97,7 +91,7 @@ async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promis
   }
 }
 
-function priorBcentralClpPerUsd(beforeDate: string): number | null {
+function priorFxDailyClpPerUsd(beforeDate: string): number | null {
   return (
     db
       .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date < ? ORDER BY date DESC LIMIT 1`)
@@ -105,12 +99,12 @@ function priorBcentralClpPerUsd(beforeDate: string): number | null {
   )?.clp_per_usd ?? null;
 }
 
-/** BCentral observado from `fx_daily` (after NYSE close / when live FX is off). */
-function mirrorBcentralFxDailyToLiveQuotes(fetchedAt: string): number {
+/** Yahoo CLP=X EOD from `fx_daily` (after NYSE close / when live FX is off). */
+function mirrorFxDailyToLiveQuotes(fetchedAt: string): number {
   const today = chileCalendarTodayYmd();
   const fx = fxRowOnOrBefore(today);
   if (fx == null || !Number.isFinite(fx.clp_per_usd) || fx.clp_per_usd <= 0) return 0;
-  const prior = priorBcentralClpPerUsd(fx.date);
+  const prior = priorFxDailyClpPerUsd(fx.date);
   insertLiveMarketQuote({
     symbol: LIVE_FX_SYMBOL,
     kind: "fx_clp_per_usd",
@@ -122,10 +116,25 @@ function mirrorBcentralFxDailyToLiveQuotes(fetchedAt: string): number {
   return 1;
 }
 
-async function mirrorBcentralFxWithCatchUp(fetchedAt: string): Promise<{ rows: number; error?: string }> {
-  const catchUp = await catchUpFxDailyIfMissingToday();
+async function catchUpFxDailyIfMissingDueSession(now: Date): Promise<{ rows: number; error?: string }> {
+  const due = yahooFxUsdSyncDue(now);
+  if (due == null) return { rows: 0 };
+  const latest = maxFxDateOnOrBefore(due);
+  if (latest != null && latest >= due) return { rows: 0 };
+
   try {
-    const rows = mirrorBcentralFxDailyToLiveQuotes(fetchedAt);
+    const result = await syncYahooFxUsdFromYahoo({ now, force: true });
+    return { rows: result.rows, error: result.skipped };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { rows: 0, error: msg.slice(0, 200) };
+  }
+}
+
+async function mirrorFxDailyWithCatchUp(now: Date, fetchedAt: string): Promise<{ rows: number; error?: string }> {
+  const catchUp = await catchUpFxDailyIfMissingDueSession(now);
+  try {
+    const rows = mirrorFxDailyToLiveQuotes(fetchedAt);
     return { rows, error: catchUp.error };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -139,7 +148,7 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<{ rows: nu
       const live = await fetchYahooLiveUsdClpPerUsd(now);
       const prior =
         live.previous_clp_per_usd ??
-        priorBcentralClpPerUsd(live.session_ymd) ??
+        priorFxDailyClpPerUsd(live.session_ymd) ??
         fxRowOnOrBefore(live.session_ymd)?.clp_per_usd ??
         null;
       insertLiveMarketQuote({
@@ -153,48 +162,17 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<{ rows: nu
       return { rows: 1 };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`live-quotes:sync — Yahoo CLP=X failed (${msg}); falling back to BCentral`);
-      const fallback = await mirrorBcentralFxWithCatchUp(fetchedAt);
+      console.warn(`live-quotes:sync — Yahoo CLP=X failed (${msg}); falling back to fx_daily EOD`);
+      const fallback = await mirrorFxDailyWithCatchUp(now, fetchedAt);
       return { rows: fallback.rows, error: msg.slice(0, 200) };
     }
   }
 
-  return mirrorBcentralFxWithCatchUp(fetchedAt);
-}
-
-async function catchUpFxDailyIfMissingToday(): Promise<{ rows: number; error?: string }> {
-  const today = chileCalendarTodayYmd();
-  const existing = db
-    .prepare(`SELECT 1 FROM fx_daily WHERE date = ? LIMIT 1`)
-    .get(today) as { 1: number } | undefined;
-  if (existing) return { rows: 0 };
-
-  if (!isBcentralConfigured()) return { rows: 0 };
-
-  try {
-    const creds = loadBcentralCredentials();
-    const cl = chileWallClockNow();
-    const anchor = portfolioStartYmd();
-    const lastFx = maxFxDateOnOrBefore(cl.ymd) ?? anchor;
-    let fxRows: { date: string; clpPerUsd: number }[] = [];
-    try {
-      fxRows = await fetchDolarAfterDate(lastFx, creds, cl.ymd);
-    } catch (e) {
-      if (!isBcentralNoDataError(e)) throw e;
-    }
-    const n = upsertFxRows(
-      fxRows.filter((r) => r.date >= anchor && r.date <= cl.ymd),
-      false
-    );
-    return { rows: n };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { rows: 0, error: msg.slice(0, 200) };
-  }
+  return mirrorFxDailyWithCatchUp(now, fetchedAt);
 }
 
 /**
- * Fetch Yahoo live quotes for all equity/crypto symbols, optionally catch up BCentral USD, mirror FX, prune old rows.
+ * Fetch Yahoo live quotes for all equity/crypto symbols, catch up Yahoo FX EOD if needed, mirror FX, prune old rows.
  * Only the scheduler and `npm run live-quotes:sync` should call this.
  */
 export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMarketQuotesSyncResult> {
@@ -218,7 +196,7 @@ export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMar
   }
   const okCount = equities.filter((r) => r.ok).length;
   console.log(
-    `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (BCentral)"}, pruned ${pruned}`
+    `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (Yahoo EOD fx_daily)"}, pruned ${pruned}`
   );
 
   return {

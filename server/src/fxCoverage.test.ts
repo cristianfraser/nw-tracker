@@ -7,6 +7,7 @@ import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 describe("buildFxCoverage", () => {
   beforeEach(() => {
     db.exec("DELETE FROM fx_daily");
+    db.exec("DELETE FROM fx_daily_yahoo_rejected");
     db.exec("DELETE FROM valuations");
     db.exec("DELETE FROM movements");
   });
@@ -16,6 +17,18 @@ describe("buildFxCoverage", () => {
     expect(c.complete).toBe(false);
     expect(c.row_count).toBe(0);
     expect(c.is_sparse).toBe(true);
+    expect(c.yahoo_rejected).toEqual([]);
+  });
+
+  it("includes yahoo_rejected rows", () => {
+    db.prepare(`INSERT INTO fx_daily_yahoo_rejected (date, raw_clp_per_usd, reason) VALUES (?, ?, ?)`).run(
+      "2016-12-21",
+      5,
+      "below_min"
+    );
+    const c = buildFxCoverage();
+    expect(c.yahoo_rejected).toHaveLength(1);
+    expect(c.yahoo_rejected[0]?.date).toBe("2016-12-21");
   });
 
   it("reports sparse when daily row count is below threshold", () => {

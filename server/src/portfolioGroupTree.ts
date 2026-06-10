@@ -1,5 +1,8 @@
 import { assetGroupBySlug, CHECKING_ACCOUNTS_KIND, leafAssetGroupIdForKindSlug } from "./assetGroupTree.js";
+import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
+import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
+import { getPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 
 export type PortfolioGroupRow = {
   id: number;
@@ -39,7 +42,28 @@ export function portfolioGroupBySlug(slug: string): PortfolioGroupRow | null {
   return (groupBySlugStmt.get(slug) as PortfolioGroupRow | undefined) ?? null;
 }
 
+/** Portfolio group tab or `credit_card_groups` issuer slug (Santander, BCI, …). */
+export function isResolvablePortfolioGroupSlug(slug: string): boolean {
+  return portfolioGroupBySlug(slug) != null || getCreditCardGroupBySlug(slug) != null;
+}
+
+function accountIdsInCreditCardIssuerGroup(issuerSlug: string): number[] {
+  const masterIds = listCreditCardGroupMasterAccountIds(issuerSlug);
+  if (!masterIds.length) return [];
+  const ph = masterIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT id FROM accounts
+       WHERE account_kind = 'liability_view' AND source_account_id IN (${ph})
+       ORDER BY id`
+    )
+    .all(...masterIds) as { id: number }[];
+  return rows.map((r) => r.id);
+}
+
 export function portfolioGroupById(id: number): PortfolioGroupRow | null {
+  const idx = getPortfolioGroupIndex();
+  if (idx) return idx.groupById.get(id) ?? null;
   return (groupByIdStmt.get(id) as PortfolioGroupRow | undefined) ?? null;
 }
 
@@ -52,6 +76,8 @@ export function isBucketKind(groupKind: string): boolean {
 }
 
 function loadAllItems(): ItemRow[] {
+  const idx = getPortfolioGroupIndex();
+  if (idx) return idx.items as ItemRow[];
   return db
     .prepare(
       `SELECT group_id, item_kind, child_group_id, account_id, sort_order
@@ -63,6 +89,8 @@ function loadAllItems(): ItemRow[] {
 }
 
 function itemsByGroupId(items: ItemRow[]): Map<number, ItemRow[]> {
+  const idx = getPortfolioGroupIndex();
+  if (idx) return idx.byGroupId as Map<number, ItemRow[]>;
   const map = new Map<number, ItemRow[]>();
   for (const item of items) {
     const arr = map.get(item.group_id) ?? [];
@@ -72,8 +100,19 @@ function itemsByGroupId(items: ItemRow[]): Map<number, ItemRow[]> {
   return map;
 }
 
+export { withPortfolioGroupIndex } from "./portfolioGroupIndex.js";
+
 /** Account ids in this portfolio group subtree (direct + nested groups). */
 export function accountIdsInPortfolioGroup(slugOrId: string | number): number[] {
+  if (typeof slugOrId === "string" && getCreditCardGroupBySlug(slugOrId)) {
+    return accountIdsInCreditCardIssuerGroup(slugOrId);
+  }
+  if (slugOrId === "liabilities_credit_card") {
+    return listLiabilitiesTabAccountRows("credit_card").map((r) => r.account_id);
+  }
+  if (slugOrId === "liabilities_mortgage") {
+    return listLiabilitiesTabAccountRows("mortgage").map((r) => r.account_id);
+  }
   const root =
     typeof slugOrId === "number" ? portfolioGroupById(slugOrId) : portfolioGroupBySlug(slugOrId);
   if (!root) return [];
@@ -153,19 +192,32 @@ export function sumDashboardRowsForPortfolioGroup(
   return { clp, usd };
 }
 
-/** Deepest portfolio group slug that lists this account (nav leaf bucket). */
-export function leafPortfolioGroupSlugForAccount(accountId: number): string | null {
-  const row = db
+/** Deepest portfolio group slug per account (one query for dashboard batching). */
+export function leafPortfolioGroupSlugByAccountIds(
+  accountIds: readonly number[]
+): Map<number, string> {
+  const out = new Map<number, string>();
+  if (!accountIds.length) return out;
+  const unique = [...new Set(accountIds)];
+  const ph = unique.map(() => "?").join(",");
+  const rows = db
     .prepare(
-      `SELECT pg.slug
+      `SELECT i.account_id, pg.slug, LENGTH(pg.slug) AS slug_len, pg.id AS pg_id
        FROM portfolio_group_items i
        JOIN portfolio_groups pg ON pg.id = i.group_id
-       WHERE i.item_kind = 'account' AND i.account_id = ?
-       ORDER BY LENGTH(pg.slug) DESC, pg.id DESC
-       LIMIT 1`
+       WHERE i.item_kind = 'account' AND i.account_id IN (${ph})
+       ORDER BY i.account_id, slug_len DESC, pg_id DESC`
     )
-    .get(accountId) as { slug: string } | undefined;
-  return row?.slug ?? null;
+    .all(...unique) as { account_id: number; slug: string }[];
+  for (const r of rows) {
+    if (!out.has(r.account_id)) out.set(r.account_id, r.slug);
+  }
+  return out;
+}
+
+/** Deepest portfolio group slug that lists this account (nav leaf bucket). */
+export function leafPortfolioGroupSlugForAccount(accountId: number): string | null {
+  return leafPortfolioGroupSlugByAccountIds([accountId]).get(accountId) ?? null;
 }
 
 export function kindSlugForAccount(accountId: number): string | null {

@@ -13,8 +13,17 @@ import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
-import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./ccNotaDeCreditoPairing.js";
-import type { CcInstallmentMonthRow, CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
+import {
+  calendarMonthsAfterPurchase,
+  isNotaDeCreditoMerchant,
+  NOTA_DE_CREDITO_MATCH_MIN_CLP,
+  NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE,
+} from "./ccNotaDeCreditoPairing.js";
+import type {
+  CcInstallmentMonthBreakdown,
+  CcInstallmentMonthRow,
+  CcInstallmentPurchaseComputed,
+} from "./creditCardInstallments.js";
 import { ccPurchaseSourceLegacyFromOrigin, dataOriginFromCcPurchaseSource } from "./dataOrigin.js";
 
 type PurchaseRow = {
@@ -480,6 +489,43 @@ function scheduledPaymentsPlanDueByMonth(
   return out;
 }
 
+function purchaseLabel(pr: PurchaseRow): string {
+  return (pr.description_merged ?? pr.merchant ?? "Compra").trim() || "Compra";
+}
+
+/** Per-purchase cuota lines due each calendar month (plan schedule; matches `scheduledPaymentsPlanDueByMonth` totals). */
+function scheduledPaymentsPlanBreakdownByMonth(
+  purchasesRaw: PurchaseRow[],
+  paymentsByPurchase: Map<number, PaymentRow[]>,
+  accountId?: number
+): Map<string, CcInstallmentMonthBreakdown[]> {
+  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
+  const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
+  const out = new Map<string, CcInstallmentMonthBreakdown[]>();
+  if (!bounds) return out;
+
+  for (const ym of expandYearMonthsInclusive(bounds.minYm, bounds.maxYm)) {
+    const entries: CcInstallmentMonthBreakdown[] = [];
+    for (const sched of schedules.values()) {
+      if (!purchaseExistsThroughMonthEnd(sched.purchase, ym)) continue;
+      for (let i = 0; i < sched.cuotaAmounts.length; i++) {
+        if (installmentDueYm(sched.firstDueYm, i) !== ym) continue;
+        const amount_clp = sched.cuotaAmounts[i]!;
+        if (amount_clp <= 0) continue;
+        entries.push({
+          purchase_id: sched.purchase.canonical_row_id,
+          label: purchaseLabel(sched.purchase),
+          installment_index: i,
+          installment_count: sched.purchase.cuotas_totales,
+          amount_clp,
+        });
+      }
+    }
+    if (entries.length > 0) out.set(ym, entries);
+  }
+  return out;
+}
+
 /** End-of-month plan saldo: Σ cuotas with due month after `ym` (matches flujos historial / chart tail). */
 function scheduledTotalRemainingByMonth(
   purchasesRaw: PurchaseRow[],
@@ -662,6 +708,12 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
       const c = credits[i]!;
       if (c.amountAbs !== purchase.total_amount_clp) continue;
       if (c.occurredIso <= pDate) continue;
+      if (
+        calendarMonthsAfterPurchase(pDate, c.occurredIso) >
+        NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE
+      ) {
+        continue;
+      }
       cancelled.add(purchase.id);
       usedCreditIdx.add(i);
       break;
@@ -676,7 +728,7 @@ function loadCancelledInstallmentPurchaseIds(
 ): Set<number> {
   const notaRows = db
     .prepare(
-      `SELECT l.merchant, l.amount_clp, COALESCE(s.period_to, s.statement_date, l.posting_date, l.transaction_date) AS occurred
+      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ?
@@ -916,11 +968,22 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   }
 
   const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
-  const months: CcInstallmentMonthRow[] = [...payByMonth.keys()].sort(ymCompare).map((month) => ({
-    month,
-    total_clp: payByMonth.get(month) ?? 0,
-    breakdown: [],
-  }));
+  const breakdownByMonth = scheduledPaymentsPlanBreakdownByMonth(
+    purchasesRaw,
+    paymentsByPurchase,
+    accountId
+  );
+  const months: CcInstallmentMonthRow[] = [...payByMonth.keys()].sort(ymCompare).map((month) => {
+    const breakdown = breakdownByMonth.get(month) ?? [];
+    const total_clp = payByMonth.get(month) ?? 0;
+    const breakdownSum = breakdown.reduce((s, b) => s + b.amount_clp, 0);
+    if (breakdown.length > 0 && breakdownSum !== total_clp) {
+      throw new Error(
+        `installment month breakdown mismatch for account ${accountId} month ${month}: breakdown=${breakdownSum} total=${total_clp}`
+      );
+    }
+    return { month, total_clp, breakdown };
+  });
 
   const installment_history_months = installmentHistoryMonthsFromLedgerData(
     purchasesRaw,

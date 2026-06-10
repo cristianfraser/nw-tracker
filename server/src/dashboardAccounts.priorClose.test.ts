@@ -3,6 +3,11 @@ import * as accountMarkModule from "./accountMarkClpAtYmd.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { db } from "./db.js";
+import { deptoAccountMarkClpAtYmd } from "./deptoDividendosLedger.js";
+import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
+import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 describe("buildDashboardAccountRows prior closes", () => {
   afterEach(() => {
@@ -33,6 +38,32 @@ describe("buildDashboardAccountRows prior closes", () => {
         )
       ).toBe(true);
     }
+  });
+
+  it("suecia dashboard current and month delta match depto live mark and perf P/L", async () => {
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const depto = deptoAccountMarkClpAtYmd("property", chileCalendarTodayYmd());
+    if (!depto) return;
+
+    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
+    const cur = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    if (cur?.nominal_pl == null) return;
+
+    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
+    const dash = rows.find((r) => r.account_id === row.id);
+    if (!dash) return;
+
+    expect(dash.current_value_clp).toBe(depto.value_clp);
+    expect(dash.delta_month_clp).toBe(cur.nominal_pl);
   });
 
   it("sets prior_year_close_clp when accountMarkClpAtYmd returns a year-end mark", async () => {

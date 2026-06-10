@@ -1,10 +1,7 @@
 import { clearCreditCardBillingDetailCache } from "./ccBillingDetailCache.js";
-import { buildDashboardAccountRows } from "./dashboardAccounts.js";
+import { buildDashboardAccountRows, buildDashboardSueciaSnapshot } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
-import {
-  deptoSueciaDashboardSnapshotAt,
-  loadDeptoDividendosSheetLedgerFromDb,
-} from "./deptoDividendosLedger.js";
+import { buildDashboardNwBucketTotalsFromRows } from "./dashboardNwBucketTotals.js";
 import {
   buildFlowsDepositsPayload,
   depositClpToUsdAtDate,
@@ -13,11 +10,9 @@ import {
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
-import {
-  cashSavingsLinkedBalances,
-  sumCashSavingsNwAdjusted,
-} from "./cashEqsBucketNet.js";
-import { sumDashboardRowsForPortfolioGroup } from "./portfolioGroupTree.js";
+import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
+import { isNwDashboardBucketSlug, portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
+import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 
@@ -25,22 +20,23 @@ const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "bro
 
 /** @heavy Account rows, flows deposits payload, liabilities breakdown, Suecia snapshot. */
 export async function buildDashboardPagePayload(includeUsd: boolean) {
-  clearCreditCardBillingDetailCache();
-  const rowsBuilt = await timeHeavyAsync(HeavyWork.dashboardAccountRows, () =>
-    buildDashboardAccountRows(includeUsd)
-  );
+  return withPortfolioGroupIndex(async () => {
+    clearCreditCardBillingDetailCache();
+    const rowsBuilt = await timeHeavyAsync(HeavyWork.dashboardAccountRows, () =>
+      buildDashboardAccountRows(includeUsd)
+    );
 
-  return timeHeavy(HeavyWork.dashboardPayload, () => {
+    return timeHeavy(HeavyWork.dashboardPayload, () => {
     const asOfToday = chileCalendarTodayYmd();
-
-    const re = sumDashboardRowsForPortfolioGroup("real_estate", rowsBuilt, includeUsd);
-    const ret = sumDashboardRowsForPortfolioGroup("retirement", rowsBuilt, includeUsd);
-    const bro = sumDashboardRowsForPortfolioGroup("brokerage", rowsBuilt, includeUsd);
-    const cash = sumCashSavingsNwAdjusted(rowsBuilt, asOfToday, includeUsd);
+    const bucketTotals = buildDashboardNwBucketTotalsFromRows(rowsBuilt, includeUsd);
+    const re = { clp: bucketTotals.real_estate_clp, usd: bucketTotals.real_estate_usd ?? 0 };
+    const ret = { clp: bucketTotals.retirement_clp, usd: bucketTotals.retirement_usd ?? 0 };
+    const bro = { clp: bucketTotals.brokerage_clp, usd: bucketTotals.brokerage_usd ?? 0 };
+    const cash = { clp: bucketTotals.cash_eqs_clp, usd: bucketTotals.cash_eqs_usd ?? 0 };
     const lia = { clp: 0, usd: 0 };
 
-    const netWorthClp = re.clp + ret.clp + bro.clp + cash.clp;
-    const netWorthUsd = includeUsd ? re.usd + ret.usd + bro.usd + cash.usd : null;
+    const netWorthClp = bucketTotals.net_worth_clp;
+    const netWorthUsd = includeUsd ? bucketTotals.net_worth_usd : null;
 
     const depositsFlow = buildFlowsDepositsPayload();
     const totalDeposits = depositsFlow.net_total_clp;
@@ -55,10 +51,21 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     );
     const byGroup = new Map<string, { label: string; value_clp: number; value_usd: number }>();
     for (const card of layoutCards) {
-      const sum =
-        card.slug === "cash_savings"
-          ? sumCashSavingsNwAdjusted(rowsBuilt, asOfToday, includeUsd)
-          : sumDashboardRowsForPortfolioGroup(card.slug, rowsBuilt, includeUsd);
+      const bucketSlug = card.bucket_slug;
+      const sum = isNwDashboardBucketSlug(bucketSlug)
+        ? {
+            clp: portfolioGroupValueClpAt(bucketSlug, asOfToday),
+            usd: includeUsd
+              ? (() => {
+                  const u = depositClpToUsdAtDate(
+                    portfolioGroupValueClpAt(bucketSlug, asOfToday),
+                    asOfToday
+                  );
+                  return u != null && Number.isFinite(u) ? u : 0;
+                })()
+              : 0,
+          }
+        : { clp: 0, usd: 0 };
       byGroup.set(card.bucket_slug, {
         label: bucketLabelBySlug.get(card.bucket_slug) ?? card.label,
         value_clp: sum.clp,
@@ -69,16 +76,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       ...rest,
       notes: notes ?? null,
     }));
-    const deptoLedger = loadDeptoDividendosSheetLedgerFromDb();
-    const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfToday, deptoLedger);
-    const suecia_snapshot = sueciaRaw
-      ? {
-          ...sueciaRaw,
-          valor_usd: depositClpToUsdAtDate(sueciaRaw.valor_clp, asOfToday),
-          net_value_usd: depositClpToUsdAtDate(sueciaRaw.net_value_clp, asOfToday),
-          mortgage_usd: depositClpToUsdAtDate(sueciaRaw.mortgage_clp, asOfToday),
-        }
-      : null;
+    const suecia_snapshot = buildDashboardSueciaSnapshot(asOfToday, includeUsd);
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, {
       mortgageFromDeptoSheet: true,
     });
@@ -98,6 +96,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
         brokerage_clp: bro.clp,
         cash_eqs_clp: cash.clp,
         liabilities_clp: liabilities_clp_aligned,
+        prior_closes: bucketTotals.prior_closes,
         ...(includeUsd
           ? {
               net_worth_usd: netWorthUsd,
@@ -136,5 +135,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       },
       ...(includeUsd ? { fx_conversion_error: depositsFlow.fx_conversion_error } : {}),
     };
+    });
   });
 }

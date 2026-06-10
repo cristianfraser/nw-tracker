@@ -22,4 +22,24 @@ describe("creditCardInstallmentsResponse runtime", () => {
     expect(res.purchases).toEqual([]);
     expect(res.meta).toBeNull();
   });
+
+  it("includes associated_card_last4s with titular first", () => {
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         WHERE a.notes LIKE 'credit_card_master|santander|%'
+           AND EXISTS (SELECT 1 FROM cc_statements s WHERE s.account_id = a.id)
+         LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const res = creditCardInstallmentsResponse(row.id, {});
+    expect(res.associated_card_last4s?.length).toBeGreaterThan(0);
+    const masterNotes = db
+      .prepare(`SELECT notes FROM accounts WHERE id = ?`)
+      .get(row.id) as { notes: string };
+    const titular = masterNotes.notes.split("|").at(-1);
+    expect(res.associated_card_last4s![0]).toBe(titular);
+  });
 });

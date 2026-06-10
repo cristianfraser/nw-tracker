@@ -3,7 +3,8 @@
  * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
  * - Fintual goals: from 18:00 America/Santiago on business days and the last day of each non-business block
  *   (weekends/holidays); `as_of` is the fund publish date (may forward-publish before the block ends).
- * - USD / EUR (Banco Central BDE): stale from 18:00 Chile until today's observado is in DB (prior session on holidays).
+ * - USD / EUR (Banco Central BDE): reference dólar/euro observado in `fx_daily_bcentral` / `eur_daily`.
+ * - Yahoo CLP=X EOD → `fx_daily` (canonical USD/CLP for conversions) from 17:30 Chile (`yahoo_fx_usd`).
  * - NYSE stocks (SPY, VEA): Yahoo EOD after 16:05 ET on NYSE trading days (`stocks_nyse`).
  * - Crypto (BTC, ETH): Yahoo daily from 23:55 Chile (`crypto_eod`).
  * - UF / UTM / IPC (BDE GetSeries): from the 9th of each month when stale.
@@ -30,13 +31,19 @@ import {
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
-import { isFintualFundPublishDay } from "./fintualPublishDate.js";
+import {
+  fintualEveningPollClock,
+  fintualPollDayStillUnresolved,
+  fintualPriorEveningUnresolved,
+  isFintualFundPublishDay,
+} from "./fintualPublishDate.js";
 import {
   formatSyncClp,
   formatSyncFxRate,
   formatSyncUsdClose,
   insertSyncRunLog,
   formatSyncUfRate,
+  formatSyncIndex,
   type SyncFieldChange,
   type SyncRunLogOptions,
   type SyncStepError,
@@ -96,12 +103,13 @@ import {
 import { isSbifApiInBackoff, sbifApiBackoffRemainingMs } from "./sbifApiGate.js";
 import {
   maxEurDateOnOrBefore,
+  maxFxBcentralDateOnOrBefore,
   maxFxDateOnOrBefore,
   maxUfDate,
   safeMaxIpcMonthParts,
   safeMaxUtmMonthParts,
   upsertEurRows,
-  upsertFxRows,
+  upsertFxBcentralRows,
   upsertIpcRows,
   upsertUfRows,
   upsertUtmRows,
@@ -118,6 +126,7 @@ import {
   syncStocksNyseFromYahoo,
   type EquityEodSyncResult,
 } from "./equityEodSync.js";
+import { syncYahooFxUsdFromYahoo, yahooFxUsdCaughtUp, yahooFxUsdSyncDue, isYahooFxUsdStale } from "./fxYahooEodSync.js";
 import type { SyncChangeGroup } from "./syncRunLog.js";
 let syncDryRun = process.argv.includes("--dry-run");
 const FORCE_SBIF = process.argv.includes("--force-sbif");
@@ -160,6 +169,22 @@ function latestEquityCloseUsd(ticker: string): number | null {
   return latestEquityEodRow(ticker)?.close_usd ?? null;
 }
 
+function fxBcentralClpPerUsdAt(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_usd FROM fx_daily_bcentral WHERE date = ?`)
+    .get(date) as { clp_per_usd: number } | undefined;
+  const v = row?.clp_per_usd;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+function fxBcentralClpPerUsdOnOrBefore(date: string): number | null {
+  const row = db
+    .prepare(`SELECT clp_per_usd FROM fx_daily_bcentral WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(date) as { clp_per_usd: number } | undefined;
+  const v = row?.clp_per_usd;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
 function fxClpPerUsdAt(date: string): number | null {
   const row = db
     .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date = ?`)
@@ -198,6 +223,10 @@ function eurClpPerEurOnOrBefore(date: string): number | null {
     .get(date) as { clp_per_eur: number } | undefined;
   const v = row?.clp_per_eur;
   return v != null && Number.isFinite(v) ? v : null;
+}
+
+function maxFxBcentralDateAfterUpsert(cl: ChileWallClock): string | null {
+  return maxFxBcentralDateOnOrBefore(cl.ymd);
 }
 
 function maxFxDateAfterUpsert(cl: ChileWallClock): string | null {
@@ -328,11 +357,22 @@ async function runFintual(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<{ pending: boolean; fintualNoChange?: boolean }> {
-  if (cl.hour < 18) {
+  const carryOverMorning = fintualPriorEveningUnresolved(cl, state);
+  if (cl.hour < 18 && !carryOverMorning) {
     console.log(`sync: Fintual — skip (before 18:00 Chile; now ${cl.hour}:${String(cl.minute).padStart(2, "0")}).`);
     return { pending: false };
   }
-  if (!FORCE && !isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) {
+  const carryPollYmd = carryOverMorning ? state.fintualLastCheckYmd : undefined;
+  const pollCl: ChileWallClock =
+    carryOverMorning && cl.hour < 18 && carryPollYmd
+      ? fintualEveningPollClock(cl, carryPollYmd)
+      : cl;
+  if (
+    !FORCE &&
+    !carryOverMorning &&
+    !isChileBusinessDay(cl.ymd) &&
+    !isFintualFundPublishDay(cl.ymd)
+  ) {
     console.log(`sync: Fintual — skip (Chile non-business day ${cl.ymd}).`);
     return { pending: false };
   }
@@ -355,7 +395,7 @@ async function runFintual(
   let resolutions;
   let publishYmd = cl.ymd;
   try {
-    const resolved = await resolveFintualGoalNavs(session.email, session.token, rowsWithMatch, cl);
+    const resolved = await resolveFintualGoalNavs(session.email, session.token, rowsWithMatch, pollCl);
     resolutions = resolved.resolutions;
     publishYmd = resolved.publishYmd;
   } finally {
@@ -372,14 +412,21 @@ async function runFintual(
     );
   }
   const appliedRows = resolutions.map((r) => r.row);
-  const picked = pickFintualApplySnapshot(appliedRows, overrides, cl, state, publishYmd);
+  const picked = pickFintualApplySnapshot(appliedRows, overrides, pollCl, state, publishYmd);
   const snap = picked.snap;
   writeGoalsSnapshot(snap);
 
   const sig = fintualMappedNavSignature(snap);
-  state.fintualLastCheckYmd = cl.ymd;
+  const stillUnresolved =
+    carryPollYmd != null &&
+    cl.hour < 18 &&
+    fintualPollDayStillUnresolved(carryPollYmd, publishYmd, state, sig);
   state.fintualLastPublishYmd = publishYmd;
   state.fintualLastCheckSig = sig;
+  state.fintualLastCheckYmd = stillUnresolved ? carryPollYmd : cl.ymd;
+  if (!stillUnresolved && carryPollYmd && !syncDryRun) {
+    state.fintualEveningSettledYmd = carryPollYmd;
+  }
 
   if (
     state.fintualLastAppliedPublishYmd != null &&
@@ -397,7 +444,7 @@ async function runFintual(
       if (cleaned > 0) {
         console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
       }
-      markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
+      markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
     }
     console.log(
       "sync: Fintual — API NAV unchanged since last apply; skip DB write (valuations already current)."
@@ -423,9 +470,9 @@ async function runFintual(
     if (cleaned > 0) {
       console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
     }
-    markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
-    if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, cl, publishYmd)) {
-      state.fintualEveningSettledYmd = cl.ymd;
+    markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
+    if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, pollCl, publishYmd)) {
+      state.fintualEveningSettledYmd = pollCl.ymd;
     }
     console.log(
       `sync: Fintual — valuations already match API for publish ${publishYmd}; no DB update needed.`
@@ -448,12 +495,12 @@ async function runFintual(
     state.fintualLastAppliedYmd = cl.ymd;
     state.fintualLastAppliedPublishYmd = publishYmd;
     state.fintualLastAppliedSig = sig;
-    markFintualEveningSettledWhenCurrent(state, cl, snap, syncDryRun);
-    if (fintualEveningCatchUpComplete(rows, overrides, cl, publishYmd)) {
-      state.fintualEveningSettledYmd = cl.ymd;
+    markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
+    if (fintualEveningCatchUpComplete(rows, overrides, pollCl, publishYmd)) {
+      state.fintualEveningSettledYmd = pollCl.ymd;
     }
   }
-  const pollNote = publishYmd !== cl.ymd ? ` (poll ${cl.ymd})` : "";
+  const pollNote = publishYmd !== pollCl.ymd ? ` (poll ${cl.ymd})` : "";
   console.log(
     `sync: Fintual — applied ${applied}, skipped ${skipped} for as_of=${snap.asOfDate}${pollNote} (${syncDryRun ? "dry-run" : "ok"})`
   );
@@ -531,8 +578,8 @@ async function runSbifUsd(
 ): Promise<void> {
   if (skipSbifStepForBackoff("BCentral USD", "usd", state, notes)) return;
   const anchor = portfolioStartYmd();
-  const lastFx = maxFxDateOnOrBefore(cl.ymd) ?? anchor;
-  const prevUsdClp = fxClpPerUsdAt(lastFx) ?? fxClpPerUsdOnOrBefore(lastFx);
+  const lastFx = maxFxBcentralDateOnOrBefore(cl.ymd) ?? anchor;
+  const prevUsdClp = fxBcentralClpPerUsdAt(lastFx) ?? fxBcentralClpPerUsdOnOrBefore(lastFx);
 
   let fxRows: { date: string; clpPerUsd: number }[] = [];
   try {
@@ -547,13 +594,13 @@ async function runSbifUsd(
       throw e;
     }
   }
-  const fxN = upsertFxRows(
+  const fxN = upsertFxBcentralRows(
     fxRows.filter((r) => r.date >= anchor && r.date <= cl.ymd),
     syncDryRun
   );
   if (fxN > 0) {
     const newest = fxRows[fxRows.length - 1];
-    const newUsdClp = newest?.clpPerUsd ?? fxClpPerUsdOnOrBefore(newest?.date ?? lastFx);
+    const newUsdClp = newest?.clpPerUsd ?? fxBcentralClpPerUsdOnOrBefore(newest?.date ?? lastFx);
     if (newUsdClp != null) {
       changes.push({
         group: "sbif_usd",
@@ -565,8 +612,50 @@ async function runSbifUsd(
       });
     }
   }
-  pushBcentralFxStepNote(notes, "BCentral USD", lastFx, fxRows.length, fxN, cl, maxFxDateAfterUpsert);
+  pushBcentralFxStepNote(notes, "BCentral USD", lastFx, fxRows.length, fxN, cl, maxFxBcentralDateAfterUpsert);
   console.log(`sync: BCentral USD — ${fxN} row(s) after ${lastFx} (${syncDryRun ? "dry-run" : "ok"})`);
+}
+
+async function runYahooFxUsd(
+  state: GlobalSyncStateFile,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  const now = new Date();
+  if (!FORCE && !isYahooFxUsdStale({ force: false, now })) {
+    console.log("sync: Yahoo USD/CLP — skip (NYSE session EOD already in fx_daily).");
+    notes.push({ step: "Yahoo USD/CLP", message: "skip — NYSE session EOD already in fx_daily" });
+    return;
+  }
+  const due = yahooFxUsdSyncDue(now);
+  const beforeDate = due != null ? maxFxDateOnOrBefore(due) : maxFxDateOnOrBefore(chileWallClockNow().ymd);
+  const prevRate = beforeDate != null ? fxClpPerUsdAt(beforeDate) ?? fxClpPerUsdOnOrBefore(beforeDate) : null;
+
+  const result = await syncYahooFxUsdFromYahoo({ dryRun: syncDryRun, now, force: FORCE });
+  if (result.skipped) {
+    console.log(`sync: Yahoo USD/CLP — skip (${result.skipped})`);
+    notes.push({ step: "Yahoo USD/CLP", message: `skip (${result.skipped})` });
+    return;
+  }
+  console.log(`sync: Yahoo USD/CLP — ${result.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
+  notes.push({
+    step: "Yahoo USD/CLP",
+    message: `ok — ${result.rows} row(s) upserted into fx_daily; latest on or before today: ${maxFxDateAfterUpsert(chileWallClockNow()) ?? "—"}`,
+  });
+
+  if (result.rows > 0 && due != null && yahooFxUsdCaughtUp(due)) {
+    const newRate = fxClpPerUsdAt(due) ?? fxClpPerUsdOnOrBefore(due);
+    if (newRate != null && (prevRate == null || Math.abs(prevRate - newRate) > 1e-6)) {
+      changes.push({
+        group: "yahoo_fx_usd",
+        label: "Yahoo USD/CLP",
+        oldValue: prevRate != null ? formatSyncFxRate(prevRate) : "—",
+        newValue: formatSyncFxRate(newRate),
+        oldDate: beforeDate,
+        newDate: due,
+      });
+    }
+  }
 }
 
 /** [SBIF euro observado](https://api.sbif.cl/documentacion/Euro.html) — `euro/posteriores/.../dias/...` */
@@ -656,6 +745,7 @@ async function runSyncStepIfStale(
     const keepForcedStale =
       (source === "fintual" && isFintualSyncStale(cl, state)) ||
       (source === "stocks_nyse" && isStocksNyseStale(state, { now })) ||
+      (source === "yahoo_fx_usd" && isYahooFxUsdStale({ now })) ||
       (source === "crypto_eod" && isCryptoEodStale(cl, state, { now }));
     if (!keepForcedStale) clearUserForcedStale(state, source);
   }
@@ -832,7 +922,7 @@ async function runSbifUtm(
       group: "sbif_utm",
       label: "BCentral UTM",
       oldValue: "—",
-      newValue: newest ? String(Math.round(newest.utmClp)) : `+${n}`,
+      newValue: newest ? formatSyncClp(Math.round(newest.utmClp)) : `+${n}`,
       oldDate: null,
       newDate: newest?.date?.slice(0, 10) ?? null,
     });
@@ -870,7 +960,7 @@ async function runSbifIpc(
       group: "sbif_ipc",
       label: "BCentral IPC",
       oldValue: "—",
-      newValue: newest ? String(newest.ipcIndex) : `+${n}`,
+      newValue: newest ? formatSyncIndex(newest.ipcIndex) : `+${n}`,
       oldDate: null,
       newDate: newest?.date?.slice(0, 10) ?? null,
     });
@@ -912,16 +1002,20 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
     });
 
+    await runSyncStepIfStale("yahoo_fx_usd", stale, "Yahoo USD/CLP", stepErrors, state!, cl, async () => {
+      await runYahooFxUsd(state!, syncChanges, stepNotes);
+    });
+    await runSyncStepIfStale("stocks_nyse", stale, "NYSE stocks", stepErrors, state!, cl, async () => {
+      await runStocksNyse(state!, syncChanges);
+    });
+    await runSyncStepIfStale("crypto_eod", stale, "Crypto EOD", stepErrors, state!, cl, async () => {
+      await runCryptoEod(cl, state!, syncChanges);
+    });
+
     const bcentral = loadBcentralCredentials();
     if (!bcentral) {
       console.warn("sync: BCentral — skip (set BCENTRAL_EMAIL and BCENTRAL_PASSWORD in .env).");
     } else {
-      await runSyncStepIfStale("stocks_nyse", stale, "NYSE stocks", stepErrors, state!, cl, async () => {
-        await runStocksNyse(state!, syncChanges);
-      });
-      await runSyncStepIfStale("crypto_eod", stale, "Crypto EOD", stepErrors, state!, cl, async () => {
-        await runCryptoEod(cl, state!, syncChanges);
-      });
       await runSyncStepIfStale("sbif_usd", stale, "BCentral USD", stepErrors, state!, cl, async () => {
         await runSbifUsd(cl, state!, bcentral, syncChanges, stepErrors, stepNotes);
       });

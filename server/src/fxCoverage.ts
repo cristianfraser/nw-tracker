@@ -1,10 +1,11 @@
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { listYahooFxRejectedAsc } from "./fxYahooRejectedDb.js";
 import { fxMonthEndForBalanceUsd, fxRowOnOrBefore } from "./fxRates.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 
-/** Minimum daily (non-month-end) rows expected after BCentral backfill. */
+/** Minimum daily rows expected after Yahoo CLP=X EOD backfill (~252 NYSE sessions/year). */
 const SPARSE_DAILY_MIN = 500;
 
 export type FxCoverage = {
@@ -13,12 +14,14 @@ export type FxCoverage = {
   missing_count: number;
   fx_min: string | null;
   fx_max: string | null;
-  /** Rows that are not calendar month-ends (BCentral daily observado). */
+  /** Rows that are not calendar month-ends (Yahoo CLP=X EOD daily bars). */
   daily_count: number;
   row_count: number;
   /** True when daily history is thin or largest gap exceeds 7 days. */
   is_sparse: boolean;
   max_gap_days: number;
+  /** Yahoo CLP=X bars rejected at ingest (conversions use prior good fx_daily row). */
+  yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[];
 };
 
 function fxDailyStats(): {
@@ -73,6 +76,7 @@ export function buildFxCoverage(): FxCoverage {
       missing_count: 1,
       ...stats,
       is_sparse: true,
+      yahoo_rejected: listYahooFxRejectedForCoverage(),
     };
   }
 
@@ -95,7 +99,20 @@ export function buildFxCoverage(): FxCoverage {
     missing_count,
     ...stats,
     is_sparse,
+    yahoo_rejected: listYahooFxRejectedForCoverage(),
   };
+}
+
+function listYahooFxRejectedForCoverage(): { date: string; raw_clp_per_usd: number; reason: string }[] {
+  try {
+    return listYahooFxRejectedAsc().map((r) => ({
+      date: r.date,
+      raw_clp_per_usd: r.raw_clp_per_usd,
+      reason: r.reason,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /** True when any non-zero deposit event lacks FX on or before its date. */

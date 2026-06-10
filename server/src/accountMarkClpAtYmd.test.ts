@@ -16,6 +16,7 @@ import { db } from "./db.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
 
 function ensureDeptoSheetInDb(): void {
   if (deptoDividendosSheetRowCount() > 0) return;
@@ -111,6 +112,27 @@ describe("accountMarkClpAtYmd property", () => {
     expect(Math.abs(cur.nominal_pl ?? 0)).toBeGreaterThan(0);
   });
 
+  it("current-month perf row is dated Chile today", () => {
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    if (!perf?.monthly.length) return;
+
+    const today = chileCalendarTodayYmd();
+    const curMk = monthKeyFromYmd(today);
+    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    if (!cur) return;
+
+    expect(cur.as_of_date).toBe(today);
+  });
+
   it("reconciled dashboard MTD non-zero when UF moved", () => {
     const row = db
       .prepare(
@@ -144,6 +166,58 @@ describe("accountMarkClpAtYmd property", () => {
     );
     expect(reconciled.delta_month_clp).not.toBe(0);
     expect(reconciled.delta_month_clp).toBeCloseTo(current.value_clp - prior.value_clp, 0);
+  });
+});
+
+describe("depto mortgage live perf row", () => {
+  it("current-month row is dated today with UF fields after live patch", () => {
+    ensureDeptoSheetInDb();
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__mortgage' OR g.slug = 'mortgage'
+         LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    if (!perf?.monthly.length) return;
+
+    const today = chileCalendarTodayYmd();
+    const curMk = monthKeyFromYmd(today);
+    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    if (!cur) return;
+
+    expect(cur.as_of_date).toBe(today);
+    expect(cur.uf_clp_day).not.toBeNull();
+    expect(Number.isFinite(cur.uf_clp_day)).toBe(true);
+    expect(cur.closing_balance_uf).not.toBeNull();
+    expect(Number.isFinite(cur.closing_balance_uf)).toBe(true);
+  });
+});
+
+describe("depto valuation timeseries live last point", () => {
+  it("property chart last point is dated Chile today", () => {
+    ensureDeptoSheetInDb();
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const ts = getAccountValuationTimeseries(row.id, "clp");
+    if (!ts?.accounts.points.length) return;
+
+    const today = chileCalendarTodayYmd();
+    const last = ts.accounts.points.reduce((a, b) =>
+      String(a.as_of_date).localeCompare(String(b.as_of_date)) >= 0 ? a : b
+    );
+    expect(String(last.as_of_date)).toBe(today);
   });
 });
 

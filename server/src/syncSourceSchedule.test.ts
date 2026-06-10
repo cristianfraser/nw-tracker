@@ -48,4 +48,10 @@ describe("attachSyncSourceSchedule", () => {
       timeZone: "America/Santiago",
     });
   });
+
+  it("fintual carry-over stale polls immediately before the evening window", () => {
+    const sched = attachSyncSourceSchedule("fintual", cl("2026-06-10", 8), true, false);
+    expect(sched.next_sync_imminent).toBe(true);
+    expect(sched.next_sync).toBeNull();
+  });
 });

@@ -64,7 +64,7 @@ export function upsertFundUnitSpotPreservingHistory(opts: {
   dryRun: boolean;
   carryNote?: string;
 }): { gapDaysFilled: number } {
-  const px = Math.round(opts.unitValueClp * 100) / 100;
+  const px = Math.round(opts.unitValueClp * 10000) / 10000;
   const prev = latestFundUnitRow(opts.seriesKey);
   let gapDaysFilled = 0;
 

@@ -10,6 +10,7 @@ export type SyncChangeGroup =
   | "sbif_ipc"
   | "fintual"
   | "stocks_nyse"
+  | "yahoo_fx_usd"
   | "crypto_eod"
   | "tickers";
 
@@ -42,27 +43,58 @@ export type SyncRunLogOptions = {
 };
 
 /** CLP balance integers for sync log lines. */
+function normalizeIntlNum(s: string): string {
+  return s.replace(/\u202f|\u2007|\u00a0/g, " ").trim();
+}
+
+const intEsCl0 = new Intl.NumberFormat("es-CL", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+const intEsCl2 = new Intl.NumberFormat("es-CL", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const intEsCl2to4 = new Intl.NumberFormat("es-CL", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+const intEsClDecimal = new Intl.NumberFormat("es-CL", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 4,
+});
+
+/** Whole CLP amounts (e.g. `28.824.791`). */
 export function formatSyncClp(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return String(Math.round(n));
+  return normalizeIntlNum(intEsCl0.format(Math.round(n)));
 }
 
-/** FX rate (USD/EUR per CLP) with two decimals. */
+/** FX rate (USD/EUR per CLP) with two decimals (e.g. `981,59`). */
 export function formatSyncFxRate(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return normalizeIntlNum(intEsCl2.format(n));
 }
 
-/** UF (CLP per UF) with two decimals. */
+/** UF (CLP per UF) with two decimals (e.g. `39.123,45`). */
 export function formatSyncUfRate(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return normalizeIntlNum(intEsCl2.format(n));
 }
 
-/** Equity close in USD. */
+/** Equity / crypto close in USD (e.g. `733,73`). */
 export function formatSyncUsdClose(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  return normalizeIntlNum(intEsCl2to4.format(n));
+}
+
+/** Index / ratio with optional decimals (e.g. IPC). */
+export function formatSyncIndex(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return normalizeIntlNum(intEsClDecimal.format(n));
 }
 
 const FLAT_GROUP_ORDER: SyncChangeGroup[] = [
@@ -77,6 +109,7 @@ const FLAT_GROUP_ORDER: SyncChangeGroup[] = [
 const SECTION_GROUPS: { group: SyncChangeGroup; title: string }[] = [
   { group: "fintual", title: "Fintual" },
   { group: "stocks_nyse", title: "NYSE stocks" },
+  { group: "yahoo_fx_usd", title: "Yahoo USD/CLP" },
   { group: "crypto_eod", title: "Crypto" },
   { group: "tickers", title: "Tickers" },
 ];

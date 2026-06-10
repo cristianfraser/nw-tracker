@@ -70,6 +70,8 @@ function fintualCertPositionMeta(
   if (cuotas != null && cuotas > 1e-9 && px != null && px > 0 && pxDay) {
     out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
     out.afp_override_value_as_of = pxDay;
+  }
+  if (px != null && px > 0 && pxDay) {
     out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
   }
   return out;
