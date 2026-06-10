@@ -28,7 +28,7 @@ export type NavTreeNodeDto = {
   exclude_from_parent_total: boolean;
   /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo); `liability_group` = Pasivos root. */
   group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
-  /** Long zero tail: keep in nav for bucket chart history; hide from strips / hierarchy tables. */
+  /** Long zero tail: omitted from asset sidebar nav (still in bucket chart history via consolidated APIs). */
   chart_inactive?: boolean;
   children: NavTreeNodeDto[];
 };
@@ -114,7 +114,7 @@ function buildNode(
       const child = groupsById.get(item.child_group_id);
       if (child) children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta));
     } else if (item.item_kind === "account" && item.account_id != null) {
-      const chartInactive = accountChartInactive(item.account_id);
+      if (accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
@@ -138,7 +138,6 @@ function buildNode(
         kind_slug: null,
         dashboard_bucket_slug: null,
         exclude_from_parent_total: false,
-        ...(chartInactive ? { chart_inactive: true } : {}),
         color_rgb,
         color: rgbTripletToCss(color_rgb),
         children: [],

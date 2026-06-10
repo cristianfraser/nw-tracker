@@ -33,7 +33,7 @@ import { importCheckingCartolasFromDir } from "../src/checkingCartolaImport.js";
 import { organizeCheckingCartolaXlsxFromInbox } from "../src/checkingCartolaInbox.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
-import { processFintualCertificadoInboxPdf } from "../src/fintualCertificadoInbox.js";
+import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,22 +84,22 @@ function main(): void {
   const skipFintualCert = hasFlag("skip-fintual-cert");
 
   if (!skipFintualCert) {
-    console.log("\n=== Fintual certificado de transacciones (PDF → CSV) ===");
+    console.log("\n=== Fintual certificado de transacciones (CSV install) ===");
     try {
-      const r = processFintualCertificadoInboxPdf({ dryRun });
-      if (r.pdfPath) {
+      const r = processFintualCertificadoInboxCsv({ dryRun });
+      if (r.inboxPath) {
         console.log(
           `  ${r.rows} row(s) → ${r.csvPath}${r.archivedTo ? `; archived ${r.archivedTo}` : ""}`
         );
       } else {
-        console.log("  (no certificado PDF in cfraser/inbox/)");
+        console.log("  (no certificado CSV in cfraser/inbox/)");
       }
     } catch (e) {
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);
     }
   } else {
-    console.log("\n=== Fintual certificado PDF (skipped) ===");
+    console.log("\n=== Fintual certificado CSV (skipped) ===");
   }
 
   if (!skipParse) {

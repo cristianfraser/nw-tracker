@@ -1,7 +1,9 @@
 /**
  * Loads monthly history from cfraser.xlsx + companion CSVs in cfraser/ (Numbers CSV export).
  *
- * - Wipes prior import accounts/valuations/movements, uf_daily, import:excel income/expense.
+ * - **Default (DB already has book valuations):** incremental — no wipe, no sheet valuations/movements rebuild.
+ *   Use **`--force-wipe`** for full rebuild from sheet (bootstrap empty DB or intentional reset).
+ * - **Bootstrap / `--force-wipe`:** wipes prior import accounts/valuations/movements, uf_daily, import:excel income/expense.
  *   Does **not** wipe `fx_daily` / `eur_daily` (BCentral backfill + sync are the only sources).
  * - Valuations from xlsx; retirement cumulative deps from Table 1-3; brokerage/cash movements from CSVs.
  * - **Real estate (property) capital flows:** one movement per payment from **`cfraser/depto-dividendos.csv`**
@@ -110,6 +112,7 @@ import {
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { ufClpBySnapshotDatesAsc } from "../src/fxRates.js";
 import { applyCryptoValuationsFromCoinHoldings } from "../src/cryptoValuation.js";
+import { assetGroupBySlug } from "../src/assetGroupTree.js";
 import { assetGroupIdForImportKind } from "../src/portfolioGroupTree.js";
 import { db } from "../src/db.js";
 import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
@@ -147,6 +150,7 @@ import {
 import {
   FINTUAL_CERT_MOVEMENT_NOTE_PREFIX,
   FINTUAL_CERT_V2_ACCOUNT_NAMES,
+  assetGroupIdForFintualCertV2Notes,
   FINTUAL_CERT_V2_CATEGORY_SLUG,
   fintualCertV2SeriesKeyFromImportNotes,
   matchFintualCertGoalV2,
@@ -165,7 +169,9 @@ import {
   tryReadModeloCotizacionesRows,
 } from "../src/afpModeloPriorCuotasBackfill.js";
 import { afpCuotasCumulativeThroughDate } from "../src/afpUnoValuation.js";
+import { importExcelShouldSheetRebuild } from "../src/importExcelBootstrap.js";
 import { seedNavTree } from "../src/seedNavTree.js";
+import { reseedAllAccountSyncSources } from "../src/accountSyncSources.js";
 import {
   computeOrphanUnoCertMonthMovements,
   firstAfpCumulativeMovementMonth,
@@ -1158,6 +1164,9 @@ async function main() {
     process.exit(1);
   }
 
+  const sheetRebuild = importExcelShouldSheetRebuild();
+  const ufCsv = resolveBundledUfSiiDailyCsvPath();
+
   const wipe = db.transaction(() => {
     db.exec(`
       DELETE FROM valuations WHERE account_id IN (
@@ -1191,9 +1200,43 @@ async function main() {
     `);
     deleteEquityDailyForImportTickers();
   });
-  wipe();
+  if (sheetRebuild) {
+    wipe();
+    console.log("import:excel: full sheet rebuild (bootstrap or --force-wipe)");
+  } else {
+    console.log(
+      "import:excel: incremental mode (existing book data); use --force-wipe to rebuild valuations/movements from sheet"
+    );
+  }
 
   const leafBucketId = (kindSlug: string) => assetGroupIdForImportKind(kindSlug);
+
+  /** Excel import keys that must not use `leafBucketId('apv')` (ambiguous → apv-b leaf). */
+  const EXCEL_IMPORT_LEAF_ASSET_GROUP_SLUG: Record<string, string> = {
+    apv_a: "retirement_apv_a__apv",
+    apv_a_principal: "retirement_apv_a__apv",
+    apv_b: "retirement_apv_b__apv",
+    afp: "retirement_afp_afc__afp",
+    afc: "retirement_afp_afc__afc",
+  };
+
+  const EXCEL_PORTFOLIO_KIND_SLUG: Record<string, string> = {
+    apv_a: "apv_a",
+    apv_a_principal: "apv_a",
+    apv_b: "apv_b",
+    afp: "afp",
+    afc: "afc",
+  };
+
+  function assetGroupIdForExcelKey(categorySlug: string, importKey: string): number {
+    const leaf = EXCEL_IMPORT_LEAF_ASSET_GROUP_SLUG[importKey];
+    if (leaf) {
+      const g = assetGroupBySlug(leaf);
+      if (!g) throw new Error(`import:excel: missing asset group ${leaf} for key=${importKey}`);
+      return g.id;
+    }
+    return leafBucketId(categorySlug);
+  }
 
   const EXCEL_ACCOUNT_EQUITY_TICKER: Record<string, string> = {
     spy: "SPY",
@@ -1231,16 +1274,17 @@ async function main() {
     const exclude = excludeFromGroupTotalsForCategory(slug);
     const equityTicker = EXCEL_ACCOUNT_EQUITY_TICKER[key] ?? EXCEL_ACCOUNT_EQUITY_TICKER[slug] ?? null;
     const fundSeriesKey = EXCEL_FUND_SERIES_KEY[key] ?? null;
-    const bucketId = leafBucketId(slug);
+    const bucketId = assetGroupIdForExcelKey(slug, key);
     const row = db.prepare("SELECT id FROM accounts WHERE notes = ?").get(note) as { id: number } | undefined;
     if (row) {
       updAccName.run(name, row.id);
       updAccAssetGroup.run(bucketId, row.id);
+      const pgKind = EXCEL_PORTFOLIO_KIND_SLUG[key] ?? key;
       const pgId = db
         .prepare(
           `SELECT id FROM portfolio_groups WHERE kind_slug = ? ORDER BY LENGTH(slug) DESC LIMIT 1`
         )
-        .get(key) as { id: number } | undefined;
+        .get(pgKind) as { id: number } | undefined;
       if (pgId) {
         db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(
           pgId.id,
@@ -1267,7 +1311,7 @@ async function main() {
       | { id: number }
       | undefined;
     const fundSeriesKey = fintualCertV2SeriesKeyFromImportNotes(importNotes);
-    const bucketId = leafBucketId(categorySlug);
+    const bucketId = assetGroupIdForFintualCertV2Notes(importNotes);
     if (row) {
       updAccName.run(displayName, row.id);
       updAccAssetGroup.run(bucketId, row.id);
@@ -1479,6 +1523,41 @@ async function main() {
   const veaEod = eodByTicker.get("VEA") ?? null;
 
   const tx = db.transaction(() => {
+    if (!sheetRebuild) {
+      importFundUnitDailyCsv(cfraserDir);
+      importIpcDailyCsv(cfraserDir);
+      const nBundledUf = importUfDailyCsvFile(ufCsv, upsertUf);
+      if (nBundledUf === 0) {
+        console.warn(
+          `import:excel: incremental — no UF rows loaded from ${ufCsv} (run npm run fetch-uf -w nw-tracker-server)`
+        );
+      } else {
+        console.log(`import:excel: incremental — UF rows upserted: ${nBundledUf}`);
+      }
+      for (const sym of EQUITY_DAILY_IMPORT_TICKERS) {
+        const ser = eodByTicker.get(sym);
+        if (!ser) continue;
+        const nd = upsertEquityDailySeries(sym, ser);
+        if (nd > 0) console.log(`import:excel: equity_daily ${sym} ${nd} rows`);
+      }
+      const ccFromPdf = ccInstallmentLedgerRowCount(accounts.credit_card) > 0;
+      let tcPdfSyncN = 0;
+      if (ccFromPdf) {
+        tcPdfSyncN = upsertCreditCardValuationsFromLedger(accounts.credit_card);
+      }
+      const cryptoVal = applyCryptoValuationsFromCoinHoldings({
+        btcAccountId: accounts.bitcoin,
+        ethAccountId: accounts.eth,
+        dryRun: false,
+      });
+      console.log(
+        `import:excel: incremental — skipped sheet valuations and movements` +
+          (tcPdfSyncN > 0 ? `; TC ledger valuations synced: ${tcPdfSyncN}` : "") +
+          `; crypto MTM rows BTC ${cryptoVal.btcRows} ETH ${cryptoVal.ethRows}`
+      );
+      return;
+    }
+
     let valCount = 0;
     let movCount = 0;
     const ccFromPdf = ccInstallmentLedgerRowCount(accounts.credit_card) > 0;
@@ -1643,7 +1722,6 @@ async function main() {
 
     }
 
-    const ufCsv = resolveBundledUfSiiDailyCsvPath();
     const nBundledUf = importUfDailyCsvFile(ufCsv, upsertUf);
     if (nBundledUf === 0) {
       console.error(
@@ -1838,6 +1916,20 @@ async function main() {
         insMov,
         apv_a_principal,
         "import:excel|cumulative-depositado|Table1-3|APV-a|pre-fintual-principal"
+      );
+      const transferYmd = monthEndDate("2019-05");
+      const preTransfer = byMonth.get("2019-04")?.apv_a;
+      if (preTransfer == null || !Number.isFinite(preTransfer) || preTransfer <= 0) {
+        throw new Error(
+          "import:excel: Table1-3 apv_a balance missing for 2019-04; cannot record pre-Fintual transfer on principal"
+        );
+      }
+      emitSignedMonthlyMovement(
+        insMov,
+        apv_a_principal,
+        -preTransfer,
+        transferYmd,
+        "import:excel|transfer|pre-fintual-apv-a|to-fintual|balance-clp"
       );
     }
     if (!useFintualCertificado || fintualApvACutMk == null) {
@@ -2067,6 +2159,11 @@ async function main() {
   seedNavTree();
   console.log("import:excel: re-seeded portfolio nav tree (sidebar + dashboard bucket cards)");
 
+  const syncLinks = reseedAllAccountSyncSources();
+  console.log(
+    `import:excel: re-seeded account_sync_sources (${syncLinks.accounts} accounts, ${syncLinks.links} links)`
+  );
+
   const afpFundRows = db
     .prepare(`SELECT COUNT(*) AS c FROM fund_unit_daily WHERE series_key = 'afp_uno_cuota_a'`)
     .get() as { c: number };
@@ -2082,7 +2179,7 @@ async function main() {
   if ((fxDailyCount?.c ?? 0) < 500) {
     console.warn(
       `import:excel: fx_daily has ${fxDailyCount?.c ?? 0} row(s). USD/EUR are not loaded from Excel. Run: ` +
-        "npm run backfill:sbif-fx-eur -w nw-tracker-server"
+        "npm run backfill:yahoo-fx-usd -w nw-tracker-server (conversions) and npm run backfill:sbif-fx-eur -w nw-tracker-server (BCentral reference + EUR)"
     );
   }
 

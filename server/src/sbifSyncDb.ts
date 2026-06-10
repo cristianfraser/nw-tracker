@@ -20,6 +20,11 @@ const upsertFx = db.prepare(`
   ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd
 `);
 
+const upsertFxBcentral = db.prepare(`
+  INSERT INTO fx_daily_bcentral (date, clp_per_usd) VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd
+`);
+
 const upsertEur = db.prepare(`
   INSERT INTO eur_daily (date, clp_per_eur) VALUES (?, ?)
   ON CONFLICT(date) DO UPDATE SET clp_per_eur = excluded.clp_per_eur
@@ -65,6 +70,16 @@ export function upsertFxRows(rows: { date: string; clpPerUsd: number }[], dryRun
   return n;
 }
 
+export function upsertFxBcentralRows(rows: { date: string; clpPerUsd: number }[], dryRun: boolean): number {
+  if (dryRun) return rows.length;
+  let n = 0;
+  for (const r of rows) {
+    upsertFxBcentral.run(r.date, r.clpPerUsd);
+    n++;
+  }
+  return n;
+}
+
 export function upsertEurRows(rows: { date: string; clpPerEur: number }[], dryRun: boolean): number {
   if (dryRun) return rows.length;
   let n = 0;
@@ -85,10 +100,18 @@ export function maxEurDate(): string | null {
   return r?.d ?? null;
 }
 
-/** Latest stored row on or before `asOfYmd` (ignores future month-end placeholders). */
+/** Latest Yahoo CLP=X EOD row on or before `asOfYmd`. */
 export function maxFxDateOnOrBefore(asOfYmd: string): string | null {
   const r = db
     .prepare(`SELECT MAX(date) AS d FROM fx_daily WHERE date <= ?`)
+    .get(asOfYmd) as { d: string | null };
+  return r?.d ?? null;
+}
+
+/** Latest BCentral dólar observado row on or before `asOfYmd`. */
+export function maxFxBcentralDateOnOrBefore(asOfYmd: string): string | null {
+  const r = db
+    .prepare(`SELECT MAX(date) AS d FROM fx_daily_bcentral WHERE date <= ?`)
     .get(asOfYmd) as { d: string | null };
   return r?.d ?? null;
 }

@@ -12,7 +12,7 @@ export type ChileWallClock = {
   monthKey: string;
 };
 
-export function chileWallClockNow(): ChileWallClock {
+export function chileWallClockAt(now: Date): ChileWallClock {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Santiago",
     year: "numeric",
@@ -21,7 +21,7 @@ export function chileWallClockNow(): ChileWallClock {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).formatToParts(new Date());
+  }).formatToParts(now);
   const g = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value;
   const y = g("year");
   const m = g("month");
@@ -45,6 +45,10 @@ export function chileWallClockNow(): ChileWallClock {
     minute,
     monthKey: `${y}-${m}`,
   };
+}
+
+export function chileWallClockNow(): ChileWallClock {
+  return chileWallClockAt(new Date());
 }
 
 /** Calendar `YYYY-MM-DD` in America/Santiago (DST-safe via Intl). */

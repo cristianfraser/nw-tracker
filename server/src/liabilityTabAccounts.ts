@@ -1,5 +1,6 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
+import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
@@ -95,6 +96,31 @@ export function ensureMortgageLiabilityView(): number {
      VALUES (?, ?, 'liability_view|mortgage', 'liability_view', ?, ?)`
   ).run(leaf.id, master.name, master.id, master.color_rgb);
   return 1;
+}
+
+/** One `credit_card_groups` issuer page (e.g. Santander, BCI) — liability_view rows for that issuer only. */
+export function listCreditCardIssuerTabAccountRows(issuerSlug: string): GroupTabAccountRow[] | null {
+  if (!getCreditCardGroupBySlug(issuerSlug)) return null;
+  ensureCreditCardLiabilityViews();
+  const masterIds = listCreditCardGroupMasterAccountIds(issuerSlug);
+  if (!masterIds.length) return [];
+
+  const ph = masterIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug,
+              a.notes AS notes, a.exclude_from_group_totals AS exclude_from_group_totals,
+              a.source_account_id AS source_account_id
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.account_kind = 'liability_view'
+         AND a.source_account_id IN (${ph})
+         AND (a.notes IS NULL OR a.notes != ?)
+       ORDER BY a.id, a.name`
+    )
+    .all(...masterIds, NOTE_STOCKS_LEGACY) as (GroupTabAccountRow & { source_account_id: number })[];
+
+  return rows.map(({ source_account_id: _src, ...row }) => row);
 }
 
 /** Pasivos tab: one liability_view row per operational debt (CC + mortgage). */

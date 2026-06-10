@@ -1,3 +1,4 @@
+import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
@@ -85,6 +86,18 @@ export function ccLedgerStatementClosingPointsClp(
   }));
 }
 
+/** Ledger month-end closes for many CC accounts (one billing-detail cache pass per account). */
+export function ccLedgerStatementClosingPointsClpForAccounts(
+  accountIds: readonly number[]
+): Map<number, { as_of_date: string; value_clp: number }[]> {
+  const out = new Map<number, { as_of_date: string; value_clp: number }[]>();
+  for (const id of accountIds) {
+    const pts = ccLedgerStatementClosingPointsClp(id);
+    if (pts?.length) out.set(id, pts);
+  }
+  return out;
+}
+
 /**
  * Persists month-end `valuations` aligned with credit-card **balance total** (not cupo-only).
  * Run after ledger + billing recompute so dashboard / charts match account detail.
@@ -120,6 +133,10 @@ export function upsertCreditCardValuationsFromLedger(accountId: number): number 
       value_clp: liveToday,
     });
     n += 1;
+    invalidateAggregationForAccountDate(accountId, today);
+  }
+  if (pts.length > 0) {
+    invalidateAggregationForAccountDate(accountId, pts[0]!.as_of_date);
   }
   return n;
 }

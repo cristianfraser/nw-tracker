@@ -54,4 +54,6 @@ export interface DashboardAccountStats {
     value_as_of: string | null;
     value_per_unit_clp: number | null;
   } | null;
+  /** True when any linked global sync source is currently stale. */
+  sync_stale: boolean;
 }

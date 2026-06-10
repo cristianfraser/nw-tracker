@@ -5,6 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assetGroupBySlug } from "./assetGroupTree.js";
+import { assetGroupIdForImportKind } from "./portfolioGroupTree.js";
 
 export const FINTUAL_CERT_V2_GOAL_IDS: Record<string, string> = {
   "2859": "import:fintual|cert|key=risky_norris",
@@ -23,8 +25,9 @@ export const FINTUAL_CERT_V2_ACCOUNT_NAMES: Record<string, string> = {
 export const FINTUAL_CERT_V2_CATEGORY_SLUG: Record<string, string> = {
   "import:fintual|cert|key=reserva2": "fondo_reserva",
   "import:fintual|cert|key=risky_norris": "fintual_risky_norris",
-  "import:fintual|cert|key=apv_a": "apv",
-  "import:fintual|cert|key=apv_b": "apv",
+  /** Distinct kind slugs — `apv` alone matches both `retirement_apv_a__apv` and `retirement_apv_b__apv` (tie → apv-b). */
+  "import:fintual|cert|key=apv_a": "apv_a",
+  "import:fintual|cert|key=apv_b": "apv_b",
 };
 
 export const FINTUAL_CERT_V2_SERIES_KEY: Record<string, string> = {
@@ -35,6 +38,24 @@ export const FINTUAL_CERT_V2_SERIES_KEY: Record<string, string> = {
 };
 
 export const FINTUAL_CERT_V2_TRACKED_NOTES = new Set(Object.keys(FINTUAL_CERT_V2_ACCOUNT_NAMES));
+
+/** Leaf `asset_groups` for APV régimen — not `leafAssetGroupIdForKindSlug('apv')` (ties to apv-b). */
+const FINTUAL_CERT_V2_APV_LEAF_ASSET_GROUP_SLUG: Partial<Record<string, string>> = {
+  "import:fintual|cert|key=apv_a": "retirement_apv_a__apv",
+  "import:fintual|cert|key=apv_b": "retirement_apv_b__apv",
+};
+
+export function assetGroupIdForFintualCertV2Notes(importNotes: string): number {
+  const leafSlug = FINTUAL_CERT_V2_APV_LEAF_ASSET_GROUP_SLUG[importNotes];
+  if (leafSlug) {
+    const g = assetGroupBySlug(leafSlug);
+    if (!g) throw new Error(`missing asset group ${leafSlug} for ${importNotes}`);
+    return g.id;
+  }
+  const kind = FINTUAL_CERT_V2_CATEGORY_SLUG[importNotes];
+  if (!kind) throw new Error(`Unknown Fintual cert v2 notes: ${importNotes}`);
+  return assetGroupIdForImportKind(kind);
+}
 
 export const FINTUAL_CERT_MOVEMENT_NOTE_PREFIX = "import:fintual|cert|movement";
 
@@ -69,7 +90,7 @@ export function loadFintualCertV2GoalIdOverrides(): Record<string, string> {
   }
 }
 
-/** Infer Fintual goal id from certificado investment name (PDF / CSV). */
+/** Infer Fintual goal id from certificado investment name (CSV). */
 export function fintualCertGoalIdFromInvestmentName(name: string): string | null {
   const n = name
     .toLowerCase()

@@ -25,6 +25,9 @@ import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import { isCashSavingsValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
+import { movementBoundsByAccountIds } from "./movementBounds.js";
+import { getAggregationCached } from "./aggregationCache.js";
+import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
 
@@ -34,6 +37,8 @@ export type GroupTabAccountRow = {
   bucket_slug: string;
   notes?: string | null;
   exclude_from_group_totals: number;
+  /** Long trailing-zero tail; omit from nav child cards only (charts/tables keep the series). */
+  chart_inactive?: boolean;
 };
 
 function convertTs(clp: number, asOf: string, unit: TsUnit): number {
@@ -141,12 +146,7 @@ function movementBalanceMonthlyPerfRows(
   categorySlug: string,
   unit: TsUnit
 ): AccountMonthlyPerformanceRow[] {
-  const bounds = db
-    .prepare(
-      `SELECT MIN(occurred_on) AS min_d, MAX(occurred_on) AS max_d
-       FROM movements WHERE account_id = ?`
-    )
-    .get(accountId) as { min_d: string | null; max_d: string | null } | undefined;
+  const bounds = movementBoundsByAccountIds([accountId]).get(accountId);
   if (!bounds?.min_d || !bounds.max_d) return [];
 
   const today = chileCalendarTodayYmd();
@@ -205,15 +205,9 @@ function pickAccountMonthlyRowForConsolidation(
   monthKey: string
 ): AccountMonthlyPerformanceRow {
   if (monthRows.length === 1) return monthRows[0]!;
-  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
-  if (monthKey === currentMk) {
-    const picked = pickRepresentativeMonthlyPerfRow([...monthRows], monthKey);
-    const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
-    return { ...picked, net_capital_flow: totalFlow };
-  }
-  return monthRows.reduce((best, r) =>
-    !best || String(r.as_of_date).localeCompare(String(best.as_of_date)) > 0 ? r : best
-  )!;
+  const picked = pickRepresentativeMonthlyPerfRow([...monthRows], monthKey);
+  const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
+  return { ...picked, net_capital_flow: totalFlow };
 }
 
 /**
@@ -402,6 +396,29 @@ export function getGroupConsolidatedMonthlyPerfForRows(
   rows: readonly GroupTabAccountRow[],
   groupSlug: string,
   unit: TsUnit = "clp"
+): ConsolidatedMonthlyPerfRow[] {
+  return withAccountValuationTsCache(() =>
+    getGroupConsolidatedMonthlyPerfForRowsInner(rows, groupSlug, unit)
+  );
+}
+
+function getGroupConsolidatedMonthlyPerfForRowsInner(
+  rows: readonly GroupTabAccountRow[],
+  groupSlug: string,
+  unit: TsUnit = "clp"
+): ConsolidatedMonthlyPerfRow[] {
+  // Consolidation result depends on the exact `rows` set (accounts + their bucket slugs).
+  // Cache key must include a stable fingerprint of inputs to avoid cross-tab collisions
+  // (e.g. brokerage_mutual_funds vs brokerage_acciones).
+  const rowsKey = rows.map((r) => `${r.account_id}:${r.bucket_slug}`).join("|");
+  const key = `group.consolidated_monthly|${groupSlug}|${unit}|${rowsKey}`;
+  return getAggregationCached(key, () => buildGroupConsolidatedMonthlyPerfUncached(rows, groupSlug, unit));
+}
+
+function buildGroupConsolidatedMonthlyPerfUncached(
+  rows: readonly GroupTabAccountRow[],
+  groupSlug: string,
+  unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
   const payloads = buildConsolidationPayloads(rows, groupSlug, unit);
   const consolidated = consolidateGroupMonthlyPerf(

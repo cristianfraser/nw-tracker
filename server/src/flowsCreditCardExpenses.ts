@@ -60,6 +60,11 @@ import { db } from "./db.js";
 
 import { enrichFlowLinesWithOriginLabels } from "./ccExpenseOriginLabel.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
+import {
+  enrichFlowLinesWithBigGroups,
+  listCcExpenseBigGroups,
+  type CcExpenseBigGroupRow,
+} from "./ccExpenseBigGroups.js";
 import { dedupeFlowCcExpenseLines } from "./ccExpenseLineDedupe.js";
 import {
   enrichLinesWithNotaDeCreditoPairing,
@@ -163,6 +168,9 @@ export type FlowCcExpenseLineRow = {
   /** User note for this purchase (shared across cuotas / synthetic total). */
   purchase_notes: string;
 
+  /** Optional big expense group (trip, remodeling, etc.). */
+  big_group_slug: string | null;
+
   /** Display label for origin column (card last4 or account name). */
   origin_label: string;
 
@@ -176,7 +184,7 @@ export type FlowCcExpenseLineRow = {
 
 export type FlowCcExpenseLineRowDraft = Omit<
   FlowCcExpenseLineRow,
-  "origin_label" | "purchase_key" | "purchase_notes"
+  "origin_label" | "purchase_key" | "purchase_notes" | "big_group_slug"
 > & {
   /** Checking-only: distinct purchase_key for deposit-paired portion of a movement. */
   checking_purchase_portion?: "deposit";
@@ -244,6 +252,8 @@ export type FlowsCreditCardExpensesPayload = {
   account_ids: number[];
 
   categories: CcExpenseCategoryRow[];
+
+  big_groups: CcExpenseBigGroupRow[];
 
   lines: FlowCcExpenseLineRow[];
 
@@ -315,7 +325,9 @@ export function aggregateGastosFromLines(
 
   chartCategorySlugs: readonly string[],
 
-  mode: CcInstallmentGastosMode = "split"
+  mode: CcInstallmentGastosMode = "split",
+
+  excludedBigGroupSlugs?: ReadonlySet<string>
 
 ): {
 
@@ -378,9 +390,14 @@ export function aggregateGastosFromLines(
           lineCountsTowardGastosSum(ln, mode, countsCategory)
         ) {
           sumBucket.gastos += amount;
-          const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
-          catBucket.set(ln.category_slug, (catBucket.get(ln.category_slug) ?? 0) + amount);
-          byMonthCategory.set(sumMonth, catBucket);
+          const skipChartCategory =
+            ln.big_group_slug != null &&
+            excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
+          if (!skipChartCategory) {
+            const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
+            catBucket.set(ln.category_slug, (catBucket.get(ln.category_slug) ?? 0) + amount);
+            byMonthCategory.set(sumMonth, catBucket);
+          }
         }
       } else {
         sumBucket.abonos += amount;
@@ -871,7 +888,9 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
 
   if (accountIds.length === 0) {
     const checkingLines = enrichFlowLinesWithOriginLabels(
-      enrichFlowLinesWithPurchaseNotes(loadCheckingGastosLinesForExpenses())
+      enrichFlowLinesWithBigGroups(
+        enrichFlowLinesWithPurchaseNotes(loadCheckingGastosLinesForExpenses())
+      )
     );
     const agg = aggregateGastosFromLines(checkingLines, chartCategorySlugs);
     const totals = computeFlowsExpenseTotals(checkingLines);
@@ -883,6 +902,8 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
       account_ids: [],
 
       categories,
+
+      big_groups: listCcExpenseBigGroups(),
 
       lines: checkingLines,
 
@@ -899,8 +920,10 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
   const ccLines = buildCcExpenseLines(accountIds);
   const checkingLines = loadCheckingGastosLinesForExpenses();
   const lines = enrichFlowLinesWithOriginLabels(
-    enrichFlowLinesWithPurchaseNotes(
-      enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])
+    enrichFlowLinesWithBigGroups(
+      enrichFlowLinesWithPurchaseNotes(
+        enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])
+      )
     )
   );
 
@@ -923,6 +946,8 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
     account_ids: accountIds,
 
     categories,
+
+    big_groups: listCcExpenseBigGroups(),
 
     lines,
 

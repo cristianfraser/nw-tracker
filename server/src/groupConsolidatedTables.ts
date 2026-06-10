@@ -1,6 +1,8 @@
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
-import { accountChartInactive } from "./accountChartInactive.js";
-import { listAccountMovementsForApi, type AccountMovementApiRow } from "./accountMovementsApi.js";
+import {
+  listAccountMovementsForApiBulk,
+  type AccountMovementApiRow,
+} from "./accountMovementsApi.js";
 import {
   consolidateGroupMonthlyPerf,
   getGroupConsolidationAccountMonthly,
@@ -34,10 +36,7 @@ export function getGroupConsolidatedTables(
   unit: TsUnit = "clp",
   tabSubgroup?: string
 ): GroupConsolidatedTablesResponse {
-  let rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
-  if (groupSlug === "net_worth") {
-    rows = rows.filter((r) => !accountChartInactive(r.account_id));
-  }
+  const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const account_monthly = getGroupConsolidationAccountMonthly(rows, groupSlug, unit);
   const consolidated_monthly = consolidateGroupMonthlyPerf(
     account_monthly.map((p) => ({
@@ -50,16 +49,13 @@ export function getGroupConsolidatedTables(
     unit
   );
 
-  const account_movements: GroupConsolidatedTablesResponse["account_movements"] = [];
-  for (const r of rows) {
-    const movements = listAccountMovementsForApi(r.account_id);
-    account_movements.push({
-      account_id: r.account_id,
-      name: r.name,
-      category_slug: r.category_slug,
-      movements,
-    });
-  }
+  const movementsByAccount = listAccountMovementsForApiBulk(rows.map((r) => r.account_id));
+  const account_movements: GroupConsolidatedTablesResponse["account_movements"] = rows.map((r) => ({
+    account_id: r.account_id,
+    name: r.name,
+    category_slug: r.bucket_slug,
+    movements: movementsByAccount.get(r.account_id) ?? [],
+  }));
 
   return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly, account_movements };
 }

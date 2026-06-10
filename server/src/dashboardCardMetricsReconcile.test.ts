@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
+import {
+  balanceChangeDeltaForDashboardRow,
+  reconcileDashboardCardMetrics,
+} from "./dashboardCardMetricsReconcile.js";
 
 describe("reconcileDashboardCardMetrics", () => {
   it("sets lifetime delta to current minus deposits (CLP)", () => {
@@ -25,18 +28,22 @@ describe("reconcileDashboardCardMetrics", () => {
     expect(out.delta_total_usd).toBe(2_500);
   });
 
-  it("sets period delta to current minus prior minus period deposits", () => {
-    const out = reconcileDashboardCardMetrics({
-      deposits_clp: 26_409_638,
-      current_value_clp: 27_652_936,
-      prior_month_close_clp: 30_291_566,
-      deposits_month_clp: -2_700_000,
-      delta_month_clp: 999,
-    });
-    expect(out.delta_month_clp).toBe(61_370);
+  it("balanceChangeDeltaForDashboardRow is current minus prior minus period deposits", () => {
+    const out = balanceChangeDeltaForDashboardRow(
+      {
+        deposits_clp: 26_409_638,
+        current_value_clp: 27_652_936,
+        prior_month_close_clp: 30_291_566,
+        deposits_month_clp: -2_700_000,
+        delta_month_clp: 999,
+      },
+      "month",
+      "clp"
+    );
+    expect(out).toBe(61_370);
   });
 
-  it("skips period reconcile when prior close is missing", () => {
+  it("reconcile leaves period deltas unset when reconcilePeriodDeltas is false", () => {
     const out = reconcileDashboardCardMetrics({
       deposits_clp: 1_000,
       current_value_clp: 1_500,
@@ -47,14 +54,33 @@ describe("reconcileDashboardCardMetrics", () => {
     expect(out.delta_total_clp).toBe(500);
   });
 
-  it("reconciles year period when prior year close exists", () => {
-    const out = reconcileDashboardCardMetrics({
-      deposits_clp: 1_000_000,
-      current_value_clp: 1_200_000,
-      prior_year_close_clp: 1_000_000,
-      deposits_year_clp: 50_000,
-      delta_year_clp: 0,
-    });
+  it("reconcile overwrites period deltas for cash_eqs when reconcilePeriodDeltas is true", () => {
+    const out = reconcileDashboardCardMetrics(
+      {
+        deposits_clp: 1_000_000,
+        current_value_clp: 1_200_000,
+        prior_year_close_clp: 1_000_000,
+        deposits_year_clp: 50_000,
+        delta_year_clp: -9_999_999,
+      },
+      { reconcilePeriodDeltas: true }
+    );
     expect(out.delta_year_clp).toBe(150_000);
+    expect(out.delta_total_clp).toBe(200_000);
+  });
+
+  it("balanceChangeDeltaForDashboardRow for year when prior year close exists", () => {
+    const out = balanceChangeDeltaForDashboardRow(
+      {
+        deposits_clp: 1_000_000,
+        current_value_clp: 1_200_000,
+        prior_year_close_clp: 1_000_000,
+        deposits_year_clp: 50_000,
+        delta_year_clp: 0,
+      },
+      "year",
+      "clp"
+    );
+    expect(out).toBe(150_000);
   });
 });

@@ -171,18 +171,58 @@ function liabilityValuationContext(opts?: { mortgageFromDeptoSheet?: boolean }, 
   };
 }
 
+function liabilityBreakdownForDate(
+  accounts: LiabilityValuationRow[],
+  asOfYmd: string,
+  ctx: ReturnType<typeof liabilityValuationContext>
+): { mortgage_clp: number; credit_card_clp: number } {
+  const out = { mortgage_clp: 0, credit_card_clp: 0 };
+  for (const r of accounts) {
+    const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
+    if (clp == null || clp <= 0) continue;
+    if (r.category_slug === "mortgage") out.mortgage_clp += clp;
+    else if (r.category_slug === "credit_card") out.credit_card_clp += clp;
+  }
+  return out;
+}
+
 /** Per-category pasivos for dashboard / breakdown (liability_view series, sheet mortgage when opted in). */
 export function liabilitiesBreakdownClpAsOf(
   asOfYmd: string,
   opts?: { mortgageFromDeptoSheet?: boolean }
 ): { mortgage_clp: number; credit_card_clp: number } {
+  const accounts = liabilityAccountsForValuation();
   const ctx = liabilityValuationContext(opts, asOfYmd);
-  const out = { mortgage_clp: 0, credit_card_clp: 0 };
-  for (const r of liabilityAccountsForValuation()) {
-    const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
-    if (clp == null || clp <= 0) continue;
-    if (r.category_slug === "mortgage") out.mortgage_clp += clp;
-    else if (r.category_slug === "credit_card") out.credit_card_clp += clp;
+  return liabilityBreakdownForDate(accounts, asOfYmd, ctx);
+}
+
+/** Batch pasivos breakdown: one mortgage sheet load + UF map for all snapshot dates. */
+export function liabilitiesBreakdownClpByDates(
+  datesAsc: readonly string[],
+  opts?: { mortgageFromDeptoSheet?: boolean }
+): Map<string, { mortgage_clp: number; credit_card_clp: number }> {
+  const out = new Map<string, { mortgage_clp: number; credit_card_clp: number }>();
+  if (!datesAsc.length) return out;
+
+  const accounts = liabilityAccountsForValuation();
+  const useSheet = opts?.mortgageFromDeptoSheet === true;
+  const ledger = useSheet ? mortgageLedgerForLiabilitiesOverview() : [];
+  const firstMortgageYmd = useSheet ? firstDeptoPropertyOwnershipYmd(ledger) : null;
+  const mortgageCloseByDate =
+    useSheet && ledger.length > 0 && firstMortgageYmd != null
+      ? deptoMortgageCloseClpBySnapshotDates([...datesAsc], ledger, ufClpBySnapshotDatesAsc([...datesAsc]))
+      : new Map<string, number>();
+  const meta = accountCategoryMetaById();
+
+  for (const d of datesAsc) {
+    const mortgageClose =
+      useSheet &&
+      firstMortgageYmd != null &&
+      d >= firstMortgageYmd
+        ? new Map<string, number>([[d, mortgageCloseByDate.get(d) ?? Number.NaN]])
+        : new Map<string, number>();
+    const ctx = { meta, useSheet, firstMortgageYmd, mortgageClose };
+    out.set(d, liabilityBreakdownForDate(accounts, d, ctx));
   }
   return out;
 }

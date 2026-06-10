@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 import { ensureCreditCardLiabilityViews } from "./liabilityTabAccounts.js";
 
 const upsertGroup = db.prepare(`
@@ -9,7 +10,7 @@ const upsertGroup = db.prepare(`
     label = excluded.label,
     sort_order = excluded.sort_order,
     label_i18n_key = COALESCE(excluded.label_i18n_key, credit_card_groups.label_i18n_key),
-    route_path = COALESCE(excluded.route_path, credit_card_groups.route_path)
+    route_path = excluded.route_path
 `);
 
 const groupIdBySlug = db.prepare(`SELECT id FROM credit_card_groups WHERE slug = ?`);
@@ -22,13 +23,16 @@ const insertAccountChild = db.prepare(`
   ON CONFLICT(group_id, account_id) DO UPDATE SET sort_order = excluded.sort_order
 `);
 
+function issuerGroupRoutePath(slug: string): string {
+  return `/liabilities/credit-card/${slug}`;
+}
+
 const CC_ISSUER_GROUPS = [
   {
     slug: "santander",
     label: "Santander",
     sort_order: 0,
     label_i18n_key: "creditCardGroup.santander",
-    route_path: "/liabilities/credit-card",
     notesLike: "credit_card_master|santander|%",
   },
   {
@@ -36,7 +40,6 @@ const CC_ISSUER_GROUPS = [
     label: "BCI",
     sort_order: 10,
     label_i18n_key: "creditCardGroup.bci",
-    route_path: "/liabilities/credit-card",
     notesLike: "credit_card_master|bci|%",
   },
 ] as const;
@@ -51,7 +54,7 @@ export function seedCreditCardTree(): void {
         label: g.label,
         sort_order: g.sort_order,
         label_i18n_key: g.label_i18n_key,
-        route_path: g.route_path,
+        route_path: issuerGroupRoutePath(g.slug),
       });
 
       const groupId = (groupIdBySlug.get(g.slug) as { id: number }).id;
@@ -63,6 +66,7 @@ export function seedCreditCardTree(): void {
 
       let sort = 0;
       for (const { id } of masters) {
+        if (isSupersededSantanderCcMaster(id)) continue;
         insertAccountChild.run(groupId, id, sort++);
       }
     }
