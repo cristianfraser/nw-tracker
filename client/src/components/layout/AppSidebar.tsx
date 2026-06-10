@@ -9,13 +9,15 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { queryKeys } from "../../queries/keys";
+import { prefetchPageShapeForPath } from "../../queries/prefetchPageShape";
 import { useMessagesUnreadCount, useSidebarNav } from "../../queries/hooks";
+import type { SidebarNavResponse } from "../../types";
 import { buildSidebarNavFromApi } from "../../sidebarNavFromApi";
 import {
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
-  sidebarNodeSubtreeContainsPath,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
 import { cn } from "../../cn";
@@ -66,20 +68,29 @@ function SidebarNavItem({
   collapsed,
   onToggleCollapse,
   pathname,
+  navPayload,
+  displayUnit,
+  onPrefetchShape,
 }: {
   node: SidebarNavNode;
   depth: number;
   collapsed: Set<string>;
   onToggleCollapse: (id: string) => void;
   pathname: string;
+  navPayload: SidebarNavResponse | null;
+  displayUnit: "clp" | "usd";
+  onPrefetchShape: (targetPath: string) => void;
 }) {
   const leafHyphen = node.showLeafHyphen !== false;
   const hasChildren = (node.children?.length ?? 0) > 0;
   const isCollapsed = collapsed.has(node.id);
-  const isActive =
-    sidebarNodeMatchesPath(pathname, node) ||
-    (hasChildren && sidebarNodeSubtreeContainsPath(pathname, node));
+  const isActive = sidebarNodeMatchesPath(pathname, node);
   const showChildren = hasChildren && !isCollapsed;
+
+  const prefetchShape = () => {
+    if (!navPayload) return;
+    onPrefetchShape(node.to);
+  };
 
   const collapse = (e: MouseEvent) => {
     e.preventDefault();
@@ -117,10 +128,12 @@ function SidebarNavItem({
           <div className={cn(styles.row, isActive && styles.rowActive)}>
             <NavLink
               to={node.to}
-              end
+              end={node.end !== false}
               className={({ isActive: linkActive }) =>
                 cn(styles.link, (linkActive || isActive) && styles.linkActive)
               }
+              onMouseEnter={prefetchShape}
+              onFocus={prefetchShape}
             >
               <span className={styles.linkLabel}>{node.label}</span>
               {node.badge ? (
@@ -140,6 +153,9 @@ function SidebarNavItem({
                   collapsed={collapsed}
                   onToggleCollapse={onToggleCollapse}
                   pathname={pathname}
+                  navPayload={navPayload}
+                  displayUnit={displayUnit}
+                  onPrefetchShape={onPrefetchShape}
                 />
               ))}
             </ul>
@@ -160,8 +176,17 @@ export function AppSidebar() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
+  const { displayUnit } = useDisplayPreferences();
   const { data: unread } = useMessagesUnreadCount();
   const { data: navPayload } = useSidebarNav();
+
+  const onPrefetchShape = useCallback(
+    (targetPath: string) => {
+      if (!navPayload) return;
+      prefetchPageShapeForPath(queryClient, displayUnit, navPayload, targetPath);
+    },
+    [queryClient, displayUnit, navPayload]
+  );
   const unreadCount = unread?.count ?? 0;
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsedIds);
 
@@ -218,9 +243,9 @@ export function AppSidebar() {
       end: true,
       ...(unreadPill
         ? {
-            badge: unreadPill,
-            badgeAriaLabel: t("notifications.unreadBadge", { count: unreadCount }),
-          }
+          badge: unreadPill,
+          badgeAriaLabel: t("notifications.unreadBadge", { count: unreadCount }),
+        }
         : {}),
     };
     return {
@@ -264,7 +289,12 @@ export function AppSidebar() {
   return (
     <aside className="app-sidebar" aria-label="Main navigation">
       <div className={styles.brand}>
-        <NavLink to="/" end>
+        <NavLink
+          to="/"
+          end
+          onMouseEnter={() => onPrefetchShape("/")}
+          onFocus={() => onPrefetchShape("/")}
+        >
           NW Tracker
         </NavLink>
       </div>
@@ -284,6 +314,9 @@ export function AppSidebar() {
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
                       pathname={pathname}
+                      navPayload={navPayload ?? null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
                     />
                   ) : null}
                 </ul>
@@ -297,6 +330,9 @@ export function AppSidebar() {
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
                       pathname={pathname}
+                      navPayload={navPayload ?? null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
                     />
                   ))}
                 </ul>
@@ -309,6 +345,9 @@ export function AppSidebar() {
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
                       pathname={pathname}
+                      navPayload={navPayload ?? null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
                     />
                   ) : null}
                 </ul>
@@ -321,6 +360,9 @@ export function AppSidebar() {
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
                       pathname={pathname}
+                      navPayload={navPayload ?? null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
                     />
                   ) : null}
                 </ul>
@@ -337,6 +379,9 @@ export function AppSidebar() {
                 collapsed={collapsed}
                 onToggleCollapse={onToggleCollapse}
                 pathname={pathname}
+                navPayload={navPayload ?? null}
+                displayUnit={displayUnit}
+                onPrefetchShape={onPrefetchShape}
               />
             </ul>
           </div>

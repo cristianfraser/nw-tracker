@@ -38,7 +38,7 @@ export function aggregateLiabilitiesNavGroupedValuationBlock(
   listRows: AccountListRow[],
   navNode: NavTreeNodeDto
 ): TimeseriesBlock {
-  const { orderedKeys, meta, idToBucket } = buildLiabilitiesBucketPlan(navNode);
+  const { orderedKeys, meta, idToBucket } = buildLiabilitiesBucketPlan(navNode, listRows);
   return aggregateValuationByBucket(
     block,
     listRows,
@@ -50,9 +50,10 @@ export function aggregateLiabilitiesNavGroupedValuationBlock(
 
 export function aggregateLiabilitiesNavGroupedPie(
   pie: { name: string; account_id: number; value: number }[],
-  navNode: NavTreeNodeDto
+  navNode: NavTreeNodeDto,
+  listRows: AccountListRow[] = []
 ): { name: string; account_id: number; value: number }[] {
-  const { orderedKeys, meta, idToBucket } = buildLiabilitiesBucketPlan(navNode);
+  const { orderedKeys, meta, idToBucket } = buildLiabilitiesBucketPlan(navNode, listRows);
   return aggregatePieByBucket(pie, orderedKeys, toGroupMeta(meta), idToBucket);
 }
 
@@ -61,7 +62,7 @@ export function aggregateLiabilitiesNavGroupedPerformance(
   listRows: AccountListRow[],
   navNode: NavTreeNodeDto
 ): GroupMonthlyPerformanceResponse {
-  const { orderedKeys, meta, idToBucket } = buildLiabilitiesBucketPlan(navNode);
+  const { orderedKeys, meta, idToBucket } = buildLiabilitiesBucketPlan(navNode, listRows);
   return aggregatePerformanceByBucket(perf, listRows, orderedKeys, toGroupMeta(meta), (r) =>
     idToBucket(r.id)
   );

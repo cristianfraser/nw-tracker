@@ -1,5 +1,9 @@
 import { averageRgbTriplets } from "./chartColors";
-import { addNullableNumbers, appendGroupTabTotalsClient } from "./groupTabAggregation";
+import {
+  addNullableNumbers,
+  appendGroupTabTotalsClient,
+  GROUP_TAB_VAL_TOTAL,
+} from "./groupTabAggregation";
 import type {
   AccountListRow,
   GroupMonthlyPerformanceBarAccount,
@@ -89,12 +93,15 @@ export function aggregateValuationByBucket(
     return out;
   });
 
+  const preserveConsolidatedGroupTotal = (block.accounts ?? []).some(
+    (a) => a.dataKey === GROUP_TAB_VAL_TOTAL
+  );
   const base: TimeseriesBlock = {
     accounts: [...synth, ...unmappedMembers],
     points,
     ...(refLines.length ? { lines: refLines } : block.lines?.length ? { lines: block.lines } : {}),
   };
-  return appendGroupTabTotalsClient(base);
+  return appendGroupTabTotalsClient(base, { preserveConsolidatedGroupTotal });
 }
 
 export function aggregatePieByBucket(

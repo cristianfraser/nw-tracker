@@ -27,6 +27,7 @@ import { clipChartDataToYDomain, collectTailClipSeriesFromBlock, dataSeriesKeysF
 import {
   AppLineChart,
   filterChartRowsThroughDate,
+  groupValTotalSourceKeysForTailClip,
   trailingZeroTailClipLastVisibleDate,
   useMultiSeriesTrailingZeroTailClip,
   type TailClipOptions,
@@ -678,15 +679,17 @@ export function buildLineChartTailClipOptions(
   const series = collectTailClipSeriesFromBlock(block, includeAccumulatedLines);
   if (dataSeriesKeysFromTailClip(series).length === 0) return null;
   const accs = block.accounts;
-  const groupValTotalSourceKeys = accs?.some((a) => a.dataKey === "__group_val_total")
-    ? accs
-      .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals)
-      .map((a) => a.dataKey)
-    : undefined;
+  const groupValTotalSourceKeys = groupValTotalSourceKeysForTailClip(accs);
   const groupDepTotalSourceKeys =
-    accs?.some((a) => a.dataKey === "__group_dep_total") && accs.some((a) => Boolean(a.depositDataKey))
+    accs?.some((a) => a.dataKey === "__group_dep_total") &&
+    accs.some((a) => a.valueSeriesType === "data" && Boolean(a.depositDataKey))
       ? accs
-        .filter((a) => a.account_id > 0 && !a.exclude_from_group_totals && a.depositDataKey)
+        .filter(
+          (a) =>
+            a.valueSeriesType === "data" &&
+            !a.exclude_from_group_totals &&
+            a.depositDataKey
+        )
         .map((a) => a.depositDataKey!)
       : undefined;
   const depositKeysByValuationKey: Record<string, string[]> = {};

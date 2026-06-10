@@ -88,6 +88,57 @@ describe("aggregateValuationByBucket", () => {
     expect(funds?.color_rgb).toBe("120,80,200");
     expect(stocks?.color_rgb).toBe("40,120,60");
   });
+
+  it("preserves server consolidated __group_val_total when grouping nav buckets", () => {
+    const block: TimeseriesBlock = {
+      accounts: [
+        {
+          account_id: -1,
+          name: "Total",
+          dataKey: "__group_val_total",
+          valueSeriesType: "reference",
+        },
+        { account_id: 78, name: "AFP", dataKey: "78", valueSeriesType: "data" },
+        { account_id: 46, name: "APV", dataKey: "46", valueSeriesType: "data" },
+      ],
+      points: [
+        {
+          as_of_date: "2026-05-31",
+          __group_val_total: 95_680_506,
+          "78": 20_000_000,
+          "46": 73_283_277,
+        },
+      ],
+    };
+    const meta = {
+      afp: {
+        key: "retirement_afp_afc",
+        accountId: -720,
+        dataKey: "nav_retirement_afp_afc",
+        depKey: "nav_retirement_afp_afc_dep",
+        barDataKey: "pl_nav_retirement_afp_afc",
+        name: "AFP + AFC",
+      },
+      apv: {
+        key: "retirement_apv",
+        accountId: -721,
+        dataKey: "nav_retirement_apv",
+        depKey: "nav_retirement_apv_dep",
+        barDataKey: "pl_nav_retirement_apv",
+        name: "APV",
+      },
+    };
+    const out = aggregateValuationByBucket(
+      block,
+      [],
+      ["afp", "apv"],
+      meta,
+      (id) => (id === 78 ? "afp" : id === 46 ? "apv" : null)
+    );
+    expect(out.points[0]!.__group_val_total).toBe(95_680_506);
+    expect(out.points[0]!.nav_retirement_afp_afc).toBe(20_000_000);
+    expect(out.points[0]!.nav_retirement_apv).toBe(73_283_277);
+  });
 });
 
 describe("aggregatePerformanceByBucket", () => {

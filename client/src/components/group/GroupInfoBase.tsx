@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { cn } from "../../cn";
-import { AccountFlowsTable } from "../account/AccountFlowsTable";
+import { FlowsTable } from "../account/FlowsTable";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
@@ -12,6 +12,10 @@ import {
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import {
+  buildPlaceholderConsolidatedMonthlyRows,
+  buildPlaceholderGroupFlowRows,
+} from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
 
@@ -54,7 +58,7 @@ export type GroupInfoBaseProps = {
   accountsTree: ReactNode;
   monthlyDetailHint?: string;
   flowsHint?: string;
-  /** Dims charts + tables while bundle data is loading (title / strip stay full opacity). */
+  /** Dims the whole page body (title, cards, charts, tables) while bundle data is loading. */
   loading?: boolean;
 };
 
@@ -86,30 +90,39 @@ export function GroupInfoBase({
     );
 
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
-  const showTablesLoading = loading || tablesLoading;
-  const monthlyRows = showTablesLoading ? [] : consolidatedMonthlyPerf;
-  const flowRows = showTablesLoading ? [] : consolidatedFlows;
+  const placeholderMonthlyRows = useMemo(() => buildPlaceholderConsolidatedMonthlyRows(), []);
+  const placeholderFlowRows = useMemo(
+    () => buildPlaceholderGroupFlowRows(tableAccounts),
+    [tableAccounts]
+  );
+  const monthlyRows = loading
+    ? placeholderMonthlyRows
+    : tablesLoading
+      ? []
+      : consolidatedMonthlyPerf;
+
+  const flowRows = loading ? placeholderFlowRows : consolidatedFlows;
 
   return (
     <main className={mainClassName}>
-      <PageTitleRow title={title} colorRgb={colorRgb} colorTarget={colorTarget} />
-      {toolbar}
-      {showPortfolioStrip ? (
-        <PortfolioNavEntityCardsStrip
-          dash={portfolio.dash}
-          overviewPoints={portfolio.overviewPoints}
-          parentNavNode={portfolio.navNode}
-          compactTitle={title}
-          compactTitleTo={portfolio.compactTitleTo}
-          showUsd={portfolio.showUsd}
-          metricsPeriod={portfolio.metricsPeriod}
-          animated={portfolio.animated}
-        />
-      ) : null}
-      {notice}
       <div
         className={cn(pageShellStyles.contentShell, loading && pageShellStyles.contentShellLoading)}
       >
+        <PageTitleRow title={title} colorRgb={colorRgb} colorTarget={colorTarget} />
+        {toolbar}
+        {showPortfolioStrip ? (
+          <PortfolioNavEntityCardsStrip
+            dash={portfolio.dash}
+            overviewPoints={portfolio.overviewPoints}
+            parentNavNode={portfolio.navNode}
+            compactTitle={title}
+            compactTitleTo={portfolio.compactTitleTo}
+            showUsd={portfolio.showUsd}
+            metricsPeriod={portfolio.metricsPeriod}
+            animated={portfolio.animated}
+          />
+        ) : null}
+        {notice}
         {charts}
         {tablesEnabled ? (
           <>
@@ -138,7 +151,7 @@ export function GroupInfoBase({
             {tablesError ? (
               <p className="error">{tablesError}</p>
             ) : (
-              <AccountFlowsTable
+              <FlowsTable
                 rows={flowRows}
                 collapsedVisibleRows={GROUP_FLOWS_COLLAPSED}
                 showAccountColumn

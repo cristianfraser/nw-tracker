@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import type { FxCoverage } from "../types";
+import type { FxCoverage } from "../../types";
 
 export function FxCoverageBanner({
   coverage,
@@ -12,8 +12,12 @@ export function FxCoverageBanner({
   const { t } = useTranslation();
   if (!coverage) return null;
 
+  const rejected = coverage.yahoo_rejected ?? [];
   const show =
-    conversionError || !coverage.complete || coverage.is_sparse;
+    conversionError ||
+    !coverage.complete ||
+    coverage.is_sparse ||
+    rejected.length > 0;
   if (!show) return null;
 
   const detail =
@@ -25,6 +29,17 @@ export function FxCoverageBanner({
             rows: coverage.row_count,
           })
         : null;
+
+  const rejectedDetail =
+    rejected.length > 0
+      ? t("fxCoverage.yahooRejected", {
+          count: rejected.length,
+          dates: rejected
+            .slice(0, 5)
+            .map((r) => `${r.date} (${Math.round(r.raw_clp_per_usd)})`)
+            .join(", "),
+        })
+      : null;
 
   return (
     <div
@@ -47,9 +62,14 @@ export function FxCoverageBanner({
       {detail ? (
         <p style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>{detail}</p>
       ) : null}
+      {rejectedDetail ? (
+        <p style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>{rejectedDetail}</p>
+      ) : null}
       <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
         {t("fxCoverage.hint")}{" "}
         <Link to="/panel/import-sync">{t("sidebar.importSync")}</Link>
+        {" · "}
+        <code className="mono">npm run backfill:yahoo-fx-usd -w nw-tracker-server</code>
         {" · "}
         <code className="mono">npm run backfill:sbif-fx-eur -w nw-tracker-server</code>
       </p>

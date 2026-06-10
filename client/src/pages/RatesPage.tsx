@@ -156,6 +156,145 @@ function minMaxSeriesValues(data: { value: number }[]): { min: number; max: numb
   return { min: minV, max: maxV };
 }
 
+function mergeFxUsdDualSeries(
+  yahoo: readonly { date: string; value: number }[],
+  bcentral: readonly { date: string; value: number }[]
+): { date: string; yahoo: number | null; bcentral: number | null }[] {
+  const dates = new Set<string>();
+  for (const r of yahoo) dates.add(r.date);
+  for (const r of bcentral) dates.add(r.date);
+  const ym = new Map(yahoo.map((r) => [r.date, r.value]));
+  const bm = new Map(bcentral.map((r) => [r.date, r.value]));
+  return [...dates]
+    .sort((a, b) => a.localeCompare(b))
+    .map((date) => ({
+      date,
+      yahoo: ym.get(date) ?? null,
+      bcentral: bm.get(date) ?? null,
+    }));
+}
+
+function FxUsdClpDualChart({
+  yahooData,
+  bcentralData,
+  yahooLabel,
+  bcentralLabel,
+  recentColDate,
+  recentColValue,
+  recentEmptyLabel,
+}: {
+  yahooData: { date: string; value: number }[];
+  bcentralData: { date: string; value: number }[];
+  yahooLabel: string;
+  bcentralLabel: string;
+  recentColDate: string;
+  recentColValue: string;
+  recentEmptyLabel: string;
+}) {
+  const merged = useMemo(() => mergeFxUsdDualSeries(yahooData, bcentralData), [yahooData, bcentralData]);
+  const denseData = useMemo(
+    () =>
+      densifyRecordsByCalendarDay(
+        merged as unknown as ChartSparseRow[],
+        "date",
+        ["yahoo", "bcentral"]
+      ),
+    [merged]
+  );
+
+  const clip = useMultiSeriesTrailingZeroTailClip(
+    denseData as unknown as Record<string, string | number | null>[],
+    denseData.length
+      ? {
+          series: [
+            { dataKey: "yahoo", type: "data" as const },
+            { dataKey: "bcentral", type: "data" as const },
+          ],
+        }
+      : null
+  );
+  const chartData = clip.chartData as { date: string; yahoo: number | null; bcentral: number | null }[];
+  const tailClippedKeys = clip.tailClippedKeys;
+
+  const yBand = useMemo(() => {
+    const values: number[] = [];
+    for (const r of chartData) {
+      if (typeof r.yahoo === "number" && Number.isFinite(r.yahoo)) values.push(r.yahoo);
+      if (typeof r.bcentral === "number" && Number.isFinite(r.bcentral)) values.push(r.bcentral);
+    }
+    const mm = minMaxSeriesValues(values.map((value) => ({ value })));
+    if (!mm) return null;
+    return buildNiceYAxisPositiveBand(mm.min, mm.max);
+  }, [chartData]);
+
+  const recentTable = (
+    <RatesRecentEntriesTable
+      data={yahooData}
+      valueFormatter={formatClp}
+      colDate={recentColDate}
+      colValue={recentColValue}
+      emptyLabel={recentEmptyLabel}
+    />
+  );
+
+  if (yahooData.length === 0 && bcentralData.length === 0) {
+    return (
+      <section className="rates-chart-card">
+        <h3 className="rates-chart-card__title">USD / CLP</h3>
+        <p className="muted rates-chart-card__note">CLP per US$1</p>
+        <p className="muted rates-chart-card__empty">No data</p>
+        {recentTable}
+      </section>
+    );
+  }
+
+  return (
+    <section className="rates-chart-card">
+      <h3 className="rates-chart-card__title">USD / CLP</h3>
+      <p className="muted rates-chart-card__note">CLP per US$1</p>
+      <div className="rates-chart-card__plot">
+        <ResponsiveContainer width="100%" height="100%">
+          <AppLineChart data={chartData} tailClippedKeys={tailClippedKeys} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} tickMargin={4} minTickGap={32} />
+            <YAxis
+              tick={{ fill: "var(--muted)", fontSize: 10 }}
+              tickFormatter={(v) => formatClp(Number(v))}
+              width={104}
+              domain={yBand ? yBand.domain : ["auto", "auto"]}
+              ticks={yBand ? yBand.ticks : undefined}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--surface2)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+              }}
+              labelStyle={{ color: "var(--muted)" }}
+              formatter={(v: number | string, name: string) => [
+                formatClp(Number(v)),
+                name === "yahoo" ? yahooLabel : bcentralLabel,
+              ]}
+              labelFormatter={(l) => String(l)}
+            />
+            <Line type="monotone" dataKey="yahoo" name="yahoo" stroke="var(--accent)" dot={false} strokeWidth={2} />
+            <Line
+              type="monotone"
+              dataKey="bcentral"
+              name="bcentral"
+              stroke="var(--muted)"
+              dot={false}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+            />
+          </AppLineChart>
+        </ResponsiveContainer>
+      </div>
+      {recentTable}
+    </section>
+  );
+}
+
 function MiniLineChart({
   title,
   footnote,
@@ -270,13 +409,14 @@ export function RatesPage() {
   const points = useMemo(() => payload?.points ?? [], [payload]);
 
   const fxUsdClp = useMemo(() => payload?.fx_usd_clp ?? [], [payload]);
+  const fxUsdClpBcentral = useMemo(() => payload?.fx_usd_clp_bcentral ?? [], [payload]);
   const fxUfClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_uf), [points]);
   const fxIpc = useMemo(() => seriesFromPoints(points, (p) => p.ipc_index), [points]);
   const fxEurClp = useMemo(() => payload?.eur_clp ?? [], [payload]);
 
   const fxSyncStale = useMemo(() => {
     const stale = syncStatus?.stale ?? [];
-    return stale.includes("sbif_usd") || stale.includes("sbif_eur");
+    return stale.includes("yahoo_fx_usd") || stale.includes("sbif_usd") || stale.includes("sbif_eur");
   }, [syncStatus]);
 
   const recentColDate = t("rates.recentColDate");
@@ -339,13 +479,14 @@ export function RatesPage() {
             (<span className="mono">date;ipc_index</span>).
           </p>
           <div className="rates-fx-grid">
-            <MiniLineChart
-              title="USD / CLP"
-              footnote="CLP per US$1"
-              data={fxUsdClp}
-              yUnit="clp"
-              valueFormatter={formatClp}
-              {...recentTableProps}
+            <FxUsdClpDualChart
+              yahooData={fxUsdClp}
+              bcentralData={fxUsdClpBcentral}
+              yahooLabel={t("rates.fx.yahoo")}
+              bcentralLabel={t("rates.fx.bcentralObservado")}
+              recentColDate={recentColDate}
+              recentColValue={recentColValue}
+              recentEmptyLabel={recentEmptyLabel}
             />
             <MiniLineChart
               title="UF / CLP"

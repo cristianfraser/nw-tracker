@@ -1,5 +1,5 @@
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
@@ -62,4 +62,169 @@ tr:last-child td {
 
 tr:hover td {
   background: var(--surface2);
+}
+
+/* Parallel-column responsive tables: desktop cells + mobile card cell */
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 879px) {
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: table-cell !important;
+  }
+
+  th.mobile-only {
+    padding: 0;
+    border: none;
+    font-size: 0;
+    line-height: 0;
+  }
+
+  .table-wrap:has(.table--parallel-mobile) {
+    overflow: visible;
+  }
+
+  .table--parallel-mobile tr:hover td.mobile-only {
+    background: var(--surface2);
+  }
+
+  .table--parallel-mobile {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .table--parallel-mobile td.mobile-only {
+    width: 100%;
+    overflow: hidden;
+  }
+}
+
+.table--parallel-mobile .table-mobile-card {
+  padding: 0.15rem 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.table--parallel-mobile .table-mobile-card__title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.55rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.table--parallel-mobile .table-mobile-card__title .dateLink,
+.table--parallel-mobile .table-mobile-card__title button {
+  font-family: inherit;
+  text-align: left;
+  max-width: 100%;
+}
+
+.table--parallel-mobile .table-mobile-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.table--parallel-mobile .table-mobile-card__section:first-of-type {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+}
+
+.table--parallel-mobile .table-mobile-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.table--parallel-mobile .table-mobile-card__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.table--parallel-mobile .table-mobile-card__value {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Long prose values (e.g. account names): side-by-side with ellipsis, capped to row width */
+.table--parallel-mobile .table-mobile-card__row--truncate-value {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.table--parallel-mobile .table-mobile-card__row--truncate-value .table-mobile-card__label {
+  flex: unset;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.table--parallel-mobile .table-mobile-card__value--truncate {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-family: inherit;
+}
+
+.flows-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.flows-table th.flows-table__account,
+.flows-table td.flows-table__account {
+  width: 22%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table--parallel-mobile .table-mobile-card__note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.table--parallel-mobile .table-mobile-card__note-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.table--parallel-mobile .table-mobile-card__section ul {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
 }

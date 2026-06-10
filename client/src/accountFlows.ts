@@ -64,7 +64,7 @@ export function accountFlowsShowUsdColumn(
   return rows.some((r) => r.amount_usd != null && Number.isFinite(r.amount_usd));
 }
 
-export type AccountFlowsTableRow = AccountFlowRow & {
+export type FlowsTableRow = AccountFlowRow & {
   account_name?: string;
   category_slug?: string;
 };
@@ -77,8 +77,8 @@ export function consolidateAccountFlowRows(
     category_slug: string;
     movements: AccountMovementDto[];
   }[]
-): AccountFlowsTableRow[] {
-  const rows: AccountFlowsTableRow[] = [];
+): FlowsTableRow[] {
+  const rows: FlowsTableRow[] = [];
   for (const acc of byAccount) {
     for (const row of accountMovementsToFlowRows(acc.movements)) {
       rows.push({

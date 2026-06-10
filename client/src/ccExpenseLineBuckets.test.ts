@@ -33,6 +33,7 @@ function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     statement_date: "22/05/2025",
     purchase_key: "line-pr:test",
     purchase_notes: "",
+    big_group_slug: null,
     origin_label: "4242",
     ...partial,
   };

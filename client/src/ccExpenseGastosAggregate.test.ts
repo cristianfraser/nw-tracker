@@ -25,6 +25,7 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     category_unique: false,
     purchase_key: "line-pr:test",
     purchase_notes: "",
+    big_group_slug: null,
     origin_label: "4242",
     ...partial,
   };
@@ -104,5 +105,36 @@ describe("ccExpenseGastosAggregate", () => {
     const point = chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"));
     const stackSum = slugs.reduce((s, slug) => s + Number(point?.[slug] ?? 0), 0);
     expect(stackSum).toBe(35_000);
+  });
+
+  it("excludes big-group lines from chart stacks but not from by_month gastos", () => {
+    const lines = [
+      ccLine({
+        statement_line_id: 1,
+        billing_month: "2025-04",
+        amount_clp: 10_000,
+        category_slug: "food",
+        big_group_slug: "vacation",
+      }),
+      ccLine({
+        statement_line_id: 2,
+        billing_month: "2025-04",
+        amount_clp: 20_000,
+        category_slug: "fun",
+      }),
+    ];
+    const slugs = ["food", "fun"];
+    const excluded = new Set(["vacation"]);
+    const { by_month, chart_monthly_by_category } = aggregateGastosFromLines(
+      lines,
+      slugs,
+      "split",
+      excluded
+    );
+    const row = by_month.find((m) => m.period_month === "2025-04");
+    expect(row?.gastos_mes_clp).toBe(30_000);
+    const point = chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"));
+    expect(point?.food).toBe(0);
+    expect(point?.fun).toBe(20_000);
   });
 });

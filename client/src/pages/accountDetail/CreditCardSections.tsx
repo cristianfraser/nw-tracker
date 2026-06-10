@@ -1,12 +1,25 @@
 import { Fragment, useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
 import { PaginatedTable } from "../../components/ui/PaginatedTable";
-import type { AccountCcInstallmentsResponse, CcInstallmentPurchaseComputed } from "../../types";
+import type {
+  AccountCcInstallmentsResponse,
+  CcInstallmentMonthBreakdown,
+  CcInstallmentPurchaseComputed,
+} from "../../types";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { formatYmEs, persistExtraCcOffsets } from "./shared";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
+import {
+  CreditCardPurchaseMobileCard,
+  purchaseTableColSpan,
+} from "./CreditCardPurchaseMobileCard";
+import {
+  TableMobileCard,
+  TableMobileCardRow,
+  TableMobileCardSection,
+} from "../../components/ui/TableMobileCard";
 import {
   useCreateCcPurchaseMutation,
   useDeleteCcPurchaseMutation,
@@ -71,6 +84,21 @@ function CreditCardInstallmentsSection({
   };
   const purchasesCompleted = ledger.purchases_completed ?? [];
 
+  const installmentDebtClpForMonth = useMemo(() => {
+    const fromBilling = new Map<string, number>();
+    for (const row of ledger.billing_detail_by_month ?? []) {
+      fromBilling.set(row.billing_month, row.cupo_en_cuotas_clp);
+    }
+    const fromPlan = new Map<string, number>();
+    for (const row of ledger.installment_history_months ?? []) {
+      if (row.ledger_remaining_installments_clp != null) {
+        fromPlan.set(row.month, row.ledger_remaining_installments_clp);
+      }
+    }
+    return (month: string): number | null =>
+      fromBilling.get(month) ?? fromPlan.get(month) ?? null;
+  }, [ledger.billing_detail_by_month, ledger.installment_history_months]);
+
   const purchasesActiveSorted = useMemo(() => {
     const list = [...ledger.purchases];
     list.sort((a, b) => {
@@ -81,9 +109,33 @@ function CreditCardInstallmentsSection({
     return list;
   }, [ledger.purchases]);
 
-  const allPurchasesForBreakdown = useMemo(
-    () => [...purchasesActiveSorted, ...purchasesCompleted],
-    [purchasesActiveSorted, purchasesCompleted]
+  const purchaseById = useMemo(() => {
+    const map = new Map<string, CcInstallmentPurchaseComputed>();
+    for (const p of [...purchasesActiveSorted, ...purchasesCompleted]) {
+      map.set(p.purchase_id, p);
+    }
+    return map;
+  }, [purchasesActiveSorted, purchasesCompleted]);
+
+  const renderMonthCuotasBreakdown = (
+    breakdown: readonly CcInstallmentMonthBreakdown[],
+    listClassName: string
+  ) => (
+    <ul className={listClassName}>
+      {breakdown.map((b, i) => (
+        <li key={`${b.purchase_id}-${b.installment_index}-${i}`} className="mono muted">
+          {t("account.creditCard.monthCuotasBreakdownLine", {
+            label: b.label,
+            amount: formatClp(b.amount_clp),
+            current: b.installment_index + 1,
+            total:
+              b.installment_count ??
+              purchaseById.get(b.purchase_id)?.installment_count ??
+              "?",
+          })}
+        </li>
+      ))}
+    </ul>
   );
 
   const purchasesCompletedSorted = useMemo(() => {
@@ -99,23 +151,45 @@ function CreditCardInstallmentsSection({
     return list;
   }, [purchasesCompleted]);
 
+  const originLabel = (p: CcInstallmentPurchaseComputed) =>
+    p.origin === "manual"
+      ? t("account.creditCard.originManual")
+      : t("account.creditCard.originImportDocument");
+
+  const purchaseTableHeader = (dueColumn: "next" | "last" | "none") => (
+    <thead>
+      <tr>
+        <th className="desktop-only">Compra</th>
+        <th className="desktop-only">Cuotas</th>
+        <th className="desktop-only">Pagadas</th>
+        <th className="desktop-only">Restan</th>
+        <th className="desktop-only">Principal</th>
+        {!hasLedger ? <th className="desktop-only">Tasa % anual</th> : null}
+        <th className="desktop-only">Mes compra</th>
+        <th className="desktop-only">1.ª cuota (MES)</th>
+        {!hasLedger ? <th className="desktop-only">Offset CSV (meses)</th> : null}
+        {!hasLedger ? <th className="desktop-only">Offset UI (meses)</th> : null}
+        <th className="desktop-only">Cuota CLP</th>
+        <th className="desktop-only">Restante CLP</th>
+        {dueColumn !== "none" ? <th className="desktop-only">Mes último pago</th> : null}
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+
   const renderPurchaseRows = (
     rows: ReadonlyArray<CcInstallmentPurchaseComputed>,
     opts: { dueColumn: "next" | "last" | "none" }
   ) =>
     rows.map((p) => {
-      const detailColSpan = hasLedger ? (opts.dueColumn === "none" ? 9 : 10) : opts.dueColumn === "none" ? 12 : 13;
+      const detailColSpan = purchaseTableColSpan(hasLedger, opts.dueColumn);
       return (
         <Fragment key={p.purchase_id}>
           <tr>
-            <td>
+            <td className="desktop-only">
               <div>{p.label}</div>
               <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
-              <div className={cn("muted", styles.purchaseMeta)}>
-                {p.origin === "manual"
-                  ? t("account.creditCard.originManual")
-                  : t("account.creditCard.originImportDocument")}
-              </div>
+              <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
               {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
               {hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
                 <button
@@ -130,18 +204,18 @@ function CreditCardInstallmentsSection({
                 </button>
               ) : null}
             </td>
-            <td className="mono">{p.installment_count}</td>
-            <td className="mono">{p.installments_paid}</td>
-            <td className="mono">{p.remaining_installments}</td>
-            <td className="mono">{formatClp(p.principal_clp)}</td>
+            <td className="mono desktop-only">{p.installment_count}</td>
+            <td className="mono desktop-only">{p.installments_paid}</td>
+            <td className="mono desktop-only">{p.remaining_installments}</td>
+            <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
             {!hasLedger ? (
-              <td className="mono">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
+              <td className="mono desktop-only">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
             ) : null}
-            <td className="mono">{p.purchase_month ?? "—"}</td>
-            <td className="mono">{p.first_due_month}</td>
-            {!hasLedger ? <td className="mono">{p.schedule_offset_months}</td> : null}
+            <td className="mono desktop-only">{p.purchase_month ?? "—"}</td>
+            <td className="mono desktop-only">{p.first_due_month}</td>
+            {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
             {!hasLedger ? (
-              <td>
+              <td className="desktop-only">
                 <input
                   type="number"
                   step={1}
@@ -159,10 +233,10 @@ function CreditCardInstallmentsSection({
                 />
               </td>
             ) : null}
-            <td className="mono">{formatClp(p.cuota_clp)}</td>
-            <td className="mono">{formatClp(p.remaining_principal_clp)}</td>
+            <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
+            <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td>
             {opts.dueColumn !== "none" ? (
-              <td className="mono">
+              <td className="mono desktop-only">
                 {opts.dueColumn === "last"
                   ? p.last_paid_month
                     ? `${p.last_paid_month} (${formatYmEs(p.last_paid_month)})`
@@ -172,9 +246,30 @@ function CreditCardInstallmentsSection({
                     : "—"}
               </td>
             ) : null}
+            <td className="mobile-only">
+              <CreditCardPurchaseMobileCard
+                purchase={p}
+                hasLedger={hasLedger}
+                dueColumn={opts.dueColumn}
+                originLabel={originLabel(p)}
+                manualDeleteLabel={t("account.creditCard.manualDelete")}
+                manualBusy={manualBusy}
+                onDeleteManual={
+                  hasLedger && p.origin === "manual" && p.purchase_db_id != null
+                    ? () => deletePurchase.mutate(p.purchase_db_id!)
+                    : undefined
+                }
+                extraOffsets={extraOffsets}
+                onExtraOffsetChange={(purchaseId, value) => {
+                  const next = { ...extraOffsets, [purchaseId]: value };
+                  persistExtraCcOffsets(accountId, next);
+                  onExtraOffsetsChange(next);
+                }}
+              />
+            </td>
           </tr>
           {opts.dueColumn === "none" && p.payment_statements && p.payment_statements.length > 0 ? (
-            <tr>
+            <tr className="desktop-only">
               <td colSpan={detailColSpan} className={cn("muted", styles.purchaseMeta)}>
                 {p.merged_purchase_ids && p.merged_purchase_ids.length > 1 ? (
                   <div className="mono">
@@ -344,29 +439,12 @@ function CreditCardInstallmentsSection({
           <h3 className={styles.subsectionTitle}>Compras activas (cuotas pendientes)</h3>
           <Table
             wrapClassName={styles.tableWrapSpaced}
-            tableClassName={styles.tableCompact}
-            header={
-              <thead>
-                <tr>
-                  <th>Compra</th>
-                  <th>Cuotas</th>
-                  <th>Pagadas</th>
-                  <th>Restan</th>
-                  <th>Principal</th>
-                  {!hasLedger ? <th>Tasa % anual</th> : null}
-                  <th>Mes compra</th>
-                  <th>1.ª cuota (MES)</th>
-                  {!hasLedger ? <th>Offset CSV (meses)</th> : null}
-                  {!hasLedger ? <th>Offset UI (meses)</th> : null}
-                  <th>Cuota CLP</th>
-                  <th>Restante CLP</th>
-                </tr>
-              </thead>
-            }
+            tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
+            header={purchaseTableHeader("none")}
           >
             {ledger.purchases.length === 0 ? (
               <tr>
-                <td colSpan={hasLedger ? 8 : 12} className="muted">
+                <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
                   No hay compras en cuotas con saldo pendiente.
                 </td>
               </tr>
@@ -386,31 +464,13 @@ function CreditCardInstallmentsSection({
             pages={purchasesCompletedPages}
             collapsedVisibleRows={10}
             wrapClassName={styles.tableWrapSpaced}
-            tableClassName={styles.tableCompact}
+            tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
             getPageLabel={(page) => `${t("table.paginationPageAria")} ${page.pageNumber + 1}`}
-            header={
-              <thead>
-                <tr>
-                  <th>Compra</th>
-                  <th>Cuotas</th>
-                  <th>Pagadas</th>
-                  <th>Restan</th>
-                  <th>Principal</th>
-                  {!hasLedger ? <th>Tasa % anual</th> : null}
-                  <th>Mes compra</th>
-                  <th>1.ª cuota (MES)</th>
-                  {!hasLedger ? <th>Offset CSV (meses)</th> : null}
-                  {!hasLedger ? <th>Offset UI (meses)</th> : null}
-                  <th>Cuota CLP</th>
-                  <th>Restante CLP</th>
-                  <th>Mes último pago</th>
-                </tr>
-              </thead>
-            }
+            header={purchaseTableHeader("last")}
             renderBody={(pageRows) =>
               purchasesCompletedSorted.length === 0 ? (
                 <tr>
-                  <td colSpan={hasLedger ? 9 : 13} className="muted">
+                  <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
                     No hay compras en cuotas liquidadas en el ledger.
                   </td>
                 </tr>
@@ -420,52 +480,71 @@ function CreditCardInstallmentsSection({
             }
           />
 
-          <h3 className={styles.subsectionTitle}>Proyección por mes (una fila por mes)</h3>
+          <h3 className={styles.subsectionTitle}>{t("account.creditCard.monthCuotasTitle")}</h3>
           <Table
-            tableClassName={styles.tableCompact}
+            tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
             header={
               <thead>
                 <tr>
-                  <th>Mes</th>
-                  <th>Total CLP</th>
-                  <th>Acumulado en período</th>
-                  <th>Detalle</th>
+                  <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
+                  <th className="desktop-only">{t("account.creditCard.colMonthCuotaTotal")}</th>
+                  <th className="desktop-only">{t("account.creditCard.colInstallmentDebt")}</th>
+                  <th className="desktop-only">{t("account.creditCard.colMonthBreakdown")}</th>
+                  <th className="mobile-only" aria-hidden="true" />
                 </tr>
               </thead>
             }
           >
             {ledger.months.length === 0 ? (
               <tr>
-                <td colSpan={4} className="muted">
-                  Sin cuotas pendientes en el calendario.
+                <td colSpan={5} className="muted">
+                  {t("account.creditCard.monthCuotasEmpty")}
                 </td>
               </tr>
             ) : (
-              (() => {
-                let cum = 0;
-                return ledger.months.map((row) => {
-                  cum += row.total_clp;
-                  return (
-                    <tr key={row.month}>
-                      <td className="mono">
-                        {row.month} ({formatYmEs(row.month)})
-                      </td>
-                      <td className="mono">{formatClp(row.total_clp)}</td>
-                      <td className="mono muted">{formatClp(cum)}</td>
-                      <td>
-                        <ul className={styles.nestedList}>
-                          {row.breakdown.map((b, i) => (
-                            <li key={`${b.purchase_id}-${b.installment_index}-${i}`} className="mono muted">
-                              {b.label}: {formatClp(b.amount_clp)} (cuota {b.installment_index + 1} de{" "}
-                              {allPurchasesForBreakdown.find((x) => x.purchase_id === b.purchase_id)?.installment_count ?? "?"})
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  );
-                });
-              })()
+              ledger.months.map((row) => {
+                const installmentDebtClp = installmentDebtClpForMonth(row.month);
+                return (
+                  <tr key={row.month}>
+                    <td className="mono desktop-only">
+                      {row.month} ({formatYmEs(row.month)})
+                    </td>
+                    <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
+                    <td className="mono muted desktop-only">
+                      {installmentDebtClp != null ? formatClp(installmentDebtClp) : "—"}
+                    </td>
+                    <td className="desktop-only">
+                      {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
+                    </td>
+                    <td className="mobile-only">
+                      <TableMobileCard title={`${row.month} (${formatYmEs(row.month)})`}>
+                        <TableMobileCardSection>
+                          <TableMobileCardRow
+                            label={t("account.creditCard.colMonthCuotaTotal")}
+                            value={formatClp(row.total_clp)}
+                          />
+                          <TableMobileCardRow
+                            label={t("account.creditCard.colInstallmentDebt")}
+                            value={
+                              <span className="muted">
+                                {installmentDebtClp != null ? formatClp(installmentDebtClp) : "—"}
+                              </span>
+                            }
+                          />
+                        </TableMobileCardSection>
+                        {row.breakdown.length > 0 ? (
+                          <TableMobileCardSection>
+                            <div className="table-mobile-card__label">
+                              {t("account.creditCard.colMonthBreakdown")}
+                            </div>
+                            {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
+                          </TableMobileCardSection>
+                        ) : null}
+                      </TableMobileCard>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </Table>
         </>

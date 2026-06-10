@@ -15,8 +15,16 @@ export function accountCountsTowardGroupTotalsClient(a: TimeseriesAccountLine): 
   return a.account_id <= 0 || !a.exclude_from_group_totals;
 }
 
+export type AppendGroupTabTotalsClientOpts = {
+  /** Keep per-row `__group_val_total` from server consolidated month cierre (do not Σ child lines). */
+  preserveConsolidatedGroupTotal?: boolean;
+};
+
 /** Same idea as server `appendGroupTabTotals`: prepend total valuation + optional total deposits. */
-export function appendGroupTabTotalsClient(block: TimeseriesBlock): TimeseriesBlock {
+export function appendGroupTabTotalsClient(
+  block: TimeseriesBlock,
+  opts?: AppendGroupTabTotalsClientOpts
+): TimeseriesBlock {
   const src = block.accounts ?? [];
   if (src.length === 0 || block.points.length === 0) return block;
   if (src.length === 1) return block;
@@ -43,9 +51,14 @@ export function appendGroupTabTotalsClient(block: TimeseriesBlock): TimeseriesBl
         }
       }
     }
+    const serverTotal = row[GROUP_TAB_VAL_TOTAL];
+    const keepServerTotal =
+      opts?.preserveConsolidatedGroupTotal &&
+      typeof serverTotal === "number" &&
+      Number.isFinite(serverTotal);
     const out: Record<string, string | number | null> = {
       ...row,
-      [GROUP_TAB_VAL_TOTAL]: vAny ? vSum : null,
+      [GROUP_TAB_VAL_TOTAL]: keepServerTotal ? serverTotal : vAny ? vSum : null,
     };
     if (anyChildDep) {
       out[GROUP_TAB_DEP_TOTAL] = dAny ? dSum : null;

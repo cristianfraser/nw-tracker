@@ -205,6 +205,11 @@
 
 .linkActive {
   color: var(--text);
+
+  .linkLabel {
+    transform: translate(5px, -0.2px);
+    transition: transform 0.3s ease;
+  }
 }
 
 .caretIcon {
@@ -227,10 +232,13 @@
 }
 
 .linkLabel {
+  transition: transform 0.15s ease;
+  will-change: transform;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transform: translate(0, 0.1px);
 }
 
 .unreadPill {

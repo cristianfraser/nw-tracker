@@ -31,6 +31,12 @@ export function findNavTreeNodeByAccountId(
   return null;
 }
 
+/** Credit-card master / liability-view leaves in the CC nav subtree. */
+export function isCreditCardAccountNavNode(node: NavTreeNodeDto | null | undefined): boolean {
+  if (!node) return false;
+  return node.api_subgroup === "credit_card" || node.asset_group_slug === "credit_cards";
+}
+
 /**
  * Longest `route_path` / `active_prefix` match against `pathname` (normalized, no trailing slash).
  * Used to resolve the nav node for the current URL (e.g. Inversiones subgroup pages).
@@ -93,35 +99,6 @@ export function findNavNodeBySlug(
     if (hit) return hit;
   }
   return null;
-}
-
-const LIABILITIES_SUBGROUP_NAV_SLUG: Record<string, string> = {
-  credit_card: "liabilities_credit_card",
-  mortgage: "liabilities_mortgage",
-};
-
-/**
- * Pasivos pages: prefer `liability_groups` nodes over credit_card_groups that share the same URL
- * (e.g. `/liabilities/credit-card` → tarjeta de crédito, not Santander leaf).
- */
-export function findLiabilitiesNavNodeForPathname(
-  main: NavTreeNodeDto[] | undefined,
-  pathname: string,
-  categorySlug: "credit_card" | "mortgage" | undefined
-): NavTreeNodeDto | null {
-  const root = main?.find((n) => n.slug === "liabilities") ?? null;
-  if (categorySlug) {
-    const groupSlug = LIABILITIES_SUBGROUP_NAV_SLUG[categorySlug];
-    if (root && groupSlug) {
-      const hit = findNavNodeBySlug([root], groupSlug);
-      if (hit) return hit;
-    }
-  }
-  const pathnameNorm = (pathname.replace(/\/+$/, "") || "/").trim();
-  if (root && (pathnameNorm === "/liabilities" || pathnameNorm === root.route_path?.replace(/\/+$/, ""))) {
-    return root;
-  }
-  return findBestNavNodeForPathname(main, pathname) ?? root;
 }
 
 export function isNavBucketNode(node: NavTreeNodeDto): boolean {

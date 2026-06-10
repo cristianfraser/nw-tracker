@@ -16,7 +16,8 @@ import { countsTowardGastosMes } from "./ccExpenseLineBuckets";
 export function aggregateGastosFromLines(
   lines: readonly FlowCcExpenseLineRow[],
   chartCategorySlugs: readonly string[],
-  mode: CcInstallmentGastosMode = "split"
+  mode: CcInstallmentGastosMode = "split",
+  excludedBigGroupSlugs?: ReadonlySet<string>
 ): {
   by_month: FlowCcExpenseMonthRow[];
   chart_monthly: FlowCcExpenseChartPoint[];
@@ -71,9 +72,14 @@ export function aggregateGastosFromLines(
         // Keep in sync with server aggregateGastosFromLines (purchaseCountsAfterNotaPairing + mode).
         if (countsTowardGastosMes(ln, mode)) {
           sumBucket.gastos += amount;
-          const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
-          catBucket.set(ln.category_slug, (catBucket.get(ln.category_slug) ?? 0) + amount);
-          byMonthCategory.set(sumMonth, catBucket);
+          const skipChartCategory =
+            ln.big_group_slug != null &&
+            excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
+          if (!skipChartCategory) {
+            const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
+            catBucket.set(ln.category_slug, (catBucket.get(ln.category_slug) ?? 0) + amount);
+            byMonthCategory.set(sumMonth, catBucket);
+          }
         }
       } else {
         sumBucket.abonos += amount;

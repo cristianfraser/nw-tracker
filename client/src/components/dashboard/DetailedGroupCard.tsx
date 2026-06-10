@@ -22,6 +22,8 @@ export type DetailedGroupCardProps = {
   /** Outer wrapper classes (default: stretched detail card). */
   outerClassName?: string;
   fxMissing?: boolean;
+  /** Lower opacity when all contributing accounts have stale sync sources. */
+  syncStale?: boolean;
 };
 
 /**
@@ -41,6 +43,7 @@ export function DetailedGroupCard({
   className,
   outerClassName = "card card--detail card--detail-stretch",
   fxMissing = false,
+  syncStale = false,
 }: DetailedGroupCardProps) {
   return (
     <div className={cn(outerClassName, className)}>
@@ -60,6 +63,7 @@ export function DetailedGroupCard({
           animated={animated}
           mountSeedKey={cardSlug}
           fxMissing={fxMissing}
+          syncStale={syncStale}
         />
       </div>
       {metrics ? <div>{metrics}</div> : null}
