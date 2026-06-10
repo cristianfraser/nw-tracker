@@ -1,10 +1,25 @@
 import { useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { LineChartPanel, ValuationLineCharts } from "../components/charts/ValuationLineCharts";
 import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
-import { useDashboardBundle } from "../queries/hooks";
+import {
+  prefetchAccountsByPortfolioGroup,
+  prefetchDashboardBundle,
+  prefetchDashboardNavSnapshot,
+} from "../queries/displayUnitQueries";
+import { dashPickForNavStrip } from "../queries/fetchers";
+import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import { writeDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
+import { writeFxLatestCache } from "../queries/fxLatestCache";
+import {
+  useAccountsByPortfolioGroup,
+  useDashboardBundle,
+  useDashboardNavSnapshot,
+  useSidebarNav,
+} from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { allocationBucketColor } from "../chartColors";
 import { appendTrailingMovingAverage } from "../chartMovingAverage";
@@ -12,10 +27,10 @@ import {
   rollupRetirementBrokeragePerfYearly,
   rollupTimeseriesBlockYearEnd,
 } from "../dashboardTimeseriesYearly";
-import { useLoading } from "../context/LoadingContext";
 import { dashboardBucketLabel, useTranslation } from "../i18n";
+import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
+import { buildPlaceholderDashboardBundle } from "../placeholders/dashboardPagePlaceholders";
 import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
-import { useSidebarNav } from "../queries/hooks";
 import { formatMoneyForPie } from "../format";
 import {
   isDashboardNwBucketSlug,
@@ -23,31 +38,99 @@ import {
 } from "../portfolioDashboardBuckets";
 import type { ValuationTimeseriesResponse } from "../types";
 
+const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
+
 export function DashboardPage() {
   const { t } = useTranslation();
-  const { setLoading } = useLoading();
+  const queryClient = useQueryClient();
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
-  const { data: sidebarNav } = useSidebarNav();
+  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
+  const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
   const netWorthNav = sidebarNav?.net_worth ?? null;
   const netWorthColorTarget = netWorthNav ? navColorTargetFromDto(netWorthNav) : undefined;
-  const { data, error, isPending, isFetching, isPlaceholderData } = useDashboardBundle(displayUnit);
 
-  const dash = data?.dash ?? null;
-  const ts = data?.ts ?? null;
-  const retirementPerf = data?.retirementPerf ?? null;
-  const brokeragePerf = data?.brokeragePerf ?? null;
+  const navShell = useMemo(
+    () => (netWorthNav ? buildGroupPageShellFromNav(netWorthNav, displayUnit) : null),
+    [netWorthNav, displayUnit]
+  );
+
+  const { data: navSnapshot, isPending: navSnapshotPending } = useDashboardNavSnapshot(displayUnit);
+  const { data: shapeAccounts, isPending: accountsShapePending } = useAccountsByPortfolioGroup(
+    NET_WORTH_PORTFOLIO_GROUP,
+    displayUnit,
+    Boolean(netWorthNav)
+  );
+  const {
+    data,
+    error,
+    isPending: bundlePending,
+    isFetching,
+    isPlaceholderData,
+  } = useDashboardBundle(displayUnit);
+
+  useEffect(() => {
+    void prefetchDashboardNavSnapshot(queryClient, displayUnit);
+    void prefetchAccountsByPortfolioGroup(queryClient, NET_WORTH_PORTFOLIO_GROUP, displayUnit);
+    void prefetchDashboardBundle(queryClient, displayUnit);
+  }, [queryClient, displayUnit]);
+
+  const placeholderBundle = useMemo(
+    () => buildPlaceholderDashboardBundle(displayUnit),
+    [displayUnit]
+  );
+
+  const bundleReady = Boolean(
+    data?.dash && data?.ts?.overview && data?.ts?.accounts_ex_property
+  );
+  const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
+  const contentLoading = isBundleContentLoading({
+    isPending: bundlePending,
+    isPlaceholderData,
+    bundleReady,
+  });
+
+  const resolved = useRealBundle && data ? data : placeholderBundle;
+  const dash = resolved.dash;
+  const ts = resolved.ts;
+  const retirementPerf = resolved.retirementPerf;
+  const brokeragePerf = resolved.brokeragePerf;
+
+  useEffect(() => {
+    if (!useRealBundle || !data) return;
+    writeDashboardNavSnapshotCache(displayUnit, {
+      accounts: data.dash.accounts,
+      liabilities_breakdown: data.dash.liabilities_breakdown,
+      dashboard_layout: data.dash.dashboard_layout,
+      suecia_snapshot: data.dash.suecia_snapshot,
+    });
+    writeFxLatestCache(data.fx);
+  }, [useRealBundle, data, displayUnit]);
+
+  const overviewPoints = ts?.overview?.points ?? [];
+
+  const dashForStrip = useMemo(() => {
+    if (!netWorthNav || !navSnapshot) return null;
+    if (useRealBundle && data) return data.dash;
+    return dashPickForNavStrip(
+      {
+        accounts: navSnapshot.accounts,
+        liabilities_breakdown: navSnapshot.liabilities_breakdown,
+        dashboard_layout: navSnapshot.dashboard_layout,
+        suecia_snapshot: navSnapshot.suecia_snapshot,
+        nw_bucket_totals: navSnapshot.nw_bucket_totals,
+        overviewPoints,
+      },
+      netWorthNav
+    );
+  }, [netWorthNav, useRealBundle, data, navSnapshot, overviewPoints]);
+
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const showUsd = displayUnit === "usd";
-  const unitSwitching = isFetching && (isPlaceholderData || !isPending);
+  const unitSwitching = isFetching && (isPlaceholderData || !bundlePending);
   const isYearly = metricsPeriod === "year";
   const xAxisGranularity = isYearly ? "year" : "month";
-
-  useEffect(() => {
-    setLoading(isPending && data === undefined);
-    return () => setLoading(false);
-  }, [isPending, data, setLoading]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {
@@ -156,12 +239,25 @@ export function DashboardPage() {
     return m;
   }, [dash?.allocation]);
 
-  const overviewPoints = ts?.overview?.points ?? [];
+  const netWorthTableAccounts = useMemo(() => {
+    const rows =
+      useRealBundle && data
+        ? data.dash.accounts
+        : (navSnapshot?.accounts ?? navShell?.dashAccounts ?? []);
+    return netWorthTableAccountsFromDash(rows);
+  }, [useRealBundle, data, navSnapshot?.accounts, navShell?.dashAccounts]);
 
-  const netWorthTableAccounts = useMemo(
-    () => (dash ? netWorthTableAccountsFromDash(dash.accounts) : []),
-    [dash]
-  );
+  if (navStillLoading) {
+    return (
+      <main>
+        <p className="muted">{t("common.loading")}</p>
+      </main>
+    );
+  }
+
+  if (isPageShapeLoading(accountsShapePending, shapeAccounts, navSnapshotPending, navSnapshot)) {
+    return null;
+  }
 
   if (err) {
     return (
@@ -171,21 +267,29 @@ export function DashboardPage() {
     );
   }
 
-  if (!dash || !tsForCharts || !tsForCharts.accounts_ex_property || !tsForCharts.overview) {
-    return null;
+  if (!netWorthNav || !tsForCharts?.accounts_ex_property || !tsForCharts.overview) {
+    return (
+      <main>
+        <p className="muted">{t("common.loadFailed")}</p>
+      </main>
+    );
   }
 
   const useUsdPie =
     showUsd &&
     dash.allocation.some((a) => a.value_usd != null && Number.isFinite(a.value_usd) && a.value_usd > 0);
 
-  const pieData = dash.allocation
-    .filter((a) => isDashboardNwBucketSlug(a.group_slug))
-    .map((a) => ({
-      name: dashboardBucketLabel(a.group_slug),
-      value: useUsdPie && a.value_usd != null ? a.value_usd : a.value_clp,
-      group_slug: a.group_slug,
-    }));
+  const pieData = dash.allocation.flatMap((a) => {
+    const bucketSlug = a.group_slug;
+    if (!isDashboardNwBucketSlug(bucketSlug)) return [];
+    return [
+      {
+        name: dashboardBucketLabel(bucketSlug),
+        value: useUsdPie && a.value_usd != null ? a.value_usd : a.value_clp,
+        group_slug: bucketSlug,
+      },
+    ];
+  });
 
   const dashboardCharts = (
     <>
@@ -379,7 +483,7 @@ export function DashboardPage() {
                   const v = typeof p.value === "number" ? p.value : Number(p.value);
                   return formatMoneyForPie(Number.isFinite(v) ? v : 0, useUsdPie ? "usd" : "clp");
                 }}
-                isAnimationActive
+                isAnimationActive={!contentLoading}
                 animationBegin={0}
                 animationDuration={90}
                 animationEasing="ease-out"
@@ -410,16 +514,17 @@ export function DashboardPage() {
       title={pageTitle}
       colorRgb={netWorthNav?.color_rgb}
       colorTarget={netWorthColorTarget}
+      loading={contentLoading}
       portfolio={
-        netWorthNav
+        netWorthNav && dashForStrip
           ? {
               navNode: netWorthNav,
               groupSlug: "net_worth",
-              dash,
+              dash: dashForStrip,
               overviewPoints,
               metricsPeriod,
               showUsd,
-              animated: !unitSwitching,
+              animated: !unitSwitching && !contentLoading,
             }
           : null
       }
@@ -428,13 +533,11 @@ export function DashboardPage() {
       monthlyDetailHint={t("dashboard.monthlyDetailHint")}
       flowsHint={t("dashboard.flowsHint")}
       accountsTree={
-        netWorthNav ? (
-          <NavAccountsTree
-            root={netWorthNav}
-            titleI18nKey="dashboard.accountsTreeTitle"
-            emptyI18nKey="dashboard.accountsTreeEmpty"
-          />
-        ) : null
+        <NavAccountsTree
+          root={netWorthNav}
+          titleI18nKey="dashboard.accountsTreeTitle"
+          emptyI18nKey="dashboard.accountsTreeEmpty"
+        />
       }
     />
   );

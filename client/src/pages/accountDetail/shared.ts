@@ -10,6 +10,15 @@ export function formatYmEs(ym: string): string {
   return `${label} ${ys}`;
 }
 
+/** Inmueble Suecia (`real_estate` nav bucket or legacy `property` kind). */
+export function isDeptoPropertyCategory(categorySlug: string | null | undefined): boolean {
+  return categorySlug === "property" || categorySlug === "real_estate";
+}
+
+export function isDeptoMortgageCategory(categorySlug: string | null | undefined): boolean {
+  return categorySlug === "mortgage";
+}
+
 export function movementUnitsKind(categorySlug: string | null | undefined): "shares" | "coin" {
   if (categorySlug === "bitcoin" || categorySlug === "eth") return "coin";
   return "shares";

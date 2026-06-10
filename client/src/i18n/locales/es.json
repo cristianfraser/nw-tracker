@@ -12,13 +12,18 @@
     "hint": "Ejecuta el backfill o revisa la sincronización en",
     "depositConversionError": "Al menos un depósito no pudo convertirse a US$ (falta fx_daily en la fecha del movimiento).",
     "syncStale": "La sincronización USD/EUR con Banco Central está desactualizada o falló.",
+    "yahooRejected": "{{count}} fecha(s) Yahoo CLP=X rechazada(s) (tipo de cambio inválido): {{dates}}. Las conversiones usan el último tipo de cambio válido anterior.",
     "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en US$"
   },
   "rates": {
     "instrumentDisplayHint": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD.",
     "recentColDate": "Fecha",
     "recentColValue": "Valor",
-    "recentEmpty": "Sin datos recientes"
+    "recentEmpty": "Sin datos recientes",
+    "fx": {
+      "yahoo": "Yahoo CLP=X (conversiones)",
+      "bcentralObservado": "Banco Central — dólar observado (referencia)"
+    }
   },
   "brokerage": {
     "groups": {
@@ -318,6 +323,7 @@
         "sbif_utm": "Banco Central — UTM",
         "sbif_ipc": "Banco Central — IPC",
         "stocks_nyse": "Acciones — NYSE",
+        "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
         "crypto_eod": "Cripto"
       }
     }
@@ -363,6 +369,19 @@
     "flowsEmpty": "No hay flujos.",
     "flowsFilteredEmpty": "Ningún flujo coincide con el filtro.",
     "flowsPersonalOnly": "Solo aportes propios",
+    "deptoSummary": {
+      "mortgage": {
+        "currentBalance": "Saldo actual",
+        "lastPayment": "Último pago",
+        "nextPayment": "Próximo pago"
+      },
+      "property": {
+        "value": "Valor",
+        "deposited": "Depositado",
+        "plYtd": "P/L YTD",
+        "plTotal": "P/L total"
+      }
+    },
     "mortgageDividendosV2": {
       "titleProperty": "Hipoteca / dividendos (vista resumida)",
       "titleMortgage": "Dividendos hipoteca (vista resumida)",
@@ -466,10 +485,10 @@
       "chartFacturado": "Facturado",
       "chartFacturadoClose": "Facturado (cierre)",
       "flowsHint": "Aportes, retiros y movimientos registrados en la cuenta.",
-      "detallePorMesBillingHint": "Una fila por mes de facturación. Total facturado = cierre del estado (~20); en el mes abierto (sin PDF) incluye el arrastre del mes anterior cerrado más cargos del mes, menos abonos (PAGO) hasta el próximo cierre. Balance total = facturado + cupo en cuotas − cuota a pagar del mes siguiente.",
+      "detallePorMesBillingHint": "Una fila por mes de facturación. Total facturado = cierre del estado (~20); en el mes abierto (sin PDF) incluye el arrastre del mes anterior cerrado más cargos del mes, menos abonos (PAGO) hasta el próximo cierre. Balance total = facturado + deuda en cuotas − cuota a pagar del mes siguiente.",
       "colTotalFacturado": "Total facturado",
       "colBalanceTotal": "Balance total",
-      "colCupoEnCuotas": "Cupo en cuotas",
+      "colCupoEnCuotas": "Deuda en cuotas",
       "manualRowNote": "sin cierre de estado aún",
       "facturacionesTitle": "Facturaciones",
       "facturacionesHint": "Una fila por mes de facturación (cierre ~20 del mes). Cuota a pagar = cargos con vencimiento en el mes del «pagar hasta» (~10 del mes siguiente).",
@@ -492,7 +511,9 @@
       "lineColNotes": "Notas",
       "purchaseNotePlaceholder": "Nota…",
       "purchaseNoteAria": "Nota de la compra",
-      "colCardCurrency": "Tarjeta"
+      "colCardCurrency": "Tarjeta",
+      "associatedCardsTitle": "Tarjetas asociadas",
+      "associatedCardsHint": "Números de tarjeta física con estados importados en esta cuenta."
     }
   },
   "groupPage": {
@@ -511,6 +532,9 @@
     "accountsTreeCategory": "Categoría",
     "accountsTreeGroup": "Clase",
     "accountsTreeNotes": "Notas",
+    "chartToggleGrouped": "Agrupado",
+    "chartToggleAccumulatedDeposits": "Aportes acumulados",
+    "chartToggleAccumulatedDepositsTitle": "Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización).",
     "accountsTreeEmpty": "Aún no hay cuentas en esta vista."
   },
   "table": {
@@ -628,7 +652,27 @@
       "unclassifiedTableEmpty": "No hay gastos sin clasificar.",
       "depositMatchedTableTitle": "Gastos emparejados con depósitos",
       "depositMatchedTableHint": "Cargos de cuenta corriente emparejados automáticamente con un depósito (cuenta y fecha en la nota). Revisa posibles falsos positivos, p. ej. transferencias a otros bancos.",
-      "depositMatchedTableEmpty": "No hay gastos emparejados automáticamente con depósitos."
+      "depositMatchedTableEmpty": "No hay gastos emparejados automáticamente con depósitos.",
+      "bigGroups": {
+        "colGroup": "Grupo grande",
+        "none": "—",
+        "selectAria": "Grupo grande de la compra",
+        "createOption": "+ Crear grupo…",
+        "createPrompt": "Nombre del grupo (viaje, remodelación, etc.)",
+        "bulkPlaceholder": "Asignar grupo grande…",
+        "bulkSelectAria": "Grupo grande para las compras seleccionadas",
+        "chartFilterLabel": "Excluir del gráfico",
+        "chartFilterHint": "Gráfico sin grupos grandes marcados como excluidos; la tabla muestra el total completo.",
+        "sectionTitle": "Grupos grandes",
+        "sectionHint": "Compras agrupadas por viaje, remodelación u otro gasto excepcional. La categoría habitual (ocio, otros, etc.) se mantiene; aquí defines el grupo para revisar y filtrar el gráfico.",
+        "purchaseCount": "{{count}} compras",
+        "emptyGroup": "Sin compras en este grupo.",
+        "renameAction": "Renombrar",
+        "renamePrompt": "Nuevo nombre del grupo",
+        "deleteAction": "Eliminar grupo",
+        "deleteConfirm": "¿Eliminar el grupo «{{label}}»? Tiene {{count}} compra(s) asignadas; quítalas del grupo antes de eliminar.",
+        "deleteBlockedHint": "Quita todas las compras del grupo antes de eliminarlo."
+      }
     },
     "accounts": {
       "el_vergel": "El Vergel",
@@ -686,6 +730,12 @@
       "originManual": "Manual",
       "installmentsLedgerHint": "Datos importados a la base desde estados de cuenta (cuotas).",
       "installmentsEmpty": "No hay cupos en cuotas ni estados importados. Importa PDF con npm run import:cfraser-inbox o carga el ledger con import:cc-parsed.",
+      "monthCuotasTitle": "Cuotas del mes",
+      "colMonthCuotaTotal": "Total cuota del mes",
+      "colInstallmentDebt": "Deuda en cuotas",
+      "colMonthBreakdown": "Detalle",
+      "monthCuotasBreakdownLine": "{{label}}: {{amount}} (cuota {{current}} de {{total}})",
+      "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
       "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import)."
     }
   }

@@ -8,17 +8,14 @@ import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
-  filterNavChildrenForEntityStrip,
+  navLeafAccountIdSet,
+  parentTitleBalanceDelta,
+  routableNavStripChildren,
   portfolioNavParentMainValue,
   portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
 } from "../../portfolioNavDashboardCards";
-import {
-  buildCashEqsCardBreakdown,
-  periodBalanceChangeFromAccountRows,
-  type CardGroupMetricsPeriod,
-} from "../../dashboardCardBreakdown";
-import { accountCountsTowardGroupTotals, isChartActiveAccount } from "../../accountGroupTotals";
+import { buildCashEqsCardBreakdown, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
@@ -64,17 +61,13 @@ export function PortfolioNavEntityCardsStrip({
     parentNavNode,
     showUsd
   );
-  const parentMetricsRows = parentRows.filter(
-    (a) =>
-      accountCountsTowardGroupTotals(a) &&
-      isChartActiveAccount(a) &&
-      a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp)
-  );
-  const parentTitleDelta = periodBalanceChangeFromAccountRows(
-    parentMetricsRows,
+  const parentTitleDelta = parentTitleBalanceDelta(
+    dash,
+    overviewPoints,
+    navLeafAccountIdSet(parentNavNode),
     metricsPeriod,
-    showUsd
+    showUsd,
+    parentTitleMode
   );
 
   const stripGroupChildren = useMemo(
@@ -87,16 +80,14 @@ export function PortfolioNavEntityCardsStrip({
     [parentNavNode]
   );
 
-  const filteredGroupChildren = useMemo(() => {
-    if (parentNavNode.asset_group_slug === "net_worth") {
-      return stripGroupChildren;
-    }
-    return filterNavChildrenForEntityStrip(stripGroupChildren, dash.accounts, showUsd);
-  }, [parentNavNode.asset_group_slug, stripGroupChildren, dash.accounts, showUsd]);
+  const filteredGroupChildren = useMemo(
+    () => routableNavStripChildren(stripGroupChildren),
+    [stripGroupChildren]
+  );
 
   const filteredAccountChildren = useMemo(
-    () => filterNavChildrenForEntityStrip(stripAccountChildren, dash.accounts, showUsd),
-    [stripAccountChildren, dash.accounts, showUsd]
+    () => routableNavStripChildren(stripAccountChildren),
+    [stripAccountChildren]
   );
 
   const showDetailSlots = filteredGroupChildren.length > 0;

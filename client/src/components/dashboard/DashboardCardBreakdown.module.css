@@ -87,3 +87,7 @@
 .child>.row .labelLink {
   color: var(--muted);
 }
+
+.rowStale {
+  opacity: 0.38;
+}

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { GroupChartViewToggles } from "../components/group/GroupChartViewToggles";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
@@ -12,17 +13,23 @@ import {
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
 import type { AssetGroupSlug } from "../types";
-import { navAccountIdSet, navChartInactiveAccountIds } from "../portfolioNavDashboardCards";
 import { findBestNavNodeForPathname, resolveGroupPageApiParams } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
 import { useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
-import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPagePlaceholders";
+import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
+import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
 import { dashPickForNavStrip } from "../queries/fetchers";
+import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
+import { queryKeys } from "../queries/keys";
+import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
+  useAccountsByPortfolioGroup,
   useDashboardNavContext,
+  useDashboardNavSnapshot,
+  useGroupPageShell,
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
@@ -40,7 +47,6 @@ export function GroupInfoPage() {
     displayUnit,
     pathnameUsesDashboardNavContext(pathname)
   );
-  const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
   const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const navMatchNode = useMemo(
@@ -52,13 +58,34 @@ export function GroupInfoPage() {
   const portfolioGroup = apiParams?.portfolio_group ?? "";
 
   const queryClient = useQueryClient();
-  const { data, error, isPending: groupPending } = usePortfolioGroupBundle({
+  const shapeEnabled = Boolean(navMatchNode && portfolioGroup);
+  const { data: navSnapshot, isPending: navSnapshotPending } = useDashboardNavSnapshot(
+    displayUnit,
+    shapeEnabled
+  );
+  const { data: shapeAccounts, isPending: accountsShapePending } = useAccountsByPortfolioGroup(
+    portfolioGroup,
+    displayUnit,
+    shapeEnabled
+  );
+
+  const { data: shell } = useGroupPageShell({
+    portfolioGroup,
+    unit: displayUnit,
+    navNode: navMatchNode,
+    enabled: shapeEnabled,
+  });
+
+  const {
+    data,
+    error,
+    isPending: groupPending,
+    isPlaceholderData,
+  } = usePortfolioGroupBundle({
     portfolio_group: portfolioGroup,
     unit: displayUnit,
     enabled: Boolean(navMatchNode && portfolioGroup),
   });
-
-  console.log("data", data);
 
   useEffect(() => {
     if (!portfolioGroup) return;
@@ -83,39 +110,57 @@ export function GroupInfoPage() {
   const groupedToggleOn = chartCtx?.showGroupedToggle ? chartsGrouped : false;
 
   const placeholderBundle = useMemo(
-    () => buildPlaceholderPortfolioGroupBundle(displayUnit),
-    [displayUnit]
+    () => buildPlaceholderPortfolioGroupBundle(displayUnit, shell?.accounts ?? [], portfolioGroup),
+    [displayUnit, shell?.accounts, portfolioGroup]
   );
   const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_pie);
-  const contentLoading = groupPending || !bundleReady;
-  const resolved = bundleReady && data ? data : placeholderBundle;
+  const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
+  const contentLoading = isBundleContentLoading({
+    isPending: groupPending,
+    isPlaceholderData,
+    bundleReady,
+  });
 
-  const accounts = resolved.accounts;
+  const accounts =
+    useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
 
-  const chartAccountIds = useMemo(() => {
-    if (navMatchNode) return navAccountIdSet(navMatchNode);
-    return new Set(accounts.map((a) => a.id));
-  }, [navMatchNode, accounts]);
+  useEffect(() => {
+    if (!bundleReady || !data || !navMatchNode || !navCtx || !portfolioGroup) return;
+    const nextShell = extractGroupPageShellFromReal(data.accounts, navCtx.accounts, navMatchNode);
+    writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
+    queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
+  }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);
 
-  const inactiveNavAccountIds = useMemo(
-    () => (navMatchNode ? navChartInactiveAccountIds(navMatchNode) : new Set<number>()),
-    [navMatchNode]
-  );
+  const dashForStrip = useMemo(() => {
+    if (!navMatchNode || !navSnapshot) return null;
+    const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
+    return dashPickForNavStrip(
+      {
+        accounts: accountsForDash,
+        liabilities_breakdown:
+          navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
+        dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
+        suecia_snapshot: navCtx?.suecia_snapshot ?? navSnapshot.suecia_snapshot,
+        nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
+        overviewPoints,
+      },
+      sidebarNav?.net_worth
+    );
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, sidebarNav?.net_worth]);
+
+  const resolved = useRealBundle && data ? data : placeholderBundle;
 
   const tableAccounts = useMemo(
-    () =>
-      accounts.filter(
-        (a) => chartAccountIds.has(a.id) && !inactiveNavAccountIds.has(a.id)
-      ),
-    [accounts, chartAccountIds, inactiveNavAccountIds]
+    () => accounts,
+    [accounts]
   );
 
   const tableAccountsForPerf = useMemo(
     () =>
       tableAccounts.map((a) => ({
-        id: a.id,
+        id: a.source_account_id ?? a.id,
         name: a.name,
-        category_slug: a.category_slug,
+        category_slug: a.category_slug ?? a.bucket_slug ?? "",
       })),
     [tableAccounts]
   );
@@ -182,6 +227,10 @@ export function GroupInfoPage() {
     );
   }
 
+  if (isPageShapeLoading(accountsShapePending, shapeAccounts, navSnapshotPending, navSnapshot)) {
+    return null;
+  }
+
   const isRealEstate = navMatchNode.asset_group_slug === "real_estate";
 
   return (
@@ -190,37 +239,12 @@ export function GroupInfoPage() {
       colorRgb={navMatchNode.color_rgb}
       colorTarget={pageColorTarget}
       loading={contentLoading}
-      toolbar={
-        chartCtx?.showGroupedToggle ? (
-          <div className="toggle-row" style={{ flexWrap: "wrap", gap: "0.5rem 1rem" }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
-              <input
-                type="checkbox"
-                checked={groupedToggleOn}
-                onChange={(e) => setChartsGrouped(e.target.checked)}
-              />
-              <span>Agrupado</span>
-            </label>
-            <label
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 12 }}
-              title="Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización)."
-            >
-              <input
-                type="checkbox"
-                checked={showValuationDeposits}
-                onChange={(e) => setShowValuationDeposits(e.target.checked)}
-              />
-              <span>Aportes acumulados</span>
-            </label>
-          </div>
-        ) : null
-      }
       portfolio={
-        dash
+        dashForStrip
           ? {
             navNode: navMatchNode,
             groupSlug: portfolioGroup,
-            dash,
+            dash: dashForStrip,
             overviewPoints,
             metricsPeriod,
             showUsd,
@@ -262,6 +286,16 @@ export function GroupInfoPage() {
           groupColorRgb={navMatchNode.color_rgb}
           chartCtx={chartCtx}
           showValuationDeposits={showValuationDeposits}
+          chartControls={
+            chartCtx?.showGroupedToggle ? (
+              <GroupChartViewToggles
+                grouped={groupedToggleOn}
+                onGroupedChange={setChartsGrouped}
+                accumulatedDeposits={showValuationDeposits}
+                onAccumulatedDepositsChange={setShowValuationDeposits}
+              />
+            ) : undefined
+          }
         />
       }
       tableAccounts={tableAccountsForPerf}

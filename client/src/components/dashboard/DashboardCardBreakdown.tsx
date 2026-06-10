@@ -77,6 +77,7 @@ function BreakdownNodeRow({
     Boolean(soleChild.to?.startsWith("/account/"));
   const liClass = isGroup ? styles.group : styles.child;
   const mountSeedKey = `${cardSlug}:${rowKeyPrefix}:${depth}:${index}:${node.label}`;
+  const rowStale = node.sync_stale === true;
   const label = node.to ? (
     <Link to={node.to} className={styles.labelLink}>
       {node.label}
@@ -87,7 +88,7 @@ function BreakdownNodeRow({
 
   return (
     <li className={liClass}>
-      <div className={styles.row}>
+      <div className={cn(styles.row, rowStale && styles.rowStale)}>
         {label}
         <BreakdownAmount
           node={node}

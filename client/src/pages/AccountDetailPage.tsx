@@ -1,6 +1,7 @@
 import { CreditCardAccountDetailPage } from "./accountDetail/CreditCardAccountDetailPage";
 import { StandardAccountDetailPage } from "./accountDetail/StandardAccountDetailPage";
 import { useAccountDetailPageData } from "./accountDetail/useAccountDetailPageData";
+import { isCreditCardAccountNavNode } from "../portfolioNavFromApi";
 
 export function AccountDetailPage() {
   const data = useAccountDetailPageData();
@@ -12,7 +13,9 @@ export function AccountDetailPage() {
       </main>
     );
   }
-  if (data.summary.category_slug === "credit_card") {
+  const isCreditCard =
+    data.summary.category_slug === "credit_card" || isCreditCardAccountNavNode(data.navSelf);
+  if (isCreditCard) {
     return <CreditCardAccountDetailPage data={data} />;
   }
 

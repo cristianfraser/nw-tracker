@@ -4,8 +4,6 @@ import { Navigate, useLocation, useParams } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
-import { filterTimeseriesBlockByAccountIds } from "../filterTimeseriesBlock";
-import { filterGroupPerfByAccountIds } from "../filterGroupPerfByAccountIds";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
@@ -15,17 +13,23 @@ import {
 } from "../groupPageChartViews";
 import { liabilitiesChartBucketNavNodes } from "../liabilitiesChartBuckets";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
-import { navAccountIdSet } from "../portfolioNavDashboardCards";
-import { findLiabilitiesNavNodeForPathname } from "../portfolioNavFromApi";
+import { findBestNavNodeForPathname, findNavNodeBySlug } from "../portfolioNavFromApi";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
-import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPagePlaceholders";
+import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
+import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
 import { dashPickForNavStrip } from "../queries/fetchers";
+import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
+import { queryKeys } from "../queries/keys";
+import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
+  useAccountsByPortfolioGroup,
   useDashboardNavContext,
+  useDashboardNavSnapshot,
+  useGroupPageShell,
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
@@ -34,7 +38,7 @@ import {
 export function LiabilitiesGroupPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const { subgroup: liabilitiesSubgroupParam } = useParams();
+  const { subgroup: liabilitiesSubgroupParam, issuer: issuerParam } = useParams();
   const categoryFilter = useMemo(
     () => parseLiabilitiesSubgroupParam(liabilitiesSubgroupParam),
     [liabilitiesSubgroupParam]
@@ -49,18 +53,15 @@ export function LiabilitiesGroupPage() {
     displayUnit,
     pathnameUsesDashboardNavContext(pathname)
   );
-  const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
   const overviewPoints = navCtx?.overviewPoints ?? [];
 
-  const navMatchNode = useMemo(
-    () =>
-      findLiabilitiesNavNodeForPathname(
-        sidebarNav?.main,
-        pathname,
-        categoryFilter ?? undefined
-      ),
-    [sidebarNav, pathname, categoryFilter]
-  );
+  const navMatchNode = useMemo(() => {
+    const best = findBestNavNodeForPathname(sidebarNav?.main, pathname);
+    if (!issuerParam) return best;
+    const issuerNode = findNavNodeBySlug(sidebarNav?.main, issuerParam);
+    if (issuerNode?.asset_group_slug === "credit_cards") return issuerNode;
+    return best;
+  }, [sidebarNav, pathname, issuerParam]);
 
   const queryClient = useQueryClient();
   const portfolioGroup =
@@ -70,7 +71,30 @@ export function LiabilitiesGroupPage() {
       : categoryFilter === "mortgage"
         ? "liabilities_mortgage"
         : "liabilities");
-  const { data, error, isPending: groupPending } = usePortfolioGroupBundle({
+  const shapeEnabled = Boolean(navMatchNode);
+  const { data: navSnapshot, isPending: navSnapshotPending } = useDashboardNavSnapshot(
+    displayUnit,
+    shapeEnabled
+  );
+  const { data: shapeAccounts, isPending: accountsShapePending } = useAccountsByPortfolioGroup(
+    portfolioGroup,
+    displayUnit,
+    shapeEnabled
+  );
+
+  const { data: shell } = useGroupPageShell({
+    portfolioGroup,
+    unit: displayUnit,
+    navNode: navMatchNode,
+    enabled: shapeEnabled,
+  });
+
+  const {
+    data,
+    error,
+    isPending: groupPending,
+    isPlaceholderData,
+  } = usePortfolioGroupBundle({
     portfolio_group: portfolioGroup,
     unit: displayUnit,
     enabled: Boolean(navMatchNode),
@@ -90,19 +114,45 @@ export function LiabilitiesGroupPage() {
   );
 
   const placeholderBundle = useMemo(
-    () => buildPlaceholderPortfolioGroupBundle(displayUnit),
-    [displayUnit]
+    () => buildPlaceholderPortfolioGroupBundle(displayUnit, shell?.accounts ?? [], portfolioGroup),
+    [displayUnit, shell?.accounts, portfolioGroup]
   );
   const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_pie);
-  const contentLoading = groupPending || !bundleReady;
-  const resolved = bundleReady && data ? data : placeholderBundle;
+  const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
+  const contentLoading = isBundleContentLoading({
+    isPending: groupPending,
+    isPlaceholderData,
+    bundleReady,
+  });
 
-  const accounts = resolved.accounts;
+  const accounts =
+    useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
 
-  const chartAccountIds = useMemo(
-    () => (navMatchNode ? navAccountIdSet(navMatchNode) : new Set<number>()),
-    [navMatchNode]
-  );
+  useEffect(() => {
+    if (!bundleReady || !data || !navMatchNode || !navCtx) return;
+    const nextShell = extractGroupPageShellFromReal(data.accounts, navCtx.accounts, navMatchNode);
+    writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
+    queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
+  }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);
+
+  const dashForStrip = useMemo(() => {
+    if (!navMatchNode || !navSnapshot) return null;
+    const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
+    return dashPickForNavStrip(
+      {
+        accounts: accountsForDash,
+        liabilities_breakdown:
+          navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
+        dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
+        suecia_snapshot: navCtx?.suecia_snapshot ?? navSnapshot.suecia_snapshot,
+        nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
+        overviewPoints,
+      },
+      sidebarNav?.net_worth
+    );
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, sidebarNav?.net_worth]);
+
+  const resolved = useRealBundle && data ? data : placeholderBundle;
 
   const tableAccountsForPerf = useMemo(
     () =>
@@ -119,13 +169,8 @@ export function LiabilitiesGroupPage() {
 
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group || !chartCtx || !navMatchNode) return null;
-    let block = buildDisplayValuationBlock(ts, accounts, chartCtx, false, navMatchNode);
-    if (!block) return null;
-    if (!chartCtx.liabilitiesGrouped) {
-      block = filterTimeseriesBlockByAccountIds(block, chartAccountIds);
-    }
-    return block;
-  }, [ts, accounts, chartCtx, chartAccountIds, navMatchNode]);
+    return buildDisplayValuationBlock(ts, accounts, chartCtx, false, navMatchNode);
+  }, [ts, accounts, chartCtx, navMatchNode]);
 
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx || !navMatchNode) return [];
@@ -134,12 +179,8 @@ export function LiabilitiesGroupPage() {
 
   const displayGroupPerf = useMemo(() => {
     if (!chartCtx || !navMatchNode) return groupPerfRaw;
-    const perf = buildDisplayGroupPerf(groupPerfRaw, accounts, chartCtx, false, navMatchNode);
-    if (!chartCtx.liabilitiesGrouped) {
-      return filterGroupPerfByAccountIds(perf, chartAccountIds);
-    }
-    return perf;
-  }, [groupPerfRaw, accounts, chartCtx, chartAccountIds, navMatchNode]);
+    return buildDisplayGroupPerf(groupPerfRaw, accounts, chartCtx, false, navMatchNode);
+  }, [groupPerfRaw, accounts, chartCtx, navMatchNode]);
 
   const chartSeriesCount = useMemo(() => {
     if (chartCtx?.liabilitiesGrouped && navMatchNode) {
@@ -180,12 +221,24 @@ export function LiabilitiesGroupPage() {
     return <Navigate to="/" replace />;
   }
 
+  if (
+    issuerParam != null &&
+    issuerParam !== "" &&
+    (navMatchNode.slug !== issuerParam || navMatchNode.asset_group_slug !== "credit_cards")
+  ) {
+    return <Navigate to="/liabilities" replace />;
+  }
+
   if (err) {
     return (
       <main>
         <p className="error">{err}</p>
       </main>
     );
+  }
+
+  if (isPageShapeLoading(accountsShapePending, shapeAccounts, navSnapshotPending, navSnapshot)) {
+    return null;
   }
 
   return (
@@ -195,12 +248,12 @@ export function LiabilitiesGroupPage() {
       colorTarget={pageColorTarget}
       loading={contentLoading}
       portfolio={
-        dash
+        dashForStrip
           ? {
               navNode: navMatchNode,
-              groupSlug: "liabilities",
+              groupSlug: portfolioGroup,
               subgroup: categoryFilter ?? undefined,
-              dash,
+              dash: dashForStrip,
               overviewPoints,
               metricsPeriod,
               showUsd,

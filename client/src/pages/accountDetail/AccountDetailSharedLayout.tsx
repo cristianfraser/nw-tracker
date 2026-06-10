@@ -32,6 +32,8 @@ type LayoutProps = {
   heroSubtitle?: ReactNode;
   children: ReactNode;
   loading?: boolean;
+  /** Nav child dashboard cards (second strip row). Off for leaf pages that never show them (e.g. credit card). */
+  showNavChildCards?: boolean;
 };
 
 export function AccountDetailSharedLayout({
@@ -52,7 +54,20 @@ export function AccountDetailSharedLayout({
   heroSubtitle,
   children,
   loading = false,
+  showNavChildCards = true,
 }: LayoutProps) {
+  const navChildDetailCards =
+    showNavChildCards && dash && accountNavChildren.length > 0 ? (
+      <PortfolioNavChildDetailCards
+        dash={dash}
+        overviewPoints={overviewPoints}
+        navChildren={accountNavChildren}
+        showUsd={displayUnit === "usd"}
+        metricsPeriod={metricsPeriod}
+        animated
+      />
+    ) : null;
+
   return (
     <main>
       <PageTitleRow title={title} colorRgb={accountColorRgb} colorTarget={pageColorTarget} />
@@ -80,18 +95,7 @@ export function AccountDetailSharedLayout({
               }
             />
           }
-          detailSlots={
-            dash && accountNavChildren.length > 0 ? (
-              <PortfolioNavChildDetailCards
-                dash={dash}
-                overviewPoints={overviewPoints}
-                navChildren={accountNavChildren}
-                showUsd={displayUnit === "usd"}
-                metricsPeriod={metricsPeriod}
-                animated
-              />
-            ) : null
-          }
+          detailSlots={navChildDetailCards}
         />
         {heroSubtitle ? <p className="muted">{heroSubtitle}</p> : null}
         {children}

@@ -283,7 +283,6 @@ export function Table({
       <div
         className="table-wrap"
         style={{
-          overflowX: "auto",
           marginBottom: hasHiddenRows && !expanded ? "0.35rem" : undefined,
         }}
       >

@@ -91,7 +91,7 @@ export function buildDisplayPieSlices(
     account_id: p.account_id,
   }));
   if (ctx.liabilitiesGrouped && navNode) {
-    return aggregateLiabilitiesNavGroupedPie(base, navNode);
+    return aggregateLiabilitiesNavGroupedPie(base, navNode, _accounts);
   }
   if (navNode && shouldAggregateNavCharts(navNode, grouped)) {
     return aggregateNavGroupedPie(base, navNode, grouped);

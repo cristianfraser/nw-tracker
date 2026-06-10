@@ -1,6 +1,6 @@
 import { Trans, useTranslation } from "../../i18n";
 import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
-import { AccountFlowsTable } from "../../components/account/AccountFlowsTable";
+import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
@@ -12,12 +12,14 @@ import { AccountBrokerageMovementsForm } from "../../components/account/AccountB
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { supportsBrokerageMovements } from "../../accountMovementCreate";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
+import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
-import { MortgageDividendosTableV2 } from "./MortgageDividendosTableV2";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import {
   ACCOUNT_FLOWS_COLLAPSED,
   MONTHLY_PERF_COLLAPSED,
+  isDeptoMortgageCategory,
+  isDeptoPropertyCategory,
   movementUnitsKind,
   tickerLabelFromCategory,
 } from "./shared";
@@ -59,7 +61,11 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showMonthlyPerformance =
     !isMovementCartolaAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
   const isAfpAccount = summary.category_slug === "afp";
-  const isMortgageAccount = summary.category_slug === "mortgage";
+  const isMortgageAccount = isDeptoMortgageCategory(summary.category_slug);
+  const isPropertyAccount = isDeptoPropertyCategory(summary.category_slug);
+  const isDeptoAccount = isMortgageAccount || isPropertyAccount;
+  const showPositionBlock =
+    !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount;
   const ccChartsFromParsedLedger =
     summary.category_slug === "credit_card" && data.ccLedger.has_installment_ledger;
 
@@ -77,7 +83,9 @@ export function StandardAccountDetailPage({ data }: Props) {
       heroClp={
         displayUnit === "usd"
           ? 0
-          : data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? 0
+          : data.accountDashRow?.current_value_clp ??
+          summary.latest_valuation_clp ??
+          0
       }
       heroApiUsd={
         displayUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null
@@ -91,70 +99,82 @@ export function StandardAccountDetailPage({ data }: Props) {
         <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
       )}
 
-      <div className={styles.positionBlock}>
-        <h2 className={styles.sectionTitleCompact}>Posición (ticker y cuotas)</h2>
-        <p className={cn("muted", styles.proseMutedXs)}>
-          <Trans
-            i18nKey="accountDetail.positionHint"
-            components={{ 1: <span className="mono" /> }}
-          />
-          {isAfpAccount ? (
+      {isDeptoAccount && !data.contentLoading ? (
+        <DeptoAccountSummaryCards
+          variant={isMortgageAccount ? "mortgage" : "property"}
+          ledger={mortgageLedger}
+          summary={summary}
+          monthlyPerfRows={monthlyPerfRows}
+          accountDashRow={data.accountDashRow}
+        />
+      ) : null}
+
+      {showPositionBlock ? (
+        <div className={styles.positionBlock}>
+          <h2 className={styles.sectionTitleCompact}>Posición (ticker y cuotas)</h2>
+          <p className={cn("muted", styles.proseMutedXs)}>
             <Trans
-              i18nKey="accountDetail.positionHintAfp"
-              components={{
-                1: <span className="mono" />,
-                2: <span className="mono" />,
-                3: <span className="mono" />,
-                4: <span className="mono" />,
-                5: <span className="mono" />,
-              }}
+              i18nKey="accountDetail.positionHint"
+              components={{ 1: <span className="mono" /> }}
             />
-          ) : null}
-        </p>
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Cuotas / unidades</th>
-                <th>Depositado (CLP)</th>
-                <th>Valor hoy (CLP)</th>
-                <th>Fecha valor</th>
-                <th>Valor / unidad (CLP)</th>
-              </tr>
-            </thead>
-          }
-        >
-          <tr>
-            <td className="mono">
-              {summary.position?.ticker ?? tickerLabelFromCategory(summary.category_slug)}
-            </td>
-            <td className="mono">
-              {summary.position?.units != null && Number.isFinite(summary.position.units)
-                ? formatInstrumentUnits(
+            {isAfpAccount ? (
+              <Trans
+                i18nKey="accountDetail.positionHintAfp"
+                components={{
+                  1: <span className="mono" />,
+                  2: <span className="mono" />,
+                  3: <span className="mono" />,
+                  4: <span className="mono" />,
+                  5: <span className="mono" />,
+                }}
+              />
+            ) : null}
+          </p>
+          <Table
+            header={
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Cuotas / unidades</th>
+                  <th>Depositado (CLP)</th>
+                  <th>Valor hoy (CLP)</th>
+                  <th>Fecha valor</th>
+                  <th>Valor / unidad (CLP)</th>
+                </tr>
+              </thead>
+            }
+          >
+            <tr>
+              <td className="mono">
+                {summary.position?.ticker ?? tickerLabelFromCategory(summary.category_slug)}
+              </td>
+              <td className="mono">
+                {summary.position?.units != null && Number.isFinite(summary.position.units)
+                  ? formatInstrumentUnits(
                     summary.position.units,
                     summary.position.units_kind ?? movementUnitsKind(summary.category_slug)
                   )
-                : "—"}
-            </td>
-            <td className="mono">{formatClp(summary.position?.deposited_clp ?? summary.deposits_clp)}</td>
-            <td className="mono">
-              {(() => {
-                const v = summary.position?.value_clp ?? summary.latest_valuation_clp;
-                return v != null ? formatClp(v) : "—";
-              })()}
-            </td>
-            <td className="muted">
-              {summary.position?.value_as_of ?? summary.latest_valuation_date ?? "—"}
-            </td>
-            <td className="mono">
-              {summary.position?.value_per_unit_clp != null
-                ? formatClp(summary.position.value_per_unit_clp)
-                : "—"}
-            </td>
-          </tr>
-        </Table>
-      </div>
+                  : "—"}
+              </td>
+              <td className="mono">{formatClp(summary.position?.deposited_clp ?? summary.deposits_clp)}</td>
+              <td className="mono">
+                {(() => {
+                  const v = summary.position?.value_clp ?? summary.latest_valuation_clp;
+                  return v != null ? formatClp(v) : "—";
+                })()}
+              </td>
+              <td className="muted">
+                {summary.position?.value_as_of ?? summary.latest_valuation_date ?? "—"}
+              </td>
+              <td className="mono">
+                {summary.position?.value_per_unit_clp != null
+                  ? formatClp(summary.position.value_per_unit_clp)
+                  : "—"}
+              </td>
+            </tr>
+          </Table>
+        </div>
+      ) : null}
 
       <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
         <LineChartPanel
@@ -285,15 +305,11 @@ export function StandardAccountDetailPage({ data }: Props) {
             ledger={mortgageLedger}
             variant={isMortgageAccount ? "mortgage" : "property"}
           />
-          <MortgageDividendosTableV2
-            ledger={mortgageLedger}
-            variant={isMortgageAccount ? "mortgage" : "property"}
-          />
           {mortgageLedger.payment_scenarios && mortgageLedger.payment_scenarios.length > 0 ? (
             <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios} />
           ) : null}
         </>
-      ) : isMortgageAccount || summary.category_slug === "property" ? (
+      ) : isDeptoAccount ? (
         !mortgageLedger.has_sheet_rows ? (
           <p className={cn("muted", styles.marginTopBase)}>
             {t("account.creditCard.mortgageSheetEmpty")}
@@ -330,42 +346,38 @@ export function StandardAccountDetailPage({ data }: Props) {
         </>
       ) : null}
 
-      {showBrokerageMovementsForm ? (
-        <AccountBrokerageMovementsForm
-          accountId={summary.account_id}
-          ticker={summary.position?.ticker ?? null}
-          displayUnit={displayUnit}
-          extraCcOffsetsKey={extraCcOffsetsKey}
-        />
-      ) : null}
-
-      <h2>{t("accountDetail.flowsTitle")}</h2>
-      <p className={cn("muted", styles.proseMutedXs)}>
-        Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
-        <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
-        {showBrokerageMovementsForm ? null : (
-          <>
-            {" "}
-            Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
-          </>
-        )}
-      </p>
-      <label className={styles.flowsFilterToggle}>
-        <input
-          type="checkbox"
-          checked={movementsOnlyPersonalDeposits}
-          onChange={(e) => setMovementsOnlyPersonalDeposits(e.target.checked)}
-        />
-        {t("accountDetail.flowsPersonalOnly")}
-      </label>
-      <AccountFlowsTable
+      <AccountFlowsSection
+        hint={
+          <p className={cn("muted", styles.proseMutedXs)}>
+            Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
+            <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
+            {showBrokerageMovementsForm ? null : (
+              <>
+                {" "}
+                Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
+              </>
+            )}
+          </p>
+        }
+        addMovementsForm={
+          showBrokerageMovementsForm ? (
+            <AccountBrokerageMovementsForm
+              accountId={summary.account_id}
+              ticker={summary.position?.ticker ?? null}
+              displayUnit={displayUnit}
+              extraCcOffsetsKey={extraCcOffsetsKey}
+            />
+          ) : null
+        }
         rows={displayedFlows.map((row) => ({
           ...row,
           category_slug: summary.category_slug ?? undefined,
         }))}
-        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
-        movementUnitsKind={movementUnitsKind}
         totalCount={allFlows.length}
+        movementsOnlyPersonalDeposits={movementsOnlyPersonalDeposits}
+        onMovementsOnlyPersonalDepositsChange={setMovementsOnlyPersonalDeposits}
+        movementUnitsKind={movementUnitsKind}
+        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
       />
     </AccountDetailSharedLayout>
   );

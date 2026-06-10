@@ -4,7 +4,7 @@ import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallment
 import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
-import { AccountFlowsTable } from "../../components/account/AccountFlowsTable";
+import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
@@ -163,8 +163,23 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       accountNavChildren={data.accountNavChildren}
       heroSubtitle={heroSubtitle}
       loading={data.contentLoading}
+      showNavChildCards={false}
     >
       <CreditCardSummaryCards data={data} />
+
+      {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
+        <section className={styles.chartBlock}>
+          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.associatedCardsTitle")}</h2>
+          <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.associatedCardsHint")}</p>
+          <ul className={styles.proseSmTight}>
+            {ccLedger.associated_card_last4s!.map((last4) => (
+              <li key={last4} className="mono">
+                ·{last4}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
@@ -269,24 +284,19 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         onExtraOffsetsChange={setExtraCcOffsets}
       />
 
-      <h2>{t("accountDetail.flowsTitle")}</h2>
-      <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.flowsHint")}</p>
-      <label className={styles.flowsFilterToggle}>
-        <input
-          type="checkbox"
-          checked={movementsOnlyPersonalDeposits}
-          onChange={(e) => setMovementsOnlyPersonalDeposits(e.target.checked)}
-        />
-        {t("accountDetail.flowsPersonalOnly")}
-      </label>
-      <AccountFlowsTable
+      <AccountFlowsSection
+        hint={
+          <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.flowsHint")}</p>
+        }
         rows={displayedFlows.map((row) => ({
           ...row,
           category_slug: summary.category_slug ?? undefined,
         }))}
-        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
-        movementUnitsKind={movementUnitsKind}
         totalCount={allFlows.length}
+        movementsOnlyPersonalDeposits={movementsOnlyPersonalDeposits}
+        onMovementsOnlyPersonalDepositsChange={setMovementsOnlyPersonalDeposits}
+        movementUnitsKind={movementUnitsKind}
+        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
       />
     </AccountDetailSharedLayout>
   );

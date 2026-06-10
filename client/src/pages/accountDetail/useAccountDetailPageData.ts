@@ -2,13 +2,14 @@ import { useDeferredValue, useLayoutEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   filterPointsThroughAsOfDate,
+  resolveMonthlyPerfClipEndDate,
   trailingZeroTailClipLastVisibleDate,
 } from "../../components/charts/AppLineChart";
 import {
   buildLineChartTailClipOptions,
   trimLeadingInactivePoints,
 } from "../../components/charts/ValuationLineCharts";
-import { useAccountDetailBundle, useDashboardNavContext, useSidebarNav } from "../../queries/hooks";
+import { useAccountDetailBundle, useDashboardNavContext, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
@@ -91,6 +92,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     deferredCcOffsets
   );
   const { data: sidebarNav } = useSidebarNav();
+  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
 
   const placeholder = useMemo(
     () => buildPlaceholderAccountDetailBundle(accountIdNum > 0 ? accountIdNum : 1, displayUnit),
@@ -146,10 +148,11 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     return trailingZeroTailClipLastVisibleDate(block.points, opts);
   }, [ts?.accounts]);
 
-  const monthlyPerfRows = useMemo(
-    () => filterPointsThroughAsOfDate(monthlyPerf?.monthly ?? [], valuationTailClipEndDate),
-    [monthlyPerf?.monthly, valuationTailClipEndDate]
-  );
+  const monthlyPerfRows = useMemo(() => {
+    const rows = monthlyPerf?.monthly ?? [];
+    const clipEnd = resolveMonthlyPerfClipEndDate(valuationTailClipEndDate, rows);
+    return filterPointsThroughAsOfDate(rows, clipEnd);
+  }, [monthlyPerf?.monthly, valuationTailClipEndDate]);
 
   const ytdChartPoints = useMemo(() => {
     if (!monthlyPerfRows.length) return [];
@@ -232,7 +235,13 @@ export function useAccountDetailPageData(): AccountDetailPageData {
       ? (lastChartRow[accountDataKey] as number)
       : null;
 
-  const accountDashRow = dash?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
+  const accountDashRow = useMemo(() => {
+    if (summary.account_id <= 0) return null;
+    if (detail?.dashboard_account_row) return detail.dashboard_account_row;
+    const fromNavCtx = dash?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
+    if (fromNavCtx) return fromNavCtx;
+    return navSnapshot?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
+  }, [detail?.dashboard_account_row, dash?.accounts, navSnapshot, summary.account_id]);
   const accountTitleDelta =
     accountDashRow != null
       ? accountCardTitleBalanceDelta(accountDashRow, metricsPeriod, displayUnit === "usd")

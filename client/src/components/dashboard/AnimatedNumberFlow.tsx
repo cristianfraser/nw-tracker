@@ -107,20 +107,60 @@ function mountSeedFresh(digitRange: [number, number]): number {
   return randomWithDigitCount(randomInt(lo, hi));
 }
 
+function mountSeedNearTarget(digitRange: [number, number], target: number): number {
+  const rounded = Math.round(target);
+  const sign = rounded < 0 ? -1 : rounded > 0 ? 1 : 1;
+  const a = Math.abs(rounded);
+  if (a === 0) return mountSeedFresh(digitRange);
+  const d = Math.max(
+    digitRange[0],
+    Math.min(digitRange[1], digitCountAbsRounded(rounded))
+  );
+  const lb = 10 ** (d - 1);
+  const ub = Math.min(10 ** d - 1, Math.max(lb, a - 1));
+  if (ub >= lb) {
+    const r = randomInt(lb, ub);
+    if (r <= a) return sign * r;
+  }
+  return sign * randomWithDigitCount(d);
+}
+
 function mountSeedFromStorage(
   digitRange: [number, number],
-  mountSeedId: string
+  mountSeedId: string,
+  target: number | null
 ): number {
   const prev = readStoredMountValue(mountSeedId);
+  if (target != null && Number.isFinite(target) && Math.round(target) !== 0) {
+    if (prev == null || !Number.isFinite(prev)) {
+      return mountSeedNearTarget(digitRange, target);
+    }
+    const prevRounded = Math.round(prev);
+    const targetRounded = Math.round(target);
+    const prevSign = prevRounded < 0 ? -1 : prevRounded > 0 ? 1 : 0;
+    const targetSign = targetRounded < 0 ? -1 : targetRounded > 0 ? 1 : 0;
+    const ratio =
+      Math.abs(prevRounded) > 0
+        ? Math.abs(targetRounded) / Math.abs(prevRounded)
+        : Number.POSITIVE_INFINITY;
+    if (prevSign !== targetSign || ratio > 10 || ratio < 0.1) {
+      return mountSeedNearTarget(digitRange, target);
+    }
+  }
+
   if (prev == null || !Number.isFinite(prev)) {
-    return mountSeedFresh(digitRange);
+    return target != null && Number.isFinite(target) && target !== 0
+      ? mountSeedNearTarget(digitRange, target)
+      : mountSeedFresh(digitRange);
   }
 
   const rounded = Math.round(prev);
   const sign = rounded < 0 ? -1 : 1;
   const a = Math.abs(rounded);
   if (a === 0) {
-    return mountSeedFresh(digitRange);
+    return target != null && Number.isFinite(target) && target !== 0
+      ? mountSeedNearTarget(digitRange, target)
+      : mountSeedFresh(digitRange);
   }
 
   const d = digitCountAbsRounded(rounded);
@@ -132,7 +172,9 @@ function mountSeedFromStorage(
       return sign * r;
     }
   }
-  return mountSeedFresh(digitRange);
+  return target != null && Number.isFinite(target) && target !== 0
+    ? mountSeedNearTarget(digitRange, target)
+    : mountSeedFresh(digitRange);
 }
 
 type MountFadePhase = "idle" | "hold" | "arm";
@@ -159,7 +201,7 @@ export function useMountAnimation(
   const initialDisplay = (): number | null => {
     if (target == null || !animated || !useMountSeed) return target;
     if (mountSeed.current == null) {
-      mountSeed.current = mountSeedFromStorage(mountSeedDigitRange, mountSeedId);
+      mountSeed.current = mountSeedFromStorage(mountSeedDigitRange, mountSeedId, target);
     }
     return mountSeed.current;
   };
@@ -202,7 +244,7 @@ export function useMountAnimation(
     }
     if (!mountDone.current) {
       if (mountSeed.current == null) {
-        mountSeed.current = mountSeedFromStorage(mountSeedDigitRange!, mountSeedId!);
+        mountSeed.current = mountSeedFromStorage(mountSeedDigitRange!, mountSeedId!, target);
       }
       setDisplayValue(mountSeed.current);
       setOpacity(0.2);

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { DashboardCardBreakdown } from "./DashboardCardBreakdown";
 import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { DetailedGroupCard } from "./DetailedGroupCard";
@@ -5,15 +6,12 @@ import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
   mainValueAndMetricsForNavChild,
+  titleBalanceDeltaForNavChild,
 } from "../../portfolioNavDashboardCards";
 import {
   compareDashboardCardMainDesc,
-  periodBalanceChangeFromAccountRows,
   type CardGroupMetricsPeriod,
 } from "../../dashboardCardBreakdown";
-import { accountCountsTowardGroupTotals, isChartActiveAccount } from "../../accountGroupTotals";
-import { useMemo } from "react";
-import { resolveDashboardBucketFromNavNode } from "../../portfolioNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 
@@ -32,7 +30,7 @@ export type PortfolioNavChildDetailCardsProps = {
 /** Second-row dashboard-style cards for first-level portfolio nav children (subset of dashboard accounts). */
 export function PortfolioNavChildDetailCards({
   dash,
-  overviewPoints: _overviewPoints,
+  overviewPoints,
   navChildren,
   showUsd,
   metricsPeriod,
@@ -53,30 +51,29 @@ export function PortfolioNavChildDetailCards({
     <>
       {sorted.map((child) => {
         const childRows = dashboardRowsForNavSubtree(dash.accounts, child);
-        const metricsRows = childRows.filter(
-          (a) =>
-            accountCountsTowardGroupTotals(a) &&
-            isChartActiveAccount(a) &&
-            a.current_value_clp != null &&
-            Number.isFinite(a.current_value_clp)
-        );
         const { clp, apiUsd, metrics: childMetrics } = mainValueAndMetricsForNavChild(
           dash,
           child,
           metricsPeriod,
           showUsd
         );
-        const childTitleDelta = periodBalanceChangeFromAccountRows(
-          metricsRows,
+        const childTitleDelta = titleBalanceDeltaForNavChild(
+          dash,
+          overviewPoints,
+          child,
           metricsPeriod,
           showUsd
         );
         const br = breakdownForNavChild(child, childRows, dash);
         const rp = child.route_path?.trim() ?? "";
         const cashClass =
-          resolveDashboardBucketFromNavNode(child) === "cash_eqs" ? "card--cash" : "";
+          child.slug === "cash_savings" || child.asset_group_slug?.startsWith("cash_eqs")
+            ? "card--cash"
+            : "";
         const cardSlug = `nav-${child.slug}-${child.node_id}`;
         const fxMissing = showUsd && childRows.some((r) => r.fx_missing);
+        const syncStale =
+          childRows.length > 0 && childRows.every((r) => r.sync_stale === true);
 
         return (
           <DetailedGroupCard
@@ -88,6 +85,7 @@ export function PortfolioNavChildDetailCards({
             clp={clp}
             apiUsd={apiUsd}
             fxMissing={fxMissing}
+            syncStale={syncStale}
             cardSlug={cardSlug}
             animated={animated}
             className={cashClass}
