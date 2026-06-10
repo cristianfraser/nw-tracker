@@ -10,6 +10,7 @@ function sampleData(): FlowsCreditCardExpensesResponse {
     group_slug: "pasivos",
     account_ids: [32],
     categories: [],
+    big_groups: [],
     lines: [
       {
         source: "cc",
@@ -32,6 +33,7 @@ function sampleData(): FlowsCreditCardExpensesResponse {
         category_unique: false,
         purchase_key: "line-pr:test",
         purchase_notes: "",
+        big_group_slug: null,
         origin_label: "4242",
       },
     ],

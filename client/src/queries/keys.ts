@@ -3,11 +3,14 @@ export type DisplayUnit = "clp" | "usd";
 export const queryKeys = {
   dashboard: (unit: DisplayUnit) => ["dashboard", unit] as const,
   dashboardNav: (unit: DisplayUnit) => ["dashboardNav", unit] as const,
+  dashboardNavSnapshot: (unit: DisplayUnit) => ["dashboardNavSnapshot", unit] as const,
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
   sidebarNav: () => ["sidebarNav"] as const,
   accountsAll: () => ["accountsAll"] as const,
+  accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
+    ["accounts", "portfolioGroup", portfolioGroup, unit] as const,
   assetTree: () => ["assetTree"] as const,
   portfolioTree: () => ["portfolioTree"] as const,
   ratesInstruments: () => ["ratesInstruments"] as const,
@@ -28,6 +31,8 @@ export const queryKeys = {
   flowsCreditCardExpenses: () => ["flowsCreditCardExpenses"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["portfolioGroup", group, subgroup ?? null, unit] as const,
+  groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
+    ["groupPageShell", portfolioGroup, unit] as const,
   accountDetail: (
     id: string,
     unit: DisplayUnit,

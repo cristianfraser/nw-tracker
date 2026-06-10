@@ -1,6 +1,6 @@
 import type { SidebarNavResponse } from "../types";
 
-const SIDEBAR_NAV_STORAGE_KEY = "nw:sidebar-nav-v1";
+const SIDEBAR_NAV_STORAGE_KEY = "nw:sidebar-nav-v2";
 
 export function readSidebarNavCache(): SidebarNavResponse | undefined {
   try {
