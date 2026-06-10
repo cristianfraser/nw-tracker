@@ -1,12 +1,17 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type {
   AccountListRow,
+  DashboardAccountRow,
+  DashboardNavContextResponse,
   DashboardResponse,
   FxLatest,
   GroupMonthlyPerformanceResponse,
   ValuationTimeseriesResponse,
 } from "../types";
-import type { DisplayUnit } from "./keys";
+import { queryKeys, type DisplayUnit } from "./keys";
+
+const ACCOUNTS_BY_GROUP_STALE_MS = 5 * 60_000;
 
 export type DashboardBundle = {
   dash: DashboardResponse;
@@ -37,8 +42,16 @@ export type DashboardNavContext = {
   accounts: DashboardResponse["accounts"];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
+  suecia_snapshot?: DashboardResponse["suecia_snapshot"];
+  nw_bucket_totals?: DashboardNavContextResponse["nw_bucket_totals"];
   overviewPoints: Record<string, string | number | null>[];
 };
+
+export async function fetchDashboardNavSnapshot(
+  unit: DisplayUnit
+): Promise<import("../types").DashboardNavSnapshotResponse> {
+  return api.dashboardNavSnapshot(unit);
+}
 
 export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<DashboardNavContext> {
   const nav = await api.dashboardNavContext(unit);
@@ -46,6 +59,8 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
+    suecia_snapshot: nav.suecia_snapshot,
+    nw_bucket_totals: nav.nw_bucket_totals,
     overviewPoints: nav.overview?.points ?? [],
   };
 }
@@ -53,7 +68,7 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
 import type { DashboardGroupSlug } from "../dashboardCardBreakdown";
 import { isDashboardNwBucketSlug } from "../portfolioDashboardBuckets";
 import { portfolioStripGroupChildren, resolveDashboardBucketFromNavNode } from "../portfolioNavFromApi";
-import { sumCashSavingsAdjustedForNav, sumDashboardRowsForNavNode } from "../portfolioGroupTotals";
+import { sumCashSavingsAdjustedForNav, sumCashSavingsAdjustedUsdForNav, sumDashboardRowsForNavNode, sumDashboardRowsUsdForNavNode } from "../portfolioGroupTotals";
 import type { NavTreeNodeDto } from "../types";
 
 function nwBucketTotalsFromNavStrip(
@@ -90,14 +105,75 @@ function nwBucketTotalsFromNavStrip(
   };
 }
 
+function nwBucketTotalsUsdFromNavStrip(
+  netWorthRoot: NavTreeNodeDto | null | undefined,
+  accounts: DashboardResponse["accounts"]
+): Partial<
+  Pick<
+    DashboardResponse["totals"],
+    "real_estate_usd" | "retirement_usd" | "brokerage_usd" | "cash_eqs_usd"
+  >
+> {
+  const out: Partial<Record<DashboardGroupSlug, number>> = {};
+  if (!netWorthRoot) return {};
+  for (const child of portfolioStripGroupChildren(netWorthRoot)) {
+    const bucket = resolveDashboardBucketFromNavNode(child);
+    if (!bucket || bucket === "net_worth" || !isDashboardNwBucketSlug(bucket)) continue;
+    const usd = sumDashboardRowsUsdForNavNode(child, accounts);
+    if (usd !== undefined) out[bucket] = usd;
+  }
+  return {
+    real_estate_usd: out.real_estate,
+    retirement_usd: out.retirement,
+    brokerage_usd: out.brokerage,
+    cash_eqs_usd: out.cash_eqs,
+  };
+}
+
+function sumDepositsUsd(accounts: DashboardResponse["accounts"], include: (a: DashboardAccountRow) => boolean): number | undefined {
+  let usd = 0;
+  let anyUsd = false;
+  for (const a of accounts) {
+    if (!include(a)) continue;
+    if (a.deposits_usd != null && Number.isFinite(a.deposits_usd)) {
+      usd += a.deposits_usd;
+      anyUsd = true;
+    }
+  }
+  return anyUsd ? usd : undefined;
+}
+
+function sumOptionalUsdParts(...parts: (number | undefined)[]): number | undefined {
+  let sum = 0;
+  let any = false;
+  for (const p of parts) {
+    if (p !== undefined && Number.isFinite(p)) {
+      sum += p;
+      any = true;
+    }
+  }
+  return any ? sum : undefined;
+}
+
 export function dashPickForNavStrip(
   ctx: DashboardNavContext & { liabilities_breakdown?: DashboardResponse["liabilities_breakdown"] },
   netWorthRoot: NavTreeNodeDto | null | undefined
-): Pick<DashboardResponse, "accounts" | "liabilities_breakdown" | "dashboard_layout"> & {
+): Pick<
+  DashboardResponse,
+  "accounts" | "liabilities_breakdown" | "dashboard_layout" | "suecia_snapshot"
+> & {
   totals: DashboardResponse["totals"];
 } {
   const include = (a: DashboardResponse["accounts"][number]) => a.exclude_from_group_totals !== 1;
-  const bucketTotals = nwBucketTotalsFromNavStrip(netWorthRoot, ctx.accounts);
+  const serverBuckets = ctx.nw_bucket_totals;
+  const bucketTotals = serverBuckets
+    ? {
+        real_estate_clp: serverBuckets.real_estate_clp,
+        retirement_clp: serverBuckets.retirement_clp,
+        brokerage_clp: serverBuckets.brokerage_clp,
+        cash_eqs_clp: serverBuckets.cash_eqs_clp,
+      }
+    : nwBucketTotalsFromNavStrip(netWorthRoot, ctx.accounts);
   const real_estate_clp = bucketTotals.real_estate_clp;
   const retirement_clp = bucketTotals.retirement_clp;
   const brokerage_clp = bucketTotals.brokerage_clp;
@@ -105,18 +181,66 @@ export function dashPickForNavStrip(
     ctx.dashboard_layout
       ?.find((c) => c.slug === "cash_savings")
       ?.linked_balances?.find((lb) => lb.slug === "credit_card")?.clp ?? 0;
-  const cash_eqs_clp = sumCashSavingsAdjustedForNav(netWorthRoot, ctx.accounts, linkedCcClp);
+  const cash_eqs_clp = serverBuckets
+    ? serverBuckets.cash_eqs_clp
+    : sumCashSavingsAdjustedForNav(netWorthRoot, ctx.accounts, linkedCcClp);
   const liabilities_clp =
     (ctx.liabilities_breakdown?.mortgage_clp ?? 0) + (ctx.liabilities_breakdown?.credit_card_clp ?? 0);
-  const net_worth_clp = real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
+  const net_worth_clp = serverBuckets?.net_worth_clp ?? real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
   const deposits_clp = ctx.accounts
     .filter(include)
     .reduce((s, a) => s + (a.deposits_clp ?? 0), 0);
+
+  const linkedCcUsd =
+    ctx.dashboard_layout
+      ?.find((c) => c.slug === "cash_savings")
+      ?.linked_balances?.find((lb) => lb.slug === "credit_card")?.usd;
+  const bucketUsd = nwBucketTotalsUsdFromNavStrip(netWorthRoot, ctx.accounts);
+  const real_estate_usd = serverBuckets?.real_estate_usd ?? bucketUsd.real_estate_usd;
+  const retirement_usd = serverBuckets?.retirement_usd ?? bucketUsd.retirement_usd;
+  const brokerage_usd = serverBuckets?.brokerage_usd ?? bucketUsd.brokerage_usd;
+  const cash_eqs_usd =
+    serverBuckets?.cash_eqs_usd ??
+    sumCashSavingsAdjustedUsdForNav(netWorthRoot, ctx.accounts, linkedCcUsd);
+  const mortgageUsd = ctx.liabilities_breakdown?.mortgage_usd;
+  const creditCardUsd = ctx.liabilities_breakdown?.credit_card_usd;
+  const liabilities_usd =
+    (mortgageUsd != null && Number.isFinite(mortgageUsd)) ||
+    (creditCardUsd != null && Number.isFinite(creditCardUsd))
+      ? (mortgageUsd ?? 0) + (creditCardUsd ?? 0)
+      : undefined;
+  const net_worth_usd = serverBuckets?.net_worth_usd ?? sumOptionalUsdParts(
+    real_estate_usd,
+    retirement_usd,
+    brokerage_usd,
+    cash_eqs_usd
+  );
+  const deposits_usd = sumDepositsUsd(ctx.accounts, include);
+
+  const zeroCloses: DashboardResponse["totals"]["prior_closes"] = {
+    month_end: "",
+    year_end: "",
+    month: {
+      net_worth_clp: 0,
+      real_estate_clp: 0,
+      retirement_clp: 0,
+      brokerage_clp: 0,
+      cash_eqs_clp: 0,
+    },
+    year: {
+      net_worth_clp: 0,
+      real_estate_clp: 0,
+      retirement_clp: 0,
+      brokerage_clp: 0,
+      cash_eqs_clp: 0,
+    },
+  };
 
   return {
     accounts: ctx.accounts,
     liabilities_breakdown: ctx.liabilities_breakdown,
     dashboard_layout: ctx.dashboard_layout,
+    suecia_snapshot: ctx.suecia_snapshot,
     totals: {
       net_worth_clp,
       deposits_clp,
@@ -125,20 +249,51 @@ export function dashPickForNavStrip(
       brokerage_clp,
       cash_eqs_clp,
       liabilities_clp,
+      prior_closes: serverBuckets?.prior_closes ?? zeroCloses,
+      ...(net_worth_usd !== undefined ? { net_worth_usd } : {}),
+      ...(deposits_usd !== undefined ? { deposits_usd } : {}),
+      ...(real_estate_usd !== undefined ? { real_estate_usd } : {}),
+      ...(retirement_usd !== undefined ? { retirement_usd } : {}),
+      ...(brokerage_usd !== undefined ? { brokerage_usd } : {}),
+      ...(cash_eqs_usd !== undefined ? { cash_eqs_usd } : {}),
+      ...(liabilities_usd !== undefined ? { liabilities_usd } : {}),
     },
   };
 }
 
-export async function fetchPortfolioGroupBundle(opts: {
-  portfolio_group: string;
-  unit: DisplayUnit;
-}): Promise<PortfolioGroupBundle> {
+export async function fetchAccountsByPortfolioGroup(
+  portfolioGroup: string,
+  unit: DisplayUnit
+): Promise<AccountListRow[]> {
+  const res = await api.accountsByPortfolioGroup(portfolioGroup, unit);
+  return res.accounts;
+}
+
+async function accountsForPortfolioGroup(
+  queryClient: QueryClient,
+  portfolioGroup: string,
+  unit: DisplayUnit
+): Promise<AccountListRow[]> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.accountsByPortfolioGroup(portfolioGroup, unit),
+    queryFn: () => fetchAccountsByPortfolioGroup(portfolioGroup, unit),
+    staleTime: ACCOUNTS_BY_GROUP_STALE_MS,
+  });
+}
+
+export async function fetchPortfolioGroupBundle(
+  opts: {
+    portfolio_group: string;
+    unit: DisplayUnit;
+  },
+  queryClient: QueryClient
+): Promise<PortfolioGroupBundle> {
   const slug = opts.portfolio_group;
-  const [acc, series, perfResult] = await Promise.all([
-    api.accountsByPortfolioGroup(slug),
+  const [accounts, series, perfResult] = await Promise.all([
+    accountsForPortfolioGroup(queryClient, slug, opts.unit),
     api.valuationTimeseries(opts.unit, { portfolio_group: slug }),
     api.groupMonthlyPerformance(slug, opts.unit).catch(() => null),
   ]);
-  return { accounts: acc.accounts, ts: series, groupPerf: perfResult };
+  return { accounts, ts: series, groupPerf: perfResult };
 }
 

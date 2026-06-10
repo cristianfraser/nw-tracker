@@ -1,9 +1,12 @@
 import { keepPreviousData, type QueryClient } from "@tanstack/react-query";
 import {
+  fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
   fetchDashboardNavContext,
+  fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
 } from "./fetchers";
+import { api } from "../api";
 import { queryKeys, type DisplayUnit } from "./keys";
 
 /** Cached CLP/USD bundles stay warm while toggling display unit. */
@@ -37,6 +40,30 @@ export function prefetchDashboardNavContext(
   });
 }
 
+export function prefetchDashboardNavSnapshot(
+  queryClient: QueryClient,
+  unit: DisplayUnit
+): Promise<void> {
+  return queryClient.prefetchQuery({
+    queryKey: queryKeys.dashboardNavSnapshot(unit),
+    queryFn: () => fetchDashboardNavSnapshot(unit),
+    staleTime: DISPLAY_UNIT_STALE_MS,
+  });
+}
+
+/** `GET /api/accounts?portfolio_group=…` — group page account list (hover + bundle). */
+export function prefetchAccountsByPortfolioGroup(
+  queryClient: QueryClient,
+  portfolioGroup: string,
+  unit: DisplayUnit
+): Promise<void> {
+  return queryClient.prefetchQuery({
+    queryKey: queryKeys.accountsByPortfolioGroup(portfolioGroup, unit),
+    queryFn: () => fetchAccountsByPortfolioGroup(portfolioGroup, unit),
+    staleTime: DISPLAY_UNIT_STALE_MS,
+  });
+}
+
 export function prefetchPortfolioGroupBundle(
   queryClient: QueryClient,
   opts: { portfolio_group: string; unit: DisplayUnit }
@@ -44,7 +71,23 @@ export function prefetchPortfolioGroupBundle(
   const { portfolio_group, unit } = opts;
   return queryClient.prefetchQuery({
     queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
-    queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }),
+    queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
+    staleTime: DISPLAY_UNIT_STALE_MS,
+  });
+}
+
+const EMPTY_CC_OFFSETS_KEY = "{}";
+
+export function prefetchAccountDetailBundle(
+  queryClient: QueryClient,
+  accountId: number,
+  unit: DisplayUnit
+): Promise<void> {
+  const id = String(accountId);
+  return queryClient.prefetchQuery({
+    queryKey: queryKeys.accountDetail(id, unit, "monthly", EMPTY_CC_OFFSETS_KEY),
+    queryFn: () =>
+      api.accountDetailBundle(id, unit, { granularity: "monthly", extraOffsets: {} }),
     staleTime: DISPLAY_UNIT_STALE_MS,
   });
 }

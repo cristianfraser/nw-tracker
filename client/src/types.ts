@@ -28,6 +28,8 @@ export interface AccountListRow {
   color_rgb?: string | null;
   /** Pasivos liability_view → master account for valuations / P/L. */
   source_account_id?: number | null;
+  /** Long trailing-zero tail; hidden from nav child cards, kept in group charts/tables. */
+  chart_inactive?: boolean;
 }
 
 export interface AssetTreeCategoryRow {
@@ -106,6 +108,7 @@ export interface FxCoverage {
   row_count: number;
   is_sparse: boolean;
   max_gap_days: number;
+  yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[];
 }
 
 export interface DashboardAccountRow {
@@ -149,6 +152,8 @@ export interface DashboardAccountRow {
   chart_inactive?: boolean;
   /** When 1, listed in nav/charts but omitted from bucket totals, class Total, NW cash bucket. */
   exclude_from_group_totals?: number;
+  /** True when any linked global sync source is currently stale. */
+  sync_stale?: boolean;
 }
 
 export interface DashboardLinkedBalanceRow {
@@ -171,6 +176,26 @@ export interface DashboardLayoutCardRow {
   linked_balances?: DashboardLinkedBalanceRow[];
 }
 
+export interface DashboardBucketCloseTotals {
+  net_worth_clp: number;
+  real_estate_clp: number;
+  retirement_clp: number;
+  brokerage_clp: number;
+  cash_eqs_clp: number;
+  net_worth_usd?: number | null;
+  real_estate_usd?: number | null;
+  retirement_usd?: number | null;
+  brokerage_usd?: number | null;
+  cash_eqs_usd?: number | null;
+}
+
+export interface DashboardPriorCloses {
+  month_end: string;
+  year_end: string;
+  month: DashboardBucketCloseTotals;
+  year: DashboardBucketCloseTotals;
+}
+
 export interface DashboardResponse {
   totals: {
     net_worth_clp: number;
@@ -180,6 +205,8 @@ export interface DashboardResponse {
     brokerage_clp: number;
     cash_eqs_clp: number;
     liabilities_clp: number;
+    /** Prior period closes from the same bucket valuation function as live totals. */
+    prior_closes: DashboardPriorCloses;
     net_worth_usd?: number | null;
     deposits_usd?: number | null;
     real_estate_usd?: number;
@@ -509,6 +536,7 @@ export interface CcInstallmentMonthBreakdown {
   purchase_id: string;
   label: string;
   installment_index: number;
+  installment_count: number;
   amount_clp: number;
 }
 
@@ -558,6 +586,8 @@ export interface AccountCcInstallmentsResponse {
   billing_config?: CreditCardBillingConfigDto;
   /** Open facturación month for manual / web-paste (`YYYY-MM`). */
   open_billing_month?: string | null;
+  /** Distinct physical card numbers billed on this master (titular first). */
+  associated_card_last4s?: string[];
 }
 
 /** `GET /api/accounts/:id/valuation-timeseries` */
@@ -635,6 +665,8 @@ export interface AccountDetailBundleResponse {
   invNavAccounts: { accounts: AccountListRow[] };
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   monthly_performance: AccountMonthlyPerformanceResponse | null;
+  /** Fresh dashboard card row (live MTM + perf deltas); do not use cached nav snapshot on detail. */
+  dashboard_account_row: DashboardAccountRow | null;
 }
 
 export interface CheckingCartolaMonthRowDto {
@@ -691,12 +723,38 @@ export interface GroupMonthlyPerformanceResponse {
   points: Record<string, string | number | null>[];
 }
 
+/** `GET /api/dashboard/nav-snapshot` — card strip shape (no valuation TS). */
+export interface DashboardNavSnapshotResponse {
+  accounts: DashboardAccountRow[];
+  liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
+  dashboard_layout?: DashboardResponse["dashboard_layout"];
+  suecia_snapshot?: DashboardResponse["suecia_snapshot"];
+  nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
+}
+
 /** `GET /api/dashboard/nav-context` — nav strip + overview in one response. */
 export interface DashboardNavContextResponse {
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
+  suecia_snapshot?: DashboardResponse["suecia_snapshot"];
   cash_credit_card_links: DashboardResponse["cash_credit_card_links"];
+  /** Live NW bucket totals + prior closes (same as page-bundle `dash.totals` buckets). */
+  nw_bucket_totals: Pick<
+    DashboardResponse["totals"],
+    | "net_worth_clp"
+    | "real_estate_clp"
+    | "retirement_clp"
+    | "brokerage_clp"
+    | "cash_eqs_clp"
+    | "prior_closes"
+  > &
+    Partial<
+      Pick<
+        DashboardResponse["totals"],
+        "net_worth_usd" | "real_estate_usd" | "retirement_usd" | "brokerage_usd" | "cash_eqs_usd"
+      >
+    >;
   overview: ValuationTimeseriesResponse["overview"];
   fx_coverage: FxCoverage | null;
 }
@@ -766,6 +824,7 @@ export interface MarketSeriesResponse {
   equity_tickers: string[];
   fund_series_keys: string[];
   fx_usd_clp: { date: string; value: number }[];
+  fx_usd_clp_bcentral: { date: string; value: number }[];
   eur_clp: { date: string; value: number }[];
   fx_coverage: FxCoverage;
 }
@@ -928,6 +987,12 @@ export interface CcExpenseCategoryDto {
   chart_color: string;
 }
 
+export interface CcExpenseBigGroupDto {
+  slug: string;
+  label: string;
+  sort_order: number;
+}
+
 export type FlowCcExpenseLineSource = "cc" | "checking";
 
 export interface FlowCcExpenseLineRow {
@@ -962,6 +1027,8 @@ export interface FlowCcExpenseLineRow {
   purchase_key: string;
   /** User note for this purchase (shared across cuotas / synthetic total). */
   purchase_notes: string;
+  /** Optional big expense group (trip, remodeling, etc.). */
+  big_group_slug: string | null;
   /** Card last4 (CC) or full account name (checking). */
   origin_label: string;
   /** Physical card that made the charge; null = primary / unknown / checking. */
@@ -980,6 +1047,7 @@ export interface FlowsCreditCardExpensesResponse {
   group_slug: string;
   account_ids: number[];
   categories: CcExpenseCategoryDto[];
+  big_groups: CcExpenseBigGroupDto[];
   lines: FlowCcExpenseLineRow[];
   by_month: FlowCcExpenseMonthRow[];
   chart_monthly: FlowCcExpenseChartPoint[];
@@ -1059,6 +1127,7 @@ export type SyncSourceId =
   | "sbif_utm"
   | "sbif_ipc"
   | "stocks_nyse"
+  | "yahoo_fx_usd"
   | "crypto_eod";
 
 export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
