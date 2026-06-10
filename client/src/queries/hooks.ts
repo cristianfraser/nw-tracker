@@ -2,13 +2,49 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useMemo } from "react";
 import { api } from "../api";
 import {
+  fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
   fetchDashboardNavContext,
+  fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
 } from "./fetchers";
-import { displayUnitQueryBehavior } from "./displayUnitQueries";
+import { readDashboardNavSnapshotCache, writeDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
+import { readFxLatestCache } from "./fxLatestCache";
+import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehavior } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
+import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
+import {
+  perturbDashboardNavSnapshot,
+  perturbGroupPageShell,
+  synthesizeMissingUsdOnGroupPageShell,
+  synthesizeMissingUsdOnNavSnapshot,
+} from "../placeholders/perturbCachedAmount";
+import { readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
+import type { GroupPageShell } from "./groupPageShell";
+import type { NavTreeNodeDto } from "../types";
+
+function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
+  const cachedFx = readFxLatestCache();
+  const raw =
+    readDashboardNavSnapshotCache(unit) ??
+    (unit === "usd" ? readDashboardNavSnapshotCache("clp") : undefined);
+  if (!raw) return undefined;
+  const prepared = unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, cachedFx) : raw;
+  return perturbDashboardNavSnapshot(prepared);
+}
+
+function readGroupPageShellCacheForUnit(
+  portfolioGroup: string,
+  unit: DisplayUnit
+): GroupPageShell | undefined {
+  const cached = readGroupPageShellCache(portfolioGroup, unit);
+  if (cached) return cached;
+  if (unit !== "usd") return undefined;
+  const clpShell = readGroupPageShellCache(portfolioGroup, "clp");
+  if (!clpShell) return undefined;
+  return synthesizeMissingUsdOnGroupPageShell(clpShell, readFxLatestCache());
+}
 
 export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
   return useQuery({
@@ -31,6 +67,25 @@ export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
   });
 }
 
+const DASHBOARD_NAV_SNAPSHOT_STALE_MS = 10 * 60_000;
+
+/** Home card strip shape (accounts + layout); cached in localStorage between visits. */
+export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.dashboardNavSnapshot(unit),
+    queryFn: async () => {
+      const snapshot = await fetchDashboardNavSnapshot(unit);
+      writeDashboardNavSnapshotCache(unit, snapshot);
+      return snapshot;
+    },
+    initialData: () => readNavSnapshotCacheForUnit(unit),
+    enabled,
+    ...displayUnitQueryBehavior,
+    staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
+    gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
+  });
+}
+
 export function useGroupConsolidatedTables(
   portfolioGroup: string,
   unit: DisplayUnit,
@@ -44,17 +99,65 @@ export function useGroupConsolidatedTables(
   });
 }
 
+/** `GET /api/accounts?portfolio_group=…` — group/dashboard page shape (account list). */
+export function useAccountsByPortfolioGroup(
+  portfolioGroup: string,
+  unit: DisplayUnit,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: queryKeys.accountsByPortfolioGroup(portfolioGroup, unit),
+    queryFn: () => fetchAccountsByPortfolioGroup(portfolioGroup, unit),
+    enabled: enabled && Boolean(portfolioGroup),
+    ...displayUnitQueryBehavior,
+    staleTime: DISPLAY_UNIT_STALE_MS,
+    gcTime: DISPLAY_UNIT_STALE_MS,
+  });
+}
+
 export function usePortfolioGroupBundle(opts: {
   portfolio_group: string;
   unit: DisplayUnit;
   enabled?: boolean;
 }) {
   const { portfolio_group, unit, enabled = true } = opts;
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
-    queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }),
+    queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     enabled: enabled && Boolean(portfolio_group),
     ...displayUnitQueryBehavior,
+  });
+}
+
+const GROUP_PAGE_SHELL_STALE_MS = 10 * 60_000;
+
+/** Local-only group shape for cards: localStorage cache or nav-tree synthesis. */
+export function useGroupPageShell(opts: {
+  portfolioGroup: string;
+  unit: DisplayUnit;
+  navNode: NavTreeNodeDto | null | undefined;
+  enabled?: boolean;
+}) {
+  const { portfolioGroup, unit, navNode, enabled = true } = opts;
+  return useQuery({
+    queryKey: queryKeys.groupPageShell(portfolioGroup, unit),
+    queryFn: () => {
+      const cached = readGroupPageShellCacheForUnit(portfolioGroup, unit);
+      if (cached) return cached;
+      if (!navNode) {
+        throw new Error("useGroupPageShell: navNode required when cache is empty");
+      }
+      return buildGroupPageShellFromNav(navNode, unit);
+    },
+    initialData: () => {
+      const raw = readGroupPageShellCacheForUnit(portfolioGroup, unit);
+      return raw ? perturbGroupPageShell(raw) : undefined;
+    },
+    enabled: enabled && Boolean(portfolioGroup && navNode),
+    ...displayUnitQueryBehavior,
+    staleTime: GROUP_PAGE_SHELL_STALE_MS,
+    gcTime: GROUP_PAGE_SHELL_STALE_MS,
   });
 }
 
@@ -272,6 +375,10 @@ export {
   useAccountImportMutation,
   usePatchCcExpenseLineCategoryMutation,
   usePatchCcExpensePurchaseNoteMutation,
+  usePutCcExpensePurchaseBigGroupMutation,
+  useCreateCcExpenseBigGroupMutation,
+  useRenameCcExpenseBigGroupMutation,
+  useDeleteCcExpenseBigGroupMutation,
   useLinkRealEstateExpenseMutation,
   useUnmatchRealEstateExpenseMutation,
 } from "./mutations";

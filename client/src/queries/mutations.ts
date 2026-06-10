@@ -10,6 +10,7 @@ import {
   expenseLineMatchesCategoryPatch,
   expenseLineMatchesCategoryPurchaseKey,
   expenseLineMatchesPurchaseNotePatch,
+  expenseLineMatchesPurchaseBigGroupPatch,
 } from "../ccExpenseLineBuckets";
 import { queryKeys, type DisplayUnit } from "./keys";
 
@@ -241,6 +242,148 @@ export function useAssignCcExpenseLineCategory() {
 /** Alias for toggling the «Único» flag on a credit-card expense line. */
 export function useMarkCcExpenseLineUniqueMutation() {
   return usePatchCcExpenseLineCategoryMutation();
+}
+
+export type PutCcExpensePurchaseBigGroupVars = {
+  account_id: number;
+  purchase_key: string;
+  group_slug: string | null;
+};
+
+export function applyCcExpensePurchaseBigGroupPatch(
+  data: FlowsCreditCardExpensesResponse | undefined,
+  vars: PutCcExpensePurchaseBigGroupVars
+): FlowsCreditCardExpensesResponse | undefined {
+  if (!data) return data;
+  return {
+    ...data,
+    lines: data.lines.map((ln) => {
+      if (!expenseLineMatchesPurchaseBigGroupPatch(ln, vars.account_id, vars.purchase_key)) {
+        return ln;
+      }
+      return { ...ln, big_group_slug: vars.group_slug };
+    }),
+  };
+}
+
+export function usePutCcExpensePurchaseBigGroupMutation() {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.flowsCreditCardExpenses();
+
+  return useMutation({
+    mutationFn: (vars: PutCcExpensePurchaseBigGroupVars) =>
+      api.putCcExpensePurchaseBigGroup(vars),
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+        applyCcExpensePurchaseBigGroupPatch(old, vars)
+      );
+      return { previous };
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+        applyCcExpensePurchaseBigGroupPatch(old, {
+          account_id: result.account_id,
+          purchase_key: result.purchase_key,
+          group_slug: result.group_slug,
+        })
+      );
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+    },
+  });
+}
+
+export function useCreateCcExpenseBigGroupMutation() {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.flowsCreditCardExpenses();
+
+  return useMutation({
+    mutationFn: (label: string) => api.createCcExpenseBigGroup(label),
+    onSuccess: (group) => {
+      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+        if (!old) return old;
+        if (old.big_groups.some((g) => g.slug === group.slug)) return old;
+        return {
+          ...old,
+          big_groups: [...old.big_groups, group].sort(
+            (a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label)
+          ),
+        };
+      });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+export function useRenameCcExpenseBigGroupMutation() {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.flowsCreditCardExpenses();
+
+  return useMutation({
+    mutationFn: (vars: { slug: string; label: string }) =>
+      api.renameCcExpenseBigGroup(vars.slug, vars.label),
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          big_groups: old.big_groups.map((g) =>
+            g.slug === vars.slug ? { ...g, label: vars.label } : g
+          ),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+export function useDeleteCcExpenseBigGroupMutation() {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.flowsCreditCardExpenses();
+
+  return useMutation({
+    mutationFn: (slug: string) => api.deleteCcExpenseBigGroup(slug),
+    onMutate: async (slug) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          big_groups: old.big_groups.filter((g) => g.slug !== slug),
+          lines: old.lines.map((ln) =>
+            ln.big_group_slug === slug ? { ...ln, big_group_slug: null } : ln
+          ),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
 }
 
 export function useCreateCcPurchaseMutation(opts: {

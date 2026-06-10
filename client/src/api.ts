@@ -99,6 +99,14 @@ export const api = {
     j<import("./types").DashboardResponse>(
       includeUsd ? "/api/dashboard?include_usd=true" : "/api/dashboard"
     ),
+  dashboardNavSnapshot: (unit: "clp" | "usd") => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    const qs = q.toString();
+    return j<import("./types").DashboardNavSnapshotResponse>(
+      `/api/dashboard/nav-snapshot${qs ? `?${qs}` : ""}`
+    );
+  },
   dashboardNavContext: (unit: "clp" | "usd") => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
@@ -128,10 +136,12 @@ export const api = {
     );
   },
   fxLatest: () => j<import("./types").FxLatest | null>("/api/fx/latest"),
-  accountsByPortfolioGroup: (portfolioGroup: string) => {
+  accountsByPortfolioGroup: (portfolioGroup: string, unit: "clp" | "usd" = "clp") => {
     const q = new URLSearchParams();
     q.set("portfolio_group", portfolioGroup);
-    return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${q.toString()}`);
+    if (unit === "usd") q.set("include_usd", "true");
+    const qs = q.toString();
+    return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${qs}`);
   },
   accountsByGroup: (groupSlug: string, subgroup?: string) => {
     const q = new URLSearchParams();
@@ -360,6 +370,30 @@ export const api = {
     j<{ account_id: number; purchase_key: string; notes: string }>(
       "/api/flows/expenses/credit-card/purchase-notes",
       { method: "PATCH", body: JSON.stringify(body) }
+    ),
+  putCcExpensePurchaseBigGroup: (body: {
+    account_id: number;
+    purchase_key: string;
+    group_slug: string | null;
+  }) =>
+    j<{ account_id: number; purchase_key: string; group_slug: string | null }>(
+      "/api/flows/expenses/credit-card/purchase-big-group",
+      { method: "PUT", body: JSON.stringify(body) }
+    ),
+  createCcExpenseBigGroup: (label: string) =>
+    j<import("./types").CcExpenseBigGroupDto>(
+      "/api/flows/expenses/credit-card/big-groups",
+      { method: "POST", body: JSON.stringify({ label }) }
+    ),
+  renameCcExpenseBigGroup: (slug: string, label: string) =>
+    j<import("./types").CcExpenseBigGroupDto>(
+      `/api/flows/expenses/credit-card/big-groups/${encodeURIComponent(slug)}`,
+      { method: "PATCH", body: JSON.stringify({ label }) }
+    ),
+  deleteCcExpenseBigGroup: (slug: string) =>
+    j<void>(
+      `/api/flows/expenses/credit-card/big-groups/${encodeURIComponent(slug)}`,
+      { method: "DELETE" }
     ),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
   fxCoverage: () => j<import("./types").FxCoverage>("/api/fx/coverage"),
