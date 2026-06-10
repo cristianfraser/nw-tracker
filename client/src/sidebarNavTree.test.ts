@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildSidebarNavFromApi } from "./sidebarNavFromApi";
-import { sortNavTreeLeavesFirst } from "./sidebarNavTree";
+import {
+  sidebarNodeMatchesPath,
+  sidebarNodeSubtreeContainsPath,
+  sortNavTreeLeavesFirst,
+  type SidebarNavNode,
+} from "./sidebarNavTree";
 import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
 
 function navNode(
@@ -16,6 +21,41 @@ function navNode(
     children,
   } as NavTreeNodeDto;
 }
+
+describe("sidebar active path", () => {
+  const parent: SidebarNavNode = {
+    id: "inversiones",
+    label: "Inversiones",
+    to: "/groups/inversiones",
+    children: [
+      {
+        id: "brokerage",
+        label: "Brokerage",
+        to: "/groups/inversiones/brokerage",
+        children: [
+          {
+            id: "mutual_funds",
+            label: "Mutual funds",
+            to: "/groups/inversiones/brokerage/mutual_funds",
+          },
+        ],
+      },
+    ],
+  };
+
+  it("highlights only the exact route match", () => {
+    const leafPath = "/groups/inversiones/brokerage/mutual_funds";
+    expect(sidebarNodeMatchesPath(leafPath, parent.children![0]!.children![0]!)).toBe(true);
+    expect(sidebarNodeMatchesPath(leafPath, parent.children![0]!)).toBe(false);
+    expect(sidebarNodeMatchesPath(leafPath, parent)).toBe(false);
+  });
+
+  it("still treats subtree for expand-only checks", () => {
+    const leafPath = "/groups/inversiones/brokerage/mutual_funds";
+    expect(sidebarNodeSubtreeContainsPath(leafPath, parent)).toBe(true);
+    expect(sidebarNodeSubtreeContainsPath(leafPath, parent.children![0]!)).toBe(true);
+  });
+});
 
 describe("sortNavTreeLeavesFirst", () => {
   it("places leaves before branches", () => {

@@ -16,6 +16,8 @@ export type CompactEntityCardProps = {
   cardSlug: string;
   animated?: boolean;
   fxMissing?: boolean;
+  /** Lower opacity when linked sync source(s) are stale. */
+  syncStale?: boolean;
   subtitle?: ReactNode;
   /** Deposits / Δ rows (e.g. `DashboardCardGroupMetrics`). */
   metrics?: ReactNode;
@@ -45,6 +47,7 @@ export function CompactEntityCard({
   stripInner = false,
   breakdown,
   fxMissing = false,
+  syncStale = false,
 }: CompactEntityCardProps) {
   return (
     <div
@@ -72,6 +75,7 @@ export function CompactEntityCard({
           variant={valueVariant}
           mountSeedKey={`${cardSlug}:compact`}
           fxMissing={fxMissing}
+          syncStale={syncStale}
         />
       </div>
       {metrics ? <div>{metrics}</div> : null}

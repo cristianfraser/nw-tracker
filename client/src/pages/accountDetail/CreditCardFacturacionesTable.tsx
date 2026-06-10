@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
+import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
@@ -15,12 +16,69 @@ import {
 import { flowLinesForBillingStatementMonth } from "../../components/credit-card/flowLinesForStatementMonth";
 import { deletableWebPasteLineIds } from "../../components/credit-card/deletableWebPasteLineIds";
 import type { DisplayUnit } from "../../queries/keys";
+import {
+  TableMobileCard,
+  TableMobileCardRow,
+  TableMobileCardSection,
+} from "../../components/ui/TableMobileCard";
 import styles from "../AccountDetailPage.module.css";
 import linkStyles from "./CreditCardFacturacionesTable.module.css";
 
 function fmtUsd(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n)) return "—";
   return `US$ ${n.toFixed(2)}`;
+}
+
+function FacturacionMobileCard({
+  row,
+  labels,
+  onOpen,
+}: {
+  row: CcFacturacionDto;
+  labels: {
+    closeDate: string;
+    payBy: string;
+    facturado: string;
+    facturadoUsd: string;
+    facturadoUsdClp: string;
+    facturadoTotal: string;
+    cuotaAPagar: string;
+  };
+  onOpen: (row: CcFacturacionDto) => void;
+}) {
+  const title = (
+    <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
+      {row.billing_month} ({formatYmEs(row.billing_month)})
+    </button>
+  );
+
+  return (
+    <TableMobileCard title={title}>
+      <TableMobileCardSection>
+        <TableMobileCardRow label={labels.closeDate} value={row.close_date} />
+        <TableMobileCardRow label={labels.payBy} value={row.pay_by ?? "—"} />
+      </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow
+          label={labels.facturado}
+          value={row.facturado_clp != null ? formatClp(row.facturado_clp) : "—"}
+        />
+        <TableMobileCardRow label={labels.facturadoUsd} value={fmtUsd(row.facturado_usd)} />
+        <TableMobileCardRow
+          label={labels.facturadoUsdClp}
+          value={row.facturado_usd_clp != null ? formatClp(row.facturado_usd_clp) : "—"}
+        />
+        <TableMobileCardRow
+          label={labels.facturadoTotal}
+          value={row.facturado_total_clp != null ? formatClp(row.facturado_total_clp) : "—"}
+        />
+        <TableMobileCardRow
+          label={labels.cuotaAPagar}
+          value={row.cuota_a_pagar_clp != null ? formatClp(row.cuota_a_pagar_clp) : "—"}
+        />
+      </TableMobileCardSection>
+    </TableMobileCard>
+  );
 }
 
 export function CreditCardFacturacionesTable({
@@ -43,6 +101,16 @@ export function CreditCardFacturacionesTable({
   const categories = flows?.categories ?? [];
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
+
+  const mobileLabels = {
+    closeDate: t("accountDetail.creditCard.colCloseDate"),
+    payBy: t("accountDetail.creditCard.colPayBy"),
+    facturado: t("account.creditCard.colFacturado"),
+    facturadoUsd: t("accountDetail.creditCard.colFacturadoUsd"),
+    facturadoUsdClp: t("accountDetail.creditCard.colFacturadoUsdClp"),
+    facturadoTotal: t("accountDetail.creditCard.colFacturadoTotal"),
+    cuotaAPagar: t("accountDetail.creditCard.colCuotaAPagar"),
+  };
 
   const closeModal = useCallback(() => {
     setModalOpen(false);
@@ -123,21 +191,22 @@ export function CreditCardFacturacionesTable({
     <>
       <PaginatedTable
         wrapClassName={styles.tableWrapSpaced}
-        tableClassName={styles.tableCompact}
+        tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
         collapsedVisibleRows={collapsedVisibleRows}
         showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
         showLessLabel={t("table.showLessMonths")}
         header={
           <thead>
             <tr>
-              <th>{t("account.creditCard.colBillingMonth")}</th>
-              <th>{t("accountDetail.creditCard.colCloseDate")}</th>
-              <th>{t("accountDetail.creditCard.colPayBy")}</th>
-              <th>{t("account.creditCard.colFacturado")}</th>
-              <th>{t("accountDetail.creditCard.colFacturadoUsd")}</th>
-              <th>{t("accountDetail.creditCard.colFacturadoUsdClp")}</th>
-              <th>{t("account.creditCard.colFacturadoTotal")}</th>
-              <th>{t("accountDetail.creditCard.colCuotaAPagar")}</th>
+              <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
+              <th className="desktop-only">{t("accountDetail.creditCard.colCloseDate")}</th>
+              <th className="desktop-only">{t("accountDetail.creditCard.colPayBy")}</th>
+              <th className="desktop-only">{t("account.creditCard.colFacturado")}</th>
+              <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsd")}</th>
+              <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsdClp")}</th>
+              <th className="desktop-only">{t("account.creditCard.colFacturadoTotal")}</th>
+              <th className="desktop-only">{t("accountDetail.creditCard.colCuotaAPagar")}</th>
+              <th className="mobile-only" aria-hidden="true" />
             </tr>
           </thead>
         }
@@ -147,7 +216,7 @@ export function CreditCardFacturacionesTable({
           <>
             {pageRows.map((row) => (
               <tr key={row.billing_month}>
-                <td className="mono">
+                <td className="mono desktop-only">
                   <button
                     type="button"
                     className={linkStyles.dateLink}
@@ -156,20 +225,23 @@ export function CreditCardFacturacionesTable({
                     {row.billing_month} ({formatYmEs(row.billing_month)})
                   </button>
                 </td>
-                <td className="mono">{row.close_date}</td>
-                <td className="mono">{row.pay_by ?? "—"}</td>
-                <td className="mono">
+                <td className="mono desktop-only">{row.close_date}</td>
+                <td className="mono desktop-only">{row.pay_by ?? "—"}</td>
+                <td className="mono desktop-only">
                   {row.facturado_clp != null ? formatClp(row.facturado_clp) : "—"}
                 </td>
-                <td className="mono">{fmtUsd(row.facturado_usd)}</td>
-                <td className="mono">
+                <td className="mono desktop-only">{fmtUsd(row.facturado_usd)}</td>
+                <td className="mono desktop-only">
                   {row.facturado_usd_clp != null ? formatClp(row.facturado_usd_clp) : "—"}
                 </td>
-                <td className="mono">
+                <td className="mono desktop-only">
                   {row.facturado_total_clp != null ? formatClp(row.facturado_total_clp) : "—"}
                 </td>
-                <td className="mono">
+                <td className="mono desktop-only">
                   {row.cuota_a_pagar_clp != null ? formatClp(row.cuota_a_pagar_clp) : "—"}
+                </td>
+                <td className="mobile-only">
+                  <FacturacionMobileCard row={row} labels={mobileLabels} onOpen={openFacturacion} />
                 </td>
               </tr>
             ))}

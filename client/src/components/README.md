@@ -36,13 +36,13 @@ Shared sections for brokerage, liabilities, and group info routes.
 
 Tables and import UI used on account detail pages.
 
-- **AccountFlowsTable**, **AccountImportPanel**, **AccountImportSection**, **MonthlyPerfDetailTable**
+- **FlowsTable**, **AccountFlowsSection**, **AccountImportPanel**, **AccountImportSection**, **MonthlyPerfDetailTable**
 
 ## `credit-card/` — credit card expenses UI
 
 Expenses tab tables for the Pasivos credit card group.
 
-- **CreditCardGroupExpensesMonthTable**, **CreditCardExpenseLinesTable**, **CreditCardExpenseMonthModalSections** (expenses month modal: compras / cuotas / abonos / excluidos), **CreditCardFacturacionModalSections** (facturación modal: gastos / abonos), **CreditCardUnclassifiedExpensesTable**
+- **GroupExpensesMonthTable**, **CreditCardExpenseLinesTable**, **CreditCardExpenseMonthModalSections** (expenses month modal: compras / cuotas / abonos / excluidos), **CreditCardFacturacionModalSections** (facturación modal: gastos / abonos), **CreditCardUnclassifiedExpensesTable**
 
 ## `sync/` — sync / messages
 

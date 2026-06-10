@@ -107,6 +107,8 @@ type Props = {
   mountSeedKey?: string;
   /** When true in USD mode, show conversion error instead of em dash. */
   fxMissing?: boolean;
+  /** Lower opacity when linked sync source(s) are stale. */
+  syncStale?: boolean;
 };
 
 export function DashboardCardValue({
@@ -117,6 +119,7 @@ export function DashboardCardValue({
   variant = "main",
   mountSeedKey,
   fxMissing = false,
+  syncStale = false,
 }: Props) {
   const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
@@ -134,8 +137,8 @@ export function DashboardCardValue({
     : {};
 
   const wrapClass = isMain
-    ? `${styles.wrap} ${styles.wrapMain} dashboard-card-value dashboard-card-value--main`
-    : `${styles.wrap} ${styles.wrapBreakdown} dashboard-card-value dashboard-card-value--breakdown`;
+    ? `${styles.wrap} ${styles.wrapMain} dashboard-card-value dashboard-card-value--main${syncStale ? ` ${styles.syncStale}` : ""}`
+    : `${styles.wrap} ${styles.wrapBreakdown} dashboard-card-value dashboard-card-value--breakdown${syncStale ? ` ${styles.syncStale}` : ""}`;
   const valueClass = isMain
     ? `${styles.value} ${styles.valueMain} mono`
     : `${styles.value} ${styles.valueBreakdown} mono`;

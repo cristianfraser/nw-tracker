@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
 import { useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
 import { formatCcExpenseLineAmount } from "../../format";
-import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
+import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Table } from "../ui/Table";
 import { Pill } from "../ui/Pill";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../../ccExpenseLineBuckets";
 import { assignableCcExpenseCategories } from "../../ccExpenseCategories";
 import { ExpensePurchaseNoteInput } from "./ExpensePurchaseNoteInput";
+import { ExpenseBigGroupSelect } from "./ExpenseBigGroupSelect";
 import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
 import tableStyles from "../../pages/AccountDetailPage.module.css";
 import categoryStyles from "./CreditCardExpenseLinesTable.module.css";
@@ -195,6 +196,8 @@ export function CreditCardExpenseLinesTable({
   emptyLabel,
   showCategoryControls = true,
   showNotesColumn = true,
+  showBigGroupControls = false,
+  bigGroups = [],
   categoryControlVariant = "select",
   collapsedVisibleRows,
   showMoreLabel,
@@ -210,6 +213,8 @@ export function CreditCardExpenseLinesTable({
   emptyLabel: string;
   showCategoryControls?: boolean;
   showNotesColumn?: boolean;
+  showBigGroupControls?: boolean;
+  bigGroups?: readonly CcExpenseBigGroupDto[];
   categoryControlVariant?: "select" | "pills";
   collapsedVisibleRows?: number;
   showMoreLabel?: string;
@@ -266,6 +271,9 @@ export function CreditCardExpenseLinesTable({
               {t("expenses.creditCard.lineColInstallment")}
             </th>
             {showCategoryControls ? <th>{t("expenses.creditCard.colCategory")}</th> : null}
+            {showBigGroupControls ? (
+              <th>{t("expenses.creditCard.bigGroups.colGroup")}</th>
+            ) : null}
             {showNotesColumn ? <th>{t("expenses.creditCard.lineColNotes")}</th> : null}
             {showDeleteAction ? (
               <th>{t("accountDetail.creditCard.lineColActions")}</th>
@@ -349,6 +357,20 @@ export function CreditCardExpenseLinesTable({
                   categories={categories}
                   variant={categoryControlVariant}
                 />
+              </td>
+            ) : null}
+            {showBigGroupControls ? (
+              <td>
+                {ln.purchase_key ? (
+                  <ExpenseBigGroupSelect
+                    accountId={ln.account_id}
+                    purchaseKey={ln.purchase_key}
+                    value={ln.big_group_slug}
+                    groups={bigGroups}
+                  />
+                ) : (
+                  "—"
+                )}
               </td>
             ) : null}
             {showNotesColumn ? (

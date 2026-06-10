@@ -149,4 +149,40 @@ describe("buildNavCardBreakdown retirement", () => {
       "afc",
     ]);
   });
+
+  it("marks only stale account lines and all-stale groups", () => {
+    const retirement = groupNode("retirement", [
+      groupNode(
+        "retirement_apv",
+        [
+          groupNode("retirement_apv_a", [leafAccount(3, "apv-a")], "/apv/apv-a", "apv-a"),
+          groupNode("retirement_apv_b", [leafAccount(4, "apv-b")], "/apv/apv-b", "apv-b"),
+        ],
+        "/apv",
+        "APV"
+      ),
+      groupNode(
+        "retirement_afp_afc",
+        [leafAccount(1, "afp")],
+        "/afp-afc",
+        "AFP + AFC"
+      ),
+    ], "/retiro", "Retiro");
+
+    const lines = buildNavCardBreakdown(retirement, [
+      { ...dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"), sync_stale: false },
+      { ...dashRow(3, 45_000_000, "retirement_apv_a__apv", "apv-a"), sync_stale: true },
+      { ...dashRow(4, 20_000_000, "retirement_apv_b__apv", "apv-b"), sync_stale: false },
+    ]);
+
+    const apvGroup = lines!.find((l) => l.label === "APV" && l.depth === 0);
+    const apvA = lines!.find((l) => l.label === "apv-a");
+    const apvB = lines!.find((l) => l.label === "apv-b");
+    const afpLine = lines!.find((l) => l.label === "AFP UNO");
+
+    expect(apvGroup?.sync_stale).toBe(false);
+    expect(apvA?.sync_stale).toBe(true);
+    expect(apvB?.sync_stale).toBe(false);
+    expect(afpLine?.sync_stale).toBe(false);
+  });
 });

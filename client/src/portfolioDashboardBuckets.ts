@@ -1,16 +1,18 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
-import { dashboardCardMainSortKey, type DashboardGroupSlug } from "./dashboardCardBreakdown";
+import { dashboardCardMainSortKey } from "./dashboardCardBreakdown";
 import type { GroupInfoTableAccount } from "./useGroupInfoConsolidatedTables";
 import type { DashboardAccountRow, DashboardResponse } from "./types";
 
-export const DASHBOARD_NET_WORTH_BUCKET_SLUGS: readonly DashboardGroupSlug[] = [
+export type DashboardNwBucketSlug = "real_estate" | "retirement" | "brokerage" | "cash_eqs";
+
+export const DASHBOARD_NET_WORTH_BUCKET_SLUGS: readonly DashboardNwBucketSlug[] = [
   "real_estate",
   "retirement",
   "brokerage",
   "cash_eqs",
 ];
 
-export function isDashboardNwBucketSlug(slug: string): slug is DashboardGroupSlug {
+export function isDashboardNwBucketSlug(slug: string): slug is DashboardNwBucketSlug {
   return (DASHBOARD_NET_WORTH_BUCKET_SLUGS as readonly string[]).includes(slug);
 }
 

@@ -33,3 +33,7 @@
   opacity: 1;
   font-weight: 700;
 }
+
+.syncStale {
+  opacity: 0.38;
+}

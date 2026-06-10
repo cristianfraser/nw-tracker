@@ -4,9 +4,12 @@ import {
   buildCashSavingsCardBreakdown,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
+  cardGroupMetricsForDashboardBucket,
   cardGroupMetricsFromAccounts,
   cardGroupTitleBalanceDelta,
+  hasCanonicalDashboardPriorCloses,
   dashboardBucketMainValue,
+  periodBalanceChangeFromAccountRows,
   subsetTitleBalanceDeltaRounded,
   sumCardGroupMetrics,
   sumCurrentValueClpUsd,
@@ -78,53 +81,9 @@ export function dashboardRowsForNavSubtree(
   return all.filter((a) => idSet.has(a.account_id) && isChartActiveAccount(a));
 }
 
-/**
- * Dashboard rows under a nav child that count toward “material” balance on strips (excludes chart-inactive).
- */
-function activeDashboardRowsForStripChild(
-  allAccounts: DashboardAccountRow[],
-  navChild: NavTreeNodeDto
-): DashboardAccountRow[] {
-  return dashboardRowsForNavSubtree(allAccounts, navChild);
-}
-
-/** True when this nav subtree has a nonzero live balance on non-chart-inactive accounts. */
-export function navChildHasMaterialBalanceForStrip(
-  navChild: NavTreeNodeDto,
-  allAccounts: DashboardAccountRow[],
-  showUsd: boolean
-): boolean {
-  const rows = activeDashboardRowsForStripChild(allAccounts, navChild);
-  if (!rows.length) return false;
-  if (showUsd) {
-    let sum = 0;
-    let anyUsd = false;
-    for (const r of rows) {
-      if (r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
-        sum += r.current_value_usd;
-        anyUsd = true;
-      }
-    }
-    return anyUsd && Math.abs(sum) > 1e-9;
-  }
-  let clp = 0;
-  for (const r of rows) {
-    if (r.current_value_clp != null && Number.isFinite(r.current_value_clp)) clp += r.current_value_clp;
-  }
-  return Math.abs(clp) > 1e-9;
-}
-
-/** Routable nav children with material balance (entity card strip; hides row when ≤1 child). */
-export function filterNavChildrenForEntityStrip(
-  navChildren: NavTreeNodeDto[],
-  allAccounts: DashboardAccountRow[],
-  showUsd: boolean
-): NavTreeNodeDto[] {
-  const withBalance = navChildren
-    .filter((c) => Boolean(c.route_path?.trim()))
-    .filter((c) => navChildHasMaterialBalanceForStrip(c, allAccounts, showUsd));
-  if (withBalance.length <= 1) return [];
-  return withBalance;
+/** Nav children that render as strip cards (balance filtering is server-side on shape APIs). */
+export function routableNavStripChildren(navChildren: NavTreeNodeDto[]): NavTreeNodeDto[] {
+  return navChildren.filter((c) => Boolean(c.route_path?.trim()));
 }
 
 export type NavChildTitleDeltaModel =
@@ -155,7 +114,7 @@ function cashSavingsLinkedBottomLines(
   }));
 }
 
-function stripMetricsRowsForNavChild(
+export function stripMetricsRowsForNavChild(
   dash: Pick<DashboardResponse, "accounts">,
   navChild: NavTreeNodeDto
 ): DashboardAccountRow[] {
@@ -171,6 +130,43 @@ function stripMetricsRowsForNavChild(
   );
 }
 
+function usesFullDashboardBucketTotals(navChild: NavTreeNodeDto): DashboardGroupSlug | null {
+  const bucket = resolveDashboardBucketFromNavNode(navChild);
+  if (!bucket || bucket === "net_worth") return null;
+  if (isCashSavingsNavNode(navChild)) return "cash_eqs";
+  if (navChild.slug === bucket) return bucket;
+  return null;
+}
+
+/** Title Δ for a nav strip child: full bucket totals on home cards, subtree sum on subgroup pages. */
+export function titleBalanceDeltaForNavChild(
+  dash: Pick<DashboardResponse, "accounts" | "totals">,
+  overviewPoints: Record<string, string | number | null>[],
+  navChild: NavTreeNodeDto,
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean
+): number | null {
+  const metricsRows = stripMetricsRowsForNavChild(dash, navChild).filter(
+    (a) =>
+      accountCountsTowardGroupTotals(a) &&
+      isChartActiveAccount(a) &&
+      a.current_value_clp != null &&
+      Number.isFinite(a.current_value_clp)
+  );
+  const fullBucket = usesFullDashboardBucketTotals(navChild);
+  if (fullBucket) {
+    return cardGroupTitleBalanceDelta(
+      dash.accounts,
+      dash.totals,
+      overviewPoints,
+      fullBucket,
+      period,
+      showUsd
+    );
+  }
+  return periodBalanceChangeFromAccountRows(metricsRows, period, showUsd);
+}
+
 export function mainValueAndMetricsForNavChild(
   dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
   navChild: NavTreeNodeDto,
@@ -178,9 +174,22 @@ export function mainValueAndMetricsForNavChild(
   showUsd: boolean
 ): { clp: number; apiUsd: number | null; metrics: CardGroupMetrics } {
   const metricsRows = stripMetricsRowsForNavChild(dash, navChild);
-  const metrics = cardGroupMetricsFromAccounts(metricsRows, metricsPeriod);
-  if (isCashSavingsNavNode(navChild)) {
+  const fullBucket = usesFullDashboardBucketTotals(navChild);
+  const metrics =
+    fullBucket && hasCanonicalDashboardPriorCloses(dash.totals.prior_closes)
+      ? cardGroupMetricsForDashboardBucket(
+          dash.totals,
+          fullBucket,
+          dash.accounts,
+          metricsPeriod,
+          showUsd
+        )
+      : cardGroupMetricsFromAccounts(metricsRows, metricsPeriod);
+  if (fullBucket === "cash_eqs") {
     return { ...dashboardBucketMainValue(dash.totals, "cash_eqs", showUsd), metrics };
+  }
+  if (fullBucket) {
+    return { ...dashboardBucketMainValue(dash.totals, fullBucket, showUsd), metrics };
   }
   return { ...sumCurrentValueClpUsd(metricsRows, showUsd), metrics };
 }
@@ -303,17 +312,16 @@ export function portfolioNavParentMetrics(
   parentNavNode?: NavTreeNodeDto,
   showUsd = false
 ): CardGroupMetrics {
-  if (mode.kind === "dashboard_group") {
-    return cardGroupMetricsFromAccounts(
-      navSubtreeRows.filter(
-        (a) =>
-          accountCountsTowardGroupTotals(a) &&
-          isChartActiveAccount(a) &&
-          a.current_value_clp != null &&
-          Number.isFinite(a.current_value_clp) &&
-          (!mode.groupRowFilter || mode.groupRowFilter(a))
-      ),
-      period
+  if (mode.kind === "dashboard_group" && hasCanonicalDashboardPriorCloses(dash.totals.prior_closes)) {
+    return cardGroupMetricsForDashboardBucket(
+      dash.totals,
+      mode.group,
+      dash.accounts,
+      period,
+      showUsd,
+      (a) =>
+        navSubtreeRows.some((r) => r.account_id === a.account_id) &&
+        (!mode.groupRowFilter || mode.groupRowFilter(a))
     );
   }
   if (mode.kind === "sum_dashboard_groups") {
@@ -348,6 +356,14 @@ export function portfolioNavParentTitleModeForNavNode(
 
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (bucket) {
+    const stripKids = portfolioStripGroupChildren(node);
+    /** Portfolio subgroups (APV, AFP) are not separate dashboard buckets — only foreign bucket slugs force subset rollup. */
+    const childBuckets = stripKids
+      .map((c) => resolveDashboardBucketFromNavNode(c))
+      .filter((g): g is DashboardGroupSlug => g != null && g !== "net_worth");
+    if (childBuckets.some((g) => g !== bucket)) {
+      return { kind: "subset_only" };
+    }
     return { kind: "dashboard_group", group: bucket };
   }
 
@@ -434,7 +450,7 @@ function breakdownByNavSlug(
   return null;
 }
 
-function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
+export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
   if (node.slug === "cash_savings") return true;
   const dash = node.dashboard_bucket_slug?.trim();
   if (dash === "cash_eqs" && node.slug !== "cash_eqs") return true;

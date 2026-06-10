@@ -1,4 +1,9 @@
 import type { CardBreakdownLine } from "./dashboardCardBreakdown";
+import {
+  accountLineMeta,
+  dashboardAccountRowsById,
+  groupLineMeta,
+} from "./dashboardCardBreakdown";
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
 import i18n from "./i18n";
 import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
@@ -68,7 +73,10 @@ function accountBreakdownLabel(row: DashboardAccountRow): string {
   return row.name;
 }
 
-function accountLines(rows: DashboardAccountRow[], depth: 1 | 2): CardBreakdownLine[] {
+function accountLines(
+  rows: DashboardAccountRow[],
+  depth: 1 | 2
+): CardBreakdownLine[] {
   return sortByClpDesc(
     rows.map((r) => ({
       label: accountBreakdownLabel(r),
@@ -76,16 +84,19 @@ function accountLines(rows: DashboardAccountRow[], depth: 1 | 2): CardBreakdownL
       usd: r.current_value_usd ?? null,
       depth,
       to: accountDetailPath(r.account_id),
+      ...accountLineMeta(r),
     }))
   );
 }
 
 function breakdownBlockForNavNode(
   node: NavTreeNodeDto,
-  activeRows: DashboardAccountRow[]
+  activeRows: DashboardAccountRow[],
+  rowsById: Map<number, DashboardAccountRow>
 ): CardBreakdownLine[] | null {
   const nodeRows = activeRows.filter((r) => navAccountIdSet(node).has(r.account_id));
   if (!nodeRows.length) return null;
+  const nodeAccountIds = nodeRows.map((r) => r.account_id);
 
   const rp = node.route_path?.trim();
   const lines: CardBreakdownLine[] = [
@@ -95,6 +106,7 @@ function breakdownBlockForNavNode(
       usd: sumUsd(nodeRows),
       depth: 0,
       ...(rp ? { to: rp } : {}),
+      ...groupLineMeta(nodeAccountIds, rowsById),
     },
   ];
 
@@ -104,6 +116,7 @@ function breakdownBlockForNavNode(
       const gIds = navAccountIdSet(g);
       const gRows = nodeRows.filter((r) => gIds.has(r.account_id));
       if (!gRows.length) continue;
+      const gAccountIds = gRows.map((r) => r.account_id);
       const gPath = g.route_path?.trim();
       lines.push({
         label: resolveNavTreeLabel(g),
@@ -111,6 +124,7 @@ function breakdownBlockForNavNode(
         usd: sumUsd(gRows),
         depth: 1,
         ...(gPath ? { to: gPath } : {}),
+        ...groupLineMeta(gAccountIds, rowsById),
       });
       const accountKids = portfolioStripAccountChildren(g);
       if (accountKids.length >= 1) {
@@ -140,13 +154,14 @@ export function buildNavCardBreakdown(
 ): CardBreakdownLine[] | null {
   const active = valueRows(scopedRows);
   if (!active.length) return null;
+  const rowsById = dashboardAccountRowsById(scopedRows);
 
   const childNodes = stripChartBucketNavNodes(navNode);
   if (childNodes.length === 0) return null;
 
   const blocks: { clp: number; lines: CardBreakdownLine[] }[] = [];
   for (const child of childNodes) {
-    const block = breakdownBlockForNavNode(child, active);
+    const block = breakdownBlockForNavNode(child, active, rowsById);
     if (!block?.length) continue;
     blocks.push({ clp: block[0]!.clp, lines: block });
   }

@@ -2,10 +2,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
-import { FxCoverageAlert } from "./components/layout/FxCoverageAlert";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext";
-import { LoadingProvider } from "./context/LoadingContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
@@ -23,8 +21,7 @@ import { RatesPage } from "./pages/RatesPage";
 
 export default function App() {
   return (
-    <LoadingProvider>
-      <DisplayPreferencesProvider>
+    <DisplayPreferencesProvider>
       <div className="layout layout--with-sidebar">
         <MobileNavDrawer>
           <AppSidebar />
@@ -33,7 +30,6 @@ export default function App() {
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
-          <FxCoverageAlert />
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
@@ -45,6 +41,7 @@ export default function App() {
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
+            <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />
             <Route path="/flows" element={<FlowsLayout />}>
               <Route index element={<Navigate to="income" replace />} />
@@ -69,7 +66,6 @@ export default function App() {
           </div>
         </div>
       </div>
-      </DisplayPreferencesProvider>
-    </LoadingProvider>
+    </DisplayPreferencesProvider>
   );
 }

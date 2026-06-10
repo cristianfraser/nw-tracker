@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
-import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
+import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import {
   countsTowardAbonosMes,
   countsTowardComprasModal,
@@ -88,12 +88,14 @@ export function isCreditCardExpenseMonthBucketEmpty(
 export function CreditCardExpenseMonthModalSections({
   bucket,
   categories,
+  bigGroups = [],
   abonosSumClp,
   purchaseCategoryVariant = "pills",
   enableCheckingNotes = false,
 }: {
   bucket: CreditCardExpenseMonthBucket;
   categories: readonly CcExpenseCategoryDto[];
+  bigGroups?: readonly CcExpenseBigGroupDto[];
   /** When set, shown next to the abonos section title (e.g. month row abonos_mes_clp). */
   abonosSumClp?: number;
   purchaseCategoryVariant?: "select" | "pills";
@@ -132,6 +134,8 @@ export function CreditCardExpenseMonthModalSections({
       <CreditCardExpenseLinesTable
         lines={bucket.purchases}
         categories={categories}
+        bigGroups={bigGroups}
+        showBigGroupControls
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
         categoryControlVariant={purchaseCategoryVariant}
@@ -149,6 +153,8 @@ export function CreditCardExpenseMonthModalSections({
       <CreditCardExpenseLinesTable
         lines={bucket.installments}
         categories={categories}
+        bigGroups={bigGroups}
+        showBigGroupControls
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
         enableCheckingNotes={enableCheckingNotes}
@@ -165,6 +171,8 @@ export function CreditCardExpenseMonthModalSections({
       <CreditCardExpenseLinesTable
         lines={bucket.abonos}
         categories={categories}
+        bigGroups={bigGroups}
+        showBigGroupControls
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
         categoryControlVariant={purchaseCategoryVariant}
@@ -182,6 +190,8 @@ export function CreditCardExpenseMonthModalSections({
       <CreditCardExpenseLinesTable
         lines={bucket.excluded}
         categories={categories}
+        bigGroups={bigGroups}
+        showBigGroupControls
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
         enableCheckingNotes={enableCheckingNotes}

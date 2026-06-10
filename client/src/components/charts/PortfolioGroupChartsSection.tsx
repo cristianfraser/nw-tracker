@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   AllocationPiePanel,
   LineChartPanel,
@@ -36,6 +37,7 @@ export function PortfolioGroupChartsSection({
   groupColorRgb,
   chartCtx,
   showValuationDeposits = true,
+  chartControls,
 }: {
   accountsEmpty: boolean;
   accountsEmptyMessage: string;
@@ -54,6 +56,8 @@ export function PortfolioGroupChartsSection({
   groupColorRgb?: string | null;
   chartCtx: GroupPageChartContext | null;
   showValuationDeposits?: boolean;
+  /** Rendered below the valuation/pie charts and above monthly P/L (e.g. Agrupado / Aportes acumulados). */
+  chartControls?: ReactNode;
 }) {
   if (accountsEmpty) {
     return (
@@ -108,6 +112,8 @@ export function PortfolioGroupChartsSection({
           />
         )}
       </div>
+
+      {chartControls}
 
       {groupPerfForChart &&
       groupPerfForChart.points.length > 0 &&

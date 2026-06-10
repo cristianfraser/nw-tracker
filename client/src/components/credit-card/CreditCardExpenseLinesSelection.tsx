@@ -7,10 +7,14 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
-import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
+import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { expenseLineCategoryTargetId } from "../../ccExpenseLineBuckets";
 import { assignableCcExpenseCategories } from "../../ccExpenseCategories";
-import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
+import {
+  useAssignCcExpenseLineCategory,
+  useCreateCcExpenseBigGroupMutation,
+  usePutCcExpensePurchaseBigGroupMutation,
+} from "../../queries/hooks";
 import styles from "./CreditCardExpenseLinesSelection.module.css";
 
 export function expenseLineRowKey(line: FlowCcExpenseLineRow): string {
@@ -90,8 +94,10 @@ export function CreditCardExpenseLinesSelectionProvider({
 
 export function CreditCardExpenseLinesSelectionPageFooter({
   categories,
+  bigGroups = [],
 }: {
   categories: readonly CcExpenseCategoryDto[];
+  bigGroups?: readonly CcExpenseBigGroupDto[];
 }) {
   const selection = useCreditCardExpenseLinesSelection();
   if (!selection || selection.selectedKeys.size === 0) {
@@ -99,30 +105,50 @@ export function CreditCardExpenseLinesSelectionPageFooter({
   }
   return (
     <div className={styles.pageStickyWrap}>
-      <CreditCardExpenseLinesBulkFooter categories={categories} />
+      <CreditCardExpenseLinesBulkFooter categories={categories} bigGroups={bigGroups} />
     </div>
   );
 }
 
 export function CreditCardExpenseLinesBulkFooter({
   categories,
+  bigGroups = [],
 }: {
   categories: readonly CcExpenseCategoryDto[];
+  bigGroups?: readonly CcExpenseBigGroupDto[];
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
   const assign = useAssignCcExpenseLineCategory();
+  const putBigGroup = usePutCcExpensePurchaseBigGroupMutation();
+  const createBigGroup = useCreateCcExpenseBigGroupMutation();
   const assignable = assignableCcExpenseCategories(categories);
+
+  const selectedLines = useMemo(() => {
+    if (!selection) return [];
+    return [...selection.selectedKeys]
+      .map((key) => selection.linesByKey.get(key))
+      .filter((line): line is FlowCcExpenseLineRow => line != null);
+  }, [selection]);
+
+  const uniquePurchases = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { account_id: number; purchase_key: string }[] = [];
+    for (const line of selectedLines) {
+      if (!line.purchase_key) continue;
+      const key = `${line.account_id}|${line.purchase_key}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ account_id: line.account_id, purchase_key: line.purchase_key });
+    }
+    return out;
+  }, [selectedLines]);
+
+  const busy = assign.isPending || putBigGroup.isPending || createBigGroup.isPending;
 
   if (!selection || selection.selectedKeys.size === 0) {
     return null;
   }
-
-  const selectedLines = [...selection.selectedKeys]
-    .map((key) => selection.linesByKey.get(key))
-    .filter((line): line is FlowCcExpenseLineRow => line != null);
-
-  const busy = assign.isPending;
 
   const applyCategory = async (slug: string) => {
     if (!slug || busy) return;
@@ -152,6 +178,41 @@ export function CreditCardExpenseLinesBulkFooter({
     } catch {
       /* optimistic rollback via mutation onError */
     }
+  };
+
+  const applyBigGroup = async (groupSlug: string | null) => {
+    if (busy || uniquePurchases.length === 0) return;
+    try {
+      await Promise.all(
+        uniquePurchases.map((p) =>
+          putBigGroup.mutateAsync({
+            account_id: p.account_id,
+            purchase_key: p.purchase_key,
+            group_slug: groupSlug,
+          })
+        )
+      );
+      selection.clearSelection();
+    } catch {
+      /* optimistic rollback via mutation onError */
+    }
+  };
+
+  const onBulkBigGroupChange = async (value: string) => {
+    if (value === "__create_big_group__") {
+      const label = window.prompt(t("expenses.creditCard.bigGroups.createPrompt"));
+      if (label == null) return;
+      const trimmed = label.trim();
+      if (!trimmed) return;
+      try {
+        const group = await createBigGroup.mutateAsync(trimmed);
+        await applyBigGroup(group.slug);
+      } catch {
+        /* mutation onError */
+      }
+      return;
+    }
+    await applyBigGroup(value || null);
   };
 
   return (
@@ -187,6 +248,30 @@ export function CreditCardExpenseLinesBulkFooter({
               {ccExpenseCategoryLabel(c.slug)}
             </option>
           ))}
+        </select>
+        <select
+          className={styles.categorySelect}
+          value=""
+          disabled={busy || uniquePurchases.length === 0}
+          aria-label={t("expenses.creditCard.bigGroups.bulkSelectAria")}
+          onChange={(e) => {
+            const value = e.target.value;
+            e.target.value = "";
+            void onBulkBigGroupChange(value);
+          }}
+        >
+          <option value="" disabled>
+            {t("expenses.creditCard.bigGroups.bulkPlaceholder")}
+          </option>
+          <option value="">{t("expenses.creditCard.bigGroups.none")}</option>
+          {bigGroups.map((g) => (
+            <option key={g.slug} value={g.slug}>
+              {g.label}
+            </option>
+          ))}
+          <option value="__create_big_group__">
+            {t("expenses.creditCard.bigGroups.createOption")}
+          </option>
         </select>
       </div>
     </div>

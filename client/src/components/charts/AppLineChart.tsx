@@ -16,6 +16,29 @@ export type { TailClipSeriesEntry } from "../../chartTailClip";
 /** Months of trailing **0** kept before the rest of the tail is set to `null` (per series). */
 export const DEFAULT_TRAILING_ZERO_MONTHS_KEPT = 3;
 
+/**
+ * Keys whose Σ should refresh `__group_val_total` after tail-clip (liabilities bucket lines).
+ * Portfolio groups with numeric account `dataKey`s keep the server consolidated month cierre instead.
+ */
+export function groupValTotalSourceKeysForTailClip(
+  accs: readonly { dataKey: string; valueSeriesType?: string; exclude_from_group_totals?: boolean }[] | undefined
+): string[] | undefined {
+  if (!accs?.some((a) => a.dataKey === "__group_val_total")) return undefined;
+  const keys = accs
+    .filter(
+      (a) =>
+        a.dataKey !== "__group_val_total" &&
+        a.dataKey !== "__group_dep_total" &&
+        a.valueSeriesType === "data" &&
+        !a.exclude_from_group_totals
+    )
+    .map((a) => a.dataKey);
+  if (keys.length === 0) return undefined;
+  // Portfolio account ids and nav-grouped bucket lines keep the server consolidated month cierre.
+  if (keys.every((k) => /^\d+$/.test(k) || k.startsWith("nav_"))) return undefined;
+  return keys;
+}
+
 export type TailClipOptions = {
   /** Per-line role: only `type: "data"` series are tail-clipped. */
   series: readonly TailClipSeriesEntry[];
@@ -198,6 +221,22 @@ export function filterPointsThroughAsOfDate<T extends { as_of_date: string }>(
 ): T[] {
   if (!maxAsOfDate) return [...rows];
   return rows.filter((r) => r.as_of_date.localeCompare(maxAsOfDate) <= 0);
+}
+
+/** When perf rows include a live today row newer than chart tail-clip, keep it visible. */
+export function resolveMonthlyPerfClipEndDate(
+  valuationTailClipEndDate: string | null | undefined,
+  rowsNewestFirst: readonly { as_of_date: string }[]
+): string | null | undefined {
+  const latestPerfDate = rowsNewestFirst[0]?.as_of_date;
+  if (
+    valuationTailClipEndDate &&
+    latestPerfDate &&
+    latestPerfDate.localeCompare(valuationTailClipEndDate) > 0
+  ) {
+    return latestPerfDate;
+  }
+  return valuationTailClipEndDate;
 }
 
 /** Same as {@link filterPointsThroughAsOfDate} for sparse chart rows keyed by `dateKey`. */

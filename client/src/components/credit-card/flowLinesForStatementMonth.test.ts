@@ -26,6 +26,7 @@ function line(
     nro_cuota_total: null,
     purchase_key: "k",
     purchase_notes: "",
+    big_group_slug: null,
     origin_label: "4242",
     ...partial,
   };
