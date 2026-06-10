@@ -16,6 +16,14 @@ vi.mock("./equityYahooEod.js", () => ({
   })),
 }));
 
+vi.mock("./fxYahooEodSync.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./fxYahooEodSync.js")>();
+  return {
+    ...actual,
+    syncYahooFxUsdFromYahoo: vi.fn(async () => ({ rows: 0 })),
+  };
+});
+
 vi.mock("./fxLive.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./fxLive.js")>();
   return {
@@ -39,9 +47,23 @@ vi.mock("./bcentralApi.js", async (importOriginal) => {
 afterEach(() => {
   clearLiveMarketQuotesForTest();
   db.prepare(`DELETE FROM live_market_quotes WHERE symbol IN ('SPY', 'VEA')`).run();
+  db.exec("DELETE FROM fx_daily");
 });
 
 describe("syncAllLiveMarketQuotes", () => {
+  it("mirrors fx_daily EOD after NYSE close", async () => {
+    db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`).run("2026-06-05", 910.29);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-06T22:00:00.000Z"));
+    try {
+      await syncAllLiveMarketQuotes(new Date("2026-06-06T22:00:00.000Z"));
+      const fx = getLatestLiveFxQuoteRow(600_000);
+      expect(fx?.value).toBeCloseTo(910.29, 2);
+      expect(fx?.session_ymd).toBe("2026-06-05");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("inserts Yahoo CLP=X during NYSE session", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));

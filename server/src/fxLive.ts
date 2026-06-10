@@ -10,7 +10,7 @@ export const LIVE_FX_YAHOO_SYMBOL = "CLP=X";
 
 /**
  * Use Yahoo intraday USD/CLP while NYSE regular session is open (aligned with live equity MTM).
- * After close, readers use BCentral `fx_daily` observado only.
+ * After close, readers use Yahoo CLP=X EOD in `fx_daily`.
  */
 export function shouldUseLiveFxQuote(now = new Date()): boolean {
   return isNyseRegularSessionOpen(now);
@@ -34,7 +34,7 @@ export async function fetchYahooLiveUsdClpPerUsd(now = new Date()): Promise<{
 }
 
 /**
- * FX for live MTM / marquee: Yahoo `CLP=X` while NYSE is open; else BCentral observado in `fx_daily`.
+ * FX for live MTM / marquee: Yahoo `CLP=X` while NYSE is open; else Yahoo EOD in `fx_daily`.
  */
 export function fxForLiveMtm(asOfYmd: string | null, now = new Date(), maxAgeMs = liveQuotesMaxAgeMs()): FxRow | null {
   if (shouldUseLiveFxQuote(now)) {

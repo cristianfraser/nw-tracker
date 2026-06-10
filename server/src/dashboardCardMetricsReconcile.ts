@@ -74,13 +74,25 @@ function reconcilePeriodForUnit(
   return reconcilePeriodDelta(current, prior, dep);
 }
 
+/** NW dashboard buckets whose card period Δ must match consolidated monthly nominal P/L. */
+export const DASHBOARD_METRIC_GROUPS_USING_PERFORMANCE_PERIOD_DELTA = new Set([
+  "real_estate",
+  "retirement",
+  "brokerage",
+]);
+
+/** Cash & equivalents: period Δ = balance change net of deposits (Fintual nominal YTD can diverge). */
+export function dashboardCardReconcilePeriodDeltas(metricGroup: string): boolean {
+  return !DASHBOARD_METRIC_GROUPS_USING_PERFORMANCE_PERIOD_DELTA.has(metricGroup);
+}
+
 /**
- * Display deltas for dashboard cards: lifetime Δ = current − deposits; period Δ = current − prior − period deposits.
- * Chart/performance APIs are unchanged; only `/api/dashboard` account rows use this.
+ * Lifetime Δ on dashboard account rows = current − deposits.
+ * MTD/YTD: performance nominal P/L for RE / retiro / brokerage; balance-change for cash_eqs.
  */
 export function reconcileDashboardCardMetrics(
   row: DashboardCardMetricsInput,
-  opts?: { includeUsd?: boolean }
+  opts?: { includeUsd?: boolean; reconcilePeriodDeltas?: boolean }
 ): DashboardCardMetricsReconciled {
   const out: DashboardCardMetricsReconciled = {};
 
@@ -92,19 +104,28 @@ export function reconcileDashboardCardMetrics(
     out.delta_total_usd = row.current_value_usd - row.deposits_usd;
   }
 
-  const monthClp = reconcilePeriodForUnit(row, "month", "clp");
-  if (monthClp !== undefined) out.delta_month_clp = monthClp;
+  if (opts?.reconcilePeriodDeltas) {
+    const monthClp = reconcilePeriodForUnit(row, "month", "clp");
+    if (monthClp !== undefined) out.delta_month_clp = monthClp;
+    const yearClp = reconcilePeriodForUnit(row, "year", "clp");
+    if (yearClp !== undefined) out.delta_year_clp = yearClp;
 
-  const yearClp = reconcilePeriodForUnit(row, "year", "clp");
-  if (yearClp !== undefined) out.delta_year_clp = yearClp;
-
-  if (opts?.includeUsd) {
-    const monthUsd = reconcilePeriodForUnit(row, "month", "usd");
-    if (monthUsd !== undefined) out.delta_month_usd = monthUsd;
-
-    const yearUsd = reconcilePeriodForUnit(row, "year", "usd");
-    if (yearUsd !== undefined) out.delta_year_usd = yearUsd;
+    if (opts.includeUsd) {
+      const monthUsd = reconcilePeriodForUnit(row, "month", "usd");
+      if (monthUsd !== undefined) out.delta_month_usd = monthUsd;
+      const yearUsd = reconcilePeriodForUnit(row, "year", "usd");
+      if (yearUsd !== undefined) out.delta_year_usd = yearUsd;
+    }
   }
 
   return out;
+}
+
+/** Balance change vs prior close net of period deposits (card title Δ, not monthly P/L). */
+export function balanceChangeDeltaForDashboardRow(
+  row: DashboardCardMetricsInput,
+  period: AccountPeriodClosePeriod,
+  unit: "clp" | "usd" = "clp"
+): number | null | undefined {
+  return reconcilePeriodForUnit(row, period, unit);
 }

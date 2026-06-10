@@ -46,9 +46,8 @@ export function fxRowOnOrBefore(
 
 /**
  * CLP→USD for balances, charts, and dashboard `current_value_usd`.
- * Prefers Banco Central **daily** observado (`fxRowOnOrBefore`) so Chile holidays still use the last
- * published tipo de cambio. Falls back to month-end-only rows for legacy Excel imports, then the
- * earliest month-end on or after `date` when the series starts after snapshot dates.
+ * Uses Yahoo CLP=X EOD in `fx_daily` (NYSE trade dates). Falls back to month-end-only rows for legacy
+ * Excel imports, then the earliest month-end on or after `date` when the series starts after snapshot dates.
  */
 export function fxMonthEndForBalanceUsd(date: string | null): FxRow | null {
   if (!date) return null;

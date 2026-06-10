@@ -15,6 +15,7 @@ import {
   mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
+import { accountRowForId } from "./accountRowForMovement.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
@@ -33,8 +34,9 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
-import { latestValuationDisplayForAccount } from "./dashboardAccounts.js";
+import { latestValuationDisplayForAccount, buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { totalWithdrawalsClpForAccount } from "./accountDeposits.js";
+import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
 
@@ -153,6 +155,7 @@ export async function buildAccountDetailBundle(
     if (position.value_as_of != null) latest_valuation_date = position.value_as_of;
   }
 
+  const accountRow = accountRowForId(accountId);
   const summary = {
     account_id: accountId,
     category_slug,
@@ -164,11 +167,7 @@ export async function buildAccountDetailBundle(
     latest_valuation_clp,
     latest_valuation_date,
     position,
-    movement_create: movementCreateSchemaForAccount({
-      bucket_slug: category_slug,
-      group_slug,
-      notes: cat.account_notes,
-    }),
+    movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
   };
 
   const movements = listAccountMovementsForApi(accountId);
@@ -212,7 +211,11 @@ export async function buildAccountDetailBundle(
     rows: unknown[];
     payment_scenarios?: unknown[];
   } = { account_id: accountId, has_sheet_rows: false, meta: null, rows: [] };
-  if (category_slug === "property" || category_slug === "mortgage") {
+  if (
+    category_slug === "property" ||
+    category_slug === "real_estate" ||
+    category_slug === "mortgage"
+  ) {
     const sheetRowsAll = loadDeptoDividendosSheetLedgerFromDb();
     const sheetRows =
       category_slug === "mortgage"
@@ -272,6 +275,15 @@ export async function buildAccountDetailBundle(
 
   const monthly_performance = getAccountMonthlyPerformance(accountId, unit);
 
+  const dashboard_account_row = await withPortfolioGroupIndex(async () => {
+    const includeUsd = unit === "usd";
+    const rows = await buildDashboardAccountRows(includeUsd);
+    const row = rows.find((r) => r.account_id === accountId);
+    if (!row) return null;
+    const { notes, ...rest } = row;
+    return { ...rest, notes: notes ?? null };
+  });
+
   return {
     summary,
     movements,
@@ -282,5 +294,6 @@ export async function buildAccountDetailBundle(
     invNavAccounts: { accounts: invNavAccounts },
     checkingCartolaMonths,
     monthly_performance,
+    dashboard_account_row,
   };
 }

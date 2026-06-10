@@ -53,24 +53,23 @@ describe("cash savings NW shortfall rows", () => {
 });
 
 describe("netLinkedCreditCardFromCashConsolidated", () => {
-  it("subtracts linked CC balance total from closing and prior", () => {
-    const consolidated = netLinkedCreditCardFromCashConsolidated(
-      [
-        {
-          as_of_date: "2026-03-31",
-          closing_value: 1_000_000,
-          prior_closing: 900_000,
-          net_capital_flow: 0,
-          stock_units_inflow: 0,
-          nominal_pl: 100_000,
-          pct_month: null,
-          ytd_nominal_pl: null,
-          cumulative_nominal_pl: null,
-        },
-      ],
-      "clp"
-    );
+  it("nets closing_value only; leaves prior_closing and nominal_pl from savings consolidation", () => {
+    const input = {
+      as_of_date: "2026-03-31",
+      closing_value: 1_000_000,
+      prior_closing: 900_000,
+      net_capital_flow: 0,
+      stock_units_inflow: 0,
+      nominal_pl: 100_000,
+      pct_month: 0.11,
+      ytd_nominal_pl: 250_000,
+      cumulative_nominal_pl: 500_000,
+    };
+    const consolidated = netLinkedCreditCardFromCashConsolidated([input], "clp");
     expect(consolidated[0]!.closing_value).toBeLessThanOrEqual(1_000_000);
-    expect(consolidated[0]!.prior_closing).toBeLessThanOrEqual(900_000);
+    expect(consolidated[0]!.prior_closing).toBe(900_000);
+    expect(consolidated[0]!.nominal_pl).toBe(100_000);
+    expect(consolidated[0]!.ytd_nominal_pl).toBe(250_000);
+    expect(consolidated[0]!.cumulative_nominal_pl).toBe(500_000);
   });
 });

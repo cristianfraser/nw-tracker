@@ -271,22 +271,6 @@ def is_cuenta_vista_pdf(path: Path) -> bool:
     return hasta is not None
 
 
-def is_fintual_certificado_pdf(path: Path) -> bool:
-    name = path.name.lower()
-    if "certificado" in name and "transacciones" in name:
-        return True
-    try:
-        text = subprocess.check_output(
-            ["pdftotext", str(path), "-"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
-        return False
-    upper = text.upper()
-    return "CERTIFICADO DE TRANSACCIONES" in upper and "FINTUAL" in upper
-
-
 def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tuple[int, list[str]]:
     CC_DIR.mkdir(parents=True, exist_ok=True)
     errors: list[str] = []
@@ -307,8 +291,6 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
         if RE_ORGANIZED.match(p.name) and p.parent.resolve() == CC_DIR.resolve():
             continue
         if is_cuenta_vista_pdf(p):
-            continue
-        if is_fintual_certificado_pdf(p):
             continue
         if is_checking_cartola_inbox_name(p.name):
             continue

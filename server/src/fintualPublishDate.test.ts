@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  fintualPollDayCaughtUp,
+  fintualPriorEveningUnresolved,
   fintualPublishLagsPollCalendarDay,
   isFintualFundPublishDay,
   isLastDayOfChileHolidayStreak,
   isLastDayOfChileNonBusinessBlock,
   resolveFintualPublishYmd,
 } from "./fintualPublishDate.js";
+import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isChileHoliday } from "./marketHolidays.js";
 import type { ChileWallClock } from "./chileDate.js";
 
@@ -39,6 +42,23 @@ describe("fintualPublishDate", () => {
     expect(isFintualFundPublishDay("2026-05-24")).toBe(true);
     expect(isLastDayOfChileNonBusinessBlock("2026-06-06")).toBe(false); // Sat
     expect(isLastDayOfChileNonBusinessBlock("2026-06-07")).toBe(true); // Sun → Mon business
+  });
+
+  it("poll day caught up ignores stale fintualEveningSettledYmd", () => {
+    const sig =
+      "1164983:18425830.92|16749:44773588.22|2859:10526623.06|78515:20154561.74";
+    const state: GlobalSyncStateFile = {
+      fintualEveningSettledYmd: "2026-05-27",
+      fintualLastAppliedSig: sig,
+      fintualLastAppliedPublishYmd: "2026-06-09",
+    };
+    expect(fintualPollDayCaughtUp("2026-06-09", "2026-06-09", state, sig)).toBe(true);
+    expect(fintualPriorEveningUnresolved(cl("2026-06-10", 8), {
+      ...state,
+      fintualLastCheckYmd: "2026-06-09",
+      fintualLastPublishYmd: "2026-06-09",
+      fintualLastCheckSig: sig,
+    })).toBe(false);
   });
 
   it("publish lags poll calendar day on business evenings only", () => {

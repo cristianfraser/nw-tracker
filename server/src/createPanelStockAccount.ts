@@ -1,11 +1,13 @@
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { assetGroupBySlug, ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { prettyRgbTripletForAccountId } from "./chartColorRgb.js";
+import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { buildPanelAccountNotes } from "./panelAccountNotes.js";
 import { validateMovementCreate } from "./movementUnitsPolicy.js";
 import { seedNavTree } from "./seedNavTree.js";
+import { reseedAccountSyncSources } from "./accountSyncSources.js";
 
 export type PanelStockAccountCreateBody = {
   account: {
@@ -190,6 +192,7 @@ export function createPanelStockAccount(
   tx();
 
   seedNavTree();
+  reseedAccountSyncSources(accountId);
 
   return {
     account_id: accountId,

@@ -172,19 +172,6 @@ export function applyFintualGoalsSnapshotToDb(
       navClp: g.navClp,
       dryRun,
     });
-    const v2Notes = matchFintualCertGoalV2(g.id, g.name);
-    if (v2Notes) {
-      const v2Row = accStmt.get(v2Notes) as { id: number } | undefined;
-      if (v2Row) {
-        recordFintualGoalFundUnitDaily({
-          accountId: v2Row.id,
-          importNotes: v2Notes,
-          asOfYmd: snap.asOfDate,
-          navClp: g.navClp,
-          dryRun,
-        });
-      }
-    }
     applied += 1;
   }
 

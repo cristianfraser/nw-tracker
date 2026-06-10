@@ -61,6 +61,13 @@ describe("assetGroupTree", () => {
     expect(leafAssetGroupIdForKindSlug("afc")).toBeGreaterThan(0);
   });
 
+  it("kind apv alone ties to one leaf — APV régimen uses explicit leaf slugs in fintualCertV2", () => {
+    const apvLeaf = leafAssetGroupSlugForKindSlug("apv");
+    expect(apvLeaf === "retirement_apv_a__apv" || apvLeaf === "retirement_apv_b__apv").toBe(
+      true
+    );
+  });
+
   it("lists AFP + AFC from retirement_afp_afc portfolio group", () => {
     const rows = listAccountsForBucketSlug("retirement_afp_afc", undefined, NOTE_STOCKS_LEGACY);
     const names = rows.map((r) => r.name);

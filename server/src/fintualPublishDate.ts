@@ -1,4 +1,5 @@
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
+import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isChileBusinessDay, isChileHoliday } from "./marketHolidays.js";
 
 /** Last calendar day of a consecutive Chile holiday run (Fintual may still publish that day). */
@@ -39,6 +40,90 @@ export function fintualPublishLagsPollCalendarDay(cl: ChileWallClock, publishYmd
   if (cl.hour < 18) return false;
   if (!fintualExpectsCuotaOnPollDay(cl.ymd)) return false;
   return publishYmd < cl.ymd;
+}
+
+export function fintualEveningPollClock(cl: ChileWallClock, pollYmd?: string): ChileWallClock {
+  return pollEveningClock(cl, pollYmd ?? cl.ymd);
+}
+
+function pollEveningClock(cl: ChileWallClock, pollYmd: string): ChileWallClock {
+  return {
+    ...cl,
+    ymd: pollYmd,
+    hour: 19,
+    minute: 0,
+    day: Number(pollYmd.slice(8, 10)),
+    monthKey: pollYmd.slice(0, 7),
+  };
+}
+
+function pollEveningClockForYmd(pollYmd: string): ChileWallClock {
+  return pollEveningClock(
+    {
+      ymd: pollYmd,
+      year: Number(pollYmd.slice(0, 4)),
+      month: Number(pollYmd.slice(5, 7)),
+      day: Number(pollYmd.slice(8, 10)),
+      hour: 0,
+      minute: 0,
+      monthKey: pollYmd.slice(0, 7),
+    },
+    pollYmd
+  );
+}
+
+/**
+ * `pollYmd` evening expectations are met: API publish is current for that poll day and DB
+ * matches the polled NAV signature (does not rely on `fintualEveningSettledYmd`, which can lag).
+ */
+export function fintualPollDayCaughtUp(
+  pollYmd: string,
+  publishYmd: string | null | undefined,
+  state: GlobalSyncStateFile,
+  checkSig: string | null | undefined
+): boolean {
+  if (!publishYmd || !checkSig || !state.fintualLastAppliedSig) return false;
+  if (checkSig !== state.fintualLastAppliedSig) return false;
+  if (
+    state.fintualLastAppliedPublishYmd != null &&
+    publishYmd !== state.fintualLastAppliedPublishYmd
+  ) {
+    return false;
+  }
+  if (fintualPublishLagsPollCalendarDay(pollEveningClockForYmd(pollYmd), publishYmd)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Before 18:00 Chile, carry forward stale from the last post-18:00 poll on a prior publish day
+ * when that evening never settled (publish lag, sig mismatch, etc.).
+ */
+export function fintualPriorEveningUnresolved(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile
+): boolean {
+  if (cl.hour >= 18) return false;
+  const pollYmd = state.fintualLastCheckYmd;
+  if (!pollYmd || pollYmd >= cl.ymd) return false;
+  if (!fintualExpectsCuotaOnPollDay(pollYmd)) return false;
+  return !fintualPollDayCaughtUp(
+    pollYmd,
+    state.fintualLastPublishYmd,
+    state,
+    state.fintualLastCheckSig
+  );
+}
+
+/** True when `pollYmd` evening poll is still unresolved for `publishYmd` / signatures. */
+export function fintualPollDayStillUnresolved(
+  pollYmd: string,
+  publishYmd: string,
+  state: GlobalSyncStateFile,
+  checkSig: string
+): boolean {
+  return !fintualPollDayCaughtUp(pollYmd, publishYmd, state, checkSig);
 }
 
 /** Latest Fintual publish day strictly before `beforeYmd`. */

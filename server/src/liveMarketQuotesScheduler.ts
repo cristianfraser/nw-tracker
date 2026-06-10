@@ -1,5 +1,5 @@
 /**
- * Polls Yahoo equities/crypto + CLP=X (NYSE session) or mirrors BCentral FX after close. HTTP reads DB only.
+ * Polls Yahoo equities/crypto + CLP=X (NYSE session) or mirrors Yahoo EOD `fx_daily` after close. HTTP reads DB only.
  *
  * Env: `LIVE_QUOTES_SYNC_ENABLED`, `LIVE_QUOTES_INTERVAL_MS` (default 5 min).
  */

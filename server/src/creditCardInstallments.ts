@@ -16,6 +16,7 @@ import {
   type CcStatementLineRow,
 } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
 import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import { ccPurchaseSourceLegacyFromOrigin } from "./dataOrigin.js";
@@ -78,6 +79,7 @@ export type CcInstallmentMonthBreakdown = {
   purchase_id: string;
   label: string;
   installment_index: number;
+  installment_count: number;
   amount_clp: number;
 };
 
@@ -325,6 +327,7 @@ export function buildCreditCardInstallmentSchedule(
         purchase_id: p.purchase_id,
         label: p.label,
         installment_index: i,
+        installment_count: p.installment_count,
         amount_clp: amt,
       });
       byMonth.set(month, list);
@@ -389,7 +392,10 @@ export function creditCardInstallmentsResponse(
   billing_config?: CreditCardBillingConfig;
   /** Current open facturación month for manual / web-paste entries (`YYYY-MM`). */
   open_billing_month?: string | null;
+  /** Distinct physical card numbers billed on this master (titular first). */
+  associated_card_last4s?: string[];
 } {
+  const associated_card_last4s = associatedCardLast4sForMaster(accountId);
   const open_billing_month = billingMonthForManualLedgerPurchase(accountId);
   if (ccInstallmentLedgerRowCount(accountId) > 0) {
     const db = ccInstallmentsDbApiPayload(accountId);
@@ -398,6 +404,7 @@ export function creditCardInstallmentsResponse(
       has_installment_ledger: true,
       has_imported_statements: ccStatementRowCount(accountId) > 0,
       open_billing_month,
+      associated_card_last4s,
       meta: {
         installment_purchase_count: db.meta.installment_purchase_count,
         installment_payment_count: db.meta.installment_payment_count,
@@ -429,6 +436,7 @@ export function creditCardInstallmentsResponse(
       has_installment_ledger: false,
       has_imported_statements: true,
       open_billing_month,
+      associated_card_last4s,
       meta: {
         pay_by_rule:
           "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP.",
@@ -455,6 +463,7 @@ export function creditCardInstallmentsResponse(
     has_installment_ledger: false,
     has_imported_statements: false,
     open_billing_month,
+    associated_card_last4s,
     meta: null,
     purchases: [],
     purchases_completed: [],

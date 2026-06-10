@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  isResolvablePortfolioGroupSlug,
   normalizeLegacyTabSubgroup,
   portfolioGroupBySlug,
   resolvePortfolioGroupSlugForLegacyTab,
@@ -19,11 +20,8 @@ import {
   totalWithdrawalsClpForAccount,
 } from "./accountDeposits.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
-import {
-  movementCreateSchemaForAccount,
-  validateMovementCreate,
-  type AccountRow,
-} from "./movementUnitsPolicy.js";
+import { accountRowForId } from "./accountRowForMovement.js";
+import { movementCreateSchemaForAccount, validateMovementCreate } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm } from "./cryptoValuation.js";
@@ -59,6 +57,10 @@ import { getPortfolioTreeForCharts, getSidebarNavPayload } from "./navTree.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
+import {
+  clearAggregationCache,
+  invalidateAggregationForAccountDate,
+} from "./aggregationCache.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -84,8 +86,10 @@ import {
 } from "./accountPerformance.js";
 import {
   buildDashboardNavContext,
+  buildDashboardNavSnapshot,
   latestValuationDisplayForAccount,
 } from "./dashboardAccounts.js";
+import { listPortfolioGroupAccountsForApi } from "./portfolioGroupAccountsApi.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
@@ -130,6 +134,12 @@ import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "./ccE
 import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
+import {
+  createCcExpenseBigGroup,
+  deleteCcExpenseBigGroup,
+  renameCcExpenseBigGroup,
+  setCcExpensePurchaseBigGroup,
+} from "./ccExpenseBigGroups.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
@@ -180,7 +190,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function isKnownClassTabGroup(group: string): boolean {
   if (group === "inversiones") return true;
-  if (portfolioGroupBySlug(group)) return true;
+  if (isResolvablePortfolioGroupSlug(group)) return true;
   const ag = db.prepare(`SELECT 1 AS o FROM asset_groups WHERE slug = ?`).get(group) as
     | { o: number }
     | undefined;
@@ -356,31 +366,16 @@ app.get("/api/meta/rates-instruments", (_req, res) => {
   res.json({ instruments: listRatesInstrumentSeries() });
 });
 
-app.get("/api/accounts", (req, res) => {
+app.get("/api/accounts", async (req, res) => {
   const portfolioGroupSlug =
     typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
   if (portfolioGroupSlug) {
-    if (!portfolioGroupBySlug(portfolioGroupSlug)) {
+    if (!isResolvablePortfolioGroupSlug(portfolioGroupSlug)) {
       res.status(400).json({ error: "unknown portfolio_group" });
       return;
     }
-    const tabRows = listAccountsForGroupTab(portfolioGroupSlug);
-    const ids = tabRows.map((r) => r.account_id);
-    if (!ids.length) {
-      res.json({ accounts: [] });
-      return;
-    }
-    const ph = ids.map(() => "?").join(",");
-    const rows = db
-      .prepare(
-        `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
-                g.slug AS bucket_slug, g.label AS bucket_label
-         FROM accounts a
-         INNER JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE a.id IN (${ph})
-         ORDER BY g.sort_order, a.id, a.name`
-      )
-      .all(...ids) as Record<string, unknown>[];
+    const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+    const rows = await listPortfolioGroupAccountsForApi(portfolioGroupSlug, includeUsd);
     res.json({ accounts: rows });
     return;
   }
@@ -727,17 +722,7 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
       )
       .get(bucketSlug, NOTE_STOCKS_LEGACY) as { c: number }
   ).c;
-  const equityRow = db
-    .prepare(`SELECT equity_ticker FROM accounts WHERE id = ?`)
-    .get(id) as { equity_ticker: string | null } | undefined;
-  const accountRow = metaRow
-    ? ({
-        bucket_slug: bucketSlug,
-        group_slug: dashBucket,
-        notes: metaRow.account_notes,
-        equity_ticker: equityRow?.equity_ticker ?? null,
-      } satisfies AccountRow)
-    : null;
+  const accountRow = accountRowForId(id);
   const deposits_clp = totalDepositsClpForAccount(id);
   let latest = await latestValuationDisplayForAccount(id, bucketSlug || null, {
     notes: metaRow?.account_notes ?? null,
@@ -782,21 +767,6 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
     movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
   });
 });
-
-function accountRowForId(accountId: number): AccountRow | null {
-  if (!Number.isFinite(accountId) || accountId <= 0) return null;
-  const bucket_slug = bucketSlugForAccountId(accountId);
-  if (!bucket_slug) return null;
-  const row = db
-    .prepare(`SELECT notes, equity_ticker FROM accounts WHERE id = ?`)
-    .get(accountId) as { notes: string | null; equity_ticker: string | null } | undefined;
-  return {
-    bucket_slug,
-    group_slug: dashboardBucketForAssetGroupSlug(bucket_slug) ?? bucket_slug,
-    notes: row?.notes ?? null,
-    equity_ticker: row?.equity_ticker ?? null,
-  };
-}
 
 app.get("/api/accounts/:id/movements", (req, res) => {
   const id = operationalAccountIdFromReq(req);
@@ -1162,6 +1132,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
         validated.amount_usd,
         validated.ticker
       );
+    invalidateAggregationForAccountDate(accountId, validated.occurred_on);
     res.status(201).json({
       id: Number(r.lastInsertRowid),
       units_delta: validated.units_delta,
@@ -1179,6 +1150,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
   if (!isCheckingLedgerAnchorNote(note)) {
     maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
   }
+  invalidateAggregationForAccountDate(accountId, occurred_on);
   res.status(201).json({ id: Number(r.lastInsertRowid), units_delta });
 });
 
@@ -1203,7 +1175,19 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
     `INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, ?, ?)
      ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp`
   ).run(accountId, as_of_date, value_clp);
+  invalidateAggregationForAccountDate(accountId, as_of_date);
   res.json({ ok: true });
+});
+
+app.post("/api/panel/cache/aggregation/clear", (_req, res) => {
+  clearAggregationCache();
+  res.json({ ok: true });
+});
+
+/** Home/group card strip shape only (accounts + layout; no valuation TS). */
+app.get("/api/dashboard/nav-snapshot", async (req, res) => {
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  res.json(await buildDashboardNavSnapshot(includeUsd));
 });
 
 /** Group/account nav strip: accounts + liabilities links + overview (one round-trip). */
@@ -1280,7 +1264,8 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
     return;
   }
   const tabSlug =
-    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ?? (portfolioGroupBySlug(slug) ? slug : null);
+    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
+    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
   if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
     res.status(400).json({ error: "unknown group slug" });
     return;
@@ -1303,7 +1288,8 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
     return;
   }
   const tabSlug =
-    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ?? (portfolioGroupBySlug(slug) ? slug : null);
+    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
+    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
   if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
     res.status(400).json({ error: "unknown group slug" });
     return;
@@ -1513,6 +1499,87 @@ app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
       error: msg,
       stack: e instanceof Error ? e.stack : undefined,
     });
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.put("/api/flows/expenses/credit-card/purchase-big-group", (req, res) => {
+  const body = req.body as {
+    account_id?: number;
+    purchase_key?: string;
+    group_slug?: string | null;
+  };
+  const accountId = Number(body.account_id);
+  if (!Number.isFinite(accountId) || accountId <= 0) {
+    res.status(400).json({ error: "invalid account_id" });
+    return;
+  }
+  const purchaseKey = String(body.purchase_key ?? "").trim();
+  if (!purchaseKey) {
+    res.status(400).json({ error: "purchase_key required" });
+    return;
+  }
+  try {
+    const result = setCcExpensePurchaseBigGroup({
+      accountId,
+      purchaseKey,
+      groupSlug: body.group_slug,
+    });
+    res.json({
+      account_id: accountId,
+      purchase_key: purchaseKey,
+      group_slug: result.group_slug,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "save failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/api/flows/expenses/credit-card/big-groups", (req, res) => {
+  const body = req.body as { label?: string };
+  const label = String(body.label ?? "").trim();
+  if (!label) {
+    res.status(400).json({ error: "label required" });
+    return;
+  }
+  try {
+    const group = createCcExpenseBigGroup(label);
+    res.status(201).json(group);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "create failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.patch("/api/flows/expenses/credit-card/big-groups/:slug", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const body = req.body as { label?: string };
+  const label = String(body.label ?? "").trim();
+  if (!slug || !label) {
+    res.status(400).json({ error: "slug and label required" });
+    return;
+  }
+  try {
+    const group = renameCcExpenseBigGroup(slug, label);
+    res.json(group);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "rename failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.delete("/api/flows/expenses/credit-card/big-groups/:slug", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  if (!slug) {
+    res.status(400).json({ error: "slug required" });
+    return;
+  }
+  try {
+    deleteCcExpenseBigGroup(slug);
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "delete failed";
     res.status(400).json({ error: msg });
   }
 });

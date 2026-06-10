@@ -1,13 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+import * as chileDate from "./chileDate.js";
 
 const chileToday = vi.hoisted(() => ({ ymd: "2026-06-01" }));
 
-vi.mock("./chileDate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./chileDate.js")>();
-  return {
-    ...actual,
-    chileCalendarTodayYmd: () => chileToday.ymd,
-  };
+const chileCalendarTodaySpy = vi
+  .spyOn(chileDate, "chileCalendarTodayYmd")
+  .mockImplementation(() => chileToday.ymd);
+
+afterAll(() => {
+  chileCalendarTodaySpy.mockRestore();
 });
 
 import { getGroupMonthlyPerformanceSeries } from "./accountPerformance.js";
@@ -164,6 +166,30 @@ describe("groupMonthlyPerfConsolidation", () => {
     expect(rows.length).toBe(1);
     expect(rows[0]!.closing_value).toBe(150);
     expect(rows[0]!.nominal_pl).toBe(20);
+  });
+
+  it("brokerage dashboard sum of delta_year_clp matches consolidated YTD nominal_pl", async () => {
+    const curMk = monthKeyFromYmd(chileToday.ymd);
+    const tables = getGroupConsolidatedTables("brokerage", "clp");
+    const june = tables.consolidated_monthly.find((r) =>
+      monthKeyFromYmd(String(r.as_of_date)) === curMk
+    );
+    if (june?.ytd_nominal_pl == null || !Number.isFinite(june.ytd_nominal_pl)) return;
+
+    const { buildDashboardAccountRows } = await import("./dashboardAccounts.js");
+    const { withPortfolioGroupIndex } = await import("./portfolioGroupTree.js");
+    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
+    const ids = new Set(
+      listAccountsForGroupTab("brokerage").map((a) => a.account_id)
+    );
+    let sumYear = 0;
+    for (const r of rows) {
+      if (!ids.has(r.account_id) || r.exclude_from_group_totals === 1) continue;
+      if (r.delta_year_clp != null && Number.isFinite(r.delta_year_clp)) {
+        sumYear += r.delta_year_clp;
+      }
+    }
+    expect(sumYear).toBeCloseTo(june.ytd_nominal_pl, 0);
   });
 
   it("brokerage consolidated current-month P/L matches performance-monthly delta_total", () => {

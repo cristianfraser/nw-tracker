@@ -180,90 +180,29 @@ export function applyCashSavingsShortfallToDashboardRows(
   return rows;
 }
 
-function priorMonthEndYmd(asOf: string): string | null {
-  const y = Number(asOf.slice(0, 4));
-  const m = Number(asOf.slice(5, 7));
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return null;
-  const prev = new Date(Date.UTC(y, m - 1, 1));
-  prev.setUTCDate(0);
-  const py = prev.getUTCFullYear();
-  const pm = String(prev.getUTCMonth() + 1).padStart(2, "0");
-  const pd = String(prev.getUTCDate()).padStart(2, "0");
-  return `${py}-${pm}-${pd}`;
-}
-
-function recomputeNominalFromCloses(row: ConsolidatedMonthlyPerfRow): ConsolidatedMonthlyPerfRow {
-  const prior = row.prior_closing;
-  const net = row.net_capital_flow;
-  const nominal =
-    prior != null && Number.isFinite(prior)
-      ? row.closing_value - prior - net
-      : row.nominal_pl;
-  const denom = (prior ?? 0) + net;
-  const pct =
-    nominal != null &&
-    Number.isFinite(nominal) &&
-    Math.abs(denom) > 0.01 &&
-    Number.isFinite(nominal / denom)
-      ? nominal / denom
-      : null;
-  return { ...row, nominal_pl: nominal, pct_month: pct };
-}
-
-function recomputeYtdAndCumulative(
-  rowsAsc: ConsolidatedMonthlyPerfRow[]
-): ConsolidatedMonthlyPerfRow[] {
-  let ytdYear = 0;
-  let ytdRun = 0;
-  let cumPl = 0;
-  return rowsAsc.map((row) => {
-    const y = Number(row.as_of_date.slice(0, 4));
-    if (!Number.isFinite(y)) return row;
-    if (y !== ytdYear) {
-      ytdYear = y;
-      ytdRun = 0;
-    }
-    const nominal = row.nominal_pl ?? 0;
-    ytdRun += nominal;
-    cumPl += nominal;
-    return { ...row, ytd_nominal_pl: ytdRun, cumulative_nominal_pl: cumPl };
-  });
-}
-
 function linkedCcOffsetAt(asOf: string, unit: TsUnit): number {
   const ccClp = linkedCreditCardClpForCashCardAsOf(asOf);
   const v = convertLinkedCc(ccClp, asOf, unit);
   return Number.isFinite(v) ? v : 0;
 }
 
-/** Subtract linked tarjeta balance total from consolidated cash_savings month cierres (charts / overview). */
+/**
+ * Net linked tarjeta balance from consolidated cash_savings month cierres (chart NAV / bucket level).
+ * Nominal P/L stays savings-only — CC balance drift is not bucket investment return.
+ */
 export function netLinkedCreditCardFromCashConsolidated(
   rows: readonly ConsolidatedMonthlyPerfRow[],
   unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
   if (!rows.length) return [...rows];
 
-  const asc = [...rows]
+  return [...rows]
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))
     .map((row) => {
       const linkedCc = linkedCcOffsetAt(row.as_of_date, unit);
-      const priorEnd = priorMonthEndYmd(row.as_of_date);
-      const priorLinkedCc = priorEnd != null ? linkedCcOffsetAt(priorEnd, unit) : 0;
-
-      const closing_value = row.closing_value - linkedCc;
-      const prior_closing =
-        row.prior_closing != null && Number.isFinite(row.prior_closing)
-          ? row.prior_closing - priorLinkedCc
-          : row.prior_closing;
-
-      return recomputeNominalFromCloses({
-        ...row,
-        closing_value,
-        prior_closing,
-      });
-    });
-
-  return recomputeYtdAndCumulative(asc).reverse();
+      return { ...row, closing_value: row.closing_value - linkedCc };
+    })
+    .reverse();
 }
 
 /** @deprecated alias kept for imports */

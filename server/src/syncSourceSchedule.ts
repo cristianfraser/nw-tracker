@@ -4,6 +4,11 @@ import {
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
   isCryptoEodSyncWindow,
 } from "./equityEodSync.js";
+import {
+  isYahooFxEodSyncWindow,
+  YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE,
+  YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE,
+} from "./fxYahooEodSync.js";
 import { isFintualFundPublishDay } from "./fintualPublishDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import type { GlobalSyncSource } from "./globalSyncStale.js";
@@ -188,6 +193,23 @@ function scheduleForSource(
         next_sync: next ? { ymd: next, hour: 16, minute: 5, timeZone: "America/New_York" } : null,
         next_sync_imminent: false,
         today_day_kind: nyDayKind(nowNy.ymd),
+      };
+    }
+    case "yahoo_fx_usd": {
+      const nowMins = cl.hour * 60 + cl.minute;
+      const dueMins = YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE * 60 + YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE;
+      if (!isYahooFxEodSyncWindow(cl) && nowMins < dueMins) {
+        return {
+          next_sync: chileTimeToday(cl, YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE, YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE),
+          next_sync_imminent: false,
+          today_day_kind: chileDayKind(cl.ymd),
+        };
+      }
+      const tomorrow = chileCalendarAddDays(cl.ymd, 1);
+      return {
+        next_sync: chileTimeOnYmd(tomorrow, YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE, YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE),
+        next_sync_imminent: false,
+        today_day_kind: chileDayKind(cl.ymd),
       };
     }
     case "crypto_eod": {

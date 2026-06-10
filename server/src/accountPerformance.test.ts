@@ -54,6 +54,26 @@ describe("reanchorMonthlyPerfToCalendarMonthEnds", () => {
 });
 
 describe("getAccountMonthlyPerformance", () => {
+  it("Reserva2 May 2026 attributes net withdrawals to aportes, not P/L", () => {
+    const acc = db
+      .prepare(`SELECT id FROM accounts WHERE notes LIKE '%reserva2%' LIMIT 1`)
+      .get() as { id: number } | undefined;
+    if (!acc) return;
+
+    const perf = getAccountMonthlyPerformance(acc.id, "clp");
+    const may = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-05");
+    if (!may) return;
+
+    expect(may.net_capital_flow).toBe(-5_700_000);
+    expect(may.nominal_pl).not.toBeCloseTo(-5_620_042, 0);
+    if (may.prior_closing != null && may.nominal_pl != null) {
+      expect(may.nominal_pl).toBeCloseTo(
+        may.closing_value - may.prior_closing - may.net_capital_flow,
+        0
+      );
+    }
+  });
+
   it("returns empty monthly for movement-balance cash categories", () => {
     const rows = db
       .prepare(
@@ -71,6 +91,29 @@ describe("getAccountMonthlyPerformance", () => {
     expect(isMovementBalanceCashCategory(accountBucketKindSlug(row.bucket_slug))).toBe(true);
     const perf = getAccountMonthlyPerformance(row.id, "clp");
     expect(perf?.monthly).toEqual([]);
+  });
+
+  it("credit_card accounts report zero nominal_pl until installment-interest P/L", () => {
+    const cc = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug = 'credit_card' OR g.slug LIKE '%credit_card%'
+         LIMIT 5`
+      )
+      .all() as { id: number }[];
+    const row = cc.find((r) => {
+      const perf = getAccountMonthlyPerformance(r.id, "clp");
+      return (perf?.monthly.length ?? 0) > 0;
+    });
+    if (!row) return;
+
+    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    expect(perf?.monthly.length).toBeGreaterThan(0);
+    for (const m of perf!.monthly) {
+      expect(m.nominal_pl).toBe(0);
+      expect(m.pct_month).toBeNull();
+    }
   });
 
   it("investment rows with prior_closing satisfy nominal_pl = closing − prior − net_flow", () => {
@@ -94,6 +137,47 @@ describe("getAccountMonthlyPerformance", () => {
       const expected = r.closing_value - r.prior_closing - r.net_capital_flow;
       expect(r.nominal_pl).toBeCloseTo(expected, 2);
     }
+
+    const asc = [...perf.monthly].reverse();
+    for (let i = 1; i < asc.length; i++) {
+      const cur = asc[i]!;
+      const prev = asc[i - 1]!;
+      const curMk = monthKeyFromYmd(cur.as_of_date);
+      if (priorCalendarMonthKey(curMk) !== monthKeyFromYmd(prev.as_of_date)) continue;
+      if (cur.prior_closing == null || cur.nominal_pl == null) continue;
+      expect(cur.prior_closing).toBeCloseTo(prev.closing_value, 2);
+      expect(cur.nominal_pl).toBeCloseTo(
+        cur.closing_value - prev.closing_value - cur.net_capital_flow,
+        2
+      );
+    }
+  });
+
+  it("Fintual cert v2 current month prior_closing matches prior month closing_value", () => {
+    const acc = db
+      .prepare(
+        `SELECT a.id, a.notes, a.name, g.slug AS bucket_slug
+         FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE a.notes LIKE '%import:fintual|cert|key=risky_norris%' LIMIT 1`
+      )
+      .get() as { id: number; notes: string | null; name: string; bucket_slug: string } | undefined;
+    if (!acc) return;
+
+    const perf = getAccountMonthlyPerformance(acc.id, "clp");
+    if (!perf?.monthly.length) return;
+
+    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
+    const priorMk = priorCalendarMonthKey(curMk);
+    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    const prior = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === priorMk);
+    if (!cur || !prior || cur.prior_closing == null || cur.nominal_pl == null) return;
+
+    expect(cur.prior_closing).toBeCloseTo(prior.closing_value, 0);
+    expect(cur.nominal_pl).toBeCloseTo(
+      cur.closing_value - prior.closing_value - cur.net_capital_flow,
+      0
+    );
   });
 
   it("mega caca current-month P/L uses account mark at prior month-end (near 0 when live ≈ May cierre)", () => {

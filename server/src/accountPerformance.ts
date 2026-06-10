@@ -1,4 +1,9 @@
 import {
+  cacheKeyAccountMonthlyPerf,
+  getAggregationCached,
+} from "./aggregationCache.js";
+import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
+import {
   getAccountValuationTimeseries,
   listAccountsForGroupTab,
   convertTs,
@@ -134,7 +139,15 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
             { notes: opts.notes, name: opts.name }
           )
         : null;
-    const close = row.closing_value;
+    const closeFromMark = monthEndCloseForAccountInUnit(
+      opts.accountId,
+      opts.bucketSlug,
+      out,
+      mk,
+      opts.unit,
+      { notes: opts.notes, name: opts.name }
+    );
+    const close = closeFromMark ?? row.closing_value;
     const netFlow = row.net_capital_flow;
 
     let prior_closing: number | null;
@@ -167,6 +180,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
 
     out.push({
       ...row,
+      closing_value: close,
       prior_closing,
       nominal_pl,
       pct_month,
@@ -189,11 +203,10 @@ function collapseMonthlyPerfDuplicateCalendarMonths(
     byMonth.set(mk, arr);
   }
   const monthsAsc = [...byMonth.keys()].sort((a, b) => a.localeCompare(b));
-  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
   const picked = monthsAsc.map((mk) => {
     const monthRows = byMonth.get(mk)!;
     const row = pickRepresentativeMonthlyPerfRow(monthRows, mk);
-    if (mk !== currentMk) return row;
+    /** Sum flows across every snapshot in the month (mid-month + month-end book row). */
     const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
     return { ...row, net_capital_flow: totalFlow };
   });
@@ -278,6 +291,21 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const pct =
     Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
 
+  const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
+  const mortgageUfFields =
+    bucketKind === "mortgage"
+      ? (() => {
+          const ledger = loadDeptoDividendosSheetLedgerFromDb();
+          if (!ledger.length) return {};
+          const ufMap = ufClpBySnapshotDatesAsc([today]);
+          const ufByDate = deptoCreditoRestanteUfBySnapshotDates([today], ledger);
+          return {
+            uf_clp_day: ufMap.get(today) ?? null,
+            closing_balance_uf: ufByDate.get(today) ?? null,
+          };
+        })()
+      : {};
+
   if (idx >= 0) {
     const out = [...sortedAsc];
     out[idx] = {
@@ -287,6 +315,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
       closing_value: live,
       nominal_pl: nominal,
       pct_month: pct,
+      ...mortgageUfFields,
     };
     return recomputeYtdAndCumulativeOnMonthlyRows(out);
   }
@@ -301,6 +330,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     pct_month: pct,
     ytd_nominal_pl: null,
     cumulative_nominal_pl: null,
+    ...mortgageUfFields,
     unit,
   };
   const out = [...sortedAsc, inserted].sort((a, b) =>
@@ -399,6 +429,14 @@ function monthEndCloseForPerformance(
   if (rawClp == null) return null;
   const converted = convertTs(rawClp, asOf, unit);
   return Number.isFinite(converted) ? converted : null;
+}
+
+/**
+ * Phase-1 stub until installment-interest P/L (`creditCardPerformancePl.ts`).
+ * Credit-card balance change is not investment return.
+ */
+export function creditCardNominalPlStub(): number {
+  return 0;
 }
 
 /**
@@ -509,7 +547,7 @@ function afpPositiveCuotasInflowByMonthKey(accountId: number): Map<string, numbe
  * The **first** month with a valuation row is included: `prior_closing` is null and `net_capital_flow` equals cumulative
  * aportes at that date (so e.g. VEA’s March 2026 wires appear in March, not folded into April as ΔcumDep=0).
  */
-/** @heavy Rebuilds monthly performance from valuation timeseries + capital flows (not cached). */
+/** @heavy Rebuilds monthly performance from valuation timeseries + capital flows (cached in-process). */
 export function getAccountMonthlyPerformance(
   accountId: number,
   unit: TsUnit = "clp"
@@ -528,9 +566,29 @@ export function getAccountMonthlyPerformance(
     return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
   }
 
-  const ts = getAccountValuationTimeseries(accountId, unit, {});
+  const base = getAggregationCached(cacheKeyAccountMonthlyPerf(accountId, unit), () =>
+    buildAccountMonthlyPerformanceUncached(accountId, unit, row.bucket_slug)
+  );
+  // Live MTM marks refresh on every quote sync; do not bake them into the perf cache.
+  const asc = [...base.monthly].reverse();
+  const withLive = applyLiveCloseToCurrentMonthPerfRows(accountId, row.bucket_slug, asc, unit);
+  return {
+    account_id: base.account_id,
+    bucket_slug: base.bucket_slug,
+    monthly: [...withLive].reverse(),
+  };
+}
+
+function buildAccountMonthlyPerformanceUncached(
+  accountId: number,
+  unit: TsUnit,
+  bucketSlug: string
+): { account_id: number; bucket_slug: string; monthly: AccountMonthlyPerformanceRow[] } {
+  const ts = getAccountValuationTimeseriesForPerf(accountId, unit, () =>
+    getAccountValuationTimeseries(accountId, unit, {})
+  );
   if (!ts || ts.granularity !== "monthly" || !ts.accounts.points.length) {
-    return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
+    return { account_id: accountId, bucket_slug: bucketSlug, monthly: [] };
   }
 
   const dk = String(accountId);
@@ -553,19 +611,18 @@ export function getAccountMonthlyPerformance(
   let cumPl = 0;
   const unitsByMonthEnd = stockUnitsInflowByMonthEnd(accountId);
   const afpCuotasByMonthKey =
-    row.bucket_slug === "afp" ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
+    bucketSlug === "afp" ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
   const cryptoInflowByMonthEnd =
-    cryptoAssetFromCategorySlug(row.bucket_slug) != null
-      ? cryptoCoinInflowByMonthEnd(accountId)
-      : null;
-  const cryptoAsset = cryptoAssetFromCategorySlug(row.bucket_slug);
-  const bucketKind = accountBucketKindSlug(row.bucket_slug);
+    cryptoAssetFromCategorySlug(bucketSlug) != null ? cryptoCoinInflowByMonthEnd(accountId) : null;
+  const cryptoAsset = cryptoAssetFromCategorySlug(bucketSlug);
+  const bucketKind = accountBucketKindSlug(bucketSlug);
   const deptoLedger =
     bucketKind === "mortgage" || bucketKind === "property"
       ? loadDeptoDividendosSheetLedgerFromDb()
       : null;
   const isMortgage = bucketKind === "mortgage";
   const isDeptoProperty = bucketKind === "property";
+  const isCreditCard = bucketKind === "credit_card";
   const deptoSnapshotDates = deptoLedger ? pts.map((p) => String(p.as_of_date)) : [];
   const mortgageUfByDate =
     deptoLedger && isMortgage
@@ -585,7 +642,7 @@ export function getAccountMonthlyPerformance(
       : null;
   const deptoCloseClpByDate = mortgageCloseClpByDate ?? propertyCloseClpByDate;
   const ccBillingPayByMonth =
-    row.bucket_slug === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
+    bucketSlug === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
       ? creditCardInstallmentPaymentsByBillingMonth(accountId)
       : null;
   const stockUnitsInflowForPerfRow = (asOf: string) =>
@@ -630,11 +687,17 @@ export function getAccountMonthlyPerformance(
           ? mortgageSheetPaymentsClpThroughDate(deptoLedger, asOf, null)
           : cumDep;
       /** Mortgage: opening balance after pie is not P/L (only cuota-driven changes count). */
-      const nominalFirst = isMortgage ? 0 : close - netFlowFirst;
+      const nominalFirst = isMortgage
+        ? 0
+        : isCreditCard
+          ? creditCardNominalPlStub()
+          : close - netFlowFirst;
       const pctFirst =
-        Math.abs(netFlowFirst) > 1e-6 && Number.isFinite(nominalFirst / netFlowFirst)
-          ? nominalFirst / netFlowFirst
-          : null;
+        isCreditCard
+          ? null
+          : Math.abs(netFlowFirst) > 1e-6 && Number.isFinite(nominalFirst / netFlowFirst)
+            ? nominalFirst / netFlowFirst
+            : null;
       ytdRun += nominalFirst;
       cumPl += nominalFirst;
       outAsc.push({
@@ -679,13 +742,17 @@ export function getAccountMonthlyPerformance(
     }
     const nominal = isMortgage
       ? mortgageFinancingCostClp(prevClose, close, netFlow)
-      : close - prevClose - netFlow;
+      : isCreditCard
+        ? creditCardNominalPlStub()
+        : close - prevClose - netFlow;
     const pct = isMortgage
       ? mortgagePctMonth(nominal, prevClose)
-      : (() => {
-          const denom = prevClose + netFlow;
-          return Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
-        })();
+      : isCreditCard
+        ? null
+        : (() => {
+            const denom = prevClose + netFlow;
+            return Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
+          })();
 
     const y = Number(String(p.as_of_date).slice(0, 4));
     if (!Number.isFinite(y)) {
@@ -729,20 +796,13 @@ export function getAccountMonthlyPerformance(
   const perfMeta = accountMetaForLivePerfClose(accountId);
   const reanchorOpts: ReanchorMonthlyPerfOpts = {
     accountId,
-    bucketSlug: row.bucket_slug,
+    bucketSlug,
     unit,
     notes: perfMeta?.notes ?? null,
     name: perfMeta?.name ?? null,
   };
   const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc, reanchorOpts);
-  const withLive = applyLiveCloseToCurrentMonthPerfRows(
-    accountId,
-    row.bucket_slug,
-    collapsed,
-    unit
-  );
-  const monthly = [...withLive].reverse();
-  return { account_id: accountId, bucket_slug: row.bucket_slug, monthly };
+  return { account_id: accountId, bucket_slug: bucketSlug, monthly: [...collapsed].reverse() };
 }
 
 /** Latest consolidated cierre per calendar month (`YYYY-MM`). */
