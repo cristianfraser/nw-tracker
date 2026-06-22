@@ -19,6 +19,7 @@
     "import:cfraser-inbox": "tsx scripts/import-cfraser-inbox.ts",
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",
     "repair:cc-source-pdf": "tsx scripts/repair-cc-statement-source-pdf-names.ts",
+    "list:missing-cc-pdfs": "tsx scripts/list-missing-cc-statement-pdfs.ts",
     "repair:checking-cartola-period-month": "tsx scripts/repair-checking-cartola-period-month.ts",
     "repair:checking-cartola-source-pdf": "tsx scripts/repair-checking-cartola-source-pdf-names.ts",
     "repair:cuenta-vista-cartola-suffixes": "tsx scripts/repair-cuenta-vista-cartola-pdf-suffixes.ts",

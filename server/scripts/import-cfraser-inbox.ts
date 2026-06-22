@@ -111,8 +111,9 @@ function main(): void {
     if (restoreCode !== 0) process.exit(restoreCode);
   }
 
-  if (!skipQpdfRepair) {
+    if (!skipQpdfRepair) {
     const inboxDir = resolveCfraserInboxDir();
+    const pdfDeps = path.join(SERVER_ROOT, "scripts", ".pdf_deps");
     const repairArgs = [
       path.join(SERVER_ROOT, "scripts", "repair-cc-statement-pdfs-qpdf.py"),
       `--dir=${inboxDir}`,
@@ -120,7 +121,8 @@ function main(): void {
     const repairCode = runStep(
       "qpdf repair unreadable credit-card PDFs (inbox before organize)",
       "python3",
-      repairArgs
+      repairArgs,
+      { PYTHONPATH: pdfDeps }
     );
     if (repairCode !== 0 && !dryRun) {
       process.exit(repairCode);
@@ -134,7 +136,9 @@ function main(): void {
       path.join(SERVER_ROOT, "scripts", "organize-cfraser-statement-pdfs.py"),
     ];
     if (dryRun) organizeArgs.push("--dry-run");
-    const code = runStep("Organize PDFs (cfraser/inbox → statements/)", "python3", organizeArgs);
+    const code = runStep("Organize PDFs (cfraser/inbox → statements/)", "python3", organizeArgs, {
+      PYTHONPATH: path.join(SERVER_ROOT, "scripts", ".pdf_deps"),
+    });
     if (code !== 0) process.exit(code);
   } else {
     console.log("\n=== Organize PDFs (skipped) ===");

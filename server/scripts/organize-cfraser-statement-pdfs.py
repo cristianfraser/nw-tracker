@@ -9,7 +9,8 @@ Uses `cc-statements-parsed-all.csv` when present for credit-card statement dates
 otherwise peeks PDF text (pdftotext) after qpdf decrypt when needed
 (`SANTANDER_CC_STATEMENT_PDF_PASSWORD`, `LIDER_CC_STATEMENT_PDF_PASSWORD`).
 Ambiguous inbox files (unreadable PDF, missing date/card) are left in place and reported as errors (exit 1).
-Confirmed duplicates (readable PDF, classified slot already on disk) are skipped without failing.
+Confirmed duplicates (readable PDF, classified slot already on disk) move to
+`cfraser/inbox/duplicates/` (ignored on later runs) without failing.
 
 From repo root:
   npm run import:cfraser-inbox          # organize + parse + import (recommended)
@@ -24,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -61,6 +63,7 @@ from cc_pdf_qpdf import (  # noqa: E402
 
 CFRASER = REPO_ROOT / "cfraser"
 INBOX_DIR = CFRASER / "inbox"
+INBOX_DUPLICATES_DIR = INBOX_DIR / "duplicates"
 LEGACY_INBOX_DIR = CFRASER / "pdfs"
 
 
@@ -84,6 +87,8 @@ RE_SANTANDER_157_DATE = re.compile(r"^157_\d+_\d+_(\d{8})\.pdf$", re.I)
 SANTANDER_80_ACCOUNT_TO_CARD_LAST4: dict[str, str] = {
     "REDACTED": "4141",
     "REDACTED": "4141",
+    "REDACTED": "4242",
+    "REDACTED": "4242",
 }
 # Santander email attachment: `1_<seq>_<account>_<date>_CC.pdf` = cuenta corriente cartola (not tarjeta).
 SANTANDER_CHECKING_CARTOLA_ACCOUNT = "REDACTED"
@@ -98,6 +103,24 @@ RE_INBOX_LINEA_CREDITO = re.compile(
     rf"^1_(\d+)_{SANTANDER_LINEA_CREDITO_ACCOUNT}_(\d{{8}})_LC\.pdf$",
     re.I,
 )
+RE_INBOX_SPANISH_MONTH_PDF = re.compile(
+    r"^([A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s+(\d{4})(?:-\d+)?\.pdf$",
+    re.I,
+)
+SPANISH_MONTH_TO_NUM: dict[str, int] = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
 
 
 def dd_to_iso(raw: str) -> str | None:
@@ -193,6 +216,29 @@ def ensure_cc_pdf_readable(path: Path, *, dry_run: bool) -> str | None:
     return None
 
 
+def iso_from_spanish_month_pdf_name(name: str) -> str | None:
+    """Inbox scans named ``MAYO 2017.pdf`` → last calendar day of that month (organize fallback)."""
+    m = RE_INBOX_SPANISH_MONTH_PDF.match(name)
+    if not m:
+        return None
+    month_name = (
+        m.group(1)
+        .lower()
+        .strip()
+        .translate(str.maketrans("áéíóúñ", "aeioun"))
+    )
+    mo = SPANISH_MONTH_TO_NUM.get(month_name)
+    y = int(m.group(2))
+    if not mo or not (1990 <= y <= 2039):
+        return None
+    if mo == 12:
+        next_y, next_mo = y + 1, 1
+    else:
+        next_y, next_mo = y, mo + 1
+    last_day = (date(next_y, next_mo, 1) - timedelta(days=1)).day
+    return f"{y:04d}-{mo:02d}-{last_day:02d}"
+
+
 def peek_meta(path: Path) -> tuple[str | None, bool, str | None]:
     text = peek_pdf_text(path)
     if is_readable_bci_lider_statement_text(text):
@@ -201,8 +247,33 @@ def peek_meta(path: Path) -> tuple[str | None, bool, str | None]:
     if not is_readable_santander_cc_statement_text(text):
         return None, False, None
     upper = text.upper()
-    intl = "ESTADO DE CUENTA INTERNACIONAL" in upper
+    intl = "ESTADO DE CUENTA INTERNACIONAL" in upper or (
+        "INTERNACIONAL" in upper and "MONTO US$" in upper
+    )
     last4 = peek_last4(text)
+    m_period = re.search(
+        r"PER[IÍ]ODO\s+FACTURADO[^\d]*(\d{2}/\d{2}/\d{4})[^\d]*(\d{2}/\d{2}/\d{4})",
+        text,
+        re.I,
+    )
+    if m_period:
+        iso = dd_to_iso(m_period.group(2))
+        if iso:
+            return iso, intl, last4
+    m_stmt = re.search(
+        r"FECHA\s+ESTADO\s+DE\s+CUENTA[^\d]*(\d{2}/\d{2}/\d{4})",
+        text,
+        re.I,
+    )
+    if m_stmt:
+        iso = dd_to_iso(m_stmt.group(1))
+        if iso:
+            return iso, intl, last4
+    m_pay = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", text, re.I)
+    if m_pay:
+        iso = dd_to_iso(m_pay.group(1))
+        if iso:
+            return iso, intl, last4
     lines = [ln.strip() for ln in text.splitlines()]
     for i, ln in enumerate(lines):
         if "FECHA ESTADO" in ln.upper():
@@ -324,6 +395,8 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
         if row and str(row.get("parser_layout") or "").startswith("bci_lider"):
             intl = False
         if not iso:
+            iso = iso_from_spanish_month_pdf_name(p.name)
+        if not iso:
             errors.append(f"{p.name}: no statement date (PDF text or CSV)")
             continue
         if fn_iso:
@@ -333,6 +406,8 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
             )
         stem = f"{iso} {cc_doc_type(row, intl)}"
         suf = cc_suffix(p.name, row, peek_l4)
+        if not suf and RE_INBOX_SPANISH_MONTH_PDF.match(p.name) and peek_l4:
+            suf = peek_l4
         if not suf:
             errors.append(f"{p.name}: no card last4 (PDF text or CSV)")
             continue
@@ -341,10 +416,10 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
         dest = cc_dest_path(CC_DIR, suf, intl, stem)
         if dest.exists() and p.resolve() != dest.resolve():
             slot = "usd" if intl else "clp"
-            print(
-                f"skip (duplicate {slot}): {p.name} — "
-                f"{dest.relative_to(CFRASER)} already exists",
-                file=sys.stderr,
+            move_inbox_duplicate(
+                p,
+                dry_run=dry_run,
+                reason=f"{dest.relative_to(CFRASER)} already exists ({slot})",
             )
             continue
         if p.resolve() == dest.resolve():
@@ -402,6 +477,22 @@ def unique_dest(folder: Path, stem: str) -> Path:
         n += 1
 
 
+def move_inbox_duplicate(p: Path, *, dry_run: bool, reason: str = "") -> Path:
+    """Archive an inbox PDF whose canonical copy already exists (ignored on future runs)."""
+    inbox = resolve_inbox_dir()
+    if p.parent.resolve() != inbox.resolve():
+        return p
+    dup_dir = INBOX_DUPLICATES_DIR
+    dest = unique_dest(dup_dir, p.stem)
+    rel = dest.relative_to(CFRASER)
+    detail = f" — {reason}" if reason else ""
+    print(f"inbox duplicate -> {rel}{detail}", file=sys.stderr)
+    if not dry_run:
+        dup_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(p), str(dest))
+    return dest
+
+
 def organize_cuenta_vista(dry_run: bool) -> int:
     VISTA_DIR.mkdir(parents=True, exist_ok=True)
     sources: list[Path] = []
@@ -435,9 +526,13 @@ def organize_cuenta_vista(dry_run: bool) -> int:
                     shutil.move(str(p), str(canonical))
                 moved += 1
                 continue
-            print(f"skip (already exists): {canonical.relative_to(CFRASER)}")
-            if not dry_run:
-                p.unlink()
+            reason = f"{canonical.relative_to(CFRASER)} already exists"
+            if p.parent.resolve() == inbox.resolve():
+                move_inbox_duplicate(p, dry_run=dry_run, reason=reason)
+            else:
+                print(f"skip (already exists): {reason}")
+                if not dry_run:
+                    p.unlink()
             moved += 1
             continue
         dest = unique_dest(VISTA_DIR, stem)
@@ -520,9 +615,11 @@ def organize_linea_credito_cartolas_inbox(dry_run: bool) -> int:
             stem += f" {tag}"
         dest = unique_dest(LINEA_DIR, stem)
         if dest.exists() and p.resolve() != dest.resolve():
-            print(f"skip (already exists): {dest.relative_to(CFRASER)}")
-            if not dry_run:
-                p.unlink()
+            move_inbox_duplicate(
+                p,
+                dry_run=dry_run,
+                reason=f"{dest.relative_to(CFRASER)} already exists",
+            )
             moved += 1
             continue
         if p.resolve() == dest.resolve():
@@ -568,9 +665,11 @@ def organize_checking_cartolas_inbox(dry_run: bool) -> int:
             stem += f" {tag}"
         dest = unique_dest(CART_DIR, stem)
         if dest.exists() and p.resolve() != dest.resolve():
-            print(f"skip (already exists): {dest.relative_to(CFRASER)}")
-            if not dry_run:
-                p.unlink()
+            move_inbox_duplicate(
+                p,
+                dry_run=dry_run,
+                reason=f"{dest.relative_to(CFRASER)} already exists",
+            )
             moved += 1
             continue
         if p.resolve() == dest.resolve():

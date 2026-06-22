@@ -201,7 +201,7 @@ export function GroupInfoPage() {
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
   const pageColorTarget = navMatchNode ? navColorTargetFromDto(navMatchNode) : undefined;
   const showUsd = displayUnit === "usd";
-  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (navStillLoading) {
     return (
@@ -270,7 +270,7 @@ export function GroupInfoPage() {
       charts={
         <PortfolioGroupChartsSection
           accountsEmpty={accounts.length === 0}
-          accountsEmptyMessage="No hay cuentas en esta vista todavía."
+          accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
           chartSeriesCount={chartSeriesCount}
           valuationBlockForChart={charts.valuationBlockForChart}
           displayPieSlices={displayPieSlices}

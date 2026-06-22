@@ -4,20 +4,21 @@ import { useFlowsDeposits } from "../queries/hooks";
 import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import {
   flowChartGranularityFromMetricsPeriod,
   formatFlowMoney,
 } from "../flowsDisplay";
-import { depositFlowCategoryLabel } from "../i18n";
 import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
 export function DepositsPage() {
+  const { t } = useTranslation();
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsDeposits();
-  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -27,25 +28,42 @@ export function DepositsPage() {
     return chartGranularity === "year" ? data.chart_yearly : data.chart_monthly;
   }, [chartGranularity, data, displayUnit]);
 
+  const total = useMemo(() => {
+    if (!data) return 0;
+    if (displayUnit === "usd") {
+      if (data.net_total_usd == null) {
+        throw new Error("missing net_total_usd for deposits in USD display");
+      }
+      return data.net_total_usd;
+    }
+    return data.net_total_clp;
+  }, [data, displayUnit]);
+
   if (err) {
     return <p className="error">{err}</p>;
   }
 
   if (!data) {
-    return <p className="muted">Loading deposits…</p>;
+    return <p className="muted">{t("common.loading")}</p>;
   }
 
   return (
     <>
-      <h2 className="flow-section-title">Deposits</h2>
+      <h2 className="flow-section-title">{t("sidebar.flowsDeposits")}</h2>
       <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.75rem" }}>
-        Net external capital by category (deposits positive, withdrawals negative). Same merged timeline as
-        account “aportes” / chart deposit lines: movements plus brokerage CLP wires and withdrawals.
+        {t("deposits.intro")}
+      </p>
+
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        {t("deposits.totalLabel")}{" "}
+        <span className="mono" style={{ color: "var(--text)" }}>
+          {formatFlowMoney(total, displayUnit)}
+        </span>
       </p>
 
       <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack" style={{ marginBottom: "1.5rem" }}>
         <DepositsByCategoryChart
-          title="Aportes por categoría"
+          title={t("deposits.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}
           displayUnit={displayUnit}
@@ -68,13 +86,16 @@ export function DepositsPage() {
             </h3>
             <Table
               tableStyle={{ fontSize: "0.85rem" }}
+              collapsedVisibleRows={15}
+              showMoreLabel={t("notifications.showMore")}
+              showLessLabel={t("table.showLess")}
               header={
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Account</th>
-                    <th>Amount</th>
+                    <th>{t("deposits.colDate")}</th>
+                    <th>{t("deposits.colCategory")}</th>
+                    <th>{t("deposits.colAccount")}</th>
+                    <th>{t("deposits.colAmount")}</th>
                   </tr>
                 </thead>
               }
@@ -82,7 +103,7 @@ export function DepositsPage() {
               {block.rows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="muted">
-                    No deposits in this category.
+                    {t("deposits.emptyCategory")}
                   </td>
                 </tr>
               ) : (

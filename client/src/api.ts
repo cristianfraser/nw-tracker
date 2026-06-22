@@ -91,7 +91,6 @@ export const api = {
       created_leaf_bucket: boolean;
     }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
   deleteAccount: (id: number) => j<{ ok: boolean; deleted: number }>(`/api/accounts/${id}`, { method: "DELETE" }),
-  assetTree: () => j<import("./types").AssetTreeResponse>("/api/meta/asset-tree"),
   portfolioTree: () => j<import("./types").PortfolioTreeResponse>("/api/meta/portfolio-tree"),
   updateAccountColor: (id: number, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
@@ -368,7 +367,6 @@ export const api = {
     }),
   income: () => j<import("./types").FlowsIncomeResponse>("/api/income"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
-  flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),
   flowsRealEstateExpenses: () =>
     j<import("./types").RealEstateExpensesResponse>("/api/flows/expenses/real-estate"),
   realEstateExpenseLinkCandidates: (expenseEntryId: number) =>

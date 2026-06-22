@@ -1394,6 +1394,7 @@ export function buildCheckingGastosLines(opts?: {
       lineOverrides: new Map(),
       merchantRules,
       uniquePurchases,
+      uniquePurchaseModeKeys,
     });
     const purchaseMapKey = `${accountId}|${purchaseKey}`;
     const userClearedUnique = userClearedUniqueAtLoad.has(purchaseMapKey);
