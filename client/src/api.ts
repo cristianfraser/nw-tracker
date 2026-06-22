@@ -366,7 +366,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  income: () => j<{ income: unknown[] }>("/api/income"),
+  income: () => j<import("./types").FlowsIncomeResponse>("/api/income"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),
   flowsRealEstateExpenses: () =>

@@ -1062,6 +1062,8 @@ export interface FlowCcExpenseLineRow {
   amount_clp: number;
   /** Original USD when the charge is on a USD statement (or USD-only line). */
   amount_usd?: number | null;
+  /** USD for gastos display: native USD or CLP ÷ FX on purchase / movement date. */
+  amount_usd_at_expense: number | null;
   merchant: string | null;
   merchant_key: string;
   installment_flag: number;
@@ -1104,6 +1106,53 @@ export interface FlowsCreditCardExpensesResponse {
   chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
   total_clp: number;
   total_real_clp: number;
+}
+
+/** `GET /api/income` — cartola abonos + manual income_entries. */
+export interface FlowCheckingIncomeLine {
+  movement_id: number;
+  account_id: number;
+  account_label: string;
+  received_on: string;
+  amount_clp: number;
+  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  amount_usd: number | null;
+  description: string;
+  source: "checking";
+}
+
+export interface FlowManualIncomeLine {
+  id: number;
+  amount_clp: number;
+  received_on: string;
+  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  amount_usd: number | null;
+  source: string | null;
+  note: string | null;
+  origin: "manual";
+}
+
+export interface FlowsIncomeResponse {
+  lines: FlowCheckingIncomeLine[];
+  manual: FlowManualIncomeLine[];
+  monthly_totals: Record<string, number>;
+}
+
+export interface FlowIncomeMonthRow {
+  period_month: string;
+  as_of_date: string;
+  cartola_clp: number;
+  manual_clp: number;
+  total_clp: number;
+  line_count: number;
+  cumulative_clp: number;
+}
+
+export interface FlowIncomeChartPoint {
+  as_of_date: string;
+  cartola: number;
+  manual: number;
+  total: number;
 }
 
 /** `GET /api/flows/expenses` — apartment utility / housing costs (positive outflows). */

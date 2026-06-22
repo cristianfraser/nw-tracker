@@ -19,6 +19,7 @@ import {
 import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
+import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { FlowCcExpenseLineRow, FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 
 export type InstallmentPurchaseRow = {
@@ -175,6 +176,7 @@ function buildSyntheticRow(opts: {
     statement_date: "",
     amount_clp: opts.amountClp,
     amount_usd: null,
+    amount_usd_at_expense: expenseGastosAmountUsdAtDate(opts.amountClp, null, opts.purchaseOn),
     merchant: opts.merchant,
     merchant_key: opts.merchantKey,
     category_slug: opts.categorySlug,

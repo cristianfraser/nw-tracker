@@ -11,6 +11,7 @@ import {
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { CcExpenseLineRole } from "./ccExpensePeriodMonth.js";
 import { db } from "./db.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
@@ -227,6 +228,7 @@ export function buildInstallmentPaymentGastosLines(
       statement_date: stmtDate,
       amount_clp: amount,
       amount_usd: null,
+      amount_usd_at_expense: expenseGastosAmountUsdAtDate(amount, null, purchaseOn ?? payByIso),
       merchant: row.merchant,
       installment_flag: 1,
       nro_cuota_current: row.cuota_current,

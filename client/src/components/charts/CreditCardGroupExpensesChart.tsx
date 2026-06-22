@@ -13,13 +13,16 @@ import {
 import type { TooltipProps } from "recharts";
 import { useCallback, useMemo, useState } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
-import { formatClp } from "../../format";
+import { chileTodayYmd } from "../../calendarMonth";
+import { formatFlowMoney } from "../../flowsDisplay";
+import type { DisplayUnit } from "../../queries/keys";
 import { ccExpenseCategoryLabel, useTranslation } from "../../i18n";
 import type { CcExpenseCategoryDto, FlowCcExpenseCategoryChartPoint } from "../../types";
 import { chartCcExpenseCategories } from "../../ccExpenseCategories";
 import {
   buildNiceYAxis,
   computeRegularMonthXAxisTicks,
+  computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
   formatLineChartXTick,
   rechartsMoneyYAxisWidth,
@@ -35,10 +38,14 @@ export function CreditCardGroupExpensesChart({
   title,
   points,
   categories,
+  displayUnit = "clp",
+  xAxisGranularity = "month",
 }: {
   title: string;
   points: readonly FlowCcExpenseCategoryChartPoint[];
   categories: readonly CcExpenseCategoryDto[];
+  displayUnit?: DisplayUnit;
+  xAxisGranularity?: "month" | "year";
 }) {
   const { t } = useTranslation();
   const bars = useMemo(
@@ -68,16 +75,23 @@ export function CreditCardGroupExpensesChart({
       densifyRecordsByCalendarPeriod(
         points as unknown as Record<string, string | number | null>[],
         {
-          granularity: "month",
+          granularity: xAxisGranularity,
           dateKey: "as_of_date",
           fillMissing: { zeroKeys: barKeys },
+          extendThroughYmd: chileTodayYmd(),
         }
       ) as unknown as FlowCcExpenseCategoryChartPoint[],
-    [points, barKeys]
+    [points, barKeys, xAxisGranularity]
   );
 
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);
-  const xTicks = useMemo(() => computeRegularMonthXAxisTicks(dates), [dates]);
+  const xTicks = useMemo(
+    () =>
+      xAxisGranularity === "year"
+        ? computeRegularYearXAxisTicks(dates)
+        : computeRegularMonthXAxisTicks(dates),
+    [dates, xAxisGranularity]
+  );
 
   const yScale = useMemo(() => {
     const keysForScale = visibleBarKeys.length > 0 ? visibleBarKeys : barKeys;
@@ -161,16 +175,16 @@ export function CreditCardGroupExpensesChart({
               tick={{ fontSize: 11, fill: "#94a3b8" }}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(d: string) => formatLineChartXTick(String(d), "month")}
+              tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
             />
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth("clp")}
+              width={rechartsMoneyYAxisWidth(displayUnit)}
               tick={{ fontSize: 11, fill: "#94a3b8" }}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v: number) => formatClp(v)}
+              tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
             />
             <Tooltip
               content={(props) => {
@@ -182,8 +196,10 @@ export function CreditCardGroupExpensesChart({
                   <DefaultTooltipContent
                     {...p}
                     payload={payload}
-                    formatter={(v) => formatClp(typeof v === "number" ? v : Number(v))}
-                    labelFormatter={(d) => formatLineChartXTick(String(d), "month")}
+                    formatter={(v) =>
+                      formatFlowMoney(typeof v === "number" ? v : Number(v), displayUnit)
+                    }
+                    labelFormatter={(d) => formatLineChartXTick(String(d), xAxisGranularity)}
                     contentStyle={{
                       background: "var(--surface)",
                       border: "1px solid var(--border)",

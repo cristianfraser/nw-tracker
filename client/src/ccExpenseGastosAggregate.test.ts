@@ -16,6 +16,7 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     purchase_on: purchaseOn,
     statement_date: "24/04/2024",
     amount_clp: 40_000,
+    amount_usd_at_expense: null,
     merchant: "TEST",
     merchant_key: "TEST",
     installment_flag: 1,

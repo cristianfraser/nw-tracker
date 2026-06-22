@@ -15,7 +15,8 @@ import type { TooltipProps } from "recharts";
 import { useMemo } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { allocationBucketColor } from "../../chartColors";
-import { formatClp } from "../../format";
+import { formatFlowMoney } from "../../flowsDisplay";
+import type { DisplayUnit } from "../../queries/keys";
 import { depositFlowCategoryLabel } from "../../i18n";
 import type { DepositFlowCategory, FlowDepositChartPoint } from "../../types";
 import {
@@ -69,10 +70,12 @@ export function DepositsByCategoryChart({
   title,
   points,
   xAxisGranularity = "month",
+  displayUnit = "clp",
 }: {
   title: string;
   points: FlowDepositChartPoint[];
   xAxisGranularity?: "month" | "year";
+  displayUnit?: DisplayUnit;
 }) {
   const densePoints = useMemo(() => {
     const zeroKeys = [...CATEGORY_BAR.map((b) => b.dataKey), "total"];
@@ -143,17 +146,19 @@ export function DepositsByCategoryChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth("clp")}
+              width={rechartsMoneyYAxisWidth(displayUnit)}
               tick={{ fontSize: 11, fill: "#94a3b8" }}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v: number) => formatClp(v)}
+              tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
             />
             <Tooltip
               content={(props) => (
                 <DefaultTooltipContent
                   {...(props as TooltipProps<number, string>)}
-                  formatter={(v) => formatClp(typeof v === "number" ? v : Number(v))}
+                  formatter={(v) =>
+                    formatFlowMoney(typeof v === "number" ? v : Number(v), displayUnit)
+                  }
                   labelFormatter={(d) => formatLineChartXTick(String(d), xAxisGranularity)}
                   contentStyle={{
                     background: "var(--surface)",
