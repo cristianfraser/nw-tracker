@@ -34,7 +34,9 @@ const MORTGAGE_FLOW_KIND_RE =
 function mortgageFlowKindFromNote(note: string): MortgageFlowKind | null {
   const explicit = note.match(MORTGAGE_FLOW_KIND_RE);
   if (explicit) return explicit[1] as MortgageFlowKind;
-  if (!note.includes("import:excel|depto-mortgage")) return null;
+  if (!note.includes("import:excel|depto-mortgage") && !note.includes("manual|depto-mortgage")) {
+    return null;
+  }
   const cuotaRaw = note.match(/\|cuota=([^|]+)/)?.[1];
   const cuota = cuotaRaw ? decodeURIComponent(cuotaRaw) : "";
   if (/^prepago\b/i.test(cuota.trim())) return FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO;
@@ -76,7 +78,12 @@ export function movementFlowTypeFromRow(row: {
   accountId?: number;
   movementId?: number;
   occurred_on?: string;
+  transfer_direction?: "out" | "in" | null;
 }): MovementFlowType {
+  if (row.transfer_direction === "out" || row.transfer_direction === "in") {
+    if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
+    return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
+  }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
   return movementFlowTypeFromSignedClp(
     row.note,

@@ -3,12 +3,19 @@ import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
-import { ccWebPasteToCsvRecords, parseCcWebPasteText } from "./ccWebPasteParse.js";
+import {
+  ccWebPasteToCsvRecords,
+  creditCardMasterMetaForAccount,
+  parseCcWebPasteText,
+} from "./ccWebPasteParse.js";
 
 const SAMPLE = `20/05/2026 		ARAMCO 	-$1.990 		
 19/05/2026 		JUMBO COSTANERA CENTER 	-$32.399 		
 		MP*MICOCACOLA 	-$46.360 		
 07/05/2026 		PAGO 		+$5.570.527`;
+
+const BCI_SAMPLE = `11/06/2026\tTOKU *METLIFE HIPOTE\t\t$1.795.575
+11/06/2026\tENTEL HOGAR\t\t$21.249`;
 
 describe("parseCcWebPasteText", () => {
   it("parses dated rows and merchants without date on continuation lines", () => {
@@ -64,5 +71,55 @@ describe("parseCcWebPasteText", () => {
     const pago = records.find((r) => r.merchant === "PAGO");
     expect(charge?.amount_clp).toBe("1990");
     expect(pago?.amount_clp).toBe("-5570527");
+  });
+
+  it("parses BCI-style positive charge amounts", () => {
+    const { lines, errors } = parseCcWebPasteText(BCI_SAMPLE);
+    expect(errors).toEqual([]);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      transaction_date: "2026-06-11",
+      merchant: "TOKU *METLIFE HIPOTE",
+      amount_clp: 1795575,
+    });
+    expect(lines[1]).toMatchObject({
+      transaction_date: "2026-06-11",
+      merchant: "ENTEL HOGAR",
+      amount_clp: 21249,
+    });
+  });
+
+  it("maps BCI master to BCI card_group", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+    expect(creditCardMasterMetaForAccount(master.id)).toEqual({
+      cardGroup: "BCI",
+      cardLast4: "4343",
+    });
+  });
+
+  it("assigns BCI pasted lines to open bucket with BCI card_group", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+    const meta = creditCardMasterMetaForAccount(master.id);
+    if (!meta) return;
+    const { lines } = parseCcWebPasteText("11/06/2026\tENTEL HOGAR\t$21.249");
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    expect(openBm).toBeTruthy();
+    const records = ccWebPasteToCsvRecords(
+      master.id,
+      meta.cardGroup,
+      meta.cardLast4,
+      "test",
+      lines
+    );
+    expect(records[0]?.card_group).toBe("BCI");
+    expect(records[0]?.card_last4).toBe("4343");
+    expect(records[0]?.amount_clp).toBe("21249");
+    expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
   });
 });

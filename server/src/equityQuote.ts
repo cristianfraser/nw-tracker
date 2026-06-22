@@ -108,12 +108,11 @@ function resolveNyseEodQuote(ticker: string, now: Date): ResolvedEquityQuote | n
   return sessionPairEodQuote(ticker, displayYmd, priorYmd);
 }
 
-/** UTC display session for crypto when not using live (today if row exists, else latest ≤ today). */
+/** UTC display session for crypto when not using live (latest completed UTC day in DB). */
 export function cryptoDisplaySessionYmd(ticker: string, now = new Date()): string {
-  const today = utcTodayYmd(now);
-  if (eodCloseUsdOnDate(ticker, today) != null) return today;
-  const row = stmtEodClose.get(ticker, today) as { trade_date: string } | undefined;
-  return row?.trade_date ?? today;
+  const completedUtc = utcCalendarPrevYmd(utcTodayYmd(now));
+  const row = stmtEodClose.get(ticker, completedUtc) as { trade_date: string } | undefined;
+  return row?.trade_date ?? completedUtc;
 }
 
 function priorCryptoSessionYmd(ticker: string, displayYmd: string): string | null {

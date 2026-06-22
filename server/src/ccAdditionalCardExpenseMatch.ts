@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import {
   NO_CUENTA_CC_EXPENSE_SLUG,
   getCcExpenseCategoryBySlug,
+  loadCcStatementLineExpenseCtx,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import {
@@ -11,6 +12,100 @@ import {
 } from "./ccExpensePurchaseNotes.js";
 
 export const AUTO_ADDITIONAL_CARD_NOTE_PREFIX = "auto:additional-card";
+
+/** User chose Sin clasificar — do not re-apply adicional-card / auto no_cuenta on reload. */
+export const USER_DECLINED_AUTO_CATEGORY_PREFIX = "auto:user-declined-auto-category";
+
+export function isUserDeclinedAutoCategoryNote(note: string): boolean {
+  return String(note ?? "")
+    .split("\n")
+    .some((line) => line.trim() === USER_DECLINED_AUTO_CATEGORY_PREFIX);
+}
+
+export function mergeUserDeclinedAutoCategoryNote(existingDbNote: string): string {
+  const existing = String(existingDbNote ?? "").trim();
+  if (isUserDeclinedAutoCategoryNote(existing)) return existing;
+  if (!existing) return USER_DECLINED_AUTO_CATEGORY_PREFIX;
+  return `${USER_DECLINED_AUTO_CATEGORY_PREFIX}\n\n${existing}`;
+}
+
+export function stripUserDeclinedAutoCategoryNote(note: string): string {
+  const lines = String(note ?? "").split("\n");
+  const kept = lines.filter((line) => line.trim() !== USER_DECLINED_AUTO_CATEGORY_PREFIX);
+  return kept.join("\n").trim();
+}
+
+export function userDeclinedAutoCategoryForPurchase(
+  accountId: number,
+  purchaseKey: string,
+  dbHandle: Database = db
+): boolean {
+  const row = dbHandle
+    .prepare(
+      `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
+    )
+    .get(accountId, purchaseKey) as { notes: string } | undefined;
+  return isUserDeclinedAutoCategoryNote(row?.notes ?? "");
+}
+
+export function markUserDeclinedAutoCategory(
+  accountId: number,
+  purchaseKey: string,
+  dbHandle: Database = db
+): void {
+  const existing = (
+    dbHandle
+      .prepare(
+        `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
+      )
+      .get(accountId, purchaseKey) as { notes: string } | undefined
+  )?.notes;
+  const merged = mergeUserDeclinedAutoCategoryNote(existing ?? "");
+  dbHandle
+    .prepare(
+      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(account_id, purchase_key) DO UPDATE SET
+         notes = excluded.notes,
+         updated_at = excluded.updated_at`
+    )
+    .run(accountId, purchaseKey, merged);
+}
+
+export function clearUserDeclinedAutoCategory(
+  accountId: number,
+  purchaseKey: string,
+  dbHandle: Database = db
+): void {
+  const existing = (
+    dbHandle
+      .prepare(
+        `SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
+      )
+      .get(accountId, purchaseKey) as { notes: string } | undefined
+  )?.notes;
+  const stripped = stripUserDeclinedAutoCategoryNote(existing ?? "");
+  if (!stripped) {
+    dbHandle
+      .prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
+      .run(accountId, purchaseKey);
+    return;
+  }
+  dbHandle
+    .prepare(
+      `UPDATE cc_expense_purchase_notes SET notes = ?, updated_at = datetime('now')
+       WHERE account_id = ? AND purchase_key = ?`
+    )
+    .run(stripped, accountId, purchaseKey);
+}
+
+export function isInstallmentContractPurchaseKey(purchaseKey: string): boolean {
+  return (
+    purchaseKey.startsWith("installment-h:") ||
+    purchaseKey.startsWith("installment-pr:") ||
+    purchaseKey.startsWith("installment:")
+  );
+}
 
 export function isAdditionalCardExpenseLine(
   originCardLast4: string | null | undefined,
@@ -75,6 +170,12 @@ export function userClearedUniquePurchase(
 export type ApplyAdditionalCardNoCuentaResult = {
   applied: boolean;
   skippedUserCleared: boolean;
+  /** Unique purchase already has a category (user or prior auto) — never overwrite. */
+  skippedExistingCategory: boolean;
+  /** User cleared to Sin clasificar — do not re-apply auto no_cuenta (one-shot only). */
+  skippedUserDeclinedAuto: boolean;
+  /** Installment contracts — adicional no_cuenta never applies; use line-level cuota rules. */
+  skippedInstallment: boolean;
   notesUpdated: boolean;
   purchaseKey: string;
 };
@@ -92,12 +193,86 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
   const primary = String(opts.primaryCardLast4 ?? "").trim();
   const purchaseKey = resolveCcExpensePurchaseKey(opts.statementLineId);
 
-  if (!isAdditionalCardExpenseLine(origin, primary)) {
-    return { applied: false, skippedUserCleared: false, notesUpdated: false, purchaseKey };
+  const lineCtx = loadCcStatementLineExpenseCtx(opts.statementLineId);
+  if (lineCtx?.installment_flag === 1 || isInstallmentContractPurchaseKey(purchaseKey)) {
+    return {
+      applied: false,
+      skippedUserCleared: false,
+      skippedExistingCategory: false,
+      skippedUserDeclinedAuto: false,
+      skippedInstallment: true,
+      notesUpdated: false,
+      purchaseKey,
+    };
   }
 
-  if (opts.skipIfUserCleared !== false && userClearedUniquePurchase(opts.accountId, purchaseKey, dbHandle)) {
-    return { applied: false, skippedUserCleared: true, notesUpdated: false, purchaseKey };
+  if (!isAdditionalCardExpenseLine(origin, primary)) {
+    return {
+      applied: false,
+      skippedUserCleared: false,
+      skippedExistingCategory: false,
+      skippedUserDeclinedAuto: false,
+      skippedInstallment: false,
+      notesUpdated: false,
+      purchaseKey,
+    };
+  }
+
+  if (userDeclinedAutoCategoryForPurchase(opts.accountId, purchaseKey, dbHandle)) {
+    return {
+      applied: false,
+      skippedUserCleared: false,
+      skippedExistingCategory: false,
+      skippedUserDeclinedAuto: true,
+      skippedInstallment: false,
+      notesUpdated: false,
+      purchaseKey,
+    };
+  }
+
+  const existingUnique = dbHandle
+    .prepare(
+      `SELECT category_id FROM cc_expense_unique_purchases
+       WHERE account_id = ? AND purchase_key = ?`
+    )
+    .get(opts.accountId, purchaseKey) as { category_id: number | null } | undefined;
+
+  if (existingUnique != null) {
+    if (existingUnique.category_id == null) {
+      if (opts.skipIfUserCleared !== false) {
+        return {
+          applied: false,
+          skippedUserCleared: true,
+          skippedExistingCategory: false,
+          skippedUserDeclinedAuto: false,
+          skippedInstallment: false,
+          notesUpdated: false,
+          purchaseKey,
+        };
+      }
+    } else {
+      const autoNote = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
+      const existingNote = getCcExpensePurchaseNote(opts.accountId, purchaseKey);
+      const merged = mergeAutoAdditionalCardNote(existingNote, autoNote);
+      let notesUpdated = false;
+      if (merged !== existingNote.trim()) {
+        setCcExpensePurchaseNote({
+          accountId: opts.accountId,
+          purchaseKey,
+          notes: merged,
+        });
+        notesUpdated = true;
+      }
+      return {
+        applied: false,
+        skippedUserCleared: false,
+        skippedExistingCategory: true,
+        skippedUserDeclinedAuto: false,
+        skippedInstallment: false,
+        notesUpdated,
+        purchaseKey,
+      };
+    }
   }
 
   const noCuenta = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG);
@@ -126,5 +301,13 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
     notesUpdated = true;
   }
 
-  return { applied: true, skippedUserCleared: false, notesUpdated, purchaseKey };
+  return {
+    applied: true,
+    skippedUserCleared: false,
+    skippedExistingCategory: false,
+    skippedUserDeclinedAuto: false,
+    skippedInstallment: false,
+    notesUpdated,
+    purchaseKey,
+  };
 }

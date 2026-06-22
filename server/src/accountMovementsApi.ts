@@ -2,6 +2,13 @@ import { noteIsDeptoPiePayment } from "./deptoDividendosLedger.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
+import {
+  accountNameForId,
+  counterpartAccountIdFor,
+  signedClpDeltaForAccountMovement,
+  transferDirectionForAccount,
+  type MovementTransferRow,
+} from "./movementTransfer.js";
 
 export type AccountMovementApiRow = {
   id: number;
@@ -14,30 +21,45 @@ export type AccountMovementApiRow = {
   ticker: string | null;
   flow_type: string;
   flow_type_label: string;
+  counterpart_account_id: number | null;
+  counterpart_account_name: string | null;
+  transfer_direction: "out" | "in" | null;
 };
 
-const movementsStmt = db.prepare(
-  `SELECT id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker
-   FROM movements WHERE account_id = ? ORDER BY occurred_on DESC, id DESC`
+const movementsForAccountStmt = db.prepare(
+  `SELECT id, account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+          units_delta, flow_kind, amount_usd, ticker
+   FROM movements
+   WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?
+   ORDER BY occurred_on DESC, id DESC`
 );
 
-function mapMovementRows(
-  accountId: number,
-  rows: Omit<AccountMovementApiRow, "flow_type" | "flow_type_label">[]
-): AccountMovementApiRow[] {
+function mapMovementRows(accountId: number, rows: MovementTransferRow[]): AccountMovementApiRow[] {
   return rows.map((r) => {
+    const counterpartId = counterpartAccountIdFor(r, accountId);
     const flow_type = movementFlowTypeFromRow({
       note: r.note,
-      amount_clp: r.amount_clp,
+      amount_clp: signedClpDeltaForAccountMovement(r, accountId),
       flow_kind: r.flow_kind,
       accountId,
       movementId: r.id,
       occurred_on: r.occurred_on,
+      transfer_direction: transferDirectionForAccount(r, accountId),
     });
     return {
-      ...r,
+      id: r.id!,
+      amount_clp: signedClpDeltaForAccountMovement(r, accountId),
+      occurred_on: r.occurred_on,
+      note: r.note,
+      units_delta: r.units_delta,
+      flow_kind: r.flow_kind,
+      amount_usd: r.amount_usd,
+      ticker: r.ticker,
       flow_type,
       flow_type_label: movementFlowTypeLabel(flow_type),
+      counterpart_account_id: counterpartId,
+      counterpart_account_name: counterpartId != null ? accountNameForId(counterpartId) : null,
+      transfer_direction: transferDirectionForAccount(r, accountId),
     };
   });
 }
@@ -47,40 +69,8 @@ export function listAccountMovementsForApiBulk(
   accountIds: readonly number[]
 ): Map<number, AccountMovementApiRow[]> {
   const out = new Map<number, AccountMovementApiRow[]>();
-  if (!accountIds.length) return out;
-
-  const unique = [...new Set(accountIds)];
-  const ph = unique.map(() => "?").join(",");
-  const raw = db
-    .prepare(
-      `SELECT id, account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker
-       FROM movements
-       WHERE account_id IN (${ph})
-       ORDER BY account_id, occurred_on DESC, id DESC`
-    )
-    .all(...unique) as (Omit<AccountMovementApiRow, "flow_type" | "flow_type_label"> & {
-    account_id: number;
-  })[];
-
-  const byAccount = new Map<number, Omit<AccountMovementApiRow, "flow_type" | "flow_type_label">[]>();
-  for (const r of raw) {
-    const arr = byAccount.get(r.account_id) ?? [];
-    const { account_id: _aid, ...row } = r;
-    arr.push(row);
-    byAccount.set(r.account_id, arr);
-  }
-
-  for (const id of unique) {
-    const cat = db
-      .prepare(
-        `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
-      )
-      .get(id) as { bucket_slug: string } | undefined;
-    let rows = byAccount.get(id) ?? [];
-    if (cat && accountBucketKindSlug(cat.bucket_slug) === "mortgage") {
-      rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
-    }
-    out.set(id, mapMovementRows(id, rows));
+  for (const id of accountIds) {
+    out.set(id, listAccountMovementsForApi(id));
   }
   return out;
 }
@@ -91,7 +81,7 @@ export function listAccountMovementsForApi(accountId: number): AccountMovementAp
       `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
     )
     .get(accountId) as { bucket_slug: string } | undefined;
-  let rows = movementsStmt.all(accountId) as Omit<AccountMovementApiRow, "flow_type" | "flow_type_label">[];
+  let rows = movementsForAccountStmt.all(accountId, accountId, accountId) as MovementTransferRow[];
   if (cat && accountBucketKindSlug(cat.bucket_slug) === "mortgage") {
     rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
   }

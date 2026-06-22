@@ -144,7 +144,7 @@ export function ccWebPasteToCsvRecords(
       card_last4: cardLast4,
       transaction_date: ddMm,
       merchant: line.merchant,
-      amount_clp: String(webPasteAmountClpForDb(line.amount_clp)),
+      amount_clp: String(webPasteAmountClpForDb(line.amount_clp, line.merchant)),
       installment_flag: "false",
       dedupe_key,
       raw_line: line.raw_line,
@@ -166,7 +166,16 @@ export function newWebPasteBatchId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-export function santanderCardMetaForAccount(accountId: number): {
+const WEB_PASTE_CARD_GROUP_BY_ISSUER: Record<string, string> = {
+  santander: "santander",
+  bci: "BCI",
+};
+
+function webPasteCardGroupForIssuer(issuer: string): string {
+  return WEB_PASTE_CARD_GROUP_BY_ISSUER[issuer] ?? issuer;
+}
+
+export function creditCardMasterMetaForAccount(accountId: number): {
   cardGroup: string;
   cardLast4: string;
 } | null {
@@ -174,7 +183,10 @@ export function santanderCardMetaForAccount(accountId: number): {
     .prepare(`SELECT notes FROM accounts WHERE id = ?`)
     .get(accountId) as { notes: string | null } | undefined;
   const notes = String(row?.notes ?? "");
-  const m = /credit_card_master\|santander\|(\d{4})/.exec(notes);
+  const m = /^credit_card_master\|([^|]+)\|(\d{4})$/.exec(notes);
   if (!m) return null;
-  return { cardGroup: "santander", cardLast4: m[1]! };
+  return {
+    cardGroup: webPasteCardGroupForIssuer(m[1]!),
+    cardLast4: m[2]!,
+  };
 }

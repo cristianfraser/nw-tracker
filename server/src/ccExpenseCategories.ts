@@ -1,5 +1,11 @@
 import { db } from "./db.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
+import {
+  clearUserDeclinedAutoCategory,
+  isInstallmentContractPurchaseKey,
+  markUserDeclinedAutoCategory,
+} from "./ccAdditionalCardExpenseMatch.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
@@ -296,72 +302,48 @@ export function resolveCcExpenseCategorySlug(opts: {
   return UNCLASSIFIED_CC_EXPENSE_SLUG;
 }
 
-function isNotaDeCreditoMerchantForCategory(merchant: string | null | undefined): boolean {
-  return /\bNOTA\s+DE\s+CREDITO\b/i.test(String(merchant ?? "").trim());
-}
-
-function parseDateLikeToIsoForCategory(raw: string | null | undefined): string | null {
-  const t = String(raw ?? "").trim();
-  if (!t) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const m4 = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (m4) return `${m4[3]}-${m4[2]}-${m4[1]}`;
-  return parseDdMmYyToIso(t);
+function resolveInstallmentPurchaseIdsFromKey(
+  accountId: number,
+  purchaseKey: string
+): number[] {
+  if (purchaseKey.startsWith("installment:")) {
+    const purchaseId = Number(purchaseKey.slice("installment:".length));
+    return Number.isFinite(purchaseId) ? [purchaseId] : [];
+  }
+  if (purchaseKey.startsWith("installment-pr:")) {
+    const parserRowId = purchaseKey.slice("installment-pr:".length);
+    const hits = db
+      .prepare(
+        `SELECT DISTINCT purchase_id FROM cc_installment_payments WHERE parser_row_id = ?`
+      )
+      .all(parserRowId) as { purchase_id: number }[];
+    return hits.map((h) => h.purchase_id);
+  }
+  if (purchaseKey.startsWith("installment-h:")) {
+    const parts = purchaseKey.split(":");
+    if (parts.length < 5) return [];
+    const purchaseIso = parts[2]!;
+    const nroTotal = Number(parts[3]);
+    const merchantKey = parts[4]!;
+    if (!purchaseIso || !Number.isFinite(nroTotal)) return [];
+    const rows = db
+      .prepare(
+        `SELECT id, merchant FROM cc_installment_purchases
+         WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ?`
+      )
+      .all(accountId, purchaseIso, nroTotal) as { id: number; merchant: string | null }[];
+    return rows
+      .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey)
+      .map((r) => r.id);
+  }
+  return [];
 }
 
 function isCancelledInstallmentPurchaseKey(accountId: number, purchaseKey: string): boolean {
-  let purchaseIds: number[] = [];
-  if (purchaseKey.startsWith("installment:")) {
-    const purchaseId = Number(purchaseKey.slice("installment:".length));
-    if (Number.isFinite(purchaseId)) purchaseIds = [purchaseId];
-  } else if (purchaseKey.startsWith("installment-pr:")) {
-    const parserRowId = purchaseKey.slice("installment-pr:".length);
-    const hits = db
-      .prepare(`SELECT purchase_id FROM cc_installment_payments WHERE parser_row_id = ?`)
-      .all(parserRowId) as { purchase_id: number }[];
-    purchaseIds = [...new Set(hits.map((h) => h.purchase_id))];
-  } else {
-    return false;
-  }
+  const purchaseIds = resolveInstallmentPurchaseIdsFromKey(accountId, purchaseKey);
   if (purchaseIds.length === 0) return false;
-  const ph = purchaseIds.map(() => "?").join(",");
-  const purchases = db
-    .prepare(
-      `SELECT id, purchase_date, total_amount_clp
-       FROM cc_installment_purchases
-       WHERE account_id = ? AND id IN (${ph})`
-    )
-    .all(accountId, ...purchaseIds) as { id: number; purchase_date: string; total_amount_clp: number }[];
-  if (purchases.length === 0) return false;
-
-  const notas = db
-    .prepare(
-      `SELECT l.merchant, l.amount_clp, COALESCE(s.period_to, s.statement_date, l.posting_date, l.transaction_date) AS occurred
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp < 0`
-    )
-    .all(accountId) as { merchant: string | null; amount_clp: number; occurred: string | null }[];
-
-  const notaCredits = notas
-    .filter((n) => isNotaDeCreditoMerchantForCategory(n.merchant))
-    .map((n) => ({
-      amountAbs: Math.abs(Math.round(n.amount_clp)),
-      occurredIso: parseDateLikeToIsoForCategory(n.occurred),
-    }))
-    .filter((n) => n.occurredIso != null) as { amountAbs: number; occurredIso: string }[];
-
-  const sortedPurchases = [...purchases].sort((a, b) => a.purchase_date.localeCompare(b.purchase_date));
-  const sortedNotas = [...notaCredits].sort((a, b) => a.occurredIso.localeCompare(b.occurredIso));
-  for (const pr of sortedPurchases) {
-    for (let i = 0; i < sortedNotas.length; i++) {
-      const note = sortedNotas[i]!;
-      if (note.amountAbs !== pr.total_amount_clp) continue;
-      if (note.occurredIso <= String(pr.purchase_date).slice(0, 10)) continue;
-      return true;
-    }
-  }
-  return false;
+  const cancelled = cancelledInstallmentPurchaseIdsForAccount(accountId);
+  return purchaseIds.some((id) => cancelled.has(id));
 }
 
 export function lineHasUniquePurchaseMode(
@@ -856,8 +838,13 @@ function executeCcExpenseCategoryAssignment(opts: {
       for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
         delMerchant.run(accountId, ruleKey);
       }
+      if (!isInstallmentContractPurchaseKey(purchaseKey)) {
+        markUserDeclinedAutoCategory(accountId, purchaseKey);
+      }
       return;
     }
+
+    clearUserDeclinedAutoCategory(accountId, purchaseKey);
 
     if (unique) {
       delUniquePurchase.run(accountId, purchaseKey);

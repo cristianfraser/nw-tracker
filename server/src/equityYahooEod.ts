@@ -25,10 +25,24 @@ type YahooChartMeta = {
   regularMarketTime?: number;
 };
 
-type YahooChartResult = {
+export type YahooChartResult = {
   meta?: YahooChartMeta;
   timestamp?: number[];
   indicators?: { quote?: Array<{ close?: (number | null)[] }> };
+};
+
+export type YahooDailyCloseParse = {
+  series: EodCloseSeries;
+  /** Last trade date in the parsed daily series (null if empty). */
+  yahooLatestDate: string | null;
+};
+
+export type YahooNyseEodFetch = {
+  series: EodCloseSeries;
+  yahooLatestDate: string | null;
+  dueSessionYmd: string;
+  usedMetaClose: boolean;
+  stillMissingDueSession: boolean;
 };
 
 type YahooChartJson = {
@@ -82,15 +96,8 @@ export function yahooChartPeriodSeconds(firstMk: string, lastMk: string): { peri
   return { period1: p1, period2: p2 };
 }
 
-export async function fetchYahooDailyCloses(
-  symbol: string,
-  period1Sec: number,
-  period2Sec: number
-): Promise<EodCloseSeries> {
-  const result = await fetchYahooChart(
-    symbol,
-    `interval=1d&period1=${period1Sec}&period2=${period2Sec}`
-  );
+/** Parse daily OHLC series from a Yahoo chart result (drops bars with null close). */
+export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartResult): YahooDailyCloseParse {
   const ts = result.timestamp;
   const close = result.indicators?.quote?.[0]?.close;
   if (!ts?.length || !close || close.length !== ts.length) {
@@ -106,7 +113,79 @@ export async function fetchYahooDailyCloses(
     closes.push(c);
   }
   if (dates.length === 0) throw new Error(`Yahoo chart empty closes for ${symbol}`);
-  return { dates, closes };
+  const yahooLatestDate = dates[dates.length - 1] ?? null;
+  return { series: { dates, closes }, yahooLatestDate };
+}
+
+/**
+ * When Yahoo's daily series omits today's close (null bar after the bell), use chart `meta.regularMarketPrice`
+ * for the due NYSE session when `regularMarketTime` matches that session.
+ */
+export function enrichNyseEodSeriesFromMeta(
+  series: EodCloseSeries,
+  meta: YahooChartMeta | undefined,
+  dueSessionYmd: string
+): { series: EodCloseSeries; usedMetaClose: boolean } {
+  const latest = series.dates[series.dates.length - 1];
+  if (latest != null && latest >= dueSessionYmd) {
+    return { series, usedMetaClose: false };
+  }
+  const price = meta?.regularMarketPrice;
+  if (price == null || !Number.isFinite(price) || price <= 0) {
+    return { series, usedMetaClose: false };
+  }
+  const rt = meta?.regularMarketTime;
+  const sessionYmd =
+    rt != null && Number.isFinite(rt) ? nyseYmdFromUnix(rt) : null;
+  if (sessionYmd !== dueSessionYmd) {
+    return { series, usedMetaClose: false };
+  }
+  return {
+    series: {
+      dates: [...series.dates, dueSessionYmd],
+      closes: [...series.closes, price],
+    },
+    usedMetaClose: true,
+  };
+}
+
+export async function fetchYahooDailyCloses(
+  symbol: string,
+  period1Sec: number,
+  period2Sec: number
+): Promise<EodCloseSeries> {
+  const result = await fetchYahooChart(
+    symbol,
+    `interval=1d&period1=${period1Sec}&period2=${period2Sec}`
+  );
+  return parseYahooDailyCloseSeries(symbol, result).series;
+}
+
+/** NYSE EOD sync: one chart fetch, meta fallback when the due session bar has no daily close yet. */
+export async function fetchYahooNyseEodForSync(
+  symbol: string,
+  opts: { dueSessionYmd: string; days?: number; now?: Date }
+): Promise<YahooNyseEodFetch> {
+  const days = opts.days ?? 21;
+  const now = opts.now ?? new Date();
+  const period2 = Math.floor(now.getTime() / 1000);
+  const period1 = period2 - days * 86400;
+  const result = await fetchYahooChart(
+    symbol,
+    `interval=1d&period1=${period1}&period2=${period2}`
+  );
+  const parsed = parseYahooDailyCloseSeries(symbol, result);
+  const enriched = enrichNyseEodSeriesFromMeta(parsed.series, result.meta, opts.dueSessionYmd);
+  const yahooLatestDate = enriched.series.dates[enriched.series.dates.length - 1] ?? null;
+  const stillMissingDueSession =
+    yahooLatestDate == null || yahooLatestDate < opts.dueSessionYmd;
+  return {
+    series: enriched.series,
+    yahooLatestDate,
+    dueSessionYmd: opts.dueSessionYmd,
+    usedMetaClose: enriched.usedMetaClose,
+    stillMissingDueSession,
+  };
 }
 
 /** Recent daily bars (for EOD sync). `days` calendar lookback from today. */

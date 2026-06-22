@@ -4,23 +4,18 @@ import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries } from "./valuationTimeseries.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
+import {
+  NW_DASHBOARD_BUCKET_SLUGS,
+  portfolioGroupValueClpAt,
+} from "./portfolioGroupValueAtDate.js";
 
 describe("portfolioGroupValueClpAt", () => {
-  it("page-bundle bucket totals match summed dashboard account rows", async () => {
+  it("page-bundle bucket totals match consolidated valuation marks", async () => {
     await withPortfolioGroupIndex(async () => {
       const payload = await buildDashboardPagePayload(false);
-      const { nwDashboardMetricGroupForAccount } = await import("./portfolioGroupTree.js");
-      for (const slug of ["real_estate", "retirement", "brokerage", "cash_eqs"] as const) {
-        const sum = payload.accounts
-          .filter(
-            (a) =>
-              nwDashboardMetricGroupForAccount(a.account_id) === slug &&
-              a.exclude_from_group_totals !== 1 &&
-              !a.chart_inactive &&
-              a.current_value_clp != null
-          )
-          .reduce((s, a) => s + (a.current_value_clp ?? 0), 0);
-        expect(Math.round(sum)).toBe(payload.totals[`${slug}_clp`]);
+      const asOf = chileCalendarTodayYmd();
+      for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+        expect(payload.totals[`${slug}_clp`]).toBe(portfolioGroupValueClpAt(slug, asOf));
       }
       expect(payload.totals.net_worth_clp).toBe(
         payload.totals.real_estate_clp +

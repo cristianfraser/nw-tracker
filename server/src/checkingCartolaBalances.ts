@@ -7,6 +7,7 @@ import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { sumClpThroughDate } from "./movementTransfer.js";
 
 const BALANCE_CACHE_TTL_MS = 30_000;
 const balanceCache = new Map<string, { balance: number; expiresAt: number }>();
@@ -28,14 +29,7 @@ export function checkingMovementBalanceClpAt(
   asOfYmd: string,
   dbHandle: Database = db
 ): number {
-  const row = dbHandle
-    .prepare(
-      `SELECT COALESCE(SUM(amount_clp), 0) AS total
-       FROM movements
-       WHERE account_id = ? AND occurred_on <= ?`
-    )
-    .get(accountId, asOfYmd) as { total: number };
-  return Math.round(Number(row.total));
+  return sumClpThroughDate(accountId, asOfYmd, dbHandle);
 }
 
 /** Cached wrapper for hot paths (API/charts); invalidated on movement writes via TTL. */

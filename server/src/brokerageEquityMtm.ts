@@ -1,5 +1,8 @@
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
+import { sumUnitsThroughDate, listMovementRowsForAccount, unitsDeltaForAccountMovement } from "./movementTransfer.js";
+import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
+import { isUsdCashAccount } from "./usdCashAccounts.js";
 import { db } from "./db.js";
 import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
 export { equityTickerForAccount } from "./accountEquityTicker.js";
@@ -13,7 +16,7 @@ import type { EodCloseSeries } from "./equityYahooEod.js";
 import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
-/** Yahoo chart symbols loaded at `import:excel` into `equity_daily` (USD close per share/coin). */
+/** Equity symbols loaded at `import:excel` into `equity_daily` (USD close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
 
 const insEod = db.prepare(
@@ -37,36 +40,53 @@ const shareUnitsFlowPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(",
 
 const stmtHasUnits = db.prepare(
   `SELECT 1 FROM movements
-   WHERE account_id = ?
+   WHERE (account_id = ? OR to_account_id = ?)
      AND flow_kind IN (${shareUnitsFlowPh})
      AND COALESCE(units_delta, 0) != 0
    LIMIT 1`
 );
 
 export function accountUsesEquityMtm(accountId: number): boolean {
+  if (isUsdCashAccount(accountId)) return false;
   return (
-    stmtHasUnits.get(accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
+    stmtHasUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
   );
 }
-
-const stmtUnits = db.prepare(
-  `SELECT COALESCE(SUM(units_delta), 0) AS u
-   FROM movements
-   WHERE account_id = ?
-     AND occurred_on <= ?
-     AND flow_kind IN (${shareUnitsFlowPh})`
-);
 
 /** Share units held on or before `asOfYmd` (brokerage acciones / crypto with unit flows). */
 export function equityShareUnitsThroughYmd(accountId: number, asOfYmd: string): number {
   if (!accountUsesEquityMtm(accountId)) return 0;
-  const urow = stmtUnits.get(
-    accountId,
-    asOfYmd,
-    ...BROKERAGE_SHARE_UNITS_FLOW_KINDS
-  ) as { u: number } | undefined;
-  const units = urow?.u ?? 0;
-  return Number.isFinite(units) ? units : 0;
+  return sumUnitsThroughDate(accountId, asOfYmd, BROKERAGE_SHARE_UNITS_FLOW_KINDS);
+}
+
+const firstShareActivityYmdCache = new Map<number, string | null>();
+
+/** First calendar day a positive share inflow hit this equity account (buy, DRIP, transfer in). */
+export function firstEquityShareActivityYmd(accountId: number): string | null {
+  if (!accountUsesEquityMtm(accountId)) return null;
+  const cached = firstShareActivityYmdCache.get(accountId);
+  if (cached !== undefined) return cached;
+  let min: string | null = null;
+  for (const r of listMovementRowsForAccount(accountId)) {
+    const fk = r.flow_kind;
+    if (!fk || !(BROKERAGE_SHARE_UNITS_FLOW_KINDS as readonly string[]).includes(fk)) continue;
+    if (unitsDeltaForAccountMovement(r, accountId) <= 0) continue;
+    const ymd = r.occurred_on.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) continue;
+    if (min == null || ymd < min) min = ymd;
+  }
+  firstShareActivityYmdCache.set(accountId, min);
+  return min;
+}
+
+/**
+ * Chart valuation = 0 when flat only **after** the account has held shares (sold out).
+ * Before first share activity, return null so the line does not backfill zeros.
+ */
+export function equityChartZeroClpAtYmd(accountId: number, asOfYmd: string): boolean {
+  const first = firstEquityShareActivityYmd(accountId);
+  if (first == null || asOfYmd < first) return false;
+  return equityShareUnitsThroughYmd(accountId, asOfYmd) <= 0;
 }
 
 /** CLP MTM: shares through `asOfYmd` × USD price × FX. Uses EOD from DB unless `priceUsd` passed. */
@@ -78,12 +98,7 @@ export function computeEquityMtmClp(
 ): number | null {
   if (!accountUsesEquityMtm(accountId)) return null;
   const ticker = requireEquityTicker(accountId);
-  const urow = stmtUnits.get(
-    accountId,
-    asOfYmd,
-    ...BROKERAGE_SHARE_UNITS_FLOW_KINDS
-  ) as { u: number };
-  const units = urow?.u ?? 0;
+  const units = equityShareUnitsThroughYmd(accountId, asOfYmd);
   if (units <= 0 || !Number.isFinite(units)) return null;
   const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
   if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
@@ -146,6 +161,10 @@ export function computeEquityMtmClpDisplaySync(
     if (fromEod != null && Number.isFinite(fromEod) && fromEod > 0) {
       return { value_clp: fromEod, as_of_date: md };
     }
+  }
+
+  if (firstEquityShareActivityYmd(accountId) != null && equityShareUnitsThroughYmd(accountId, displayYmd) <= 0) {
+    return { value_clp: 0, as_of_date: displayYmd };
   }
 
   return null;

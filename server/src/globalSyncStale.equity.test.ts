@@ -4,13 +4,13 @@ import { isCryptoEodStale, isStocksNyseStale } from "./globalSyncStale.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 
 const wed004Chile: ChileWallClock = {
-  ymd: "2026-05-27",
-  year: 2026,
-  month: 5,
-  day: 27,
+  ymd: "2099-06-03",
+  year: 2099,
+  month: 6,
+  day: 3,
   hour: 0,
   minute: 4,
-  monthKey: "2026-05",
+  monthKey: "2099-06",
 };
 
 const cl: ChileWallClock = {
@@ -38,8 +38,8 @@ describe("split equity sync buckets", () => {
     expect(typeof cryptoStale).toBe("boolean");
   });
 
-  it("Wed 00:04 Chile stays stale until UTC due day is in DB", () => {
-    const now = new Date("2026-05-27T04:04:00Z");
+  it("Wed 00:04 Chile stays stale until completed UTC due day is in DB", () => {
+    const now = new Date("2099-06-03T04:04:00Z");
     expect(isCryptoEodStale(wed004Chile, {}, { now })).toBe(true);
   });
 

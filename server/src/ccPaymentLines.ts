@@ -9,11 +9,15 @@ export function isCcPaymentMerchant(merchant: string | null | undefined): boolea
 }
 
 /**
- * Santander “últimos movimientos” paste: negative = charge, positive = payment.
- * DB / PDF convention: charges positive, payments negative.
+ * Web-paste amount → DB / PDF convention: charges positive, payments negative.
+ * Payment rows (PAGO, ABONO, …) are always negative; all other merchants are charges.
  */
-export function webPasteAmountClpForDb(pasteAmount: number): number {
-  if (pasteAmount < 0) return Math.abs(pasteAmount);
-  if (pasteAmount > 0) return -Math.abs(pasteAmount);
-  return 0;
+export function webPasteAmountClpForDb(
+  pasteAmount: number,
+  merchant?: string | null
+): number {
+  const abs = Math.abs(Math.trunc(pasteAmount));
+  if (abs === 0) return 0;
+  if (isCcPaymentMerchant(merchant)) return -abs;
+  return abs;
 }

@@ -6,8 +6,8 @@
  * - USD / EUR (Banco Central BDE): reference dólar/euro observado in `fx_daily_bcentral` / `eur_daily`.
  * - Yahoo CLP=X EOD → `fx_daily` (canonical USD/CLP for conversions) from 17:30 Chile (`yahoo_fx_usd`).
  * - NYSE stocks (SPY, VEA): Yahoo EOD after 16:05 ET on NYSE trading days (`stocks_nyse`).
- * - Crypto (BTC, ETH): Yahoo daily from 23:55 Chile (`crypto_eod`).
- * - UF / UTM / IPC (BDE GetSeries): from the 9th of each month when stale.
+ * - Crypto (BTC, ETH): CoinGecko daily USD from 23:55 Chile (`crypto_eod`).
+ * - UF / UTM / IPC (BDE GetSeries + SII UF gap-fill): from the 9th when DB lacks forward publication through end of next month.
  *
  * Env: `BCENTRAL_EMAIL`, `BCENTRAL_PASSWORD`, Fintual vars (see `fintualApiLib.ts`), AFP account.
  *
@@ -18,6 +18,12 @@
  *   npm run sync:all -w nw-tracker-server -- --force
  */
 import "./db.js";
+import {
+  sbifMonthlyPublicationEndYmd,
+  isSbifUfCoverageComplete,
+  isSbifUtmCoverageComplete,
+} from "./sbifMonthlyPublication.js";
+import { fetchSiiUfAfterDate } from "./ufSiiSync.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -30,6 +36,7 @@ import {
   staleSyncSources,
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
+import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
 import {
   fintualEveningPollClock,
@@ -44,6 +51,7 @@ import {
   insertSyncRunLog,
   formatSyncUfRate,
   formatSyncIndex,
+  equityEodSyncFieldChange,
   type SyncFieldChange,
   type SyncRunLogOptions,
   type SyncStepError,
@@ -80,6 +88,7 @@ import {
   fintualMappedNavSignature,
   fintualNavUnchangedSinceLastApply,
   fintualSnapshotMatchesDb,
+  markFintualAppliedFromPoll,
   markFintualEveningSettledWhenCurrent,
   pickFintualApplySnapshot,
   priorAccountValuation,
@@ -114,16 +123,16 @@ import {
   upsertUfRows,
   upsertUtmRows,
 } from "./sbifSyncDb.js";
+import { listNyseEquityTickersForEodSync } from "./accountEquityTicker.js";
 import {
   EQUITY_CRYPTO_TICKERS,
-  EQUITY_NYSE_TICKERS,
   equityEodCryptoStateYmd,
   equityEodNyseStateYmd,
   cryptoEodChangeLogDates,
   cryptoEodDueUtcYmd,
-  isCryptoEodSyncWindow,
-  syncCryptoEodFromYahoo,
+  syncCryptoEodFromCoinGecko,
   syncStocksNyseFromYahoo,
+  describeEquityNyseEodSyncNote,
   type EquityEodSyncResult,
 } from "./equityEodSync.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdCaughtUp, yahooFxUsdSyncDue, isYahooFxUsdStale } from "./fxYahooEodSync.js";
@@ -437,9 +446,10 @@ async function runFintual(
   }
 
   const anyMapped = snap.goals.some((g) => g.matchedNotes);
+  const fintualLogChanges = collectFintualGoalValuationChanges(snap, resolutions);
 
   if (fintualNavUnchangedSinceLastApply(sig, state, publishYmd)) {
-    if (fintualSnapshotMatchesDb(snap)) {
+    if (fintualSnapshotMatchesDb(snap, resolutions)) {
       const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
       if (cleaned > 0) {
         console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
@@ -463,13 +473,13 @@ async function runFintual(
 
   syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
 
-  if (fintualSnapshotMatchesDb(snap)) {
-    const fintualLogChanges = collectFintualGoalValuationChanges(snap);
+  if (fintualSnapshotMatchesDb(snap, resolutions)) {
     changes.push(...fintualLogChanges);
     const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
     if (cleaned > 0) {
       console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
     }
+    markFintualAppliedFromPoll(state, cl, publishYmd, sig, syncDryRun);
     markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
     if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, pollCl, publishYmd)) {
       state.fintualEveningSettledYmd = pollCl.ymd;
@@ -489,12 +499,14 @@ async function runFintual(
     };
   }
 
-  const { applied, skipped, changes: fintualChanges } = applyFintualGoalsSnapshotToDb(snap, syncDryRun);
+  const { applied, skipped, changes: fintualChanges } = applyFintualGoalsSnapshotToDb(
+    snap,
+    syncDryRun,
+    { logChanges: fintualLogChanges }
+  );
   changes.push(...fintualChanges);
   if (!syncDryRun) {
-    state.fintualLastAppliedYmd = cl.ymd;
-    state.fintualLastAppliedPublishYmd = publishYmd;
-    state.fintualLastAppliedSig = sig;
+    markFintualAppliedFromPoll(state, cl, publishYmd, sig, syncDryRun);
     markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
     if (fintualEveningCatchUpComplete(rows, overrides, pollCl, publishYmd)) {
       state.fintualEveningSettledYmd = pollCl.ymd;
@@ -757,9 +769,13 @@ function applyEquityEodResultsToChanges(
   changes: SyncFieldChange[],
   group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
   logPrefix: string,
-  opts?: { cryptoDueUtcYmd?: string | null; cryptoLogInSyncWindow?: boolean }
+  opts?: { cryptoDueUtcYmd?: string | null; notes?: SyncStepNote[] }
 ): void {
   for (const r of results) {
+    if (group === "stocks_nyse") {
+      const note = describeEquityNyseEodSyncNote(r);
+      if (note) opts?.notes?.push({ step: logPrefix, message: note });
+    }
     if (r.skipped) {
       console.log(`sync: ${logPrefix} ${r.ticker} — skip (${r.skipped})`);
       continue;
@@ -767,9 +783,7 @@ function applyEquityEodResultsToChanges(
     console.log(`sync: ${logPrefix} ${r.ticker} — ${r.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
     const before = eodBefore.get(r.ticker) ?? null;
     if (group === "crypto_eod" && opts?.cryptoDueUtcYmd) {
-      const { oldDate, newDate } = cryptoEodChangeLogDates(opts.cryptoDueUtcYmd, {
-        inSyncWindow: opts.cryptoLogInSyncWindow,
-      });
+      const { oldDate, newDate } = cryptoEodChangeLogDates(opts.cryptoDueUtcYmd);
       const oldClose = equityEodCloseOnDate(r.ticker, oldDate);
       const newClose = equityEodCloseOnDate(r.ticker, newDate);
       if (newClose == null) continue;
@@ -792,16 +806,8 @@ function applyEquityEodResultsToChanges(
       continue;
     }
     const after = latestEquityEodRow(r.ticker);
-    if (after == null) continue;
-    if (before != null && Math.abs(before.close_usd - after.close_usd) < 1e-8) continue;
-    changes.push({
-      group,
-      label: r.ticker,
-      oldValue: before != null ? formatSyncUsdClose(before.close_usd) : "—",
-      newValue: formatSyncUsdClose(after.close_usd),
-      oldDate: before?.trade_date ?? null,
-      newDate: after.trade_date,
-    });
+    const change = equityEodSyncFieldChange(group, r.ticker, before, after);
+    if (change) changes.push(change);
   }
 }
 
@@ -811,15 +817,20 @@ function snapshotEodBefore(tickers: readonly string[]): Map<string, { trade_date
   return m;
 }
 
-async function runStocksNyse(state: GlobalSyncStateFile, changes: SyncFieldChange[]): Promise<void> {
+async function runStocksNyse(
+  state: GlobalSyncStateFile,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
+): Promise<void> {
   const now = new Date();
   if (!FORCE && !isStocksNyseStale(state, { force: false, now })) {
     console.log("sync: NYSE stocks — skip (session EOD already in DB).");
     return;
   }
-  const eodBefore = snapshotEodBefore(EQUITY_NYSE_TICKERS);
+  const nyseTickers = listNyseEquityTickersForEodSync();
+  const eodBefore = snapshotEodBefore(nyseTickers);
   const results = await syncStocksNyseFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
-  applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_nyse", "NYSE stocks");
+  applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_nyse", "NYSE stocks", { notes });
   if (!syncDryRun) {
     const nyseYmd = equityEodNyseStateYmd(now);
     if (nyseYmd) state.equityEodLastNySessionYmd = nyseYmd;
@@ -839,10 +850,9 @@ async function runCryptoEod(
   const dueUtc = cryptoEodDueUtcYmd(cl, now);
   if (dueUtc) console.log(`sync: crypto EOD — due UTC ${dueUtc}.`);
   const eodBefore = snapshotEodBefore(EQUITY_CRYPTO_TICKERS);
-  const results = await syncCryptoEodFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
+  const results = await syncCryptoEodFromCoinGecko({ dryRun: syncDryRun, now });
   applyEquityEodResultsToChanges(results, eodBefore, changes, "crypto_eod", "crypto EOD", {
     cryptoDueUtcYmd: dueUtc,
-    cryptoLogInSyncWindow: isCryptoEodSyncWindow(cl),
   });
   if (!syncDryRun) {
     const cryptoYmd = equityEodCryptoStateYmd(now);
@@ -856,28 +866,48 @@ async function runSbifUf(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
-  if (!isSbifMonthlyStale(cl, state.sbifUfMonth, { forceSbif: FORCE_SBIF })) {
-    console.log("sync: BCentral UF — skip (monthly window or already synced this month).");
+  const maxBefore = maxUfDate();
+  if (!isSbifUfStale(cl, {
+    forceSbif: FORCE_SBIF,
+    maxUfDate: maxBefore,
+    lastSyncYmd: state.sbifUfLastSyncYmd,
+  })) {
+    console.log("sync: BCentral UF — skip (forward publication already in DB).");
     return;
   }
-  const last = maxUfDate() ?? portfolioStartYmd();
+  const fetchEnd = sbifMonthlyPublicationEndYmd(cl);
+  const last = maxBefore ?? portfolioStartYmd();
   let rows: { date: string; clpPerUf: number }[] = [];
   try {
-    rows = await fetchUfAfterDate(last, creds, cl.ymd);
+    rows = await fetchUfAfterDate(last, creds, fetchEnd);
   } catch (e) {
     if (isBcentralNoDataError(e)) {
-      console.warn(`sync: BCentral UF — no newer series after ${last} (ok if already current).`);
+      console.warn(`sync: BCentral UF — no newer series after ${last} through ${fetchEnd}.`);
     } else throw e;
   }
-  const n = upsertUfRows(
+  let n = upsertUfRows(
     rows.map((r) => ({ date: r.date, clpPerUf: r.clpPerUf })),
     syncDryRun
   );
-  if (n > 0) {
-    const newest = rows[rows.length - 1];
-    const newDate = newest?.date ?? last;
+
+  const afterBcentral = maxUfDate();
+  if (!isSbifUfCoverageComplete(afterBcentral, cl)) {
+    const siiRows = await fetchSiiUfAfterDate(last, fetchEnd);
+    const siiN = upsertUfRows(
+      siiRows.map((r) => ({ date: r.date, clpPerUf: r.clpPerUf })),
+      syncDryRun
+    );
+    if (siiN > 0) {
+      console.log(`sync: SII UF — ${siiN} row(s) after ${last} through ${fetchEnd}`);
+    }
+    n += siiN;
+    rows = [...rows, ...siiRows].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const maxAfter = maxUfDate();
+  if (n > 0 && maxAfter) {
     const oldUf = ufClpAt(last);
-    const newUf = newest ? ufClpAt(newDate) : null;
+    const newUf = ufClpAt(maxAfter);
     if (newUf != null) {
       changes.push({
         group: "sbif_uf",
@@ -885,12 +915,19 @@ async function runSbifUf(
         oldValue: oldUf != null ? formatSyncUfRate(oldUf) : "—",
         newValue: formatSyncUfRate(newUf),
         oldDate: last,
-        newDate,
+        newDate: maxAfter,
       });
     }
   }
-  if (!syncDryRun) state.sbifUfMonth = cl.monthKey;
-  console.log(`sync: BCentral UF — ${n} row(s) after ${last} (${syncDryRun ? "dry-run" : "ok"})`);
+  if (!syncDryRun) {
+    state.sbifUfLastSyncYmd = cl.ymd;
+    if (isSbifUfCoverageComplete(maxAfter, cl)) {
+      state.sbifUfMonth = cl.monthKey;
+    }
+  }
+  console.log(
+    `sync: UF — ${n} row(s) after ${last} through ${fetchEnd} (max ${maxAfter ?? "—"}; ${syncDryRun ? "dry-run" : "ok"})`
+  );
 }
 
 async function runSbifUtm(
@@ -899,19 +936,23 @@ async function runSbifUtm(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<void> {
-  if (!isSbifMonthlyStale(cl, state.sbifUtmMonth, { forceSbif: FORCE_SBIF })) {
-    console.log("sync: BCentral UTM — skip (monthly window or already synced this month).");
+  const maxUtmBefore = safeMaxUtmMonthParts();
+  if (!isSbifUtmStale(cl, { forceSbif: FORCE_SBIF, maxUtm: maxUtmBefore })) {
+    console.log("sync: BCentral UTM — skip (forward publication already in DB).");
     return;
   }
+  const fetchEnd = sbifMonthlyPublicationEndYmd(cl);
   const lastParts = safeMaxUtmMonthParts();
   const start = portfolioStartYmd();
   const anchor = lastParts ?? monthBeforeCalendar(parseYmdParts(start).y, parseYmdParts(start).m);
   let rows: { date: string; utmClp: number }[] = [];
   try {
-    rows = await fetchUtmAfterMonth(anchor.y, anchor.m, creds, cl.ymd);
+    rows = await fetchUtmAfterMonth(anchor.y, anchor.m, creds, fetchEnd);
   } catch (e) {
     if (isBcentralNoDataError(e)) {
-      console.warn(`sync: BCentral UTM — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (ok if current).`);
+      console.warn(
+        `sync: BCentral UTM — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} through ${fetchEnd}.`
+      );
     } else throw e;
   }
   const n = upsertUtmRows(rows, syncDryRun);
@@ -927,8 +968,12 @@ async function runSbifUtm(
       newDate: newest?.date?.slice(0, 10) ?? null,
     });
   }
-  if (!syncDryRun) state.sbifUtmMonth = cl.monthKey;
-  console.log(`sync: BCentral UTM — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
+  if (!syncDryRun && isSbifUtmCoverageComplete(safeMaxUtmMonthParts(), cl)) {
+    state.sbifUtmMonth = cl.monthKey;
+  }
+  console.log(
+    `sync: BCentral UTM — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} through ${fetchEnd} (${syncDryRun ? "dry-run" : "ok"})`
+  );
 }
 
 async function runSbifIpc(
@@ -1006,7 +1051,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       await runYahooFxUsd(state!, syncChanges, stepNotes);
     });
     await runSyncStepIfStale("stocks_nyse", stale, "NYSE stocks", stepErrors, state!, cl, async () => {
-      await runStocksNyse(state!, syncChanges);
+      await runStocksNyse(state!, syncChanges, stepNotes);
     });
     await runSyncStepIfStale("crypto_eod", stale, "Crypto EOD", stepErrors, state!, cl, async () => {
       await runCryptoEod(cl, state!, syncChanges);

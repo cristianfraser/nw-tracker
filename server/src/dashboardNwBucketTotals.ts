@@ -23,9 +23,7 @@ export type DashboardAccountRowForBucketTotals = {
 };
 
 function rowCountsTowardBucketTotals(row: DashboardAccountRowForBucketTotals): boolean {
-  if (row.exclude_from_group_totals === 1) return false;
-  if (row.chart_inactive) return false;
-  return row.current_value_clp != null && Number.isFinite(row.current_value_clp);
+  return row.exclude_from_group_totals !== 1;
 }
 
 type BucketSumField = "current" | "prior_month" | "prior_year";
@@ -52,6 +50,10 @@ function sumDashboardBucketFromRows(
           : unit === "usd"
             ? row.prior_year_close_usd
             : row.prior_year_close_clp;
+    if (field === "current") {
+      sum += v != null && Number.isFinite(v) ? v : 0;
+      continue;
+    }
     if (v != null && Number.isFinite(v)) sum += v;
   }
   return Math.round(sum);

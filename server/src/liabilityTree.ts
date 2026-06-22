@@ -201,6 +201,7 @@ function linkedCreditCardLiabilityViews(): LinkedCreditCardLiabilityViewRow[] {
          ON lgi.child_credit_card_group_id = g.id AND lgi.item_kind = 'credit_card_group'
        JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
        WHERE v.account_kind = 'liability_view'
+         AND v.exclude_from_group_totals = 0
        ORDER BY v.name, v.id`
     )
     .all() as LinkedCreditCardLiabilityViewRow[];

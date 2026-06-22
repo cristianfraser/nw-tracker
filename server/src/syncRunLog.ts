@@ -119,10 +119,84 @@ function formatDatedValue(date: string | null, value: string): string {
   return value;
 }
 
+/** Parse es-CL formatted sync values back to numbers (for delta suffix). */
+function parseSyncFormattedNumber(raw: string): number | null {
+  const s = normalizeIntlNum(raw);
+  if (!s || s === "—" || s.startsWith("+")) return null;
+  const neg = s.startsWith("-") || s.startsWith("−");
+  const body = s.replace(/^[-−+]/, "").trim();
+  if (!body) return null;
+  const normalized = body.replace(/\./g, "").replace(",", ".");
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return null;
+  return neg ? -n : n;
+}
+
+function formatDeltaForGroup(group: SyncChangeGroup, delta: number): string {
+  switch (group) {
+    case "afp":
+    case "fintual":
+      return formatSyncClp(delta);
+    case "sbif_usd":
+    case "sbif_eur":
+    case "yahoo_fx_usd":
+      return formatSyncFxRate(delta);
+    case "sbif_uf":
+      return formatSyncUfRate(delta);
+    case "stocks_nyse":
+    case "crypto_eod":
+      return formatSyncUsdClose(delta);
+    case "sbif_ipc":
+    case "sbif_utm":
+    case "tickers":
+      return formatSyncIndex(delta);
+    default:
+      return formatSyncIndex(delta);
+  }
+}
+
+function formatChangeDeltaSuffix(c: SyncFieldChange): string {
+  const oldN = parseSyncFormattedNumber(c.oldValue);
+  const newN = parseSyncFormattedNumber(c.newValue);
+  if (oldN == null || newN == null) return "";
+  const delta = newN - oldN;
+  if (Math.abs(delta) < 1e-12) return "";
+  const absFormatted = formatDeltaForGroup(c.group, Math.abs(delta));
+  const signed = delta > 0 ? `+${absFormatted}` : `-${absFormatted}`;
+  return ` (${signed})`;
+}
+
 function formatChangeLine(c: SyncFieldChange, indent = ""): string {
   const oldPart = formatDatedValue(c.oldDate, c.oldValue);
   const newPart = formatDatedValue(c.newDate, c.newValue);
-  return `${indent}- ${c.label}: ${oldPart} > ${newPart}`;
+  return `${indent}- ${c.label}: ${oldPart} > ${newPart}${formatChangeDeltaSuffix(c)}`;
+}
+
+export type EquityEodRow = { trade_date: string; close_usd: number };
+
+/** Build a sync-log change when trade date or close moved forward. */
+export function equityEodSyncFieldChange(
+  group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
+  label: string,
+  before: EquityEodRow | null,
+  after: EquityEodRow | null
+): SyncFieldChange | null {
+  if (after == null) return null;
+  if (
+    before != null &&
+    before.trade_date === after.trade_date &&
+    Math.abs(before.close_usd - after.close_usd) < 1e-8
+  ) {
+    return null;
+  }
+  return {
+    group,
+    label,
+    oldValue: before != null ? formatSyncUsdClose(before.close_usd) : "—",
+    newValue: formatSyncUsdClose(after.close_usd),
+    oldDate: before?.trade_date ?? null,
+    newDate: after.trade_date,
+  };
 }
 
 export function formatSyncLogBody(

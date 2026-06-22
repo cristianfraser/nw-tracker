@@ -1,6 +1,10 @@
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
-import { listCcBillingMonthBalances, type CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
+import {
+  incrementalChargesClpForBillingMonth,
+  listCcBillingMonthBalances,
+  type CcBillingMonthBalanceRow,
+} from "./ccBillingBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { facturadoFromStatement } from "./ccBillingBalances.js";
 import {
@@ -179,14 +183,15 @@ function closedFacturadoClpForPdfBillingMonth(
 }
 
 /**
- * Open month before PDF close: prior closed facturado + incremental charges − abonos.
+ * Open month before PDF close: prior PDF facturado + único charges + ledger cuotas − abonos
+ * + cuota_a_pagar_next_mes (installment dues for this billing cycle).
  * Returns null when there is no prior PDF month to roll forward.
  */
-export function rolledFacturadoForOpenBillingMonth(
+export function openFacturadoEstimateClp(
   accountId: number,
   openBillingMonth: string,
   slots: Map<string, CcStatementSlotByCurrency>,
-  statementOrBalanceFacturado: number | null
+  ledgerMonths: CcInstallmentMonthRow[]
 ): number | null {
   const priorPdf = lastPdfBillingMonthForAccount(accountId);
   if (!priorPdf || ymCompare(openBillingMonth, priorPdf) <= 0) return null;
@@ -195,10 +200,24 @@ export function rolledFacturadoForOpenBillingMonth(
   if (priorFacturado == null || priorFacturado <= 0) return null;
 
   const ledgerIncremental = ledgerFacturadoClpForBillingMonth(accountId, openBillingMonth);
-  const statementIncremental = statementOrBalanceFacturado ?? 0;
-  const incremental = Math.max(ledgerIncremental, statementIncremental);
+  const chargeIncremental = incrementalChargesClpForBillingMonth(accountId, openBillingMonth);
+  const incremental = chargeIncremental + ledgerIncremental;
   const payments = paymentAbonosClpForBillingMonth(accountId, openBillingMonth);
-  return Math.round(priorFacturado + incremental - payments);
+  const rolledBase = priorFacturado + incremental - payments;
+  const cuotaDue = cuotaAPagarNextMesClp(openBillingMonth, ledgerMonths, slots);
+  return Math.round(rolledBase + cuotaDue);
+}
+
+/** @deprecated Use {@link openFacturadoEstimateClp} */
+export function rolledFacturadoForOpenBillingMonth(
+  accountId: number,
+  openBillingMonth: string,
+  slots: Map<string, CcStatementSlotByCurrency>,
+  _statementOrBalanceFacturado: number | null,
+  ledgerMonths: CcInstallmentMonthRow[] = []
+): number | null {
+  void _statementOrBalanceFacturado;
+  return openFacturadoEstimateClp(accountId, openBillingMonth, slots, ledgerMonths);
 }
 
 function cuotaAPagarNextMesClp(
@@ -268,23 +287,27 @@ export function buildBillingDetailByMonth(
 
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
     if (!hasPdfClose && !inactive) {
-      const rolled = rolledFacturadoForOpenBillingMonth(
-        accountId,
-        billingMonth,
-        slots,
-        fromStatement ?? fromBalance
-      );
-      if (rolled != null) totalFacturado = rolled;
+      const estimate = openFacturadoEstimateClp(accountId, billingMonth, slots, ledgerMonths);
+      if (estimate != null) totalFacturado = estimate;
     }
 
     const kind: "statement" | "manual" =
-      primary != null ? "statement" : snap?.as_of_kind === "manual" ? "manual" : "statement";
+      !hasPdfClose && primary != null
+        ? "manual"
+        : primary != null
+          ? "statement"
+          : snap?.as_of_kind === "manual"
+            ? "manual"
+            : "statement";
     const asOfDate =
       primary?.statement_date_iso ?? snap?.as_of_date ?? `${billingMonth}-01`;
 
     const cupo = cupoEnCuotasForBillingMonth(accountId, billingMonth, cupoLive);
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
-    const balanceTotal = (totalFacturado ?? 0) + cupo - cuotaNext;
+    const balanceTotal =
+      hasPdfClose || inactive
+        ? (totalFacturado ?? 0) + cupo - cuotaNext
+        : (totalFacturado ?? 0) + cupo;
     out.push({
       billing_month: billingMonth,
       as_of_date: asOfDate,
@@ -377,7 +400,7 @@ export function buildFacturaciones(
         )
       : { facturado_clp: null as number | null, facturado_usd: null as number | null };
 
-    const facturadoClp =
+    let facturadoClp =
       slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
         ? Math.round(slot.clp.monto_facturado)
         : clpDerived.facturado_clp;
@@ -391,7 +414,16 @@ export function buildFacturaciones(
       facturadoUsd != null
         ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
-    const facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
+    let facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
+    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
+    const inactive = creditCardBillingDetailInactive(accountId);
+    if (!hasPdfClose && !inactive) {
+      const estimate = openFacturadoEstimateClp(accountId, billingMonth, byMonth, ledgerMonths);
+      if (estimate != null) {
+        facturadoTotal = estimate;
+        facturadoClp = estimate - (facturadoUsdClp ?? 0);
+      }
+    }
 
     out.push({
       billing_month: billingMonth,

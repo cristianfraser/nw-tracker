@@ -287,7 +287,7 @@ function parseDividendosDataRow(row: string[]): DeptoMortgageSheetRow | null {
   };
 }
 
-function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosPaymentRow {
+export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosPaymentRow {
   return {
     cuota: s.cuota,
     occurred_on: s.occurred_on,
@@ -350,12 +350,36 @@ function deptoNumericFieldBySnapshotDates(
 /**
  * Forward-filled **crédito restante (UF)** from the depto dividendos sheet at each snapshot date.
  * Used for mortgage month-end detail (`Saldo UF` column; CLP cierre = UF × UF día).
+ *
+ * Prepago rows carry unreliable `credito_restante_uf` in the Numbers export (balance can rise vs the
+ * prior cuota). Month-end marks use the last **cuota** row on or before the snapshot; prepagos still
+ * count in CLP capital flow via {@link deptoPropertyClpPaymentsThroughDate}.
  */
 export function deptoCreditoRestanteUfBySnapshotDates(
   dateStrsAsc: readonly string[],
   ledger: readonly DeptoMortgageSheetRow[]
 ): Map<string, number> {
-  return deptoNumericFieldBySnapshotDates(dateStrsAsc, ledger, (r) => r.credito_restante_uf);
+  const out = new Map<string, number>();
+  if (dateStrsAsc.length === 0 || ledger.length === 0) return out;
+  const sorted = [...ledger].sort((a, b) => {
+    const c = a.occurred_on.localeCompare(b.occurred_on);
+    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
+  });
+  let j = 0;
+  let last: number | null = null;
+  for (const d of dateStrsAsc) {
+    const cut = snapshotDepositCutoff(d);
+    while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
+      const row = sorted[j]!;
+      if (!isDeptoPrepagoCuota(row.cuota)) {
+        const v = row.credito_restante_uf;
+        if (v != null && Number.isFinite(v)) last = v;
+      }
+      j++;
+    }
+    if (last != null) out.set(d, last);
+  }
+  return out;
 }
 
 /**
@@ -728,6 +752,27 @@ export function mortgageSheetPaymentsClpThroughDate(
   return sum;
 }
 
+/**
+ * Property capital flow: actual CLP paid in the calendar month of `asOf` (pie, cuotas, prepagos).
+ * P/L compares pesos out of pocket vs UF-based net-equity marks converted to CLP at month-end.
+ */
+export function deptoPropertyClpPaymentsThroughDate(
+  ledger: readonly DeptoMortgageSheetRow[],
+  asOf: string,
+  afterExclusive: string | null
+): number {
+  const mk = asOf.slice(0, 7);
+  let sum = 0;
+  for (const r of ledger) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
+    if (r.occurred_on.slice(0, 7) !== mk) continue;
+    if (afterExclusive != null && r.occurred_on <= afterExclusive) continue;
+    if (r.occurred_on > asOf) continue;
+    sum += Math.abs(r.pago_clp);
+  }
+  return sum;
+}
+
 /** UF día for display — always from `uf_daily`, never the duplicated sheet column. */
 export function enrichDeptoRowsUfClpFromDb<T extends { occurred_on: string; uf_clp_day: number | null }>(
   rows: readonly T[]
@@ -746,7 +791,7 @@ export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[]): DeptoM
     pie_clp: pie?.pago_clp ?? null,
     pie_uf: pie?.pago_uf ?? null,
     row_count: rows.length,
-    csv_path: "import:excel|depto-dividendos",
+    csv_path: "SQLite|depto_dividendos_sheet_rows",
   };
 }
 
@@ -758,6 +803,11 @@ export function loadDeptoDividendosPaymentRows(cfraserDir: string): DeptoDividen
 /** Down payment row — property (inmueble) capital, not a mortgage installment. */
 export function isDeptoPieCuota(cuota: string): boolean {
   return String(cuota).trim().toLowerCase() === "pie";
+}
+
+/** Partial prepayment row on the dividendos sheet (`prepago 1`, `prepago 2`, …). */
+export function isDeptoPrepagoCuota(cuota: string): boolean {
+  return /^prepago/i.test(String(cuota).trim());
 }
 
 /** Rows that belong on the mortgage (pasivo) account: payments after pie, incl. prepagos. */
@@ -856,7 +906,9 @@ export function parseDeptoDividendosMovementNote(note: string | null): Partial<D
   if (
     !note ||
     (!note.startsWith("import:excel|depto-dividendos") &&
-      !note.startsWith("import:excel|depto-mortgage"))
+      !note.startsWith("import:excel|depto-mortgage") &&
+      !note.startsWith("manual|depto-dividendos") &&
+      !note.startsWith("manual|depto-mortgage"))
   ) {
     return null;
   }

@@ -1,16 +1,21 @@
 /**
  * In-process scheduler for external syncs.
  *
- * - While any source is stale: poll every `GLOBAL_SYNC_INTERVAL_MS` (default 15 min), sync immediately on start.
+ * - While any source is stale: poll on an interval (default 15 min), sync immediately on start.
+ * - When `stocks_nyse` is stale after the NYSE close window: poll every 3 min until caught up.
+ * - After a long idle gap (sleep/wake): run sync immediately on the next timer tick.
  * - When all sources are fresh: stop polling; wake at the earliest source `next_sync` wall time.
  *
  * Env:
  * - `GLOBAL_SYNC_ENABLED` — default on; set `0` to disable.
  * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval while stale (default 15 minutes).
+ * - `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` — faster poll when NYSE EOD is due but missing (default 3 minutes).
+ * - `GLOBAL_SYNC_WAKE_GAP_MS` — idle gap that triggers an immediate sync (default 5 minutes).
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
-import { allSyncSourceStatuses, staleSyncSources } from "./globalSyncStale.js";
+import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
+import { equityEodNyseSyncDue } from "./equityEodSync.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { syncWallTimeToMs } from "./syncSourceSchedule.js";
@@ -20,9 +25,13 @@ let pollIntervalHandle: ReturnType<typeof setInterval> | null = null;
 let wakeTimerHandle: ReturnType<typeof setTimeout> | null = null;
 let schedulerEnabled = false;
 let schedulerIntervalMs = 15 * 60 * 1000;
+let nyseStalePollIntervalMs = 3 * 60 * 1000;
+let wakeGapMs = 5 * 60 * 1000;
 let pollLoopActive = false;
+let activePollIntervalMs: number | null = null;
 /** Wall-clock ms for next poll (while stale) or idle wake (when fresh). */
 let nextCheckAtMs: number | null = null;
+let lastSchedulerActivityMs = Date.now();
 
 export type GlobalSyncSchedulerSnapshot = {
   enabled: boolean;
@@ -34,13 +43,21 @@ export type GlobalSyncSchedulerSnapshot = {
 export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
   return {
     enabled: schedulerEnabled,
-    interval_ms: schedulerIntervalMs,
+    interval_ms: activePollIntervalMs ?? schedulerIntervalMs,
     in_flight: inFlight,
     next_check_at:
       nextCheckAtMs != null && Number.isFinite(nextCheckAtMs)
         ? new Date(nextCheckAtMs).toISOString()
         : null,
   };
+}
+
+/** Poll interval while sources remain stale (NYSE EOD due uses a shorter interval). */
+export function pollIntervalMsForStaleSources(stale: readonly GlobalSyncSource[]): number {
+  if (stale.includes("stocks_nyse") && equityEodNyseSyncDue(new Date()) != null) {
+    return nyseStalePollIntervalMs;
+  }
+  return schedulerIntervalMs;
 }
 
 function scheduleNextCheckAt(atMs: number): void {
@@ -72,14 +89,31 @@ function stopPollLoop(): void {
     pollIntervalHandle = null;
   }
   pollLoopActive = false;
+  activePollIntervalMs = null;
 }
 
-function ensurePollInterval(): void {
-  if (pollIntervalHandle != null) return;
+function restartPollInterval(intervalMs: number): void {
+  if (pollIntervalHandle != null) {
+    clearInterval(pollIntervalHandle);
+    pollIntervalHandle = null;
+  }
+  activePollIntervalMs = intervalMs;
   pollIntervalHandle = setInterval(() => {
-    scheduleNextCheckAt(Date.now() + schedulerIntervalMs);
+    scheduleNextCheckAt(Date.now() + intervalMs);
     void schedulerTick();
-  }, schedulerIntervalMs);
+  }, intervalMs);
+}
+
+function ensurePollInterval(intervalMs: number): void {
+  if (pollIntervalHandle != null && activePollIntervalMs === intervalMs) return;
+  restartPollInterval(intervalMs);
+}
+
+function noteSchedulerActivity(): number {
+  const now = Date.now();
+  const gapMs = now - lastSchedulerActivityMs;
+  lastSchedulerActivityMs = now;
+  return gapMs;
 }
 
 function earliestNextWakeMs(): number | null {
@@ -122,6 +156,12 @@ async function schedulerTick(): Promise<void> {
     console.log("sync:scheduler — skip (previous run still in progress).");
     return;
   }
+  const idleGapMs = noteSchedulerActivity();
+  if (pollLoopActive && idleGapMs >= wakeGapMs) {
+    console.log(
+      `sync:scheduler — idle gap ${Math.round(idleGapMs / 1000)}s (sleep/wake?); syncing now`
+    );
+  }
   inFlight = true;
   try {
     loadRootDotenv();
@@ -151,22 +191,24 @@ async function schedulerTick(): Promise<void> {
 /** Re-evaluate stale sources: start/stop poll loop or schedule next wake. */
 export async function rescheduleGlobalSyncScheduler(): Promise<void> {
   if (!schedulerEnabled) return;
+  noteSchedulerActivity();
   loadRootDotenv();
   const cl = chileWallClockNow();
   const state = loadGlobalSyncState();
   const stale = staleSyncSources(cl, state);
   if (stale.length > 0) {
+    const intervalMs = pollIntervalMsForStaleSources(stale);
     if (!pollLoopActive) {
       pollLoopActive = true;
       clearWakeTimer();
       console.log(
-        `sync:scheduler — stale [${stale.join(", ")}]; polling every ${Math.round(schedulerIntervalMs / 1000)}s`
+        `sync:scheduler — stale [${stale.join(", ")}]; polling every ${Math.round(intervalMs / 1000)}s`
       );
       void schedulerTick();
     } else {
-      ensurePollInterval();
+      ensurePollInterval(intervalMs);
     }
-    scheduleNextCheckAt(Date.now() + schedulerIntervalMs);
+    scheduleNextCheckAt(Date.now() + intervalMs);
     return;
   }
   stopPollLoop();
@@ -198,8 +240,12 @@ export function startGlobalSyncScheduler(): void {
     return;
   }
   schedulerIntervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
+  nyseStalePollIntervalMs = envMs("GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS", 3 * 60 * 1000);
+  wakeGapMs = envMs("GLOBAL_SYNC_WAKE_GAP_MS", 5 * 60 * 1000);
+  lastSchedulerActivityMs = Date.now();
   console.log(
-    `sync:scheduler — enabled; polls every ${Math.round(schedulerIntervalMs / 1000)}s while any source is stale`
+    `sync:scheduler — enabled; polls every ${Math.round(schedulerIntervalMs / 1000)}s while stale` +
+      ` (${Math.round(nyseStalePollIntervalMs / 1000)}s when NYSE EOD due)`
   );
   void rescheduleGlobalSyncScheduler();
 }
