@@ -5,9 +5,18 @@ import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpenses
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
 import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/CreditCardUnclassifiedExpensesTable";
 import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
-import { formatClp } from "../format";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useTranslation } from "../i18n";
-import { aggregateGastosFromLines, computeExpensesTotalClp } from "../ccExpenseGastosAggregate";
+import {
+  aggregateGastosFromLines,
+  computeExpensesTotal,
+  rollupExpenseMonthRowsByYear,
+} from "../ccExpenseGastosAggregate";
+import {
+  flowChartGranularityFromMetricsPeriod,
+  formatFlowMoney,
+  rollupChartPointsByYear,
+} from "../flowsDisplay";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
@@ -16,6 +25,8 @@ import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTot
 /** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
 export function ExpensesPage() {
   const { t } = useTranslation();
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsCreditCardExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -46,16 +57,39 @@ export function ExpensesPage() {
 
   const view = useMemo(() => {
     if (!data) return null;
-    const tableAgg = aggregateGastosFromLines(data.lines, chartCategorySlugs, installmentMode);
+    const tableAgg = aggregateGastosFromLines(
+      data.lines,
+      chartCategorySlugs,
+      installmentMode,
+      undefined,
+      displayUnit
+    );
     const chartAgg = aggregateGastosFromLines(
       data.lines,
       chartCategorySlugs,
       installmentMode,
-      excludedBigGroups
+      excludedBigGroups,
+      displayUnit
     );
-    const totals = computeExpensesTotalClp(data.lines, installmentMode);
+    const totals = computeExpensesTotal(data.lines, installmentMode, displayUnit);
     return { table: tableAgg, chart: chartAgg, ...totals };
-  }, [chartCategorySlugs, data, excludedBigGroups, installmentMode]);
+  }, [chartCategorySlugs, data, displayUnit, excludedBigGroups, installmentMode]);
+
+  const chartPoints = useMemo(() => {
+    if (!view) return [];
+    const monthly = view.chart.chart_monthly_by_category;
+    if (chartGranularity === "year") {
+      return rollupChartPointsByYear(monthly, chartCategorySlugs);
+    }
+    return monthly;
+  }, [chartCategorySlugs, chartGranularity, view]);
+
+  const monthTableRows = useMemo(() => {
+    if (!view) return [];
+    if (chartGranularity === "month") return view.table.by_month;
+    const asc = [...view.table.by_month].reverse();
+    return [...rollupExpenseMonthRowsByYear(asc)].reverse();
+  }, [chartGranularity, view]);
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 
@@ -126,7 +160,7 @@ export function ExpensesPage() {
               />
               {g.label}
               <span className="mono muted" style={{ marginLeft: "0.35rem", fontSize: "0.85em" }}>
-                {formatClp(g.total_clp)}
+                {formatFlowMoney(g.total_clp, displayUnit)}
               </span>
             </label>
           ))}
@@ -139,8 +173,10 @@ export function ExpensesPage() {
       >
         <CreditCardGroupExpensesChart
           title={t("expenses.creditCard.chartTitle")}
-          points={view.chart.chart_monthly_by_category}
+          points={chartPoints}
           categories={data.categories}
+          displayUnit={displayUnit}
+          xAxisGranularity={chartGranularity}
         />
       </div>
       {chartFilterActive ? (
@@ -159,11 +195,12 @@ export function ExpensesPage() {
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
         {t("accountDetail.monthlyDetailTitle")}
         <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
-          {formatClp(view.total_clp)}
-          {view.total_real_clp !== view.total_clp ? (
+          {formatFlowMoney(view.total, displayUnit)}
+          {view.total_real !== view.total ? (
             <>
               {" · "}
-              {t("expenses.creditCard.colMonthExpenseReal")}: {formatClp(view.total_real_clp)}
+              {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
+              {formatFlowMoney(view.total_real, displayUnit)}
             </>
           ) : null}
         </span>
@@ -172,11 +209,13 @@ export function ExpensesPage() {
         {t("expenses.creditCard.monthlyDetailHint")}
       </p>
       <GroupExpensesMonthTable
-        rows={view.table.by_month}
+        rows={monthTableRows}
         lines={data.lines}
         categories={data.categories}
         bigGroups={data.big_groups ?? []}
         installmentMode={installmentMode}
+        displayUnit={displayUnit}
+        periodGranularity={chartGranularity}
       />
 
       <CreditCardUnclassifiedExpensesTable lines={data.lines} categories={data.categories} />

@@ -5,7 +5,7 @@ import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 
 /** Big-category buckets for the flows → deposits page (matches sidebar groupings). */
 export const DEPOSIT_FLOW_CATEGORIES = ["real_estate", "cash", "brokerage", "inversiones"] as const;
@@ -102,10 +102,7 @@ function listDepositFlowAccounts(includeExcludedFromGroupTotals = false): Accoun
 
 /** CLP → USD using `fx_daily` on or before the event date (not latest FX). */
 export function depositClpToUsdAtDate(clp: number, occurredOn: string): number | null {
-  if (!Number.isFinite(clp) || clp === 0) return clp === 0 ? 0 : null;
-  const fx = fxRowOnOrBefore(occurredOn);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  return clp / fx.clp_per_usd;
+  return clpToUsdAtDate(clp, occurredOn);
 }
 
 function periodEndFromOccurredOn(occurredOn: string, granularity: "month" | "year"): string {

@@ -24,6 +24,7 @@ function sampleData(): FlowsCreditCardExpensesResponse {
         purchase_on: "2025-05-10",
         statement_date: "22/05/2025",
         amount_clp: 10_000,
+        amount_usd_at_expense: null,
         merchant: "TEST",
         merchant_key: "TEST",
         installment_flag: 0,

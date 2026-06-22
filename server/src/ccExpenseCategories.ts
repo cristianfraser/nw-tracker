@@ -834,12 +834,16 @@ function executeCcExpenseCategoryAssignment(opts: {
     }
 
     if (clearCategory) {
-      delUniquePurchase.run(accountId, purchaseKey);
-      for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
-        delMerchant.run(accountId, ruleKey);
-      }
-      if (!isInstallmentContractPurchaseKey(purchaseKey)) {
-        markUserDeclinedAutoCategory(accountId, purchaseKey);
+      if (unique) {
+        upsertUniquePurchase.run(accountId, purchaseKey, null);
+      } else {
+        delUniquePurchase.run(accountId, purchaseKey);
+        for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
+          delMerchant.run(accountId, ruleKey);
+        }
+        if (!isInstallmentContractPurchaseKey(purchaseKey)) {
+          markUserDeclinedAutoCategory(accountId, purchaseKey);
+        }
       }
       return;
     }
@@ -861,7 +865,7 @@ function executeCcExpenseCategoryAssignment(opts: {
   if (clearCategory) {
     return {
       category_slug: UNCLASSIFIED_CC_EXPENSE_SLUG,
-      unique: false,
+      unique,
       merchant_key: merchantKey,
       purchase_key: purchaseKey,
     };
@@ -983,7 +987,7 @@ export function assignCcExpenseLineCategory(opts: {
   statementLineId: number;
   unique: boolean;
   categorySlug?: string | null;
-  /** User chose «Sin clasificar» — remove line, merchant, and unique overrides for this purchase. */
+  /** User chose «Sin clasificar» — clear category; non-unique also removes merchant rule. */
   clearCategory?: boolean;
 }): {
   category_slug: string;

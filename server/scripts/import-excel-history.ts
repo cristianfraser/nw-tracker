@@ -1386,10 +1386,6 @@ async function main() {
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta) VALUES (?,?,?,?,?)`
   ) as MovStmt;
 
-  const insIncome = db.prepare(
-    `INSERT INTO income_entries (amount_clp, received_on, source, note) VALUES (?,?,?,?)`
-  );
-
   const insExpense = db.prepare(
     `INSERT INTO expense_entries (amount_clp, spent_on, category, note) VALUES (?,?,?,?)`
   );
@@ -2046,7 +2042,6 @@ async function main() {
     importCashCsvAhorroVivienda(cfraserDir, maxMonth, accounts.cuenta_ahorro_vivienda, insMov, upsertVal);
 
     const gastoRows = readSheetRows(wb, "flujos - Gasto mensual");
-    let incomeN = 0;
     let expenseN = 0;
     let tcValN = 0;
     let tcPayN = 0;
@@ -2057,12 +2052,7 @@ async function main() {
       if (mk > maxMonth) continue;
       const monthEnd = monthEndDate(mk);
       const day = mk === curMk && monthEnd > todayChile ? todayChile : monthEnd;
-      const ingreso = num(row[2]);
       const gasto = num(row[13]) ?? num(row[12]);
-      if (ingreso != null && ingreso !== 0) {
-        insIncome.run(ingreso, day, "Flujo mensual (Excel)", "import:excel|flujos|Gasto mensual|Ingreso");
-        incomeN += 1;
-      }
       if (gasto != null && gasto > 0) {
         insExpense.run(gasto, day, "Total mensual (Gasto)", "import:excel|flujos|Gasto mensual|Gasto");
         expenseN += 1;
@@ -2143,7 +2133,7 @@ async function main() {
       );
     }
     console.log(
-      `import:excel income rows: ${incomeN}, expense rows: ${expenseN}; TC valuations (Saldo tc): ${tcValN}, TC payments (Crédito): ${tcPayN}` +
+      `import:excel expense rows: ${expenseN}; TC valuations (Saldo tc): ${tcValN}, TC payments (Crédito): ${tcPayN}` +
       (tcPdfSyncN > 0 ? `; TC valuations from PDF ledger (existing import): ${tcPdfSyncN} month-ends` : "")
     );
   });

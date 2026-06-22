@@ -50,6 +50,7 @@ import {
   effectiveCcExpenseLineAmountClp,
   effectiveCcExpenseLineAmountUsd,
 } from "./ccExpenseAmountClp.js";
+import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
@@ -133,6 +134,9 @@ export type FlowCcExpenseLineRow = {
 
   /** Original USD when the charge is on a USD statement (or USD-only line). */
   amount_usd: number | null;
+
+  /** USD for gastos display: native USD or CLP ÷ FX on purchase / movement date. */
+  amount_usd_at_expense: number | null;
 
   merchant: string | null;
 
@@ -707,6 +711,12 @@ export function buildCcExpenseLines(
 
       isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
 
+    const expenseFxDate = purchaseOn ?? statementDateIso;
+    const amountUsdAtExpense =
+      amount == null
+        ? null
+        : expenseGastosAmountUsdAtDate(amount, amountUsd, expenseFxDate);
+
     const isInstallment = row.installment_flag === 1;
     const expenseMonth = resolveExpenseMonth(purchaseOn, statementDateIso, billingMonth, {
       installment: isInstallment,
@@ -809,6 +819,8 @@ export function buildCcExpenseLines(
       amount_clp: amount,
 
       amount_usd: amountUsd,
+
+      amount_usd_at_expense: amountUsdAtExpense,
 
       merchant: row.merchant,
 
