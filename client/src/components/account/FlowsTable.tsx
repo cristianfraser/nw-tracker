@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import {
+  accountFlowsShowCounterpartColumn,
   accountFlowsShowTickerColumn,
   accountFlowsShowUsdColumn,
   type FlowsTableRow,
@@ -42,7 +43,8 @@ function flowsColumnCount(
   showAccountColumn: boolean,
   showFlowTickerCol: boolean,
   showFlowUsdCol: boolean,
-  showUnitsColumn: boolean
+  showUnitsColumn: boolean,
+  showCounterpartCol: boolean
 ): number {
   return (
     4 +
@@ -50,6 +52,7 @@ function flowsColumnCount(
     (showFlowTickerCol ? 1 : 0) +
     (showFlowUsdCol ? 1 : 0) +
     (showUnitsColumn ? 1 : 0) +
+    (showCounterpartCol ? 1 : 0) +
     1
   );
 }
@@ -147,6 +150,7 @@ export function FlowsTable({
   const { t } = useTranslation();
   const showFlowTickerCol = accountFlowsShowTickerColumn(rows);
   const showFlowUsdCol = accountFlowsShowUsdColumn(rows);
+  const showCounterpartCol = accountFlowsShowCounterpartColumn(rows);
   const allCount = totalCount ?? rows.length;
 
   const mobileLabels = {
@@ -158,6 +162,7 @@ export function FlowsTable({
     amountUsd: t("accountDetail.flowAmountUsdColumn"),
     units: t("accountDetail.flowUnitsColumn"),
     note: t("accountDetail.flowNoteColumn"),
+    counterpart: t("accountDetail.movements.counterpartAccount"),
   };
 
   const pages = useMemo(() => {
@@ -183,7 +188,8 @@ export function FlowsTable({
     showAccountColumn,
     showFlowTickerCol,
     showFlowUsdCol,
-    showUnitsColumn
+    showUnitsColumn,
+    showCounterpartCol
   );
 
   return (
@@ -213,6 +219,9 @@ export function FlowsTable({
             ) : null}
             {showUnitsColumn ? (
               <th className="desktop-only">{t("accountDetail.flowUnitsColumn")}</th>
+            ) : null}
+            {showCounterpartCol ? (
+              <th className="desktop-only">{t("accountDetail.movements.counterpartAccount")}</th>
             ) : null}
             <th className="desktop-only">{t("accountDetail.flowNoteColumn")}</th>
             <th className="mobile-only" aria-hidden="true" />
@@ -252,6 +261,9 @@ export function FlowsTable({
                 <td className="mono desktop-only">
                   {formatFlowUnits(row, movementUnitsKind)}
                 </td>
+              ) : null}
+              {showCounterpartCol ? (
+                <td className="desktop-only">{row.counterpart_account_name ?? "—"}</td>
               ) : null}
               <td className="muted desktop-only">{row.note ?? "—"}</td>
               <td className="mobile-only">

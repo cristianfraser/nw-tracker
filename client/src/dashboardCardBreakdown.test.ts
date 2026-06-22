@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountInDashboardGroupDisplayScope,
+  accountInDashboardGroupScope,
   cardGroupMetricsForDashboardBucket,
   cardGroupMetricsForGroup,
   cardGroupMetricsFromAccounts,
+  cardGroupMetricsFromBalanceAndPlScopes,
   cardMainBalanceFromMetrics,
   cardMetricsMainBalanceDiff,
   cardPeriodChangeFromMetrics,
   cardGroupTitleBalanceDelta,
   roundedMetricDelta,
+  roundedMetricDeposits,
   subsetTitleBalanceDeltaRounded,
   type DashboardBucketTotals,
 } from "./dashboardCardBreakdown";
@@ -30,25 +34,22 @@ function baseRow(overrides: Partial<DashboardAccountRow> & Pick<DashboardAccount
 }
 
 describe("dashboard card accounting identity", () => {
-  it("unfiltered metrics over-count when an account has deposits but no live balance", () => {
+  it("sold-out account deposits count in metrics while live balance sums as 0", () => {
     const withBalance = baseRow({
       account_id: 1,
       deposits_clp: 10_000,
       delta_total_clp: 5_000,
       current_value_clp: 15_000,
     });
-    const noBalance = baseRow({
+    const soldOut = baseRow({
       account_id: 2,
       deposits_clp: 1_000_000,
       delta_total_clp: 968_035,
       current_value_clp: null,
     });
-    const loose = cardGroupMetricsFromAccounts([withBalance, noBalance], "month");
-    const mainClp = 15_000;
-    expect(cardMetricsMainBalanceDiff(loose, mainClp, false)).toBe(-1_968_035);
-
-    const strict = cardGroupMetricsFromAccounts([withBalance], "month");
-    expect(cardMetricsMainBalanceDiff(strict, mainClp, false)).toBe(0);
+    const metrics = cardGroupMetricsFromAccounts([withBalance, soldOut], "month");
+    expect(roundedMetricDeposits(metrics, false, "total")).toBe(1_010_000);
+    expect(cardMainBalanceFromMetrics(metrics, false)).toBe(1_983_035);
   });
 
   it("cardGroupMetricsForGroup matches sum of current when rows are reconciled", () => {
@@ -321,5 +322,74 @@ describe("cash_eqs bucket CC period P/L decoupling", () => {
     expect(titleDelta).toBe(178_037);
     expect(roundedMetricDelta(metrics, false, "period")).toBe(12_038);
     expect(cardPeriodChangeFromMetrics(metrics, false)).not.toBe(titleDelta);
+  });
+});
+
+describe("accountInDashboardGroupScope", () => {
+  it("includes sold-out account in metrics scope; display scope hides it", () => {
+    const soldOut = baseRow({
+      account_id: 60,
+      group_slug: "brokerage_acciones__oilk",
+      dashboard_bucket_slug: "brokerage",
+      current_value_clp: null,
+      delta_month_clp: -241_251,
+      delta_year_clp: -267_541,
+      deposits_clp: 500_000,
+      deposits_month_clp: -2_719_944,
+      delta_total_clp: -267_541,
+    });
+    const open = baseRow({
+      account_id: 85,
+      group_slug: "brokerage_acciones__spy",
+      dashboard_bucket_slug: "brokerage",
+      current_value_clp: 689_768,
+      delta_month_clp: -1_586,
+    });
+
+    expect(accountInDashboardGroupScope(soldOut, "brokerage")).toBe(true);
+    expect(accountInDashboardGroupDisplayScope(soldOut, "brokerage")).toBe(false);
+
+    const metrics = cardGroupMetricsFromBalanceAndPlScopes(
+      [soldOut, open],
+      "brokerage",
+      "month"
+    );
+    expect(roundedMetricDelta(metrics, false, "period")).toBe(-242_837);
+    expect(roundedMetricDeposits(metrics, false, "period")).toBe(-2_719_944);
+    expect(roundedMetricDeposits(metrics, false, "total")).toBe(500_000);
+  });
+
+  it("nets stock_sell outflows from sold-out accounts against open-position buys", () => {
+    const soldOut = baseRow({
+      account_id: 60,
+      group_slug: "brokerage_acciones__oilk",
+      dashboard_bucket_slug: "brokerage",
+      current_value_clp: null,
+      deposits_month_clp: -2_719_944,
+      delta_month_clp: -241_251,
+    });
+    const ccj = baseRow({
+      account_id: 92,
+      group_slug: "brokerage_acciones__ccj",
+      dashboard_bucket_slug: "brokerage",
+      current_value_clp: 2_723_617,
+      deposits_month_clp: 2_719_944,
+      delta_month_clp: 3_673,
+    });
+    const linde = baseRow({
+      account_id: 91,
+      group_slug: "brokerage_acciones__linde",
+      dashboard_bucket_slug: "brokerage",
+      current_value_clp: 1_175_645,
+      deposits_month_clp: 1_192_782,
+      delta_month_clp: -17_138,
+    });
+
+    const metrics = cardGroupMetricsFromBalanceAndPlScopes(
+      [soldOut, ccj, linde],
+      "brokerage",
+      "month"
+    );
+    expect(roundedMetricDeposits(metrics, false, "period")).toBe(1_192_782);
   });
 });

@@ -73,6 +73,8 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
+  panelNetWorthTree: () =>
+    j<{ net_worth: import("./types").NavTreeNodeDto | null }>("/api/meta/panel-net-worth-tree"),
   accountsAll: () => j<{ accounts: import("./types").AccountListRow[] }>("/api/accounts"),
   createStockAccount: (body: import("./panelAccounts/stockAccountFormTypes").StockAccountCreatePreview) =>
     j<{
@@ -81,6 +83,13 @@ export const api = {
       movement_ids: number[];
       created_category: boolean;
     }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
+  createUsdCashAccount: (body: import("./panelAccounts/usdCashAccountFormTypes").UsdCashAccountCreatePreview) =>
+    j<{
+      account_id: number;
+      asset_group_id: number;
+      movement_ids: number[];
+      created_leaf_bucket: boolean;
+    }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
   deleteAccount: (id: number) => j<{ ok: boolean; deleted: number }>(`/api/accounts/${id}`, { method: "DELETE" }),
   assetTree: () => j<import("./types").AssetTreeResponse>("/api/meta/asset-tree"),
   portfolioTree: () => j<import("./types").PortfolioTreeResponse>("/api/meta/portfolio-tree"),
@@ -88,6 +97,11 @@ export const api = {
     j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
       method: "PATCH",
       body: JSON.stringify({ color_rgb }),
+    }),
+  updateAccountExcludeFromGroupTotals: (id: number, exclude_from_group_totals: boolean) =>
+    j<{ exclude_from_group_totals: 0 | 1 }>(`/api/accounts/${id}/exclude-from-group-totals`, {
+      method: "PATCH",
+      body: JSON.stringify({ exclude_from_group_totals }),
     }),
   updatePortfolioGroupColor: (slug: string, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/portfolio-groups/${slug}/color`, {
@@ -330,6 +344,28 @@ export const api = {
       `/api/accounts/${id}/movements`,
       { method: "POST", body: JSON.stringify(body) }
     ),
+  previewMortgagePayment: (id: string | number, body: Record<string, unknown>) =>
+    j<import("./types").MortgagePaymentPreviewResponse>(
+      `/api/accounts/${id}/mortgage-payments/preview`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+  commitMortgagePayment: (id: string | number, body: Record<string, unknown>) =>
+    j<import("./types").MortgagePaymentCommitResponse>(`/api/accounts/${id}/mortgage-payments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  accountValuations: (id: string | number) =>
+    j<{ valuations: { id: number; as_of_date: string; value_clp: number }[] }>(
+      `/api/accounts/${id}/valuations`
+    ),
+  createAccountValuation: (
+    id: string | number,
+    body: { as_of_date: string; value_clp: number }
+  ) =>
+    j<{ ok: true }>(`/api/accounts/${id}/valuations`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   income: () => j<{ income: unknown[] }>("/api/income"),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsExpenses: () => j<import("./types").FlowsExpensesResponse>("/api/flows/expenses"),

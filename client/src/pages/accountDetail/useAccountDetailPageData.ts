@@ -252,7 +252,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   return {
     id,
     contentLoading: err != null ? false : contentLoading,
-    err: null,
+    err,
     monthlyPerfErr,
     summary,
     ts,

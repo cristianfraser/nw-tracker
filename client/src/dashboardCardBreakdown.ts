@@ -1,4 +1,4 @@
-import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
+import { accountCountsTowardGroupTotals, dashboardAccountCurrentValueClp, isChartActiveAccount } from "./accountGroupTotals";
 import {
   accountBelongsToDashboardBucket,
   accountDashboardBucketSlug,
@@ -315,17 +315,47 @@ export function sumCardGroupMetrics(parts: readonly CardGroupMetrics[]): CardGro
   };
 }
 
-/** Account scope for bucket card metrics / title Δ (nav filter wins over bucket slug tags). */
+/** Account scope for bucket card metrics and balance Δ (includes sold-out + chart_inactive). */
 export function accountInDashboardGroupScope(
   a: DashboardAccountRow,
   groupSlug: DashboardGroupSlug,
   filter?: (a: DashboardAccountRow) => boolean
 ): boolean {
   if (!accountCountsTowardGroupTotals(a)) return false;
-  if (!isChartActiveAccount(a)) return false;
-  if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) return false;
   if (filter) return filter(a);
   return accountBelongsToDashboardBucket(a, groupSlug);
+}
+
+/** Breakdown lines / visible position list (hides chart_inactive and null/zero marks). */
+export function accountInDashboardGroupDisplayScope(
+  a: DashboardAccountRow,
+  groupSlug: DashboardGroupSlug,
+  filter?: (a: DashboardAccountRow) => boolean
+): boolean {
+  if (!accountInDashboardGroupScope(a, groupSlug, filter)) return false;
+  if (!isChartActiveAccount(a)) return false;
+  if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) return false;
+  return true;
+}
+
+/** @deprecated Alias for {@link accountInDashboardGroupScope}. */
+export function accountInDashboardGroupPlScope(
+  a: DashboardAccountRow,
+  groupSlug: DashboardGroupSlug,
+  filter?: (a: DashboardAccountRow) => boolean
+): boolean {
+  return accountInDashboardGroupScope(a, groupSlug, filter);
+}
+
+/** Card metrics from all in-scope accounts (sold-out balances count as 0). */
+export function cardGroupMetricsFromBalanceAndPlScopes(
+  accounts: DashboardAccountRow[],
+  groupSlug: DashboardGroupSlug,
+  period: CardGroupMetricsPeriod,
+  filter?: (a: DashboardAccountRow) => boolean
+): CardGroupMetrics {
+  const rows = accounts.filter((a) => accountInDashboardGroupScope(a, groupSlug, filter));
+  return cardGroupMetricsFromAccounts(rows, period);
 }
 
 /** Sum deposits + monthly Δ for accounts in a dashboard bucket (big-4 cards). */
@@ -352,10 +382,12 @@ export function cardGroupMetricsForGroup(
       filter
     );
   }
-  const rows = accounts.filter((a) =>
-    accountInDashboardGroupScope(a, groupSlug as DashboardGroupSlug, filter)
+  return cardGroupMetricsFromBalanceAndPlScopes(
+    accounts,
+    groupSlug as DashboardGroupSlug,
+    period,
+    filter
   );
-  return cardGroupMetricsFromAccounts(rows, period);
 }
 
 const NW_BUCKET_ORDER = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
@@ -378,10 +410,7 @@ export function cardGroupMetricsNetWorth(
     if (!isDashboardNwBucketSlug(dashBucket) || !(NW_BUCKET_ORDER as readonly string[]).includes(dashBucket)) {
       return false;
     }
-    if (!accountCountsTowardGroupTotals(a)) return false;
-    if (!isChartActiveAccount(a)) return false;
-    if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) return false;
-    return true;
+    return accountInDashboardGroupScope(a, dashBucket);
   });
   return cardGroupMetricsFromAccounts(rows, period);
 }
@@ -406,9 +435,13 @@ function sumClp(rows: DashboardAccountRow[], pick: (r: DashboardAccountRow) => n
   return s;
 }
 
-function valueRows(accounts: DashboardAccountRow[]): DashboardAccountRow[] {
+function valueRows(accounts: DashboardAccountRow[], groupSlug?: DashboardGroupSlug): DashboardAccountRow[] {
+  if (groupSlug) {
+    return accounts.filter((a) => accountInDashboardGroupDisplayScope(a, groupSlug));
+  }
   return accounts.filter(
     (a) =>
+      accountCountsTowardGroupTotals(a) &&
       isChartActiveAccount(a) &&
       a.current_value_clp != null &&
       Number.isFinite(a.current_value_clp)
@@ -479,12 +512,7 @@ export function subsetPeriodBalanceDeltaFromAccounts(
   unit: "clp" | "usd",
   include: (a: DashboardAccountRow) => boolean
 ): number | null {
-  const rows = accounts.filter(
-    (a) =>
-      include(a) &&
-      a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp)
-  );
+  const rows = accounts.filter((a) => include(a));
   if (!rows.length) return null;
 
   let current = 0;
@@ -500,8 +528,12 @@ export function subsetPeriodBalanceDeltaFromAccounts(
         : unit === "usd"
           ? r.prior_month_close_usd
           : r.prior_month_close_clp;
-    const cur = unit === "usd" ? r.current_value_usd : r.current_value_clp;
-    if (cur == null || !Number.isFinite(cur)) continue;
+    const cur =
+      unit === "usd"
+        ? r.current_value_usd != null && Number.isFinite(r.current_value_usd)
+          ? r.current_value_usd
+          : 0
+        : dashboardAccountCurrentValueClp(r);
     if (close == null || !Number.isFinite(close)) continue;
     current += cur;
     prior += close;
@@ -550,9 +582,7 @@ export function sumCurrentValueClpUsd(
   let usd = 0;
   let anyUsd = false;
   for (const r of rows) {
-    if (r.current_value_clp != null && Number.isFinite(r.current_value_clp)) {
-      clp += r.current_value_clp;
-    }
+    clp += dashboardAccountCurrentValueClp(r);
     if (showUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
       usd += r.current_value_usd;
       anyUsd = true;
@@ -695,20 +725,13 @@ export function cardGroupMetricsForDashboardBucket(
   _showUsd: boolean,
   filter?: (a: DashboardAccountRow) => boolean
 ): CardGroupMetrics {
-  const rows = accounts.filter((a) =>
-    accountInDashboardGroupScope(a, groupSlug as DashboardGroupSlug, filter)
-  );
-  const base = cardGroupMetricsFromAccounts(rows, period);
+  const base = cardGroupMetricsFromBalanceAndPlScopes(accounts, groupSlug, period, filter);
 
   if (groupSlug === "cash_eqs") {
     const savingsRows = accounts.filter(
       (a) =>
         isCashSavingsBucketPeriodPlRow(a) &&
-        accountCountsTowardGroupTotals(a) &&
-        isChartActiveAccount(a) &&
-        a.current_value_clp != null &&
-        Number.isFinite(a.current_value_clp) &&
-        (!filter || filter(a))
+        accountInDashboardGroupScope(a, "cash_eqs", filter)
     );
     const savingsPl = cardGroupMetricsFromAccounts(savingsRows, period);
     return {
@@ -937,7 +960,8 @@ export function buildCashEqsCardBreakdown(accounts: DashboardAccountRow[]): Card
   const cash = valueRows(
     accounts.filter(
       (a) => accountBelongsToDashboardBucket(a, "cash_eqs") && !isCashSavingsCcShortfallRow(a)
-    )
+    ),
+    "cash_eqs"
   );
   return sortGroupsDesc(cash.map((r) => mapCashBreakdownLine(r, false)));
 }

@@ -14,3 +14,10 @@ export function supportsBrokerageMovements(
   const kinds = (schema as MovementCreateSchema).brokerage_flow_kinds;
   return Array.isArray(kinds) && kinds.length > 0;
 }
+
+/** USD cash ledger (not stock): `compra_usd_venta_clp`, no share flow kinds. */
+export function supportsUsdCashMovements(schema: unknown): boolean {
+  if (!supportsBrokerageMovements(schema)) return false;
+  const kinds = schema.brokerage_flow_kinds as readonly string[];
+  return kinds.includes("compra_usd_venta_clp") && !kinds.includes("stock_buy");
+}

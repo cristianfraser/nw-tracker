@@ -94,7 +94,7 @@ export function buildDisplayPieSlices(
     return aggregateLiabilitiesNavGroupedPie(base, navNode, _accounts);
   }
   if (navNode && shouldAggregateNavCharts(navNode, grouped)) {
-    return aggregateNavGroupedPie(base, navNode, grouped);
+    return aggregateNavGroupedPie(base, navNode, grouped, _accounts);
   }
   return base;
 }

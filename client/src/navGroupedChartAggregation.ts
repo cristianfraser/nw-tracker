@@ -34,7 +34,7 @@ export function aggregateNavGroupedValuationBlock(
   navNode: NavTreeNodeDto,
   grouped: boolean
 ): TimeseriesBlock {
-  const { orderedKeys, meta, idToBucket } = buildNavChartBucketPlan(navNode, grouped);
+  const { orderedKeys, meta, idToBucket } = buildNavChartBucketPlan(navNode, grouped, listRows);
   return aggregateValuationByBucket(
     block,
     listRows,
@@ -47,9 +47,10 @@ export function aggregateNavGroupedValuationBlock(
 export function aggregateNavGroupedPie(
   pie: { name: string; account_id: number; value: number }[],
   navNode: NavTreeNodeDto,
-  grouped: boolean
+  grouped: boolean,
+  listRows?: readonly Pick<AccountListRow, "id" | "bucket_slug" | "chart_inactive">[]
 ): { name: string; account_id: number; value: number }[] {
-  const { orderedKeys, meta, idToBucket } = buildNavChartBucketPlan(navNode, grouped);
+  const { orderedKeys, meta, idToBucket } = buildNavChartBucketPlan(navNode, grouped, listRows);
   return aggregatePieByBucket(pie, orderedKeys, toGroupMeta(meta), idToBucket);
 }
 
@@ -59,7 +60,7 @@ export function aggregateNavGroupedPerformance(
   navNode: NavTreeNodeDto,
   grouped: boolean
 ): GroupMonthlyPerformanceResponse {
-  const { orderedKeys, meta, idToBucket } = buildNavChartBucketPlan(navNode, grouped);
+  const { orderedKeys, meta, idToBucket } = buildNavChartBucketPlan(navNode, grouped, listRows);
   return aggregatePerformanceByBucket(perf, listRows, orderedKeys, toGroupMeta(meta), (r) =>
     idToBucket(r.id)
   );

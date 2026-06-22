@@ -6,6 +6,7 @@ import {
   countsTowardAbonosMes,
   countsTowardComprasModal,
   countsTowardGastosMes,
+  isCcExpenseTotalsExcludedSlug,
   isInstallmentCuotaZeroLine,
   isNotaCreditoExcludedLine,
   sumLineAmountsClp,
@@ -46,31 +47,52 @@ function linesForAbonosAndExcluded(
   );
 }
 
+/** Cuota lines billed this month that belong in the Cuotas table (gastos-eligible only). */
+export function countsTowardInstallmentsModal(
+  line: FlowCcExpenseLineRow,
+  installmentMode: CcInstallmentGastosMode
+): boolean {
+  return !isInstallmentCuotaZeroLine(line) && countsTowardGastosMes(line, installmentMode);
+}
+
+/** Cuota 0 or totals-excluded category — visible under Excluded, not in gastos sums. */
+export function countsTowardExcludedCuotaModal(line: FlowCcExpenseLineRow): boolean {
+  return (
+    isInstallmentCuotaZeroLine(line) || isCcExpenseTotalsExcludedSlug(line.category_slug)
+  );
+}
+
+function countsTowardExcludedNonCuotaModal(
+  line: FlowCcExpenseLineRow,
+  installmentMode: CcInstallmentGastosMode
+): boolean {
+  if (line.amount_clp <= 0) return false;
+  if (line.line_role === "installment_cuota") return false;
+  return !countsTowardGastosMes(line, installmentMode);
+}
+
 export function buildCreditCardExpenseMonthBucket(
   lines: readonly FlowCcExpenseLineRow[],
   periodMonth: string,
   installmentMode: CcInstallmentGastosMode
 ): CreditCardExpenseMonthBucket {
   const inScope = linesForAbonosAndExcluded(lines, periodMonth);
+  const cuotasForMonth = installmentModalLines(lines, periodMonth);
+  const excludedCuotas = cuotasForMonth.filter(countsTowardExcludedCuotaModal);
+  const excludedOther = inScope.filter(
+    (ln) =>
+      isNotaCreditoExcludedLine(ln) ||
+      countsTowardExcludedNonCuotaModal(ln, installmentMode)
+  );
   return {
     purchases: purchaseModalLines(lines, periodMonth)
       .filter((ln) => countsTowardComprasModal(ln, installmentMode))
       .sort(sortCreditCardExpenseLinesByStatement),
-    installments: installmentModalLines(lines, periodMonth)
-      .filter(
-        (ln) => !isInstallmentCuotaZeroLine(ln) && countsTowardGastosMes(ln, installmentMode)
-      )
+    installments: cuotasForMonth
+      .filter((ln) => countsTowardInstallmentsModal(ln, installmentMode))
       .sort(sortCreditCardExpenseLinesByStatement),
     abonos: inScope.filter(countsTowardAbonosMes).sort(sortCreditCardExpenseLinesByStatement),
-    excluded: inScope
-      .filter(
-        (ln) =>
-          isNotaCreditoExcludedLine(ln) ||
-          (ln.amount_clp > 0 &&
-            ln.line_role !== "installment_cuota" &&
-            !countsTowardGastosMes(ln, installmentMode))
-      )
-      .sort(sortCreditCardExpenseLinesByStatement),
+    excluded: [...excludedCuotas, ...excludedOther].sort(sortCreditCardExpenseLinesByStatement),
   };
 }
 
@@ -187,6 +209,9 @@ export function CreditCardExpenseMonthModalSections({
           </span>
         ) : null}
       </h3>
+      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
+        {t("expenses.creditCard.modalSectionExcludedHint")}
+      </p>
       <CreditCardExpenseLinesTable
         lines={bucket.excluded}
         categories={categories}

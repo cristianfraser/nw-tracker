@@ -1,3 +1,4 @@
+import type { BookLedgerEditSchema } from "./accountBookLedgerEdit";
 import type { MovementCreateSchema } from "./accountMovementCreate";
 import type { DataOrigin } from "./dataOrigin";
 
@@ -96,6 +97,11 @@ export interface AccountPositionSnapshot {
   value_clp: number | null;
   value_as_of: string | null;
   value_per_unit_clp: number | null;
+  dividends_reinvested_clp?: number;
+  cost_basis_clp?: number;
+  total_return_clp?: number | null;
+  return_on_deposited_pct?: number | null;
+  naive_gain_clp?: number | null;
 }
 
 export interface FxCoverage {
@@ -262,6 +268,14 @@ export interface DashboardResponse {
   dashboard_layout?: DashboardLayoutCardRow[];
   /** True when deposit USD totals could not be converted (missing fx_daily). */
   fx_conversion_error?: boolean;
+  /** Current-month Patrimonio neto metrics from canonical consolidated series (card period row). */
+  net_worth_period_metrics?: {
+    closing_clp: number;
+    prior_closing_clp: number | null;
+    net_capital_flow_clp: number;
+    nominal_pl_clp: number | null;
+    balance_delta_clp: number | null;
+  } | null;
 }
 
 export interface FxLatest {
@@ -628,6 +642,35 @@ export interface AccountMonthlyPerformanceResponse {
   monthly: AccountMonthlyPerformanceRow[];
 }
 
+export interface MortgagePaymentCreateSchema {
+  next_cuota: string;
+  default_incendio_clp: number | null;
+}
+
+export interface MortgagePaymentPreviewResponse {
+  sheet: DeptoMortgageSheetRow;
+  input: {
+    occurred_on: string;
+    pago_clp: number;
+    interes_clp: number;
+    incendio_clp: number;
+    desgravamen_clp?: number | null;
+    cuota?: string | null;
+    amortizacion_ext_clp?: number | null;
+  };
+  desgravamen_default_clp: number;
+  desgravamen_used_override: boolean;
+  property_net_clp: number;
+  mortgage_balance_clp: number;
+}
+
+export interface MortgagePaymentCommitResponse {
+  sheet_row: DeptoMortgageSheetRow;
+  mortgage_movement_id: number;
+  property_movement_id: number;
+  sort_order: number;
+}
+
 /** `GET /api/accounts/:id/summary` */
 export interface AccountSummaryResponse {
   account_id: number;
@@ -636,11 +679,15 @@ export interface AccountSummaryResponse {
   group_label: string | null;
   group_peer_count: number | null;
   deposits_clp: number;
+  deposits_full_clp?: number;
+  dividends_reinvested_clp?: number;
   withdrawals_clp: number;
   latest_valuation_clp: number | null;
   latest_valuation_date: string | null;
   position: AccountPositionSnapshot | null;
   movement_create?: MovementCreateSchema;
+  book_ledger_edit?: BookLedgerEditSchema;
+  mortgage_payment_create?: MortgagePaymentCreateSchema;
 }
 
 /** `GET /api/accounts/:id/detail-bundle` */
@@ -657,6 +704,9 @@ export interface AccountDetailBundleResponse {
     ticker: string | null;
     flow_type: string;
     flow_type_label: string;
+    counterpart_account_id?: number | null;
+    counterpart_account_name?: string | null;
+    transfer_direction?: "out" | "in" | null;
   }[];
   ts: AccountValuationTimeseriesResponse | null;
   depositInflows: AccountDepositInflowsResponse;

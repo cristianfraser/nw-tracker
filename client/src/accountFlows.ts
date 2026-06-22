@@ -11,6 +11,9 @@ export type AccountMovementDto = {
   flow_kind?: string | null;
   amount_usd?: number | null;
   ticker?: string | null;
+  counterpart_account_id?: number | null;
+  counterpart_account_name?: string | null;
+  transfer_direction?: "out" | "in" | null;
 };
 
 /** Single row for the account detail flows table (all rows from `movements`). */
@@ -23,8 +26,9 @@ export type AccountFlowRow = {
   ticker: string | null;
   units_delta: number | null;
   note: string | null;
-  /** Slug for deposit-personal filter (`flow_type` / `flow_kind`). */
   flow_type: string;
+  counterpart_account_name: string | null;
+  transfer_direction: "out" | "in" | null;
 };
 
 export function accountMovementsToFlowRows(movements: AccountMovementDto[]): AccountFlowRow[] {
@@ -38,6 +42,8 @@ export function accountMovementsToFlowRows(movements: AccountMovementDto[]): Acc
     units_delta: m.units_delta,
     note: m.note,
     flow_type: m.flow_type,
+    counterpart_account_name: m.counterpart_account_name ?? null,
+    transfer_direction: m.transfer_direction ?? null,
   }));
   return rows.sort((a, b) => {
     const byDate = b.occurred_on.localeCompare(a.occurred_on);
@@ -62,6 +68,12 @@ export function accountFlowsShowUsdColumn(
   rows: readonly Pick<AccountFlowRow, "amount_usd">[]
 ): boolean {
   return rows.some((r) => r.amount_usd != null && Number.isFinite(r.amount_usd));
+}
+
+export function accountFlowsShowCounterpartColumn(
+  rows: readonly Pick<AccountFlowRow, "counterpart_account_name">[]
+): boolean {
+  return rows.some((r) => r.counterpart_account_name != null && r.counterpart_account_name.trim() !== "");
 }
 
 export type FlowsTableRow = AccountFlowRow & {
