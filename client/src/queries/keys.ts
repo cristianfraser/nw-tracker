@@ -8,6 +8,7 @@ export const queryKeys = {
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
   sidebarNav: () => ["sidebarNav"] as const,
+  panelNetWorthTree: () => ["panelNetWorthTree"] as const,
   accountsAll: () => ["accountsAll"] as const,
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
     ["accounts", "portfolioGroup", portfolioGroup, unit] as const,

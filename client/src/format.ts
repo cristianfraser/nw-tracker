@@ -72,6 +72,17 @@ export function formatClp(n: number): string {
   return formatCurrency(n, "clp");
 }
 
+const clpUfDayFmt = new Intl.NumberFormat("es-CL", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** CLP per 1 UF (UF día) — `$` + es-CL with exactly 2 decimals (e.g. `$40.763,45`). */
+export function formatClpUfDay(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `$${normalizeIntlNum(clpUfDayFmt.format(n))}`;
+}
+
 /** Whole USD: `US$` + en-US thousands (e.g. `US$123,456`; negative `(US$1,234)`). */
 export function formatUsd(n: number): string {
   return formatCurrency(n, "usd");

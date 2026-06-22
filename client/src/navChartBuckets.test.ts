@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildNavChartBucketPlan,
+  chartBucketKeyForAccountAssetSlug,
   navChartBucketNavNodes,
   navChartBucketNavNodesUngrouped,
   stripChartBucketNavNodes,
@@ -84,5 +85,56 @@ describe("navChartBuckets", () => {
     expect(meta.brokerage_mutual_funds?.color_rgb).toBe("120,80,200");
     expect(meta.brokerage_acciones?.color_rgb).toBe("40,120,60");
     expect(meta.brokerage_crypto?.color_rgb).toBe("200,50,50");
+  });
+
+  it("maps chart_inactive accounts into bucket via asset group slug", () => {
+    const retirement = groupNode("retirement", [
+      groupNode("retirement_afp_afc", [], "/afp"),
+      groupNode(
+        "retirement_apv",
+        [groupNode("retirement_apv_a", [], "/apv/apv-a")],
+        "/apv"
+      ),
+    ]);
+
+    const bucketNodes = stripChartBucketNavNodes(retirement);
+    expect(
+      chartBucketKeyForAccountAssetSlug("retirement_apv_a__apv", bucketNodes)
+    ).toBe("retirement_apv");
+
+    const { idToBucket } = buildNavChartBucketPlan(retirement, true, [
+      {
+        id: 88,
+        bucket_slug: "retirement_apv_a__apv",
+        chart_inactive: true,
+      },
+    ]);
+    expect(idToBucket(88)).toBe("retirement_apv");
+    expect(idToBucket(46)).toBeNull();
+  });
+
+  it("maps chart_inactive pre-Fintual APV-a into inversiones retirement bucket", () => {
+    const inversiones: NavTreeNodeDto = {
+      slug: "inversiones",
+      label: "Inversiones",
+      group_kind: "nav_bucket",
+      children: [
+        groupNode("brokerage", [groupNode("brokerage_mutual_funds", [], "/mf")]),
+        groupNode("retirement", [
+          groupNode("retirement_apv", [
+            groupNode("retirement_apv_a", [], "/apv/apv-a"),
+          ]),
+        ]),
+      ],
+    };
+
+    const { idToBucket } = buildNavChartBucketPlan(inversiones, true, [
+      {
+        id: 88,
+        bucket_slug: "retirement_apv_a__apv",
+        chart_inactive: true,
+      },
+    ]);
+    expect(idToBucket(88)).toBe("retirement");
   });
 });

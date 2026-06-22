@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import {
   BROKERAGE_FLOW_KINDS,
   brokerageFlowKindNeedsClp,
+  brokerageFlowKindShowsCounterpart,
   brokerageFlowKindShowsUnits,
   brokerageFlowKindNeedsUsd,
   type BrokerageFlowKind,
@@ -13,6 +14,7 @@ import {
   updateMovementRow,
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
+import { CounterpartAccountSelect } from "../account/CounterpartAccountSelect";
 
 export function brokerageMovementFieldLabelStyle(): CSSProperties {
   return { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem" };
@@ -27,11 +29,15 @@ export function BrokerageMovementRowFields({
   onChange,
   onRemove,
   canRemove,
+  currentAccountId,
+  flowKinds = BROKERAGE_FLOW_KINDS,
 }: {
   row: InitialMovementDraft;
   onChange: (next: InitialMovementDraft) => void;
   onRemove: () => void;
   canRemove: boolean;
+  currentAccountId?: number;
+  flowKinds?: readonly BrokerageFlowKind[];
 }) {
   const { t } = useTranslation();
   const showClp = brokerageFlowKindNeedsClp(row.flowKind);
@@ -72,7 +78,7 @@ export function BrokerageMovementRowFields({
             onChange({ ...row, flowKind: e.target.value as BrokerageFlowKind })
           }
         >
-          {BROKERAGE_FLOW_KINDS.map((k) => (
+          {flowKinds.map((k) => (
             <option key={k} value={k}>
               {t(`panelAccounts.flowKinds.${k}`)}
             </option>
@@ -102,7 +108,7 @@ export function BrokerageMovementRowFields({
             type="text"
             inputMode="decimal"
             value={row.amountUsd}
-            placeholder={row.flowKind === "compra_usd" ? "3353.07" : ""}
+            placeholder={row.flowKind === "compra_usd_venta_clp" ? "3353.07" : ""}
             onChange={(e) => onChange({ ...row, amountUsd: e.target.value })}
           />
         </label>
@@ -120,6 +126,16 @@ export function BrokerageMovementRowFields({
             onChange={(e) => onChange({ ...row, unitsDelta: e.target.value })}
           />
         </label>
+      ) : null}
+      {brokerageFlowKindShowsCounterpart(row.flowKind) ? (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <CounterpartAccountSelect
+            label={t("accountDetail.movements.counterpartAccount")}
+            value={row.counterpartAccountId}
+            excludeAccountId={currentAccountId}
+            onChange={(counterpartAccountId) => onChange({ ...row, counterpartAccountId })}
+          />
+        </div>
       ) : null}
       <div
         style={{
@@ -143,34 +159,44 @@ export function BrokerageMovementsSection({
   onChange,
   legend = "optional",
   emptyTextKey = "panelAccounts.addAccount.noMovements",
+  titleKey,
+  hintKey,
+  currentAccountId,
+  flowKinds,
 }: {
   movements: InitialMovementDraft[];
   onChange: (next: InitialMovementDraft[]) => void;
   /** `optional` = panel create account; `add` = account detail. */
   legend?: BrokerageMovementsSectionLegend;
   emptyTextKey?: string;
+  titleKey?: string;
+  hintKey?: string;
+  currentAccountId?: number;
+  flowKinds?: readonly BrokerageFlowKind[];
 }) {
   const { t } = useTranslation();
-  const titleKey =
-    legend === "add"
+  const resolvedTitleKey =
+    titleKey ??
+    (legend === "add"
       ? "accountDetail.brokerageMovements.title"
-      : "panelAccounts.addAccount.initialMovementsTitle";
-  const hintKey =
-    legend === "add"
+      : "panelAccounts.addAccount.initialMovementsTitle");
+  const resolvedHintKey =
+    hintKey ??
+    (legend === "add"
       ? "accountDetail.brokerageMovements.hint"
-      : "panelAccounts.addAccount.initialMovementsHint";
+      : "panelAccounts.addAccount.initialMovementsHint");
 
-  function addMovement(kind?: BrokerageFlowKind) {
-    onChange(appendMovementRow(movements, kind));
+  function addMovement() {
+    onChange(appendMovementRow(movements));
   }
 
   return (
     <fieldset style={{ border: "none", padding: 0, margin: "1.5rem 0 0" }}>
       <legend className="flow-section-title" style={{ marginBottom: "0.5rem" }}>
-        {t(titleKey)}
+        {t(resolvedTitleKey)}
       </legend>
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
-        {t(hintKey)}
+        {t(resolvedHintKey)}
       </p>
 
       {movements.length === 0 ? (
@@ -185,6 +211,8 @@ export function BrokerageMovementsSection({
             onChange={(next) => onChange(updateMovementRow(movements, row.id, next))}
             onRemove={() => onChange(removeMovementRow(movements, row.id))}
             canRemove
+            currentAccountId={currentAccountId}
+            flowKinds={flowKinds}
           />
         ))
       )}
@@ -192,9 +220,6 @@ export function BrokerageMovementsSection({
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
         <button type="button" onClick={() => addMovement()}>
           {t("panelAccounts.addAccount.addMovement")}
-        </button>
-        <button type="button" onClick={() => addMovement("compra_usd")}>
-          {t("panelAccounts.addAccount.addCompraUsd")}
         </button>
       </div>
     </fieldset>

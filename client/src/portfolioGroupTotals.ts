@@ -1,3 +1,4 @@
+import { dashboardAccountCurrentValueClp } from "./accountGroupTotals";
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
 import type { DashboardAccountRow, NavTreeNodeDto } from "./types";
 
@@ -25,8 +26,7 @@ export function sumDashboardRowsForNavNode(
   for (const a of accounts) {
     if (!ids.has(a.account_id)) continue;
     if (a.exclude_from_group_totals === 1) continue;
-    if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) continue;
-    clp += a.current_value_clp;
+    clp += dashboardAccountCurrentValueClp(a);
   }
   return clp;
 }

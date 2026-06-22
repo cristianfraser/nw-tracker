@@ -9,8 +9,12 @@ import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
 import { formatClp, formatInstrumentUnits } from "../../format";
 import { cn } from "../../cn";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
+import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
+import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
+import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
-import { supportsBrokerageMovements } from "../../accountMovementCreate";
+import { supportsBrokerageMovements, supportsUsdCashMovements } from "../../accountMovementCreate";
+import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
@@ -54,7 +58,11 @@ export function StandardAccountDetailPage({ data }: Props) {
     extraCcOffsets,
   } = data;
 
-  const showBrokerageMovementsForm = supportsBrokerageMovements(summary.movement_create);
+  const isUsdCashAccount = supportsUsdCashMovements(summary.movement_create);
+  const showUsdCashMovementsForm = isUsdCashAccount;
+  const showBrokerageMovementsForm =
+    supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount;
+  const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
   const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
@@ -64,8 +72,13 @@ export function StandardAccountDetailPage({ data }: Props) {
   const isMortgageAccount = isDeptoMortgageCategory(summary.category_slug);
   const isPropertyAccount = isDeptoPropertyCategory(summary.category_slug);
   const isDeptoAccount = isMortgageAccount || isPropertyAccount;
+  const showMortgagePaymentForm =
+    isMortgageAccount && summary.mortgage_payment_create != null;
+  const showManualEntryForm =
+    showBrokerageMovementsForm || showUsdCashMovementsForm || showBookLedgerEdit || showMortgagePaymentForm;
   const showPositionBlock =
-    !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount;
+    !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
+  const showEquityReturnColumns = summary.position?.cost_basis_clp != null;
   const ccChartsFromParsedLedger =
     summary.category_slug === "credit_card" && data.ccLedger.has_installment_ledger;
 
@@ -136,10 +149,27 @@ export function StandardAccountDetailPage({ data }: Props) {
                 <tr>
                   <th>Ticker</th>
                   <th>Cuotas / unidades</th>
-                  <th>Depositado (CLP)</th>
+                  <th>
+                    {showEquityReturnColumns
+                      ? t("accountDetail.equityPosition.depositedPocket")
+                      : "Depositado (CLP)"}
+                  </th>
+                  {showEquityReturnColumns ? (
+                    <>
+                      <th>{t("accountDetail.equityPosition.dividendsReinvested")}</th>
+                      <th>{t("accountDetail.equityPosition.costBasis")}</th>
+                    </>
+                  ) : null}
                   <th>Valor hoy (CLP)</th>
                   <th>Fecha valor</th>
                   <th>Valor / unidad (CLP)</th>
+                  {showEquityReturnColumns ? (
+                    <>
+                      <th>{t("accountDetail.equityPosition.totalReturn")}</th>
+                      <th>{t("accountDetail.equityPosition.returnOnDeposited")}</th>
+                      <th>{t("accountDetail.equityPosition.naiveGain")}</th>
+                    </>
+                  ) : null}
                 </tr>
               </thead>
             }
@@ -157,6 +187,14 @@ export function StandardAccountDetailPage({ data }: Props) {
                   : "—"}
               </td>
               <td className="mono">{formatClp(summary.position?.deposited_clp ?? summary.deposits_clp)}</td>
+              {showEquityReturnColumns ? (
+                <>
+                  <td className="mono">
+                    {formatClp(summary.position?.dividends_reinvested_clp ?? 0)}
+                  </td>
+                  <td className="mono">{formatClp(summary.position?.cost_basis_clp ?? 0)}</td>
+                </>
+              ) : null}
               <td className="mono">
                 {(() => {
                   const v = summary.position?.value_clp ?? summary.latest_valuation_clp;
@@ -170,6 +208,58 @@ export function StandardAccountDetailPage({ data }: Props) {
                 {summary.position?.value_per_unit_clp != null
                   ? formatClp(summary.position.value_per_unit_clp)
                   : "—"}
+              </td>
+              {showEquityReturnColumns ? (
+                <>
+                  <td className="mono">
+                    {summary.position?.total_return_clp != null
+                      ? formatClp(summary.position.total_return_clp)
+                      : "—"}
+                  </td>
+                  <td className="mono">
+                    {summary.position?.return_on_deposited_pct != null
+                      ? `${(summary.position.return_on_deposited_pct * 100).toFixed(2)}%`
+                      : "—"}
+                  </td>
+                  <td className="mono">
+                    {summary.position?.naive_gain_clp != null
+                      ? formatClp(summary.position.naive_gain_clp)
+                      : "—"}
+                  </td>
+                </>
+              ) : null}
+            </tr>
+          </Table>
+        </div>
+      ) : null}
+
+      {isUsdCashAccount && !data.contentLoading ? (
+        <div className={styles.positionBlock}>
+          <h2 className={styles.sectionTitleCompact}>{t("accountDetail.usdCash.positionTitle")}</h2>
+          <Table
+            header={
+              <thead>
+                <tr>
+                  <th>{t("accountDetail.usdCash.balanceUsd")}</th>
+                  <th>{t("accountDetail.usdCash.balanceClp")}</th>
+                  <th>{t("accountDetail.usdCash.asOf")}</th>
+                </tr>
+              </thead>
+            }
+          >
+            <tr>
+              <td className="mono">
+                {data.accountDashRow?.current_value_usd != null
+                  ? data.accountDashRow.current_value_usd.toFixed(2)
+                  : "—"}
+              </td>
+              <td className="mono">
+                {formatClp(
+                  data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? 0
+                )}
+              </td>
+              <td className="muted">
+                {data.accountDashRow?.as_of_date ?? summary.latest_valuation_date ?? "—"}
               </td>
             </tr>
           </Table>
@@ -301,6 +391,14 @@ export function StandardAccountDetailPage({ data }: Props) {
 
       {mortgageLedger.has_sheet_rows && mortgageLedger.rows.length > 0 ? (
         <>
+          {showMortgagePaymentForm && summary.mortgage_payment_create ? (
+            <MortgagePaymentForm
+              accountId={summary.account_id}
+              displayUnit={displayUnit}
+              extraCcOffsetsKey={extraCcOffsetsKey}
+              schema={summary.mortgage_payment_create}
+            />
+          ) : null}
           <MortgageDividendosTable
             ledger={mortgageLedger}
             variant={isMortgageAccount ? "mortgage" : "property"}
@@ -346,12 +444,20 @@ export function StandardAccountDetailPage({ data }: Props) {
         </>
       ) : null}
 
+      {showBookLedgerEdit ? (
+        <AccountBookLedgerSection
+          accountId={summary.account_id}
+          displayUnit={displayUnit}
+          extraCcOffsetsKey={extraCcOffsetsKey}
+        />
+      ) : null}
+
       <AccountFlowsSection
         hint={
           <p className={cn("muted", styles.proseMutedXs)}>
             Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
             <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
-            {showBrokerageMovementsForm ? null : (
+            {showManualEntryForm ? null : (
               <>
                 {" "}
                 Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
@@ -360,7 +466,13 @@ export function StandardAccountDetailPage({ data }: Props) {
           </p>
         }
         addMovementsForm={
-          showBrokerageMovementsForm ? (
+          showUsdCashMovementsForm ? (
+            <AccountUsdCashMovementsForm
+              accountId={summary.account_id}
+              displayUnit={displayUnit}
+              extraCcOffsetsKey={extraCcOffsetsKey}
+            />
+          ) : showBrokerageMovementsForm ? (
             <AccountBrokerageMovementsForm
               accountId={summary.account_id}
               ticker={summary.position?.ticker ?? null}

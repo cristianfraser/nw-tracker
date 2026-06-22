@@ -9,3 +9,9 @@ export function accountCountsTowardGroupTotals(row: {
 export function isChartActiveAccount(row: { chart_inactive?: boolean | null }): boolean {
   return row.chart_inactive !== true;
 }
+
+/** Live CLP balance for totals (sold-out / flat equity MTM → 0, not omitted). */
+export function dashboardAccountCurrentValueClp(row: { current_value_clp?: number | null }): number {
+  const v = row.current_value_clp;
+  return v != null && Number.isFinite(v) ? v : 0;
+}

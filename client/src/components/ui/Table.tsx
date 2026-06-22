@@ -241,6 +241,12 @@ export function Table({
     [sortableColumns]
   );
   const hasSortableColumns = sortableColumns.length > 0;
+  const limit =
+    typeof collapsedVisibleRows === "number" && collapsedVisibleRows > 0
+      ? collapsedVisibleRows
+      : null;
+  /** Sort/collapse need flattened `<tr>` nodes; otherwise render `children` (e.g. recursive row components). */
+  const needsRowFlattening = hasSortableColumns || limit != null;
 
   const onToggleSort = useCallback((key: string) => {
     setSort((prev) => {
@@ -251,11 +257,15 @@ export function Table({
   }, []);
 
   const indexedRows = useMemo(
-    () => collectTrNodes(children).map((row, index) => ({ row, index })),
-    [children]
+    () =>
+      needsRowFlattening
+        ? collectTrNodes(children).map((row, index) => ({ row, index }))
+        : [],
+    [children, needsRowFlattening]
   );
 
   const sortedRows = useMemo(() => {
+    if (!needsRowFlattening) return [];
     if (!sort) return indexedRows.map((x) => x.row);
     const type = sortTypeByKey.get(sort.key) ?? "string";
     return [...indexedRows]
@@ -264,15 +274,13 @@ export function Table({
         return cmp !== 0 ? cmp : a.index - b.index;
       })
       .map((x) => x.row);
-  }, [indexedRows, sort, sortTypeByKey]);
+  }, [indexedRows, needsRowFlattening, sort, sortTypeByKey]);
 
-  const limit =
-    typeof collapsedVisibleRows === "number" && collapsedVisibleRows > 0
-      ? collapsedVisibleRows
-      : null;
-  const hasHiddenRows = limit != null && sortedRows.length > limit;
+  const hasHiddenRows = needsRowFlattening && limit != null && sortedRows.length > limit;
   const bodyRows =
-    limit != null && hasHiddenRows && !expanded ? sortedRows.slice(0, limit) : sortedRows;
+    needsRowFlattening && limit != null && hasHiddenRows && !expanded
+      ? sortedRows.slice(0, limit)
+      : sortedRows;
 
   const renderedHeader = hasSortableColumns
     ? enhanceHeader(header, sort, onToggleSort)
@@ -288,7 +296,7 @@ export function Table({
       >
         <table className={tableClassName} style={tableStyle}>
           {renderedHeader}
-          <tbody>{bodyRows}</tbody>
+          <tbody>{needsRowFlattening ? bodyRows : children}</tbody>
         </table>
       </div>
       {hasHiddenRows ? (

@@ -12,7 +12,7 @@ import type {
   DeptoPaymentScenarioRow,
   DeptoPaymentScenarioTerm,
 } from "../../types";
-import { formatClp, formatUfUnits, formatUfUnitsFine } from "../../format";
+import { formatClp, formatClpUfDay, formatUfUnits, formatUfUnitsFine } from "../../format";
 import { cn } from "../../cn";
 import styles from "../AccountDetailPage.module.css";
 
@@ -57,7 +57,7 @@ function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
         <TableMobileCardRow label="% div." value={cellTxt(row.pct_dividendo)} />
         <TableMobileCardRow
           label="UF día"
-          value={row.uf_clp_day != null ? formatClp(Math.round(row.uf_clp_day)) : "—"}
+          value={row.uf_clp_day != null ? formatClpUfDay(row.uf_clp_day) : "—"}
         />
         <TableMobileCardRow label="m/m" value={cellTxt(row.mm_pct)} />
         <TableMobileCardRow label="y/y" value={cellTxt(row.yy_pct)} />
@@ -89,7 +89,7 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
       <td className="mono desktop-only">{formatUfUnitsFine(row.pago_uf)}</td>
       <td className="mono muted desktop-only">{cellTxt(row.pct_dividendo)}</td>
       <td className="mono desktop-only">
-        {row.uf_clp_day != null ? formatClp(Math.round(row.uf_clp_day)) : "—"}
+        {row.uf_clp_day != null ? formatClpUfDay(row.uf_clp_day) : "—"}
       </td>
       <td className="mono muted desktop-only">{cellTxt(row.mm_pct)}</td>
       <td className="mono muted desktop-only">{cellTxt(row.yy_pct)}</td>
@@ -161,7 +161,7 @@ export function MortgageDividendosTable({
         {isMortgageView ? "Dividendos hipoteca (hoja depto)" : "Hipoteca / dividendos (hoja depto)"}
       </h2>
       <p className={cn("muted", styles.proseMuted)}>
-        Tabla leída directamente de <span className="mono">{m?.csv_path ?? "cfraser/depto-dividendos.csv"}</span>: cada
+        Tabla leída desde el libro hipoteca en SQLite (<span className="mono">depto_dividendos_sheet_rows</span>): cada
         fila con monto CLP es un pago (puede haber varios en un mes).
         {isMortgageView ? (
           <> El <strong>pie</strong> está en la cuenta inmueble (suecia), no en el pasivo hipotecario.</>

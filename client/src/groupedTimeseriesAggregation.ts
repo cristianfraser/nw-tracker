@@ -56,6 +56,7 @@ export function aggregateValuationByBucket(
   const synth: TimeseriesAccountLine[] = ordered.map((k) => {
     const m = meta[k]!;
     const groupMembers = members.filter((a) => idToBucket(a.account_id) === k);
+    const anyMemberDep = groupMembers.some((a) => Boolean(a.depositDataKey));
     const fromServer = block.synthetic_group_color_rgb?.[String(m.accountId)];
     const color_rgb =
       m.color_rgb ??
@@ -66,8 +67,9 @@ export function aggregateValuationByBucket(
       name: m.name,
       dataKey: m.dataKey,
       valueSeriesType: "data",
-      depositDataKey: m.depKey,
-      deposit_series_name: "aportes acum.",
+      ...(anyMemberDep
+        ? { depositDataKey: m.depKey, deposit_series_name: "aportes acum." }
+        : {}),
       ...(color_rgb ? { color_rgb } : {}),
     };
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClp, formatCcExpenseLineAmount, titleBalanceDeltaNumberFlowParts } from "./format";
+import { formatClp, formatClpUfDay, formatCcExpenseLineAmount, titleBalanceDeltaNumberFlowParts } from "./format";
 
 describe("formatClp", () => {
   it("formats negatives with accounting parentheses", () => {
@@ -8,6 +8,17 @@ describe("formatClp", () => {
 
   it("returns em dash for non-finite values", () => {
     expect(formatClp(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatClpUfDay", () => {
+  it("shows CLP per UF with exactly two decimals", () => {
+    expect(formatClpUfDay(40_763.45)).toBe("$40.763,45");
+    expect(formatClpUfDay(40_273.69)).toBe("$40.273,69");
+  });
+
+  it("returns em dash for null", () => {
+    expect(formatClpUfDay(null)).toBe("—");
   });
 });
 
