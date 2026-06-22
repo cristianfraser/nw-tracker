@@ -101,10 +101,10 @@ describe("resolveEquityQuote NYSE session pair", () => {
 });
 
 describe("resolveEquityQuote crypto session pair", () => {
-  it("uses today vs prior UTC day when not live", () => {
+  it("uses last completed UTC day vs prior when not live", () => {
     upsertEod(BTC_TEST, BTC_TEST_DATE_A, 100);
     upsertEod(BTC_TEST, BTC_TEST_DATE_B, 80);
-    const now = new Date(`${BTC_TEST_DATE_A}T15:00:00Z`);
+    const now = new Date("2099-06-02T01:00:00Z");
     const display = cryptoDisplaySessionYmd(BTC_TEST, now);
     expect(display).toBe(BTC_TEST_DATE_A);
     const q = resolveEquityQuote(BTC_TEST, display, { preferLive: false, now });
@@ -112,6 +112,19 @@ describe("resolveEquityQuote crypto session pair", () => {
     expect(q!.previous_close_usd).toBe(80);
     expect(q!.delta_pct).toBeCloseTo(25, 5);
     expect(q!.delta_pct).not.toBe(0);
+  });
+
+  it("ignores in-progress UTC day row for display", () => {
+    upsertEod(BTC_TEST, BTC_TEST_DATE_A, 100);
+    upsertEod(BTC_TEST, BTC_TEST_DATE_B, 80);
+    const inProgress = "2099-06-02";
+    upsertEod(BTC_TEST, inProgress, 999);
+    const now = new Date(`${inProgress}T15:00:00Z`);
+    expect(cryptoDisplaySessionYmd(BTC_TEST, now)).toBe(BTC_TEST_DATE_A);
+    db.prepare(`DELETE FROM equity_daily WHERE ticker = ? AND trade_date = ?`).run(
+      BTC_TEST,
+      inProgress
+    );
   });
 });
 

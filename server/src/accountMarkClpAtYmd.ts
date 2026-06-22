@@ -14,6 +14,7 @@ import { deptoAccountMarkClpAtYmd } from "./deptoDividendosLedger.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClp } from "./cryptoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import { db } from "./db.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
@@ -55,6 +56,10 @@ function historicalMarkClpAtYmd(
   }
   if (isMovementBalanceCashCategory(categorySlug)) {
     const clp = checkingMovementBalanceClpAtCached(accountId, asOfYmd);
+    if (Number.isFinite(clp)) return { value_clp: clp, as_of_date: asOfYmd };
+  }
+  if (isUsdCashAccount(accountId)) {
+    const clp = usdCashBalanceClpAt(accountId, asOfYmd);
     if (Number.isFinite(clp)) return { value_clp: clp, as_of_date: asOfYmd };
   }
   if (accountUsesEquityMtm(accountId)) {

@@ -722,6 +722,18 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
   return cancelled;
 }
 
+/** Ledger-backed cancelled purchases (NOTA DE CREDITO match with month window). */
+export function cancelledInstallmentPurchaseIdsForAccount(accountId: number): Set<number> {
+  const purchasesRaw = db
+    .prepare(
+      `SELECT id, purchase_date, total_amount_clp
+       FROM cc_installment_purchases
+       WHERE account_id = ?`
+    )
+    .all(accountId) as Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[];
+  return loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw);
+}
+
 function loadCancelledInstallmentPurchaseIds(
   accountId: number,
   purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[]

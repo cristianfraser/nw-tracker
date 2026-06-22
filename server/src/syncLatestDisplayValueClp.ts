@@ -13,6 +13,8 @@ import {
 } from "./cryptoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { isUsdCashKindSlug } from "./movementTransfer.js";
+import { usdCashBalanceLive } from "./usdCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import {
   latestDisplayedBalanceForAccount,
@@ -32,6 +34,10 @@ export function syncLatestDisplayValueClp(
   }
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
     return checkingMovementBalanceLive(accountId);
+  }
+  if (categorySlug && isUsdCashKindSlug(categorySlug)) {
+    const live = usdCashBalanceLive(accountId);
+    return { value_clp: live.value_clp, as_of_date: live.as_of_date };
   }
   if (accountUsesEquityMtm(accountId)) {
     const eq = computeEquityMtmClpDisplaySync(accountId);

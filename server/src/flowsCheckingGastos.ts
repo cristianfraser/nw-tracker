@@ -1106,7 +1106,9 @@ export function matchWithdrawalToInvestmentDeposit(
   maxDayGap = 3,
   usedDepositKeys?: Set<string>
 ): DepositMatchCandidate | null {
-  const investment = deposits.filter((d) => isInvestmentDepositTarget(d.group_slug));
+  const investment = deposits.filter(
+    (d) => isInvestmentDepositTarget(d.group_slug) || d.category_slug === "usd"
+  );
   return matchWithdrawalToDeposit(withdrawal, investment, maxDayGap, usedDepositKeys);
 }
 

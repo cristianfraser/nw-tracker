@@ -11,7 +11,7 @@ import {
   ccWebPasteToCsvRecords,
   newWebPasteBatchId,
   parseCcWebPasteText,
-  santanderCardMetaForAccount,
+  creditCardMasterMetaForAccount,
 } from "./ccWebPasteParse.js";
 import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import {
@@ -46,8 +46,8 @@ function assertCreditCardAccount(accountId: number): void {
 
 export function importCcWebPaste(accountId: number, text: string) {
   assertCreditCardAccount(accountId);
-  const meta = santanderCardMetaForAccount(accountId);
-  if (!meta) throw new Error("Not a Santander card master account");
+  const meta = creditCardMasterMetaForAccount(accountId);
+  if (!meta) throw new Error("Not a credit card master account");
 
   const parsed = parseCcWebPasteText(text);
   if (parsed.lines.length === 0) {

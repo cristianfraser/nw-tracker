@@ -8,7 +8,7 @@ import {
 } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
-import { santanderCardMetaForAccount } from "./ccWebPasteParse.js";
+import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 
 export const OPEN_WEB_PASTE_SOURCE_PREFIX = "import:web-paste|open|";
 
@@ -85,7 +85,7 @@ export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWeb
     return { lines_moved: 0, target_billing_month: null };
   }
 
-  const meta = santanderCardMetaForAccount(accountId);
+  const meta = creditCardMasterMetaForAccount(accountId);
   if (!meta) {
     return { lines_moved: 0, target_billing_month: openBm };
   }

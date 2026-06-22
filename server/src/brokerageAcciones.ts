@@ -53,6 +53,11 @@ export interface DashboardAccountStats {
     value_clp: number | null;
     value_as_of: string | null;
     value_per_unit_clp: number | null;
+    dividends_reinvested_clp?: number;
+    cost_basis_clp?: number;
+    total_return_clp?: number | null;
+    return_on_deposited_pct?: number | null;
+    naive_gain_clp?: number | null;
   } | null;
   /** True when any linked global sync source is currently stale. */
   sync_stale: boolean;

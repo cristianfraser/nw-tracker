@@ -1,15 +1,18 @@
 import { movementIsApvAStateBonus } from "./apvAStateBonusInference.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
+import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
 
 /**
  * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
  * signed `amount_clp` on `movements` (all external flows, including APV-A state bonus).
  *
- * SPY/VEA brokerage rows use `flow_kind`: only **`deposit_clp`** / **`withdrawal_clp`** count as cash in/out.
- * **`compra_usd`** and **`dividend_usd`** are not new external capital.
+ * Equity MTM stock accounts (post USD-cash migration): **`stock_buy` / `stock_sell`** transfer USD legs
+ * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit_clp`** / **`withdrawal_clp`**
+ * on `account_id` when present.
  *
- * For charts that exclude state bonus, use {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
+ * For charts that exclude DRIP reinvestment, use {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
  */
 
 /** Dated CLP flow toward cumulative “aportes” (positive = in, negative = out). */
@@ -25,28 +28,17 @@ const MOVEMENT_EXCLUDE_NOTE_SQL = `note IS NULL OR (
   AND note NOT LIKE '%|afp-cuotas-website-reconcile|%'
 )`;
 
-const BROKERAGE_NON_CASH_FLOW_KINDS = new Set(["compra_usd", "dividend_usd"]);
+const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
+  "compra_usd",
+  "compra_usd_venta_clp",
+  "stock_buy",
+  "stock_sell",
+  "dividend_usd",
+]);
 
-/** SPY/VEA with `flow_kind` ledger — ignore legacy Table 1-3 `dep_stocks` rows on the same account. */
-function equityAccountIdsUsingFlowLedger(accountIds: number[]): Set<number> {
-  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
-  if (uniq.length === 0) return new Set();
-  const ph = uniq.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT a.id AS id
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id IN (${ph})
-         AND (g.slug IN ('spy', 'vea') OR g.slug LIKE '%__spy' OR g.slug LIKE '%__vea')
-         AND EXISTS (
-           SELECT 1 FROM movements m
-           WHERE m.account_id = a.id AND m.flow_kind IS NOT NULL
-           LIMIT 1
-         )`
-    )
-    .all(...uniq) as { id: number }[];
-  return new Set(rows.map((r) => r.id));
+/** Equity MTM accounts — ignore legacy Table 1-3 `dep_stocks` rows without `flow_kind`. */
+function equityMtmAccountIdsSet(accountIds: number[]): Set<number> {
+  return new Set(accountIds.filter((id) => id > 0 && accountUsesEquityMtm(id)));
 }
 
 function loadMovementSignedFlowEvents(
@@ -72,10 +64,10 @@ function loadMovementSignedFlowEvents(
     note: string | null;
     flow_kind: string | null;
   }[];
-  const equityFlowLedgerIds = equityAccountIdsUsingFlowLedger(uniq);
+  const equityMtmIds = equityMtmAccountIdsSet(uniq);
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
-    if (equityFlowLedgerIds.has(r.account_id) && r.flow_kind == null) continue;
+    if (equityMtmIds.has(r.account_id) && r.flow_kind == null) continue;
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (personalOnly) {
       if (
@@ -102,10 +94,11 @@ function buildMergedDepositMap(
 ): Map<number, DepositInflowEvent[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
-  const ids = new Set<number>([...mov.keys(), ...requested]);
+  const equityCap = loadEquityBrokerageCapitalSortFlows(accountIds, personalOnly);
+  const ids = new Set<number>([...mov.keys(), ...equityCap.keys(), ...requested]);
   const out = new Map<number, DepositInflowEvent[]>();
   for (const id of ids) {
-    const flows = mov.get(id) ?? [];
+    const flows = [...(mov.get(id) ?? []), ...(equityCap.get(id) ?? [])];
     const merged = flows.filter((e) => e.amt !== 0 && Number.isFinite(e.amt));
     merged.sort((x, y) => x.occurred_on.localeCompare(y.occurred_on) || x.tie.localeCompare(y.tie));
     out.set(

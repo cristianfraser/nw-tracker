@@ -8,6 +8,7 @@ import {
   getGroupConsolidationAccountMonthly,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupMonthlyPerfConsolidation.js";
+import { buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -38,16 +39,19 @@ export function getGroupConsolidatedTables(
 ): GroupConsolidatedTablesResponse {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const account_monthly = getGroupConsolidationAccountMonthly(rows, groupSlug, unit);
-  const consolidated_monthly = consolidateGroupMonthlyPerf(
-    account_monthly.map((p) => ({
-      account_id: p.account_id,
-      bucket_slug: p.bucket_slug,
-      monthly: p.monthly,
-      notes: p.notes,
-      name: p.name,
-    })),
-    unit
-  );
+  const consolidated_monthly =
+    groupSlug === "net_worth"
+      ? buildNetWorthConsolidatedMonthly(unit)
+      : consolidateGroupMonthlyPerf(
+          account_monthly.map((p) => ({
+            account_id: p.account_id,
+            bucket_slug: p.bucket_slug,
+            monthly: p.monthly,
+            notes: p.notes,
+            name: p.name,
+          })),
+          unit
+        );
 
   const movementsByAccount = listAccountMovementsForApiBulk(rows.map((r) => r.account_id));
   const account_movements: GroupConsolidatedTablesResponse["account_movements"] = rows.map((r) => ({

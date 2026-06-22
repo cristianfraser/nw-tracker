@@ -22,13 +22,9 @@ import {
 
   registerGenericUniquePurchaseMode,
 
-  registerUniquePurchaseMode,
-
   resolveCcExpenseCategorySlug,
 
   resolveCcExpensePurchaseKey,
-
-  getCcExpenseCategoryBySlug,
 
   type CcExpenseCategoryRow,
 
@@ -37,6 +33,7 @@ import {
   applyAdditionalCardNoCuentaForLine,
   formatAutoAdditionalCardNote,
   isAdditionalCardExpenseLine,
+  userDeclinedAutoCategoryForPurchase,
 } from "./ccAdditionalCardExpenseMatch.js";
 
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
@@ -759,30 +756,30 @@ export function buildCcExpenseLines(
 
     const purchaseMapKey = `${row.account_id}|${purchaseKey}`;
     const userClearedUnique = userClearedUniqueAtLoad.has(purchaseMapKey);
+    const existingUniqueSlug = uniquePurchases.get(purchaseMapKey);
     if (
+      !isInstallment &&
       isAdditionalCardExpenseLine(row.origin_card_last4, row.primary_card_last4) &&
-      !userClearedUnique
+      !userClearedUnique &&
+      existingUniqueSlug == null &&
+      !userDeclinedAutoCategoryForPurchase(row.account_id, purchaseKey)
     ) {
-      applyAdditionalCardNoCuentaForLine({
+      const additionalCard = applyAdditionalCardNoCuentaForLine({
         accountId: row.account_id,
         statementLineId: row.statement_line_id,
         originCardLast4: row.origin_card_last4,
         primaryCardLast4: row.primary_card_last4,
-        skipIfUserCleared: false,
+        skipIfUserCleared: true,
       });
-      const noCuenta = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG);
-      registerUniquePurchaseMode(
-        row.account_id,
-        purchaseKey,
-        noCuenta?.id ?? null,
-        uniquePurchaseModeKeys
-      );
-      resolvedCategorySlug = NO_CUENTA_CC_EXPENSE_SLUG;
-      categoryUnique = true;
-      const origin = String(row.origin_card_last4 ?? "").trim();
-      const primary = String(row.primary_card_last4 ?? "").trim();
-      const note = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
-      if (note) autoAdditionalCardNote = note;
+      if (additionalCard.applied) {
+        resolvedCategorySlug = NO_CUENTA_CC_EXPENSE_SLUG;
+        categoryUnique = true;
+        uniquePurchases.set(purchaseMapKey, NO_CUENTA_CC_EXPENSE_SLUG);
+        const origin = String(row.origin_card_last4 ?? "").trim();
+        const primary = String(row.primary_card_last4 ?? "").trim();
+        const note = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
+        if (note) autoAdditionalCardNote = note;
+      }
     }
 
 

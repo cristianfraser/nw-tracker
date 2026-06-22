@@ -58,6 +58,18 @@ export function fxMonthEndForBalanceUsd(date: string | null): FxRow | null {
   return (stmtMonthEndOnOrAfter.get(date) as FxRow | undefined) ?? null;
 }
 
+const DEPOSIT_CROSS_RATE_DECIMALS = 5;
+
+/** USD → CLP at `paymentDate`’s FX row; rounded — inverse of CLP→USD deposit cross-rate. */
+export function usdToClpAtPaymentRounded(usd: number, paymentDate: string): number | null {
+  if (!Number.isFinite(usd) || usd === 0) return 0;
+  const fx = fxRowOnOrBefore(paymentDate);
+  if (!fx || fx.clp_per_usd <= 0) return null;
+  const clp = Math.abs(usd) * fx.clp_per_usd;
+  const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
+  return Math.round(clp * f) / f;
+}
+
 export function ufRowOnOrBefore(date: string | null): { date: string; clp_per_uf: number } | null {
   if (!date) return null;
   return (

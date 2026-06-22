@@ -195,13 +195,29 @@ export function initSchema() {
 
     CREATE TABLE IF NOT EXISTS movements (
       id INTEGER PRIMARY KEY,
-      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+      from_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+      to_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
       amount_clp REAL NOT NULL DEFAULT 0,
       occurred_on TEXT NOT NULL,
       note TEXT,
+      units_delta REAL,
       flow_kind TEXT,
       amount_usd REAL,
-      ticker TEXT
+      ticker TEXT,
+      CHECK (
+        (
+          account_id IS NOT NULL
+          AND from_account_id IS NULL
+          AND to_account_id IS NULL
+        )
+        OR (
+          account_id IS NULL
+          AND from_account_id IS NOT NULL
+          AND to_account_id IS NOT NULL
+          AND from_account_id != to_account_id
+        )
+      )
     );
 
     CREATE TABLE IF NOT EXISTS valuations (
@@ -383,6 +399,7 @@ function seedReferenceData() {
       cats: [
         { slug: "cuenta_ahorro_vivienda", label: "Cuenta de ahorro para la vivienda — BancoEstado" },
         { slug: "fondo_reserva", label: "Fondo reserva" },
+        { slug: "usd", label: "USD" },
       ],
     },
     {

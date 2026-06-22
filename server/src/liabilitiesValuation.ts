@@ -23,6 +23,10 @@ type AccountCategoryMeta = Map<
 
 let accountCategoryMetaCache: AccountCategoryMeta | null = null;
 
+export function clearAccountCategoryMetaCache(): void {
+  accountCategoryMetaCache = null;
+}
+
 function accountCategoryMetaById(): AccountCategoryMeta {
   if (accountCategoryMetaCache) return accountCategoryMetaCache;
   const rows = db

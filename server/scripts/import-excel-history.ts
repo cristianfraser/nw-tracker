@@ -23,7 +23,7 @@
  *   **SPY/VEA monthly CLP** when `stocks-lots.csv` has **`units`**: no `valuations`
  *   rows for those accounts — MTM at read time from **`equity_daily`** (Yahoo EOD) × cumulative units × **`fx_daily`**.
  *   Otherwise SPY/VEA use the Table 1-3 combined `stocks` split into `valuations`.
- *   **Import** calls Yahoo for SPY, VEA, BTC-USD, ETH-USD closes into `equity_daily` — needs **network** during `import:excel`.
+ *   **Import** calls Yahoo (stocks) and CoinGecko (crypto, last 365d) into `equity_daily` — needs **network** during `import:excel`.
  * - **`fund-unit-values.csv`** (optional): semicolon CSV with header `series_key;day;unit_value_clp;note` for valor-cuota
  *   series (e.g. `afp_uno_cuota_a`, `fintual_risky_norris`, `fintual_risky_norris_apv`). Upserts **`fund_unit_daily`**.
  *   Wipe clears only `fund_unit_daily` rows with `series_key LIKE 'fintual%'` (AFP UNO history is preserved).
@@ -135,6 +135,11 @@ import {
   loadDeptoDividendosSheetLedgerFromFile,
   replaceDeptoDividendosSheetRowsInDb,
 } from "../src/deptoDividendosLedger.js";
+import {
+  fetchCoinGeckoMaxDailyCloses,
+  mergeEodCloseSeriesPreferPrimary,
+} from "../src/equityCoinGeckoEod.js";
+import { equityMarketKind } from "../src/equityQuote.js";
 import {
   fetchYahooDailyCloses,
   yahooChartPeriodSeconds,
@@ -1509,11 +1514,24 @@ async function main() {
           console.warn(`import:excel: Yahoo EOD ${sym} failed`, r.reason);
         }
       }
+      for (const sym of EQUITY_DAILY_IMPORT_TICKERS) {
+        if (equityMarketKind(sym) !== "crypto24") continue;
+        try {
+          const coinGecko = await fetchCoinGeckoMaxDailyCloses(sym);
+          const yahoo = eodByTicker.get(sym);
+          eodByTicker.set(
+            sym,
+            yahoo ? mergeEodCloseSeriesPreferPrimary(coinGecko, yahoo) : coinGecko
+          );
+        } catch (e) {
+          console.warn(`import:excel: CoinGecko EOD ${sym} failed`, e);
+        }
+      }
       const parts = [...EQUITY_DAILY_IMPORT_TICKERS].map((sym) => {
         const s = eodByTicker.get(sym);
         return s ? `${sym} ${s.dates.length}d` : `${sym} —`;
       });
-      console.log(`import:excel: Yahoo EOD (${parts.join(", ")}) — MTM when stocks-lots has units (SPY/VEA)`);
+      console.log(`import:excel: equity EOD (${parts.join(", ")}) — stocks Yahoo, crypto CoinGecko+Yahoo`);
     } catch (e) {
       console.warn("import:excel: Yahoo EOD fetch failed; SPY/VEA use Table 1-3 split only", e);
     }

@@ -4,10 +4,12 @@ import {
   totalDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
+import { loadDividendReinvestedInflowEvents } from "./equityDividendReinvested.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
   computeEquityMtmClpDisplaySync,
+  equityChartZeroClpAtYmd,
   equityTickerForAccount,
   expandSnapshotDatesForEquityMtm,
 } from "./brokerageEquityMtm.js";
@@ -23,6 +25,8 @@ import { accountChartInactive } from "./accountChartInactive.js";
 import { accountIdsInPortfolioGroup, withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { isUsdCashKindSlug } from "./movementTransfer.js";
+import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -34,6 +38,7 @@ import {
   loadDeptoDividendosSheetLedgerFromDb,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
+import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
@@ -152,15 +157,29 @@ function depositInflowEventsEqual(
   return true;
 }
 
-/** “aportes propios acum.” only when personal-only inflows differ from full external capital. */
+/** Pocket + reinvested dividends — chart “aportes acum.” for equity MTM (cost basis). */
+function equityCostBasisChartInflowEvents(
+  displayMovs: DepositInflowEvent[],
+  dividendMovs: DepositInflowEvent[]
+): DepositInflowEvent[] {
+  return [...displayMovs, ...dividendMovs]
+    .filter((e) => e.amt !== 0 && Number.isFinite(e.amt))
+    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
+}
+
+/** “aportes propios acum.” when personal pocket differs from full capital, or equity has DRIP dividends. */
 function shouldAttachDisplayDepositSeries(
   accountId: number,
   depMovs: Map<number, DepositInflowEvent[]>,
   displayDepMovs: Map<number, DepositInflowEvent[]>,
+  dividendDepMovs: Map<number, DepositInflowEvent[]>,
   slugById: Map<number, string>
 ): boolean {
   const slug = slugById.get(accountId);
   if (slug && accountBucketKindSlug(slug) === "property") return false;
+  if (accountUsesEquityMtm(accountId) && (dividendDepMovs.get(accountId)?.length ?? 0) > 0) {
+    return true;
+  }
   return !depositInflowEventsEqual(
     depMovs.get(accountId) ?? [],
     displayDepMovs.get(accountId) ?? []
@@ -343,6 +362,10 @@ function bucketSlugByAccountId(accountIds: number[]): Map<number, string> {
   return m;
 }
 
+function bucketKindFromSlugMap(slugById: Map<number, string>, accountId: number): string {
+  return accountBucketKindSlug(slugById.get(accountId) ?? "");
+}
+
 function accountChartMetaById(
   accountIds: number[]
 ): Map<number, { slug: string; notes: string | null; name: string }> {
@@ -390,11 +413,12 @@ function attachDepositSeriesKeys(
     }
     if (t.account_id > 0) {
       const slug = slugById.get(t.account_id);
+      const kind = slug ? accountBucketKindSlug(slug) : "";
       if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
-      if (slug && CATEGORY_NO_CHART_DEPOSIT_LINE.has(slug)) return { ...t };
+      if (kind && CATEGORY_NO_CHART_DEPOSIT_LINE.has(kind)) return { ...t };
       const depLen = (depMovs.get(t.account_id) ?? []).length;
       const propertyWithCapital =
-        slug === "property" && Math.abs(totalDepositsClpForAccount(t.account_id)) > 0.5;
+        kind === "property" && Math.abs(totalDepositsClpForAccount(t.account_id)) > 0.5;
       if (depLen > 0 || propertyWithCapital) {
         return { ...t, depositDataKey: `${t.dataKey}__dep` };
       }
@@ -407,12 +431,21 @@ function attachDisplayDepositSeriesKeys(
   top: AccountLine[],
   depMovs: Map<number, DepositInflowEvent[]>,
   displayDepMovs: Map<number, DepositInflowEvent[]>,
+  dividendDepMovs: Map<number, DepositInflowEvent[]>,
   slugById: Map<number, string>
 ): AccountLine[] {
   const displayName = "aportes propios acum.";
   return top.map((t) => {
     if (!t.depositDataKey || t.account_id <= 0) return t;
-    if (!shouldAttachDisplayDepositSeries(t.account_id, depMovs, displayDepMovs, slugById)) {
+    if (
+      !shouldAttachDisplayDepositSeries(
+        t.account_id,
+        depMovs,
+        displayDepMovs,
+        dividendDepMovs,
+        slugById
+      )
+    ) {
       return t;
     }
     return {
@@ -432,8 +465,15 @@ function valuationRawClpForAccount(
   if (isMovementBalanceCashCategory(slugById?.get(accountId) ?? "")) {
     return checkingMovementBalanceClpAtCached(accountId, asOf);
   }
+  const slug = slugById?.get(accountId) ?? "";
+  if (isUsdCashKindSlug(slug)) {
+    return usdCashBalanceClpAt(accountId, asOf);
+  }
   if (accountUsesEquityMtm(accountId)) {
-    return computeEquityMtmClp(accountId, asOf);
+    const clp = computeEquityMtmClp(accountId, asOf);
+    if (clp != null) return clp;
+    if (equityChartZeroClpAtYmd(accountId, asOf)) return 0;
+    return null;
   }
   if (accountUsesCryptoMtm(accountId)) {
     const mtm = computeCryptoMtmClp(accountId, asOf);
@@ -468,7 +508,7 @@ function augmentChartDatesForCreditCardAccounts(
   slugById: Map<number, string>
 ): string[] {
   const aug = new Set(dateStrs);
-  const ccIds = allIds.filter((id) => slugById.get(id) === "credit_card");
+  const ccIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "credit_card");
   const closesByAccount = ccLedgerStatementClosingPointsClpForAccounts(ccIds);
   for (const closes of closesByAccount.values()) {
     for (const p of closes) {
@@ -740,7 +780,15 @@ function patchEquityLiveLastPoint(
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
   if (!accountUsesEquityMtm(accountId)) return points;
-  return patchMtmDisplayLastPoint(accountId, unit, points, computeEquityMtmClpDisplaySync(accountId));
+  const mark = computeEquityMtmClpDisplaySync(accountId);
+  if (mark != null) {
+    return patchMtmDisplayLastPoint(accountId, unit, points, mark);
+  }
+  const today = chileCalendarTodayYmd();
+  if (equityChartZeroClpAtYmd(accountId, today)) {
+    return patchMtmDisplayLastPoint(accountId, unit, points, { value_clp: 0, as_of_date: today });
+  }
+  return points;
 }
 
 /** Rightmost chart point for crypto = 24/7 live when allowed, else display-session EOD. */
@@ -802,12 +850,17 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const chartMetaById = accountChartMetaById(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
+  const dividendDepMovs = loadDividendReinvestedInflowEvents(allIds);
   if (dateStrs.length > 0) {
     const minD = dateStrs[0]!;
     const maxD = dateStrs[dateStrs.length - 1]!;
     const aug = new Set(dateStrs);
     for (const id of allIds) {
-      for (const ev of [...(depMovs.get(id) ?? []), ...(displayDepMovs.get(id) ?? [])]) {
+      for (const ev of [
+        ...(depMovs.get(id) ?? []),
+        ...(displayDepMovs.get(id) ?? []),
+        ...(dividendDepMovs.get(id) ?? []),
+      ]) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.occurred_on)) continue;
         const me = monthEndUtcYmd(monthKeyFromYmd(ev.occurred_on));
         if (me >= minD && me <= maxD) aug.add(me);
@@ -818,7 +871,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   dateStrs = augmentChartDatesForCreditCardAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
-  const propertyAccountIds = allIds.filter((id) => slugById.get(id) === "property");
+  const propertyAccountIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "property");
   const propertyDeptoSheets =
     propertyAccountIds.length === 1
       ? (() => {
@@ -842,6 +895,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     attachDepositSeriesKeys(top, depMovs, merge, slugById),
     depMovs,
     displayDepMovs,
+    dividendDepMovs,
     slugById
   );
   const depClpByAccAndDate = new Map<number, Map<string, number>>();
@@ -853,14 +907,17 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   for (const id of allIds) {
     const movs = depMovs.get(id) ?? [];
     const displayMovs = displayDepMovs.get(id) ?? [];
-    depClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, movs));
+    const chartDepMovs = accountUsesEquityMtm(id)
+      ? equityCostBasisChartInflowEvents(displayMovs, dividendDepMovs.get(id) ?? [])
+      : movs;
+    depClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, chartDepMovs));
     depDisplayClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, displayMovs));
     if (unit === "uf") {
-      depUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, movs));
+      depUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, chartDepMovs));
       depDisplayUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, displayMovs));
     }
     if (unit === "usd") {
-      depUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, movs));
+      depUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, chartDepMovs));
       depDisplayUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, displayMovs));
     }
   }
@@ -905,13 +962,13 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const trailingChartDate = dateStrs.length > 0 ? dateStrs[dateStrs.length - 1]! : "";
   const todayYmd = chileCalendarTodayYmd();
   const ccCloseByAccAndDate = new Map<number, Map<string, number>>();
-  const ccIds = allIds.filter((id) => slugById.get(id) === "credit_card");
+  const ccIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "credit_card");
   for (const [id, closes] of ccLedgerStatementClosingPointsClpForAccounts(ccIds)) {
     ccCloseByAccAndDate.set(id, new Map(closes.map((p) => [p.as_of_date, p.value_clp])));
   }
 
   const mtgCloseByAccAndDate = new Map<number, Map<string, number>>();
-  const mortgageChartIds = allIds.filter((id) => slugById.get(id) === "mortgage");
+  const mortgageChartIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "mortgage");
   if (mortgageChartIds.length > 0 && dateStrs.length > 0) {
     const ledger = loadDeptoDividendosSheetLedgerFromDb();
     if (ledger.length > 0) {
@@ -931,15 +988,16 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         continue;
       const aid = t.account_id;
       let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
-      if (slugById.get(aid) === "credit_card") {
+      const aidKind = bucketKindFromSlugMap(slugById, aid);
+      if (aidKind === "credit_card") {
         const ccClose = ccCloseByAccAndDate.get(aid)?.get(d);
         if (ccClose != null && Number.isFinite(ccClose)) raw = ccClose;
       }
-      if (slugById.get(aid) === "mortgage") {
+      if (aidKind === "mortgage") {
         const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
         if (mtgClose != null && Number.isFinite(mtgClose)) raw = mtgClose;
       }
-      if (slugById.get(aid) === "afp") {
+      if (aidKind === "afp") {
         raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
       }
       const chartMeta = chartMetaById.get(aid);
@@ -953,7 +1011,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
           useLiveAfpOnDate
         );
       }
-      if (propertyAccountIds.length === 1 && slugById.get(aid) === "property") {
+      if (propertyAccountIds.length === 1 && aidKind === "property") {
         const fromDepto = propertyDeptoCloseByDate.get(d);
         const keepBookOnTrailing = d === todayYmd || d === trailingChartDate;
         if (fromDepto != null && Number.isFinite(fromDepto) && !keepBookOnTrailing) {
@@ -1096,7 +1154,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         if (
           unit === "clp" &&
           propertyAccountIds.length === 1 &&
-          slugById.get(aid) === "property"
+          bucketKindFromSlugMap(slugById, aid) === "property"
         ) {
           const fromSheet = propertyDeptoPagoAcumByDate.get(d);
           if (fromSheet != null && Number.isFinite(fromSheet)) depPlot = fromSheet;
@@ -1127,7 +1185,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       if (
         unit === "clp" &&
         propertyAccountIds.length === 1 &&
-        slugById.get(aid) === "property"
+        bucketKindFromSlugMap(slugById, aid) === "property"
       ) {
         const fromSheet = propertyDeptoPagoAcumByDate.get(d);
         if (fromSheet != null && Number.isFinite(fromSheet)) displayPlot = fromSheet;
@@ -1657,7 +1715,6 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
 import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
 export type { GroupTabAccountRow };
 
-import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import {
   CASH_SAVINGS_BUCKET,
   CHECKING_ACCOUNTS_BUCKET,
@@ -1852,7 +1909,7 @@ function getGroupValuationTimeseriesInnerUncached(
     );
   }
   if (groupSlug === "real_estate") {
-    const propertyRows = rows.filter((x) => x.bucket_slug === "property");
+    const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");
     if (propertyRows.length === 1 && accounts_in_group.points.length > 0) {
       const ledger = loadDeptoDividendosSheetLedgerFromDb();
       if (ledger.length > 0) {
@@ -1953,8 +2010,9 @@ export function getAccountValuationTimeseries(
   let accounts = buildPointsForAccounts(top, [], unit, undefined);
 
   const bucketSlug = bucketSlugForAccountId(accountId);
+  const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : null;
 
-  if (bucketSlug === "mortgage" && accounts.points.length > 0) {
+  if (bucketKind === "mortgage" && accounts.points.length > 0) {
     const ledger = loadDeptoDividendosSheetLedgerFromDb();
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
@@ -1973,7 +2031,7 @@ export function getAccountValuationTimeseries(
     }
   }
 
-  if (bucketSlug === "credit_card" && accounts.points.length > 0) {
+  if (bucketKind === "credit_card" && accounts.points.length > 0) {
     if (ccInstallmentLedgerRowCount(accountId) > 0) {
       const ledgerCloses = ccLedgerStatementClosingPointsClp(accountId);
       if (ledgerCloses?.length) {
@@ -2005,7 +2063,7 @@ export function getAccountValuationTimeseries(
     }
   }
 
-  if (bucketSlug === "property" && accounts.points.length > 0) {
+  if (bucketKind === "property" && accounts.points.length > 0) {
     const ledger = loadDeptoDividendosSheetLedgerFromDb();
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
@@ -2036,8 +2094,7 @@ export function getAccountValuationTimeseries(
 
   if (accounts.points.length > 0) {
     let points = accounts.points;
-    const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : null;
-    if (bucketSlug === "afp") {
+    if (bucketKind === "afp") {
       points = patchAfpLiveLastPoint(row.account_id, unit, points);
     } else if (bucketKind === "property" || bucketKind === "mortgage") {
       points = patchDeptoLiveLastPoint(row.account_id, bucketKind, unit, points);

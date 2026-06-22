@@ -21,15 +21,33 @@ import {
 } from "./accountDeposits.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import { accountRowForId } from "./accountRowForMovement.js";
+import { bookLedgerEditSchemaForAccount } from "./accountBookLedgerEdit.js";
+import {
+  commitMortgagePayment,
+  mortgagePaymentCreateSchemaForAccount,
+  parseMortgagePaymentBody,
+  previewMortgagePayment,
+} from "./mortgagePaymentCreate.js";
 import { movementCreateSchemaForAccount, validateMovementCreate } from "./movementUnitsPolicy.js";
+import { listAccountMovementsForApi } from "./accountMovementsApi.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import {
+  equityReturnSnapshot,
+  pocketDepositsClpForAccount,
+  totalDividendsReinvestedClpForAccount,
+} from "./equityDividendReinvested.js";
 import { accountUsesCryptoMtm } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
+import { syncEquityEodFromYahoo } from "./equityEodSync.js";
 import {
   createPanelStockAccount,
   type PanelStockAccountCreateBody,
 } from "./createPanelStockAccount.js";
+import {
+  createPanelUsdCashAccount,
+  type PanelUsdCashAccountCreateBody,
+} from "./createPanelUsdCashAccount.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
@@ -45,6 +63,7 @@ import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { buildFxCoverage } from "./fxCoverage.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "./entityColors.js";
+import { updateAccountExcludeFromGroupTotals } from "./accountExcludeFromGroupTotals.js";
 import { accountBucketKindSlug, accountKindSlugForAccountId, bucketSlugForAccountId } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
@@ -53,7 +72,11 @@ import {
   creditCardLiabilityLinkRowsForCashCard,
   linkedCreditCardClpForCashCardAsOf,
 } from "./liabilityTree.js";
-import { getPortfolioTreeForCharts, getSidebarNavPayload } from "./navTree.js";
+import {
+  getNetWorthNavGroupNode,
+  getPortfolioTreeForCharts,
+  getSidebarNavPayload,
+} from "./navTree.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
@@ -207,16 +230,9 @@ function positionSnapshotFromMeta(
   categorySlug: string | null | undefined,
   meta: AccountPositionMeta | null,
   deposits_clp: number,
-  latest: { value_clp: number; as_of_date: string } | null | undefined
-): {
-  ticker: string;
-  units_kind: "shares" | "coin";
-  units: number | null;
-  deposited_clp: number;
-  value_clp: number | null;
-  value_as_of: string | null;
-  value_per_unit_clp: number | null;
-} | null {
+  latest: { value_clp: number; as_of_date: string } | null | undefined,
+  accountId?: number
+): DashboardAccountStats["position"] {
   if (meta == null) return null;
   const afp = categorySlug === "afp";
   const crypto = categorySlug === "bitcoin" || categorySlug === "eth";
@@ -225,10 +241,9 @@ function positionSnapshotFromMeta(
   const ovc = meta.afp_override_value_clp;
   const mtmMark =
     (afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0));
-  const afpMark = mtmMark;
-  const value_clp = afpMark ? ovc : v != null && Number.isFinite(v) ? v : null;
+  const value_clp = mtmMark ? ovc : v != null && Number.isFinite(v) ? v : null;
   const value_as_of =
-    afpMark
+    mtmMark
       ? meta.afp_override_value_as_of ?? null
       : latest?.as_of_date ?? null;
   const value_per_unit_clp =
@@ -237,6 +252,8 @@ function positionSnapshotFromMeta(
       : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
         ? v / units
         : null;
+  const equityReturns =
+    accountId != null ? equityReturnSnapshot(accountId, deposits_clp, value_clp) : null;
   return {
     ticker: meta.ticker,
     units_kind: meta.units_kind,
@@ -245,6 +262,7 @@ function positionSnapshotFromMeta(
     value_clp,
     value_as_of,
     value_per_unit_clp,
+    ...(equityReturns ?? {}),
   };
 }
 
@@ -357,6 +375,11 @@ app.get("/api/meta/sidebar-nav", (_req, res) => {
   res.json(getSidebarNavPayload());
 });
 
+/** Control panel account tree — all portfolio-linked accounts (includes chart-inactive). */
+app.get("/api/meta/panel-net-worth-tree", (_req, res) => {
+  res.json({ net_worth: getNetWorthNavGroupNode({ includeChartInactiveAccounts: true }) });
+});
+
 /** Market instruments for rates charts and marquee configuration. */
 app.get("/api/meta/market-display-series", (_req, res) => {
   res.json({ series: listMarketDisplaySeries() });
@@ -430,11 +453,22 @@ app.get("/api/accounts", async (req, res) => {
   res.json({ accounts: rows });
 });
 
-app.post("/api/accounts", (req, res) => {
+app.post("/api/accounts", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (body.account != null && typeof body.account === "object") {
+    const acc = body.account as Record<string, unknown>;
     try {
-      const result = createPanelStockAccount(body as PanelStockAccountCreateBody);
+      if (acc.kind === "usd_cash") {
+        const result = createPanelUsdCashAccount(body as PanelUsdCashAccountCreateBody);
+        res.status(201).json(result);
+        return;
+      }
+      const stockBody = body as PanelStockAccountCreateBody;
+      const result = createPanelStockAccount(stockBody);
+      const ticker = stockBody.account.ticker?.trim().toUpperCase();
+      if (ticker) {
+        await syncEquityEodFromYahoo([ticker], { force: true });
+      }
       res.status(201).json(result);
     } catch (e) {
       const err = e as Error & { status?: number };
@@ -505,6 +539,28 @@ app.patch("/api/accounts/:id/color", (req, res) => {
       return;
     }
     res.status(400).json({ error: body.color_rgb === null ? "invalid request" : "invalid color_rgb" });
+    return;
+  }
+  res.json(updated);
+});
+
+app.patch("/api/accounts/:id/exclude-from-group-totals", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const body = req.body as { exclude_from_group_totals?: unknown };
+  const updated = updateAccountExcludeFromGroupTotals(id, body.exclude_from_group_totals);
+  if (!updated) {
+    const exists = db.prepare(`SELECT 1 AS o FROM accounts WHERE id = ?`).get(id) as
+      | { o: number }
+      | undefined;
+    if (!exists) {
+      res.status(404).json({ error: "account not found" });
+      return;
+    }
+    res.status(400).json({ error: "exclude_from_group_totals must be boolean" });
     return;
   }
   res.json(updated);
@@ -723,7 +779,8 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
       .get(bucketSlug, NOTE_STOCKS_LEGACY) as { c: number }
   ).c;
   const accountRow = accountRowForId(id);
-  const deposits_clp = totalDepositsClpForAccount(id);
+  const deposits_clp = pocketDepositsClpForAccount(id);
+  const deposits_full_clp = totalDepositsClpForAccount(id);
   let latest = await latestValuationDisplayForAccount(id, bucketSlug || null, {
     notes: metaRow?.account_notes ?? null,
     name: metaRow?.account_name ?? null,
@@ -740,7 +797,13 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
         accountName: metaRow.account_name,
       })
     : null;
-  const position = positionSnapshotFromMeta(bucketSlug || null, positionMeta, deposits_clp, latest ?? undefined);
+  const position = positionSnapshotFromMeta(
+    bucketSlug || null,
+    positionMeta,
+    deposits_clp,
+    latest ?? undefined,
+    id
+  );
   let latest_valuation_clp = latest?.value_clp ?? null;
   let latest_valuation_date = latest?.as_of_date ?? null;
   if (
@@ -760,52 +823,24 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
     group_label: metaRow?.bucket_label ?? null,
     group_peer_count,
     deposits_clp,
+    deposits_full_clp: accountUsesEquityMtm(id) ? deposits_full_clp : undefined,
+    dividends_reinvested_clp: accountUsesEquityMtm(id)
+      ? totalDividendsReinvestedClpForAccount(id)
+      : undefined,
     withdrawals_clp,
     latest_valuation_clp,
     latest_valuation_date,
     position,
     movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
+    book_ledger_edit: bookLedgerEditSchemaForAccount(id),
+    mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(id),
   });
 });
 
 app.get("/api/accounts/:id/movements", (req, res) => {
   const id = operationalAccountIdFromReq(req);
-  const bucketSlug = bucketSlugForAccountId(id);
-  let rows = db
-    .prepare(
-      `SELECT id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker
-       FROM movements WHERE account_id = ? ORDER BY occurred_on DESC, id DESC`
-    )
-    .all(id) as {
-      id: number;
-      amount_clp: number;
-      occurred_on: string;
-      note: string | null;
-      units_delta: number | null;
-      flow_kind: string | null;
-      amount_usd: number | null;
-      ticker: string | null;
-    }[];
-  if (bucketSlug === "mortgage") {
-    rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
-  }
-  res.json({
-    movements: rows.map((r) => {
-      const flow_type = movementFlowTypeFromRow({
-        note: r.note,
-        amount_clp: r.amount_clp,
-        flow_kind: r.flow_kind,
-        accountId: id,
-        movementId: r.id,
-        occurred_on: r.occurred_on,
-      });
-      return {
-        ...r,
-        flow_type,
-        flow_type_label: movementFlowTypeLabel(flow_type),
-      };
-    }),
-  });
+  const rows = listAccountMovementsForApi(id);
+  res.json({ movements: rows });
 });
 
 /** Inmuebles: dividendos sheet snapshot from SQLite (`depto_dividendos_sheet_rows`, filled at import:excel). */
@@ -842,6 +877,28 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
     meta: null,
     rows: [] as unknown[],
   });
+});
+
+app.post("/api/accounts/:id/mortgage-payments/preview", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  try {
+    const input = parseMortgagePaymentBody(req.body as Record<string, unknown>);
+    const preview = previewMortgagePayment(id, input);
+    res.json(preview);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.post("/api/accounts/:id/mortgage-payments", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  try {
+    const input = parseMortgagePaymentBody(req.body as Record<string, unknown>);
+    const result = commitMortgagePayment(id, input);
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
 });
 
 /** Tarjeta de crédito: cupos desde SQLite (`cc_installment_*` o estados PDF); sin lectura runtime del CSV. */
@@ -1111,9 +1168,40 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     res.status(404).json({ error: "Account not found." });
     return;
   }
-  const validated = validateMovementCreate(account, req.body as Record<string, unknown>);
+  const validated = validateMovementCreate(account, req.body as Record<string, unknown>, accountId);
   if (!validated.ok) {
     res.status(validated.status).json({ error: validated.error });
+    return;
+  }
+  if (validated.mode === "transfer") {
+    const r = db
+      .prepare(
+        `INSERT INTO movements (
+           account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+           units_delta, flow_kind, amount_usd, ticker
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        validated.from_account_id,
+        validated.to_account_id,
+        validated.amount_clp,
+        validated.occurred_on,
+        validated.note,
+        validated.units_delta,
+        validated.flow_kind,
+        validated.amount_usd,
+        validated.ticker
+      );
+    const id = Number(r.lastInsertRowid);
+    invalidateAggregationForAccountDate(validated.from_account_id, validated.occurred_on);
+    invalidateAggregationForAccountDate(validated.to_account_id, validated.occurred_on);
+    res.status(201).json({
+      id,
+      from_account_id: validated.from_account_id,
+      to_account_id: validated.to_account_id,
+      units_delta: validated.units_delta,
+      flow_kind: validated.flow_kind,
+    });
     return;
   }
   if (validated.mode === "brokerage") {
