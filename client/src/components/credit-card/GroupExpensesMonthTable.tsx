@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
+import { flowPeriodLabel, formatFlowMoney, type FlowChartGranularity } from "../../flowsDisplay";
+import type { DisplayUnit } from "../../queries/keys";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow, FlowCcExpenseMonthRow } from "../../types";
 import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
 import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
@@ -20,13 +21,14 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
-import { formatYmEs } from "../../pages/accountDetail/shared";
 import linkStyles from "../../pages/accountDetail/CreditCardFacturacionesTable.module.css";
 
 function GroupExpensesMonthMobileCard({
   row,
   labels,
   onOpen,
+  displayUnit,
+  periodGranularity,
 }: {
   row: FlowCcExpenseMonthRow;
   labels: {
@@ -36,22 +38,32 @@ function GroupExpensesMonthMobileCard({
     lineCount: string;
   };
   onOpen: (row: FlowCcExpenseMonthRow) => void;
+  displayUnit: DisplayUnit;
+  periodGranularity: FlowChartGranularity;
 }) {
   const title = (
     <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
-      {row.as_of_date} ({formatYmEs(row.period_month)})
+      {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
     </button>
   );
 
   return (
     <TableMobileCard title={title}>
       <TableMobileCardSection>
-        <TableMobileCardRow label={labels.gastos} value={formatClp(row.gastos_mes_clp)} />
+        <TableMobileCardRow
+          label={labels.gastos}
+          value={formatFlowMoney(row.gastos_mes_clp, displayUnit)}
+        />
         <TableMobileCardRow
           label={labels.gastosReal}
-          value={<span className="muted">{formatClp(row.gastos_real_mes_clp)}</span>}
+          value={
+            <span className="muted">{formatFlowMoney(row.gastos_real_mes_clp, displayUnit)}</span>
+          }
         />
-        <TableMobileCardRow label={labels.cumulative} value={formatClp(row.gastos_acumulado_clp)} />
+        <TableMobileCardRow
+          label={labels.cumulative}
+          value={formatFlowMoney(row.gastos_acumulado_clp, displayUnit)}
+        />
         <TableMobileCardRow
           label={labels.lineCount}
           value={<span className="muted">{row.line_count}</span>}
@@ -68,6 +80,8 @@ export function GroupExpensesMonthTable({
   bigGroups = [],
   installmentMode,
   collapsedVisibleRows = 12,
+  displayUnit = "clp",
+  periodGranularity = "month",
 }: {
   rows: readonly FlowCcExpenseMonthRow[];
   lines: readonly FlowCcExpenseLineRow[];
@@ -75,6 +89,8 @@ export function GroupExpensesMonthTable({
   bigGroups?: readonly CcExpenseBigGroupDto[];
   installmentMode: CcInstallmentGastosMode;
   collapsedVisibleRows?: number;
+  displayUnit?: DisplayUnit;
+  periodGranularity?: FlowChartGranularity;
 }) {
   const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState(false);
@@ -192,15 +208,27 @@ export function GroupExpensesMonthTable({
                     className={linkStyles.dateLink}
                     onClick={() => openMonth(row)}
                   >
-                    {row.as_of_date} ({formatYmEs(row.period_month)})
+                    {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
                   </button>
                 </td>
-                <td className="mono desktop-only">{formatClp(row.gastos_mes_clp)}</td>
-                <td className="mono muted desktop-only">{formatClp(row.gastos_real_mes_clp)}</td>
-                <td className="mono desktop-only">{formatClp(row.gastos_acumulado_clp)}</td>
+                <td className="mono desktop-only">
+                  {formatFlowMoney(row.gastos_mes_clp, displayUnit)}
+                </td>
+                <td className="mono muted desktop-only">
+                  {formatFlowMoney(row.gastos_real_mes_clp, displayUnit)}
+                </td>
+                <td className="mono desktop-only">
+                  {formatFlowMoney(row.gastos_acumulado_clp, displayUnit)}
+                </td>
                 <td className="mono muted desktop-only">{row.line_count}</td>
                 <td className="mobile-only">
-                  <GroupExpensesMonthMobileCard row={row} labels={mobileLabels} onOpen={openMonth} />
+                  <GroupExpensesMonthMobileCard
+                    row={row}
+                    labels={mobileLabels}
+                    onOpen={openMonth}
+                    displayUnit={displayUnit}
+                    periodGranularity={periodGranularity}
+                  />
                 </td>
               </tr>
             ))}
@@ -221,7 +249,9 @@ export function GroupExpensesMonthTable({
           }
           title={
             selected
-              ? t("expenses.creditCard.monthModalTitle", { month: formatYmEs(selected.period_month) })
+              ? t("expenses.creditCard.monthModalTitle", {
+                  month: flowPeriodLabel(selected.period_month, periodGranularity),
+                })
               : ""
           }
           subtitle={
@@ -229,13 +259,16 @@ export function GroupExpensesMonthTable({
               <>
                 <span className="mono">{selected.as_of_date}</span>
                 {" · "}
-                {t("expenses.creditCard.colMonthExpense")}: {formatClp(gastosSum)}
+                {t("expenses.creditCard.colMonthExpense")}:{" "}
+                {formatFlowMoney(selected.gastos_mes_clp, displayUnit)}
                 {" · "}
-                {t("expenses.creditCard.colMonthExpenseReal")}: {formatClp(selected.gastos_real_mes_clp)}
+                {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
+                {formatFlowMoney(selected.gastos_real_mes_clp, displayUnit)}
                 {selected.abonos_mes_clp !== 0 ? (
                   <>
                     {" · "}
-                    {t("expenses.creditCard.modalSectionAbonos")}: {formatClp(selected.abonos_mes_clp)}
+                    {t("expenses.creditCard.modalSectionAbonos")}:{" "}
+                    {formatFlowMoney(selected.abonos_mes_clp, displayUnit)}
                   </>
                 ) : null}
               </>

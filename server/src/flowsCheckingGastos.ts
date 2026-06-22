@@ -34,6 +34,7 @@ import {
   type DepositMatchAllocation,
 } from "./ccExpenseDepositMatchNotes.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 
 /** Asset group for cash / efectivo accounts (internal transfer targets from checking). */
 export const CHECKING_GASTOS_CASH_GROUP = "cash_eqs";
@@ -218,9 +219,9 @@ export function assignCheckingGastosMovementCategory(opts: {
         for (const key of purchaseKeys) {
           delUniquePurchase.run(belong.account_id, key);
         }
-      }
-      for (const ruleKey of merchantRuleKeysMatchingLineMerchant(belong.account_id, merchantKey)) {
-        delMerchant.run(belong.account_id, ruleKey);
+        for (const ruleKey of merchantRuleKeysMatchingLineMerchant(belong.account_id, merchantKey)) {
+          delMerchant.run(belong.account_id, ruleKey);
+        }
       }
       return;
     }
@@ -273,9 +274,18 @@ const RESERVA_TRANSFER_DESC_RE =
 /** Wires to Fintual (investment funding — excluded from gastos list). */
 const FINTUAL_TRANSFER_DESC_RE = /FINTUAL\s+ADMINISTRADORA/i;
 
+/** Incoming checking abono from Fintual (capital return from net-worth accounts). */
+const FINTUAL_INCOMING_TRANSFER_RE = /\bFINTUAL\b/i;
+
+/** Buda.com crypto exchange wires into checking (sale proceeds, not salary / external income). */
+const BUDA_CRYPTO_EXCHANGE_TRANSFER_RE = /\bTRANSF\.?\s+.*\bBUDA\b/i;
+
+/** AFP 10% retiro proceeds wired into checking (not external income). */
+const AFP_CHECKING_INFLOW_DESC_RE = /\bABONO\s+10\s*%\s*AFP\b|\bANTI\s+PREV\s+AFP\b/i;
+
 /** Vista ↔ corriente internet traspaso (both directions on cartola). */
 export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE =
-  /TRASPASO\s+INTERNET\s+(?:A\s+CTA\.?\s*CTE?\.?|DESDE\s+CTA\.?\s*CT\.?)/i;
+  /TRASPASO\s+INTERNET\s+(?:A\s+CTA\.?\s*CTE?\.?|DESDE\s+CTA\.?\s*CT\.?|(?:DE|A)\s+CUENTA\s+VISTA)/i;
 
 /** Vista (or checking) outflow wiring money to cuenta corriente — always an internal move. */
 export const CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE =
@@ -684,7 +694,187 @@ export function isExcludedCheckingWithdrawal(description: string): boolean {
   return false;
 }
 
-/** Lump-sum fondo reserva pool may only offset reserva / Fintual wires, not unrelated spending. */
+/** Incoming cartola abono excluded by description (symmetric to {@link isExcludedCheckingWithdrawal}). */
+export function isExcludedCheckingInflow(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  if (!d) return true;
+  if (isDapReturnCreditDescription(d)) return true;
+  if (CHECKING_CORRIENTE_INTERNET_TRANSFER_RE.test(d)) return true;
+  if (INTERNAL_TRANSFER_RE.test(d)) return true;
+  if (OWN_SANTANDER_TRANSFER_RE.test(d)) return true;
+  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
+  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_INCOMING_TRANSFER_RE.test(d)) return true;
+  if (BUDA_CRYPTO_EXCHANGE_TRANSFER_RE.test(d)) return true;
+  if (AFP_CHECKING_INFLOW_DESC_RE.test(d)) return true;
+  return false;
+}
+
+/**
+ * DAP ABONADO / COBRO VVISTA credit that pairs with a Mercado Capitales cargo (product return, not income).
+ */
+export function creditIsReversingMercadoCapitalesCargo(
+  credit: CheckingCartolaCredit,
+  checkingWithdrawals: readonly CheckingCartolaWithdrawal[],
+  maxDayGap = DAP_ABONO_MAX_DAY_GAP
+): boolean {
+  const creditDesc = cartolaDescriptionFromNote(credit.note);
+  if (!isDapReturnCreditDescription(creditDesc)) return false;
+  const creditDoc = cartolaDocumentFromNote(credit.note);
+  const dapRef = dapReferenceFromDescription(creditDesc);
+  for (const withdrawal of checkingWithdrawals) {
+    const desc = cartolaDescriptionFromNote(withdrawal.note);
+    if (!isMercadoCapitalesCargoDescription(desc)) continue;
+    const doc = cartolaDocumentFromNote(withdrawal.note);
+    if (!doc) continue;
+    if (!cartolaDocsMatchForDapAbono(doc, creditDoc, dapRef)) continue;
+    const dayGap = signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on);
+    if (dayGap < 0 || dayGap > maxDayGap) continue;
+    if (!dapAbonoAmountMatchesCargo(withdrawal.amount_clp, credit.amount_clp, dayGap)) continue;
+    return true;
+  }
+  return false;
+}
+
+export type CheckingCartolaWithdrawalWithAccount = CheckingCartolaWithdrawal & { account_id: number };
+
+export function loadAllCheckingCartolaWithdrawals(): CheckingCartolaWithdrawalWithAccount[] {
+  const out: CheckingCartolaWithdrawalWithAccount[] = [];
+  for (const accountId of listMovementBalanceCashAccountIds()) {
+    for (const row of loadCheckingCartolaWithdrawals(accountId)) {
+      out.push({ ...row, account_id: accountId });
+    }
+  }
+  return out;
+}
+
+/** Abono that pairs with a sibling checking withdrawal classified as internal transfer. */
+export function checkingCreditMatchesInternalWithdrawal(
+  credit: { occurred_on: string; amount_clp: number; note: string | null },
+  creditAccountId: number,
+  checkingWithdrawals: readonly CheckingCartolaWithdrawalWithAccount[],
+  deposits: readonly DepositMatchCandidate[],
+  splittablePool: Map<string, number>,
+  maxDayGap = 3
+): boolean {
+  const want = Math.round(credit.amount_clp);
+  if (want <= 0) return false;
+  for (const row of checkingWithdrawals) {
+    if (Math.round(Math.abs(row.amount_clp)) !== want) continue;
+    if (daysBetweenYmd(credit.occurred_on, row.occurred_on) > maxDayGap) continue;
+    const wDesc = cartolaDescriptionFromNote(row.note);
+    const withdrawal = {
+      occurred_on: row.occurred_on,
+      amount_clp: row.amount_clp,
+      description: wDesc,
+    };
+    if (
+      withdrawalMatchesInternalCashTransfer(
+        withdrawal,
+        deposits,
+        maxDayGap,
+        splittablePool,
+        row.account_id
+      )
+    ) {
+      return true;
+    }
+    if (
+      row.account_id !== creditAccountId &&
+      isCheckingCorrienteVistaTraspasoOutflow(wDesc) &&
+      CHECKING_CORRIENTE_INTERNET_TRANSFER_RE.test(
+        stripCheckingBranchPrefix(cartolaDescriptionFromNote(credit.note)).trim()
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Negative capital events on net-worth accounts (withdrawals / returns toward checking). */
+export const NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP = 14;
+
+/** AFP retiro ledger rows often post days after the checking abono (bidirectional match window). */
+export const AFP_RETIRO_RETURN_MAX_DAY_GAP = 31;
+
+export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] {
+  const accounts = listDepositFlowAccounts().filter(
+    (a) => !isMovementBalanceCashCategory(a.category_slug)
+  );
+  const ids = accounts.map((a) => a.account_id);
+  const metaById = new Map(
+    accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
+  );
+  const byAccount = loadMergedDepositInflowEvents(ids);
+  const out: DepositMatchCandidate[] = [];
+  for (const [accountId, events] of byAccount) {
+    const meta = metaById.get(accountId);
+    if (!meta) continue;
+    for (const e of events) {
+      if (e.amt >= 0 || !Number.isFinite(e.amt)) continue;
+      out.push({
+        occurred_on: e.occurred_on,
+        amount_clp: Math.round(Math.abs(e.amt)),
+        account_id: accountId,
+        category_slug: meta.category_slug,
+        group_slug: meta.group_slug,
+      });
+    }
+  }
+  return out;
+}
+
+export function loadAfpRetiroOutflowCandidates(): DepositMatchCandidate[] {
+  return loadNetWorthCapitalOutflowCandidates().filter((c) => c.category_slug === "afp");
+}
+
+export function checkingCreditMatchesAfpRetiroReturn(
+  credit: { occurred_on: string; amount_clp: number },
+  afpOutflows: readonly DepositMatchCandidate[],
+  maxDayGap = AFP_RETIRO_RETURN_MAX_DAY_GAP
+): boolean {
+  const want = Math.round(credit.amount_clp);
+  if (want <= 0) return false;
+  for (const o of afpOutflows) {
+    if (Math.round(o.amount_clp) !== want) continue;
+    if (daysBetweenYmd(o.occurred_on, credit.occurred_on) > maxDayGap) continue;
+    return true;
+  }
+  return false;
+}
+
+/** @deprecated Use {@link loadNetWorthCapitalOutflowCandidates}. */
+export function loadInvestmentCapitalOutflowCandidates(): DepositMatchCandidate[] {
+  return loadNetWorthCapitalOutflowCandidates();
+}
+
+export function checkingCreditMatchesNetWorthCapitalReturn(
+  credit: { occurred_on: string; amount_clp: number },
+  outflows: readonly DepositMatchCandidate[],
+  maxDayGap = NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP
+): boolean {
+  const want = Math.round(credit.amount_clp);
+  if (want <= 0) return false;
+  for (const o of outflows) {
+    if (Math.round(o.amount_clp) !== want) continue;
+    const dayGap = signedDaysFromTo(o.occurred_on, credit.occurred_on);
+    if (dayGap < 0 || dayGap > maxDayGap) continue;
+    return true;
+  }
+  return false;
+}
+
+/** @deprecated Use {@link checkingCreditMatchesNetWorthCapitalReturn}. */
+export function checkingCreditMatchesInvestmentCapitalReturn(
+  credit: { occurred_on: string; amount_clp: number },
+  outflows: readonly DepositMatchCandidate[],
+  maxDayGap = NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP
+): boolean {
+  return checkingCreditMatchesNetWorthCapitalReturn(credit, outflows, maxDayGap);
+}
+
 export function withdrawalMayUseSplittableReservaPool(description: string): boolean {
   const d = description.trim();
   if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
@@ -1285,6 +1475,7 @@ export function buildCheckingGastosLines(opts?: {
       statement_date: "",
       amount_clp: amountClp,
       amount_usd: null,
+      amount_usd_at_expense: expenseGastosAmountUsdAtDate(amountClp, null, row.occurred_on),
       merchant: description || null,
       installment_flag: 0,
       nro_cuota_current: null,

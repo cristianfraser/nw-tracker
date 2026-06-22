@@ -1,24 +1,31 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useFlowsDeposits } from "../queries/hooks";
 import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
 import { Table } from "../components/ui/Table";
-import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
-import { formatClp } from "../format";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import {
+  flowChartGranularityFromMetricsPeriod,
+  formatFlowMoney,
+} from "../flowsDisplay";
 import { depositFlowCategoryLabel } from "../i18n";
 import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
 export function DepositsPage() {
-  const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsDeposits();
   const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    return granularity === "yearly" ? data.chart_yearly : data.chart_monthly;
-  }, [data, granularity]);
+    if (displayUnit === "usd") {
+      return chartGranularity === "year" ? data.chart_yearly_usd : data.chart_monthly_usd;
+    }
+    return chartGranularity === "year" ? data.chart_yearly : data.chart_monthly;
+  }, [chartGranularity, data, displayUnit]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -36,44 +43,27 @@ export function DepositsPage() {
         account “aportes” / chart deposit lines: movements plus brokerage CLP wires and withdrawals.
       </p>
 
-      <div className="chart-controls" style={{ marginBottom: "0.75rem" }}>
-        <span className="label-inline">Gráfico</span>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="deposits-granularity"
-            checked={granularity === "monthly"}
-            onChange={() => setGranularity("monthly")}
-          />
-          Mensual
-        </label>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="deposits-granularity"
-            checked={granularity === "yearly"}
-            onChange={() => setGranularity("yearly")}
-          />
-          Anual
-        </label>
-      </div>
-
       <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack" style={{ marginBottom: "1.5rem" }}>
         <DepositsByCategoryChart
           title="Aportes por categoría"
           points={chartPoints}
-          xAxisGranularity={granularity === "yearly" ? "year" : "month"}
+          xAxisGranularity={chartGranularity}
+          displayUnit={displayUnit}
         />
       </div>
 
       {CATEGORY_ORDER.map((cat) => {
         const block = data.by_category[cat];
+        const blockTotal =
+          displayUnit === "usd"
+            ? block.total_usd ?? 0
+            : block.total_clp;
         return (
           <section key={cat} style={{ marginBottom: "1.5rem" }}>
             <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
               {depositFlowCategoryLabel(cat)}
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
-                {formatClp(block.total_clp)}
+                {formatFlowMoney(blockTotal, displayUnit)}
               </span>
             </h3>
             <Table
@@ -96,16 +86,22 @@ export function DepositsPage() {
                   </td>
                 </tr>
               ) : (
-                block.rows.map((r, idx) => (
-                  <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
-                    <td className="mono">{r.occurred_on}</td>
-                    <td>{depositFlowCategoryLabel(r.category)}</td>
-                    <td>
-                      <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
-                    </td>
-                    <td className="mono">{formatClp(r.amount_clp)}</td>
-                  </tr>
-                ))
+                block.rows.map((r, idx) => {
+                  const amount =
+                    displayUnit === "usd"
+                      ? r.amount_usd ?? 0
+                      : r.amount_clp;
+                  return (
+                    <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
+                      <td className="mono">{r.occurred_on}</td>
+                      <td>{depositFlowCategoryLabel(r.category)}</td>
+                      <td>
+                        <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
+                      </td>
+                      <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
+                    </tr>
+                  );
+                })
               )}
             </Table>
           </section>

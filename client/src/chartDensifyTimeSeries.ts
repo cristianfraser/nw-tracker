@@ -81,6 +81,8 @@ export type DensifyCalendarOptions = {
   granularity: "month" | "year";
   /** Missing buckets: all numeric fields null (lines), or listed keys set to 0 (bars). */
   fillMissing?: "null_all" | { zeroKeys: readonly string[] };
+  /** Extend the right edge through this calendar day (month or year bucket), even with no data. */
+  extendThroughYmd?: string;
 };
 
 /**
@@ -124,7 +126,9 @@ export function densifyRecordsByCalendarPeriod<T extends ChartSparseRow>(
     const years = [...byYear.keys()].sort((a, b) => a - b);
     if (years.length === 0) return [...points];
     const y0 = years[0]!;
-    const y1 = years[years.length - 1]!;
+    let y1 = years[years.length - 1]!;
+    const extendYear = opts.extendThroughYmd ? yearFromYmd(opts.extendThroughYmd) : null;
+    if (extendYear != null && extendYear > y1) y1 = extendYear;
     const out: T[] = [];
     for (let y = y0; y <= y1; y++) {
       const hit = byYear.get(y);
@@ -148,7 +152,9 @@ export function densifyRecordsByCalendarPeriod<T extends ChartSparseRow>(
   const yms = [...byYm.keys()].sort(ymCompare);
   if (yms.length === 0) return [...points];
   const minYm = yms[0]!;
-  const maxYm = yms[yms.length - 1]!;
+  let maxYm = yms[yms.length - 1]!;
+  const extendYm = opts.extendThroughYmd ? ymFromYmd(opts.extendThroughYmd) : null;
+  if (extendYm && ymCompare(extendYm, maxYm) > 0) maxYm = extendYm;
   const expanded = expandYearMonthsInclusive(minYm, maxYm);
   const out: T[] = [];
   for (const ym of expanded) {

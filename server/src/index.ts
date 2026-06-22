@@ -164,6 +164,7 @@ import {
   setCcExpensePurchaseBigGroup,
 } from "./ccExpenseBigGroups.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   buildRealEstateExpensesPayload,
@@ -1462,12 +1463,7 @@ app.get("/api/flows/deposits", (_req, res) => {
 });
 
 app.get("/api/income", (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT id, amount_clp, received_on, source, note FROM income_entries ORDER BY received_on DESC, id DESC`
-    )
-    .all();
-  res.json({ income: rows });
+  res.json(buildFlowsCheckingIncomePayload());
 });
 
 app.post("/api/income", (req, res) => {

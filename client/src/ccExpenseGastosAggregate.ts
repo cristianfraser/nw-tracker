@@ -1,4 +1,5 @@
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth";
+import type { DisplayUnit } from "./queries/keys";
 import type {
   FlowCcExpenseCategoryChartPoint,
   FlowCcExpenseChartPoint,
@@ -12,12 +13,62 @@ import {
 } from "./ccExpensePeriodMonth";
 import { countsTowardGastosMes } from "./ccExpenseLineBuckets";
 
+export function expenseLineGastosAmount(line: FlowCcExpenseLineRow, unit: DisplayUnit): number {
+  if (unit === "usd") {
+    if (line.amount_usd_at_expense == null) {
+      throw new Error(
+        `missing amount_usd_at_expense for expense line ${line.source}:${line.statement_line_id}`
+      );
+    }
+    return line.amount_usd_at_expense;
+  }
+  return line.amount_clp;
+}
+
+export function rollupExpenseMonthRowsByYear(
+  rows: readonly FlowCcExpenseMonthRow[]
+): FlowCcExpenseMonthRow[] {
+  const byYear = new Map<string, Omit<FlowCcExpenseMonthRow, "gastos_acumulado_clp" | "gastos_real_acumulado_clp">>();
+  for (const row of rows) {
+    const year = row.period_month.slice(0, 4);
+    const cur = byYear.get(year);
+    if (!cur) {
+      byYear.set(year, {
+        period_month: `${year}-12`,
+        as_of_date: `${year}-12-31`,
+        gastos_mes_clp: row.gastos_mes_clp,
+        gastos_real_mes_clp: row.gastos_real_mes_clp,
+        abonos_mes_clp: row.abonos_mes_clp,
+        line_count: row.line_count,
+      });
+      continue;
+    }
+    cur.gastos_mes_clp += row.gastos_mes_clp;
+    cur.gastos_real_mes_clp += row.gastos_real_mes_clp;
+    cur.abonos_mes_clp += row.abonos_mes_clp;
+    cur.line_count += row.line_count;
+  }
+  let runningGastos = 0;
+  let runningGastosReal = 0;
+  return [...byYear.keys()].sort().map((year) => {
+    const row = byYear.get(year)!;
+    runningGastos += row.gastos_mes_clp;
+    runningGastosReal += row.gastos_real_mes_clp;
+    return {
+      ...row,
+      gastos_acumulado_clp: Math.round(runningGastos),
+      gastos_real_acumulado_clp: Math.round(runningGastosReal),
+    };
+  });
+}
+
 /** Keep in sync with server/src/flowsCreditCardExpenses.ts aggregateGastosFromLines. */
 export function aggregateGastosFromLines(
   lines: readonly FlowCcExpenseLineRow[],
   chartCategorySlugs: readonly string[],
   mode: CcInstallmentGastosMode = "split",
-  excludedBigGroupSlugs?: ReadonlySet<string>
+  excludedBigGroupSlugs?: ReadonlySet<string>,
+  unit: DisplayUnit = "clp"
 ): {
   by_month: FlowCcExpenseMonthRow[];
   chart_monthly: FlowCcExpenseChartPoint[];
@@ -43,7 +94,7 @@ export function aggregateGastosFromLines(
 
   for (const ln of lines) {
     const sumMonth = gastosSumMonthForLine(ln, mode);
-    const amount = ln.amount_clp;
+    const amount = expenseLineGastosAmount(ln, unit);
 
     if (
       ln.nota_credito_role === "annulled_purchase" ||
@@ -132,25 +183,39 @@ export function aggregateGastosFromLines(
   return { by_month, chart_monthly, chart_monthly_by_category };
 }
 
-export function computeExpensesTotalClp(
+export function computeExpensesTotal(
   lines: readonly FlowCcExpenseLineRow[],
-  mode: CcInstallmentGastosMode
-): { total_clp: number; total_real_clp: number } {
-  let total_clp = 0;
-  let total_real_clp = 0;
+  mode: CcInstallmentGastosMode,
+  unit: DisplayUnit = "clp"
+): { total: number; total_real: number } {
+  let total = 0;
+  let total_real = 0;
   for (const r of lines) {
+    const amount = expenseLineGastosAmount(r, unit);
     if (r.nota_credito_role === "annulled_purchase" || r.nota_credito_role === "matched_nota") {
       continue;
     }
     if (r.nota_credito_role === "unmatched_nota") {
-      total_clp += r.amount_clp;
-      if (r.amount_clp > 0) total_real_clp += r.amount_clp;
+      total += amount;
+      if (amount > 0) total_real += amount;
       continue;
     }
-    if (r.amount_clp > 0) {
-      if (countsTowardGastosMes(r, mode)) total_clp += r.amount_clp;
-      if (gastosSumMonthForLine(r, mode)) total_real_clp += r.amount_clp;
+    if (amount > 0) {
+      if (countsTowardGastosMes(r, mode)) total += amount;
+      if (gastosSumMonthForLine(r, mode)) total_real += amount;
     }
   }
-  return { total_clp: Math.round(total_clp), total_real_clp: Math.round(total_real_clp) };
+  return {
+    total: unit === "clp" ? Math.round(total) : total,
+    total_real: unit === "clp" ? Math.round(total_real) : total_real,
+  };
+}
+
+/** @deprecated Use computeExpensesTotal */
+export function computeExpensesTotalClp(
+  lines: readonly FlowCcExpenseLineRow[],
+  mode: CcInstallmentGastosMode
+): { total_clp: number; total_real_clp: number } {
+  const { total, total_real } = computeExpensesTotal(lines, mode, "clp");
+  return { total_clp: total, total_real_clp: total_real };
 }

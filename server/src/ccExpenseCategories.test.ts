@@ -364,13 +364,41 @@ describe("ccExpenseCategories", () => {
     }
   });
 
-  it("clear_category removes merchant and unique overrides", () => {
+  it("clear_category on unique purchase keeps Único and does not clear merchant rule", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
-    const allowed = new Set(listCreditCardMasterAccountIds());
-    const line = payload.lines.find(
-      (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
-    );
+    const line = payload.lines.find((ln) => {
+      if (ln.amount_clp <= 0 || !ln.merchant || ln.category_unique) return false;
+      const peers = payload.lines.filter(
+        (p) =>
+          p.statement_line_id !== ln.statement_line_id &&
+          p.account_id === ln.account_id &&
+          p.merchant_key === ln.merchant_key &&
+          p.amount_clp > 0 &&
+          !p.category_unique
+      );
+      return peers.length > 0;
+    });
     if (!line) return;
+
+    assignCcExpenseLineCategory({
+      statementLineId: line.statement_line_id,
+      unique: false,
+      categorySlug: "supermarket",
+    });
+
+    const afterMerchant = buildFlowsCreditCardExpensesPayload();
+    const peers = afterMerchant.lines.filter(
+      (ln) =>
+        ln.statement_line_id !== line.statement_line_id &&
+        ln.account_id === line.account_id &&
+        ln.merchant_key === line.merchant_key &&
+        ln.amount_clp > 0 &&
+        !ln.category_unique
+    );
+    expect(peers.length).toBeGreaterThan(0);
+    for (const peer of peers) {
+      expect(peer.category_slug).toBe("supermarket");
+    }
 
     assignCcExpenseLineCategory({
       statementLineId: line.statement_line_id,
@@ -384,12 +412,32 @@ describe("ccExpenseCategories", () => {
       clearCategory: true,
     });
     expect(cleared.category_slug).toBe("unclassified");
-    expect(cleared.unique).toBe(false);
+    expect(cleared.unique).toBe(true);
 
     const after = buildFlowsCreditCardExpensesPayload();
     const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
-    expect(updated?.category_slug).toBe("unclassified");
-    expect(updated?.category_unique).toBe(false);
+    expect(updated?.category_unique).toBe(true);
+    const { merchantRules } = loadCcExpenseCategoryMaps([line.account_id]);
+    const merchantSlug = resolveMerchantCategorySlug(
+      line.account_id,
+      line.merchant_key,
+      merchantRules
+    );
+    expect(updated?.category_slug).toBe(merchantSlug ?? "unclassified");
+
+    for (const peer of peers) {
+      const peerAfter = after.lines.find((ln) => ln.statement_line_id === peer.statement_line_id);
+      expect(peerAfter?.category_slug).toBe("supermarket");
+    }
+  });
+
+  it("clear_category on non-unique purchase removes merchant rule", () => {
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const allowed = new Set(listCreditCardMasterAccountIds());
+    const line = payload.lines.find(
+      (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
+    );
+    if (!line) return;
 
     const peers = payload.lines.filter(
       (ln) =>
