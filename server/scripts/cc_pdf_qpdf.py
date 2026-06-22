@@ -16,12 +16,20 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+PDF_DEPS = SCRIPT_DIR / ".pdf_deps"
+if PDF_DEPS.is_dir() and str(PDF_DEPS) not in sys.path:
+    sys.path.insert(0, str(PDF_DEPS))
+
+from cc_pdf_ocr import extract_cc_pdf_ocr_flat, peek_pdf_text_pdftotext
+
+REPO_ROOT = SCRIPT_DIR.parent.parent
 
 SANTANDER_CC_STATEMENT_PDF_PASSWORD_ENV = "SANTANDER_CC_STATEMENT_PDF_PASSWORD"
 LIDER_CC_STATEMENT_PDF_PASSWORD_ENV = "LIDER_CC_STATEMENT_PDF_PASSWORD"
@@ -234,13 +242,12 @@ def qpdf_available() -> bool:
 
 
 def peek_pdf_text(path: Path) -> str:
+    text = peek_pdf_text_pdftotext(path).strip()
+    if text:
+        return text
     try:
-        return subprocess.check_output(
-            ["pdftotext", str(path), "-"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        return extract_cc_pdf_ocr_flat(path)
+    except Exception:
         return ""
 
 
@@ -427,7 +434,13 @@ def ensure_readable_for_parse(
         return f"repair failed ({detail})"
     text2 = peek_pdf_text(path)
     if is_readable_cc_statement_text(text2):
-        return f"repaired ({msg})"
+        return None
+    try:
+        ocr = extract_cc_pdf_ocr_flat(path)
+        if is_readable_cc_statement_text(ocr):
+            return None
+    except Exception:
+        pass
     lider = is_readable_bci_lider_statement_text(text2)
     bank = "Lider/BCI" if lider else "Santander"
     return (
@@ -446,6 +459,8 @@ def repair_unreadable_pdfs_in_dir(
     results: List[Tuple[str, str]] = []
     for path in sorted(directory.rglob("*.pdf")):
         if "unreadable" in path.parts:
+            continue
+        if "duplicates" in path.parts:
             continue
         if path.stem.endswith("-CORRUPT"):
             continue

@@ -85,7 +85,14 @@ def main() -> int:
         notes = repair_unreadable_pdfs_in_dir(directory)
         for name, note in notes:
             print(f"# qpdf\t{name}\t{note}")
+            if not note:
+                continue
             if "still unreadable" in note or "repair failed" in note:
+                path = directory / name
+                if not path.is_file():
+                    path = next(directory.rglob(name), None)
+                if path and is_readable_cc_statement_text(peek_pdf_text(path)):
+                    continue
                 exit_code = 1
 
     return exit_code

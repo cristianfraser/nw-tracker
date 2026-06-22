@@ -356,6 +356,7 @@ export function buildInstallmentPurchaseTotalLines(
         lineOverrides,
         merchantRules,
         uniquePurchases,
+        uniquePurchaseModeKeys,
       });
 
     const categoryUnique =

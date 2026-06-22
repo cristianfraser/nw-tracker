@@ -40,7 +40,7 @@ export function RealEstateExpensesPage() {
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
   const { data, error } = useRealEstateExpenses();
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
-  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];

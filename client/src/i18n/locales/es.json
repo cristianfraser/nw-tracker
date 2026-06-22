@@ -16,6 +16,10 @@
     "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en US$"
   },
   "rates": {
+    "pageTitle": "Tipos de cambio",
+    "subnavAria": "Secciones de tipos de cambio",
+    "tabFx": "Divisas",
+    "tabTickers": "Instrumentos",
     "instrumentDisplayHint": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD.",
     "recentColDate": "Fecha",
     "recentColValue": "Valor",
@@ -635,7 +639,13 @@
   },
   "common": {
     "loading": "Cargando…",
-    "loadFailed": "Error al cargar"
+    "loadFailed": "Error al cargar",
+    "loadFailedTables": "Error al cargar las tablas",
+    "backToDashboard": "← Panel"
+  },
+  "flows": {
+    "layoutTitle": "Flujos",
+    "subnavAria": "Secciones de flujos"
   },
   "income": {
     "intro": "Ingresos desde abonos de cartola en cuentas corrientes y cuenta vista, excluyendo traspasos internos y depósitos a inversiones. También puedes agregar filas manuales vía POST /api/income.",
@@ -667,6 +677,18 @@
     "monthlyTotalsTitle": "Totales mensuales (cartola)",
     "sectionCartola": "Cartola",
     "sectionManual": "Manual"
+  },
+  "deposits": {
+    "intro": "Capital externo neto por categoría (depósitos positivos, retiros negativos). Misma línea de tiempo que los «aportes» en cuentas y gráficos: movimientos más wires CLP y retiros de brokerage.",
+    "totalLabel": "Total histórico:",
+    "chartTitle": "Aportes por categoría",
+    "chartEmpty": "Sin depósitos en este período.",
+    "chartTotal": "Total",
+    "colDate": "Fecha",
+    "colCategory": "Categoría",
+    "colAccount": "Cuenta",
+    "colAmount": "Monto",
+    "emptyCategory": "Sin depósitos en esta categoría."
   },
   "expenses": {
     "realEstateIntro": "Cuentas de servicios por departamento vinculadas a gastos reales (tarjeta o cuenta corriente). Las filas del CSV definen mes y tipo de boleta; el cargo puede coincidir con ese mes o aparecer uno o dos meses después. El monto en gráficos usa el gasto vinculado o, si falta, el valor esperado del CSV.",

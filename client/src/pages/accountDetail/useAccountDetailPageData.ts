@@ -16,6 +16,7 @@ import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dash
 import { filterAccountFlowsPersonalOnly, accountMovementsToFlowRows } from "../../accountFlows";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
+import i18n from "../../i18n";
 import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
 import type { EntityColorTarget } from "../../entityColor";
 import {
@@ -103,7 +104,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     detailError instanceof Error
       ? detailError.message
       : detailError
-        ? "Failed to load"
+        ? i18n.t("common.loadFailed")
         : null;
 
   const bundleReady =

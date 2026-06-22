@@ -33,38 +33,6 @@ export interface AccountListRow {
   chart_inactive?: boolean;
 }
 
-export interface AssetTreeCategoryRow {
-  id: number;
-  group_id: number;
-  slug: string;
-  label: string;
-  sort_order: number;
-}
-
-export interface AssetTreeAccountRow {
-  id: number;
-  name: string;
-  notes: string | null;
-}
-
-export interface AssetTreeGroupRow {
-  id: number;
-  slug: string;
-  label: string;
-  sort_order: number;
-  color_rgb?: string | null;
-  parent_id?: number | null;
-  is_leaf?: boolean;
-  children?: AssetTreeGroupRow[];
-  accounts?: AssetTreeAccountRow[];
-  /** @deprecated legacy category rows; empty on nested bucket tree */
-  categories?: AssetTreeCategoryRow[];
-}
-
-export interface AssetTreeResponse {
-  groups: AssetTreeGroupRow[];
-}
-
 export type PortfolioTreeNodeDto =
   | {
       kind: "group";
@@ -973,21 +941,7 @@ export interface FlowDepositChartPoint {
   total: number;
 }
 
-export type ExpenseFlowGroupSlug = "real_estate";
-
 export type ExpenseApartmentSlug = "el_vergel" | "lastarria" | "suecia";
-
-export interface FlowExpenseRow {
-  spent_on: string;
-  group_slug: ExpenseFlowGroupSlug;
-  group_label: string;
-  account_id: number;
-  account_slug: ExpenseApartmentSlug;
-  account_name: string;
-  amount_clp: number;
-  category: string | null;
-  note: string | null;
-}
 
 export interface FlowExpenseChartPoint {
   as_of_date: string;
@@ -996,20 +950,6 @@ export interface FlowExpenseChartPoint {
   suecia: number;
   el_vergel: number;
   total: number;
-}
-
-export interface FlowExpenseAccountBlock {
-  account_id: number;
-  account_slug: ExpenseApartmentSlug;
-  label: string;
-  rows: FlowExpenseRow[];
-  total_clp: number;
-}
-
-export interface FlowExpenseGroupBlock {
-  label: string;
-  total_clp: number;
-  by_account: Record<string, FlowExpenseAccountBlock>;
 }
 
 export interface FlowCcExpenseMonthRow {
@@ -1153,15 +1093,6 @@ export interface FlowIncomeChartPoint {
   cartola: number;
   manual: number;
   total: number;
-}
-
-/** `GET /api/flows/expenses` — apartment utility / housing costs (positive outflows). */
-export interface FlowsExpensesResponse {
-  rows: FlowExpenseRow[];
-  chart_monthly: FlowExpenseChartPoint[];
-  chart_yearly: FlowExpenseChartPoint[];
-  total_clp: number;
-  by_group: Record<ExpenseFlowGroupSlug, FlowExpenseGroupBlock>;
 }
 
 export type RealEstateExpenseLinkSource = "auto" | "manual";

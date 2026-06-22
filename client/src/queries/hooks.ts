@@ -190,14 +190,6 @@ export function useAccountsAll() {
   });
 }
 
-export function useAssetTree() {
-  return useQuery({
-    queryKey: queryKeys.assetTree(),
-    queryFn: () => api.assetTree(),
-    staleTime: 60_000,
-  });
-}
-
 export function usePortfolioTree() {
   return useQuery({
     queryKey: queryKeys.portfolioTree(),
@@ -342,13 +334,6 @@ export function useFlowsDeposits() {
   return useQuery({
     queryKey: queryKeys.flowsDeposits(),
     queryFn: () => api.flowsDeposits(),
-  });
-}
-
-export function useFlowsExpenses() {
-  return useQuery({
-    queryKey: queryKeys.flowsExpenses(),
-    queryFn: () => api.flowsExpenses(),
   });
 }
 

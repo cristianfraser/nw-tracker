@@ -203,7 +203,7 @@ export function LiabilitiesGroupPage() {
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
   const pageColorTarget = navMatchNode ? navColorTargetFromDto(navMatchNode) : undefined;
   const showUsd = displayUnit === "usd";
-  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (liabilitiesSubgroupParam != null && liabilitiesSubgroupParam !== "" && categoryFilter === null) {
     return <Navigate to="/liabilities" replace />;

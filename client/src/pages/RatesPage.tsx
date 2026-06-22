@@ -399,7 +399,7 @@ export function RatesPage() {
   const { data: payload, error } = useMarketSeries();
   const { data: syncStatus } = useSyncStatus();
   const { data: ratesInstruments } = useRatesInstruments();
-  const err = error instanceof Error ? error.message : error ? "Failed to load" : null;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const instrumentSlots = useMemo(
     () => instrumentSlotsFromDb(ratesInstruments?.instruments),
@@ -436,10 +436,10 @@ export function RatesPage() {
     return (
       <main>
         <p className="muted">
-          <Link to="/">← Dashboard</Link>
+          <Link to="/">{t("common.backToDashboard")}</Link>
         </p>
-        <h1>Rates</h1>
-        <p className="muted">Loading…</p>
+        <h1>{t("rates.pageTitle")}</h1>
+        <p className="muted">{t("common.loading")}</p>
       </main>
     );
   }
@@ -447,9 +447,9 @@ export function RatesPage() {
   return (
     <main>
       <p className="muted">
-        <Link to="/">← Dashboard</Link>
+        <Link to="/">{t("common.backToDashboard")}</Link>
       </p>
-      <h1>Rates</h1>
+      <h1>{t("rates.pageTitle")}</h1>
       <FxCoverageBanner coverage={payload.fx_coverage} />
       {fxSyncStale ? (
         <p className="error" role="alert" style={{ maxWidth: "58rem", marginBottom: "1rem" }}>
@@ -462,12 +462,12 @@ export function RatesPage() {
         USD per the toggle.
       </p>
 
-      <nav className="flow-subnav" aria-label="Rates sections">
+      <nav className="flow-subnav" aria-label={t("rates.subnavAria")}>
         <button type="button" className={cn(tab === "fx" && "active")} onClick={() => setTab("fx")}>
-          FX
+          {t("rates.tabFx")}
         </button>
         <button type="button" className={cn(tab === "tickers" && "active")} onClick={() => setTab("tickers")}>
-          Tickers
+          {t("rates.tabTickers")}
         </button>
       </nav>
 
