@@ -78,7 +78,15 @@ export function dashboardRowsForNavSubtree(
   navNode: NavTreeNodeDto
 ): DashboardAccountRow[] {
   const idSet = navLeafAccountIdSet(navNode);
-  return all.filter((a) => idSet.has(a.account_id) && isChartActiveAccount(a));
+  return all.filter((a) => idSet.has(a.account_id));
+}
+
+/** Nav subtree rows visible in breakdown lines (hides chart_inactive + null marks). */
+export function dashboardDisplayRowsForNavSubtree(
+  all: DashboardAccountRow[],
+  navNode: NavTreeNodeDto
+): DashboardAccountRow[] {
+  return dashboardRowsForNavSubtree(all, navNode).filter((a) => isChartActiveAccount(a));
 }
 
 /** Nav children that render as strip cards (balance filtering is server-side on shape APIs). */
@@ -121,13 +129,15 @@ export function stripMetricsRowsForNavChild(
   const sourceRows = isCashSavingsNavNode(navChild)
     ? rowsForCashSavingsCard(dash.accounts, navChild)
     : dashboardRowsForNavSubtree(dash.accounts, navChild);
-  return sourceRows.filter(
-    (a) =>
-      accountCountsTowardGroupTotals(a) &&
-      isChartActiveAccount(a) &&
-      a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp)
-  );
+  return sourceRows.filter((a) => accountCountsTowardGroupTotals(a));
+}
+
+/** @deprecated Same as {@link stripMetricsRowsForNavChild}. */
+export function stripPlMetricsRowsForNavChild(
+  dash: Pick<DashboardResponse, "accounts">,
+  navChild: NavTreeNodeDto
+): DashboardAccountRow[] {
+  return stripMetricsRowsForNavChild(dash, navChild);
 }
 
 function usesFullDashboardBucketTotals(navChild: NavTreeNodeDto): DashboardGroupSlug | null {
@@ -146,13 +156,7 @@ export function titleBalanceDeltaForNavChild(
   period: CardGroupMetricsPeriod,
   showUsd: boolean
 ): number | null {
-  const metricsRows = stripMetricsRowsForNavChild(dash, navChild).filter(
-    (a) =>
-      accountCountsTowardGroupTotals(a) &&
-      isChartActiveAccount(a) &&
-      a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp)
-  );
+  const metricsRows = stripMetricsRowsForNavChild(dash, navChild);
   const fullBucket = usesFullDashboardBucketTotals(navChild);
   if (fullBucket) {
     return cardGroupTitleBalanceDelta(
@@ -305,7 +309,10 @@ export function portfolioNavParentMainValue(
 
 /** Deposits / period Δ metrics aligned with {@link portfolioNavParentMainValue}. */
 export function portfolioNavParentMetrics(
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
+  dash: Pick<
+    DashboardResponse,
+    "accounts" | "totals" | "dashboard_layout" | "net_worth_period_metrics"
+  >,
   mode: PortfolioNavParentTitleDeltaMode,
   navSubtreeRows: DashboardAccountRow[],
   period: CardGroupMetricsPeriod,

@@ -317,6 +317,77 @@ function ymdToMonthIndex(ymd: string): number | null {
   return y * 12 + (mo - 1);
 }
 
+function yearFromYmd(ymd: string): number | null {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(ymd.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  return Number.isFinite(y) ? y : null;
+}
+
+/** Prefer December; January only for interior years with no December. Tail years need December. */
+function findYearBoundaryDate(
+  datesAsc: string[],
+  year: number,
+  lastYear: number
+): string | undefined {
+  const decRows = datesAsc.filter((d) => d.startsWith(`${year}-12`));
+  if (decRows.length > 0) return decRows[decRows.length - 1]!;
+  if (year === lastYear) return undefined;
+  const jan = datesAsc.find((d) => d.startsWith(`${year}-01`));
+  if (jan) return jan;
+  const inYear = datesAsc.filter((d) => d.startsWith(`${year}-`));
+  return inYear.length > 0 ? inYear[inYear.length - 1] : undefined;
+}
+
+type XAxisTickOpts = { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean };
+
+/**
+ * Multi-year X-axis ticks at **January or December** (one marker per calendar year when possible),
+ * then the first/last series dates only when there is room under `maxTickCount`.
+ */
+function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts): string[] | undefined {
+  const minT = Math.max(2, opts?.minTickCount ?? 4);
+  const maxT = Math.max(minT, opts?.maxTickCount ?? 12);
+  if (datesAsc.length === 0) return undefined;
+  if (datesAsc.length === 1) return [datesAsc[0]!];
+
+  const y0 = yearFromYmd(datesAsc[0]!);
+  const y1 = yearFromYmd(datesAsc[datesAsc.length - 1]!);
+  if (y0 == null || y1 == null) return undefined;
+  const span = y1 - y0;
+  if (span <= 0) return [datesAsc[0]!];
+
+  let yearStep = 1;
+  let found = false;
+  for (const s of [12, 10, 8, 6, 5, 4, 3, 2, 1]) {
+    const n = 1 + Math.floor(span / s);
+    if (n >= minT && n <= maxT) {
+      yearStep = s;
+      found = true;
+      break;
+    }
+  }
+  if (!found && 1 + Math.floor(span / 1) > maxT) {
+    yearStep = Math.max(1, Math.ceil(span / (maxT - 1)));
+  }
+
+  const ticks: string[] = [];
+  const push = (d: string | undefined) => {
+    if (d && !ticks.includes(d)) ticks.push(d);
+  };
+  for (let y = y0; y <= y1; y += yearStep) {
+    push(findYearBoundaryDate(datesAsc, y, y1));
+  }
+
+  const firstD = datesAsc[0]!;
+  const lastD = datesAsc[datesAsc.length - 1]!;
+  if (ticks.length < maxT) push(firstD);
+  if (opts?.includeLastDataPoint !== false && ticks.length < maxT) push(lastD);
+
+  ticks.sort((a, b) => a.localeCompare(b));
+  return ticks.length ? ticks : undefined;
+}
+
 /** Unique `as_of_date` values, sorted ascending (YYYY-MM-DD). */
 export function extractSortedAsOfDates(points: { as_of_date?: string | null }[]): string[] {
   const seen = new Set<string>();
@@ -364,6 +435,14 @@ export function computeRegularMonthXAxisTicks(
     step = Math.max(1, Math.ceil(span / (maxT - 1)));
   }
 
+  if (step >= 12) {
+    return computeYearBoundaryXAxisTicks(datesAsc, {
+      minTickCount: minT,
+      maxTickCount: maxT,
+      includeLastDataPoint: opts?.includeLastDataPoint,
+    });
+  }
+
   const ticks: string[] = [];
   for (let t = i0; t <= i1; t += step) {
     const y = Math.floor(t / 12);
@@ -390,47 +469,7 @@ export function computeRegularYearXAxisTicks(
   datesAsc: string[],
   opts?: { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean }
 ): string[] | undefined {
-  const minT = Math.max(2, opts?.minTickCount ?? 4);
-  const maxT = Math.max(minT, opts?.maxTickCount ?? 12);
-  if (datesAsc.length === 0) return undefined;
-  if (datesAsc.length === 1) return [datesAsc[0]!];
-
-  const byYear = new Map<number, string>();
-  for (const d of datesAsc) {
-    const yy = Number(d.slice(0, 4));
-    if (Number.isFinite(yy)) byYear.set(yy, d);
-  }
-  const years = [...byYear.keys()].sort((a, b) => a - b);
-  if (years.length === 0) return undefined;
-  const y0 = years[0]!;
-  const y1 = years[years.length - 1]!;
-  const span = y1 - y0;
-  if (span <= 0) return [byYear.get(y0)!];
-
-  let step = 1;
-  let found = false;
-  for (const s of [12, 10, 8, 6, 5, 4, 3, 2, 1]) {
-    const n = 1 + Math.floor(span / s);
-    if (n >= minT && n <= maxT) {
-      step = s;
-      found = true;
-      break;
-    }
-  }
-  if (!found && 1 + Math.floor(span / 1) > maxT) {
-    step = Math.max(1, Math.ceil(span / (maxT - 1)));
-  }
-
-  const ticks: string[] = [];
-  for (let y = y0; y <= y1; y += step) {
-    const row = byYear.get(y);
-    if (row && (ticks.length === 0 || ticks[ticks.length - 1] !== row)) ticks.push(row);
-  }
-  if (opts?.includeLastDataPoint !== false) {
-    const lastRow = byYear.get(y1)!;
-    if (lastRow && !ticks.includes(lastRow)) ticks.push(lastRow);
-  }
-  return ticks.length ? ticks : undefined;
+  return computeYearBoundaryXAxisTicks(datesAsc, opts);
 }
 
 const TOOLTIP_VIEWPORT_INSET_PX = 10;

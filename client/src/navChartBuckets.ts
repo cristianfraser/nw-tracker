@@ -4,7 +4,7 @@ import {
   portfolioStripGroupChildren,
 } from "./portfolioNavFromApi";
 import { resolveNavTreeLabel } from "./sidebarNavFromApi";
-import type { NavTreeNodeDto } from "./types";
+import type { AccountListRow, NavTreeNodeDto } from "./types";
 
 export type NavChartBucketMeta = {
   key: string;
@@ -74,9 +74,46 @@ export function shouldAggregateNavCharts(navNode: NavTreeNodeDto, grouped: boole
   return navChartBucketNavNodes(navNode, grouped).length >= 2;
 }
 
+/** Portfolio / asset group slugs under a chart bucket node (group nodes only). */
+export function collectNavBucketCoverageKeys(node: NavTreeNodeDto): string[] {
+  const keys = new Set<string>();
+  const visit = (n: NavTreeNodeDto) => {
+    keys.add(n.slug);
+    const ag = n.asset_group_slug?.trim();
+    if (ag) keys.add(ag);
+    for (const c of n.children ?? []) {
+      if (c.account_id == null) visit(c);
+    }
+  };
+  visit(node);
+  return [...keys];
+}
+
+/**
+ * Map a leaf `asset_groups.slug` to the chart bucket that owns it.
+ * Picks the longest matching prefix among `bucketNodes`.
+ */
+export function chartBucketKeyForAccountAssetSlug(
+  accountBucketSlug: string,
+  bucketNodes: readonly NavTreeNodeDto[]
+): string | null {
+  let best: { bucketKey: string; prefixLen: number } | null = null;
+  for (const node of bucketNodes) {
+    const bucketKey = node.slug;
+    for (const prefix of collectNavBucketCoverageKeys(node)) {
+      if (accountBucketSlug !== prefix && !accountBucketSlug.startsWith(`${prefix}__`)) continue;
+      if (!best || prefix.length > best.prefixLen) {
+        best = { bucketKey, prefixLen: prefix.length };
+      }
+    }
+  }
+  return best?.bucketKey ?? null;
+}
+
 export function buildNavChartBucketPlan(
   navNode: NavTreeNodeDto,
-  grouped: boolean
+  grouped: boolean,
+  listRows?: readonly Pick<AccountListRow, "id" | "bucket_slug" | "chart_inactive">[]
 ): {
   orderedKeys: readonly string[];
   meta: Record<string, NavChartBucketMeta>;
@@ -106,6 +143,17 @@ export function buildNavChartBucketPlan(
       accountIdToKey.set(id, key);
     }
   });
+
+  // `chart_inactive` accounts are omitted from the nav tree but kept in group valuation TS.
+  if (listRows?.length) {
+    for (const row of listRows) {
+      if (row.chart_inactive !== true) continue;
+      const bucketSlug = row.bucket_slug?.trim();
+      if (!bucketSlug || accountIdToKey.has(row.id)) continue;
+      const bucketKey = chartBucketKeyForAccountAssetSlug(bucketSlug, bucketNodes);
+      if (bucketKey) accountIdToKey.set(row.id, bucketKey);
+    }
+  }
 
   return {
     orderedKeys,

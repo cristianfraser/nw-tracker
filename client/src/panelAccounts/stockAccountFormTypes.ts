@@ -1,4 +1,7 @@
 import type { BrokerageFlowKind } from "./brokerageFlowKinds";
+import {
+  counterpartRoleForBrokerageFlowKind,
+} from "./brokerageFlowKinds";
 
 export type StockPriceSource = "stocks_nyse" | "crypto_eod";
 
@@ -9,12 +12,12 @@ export type InitialMovementDraft = {
   amountClp: string;
   amountUsd: string;
   unitsDelta: string;
+  counterpartAccountId: number | "";
 };
 
 export type StockAccountFormDraft = {
   displayName: string;
   tickerSymbol: string;
-  categorySlug: string;
   /** Leaf bucket slug, e.g. brokerage_acciones. */
   bucketSlug: string;
   priceSource: StockPriceSource;
@@ -42,6 +45,7 @@ export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit_clp"): I
     amountClp: "",
     amountUsd: "",
     unitsDelta: "",
+    counterpartAccountId: "",
   };
 }
 
@@ -49,7 +53,6 @@ export function defaultStockAccountFormDraft(bucketSlug = "brokerage_acciones"):
   return {
     displayName: "",
     tickerSymbol: "",
-    categorySlug: "",
     bucketSlug,
     priceSource: "stocks_nyse",
     excludeFromGroupTotals: false,
@@ -130,6 +133,12 @@ export function buildBrokerageMovementPostBody(
     amount_usd: parseOptionalNumber(row.amountUsd),
     units_delta: parseOptionalNumber(row.unitsDelta),
     ...(ticker ? { ticker } : {}),
+    ...(row.counterpartAccountId !== ""
+      ? {
+          counterpart_account_id: row.counterpartAccountId,
+          counterpart_role: counterpartRoleForBrokerageFlowKind(row.flowKind),
+        }
+      : {}),
   };
 }
 
@@ -138,7 +147,7 @@ export function buildStockAccountCreatePreview(
 ): StockAccountCreatePreview | null {
   const name = draft.displayName.trim();
   const ticker = draft.tickerSymbol.trim().toUpperCase();
-  const categorySlug = (draft.categorySlug.trim() || categorySlugFromTicker(ticker)).toLowerCase();
+  const categorySlug = categorySlugFromTicker(ticker);
   if (!name || !ticker || !categorySlug || !draft.bucketSlug) return null;
 
   const movements = draft.initialMovements
@@ -151,6 +160,9 @@ export function buildStockAccountCreatePreview(
         amount_clp: parseOptionalNumber(row.amountClp),
         amount_usd: parseOptionalNumber(row.amountUsd),
         units_delta: parseOptionalNumber(row.unitsDelta),
+        ...(row.counterpartAccountId !== ""
+          ? { counterpart_account_id: row.counterpartAccountId }
+          : {}),
       };
     })
     .filter((m): m is NonNullable<typeof m> => m != null);

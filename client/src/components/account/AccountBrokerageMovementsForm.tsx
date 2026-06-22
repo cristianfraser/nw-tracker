@@ -70,6 +70,7 @@ export function AccountBrokerageMovementsForm({
         }}
         legend="add"
         emptyTextKey="accountDetail.brokerageMovements.emptyDraft"
+        currentAccountId={accountId}
       />
 
       {movements.length > 0 ? (

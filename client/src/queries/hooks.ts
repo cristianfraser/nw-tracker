@@ -174,6 +174,14 @@ export function useSidebarNav() {
   });
 }
 
+export function usePanelNetWorthTree() {
+  return useQuery({
+    queryKey: queryKeys.panelNetWorthTree(),
+    queryFn: () => api.panelNetWorthTree(),
+    staleTime: 60_000,
+  });
+}
+
 export function useAccountsAll() {
   return useQuery({
     queryKey: queryKeys.accountsAll(),

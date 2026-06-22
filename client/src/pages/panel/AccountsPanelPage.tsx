@@ -1,11 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AddStockAccountForm } from "../../components/panel/AddStockAccountForm";
+import { AddAccountForm } from "../../components/panel/AddAccountForm";
+import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountExcludeFromTotalsToggle";
 import { Table } from "../../components/ui/Table";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
-import { useAccountsAll, useSidebarNav } from "../../queries/hooks";
+import { useAccountsAll, usePanelNetWorthTree } from "../../queries/hooks";
 import { countAccountsInNavSubtree } from "../../panelAccounts/portfolioNavBuckets";
 import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
 import type { NavTreeNodeDto } from "../../types";
@@ -53,19 +54,23 @@ export function AccountsPanelPage() {
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const { data: accountsData, error: accountsError, isPending: accountsPending } = useAccountsAll();
-  const { data: sidebarNavData, error: sidebarNavError, isPending: sidebarNavPending } = useSidebarNav();
+  const {
+    data: panelTreeData,
+    error: panelTreeError,
+    isPending: panelTreePending,
+  } = usePanelNetWorthTree();
 
   const err =
     accountsError instanceof Error
       ? accountsError.message
-      : sidebarNavError instanceof Error
-        ? sidebarNavError.message
-        : accountsError || sidebarNavError
+      : panelTreeError instanceof Error
+        ? panelTreeError.message
+        : accountsError || panelTreeError
           ? t("common.loadFailed")
           : null;
 
-  const netWorthNode = useMemo(() => sidebarNavData?.net_worth ?? null, [sidebarNavData]);
-  if (accountsPending || sidebarNavPending) {
+  const netWorthNode = useMemo(() => panelTreeData?.net_worth ?? null, [panelTreeData]);
+  if (accountsPending || panelTreePending) {
     return <p className="muted">{t("common.loading")}</p>;
   }
 
@@ -83,6 +88,7 @@ export function AccountsPanelPage() {
       await api.deleteAccount(id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.accountsAll() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.panelNetWorthTree() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("clp") }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard("usd") }),
@@ -97,9 +103,12 @@ export function AccountsPanelPage() {
       <p className="muted" style={{ marginBottom: "1rem" }}>
         {t("panelAccounts.pageHint")}
       </p>
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        {t("panelAccounts.excludeHint")}
+      </p>
 
       <h2 className="flow-section-title">{t("panelAccounts.addAccountTitle")}</h2>
-      <AddStockAccountForm netWorthRoot={netWorthNode} />
+      <AddAccountForm netWorthRoot={netWorthNode} />
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("panelAccounts.accountsTitle")}
@@ -129,7 +138,12 @@ export function AccountsPanelPage() {
               <td className="mono">{a.id}</td>
               <td>{a.name}</td>
               <td>{a.bucket_label}</td>
-              <td className="mono">{a.exclude_from_group_totals === 1 ? "1" : "0"}</td>
+              <td>
+                <AccountExcludeFromTotalsToggle
+                  accountId={a.id}
+                  excluded={a.exclude_from_group_totals === 1}
+                />
+              </td>
               <td>
                 <button
                   type="button"

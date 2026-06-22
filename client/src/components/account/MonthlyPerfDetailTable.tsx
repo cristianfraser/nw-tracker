@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatInstrumentUnits, formatUfBalance, formatUsdFine } from "../../format";
+import { formatClp, formatClpUfDay, formatInstrumentUnits, formatUfBalance, formatUsdFine } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { PaginatedTable } from "../ui/PaginatedTable";
 import {
@@ -71,7 +71,7 @@ function MonthlyPerfDetailMobileCard({
               label={labels.ufDay}
               value={
                 mortgageRow?.uf_clp_day != null && Number.isFinite(mortgageRow.uf_clp_day)
-                  ? formatClp(Math.round(mortgageRow.uf_clp_day))
+                  ? formatClpUfDay(mortgageRow.uf_clp_day)
                   : "—"
               }
             />
@@ -212,7 +212,7 @@ export function MonthlyPerfDetailTable({
                 <>
                   <td className="mono desktop-only" style={{ whiteSpace: "nowrap" }}>
                     {mortgageRow?.uf_clp_day != null && Number.isFinite(mortgageRow.uf_clp_day)
-                      ? formatClp(Math.round(mortgageRow.uf_clp_day))
+                      ? formatClpUfDay(mortgageRow.uf_clp_day)
                       : "—"}
                   </td>
                   <td className="mono desktop-only" style={{ whiteSpace: "nowrap" }}>
