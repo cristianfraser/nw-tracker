@@ -37,12 +37,22 @@ vi.mock("./chileDate.js", async (importOriginal) => {
   };
 });
 
+vi.mock("./equityEodSync.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./equityEodSync.js")>();
+  return {
+    ...actual,
+    equityEodNyseSyncDue: vi.fn(() => null as string | null),
+  };
+});
+
 import {
   getGlobalSyncSchedulerSnapshot,
   notifyGlobalSyncScheduler,
+  pollIntervalMsForStaleSources,
   startGlobalSyncScheduler,
   stopGlobalSyncScheduler,
 } from "./globalSyncScheduler.js";
+import { equityEodNyseSyncDue } from "./equityEodSync.js";
 
 describe("globalSyncScheduler", () => {
   beforeEach(() => {
@@ -52,14 +62,17 @@ describe("globalSyncScheduler", () => {
     allSyncSourceStatuses.mockReturnValue([]);
     runGlobalSyncAll.mockClear();
     runGlobalSyncAll.mockResolvedValue(0);
+    vi.mocked(equityEodNyseSyncDue).mockReturnValue(null);
     process.env.GLOBAL_SYNC_ENABLED = "1";
     process.env.GLOBAL_SYNC_INTERVAL_MS = "60000";
+    process.env.GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS = "120000";
   });
 
   afterEach(() => {
     stopGlobalSyncScheduler();
     vi.useRealTimers();
     delete process.env.GLOBAL_SYNC_INTERVAL_MS;
+    delete process.env.GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS;
   });
 
   it("does not poll on a timer when all sources are fresh", async () => {
@@ -114,5 +127,26 @@ describe("globalSyncScheduler", () => {
     staleSyncSources.mockReturnValue(["fintual"]);
     notifyGlobalSyncScheduler();
     await vi.waitFor(() => expect(runGlobalSyncAll).toHaveBeenCalledTimes(1));
+  });
+
+  it("uses faster poll interval when NYSE EOD is due but stale", () => {
+    process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+    process.env.GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS = "180000";
+    startGlobalSyncScheduler();
+    expect(pollIntervalMsForStaleSources(["crypto_eod"])).toBe(900_000);
+    vi.mocked(equityEodNyseSyncDue).mockReturnValue("2026-06-17");
+    expect(pollIntervalMsForStaleSources(["stocks_nyse", "crypto_eod"])).toBe(180_000);
+  });
+
+  it("polls on NYSE stale interval while still stale", async () => {
+    vi.mocked(equityEodNyseSyncDue).mockReturnValue("2026-06-17");
+    staleSyncSources.mockReturnValue(["stocks_nyse"]);
+    startGlobalSyncScheduler();
+    await vi.waitFor(() => expect(runGlobalSyncAll).toHaveBeenCalledTimes(1));
+    runGlobalSyncAll.mockClear();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(runGlobalSyncAll).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
   });
 });

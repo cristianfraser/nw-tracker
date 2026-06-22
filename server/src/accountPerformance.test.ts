@@ -215,27 +215,125 @@ describe("getAccountMonthlyPerformance", () => {
     );
     expect(Math.abs(cur.nominal_pl)).toBeLessThan(50_000);
   });
+
+  it("suecia property P/L reconciles CLP net-equity marks minus CLP payments in month", () => {
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    if (!perf?.monthly.length) return;
+
+    const nov = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2024-11");
+    const dec = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2024-12");
+    const feb = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2025-02");
+    const mar = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2025-03");
+    if (!nov || !dec || !feb || !mar || nov.prior_closing == null || nov.nominal_pl == null) return;
+
+    expect(nov.net_capital_flow).toBeGreaterThan(20_000_000);
+    expect(nov.nominal_pl).toBeCloseTo(
+      nov.closing_value - nov.prior_closing - nov.net_capital_flow,
+      0
+    );
+    for (const r of [nov, dec, feb, mar]) {
+      expect(Math.abs(r.nominal_pl ?? 0)).toBeLessThan(500_000);
+    }
+    expect(Math.abs((nov.nominal_pl ?? 0) + (dec.nominal_pl ?? 0))).toBeLessThan(400_000);
+    expect(Math.abs((feb.nominal_pl ?? 0) + (mar.nominal_pl ?? 0))).toBeLessThan(600_000);
+  });
+
+  it("suecia property USD perf keeps sheet payments in USD (not CLP scale)", () => {
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const mk = monthKeyFromYmd(chileCalendarTodayYmd());
+    const clp = getAccountMonthlyPerformance(row.id, "clp")?.monthly.find(
+      (r) => monthKeyFromYmd(r.as_of_date) === mk
+    );
+    const usd = getAccountMonthlyPerformance(row.id, "usd")?.monthly.find(
+      (r) => monthKeyFromYmd(r.as_of_date) === mk
+    );
+    if (!clp || !usd || usd.prior_closing == null) return;
+
+    expect(Math.abs(usd.net_capital_flow)).toBeLessThan(50_000);
+    expect(usd.net_capital_flow).not.toBeCloseTo(clp.net_capital_flow, -3);
+    expect(usd.nominal_pl).toBeCloseTo(
+      usd.closing_value - usd.prior_closing - usd.net_capital_flow,
+      0
+    );
+  });
 });
 
 describe("getGroupMonthlyPerformanceSeries", () => {
-  it("current month delta_total equals sum of per-account nominal_pl", () => {
-    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
+  it("delta_total equals sum of per-account nominal_pl for every month", () => {
     for (const groupSlug of ["brokerage", "retirement"] as const) {
       const series = getGroupMonthlyPerformanceSeries(groupSlug, "clp");
       if (!series.bar_accounts.length || !series.points.length) continue;
 
-      const last = series.points[series.points.length - 1]!;
-      if (monthKeyFromYmd(last.as_of_date) !== curMk) continue;
-      if (last.delta_total == null) continue;
-
-      let sum = 0;
-      for (const ba of series.bar_accounts) {
-        const perf = getAccountMonthlyPerformance(ba.account_id, "clp");
-        const row = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-        if (row?.nominal_pl != null) sum += row.nominal_pl;
+      for (const pt of series.points) {
+        if (pt.delta_total == null) continue;
+        const mk = monthKeyFromYmd(pt.as_of_date);
+        let sum = 0;
+        for (const ba of series.bar_accounts) {
+          const perf = getAccountMonthlyPerformance(ba.account_id, "clp");
+          const row = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
+          if (row?.nominal_pl != null) sum += row.nominal_pl;
+        }
+        expect(pt.delta_total).toBeCloseTo(sum, 2);
       }
-      expect(last.delta_total).toBeCloseTo(sum, 2);
     }
+  });
+
+  it("brokerage current month delta_total matches full-bucket dashboard row MTD P/L", async () => {
+    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
+    const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
+    if (!series.points.length) return;
+    const last = series.points[series.points.length - 1]!;
+    if (monthKeyFromYmd(last.as_of_date) !== curMk) return;
+    if (last.delta_total == null) return;
+
+    const { buildDashboardAccountRows } = await import("./dashboardAccounts.js");
+    const { withPortfolioGroupIndex } = await import("./portfolioGroupTree.js");
+    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
+    let cardSum = 0;
+    let any = false;
+    for (const r of rows) {
+      if (r.dashboard_bucket_slug !== "brokerage" || r.exclude_from_group_totals === 1) continue;
+      if (r.delta_month_clp != null && Number.isFinite(r.delta_month_clp)) {
+        cardSum += r.delta_month_clp;
+        any = true;
+      }
+    }
+    if (!any) return;
+    expect(last.delta_total).toBeCloseTo(cardSum, 0);
+  });
+
+  it("brokerage ytd_group matches consolidated ytd_nominal_pl for current month", async () => {
+    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
+    const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
+    if (!series.points.length) return;
+    const last = series.points[series.points.length - 1]!;
+    if (monthKeyFromYmd(last.as_of_date) !== curMk) return;
+    if (last.ytd_group == null || !Number.isFinite(Number(last.ytd_group))) return;
+
+    const { getGroupConsolidatedTables } = await import("./groupConsolidatedTables.js");
+    const tables = getGroupConsolidatedTables("brokerage", "clp");
+    const june = tables.consolidated_monthly.find((r) =>
+      monthKeyFromYmd(String(r.as_of_date)) === curMk
+    );
+    if (june?.ytd_nominal_pl == null || !Number.isFinite(june.ytd_nominal_pl)) return;
+    expect(Number(last.ytd_group)).toBeCloseTo(june.ytd_nominal_pl, 0);
   });
 
   it("returns bar_accounts and points for retirement when data exists", () => {

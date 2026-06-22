@@ -28,6 +28,7 @@ export type PanelStockAccountCreateBody = {
     amount_clp: number | null;
     amount_usd: number | null;
     units_delta: number | null;
+    counterpart_account_id?: number | null;
   }[];
 };
 
@@ -99,6 +100,12 @@ export function createPanelStockAccount(
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const insTransfer = db.prepare(
+    `INSERT INTO movements (
+       account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+       units_delta, flow_kind, amount_usd, ticker
+     ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
   const insStandard = db.prepare(
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
      VALUES (?, ?, ?, ?, ?)`
@@ -153,6 +160,12 @@ export function createPanelStockAccount(
         units_delta: m.units_delta,
         ticker,
       };
+      if (m.counterpart_account_id != null && m.counterpart_account_id > 0) {
+        const role =
+          m.flow_kind === "stock_buy" ? "from" : m.flow_kind === "stock_sell" ? "to" : "to";
+        payload.counterpart_account_id = m.counterpart_account_id;
+        payload.counterpart_role = role;
+      }
       const validated = validateMovementCreate(
         {
           group_slug: parentBucketSlug,
@@ -160,12 +173,26 @@ export function createPanelStockAccount(
           notes: accountMeta.notes,
           equity_ticker: accountMeta.equity_ticker,
         },
-        payload
+        payload,
+        accountId
       );
       if (!validated.ok) {
         fail(validated.status, `initial_movements[${i}]: ${validated.error}`);
       }
-      if (validated.mode === "brokerage") {
+      if (validated.mode === "transfer") {
+        const r = insTransfer.run(
+          validated.from_account_id,
+          validated.to_account_id,
+          validated.amount_clp,
+          validated.occurred_on,
+          validated.note,
+          validated.units_delta,
+          validated.flow_kind,
+          validated.amount_usd,
+          validated.ticker
+        );
+        movementIds.push(Number(r.lastInsertRowid));
+      } else if (validated.mode === "brokerage") {
         const r = insBrokerage.run(
           accountId,
           validated.amount_clp,

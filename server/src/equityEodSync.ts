@@ -3,7 +3,8 @@ import { listNyseEquityTickersForEodSync } from "./accountEquityTicker.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
-import { fetchYahooRecentDailyCloses } from "./equityYahooEod.js";
+import { fetchCoinGeckoRecentDailyCloses } from "./equityCoinGeckoEod.js";
+import { fetchYahooNyseEodForSync, fetchYahooRecentDailyCloses, type EodCloseSeries } from "./equityYahooEod.js";
 import { isNyseTradingDay } from "./marketHolidays.js";
 import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock, utcTodayYmd } from "./nyseSession.js";
 import { clearEquityLiveQuoteCache } from "./equityQuote.js";
@@ -33,9 +34,11 @@ export function latestEquityEodTradeDate(ticker: string): string | null {
   return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
 }
 
-/** All NYSE import tickers have `equity_daily` through `sessionYmd`. */
+/** All NYSE account tickers have `equity_daily` through `sessionYmd`. */
 export function equityNyseEodCaughtUp(sessionYmd: string): boolean {
-  return EQUITY_NYSE_TICKERS.every((ticker) => {
+  const tickers = listNyseEquityTickersForEodSync();
+  if (tickers.length === 0) return true;
+  return tickers.every((ticker) => {
     const latest = latestEquityEodTradeDate(ticker);
     return latest != null && latest >= sessionYmd;
   });
@@ -66,50 +69,82 @@ export function isCryptoEodSyncWindow(cl: ChileWallClock): boolean {
   );
 }
 
-/** UTC calendar day whose EOD was due at 23:55 Chile on `chileYmd`. */
+/** UTC calendar day at a Chile wall-clock instant (not the due EOD close for that evening). */
 export function utcYmdAtChileWallClock(chileYmd: string, hour: number, minute: number): string {
   const at = dateAtTimeZoneWallClock(chileYmd, hour, minute, "America/Santiago");
   return utcTodayYmd(at);
 }
 
-/**
- * UTC day whose crypto EOD must be in `equity_daily` now, or null if not due.
- * After 23:55 Chile, due is today's UTC day; before 23:55, may carry over yesterday's window.
- */
-/**
- * Sync-log dates for crypto EOD.
- * - Evening window (23:55 Chile): due is today's UTC day; log the prior UTC bar and its predecessor.
- * - Carryover before 23:55: due is the missing UTC day; log that bar and its predecessor.
- */
-export function cryptoEodChangeLogDates(
-  dueUtcYmd: string,
-  opts?: { inSyncWindow?: boolean }
-): { oldDate: string; newDate: string } {
-  const newDate =
-    opts?.inSyncWindow === false ? dueUtcYmd : chileCalendarAddDays(dueUtcYmd, -1);
-  const oldDate = chileCalendarAddDays(newDate, -1);
-  return { oldDate, newDate };
+/** Last completed UTC calendar day relative to `now` (in-progress UTC day excluded). */
+export function cryptoCompletedUtcYmd(now: Date = new Date()): string {
+  return chileCalendarAddDays(utcTodayYmd(now), -1);
 }
 
+/**
+ * UTC day whose crypto EOD must be in `equity_daily` now, or null if not due.
+ * Due is always the last **completed** UTC day; never the in-progress UTC calendar day.
+ */
 export function cryptoEodDueUtcYmd(cl: ChileWallClock, now: Date = new Date()): string | null {
-  if (isCryptoEodSyncWindow(cl)) return utcTodayYmd(now);
+  if (isCryptoEodSyncWindow(cl)) return cryptoCompletedUtcYmd(now);
   const nowMins = cl.hour * 60 + cl.minute;
   const dueMins = CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE * 60 + CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE;
   if (nowMins >= dueMins) return null;
   const prevChile = chileCalendarAddDays(cl.ymd, -1);
-  const dueUtc = utcYmdAtChileWallClock(
-    prevChile,
-    CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
-    CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE
+  const dueUtc = chileCalendarAddDays(
+    utcYmdAtChileWallClock(prevChile, CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE, CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE),
+    -1
   );
   return equityCryptoEodCaughtUp(dueUtc) ? null : dueUtc;
+}
+
+/** Sync-log dates for crypto EOD: due bar and its UTC predecessor. */
+export function cryptoEodChangeLogDates(dueUtcYmd: string): { oldDate: string; newDate: string } {
+  return { oldDate: chileCalendarAddDays(dueUtcYmd, -1), newDate: dueUtcYmd };
+}
+
+/** Drop in-progress UTC day bars from a daily series before crypto EOD upsert. */
+export function capCryptoEodSeriesToCompletedUtcDay(series: EodCloseSeries, now: Date = new Date()): EodCloseSeries {
+  const maxTradeDate = cryptoCompletedUtcYmd(now);
+  const dates: string[] = [];
+  const closes: number[] = [];
+  for (let i = 0; i < series.dates.length; i++) {
+    const d = series.dates[i]!;
+    if (d > maxTradeDate) continue;
+    dates.push(d);
+    closes.push(series.closes[i]!);
+  }
+  return { dates, closes };
 }
 
 export type EquityEodSyncResult = {
   ticker: string;
   rows: number;
   skipped?: string;
+  /** NYSE: last trade date returned by Yahoo (after meta enrichment). */
+  yahooLatestDate?: string | null;
+  /** NYSE: session whose EOD bar must be in DB. */
+  dueSessionYmd?: string | null;
+  /** NYSE: latest trade date in DB after upsert. */
+  dbLatestDate?: string | null;
+  /** NYSE: today's close came from chart meta, not a finalized daily bar. */
+  usedMetaClose?: boolean;
+  /** NYSE: due session still missing from DB after upsert. */
+  stillMissingDueSession?: boolean;
 };
+
+/** Sync-log note when NYSE EOD fetch did not fully catch up. */
+export function describeEquityNyseEodSyncNote(r: EquityEodSyncResult): string | null {
+  if (r.skipped) return `${r.ticker}: skip (${r.skipped})`;
+  if (r.usedMetaClose && r.dueSessionYmd) {
+    return `${r.ticker}: chart meta close for ${r.dueSessionYmd}`;
+  }
+  if (r.stillMissingDueSession && r.dueSessionYmd) {
+    const yahoo = r.yahooLatestDate ?? "—";
+    const db = r.dbLatestDate ?? "—";
+    return `${r.ticker}: still missing ${r.dueSessionYmd} (Yahoo ${yahoo}, DB ${db})`;
+  }
+  return null;
+}
 
 /**
  * Upsert recent Yahoo daily closes into `equity_daily` for the given tickers.
@@ -136,10 +171,40 @@ export async function syncEquityEodFromYahoo(
         out.push({ ticker, rows: 0, skipped: "before_nyse_close" });
         continue;
       }
+      const dueSessionYmd = equityEodNyseSyncDue(now);
+      if (dueSessionYmd == null) {
+        out.push({ ticker, rows: 0, skipped: "nyse_session_not_due" });
+        continue;
+      }
+      try {
+        const fetch = await fetchYahooNyseEodForSync(ticker, { dueSessionYmd, now, days: 21 });
+        const rows = dryRun ? fetch.series.dates.length : upsertEquityDailySeries(ticker, fetch.series);
+        const dbLatestDate = latestEquityEodTradeDate(ticker);
+        out.push({
+          ticker,
+          rows,
+          yahooLatestDate: fetch.yahooLatestDate,
+          dueSessionYmd: fetch.dueSessionYmd,
+          usedMetaClose: fetch.usedMetaClose,
+          dbLatestDate,
+          stillMissingDueSession: dbLatestDate == null || dbLatestDate < dueSessionYmd,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        out.push({
+          ticker,
+          rows: 0,
+          skipped: msg.slice(0, 120),
+          dueSessionYmd,
+          dbLatestDate: latestEquityEodTradeDate(ticker),
+        });
+      }
+      continue;
     }
 
     try {
-      const series = await fetchYahooRecentDailyCloses(ticker, 21);
+      let series = await fetchYahooRecentDailyCloses(ticker, 21);
+      if (kind === "crypto24") series = capCryptoEodSeriesToCompletedUtcDay(series, now);
       const rows = dryRun ? series.dates.length : upsertEquityDailySeries(ticker, series);
       out.push({ ticker, rows });
     } catch (e) {
@@ -158,10 +223,35 @@ export function syncStocksNyseFromYahoo(
   return syncEquityEodFromYahoo(listNyseEquityTickersForEodSync(), opts);
 }
 
+/** Upsert recent CoinGecko daily USD closes into `equity_daily` for BTC-USD / ETH-USD. */
+export async function syncCryptoEodFromCoinGecko(
+  opts?: { dryRun?: boolean; now?: Date }
+): Promise<EquityEodSyncResult[]> {
+  const now = opts?.now ?? new Date();
+  const dryRun = opts?.dryRun ?? false;
+  const out: EquityEodSyncResult[] = [];
+
+  for (const ticker of EQUITY_CRYPTO_TICKERS) {
+    try {
+      let series = await fetchCoinGeckoRecentDailyCloses(ticker, 30);
+      series = capCryptoEodSeriesToCompletedUtcDay(series, now);
+      const rows = dryRun ? series.dates.length : upsertEquityDailySeries(ticker, series);
+      out.push({ ticker, rows });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      out.push({ ticker, rows: 0, skipped: msg.slice(0, 120) });
+    }
+  }
+
+  if (!dryRun) clearEquityLiveQuoteCache();
+  return out;
+}
+
+/** @deprecated Use {@link syncCryptoEodFromCoinGecko}. */
 export function syncCryptoEodFromYahoo(
   opts?: { dryRun?: boolean; now?: Date; force?: boolean }
 ): Promise<EquityEodSyncResult[]> {
-  return syncEquityEodFromYahoo(EQUITY_CRYPTO_TICKERS, opts);
+  return syncCryptoEodFromCoinGecko(opts);
 }
 
 /** NYSE session date to record in sync state after a successful NYSE EOD pull. */
@@ -172,11 +262,11 @@ export function equityEodSyncSessionLabel(now = new Date()): {
   const ny = nyseWallClock(now);
   return {
     nyseSession: isNyseTradingDay(ny.ymd) ? nyseSessionYmd(now) : null,
-    cryptoUtcDay: utcTodayYmd(now),
+    cryptoUtcDay: cryptoCompletedUtcYmd(now),
   };
 }
 
-/** Persisted NYSE session marker: only when SPY/VEA data are caught up through that session. */
+/** Persisted NYSE session marker: only when all NYSE account tickers are caught up through that session. */
 export function equityEodNyseStateYmd(now = new Date()): string | null {
   const due = equityEodNyseSyncDue(now);
   if (due != null) return equityNyseEodCaughtUp(due) ? due : null;
@@ -184,8 +274,8 @@ export function equityEodNyseStateYmd(now = new Date()): string | null {
   return equityNyseEodCaughtUp(last) ? last : null;
 }
 
-/** Persisted crypto UTC-day marker: only when BTC/ETH data are caught up through today (UTC). */
+/** Persisted crypto UTC-day marker: only when BTC/ETH data are caught up through last completed UTC day. */
 export function equityEodCryptoStateYmd(now = new Date()): string | null {
-  const utc = utcTodayYmd(now);
-  return equityCryptoEodCaughtUp(utc) ? utc : null;
+  const completed = cryptoCompletedUtcYmd(now);
+  return equityCryptoEodCaughtUp(completed) ? completed : null;
 }

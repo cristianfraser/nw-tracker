@@ -4,6 +4,7 @@ import {
 } from "./brokerageEquityMtm.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
 import {
   dashboardCardReconcilePeriodDeltas,
@@ -30,10 +31,13 @@ import { syncStatusPayload } from "./globalSyncStale.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { isUsdCashKindSlug } from "./movementTransfer.js";
+import { usdCashBalanceLive } from "./usdCashAccounts.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { buildFxCoverage } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
+  convertTs,
   getDashboardOverviewBlock,
   liabilitiesBreakdownClpAsOf,
   type TsUnit,
@@ -41,7 +45,7 @@ import {
 import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
-import { buildDashboardNwBucketTotalsFromRows } from "./dashboardNwBucketTotals.js";
+import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
@@ -61,6 +65,24 @@ import {
 } from "./valuationLatest.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
+
+/** Depto property P/L is UF-based in CLP; USD cards use CLP nominal converted at mark FX. */
+function dashboardPropertyDeltaUsd(
+  kindSlug: string,
+  asOfYmd: string | null,
+  deltaClp: number | null | undefined,
+  deltaUsdFromPerf: number | null | undefined
+): number | null | undefined {
+  if (
+    accountBucketKindSlug(kindSlug) !== "property" ||
+    deltaClp == null ||
+    !Number.isFinite(deltaClp)
+  ) {
+    return deltaUsdFromPerf;
+  }
+  const usd = convertTs(deltaClp, asOfYmd ?? chileCalendarTodayYmd(), "usd");
+  return Number.isFinite(usd) ? usd : deltaUsdFromPerf;
+}
 
 export function listDashboardSourceAccounts(): {
   id: number;
@@ -153,6 +175,10 @@ export async function latestValuationDisplayForAccount(
   }
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
     return checkingMovementBalanceLive(accountId);
+  }
+  if (categorySlug && isUsdCashKindSlug(categorySlug)) {
+    const live = usdCashBalanceLive(accountId);
+    return { value_clp: live.value_clp, as_of_date: live.as_of_date };
   }
   const equityTicker = equityTickerForAccount(accountId);
   if (equityTicker != null && accountUsesEquityMtm(accountId)) {
@@ -276,11 +302,32 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         deposits_clp: deposits,
         deposits_usd: includeUsd ? deposits_usd : undefined,
         delta_month_clp: perfClp?.delta_month,
-        delta_month_usd: perfUsd?.delta_month,
+        delta_month_usd: includeUsd
+          ? dashboardPropertyDeltaUsd(
+              markCategorySlug,
+              valuation_as_of,
+              perfClp?.delta_month,
+              perfUsd?.delta_month
+            )
+          : undefined,
         delta_year_clp: perfClp?.delta_year,
-        delta_year_usd: perfUsd?.delta_year,
+        delta_year_usd: includeUsd
+          ? dashboardPropertyDeltaUsd(
+              markCategorySlug,
+              valuation_as_of,
+              perfClp?.delta_year,
+              perfUsd?.delta_year
+            )
+          : undefined,
         delta_total_clp: perfClp?.delta_total,
-        delta_total_usd: perfUsd?.delta_total,
+        delta_total_usd: includeUsd
+          ? dashboardPropertyDeltaUsd(
+              markCategorySlug,
+              valuation_as_of,
+              perfClp?.delta_total,
+              perfUsd?.delta_total
+            )
+          : undefined,
         deposits_month_clp: trackAssetMetrics ? (depositsMonth.clp.get(a.id) ?? 0) : undefined,
         deposits_month_usd: trackAssetMetrics ? (depositsMonth.usd.get(a.id) ?? null) : undefined,
         deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
@@ -366,7 +413,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
         }
       : card
   );
-  const nw_bucket_totals = buildDashboardNwBucketTotalsFromRows(clientAccounts, includeUsd);
+  const nw_bucket_totals = buildDashboardNwBucketTotals(includeUsd);
   return {
     accounts: clientAccounts,
     liabilities_breakdown,

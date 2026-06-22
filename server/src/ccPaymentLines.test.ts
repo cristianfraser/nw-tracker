@@ -3,8 +3,10 @@ import { isCcPaymentMerchant, webPasteAmountClpForDb } from "./ccPaymentLines.js
 
 describe("ccPaymentLines", () => {
   it("maps web paste signs to DB convention", () => {
-    expect(webPasteAmountClpForDb(-1990)).toBe(1990);
-    expect(webPasteAmountClpForDb(5570527)).toBe(-5570527);
+    expect(webPasteAmountClpForDb(-1990, "ARAMCO")).toBe(1990);
+    expect(webPasteAmountClpForDb(5570527, "PAGO")).toBe(-5570527);
+    expect(webPasteAmountClpForDb(-500000, "PAGO")).toBe(-500000);
+    expect(webPasteAmountClpForDb(1795575, "TOKU *METLIFE HIPOTE")).toBe(1795575);
   });
 
   it("recognizes payment merchants", () => {

@@ -1,7 +1,7 @@
 import { clearCreditCardBillingDetailCache } from "./ccBillingDetailCache.js";
 import { buildDashboardAccountRows, buildDashboardSueciaSnapshot } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
-import { buildDashboardNwBucketTotalsFromRows } from "./dashboardNwBucketTotals.js";
+import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import {
   buildFlowsDepositsPayload,
   depositClpToUsdAtDate,
@@ -14,6 +14,7 @@ import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { isNwDashboardBucketSlug, portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
+import { netWorthCurrentMonthMetrics } from "./netWorthConsolidation.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
@@ -28,7 +29,8 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
 
     return timeHeavy(HeavyWork.dashboardPayload, () => {
     const asOfToday = chileCalendarTodayYmd();
-    const bucketTotals = buildDashboardNwBucketTotalsFromRows(rowsBuilt, includeUsd);
+    const bucketTotals = buildDashboardNwBucketTotals(includeUsd);
+    const netWorthPeriod = netWorthCurrentMonthMetrics("clp");
     const re = { clp: bucketTotals.real_estate_clp, usd: bucketTotals.real_estate_usd ?? 0 };
     const ret = { clp: bucketTotals.retirement_clp, usd: bucketTotals.retirement_usd ?? 0 };
     const bro = { clp: bucketTotals.brokerage_clp, usd: bucketTotals.brokerage_usd ?? 0 };
@@ -134,6 +136,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
           : {}),
       },
       ...(includeUsd ? { fx_conversion_error: depositsFlow.fx_conversion_error } : {}),
+      net_worth_period_metrics: netWorthPeriod,
     };
     });
   });

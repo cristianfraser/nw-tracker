@@ -8,6 +8,8 @@ import {
 } from "./liabilityTree.js";
 import { isCheckingAccountKindSlug } from "./assetGroupTree.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { priorCalendarMonthKey } from "./accountPeriodMarks.js";
 import type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 import type { TsUnit } from "./groupMonthlyPerfConsolidation.js";
 
@@ -186,9 +188,14 @@ function linkedCcOffsetAt(asOf: string, unit: TsUnit): number {
   return Number.isFinite(v) ? v : 0;
 }
 
+function priorMonthEndYmdForConsolidatedRow(asOf: string): string {
+  const mk = monthKeyFromYmd(asOf);
+  return monthEndUtcYmd(priorCalendarMonthKey(mk));
+}
+
 /**
  * Net linked tarjeta balance from consolidated cash_savings month cierres (chart NAV / bucket level).
- * Nominal P/L stays savings-only — CC balance drift is not bucket investment return.
+ * Nominal P/L and net_capital_flow stay savings-only; CC is a balance offset on closing/prior only.
  */
 export function netLinkedCreditCardFromCashConsolidated(
   rows: readonly ConsolidatedMonthlyPerfRow[],
@@ -199,8 +206,18 @@ export function netLinkedCreditCardFromCashConsolidated(
   return [...rows]
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))
     .map((row) => {
-      const linkedCc = linkedCcOffsetAt(row.as_of_date, unit);
-      return { ...row, closing_value: row.closing_value - linkedCc };
+      const linkedCcClose = linkedCcOffsetAt(row.as_of_date, unit);
+      let prior_closing = row.prior_closing;
+      if (prior_closing != null && Number.isFinite(prior_closing)) {
+        const priorEnd = priorMonthEndYmdForConsolidatedRow(row.as_of_date);
+        const linkedCcPrior = linkedCcOffsetAt(priorEnd, unit);
+        prior_closing = prior_closing - linkedCcPrior;
+      }
+      return {
+        ...row,
+        closing_value: row.closing_value - linkedCcClose,
+        prior_closing,
+      };
     })
     .reverse();
 }

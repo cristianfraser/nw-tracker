@@ -21,6 +21,7 @@ import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsD
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 
 export type CcBillingMonthBalanceRow = {
   id: number;
@@ -51,12 +52,22 @@ const upsertBalance = db.prepare(`
     saldo_total_usd = excluded.saldo_total_usd
 `);
 
-function sumNonInstallmentLinesForAccountStatementDateClp(
+type RevolvingLineRow = {
+  id: number;
+  merchant: string | null;
+  amount_clp: number | null;
+  amount_usd: number | null;
+  statement_currency: string;
+  installment_flag: number;
+  valor_cuota_mensual_clp: number | null;
+  valor_cuota_mensual_usd: number | null;
+};
+
+function listRevolvingLineRowsForStatementDate(
   accountId: number,
   statementDate: string
-): number {
-  const fxDateIso = parseDdMmYyToIso(statementDate);
-  const rows = db
+): RevolvingLineRow[] {
+  return db
     .prepare(
       `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
               l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
@@ -64,21 +75,22 @@ function sumNonInstallmentLinesForAccountStatementDateClp(
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.statement_date = ? AND l.installment_flag = 0`
     )
-    .all(accountId, statementDate) as {
-    id: number;
-    merchant: string | null;
-    amount_clp: number | null;
-    amount_usd: number | null;
-    statement_currency: string;
-    installment_flag: number;
-    valor_cuota_mensual_clp: number | null;
-    valor_cuota_mensual_usd: number | null;
-  }[];
+    .all(accountId, statementDate) as RevolvingLineRow[];
+}
+
+function sumRevolvingLinesForAccountStatementDateClp(
+  accountId: number,
+  statementDate: string,
+  opts?: { excludePayments?: boolean }
+): number {
+  const fxDateIso = parseDdMmYyToIso(statementDate);
+  const rows = listRevolvingLineRowsForStatementDate(accountId, statementDate);
   const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
   let sum = 0;
   for (const r of rows) {
     if (superseded.has(r.id)) continue;
     if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+    if (opts?.excludePayments && isCcPaymentMerchant(r.merchant)) continue;
     const clp = effectiveCcExpenseLineAmountClp(
       { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
       fxDateIso
@@ -86,6 +98,39 @@ function sumNonInstallmentLinesForAccountStatementDateClp(
     if (clp != null && Number.isFinite(clp)) sum += clp;
   }
   return sum;
+}
+
+/** One-shot charges only (excludes PAGO / ABONO — those are subtracted in open-month roll-forward). */
+export function sumRevolvingChargesClpForStatementDate(
+  accountId: number,
+  statementDate: string
+): number {
+  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, {
+    excludePayments: true,
+  });
+}
+
+/** Σ positive revolving charges in a billing month (all statement closes on distinct dates). */
+export function incrementalChargesClpForBillingMonth(
+  accountId: number,
+  billingMonth: string
+): number {
+  const seenDates = new Set<string>();
+  let sum = 0;
+  for (const st of listCcStatementsForAccount(accountId)) {
+    if (st.billing_month !== billingMonth) continue;
+    if (seenDates.has(st.statement_date)) continue;
+    seenDates.add(st.statement_date);
+    sum += sumRevolvingChargesClpForStatementDate(accountId, st.statement_date);
+  }
+  return sum;
+}
+
+function sumNonInstallmentLinesForAccountStatementDateClp(
+  accountId: number,
+  statementDate: string
+): number {
+  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate);
 }
 
 function sumNonInstallmentLinesClp(statementId: number): number {
@@ -178,10 +223,7 @@ export function facturadoFromStatement(
       facturado_usd: null,
     };
   }
-  const revolving = sumNonInstallmentLinesForAccountStatementDateClp(
-    accountId,
-    statementDate
-  );
+  const revolving = sumRevolvingChargesClpForStatementDate(accountId, statementDate);
   const cuota = installmentCuotaDueForAccountStatementDateClp(accountId, statementDate);
   let clp = revolving + cuota;
   if (clp <= 0) {

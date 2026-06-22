@@ -5,6 +5,7 @@ import {
   buildFacturaciones,
   paymentAbonosClpForBillingMonth,
 } from "./ccBillingViews.js";
+import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   ccInstallmentsDbApiPayload,
@@ -39,11 +40,107 @@ describe("buildBillingDetailByMonth", () => {
     const openRow = det.find((d) => d.billing_month === openBm);
     if (!may?.total_facturado_clp || !openRow) return;
 
-    expect(openRow.total_facturado_clp).toBeGreaterThanOrEqual(may.total_facturado_clp);
-    expect(openRow.balance_total_clp).toBeGreaterThan(may.balance_total_clp * 0.9);
-    const incrementalOnly =
-      (openRow.total_facturado_clp ?? 0) - (may.total_facturado_clp ?? 0);
-    expect(incrementalOnly).toBeGreaterThan(0);
+    expect(openRow.as_of_kind).toBe("manual");
+    expect(openRow.total_facturado_clp).toBeGreaterThan(0);
+    expect(openRow.balance_total_clp).toBe(
+      (openRow.total_facturado_clp ?? 0) + openRow.cupo_en_cuotas_clp
+    );
+    expect(may.balance_total_clp).toBe(
+      (may.total_facturado_clp ?? 0) + may.cupo_en_cuotas_clp - may.cuota_a_pagar_next_mes_clp
+    );
+  });
+
+  it("open month facturado estimate includes charges, ledger cuotas, and cuota_a_pagar_next_mes", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    const lastPdf = lastPdfBillingMonthForAccount(master.id);
+    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
+
+    recomputeCcBillingMonthBalances(master.id);
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const det = buildBillingDetailByMonth(master.id, payload.months);
+    const openRow = det.find((d) => d.billing_month === openBm);
+    const may = det.find((d) => d.billing_month === lastPdf);
+    if (!openRow || !may?.total_facturado_clp) return;
+
+    const charges = incrementalChargesClpForBillingMonth(master.id, openBm);
+    const ledger = ledgerFacturadoClpForBillingMonth(master.id, openBm);
+    const payments = paymentAbonosClpForBillingMonth(master.id, openBm);
+    const expected =
+      (may.total_facturado_clp ?? 0) + charges + ledger - payments + openRow.cuota_a_pagar_next_mes_clp;
+
+    expect(openRow.total_facturado_clp).toBe(expected);
+    expect(openRow.balance_total_clp).toBe(
+      (openRow.total_facturado_clp ?? 0) + openRow.cupo_en_cuotas_clp
+    );
+  });
+
+  it("open month includes charges when PAGO and purchases share web-paste bucket", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    const lastPdf = lastPdfBillingMonthForAccount(master.id);
+    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) return;
+
+    const stmt = listCcStatementsForAccount(master.id).find((s) => s.billing_month === openBm);
+    if (!stmt) return;
+
+    recomputeCcBillingMonthBalances(master.id);
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const before = buildBillingDetailByMonth(master.id, payload.months).find(
+      (d) => d.billing_month === openBm
+    );
+    if (!before) return;
+
+    const chargeA = 100_000;
+    const chargeB = 50_000;
+    const pagoClp = 1_000_000;
+    const dedupeBase = `vitest-pago-charges-${Date.now()}`;
+    const insA = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+         ) VALUES (?, ?, 'VITEST SHOP A', ?, 0, ?)`
+      )
+      .run(stmt.id, `${openBm}-10`, chargeA, `${dedupeBase}-a`);
+    const insB = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+         ) VALUES (?, ?, 'VITEST SHOP B', ?, 0, ?)`
+      )
+      .run(stmt.id, `${openBm}-11`, chargeB, `${dedupeBase}-b`);
+    const insPago = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+         ) VALUES (?, ?, 'PAGO', ?, 0, ?)`
+      )
+      .run(stmt.id, `${openBm}-12`, -pagoClp, `${dedupeBase}-pago`);
+
+    try {
+      const after = buildBillingDetailByMonth(master.id, payload.months).find(
+        (d) => d.billing_month === openBm
+      );
+      expect(after).toBeDefined();
+      expect(after!.total_facturado_clp).toBe(
+        (before.total_facturado_clp ?? 0) + chargeA + chargeB - pagoClp
+      );
+      expect(after!.balance_total_clp).toBe(
+        before.balance_total_clp + chargeA + chargeB - pagoClp
+      );
+    } finally {
+      for (const id of [insA.lastInsertRowid, insB.lastInsertRowid, insPago.lastInsertRowid]) {
+        db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
+      }
+    }
   });
 
   it("PAGO in open month reduces rolled facturado and balance_total", () => {
@@ -73,7 +170,7 @@ describe("buildBillingDetailByMonth", () => {
            statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
          ) VALUES (?, ?, 'PAGO', ?, 0, ?)`
       )
-      .run(stmt.id, `${openBm}-05`, "PAGO", -pagoClp, `vitest-pago-${Date.now()}`);
+      .run(stmt.id, `${openBm}-05`, -pagoClp, `vitest-pago-${Date.now()}`);
 
     try {
       expect(paymentAbonosClpForBillingMonth(master.id, openBm)).toBeGreaterThanOrEqual(pagoClp);
@@ -137,6 +234,26 @@ describe("buildFacturaciones", () => {
     expect(row.close_date_iso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(det).toBeDefined();
     expect(det!.total_facturado_clp).toBe(row.facturado_total_clp);
+  });
+
+  it("open month facturado_total equals facturado_clp plus facturado_usd_clp", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    if (!openBm) return;
+
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const openRow = buildFacturaciones(master.id, payload.months).find(
+      (f) => f.billing_month === openBm
+    );
+    if (!openRow?.facturado_total_clp) return;
+
+    expect(openRow.facturado_total_clp).toBe(
+      (openRow.facturado_clp ?? 0) + (openRow.facturado_usd_clp ?? 0)
+    );
   });
 
   describe("manual installment purchases on open billing month", () => {

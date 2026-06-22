@@ -8,7 +8,11 @@ import type { GlobalSyncStateFile } from "../src/globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
 import { matchFintualCertGoalV2 } from "../src/fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "../src/fintualGoalUnits.js";
-import { isFintualCertV2ValuationNotes, recordFintualGoalFundUnitDaily } from "../src/fintualFundUnitDaily.js";
+import {
+  fundSeriesKeyFromImportNotes,
+  isFintualCertV2ValuationNotes,
+  recordFintualGoalFundUnitDaily,
+} from "../src/fintualFundUnitDaily.js";
 import { formatSyncClp, type SyncFieldChange } from "../src/syncRunLog.js";
 import type { FintualGoalNavResolution } from "./fintualRealAssetNav.js";
 
@@ -18,6 +22,17 @@ const stmtPriorValuation = db.prepare(
   `SELECT as_of_date, value_clp FROM valuations
    WHERE account_id = ? AND as_of_date < ?
    ORDER BY as_of_date DESC LIMIT 1`
+);
+const stmtValuationOnDay = db.prepare(
+  `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+);
+const stmtFundUnitOnDay = db.prepare(
+  `SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day = ?`
+);
+const stmtFundUnitBeforeDay = db.prepare(
+  `SELECT day, unit_value_clp FROM fund_unit_daily
+   WHERE series_key = ? AND day < ?
+   ORDER BY day DESC LIMIT 1`
 );
 
 /** Latest stored valuation strictly before `beforeYmd`. */
@@ -32,25 +47,110 @@ export function priorAccountValuation(
   return row;
 }
 
-/** Mapped Fintual goals whose API NAV differs from the stored valuation on `snap.asOfDate`. */
-export function collectFintualGoalValuationChanges(snap: FintualGoalSnapshot): ValuationChange[] {
+type FintualGoalApplyTarget = { accountId: number; importNotes: string };
+
+/** Prefer certificado v2 account when present; fall back to legacy `import:excel|key=…` map. */
+export function resolveFintualGoalApplyAccount(goal: {
+  id: number | string;
+  name: string;
+  matchedNotes: string | null;
+}): FintualGoalApplyTarget | null {
   const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
-  const valStmt = db.prepare(
-    `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
-  );
+  const v2Notes = matchFintualCertGoalV2(String(goal.id), goal.name);
+  if (v2Notes) {
+    const v2Acc = accStmt.get(v2Notes) as { id: number } | undefined;
+    if (v2Acc) return { accountId: v2Acc.id, importNotes: v2Notes };
+  }
+  if (goal.matchedNotes) {
+    const row = accStmt.get(goal.matchedNotes) as { id: number } | undefined;
+    if (row) return { accountId: row.id, importNotes: goal.matchedNotes };
+  }
+  return null;
+}
+
+function storedFintualGoalNavAt(
+  accountId: number,
+  importNotes: string,
+  asOfYmd: string
+): number | null {
+  if (isFintualCertV2ValuationNotes(importNotes)) {
+    const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+    if (!seriesKey) return null;
+    const units = fintualGoalUnitsFromMovements(accountId);
+    if (units == null || units <= 0) return null;
+    const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value_clp: number } | undefined;
+    if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
+    return Math.round(units * row.unit_value_clp);
+  }
+  const row = stmtValuationOnDay.get(accountId, asOfYmd) as { value_clp: number } | undefined;
+  if (row?.value_clp == null || !Number.isFinite(row.value_clp)) return null;
+  return Math.round(row.value_clp);
+}
+
+function priorFintualGoalNav(
+  accountId: number,
+  importNotes: string,
+  beforeYmd: string
+): { as_of_date: string; value_clp: number } | null {
+  if (isFintualCertV2ValuationNotes(importNotes)) {
+    const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+    if (!seriesKey) return null;
+    const units = fintualGoalUnitsFromMovements(accountId);
+    if (units == null || units <= 0) return null;
+    const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
+      | { day: string; unit_value_clp: number }
+      | undefined;
+    if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
+    return { as_of_date: row.day, value_clp: Math.round(units * row.unit_value_clp) };
+  }
+  return priorAccountValuation(accountId, beforeYmd);
+}
+
+function storedFintualPublishUnitAt(importNotes: string, asOfYmd: string): number | null {
+  if (!isFintualCertV2ValuationNotes(importNotes)) return null;
+  const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+  if (!seriesKey) return null;
+  const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value_clp: number } | undefined;
+  if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
+  return Math.round(row.unit_value_clp * 10000) / 10000;
+}
+
+function fintualPublishUnitSynced(
+  importNotes: string,
+  asOfYmd: string,
+  fundPriceClp: number | null | undefined
+): boolean {
+  const stored = storedFintualPublishUnitAt(importNotes, asOfYmd);
+  if (stored == null) return false;
+  if (fundPriceClp != null && fundPriceClp > 0) {
+    return Math.abs(stored - fundPriceClp) <= 0.005;
+  }
+  return true;
+}
+
+/** Mapped Fintual goals whose API NAV differs from stored DB position on `snap.asOfDate`. */
+export function collectFintualGoalValuationChanges(
+  snap: FintualGoalSnapshot,
+  resolutions?: FintualGoalNavResolution[]
+): ValuationChange[] {
+  const byGoalId = new Map(resolutions?.map((r) => [String(r.row.id), r]) ?? []);
   const changes: ValuationChange[] = [];
   for (const g of snap.goals) {
-    if (!g.matchedNotes) continue;
-    const row = accStmt.get(g.matchedNotes) as { id: number } | undefined;
-    if (!row) continue;
-    const nextRounded = Math.round(g.navClp);
-    const prev = valStmt.get(row.id, snap.asOfDate) as { value_clp: number } | undefined;
-    const prevRounded =
-      prev?.value_clp != null && Number.isFinite(prev.value_clp)
-        ? Math.round(prev.value_clp)
-        : null;
-    if (prevRounded != null && Math.abs(prevRounded - nextRounded) <= 1) continue;
-    const prior = priorAccountValuation(row.id, snap.asOfDate);
+    if (!g.matchedNotes && !matchFintualCertGoalV2(String(g.id), g.name)) continue;
+    const target = resolveFintualGoalApplyAccount(g);
+    if (!target) continue;
+    const resolution = byGoalId.get(String(g.id));
+    const appliedNav = resolution?.appliedNavClp ?? g.navClp;
+    const nextRounded = Math.round(appliedNav);
+    if (isFintualCertV2ValuationNotes(target.importNotes)) {
+      if (fintualPublishUnitSynced(target.importNotes, snap.asOfDate, resolution?.fundPriceClp)) {
+        continue;
+      }
+    } else {
+      const stored = storedFintualGoalNavAt(target.accountId, target.importNotes, snap.asOfDate);
+      if (stored != null && Math.abs(stored - nextRounded) <= 1) continue;
+    }
+    const prior = priorFintualGoalNav(target.accountId, target.importNotes, snap.asOfDate);
     changes.push({
       group: "fintual",
       label: g.name,
@@ -115,7 +215,8 @@ export function syncFintualFundUnitsFromResolutions(
 
 export function applyFintualGoalsSnapshotToDb(
   snap: FintualGoalSnapshot,
-  dryRun: boolean
+  dryRun: boolean,
+  opts?: { logChanges?: ValuationChange[] }
 ): { applied: number; skipped: number; changes: ValuationChange[] } {
   const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
   const upsert = db.prepare(`
@@ -133,21 +234,27 @@ export function applyFintualGoalsSnapshotToDb(
 
   let applied = 0;
   let skipped = 0;
-  const changes = collectFintualGoalValuationChanges(snap);
+  const changes = opts?.logChanges ?? collectFintualGoalValuationChanges(snap);
 
   for (const g of snap.goals) {
-    if (!g.matchedNotes) {
+    if (!g.matchedNotes && !matchFintualCertGoalV2(String(g.id), g.name)) {
       skipped += 1;
       continue;
     }
-    const row = accStmt.get(g.matchedNotes) as { id: number } | undefined;
+    const target = resolveFintualGoalApplyAccount(g);
+    if (!target) {
+      console.warn(`No account for goal "${g.name}" id=${g.id} (map: ${g.matchedNotes ?? "—"})`);
+      skipped += 1;
+      continue;
+    }
+    const row = accStmt.get(target.importNotes) as { id: number } | undefined;
     if (!row) {
-      console.warn(`No account with notes=${g.matchedNotes} (goal "${g.name}" id=${g.id})`);
+      console.warn(`No account with notes=${target.importNotes} (goal "${g.name}" id=${g.id})`);
       skipped += 1;
       continue;
     }
     const value_clp = Math.round(g.navClp * 100) / 100;
-    if (!isFintualCertV2ValuationNotes(g.matchedNotes)) {
+    if (!isFintualCertV2ValuationNotes(target.importNotes)) {
       if (dryRun) {
         console.log(
           `[dry-run] account_id=${row.id} as_of=${snap.asOfDate} value_clp=${value_clp} ← goal "${g.name}"`
@@ -167,7 +274,7 @@ export function applyFintualGoalsSnapshotToDb(
     }
     recordFintualGoalFundUnitDaily({
       accountId: row.id,
-      importNotes: g.matchedNotes,
+      importNotes: target.importNotes,
       asOfYmd: snap.asOfDate,
       navClp: g.navClp,
       dryRun,
@@ -178,20 +285,26 @@ export function applyFintualGoalsSnapshotToDb(
   return { applied, skipped, changes };
 }
 
-/** True when every mapped goal matches `valuations` for `snap.asOfDate` within 1 CLP. */
-export function fintualSnapshotMatchesDb(snap: FintualGoalSnapshot): boolean {
-  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
-  const valStmt = db.prepare(
-    `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
-  );
+/** True when every mapped goal matches stored DB position for `snap.asOfDate`. */
+export function fintualSnapshotMatchesDb(
+  snap: FintualGoalSnapshot,
+  resolutions?: FintualGoalNavResolution[]
+): boolean {
+  const byGoalId = new Map(resolutions?.map((r) => [String(r.row.id), r]) ?? []);
   let checked = 0;
   for (const g of snap.goals) {
-    if (!g.matchedNotes) continue;
-    const row = accStmt.get(g.matchedNotes) as { id: number } | undefined;
-    if (!row) return false;
-    const v = valStmt.get(row.id, snap.asOfDate) as { value_clp: number } | undefined;
-    if (!v) return false;
-    if (Math.abs(v.value_clp - g.navClp) > 1) return false;
+    if (!g.matchedNotes && !matchFintualCertGoalV2(String(g.id), g.name)) continue;
+    const target = resolveFintualGoalApplyAccount(g);
+    if (!target) return false;
+    const resolution = byGoalId.get(String(g.id));
+    if (isFintualCertV2ValuationNotes(target.importNotes)) {
+      if (!fintualPublishUnitSynced(target.importNotes, snap.asOfDate, resolution?.fundPriceClp)) {
+        return false;
+      }
+    } else {
+      const stored = storedFintualGoalNavAt(target.accountId, target.importNotes, snap.asOfDate);
+      if (stored == null || Math.abs(stored - g.navClp) > 1) return false;
+    }
     checked++;
   }
   return checked > 0;
@@ -207,8 +320,10 @@ export function cleanupMistakenPollDayFintualValuations(snap: FintualGoalSnapsho
   );
   let n = 0;
   for (const g of snap.goals) {
-    if (!g.matchedNotes) continue;
-    const row = accStmt.get(g.matchedNotes) as { id: number } | undefined;
+    if (!g.matchedNotes && !matchFintualCertGoalV2(String(g.id), g.name)) continue;
+    const target = resolveFintualGoalApplyAccount(g);
+    if (!target || isFintualCertV2ValuationNotes(target.importNotes)) continue;
+    const row = accStmt.get(target.importNotes) as { id: number } | undefined;
     if (!row) continue;
     const value_clp = Math.round(g.navClp * 100) / 100;
     if (dryRun) continue;
@@ -250,6 +365,20 @@ export function fintualEveningCatchUpComplete(
   }
   const snapPrior = buildGoalsSnapshot(rows, byGoalId, cl, prior);
   return fintualSnapshotMatchesDb(snapPrior) && fintualSnapshotMatchesDb(snapPub);
+}
+
+/** Record that polled NAV for `publishYmd` is already reflected in DB (clears stale checks). */
+export function markFintualAppliedFromPoll(
+  state: GlobalSyncStateFile,
+  cl: ChileWallClock,
+  publishYmd: string,
+  sig: string,
+  dryRun: boolean
+): void {
+  if (dryRun) return;
+  state.fintualLastAppliedYmd = cl.ymd;
+  state.fintualLastAppliedPublishYmd = publishYmd;
+  state.fintualLastAppliedSig = sig;
 }
 
 /** Mark evening poll settled when today's mapped goals already match DB (≥18:00 Chile). */

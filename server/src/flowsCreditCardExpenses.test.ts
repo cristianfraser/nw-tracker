@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   NO_CUENTA_CC_EXPENSE_SLUG,
+  assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
   resolveCcExpensePurchaseKey,
@@ -211,6 +212,102 @@ describe("flowsCreditCardExpenses", () => {
 
     // We should not override to no_cuenta when the user explicitly cleared unique.
     expect(found!.category_slug).not.toBe(NO_CUENTA_CC_EXPENSE_SLUG);
+  });
+
+  it("never auto-tags installment contracts as no_cuenta for adicional cuotas", () => {
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const adicionalInstallment = payload.lines.find(
+      (ln) =>
+        ln.source === "cc" &&
+        ln.installment_flag === 1 &&
+        ln.origin_card_last4 != null &&
+        ln.primary_card_last4 != null &&
+        ln.origin_card_last4 !== ln.primary_card_last4
+    );
+    if (!adicionalInstallment) return;
+    expect(adicionalInstallment.category_slug).not.toBe(NO_CUENTA_CC_EXPENSE_SLUG);
+  });
+
+  it("keeps user unique category on installment contract when an adicional cuota exists", () => {
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const titularCuota = payload.lines.find(
+      (ln) =>
+        ln.source === "cc" &&
+        ln.installment_flag === 1 &&
+        ln.merchant_key.includes("ROCA") &&
+        ln.nro_cuota_current === 1 &&
+        ln.origin_card_last4 === ln.primary_card_last4
+    );
+    if (!titularCuota) return;
+
+    const purchaseKey = resolveCcExpensePurchaseKey(titularCuota.statement_line_id);
+    expect(purchaseKey).toMatch(/^installment-h:/);
+
+    assignCcExpenseLineCategory({
+      statementLineId: titularCuota.statement_line_id,
+      unique: true,
+      categorySlug: "others",
+    });
+
+    const after = buildFlowsCreditCardExpensesPayload();
+    const contractLines = after.lines.filter(
+      (ln) =>
+        ln.source === "cc" &&
+        ln.merchant_key.includes("ROCA") &&
+        (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
+    );
+    expect(contractLines.length).toBeGreaterThan(0);
+    for (const ln of contractLines) {
+      expect(ln.category_slug).toBe("others");
+    }
+
+    const row = db
+      .prepare(
+        `SELECT c.slug FROM cc_expense_unique_purchases up
+         JOIN cc_expense_categories c ON c.id = up.category_id
+         WHERE up.account_id = ? AND up.purchase_key = ?`
+      )
+      .get(titularCuota.account_id, purchaseKey) as { slug: string } | undefined;
+    expect(row?.slug).toBe("others");
+  });
+
+  it("clear_category on installment contract stays unclassified after rebuild", () => {
+    const payload = buildFlowsCreditCardExpensesPayload();
+    const titularCuota = payload.lines.find(
+      (ln) =>
+        ln.source === "cc" &&
+        ln.installment_flag === 1 &&
+        ln.merchant_key.includes("ROCA") &&
+        ln.nro_cuota_current === 1 &&
+        ln.origin_card_last4 === ln.primary_card_last4
+    );
+    if (!titularCuota) return;
+
+    assignCcExpenseLineCategory({
+      statementLineId: titularCuota.statement_line_id,
+      unique: true,
+      categorySlug: "others",
+    });
+
+    assignCcExpenseLineCategory({
+      statementLineId: titularCuota.statement_line_id,
+      unique: true,
+      clearCategory: true,
+    });
+
+    for (let i = 0; i < 2; i++) {
+      const after = buildFlowsCreditCardExpensesPayload();
+      const contractLines = after.lines.filter(
+        (ln) =>
+          ln.source === "cc" &&
+          ln.merchant_key.includes("ROCA") &&
+          (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
+      );
+      expect(contractLines.length).toBeGreaterThan(0);
+      for (const ln of contractLines) {
+        expect(ln.category_slug).toBe("unclassified");
+      }
+    }
   });
 
   it("builds monthly rows with cumulative gastos when statement lines exist", () => {

@@ -17,15 +17,18 @@ import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   deptoCreditoRestanteUfBySnapshotDates,
   deptoMortgageCloseClpBySnapshotDates,
+  deptoPropertyClpPaymentsThroughDate,
   deptoSueciaPropertyCloseClpBySnapshotDates,
   loadDeptoDividendosSheetLedgerFromDb,
   mortgageSheetPaymentsClpThroughDate,
+  type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import {
   ccInstallmentLedgerRowCount,
   creditCardInstallmentPaymentsByBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
@@ -51,7 +54,6 @@ import {
   priorCalendarMonthKeyFromToday,
   type MonthEndCloseForAccountOpts,
 } from "./accountPeriodMarks.js";
-
 export type AccountMonthlyPerformanceRow = {
   as_of_date: string;
   /** Closing value at month-end (same unit as request: CLP or USD). */
@@ -84,6 +86,44 @@ export type AccountMonthlyPerformanceRow = {
 function numCell(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   return null;
+}
+
+/** Depto sheet payments are CLP; convert to the performance series unit. */
+function perfSheetClpFlowInUnit(clpFlow: number, asOf: string, unit: TsUnit): number {
+  if (unit === "clp") return clpFlow;
+  const converted = convertTs(clpFlow, asOf, unit);
+  if (!Number.isFinite(converted)) {
+    throw new Error(
+      `perfSheetClpFlowInUnit: missing FX for ${asOf} (${clpFlow} CLP → ${unit})`
+    );
+  }
+  return converted;
+}
+
+function perfDeptoPropertyPaymentsInUnit(
+  ledger: readonly DeptoMortgageSheetRow[],
+  asOf: string,
+  afterExclusive: string | null,
+  unit: TsUnit
+): number {
+  return perfSheetClpFlowInUnit(
+    deptoPropertyClpPaymentsThroughDate(ledger, asOf, afterExclusive),
+    asOf,
+    unit
+  );
+}
+
+function perfMortgagePaymentsInUnit(
+  ledger: readonly DeptoMortgageSheetRow[],
+  asOf: string,
+  afterExclusive: string | null,
+  unit: TsUnit
+): number {
+  return perfSheetClpFlowInUnit(
+    mortgageSheetPaymentsClpThroughDate(ledger, asOf, afterExclusive),
+    asOf,
+    unit
+  );
 }
 
 export type ReanchorMonthlyPerfOpts = {
@@ -123,6 +163,10 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   if (!pickedAsc.length) return pickedAsc;
   const kind = accountBucketKindSlug(opts.bucketSlug);
   const isMortgage = kind === "mortgage";
+  const isDeptoProperty = kind === "property";
+  const isCreditCard = kind === "credit_card";
+  const deptoLedger =
+    isMortgage || isDeptoProperty ? loadDeptoDividendosSheetLedgerFromDb() : [];
 
   const out: AccountMonthlyPerformanceRow[] = [];
   for (const row of pickedAsc) {
@@ -148,7 +192,12 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
       { notes: opts.notes, name: opts.name }
     );
     const close = closeFromMark ?? row.closing_value;
-    const netFlow = row.net_capital_flow;
+    let netFlow = row.net_capital_flow;
+    if (isDeptoProperty && deptoLedger.length > 0) {
+      netFlow = perfDeptoPropertyPaymentsInUnit(deptoLedger, monthEndUtcYmd(mk), null, opts.unit);
+    } else if (isMortgage && deptoLedger.length > 0) {
+      netFlow = perfMortgagePaymentsInUnit(deptoLedger, monthEndUtcYmd(mk), null, opts.unit);
+    }
 
     let prior_closing: number | null;
     let nominal_pl: number | null;
@@ -156,19 +205,25 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
 
     if (prior == null || !Number.isFinite(prior)) {
       prior_closing = null;
-      nominal_pl = isMortgage ? 0 : close - netFlow;
+      nominal_pl = isMortgage ? 0 : isCreditCard ? creditCardNominalPlStub() : close - netFlow;
       pct_month =
-        !isMortgage && Math.abs(netFlow) > MONTH_ROW_EPS && Number.isFinite((close - netFlow) / netFlow)
-          ? (close - netFlow) / netFlow
-          : null;
+        isCreditCard
+          ? null
+          : !isMortgage && Math.abs(netFlow) > MONTH_ROW_EPS && Number.isFinite((close - netFlow) / netFlow)
+            ? (close - netFlow) / netFlow
+            : null;
     } else {
       prior_closing = prior;
       nominal_pl = isMortgage
         ? mortgageFinancingCostClp(prior, close, netFlow)
-        : close - prior - netFlow;
+        : isCreditCard
+          ? creditCardNominalPlStub()
+          : close - prior - netFlow;
       pct_month = isMortgage
         ? mortgagePctMonth(nominal_pl, prior)
-        : (() => {
+        : isCreditCard
+          ? null
+          : (() => {
             const denom = prior + netFlow;
             return nominal_pl != null &&
               Math.abs(denom) > MONTH_ROW_EPS &&
@@ -182,6 +237,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
       ...row,
       closing_value: close,
       prior_closing,
+      net_capital_flow: netFlow,
       nominal_pl,
       pct_month,
     });
@@ -285,13 +341,21 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     else return sortedAsc;
   }
 
-  const netFlow = row?.net_capital_flow ?? 0;
+  const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
+  const netFlow = (() => {
+    if (bucketKind === "property") {
+      const ledger = loadDeptoDividendosSheetLedgerFromDb();
+      if (ledger.length > 0) {
+        return perfDeptoPropertyPaymentsInUnit(ledger, today, null, unit);
+      }
+    }
+    return row?.net_capital_flow ?? 0;
+  })();
   const nominal = live - priorClose - netFlow;
   const denom = priorClose + netFlow;
   const pct =
     Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
 
-  const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
   const mortgageUfFields =
     bucketKind === "mortgage"
       ? (() => {
@@ -313,6 +377,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
       as_of_date: today,
       prior_closing: priorClose,
       closing_value: live,
+      net_capital_flow: netFlow,
       nominal_pl: nominal,
       pct_month: pct,
       ...mortgageUfFields,
@@ -486,19 +551,34 @@ function monthEndCloseForMortgagePerformance(
 
 /** Month-end `YYYY-MM-DD` → Σ positive units_delta on equity brokerage movements in that calendar month. */
 function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
+  const shareKinds = ["compra_usd", "stock_buy", "stock_sell", "dividend_usd"];
+  const ph = shareKinds.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT occurred_on, COALESCE(units_delta, 0) AS ud
+      `SELECT occurred_on, from_account_id, to_account_id, account_id, COALESCE(units_delta, 0) AS ud
        FROM movements
-       WHERE account_id = ?
-         AND flow_kind IN ('compra_usd', 'dividend_usd')
+       WHERE (account_id = ? OR to_account_id = ?)
+         AND flow_kind IN (${ph})
          AND COALESCE(units_delta, 0) > 0`
     )
-    .all(accountId) as { occurred_on: string; ud: number }[];
+    .all(accountId, accountId, ...shareKinds) as {
+    occurred_on: string;
+    from_account_id: number | null;
+    to_account_id: number | null;
+    account_id: number | null;
+    ud: number;
+  }[];
   const m = new Map<string, number>();
   for (const r of rows) {
+    const units =
+      r.to_account_id === accountId
+        ? r.ud
+        : r.account_id === accountId
+          ? r.ud
+          : 0;
+    if (units <= 0) continue;
     const me = monthEndUtcYmd(monthKeyFromYmd(r.occurred_on));
-    m.set(me, (m.get(me) ?? 0) + r.ud);
+    m.set(me, (m.get(me) ?? 0) + units);
   }
   return m;
 }
@@ -562,7 +642,7 @@ export function getAccountMonthlyPerformance(
     .get(accountId) as { id: number; bucket_slug: string } | undefined;
   if (!row) return null;
 
-  if (isMovementBalanceCashCategory(row.bucket_slug) || row.bucket_slug === "cuenta_ahorro_vivienda") {
+  if (isMovementBalanceCashCategory(row.bucket_slug) || row.bucket_slug === "cuenta_ahorro_vivienda" || isUsdCashKindSlug(row.bucket_slug)) {
     return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
   }
 
@@ -684,8 +764,10 @@ function buildAccountMonthlyPerformanceUncached(
       /** First month in the series: no prior month-end — net flow = cumulative aportes at this date (vs 0). */
       const netFlowFirst =
         isMortgage && deptoLedger
-          ? mortgageSheetPaymentsClpThroughDate(deptoLedger, asOf, null)
-          : cumDep;
+          ? perfMortgagePaymentsInUnit(deptoLedger, asOf, null, unit)
+          : isDeptoProperty && deptoLedger
+            ? perfDeptoPropertyPaymentsInUnit(deptoLedger, asOf, null, unit)
+            : cumDep;
       /** Mortgage: opening balance after pie is not P/L (only cuota-driven changes count). */
       const nominalFirst = isMortgage
         ? 0
@@ -729,15 +811,21 @@ function buildAccountMonthlyPerformanceUncached(
       isMortgage && deptoLedger && prevPerfAsOf != null && monthKeyFromYmd(prevPerfAsOf) === monthKeyFromYmd(asOf)
         ? prevPerfAsOf
         : null;
+    const propertyAfterExclusive =
+      isDeptoProperty && deptoLedger && prevPerfAsOf != null && monthKeyFromYmd(prevPerfAsOf) === monthKeyFromYmd(asOf)
+        ? prevPerfAsOf
+        : null;
     let netFlow =
       isMortgage && deptoLedger
-        ? mortgageSheetPaymentsClpThroughDate(deptoLedger, asOf, mortgageAfterExclusive)
-        : cumDep - (prevCumDep ?? 0);
+        ? perfMortgagePaymentsInUnit(deptoLedger, asOf, mortgageAfterExclusive, unit)
+        : isDeptoProperty && deptoLedger
+          ? perfDeptoPropertyPaymentsInUnit(deptoLedger, asOf, propertyAfterExclusive, unit)
+          : cumDep - (prevCumDep ?? 0);
     if (ccBillingPayByMonth != null) {
       const sched = ccBillingPayByMonth.get(monthKeyFromYmd(asOf)) ?? 0;
       const balanceDelta = close - prevClose;
       if (sched > 0 && Math.abs(balanceDelta) < MONTH_ROW_EPS) {
-        netFlow = sched;
+        netFlow = perfSheetClpFlowInUnit(sched, asOf, unit);
       }
     }
     const nominal = isMortgage

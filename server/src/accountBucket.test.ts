@@ -6,5 +6,7 @@ describe("accountBucketKindSlug", () => {
     expect(accountBucketKindSlug("credit_cards__credit_card")).toBe("credit_card");
     expect(accountBucketKindSlug("cash_eqs__cuenta_corriente")).toBe("cuenta_corriente");
     expect(accountBucketKindSlug("credit_card")).toBe("credit_card");
+    expect(accountBucketKindSlug("liabilities__mortgage")).toBe("mortgage");
+    expect(accountBucketKindSlug("real_estate__property")).toBe("property");
   });
 });

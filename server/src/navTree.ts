@@ -3,6 +3,11 @@ import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } fr
 import { db } from "./db.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
 
+export type NavTreeBuildOptions = {
+  /** Panel / admin views: keep accounts with long zero valuation tails in the tree. */
+  includeChartInactiveAccounts?: boolean;
+};
+
 export type NavTreeNodeDto = {
   node_id: string;
   slug: string;
@@ -104,7 +109,8 @@ function buildNode(
   itemsByGroup: Map<number, ItemRow[]>,
   groupsById: Map<number, GroupRow>,
   accountMeta: Map<number, { name: string; color_rgb: string }>,
-  expenseMeta: Map<number, { label: string; slug: string }>
+  expenseMeta: Map<number, { label: string; slug: string }>,
+  options: NavTreeBuildOptions = {}
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
   const children: NavTreeNodeDto[] = [];
@@ -112,9 +118,11 @@ function buildNode(
   for (const item of items) {
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
-      if (child) children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta));
+      if (child) {
+        children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta, options));
+      }
     } else if (item.item_kind === "account" && item.account_id != null) {
-      if (accountChartInactive(item.account_id)) continue;
+      if (!options.includeChartInactiveAccounts && accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
@@ -269,7 +277,9 @@ function buildNavForest(section: string | null): NavTreeNodeDto[] {
 }
 
 /** `portfolio_groups.slug = net_worth` — home page + dashboard hierarchy (first-level bucket groups as children). */
-export function getNetWorthNavGroupNode(): NavTreeNodeDto | null {
+export function getNetWorthNavGroupNode(
+  options: NavTreeBuildOptions = {}
+): NavTreeNodeDto | null {
   const groups = loadGroups();
   const nw = groups.find((g) => g.slug === "net_worth");
   if (!nw) return null;
@@ -282,7 +292,7 @@ export function getNetWorthNavGroupNode(): NavTreeNodeDto | null {
     itemsByGroup.set(item.group_id, arr);
   }
   const { accountMeta, expenseMeta } = loadMetaMaps(items);
-  return buildNode(nw, itemsByGroup, groupsById, accountMeta, expenseMeta);
+  return buildNode(nw, itemsByGroup, groupsById, accountMeta, expenseMeta, options);
 }
 
 /** Full sidebar layout: dashboard, main asset branches, flows, rates. */

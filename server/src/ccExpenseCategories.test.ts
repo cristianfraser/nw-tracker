@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
   assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
   assignCcExpenseLineCategory,
@@ -166,6 +167,40 @@ describe("ccExpenseCategories", () => {
     ).toBe("unclassified");
   });
 
+  it("does not assign no_cuenta for installment-h key when purchase is active", () => {
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 1,
+        accountId: 15,
+        merchantKey: "ROCA WEBPAY",
+        purchaseKey: "installment-h:15:2025-04-15:12:ROCA WEBPAY",
+        lineOverrides: new Map(),
+        merchantRules: new Map(),
+        uniquePurchases: new Map(),
+      })
+    ).toBe("unclassified");
+  });
+
+  it("cuota 0 exclusion is line-level only — category slug unchanged without override", () => {
+    expect(
+      countsTowardCcExpenseGastosMes("supermarket", {
+        installment_flag: 1,
+        nro_cuota_current: 0,
+      })
+    ).toBe(false);
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 99,
+        accountId: 15,
+        merchantKey: "SHOP",
+        purchaseKey: "installment-h:15:2025-04-01:6:SHOP",
+        lineOverrides: new Map(),
+        merchantRules: new Map(),
+        uniquePurchases: new Map(),
+      })
+    ).toBe("unclassified");
+  });
+
   it("marks cancelled installment purchase as no_cuenta when no explicit override exists", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|vitest-fixture' LIMIT 1`)
@@ -192,8 +227,8 @@ describe("ccExpenseCategories", () => {
     const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     try {
       db.prepare(
-        `INSERT INTO cc_statement_lines (statement_id, merchant, description_merged, amount_clp, installment_flag)
-         VALUES (?, 'NOTA DE CREDITO', 'SANTIAGO | NOTA DE CREDITO', -54990, 0)`
+        `INSERT INTO cc_statement_lines (statement_id, merchant, description_merged, amount_clp, installment_flag, transaction_date)
+         VALUES (?, 'NOTA DE CREDITO', 'SANTIAGO | NOTA DE CREDITO', -54990, 0, '2025-03-10')`
       ).run(sid);
 
       const resolved = resolveCcExpenseCategorySlug({
@@ -206,6 +241,17 @@ describe("ccExpenseCategories", () => {
         uniquePurchases: new Map(),
       });
       expect(resolved).toBe("no_cuenta");
+
+      const resolvedH = resolveCcExpenseCategorySlug({
+        statementLineId: 1,
+        accountId: master.id,
+        merchantKey: "MP MERCADO LIBRE",
+        purchaseKey: `installment-h:${master.id}:2025-02-07:6:MP MERCADO LIBRE`,
+        lineOverrides: new Map(),
+        merchantRules: new Map(),
+        uniquePurchases: new Map(),
+      });
+      expect(resolvedH).toBe("no_cuenta");
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(sid);
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(sid);
@@ -388,8 +434,9 @@ describe("ccExpenseCategories", () => {
         ln.installment_flag === 1 &&
         ln.nro_cuota_total != null &&
         ln.nro_cuota_total >= 3 &&
-        ln.merchant?.includes("ROCA") &&
-        ln.purchase_on != null
+        ln.purchase_on != null &&
+        ln.category_slug !== "no_cuenta" &&
+        !isAdditionalCardExpenseLine(ln.origin_card_last4, ln.primary_card_last4)
     );
     if (!inst) return;
 
@@ -399,7 +446,11 @@ describe("ccExpenseCategories", () => {
     const cuotaLineIds = listStatementLineIdsForPurchaseKey(
       inst.statement_line_id,
       purchaseKey
-    );
+    ).filter((lineId) => {
+      const ln = payload.lines.find((l) => l.statement_line_id === lineId);
+      if (!ln) return false;
+      return !isAdditionalCardExpenseLine(ln.origin_card_last4, ln.primary_card_last4);
+    });
     expect(cuotaLineIds.length).toBeGreaterThan(1);
     for (const lineId of cuotaLineIds) {
       expect(resolveCcExpensePurchaseKey(lineId)).toBe(purchaseKey);

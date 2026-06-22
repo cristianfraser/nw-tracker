@@ -183,8 +183,7 @@ export function sumDashboardRowsForPortfolioGroup(
   for (const r of rows) {
     if (!ids.has(r.account_id)) continue;
     if (r.exclude_from_group_totals === 1) continue;
-    if (r.current_value_clp == null || !Number.isFinite(r.current_value_clp)) continue;
-    clp += r.current_value_clp;
+    clp += r.current_value_clp != null && Number.isFinite(r.current_value_clp) ? r.current_value_clp : 0;
     if (includeUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
       usd += r.current_value_usd;
     }

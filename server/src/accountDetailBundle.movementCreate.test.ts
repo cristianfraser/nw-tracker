@@ -16,6 +16,20 @@ describe("accountDetailBundle movement_create", () => {
     expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(BROKERAGE_FLOW_KINDS);
   });
 
+  it("exposes book_ledger_edit for AFC", async () => {
+    const row = db
+      .prepare(`SELECT id FROM accounts WHERE notes LIKE 'import:excel|key=afc%' LIMIT 1`)
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly", {});
+    expect(bundle).not.toBeNull();
+    expect(bundle!.summary.book_ledger_edit).toEqual({
+      valuations: true,
+      movements: { units_delta: "optional" },
+    });
+  });
+
   it("exposes brokerage_flow_kinds for panel-created stocks (leaf slug ≠ bucket)", () => {
     const slug = `panel_mv_create_${Date.now()}`;
     const result = createPanelStockAccount({
@@ -40,5 +54,22 @@ describe("accountDetailBundle movement_create", () => {
         db.prepare(`DELETE FROM asset_groups WHERE id = ?`).run(result.asset_group_id);
       }
     });
+  });
+
+  it("exposes USD cash flow kinds for cash_eqs USD account (category_slug may be cash_savings)", async () => {
+    const row = db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__usd' AND a.notes LIKE '%kind=usd%'
+         LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    if (!row) return;
+
+    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly", {});
+    expect(bundle).not.toBeNull();
+    expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toContain("compra_usd_venta_clp");
+    expect(bundle!.summary.movement_create?.brokerage_flow_kinds).not.toContain("stock_buy");
   });
 });

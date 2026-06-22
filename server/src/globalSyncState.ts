@@ -25,6 +25,8 @@ export type GlobalSyncStateFile = {
   fintualEveningSettledYmd?: string;
   /** `YYYY-MM` SBIF UF incremental sync succeeded for. */
   sbifUfMonth?: string;
+  /** Chile day we last ran UF forward-publication sync (day ≥ 9). */
+  sbifUfLastSyncYmd?: string;
   sbifUtmMonth?: string;
   sbifIpcMonth?: string;
   /** ISO timestamp of last failed BCentral dólar observado fetch (cleared on success). */

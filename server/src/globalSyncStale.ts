@@ -26,7 +26,8 @@ import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.j
 import { utcTodayYmd } from "./nyseSession.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
-import { maxEurDateOnOrBefore, maxFxBcentralDateOnOrBefore } from "./sbifSyncDb.js";
+import { maxEurDateOnOrBefore, maxFxBcentralDateOnOrBefore, maxUfDate, safeMaxUtmMonthParts } from "./sbifSyncDb.js";
+import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 
 export type GlobalSyncSource =
   | "afp_uno"
@@ -273,8 +274,14 @@ function naturalStaleSyncSources(
     if (isSbifObservedFxStale(maxFxBcentralDateOnOrBefore(cl.ymd), cl, state.sbifUsdLastErrorAt)) out.push("sbif_usd");
     if (isSbifObservedFxStale(maxEurDateOnOrBefore(cl.ymd), cl, state.sbifEurLastErrorAt)) out.push("sbif_eur");
     if (cl.day >= 9 || opts?.forceSbif) {
-      if (isSbifMonthlyStale(cl, state.sbifUfMonth, opts)) out.push("sbif_uf");
-      if (isSbifMonthlyStale(cl, state.sbifUtmMonth, opts)) out.push("sbif_utm");
+      if (isSbifUfStale(cl, {
+        forceSbif: opts?.forceSbif,
+        maxUfDate: maxUfDate(),
+        lastSyncYmd: state.sbifUfLastSyncYmd,
+      })) out.push("sbif_uf");
+      if (isSbifUtmStale(cl, { forceSbif: opts?.forceSbif, maxUtm: safeMaxUtmMonthParts() })) {
+        out.push("sbif_utm");
+      }
       if (isSbifMonthlyStale(cl, state.sbifIpcMonth, opts)) out.push("sbif_ipc");
     }
   }
@@ -358,7 +365,37 @@ export function allSyncSourceStatuses(
   sbifFx("sbif_usd", maxFxBcentralDateOnOrBefore(cl.ymd), state.sbifUsdLastErrorAt);
   sbifFx("sbif_eur", maxEurDateOnOrBefore(cl.ymd), state.sbifEurLastErrorAt);
 
-  const sbifMonthly = (source: "sbif_uf" | "sbif_utm" | "sbif_ipc", syncedMonth: string | undefined) => {
+  const sbifUfRow = (source: "sbif_uf") => {
+    if (!bde) {
+      rows.push(syncSourceRow(source, cl, "disabled", false));
+      return;
+    }
+    const stale =
+      cl.day >= 9 || forceSbif
+        ? isSbifUfStale(cl, {
+            forceSbif,
+            maxUfDate: maxUfDate(),
+            lastSyncYmd: state.sbifUfLastSyncYmd,
+          })
+        : false;
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
+  };
+  sbifUfRow("sbif_uf");
+
+  const sbifUtmRow = (source: "sbif_utm") => {
+    if (!bde) {
+      rows.push(syncSourceRow(source, cl, "disabled", false));
+      return;
+    }
+    const stale =
+      cl.day >= 9 || forceSbif
+        ? isSbifUtmStale(cl, { forceSbif, maxUtm: safeMaxUtmMonthParts() })
+        : false;
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
+  };
+  sbifUtmRow("sbif_utm");
+
+  const sbifMonthly = (source: "sbif_ipc", syncedMonth: string | undefined) => {
     if (!bde) {
       rows.push(syncSourceRow(source, cl, "disabled", false));
       return;
@@ -366,8 +403,6 @@ export function allSyncSourceStatuses(
     const stale = cl.day >= 9 || forceSbif ? isSbifMonthlyStale(cl, syncedMonth, { forceSbif }) : false;
     rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
   };
-  sbifMonthly("sbif_uf", state.sbifUfMonth);
-  sbifMonthly("sbif_utm", state.sbifUtmMonth);
   sbifMonthly("sbif_ipc", state.sbifIpcMonth);
 
   {
