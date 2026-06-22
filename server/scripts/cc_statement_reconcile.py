@@ -221,7 +221,7 @@ def sum_parsed_sections(
             continue
 
         # CLP revolving
-        if layout == "compact_payment_abono":
+        if layout in ("compact_payment_abono", "ocr_payment"):
             continue
         if layout == "compact_cargos_charge":
             cargos_abonos += amount
@@ -240,7 +240,7 @@ def sum_parsed_sections(
         if str(row.get("installment_flag") or "").lower() == "true":
             continue
         layout = str(row.get("parser_layout") or row.get("layout") or "")
-        if layout == "compact_payment_abono":
+        if layout in ("compact_payment_abono", "ocr_payment"):
             _cur, amount = _parse_amount_from_row(row, parse_clp, parse_usd)
             mid_period_payments += amount
 
@@ -463,6 +463,21 @@ def _clp_labeled_header_amount(
     return amounts[0]
 
 
+def _parse_usd_ocr_flat_header_amount(
+    raw: str,
+    parse_usd: Callable[[str], Optional[float]],
+) -> Optional[float]:
+    """OCR on image scans often glues an extra digit after cents (10,711 -> 10,71)."""
+    t = str(raw or "").strip().replace(" ", "")
+    if not t:
+        return None
+    m = re.match(r"^\-?(\d+),(\d{2})\d+$", t)
+    if m:
+        sign = -1.0 if t.startswith("-") else 1.0
+        return sign * float(f"{m.group(1)}.{m.group(2)}")
+    return parse_usd(raw)
+
+
 def extract_pdf_section_totals(
     full: str,
     currency: str,
@@ -561,7 +576,7 @@ def extract_pdf_section_totals(
         elif monto_prev_v is not None:
             out["pdf_saldo_anterior"] = float(monto_prev_v)
         for m_pagado in re.finditer(
-            r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR\s*\$\s*([\d.\-]+)",
+            r"MONTO\s+PAGADO\s+PER[IÍ]ODO\s+ANTERIOR\s*[\$§]\s*([\d.\-]+)",
             full,
             re.I,
         ):
@@ -595,6 +610,53 @@ def extract_pdf_section_totals(
             out["pdf_total_cargos_abonos"] = bci_cargos
         if bci_monto is not None:
             out["pdf_monto_facturado"] = bci_monto
+
+    # Image-scan OCR glues section headers and amounts on one line (no newlines).
+    if cur == "clp" and out["pdf_total_operaciones"] is None:
+        m_op = re.search(
+            r"(?:1\.\s*)?TOTAL\s+OPERACIONES\s*\$\s*([\d.\-]+)",
+            full,
+            re.I,
+        )
+        if m_op:
+            out["pdf_total_operaciones"] = float(parse_clp(m_op.group(1)) or 0)
+    if cur == "clp" and out["pdf_total_cargos_abonos"] is None:
+        m_car = re.search(
+            r"3\.\s*CARGOS[^\$]*(?:COMISIONES|ABONOS)[^\$]*\$\s*([\d.\-]+)",
+            full,
+            re.I,
+        )
+        if m_car:
+            out["pdf_total_cargos_abonos"] = float(parse_clp(m_car.group(1)) or 0)
+
+    # Image-scan OCR: glued headers (YCARGOS, CUS $) and extra cents digit (10,711).
+    if cur == "usd":
+        if out["pdf_compras_cargos"] is None:
+            m = re.search(
+                r"TOTAL\s+DE\s+COMPRAS\s+Y\s*CARGOS?[^\d$]*(?:US|CU)[S$]?\s*\$?\s*([\d.,]+)",
+                full,
+                re.I,
+            )
+            if m:
+                out["pdf_compras_cargos"] = _parse_usd_ocr_flat_header_amount(
+                    m.group(1), parse_usd
+                )
+        if out["pdf_abono"] is None:
+            m = re.search(
+                r"ABONO\s+REALIZADO[^\dUS$]*US\$\s*([\d.,\-]+)",
+                full,
+                re.I | re.S,
+            )
+            if m:
+                out["pdf_abono"] = parse_usd(m.group(1))
+            else:
+                m3 = re.search(
+                    r"3\.\s*CARGOS,\s*COMISIONES,\s*IMPUESTOS\s+Y\s+ABONOS\s+(-?[\d.,]+)",
+                    full,
+                    re.I,
+                )
+                if m3:
+                    out["pdf_abono"] = parse_usd(m3.group(1))
 
     return out
 

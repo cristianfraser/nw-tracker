@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { consolidateAccountFlowRows } from "./accountFlows";
+import i18n from "./i18n";
 import { useGroupConsolidatedTables } from "./queries/hooks";
 import type { DisplayUnit } from "./queries/keys";
 
@@ -55,7 +56,7 @@ export function useGroupInfoConsolidatedTables(
     tablesError: isError
       ? error instanceof Error
         ? error.message
-        : "Failed to load tables"
+        : i18n.t("common.loadFailedTables")
       : null,
   };
 }

@@ -12,7 +12,6 @@ export const queryKeys = {
   accountsAll: () => ["accountsAll"] as const,
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
     ["accounts", "portfolioGroup", portfolioGroup, unit] as const,
-  assetTree: () => ["assetTree"] as const,
   portfolioTree: () => ["portfolioTree"] as const,
   ratesInstruments: () => ["ratesInstruments"] as const,
   marketTicker: () => ["marketTicker"] as const,
@@ -25,7 +24,6 @@ export const queryKeys = {
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
   income: () => ["income"] as const,
   flowsDeposits: () => ["flowsDeposits"] as const,
-  flowsExpenses: () => ["flowsExpenses"] as const,
   flowsRealEstateExpenses: () => ["flowsRealEstateExpenses"] as const,
   realEstateLinkCandidates: (expenseEntryId: number) =>
     ["realEstateLinkCandidates", expenseEntryId] as const,

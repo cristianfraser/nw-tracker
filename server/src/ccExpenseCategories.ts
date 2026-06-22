@@ -159,7 +159,7 @@ export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
   merchantRules: Map<string, string>;
   /** `account_id|purchase_key` → category slug (assigned Único only). */
   uniquePurchases: Map<string, string>;
-  /** Único checked but no category chosen yet — must not block merchant rules. */
+  /** Único with no category — blocks merchant rules for this purchase. */
   uniquePurchaseModeKeys: Set<string>;
 } {
   const lineOverrides = new Map<number, string>();
@@ -260,6 +260,28 @@ export function merchantRuleKeysMatchingLineMerchant(
   return row ? [row.merchant_key] : [];
 }
 
+function uniquePurchaseModeKeysForResolve(
+  accountId: number,
+  statementLineId: number,
+  purchaseKey: string,
+  uniquePurchaseModeKeys?: Set<string>
+): string[] {
+  if (!uniquePurchaseModeKeys || uniquePurchaseModeKeys.size === 0) return [];
+  const keys = [uniquePurchaseMapKey(accountId, purchaseKey)];
+  if (purchaseKey.startsWith("checking-cartola:")) {
+    const portion: "gastos" | "deposit" = purchaseKey.endsWith(":deposit")
+      ? "deposit"
+      : "gastos";
+    keys.push(
+      uniquePurchaseMapKey(
+        accountId,
+        legacyCheckingGastosPurchaseKey(statementLineId, portion)
+      )
+    );
+  }
+  return keys;
+}
+
 export function resolveCcExpenseCategorySlug(opts: {
   statementLineId: number;
   accountId: number;
@@ -268,6 +290,7 @@ export function resolveCcExpenseCategorySlug(opts: {
   lineOverrides: Map<number, string>;
   merchantRules: Map<string, string>;
   uniquePurchases: Map<string, string>;
+  uniquePurchaseModeKeys?: Set<string>;
 }): string {
   const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
   let uniqueSlug = opts.uniquePurchases.get(uniqueKey);
@@ -282,6 +305,17 @@ export function resolveCcExpenseCategorySlug(opts: {
     uniqueSlug = opts.uniquePurchases.get(legacyKey) ?? undefined;
   }
   if (uniqueSlug != null) return uniqueSlug;
+
+  if (
+    uniquePurchaseModeKeysForResolve(
+      opts.accountId,
+      opts.statementLineId,
+      opts.purchaseKey,
+      opts.uniquePurchaseModeKeys
+    ).some((key) => opts.uniquePurchaseModeKeys?.has(key))
+  ) {
+    return UNCLASSIFIED_CC_EXPENSE_SLUG;
+  }
 
   const lineSlug = opts.lineOverrides.get(opts.statementLineId);
   if (lineSlug) return lineSlug;

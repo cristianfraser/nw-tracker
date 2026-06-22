@@ -17,7 +17,7 @@ import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { allocationBucketColor } from "../../chartColors";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
-import { depositFlowCategoryLabel } from "../../i18n";
+import { depositFlowCategoryLabel, useTranslation } from "../../i18n";
 import type { DepositFlowCategory, FlowDepositChartPoint } from "../../types";
 import {
   buildNiceYAxis,
@@ -77,6 +77,7 @@ export function DepositsByCategoryChart({
   xAxisGranularity?: "month" | "year";
   displayUnit?: DisplayUnit;
 }) {
+  const { t } = useTranslation();
   const densePoints = useMemo(() => {
     const zeroKeys = [...CATEGORY_BAR.map((b) => b.dataKey), "total"];
     return densifyRecordsByCalendarPeriod(
@@ -116,7 +117,7 @@ export function DepositsByCategoryChart({
     return (
       <div className="chart-grid__col">
         <h2 className="chart-panel-title">{title}</h2>
-        <p className="empty muted">No deposit inflows in this period.</p>
+        <p className="empty muted">{t("deposits.chartEmpty")}</p>
       </div>
     );
   }
@@ -188,7 +189,7 @@ export function DepositsByCategoryChart({
             <Line
               type="monotone"
               dataKey="total"
-              name="Total"
+              name={t("deposits.chartTotal")}
               stroke="#e2e8f0"
               strokeWidth={2}
               dot={false}

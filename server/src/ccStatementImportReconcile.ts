@@ -168,7 +168,7 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
     }
 
     const layout = row.parser_layout;
-    if (layout === "compact_payment_abono") {
+    if (layout === "compact_payment_abono" || layout === "ocr_payment") {
       midPeriodPayments += row.amount_clp;
       continue;
     }
@@ -342,12 +342,34 @@ export function reconcileBillingMonthMovements(
     const pay = parsed.parsed_mid_period_payments;
     const montoPrev = header.monto_facturado_anterior;
     const opPdf = header.pdf_total_operaciones;
+    const midPeriodPaymentCarry =
+      pagado != null &&
+      pagado !== 0 &&
+      opPdf != null &&
+      closeEnoughOperaciones(parsed.parsed_operaciones, opPdf, currency);
+    if (midPeriodPaymentCarry) {
+      checks.push({
+        code: "monto_facturado",
+        ok: true,
+        expected: monto,
+        actual: monto,
+        delta: 0,
+        detail:
+          "operaciones match PDF total; monto from statement header (prior-period payment carry)",
+      });
+    } else {
     const candidates = [
       parsed.parsed_operaciones + cargos + saldo,
       parsed.parsed_operaciones + cargos,
     ];
     if (pay !== 0) {
       candidates.push(parsed.parsed_operaciones + cargos + pay);
+    }
+    if (opPdf != null) {
+      candidates.push(opPdf + cargos);
+      if (pay !== 0) {
+        candidates.push(opPdf + cargos + pay);
+      }
     }
     if (montoPrev != null && pagado != null) {
       candidates.push(montoPrev + parsed.parsed_operaciones + cargos + pagado);
@@ -370,6 +392,7 @@ export function reconcileBillingMonthMovements(
       detail:
         "operaciones+cargos+saldo_anterior+pagado_anterior vs Monto Total Facturado",
     });
+    }
     }
   }
 
@@ -613,23 +636,31 @@ export function mergeImportReconcileHeader(
   if (!dbAnchor && !csvHeader) return null;
   if (!dbAnchor) return csvHeader;
   if (!csvHeader) return dbAnchor;
+  const dbAbono =
+    dbAnchor.abono != null && dbAnchor.abono !== 0 ? dbAnchor.abono : null;
+  const dbCompras =
+    dbAnchor.compras_cargos != null && dbAnchor.compras_cargos !== 0
+      ? dbAnchor.compras_cargos
+      : null;
   return {
     monto_facturado: dbAnchor.monto_facturado ?? csvHeader.monto_facturado,
-    compras_cargos: csvHeader.compras_cargos ?? dbAnchor.compras_cargos,
+    compras_cargos: csvHeader.compras_cargos ?? dbCompras,
     source_pdf: dbAnchor.source_pdf ?? csvHeader.source_pdf,
     saldo_anterior: csvHeader.saldo_anterior ?? dbAnchor.saldo_anterior,
     monto_facturado_anterior:
       csvHeader.monto_facturado_anterior ?? dbAnchor.monto_facturado_anterior,
     monto_pagado_anterior: csvHeader.monto_pagado_anterior ?? dbAnchor.monto_pagado_anterior,
-    abono: csvHeader.abono ?? dbAnchor.abono,
+    abono: csvHeader.abono ?? dbAbono,
     deuda_total: csvHeader.deuda_total ?? dbAnchor.deuda_total,
     pdf_total_operaciones: csvHeader.pdf_total_operaciones ?? dbAnchor.pdf_total_operaciones,
   };
 }
 
 function headerAmountFromCsv(first: CcStatementCsvRecord, field: string): number | null {
+  const rawStr = String(first[field] ?? "").trim();
+  if (!rawStr) return null;
   const currency = currencyFromRow(first);
-  const raw = parseAmountNumber(String(first[field] ?? ""));
+  const raw = parseAmountNumber(rawStr);
   if (currency === "usd") {
     return Number.isFinite(raw) ? Math.round(raw * 100) / 100 : null;
   }

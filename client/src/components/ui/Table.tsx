@@ -11,6 +11,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import i18n from "../../i18n";
 
 export type TableSortDirection = "asc" | "desc";
 
@@ -225,8 +226,8 @@ export function Table({
   header,
   children,
   collapsedVisibleRows,
-  showMoreLabel = "Mostrar más…",
-  showLessLabel = "Mostrar menos…",
+  showMoreLabel,
+  showLessLabel,
   tableStyle,
   tableClassName,
   wrapClassName,
@@ -234,6 +235,8 @@ export function Table({
 }: TableProps) {
   const [expanded, setExpanded] = useState(false);
   const [sort, setSort] = useState<TableSortState>(null);
+  const resolvedShowMoreLabel = showMoreLabel ?? i18n.t("notifications.showMore");
+  const resolvedShowLessLabel = showLessLabel ?? i18n.t("table.showLess");
 
   const sortableColumns = useMemo(() => parseSortableColumns(header), [header]);
   const sortTypeByKey = useMemo(
@@ -316,7 +319,7 @@ export function Table({
             textUnderlineOffset: "2px",
           }}
         >
-          {expanded ? showLessLabel : showMoreLabel}
+          {expanded ? resolvedShowLessLabel : resolvedShowMoreLabel}
         </button>
       ) : null}
     </div>

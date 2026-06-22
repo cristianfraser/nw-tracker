@@ -122,6 +122,21 @@ describe("ccExpenseCategories", () => {
     ).toBe("unclassified");
   });
 
+  it("unique purchase mode without category blocks merchant rule", () => {
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 5,
+        accountId: 15,
+        merchantKey: "TEST",
+        purchaseKey: "line-pr:abc",
+        lineOverrides: new Map(),
+        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        uniquePurchases: new Map(),
+        uniquePurchaseModeKeys: new Set(["15|line-pr:abc"]),
+      })
+    ).toBe("unclassified");
+  });
+
   it("matches merchant rules by exact merchant_key only", () => {
     const rules = new Map([["32|METLIFE CHILE SEGUROS", "bills"]]);
     expect(
@@ -291,13 +306,7 @@ describe("ccExpenseCategories", () => {
     const after = buildFlowsCreditCardExpensesPayload();
     const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
     expect(updated?.category_unique).toBe(true);
-    const { merchantRules } = loadCcExpenseCategoryMaps([line.account_id]);
-    const merchantSlug = resolveMerchantCategorySlug(
-      line.account_id,
-      normalizeCcExpenseMerchantKey(line.merchant),
-      merchantRules
-    );
-    expect(updated?.category_slug).toBe(merchantSlug ?? "unclassified");
+    expect(updated?.category_slug).toBe("unclassified");
   });
 
   it("merchant assignment applies to same comercio when not marked unique", () => {
@@ -364,17 +373,19 @@ describe("ccExpenseCategories", () => {
     }
   });
 
-  it("clear_category on unique purchase keeps Único and does not clear merchant rule", () => {
+  it("clear_category on unique purchase keeps Único, stays unclassified, and does not clear merchant rule", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
     const line = payload.lines.find((ln) => {
       if (ln.amount_clp <= 0 || !ln.merchant || ln.category_unique) return false;
+      const purchaseKey = resolveCcExpensePurchaseKey(ln.statement_line_id);
       const peers = payload.lines.filter(
         (p) =>
           p.statement_line_id !== ln.statement_line_id &&
           p.account_id === ln.account_id &&
           p.merchant_key === ln.merchant_key &&
           p.amount_clp > 0 &&
-          !p.category_unique
+          !p.category_unique &&
+          resolveCcExpensePurchaseKey(p.statement_line_id) !== purchaseKey
       );
       return peers.length > 0;
     });
@@ -386,6 +397,7 @@ describe("ccExpenseCategories", () => {
       categorySlug: "supermarket",
     });
 
+    const linePurchaseKey = resolveCcExpensePurchaseKey(line.statement_line_id);
     const afterMerchant = buildFlowsCreditCardExpensesPayload();
     const peers = afterMerchant.lines.filter(
       (ln) =>
@@ -393,7 +405,8 @@ describe("ccExpenseCategories", () => {
         ln.account_id === line.account_id &&
         ln.merchant_key === line.merchant_key &&
         ln.amount_clp > 0 &&
-        !ln.category_unique
+        !ln.category_unique &&
+        resolveCcExpensePurchaseKey(ln.statement_line_id) !== linePurchaseKey
     );
     expect(peers.length).toBeGreaterThan(0);
     for (const peer of peers) {
@@ -417,18 +430,12 @@ describe("ccExpenseCategories", () => {
     const after = buildFlowsCreditCardExpensesPayload();
     const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
     expect(updated?.category_unique).toBe(true);
-    const { merchantRules } = loadCcExpenseCategoryMaps([line.account_id]);
-    const merchantSlug = resolveMerchantCategorySlug(
-      line.account_id,
-      line.merchant_key,
-      merchantRules
-    );
-    expect(updated?.category_slug).toBe(merchantSlug ?? "unclassified");
+    expect(updated?.category_slug).toBe("unclassified");
 
-    for (const peer of peers) {
-      const peerAfter = after.lines.find((ln) => ln.statement_line_id === peer.statement_line_id);
-      expect(peerAfter?.category_slug).toBe("supermarket");
-    }
+    const { merchantRules } = loadCcExpenseCategoryMaps([line.account_id]);
+    expect(
+      resolveMerchantCategorySlug(line.account_id, line.merchant_key, merchantRules)
+    ).toBe("supermarket");
   });
 
   it("clear_category on non-unique purchase removes merchant rule", () => {

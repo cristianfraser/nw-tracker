@@ -149,7 +149,9 @@ class Santander80FilenameTest(unittest.TestCase):
                 mod.CFRASER = old_cfraser
             self.assertEqual(moved, 0)
             self.assertEqual(errors, [])
-            self.assertTrue(inbox_pdf.is_file(), "inbox PDF kept when duplicate skipped")
+            dup = inbox / "duplicates" / inbox_pdf.name
+            self.assertTrue(dup.is_file(), "inbox duplicate archived under inbox/duplicates/")
+            self.assertFalse(inbox_pdf.exists())
 
     def test_usd_classified_from_pdf_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

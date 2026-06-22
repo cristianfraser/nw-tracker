@@ -7,8 +7,9 @@ Deps (workspace-local, no global pip required):
   mkdir -p server/scripts/.pdf_deps
   pip3 install pypdf typing_extensions -t server/scripts/.pdf_deps
 
-System tools: `poppler` (`pdftotext`), `qpdf` (`brew install poppler qpdf`).
-Unreadable PDFs are rewritten/decrypted via qpdf before parse (see `cc_pdf_qpdf.py`).
+System tools: `poppler` (`pdftotext`), `qpdf`, `tesseract` (`brew install poppler qpdf tesseract`).
+Image-scan PDFs (no text layer) are OCR'd via PyMuPDF + Tesseract (see `cc_pdf_ocr.py`).
+Unreadable encrypted PDFs are rewritten/decrypted via qpdf before parse (see `cc_pdf_qpdf.py`).
 
 From repo root:
   npm run parse:cc-pdfs
@@ -58,6 +59,7 @@ PARSE_CACHE_VERSION_FILES = (
     SCRIPT_DIR / "parse-cc-statement-pdfs.py",
     SCRIPT_DIR / "cc_statement_reconcile.py",
     SCRIPT_DIR / "cc_pdf_qpdf.py",
+    SCRIPT_DIR / "cc_pdf_ocr.py",
 )
 PDF_DEPS = SCRIPT_DIR / ".pdf_deps"
 if PDF_DEPS.is_dir():
@@ -74,6 +76,13 @@ from cc_pdf_qpdf import (  # noqa: E402
     qpdf_available,
     repair_unreadable_pdfs_in_dir,
 )
+from cc_pdf_ocr import (  # noqa: E402
+    extract_cc_pdf_ocr_flat,
+    fill_meta_billing_from_ocr_flat,
+    parse_international_usd_ocr_flat,
+    parse_santander_clp_ocr_flat,
+)
+from cc_statement_pdf_paths import pdf_already_in_card_slot  # noqa: E402
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
     reconcile_statement,
@@ -184,13 +193,16 @@ def parse_one_pdf(
     card_group: str,
     pdf_path: Path,
     baseline: List[Dict[str, Any]],
+    *,
+    cc_root: Optional[Path] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Extract text, parse lines, return CSV rows and pdf_context entry."""
     load_repo_dotenv()
     if qpdf_available():
         note = ensure_readable_for_parse(pdf_path)
         if note and ("repair failed" in note or "still unreadable" in note):
-            raise RuntimeError(f"{pdf_path.name}: {note}")
+            if not is_readable_cc_statement_text(peek_pdf_text(pdf_path)):
+                raise RuntimeError(f"{pdf_path.name}: {note}")
     elif not is_readable_cc_statement_text(peek_pdf_text(pdf_path)):
         raise RuntimeError(
             f"{pdf_path.name}: unreadable PDF and qpdf not installed (brew install qpdf)"
@@ -209,6 +221,8 @@ def parse_one_pdf(
             full_layout = layout_run.stdout if layout_run.returncode == 0 else ""
         except (FileNotFoundError, OSError):
             full_layout = ""
+        if not full_layout.strip() and "\n" not in full.strip():
+            full_layout = full
         parsed = parse_international_usd_document(full, full_layout)
         meta = extract_meta_international(full, pdf_path.name)
         finalize_statement_meta(meta, pdf_path)
@@ -222,6 +236,8 @@ def parse_one_pdf(
         _sync_statement_billing_headers_from_pdf(meta)
     else:
         full_layout = pdftotext_layout_full(pdf_path)
+        if not full_layout.strip() and "\n" not in full.strip() and len(full) > 400:
+            full_layout = full
         body = choose_clp_parse_body(full, full_layout, parser)
         parsed = parse_clp_document(
             full,
@@ -261,7 +277,9 @@ def parse_one_pdf(
             seen_pay: set[str] = set()
             seen_traspaso: set[int] = set()
             payment_rows: List[Dict[str, Any]] = [
-                pr for pr in parsed if pr.get("layout") == "compact_payment_abono"
+                pr
+                for pr in parsed
+                if str(pr.get("layout") or "") in CLP_MID_PERIOD_PAYMENT_LAYOUTS
             ]
             pay_sum = sum(int(pr.get("amount_clp") or 0) for pr in payment_rows)
             payment_keep_ids: set[int] = {id(pr) for pr in payment_rows}
@@ -270,8 +288,12 @@ def parse_one_pdf(
             )
             op_f = meta.get("pdf_total_operaciones")
             car_f = meta.get("pdf_total_cargos_abonos")
+            has_ocr_payment = any(
+                str(pr.get("layout") or "") == "ocr_payment" for pr in payment_rows
+            )
             if (
-                len(payment_rows) >= 2
+                not has_ocr_payment
+                and len(payment_rows) >= 2
                 and pagado_hdr is not None
                 and pay_sum != 0
                 and abs(int(pay_sum)) == abs(int(pagado_hdr))
@@ -297,13 +319,18 @@ def parse_one_pdf(
                     if amt_abs in seen_traspaso:
                         continue
                     seen_traspaso.add(amt_abs)
-                if pr.get("layout") == "compact_payment_abono":
+                if str(pr.get("layout") or "") in CLP_MID_PERIOD_PAYMENT_LAYOUTS:
                     if id(pr) not in payment_keep_ids:
                         continue
                     amt_abs = abs(int(pr.get("amount_clp") or 0))
-                    if pagado_abs is not None and amt_abs == pagado_abs:
+                    is_ocr_payment = str(pr.get("layout") or "") == "ocr_payment"
+                    if pagado_abs is not None and amt_abs == pagado_abs and not is_ocr_payment:
                         continue
-                    if monto_cap is not None and amt_abs > monto_cap:
+                    if (
+                        monto_cap is not None
+                        and amt_abs > monto_cap
+                        and not is_ocr_payment
+                    ):
                         continue
                     if amt_abs in traspaso_abs:
                         continue
@@ -315,7 +342,7 @@ def parse_one_pdf(
             parsed = filtered
         full = body
     meta["_parser"] = parser
-    pdf_path = maybe_rename_parsed_cc_pdf(pdf_path, meta, full)
+    pdf_path = maybe_rename_parsed_cc_pdf(pdf_path, meta, full, cc_root=cc_root)
     meta.pop("_parser", None)
     source_pdf = statement_source_pdf_name(meta, pdf_path.name, parser, full)
     meta["source_pdf"] = source_pdf
@@ -1122,6 +1149,15 @@ def _merge_intl_parsed_rows(
 def parse_international_usd_document(
     full_vertical: str, full_layout: str = ""
 ) -> List[Dict[str, Any]]:
+    flat = full_vertical if "\n" not in full_vertical.strip() and len(full_vertical) > 200 else ""
+    if flat:
+        ocr_rows = parse_international_usd_ocr_flat(
+            flat,
+            build_intl_row=_build_intl_row,
+            intl_merchant_is_noise=_intl_merchant_is_noise,
+        )
+        if ocr_rows:
+            return ocr_rows
     lines = [ln.strip() for ln in full_vertical.splitlines() if ln.strip()]
     vertical_out: List[Dict[str, Any]] = []
     i = 0
@@ -1205,19 +1241,6 @@ def load_baseline_rows(path: Path) -> List[Dict[str, Any]]:
             except Exception:
                 continue
     return [x for x in rows if x.get("purchase_id") and x.get("label")]
-
-
-def peek_pdf_text(path: Path) -> str:
-    """Lightweight text peek so `80_*.pdf` international statements are not forced to CLP wide layout."""
-    try:
-        return subprocess.check_output(
-            ["pdftotext", str(path), "-"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
-        reader = PdfReader(str(path))
-        return "\n".join((page.extract_text() or "") for page in reader.pages)
 
 
 def _ascii_upper(text: str) -> str:
@@ -1323,9 +1346,15 @@ def target_cc_pdf_filename(meta: Dict[str, Any], full: str = "", parser: str = "
 
 
 def maybe_rename_parsed_cc_pdf(
-    pdf_path: Path, meta: Dict[str, Any], full: str = ""
+    pdf_path: Path,
+    meta: Dict[str, Any],
+    full: str = "",
+    *,
+    cc_root: Optional[Path] = None,
 ) -> Path:
     """Rename on disk when YYYY-MM-DD prefix does not match statement metadata."""
+    if cc_root is not None and pdf_already_in_card_slot(cc_root, pdf_path):
+        return pdf_path
     parser = str(meta.get("_parser") or "")
     target_name = target_cc_pdf_filename(meta, full, parser)
     if not target_name or pdf_path.name == target_name:
@@ -1490,6 +1519,17 @@ def parse_clp_document(
     """Parse CLP statement; fall back to wide when compact misses rows."""
     if is_bci_lider_statement_text(full):
         return _finish_clp_parsed_rows(parse_bci_lider_document(full))
+    flat_ocr = full if "\n" not in full.strip() and len(full) > 400 else ""
+    if not flat_ocr and movement_full.strip() and "\n" not in movement_full.strip():
+        flat_ocr = movement_full
+    if flat_ocr and _santander_worldmember_clp_text(flat_ocr):
+        ocr_rows = parse_santander_clp_ocr_flat(
+            flat_ocr,
+            compact_row_from_parts=_compact_row_from_parts,
+            compact_payment_merchant_re=RE_COMPACT_PAYMENT_MERCHANT,
+        )
+        if ocr_rows:
+            return _finish_clp_parsed_rows(ocr_rows)
     if parser == "wide":
         return _finish_clp_parsed_rows(parse_wide_document(full))
     move_text = movement_full.strip() or full
@@ -1523,22 +1563,21 @@ def parse_clp_document(
 
 
 def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
-    """International USD: `pdftotext` (one field per line). CLP compact/wide: pypdf (merged rows)."""
+    """International USD: pdftotext or OCR flat. CLP: pypdf body, OCR flat when empty."""
     if parser == "international_usd":
-        try:
-            full = subprocess.check_output(
-                ["pdftotext", str(path), "-"],
-                text=True,
-                stderr=subprocess.DEVNULL,
-            )
+        full = peek_pdf_text(path).strip()
+        if full:
             return [], full
-        except (FileNotFoundError, subprocess.CalledProcessError, OSError):
-            pass
+        return [], extract_cc_pdf_ocr_flat(path)
     reader = PdfReader(str(path))
     pages: List[str] = []
     for p in reader.pages:
         pages.append(p.extract_text() or "")
-    return pages, "\n".join(pages)
+    joined = "\n".join(pages)
+    if joined.strip():
+        return pages, joined
+    ocr_flat = extract_cc_pdf_ocr_flat(path)
+    return [], ocr_flat
 
 
 RE_STMT_DATE_CELL = re.compile(r"^(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})$")
@@ -1669,7 +1708,7 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
         "raw_header_snippet": "",
     }
     m = re.search(
-        r"FECHA\s+ESTADO\s+DE\s+CUENTA\s+(\d{2}/\d{2}/\d{4})",
+        r"FECHA\s+ESTADO\s+DE\s+CUENTA[^\d]*(\d{2}/\d{2}/\d{4})",
         full,
         re.I,
     ) or re.search(r"FECHA\s+ESTADO\s+DE\s+CUENTA\s*(\d{2}/\d{2}/\d{4})", full, re.I)
@@ -1692,7 +1731,7 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
         if m:
             meta["statement_date"] = normalize_statement_date(m.group(1))
     m = re.search(
-        r"PER[IÍ]ODO\s+FACTURADO[^\d]*(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
+        r"PER[IÍ]ODO\s+FACTURADO[^\d]*(\d{2}/\d{2}/\d{4})[^\d]*(\d{2}/\d{2}/\d{4})",
         full,
         re.I,
     )
@@ -1730,6 +1769,7 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
             full, "FECHA ESTADO DE CUENTA"
         )
     _fill_period_and_pay_by(meta, full)
+    fill_meta_billing_from_ocr_flat(meta, full)
     monto_candidates: List[int] = []
     for m_total in re.finditer(
         r"MONTO\s+TOTAL\s+FACTURADO(?:\s+A\s+PAGAR)?[^\$]*\$\s*([\d.\-]+)",
@@ -1779,6 +1819,7 @@ def extract_meta(full: str, source_pdf: str) -> Dict[str, Any]:
 RE_MOVIMIENTOS_TARJETA = re.compile(
     r"MOVIMIENTOS\s+TARJETA\s+XXXX-\d{4}", re.IGNORECASE
 )
+CLP_MID_PERIOD_PAYMENT_LAYOUTS = frozenset({"compact_payment_abono", "ocr_payment"})
 RE_MOVIMIENTOS_TARJETA_SECTION = re.compile(
     r"MOVIMIENTOS\s+TARJETA\s+XXXX-(\d{4})", re.IGNORECASE
 )
@@ -1833,6 +1874,30 @@ def merge_meta_missing_fields(meta: Dict[str, Any], supplemental: Dict[str, Any]
             meta[key] = supplemental[key]
 
 
+def refresh_meta_billing_from_layout(
+    meta: Dict[str, Any], pdf_path: Path, layout_full: str = ""
+) -> None:
+    """Overwrite billing header fields from pdftotext layout (pypdf/cache often scrambles dates)."""
+    text = str(layout_full or "").strip() or pdftotext_layout_full(pdf_path)
+    if not text.strip():
+        return
+    if "ESTADO DE CUENTA INTERNACIONAL" in text.upper():
+        fresh = extract_meta_international(text, pdf_path.name)
+    else:
+        fresh = extract_meta(text, pdf_path.name)
+    for key in (
+        "statement_date",
+        "period_from",
+        "period_to",
+        "pay_by",
+        "card_last4",
+        "card_product",
+    ):
+        v = str(fresh.get(key) or "").strip()
+        if v:
+            meta[key] = fresh[key]
+
+
 def require_statement_meta(meta: Dict[str, Any], source_pdf: str) -> None:
     missing = [
         key
@@ -1866,12 +1931,28 @@ def infer_period_from_statement_close_santander(meta: Dict[str, Any]) -> None:
         meta["period_from"] = f"21/{prev_mo:02d}/{prev_y}"
 
 
+def reconcile_statement_date_with_period_to(meta: Dict[str, Any]) -> None:
+    """Santander statement close = period_to; OCR FECHA lines can pick noise from other pages."""
+    pt = normalize_statement_date(str(meta.get("period_to") or ""))
+    if not pt:
+        return
+    sd = normalize_statement_date(str(meta.get("statement_date") or ""))
+    if not sd or sd != pt:
+        meta["statement_date"] = pt
+
+
 def finalize_statement_meta(meta: Dict[str, Any], pdf_path: Path) -> None:
-    """pypdf body text often drops inline PERÍODO FACTURADO dates; fill from pdftotext -layout."""
+    """pypdf body text often drops inline PERÍODO FACTURADO dates; fill from pdftotext -layout or OCR."""
     layout_full = pdftotext_layout_full(pdf_path)
+    if not layout_full.strip():
+        try:
+            layout_full = extract_cc_pdf_ocr_flat(pdf_path)
+        except Exception:
+            layout_full = ""
     if layout_full:
-        merge_meta_missing_fields(meta, extract_meta(layout_full, pdf_path.name))
+        refresh_meta_billing_from_layout(meta, pdf_path, layout_full)
     infer_period_from_statement_close_santander(meta)
+    reconcile_statement_date_with_period_to(meta)
     require_statement_meta(meta, pdf_path.name)
 
 
@@ -3192,8 +3273,16 @@ def is_unreadable_pdf_error(msg: str) -> bool:
     )
 
 
-def skip_unreadable_pdf(p: Path, reason: str) -> Path:
+def skip_unreadable_pdf(
+    p: Path, reason: str, *, cc_root: Optional[Path] = None
+) -> Optional[Path]:
     """Quarantine image-only PDFs; log and continue without failing the parse run."""
+    if cc_root is not None and pdf_already_in_card_slot(cc_root, p):
+        print(
+            f"# skip unreadable (organized in slot, not quarantined)\t{p}\t({reason})",
+            file=sys.stderr,
+        )
+        return None
     renamed = mark_pdf_corrupt(p)
     print(f"# skip unreadable\t{renamed}\t({reason})", file=sys.stderr)
     return renamed
@@ -3364,7 +3453,16 @@ def main() -> int:
             failures.append(f"missing:{p}")
             continue
         if not is_readable_cc_statement_text(peek_pdf_text(p)):
-            skip_unreadable_pdf(p, "still unreadable after qpdf (image-only scan?)")
+            if pdf_already_in_card_slot(pdfs_dir, p):
+                failures.append(f"unreadable_organized:{p}")
+                print(
+                    f"# skip unreadable (organized in slot, not quarantined)\t{p}",
+                    file=sys.stderr,
+                )
+                continue
+            skip_unreadable_pdf(
+                p, "still unreadable after qpdf (image-only scan?)", cc_root=pdfs_dir
+            )
             continue
         cached: Optional[Dict[str, Any]] = None
         if not no_cache:
@@ -3375,6 +3473,7 @@ def main() -> int:
             if cached is not None:
                 cache_hits += 1
                 meta = dict(cached.get("meta") or {})
+                finalize_statement_meta(meta, p)
                 parsed = list(cached.get("parsed") or [])
                 effective_group = str(cached.get("effective_group") or card_group)
                 parser = str(cached.get("parser") or "")
@@ -3400,7 +3499,7 @@ def main() -> int:
                 pdf_context[source_pdf] = ctx
             else:
                 cache_misses += 1
-                rows, ctx = parse_one_pdf(card_group, p, baseline)
+                rows, ctx = parse_one_pdf(card_group, p, baseline, cc_root=pdfs_dir)
                 p = Path(str(ctx.get("pdf_path") or p))
                 effective_group = "INTL" if ctx["parser"] == "international_usd" else card_group
                 source_pdf = str(ctx.get("source_pdf") or p.name)
@@ -3424,7 +3523,21 @@ def main() -> int:
             per_pdf_counts[str(ctx.get("pdf_path") or p.name)] = len(rows)
         except Exception as e:
             if is_unreadable_pdf_error(str(e)):
-                skip_unreadable_pdf(p, str(e))
+                if pdf_already_in_card_slot(pdfs_dir, p):
+                    failures.append(f"unreadable_organized:{p}:{e}")
+                    print(
+                        f"# skip unreadable (organized in slot, not quarantined)\t{p}\t({e})",
+                        file=sys.stderr,
+                    )
+                    continue
+                skip_unreadable_pdf(p, str(e), cc_root=pdfs_dir)
+                continue
+            if pdf_already_in_card_slot(pdfs_dir, p):
+                failures.append(f"read_error_organized:{p}:{e}")
+                print(
+                    f"# parse error (organized in slot, not quarantined)\t{p}\t({e})",
+                    file=sys.stderr,
+                )
                 continue
             renamed = mark_pdf_corrupt(p)
             failures.append(f"read_error:{renamed}:{e}")

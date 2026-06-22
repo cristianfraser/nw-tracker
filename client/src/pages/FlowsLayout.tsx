@@ -1,19 +1,22 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { cn } from "../cn";
+import { useTranslation } from "../i18n";
 
 export function FlowsLayout() {
+  const { t } = useTranslation();
+
   return (
     <main>
-      <h1>Flows</h1>
-      <nav className="flow-subnav" aria-label="Flows sections">
+      <h1>{t("flows.layoutTitle")}</h1>
+      <nav className="flow-subnav" aria-label={t("flows.subnavAria")}>
         <NavLink to="income" className={({ isActive }) => cn(isActive && "active")}>
-          Income
+          {t("sidebar.flowsIncome")}
         </NavLink>
         <NavLink to="expenses" className={({ isActive }) => cn(isActive && "active")}>
-          Expenses
+          {t("sidebar.flowsExpenses")}
         </NavLink>
         <NavLink to="deposits" className={({ isActive }) => cn(isActive && "active")}>
-          Deposits
+          {t("sidebar.flowsDeposits")}
         </NavLink>
       </nav>
       <Outlet />

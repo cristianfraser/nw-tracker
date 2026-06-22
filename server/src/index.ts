@@ -165,7 +165,6 @@ import {
 } from "./ccExpenseBigGroups.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
-import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   buildRealEstateExpensesPayload,
   listRealEstateLinkCandidates,
@@ -276,94 +275,6 @@ app.use(httpRequestLogMiddleware);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
-});
-
-/**
- * Legacy `asset_groups` tree (import placement). Prefer `GET /api/meta/sidebar-nav` (`net_worth`).
- * @deprecated
- */
-app.get("/api/meta/asset-tree", (_req, res) => {
-  const groups = db
-    .prepare(
-      `SELECT id, slug, label, sort_order, color_rgb, parent_id FROM asset_groups ORDER BY sort_order, id`
-    )
-    .all() as {
-    id: number;
-    slug: string;
-    label: string;
-    sort_order: number;
-    color_rgb: string | null;
-    parent_id: number | null;
-  }[];
-
-  const accounts = db
-    .prepare(
-      `SELECT a.id, a.name, a.notes, a.asset_group_id
-       FROM accounts a
-       WHERE a.asset_group_id IS NOT NULL
-       ORDER BY a.name`
-    )
-    .all() as { id: number; name: string; notes: string | null; asset_group_id: number }[];
-
-  const childIds = new Set(
-    (
-      db.prepare(`SELECT DISTINCT parent_id AS pid FROM asset_groups WHERE parent_id IS NOT NULL`).all() as {
-        pid: number;
-      }[]
-    ).map((r) => r.pid)
-  );
-
-  const accountsByGroup = new Map<number, typeof accounts>();
-  for (const a of accounts) {
-    const arr = accountsByGroup.get(a.asset_group_id) ?? [];
-    arr.push(a);
-    accountsByGroup.set(a.asset_group_id, arr);
-  }
-
-  type TreeNode = {
-    id: number;
-    slug: string;
-    label: string;
-    sort_order: number;
-    color_rgb: string | null;
-    parent_id: number | null;
-    is_leaf: boolean;
-    children: TreeNode[];
-    accounts: { id: number; name: string; notes: string | null }[];
-  };
-
-  const nodes = new Map<number, TreeNode>();
-  for (const g of groups) {
-    nodes.set(g.id, {
-      ...g,
-      is_leaf: !childIds.has(g.id),
-      children: [],
-      accounts: (accountsByGroup.get(g.id) ?? []).map((a) => ({
-        id: a.id,
-        name: a.name,
-        notes: a.notes,
-      })),
-    });
-  }
-
-  const roots: TreeNode[] = [];
-  for (const g of groups) {
-    const node = nodes.get(g.id)!;
-    if (g.parent_id == null) {
-      roots.push(node);
-    } else {
-      const parent = nodes.get(g.parent_id);
-      if (parent) parent.children.push(node);
-    }
-  }
-
-  const sortTree = (list: TreeNode[]) => {
-    list.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-    for (const n of list) sortTree(n.children);
-  };
-  sortTree(roots);
-
-  res.json({ groups: roots });
 });
 
 /** Recursive portfolio groups (accounts + nested groups) with resolved colors. */
@@ -1493,10 +1404,6 @@ app.get("/api/expenses", (_req, res) => {
     )
     .all();
   res.json({ expenses: rows });
-});
-
-app.get("/api/flows/expenses", (_req, res) => {
-  res.json(buildFlowsExpensesPayload());
 });
 
 app.get("/api/flows/expenses/credit-card", (_req, res) => {

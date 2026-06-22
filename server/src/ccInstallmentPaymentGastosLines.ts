@@ -201,6 +201,7 @@ export function buildInstallmentPaymentGastosLines(
       lineOverrides,
       merchantRules,
       uniquePurchases,
+      uniquePurchaseModeKeys,
     });
     const categoryUnique = categoryUniqueForExpenseLine(
       row.account_id,

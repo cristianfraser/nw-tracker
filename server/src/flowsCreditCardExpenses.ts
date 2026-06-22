@@ -752,6 +752,8 @@ export function buildCcExpenseLines(
 
       uniquePurchases,
 
+      uniquePurchaseModeKeys,
+
     });
 
     let resolvedCategorySlug = categorySlug;
