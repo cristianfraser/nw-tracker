@@ -32,8 +32,10 @@ const AXIS_LINE_STROKE = "#64748b";
 const CHART_ANIM_MS = 90;
 
 const SERIES = [
-  { dataKey: "cartola" as const, color: "#22c55e" },
-  { dataKey: "manual" as const, color: "#3b82f6" },
+  { dataKey: "salary" as const, color: "#22c55e" },
+  { dataKey: "severance" as const, color: "#f59e0b" },
+  { dataKey: "parent_gift" as const, color: "#a78bfa" },
+  { dataKey: "other" as const, color: "#64748b" },
 ];
 
 export function IncomeMonthlyChart({
@@ -50,7 +52,7 @@ export function IncomeMonthlyChart({
   const { t } = useTranslation();
 
   const densePoints = useMemo(() => {
-    const zeroKeys = ["cartola", "manual", "total"];
+    const zeroKeys = ["salary", "severance", "parent_gift", "other", "total"];
     return densifyRecordsByCalendarPeriod(
       points as unknown as Record<string, string | number | null>[],
       {
@@ -134,15 +136,20 @@ export function IncomeMonthlyChart({
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
-              formatter={(value) => (
-                <span style={{ color: "var(--muted, #94a3b8)" }}>
-                  {value === "cartola"
-                    ? t("income.originChecking")
-                    : value === "manual"
-                      ? t("income.originManual")
-                      : t("income.colTotal")}
-                </span>
-              )}
+              formatter={(value) => {
+                const labels: Record<string, string> = {
+                  salary: t("income.chart.salary"),
+                  severance: t("income.chart.severance"),
+                  parent_gift: t("income.chart.parent_gift"),
+                  other: t("income.chart.other"),
+                  total: t("income.colTotal"),
+                };
+                return (
+                  <span style={{ color: "var(--muted, #94a3b8)" }}>
+                    {labels[value] ?? value}
+                  </span>
+                );
+              }}
             />
             {SERIES.map((s) => (
               <Bar

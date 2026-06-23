@@ -165,6 +165,63 @@ describe("flowsCheckingInflows", () => {
     deleteCheckingMovements([creditId]);
   });
 
+  it("includes REMUNERACION abono even when same-day traspaso to vista pairs by amount", () => {
+    const corrienteId = checkingAccountId();
+    const creditId = insertCheckingCartolaCredit(
+      corrienteId,
+      "2099-02-28",
+      1_053_374,
+      "NUEVO CHILE",
+      { cartolaMonth: "2099-02", branch: "G.Finanzas 0761173375 REMUNERACION", idx: 9998801 }
+    );
+    const withdrawalId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-02-28",
+      -1_053_374,
+      "Traspaso Internet a Cuentamática",
+      { cartolaMonth: "2099-02", idx: 9998802 }
+    );
+
+    const payload = buildFlowsCheckingIncomePayload();
+    expect(payload.lines.some((l) => l.movement_id === creditId)).toBe(true);
+
+    deleteCheckingMovements([creditId, withdrawalId]);
+  });
+
+  it("keeps corriente REMUNERACION as income while corriente→vista traspaso legs cancel", () => {
+    const corrienteId = checkingAccountId();
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaId == null) return;
+
+    const salaryId = insertCheckingCartolaCredit(
+      corrienteId,
+      "2099-02-28",
+      1_053_374,
+      "NUEVO CHILE",
+      { cartolaMonth: "2099-02", branch: "G.Finanzas 0761173375 REMUNERACION", idx: 9998810 }
+    );
+    const traspasoOutId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-02-28",
+      -1_053_374,
+      "Traspaso Internet a Cuentamática",
+      { cartolaMonth: "2099-02", idx: 9998811 }
+    );
+    const traspasoInId = insertCheckingCartolaCredit(
+      vistaId,
+      "2099-02-28",
+      1_053_374,
+      "Traspaso Internet desde Cta.Ct",
+      { cartolaMonth: "2099-02", branch: "401", idx: 9998812 }
+    );
+
+    const payload = buildFlowsCheckingIncomePayload();
+    expect(payload.lines.some((l) => l.movement_id === salaryId)).toBe(true);
+    expect(payload.lines.some((l) => l.movement_id === traspasoInId)).toBe(false);
+
+    deleteCheckingMovements([salaryId, traspasoOutId, traspasoInId]);
+  });
+
   it("excludes Fintual and reserva incoming transfers by description", () => {
     expect(isExcludedCheckingInflow("0768106274 Transf a FINTUAL ADMINISTRADORA G")).toBe(
       true
@@ -173,42 +230,30 @@ describe("flowsCheckingInflows", () => {
     expect(isExcludedCheckingInflow("TRASPASO A FONDO RESERVA")).toBe(true);
   });
 
-  it("excludes checking credits paired with net-worth account withdrawals (Fintual reserva lag)", () => {
+  it("excludes checking credits paired with prior Fintual/reserva wires on checking", () => {
     const corrienteId = checkingAccountId();
-    const reservaId = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__fondo_reserva' OR g.slug = 'fondo_reserva'
-         LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (reservaId == null) return;
+    const amountClp = 4_401_337;
 
-    const withdrawalId = Number(
-      db
-        .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (?, ?, ?, ?, ?)`
-        )
-        .run(
-          reservaId.id,
-          -4_400_000,
-          "2099-03-06",
-          "import:fintual|cert|movement|vitest|day=2099-03-06|flow_kind=deposit_clp",
-          -1
-        ).lastInsertRowid
+    const withdrawalId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-03-06",
+      -amountClp,
+      "0768106274 Transf a FINTUAL ADMINISTRADORA G",
+      { cartolaMonth: "2099-03", idx: 9998400 }
     );
     const creditId = insertCheckingCartolaCredit(
       corrienteId,
       "2099-03-09",
-      4_400_000,
+      amountClp,
       "ABONO TRANSFERENCIA ELECTRONICA",
       { cartolaMonth: "2099-03", idx: 9998401 }
     );
 
     const payload = buildFlowsCheckingIncomePayload();
     expect(payload.lines.some((l) => l.movement_id === creditId)).toBe(false);
+    expect(payload.filtered_lines.find((l) => l.movement_id === creditId)?.filter_reason).toBe(
+      "net_worth_capital_return"
+    );
 
     deleteCheckingMovements([withdrawalId, creditId]);
   });
@@ -268,5 +313,11 @@ describe("flowsCheckingInflows", () => {
     expect(payload.manual.some((m) => m.id === excelId)).toBe(false);
 
     deleteManualIncome([excelId]);
+  });
+
+  it("returns work_earnings and income_kind_by_movement_id in payload", () => {
+    const payload = buildFlowsCheckingIncomePayload();
+    expect(Array.isArray(payload.work_earnings)).toBe(true);
+    expect(payload.income_kind_by_movement_id).toBeTypeOf("object");
   });
 });

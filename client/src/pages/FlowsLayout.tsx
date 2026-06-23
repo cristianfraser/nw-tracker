@@ -1,9 +1,13 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn } from "../cn";
 import { useTranslation } from "../i18n";
+import { FlowManualEntryForm } from "../components/flows/FlowManualEntryForm";
 
 export function FlowsLayout() {
   const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const showManualForm = /\/flows\/(income|expenses)$/.test(pathname);
+  const defaultKind = pathname.endsWith("/expenses") ? "expense" : "income";
 
   return (
     <main>
@@ -19,6 +23,7 @@ export function FlowsLayout() {
           {t("sidebar.flowsDeposits")}
         </NavLink>
       </nav>
+      {showManualForm ? <FlowManualEntryForm defaultKind={defaultKind} /> : null}
       <Outlet />
     </main>
   );

@@ -16,6 +16,9 @@ export function resolvePurchaseKeyForGastosLine(
     | "nro_cuota_total"
   > & { checking_purchase_portion?: "deposit" }
 ): string {
+  if (line.source === "manual" && line.statement_line_id > 0) {
+    return `manual:${line.statement_line_id}`;
+  }
   if (line.source === "checking" && line.statement_line_id > 0) {
     return checkingGastosMovementPurchaseKey(
       line.statement_line_id,

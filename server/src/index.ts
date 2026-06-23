@@ -166,6 +166,24 @@ import {
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import {
+  type CheckingIncomeKind,
+  clearCheckingIncomeForceInclude,
+  restoreCheckingIncomeMovement,
+  upsertCheckingIncomeMovementOverride,
+} from "./flowsCheckingIncomeOverrides.js";
+import {
+  updatePayrollWorkEarning,
+  type PayrollEarningType,
+} from "./flowsPayrollWorkEarnings.js";
+import {
+  assertMovementEligibleForPayrollLink,
+  listPayrollLinkCandidates,
+} from "./payrollWorkEarningsLinking.js";
+import {
+  normalizeManualExpenseNote,
+  validateManualExpenseCategorySlug,
+} from "./flowsManualExpenses.js";
+import {
   buildRealEstateExpensesPayload,
   listRealEstateLinkCandidates,
 } from "./flowsRealEstateExpenses.js";
@@ -1396,6 +1414,152 @@ app.post("/api/income", (req, res) => {
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 });
 
+app.patch("/api/work-earnings/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  const body = req.body as {
+    earning_type?: PayrollEarningType;
+    movement_id?: number | null;
+  };
+  if (body.earning_type != null && body.earning_type !== "salary" && body.earning_type !== "severance") {
+    res.status(400).json({ error: "earning_type must be salary or severance" });
+    return;
+  }
+  if (body.movement_id !== undefined && body.movement_id != null) {
+    if (!Number.isFinite(body.movement_id) || body.movement_id <= 0) {
+      res.status(400).json({ error: "invalid movement_id" });
+      return;
+    }
+    try {
+      assertMovementEligibleForPayrollLink(
+        body.movement_id,
+        listPayrollLinkCandidates()
+      );
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+  }
+  try {
+    const row = updatePayrollWorkEarning(id, {
+      earning_type: body.earning_type,
+      movement_id: body.movement_id,
+    });
+    res.json(row);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.patch("/api/income/movements/:movement_id", (req, res) => {
+  const movementId = Number(req.params.movement_id);
+  if (!Number.isFinite(movementId) || movementId <= 0) {
+    res.status(400).json({ error: "invalid movement_id" });
+    return;
+  }
+  const body = req.body as {
+    income_kind?: CheckingIncomeKind;
+    excluded?: boolean;
+    force_include?: boolean;
+    note?: string | null;
+  };
+  if (
+    body.income_kind != null &&
+    body.income_kind !== "salary" &&
+    body.income_kind !== "severance" &&
+    body.income_kind !== "other" &&
+    body.income_kind !== "parent_gift"
+  ) {
+    res.status(400).json({
+      error: "income_kind must be salary, severance, other, or parent_gift",
+    });
+    return;
+  }
+  if (
+    body.income_kind === undefined &&
+    body.excluded === undefined &&
+    body.force_include === undefined &&
+    body.note === undefined
+  ) {
+    res.status(400).json({ error: "income_kind, excluded, force_include, or note required" });
+    return;
+  }
+  try {
+    if (body.excluded === false) {
+      restoreCheckingIncomeMovement(movementId);
+      res.json({
+        movement_id: movementId,
+        excluded: false,
+        force_include: false,
+        income_kind: null,
+        note: null,
+      });
+      return;
+    }
+    if (body.force_include === false) {
+      clearCheckingIncomeForceInclude(movementId);
+      res.json({
+        movement_id: movementId,
+        excluded: false,
+        force_include: false,
+        income_kind: null,
+        note: null,
+      });
+      return;
+    }
+    const row = upsertCheckingIncomeMovementOverride(movementId, {
+      income_kind: body.income_kind,
+      excluded: body.excluded,
+      force_include: body.force_include,
+      note: body.note,
+    });
+    res.json({
+      movement_id: row.movement_id,
+      excluded: row.is_excluded === 1,
+      force_include: row.force_include === 1,
+      income_kind: row.income_kind,
+      note: row.note,
+    });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.post("/api/income/movements/:movement_id/force-include", (req, res) => {
+  const movementId = Number(req.params.movement_id);
+  if (!Number.isFinite(movementId) || movementId <= 0) {
+    res.status(400).json({ error: "invalid movement_id" });
+    return;
+  }
+  try {
+    const row = upsertCheckingIncomeMovementOverride(movementId, { force_include: true });
+    res.json({
+      ok: true,
+      movement_id: row.movement_id,
+      force_include: true,
+    });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.post("/api/income/movements/:movement_id/restore", (req, res) => {
+  const movementId = Number(req.params.movement_id);
+  if (!Number.isFinite(movementId) || movementId <= 0) {
+    res.status(400).json({ error: "invalid movement_id" });
+    return;
+  }
+  try {
+    restoreCheckingIncomeMovement(movementId);
+    res.json({ ok: true, movement_id: movementId });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 app.get("/api/expenses", (_req, res) => {
   const rows = db
     .prepare(
@@ -1587,12 +1751,16 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     category_slug?: string;
     unique?: boolean;
     clear_category?: boolean;
-    source?: "cc" | "checking";
+    source?: "cc" | "checking" | "manual";
   };
   const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
   const unique = !!body.unique;
   const clearCategory = body.clear_category === true;
   try {
+    if (body.source === "manual") {
+      res.status(400).json({ error: "manual expense entries are not editable" });
+      return;
+    }
     if (lineId < 0) {
       const result = assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
         purchaseId: -lineId,
@@ -1605,7 +1773,9 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     }
     const bodySource = body.source;
     const source =
-      bodySource === "checking" || bodySource === "cc" ? bodySource : undefined;
+      bodySource === "checking" || bodySource === "cc" || bodySource === "manual"
+        ? bodySource
+        : undefined;
     const result = assignFlowExpenseLineCategory({
       lineId,
       source,
@@ -1633,16 +1803,27 @@ app.post("/api/expenses", (req, res) => {
     category?: string;
     note?: string;
   };
-  if (!amount_clp || amount_clp <= 0 || !spent_on) {
+  if (amount_clp == null || amount_clp <= 0 || !spent_on) {
     res.status(400).json({ error: "positive amount_clp and spent_on required" });
     return;
   }
-  const r = db
-    .prepare(
-      `INSERT INTO expense_entries (amount_clp, spent_on, category, note) VALUES (?, ?, ?, ?)`
-    )
-    .run(amount_clp, spent_on, category ?? null, note ?? null);
-  res.status(201).json({ id: Number(r.lastInsertRowid) });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(spent_on)) {
+    res.status(400).json({ error: "spent_on must be YYYY-MM-DD" });
+    return;
+  }
+  try {
+    const categorySlug = validateManualExpenseCategorySlug(category);
+    const normalizedNote = normalizeManualExpenseNote(note);
+    const r = db
+      .prepare(
+        `INSERT INTO expense_entries (amount_clp, spent_on, category, note) VALUES (?, ?, ?, ?)`
+      )
+      .run(amount_clp, spent_on, categorySlug, normalizedNote);
+    res.status(201).json({ id: Number(r.lastInsertRowid) });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "invalid expense";
+    res.status(400).json({ error: msg });
+  }
 });
 
 /** Stale external sources + last sync state (AFP / Fintual / BCentral BDE). */

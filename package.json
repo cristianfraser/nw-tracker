@@ -26,6 +26,8 @@
     "import:cc-parsed": "npm run import:cc-parsed -w nw-tracker-server",
     "backfill:cc-valuations-from-ledger": "npm run backfill:cc-valuations-from-ledger -w nw-tracker-server",
     "backfill:cc-cuota-gaps": "npm run backfill:cc-cuota-gaps -w nw-tracker-server",
-    "fetch-uf": "npm run fetch-uf -w nw-tracker-server"
+    "fetch-uf": "npm run fetch-uf -w nw-tracker-server",
+    "parse:payroll-liquidaciones": "PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/parse-payroll-liquidaciones.py",
+    "import:payroll-liquidaciones": "npm run import:payroll-liquidaciones -w nw-tracker-server"
   }
 }
