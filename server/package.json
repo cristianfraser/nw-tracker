@@ -73,7 +73,13 @@
     "crypto:apply-valuation": "tsx scripts/crypto-apply-valuation.ts",
     "retag:fintual-state-contributions": "tsx scripts/retag-fintual-state-contributions.ts",
     "test": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
-    "profile:dashboard": "tsx scripts/profile-dashboard.ts"
+    "profile:dashboard": "tsx scripts/profile-dashboard.ts",
+    "propose:synthetic-gastos-from-excel": "tsx scripts/propose-synthetic-gastos-from-excel.ts",
+    "parse:payroll-liquidaciones": "python3 scripts/parse-payroll-liquidaciones.py",
+    "import:payroll-liquidaciones": "tsx scripts/import-payroll-liquidaciones.ts",
+    "seed:payroll-dealsy-2019-h2": "tsx scripts/seed-payroll-dealsy-2019-h2.ts",
+    "seed:payroll-dealsy-2020-q1": "tsx scripts/seed-payroll-dealsy-2020-q1.ts",
+    "seed:payroll-deel-2021-h1": "tsx scripts/seed-payroll-deel-2021-h1.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",

@@ -7,16 +7,32 @@ import {
   checkingCreditMatchesAfpRetiroReturn,
   checkingCreditMatchesInternalWithdrawal,
   checkingCreditMatchesNetWorthCapitalReturn,
+  checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn,
   createSplittableInternalTransferPool,
+  buildFintualIncomingWireBatches,
+  loadNetWorthCapitalReturnLedgerOutflows,
   creditIsReversingMercadoCapitalesCargo,
   isExcludedCheckingInflow,
   loadAfpRetiroOutflowCandidates,
   loadAllCheckingCartolaWithdrawals,
   loadCheckingCartolaWithdrawals,
   loadDepositMatchCandidates,
-  loadNetWorthCapitalOutflowCandidates,
+  type FintualIncomingWireBatch,
 } from "./flowsCheckingGastos.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import {
+  mergedIncomeKindByMovementIdRecord,
+  loadExcludedCheckingIncomeMovementIds,
+  loadExcludedCheckingIncomeLines,
+  loadForceIncludedCheckingIncomeMovementIds,
+  type CheckingIncomeKind,
+  type FlowExcludedCheckingIncomeLine,
+} from "./flowsCheckingIncomeOverrides.js";
+import {
+  loadPayrollWorkEarnings,
+  payrollPeriodByMovementIdRecord,
+  type FlowWorkEarningRow,
+} from "./flowsPayrollWorkEarnings.js";
 
 export type FlowCheckingIncomeLine = {
   movement_id: number;
@@ -41,14 +57,38 @@ export type FlowManualIncomeLine = {
   origin: "manual";
 };
 
+export type IncomeAutoFilterReason =
+  | "excluded_description"
+  | "mercado_capitales_reversal"
+  | "internal_withdrawal"
+  | "afp_retiro_return"
+  | "net_worth_capital_return";
+
+export type FlowFilteredCheckingIncomeLine = {
+  movement_id: number;
+  account_id: number;
+  account_label: string;
+  received_on: string;
+  amount_clp: number;
+  amount_usd: number | null;
+  description: string;
+  filter_reason: IncomeAutoFilterReason;
+};
+
 export type FlowsCheckingIncomePayload = {
   lines: FlowCheckingIncomeLine[];
   manual: FlowManualIncomeLine[];
   monthly_totals: Record<string, number>;
+  work_earnings: FlowWorkEarningRow[];
+  income_kind_by_movement_id: Record<number, CheckingIncomeKind>;
+  payroll_period_by_movement_id: Record<number, string>;
+  excluded_lines: FlowExcludedCheckingIncomeLine[];
+  filtered_lines: FlowFilteredCheckingIncomeLine[];
 };
 
 type CheckingCartolaCreditWithId = {
   movement_id: number;
+  account_id: number;
   occurred_on: string;
   amount_clp: number;
   note: string | null;
@@ -57,7 +97,7 @@ type CheckingCartolaCreditWithId = {
 function loadCheckingCartolaCreditsWithId(accountId: number): CheckingCartolaCreditWithId[] {
   return db
     .prepare(
-      `SELECT id AS movement_id, occurred_on, amount_clp, note
+      `SELECT id AS movement_id, account_id, occurred_on, amount_clp, note
        FROM movements
        WHERE account_id = ?
          AND amount_clp > 0
@@ -96,53 +136,175 @@ function loadManualIncomeEntries(): FlowManualIncomeLine[] {
     }));
 }
 
+type IncomeFilterContext = {
+  accountWithdrawalsByAccountId: Map<number, ReturnType<typeof loadCheckingCartolaWithdrawals>>;
+  allWithdrawals: ReturnType<typeof loadAllCheckingCartolaWithdrawals>;
+  deposits: ReturnType<typeof loadDepositMatchCandidates>;
+  splittablePool: Map<string, number>;
+  afpOutflows: ReturnType<typeof loadAfpRetiroOutflowCandidates>;
+  ledgerCapitalOutflows: ReturnType<typeof loadNetWorthCapitalReturnLedgerOutflows>;
+  fintualWireBatchByMovementId: Map<number, FintualIncomingWireBatch>;
+  matchedFintualWireBatchKeys: Set<string>;
+  consumedCapitalReturnWithdrawalKeys: Set<string>;
+  consumedCapitalReturnLedgerOutflowKeys: Set<string>;
+};
+
+function classifyCheckingCreditForIncome(
+  credit: CheckingCartolaCreditWithId,
+  ctx: IncomeFilterContext
+): IncomeAutoFilterReason | null {
+  if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) {
+    throw new Error(`anchor cartola credit ${credit.movement_id} must not reach income classifier`);
+  }
+
+  const description = cartolaDescriptionFromNote(credit.note);
+  if (isExcludedCheckingInflow(description)) return "excluded_description";
+
+  const accountWithdrawals =
+    ctx.accountWithdrawalsByAccountId.get(credit.account_id) ??
+    loadCheckingCartolaWithdrawals(credit.account_id);
+
+  if (creditIsReversingMercadoCapitalesCargo(credit, accountWithdrawals)) {
+    return "mercado_capitales_reversal";
+  }
+  if (
+    checkingCreditMatchesInternalWithdrawal(
+      credit,
+      credit.account_id,
+      ctx.allWithdrawals,
+      ctx.deposits,
+      ctx.splittablePool
+    )
+  ) {
+    return "internal_withdrawal";
+  }
+  if (checkingCreditMatchesAfpRetiroReturn(credit, ctx.afpOutflows)) {
+    return "afp_retiro_return";
+  }
+  const batch = ctx.fintualWireBatchByMovementId.get(credit.movement_id);
+  if (batch != null) {
+    if (ctx.matchedFintualWireBatchKeys.has(batch.key)) {
+      return "net_worth_capital_return";
+    }
+    if (
+      checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn(
+        batch,
+        ctx.ledgerCapitalOutflows,
+        { consumedLedgerOutflowKeys: ctx.consumedCapitalReturnLedgerOutflowKeys }
+      )
+    ) {
+      ctx.matchedFintualWireBatchKeys.add(batch.key);
+      return "net_worth_capital_return";
+    }
+  }
+  if (
+    checkingCreditMatchesNetWorthCapitalReturn(credit, ctx.allWithdrawals, {
+      consumedWithdrawalKeys: ctx.consumedCapitalReturnWithdrawalKeys,
+      ledgerOutflows: ctx.ledgerCapitalOutflows,
+      consumedLedgerOutflowKeys: ctx.consumedCapitalReturnLedgerOutflowKeys,
+    })
+  ) {
+    return "net_worth_capital_return";
+  }
+  return null;
+}
+
+function toCheckingIncomeLine(
+  credit: CheckingCartolaCreditWithId,
+  accountLabels: Map<number, string>
+): FlowCheckingIncomeLine {
+  const amount_clp = Math.round(credit.amount_clp);
+  return {
+    movement_id: credit.movement_id,
+    account_id: credit.account_id,
+    account_label: accountLabels.get(credit.account_id) ?? String(credit.account_id),
+    received_on: credit.occurred_on,
+    amount_clp,
+    amount_usd: clpToUsdAtDate(amount_clp, credit.occurred_on),
+    description: cartolaDescriptionFromNote(credit.note),
+    source: "checking",
+  };
+}
+
 export function buildFlowsCheckingIncomePayload(): FlowsCheckingIncomePayload {
   const accountIds = listMovementBalanceCashAccountIds();
   const accountLabels = loadAccountLabels(accountIds);
   const deposits = loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
   const allWithdrawals = loadAllCheckingCartolaWithdrawals();
-  const investmentOutflows = loadNetWorthCapitalOutflowCandidates();
   const afpOutflows = loadAfpRetiroOutflowCandidates();
+  const ledgerCapitalOutflows = loadNetWorthCapitalReturnLedgerOutflows();
+
+  const excludedMovementIds = loadExcludedCheckingIncomeMovementIds();
+  const forceIncludedMovementIds = loadForceIncludedCheckingIncomeMovementIds();
+
+  const accountWithdrawalsByAccountId = new Map(
+    accountIds.map((accountId) => [accountId, loadCheckingCartolaWithdrawals(accountId)])
+  );
+
+  const creditsForBatching: CheckingCartolaCreditWithId[] = [];
+  for (const accountId of accountIds) {
+    for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
+      if (excludedMovementIds.has(credit.movement_id)) continue;
+      if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
+      creditsForBatching.push(credit);
+    }
+  }
+  const { batchByMovementId: fintualWireBatchByMovementId } =
+    buildFintualIncomingWireBatches(creditsForBatching);
+
+  const filterCtx: IncomeFilterContext = {
+    accountWithdrawalsByAccountId,
+    allWithdrawals,
+    deposits,
+    splittablePool,
+    afpOutflows,
+    ledgerCapitalOutflows,
+    fintualWireBatchByMovementId,
+    matchedFintualWireBatchKeys: new Set(),
+    consumedCapitalReturnWithdrawalKeys: new Set(),
+    consumedCapitalReturnLedgerOutflowKeys: new Set(),
+  };
 
   const lines: FlowCheckingIncomeLine[] = [];
+  const filtered_lines: FlowFilteredCheckingIncomeLine[] = [];
 
   for (const accountId of accountIds) {
-    const accountWithdrawals = loadCheckingCartolaWithdrawals(accountId);
     for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
+      if (excludedMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
 
-      const description = cartolaDescriptionFromNote(credit.note);
-      if (isExcludedCheckingInflow(description)) continue;
-      if (creditIsReversingMercadoCapitalesCargo(credit, accountWithdrawals)) continue;
-      if (
-        checkingCreditMatchesInternalWithdrawal(
-          credit,
-          accountId,
-          allWithdrawals,
-          deposits,
-          splittablePool
-        )
-      ) {
+      const forceInclude = forceIncludedMovementIds.has(credit.movement_id);
+      const filterReason = forceInclude
+        ? null
+        : classifyCheckingCreditForIncome(credit, filterCtx);
+
+      if (filterReason != null) {
+        const amount_clp = Math.round(credit.amount_clp);
+        filtered_lines.push({
+          movement_id: credit.movement_id,
+          account_id: credit.account_id,
+          account_label: accountLabels.get(credit.account_id) ?? String(credit.account_id),
+          received_on: credit.occurred_on,
+          amount_clp,
+          amount_usd: clpToUsdAtDate(amount_clp, credit.occurred_on),
+          description: cartolaDescriptionFromNote(credit.note),
+          filter_reason: filterReason,
+        });
         continue;
       }
-      if (checkingCreditMatchesAfpRetiroReturn(credit, afpOutflows)) continue;
-      if (checkingCreditMatchesNetWorthCapitalReturn(credit, investmentOutflows)) continue;
 
-      lines.push({
-        movement_id: credit.movement_id,
-        account_id: accountId,
-        account_label: accountLabels.get(accountId) ?? String(accountId),
-        received_on: credit.occurred_on,
-        amount_clp: Math.round(credit.amount_clp),
-        amount_usd: clpToUsdAtDate(Math.round(credit.amount_clp), credit.occurred_on),
-        description,
-        source: "checking",
-      });
+      lines.push(toCheckingIncomeLine(credit, accountLabels));
     }
   }
 
   lines.sort((a, b) => {
+    const byDate = b.received_on.localeCompare(a.received_on);
+    if (byDate !== 0) return byDate;
+    return b.movement_id - a.movement_id;
+  });
+
+  filtered_lines.sort((a, b) => {
     const byDate = b.received_on.localeCompare(a.received_on);
     if (byDate !== 0) return byDate;
     return b.movement_id - a.movement_id;
@@ -159,5 +321,10 @@ export function buildFlowsCheckingIncomePayload(): FlowsCheckingIncomePayload {
     lines,
     manual: loadManualIncomeEntries(),
     monthly_totals,
+    work_earnings: loadPayrollWorkEarnings(),
+    income_kind_by_movement_id: mergedIncomeKindByMovementIdRecord(),
+    payroll_period_by_movement_id: payrollPeriodByMovementIdRecord(),
+    excluded_lines: loadExcludedCheckingIncomeLines(),
+    filtered_lines,
   };
 }

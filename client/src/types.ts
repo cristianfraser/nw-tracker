@@ -983,7 +983,7 @@ export interface CcExpenseBigGroupDto {
   sort_order: number;
 }
 
-export type FlowCcExpenseLineSource = "cc" | "checking";
+export type FlowCcExpenseLineSource = "cc" | "checking" | "manual";
 
 export interface FlowCcExpenseLineRow {
   source: FlowCcExpenseLineSource;
@@ -1061,6 +1061,37 @@ export interface FlowCheckingIncomeLine {
   source: "checking";
 }
 
+export interface FlowExcludedCheckingIncomeLine {
+  movement_id: number;
+  account_id: number;
+  account_label: string;
+  received_on: string;
+  amount_clp: number;
+  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  amount_usd: number | null;
+  description: string;
+  note: string | null;
+}
+
+export type IncomeAutoFilterReason =
+  | "excluded_description"
+  | "mercado_capitales_reversal"
+  | "internal_withdrawal"
+  | "afp_retiro_return"
+  | "net_worth_capital_return";
+
+export interface FlowFilteredCheckingIncomeLine {
+  movement_id: number;
+  account_id: number;
+  account_label: string;
+  received_on: string;
+  amount_clp: number;
+  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  amount_usd: number | null;
+  description: string;
+  filter_reason: IncomeAutoFilterReason;
+}
+
 export interface FlowManualIncomeLine {
   id: number;
   amount_clp: number;
@@ -1076,13 +1107,61 @@ export interface FlowsIncomeResponse {
   lines: FlowCheckingIncomeLine[];
   manual: FlowManualIncomeLine[];
   monthly_totals: Record<string, number>;
+  work_earnings: FlowWorkEarningRow[];
+  income_kind_by_movement_id: Record<number, IncomeKind>;
+  payroll_period_by_movement_id: Record<number, string>;
+  excluded_lines: FlowExcludedCheckingIncomeLine[];
+  filtered_lines: FlowFilteredCheckingIncomeLine[];
 }
+
+export type PayrollEarningType = "salary" | "severance";
+export type PayrollLinkSource = "auto" | "manual";
+
+export interface FlowWorkEarningRow {
+  id: number;
+  period_month: string;
+  employer_name: string;
+  employer_rut: string | null;
+  pay_period_label: string | null;
+  earning_type: PayrollEarningType;
+  base_salary_clp: number | null;
+  colacion_clp: number | null;
+  movilizacion_clp: number | null;
+  gratificacion_clp: number | null;
+  total_imponible_clp: number | null;
+  total_no_imponible_clp: number | null;
+  total_haberes_clp: number | null;
+  desc_afp_clp: number | null;
+  desc_health_clp: number | null;
+  desc_tax_clp: number | null;
+  desc_cesantia_clp: number | null;
+  desc_apv_clp: number | null;
+  desc_other_clp: number | null;
+  total_descuentos_clp: number | null;
+  liquido_clp: number;
+  liquido_usd: number | null;
+  wire_received_on: string | null;
+  uf_mes: number | null;
+  utm_mes: number | null;
+  tope_previsional_uf: number | null;
+  tope_cesantia_uf: number | null;
+  source_pdf: string;
+  movement_id: number | null;
+  link_source: PayrollLinkSource | null;
+  linked_received_on: string | null;
+  linked_amount_clp: number | null;
+  linked_account_label: string | null;
+}
+
+export type IncomeKind = PayrollEarningType | "other" | "parent_gift";
 
 export interface FlowIncomeMonthRow {
   period_month: string;
   as_of_date: string;
-  cartola_clp: number;
-  manual_clp: number;
+  salary_clp: number;
+  severance_clp: number;
+  parent_gift_clp: number;
+  other_clp: number;
   total_clp: number;
   line_count: number;
   cumulative_clp: number;
@@ -1090,8 +1169,10 @@ export interface FlowIncomeMonthRow {
 
 export interface FlowIncomeChartPoint {
   as_of_date: string;
-  cartola: number;
-  manual: number;
+  salary: number;
+  severance: number;
+  parent_gift: number;
+  other: number;
   total: number;
 }
 

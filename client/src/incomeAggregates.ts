@@ -6,15 +6,40 @@ import type {
   FlowIncomeMonthRow,
   FlowManualIncomeLine,
   FlowsIncomeResponse,
+  FlowWorkEarningRow,
+  IncomeKind,
 } from "./types";
 
 export type IncomeDisplayRow =
-  | ({ kind: "checking" } & FlowCheckingIncomeLine)
-  | ({ kind: "manual" } & FlowManualIncomeLine);
+  | ({
+      kind: "checking";
+      income_kind: IncomeKind;
+      payroll_period_month?: string;
+    } & FlowCheckingIncomeLine)
+  | ({ kind: "manual"; income_kind: "other" } & FlowManualIncomeLine);
 
 function periodMonthFromYmd(ymd: string): string | null {
   const m = /^(\d{4}-\d{2})-\d{2}$/.exec(String(ymd ?? "").trim());
   return m ? m[1]! : null;
+}
+
+function incomeKindForCheckingLine(
+  line: FlowCheckingIncomeLine,
+  data: FlowsIncomeResponse
+): IncomeKind {
+  return data.income_kind_by_movement_id[line.movement_id] ?? "other";
+}
+
+export function incomeAttributionMonthForCheckingLine(
+  line: FlowCheckingIncomeLine,
+  data: FlowsIncomeResponse
+): string | null {
+  const kind = incomeKindForCheckingLine(line, data);
+  if (kind === "salary" || kind === "severance") {
+    const payrollMonth = data.payroll_period_by_movement_id[line.movement_id];
+    if (payrollMonth) return payrollMonth;
+  }
+  return periodMonthFromYmd(line.received_on);
 }
 
 function extendIncomeMonthRowsThroughToday(rows: FlowIncomeMonthRow[]): FlowIncomeMonthRow[] {
@@ -30,8 +55,10 @@ function extendIncomeMonthRowsThroughToday(rows: FlowIncomeMonthRow[]): FlowInco
     extended.push({
       period_month: cur,
       as_of_date: monthEndUtcYmd(cur),
-      cartola_clp: 0,
-      manual_clp: 0,
+      salary_clp: 0,
+      severance_clp: 0,
+      parent_gift_clp: 0,
+      other_clp: 0,
       total_clp: 0,
       line_count: 0,
       cumulative_clp: running,
@@ -42,8 +69,23 @@ function extendIncomeMonthRowsThroughToday(rows: FlowIncomeMonthRow[]): FlowInco
 }
 
 export function buildIncomeDisplayRows(data: FlowsIncomeResponse): IncomeDisplayRow[] {
-  const cartola: IncomeDisplayRow[] = data.lines.map((line) => ({ kind: "checking", ...line }));
-  const manual: IncomeDisplayRow[] = data.manual.map((line) => ({ kind: "manual", ...line }));
+  const cartola: IncomeDisplayRow[] = data.lines.map((line) => {
+    const bankMonth = periodMonthFromYmd(line.received_on);
+    const payrollPeriod = data.payroll_period_by_movement_id[line.movement_id];
+    const payroll_period_month =
+      payrollPeriod && bankMonth && payrollPeriod !== bankMonth ? payrollPeriod : undefined;
+    return {
+      kind: "checking",
+      income_kind: incomeKindForCheckingLine(line, data),
+      payroll_period_month,
+      ...line,
+    };
+  });
+  const manual: IncomeDisplayRow[] = data.manual.map((line) => ({
+    kind: "manual",
+    income_kind: "other",
+    ...line,
+  }));
   return [...cartola, ...manual].sort((a, b) => {
     const aDate = a.received_on;
     const bDate = b.received_on;
@@ -75,6 +117,36 @@ export function incomeManualAmount(line: FlowManualIncomeLine, unit: DisplayUnit
   return Math.round(line.amount_clp);
 }
 
+export function isUsdSyntheticWorkEarning(row: FlowWorkEarningRow): boolean {
+  return row.liquido_usd != null && row.movement_id == null;
+}
+
+export function workEarningSalaryAmount(
+  row: FlowWorkEarningRow,
+  unit: DisplayUnit
+): number {
+  if (row.liquido_usd != null) {
+    if (unit === "usd") return row.liquido_usd;
+    return Math.round(row.liquido_clp);
+  }
+  if (unit === "usd") {
+    throw new Error(`missing liquido_usd for work earning ${row.id}`);
+  }
+  return Math.round(row.liquido_clp);
+}
+
+export function workEarningLiquidoDisplayAmount(
+  row: FlowWorkEarningRow,
+  unit: DisplayUnit
+): number {
+  if (row.liquido_usd != null && unit === "usd") return row.liquido_usd;
+  return Math.round(row.liquido_clp);
+}
+
+export function incomeKindLabel(t: (key: string) => string, kind: IncomeKind): string {
+  return t(`income.chart.${kind}`);
+}
+
 export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[]): FlowIncomeMonthRow[] {
   const byYear = new Map<string, Omit<FlowIncomeMonthRow, "cumulative_clp">>();
   for (const row of rows) {
@@ -84,15 +156,19 @@ export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[])
       byYear.set(year, {
         period_month: `${year}-12`,
         as_of_date: `${year}-12-31`,
-        cartola_clp: row.cartola_clp,
-        manual_clp: row.manual_clp,
+        salary_clp: row.salary_clp,
+        severance_clp: row.severance_clp,
+        parent_gift_clp: row.parent_gift_clp,
+        other_clp: row.other_clp,
         total_clp: row.total_clp,
         line_count: row.line_count,
       });
       continue;
     }
-    cur.cartola_clp += row.cartola_clp;
-    cur.manual_clp += row.manual_clp;
+    cur.salary_clp += row.salary_clp;
+    cur.severance_clp += row.severance_clp;
+    cur.parent_gift_clp += row.parent_gift_clp;
+    cur.other_clp += row.other_clp;
     cur.total_clp += row.total_clp;
     cur.line_count += row.line_count;
   }
@@ -114,32 +190,48 @@ export function aggregateIncomeFromPayload(
   total: number;
   all_rows: IncomeDisplayRow[];
 } {
-  type MonthBucket = { cartola: number; manual: number; line_count: number };
+  type MonthBucket = {
+    salary: number;
+    severance: number;
+    parent_gift: number;
+    other: number;
+    line_count: number;
+  };
 
   const byMonth = new Map<string, MonthBucket>();
 
   const touch = (month: string): MonthBucket => {
     const existing = byMonth.get(month);
     if (existing) return existing;
-    const fresh: MonthBucket = { cartola: 0, manual: 0, line_count: 0 };
+    const fresh: MonthBucket = { salary: 0, severance: 0, parent_gift: 0, other: 0, line_count: 0 };
     byMonth.set(month, fresh);
     return fresh;
   };
 
-  for (const line of data.lines) {
-    const month = periodMonthFromYmd(line.received_on);
-    if (!month) continue;
+  const addToBucket = (month: string, kind: IncomeKind, amount: number) => {
     const bucket = touch(month);
-    bucket.cartola += incomeCartolaAmount(line, unit);
+    if (kind === "salary") bucket.salary += amount;
+    else if (kind === "severance") bucket.severance += amount;
+    else if (kind === "parent_gift") bucket.parent_gift += amount;
+    else bucket.other += amount;
     bucket.line_count += 1;
+  };
+
+  for (const line of data.lines) {
+    const month = incomeAttributionMonthForCheckingLine(line, data);
+    if (!month) continue;
+    addToBucket(month, incomeKindForCheckingLine(line, data), incomeCartolaAmount(line, unit));
   }
 
   for (const line of data.manual) {
     const month = periodMonthFromYmd(line.received_on);
     if (!month) continue;
-    const bucket = touch(month);
-    bucket.manual += incomeManualAmount(line, unit);
-    bucket.line_count += 1;
+    addToBucket(month, "other", incomeManualAmount(line, unit));
+  }
+
+  for (const row of data.work_earnings) {
+    if (row.earning_type !== "salary" || !isUsdSyntheticWorkEarning(row)) continue;
+    addToBucket(row.period_month, "salary", workEarningSalaryAmount(row, unit));
   }
 
   const monthsAsc = [...byMonth.keys()].sort(ymCompare);
@@ -148,15 +240,19 @@ export function aggregateIncomeFromPayload(
 
   for (const periodMonth of monthsAsc) {
     const bucket = byMonth.get(periodMonth)!;
-    const cartolaClp = Math.round(bucket.cartola);
-    const manualClp = Math.round(bucket.manual);
-    const totalClp = cartolaClp + manualClp;
+    const salaryClp = Math.round(bucket.salary);
+    const severanceClp = Math.round(bucket.severance);
+    const parentGiftClp = Math.round(bucket.parent_gift);
+    const otherClp = Math.round(bucket.other);
+    const totalClp = salaryClp + severanceClp + parentGiftClp + otherClp;
     running += totalClp;
     byMonthAsc.push({
       period_month: periodMonth,
       as_of_date: monthEndUtcYmd(periodMonth),
-      cartola_clp: cartolaClp,
-      manual_clp: manualClp,
+      salary_clp: salaryClp,
+      severance_clp: severanceClp,
+      parent_gift_clp: parentGiftClp,
+      other_clp: otherClp,
       total_clp: totalClp,
       line_count: bucket.line_count,
       cumulative_clp: Math.round(running),
@@ -167,17 +263,30 @@ export function aggregateIncomeFromPayload(
 
   const chart_monthly: FlowIncomeChartPoint[] = byMonthThroughToday.map((m) => ({
     as_of_date: m.as_of_date,
-    cartola: m.cartola_clp,
-    manual: m.manual_clp,
+    salary: m.salary_clp,
+    severance: m.severance_clp,
+    parent_gift: m.parent_gift_clp,
+    other: m.other_clp,
     total: m.total_clp,
   }));
 
-  const byYear = new Map<string, { cartola: number; manual: number; total: number }>();
+  const byYear = new Map<
+    string,
+    { salary: number; severance: number; parent_gift: number; other: number; total: number }
+  >();
   for (const point of chart_monthly) {
     const year = point.as_of_date.slice(0, 4);
-    const cur = byYear.get(year) ?? { cartola: 0, manual: 0, total: 0 };
-    cur.cartola += point.cartola;
-    cur.manual += point.manual;
+    const cur = byYear.get(year) ?? {
+      salary: 0,
+      severance: 0,
+      parent_gift: 0,
+      other: 0,
+      total: 0,
+    };
+    cur.salary += point.salary;
+    cur.severance += point.severance;
+    cur.parent_gift += point.parent_gift;
+    cur.other += point.other;
     cur.total += point.total;
     byYear.set(year, cur);
   }
@@ -188,8 +297,10 @@ export function aggregateIncomeFromPayload(
       const sums = byYear.get(year)!;
       return {
         as_of_date: `${year}-12-31`,
-        cartola: Math.round(sums.cartola),
-        manual: Math.round(sums.manual),
+        salary: Math.round(sums.salary),
+        severance: Math.round(sums.severance),
+        parent_gift: Math.round(sums.parent_gift),
+        other: Math.round(sums.other),
         total: Math.round(sums.total),
       };
     });
