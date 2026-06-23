@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 import { IncomeMonthlyChart } from "../components/charts/IncomeMonthlyChart";
 import { IncomeAllLinesTable } from "../components/income/IncomeAllLinesTable";
+import { IncomeExcludedLinesTable } from "../components/income/IncomeExcludedLinesTable";
+import { IncomeFilteredLinesTable } from "../components/income/IncomeFilteredLinesTable";
 import { IncomeMonthTable } from "../components/income/IncomeMonthTable";
+import { WorkEarningsTable } from "../components/income/WorkEarningsTable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
@@ -84,9 +87,39 @@ export function IncomePage() {
         />
       </section>
 
+      <section style={{ marginBottom: "1.5rem" }}>
+        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+          {t("workEarnings.sectionTitle")}
+        </h3>
+        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
+          {t("workEarnings.sectionHint")}
+        </p>
+        <WorkEarningsTable rows={data.work_earnings} displayUnit={displayUnit} />
+      </section>
+
       <section>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("income.sectionAllLines")}</h3>
         <IncomeAllLinesTable rows={view.all_rows} displayUnit={displayUnit} />
+      </section>
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+          {t("income.sectionFiltered")}
+        </h3>
+        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
+          {t("income.sectionFilteredHint")}
+        </p>
+        <IncomeFilteredLinesTable rows={data.filtered_lines} displayUnit={displayUnit} />
+      </section>
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+          {t("income.sectionExcluded")}
+        </h3>
+        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
+          {t("income.sectionExcludedHint")}
+        </p>
+        <IncomeExcludedLinesTable rows={data.excluded_lines} displayUnit={displayUnit} />
       </section>
     </>
   );

@@ -8,7 +8,7 @@ import {
   checkingGastosMovementBelongs,
 } from "./flowsCheckingGastos.js";
 
-export type FlowExpenseLineCategorySource = "cc" | "checking";
+export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual";
 
 export function assignFlowExpenseLineCategory(opts: {
   lineId: number;
@@ -23,6 +23,10 @@ export function assignFlowExpenseLineCategory(opts: {
   merchant_key: string;
   purchase_key: string;
 } {
+  if (opts.source === "manual") {
+    throw new Error("manual expense entries are not editable");
+  }
+
   if (opts.lineId < 0) {
     return assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
       purchaseId: -opts.lineId,

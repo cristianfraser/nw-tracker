@@ -91,12 +91,13 @@ import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts
 export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 
 export { listCreditCardMasterAccountIds };
 
 
 
-export type FlowCcExpenseLineSource = "cc" | "checking";
+export type FlowCcExpenseLineSource = "cc" | "checking" | "manual";
 
 
 
@@ -900,7 +901,10 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
   if (accountIds.length === 0) {
     const checkingLines = enrichFlowLinesWithOriginLabels(
       enrichFlowLinesWithBigGroups(
-        enrichFlowLinesWithPurchaseNotes(loadCheckingGastosLinesForExpenses())
+        enrichFlowLinesWithPurchaseNotes([
+          ...loadCheckingGastosLinesForExpenses(),
+          ...loadManualExpenseGastosLineDrafts(),
+        ])
       )
     );
     const agg = aggregateGastosFromLines(checkingLines, chartCategorySlugs);
@@ -930,11 +934,13 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
 
   const ccLines = buildCcExpenseLines(accountIds);
   const checkingLines = loadCheckingGastosLinesForExpenses();
+  const manualLines = loadManualExpenseGastosLineDrafts();
   const lines = enrichFlowLinesWithOriginLabels(
     enrichFlowLinesWithBigGroups(
-      enrichFlowLinesWithPurchaseNotes(
-        enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])
-      )
+      enrichFlowLinesWithPurchaseNotes([
+        ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
+        ...manualLines,
+      ])
     )
   );
 

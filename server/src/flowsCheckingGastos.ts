@@ -283,6 +283,26 @@ const BUDA_CRYPTO_EXCHANGE_TRANSFER_RE = /\bTRANSF\.?\s+.*\bBUDA\b/i;
 /** AFP 10% retiro proceeds wired into checking (not external income). */
 const AFP_CHECKING_INFLOW_DESC_RE = /\bABONO\s+10\s*%\s*AFP\b|\bANTI\s+PREV\s+AFP\b/i;
 
+/** Employer payroll deposits (REMUNERACION) — real income even when swept to vista same day. */
+export const PAYROLL_REMUNERACION_INFLOW_RE = /\bREMUNERACION(?:ES)?\b/i;
+
+/** ATM / branch cash deposit on cartola (often cuenta ahorro month-end retiro proceeds). */
+const CHECKING_CASH_DEPOSIT_INFLOW_RE = /DEP[OÓ]SITO\s+EN\s+EFECTIVO/i;
+
+export function isPayrollRemuneracionCheckingInflow(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  return PAYROLL_REMUNERACION_INFLOW_RE.test(d);
+}
+
+/** Payroll deposit on cartola — REMUNERACION may live in branch or description segment of the note. */
+export function isPayrollRemuneracionCartolaCredit(credit: {
+  note: string | null;
+}): boolean {
+  const n = String(credit.note ?? "").trim();
+  if (PAYROLL_REMUNERACION_INFLOW_RE.test(n)) return true;
+  return isPayrollRemuneracionCheckingInflow(cartolaDescriptionFromNote(credit.note));
+}
+
 /** Vista ↔ corriente internet traspaso (both directions on cartola). */
 export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE =
   /TRASPASO\s+INTERNET\s+(?:A\s+CTA\.?\s*CTE?\.?|DESDE\s+CTA\.?\s*CT\.?|(?:DE|A)\s+CUENTA\s+VISTA)/i;
@@ -434,6 +454,29 @@ export function depositMatchesInternalTransferTiming(
     return withdrawalMonth != null && withdrawalMonth === depositMonth;
   }
   return daysBetweenYmd(deposit.occurred_on, withdrawal.occurred_on) <= maxDayGap;
+}
+
+/** Day-gap for exact-date ledger retiros; month-bucket accounts use calendar month only. */
+export function ledgerCapitalReturnMatchesTiming(
+  creditOccurredOn: string,
+  outflowOccurredOn: string,
+  outflowCategorySlug: string,
+  maxDayGap: number
+): boolean {
+  if (MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(outflowCategorySlug)) {
+    const creditMonth = monthKeyFromYmd(creditOccurredOn);
+    const outflowMonth = monthKeyFromYmd(outflowOccurredOn);
+    return creditMonth != null && creditMonth === outflowMonth;
+  }
+  const dayGap = signedDaysFromTo(outflowOccurredOn, creditOccurredOn);
+  return dayGap >= 0 && dayGap <= maxDayGap;
+}
+
+export function checkingCreditLooksLikeMonthBucketCashReturn(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  if (!d) return false;
+  if (isPayrollRemuneracionCheckingInflow(d)) return false;
+  return CHECKING_CASH_DEPOSIT_INFLOW_RE.test(d);
 }
 
 function daysBetweenYmd(a: string, b: string): number {
@@ -760,6 +803,7 @@ export function checkingCreditMatchesInternalWithdrawal(
 ): boolean {
   const want = Math.round(credit.amount_clp);
   if (want <= 0) return false;
+  if (isPayrollRemuneracionCartolaCredit(credit)) return false;
   for (const row of checkingWithdrawals) {
     if (Math.round(Math.abs(row.amount_clp)) !== want) continue;
     if (daysBetweenYmd(credit.occurred_on, row.occurred_on) > maxDayGap) continue;
@@ -778,6 +822,9 @@ export function checkingCreditMatchesInternalWithdrawal(
         row.account_id
       )
     ) {
+      // Corriente→vista traspaso: outflow on A pairs with inflow on B. A same-day
+      // external abono on A (e.g. REMUNERACION) must not be excluded — only B's inflow.
+      if (row.account_id === creditAccountId) continue;
       return true;
     }
     if (
@@ -798,6 +845,309 @@ export const NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP = 14;
 
 /** AFP retiro ledger rows often post days after the checking abono (bidirectional match window). */
 export const AFP_RETIRO_RETURN_MAX_DAY_GAP = 31;
+
+/** Wires from checking into Fintual / reserva (capital funding, not consumption). */
+export function checkingWithdrawalFundsInvestmentCapital(note: string | null): boolean {
+  const d = stripCheckingBranchPrefix(cartolaDescriptionFromNote(note)).trim();
+  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
+  return false;
+}
+
+/**
+ * Only generic cartola abonos may auto-filter as net-worth capital return (checking-outflow path).
+ * Named person transfers (e.g. "… Transf. Cristian Alejandro Fraser") stay in income.
+ */
+export function checkingCreditMayAutoMatchNetWorthCapitalReturn(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  if (!d) return false;
+  if (isPayrollRemuneracionCheckingInflow(d)) return false;
+  const merchantKey = normalizeCcExpenseMerchantKey(d);
+  if (isExactGenericUniqueMerchantKey(merchantKey)) return true;
+  if (isGenericTransferMerchantKey(merchantKey)) return true;
+  if (/^(?:ABONO\s+)?TRANSFERENCIA\s+ELECTRONICA$/.test(merchantKey)) return true;
+  return false;
+}
+
+/**
+ * Fintual wire proceeds on cartola (ledger-return path). Truncated vista lines may be
+ * "0768106274 Transf." with no FINTUAL token; named person transfers are excluded.
+ */
+export function checkingCreditLooksLikeFintualIncomingWire(description: string): boolean {
+  const trimmed = description.trim();
+  if (!trimmed) return false;
+  if (isPayrollRemuneracionCheckingInflow(trimmed)) return false;
+  if (FINTUAL_INCOMING_TRANSFER_RE.test(trimmed)) return true;
+
+  const fullKey = normalizeCcExpenseMerchantKey(trimmed);
+  if (/^\d{6,}\s+TRANSF\.?$/.test(fullKey)) return true;
+
+  const strippedKey = normalizeCcExpenseMerchantKey(stripCheckingBranchPrefix(trimmed));
+  if (
+    /^\d{6,}\s+TRANSF/i.test(fullKey) &&
+    /^TRANSF\.?$/.test(strippedKey)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function checkingWithdrawalPairKey(row: {
+  account_id: number;
+  occurred_on: string;
+  amount_clp: number;
+}): string {
+  return `${row.account_id}|${row.occurred_on}|${Math.round(Math.abs(row.amount_clp))}`;
+}
+
+function netWorthCapitalLedgerOutflowPairKey(o: DepositMatchCandidate): string {
+  return `${o.account_id}|${o.occurred_on}|${o.amount_clp}`;
+}
+
+function checkingCreditMatchesCheckingOutflowCapitalReturn(
+  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  checkingWithdrawals: readonly CheckingCartolaWithdrawalWithAccount[],
+  opts: {
+    maxDayGap: number;
+    consumedWithdrawalKeys?: Set<string>;
+  }
+): boolean {
+  const want = Math.round(credit.amount_clp);
+  const description =
+    credit.note != null ? cartolaDescriptionFromNote(credit.note) : "";
+  if (!checkingCreditMayAutoMatchNetWorthCapitalReturn(description)) return false;
+
+  for (const withdrawal of checkingWithdrawals) {
+    if (Math.round(Math.abs(withdrawal.amount_clp)) !== want) continue;
+    if (!checkingWithdrawalFundsInvestmentCapital(withdrawal.note)) continue;
+    const dayGap = signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on);
+    if (dayGap < 0 || dayGap > opts.maxDayGap) continue;
+    const key = checkingWithdrawalPairKey(withdrawal);
+    if (opts.consumedWithdrawalKeys?.has(key)) continue;
+    opts.consumedWithdrawalKeys?.add(key);
+    return true;
+  }
+  return false;
+}
+
+/** Fintual incoming wire paired with a brokerage/retirement ledger retiro (not AFP). */
+export function checkingCreditMatchesLedgerNetWorthCapitalReturn(
+  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  ledgerOutflows: readonly DepositMatchCandidate[],
+  opts?: {
+    maxDayGap?: number;
+    consumedLedgerOutflowKeys?: Set<string>;
+  }
+): boolean {
+  const maxDayGap = opts?.maxDayGap ?? NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP;
+  const want = Math.round(credit.amount_clp);
+  if (want <= 0) return false;
+  const description =
+    credit.note != null ? cartolaDescriptionFromNote(credit.note) : "";
+  if (!checkingCreditLooksLikeFintualIncomingWire(description)) return false;
+
+  return ledgerNetWorthCapitalReturnMatchesAmount(
+    credit.occurred_on,
+    want,
+    ledgerOutflows,
+    maxDayGap,
+    opts?.consumedLedgerOutflowKeys
+  );
+}
+
+export type FintualIncomingWireBatch = {
+  key: string;
+  account_id: number;
+  occurred_on: string;
+  movement_ids: number[];
+  total_clp: number;
+};
+
+function fintualIncomingWireBatchGroupKey(credit: {
+  account_id: number;
+  occurred_on: string;
+  note: string | null;
+}): string | null {
+  const description = cartolaDescriptionFromNote(credit.note);
+  if (!checkingCreditLooksLikeFintualIncomingWire(description)) return null;
+  const descKey = normalizeCcExpenseMerchantKey(description.trim());
+  const doc = cartolaDocumentFromNote(credit.note);
+  return `${credit.account_id}|${credit.occurred_on}|${descKey}|${doc ?? ""}`;
+}
+
+/** Same-day split Fintual wires (e.g. 3M + 7M) that sum to one ledger retiro. */
+export function buildFintualIncomingWireBatches(
+  credits: readonly {
+    movement_id: number;
+    account_id: number;
+    occurred_on: string;
+    amount_clp: number;
+    note: string | null;
+  }[]
+): {
+  batches: FintualIncomingWireBatch[];
+  batchByMovementId: Map<number, FintualIncomingWireBatch>;
+} {
+  const byKey = new Map<string, FintualIncomingWireBatch>();
+  for (const credit of credits) {
+    const key = fintualIncomingWireBatchGroupKey(credit);
+    if (key == null) continue;
+    let batch = byKey.get(key);
+    if (batch == null) {
+      batch = {
+        key,
+        account_id: credit.account_id,
+        occurred_on: credit.occurred_on,
+        movement_ids: [],
+        total_clp: 0,
+      };
+      byKey.set(key, batch);
+    }
+    batch.movement_ids.push(credit.movement_id);
+    batch.total_clp += Math.round(credit.amount_clp);
+  }
+  const batches = [...byKey.values()].filter((b) => b.movement_ids.length >= 2);
+  const batchByMovementId = new Map<number, FintualIncomingWireBatch>();
+  for (const batch of batches) {
+    for (const movementId of batch.movement_ids) {
+      batchByMovementId.set(movementId, batch);
+    }
+  }
+  return { batches, batchByMovementId };
+}
+
+function ledgerNetWorthCapitalReturnMatchesAmount(
+  creditOccurredOn: string,
+  wantClp: number,
+  ledgerOutflows: readonly DepositMatchCandidate[],
+  maxDayGap: number,
+  consumedLedgerOutflowKeys?: Set<string>
+): boolean {
+  if (wantClp <= 0) return false;
+  for (const outflow of ledgerOutflows) {
+    if (outflow.category_slug === "afp") continue;
+    if (MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(outflow.category_slug)) continue;
+    if (Math.round(outflow.amount_clp) !== wantClp) continue;
+    if (
+      !ledgerCapitalReturnMatchesTiming(
+        creditOccurredOn,
+        outflow.occurred_on,
+        outflow.category_slug,
+        maxDayGap
+      )
+    ) {
+      continue;
+    }
+    const key = netWorthCapitalLedgerOutflowPairKey(outflow);
+    if (consumedLedgerOutflowKeys?.has(key)) continue;
+    consumedLedgerOutflowKeys?.add(key);
+    return true;
+  }
+  return false;
+}
+
+/** Depósito en Efectivo paired with a month-end cuenta ahorro ledger retiro (same month). */
+export function checkingCreditMatchesMonthBucketLedgerCapitalReturn(
+  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  ledgerOutflows: readonly DepositMatchCandidate[],
+  opts?: {
+    maxDayGap?: number;
+    consumedLedgerOutflowKeys?: Set<string>;
+  }
+): boolean {
+  const maxDayGap = opts?.maxDayGap ?? NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP;
+  const want = Math.round(credit.amount_clp);
+  if (want <= 0) return false;
+  const description =
+    credit.note != null ? cartolaDescriptionFromNote(credit.note) : "";
+  if (!checkingCreditLooksLikeMonthBucketCashReturn(description)) return false;
+
+  for (const outflow of ledgerOutflows) {
+    if (!MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(outflow.category_slug)) continue;
+    if (Math.round(outflow.amount_clp) !== want) continue;
+    if (
+      !ledgerCapitalReturnMatchesTiming(
+        credit.occurred_on,
+        outflow.occurred_on,
+        outflow.category_slug,
+        maxDayGap
+      )
+    ) {
+      continue;
+    }
+    const key = netWorthCapitalLedgerOutflowPairKey(outflow);
+    if (opts?.consumedLedgerOutflowKeys?.has(key)) continue;
+    opts?.consumedLedgerOutflowKeys?.add(key);
+    return true;
+  }
+  return false;
+}
+
+export function checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn(
+  batch: FintualIncomingWireBatch,
+  ledgerOutflows: readonly DepositMatchCandidate[],
+  opts?: {
+    maxDayGap?: number;
+    consumedLedgerOutflowKeys?: Set<string>;
+  }
+): boolean {
+  const maxDayGap = opts?.maxDayGap ?? NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP;
+  return ledgerNetWorthCapitalReturnMatchesAmount(
+    batch.occurred_on,
+    batch.total_clp,
+    ledgerOutflows,
+    maxDayGap,
+    opts?.consumedLedgerOutflowKeys
+  );
+}
+
+/**
+ * Checking abono that returns capital from investments.
+ * Path A: generic abono + same-amount Fintual/reserva checking outflow within the window.
+ * Path B: Fintual incoming wire description + same-amount brokerage/retirement ledger retiro.
+ * Path C: Depósito en Efectivo + same-month cuenta ahorro month-end ledger retiro.
+ */
+export function checkingCreditMatchesNetWorthCapitalReturn(
+  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  checkingWithdrawals: readonly CheckingCartolaWithdrawalWithAccount[],
+  opts?: {
+    maxDayGap?: number;
+    consumedWithdrawalKeys?: Set<string>;
+    ledgerOutflows?: readonly DepositMatchCandidate[];
+    consumedLedgerOutflowKeys?: Set<string>;
+  }
+): boolean {
+  const maxDayGap = opts?.maxDayGap ?? NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP;
+  const want = Math.round(credit.amount_clp);
+  if (want <= 0) return false;
+
+  if (
+    checkingCreditMatchesCheckingOutflowCapitalReturn(credit, checkingWithdrawals, {
+      maxDayGap,
+      consumedWithdrawalKeys: opts?.consumedWithdrawalKeys,
+    })
+  ) {
+    return true;
+  }
+  if (opts?.ledgerOutflows == null) return false;
+  if (
+    checkingCreditMatchesMonthBucketLedgerCapitalReturn(credit, opts.ledgerOutflows, {
+      maxDayGap,
+      consumedLedgerOutflowKeys: opts.consumedLedgerOutflowKeys,
+    })
+  ) {
+    return true;
+  }
+  return checkingCreditMatchesLedgerNetWorthCapitalReturn(credit, opts.ledgerOutflows, {
+    maxDayGap,
+    consumedLedgerOutflowKeys: opts.consumedLedgerOutflowKeys,
+  });
+}
+
+/** Brokerage/retirement ledger retiros that may pair with Fintual incoming wires (excludes AFP). */
+export function loadNetWorthCapitalReturnLedgerOutflows(): DepositMatchCandidate[] {
+  return loadNetWorthCapitalOutflowCandidates().filter((o) => o.category_slug !== "afp");
+}
 
 export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] {
   const accounts = listDepositFlowAccounts().filter(
@@ -850,29 +1200,19 @@ export function loadInvestmentCapitalOutflowCandidates(): DepositMatchCandidate[
   return loadNetWorthCapitalOutflowCandidates();
 }
 
-export function checkingCreditMatchesNetWorthCapitalReturn(
-  credit: { occurred_on: string; amount_clp: number },
-  outflows: readonly DepositMatchCandidate[],
-  maxDayGap = NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP
-): boolean {
-  const want = Math.round(credit.amount_clp);
-  if (want <= 0) return false;
-  for (const o of outflows) {
-    if (Math.round(o.amount_clp) !== want) continue;
-    const dayGap = signedDaysFromTo(o.occurred_on, credit.occurred_on);
-    if (dayGap < 0 || dayGap > maxDayGap) continue;
-    return true;
-  }
-  return false;
-}
-
-/** @deprecated Use {@link checkingCreditMatchesNetWorthCapitalReturn}. */
+/** @deprecated Pass checking withdrawals; third arg ignored. */
 export function checkingCreditMatchesInvestmentCapitalReturn(
   credit: { occurred_on: string; amount_clp: number },
-  outflows: readonly DepositMatchCandidate[],
+  _outflows: readonly DepositMatchCandidate[],
+  checkingWithdrawalsOrMaxDayGap?: readonly CheckingCartolaWithdrawalWithAccount[] | number,
   maxDayGap = NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP
 ): boolean {
-  return checkingCreditMatchesNetWorthCapitalReturn(credit, outflows, maxDayGap);
+  if (typeof checkingWithdrawalsOrMaxDayGap === "number") {
+    return false;
+  }
+  return checkingCreditMatchesNetWorthCapitalReturn(credit, checkingWithdrawalsOrMaxDayGap ?? [], {
+    maxDayGap,
+  });
 }
 
 export function withdrawalMayUseSplittableReservaPool(description: string): boolean {

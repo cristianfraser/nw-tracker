@@ -494,3 +494,89 @@ export function useUnmatchRealEstateExpenseMutation() {
     },
   });
 }
+
+export function useCreateManualIncomeMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      amount_clp: number;
+      received_on: string;
+      source?: string | null;
+      note?: string | null;
+    }) => api.createIncome(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+    },
+  });
+}
+
+export function usePatchWorkEarningMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      id: number;
+      earning_type?: import("../types").PayrollEarningType;
+      movement_id?: number | null;
+    }) => {
+      const { id, ...body } = vars;
+      return api.patchWorkEarning(id, body);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+    },
+  });
+}
+
+export function usePatchIncomeMovementMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      movement_id: number;
+      income_kind?: import("../types").IncomeKind;
+      excluded?: boolean;
+      force_include?: boolean;
+      note?: string | null;
+    }) => {
+      const { movement_id, ...body } = vars;
+      return api.patchIncomeMovement(movement_id, body);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+    },
+  });
+}
+
+export function useForceIncludeIncomeMovementMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (movement_id: number) => api.forceIncludeIncomeMovement(movement_id),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+    },
+  });
+}
+
+export function useRestoreIncomeMovementMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (movement_id: number) => api.restoreIncomeMovement(movement_id),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+    },
+  });
+}
+
+export function useCreateManualExpenseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      amount_clp: number;
+      spent_on: string;
+      category: string;
+      note?: string | null;
+    }) => api.createExpense(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+    },
+  });
+}

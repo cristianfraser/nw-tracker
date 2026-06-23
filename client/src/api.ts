@@ -366,6 +366,66 @@ export const api = {
       body: JSON.stringify(body),
     }),
   income: () => j<import("./types").FlowsIncomeResponse>("/api/income"),
+  createIncome: (body: {
+    amount_clp: number;
+    received_on: string;
+    source?: string | null;
+    note?: string | null;
+  }) =>
+    j<{ id: number }>("/api/income", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  patchWorkEarning: (
+    id: number,
+    body: {
+      earning_type?: import("./types").PayrollEarningType;
+      movement_id?: number | null;
+    }
+  ) =>
+    j<import("./types").FlowWorkEarningRow>(`/api/work-earnings/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  patchIncomeMovement: (
+    movementId: number,
+    body: {
+      income_kind?: import("./types").IncomeKind;
+      excluded?: boolean;
+      force_include?: boolean;
+      note?: string | null;
+    }
+  ) =>
+    j<{
+      movement_id: number;
+      excluded: boolean;
+      force_include: boolean;
+      income_kind: import("./types").IncomeKind | null;
+      note: string | null;
+    }>(`/api/income/movements/${movementId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  forceIncludeIncomeMovement: (movementId: number) =>
+    j<{ ok: true; movement_id: number; force_include: true }>(
+      `/api/income/movements/${movementId}/force-include`,
+      { method: "POST" }
+    ),
+  restoreIncomeMovement: (movementId: number) =>
+    j<{ ok: true; movement_id: number }>(
+      `/api/income/movements/${movementId}/restore`,
+      { method: "POST" }
+    ),
+  createExpense: (body: {
+    amount_clp: number;
+    spent_on: string;
+    category: string;
+    note?: string | null;
+  }) =>
+    j<{ id: number }>("/api/expenses", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsRealEstateExpenses: () =>
     j<import("./types").RealEstateExpensesResponse>("/api/flows/expenses/real-estate"),
