@@ -147,6 +147,45 @@ describe("perturbDashboardNavSnapshot", () => {
     expect(perturbedSum).not.toBe(rawSum);
     expect(perturbedSum).toBeLessThan(rawSum);
   });
+
+  it("perturbs nw_bucket_totals away from raw cache", () => {
+    const raw: DashboardNavSnapshotResponse = {
+      accounts: [dashRow({ account_id: 1, name: "A", current_value_clp: 5_000_000 })],
+      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
+      nw_bucket_totals: {
+        net_worth_clp: 270_525_274,
+        real_estate_clp: 50_000_000,
+        retirement_clp: 100_000_000,
+        brokerage_clp: 80_000_000,
+        cash_eqs_clp: 40_525_274,
+        prior_closes: {
+          month_end: "2026-05-31",
+          year_end: "2025-12-31",
+          month: {
+            net_worth_clp: 268_000_000,
+            real_estate_clp: 49_500_000,
+            retirement_clp: 99_000_000,
+            brokerage_clp: 79_500_000,
+            cash_eqs_clp: 40_000_000,
+          },
+          year: {
+            net_worth_clp: 250_000_000,
+            real_estate_clp: 48_000_000,
+            retirement_clp: 95_000_000,
+            brokerage_clp: 75_000_000,
+            cash_eqs_clp: 32_000_000,
+          },
+        },
+      },
+    };
+
+    const perturbed = perturbDashboardNavSnapshot(raw);
+    expect(perturbed.nw_bucket_totals!.net_worth_clp).not.toBe(raw.nw_bucket_totals!.net_worth_clp);
+    expect(perturbed.nw_bucket_totals!.net_worth_clp).toBeLessThan(raw.nw_bucket_totals!.net_worth_clp);
+    expect(perturbed.nw_bucket_totals!.prior_closes!.month.net_worth_clp).not.toBe(
+      raw.nw_bucket_totals!.prior_closes!.month.net_worth_clp
+    );
+  });
 });
 
 describe("synthesizeMissingUsdOnNavSnapshot", () => {

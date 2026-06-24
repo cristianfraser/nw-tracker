@@ -8,7 +8,11 @@ import {
   fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
 } from "./fetchers";
-import { readDashboardNavSnapshotCache, writeDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
+import {
+  hasDashboardNavSnapshotCache,
+  readDashboardNavSnapshotCache,
+  writeDashboardNavSnapshotCache,
+} from "./dashboardNavSnapshotCache";
 import { readFxLatestCache } from "./fxLatestCache";
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehavior } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
@@ -19,7 +23,7 @@ import {
   synthesizeMissingUsdOnGroupPageShell,
   synthesizeMissingUsdOnNavSnapshot,
 } from "../placeholders/perturbCachedAmount";
-import { readGroupPageShellCache } from "./groupPageShellCache";
+import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 import type { GroupPageShell } from "./groupPageShell";
 import type { NavTreeNodeDto } from "../types";
@@ -47,6 +51,8 @@ function readGroupPageShellCacheForUnit(
   return synthesizeMissingUsdOnGroupPageShell(clpShell, readFxLatestCache());
 }
 
+export { hasDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
+
 export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboard(unit),
@@ -72,6 +78,7 @@ const DASHBOARD_NAV_SNAPSHOT_STALE_MS = 10 * 60_000;
 
 /** Home card strip shape (accounts + layout); cached in localStorage between visits. */
 export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
+  const cachedStrip = hasDashboardNavSnapshotCache(unit);
   return useQuery({
     queryKey: queryKeys.dashboardNavSnapshot(unit),
     queryFn: async () => {
@@ -79,9 +86,9 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
       writeDashboardNavSnapshotCache(unit, snapshot);
       return snapshot;
     },
-    initialData: () => readNavSnapshotCacheForUnit(unit),
-    initialDataUpdatedAt: 0,
-    enabled,
+    initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
+    initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
+    enabled: enabled && !cachedStrip,
     ...displayUnitQueryBehavior,
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
@@ -142,6 +149,7 @@ export function useGroupPageShell(opts: {
   enabled?: boolean;
 }) {
   const { portfolioGroup, unit, navNode, enabled = true } = opts;
+  const cachedShell = hasGroupPageShellCache(portfolioGroup, unit);
   return useQuery({
     queryKey: queryKeys.groupPageShell(portfolioGroup, unit),
     queryFn: () => {
@@ -153,12 +161,14 @@ export function useGroupPageShell(opts: {
       return buildGroupPageShellFromNav(navNode, unit);
     },
     initialData: () => {
+      if (!cachedShell) return undefined;
       const raw = readGroupPageShellCacheForUnit(portfolioGroup, unit);
       if (!raw) return undefined;
       if (unit === "usd") return raw;
       return perturbGroupPageShell(raw);
     },
-    enabled: enabled && Boolean(portfolioGroup && navNode),
+    initialDataUpdatedAt: cachedShell ? Date.now() : undefined,
+    enabled: enabled && Boolean(portfolioGroup && navNode) && !cachedShell,
     ...displayUnitQueryBehavior,
     staleTime: GROUP_PAGE_SHELL_STALE_MS,
     gcTime: GROUP_PAGE_SHELL_STALE_MS,

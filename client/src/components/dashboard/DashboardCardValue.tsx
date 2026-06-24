@@ -109,6 +109,8 @@ type Props = {
   fxMissing?: boolean;
   /** Lower opacity when linked sync source(s) are stale. */
   syncStale?: boolean;
+  /** Bundle loading: hold placeholder values until false, then one spin to final. */
+  placeholderPhase?: boolean;
 };
 
 export function DashboardCardValue({
@@ -120,6 +122,7 @@ export function DashboardCardValue({
   mountSeedKey,
   fxMissing = false,
   syncStale = false,
+  placeholderPhase = false,
 }: Props) {
   const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
@@ -151,6 +154,7 @@ export function DashboardCardValue({
       }}
       value={target}
       animated={animated}
+      placeholderPhase={placeholderPhase}
       {...mountProps}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, flowUnit, "$")}
       wrapClassName={wrapClass}

@@ -20,6 +20,7 @@ type Props = {
   className?: string;
   fractionDigits?: number;
   deltaFormat?: "absolute" | "percent";
+  placeholderPhase?: boolean;
 };
 
 export function DeltaMetricFlow({
@@ -30,6 +31,7 @@ export function DeltaMetricFlow({
   className = "",
   fractionDigits = 0,
   deltaFormat = "absolute",
+  placeholderPhase = false,
 }: Props) {
   const mountDigitRange =
     deltaFormat === "percent" ? PERCENT_MOUNT_DIGIT_RANGE : METRIC_MOUNT_DIGIT_RANGE;
@@ -38,7 +40,8 @@ export function DeltaMetricFlow({
     delta,
     animated,
     useMountSeed ? mountDigitRange : undefined,
-    useMountSeed ? mountSeedId : undefined
+    useMountSeed ? mountSeedId : undefined,
+    placeholderPhase
   );
 
   if (delta == null) {
@@ -75,6 +78,7 @@ export function DeltaMetricFlow({
         mountSeedDigitRange={mountDigitRange}
         mountSeedId={mountSeedId}
         mountAnimation={mountAnimation}
+        placeholderPhase={placeholderPhase}
         mapDisplayValue={(n) =>
           deltaFormat === "percent"
             ? plainPercentNumberFlowParts(n, fractionDigits)

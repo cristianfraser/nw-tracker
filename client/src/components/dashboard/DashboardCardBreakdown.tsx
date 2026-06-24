@@ -13,6 +13,7 @@ type Props = {
   showUsd: boolean;
   cardSlug: string;
   animated?: boolean;
+  placeholderPhase?: boolean;
   bottomLines?: CardBreakdownLine[];
   /** Pin `bottomLines` to the card footer (direct flex child + margin-top: auto). */
   pinBottomToCard?: boolean;
@@ -22,12 +23,14 @@ function BreakdownAmount({
   node,
   showUsd,
   animated,
+  placeholderPhase,
   mountSeedKey,
   muted,
 }: {
   node: CardBreakdownNode;
   showUsd: boolean;
   animated: boolean;
+  placeholderPhase: boolean;
   mountSeedKey: string;
   muted: boolean;
 }) {
@@ -38,6 +41,7 @@ function BreakdownAmount({
         apiUsd={node.usd}
         showUsd={showUsd}
         animated={animated}
+        placeholderPhase={placeholderPhase}
         variant="breakdown"
         mountSeedKey={mountSeedKey}
       />
@@ -56,6 +60,7 @@ function BreakdownNodeRow({
   showUsd,
   cardSlug,
   animated,
+  placeholderPhase,
   depth,
   index,
   rowKeyPrefix,
@@ -64,6 +69,7 @@ function BreakdownNodeRow({
   showUsd: boolean;
   cardSlug: string;
   animated: boolean;
+  placeholderPhase: boolean;
   depth: number;
   index: number;
   rowKeyPrefix: string;
@@ -94,6 +100,7 @@ function BreakdownNodeRow({
           node={node}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           mountSeedKey={mountSeedKey}
           muted={!isGroup}
         />
@@ -107,6 +114,7 @@ function BreakdownNodeRow({
               showUsd={showUsd}
               cardSlug={cardSlug}
               animated={animated}
+              placeholderPhase={placeholderPhase}
               depth={depth + 1}
               index={j}
               rowKeyPrefix={rowKeyPrefix}
@@ -123,6 +131,7 @@ function BreakdownList({
   showUsd,
   cardSlug,
   animated,
+  placeholderPhase,
   className,
   rowKeyPrefix,
 }: {
@@ -130,6 +139,7 @@ function BreakdownList({
   showUsd: boolean;
   cardSlug: string;
   animated: boolean;
+  placeholderPhase: boolean;
   className?: string;
   rowKeyPrefix: string;
 }) {
@@ -144,6 +154,7 @@ function BreakdownList({
           showUsd={showUsd}
           cardSlug={cardSlug}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           depth={0}
           index={i}
           rowKeyPrefix={rowKeyPrefix}
@@ -158,6 +169,7 @@ export function DashboardCardBreakdown({
   showUsd,
   cardSlug,
   animated = true,
+  placeholderPhase = false,
   bottomLines,
   pinBottomToCard = false,
 }: Props) {
@@ -172,6 +184,7 @@ export function DashboardCardBreakdown({
         showUsd={showUsd}
         cardSlug={cardSlug}
         animated={animated}
+        placeholderPhase={placeholderPhase}
         rowKeyPrefix="row"
       />
     );
@@ -186,6 +199,7 @@ export function DashboardCardBreakdown({
             showUsd={showUsd}
             cardSlug={cardSlug}
             animated={animated}
+            placeholderPhase={placeholderPhase}
             rowKeyPrefix="main"
           />
         ) : null}
@@ -195,6 +209,7 @@ export function DashboardCardBreakdown({
           showUsd={showUsd}
           cardSlug={cardSlug}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           className="card-breakdown-bottom"
           rowKeyPrefix="bottom"
         />
@@ -209,6 +224,7 @@ export function DashboardCardBreakdown({
         showUsd={showUsd}
         cardSlug={cardSlug}
         animated={animated}
+        placeholderPhase={placeholderPhase}
         rowKeyPrefix="main"
       />
       <BreakdownList
@@ -216,6 +232,7 @@ export function DashboardCardBreakdown({
         showUsd={showUsd}
         cardSlug={cardSlug}
         animated={animated}
+        placeholderPhase={placeholderPhase}
         className={styles.bottom}
         rowKeyPrefix="bottom"
       />

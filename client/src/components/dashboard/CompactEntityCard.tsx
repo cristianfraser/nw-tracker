@@ -15,6 +15,7 @@ export type CompactEntityCardProps = {
   apiUsd?: number | null;
   cardSlug: string;
   animated?: boolean;
+  placeholderPhase?: boolean;
   fxMissing?: boolean;
   /** Lower opacity when linked sync source(s) are stale. */
   syncStale?: boolean;
@@ -41,6 +42,7 @@ export function CompactEntityCard({
   apiUsd,
   cardSlug,
   animated = true,
+  placeholderPhase = false,
   subtitle,
   metrics,
   valueVariant = "breakdown",
@@ -64,6 +66,7 @@ export function CompactEntityCard({
         showUsd={showUsd}
         cardSlug={cardSlug}
         animated={animated}
+        placeholderPhase={placeholderPhase}
       />
       {subtitle ? <span className="muted" style={{ fontSize: "0.75rem" }}>{subtitle}</span> : null}
       <div className="value mono">
@@ -72,6 +75,7 @@ export function CompactEntityCard({
           apiUsd={apiUsd}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           variant={valueVariant}
           mountSeedKey={`${cardSlug}:compact`}
           fxMissing={fxMissing}
