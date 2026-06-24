@@ -14,6 +14,7 @@ import {
 import { liabilitiesChartBucketNavNodes } from "../liabilitiesChartBuckets";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
 import { findBestNavNodeForPathname, findNavNodeBySlug } from "../portfolioNavFromApi";
+import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
@@ -127,6 +128,11 @@ export function LiabilitiesGroupPage() {
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
+
+  const accountsTreeRoot = useMemo(
+    () => (navMatchNode ? enrichNavTreeWithAllAccounts(navMatchNode, accounts) : null),
+    [navMatchNode, accounts]
+  );
 
   useEffect(() => {
     if (!bundleReady || !data || !navMatchNode || !navCtx) return;
@@ -285,9 +291,9 @@ export function LiabilitiesGroupPage() {
       monthlyDetailHint={t("groupPage.monthlyDetailHintLiabilities")}
       flowsHint={t("groupPage.flowsHintLiabilities")}
       accountsTree={
-        navMatchNode ? (
+        accountsTreeRoot ? (
           <NavAccountsTree
-            root={navMatchNode}
+            root={accountsTreeRoot}
             titleI18nKey="groupPage.accountsTreeTitleLiabilities"
           />
         ) : null

@@ -37,20 +37,23 @@ type ExpenseChartStyle = "stacked_bar" | "line";
 export function CreditCardGroupExpensesChart({
   title,
   points,
+  categorySortPoints,
   categories,
   displayUnit = "clp",
   xAxisGranularity = "month",
 }: {
   title: string;
   points: readonly FlowCcExpenseCategoryChartPoint[];
+  /** When set, category stack order is derived from these (unfiltered) points. */
+  categorySortPoints?: readonly FlowCcExpenseCategoryChartPoint[];
   categories: readonly CcExpenseCategoryDto[];
   displayUnit?: DisplayUnit;
   xAxisGranularity?: "month" | "year";
 }) {
   const { t } = useTranslation();
   const bars = useMemo(
-    () => chartCcExpenseCategories(categories, points),
-    [categories, points]
+    () => chartCcExpenseCategories(categories, categorySortPoints ?? points),
+    [categories, categorySortPoints, points]
   );
   const [chartStyle, setChartStyle] = useState<ExpenseChartStyle>("stacked_bar");
   const [hiddenSlugs, setHiddenSlugs] = useState<Set<string>>(() => new Set());
@@ -65,15 +68,20 @@ export function CreditCardGroupExpensesChart({
   }, []);
 
   const barKeys = useMemo(() => bars.map((b) => b.slug), [bars]);
-  const visibleBarKeys = useMemo(
-    () => barKeys.filter((k) => !hiddenSlugs.has(k)),
-    [barKeys, hiddenSlugs]
-  );
+
+  const displayPoints = useMemo(() => {
+    if (hiddenSlugs.size === 0) return points;
+    return points.map((row) => {
+      const next = { ...row };
+      for (const slug of hiddenSlugs) next[slug] = 0;
+      return next;
+    });
+  }, [points, hiddenSlugs]);
 
   const densePoints = useMemo(
     () =>
       densifyRecordsByCalendarPeriod(
-        points as unknown as Record<string, string | number | null>[],
+        displayPoints as unknown as Record<string, string | number | null>[],
         {
           granularity: xAxisGranularity,
           dateKey: "as_of_date",
@@ -81,7 +89,7 @@ export function CreditCardGroupExpensesChart({
           extendThroughYmd: chileTodayYmd(),
         }
       ) as unknown as FlowCcExpenseCategoryChartPoint[],
-    [points, barKeys, xAxisGranularity]
+    [displayPoints, barKeys, xAxisGranularity]
   );
 
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);
@@ -94,11 +102,10 @@ export function CreditCardGroupExpensesChart({
   );
 
   const yScale = useMemo(() => {
-    const keysForScale = visibleBarKeys.length > 0 ? visibleBarKeys : barKeys;
     let maxV = 0;
     for (const row of densePoints) {
       if (chartStyle === "line") {
-        for (const k of keysForScale) {
+        for (const k of barKeys) {
           const v = row[k];
           if (typeof v === "number" && Number.isFinite(v) && v > 0) {
             maxV = Math.max(maxV, v);
@@ -106,7 +113,7 @@ export function CreditCardGroupExpensesChart({
         }
       } else {
         let stack = 0;
-        for (const k of keysForScale) {
+        for (const k of barKeys) {
           const v = row[k];
           if (typeof v === "number" && Number.isFinite(v) && v > 0) {
             stack += v;
@@ -116,7 +123,7 @@ export function CreditCardGroupExpensesChart({
       }
     }
     return buildNiceYAxis(0, maxV);
-  }, [densePoints, barKeys, visibleBarKeys, chartStyle]);
+  }, [densePoints, barKeys, chartStyle]);
 
   if (points.length === 0) {
     return (
@@ -247,7 +254,6 @@ export function CreditCardGroupExpensesChart({
                     name={b.slug}
                     fill={b.chart_color}
                     stackId="gastos"
-                    hide={hiddenSlugs.has(b.slug)}
                     isAnimationActive
                     animationDuration={CHART_ANIM_MS}
                     maxBarSize={22}
@@ -262,7 +268,6 @@ export function CreditCardGroupExpensesChart({
                     stroke={b.chart_color}
                     strokeWidth={2}
                     dot={false}
-                    hide={hiddenSlugs.has(b.slug)}
                     isAnimationActive
                     animationDuration={CHART_ANIM_MS}
                   />

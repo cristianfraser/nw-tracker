@@ -8,12 +8,13 @@ import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
-  navLeafAccountIdSet,
+  navMetricsAccountIdSet,
   parentTitleBalanceDelta,
   routableNavStripChildren,
   portfolioNavParentMainValue,
   portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
+  type InversionesPeriodMetricsDto,
 } from "../../portfolioNavDashboardCards";
 import { buildCashEqsCardBreakdown, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import {
@@ -26,7 +27,9 @@ export type PortfolioNavEntityCardsStripProps = {
   dash: Pick<
     DashboardResponse,
     "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
-  >;
+  > & {
+    inversiones_period_metrics?: InversionesPeriodMetricsDto;
+  };
   overviewPoints: Record<string, string | number | null>[];
   parentNavNode: NavTreeNodeDto;
   compactTitle: string;
@@ -64,7 +67,7 @@ export function PortfolioNavEntityCardsStrip({
   const parentTitleDelta = parentTitleBalanceDelta(
     dash,
     overviewPoints,
-    navLeafAccountIdSet(parentNavNode),
+    navMetricsAccountIdSet(parentNavNode, dash.accounts),
     metricsPeriod,
     showUsd,
     parentTitleMode

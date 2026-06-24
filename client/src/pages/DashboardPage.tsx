@@ -12,7 +12,10 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
-import { writeDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
+import {
+  nwBucketTotalsFromDashTotals,
+  writeDashboardNavSnapshotCache,
+} from "../queries/dashboardNavSnapshotCache";
 import { writeFxLatestCache } from "../queries/fxLatestCache";
 import {
   useAccountsByPortfolioGroup,
@@ -30,6 +33,7 @@ import {
 import { dashboardBucketLabel, useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { buildPlaceholderDashboardBundle } from "../placeholders/dashboardPagePlaceholders";
+import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { formatMoneyForPie } from "../format";
 import {
@@ -103,6 +107,7 @@ export function DashboardPage() {
       liabilities_breakdown: data.dash.liabilities_breakdown,
       dashboard_layout: data.dash.dashboard_layout,
       suecia_snapshot: data.dash.suecia_snapshot,
+      nw_bucket_totals: nwBucketTotalsFromDashTotals(data.dash.totals),
     });
     writeFxLatestCache(data.fx);
   }, [useRealBundle, data, displayUnit]);
@@ -246,6 +251,14 @@ export function DashboardPage() {
         : (navSnapshot?.accounts ?? navShell?.dashAccounts ?? []);
     return netWorthTableAccountsFromDash(rows);
   }, [useRealBundle, data, navSnapshot?.accounts, navShell?.dashAccounts]);
+
+  const accountsTreeRoot = useMemo(
+    () =>
+      netWorthNav
+        ? enrichNavTreeWithAllAccounts(netWorthNav, shapeAccounts ?? navShell?.accounts ?? [])
+        : null,
+    [netWorthNav, shapeAccounts, navShell?.accounts]
+  );
 
   if (navStillLoading) {
     return (
@@ -533,11 +546,13 @@ export function DashboardPage() {
       monthlyDetailHint={t("dashboard.monthlyDetailHint")}
       flowsHint={t("dashboard.flowsHint")}
       accountsTree={
-        <NavAccountsTree
-          root={netWorthNav}
-          titleI18nKey="dashboard.accountsTreeTitle"
-          emptyI18nKey="dashboard.accountsTreeEmpty"
-        />
+        accountsTreeRoot ? (
+          <NavAccountsTree
+            root={accountsTreeRoot}
+            titleI18nKey="dashboard.accountsTreeTitle"
+            emptyI18nKey="dashboard.accountsTreeEmpty"
+          />
+        ) : null
       }
     />
   );

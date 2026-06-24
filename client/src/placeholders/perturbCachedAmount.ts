@@ -666,14 +666,20 @@ function perturbAccountBalanceMaps(
     clp.set(id!, perturbCachedAmount(clp.get(id!)!));
   }
 
-  if (usd.size > 1) {
-    const ids = [...usd.keys()];
-    const values = ids.map((id) => usd.get(id)!);
-    const perturbed = perturbCachedAmountsPreservingSortOrder(values);
-    ids.forEach((id, i) => usd.set(id, perturbed[i]!));
-  } else if (usd.size === 1) {
-    const [id] = usd.keys();
-    usd.set(id!, perturbCachedAmount(usd.get(id!)!));
+  const snapshotFxRate = resolveSnapshotFxRate(accounts, undefined);
+  usd.clear();
+  for (const row of accounts) {
+    const id = row.account_id;
+    const clpVal = clp.get(id);
+    if (clpVal == null || !Number.isFinite(clpVal)) continue;
+    const origClp = row.current_value_clp;
+    const origUsd = row.current_value_usd;
+    const rate = rowFxRate(row) ?? snapshotFxRate;
+    if (origUsd != null && origClp != null && Number.isFinite(origUsd) && origClp > 0) {
+      usd.set(id, (origUsd * clpVal) / origClp);
+    } else if (rate != null && rate > 0) {
+      usd.set(id, clpToUsdPlaceholder(clpVal, rate));
+    }
   }
 
   return { clp, usd };

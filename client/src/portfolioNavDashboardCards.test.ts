@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   breakdownForNavChild,
+  dashboardRowsForNavSubtree,
   mainValueAndMetricsForNavChild,
   navLeafAccountIdSet,
+  navMetricsAccountIdSet,
   portfolioNavParentMainValue,
   portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
@@ -92,6 +94,33 @@ function dashRow(
     exclude_from_group_totals: 0,
   } as DashboardAccountRow;
 }
+
+describe("navMetricsAccountIdSet", () => {
+  it("includes chart-inactive accounts in the same portfolio bucket as the nav node", () => {
+    const accionesNode: NavTreeNodeDto = {
+      slug: "brokerage_acciones",
+      label: "Acciones",
+      asset_group_slug: "brokerage__acciones",
+      route_path: "/inversiones/brokerage/acciones",
+      children: [{ slug: "acc-spy", label: "SPY", account_id: 10, children: [] }],
+    };
+    const accounts: DashboardAccountRow[] = [
+      { ...dashRow(10, 1_000_000, "brokerage__acciones", "SPY"), chart_inactive: false },
+      {
+        ...dashRow(99, 0, "brokerage__acciones", "OILK"),
+        chart_inactive: true,
+        current_value_clp: 0,
+      },
+    ];
+    const leafOnly = navLeafAccountIdSet(accionesNode);
+    expect(leafOnly.has(99)).toBe(false);
+    const metrics = navMetricsAccountIdSet(accionesNode, accounts);
+    expect(metrics.has(10)).toBe(true);
+    expect(metrics.has(99)).toBe(true);
+    const rows = dashboardRowsForNavSubtree(accounts, accionesNode);
+    expect(rows.map((r) => r.account_id).sort()).toEqual([10, 99]);
+  });
+});
 
 describe("titleDeltaModelForNavChild", () => {
   it("always uses nav subtree (subset) mode", () => {
@@ -462,6 +491,87 @@ describe("portfolioNavParentMainValue", () => {
     expect(metrics.deposits_clp).toBe(300);
     expect(metrics.delta_total_clp).toBe(130);
     expect(metrics.delta_period_clp).toBe(30);
+  });
+
+  it("uses canonical consolidated period metrics for inversiones nav hub", () => {
+    const inversionesNode: NavTreeNodeDto = {
+      slug: "inversiones",
+      label: "Inversiones",
+      group_kind: "nav_bucket",
+      route_path: "/inversiones",
+      children: [
+        {
+          slug: "brokerage",
+          label: "Brokerage",
+          route_path: "/inversiones/brokerage",
+          dashboard_bucket_slug: "brokerage",
+          portfolio_group_id: 1,
+          children: [leafAccount(1)],
+        },
+        {
+          slug: "retirement",
+          label: "Retirement",
+          route_path: "/inversiones/retirement",
+          dashboard_bucket_slug: "retirement",
+          portfolio_group_id: 2,
+          children: [leafAccount(2)],
+        },
+      ],
+    };
+    const row = (id: number, deposits: number, deltaTotal: number, deltaMonth: number): DashboardAccountRow =>
+      ({
+        account_id: id,
+        name: `Account ${id}`,
+        group_slug: id === 1 ? "brokerage_acciones" : "retirement",
+        group_label: "g",
+        category_slug: id === 1 ? "acciones" : "afp",
+        category_label: "c",
+        bucket_slug: id === 1 ? "brokerage_acciones" : "afp",
+        dashboard_bucket_slug: id === 1 ? "brokerage" : "retirement",
+        deposits_clp: deposits,
+        delta_total_clp: deltaTotal,
+        delta_month_clp: deltaMonth,
+        deposits_month_clp: id === 1 ? 5_000_000 : 100_000,
+        current_value_clp: deposits + deltaTotal,
+        prior_month_close_clp: deposits + deltaTotal - deltaMonth,
+        exclude_from_group_totals: 0,
+      }) as DashboardAccountRow;
+    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> & {
+      inversiones_period_metrics?: import("./portfolioNavDashboardCards").InversionesPeriodMetricsDto;
+    } = {
+      accounts: [row(1, 100, 50, 10), row(2, 200, 80, 20)],
+      dashboard_layout: [],
+      totals: testTotals({
+        net_worth_clp: 430,
+        real_estate_clp: 0,
+        retirement_clp: 280,
+        brokerage_clp: 150,
+        cash_eqs_clp: 0,
+      }),
+      inversiones_period_metrics: {
+        month: {
+          closing_clp: 430,
+          prior_closing_clp: 400,
+          net_capital_flow_clp: 5_100_000,
+          nominal_pl_clp: 30,
+          balance_delta_clp: 30,
+        },
+        year: null,
+      },
+    };
+    const mode = portfolioNavParentTitleModeForNavNode(inversionesNode);
+    expect(mode.kind).toBe("sum_dashboard_groups");
+    const metrics = portfolioNavParentMetrics(
+      dash,
+      mode,
+      dash.accounts,
+      "month",
+      inversionesNode,
+      false
+    );
+    expect(metrics.deposits_period_clp).toBe(5_100_000);
+    expect(metrics.delta_period_clp).toBe(30);
+    expect(metrics.deposits_clp).toBe(300);
   });
 });
 

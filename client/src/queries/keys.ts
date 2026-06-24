@@ -15,6 +15,7 @@ export const queryKeys = {
   portfolioTree: () => ["portfolioTree"] as const,
   ratesInstruments: () => ["ratesInstruments"] as const,
   marketTicker: () => ["marketTicker"] as const,
+  watchlist: () => ["watchlist"] as const,
   marketSeries: () => ["marketSeries"] as const,
   fxCoverage: () => ["fxCoverage"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,

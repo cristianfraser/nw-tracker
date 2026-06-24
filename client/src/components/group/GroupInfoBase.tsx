@@ -12,6 +12,7 @@ import {
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import type { InversionesPeriodMetricsDto } from "../../portfolioNavDashboardCards";
 import {
   buildPlaceholderConsolidatedMonthlyRows,
   buildPlaceholderGroupFlowRows,
@@ -29,7 +30,9 @@ export type GroupInfoPortfolioStrip = {
   dash: Pick<
     DashboardResponse,
     "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
-  >;
+  > & {
+    inversiones_period_metrics?: InversionesPeriodMetricsDto;
+  };
   overviewPoints: Record<string, string | number | null>[];
   metricsPeriod: CardGroupMetricsPeriod;
   showUsd: boolean;

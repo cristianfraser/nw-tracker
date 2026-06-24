@@ -14,6 +14,7 @@ import {
 } from "../groupPageChartViews";
 import type { AssetGroupSlug } from "../types";
 import { findBestNavNodeForPathname, resolveGroupPageApiParams } from "../portfolioNavFromApi";
+import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
@@ -123,6 +124,11 @@ export function GroupInfoPage() {
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
+
+  const accountsTreeRoot = useMemo(
+    () => (navMatchNode ? enrichNavTreeWithAllAccounts(navMatchNode, accounts) : null),
+    [navMatchNode, accounts]
+  );
 
   useEffect(() => {
     if (!bundleReady || !data || !navMatchNode || !navCtx || !portfolioGroup) return;
@@ -300,8 +306,8 @@ export function GroupInfoPage() {
       }
       tableAccounts={tableAccountsForPerf}
       accountsTree={
-        navMatchNode ? (
-          <NavAccountsTree root={navMatchNode} titleI18nKey="groupPage.accountsTreeTitle" />
+        accountsTreeRoot ? (
+          <NavAccountsTree root={accountsTreeRoot} titleI18nKey="groupPage.accountsTreeTitle" />
         ) : null
       }
     />

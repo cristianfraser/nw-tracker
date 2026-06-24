@@ -4,7 +4,11 @@ import {
   dashboardAccountRowsById,
   groupLineMeta,
 } from "./dashboardCardBreakdown";
-import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
+import {
+  accountCountsTowardGroupTotals,
+  hasMaterialDashboardBalance,
+  isChartActiveAccount,
+} from "./accountGroupTotals";
 import i18n from "./i18n";
 import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
@@ -41,8 +45,7 @@ function valueRows(rows: DashboardAccountRow[]): DashboardAccountRow[] {
     (a) =>
       accountCountsTowardGroupTotals(a) &&
       isChartActiveAccount(a) &&
-      a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp)
+      hasMaterialDashboardBalance(a)
   );
 }
 
