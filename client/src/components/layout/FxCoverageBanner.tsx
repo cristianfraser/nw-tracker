@@ -1,29 +1,48 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import type { FxCoverage } from "../../types";
+import type { FxConversionWarning, FxCoverage } from "../../types";
+
+function warningMessage(t: (k: string) => string, w: FxConversionWarning): string {
+  switch (w.code) {
+    case "buy_rate_missing":
+      return t("fxCoverage.warningBuyRateMissing");
+    case "sell_rate_missing":
+      return t("fxCoverage.warningSellRateMissing");
+    case "usd_reference_clp":
+      return t("fxCoverage.warningUsdReferenceClp");
+    default:
+      return w.code;
+  }
+}
 
 export function FxCoverageBanner({
   coverage,
   conversionError,
+  conversionWarnings,
 }: {
   coverage: FxCoverage | null | undefined;
   conversionError?: boolean;
+  conversionWarnings?: readonly FxConversionWarning[];
 }) {
   const { t } = useTranslation();
-  if (!coverage) return null;
+  const warnings = [
+    ...(conversionWarnings ?? []),
+    ...(coverage?.conversion_warnings ?? []),
+  ];
+  if (!coverage && warnings.length === 0 && !conversionError) return null;
 
-  const rejected = coverage.yahoo_rejected ?? [];
+  const rejected = coverage?.yahoo_rejected ?? [];
   const show =
     conversionError ||
-    !coverage.complete ||
-    coverage.is_sparse ||
-    rejected.length > 0;
+    warnings.length > 0 ||
+    (coverage != null &&
+      (!coverage.complete || coverage.is_sparse || rejected.length > 0));
   if (!show) return null;
 
   const detail =
-    !coverage.complete && coverage.first_missing_date
+    coverage && !coverage.complete && coverage.first_missing_date
       ? t("fxCoverage.missingFromDate", { date: coverage.first_missing_date })
-      : coverage.is_sparse
+      : coverage?.is_sparse
         ? t("fxCoverage.sparseHistory", {
             daily: coverage.daily_count,
             rows: coverage.row_count,
@@ -40,6 +59,8 @@ export function FxCoverageBanner({
             .join(", "),
         })
       : null;
+
+  const uniqueWarnings = [...new Map(warnings.map((w) => [w.code, w])).values()];
 
   return (
     <div
@@ -59,6 +80,16 @@ export function FxCoverageBanner({
       {conversionError ? (
         <p style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>{t("fxCoverage.depositConversionError")}</p>
       ) : null}
+      {uniqueWarnings.map((w) => (
+        <p key={`${w.code}-${w.date}`} style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>
+          {warningMessage(t, w)}
+          {w.date ? (
+            <span className="mono muted" style={{ marginLeft: "0.35rem" }}>
+              ({w.date})
+            </span>
+          ) : null}
+        </p>
+      ))}
       {detail ? (
         <p style={{ margin: "0.35rem 0 0", fontSize: "0.92rem" }}>{detail}</p>
       ) : null}
@@ -71,7 +102,7 @@ export function FxCoverageBanner({
         {" · "}
         <code className="mono">npm run backfill:yahoo-fx-usd -w nw-tracker-server</code>
         {" · "}
-        <code className="mono">npm run backfill:sbif-fx-eur -w nw-tracker-server</code>
+        <code className="mono">npm run backfill:fx-bid-ask-from-movements -w nw-tracker-server</code>
       </p>
     </div>
   );

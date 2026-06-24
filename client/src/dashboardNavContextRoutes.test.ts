@@ -13,9 +13,10 @@ describe("pathnameUsesDashboardNavContext", () => {
     expect(pathnameUsesDashboardNavContext("/real_estate")).toBe(true);
   });
 
-  it("is false on flows, rates, and panel", () => {
+  it("is false on flows, rates, watchlist, and panel", () => {
     expect(pathnameUsesDashboardNavContext("/flows/income")).toBe(false);
     expect(pathnameUsesDashboardNavContext("/rates")).toBe(false);
+    expect(pathnameUsesDashboardNavContext("/watchlist")).toBe(false);
     expect(pathnameUsesDashboardNavContext("/panel/accounts")).toBe(false);
   });
 });

@@ -18,6 +18,7 @@ import { AccountsPanelPage } from "./pages/panel/AccountsPanelPage";
 import { ImportSyncPage } from "./pages/panel/ImportSyncPage";
 import { NotificationsPage } from "./pages/panel/NotificationsPage";
 import { RatesPage } from "./pages/RatesPage";
+import { WatchlistPage } from "./pages/WatchlistPage";
 
 export default function App() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
               <Route path="deposits" element={<DepositsPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />
+            <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />
               <Route path="notifications" element={<NotificationsPage />} />

@@ -33,6 +33,12 @@ import {
   type TailClipOptions,
 } from "./AppLineChart";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
+import { chileTodayYmd } from "../../calendarMonth";
+import {
+  coerceKeptTrailingZeroMonth,
+  prependInitialZeroAnchorsOnBlock,
+  valuationDataKeysForInitialZeroAnchors,
+} from "../../chartSeriesInitialZeroAnchors";
 
 export type ChartDisplayUnit = "clp" | "usd";
 
@@ -861,9 +867,26 @@ export function LineChartPanel({
     () => (trimLeadingInactive ? trimLeadingInactivePoints(block, includeAccumulatedLines) : block),
     [block, includeAccumulatedLines, trimLeadingInactive]
   );
+  const blockWithAnchors = useMemo(
+    () => prependInitialZeroAnchorsOnBlock(blockPlotted, xAxisGranularity),
+    [blockPlotted, xAxisGranularity]
+  );
+  const valuationKeys = useMemo(
+    () => valuationDataKeysForInitialZeroAnchors(blockWithAnchors),
+    [blockWithAnchors]
+  );
+  const denseForTailClip = useMemo(() => {
+    const densified = densifyRecordsByCalendarPeriod(blockWithAnchors.points, {
+      granularity: xAxisGranularity,
+      dateKey: "as_of_date",
+      fillMissing: "null_all",
+      extendThroughYmd: chileTodayYmd(),
+    });
+    return coerceKeptTrailingZeroMonth(densified, valuationKeys);
+  }, [blockWithAnchors.points, xAxisGranularity, valuationKeys]);
   const series = useMemo(
-    () => resolveLineSeriesColors(buildRawLineSeries(blockPlotted, includeAccumulatedLines), colorPlan),
-    [blockPlotted, includeAccumulatedLines, colorPlan]
+    () => resolveLineSeriesColors(buildRawLineSeries(blockWithAnchors, includeAccumulatedLines), colorPlan),
+    [blockWithAnchors, includeAccumulatedLines, colorPlan]
   );
 
   const seriesByDataKey = useMemo(
@@ -872,17 +895,17 @@ export function LineChartPanel({
   );
 
   const tailClipOptions = useMemo(
-    () => buildLineChartTailClipOptions(blockPlotted, includeAccumulatedLines),
-    [blockPlotted, includeAccumulatedLines]
+    () => buildLineChartTailClipOptions(blockWithAnchors, includeAccumulatedLines),
+    [blockWithAnchors, includeAccumulatedLines]
   );
 
   const plotEndDate = useMemo(() => {
     if (!tailClipOptions) return null;
-    return trailingZeroTailClipLastVisibleDate(blockPlotted.points, tailClipOptions);
-  }, [blockPlotted.points, tailClipOptions]);
+    return trailingZeroTailClipLastVisibleDate(denseForTailClip, tailClipOptions);
+  }, [denseForTailClip, tailClipOptions]);
 
   const { chartData: clippedChartData, tailClippedKeys } = useMultiSeriesTrailingZeroTailClip(
-    blockPlotted.points,
+    denseForTailClip,
     tailClipOptions
   );
 
@@ -891,15 +914,7 @@ export function LineChartPanel({
     [clippedChartData, plotEndDate]
   );
 
-  const chartData = useMemo(
-    () =>
-      densifyRecordsByCalendarPeriod(clippedForPlot, {
-        granularity: xAxisGranularity,
-        dateKey: "as_of_date",
-        fillMissing: "null_all",
-      }),
-    [clippedForPlot, xAxisGranularity]
-  );
+  const chartData = useMemo(() => clippedForPlot, [clippedForPlot]);
 
   const yScale = useMemo(() => {
     const scaleSeries =

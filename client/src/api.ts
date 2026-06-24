@@ -491,7 +491,26 @@ export const api = {
     ),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
   fxCoverage: () => j<import("./types").FxCoverage>("/api/fx/coverage"),
+  fxBidAskGaps: () => j<{ gaps: import("./types").FxBidAskGapRow[] }>("/api/fx/bid-ask/gaps"),
+  upsertFxBidAsk: (date: string, buy_clp_per_usd: number, sell_clp_per_usd: number) =>
+    j<{ ok: boolean }>("/api/fx/bid-ask", {
+      method: "POST",
+      body: JSON.stringify({ date, buy_clp_per_usd, sell_clp_per_usd }),
+    }),
   marketTicker: () => j<import("./types").MarketTickerResponse>("/api/market-ticker"),
+  watchlist: () => j<import("./types").WatchlistResponse>("/api/watchlist"),
+  patchWatchlistRow: (id: number, body: { show_in_marquee?: number; sort_order?: number }) =>
+    j<import("./types").WatchlistRow>(`/api/watchlist/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  addWatchlistTicker: (ticker: string) =>
+    j<import("./types").WatchlistRow>("/api/watchlist", {
+      method: "POST",
+      body: JSON.stringify({ ticker }),
+    }),
+  deleteWatchlistRow: (id: number) =>
+    j<{ ok: boolean }>(`/api/watchlist/${id}`, { method: "DELETE" }),
   messagesUnreadCount: () => j<{ count: number }>("/api/messages/unread-count"),
   messages: (kind: "notification" | "log") =>
     j<{ messages: AppMessageRow[] }>(`/api/messages?kind=${kind}`),

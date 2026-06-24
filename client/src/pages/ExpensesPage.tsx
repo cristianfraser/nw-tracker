@@ -84,6 +84,16 @@ export function ExpensesPage() {
     return monthly;
   }, [chartCategorySlugs, chartGranularity, view]);
 
+  /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
+  const chartSortPoints = useMemo(() => {
+    if (!view) return [];
+    const monthly = view.table.chart_monthly_by_category;
+    if (chartGranularity === "year") {
+      return rollupChartPointsByYear(monthly, chartCategorySlugs);
+    }
+    return monthly;
+  }, [chartCategorySlugs, chartGranularity, view]);
+
   const monthTableRows = useMemo(() => {
     if (!view) return [];
     if (chartGranularity === "month") return view.table.by_month;
@@ -174,6 +184,7 @@ export function ExpensesPage() {
         <CreditCardGroupExpensesChart
           title={t("expenses.creditCard.chartTitle")}
           points={chartPoints}
+          categorySortPoints={chartSortPoints}
           categories={data.categories}
           displayUnit={displayUnit}
           xAxisGranularity={chartGranularity}

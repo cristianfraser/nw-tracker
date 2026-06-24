@@ -9,6 +9,13 @@ import {
   buildLineChartTailClipOptions,
   trimLeadingInactivePoints,
 } from "../../components/charts/ValuationLineCharts";
+import { chileTodayYmd } from "../../calendarMonth";
+import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
+import {
+  coerceKeptTrailingZeroMonth,
+  prependInitialZeroAnchorsOnBlock,
+  valuationDataKeysForInitialZeroAnchors,
+} from "../../chartSeriesInitialZeroAnchors";
 import { useAccountDetailBundle, useDashboardNavContext, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
@@ -144,10 +151,19 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const valuationTailClipEndDate = useMemo(() => {
     if (!ts?.accounts?.points?.length) return null;
     const block = trimLeadingInactivePoints(ts.accounts, true);
-    const opts = buildLineChartTailClipOptions(block, true);
+    const withAnchors = prependInitialZeroAnchorsOnBlock(block, xAxisGranularity);
+    const valuationKeys = valuationDataKeysForInitialZeroAnchors(withAnchors);
+    const dense = densifyRecordsByCalendarPeriod(withAnchors.points, {
+      granularity: xAxisGranularity,
+      dateKey: "as_of_date",
+      fillMissing: "null_all",
+      extendThroughYmd: chileTodayYmd(),
+    });
+    const denseForTailClip = coerceKeptTrailingZeroMonth(dense, valuationKeys);
+    const opts = buildLineChartTailClipOptions(withAnchors, true);
     if (!opts) return null;
-    return trailingZeroTailClipLastVisibleDate(block.points, opts);
-  }, [ts?.accounts]);
+    return trailingZeroTailClipLastVisibleDate(denseForTailClip, opts);
+  }, [ts?.accounts, xAxisGranularity]);
 
   const monthlyPerfRows = useMemo(() => {
     const rows = monthlyPerf?.monthly ?? [];

@@ -138,12 +138,16 @@ export function aggregatePerformanceByBucket(
     barById.set(b.account_id, b);
   }
 
+  const bucketedIds = new Set<number>();
   const used = new Set<string>();
   for (const b of perf.bar_accounts) {
     const row = listRows.find((r) => r.id === b.account_id);
     if (!row) continue;
     const k = rowToBucket(row);
-    if (k) used.add(k);
+    if (k) {
+      used.add(k);
+      bucketedIds.add(b.account_id);
+    }
   }
   if (used.size === 0) return perf;
 
@@ -157,6 +161,9 @@ export function aggregatePerformanceByBucket(
       ...(m.color_rgb ? { color_rgb: m.color_rgb } : {}),
     };
   });
+
+  // `chart_inactive` accounts omitted from the nav tree keep their own bars (history charts).
+  const unmappedBars = perf.bar_accounts.filter((b) => !bucketedIds.has(b.account_id));
 
   const points = perf.points.map((row) => {
     const out: Record<string, string | number | null> = { ...row };
@@ -180,5 +187,5 @@ export function aggregatePerformanceByBucket(
     return out;
   });
 
-  return { ...perf, bar_accounts, points };
+  return { ...perf, bar_accounts: [...bar_accounts, ...unmappedBars], points };
 }

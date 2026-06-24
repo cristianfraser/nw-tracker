@@ -1,4 +1,9 @@
-import { accountCountsTowardGroupTotals, dashboardAccountCurrentValueClp, isChartActiveAccount } from "./accountGroupTotals";
+import {
+  accountCountsTowardGroupTotals,
+  dashboardAccountCurrentValueClp,
+  hasMaterialDashboardBalance,
+  isChartActiveAccount,
+} from "./accountGroupTotals";
 import {
   accountBelongsToDashboardBucket,
   accountDashboardBucketSlug,
@@ -334,8 +339,7 @@ export function accountInDashboardGroupDisplayScope(
 ): boolean {
   if (!accountInDashboardGroupScope(a, groupSlug, filter)) return false;
   if (!isChartActiveAccount(a)) return false;
-  if (a.current_value_clp == null || !Number.isFinite(a.current_value_clp)) return false;
-  return true;
+  return hasMaterialDashboardBalance(a);
 }
 
 /** @deprecated Alias for {@link accountInDashboardGroupScope}. */
@@ -443,8 +447,7 @@ function valueRows(accounts: DashboardAccountRow[], groupSlug?: DashboardGroupSl
     (a) =>
       accountCountsTowardGroupTotals(a) &&
       isChartActiveAccount(a) &&
-      a.current_value_clp != null &&
-      Number.isFinite(a.current_value_clp)
+      hasMaterialDashboardBalance(a)
   );
 }
 

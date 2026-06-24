@@ -23,6 +23,7 @@ import { buildNavCardBreakdown } from "./navCardBreakdown";
 import i18n from "./i18n";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import { DASHBOARD_NET_WORTH_BUCKET_SLUGS } from "./portfolioDashboardBuckets";
+import { collectNavBucketCoverageKeys } from "./navChartBuckets";
 import {
   collectNavAccountDataKeys,
   dashboardBucketGroupsUnderNavHub,
@@ -31,6 +32,51 @@ import {
   resolveDashboardBucketFromNavNode,
 } from "./portfolioNavFromApi";
 import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
+
+function accountBucketSlug(row: Pick<DashboardAccountRow, "bucket_slug" | "group_slug">): string {
+  return (row.bucket_slug ?? row.group_slug ?? "").trim();
+}
+
+/**
+ * `chart_inactive` accounts omitted from the nav tree still belong in metrics scope when their
+ * bucket matches this node (same placement rule as group-page account enrich).
+ */
+export function accountInNavMetricsScope(
+  row: Pick<DashboardAccountRow, "account_id" | "bucket_slug" | "group_slug" | "chart_inactive">,
+  navNode: NavTreeNodeDto,
+  navLeafIds: Set<number>
+): boolean {
+  if (navLeafIds.has(row.account_id)) return true;
+  if (!row.chart_inactive) return false;
+  const bucket = accountBucketSlug(row);
+  if (!bucket) return false;
+  const normalized = bucket.replace(/__/g, "_");
+  if (normalized === navNode.slug) return true;
+  for (const prefix of collectNavBucketCoverageKeys(navNode)) {
+    if (normalized === prefix || normalized.startsWith(`${prefix}_`)) return true;
+    if (bucket === prefix || bucket.startsWith(`${prefix}__`)) return true;
+  }
+  const asset = navNode.asset_group_slug?.trim();
+  if (asset && (bucket === asset || bucket.startsWith(`${asset}__`))) return true;
+  return bucket === navNode.slug || bucket.startsWith(`${navNode.slug}__`);
+}
+
+/** Nav subtree account ids for card metrics (includes chart-inactive group members). */
+export function navMetricsAccountIdSet(
+  navNode: NavTreeNodeDto,
+  all: readonly Pick<
+    DashboardAccountRow,
+    "account_id" | "bucket_slug" | "group_slug" | "chart_inactive"
+  >[] = []
+): Set<number> {
+  const leafIds = navLeafAccountIdSet(navNode);
+  const ids = new Set(leafIds);
+  for (const row of all) {
+    if (ids.has(row.account_id)) continue;
+    if (accountInNavMetricsScope(row, navNode, leafIds)) ids.add(row.account_id);
+  }
+  return ids;
+}
 
 function isNetWorthPortfolioRoot(node: NavTreeNodeDto): boolean {
   return node.slug === "net_worth" || node.asset_group_slug === "net_worth";
@@ -77,7 +123,7 @@ export function dashboardRowsForNavSubtree(
   all: DashboardAccountRow[],
   navNode: NavTreeNodeDto
 ): DashboardAccountRow[] {
-  const idSet = navLeafAccountIdSet(navNode);
+  const idSet = navMetricsAccountIdSet(navNode, all);
   return all.filter((a) => idSet.has(a.account_id));
 }
 
@@ -211,6 +257,47 @@ export type PortfolioNavParentTitleDeltaMode =
   | { kind: "sum_dashboard_groups"; groups: readonly DashboardGroupSlug[] }
   | { kind: "subset_only" };
 
+export type ConsolidatedHubPeriodMetricsSlice = {
+  closing_clp: number;
+  prior_closing_clp: number | null;
+  net_capital_flow_clp: number;
+  nominal_pl_clp: number | null;
+  balance_delta_clp: number | null;
+};
+
+export type InversionesPeriodMetricsDto = {
+  month: ConsolidatedHubPeriodMetricsSlice | null;
+  year: ConsolidatedHubPeriodMetricsSlice | null;
+};
+
+/** Period row from canonical consolidated hub series; lifetime fields come from child buckets. */
+export function cardGroupMetricsFromConsolidatedHubPeriodMetrics(
+  hubMetrics: InversionesPeriodMetricsDto,
+  period: CardGroupMetricsPeriod,
+  lifetime: Pick<
+    CardGroupMetrics,
+    "deposits_clp" | "deposits_usd" | "delta_total_clp" | "delta_total_usd"
+  >
+): CardGroupMetrics {
+  const slice = period === "month" ? hubMetrics.month : hubMetrics.year;
+  if (!slice) {
+    return {
+      ...lifetime,
+      deposits_period_clp: 0,
+      deposits_period_usd: null,
+      delta_period_clp: null,
+      delta_period_usd: null,
+    };
+  }
+  return {
+    ...lifetime,
+    deposits_period_clp: slice.net_capital_flow_clp,
+    deposits_period_usd: null,
+    delta_period_clp: slice.balance_delta_clp,
+    delta_period_usd: null,
+  };
+}
+
 export function titleBalanceDeltaForAccountIds(
   dash: Pick<DashboardResponse, "accounts" | "totals">,
   overviewPoints: Record<string, string | number | null>[],
@@ -312,13 +399,37 @@ export function portfolioNavParentMetrics(
   dash: Pick<
     DashboardResponse,
     "accounts" | "totals" | "dashboard_layout" | "net_worth_period_metrics"
-  >,
+  > & {
+    inversiones_period_metrics?: InversionesPeriodMetricsDto;
+  },
   mode: PortfolioNavParentTitleDeltaMode,
   navSubtreeRows: DashboardAccountRow[],
   period: CardGroupMetricsPeriod,
   parentNavNode?: NavTreeNodeDto,
   showUsd = false
 ): CardGroupMetrics {
+  if (
+    parentNavNode?.slug === "inversiones" &&
+    dash.inversiones_period_metrics &&
+    mode.kind === "sum_dashboard_groups"
+  ) {
+    const stripChildren = portfolioStripGroupChildren(parentNavNode);
+    if (stripChildren.length === 0) {
+      throw new Error(
+        `portfolioNavParentMetrics: no strip children under nav node ${parentNavNode.slug}`
+      );
+    }
+    const lifetime = sumCardGroupMetrics(
+      stripChildren.map((child) =>
+        mainValueAndMetricsForNavChild(dash, child, period, showUsd).metrics
+      )
+    );
+    return cardGroupMetricsFromConsolidatedHubPeriodMetrics(
+      dash.inversiones_period_metrics,
+      period,
+      lifetime
+    );
+  }
   if (mode.kind === "dashboard_group" && hasCanonicalDashboardPriorCloses(dash.totals.prior_closes)) {
     return cardGroupMetricsForDashboardBucket(
       dash.totals,

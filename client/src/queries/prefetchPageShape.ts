@@ -53,7 +53,7 @@ export function prefetchPageShapeForPath(
 ): void {
   const path = normalizePath(targetPath);
 
-  if (path.startsWith("/flows") || path.startsWith("/rates") || path.startsWith("/panel")) {
+  if (path.startsWith("/flows") || path.startsWith("/rates") || path.startsWith("/watchlist") || path.startsWith("/panel")) {
     return;
   }
 

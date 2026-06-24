@@ -31,6 +31,7 @@ function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
     (unit === "usd" ? readDashboardNavSnapshotCache("clp") : undefined);
   if (!raw) return undefined;
   const prepared = unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, cachedFx) : raw;
+  if (unit === "usd") return prepared;
   return perturbDashboardNavSnapshot(prepared);
 }
 
@@ -79,6 +80,7 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
       return snapshot;
     },
     initialData: () => readNavSnapshotCacheForUnit(unit),
+    initialDataUpdatedAt: 0,
     enabled,
     ...displayUnitQueryBehavior,
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
@@ -152,7 +154,9 @@ export function useGroupPageShell(opts: {
     },
     initialData: () => {
       const raw = readGroupPageShellCacheForUnit(portfolioGroup, unit);
-      return raw ? perturbGroupPageShell(raw) : undefined;
+      if (!raw) return undefined;
+      if (unit === "usd") return raw;
+      return perturbGroupPageShell(raw);
     },
     enabled: enabled && Boolean(portfolioGroup && navNode),
     ...displayUnitQueryBehavior,
@@ -162,6 +166,7 @@ export function useGroupPageShell(opts: {
 }
 
 export function useSidebarNav() {
+  const cached = readSidebarNavCache();
   return useQuery({
     queryKey: queryKeys.sidebarNav(),
     queryFn: async () => {
@@ -169,8 +174,9 @@ export function useSidebarNav() {
       writeSidebarNavCache(data);
       return data;
     },
-    initialData: readSidebarNavCache,
+    ...(cached ? { initialData: cached, initialDataUpdatedAt: 0 } : {}),
     staleTime: 60_000,
+    refetchOnMount: true,
   });
 }
 
@@ -214,6 +220,67 @@ export function useMarketTicker() {
     queryFn: () => api.marketTicker(),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
+  });
+}
+
+export function useWatchlist() {
+  return useQuery({
+    queryKey: queryKeys.watchlist(),
+    queryFn: () => api.watchlist(),
+    staleTime: MARKET_TICKER_MS,
+    refetchInterval: MARKET_TICKER_MS,
+  });
+}
+
+export function usePatchWatchlistMarquee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, show_in_marquee }: { id: number; show_in_marquee: number }) =>
+      api.patchWatchlistRow(id, { show_in_marquee }),
+    onMutate: async ({ id, show_in_marquee }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.watchlist() });
+      const prev = queryClient.getQueryData<import("../types").WatchlistResponse>(
+        queryKeys.watchlist()
+      );
+      if (prev) {
+        const patchRow = (rows: import("../types").WatchlistRow[]) =>
+          rows.map((r) => (r.id === id ? { ...r, show_in_marquee } : r));
+        queryClient.setQueryData(queryKeys.watchlist(), {
+          app: patchRow(prev.app),
+          manual: patchRow(prev.manual),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(queryKeys.watchlist(), ctx.prev);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.watchlist() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.marketTicker() });
+    },
+  });
+}
+
+export function useAddWatchlistTicker() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ticker: string) => api.addWatchlistTicker(ticker),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.watchlist() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.marketTicker() });
+    },
+  });
+}
+
+export function useDeleteWatchlistRow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteWatchlistRow(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.watchlist() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.marketTicker() });
+    },
   });
 }
 

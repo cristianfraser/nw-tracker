@@ -61,6 +61,7 @@ function MarqueeTrack({ items }: { items: ReturnType<typeof useMarketTickerMarqu
               item.kind === "usd_live" ||
               item.kind === "uno_a" ||
               item.kind === "risky_norris" ||
+              item.kind === "risky_norris_proxy" ||
               item.kind === "equity"
             }
             seed={`ticker:${item.kind}:${item.label}`}

@@ -6,7 +6,7 @@ export function pathnameUsesDashboardNavContext(pathname: string): boolean {
   if (pathname === "/") return false;
   if (pathname.startsWith("/account/")) return false;
   if (pathname.startsWith("/flows")) return false;
-  if (pathname.startsWith("/rates")) return false;
+  if (pathname.startsWith("/rates") || pathname.startsWith("/watchlist")) return false;
   if (pathname.startsWith("/panel")) return false;
   return true;
 }

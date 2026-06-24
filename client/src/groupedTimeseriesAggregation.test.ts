@@ -200,4 +200,57 @@ describe("aggregatePerformanceByBucket", () => {
       },
     ]);
   });
+
+  it("keeps chart-inactive accounts as individual bars when they do not map to nav buckets", () => {
+    const perf: GroupMonthlyPerformanceResponse = {
+      unit: "clp",
+      group_slug: "brokerage_acciones",
+      bar_accounts: [
+        { account_id: 10, name: "SPY", bar_data_key: "pl_10", color_rgb: "200,10,10" },
+        { account_id: 99, name: "OILK", bar_data_key: "pl_99", color_rgb: "10,200,10" },
+      ],
+      points: [
+        { as_of_date: "2025-01-31", pl_10: 1000, pl_99: 500, delta_total: 1500, ytd_group: 1500 },
+      ],
+    };
+    const listRows = [
+      { id: 10, name: "SPY", category_slug: "brokerage_acciones__spy", chart_inactive: false },
+      {
+        id: 99,
+        name: "OILK",
+        category_slug: "brokerage_acciones__oilk",
+        chart_inactive: true,
+      },
+    ];
+    const meta = {
+      spy: {
+        key: "brokerage_acciones__spy",
+        accountId: -720,
+        dataKey: "nav_spy",
+        depKey: "nav_spy_dep",
+        barDataKey: "pl_nav_spy",
+        name: "SPY",
+        color_rgb: "200,10,10",
+      },
+    };
+
+    const out = aggregatePerformanceByBucket(
+      perf,
+      listRows,
+      ["spy"],
+      meta,
+      (row) => (row.id === 10 ? "spy" : null)
+    );
+
+    expect(out.bar_accounts).toEqual([
+      {
+        account_id: -720,
+        name: "SPY",
+        bar_data_key: "pl_nav_spy",
+        color_rgb: "200,10,10",
+      },
+      { account_id: 99, name: "OILK", bar_data_key: "pl_99", color_rgb: "10,200,10" },
+    ]);
+    expect(out.points[0]!.pl_99).toBe(500);
+  });
 });

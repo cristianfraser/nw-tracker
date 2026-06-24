@@ -115,13 +115,18 @@ export function DashboardCardGroupMetrics({
       ? t("dashboard.cardBreakdown.periodDeltaYear")
       : t("dashboard.cardBreakdown.periodDeltaMonth");
 
+  const totalDeposited = roundedMetricDeposits(metrics, showUsd, "total");
+  const totalDelta = roundedMetricDelta(metrics, showUsd, "total");
+  const periodDeposited = roundedMetricDeposits(metrics, showUsd, "period");
+  const periodDelta = roundedMetricDelta(metrics, showUsd, "period");
+
   return (
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
       <DashboardCardsValueGroup>
         <MetricsRow
-          deposited={roundedMetricDeposits(metrics, showUsd, "total")}
+          deposited={totalDeposited}
           depositedLabel={t("dashboard.cardBreakdown.totalDeposited")}
-          delta={roundedMetricDelta(metrics, showUsd, "total")}
+          delta={totalDelta}
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
           showUsd={showUsd}
           animated={animated}
@@ -129,9 +134,9 @@ export function DashboardCardGroupMetrics({
           rowKey="total"
         />
         <MetricsRow
-          deposited={roundedMetricDeposits(metrics, showUsd, "period")}
+          deposited={periodDeposited}
           depositedLabel={periodDepositsLabel}
-          delta={roundedMetricDelta(metrics, showUsd, "period")}
+          delta={periodDelta}
           deltaLabel={periodDeltaLabel}
           showUsd={showUsd}
           animated={animated}

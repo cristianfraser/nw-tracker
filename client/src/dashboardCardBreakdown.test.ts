@@ -349,6 +349,14 @@ describe("accountInDashboardGroupScope", () => {
     expect(accountInDashboardGroupScope(soldOut, "brokerage")).toBe(true);
     expect(accountInDashboardGroupDisplayScope(soldOut, "brokerage")).toBe(false);
 
+    const zeroBalance = baseRow({
+      account_id: 61,
+      group_slug: "brokerage_acciones__oilk",
+      dashboard_bucket_slug: "brokerage",
+      current_value_clp: 0,
+    });
+    expect(accountInDashboardGroupDisplayScope(zeroBalance, "brokerage")).toBe(false);
+
     const metrics = cardGroupMetricsFromBalanceAndPlScopes(
       [soldOut, open],
       "brokerage",

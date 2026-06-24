@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import { FxCoverageBanner } from "../components/layout/FxCoverageBanner";
+import { FxBidAskGapsTable } from "../components/rates/FxBidAskGapsTable";
 import { useMarketSeries, useRatesInstruments, useSyncStatus } from "../queries/hooks";
 import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -38,7 +39,7 @@ function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): Inst
       { kind: "fund", id: "fintual_cert_reserva2", title: "Reserva (valor cuota)" },
       { kind: "fund", id: "fintual_cert_risky_norris", title: "Risky Norris (valor cuota)" },
       { kind: "fund", id: "fintual_cert_apv_a", title: "Risky Norris APV (valor cuota)" },
-      { kind: "fund", id: "afp_uno_cuota_a", title: "AFP Uno — valor cuota" },
+      { kind: "fund", id: "afp_uno_cuota_a", title: "UNO-A" },
       { kind: "eq", id: "BTC-USD", title: "BTC" },
       { kind: "eq", id: "ETH-USD", title: "ETH" },
     ];
@@ -158,46 +159,84 @@ function minMaxSeriesValues(data: { value: number }[]): { min: number; max: numb
 
 function mergeFxUsdDualSeries(
   yahoo: readonly { date: string; value: number }[],
-  bcentral: readonly { date: string; value: number }[]
-): { date: string; yahoo: number | null; bcentral: number | null }[] {
+  bcentral: readonly { date: string; value: number }[],
+  buy: readonly { date: string; value: number }[] = [],
+  sell: readonly { date: string; value: number }[] = []
+): { date: string; yahoo: number | null; bcentral: number | null; buy: number | null; sell: number | null }[] {
   const dates = new Set<string>();
   for (const r of yahoo) dates.add(r.date);
   for (const r of bcentral) dates.add(r.date);
+  for (const r of buy) dates.add(r.date);
+  for (const r of sell) dates.add(r.date);
   const ym = new Map(yahoo.map((r) => [r.date, r.value]));
   const bm = new Map(bcentral.map((r) => [r.date, r.value]));
+  const buyM = new Map(buy.map((r) => [r.date, r.value]));
+  const sellM = new Map(sell.map((r) => [r.date, r.value]));
   return [...dates]
     .sort((a, b) => a.localeCompare(b))
     .map((date) => ({
       date,
       yahoo: ym.get(date) ?? null,
       bcentral: bm.get(date) ?? null,
+      buy: buyM.get(date) ?? null,
+      sell: sellM.get(date) ?? null,
     }));
+}
+
+function fxUsdSeriesLabel(
+  name: string,
+  labels: { yahoo: string; bcentral: string; buy: string; sell: string }
+): string {
+  switch (name) {
+    case "yahoo":
+      return labels.yahoo;
+    case "bcentral":
+      return labels.bcentral;
+    case "buy":
+      return labels.buy;
+    case "sell":
+      return labels.sell;
+    default:
+      return name;
+  }
 }
 
 function FxUsdClpDualChart({
   yahooData,
   bcentralData,
+  buyData = [],
+  sellData = [],
   yahooLabel,
   bcentralLabel,
+  buyLabel,
+  sellLabel,
   recentColDate,
   recentColValue,
   recentEmptyLabel,
 }: {
   yahooData: { date: string; value: number }[];
   bcentralData: { date: string; value: number }[];
+  buyData?: { date: string; value: number }[];
+  sellData?: { date: string; value: number }[];
   yahooLabel: string;
   bcentralLabel: string;
+  buyLabel: string;
+  sellLabel: string;
   recentColDate: string;
   recentColValue: string;
   recentEmptyLabel: string;
 }) {
-  const merged = useMemo(() => mergeFxUsdDualSeries(yahooData, bcentralData), [yahooData, bcentralData]);
+  const seriesLabels = { yahoo: yahooLabel, bcentral: bcentralLabel, buy: buyLabel, sell: sellLabel };
+  const merged = useMemo(
+    () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
+    [yahooData, bcentralData, buyData, sellData]
+  );
   const denseData = useMemo(
     () =>
       densifyRecordsByCalendarDay(
         merged as unknown as ChartSparseRow[],
         "date",
-        ["yahoo", "bcentral"]
+        ["yahoo", "bcentral", "buy", "sell"]
       ),
     [merged]
   );
@@ -209,18 +248,28 @@ function FxUsdClpDualChart({
           series: [
             { dataKey: "yahoo", type: "data" as const },
             { dataKey: "bcentral", type: "data" as const },
+            { dataKey: "buy", type: "data" as const },
+            { dataKey: "sell", type: "data" as const },
           ],
         }
       : null
   );
-  const chartData = clip.chartData as { date: string; yahoo: number | null; bcentral: number | null }[];
+  const chartData = clip.chartData as {
+    date: string;
+    yahoo: number | null;
+    bcentral: number | null;
+    buy: number | null;
+    sell: number | null;
+  }[];
   const tailClippedKeys = clip.tailClippedKeys;
 
   const yBand = useMemo(() => {
     const values: number[] = [];
     for (const r of chartData) {
-      if (typeof r.yahoo === "number" && Number.isFinite(r.yahoo)) values.push(r.yahoo);
-      if (typeof r.bcentral === "number" && Number.isFinite(r.bcentral)) values.push(r.bcentral);
+      for (const key of ["yahoo", "bcentral", "buy", "sell"] as const) {
+        const v = r[key];
+        if (typeof v === "number" && Number.isFinite(v)) values.push(v);
+      }
     }
     const mm = minMaxSeriesValues(values.map((value) => ({ value })));
     if (!mm) return null;
@@ -273,7 +322,7 @@ function FxUsdClpDualChart({
               labelStyle={{ color: "var(--muted)" }}
               formatter={(v: number | string, name: string) => [
                 formatClp(Number(v)),
-                name === "yahoo" ? yahooLabel : bcentralLabel,
+                fxUsdSeriesLabel(name, seriesLabels),
               ]}
               labelFormatter={(l) => String(l)}
             />
@@ -287,6 +336,26 @@ function FxUsdClpDualChart({
               strokeWidth={1.5}
               strokeDasharray="4 3"
             />
+            {buyData.length > 0 ? (
+              <Line
+                type="monotone"
+                dataKey="buy"
+                name="buy"
+                stroke="#22c55e"
+                dot={{ r: 3 }}
+                strokeWidth={1.5}
+              />
+            ) : null}
+            {sellData.length > 0 ? (
+              <Line
+                type="monotone"
+                dataKey="sell"
+                name="sell"
+                stroke="#f97316"
+                dot={{ r: 3 }}
+                strokeWidth={1.5}
+              />
+            ) : null}
           </AppLineChart>
         </ResponsiveContainer>
       </div>
@@ -410,6 +479,8 @@ export function RatesPage() {
 
   const fxUsdClp = useMemo(() => payload?.fx_usd_clp ?? [], [payload]);
   const fxUsdClpBcentral = useMemo(() => payload?.fx_usd_clp_bcentral ?? [], [payload]);
+  const fxUsdClpBuy = useMemo(() => payload?.fx_usd_clp_buy ?? [], [payload]);
+  const fxUsdClpSell = useMemo(() => payload?.fx_usd_clp_sell ?? [], [payload]);
   const fxUfClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_uf), [points]);
   const fxIpc = useMemo(() => seriesFromPoints(points, (p) => p.ipc_index), [points]);
   const fxEurClp = useMemo(() => payload?.eur_clp ?? [], [payload]);
@@ -458,7 +529,7 @@ export function RatesPage() {
       ) : null}
       <p className="muted">
         FX tab: reference rates and IPC index. Instruments tab: SPY, VEA, Reserva valor cuota, Risky Norris valor
-        cuota, Risky Norris APV valor cuota, AFP Uno valor cuota, BTC, and ETH — each in CLP (via USD/CLP) or native
+        cuota, Risky Norris APV valor cuota, UNO-A, BTC, and ETH — each in CLP (via USD/CLP) or native
         USD per the toggle.
       </p>
 
@@ -482,8 +553,12 @@ export function RatesPage() {
             <FxUsdClpDualChart
               yahooData={fxUsdClp}
               bcentralData={fxUsdClpBcentral}
+              buyData={fxUsdClpBuy}
+              sellData={fxUsdClpSell}
               yahooLabel={t("rates.fx.yahoo")}
               bcentralLabel={t("rates.fx.bcentralObservado")}
+              buyLabel={t("rates.fx.buy")}
+              sellLabel={t("rates.fx.sell")}
               recentColDate={recentColDate}
               recentColValue={recentColValue}
               recentEmptyLabel={recentEmptyLabel}
@@ -513,6 +588,7 @@ export function RatesPage() {
               {...recentTableProps}
             />
           </div>
+          <FxBidAskGapsTable />
         </>
       ) : (
         <>

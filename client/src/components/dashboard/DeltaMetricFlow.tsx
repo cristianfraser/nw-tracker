@@ -4,6 +4,8 @@ import { AnimatedNumberFlow, MOUNT_OPACITY_MS, useMountAnimation } from "./Anima
 import styles from "./CardGroupMetrics.module.css";
 
 const METRIC_MOUNT_DIGIT_RANGE: [number, number] = [5, 7];
+/** Percent deltas (e.g. watchlist 1d / MTD) — avoid 5–7 digit CLP-style mount seeds. */
+const PERCENT_MOUNT_DIGIT_RANGE: [number, number] = [1, 2];
 const METRIC_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const METRIC_TIMING = {
   transformTiming: { duration: 320, easing: METRIC_EASING },
@@ -29,11 +31,13 @@ export function DeltaMetricFlow({
   fractionDigits = 0,
   deltaFormat = "absolute",
 }: Props) {
+  const mountDigitRange =
+    deltaFormat === "percent" ? PERCENT_MOUNT_DIGIT_RANGE : METRIC_MOUNT_DIGIT_RANGE;
   const useMountSeed = animated && mountSeedId != null && delta != null;
   const mountAnimation = useMountAnimation(
     delta,
     animated,
-    useMountSeed ? METRIC_MOUNT_DIGIT_RANGE : undefined,
+    useMountSeed ? mountDigitRange : undefined,
     useMountSeed ? mountSeedId : undefined
   );
 
@@ -68,7 +72,7 @@ export function DeltaMetricFlow({
       <AnimatedNumberFlow
         value={delta}
         animated={animated}
-        mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
+        mountSeedDigitRange={mountDigitRange}
         mountSeedId={mountSeedId}
         mountAnimation={mountAnimation}
         mapDisplayValue={(n) =>
