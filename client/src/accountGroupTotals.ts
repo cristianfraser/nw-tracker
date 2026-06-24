@@ -10,6 +10,14 @@ export function isChartActiveAccount(row: { chart_inactive?: boolean | null }): 
   return row.chart_inactive !== true;
 }
 
+const DASHBOARD_BALANCE_EPS = 1e-9;
+
+/** Non-null finite live CLP balance above zero (summary card breakdown lines). */
+export function hasMaterialDashboardBalance(row: { current_value_clp?: number | null }): boolean {
+  const v = row.current_value_clp;
+  return v != null && Number.isFinite(v) && Math.abs(v) > DASHBOARD_BALANCE_EPS;
+}
+
 /** Live CLP balance for totals (sold-out / flat equity MTM → 0, not omitted). */
 export function dashboardAccountCurrentValueClp(row: { current_value_clp?: number | null }): number {
   const v = row.current_value_clp;

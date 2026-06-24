@@ -13,8 +13,11 @@ import { dataSeriesKeysFromTailClip } from "../../chartTailClip";
 
 export type { TailClipSeriesEntry } from "../../chartTailClip";
 
-/** Months of trailing **0** kept before the rest of the tail is set to `null` (per series). */
-export const DEFAULT_TRAILING_ZERO_MONTHS_KEPT = 3;
+/**
+ * Chart display only: trailing **0** months kept before the rest become `null` (per series).
+ * Intentionally **not** tied to server `CHART_TRAILING_ZERO_MONTHS_KEPT` (`chart_inactive` uses 0).
+ */
+export const DEFAULT_TRAILING_ZERO_MONTHS_KEPT = 1;
 
 /**
  * Keys whose Σ should refresh `__group_val_total` after tail-clip (liabilities bucket lines).

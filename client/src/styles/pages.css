@@ -96,3 +96,73 @@ select.rates-series-select {
 .rates-chart-card__table {
   margin-top: 0.65rem;
 }
+
+.watchlist-page {
+  max-width: none;
+}
+
+.watchlist-section {
+  margin-top: 1.5rem;
+}
+
+.watchlist-section + .watchlist-section {
+  margin-top: 2rem;
+}
+
+.watchlist-add-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.watchlist-add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.watchlist-table-wrap {
+  width: 100%;
+}
+
+.watchlist-table {
+  table-layout: auto;
+  width: 100%;
+}
+
+.watchlist-table__marquee {
+  width: auto;
+  white-space: nowrap;
+  padding-right: 0.75rem;
+}
+
+.watchlist-table__symbol {
+  width: auto;
+  min-width: 8rem;
+}
+
+.watchlist-table__symbol--sub {
+  padding-left: 1.75rem;
+}
+
+.watchlist-table__num {
+  width: auto;
+  min-width: 4.25rem;
+  text-align: right;
+}
+
+.watchlist-table__actions {
+  width: 6rem;
+}
+
+.watchlist-table th.watchlist-table__num,
+.watchlist-table td.watchlist-table__num {
+  text-align: right;
+}
+
+.watchlist-table td.watchlist-table__num .delta {
+  display: inline-flex;
+  justify-content: flex-end;
+  width: 100%;
+}

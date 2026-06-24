@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import {
+  coerceKeptTrailingZeroMonth,
+  prependInitialZeroAnchors,
+  priorCalendarPeriodEndYmd,
+  valuationDataKeysForInitialZeroAnchors,
+} from "./chartSeriesInitialZeroAnchors";
+import { densifyRecordsByCalendarPeriod } from "./chartDensifyTimeSeries";
+import { applyMultiSeriesTrailingZeroTailClip } from "./components/charts/AppLineChart";
+
+describe("priorCalendarPeriodEndYmd", () => {
+  it("returns prior month-end", () => {
+    expect(priorCalendarPeriodEndYmd("2026-05-31", "month")).toBe("2026-04-30");
+  });
+
+  it("returns prior year-end", () => {
+    expect(priorCalendarPeriodEndYmd("2026-05-31", "year")).toBe("2025-12-31");
+  });
+});
+
+describe("prependInitialZeroAnchors", () => {
+  it("inserts leading 0 one month before first finite value (single-point LIN/CCJ)", () => {
+    const out = prependInitialZeroAnchors(
+      [{ as_of_date: "2026-05-31", lin: 1_500_000 }],
+      ["lin"],
+      { granularity: "month" }
+    );
+    expect(out).toEqual([
+      { as_of_date: "2026-04-30", lin: 0 },
+      { as_of_date: "2026-05-31", lin: 1_500_000 },
+    ]);
+  });
+
+  it("merges anchor into an existing row when the prior month is already present", () => {
+    const out = prependInitialZeroAnchors(
+      [
+        { as_of_date: "2026-04-30", spy: 100 },
+        { as_of_date: "2026-05-31", oilk: 800_000 },
+      ],
+      ["oilk"],
+      { granularity: "month" }
+    );
+    expect(out[0]).toMatchObject({ as_of_date: "2026-04-30", oilk: 0, spy: 100 });
+    expect(out[1]).toMatchObject({ as_of_date: "2026-05-31", oilk: 800_000 });
+  });
+
+  it("skips class totals and reference overlays", () => {
+    const keys = valuationDataKeysForInitialZeroAnchors({
+      accounts: [
+        { account_id: 1, name: "A", dataKey: "__group_val_total", valueSeriesType: "data" },
+        { account_id: 2, name: "B", dataKey: "42", valueSeriesType: "data" },
+        { account_id: -1, name: "ref", dataKey: "ref:foo", valueSeriesType: "reference" },
+      ],
+      points: [],
+    });
+    expect(keys).toEqual(["42"]);
+  });
+});
+
+describe("coerceKeptTrailingZeroMonth", () => {
+  it("turns the first trailing null after last non-zero into 0", () => {
+    const out = coerceKeptTrailingZeroMonth(
+      [
+        { as_of_date: "2026-04-30", oilk: 0 },
+        { as_of_date: "2026-05-31", oilk: 900_000 },
+        { as_of_date: "2026-06-30", oilk: null },
+      ],
+      ["oilk"]
+    );
+    expect(out[2]!.oilk).toBe(0);
+  });
+});
+
+describe("OILK-style short equity position", () => {
+  it("plots [0, x, 0] with anchor, densify-through-today, and one kept trailing zero", () => {
+    const raw = [{ as_of_date: "2026-05-31", oilk: 900_000 }];
+    const anchored = prependInitialZeroAnchors(raw, ["oilk"], { granularity: "month" });
+    const dense = densifyRecordsByCalendarPeriod(anchored, {
+      granularity: "month",
+      fillMissing: "null_all",
+      extendThroughYmd: "2026-06-24",
+    });
+    const withTrail = coerceKeptTrailingZeroMonth(dense, ["oilk"]);
+    const { points } = applyMultiSeriesTrailingZeroTailClip(withTrail, {
+      series: [{ dataKey: "oilk", type: "data" }],
+    });
+    const oilk = points.map((r) => r.oilk);
+    expect(oilk).toContain(0);
+    expect(oilk).toContain(900_000);
+    const lastNonNullIdx = oilk.findLastIndex((v) => v != null);
+    expect(oilk[lastNonNullIdx]).toBe(0);
+  });
+});

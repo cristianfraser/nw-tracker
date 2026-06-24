@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import { useTranslation } from "../../i18n";
@@ -16,15 +17,26 @@ function NavAccountsTreeNode({ node, depth = 0 }: { node: NavTreeNodeDto; depth?
     return (
       <li style={{ marginLeft: `${indentPx}px` }}>
         {prefix ? <span className="muted mono">{prefix}</span> : null}
-        <span className="mono">#{node.account_id}</span> {label}
+        <Link to={`/account/${node.account_id}`}>
+          <span className="mono">#{node.account_id}</span> {label}
+        </Link>
       </li>
     );
   }
 
+  const route = node.route_path?.trim();
+  const labelNode = route ? (
+    <Link to={route}>
+      <strong>{label}</strong>
+    </Link>
+  ) : (
+    <strong>{label}</strong>
+  );
+
   return (
     <li style={{ marginLeft: `${indentPx}px` }}>
       {prefix ? <span className="muted mono">{prefix}</span> : null}
-      <strong>{label}</strong> <span className="muted mono">({node.slug})</span>
+      {labelNode} <span className="muted mono">({node.slug})</span>
       {node.children.length > 0 ? (
         <ul style={{ marginTop: "0.35rem", marginLeft: 0, paddingLeft: 0, listStyle: "none" }}>
           {node.children.map((child) => (

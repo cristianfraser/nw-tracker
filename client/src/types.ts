@@ -83,6 +83,28 @@ export interface FxCoverage {
   is_sparse: boolean;
   max_gap_days: number;
   yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[];
+  conversion_warnings?: FxConversionWarning[];
+}
+
+export type FxConversionWarningCode =
+  | "buy_rate_missing"
+  | "sell_rate_missing"
+  | "usd_reference_clp";
+
+export interface FxConversionWarning {
+  code: FxConversionWarningCode;
+  date: string;
+  context?: string;
+}
+
+export interface FxBidAskGapRow {
+  date: string;
+  mid_clp_per_usd: number | null;
+  buy_clp_per_usd: number | null;
+  sell_clp_per_usd: number | null;
+  source: string | null;
+  suggested_buy: number | null;
+  suggested_sell: number | null;
 }
 
 export interface DashboardAccountRow {
@@ -236,6 +258,7 @@ export interface DashboardResponse {
   dashboard_layout?: DashboardLayoutCardRow[];
   /** True when deposit USD totals could not be converted (missing fx_daily). */
   fx_conversion_error?: boolean;
+  fx_conversion_warnings?: FxConversionWarning[];
   /** Current-month Patrimonio neto metrics from canonical consolidated series (card period row). */
   net_worth_period_metrics?: {
     closing_clp: number;
@@ -775,6 +798,23 @@ export interface DashboardNavContextResponse {
     >;
   overview: ValuationTimeseriesResponse["overview"];
   fx_coverage: FxCoverage | null;
+  /** Month/year metrics for the inversiones nav hub (canonical consolidated series). */
+  inversiones_period_metrics?: {
+    month: {
+      closing_clp: number;
+      prior_closing_clp: number | null;
+      net_capital_flow_clp: number;
+      nominal_pl_clp: number | null;
+      balance_delta_clp: number | null;
+    } | null;
+    year: {
+      closing_clp: number;
+      prior_closing_clp: number | null;
+      net_capital_flow_clp: number;
+      nominal_pl_clp: number | null;
+      balance_delta_clp: number | null;
+    } | null;
+  };
 }
 
 /** `GET /api/dashboard/page-bundle` — home dashboard in one response. */
@@ -843,6 +883,8 @@ export interface MarketSeriesResponse {
   fund_series_keys: string[];
   fx_usd_clp: { date: string; value: number }[];
   fx_usd_clp_bcentral: { date: string; value: number }[];
+  fx_usd_clp_buy?: { date: string; value: number }[];
+  fx_usd_clp_sell?: { date: string; value: number }[];
   eur_clp: { date: string; value: number }[];
   fx_coverage: FxCoverage;
 }
@@ -854,11 +896,43 @@ export interface MarketDisplaySeriesRow {
   label: string;
   label_i18n_key: string | null;
   sort_order: number;
-  kind: "equity" | "fund_unit" | "fx_usd" | "uf";
+  kind: "equity" | "fund_unit" | "fx_usd" | "uf" | "composite";
   series_key: string | null;
   show_in_marquee: number;
   show_in_rates: number;
   rates_chart_title: string | null;
+  source: "builtin" | "account" | "manual";
+}
+
+export interface WatchlistChanges {
+  day_pct: number | null;
+  week_pct: number | null;
+  mtd_pct: number | null;
+  mom_pct: number | null;
+  ytd_pct: number | null;
+  yoy_pct: number | null;
+}
+
+export interface WatchlistCompositeHoldingRow {
+  ticker: string;
+  weight: number;
+  value: number | null;
+  value_currency: "usd" | "clp";
+  as_of_date: string | null;
+  changes: WatchlistChanges | null;
+}
+
+export interface WatchlistRow extends MarketDisplaySeriesRow {
+  value: number | null;
+  value_currency: "usd" | "clp";
+  as_of_date: string | null;
+  changes: WatchlistChanges | null;
+  composite_holdings?: WatchlistCompositeHoldingRow[];
+}
+
+export interface WatchlistResponse {
+  app: WatchlistRow[];
+  manual: WatchlistRow[];
 }
 
 export interface MarketTickerResponse {
@@ -867,6 +941,7 @@ export interface MarketTickerResponse {
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
   risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
+  risky_norris_proxy: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
   equities: {
     ticker: string;
     trade_date: string;
@@ -1232,6 +1307,7 @@ export interface RealEstateLinkCandidateDto {
 export type SyncSourceId =
   | "afp_uno"
   | "fintual"
+  | "fintual_rn_composition"
   | "sbif_usd"
   | "sbif_eur"
   | "sbif_uf"
@@ -1334,6 +1410,7 @@ export interface FlowsDepositsResponse {
   net_total_clp: number;
   net_total_usd: number | null;
   fx_conversion_error?: boolean;
+  fx_conversion_warnings?: FxConversionWarning[];
   chart_monthly_usd: FlowDepositChartPoint[];
   chart_yearly_usd: FlowDepositChartPoint[];
   by_category: Record<

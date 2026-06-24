@@ -233,6 +233,14 @@ export function AppSidebar() {
     tree?.filter((n) => n.id !== "flows" && n.id !== "rates" && n.id !== "dashboard") ?? [];
   const flowsNode = tree?.find((n) => n.id === "flows");
   const ratesNode = tree?.find((n) => n.id === "rates");
+  /** Rates has one child (watchlist): show both as flat links in this section (no expand). */
+  const ratesSectionLinks = useMemo((): SidebarNavNode[] => {
+    if (!ratesNode) return [];
+    const { children, ...parent } = ratesNode;
+    const out: SidebarNavNode[] = [parent];
+    if (children?.length) out.push(...children);
+    return out;
+  }, [ratesNode]);
   const unreadPill = unreadBadgeLabel(unreadCount);
 
   const panelNode = useMemo((): SidebarNavNode => {
@@ -353,9 +361,10 @@ export function AppSidebar() {
                 </ul>
                 <div className={styles.separator} role="separator" />
                 <ul className={styles.list}>
-                  {ratesNode ? (
+                  {ratesSectionLinks.map((node) => (
                     <SidebarNavItem
-                      node={ratesNode}
+                      key={node.id}
+                      node={node}
                       depth={0}
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
@@ -364,7 +373,7 @@ export function AppSidebar() {
                       displayUnit={displayUnit}
                       onPrefetchShape={onPrefetchShape}
                     />
-                  ) : null}
+                  ))}
                 </ul>
               </>
             )}

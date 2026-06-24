@@ -13,6 +13,9 @@
     "depositConversionError": "Al menos un depósito no pudo convertirse a US$ (falta fx_daily en la fecha del movimiento).",
     "syncStale": "La sincronización USD/EUR con Banco Central está desactualizada o falló.",
     "yahooRejected": "{{count}} fecha(s) Yahoo CLP=X rechazada(s) (tipo de cambio inválido): {{dates}}. Las conversiones usan el último tipo de cambio válido anterior.",
+    "warningBuyRateMissing": "Conversión CLP→US$ sin tipo compra en fx_daily_bid_ask; se usó el tipo medio de referencia.",
+    "warningSellRateMissing": "Conversión US$→CLP sin tipo venta en fx_daily_bid_ask; se usó el tipo medio de referencia.",
+    "warningUsdReferenceClp": "Monto en CLP es referencia (tipo medio); el capital en US$ es el valor canónico.",
     "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en US$"
   },
   "rates": {
@@ -26,7 +29,16 @@
     "recentEmpty": "Sin datos recientes",
     "fx": {
       "yahoo": "Yahoo CLP=X (conversiones)",
-      "bcentralObservado": "Banco Central — dólar observado (referencia)"
+      "bcentralObservado": "Banco Central — dólar observado (referencia)",
+      "buy": "Compra US$ (bid/ask)",
+      "sell": "Venta US$ (bid/ask)",
+      "gapsTitle": "Tipos compra/venta por revisar",
+      "gapsHint": "Filas inferidas desde el tipo medio Yahoo (±2 CLP) o sin dato en esa fecha. Ingresa el tipo real de tu corredora y guarda.",
+      "gapsEmpty": "No hay fechas pendientes de revisión para compra/venta US$.",
+      "gapsColMid": "Medio (Yahoo)",
+      "gapsColSource": "Fuente",
+      "gapsInvalidValues": "Compra y venta deben ser números positivos.",
+      "gapsBuySellOrder": "Compra debe ser ≥ venta (más CLP por US$ al comprar)."
     }
   },
   "brokerage": {
@@ -169,6 +181,7 @@
     "flowsExpensesRealEstate": "Inmuebles",
     "flowsDeposits": "Depósitos",
     "rates": "Tipos de cambio",
+    "watchlist": "Watchlist",
     "controlPanel": "Panel de control",
     "notifications": "Notificaciones",
     "accounts": "Accounts",
@@ -180,6 +193,36 @@
     "notificationsTitle": "Notificaciones",
     "accountsTitle": "Accounts",
     "importSyncTitle": "Import sync"
+  },
+  "watchlist": {
+    "pageTitle": "Watchlist",
+    "pageHint": "Instrumentos de la app y símbolos agregados manualmente. Marca cuáles mostrar en la franja superior.",
+    "appSectionTitle": "Instrumentos de la app",
+    "manualSectionTitle": "Watchlist manual",
+    "addTickerLabel": "Agregar ticker",
+    "addTickerPlaceholder": "Ej. QQQ",
+    "addTickerSubmit": "Agregar",
+    "removeTicker": "Quitar",
+    "colMarquee": "Marquee",
+    "colSymbol": "Símbolo",
+    "colPrice": "Precio",
+    "colDay": "1d",
+    "colWeek": "1s",
+    "colMtd": "MTD",
+    "colMom": "MoM",
+    "colYtd": "YTD",
+    "colYoy": "YoY",
+    "colActions": "Acciones",
+    "marqueeAria": "Mostrar en marquee",
+    "emptyManual": "Sin símbolos manuales.",
+    "addError": "No se pudo agregar el ticker.",
+    "riskyNorrisProxy": "Risky Norris (intradía)",
+    "proxyValidationTitle": "Proxy vs cuota oficial (30 días)",
+    "proxyValidationMaxDrift": "Máx. desvío: {{pct}}%",
+    "proxyValidationColDate": "Fecha",
+    "proxyValidationColProxy": "Proxy",
+    "proxyValidationColOfficial": "Oficial",
+    "proxyValidationColDiff": "Δ%"
   },
   "panelAccounts": {
     "pageHint": "Vista de referencia: cuentas y la misma jerarquía de Patrimonio neto que el sidebar (portfolio_groups).",
@@ -338,6 +381,7 @@
       "sources": {
         "afp_uno": "AFP UNO",
         "fintual": "Fintual",
+        "fintual_rn_composition": "Composición Risky Norris (proxy)",
         "sbif_usd": "Banco Central — dólar observado",
         "sbif_eur": "Banco Central — euro observado",
         "sbif_uf": "Banco Central — UF",
@@ -641,7 +685,10 @@
     "loading": "Cargando…",
     "loadFailed": "Error al cargar",
     "loadFailedTables": "Error al cargar las tablas",
-    "backToDashboard": "← Panel"
+    "backToDashboard": "← Panel",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "close": "Cerrar"
   },
   "flows": {
     "layoutTitle": "Flujos",
