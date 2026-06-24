@@ -25,17 +25,20 @@ type Props = {
   period: CardGroupMetricsPeriod;
   cardSlug: string;
   animated?: boolean;
+  placeholderPhase?: boolean;
 };
 
 function DepositedMetricFlow({
   value,
   showUsd,
   animated,
+  placeholderPhase,
   mountSeedId,
 }: {
   value: number | null;
   showUsd: boolean;
   animated: boolean;
+  placeholderPhase: boolean;
   mountSeedId: string;
 }) {
   if (value == null) {
@@ -46,6 +49,7 @@ function DepositedMetricFlow({
     <AnimatedNumberFlow
       value={value}
       animated={animated}
+      placeholderPhase={placeholderPhase}
       mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
       mountSeedId={mountSeedId}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "$")}
@@ -63,6 +67,7 @@ function MetricsRow({
   deltaLabel,
   showUsd,
   animated,
+  placeholderPhase,
   cardSlug,
   rowKey,
 }: {
@@ -72,6 +77,7 @@ function MetricsRow({
   deltaLabel: string;
   showUsd: boolean;
   animated: boolean;
+  placeholderPhase: boolean;
   cardSlug: string;
   rowKey: string;
 }) {
@@ -83,6 +89,7 @@ function MetricsRow({
           value={deposited}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           mountSeedId={`${cardSlug}:deposited:${rowKey}`}
         />
       </span>
@@ -91,6 +98,7 @@ function MetricsRow({
           delta={delta}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           mountSeedId={`${cardSlug}:delta:${rowKey}`}
         />
       </span>
@@ -104,6 +112,7 @@ export function DashboardCardGroupMetrics({
   period,
   cardSlug,
   animated = true,
+  placeholderPhase = false,
 }: Props) {
   const { t } = useTranslation();
   const periodDepositsLabel =
@@ -130,6 +139,7 @@ export function DashboardCardGroupMetrics({
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           cardSlug={cardSlug}
           rowKey="total"
         />
@@ -140,6 +150,7 @@ export function DashboardCardGroupMetrics({
           deltaLabel={periodDeltaLabel}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           cardSlug={cardSlug}
           rowKey={period}
         />

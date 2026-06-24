@@ -46,6 +46,8 @@ type BaseProps = NumberFlowPassthrough & {
   mountDuration?: number;
   /** Caller-owned mount state (e.g. shared opacity with a leading ▲/▼). Skips inner opacity transition. */
   mountAnimation?: MountAnimationState;
+  /** While true: show placeholder target statically; one spin when this flips false (bundle landed). */
+  placeholderPhase?: boolean;
   emptyFallback?: ReactNode;
 };
 
@@ -191,15 +193,17 @@ export function useMountAnimation(
   target: number | null,
   animated: boolean,
   mountSeedDigitRange: [number, number] | undefined,
-  mountSeedId: string | undefined
+  mountSeedId: string | undefined,
+  placeholderPhase = false
 ): MountAnimationState {
   const mountSeed = useRef<number | null>(null);
   const mountDone = useRef(false);
+  const wasPlaceholderPhase = useRef(placeholderPhase);
   const useMountSeed = mountSeedDigitRange != null && mountSeedId != null;
   const mountDuration = 320;
 
   const initialDisplay = (): number | null => {
-    if (target == null || !animated || !useMountSeed) return target;
+    if (target == null || !animated || !useMountSeed || placeholderPhase) return target;
     if (mountSeed.current == null) {
       mountSeed.current = mountSeedFromStorage(mountSeedDigitRange, mountSeedId, target);
     }
@@ -208,18 +212,25 @@ export function useMountAnimation(
 
   const [displayValue, setDisplayValue] = useState<number | null>(initialDisplay);
   const [opacity, setOpacity] = useState(() =>
-    target != null && animated && useMountSeed ? 0.2 : 1
+    target != null && animated && useMountSeed && !placeholderPhase ? 0.2 : 1
   );
   const [mountFadePhase, setMountFadePhase] = useState<MountFadePhase>(() =>
-    target != null && animated && useMountSeed ? "hold" : "idle"
+    target != null && animated && useMountSeed && !placeholderPhase ? "hold" : "idle"
   );
   const opacityTransition = mountFadePhase === "arm" || mountFadePhase === "idle";
 
   useEffect(() => {
-    if (useMountSeed && mountSeedId && target != null && Number.isFinite(target) && mountDone.current) {
+    if (
+      useMountSeed &&
+      mountSeedId &&
+      target != null &&
+      Number.isFinite(target) &&
+      mountDone.current &&
+      !placeholderPhase
+    ) {
       persistMountValue(mountSeedId, target);
     }
-  }, [useMountSeed, mountSeedId, target]);
+  }, [useMountSeed, mountSeedId, target, placeholderPhase]);
 
   useEffect(() => {
     if (target == null) {
@@ -232,14 +243,30 @@ export function useMountAnimation(
       setDisplayValue(target);
       setOpacity(1);
       setMountFadePhase("idle");
-      mountDone.current = true;
-      if (useMountSeed && mountSeedId) persistMountValue(mountSeedId, target);
+      return;
+    }
+    if (placeholderPhase) {
+      wasPlaceholderPhase.current = true;
+      mountSeed.current = null;
+      setDisplayValue(target);
+      setOpacity(1);
+      setMountFadePhase("idle");
       return;
     }
     if (!useMountSeed) {
       setDisplayValue(target);
       setOpacity(1);
       setMountFadePhase("idle");
+      return;
+    }
+    const exitingPlaceholder = wasPlaceholderPhase.current;
+    wasPlaceholderPhase.current = false;
+    if (exitingPlaceholder) {
+      mountDone.current = true;
+      setDisplayValue(target);
+      setOpacity(1);
+      setMountFadePhase("idle");
+      if (mountSeedId) persistMountValue(mountSeedId, target);
       return;
     }
     if (!mountDone.current) {
@@ -253,10 +280,10 @@ export function useMountAnimation(
       return () => cancelAnimationFrame(paintFrame);
     }
     setDisplayValue(target);
-  }, [target, animated, useMountSeed, mountSeedDigitRange, mountSeedId]);
+  }, [target, animated, useMountSeed, mountSeedDigitRange, mountSeedId, placeholderPhase]);
 
   useLayoutEffect(() => {
-    if (mountFadePhase !== "arm" || mountDone.current || target == null) return;
+    if (mountFadePhase !== "arm" || mountDone.current || target == null || placeholderPhase) return;
     let fadeFrame = 0;
     fadeFrame = requestAnimationFrame(() => {
       setDisplayValue(target);
@@ -266,7 +293,7 @@ export function useMountAnimation(
       if (useMountSeed && mountSeedId) persistMountValue(mountSeedId, target);
     });
     return () => cancelAnimationFrame(fadeFrame);
-  }, [mountFadePhase, target, useMountSeed, mountSeedId]);
+  }, [mountFadePhase, target, useMountSeed, mountSeedId, placeholderPhase]);
 
   return { displayValue, opacity, mountDuration, opacityTransition };
 }
@@ -283,6 +310,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       wrapClassName,
       mountDuration: mountDurationProp,
       mountAnimation: mountAnimationProp,
+      placeholderPhase = false,
       emptyFallback,
       transformTiming,
       spinTiming,
@@ -293,7 +321,13 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     const hostRef = useRef<NumberFlowElement | null>(null);
     useImperativeHandle(ref, () => hostRef.current as NumberFlowElement);
 
-    const internalMount = useMountAnimation(target, animated, mountSeedDigitRange, mountSeedId);
+    const internalMount = useMountAnimation(
+      target,
+      animated,
+      mountSeedDigitRange,
+      mountSeedId,
+      placeholderPhase
+    );
     const { displayValue, opacity, mountDuration, opacityTransition } =
       mountAnimationProp ?? internalMount;
     const externalMount = mountAnimationProp != null;

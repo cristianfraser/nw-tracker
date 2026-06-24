@@ -16,11 +16,14 @@ import type { GroupPageShell } from "../queries/groupPageShell";
 import { readSidebarNavCache } from "../queries/sidebarNavCache";
 import type {
   DashboardAccountRow,
+  DashboardBucketCloseTotals,
   DashboardNavSnapshotResponse,
   DashboardResponse,
   FxLatest,
   NavTreeNodeDto,
 } from "../types";
+
+type NwBucketTotals = NonNullable<DashboardNavSnapshotResponse["nw_bucket_totals"]>;
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -685,6 +688,91 @@ function perturbAccountBalanceMaps(
   return { clp, usd };
 }
 
+function perturbBucketCloseTotals(close: DashboardBucketCloseTotals): DashboardBucketCloseTotals {
+  const real_estate_clp = perturbCachedAmount(close.real_estate_clp);
+  const retirement_clp = perturbCachedAmount(close.retirement_clp);
+  const brokerage_clp = perturbCachedAmount(close.brokerage_clp);
+  const cash_eqs_clp = perturbCachedAmount(close.cash_eqs_clp);
+  const net_worth_clp = real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
+
+  const real_estate_usd = perturbOptionalNumber(close.real_estate_usd);
+  const retirement_usd = perturbOptionalNumber(close.retirement_usd);
+  const brokerage_usd = perturbOptionalNumber(close.brokerage_usd);
+  const cash_eqs_usd = perturbOptionalNumber(close.cash_eqs_usd);
+  const hasUsd =
+    real_estate_usd != null ||
+    retirement_usd != null ||
+    brokerage_usd != null ||
+    cash_eqs_usd != null ||
+    close.net_worth_usd != null;
+
+  return {
+    net_worth_clp,
+    real_estate_clp,
+    retirement_clp,
+    brokerage_clp,
+    cash_eqs_clp,
+    ...(hasUsd
+      ? {
+          net_worth_usd:
+            (real_estate_usd ?? 0) + (retirement_usd ?? 0) + (brokerage_usd ?? 0) + (cash_eqs_usd ?? 0),
+          ...(real_estate_usd != null ? { real_estate_usd } : {}),
+          ...(retirement_usd != null ? { retirement_usd } : {}),
+          ...(brokerage_usd != null ? { brokerage_usd } : {}),
+          ...(cash_eqs_usd != null ? { cash_eqs_usd } : {}),
+        }
+      : {}),
+  };
+}
+
+function perturbNwBucketTotals(buckets: NwBucketTotals): NwBucketTotals {
+  const real_estate_clp = perturbCachedAmount(buckets.real_estate_clp);
+  const retirement_clp = perturbCachedAmount(buckets.retirement_clp);
+  const brokerage_clp = perturbCachedAmount(buckets.brokerage_clp);
+  const cash_eqs_clp = perturbCachedAmount(buckets.cash_eqs_clp);
+  const net_worth_clp = real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
+
+  const real_estate_usd = perturbOptionalNumber(buckets.real_estate_usd);
+  const retirement_usd = perturbOptionalNumber(buckets.retirement_usd);
+  const brokerage_usd = perturbOptionalNumber(buckets.brokerage_usd);
+  const cash_eqs_usd = perturbOptionalNumber(buckets.cash_eqs_usd);
+  const hasUsd =
+    real_estate_usd != null ||
+    retirement_usd != null ||
+    brokerage_usd != null ||
+    cash_eqs_usd != null ||
+    buckets.net_worth_usd != null;
+
+  const prior = buckets.prior_closes;
+  const prior_closes = prior
+    ? {
+        month_end: prior.month_end,
+        year_end: prior.year_end,
+        month: perturbBucketCloseTotals(prior.month),
+        year: perturbBucketCloseTotals(prior.year),
+      }
+    : prior;
+
+  return {
+    net_worth_clp,
+    real_estate_clp,
+    retirement_clp,
+    brokerage_clp,
+    cash_eqs_clp,
+    prior_closes,
+    ...(hasUsd
+      ? {
+          net_worth_usd:
+            (real_estate_usd ?? 0) + (retirement_usd ?? 0) + (brokerage_usd ?? 0) + (cash_eqs_usd ?? 0),
+          ...(real_estate_usd != null ? { real_estate_usd } : {}),
+          ...(retirement_usd != null ? { retirement_usd } : {}),
+          ...(brokerage_usd != null ? { brokerage_usd } : {}),
+          ...(cash_eqs_usd != null ? { cash_eqs_usd } : {}),
+        }
+      : {}),
+  };
+}
+
 export function perturbDashboardNavSnapshot(
   snapshot: DashboardNavSnapshotResponse
 ): DashboardNavSnapshotResponse {
@@ -700,8 +788,13 @@ export function perturbDashboardNavSnapshot(
     sortSnapshot
   );
 
+  const nw_bucket_totals = snapshot.nw_bucket_totals
+    ? perturbNwBucketTotals(snapshot.nw_bucket_totals)
+    : snapshot.nw_bucket_totals;
+
   return {
     ...snapshot,
+    nw_bucket_totals,
     accounts: snapshot.accounts.map((row) =>
       perturbDashboardAccountRow(row, {
         current_value_clp: clpByAccount.has(row.account_id)

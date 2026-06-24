@@ -15,6 +15,7 @@ type Props = {
   animated?: boolean;
   mountSeedId?: string;
   className?: string;
+  placeholderPhase?: boolean;
 };
 
 /** Title-row period balance change: muted, `+` / accounting parentheses (not ▲/▼ or P/L colors). */
@@ -24,13 +25,15 @@ export function TitleBalanceDeltaFlow({
   animated = true,
   mountSeedId = "title-balance-delta",
   className = "",
+  placeholderPhase = false,
 }: Props) {
   const useMountSeed = animated && mountSeedId != null && delta != null;
   const mountAnimation = useMountAnimation(
     delta,
     animated,
     useMountSeed ? METRIC_MOUNT_DIGIT_RANGE : undefined,
-    useMountSeed ? mountSeedId : undefined
+    useMountSeed ? mountSeedId : undefined,
+    placeholderPhase
   );
 
   if (delta == null) {
@@ -59,6 +62,7 @@ export function TitleBalanceDeltaFlow({
         mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
         mountSeedId={mountSeedId}
         mountAnimation={mountAnimation}
+        placeholderPhase={placeholderPhase}
         mapDisplayValue={(n) => titleBalanceDeltaNumberFlowParts(n, unit, "$")}
         className="mono"
         transformTiming={METRIC_TIMING.transformTiming}

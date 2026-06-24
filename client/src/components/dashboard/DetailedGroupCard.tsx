@@ -13,6 +13,7 @@ export type DetailedGroupCardProps = {
   apiUsd?: number | null;
   cardSlug: string;
   animated?: boolean;
+  placeholderPhase?: boolean;
   /** Deposits / Δ rows (e.g. `DashboardCardGroupMetrics`). */
   metrics?: ReactNode;
   /** Breakdown list or other footer content. */
@@ -38,6 +39,7 @@ export function DetailedGroupCard({
   apiUsd,
   cardSlug,
   animated = true,
+  placeholderPhase = false,
   metrics,
   breakdown,
   className,
@@ -54,6 +56,7 @@ export function DetailedGroupCard({
         showUsd={showUsd}
         cardSlug={cardSlug}
         animated={animated}
+        placeholderPhase={placeholderPhase}
       />
       <div className="value">
         <DashboardCardValue
@@ -61,6 +64,7 @@ export function DetailedGroupCard({
           apiUsd={apiUsd}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           mountSeedKey={cardSlug}
           fxMissing={fxMissing}
           syncStale={syncStale}

@@ -24,6 +24,7 @@ import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFro
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
+import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
 import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
@@ -50,11 +51,7 @@ export function LiabilitiesGroupPage() {
   const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
-  const { data: navCtx } = useDashboardNavContext(
-    displayUnit,
-    pathnameUsesDashboardNavContext(pathname)
-  );
-  const overviewPoints = navCtx?.overviewPoints ?? [];
+  const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
 
   const navMatchNode = useMemo(() => {
     const best = findBestNavNodeForPathname(sidebarNav?.main, pathname);
@@ -125,6 +122,11 @@ export function LiabilitiesGroupPage() {
     isPlaceholderData,
     bundleReady,
   });
+
+  const navCtxEnabled =
+    pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
+  const { data: navCtx } = useDashboardNavContext(displayUnit, navCtxEnabled);
+  const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);

@@ -10,6 +10,7 @@ type Props = {
   showUsd: boolean;
   cardSlug: string;
   animated?: boolean;
+  placeholderPhase?: boolean;
 };
 
 export function DashboardCardTitleRow({
@@ -19,6 +20,7 @@ export function DashboardCardTitleRow({
   showUsd,
   cardSlug,
   animated = true,
+  placeholderPhase = false,
 }: Props) {
   const labelNode = titleTo ? <Link to={titleTo}>{label}</Link> : label;
   return (
@@ -29,6 +31,7 @@ export function DashboardCardTitleRow({
           delta={balanceDelta}
           showUsd={showUsd}
           animated={animated}
+          placeholderPhase={placeholderPhase}
           mountSeedId={`${cardSlug}:title-balance-delta`}
           className="card-title-row__delta"
         />

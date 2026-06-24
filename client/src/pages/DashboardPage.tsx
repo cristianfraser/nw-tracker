@@ -537,7 +537,7 @@ export function DashboardPage() {
               overviewPoints,
               metricsPeriod,
               showUsd,
-              animated: !unitSwitching && !contentLoading,
+              animated: !unitSwitching,
             }
           : null
       }

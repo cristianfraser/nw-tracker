@@ -1,6 +1,13 @@
 import type { DashboardNavSnapshotResponse, DashboardResponse } from "../types";
 import type { DisplayUnit } from "./keys";
 
+/** True when localStorage has a nav-snapshot row for this unit (CLP fallback for USD). */
+export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
+  if (readDashboardNavSnapshotCache(unit) != null) return true;
+  if (unit === "usd" && readDashboardNavSnapshotCache("clp") != null) return true;
+  return false;
+}
+
 /** Bump when cached snapshot shape changes (e.g. v3 adds `nw_bucket_totals`). */
 const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v3";
 

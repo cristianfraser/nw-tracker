@@ -39,6 +39,8 @@ export type GroupInfoPortfolioStrip = {
   animated?: boolean;
   /** When false, the strip is omitted (e.g. group page before valuation data is ready). Default true. */
   enabled?: boolean;
+  /** While bundle loads: static placeholder values, then one spin to final. */
+  placeholderPhase?: boolean;
   compactTitleTo?: string;
 };
 
@@ -123,6 +125,7 @@ export function GroupInfoBase({
             showUsd={portfolio.showUsd}
             metricsPeriod={portfolio.metricsPeriod}
             animated={portfolio.animated}
+            placeholderPhase={portfolio.placeholderPhase ?? loading}
           />
         ) : null}
         {notice}

@@ -7,6 +7,7 @@ import {
   fetchPortfolioGroupBundle,
 } from "./fetchers";
 import { api } from "../api";
+import { hasDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
 import { queryKeys, type DisplayUnit } from "./keys";
 
 /** Cached CLP/USD bundles stay warm while toggling display unit. */
@@ -33,6 +34,7 @@ export function prefetchDashboardNavContext(
   queryClient: QueryClient,
   unit: DisplayUnit
 ): Promise<void> {
+  if (hasDashboardNavSnapshotCache(unit)) return Promise.resolve();
   return queryClient.prefetchQuery({
     queryKey: queryKeys.dashboardNav(unit),
     queryFn: () => fetchDashboardNavContext(unit),
@@ -44,6 +46,7 @@ export function prefetchDashboardNavSnapshot(
   queryClient: QueryClient,
   unit: DisplayUnit
 ): Promise<void> {
+  if (hasDashboardNavSnapshotCache(unit)) return Promise.resolve();
   return queryClient.prefetchQuery({
     queryKey: queryKeys.dashboardNavSnapshot(unit),
     queryFn: () => fetchDashboardNavSnapshot(unit),
