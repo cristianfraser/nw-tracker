@@ -17,6 +17,7 @@ import {
   valuationDataKeysForInitialZeroAnchors,
 } from "../../chartSeriesInitialZeroAnchors";
 import { useAccountDetailBundle, useDashboardNavContext, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
+import { hasDashboardNavSnapshotCache } from "../../queries/dashboardNavSnapshotCache";
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
@@ -142,7 +143,11 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const needsNavChildCards =
     (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
 
-  const { data: navCtx } = useDashboardNavContext(displayUnit, needsNavChildCards);
+  const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
+  const { data: navCtx } = useDashboardNavContext(
+    displayUnit,
+    needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
+  );
   const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
   const overviewPoints = navCtx?.overviewPoints ?? [];
 

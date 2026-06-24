@@ -18,6 +18,7 @@ export type PortfolioNavAccountCompactCardsProps = {
   showUsd: boolean;
   metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
+  placeholderPhase?: boolean;
 };
 
 /** Third-row compact cards for account nav leaves under a portfolio group. */
@@ -27,6 +28,7 @@ export function PortfolioNavAccountCompactCards({
   showUsd,
   metricsPeriod,
   animated = true,
+  placeholderPhase = false,
 }: PortfolioNavAccountCompactCardsProps) {
   const sorted = useMemo(() => {
     const filtered = navChildren.filter((c) => c.route_path?.trim());
@@ -69,6 +71,7 @@ export function PortfolioNavAccountCompactCards({
               syncStale={syncStale}
               cardSlug={cardSlug}
               animated={animated}
+              placeholderPhase={placeholderPhase}
               stripInner
               valueVariant="main"
               metrics={
@@ -78,6 +81,7 @@ export function PortfolioNavAccountCompactCards({
                   period={metricsPeriod}
                   cardSlug={cardSlug}
                   animated={animated}
+                  placeholderPhase={placeholderPhase}
                 />
               }
             />

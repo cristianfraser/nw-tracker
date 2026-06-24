@@ -65,6 +65,7 @@ export function AccountDetailSharedLayout({
         showUsd={displayUnit === "usd"}
         metricsPeriod={metricsPeriod}
         animated
+        placeholderPhase={loading}
       />
     ) : null;
 
@@ -82,6 +83,7 @@ export function AccountDetailSharedLayout({
               apiUsd={displayUnit === "usd" ? heroApiUsd : null}
               cardSlug={`acc-${accountId}-hero`}
               animated
+              placeholderPhase={loading}
               stripInner
               valueVariant="main"
               metrics={
@@ -91,6 +93,7 @@ export function AccountDetailSharedLayout({
                   period={metricsPeriod}
                   cardSlug={`acc-${accountId}-hero`}
                   animated
+                  placeholderPhase={loading}
                 />
               }
             />

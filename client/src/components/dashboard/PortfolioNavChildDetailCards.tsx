@@ -25,6 +25,7 @@ export type PortfolioNavChildDetailCardsProps = {
   showUsd: boolean;
   metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
+  placeholderPhase?: boolean;
 };
 
 /** Second-row dashboard-style cards for first-level portfolio nav children (subset of dashboard accounts). */
@@ -35,6 +36,7 @@ export function PortfolioNavChildDetailCards({
   showUsd,
   metricsPeriod,
   animated = true,
+  placeholderPhase = false,
 }: PortfolioNavChildDetailCardsProps) {
   const sorted = useMemo(() => {
     const filtered = navChildren.filter((c) => c.route_path?.trim());
@@ -88,6 +90,7 @@ export function PortfolioNavChildDetailCards({
             syncStale={syncStale}
             cardSlug={cardSlug}
             animated={animated}
+            placeholderPhase={placeholderPhase}
             className={cashClass}
             metrics={
               <DashboardCardGroupMetrics
@@ -96,6 +99,7 @@ export function PortfolioNavChildDetailCards({
                 period={metricsPeriod}
                 cardSlug={cardSlug}
                 animated={animated}
+                placeholderPhase={placeholderPhase}
               />
             }
             breakdown={
@@ -107,6 +111,7 @@ export function PortfolioNavChildDetailCards({
                   showUsd={showUsd}
                   cardSlug={cardSlug}
                   animated={animated}
+                  placeholderPhase={placeholderPhase}
                 />
               ) : null
             }

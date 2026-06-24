@@ -37,6 +37,7 @@ export type PortfolioNavEntityCardsStripProps = {
   showUsd: boolean;
   metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
+  placeholderPhase?: boolean;
 };
 
 /**
@@ -51,6 +52,7 @@ export function PortfolioNavEntityCardsStrip({
   showUsd,
   metricsPeriod,
   animated = true,
+  placeholderPhase = false,
 }: PortfolioNavEntityCardsStripProps) {
   const parentTitleMode = portfolioNavParentTitleModeForNavNode(parentNavNode);
   const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
@@ -119,6 +121,7 @@ export function PortfolioNavEntityCardsStrip({
       showUsd={showUsd}
       cardSlug={compactCardSlug}
       animated={animated}
+      placeholderPhase={placeholderPhase}
     />
   ) : undefined;
 
@@ -139,6 +142,7 @@ export function PortfolioNavEntityCardsStrip({
             apiUsd={parentTotals.apiUsd}
             cardSlug={compactCardSlug}
             animated={animated}
+            placeholderPhase={placeholderPhase}
             stripInner
             valueVariant="main"
             breakdown={compactBreakdown}
@@ -149,6 +153,7 @@ export function PortfolioNavEntityCardsStrip({
                 period={metricsPeriod}
                 cardSlug={compactCardSlug}
                 animated={animated}
+                placeholderPhase={placeholderPhase}
               />
             }
           />
@@ -162,6 +167,7 @@ export function PortfolioNavEntityCardsStrip({
               showUsd={showUsd}
               metricsPeriod={metricsPeriod}
               animated={animated}
+              placeholderPhase={placeholderPhase}
             />
           ) : null
         }
@@ -173,6 +179,7 @@ export function PortfolioNavEntityCardsStrip({
               showUsd={showUsd}
               metricsPeriod={metricsPeriod}
               animated={animated}
+              placeholderPhase={placeholderPhase}
             />
           ) : null
         }
