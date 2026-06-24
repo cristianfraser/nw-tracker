@@ -1,5 +1,5 @@
 import { upsertEquityDailySeries, EQUITY_DAILY_IMPORT_TICKERS } from "./brokerageEquityMtm.js";
-import { listNyseEquityTickersForEodSync } from "./accountEquityTicker.js";
+import { listWatchlistCryptoTickersForEodSync, listWatchlistNyseTickersForEodSync } from "./watchlist.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
@@ -36,7 +36,7 @@ export function latestEquityEodTradeDate(ticker: string): string | null {
 
 /** All NYSE account tickers have `equity_daily` through `sessionYmd`. */
 export function equityNyseEodCaughtUp(sessionYmd: string): boolean {
-  const tickers = listNyseEquityTickersForEodSync();
+  const tickers = listWatchlistNyseTickersForEodSync();
   if (tickers.length === 0) return true;
   return tickers.every((ticker) => {
     const latest = latestEquityEodTradeDate(ticker);
@@ -46,7 +46,7 @@ export function equityNyseEodCaughtUp(sessionYmd: string): boolean {
 
 /** All crypto import tickers have `equity_daily` through `utcYmd`. */
 export function equityCryptoEodCaughtUp(utcYmd: string): boolean {
-  return EQUITY_CRYPTO_TICKERS.every((ticker) => {
+  return listWatchlistCryptoTickersForEodSync().every((ticker) => {
     const latest = latestEquityEodTradeDate(ticker);
     return latest != null && latest >= utcYmd;
   });
@@ -220,7 +220,7 @@ export async function syncEquityEodFromYahoo(
 export function syncStocksNyseFromYahoo(
   opts?: { dryRun?: boolean; now?: Date; force?: boolean }
 ): Promise<EquityEodSyncResult[]> {
-  return syncEquityEodFromYahoo(listNyseEquityTickersForEodSync(), opts);
+  return syncEquityEodFromYahoo(listWatchlistNyseTickersForEodSync(), opts);
 }
 
 /** Upsert recent CoinGecko daily USD closes into `equity_daily` for BTC-USD / ETH-USD. */
@@ -231,7 +231,7 @@ export async function syncCryptoEodFromCoinGecko(
   const dryRun = opts?.dryRun ?? false;
   const out: EquityEodSyncResult[] = [];
 
-  for (const ticker of EQUITY_CRYPTO_TICKERS) {
+  for (const ticker of listWatchlistCryptoTickersForEodSync()) {
     try {
       let series = await fetchCoinGeckoRecentDailyCloses(ticker, 30);
       series = capCryptoEodSeriesToCompletedUtcDay(series, now);

@@ -26,6 +26,11 @@ import {
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
+import {
+  isRiskyNorrisProxyMtmSeries,
+  riskyNorrisProxyCuotaForMtm,
+  shouldUseRiskyNorrisProxyMtm,
+} from "./riskyNorrisProxyMtm.js";
 
 /** Net coin held today (Σ `units_delta` on crypto MTM accounts). */
 export function netCryptoCoinFromMovements(accountId: number, _asset: CryptoAsset): number | null {
@@ -54,14 +59,25 @@ function fintualCertPositionMeta(
   accountId: number,
   importNotes: string,
   displayTicker: string,
-  asOfYmd: string
+  asOfYmd: string,
+  now: Date = new Date()
 ): AccountPositionMeta | null {
   const seriesKey = fundSeriesKeyForAccount(accountId);
   if (!seriesKey) return null;
   const cuotas = fintualGoalUnitsFromMovementsThroughDate(accountId, asOfYmd);
   const fu = latestFundUnitRowOnOrBefore(seriesKey, asOfYmd);
-  const px = fu?.unit_value_clp;
-  const pxDay = fu?.day;
+  let px = fu?.unit_value_clp;
+  let pxDay = fu?.day;
+  const today = chileCalendarTodayYmd();
+  if (
+    asOfYmd === today &&
+    isRiskyNorrisProxyMtmSeries(seriesKey) &&
+    shouldUseRiskyNorrisProxyMtm(now)
+  ) {
+    const proxyPx = riskyNorrisProxyCuotaForMtm(seriesKey, now);
+    px = proxyPx;
+    pxDay = today;
+  }
   const out: AccountPositionMeta = {
     ticker: displayTicker,
     units_kind: "shares",
@@ -135,15 +151,21 @@ export function equityBrokeragePositionMeta(
 export function getAccountPositionMeta(
   accountId: number,
   categorySlug: string,
-  opts?: { afpCuotasAsOfYmd?: string; accountNotes?: string | null; accountName?: string | null }
+  opts?: {
+    afpCuotasAsOfYmd?: string;
+    accountNotes?: string | null;
+    accountName?: string | null;
+    now?: Date;
+  }
 ): AccountPositionMeta | null {
+  const now = opts?.now ?? new Date();
   const asOf =
     opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
       ? opts.afpCuotasAsOfYmd.trim()
       : chileCalendarTodayYmd();
   if (opts?.accountNotes && isFintualCertV2ValuationNotes(opts.accountNotes)) {
     const ticker = (opts.accountName ?? "Fintual").trim() || "Fintual";
-    return fintualCertPositionMeta(accountId, opts.accountNotes, ticker, asOf);
+    return fintualCertPositionMeta(accountId, opts.accountNotes, ticker, asOf, now);
   }
 
   const equityTicker = equityTickerForAccount(accountId);
@@ -241,7 +263,8 @@ export function liveFintualCertDisplayValueClp(
   accountId: number,
   importNotes: string,
   accountName: string | null | undefined,
-  asOfYmd?: string
+  asOfYmd?: string,
+  now?: Date
 ): { value_clp: number; as_of_date: string } | null {
   const asOf =
     asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
@@ -249,7 +272,8 @@ export function liveFintualCertDisplayValueClp(
     accountId,
     importNotes,
     (accountName ?? "Fintual").trim() || "Fintual",
-    asOf
+    asOf,
+    now ?? new Date()
   );
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;

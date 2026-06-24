@@ -37,6 +37,8 @@ export type GlobalSyncStateFile = {
   equityEodLastNySessionYmd?: string;
   /** Last UTC day we synced crypto EOD. */
   equityEodLastCryptoUtcYmd?: string;
+  /** Chile day of last successful Risky Norris proxy composition sync. */
+  fintualRnCompositionLastSyncYmd?: string;
   /** Sources marked stale from the sync log UI until the next successful sync step. */
   userForcedStale?: string[];
 };

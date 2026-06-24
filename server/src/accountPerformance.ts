@@ -673,11 +673,8 @@ function buildAccountMonthlyPerformanceUncached(
 
   const dk = String(accountId);
   const depKeyFull = `${dk}__dep`;
-  const depKeyDisplay = `${dk}__dep_display`;
   let pts = [...ts.accounts.points].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
-  const depKey = pts.some((p) => p[depKeyDisplay] != null && Number.isFinite(Number(p[depKeyDisplay])))
-    ? depKeyDisplay
-    : depKeyFull;
+  const depKey = depKeyFull;
 
   const bookAsc = loadBookValuationsAsc(accountId);
   const exactClpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));

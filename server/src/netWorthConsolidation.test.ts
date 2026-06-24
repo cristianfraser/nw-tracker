@@ -3,9 +3,61 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
-import { buildNetWorthConsolidatedMonthly, netWorthCurrentMonthMetrics } from "./netWorthConsolidation.js";
+import { buildNetWorthConsolidatedMonthly, buildInversionesConsolidatedMonthly, inversionesPeriodMetrics, netWorthCurrentMonthMetrics } from "./netWorthConsolidation.js";
 import { getDashboardValuationTimeseries } from "./valuationTimeseries.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
+
+describe("buildInversionesConsolidatedMonthly", () => {
+  it("current month net_capital_flow sums brokerage + retirement bucket consolidations", async () => {
+    await withPortfolioGroupIndex(async () => {
+      const invRows = buildInversionesConsolidatedMonthly("clp");
+      const broDetalle = getGroupConsolidatedTables("brokerage", "clp");
+      const retDetalle = getGroupConsolidatedTables("retirement", "clp");
+      const mk = monthKeyFromYmd(chileCalendarTodayYmd());
+
+      const invRow = invRows.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
+      const broRow = broDetalle.consolidated_monthly.find(
+        (r) => monthKeyFromYmd(r.as_of_date) === mk
+      );
+      const retRow = retDetalle.consolidated_monthly.find(
+        (r) => monthKeyFromYmd(r.as_of_date) === mk
+      );
+      if (!invRow || !broRow || !retRow) return;
+
+      expect(Math.round(invRow.net_capital_flow)).toBe(
+        Math.round(broRow.net_capital_flow + retRow.net_capital_flow)
+      );
+      expect(Math.round(invRow.closing_value)).toBe(
+        Math.round(broRow.closing_value + retRow.closing_value)
+      );
+    });
+  });
+
+  it("inversiones detalle matches buildInversionesConsolidatedMonthly", async () => {
+    await withPortfolioGroupIndex(async () => {
+      const canonical = buildInversionesConsolidatedMonthly("clp");
+      const detalle = getGroupConsolidatedTables("inversiones", "clp");
+      const mk = monthKeyFromYmd(chileCalendarTodayYmd());
+      const canonicalRow = canonical.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
+      const detalleRow = detalle.consolidated_monthly.find(
+        (r) => monthKeyFromYmd(r.as_of_date) === mk
+      );
+      if (!canonicalRow || !detalleRow) return;
+      expect(Math.round(detalleRow.net_capital_flow)).toBe(Math.round(canonicalRow.net_capital_flow));
+      expect(Math.round(detalleRow.closing_value)).toBe(Math.round(canonicalRow.closing_value));
+    });
+  });
+
+  it("inversionesPeriodMetrics matches consolidated row", () => {
+    const rows = buildInversionesConsolidatedMonthly("clp");
+    const mk = monthKeyFromYmd(chileCalendarTodayYmd());
+    const row = rows.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
+    const metrics = inversionesPeriodMetrics("clp").month;
+    if (!row || !metrics) return;
+    expect(metrics.net_capital_flow_clp).toBe(Math.round(row.net_capital_flow));
+    expect(metrics.closing_clp).toBe(Math.round(row.closing_value));
+  });
+});
 
 describe("buildNetWorthConsolidatedMonthly", () => {
   it("current month net_capital_flow sums bucket account deposits", () => {

@@ -99,6 +99,7 @@ import {
   formatClp,
   resolveFintualGoalNavs,
 } from "../scripts/fintualRealAssetNav.js";
+import { syncRiskyNorrisComposition } from "./fintualRiskyNorrisComposition.js";
 import {
   fetchDolarAfterDate,
   fetchEuroAfterDate,
@@ -123,7 +124,7 @@ import {
   upsertUfRows,
   upsertUtmRows,
 } from "./sbifSyncDb.js";
-import { listNyseEquityTickersForEodSync } from "./accountEquityTicker.js";
+import { listWatchlistNyseTickersForEodSync } from "./watchlist.js";
 import {
   EQUITY_CRYPTO_TICKERS,
   equityEodCryptoStateYmd,
@@ -827,7 +828,7 @@ async function runStocksNyse(
     console.log("sync: NYSE stocks — skip (session EOD already in DB).");
     return;
   }
-  const nyseTickers = listNyseEquityTickersForEodSync();
+  const nyseTickers = listWatchlistNyseTickersForEodSync();
   const eodBefore = snapshotEodBefore(nyseTickers);
   const results = await syncStocksNyseFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
   applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_nyse", "NYSE stocks", { notes });
@@ -1014,6 +1015,33 @@ async function runSbifIpc(
   console.log(`sync: BCentral IPC — ${n} row(s) after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
+async function runFintualRnComposition(
+  cl: ReturnType<typeof chileWallClockNow>,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  if (syncDryRun) {
+    console.log("sync: Risky Norris composition — dry-run skip");
+    return;
+  }
+  const result = await syncRiskyNorrisComposition(cl);
+  notes.push({
+    step: "Risky Norris composition",
+    message: `${result.holdings_count} ETFs as of ${result.composition_date} (ETF sleeve ${(result.raw_etf_weight_sum * 100).toFixed(1)}% normalized); anchor cuota ${formatClp(result.anchor_fund_unit_clp)} CLP`,
+  });
+  changes.push({
+    group: "fintual",
+    label: "Risky Norris proxy composition",
+    oldValue: "—",
+    newValue: `${result.holdings_count} holdings`,
+    oldDate: null,
+    newDate: result.composition_date,
+  });
+  console.log(
+    `sync: Risky Norris composition — ${result.holdings_count} ETF(s) as of ${result.composition_date} (${result.tickers.join(", ")})`
+  );
+}
+
 /** Run all external syncs. Returns exit code 0 on success, 1 if any step failed. */
 export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<number> {
   syncDryRun = opts?.dryRun ?? process.argv.includes("--dry-run");
@@ -1046,6 +1074,18 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
     });
+
+    await runSyncStepIfStale(
+      "fintual_rn_composition",
+      stale,
+      "Risky Norris composition",
+      stepErrors,
+      state!,
+      cl,
+      async () => {
+        await runFintualRnComposition(cl, syncChanges, stepNotes);
+      }
+    );
 
     await runSyncStepIfStale("yahoo_fx_usd", stale, "Yahoo USD/CLP", stepErrors, state!, cl, async () => {
       await runYahooFxUsd(state!, syncChanges, stepNotes);

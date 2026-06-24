@@ -2,6 +2,7 @@ import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
+import { isUsdCashAccount } from "./usdCashAccounts.js";
 
 export type NavTreeBuildOptions = {
   /** Panel / admin views: keep accounts with long zero valuation tails in the tree. */
@@ -122,7 +123,13 @@ function buildNode(
         children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta, options));
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
-      if (!options.includeChartInactiveAccounts && accountChartInactive(item.account_id)) continue;
+      if (
+        !options.includeChartInactiveAccounts &&
+        accountChartInactive(item.account_id) &&
+        !isUsdCashAccount(item.account_id)
+      ) {
+        continue;
+      }
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({

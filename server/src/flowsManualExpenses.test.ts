@@ -47,6 +47,8 @@ describe("flowsManualExpenses", () => {
     expect(line?.category_slug).toBe("supermarket");
     expect(line?.expense_month).toBe("2099-03");
     expect(line?.amount_clp).toBe(123_456);
+    expect(line?.amount_usd_at_expense).not.toBeNull();
+    expect(line?.amount_usd_at_expense).toBeGreaterThan(0);
     expect(line?.origin_label).toBe("Manual");
     expect(line?.purchase_key).toBe(`manual:${id}`);
   });

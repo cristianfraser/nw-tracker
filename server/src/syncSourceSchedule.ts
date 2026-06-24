@@ -10,12 +10,13 @@ import {
   YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE,
 } from "./fxYahooEodSync.js";
 import { isFintualFundPublishDay } from "./fintualPublishDate.js";
-import type { GlobalSyncStateFile } from "./globalSyncState.js";
+import { loadGlobalSyncState } from "./globalSyncState.js";
 import type { GlobalSyncSource } from "./globalSyncStale.js";
 import { isChileBusinessDay, isChileHoliday, isNyseHoliday, isNyseTradingDay } from "./marketHolidays.js";
 import { isAfterNyseRegularClose, nyseWallClock } from "./nyseSession.js";
 
 const SBIF_OBSERVED_STALE_AFTER_HOUR_CHILE = 18;
+const FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE = 10;
 
 export type SyncWallTime = {
   ymd: string;
@@ -225,6 +226,16 @@ function scheduleForSource(
       const tomorrow = chileCalendarAddDays(cl.ymd, 1);
       return {
         next_sync: chileTimeOnYmd(tomorrow, CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE, CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE),
+        next_sync_imminent: false,
+        today_day_kind: chileDayKind(cl.ymd),
+      };
+    }
+    case "fintual_rn_composition": {
+      const last = loadGlobalSyncState().fintualRnCompositionLastSyncYmd?.trim();
+      const nextYmd =
+        last && /^\d{4}-\d{2}-\d{2}$/.test(last) ? chileCalendarAddDays(last, 30) : cl.ymd;
+      return {
+        next_sync: chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, 0),
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

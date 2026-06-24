@@ -4,6 +4,8 @@ import { db } from "./db.js";
 import { listYahooFxRejectedAsc } from "./fxYahooRejectedDb.js";
 import { fxMonthEndForBalanceUsd, fxRowOnOrBefore } from "./fxRates.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
+import type { FxConversionWarning } from "./fxConversionWarnings.js";
+import { takeFxConversionWarnings } from "./fxConversionWarnings.js";
 
 /** Minimum daily rows expected after Yahoo CLP=X EOD backfill (~252 NYSE sessions/year). */
 const SPARSE_DAILY_MIN = 500;
@@ -22,6 +24,8 @@ export type FxCoverage = {
   max_gap_days: number;
   /** Yahoo CLP=X bars rejected at ingest (conversions use prior good fx_daily row). */
   yahoo_rejected: { date: string; raw_clp_per_usd: number; reason: string }[];
+  /** FX rate fallbacks / reference CLP conversions during this payload build. */
+  conversion_warnings: FxConversionWarning[];
 };
 
 function fxDailyStats(): {
@@ -77,6 +81,7 @@ export function buildFxCoverage(): FxCoverage {
       ...stats,
       is_sparse: true,
       yahoo_rejected: listYahooFxRejectedForCoverage(),
+      conversion_warnings: [],
     };
   }
 
@@ -100,6 +105,15 @@ export function buildFxCoverage(): FxCoverage {
     ...stats,
     is_sparse,
     yahoo_rejected: listYahooFxRejectedForCoverage(),
+    conversion_warnings: [],
+  };
+}
+
+/** `buildFxCoverage()` plus conversion warnings collected since last `clearFxConversionWarnings()`. */
+export function buildFxCoverageWithConversionWarnings(): FxCoverage {
+  return {
+    ...buildFxCoverage(),
+    conversion_warnings: takeFxConversionWarnings(),
   };
 }
 

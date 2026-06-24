@@ -1,10 +1,10 @@
 import { loadBookValuationsAsc } from "./bookValuations.js";
 
 /**
- * Matches client {@link DEFAULT_TRAILING_ZERO_MONTHS_KEPT}: months of trailing **zero** balance
- * kept at the end of the monthly closing series before the rest is treated as inactive tail.
+ * `chart_inactive` / summary breakdown: one trailing zero month-end → inactive (hide breakdown line).
+ * Chart tail **display** uses client `DEFAULT_TRAILING_ZERO_MONTHS_KEPT` (= 1) to keep one plotted zero.
  */
-export const CHART_TRAILING_ZERO_MONTHS_KEPT = 3;
+export const CHART_TRAILING_ZERO_MONTHS_KEPT = 0;
 
 /**
  * Same rule as client `trailingZeroTailClipStartIndex` on ascending monthly closes: more than

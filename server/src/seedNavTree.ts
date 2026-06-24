@@ -528,10 +528,27 @@ export function seedNavTree(): void {
       label_i18n_key: "sidebar.rates",
       sort_order: 60,
       route_path: "/rates",
+      active_prefix: "/rates",
+      nav_end: false,
+      show_leaf_hyphen: false,
+      sidebar_section: "link",
+    });
+
+    upsert({
+      slug: "rates_watchlist",
+      label: "Watchlist",
+      label_i18n_key: "sidebar.watchlist",
+      parent_slug: "rates",
+      sort_order: 10,
+      route_path: "/watchlist",
       nav_end: true,
       show_leaf_hyphen: false,
       sidebar_section: "link",
     });
+
+    const ratesId = (groupIdBySlug.get("rates") as { id: number }).id;
+    deleteGroupItems.run(ratesId);
+    linkGroup("rates", "rates_watchlist", 10);
 
     rebuildNetWorthDashboardLinks();
     applyDashboardBucketLayout();
