@@ -1,8 +1,11 @@
 import { movementIsApvAStateBonus } from "./apvAStateBonusInference.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
+import { isUsdCashAccount } from "./movementTransfer.js";
+import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 
 /**
  * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
@@ -16,9 +19,21 @@ import { db } from "./db.js";
  */
 
 /** Dated CLP flow toward cumulative “aportes” (positive = in, negative = out). */
-export type DepositInflowEvent = { occurred_on: string; amt: number };
+export type DepositInflowEvent = {
+  occurred_on: string;
+  /** CLP amount for CLP display (wire CLP or reference CLP). */
+  amt: number;
+  /** Native USD when known (wire or USD-reference capital). */
+  amt_usd?: number | null;
+  capital_kind?: "clp_wire" | "usd_reference";
+};
 
 type SortFlow = { occurred_on: string; amt: number; tie: string };
+
+type MergedSortFlow = SortFlow & {
+  amt_usd?: number | null;
+  capital_kind?: DepositInflowEvent["capital_kind"];
+};
 
 const MOVEMENT_EXCLUDE_NOTE_SQL = `note IS NULL OR (
   note NOT LIKE '%|afp-modelo-prior-cuotas|%'
@@ -65,8 +80,11 @@ function loadMovementSignedFlowEvents(
     flow_kind: string | null;
   }[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
+  const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
+    // CLP deposit_clp wires on USD cash are FX staging legs; capital lives on equity accounts.
+    if (usdCashIds.has(r.account_id)) continue;
     if (equityMtmIds.has(r.account_id) && r.flow_kind == null) continue;
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (personalOnly) {
@@ -98,12 +116,24 @@ function buildMergedDepositMap(
   const ids = new Set<number>([...mov.keys(), ...equityCap.keys(), ...requested]);
   const out = new Map<number, DepositInflowEvent[]>();
   for (const id of ids) {
-    const flows = [...(mov.get(id) ?? []), ...(equityCap.get(id) ?? [])];
-    const merged = flows.filter((e) => e.amt !== 0 && Number.isFinite(e.amt));
+    const movFlows: MergedSortFlow[] = (mov.get(id) ?? []).map((f) => ({ ...f }));
+    const eqFlows: MergedSortFlow[] = (equityCap.get(id) ?? []).map((f) => ({
+      occurred_on: f.occurred_on,
+      amt: f.amt,
+      tie: f.tie,
+      amt_usd: f.amt_usd,
+      capital_kind: f.capital_kind,
+    }));
+    const merged = [...movFlows, ...eqFlows].filter((e) => e.amt !== 0 && Number.isFinite(e.amt));
     merged.sort((x, y) => x.occurred_on.localeCompare(y.occurred_on) || x.tie.localeCompare(y.tie));
     out.set(
       id,
-      merged.map(({ occurred_on, amt }) => ({ occurred_on, amt }))
+      merged.map((f) => ({
+        occurred_on: f.occurred_on,
+        amt: f.amt,
+        ...(f.amt_usd != null && Number.isFinite(f.amt_usd) ? { amt_usd: f.amt_usd } : {}),
+        ...(f.capital_kind ? { capital_kind: f.capital_kind } : {}),
+      }))
     );
   }
   return out;
@@ -174,10 +204,16 @@ export function totalStateContributionsClpForAccount(accountId: number): number 
 
 /** Net external CLP capital (movements); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
+  if (isUsdCashAccount(accountId)) {
+    return usdCashBalanceClpAt(accountId, chileCalendarTodayYmd());
+  }
   return getMergedDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
+  if (isUsdCashAccount(accountId)) {
+    return usdCashBalanceClpAt(accountId, chileCalendarTodayYmd());
+  }
   return getMergedDisplayDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 

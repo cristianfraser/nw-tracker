@@ -1,7 +1,7 @@
 /**
  * Stale checks for external sync sources (no Fintual script imports — safe for `tsc` / in-server use).
  */
-import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
+import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   loadGlobalSyncState,
@@ -29,9 +29,18 @@ import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
 import { maxEurDateOnOrBefore, maxFxBcentralDateOnOrBefore, maxUfDate, safeMaxUtmMonthParts } from "./sbifSyncDb.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 
+const FINTUAL_RN_COMPOSITION_STALE_DAYS = 30;
+
+export function isFintualRnCompositionStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
+  const last = state.fintualRnCompositionLastSyncYmd?.trim();
+  if (!last || !/^\d{4}-\d{2}-\d{2}$/.test(last)) return true;
+  return cl.ymd >= chileCalendarAddDays(last, FINTUAL_RN_COMPOSITION_STALE_DAYS);
+}
+
 export type GlobalSyncSource =
   | "afp_uno"
   | "fintual"
+  | "fintual_rn_composition"
   | "sbif_usd"
   | "sbif_eur"
   | "sbif_uf"
@@ -44,6 +53,7 @@ export type GlobalSyncSource =
 export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "afp_uno",
   "fintual",
+  "fintual_rn_composition",
   "sbif_usd",
   "sbif_eur",
   "sbif_uf",
@@ -269,6 +279,7 @@ function naturalStaleSyncSources(
   const out: GlobalSyncSource[] = [];
   if (isAfpUnoSpotStale(cl, state, opts)) out.push("afp_uno");
   if (isFintualSyncStale(cl, state)) out.push("fintual");
+  if (isFintualRnCompositionStale(cl, state)) out.push("fintual_rn_composition");
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
   if (bde) {
     if (isSbifObservedFxStale(maxFxBcentralDateOnOrBefore(cl.ymd), cl, state.sbifUsdLastErrorAt)) out.push("sbif_usd");
@@ -352,6 +363,11 @@ export function allSyncSourceStatuses(
   {
     const stale = isFintualSyncStale(cl, state);
     rows.push(syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale));
+  }
+
+  {
+    const stale = isFintualRnCompositionStale(cl, state);
+    rows.push(syncSourceRow("fintual_rn_composition", cl, stale ? "stale" : "ok", stale));
   }
 
   const sbifFx = (source: "sbif_usd" | "sbif_eur", maxYmd: string | null, lastErrorAt?: string) => {

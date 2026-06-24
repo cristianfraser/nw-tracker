@@ -1,11 +1,8 @@
-import { fxRowOnOrBefore } from "./fxRates.js";
+import { clpToUsdAtPaymentRounded } from "./fxRates.js";
 
-/** CLP → USD using `fx_daily` on or before `ymd`. */
+/** CLP → USD using buy rate (or mid fallback) on or before `ymd`. */
 export function clpToUsdAtDate(clp: number, ymd: string): number | null {
-  if (!Number.isFinite(clp) || clp === 0) return clp === 0 ? 0 : null;
-  const fx = fxRowOnOrBefore(ymd);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  return clp / fx.clp_per_usd;
+  return clpToUsdAtPaymentRounded(clp, ymd);
 }
 
 /**

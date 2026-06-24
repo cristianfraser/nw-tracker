@@ -70,6 +70,39 @@ describe("movementTransfer", () => {
     expect(unitsDeltaForAccountMovement(row, fromId)).toBe(0);
   });
 
+  it("skips USD debit for migration:usd-cash stock_buy mirror legs", () => {
+    const row = {
+      account_id: null,
+      from_account_id: fromId,
+      to_account_id: toId,
+      amount_clp: 0,
+      occurred_on: "2024-12-10",
+      note: "migration:usd-cash|from=85|migration:stock-flow-kind",
+      units_delta: 1,
+      flow_kind: "stock_buy",
+      amount_usd: 612.36,
+      ticker: "SPY",
+    };
+    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
+    expect(signedUsdDeltaForAccountMovement(row, toId)).toBe(0);
+  });
+
+  it("skips USD credit for migration:fx-merge compra mirror legs", () => {
+    const row = {
+      account_id: fromId,
+      from_account_id: null,
+      to_account_id: null,
+      amount_clp: 3_000_000,
+      occurred_on: "2026-05-28",
+      note: "migration:fx-merge|dep=1448|compra=1449",
+      units_delta: null,
+      flow_kind: "compra_usd_venta_clp",
+      amount_usd: 3353.07,
+      ticker: null,
+    };
+    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
+  });
+
   it("stock_sell transfer debits shares on from_account and credits USD on to_account", () => {
     const row = {
       account_id: null,

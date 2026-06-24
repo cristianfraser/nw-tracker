@@ -1,4 +1,4 @@
-import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
+import { listWatchlistEquitySeriesKeys, syncWatchlistFromApp } from "./watchlist.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
@@ -14,8 +14,6 @@ import {
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { maxFxDateOnOrBefore } from "./sbifSyncDb.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
-
-const EQUITY_DAILY_IMPORT_TICKERS = ["BTC-USD", "ETH-USD"] as const;
 
 const stmtEodPrior = db.prepare(
   `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
@@ -37,8 +35,8 @@ export type LiveMarketQuotesSyncResult = {
 };
 
 function equityTickersForLiveSync(): string[] {
-  const fromAccounts = listDistinctEquityTickersForSync();
-  return [...new Set([...fromAccounts, ...EQUITY_DAILY_IMPORT_TICKERS])];
+  syncWatchlistFromApp();
+  return listWatchlistEquitySeriesKeys();
 }
 
 function priorCloseUsdForLiveNyse(

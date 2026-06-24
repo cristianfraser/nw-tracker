@@ -6,16 +6,26 @@
 import type { DepositInflowEvent } from "./accountDeposits.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
-import { usdToClpAtPaymentRounded } from "./fxRates.js";
+import { usdToClpReferenceRounded } from "./fxRates.js";
 
 const DRIP_USD_TOLERANCE = 0.02;
 const DRIP_MAX_DAYS_AFTER_DIVIDEND = 45;
+const FX_WIRE_USD_TOLERANCE = 0.02;
 
-export type EquityCapitalSortFlow = { occurred_on: string; amt: number; tie: string };
+export type EquityCapitalKind = "clp_wire" | "usd_reference";
+
+export type EquityCapitalSortFlow = {
+  occurred_on: string;
+  amt: number;
+  amt_usd: number | null;
+  capital_kind: EquityCapitalKind;
+  tie: string;
+};
 
 type TransferCapitalRow = {
   id: number;
   account_id: number;
+  from_account_id: number | null;
   occurred_on: string;
   amount_usd: number;
   flow_kind: string;
@@ -28,6 +38,8 @@ type DividendRow = {
   amount_usd: number;
 };
 
+type ClpWireLeg = { clp: number; usd: number };
+
 function equityMtmAccountIds(accountIds: number[]): number[] {
   return [...new Set(accountIds.filter((id) => id > 0 && accountUsesEquityMtm(id)))];
 }
@@ -37,7 +49,7 @@ function loadStockBuyCapitalRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.to_account_id AS account_id, m.occurred_on, m.amount_usd, m.flow_kind
+      `SELECT m.id AS id, m.to_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.to_account_id IN (${ph})
@@ -45,7 +57,7 @@ function loadStockBuyCapitalRows(accountIds: number[]): TransferCapitalRow[] {
          AND m.amount_usd IS NOT NULL
          AND m.amount_usd != 0
        UNION ALL
-       SELECT m.id AS id, m.account_id AS account_id, m.occurred_on, m.amount_usd, m.flow_kind
+       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
@@ -61,7 +73,7 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.from_account_id AS account_id, m.occurred_on, m.amount_usd, m.flow_kind
+      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
@@ -69,7 +81,7 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
          AND m.amount_usd IS NOT NULL
          AND m.amount_usd != 0
        UNION ALL
-       SELECT m.id AS id, m.account_id AS account_id, m.occurred_on, m.amount_usd, m.flow_kind
+       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
@@ -96,14 +108,72 @@ function loadDividendUsdRows(accountIds: number[]): DividendRow[] {
     .all(...accountIds) as DividendRow[];
 }
 
-function transferRowToSortFlow(row: TransferCapitalRow, sign: 1 | -1): EquityCapitalSortFlow | null {
-  const clp = usdToClpAtPaymentRounded(row.amount_usd, row.occurred_on);
-  if (clp == null || !Number.isFinite(clp) || clp === 0) return null;
+function findClpWireForStockBuy(
+  stockAccountId: number,
+  fromAccountId: number | null,
+  occurredOn: string,
+  buyUsd: number
+): ClpWireLeg | null {
+  const usdMag = Math.abs(buyUsd);
+  const searchAccounts = new Set<number>();
+  if (fromAccountId != null && fromAccountId > 0) searchAccounts.add(fromAccountId);
+  searchAccounts.add(stockAccountId);
+
+  const stmt = db.prepare(
+    `SELECT amount_clp, amount_usd FROM movements
+     WHERE account_id = ?
+       AND occurred_on = ?
+       AND flow_kind IN ('compra_usd_venta_clp', 'compra_usd')
+       AND amount_clp > 0
+       AND amount_usd IS NOT NULL
+       AND ABS(COALESCE(units_delta, 0)) < 1e-12`
+  );
+
+  for (const accId of searchAccounts) {
+    const rows = stmt.all(accId, occurredOn) as { amount_clp: number; amount_usd: number }[];
+    for (const r of rows) {
+      const rowUsd = Math.abs(r.amount_usd);
+      if (Math.abs(rowUsd - usdMag) <= FX_WIRE_USD_TOLERANCE) {
+        return { clp: Math.abs(r.amount_clp), usd: rowUsd };
+      }
+    }
+  }
+  return null;
+}
+
+function usdReferenceFlow(
+  row: TransferCapitalRow,
+  sign: 1 | -1
+): EquityCapitalSortFlow | null {
+  const usdMag = Math.abs(row.amount_usd);
+  const refClp = usdToClpReferenceRounded(usdMag, row.occurred_on);
+  if (refClp == null || !Number.isFinite(refClp) || refClp === 0) return null;
   return {
     occurred_on: row.occurred_on,
-    amt: sign * clp,
+    amt: sign * refClp,
+    amt_usd: sign * usdMag,
+    capital_kind: "usd_reference",
     tie: `t:${row.id}`,
   };
+}
+
+function stockBuyCapitalFlow(row: TransferCapitalRow): EquityCapitalSortFlow | null {
+  const wire = findClpWireForStockBuy(
+    row.account_id,
+    row.from_account_id,
+    row.occurred_on,
+    row.amount_usd
+  );
+  if (wire) {
+    return {
+      occurred_on: row.occurred_on,
+      amt: wire.clp,
+      amt_usd: wire.usd,
+      capital_kind: "clp_wire",
+      tie: `t:${row.id}`,
+    };
+  }
+  return usdReferenceFlow(row, 1);
 }
 
 function daysBetweenYmd(fromYmd: string, toYmd: string): number {
@@ -113,10 +183,6 @@ function daysBetweenYmd(fromYmd: string, toYmd: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-/**
- * USD from a stock_buy attributable to a prior dividend_usd (full DRIP or manual top-up + div).
- * Returns 0 when the buy is entirely pocket capital.
- */
 function dripUsdAttributedToBuy(
   buyUsd: number,
   buyOccurredOn: string,
@@ -143,8 +209,8 @@ function dripUsdAttributedToBuy(
 }
 
 /**
- * Capital in/out from stock_buy / stock_sell transfers, CLP at payment FX.
- * When `personalOnly`, excludes DRIP reinvestment stock_buys matched to dividend_usd same month.
+ * Capital in/out from stock_buy / stock_sell transfers.
+ * CLP wire buys use actual `compra_usd*` CLP; USD-only rotation uses reference CLP at mid.
  */
 export function loadEquityBrokerageCapitalSortFlows(
   accountIds: number[],
@@ -172,7 +238,6 @@ export function loadEquityBrokerageCapitalSortFlows(
   const consumedDividends = new Map<number, Set<number>>();
 
   for (const row of buys) {
-    let amt: number | null = null;
     if (personalOnly && dividendsByAccount) {
       const divs = dividendsByAccount.get(row.account_id);
       if (!consumedDividends.has(row.account_id)) consumedDividends.set(row.account_id, new Set());
@@ -185,25 +250,28 @@ export function loadEquityBrokerageCapitalSortFlows(
       if (dripUsd > 0) {
         const pocketUsd = Math.abs(row.amount_usd) - dripUsd;
         if (pocketUsd <= DRIP_USD_TOLERANCE) continue;
-        amt = usdToClpAtPaymentRounded(pocketUsd, row.occurred_on);
+        const refClp = usdToClpReferenceRounded(pocketUsd, row.occurred_on);
+        if (refClp == null || !Number.isFinite(refClp) || refClp === 0) continue;
+        if (!out.has(row.account_id)) out.set(row.account_id, []);
+        out.get(row.account_id)!.push({
+          occurred_on: row.occurred_on,
+          amt: refClp,
+          amt_usd: pocketUsd,
+          capital_kind: "usd_reference",
+          tie: `t:${row.id}`,
+        });
+        continue;
       }
     }
-    if (amt == null) {
-      const flow = transferRowToSortFlow(row, 1);
-      if (!flow) continue;
-      amt = flow.amt;
-    }
-    if (amt === 0 || !Number.isFinite(amt)) continue;
+
+    const flow = stockBuyCapitalFlow(row);
+    if (!flow || flow.amt === 0 || !Number.isFinite(flow.amt)) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
-    out.get(row.account_id)!.push({
-      occurred_on: row.occurred_on,
-      amt,
-      tie: `t:${row.id}`,
-    });
+    out.get(row.account_id)!.push(flow);
   }
 
   for (const row of sells) {
-    const flow = transferRowToSortFlow(row, -1);
+    const flow = usdReferenceFlow(row, -1);
     if (!flow) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
     out.get(row.account_id)!.push(flow);
@@ -226,7 +294,12 @@ export function loadEquityBrokerageCapitalInflowEvents(
       id,
       sorted
         .filter((f) => f.amt !== 0 && Number.isFinite(f.amt))
-        .map(({ occurred_on, amt }) => ({ occurred_on, amt }))
+        .map(({ occurred_on, amt, amt_usd, capital_kind }) => ({
+          occurred_on,
+          amt,
+          amt_usd,
+          capital_kind,
+        }))
     );
   }
   return out;

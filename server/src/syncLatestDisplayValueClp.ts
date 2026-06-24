@@ -35,7 +35,8 @@ export function syncLatestDisplayValueClp(
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
     return checkingMovementBalanceLive(accountId);
   }
-  if (categorySlug && isUsdCashKindSlug(categorySlug)) {
+  const bucketKind = categorySlug ? accountBucketKindSlug(categorySlug) : "";
+  if (bucketKind && isUsdCashKindSlug(bucketKind)) {
     const live = usdCashBalanceLive(accountId);
     return { value_clp: live.value_clp, as_of_date: live.as_of_date };
   }

@@ -135,7 +135,12 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
             }
           : {}),
       },
-      ...(includeUsd ? { fx_conversion_error: depositsFlow.fx_conversion_error } : {}),
+      ...(includeUsd
+        ? {
+            fx_conversion_error: depositsFlow.fx_conversion_error,
+            fx_conversion_warnings: depositsFlow.fx_conversion_warnings,
+          }
+        : {}),
       net_worth_period_metrics: netWorthPeriod,
     };
     });

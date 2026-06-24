@@ -1,11 +1,29 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
+import { loadMergedDepositInflowEvents, type DepositInflowEvent } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
+import { isUsdCashAccount } from "./movementTransfer.js";
+import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import {
+  clearFxConversionWarnings,
+  takeFxConversionWarnings,
+  type FxConversionWarning,
+} from "./fxConversionWarnings.js";
+
+/** USD for a deposit event: native USD when recorded, else CLP ÷ buy FX (sign follows CLP). */
+export function depositInflowEventUsd(e: DepositInflowEvent): number | null {
+  if (e.amt === 0 || !Number.isFinite(e.amt)) return 0;
+  if (e.amt_usd != null && Number.isFinite(e.amt_usd)) {
+    const sign = Math.sign(e.amt) || Math.sign(e.amt_usd);
+    return sign * Math.abs(e.amt_usd);
+  }
+  return clpToUsdAtDate(e.amt, e.occurred_on);
+}
 
 /** Big-category buckets for the flows → deposits page (matches sidebar groupings). */
 export const DEPOSIT_FLOW_CATEGORIES = ["real_estate", "cash", "brokerage", "inversiones"] as const;
@@ -56,6 +74,7 @@ export type FlowDepositsPayload = {
   net_total_usd: number | null;
   /** True when at least one non-zero row could not be converted to USD (missing `fx_daily`). */
   fx_conversion_error: boolean;
+  fx_conversion_warnings: FxConversionWarning[];
   by_category: Record<
     DepositFlowCategory,
     { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
@@ -127,6 +146,23 @@ function flowsDepositsNetTotalsByAccount(opts?: {
   const clp = new Map<number, number>();
   const usd = new Map<number, number | null>();
   for (const acc of accounts) {
+    if (isUsdCashAccount(acc.account_id)) {
+      const balanceClp = usdCashBalanceClpAt(acc.account_id, today);
+      const balanceUsd = usdCashBalanceUsdAt(acc.account_id, today);
+      if (opts?.period === "month") {
+        const prior = priorPeriodEndYmd("mtd", today);
+        clp.set(acc.account_id, balanceClp - usdCashBalanceClpAt(acc.account_id, prior));
+        usd.set(acc.account_id, balanceUsd - usdCashBalanceUsdAt(acc.account_id, prior));
+      } else if (opts?.period === "year") {
+        const prior = priorPeriodEndYmd("ytd", today);
+        clp.set(acc.account_id, balanceClp - usdCashBalanceClpAt(acc.account_id, prior));
+        usd.set(acc.account_id, balanceUsd - usdCashBalanceUsdAt(acc.account_id, prior));
+      } else {
+        clp.set(acc.account_id, balanceClp);
+        usd.set(acc.account_id, balanceUsd);
+      }
+      continue;
+    }
     const events = eventsByAccount.get(acc.account_id) ?? [];
     let sumClp = 0;
     let sumUsd = 0;
@@ -137,7 +173,7 @@ function flowsDepositsNetTotalsByAccount(opts?: {
       if (opts?.period === "year" && e.occurred_on.slice(0, 4) !== currentY) continue;
       const amount_clp = Math.round(e.amt);
       sumClp += amount_clp;
-      const amount_usd = depositClpToUsdAtDate(amount_clp, e.occurred_on);
+      const amount_usd = depositInflowEventUsd(e);
       if (amount_usd == null || !Number.isFinite(amount_usd)) {
         if (amount_clp !== 0) fxError = true;
       } else {
@@ -170,6 +206,7 @@ export function flowsDepositsNetTotalUsdByAccount(): Map<number, number | null> 
 
 /** @heavy Scans deposit-flow accounts and merges inflow events for charts + net totals. */
 export function buildFlowsDepositsPayload(): FlowDepositsPayload {
+  clearFxConversionWarnings();
   const accounts = listDepositFlowAccounts(false);
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDepositInflowEvents(ids);
@@ -182,7 +219,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     for (const e of events) {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
       const amount_clp = Math.round(e.amt);
-      const amount_usd = depositClpToUsdAtDate(amount_clp, e.occurred_on);
+      const amount_usd = depositInflowEventUsd(e);
       rows.push({
         occurred_on: e.occurred_on,
         category,
@@ -240,6 +277,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     net_total_clp,
     net_total_usd,
     fx_conversion_error,
+    fx_conversion_warnings: takeFxConversionWarnings(),
   };
 }
 

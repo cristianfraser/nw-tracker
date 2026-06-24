@@ -13,7 +13,7 @@ import {
   totalDividendsReinvestedClpForAccount,
 } from "./equityDividendReinvested.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import { usdToClpAtPaymentRounded } from "./fxRates.js";
+import { usdToClpReferenceRounded } from "./fxRates.js";
 
 const FIXTURE_USD = "vitest-equity-cap-usd";
 const FIXTURE_STOCK = "vitest-equity-cap-stock";
@@ -88,7 +88,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const full = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
     expect(full).toHaveLength(1);
     expect(full[0]!.occurred_on).toBe("2026-05-28");
-    expect(full[0]!.amt).toBeCloseTo(usdToClpAtPaymentRounded(100, "2026-05-28")!, 0);
+    expect(full[0]!.amt).toBeCloseTo(usdToClpReferenceRounded(100, "2026-05-28")!, 0);
 
     const merged = getMergedDepositInflowEventsForAccount(stockId);
     expect(merged.reduce((s, e) => s + e.amt, 0)).toBeCloseTo(full[0]!.amt, 0);
@@ -112,7 +112,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const full = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
     const june = full.filter((e) => e.occurred_on === "2026-06-16");
     expect(june).toHaveLength(1);
-    expect(june[0]!.amt).toBeCloseTo(usdToClpAtPaymentRounded(50, "2026-06-16")!, 0);
+    expect(june[0]!.amt).toBeCloseTo(usdToClpReferenceRounded(50, "2026-06-16")!, 0);
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(buyId);
   });
@@ -171,7 +171,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(pocketMar26).toBeDefined();
     expect(fullMar26!.amt).toBeGreaterThan(pocketMar26!.amt);
     expect(pocketMar26!.amt).toBeCloseTo(
-      usdToClpAtPaymentRounded(54.68 - 0.54, "2026-03-26")!,
+      usdToClpReferenceRounded(54.68 - 0.54, "2026-03-26")!,
       0
     );
 
@@ -199,10 +199,15 @@ describe("equityBrokerageCapitalFlows dev data", () => {
 
     const mayEvent = full.find((e) => monthKeyFromYmd(e.occurred_on) === "2026-05");
     expect(mayEvent).toBeDefined();
-    expect(mayEvent!.amt).toBeCloseTo(
-      usdToClpAtPaymentRounded(mayBuy.amount_usd, mayBuy.occurred_on)!,
-      0
-    );
+    if (mayEvent!.capital_kind === "clp_wire") {
+      expect(mayEvent!.amt).toBeGreaterThan(2_900_000);
+      expect(mayEvent!.amt_usd).toBeCloseTo(Math.abs(mayBuy.amount_usd), 1);
+    } else {
+      expect(mayEvent!.amt).toBeCloseTo(
+        usdToClpReferenceRounded(mayBuy.amount_usd, mayBuy.occurred_on)!,
+        0
+      );
+    }
     expect(mayEvent!.amt).toBeGreaterThan(2_000_000);
   });
 

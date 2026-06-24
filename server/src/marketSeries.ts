@@ -1,5 +1,7 @@
 import { db } from "./db.js";
-import { buildFxCoverage, type FxCoverage } from "./fxCoverage.js";
+import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
+import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
+import { runFxConversionWarningScan } from "./fxConversionWarningScan.js";
 
 const MAX_POINTS = 25_000;
 
@@ -60,9 +62,13 @@ export function getMarketSeriesPayload(): {
   fx_usd_clp: { date: string; value: number }[];
   /** BCentral dólar observado (`fx_daily_bcentral`) — reference line on Rates FX chart. */
   fx_usd_clp_bcentral: { date: string; value: number }[];
+  /** Buy / sell reference from `fx_daily_bid_ask`. */
+  fx_usd_clp_buy: { date: string; value: number }[];
+  fx_usd_clp_sell: { date: string; value: number }[];
   eur_clp: { date: string; value: number }[];
   fx_coverage: FxCoverage;
 } {
+  clearFxConversionWarnings();
   type FxR = { date: string; clp_per_usd: number };
   type UfR = { date: string; clp_per_uf: number };
   type EurR = { date: string; clp_per_eur: number };
@@ -79,6 +85,16 @@ export function getMarketSeriesPayload(): {
       .all() as FxR[];
   } catch {
     fxBcentralRows = [];
+  }
+  let fxBidAskRows: { date: string; buy_clp_per_usd: number; sell_clp_per_usd: number }[] = [];
+  try {
+    fxBidAskRows = db
+      .prepare(
+        `SELECT date, buy_clp_per_usd, sell_clp_per_usd FROM fx_daily_bid_ask ORDER BY date ASC`
+      )
+      .all() as { date: string; buy_clp_per_usd: number; sell_clp_per_usd: number }[];
+  } catch {
+    fxBidAskRows = [];
   }
   const ufRows = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date ASC`).all() as UfR[];
   const eurRows = db.prepare(`SELECT date, clp_per_eur FROM eur_daily ORDER BY date ASC`).all() as EurR[];
@@ -266,7 +282,12 @@ export function getMarketSeriesPayload(): {
     fund_series_keys: fundKeys,
     fx_usd_clp: fxRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
     fx_usd_clp_bcentral: fxBcentralRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
+    fx_usd_clp_buy: fxBidAskRows.map((r) => ({ date: r.date, value: r.buy_clp_per_usd })),
+    fx_usd_clp_sell: fxBidAskRows.map((r) => ({ date: r.date, value: r.sell_clp_per_usd })),
     eur_clp: eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur })),
-    fx_coverage: buildFxCoverage(),
+    fx_coverage: (() => {
+      runFxConversionWarningScan();
+      return buildFxCoverageWithConversionWarnings();
+    })(),
   };
 }

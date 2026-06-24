@@ -18,6 +18,7 @@ describe("buildFxCoverage", () => {
     expect(c.row_count).toBe(0);
     expect(c.is_sparse).toBe(true);
     expect(c.yahoo_rejected).toEqual([]);
+    expect(c.conversion_warnings).toEqual([]);
   });
 
   it("includes yahoo_rejected rows", () => {
@@ -42,15 +43,16 @@ describe("buildFxCoverage", () => {
 describe("depositClpToUsdAtDate", () => {
   beforeEach(() => {
     db.exec("DELETE FROM fx_daily");
+    db.exec("DELETE FROM fx_daily_bid_ask");
   });
 
   it("returns null when no fx row on or before date", () => {
     expect(depositClpToUsdAtDate(1000, "2020-06-15")).toBeNull();
   });
 
-  it("uses fx on or before event date", () => {
+  it("uses buy rate inferred from mid on or before event date", () => {
     db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`).run("2020-06-01", 800);
-    expect(depositClpToUsdAtDate(800, "2020-06-15")).toBe(1);
+    expect(depositClpToUsdAtDate(800, "2020-06-15")).toBeCloseTo(800 / 802, 5);
   });
 });
 
