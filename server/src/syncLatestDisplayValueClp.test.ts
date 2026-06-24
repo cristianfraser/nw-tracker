@@ -4,8 +4,28 @@ import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 import { listAccountsForBucketSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import { db } from "./db.js";
 
 describe("syncLatestDisplayValueClp", () => {
+  it("resolves USD cash from full portfolio bucket slug (not kind slug only)", () => {
+    const row = db
+      .prepare(
+        `SELECT a.id AS account_id, g.slug AS bucket_slug, a.notes, a.name
+         FROM accounts a
+         JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%cash_savings%usd%' OR a.notes LIKE '%kind=usd%'
+         LIMIT 1`
+      )
+      .get() as { account_id: number; bucket_slug: string; notes: string | null; name: string } | undefined;
+    if (!row) return;
+    const v = syncLatestDisplayValueClp(row.account_id, row.bucket_slug, {
+      notes: row.notes,
+      name: row.name,
+    });
+    expect(v).not.toBeNull();
+    expect(v!.value_clp).toBeGreaterThan(0);
+  });
+
   it("returns a value for brokerage_acciones accounts that have dashboard marks", () => {
     const rows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
     expect(rows.length).toBeGreaterThan(0);

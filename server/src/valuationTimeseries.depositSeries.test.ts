@@ -56,7 +56,7 @@ describe("getAccountValuationTimeseries deposit lines", () => {
     expect(last[String(row.id)]).toBeCloseTo(close, 0);
   });
 
-  it("equity MTM with reinvested dividends shows pocket vs cost-basis deposit lines", () => {
+  it("equity MTM chart deposit line tracks pocket deposits, not DRIP cost basis", () => {
     const row = db
       .prepare(`SELECT id FROM accounts WHERE equity_ticker = 'SPY' LIMIT 1`)
       .get() as { id: number } | undefined;
@@ -68,13 +68,12 @@ describe("getAccountValuationTimeseries deposit lines", () => {
     const ts = getAccountValuationTimeseries(row.id, "clp");
     const acc = ts?.accounts.accounts?.[0];
     expect(acc?.depositDataKey).toBeTruthy();
-    expect(acc?.displayDepositDataKey).toBeTruthy();
+    expect(acc?.displayDepositDataKey).toBeUndefined();
 
     const last = ts!.accounts.points.at(-1)!;
-    const pocket = last[acc!.displayDepositDataKey!] as number;
-    const costBasis = last[acc!.depositDataKey!] as number;
-    expect(pocket).toBeCloseTo(pocketDepositsClpForAccount(row.id), -2);
-    expect(costBasis).toBeGreaterThan(pocket);
-    expect(costBasis).toBeCloseTo(pocketDepositsClpForAccount(row.id) + dividends, -2);
+    const chartPocket = last[acc!.depositDataKey!] as number;
+    const pocket = pocketDepositsClpForAccount(row.id);
+    expect(chartPocket).toBeCloseTo(pocket, -2);
+    expect(chartPocket).toBeLessThan(pocket + dividends);
   });
 });

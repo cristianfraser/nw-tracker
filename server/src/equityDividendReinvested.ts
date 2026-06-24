@@ -9,7 +9,7 @@ import {
 } from "./accountDeposits.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
-import { usdToClpAtPaymentRounded } from "./fxRates.js";
+import { usdToClpReferenceRounded } from "./fxRates.js";
 
 type DividendMovRow = {
   id: number;
@@ -42,7 +42,7 @@ export function loadDividendReinvestedSortFlows(
   if (ids.length === 0) return out;
 
   for (const row of loadDividendUsdRows(ids)) {
-    const clp = usdToClpAtPaymentRounded(row.amount_usd, row.occurred_on);
+    const clp = usdToClpReferenceRounded(row.amount_usd, row.occurred_on);
     if (clp == null || !Number.isFinite(clp) || clp === 0) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
     out.get(row.account_id)!.push({

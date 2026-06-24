@@ -11,6 +11,7 @@ describe("buildFlowsDepositsPayload", () => {
     } else if (payload.rows.some((r) => r.amount_usd != null)) {
       expect(payload.net_total_usd).not.toBeNull();
     }
+    expect(Array.isArray(payload.fx_conversion_warnings)).toBe(true);
   });
 
   it("by_category totals match filtered rows", () => {

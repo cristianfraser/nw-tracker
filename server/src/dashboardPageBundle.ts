@@ -5,7 +5,8 @@ import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries, type TsUnit } from "./valuationTimeseries.js";
-import { buildFxCoverage, type FxCoverage } from "./fxCoverage.js";
+import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
+import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 
 export type { FxCoverage };
@@ -27,6 +28,7 @@ export async function buildDashboardPageBundle(unit: TsUnit) {
 }
 
 async function buildDashboardPageBundleInner(unit: TsUnit) {
+  clearFxConversionWarnings();
   const includeUsd = unit === "usd";
   const [dash, tsRaw, fx, retirementPerf, brokeragePerf] = await Promise.all([
     timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd)),
@@ -52,7 +54,7 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     dash,
     ts: tsRaw,
     fx,
-    fx_coverage: includeUsd ? buildFxCoverage() : null,
+    fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
     retirementPerf,
     brokeragePerf,
   };

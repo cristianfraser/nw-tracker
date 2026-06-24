@@ -17,6 +17,10 @@ import {
 } from "./portfolioGroupValueAtDate.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
+/** Dashboard buckets rolled into the inversiones nav hub (brokerage + retirement). */
+export const INVERSIONES_DASHBOARD_BUCKET_SLUGS = ["brokerage", "retirement"] as const;
+export type InversionesDashboardBucketSlug = (typeof INVERSIONES_DASHBOARD_BUCKET_SLUGS)[number];
+
 function sumBucketConsolidatedRows(
   bucketRows: readonly ConsolidatedMonthlyPerfRow[][]
 ): ConsolidatedMonthlyPerfRow[] {
@@ -113,6 +117,16 @@ export function buildNetWorthConsolidatedMonthly(unit: TsUnit = "clp"): Consolid
   return sumBucketConsolidatedRows(bucketRows);
 }
 
+/** Inversiones nav hub: Σ brokerage + retirement bucket consolidations (same path as child group pages). */
+export function buildInversionesConsolidatedMonthly(
+  unit: TsUnit = "clp"
+): ConsolidatedMonthlyPerfRow[] {
+  const bucketRows = INVERSIONES_DASHBOARD_BUCKET_SLUGS.map((slug) =>
+    loadBucketConsolidatedMonthly(slug, unit)
+  );
+  return sumBucketConsolidatedRows(bucketRows);
+}
+
 export type NetWorthPeriodMetrics = {
   closing_clp: number;
   prior_closing_clp: number | null;
@@ -121,27 +135,79 @@ export type NetWorthPeriodMetrics = {
   balance_delta_clp: number | null;
 };
 
-/** Current calendar month slice from the canonical NW consolidated series. */
-export function netWorthCurrentMonthMetrics(unit: TsUnit = "clp"): NetWorthPeriodMetrics | null {
-  const rows = buildNetWorthConsolidatedMonthly(unit);
-  const mk = monthKeyFromYmd(chileCalendarTodayYmd());
-  const row = rows.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
-  if (!row) return null;
+function periodMetricsFromConsolidatedRows(
+  rows: readonly ConsolidatedMonthlyPerfRow[],
+  period: "month" | "year"
+): NetWorthPeriodMetrics | null {
+  const today = chileCalendarTodayYmd();
+  const currentYear = today.slice(0, 4);
+  const currentMk = monthKeyFromYmd(today);
 
-  const prior = row.prior_closing;
+  if (period === "month") {
+    const row = rows.find((r) => monthKeyFromYmd(r.as_of_date) === currentMk);
+    if (!row) return null;
+    const prior = row.prior_closing;
+    const balance_delta =
+      prior != null && Number.isFinite(prior) ? row.closing_value - prior : null;
+    return {
+      closing_clp: Math.round(row.closing_value),
+      prior_closing_clp: prior != null && Number.isFinite(prior) ? Math.round(prior) : null,
+      net_capital_flow_clp: Math.round(row.net_capital_flow),
+      nominal_pl_clp:
+        row.nominal_pl != null && Number.isFinite(row.nominal_pl)
+          ? Math.round(row.nominal_pl)
+          : null,
+      balance_delta_clp:
+        balance_delta != null && Number.isFinite(balance_delta) ? Math.round(balance_delta) : null,
+    };
+  }
+
+  const yearRows = rows.filter((r) => r.as_of_date.slice(0, 4) === currentYear);
+  if (!yearRows.length) return null;
+
+  const latest = yearRows[0]!;
+  const earliest = yearRows[yearRows.length - 1]!;
+  let netFlow = 0;
+  let nominalPl = 0;
+  let anyNominal = false;
+  for (const row of yearRows) {
+    netFlow += row.net_capital_flow;
+    if (row.nominal_pl != null && Number.isFinite(row.nominal_pl)) {
+      nominalPl += row.nominal_pl;
+      anyNominal = true;
+    }
+  }
+
+  const prior = earliest.prior_closing;
   const balance_delta =
-    prior != null && Number.isFinite(prior) ? row.closing_value - prior : null;
+    prior != null && Number.isFinite(prior) ? latest.closing_value - prior : null;
 
   return {
-    closing_clp: Math.round(row.closing_value),
+    closing_clp: Math.round(latest.closing_value),
     prior_closing_clp: prior != null && Number.isFinite(prior) ? Math.round(prior) : null,
-    net_capital_flow_clp: Math.round(row.net_capital_flow),
-    nominal_pl_clp:
-      row.nominal_pl != null && Number.isFinite(row.nominal_pl)
-        ? Math.round(row.nominal_pl)
-        : null,
+    net_capital_flow_clp: Math.round(netFlow),
+    nominal_pl_clp: anyNominal ? Math.round(nominalPl) : null,
     balance_delta_clp:
       balance_delta != null && Number.isFinite(balance_delta) ? Math.round(balance_delta) : null,
+  };
+}
+
+/** Current calendar month slice from the canonical NW consolidated series. */
+export function netWorthCurrentMonthMetrics(unit: TsUnit = "clp"): NetWorthPeriodMetrics | null {
+  return periodMetricsFromConsolidatedRows(buildNetWorthConsolidatedMonthly(unit), "month");
+}
+
+export type InversionesPeriodMetrics = {
+  month: NetWorthPeriodMetrics | null;
+  year: NetWorthPeriodMetrics | null;
+};
+
+/** Card strip period rows for the inversiones nav hub (canonical consolidated series). */
+export function inversionesPeriodMetrics(unit: TsUnit = "clp"): InversionesPeriodMetrics {
+  const rows = buildInversionesConsolidatedMonthly(unit);
+  return {
+    month: periodMetricsFromConsolidatedRows(rows, "month"),
+    year: periodMetricsFromConsolidatedRows(rows, "year"),
   };
 }
 

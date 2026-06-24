@@ -1,5 +1,7 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { fxSellClpPerUsdOnOrBefore } from "./fxBidAsk.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
+import { recordFxConversionWarning } from "./fxConversionWarnings.js";
 import { isUsdCashAccount, sumUsdThroughDate } from "./movementTransfer.js";
 
 export { isUsdCashAccount, isUsdCashKindSlug } from "./movementTransfer.js";
@@ -14,10 +16,19 @@ export function usdCashBalanceUsdAt(accountId: number, asOfYmd: string): number 
 
 export function usdCashBalanceClpAt(accountId: number, asOfYmd: string): number {
   const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
+  const sell = fxSellClpPerUsdOnOrBefore(asOfYmd);
+  if (sell != null && sell > 0) {
+    return Math.round(usd * sell);
+  }
   const fx = fxRowOnOrBefore(asOfYmd);
   if (!fx) {
     throw new Error(`fx_daily missing on or before ${asOfYmd} for USD cash account ${accountId}`);
   }
+  recordFxConversionWarning({
+    code: "sell_rate_missing",
+    date: asOfYmd,
+    context: `usdCashBalanceClpAt:${accountId}`,
+  });
   return Math.round(usd * fx.clp_per_usd);
 }
 

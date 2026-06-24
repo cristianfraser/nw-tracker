@@ -61,6 +61,7 @@ import {
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { buildFxCoverage } from "./fxCoverage.js";
+import { listFxBidAskGaps, upsertManualFxBidAskRow } from "./fxBidAskGaps.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "./entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "./accountExcludeFromGroupTotals.js";
@@ -93,6 +94,12 @@ import {
 import type { AccountPositionMeta } from "./accountPosition.js";
 import { getMarketSeriesPayload } from "./marketSeries.js";
 import { getMarketTickerPayload } from "./marketTicker.js";
+import {
+  addManualWatchlistTicker,
+  deleteManualWatchlistRow,
+  getWatchlistPayload,
+  patchWatchlistRow,
+} from "./watchlist.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import {
   getAccountValuationTimeseries,
@@ -1328,6 +1335,44 @@ app.get("/api/fx/coverage", (_req, res) => {
   res.json(buildFxCoverage());
 });
 
+app.get("/api/fx/bid-ask/gaps", (_req, res) => {
+  res.json({ gaps: listFxBidAskGaps() });
+});
+
+/** Upsert directional FX: body { date, buy_clp_per_usd, sell_clp_per_usd } */
+app.post("/api/fx/bid-ask", (req, res) => {
+  const { date, buy_clp_per_usd, sell_clp_per_usd } = req.body as {
+    date?: string;
+    buy_clp_per_usd?: number;
+    sell_clp_per_usd?: number;
+  };
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: "date (YYYY-MM-DD) required" });
+    return;
+  }
+  if (
+    buy_clp_per_usd == null ||
+    sell_clp_per_usd == null ||
+    !Number.isFinite(buy_clp_per_usd) ||
+    !Number.isFinite(sell_clp_per_usd) ||
+    buy_clp_per_usd <= 0 ||
+    sell_clp_per_usd <= 0
+  ) {
+    res.status(400).json({ error: "positive buy_clp_per_usd and sell_clp_per_usd required" });
+    return;
+  }
+  if (buy_clp_per_usd < sell_clp_per_usd) {
+    res.status(400).json({ error: "buy_clp_per_usd must be >= sell_clp_per_usd" });
+    return;
+  }
+  try {
+    const row = upsertManualFxBidAskRow(date, buy_clp_per_usd, sell_clp_per_usd);
+    res.json({ ok: true, row });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 app.get("/api/fx", (_req, res) => {
   const rows = db
     .prepare(`SELECT date, clp_per_usd FROM fx_daily ORDER BY date DESC LIMIT 365`)
@@ -1384,6 +1429,59 @@ app.get("/api/market-ticker", (_req, res) => {
     res.json(getMarketTickerPayload());
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
+  }
+});
+
+app.get("/api/watchlist", async (_req, res) => {
+  try {
+    res.json(await getWatchlistPayload());
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : "watchlist_failed" });
+  }
+});
+
+app.patch("/api/watchlist/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  const body = req.body as { show_in_marquee?: number; sort_order?: number };
+  try {
+    res.json(patchWatchlistRow(id, body));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "watchlist_patch_failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/api/watchlist", (req, res) => {
+  const ticker = typeof req.body?.ticker === "string" ? req.body.ticker : "";
+  if (!ticker.trim()) {
+    res.status(400).json({ error: "ticker required" });
+    return;
+  }
+  try {
+    res.status(201).json(addManualWatchlistTicker(ticker));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "watchlist_add_failed";
+    const status = msg.includes("already") ? 409 : 400;
+    res.status(status).json({ error: msg });
+  }
+});
+
+app.delete("/api/watchlist/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  try {
+    deleteManualWatchlistRow(id);
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "watchlist_delete_failed";
+    res.status(400).json({ error: msg });
   }
 });
 

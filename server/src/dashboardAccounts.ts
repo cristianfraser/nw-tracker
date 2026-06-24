@@ -31,10 +31,10 @@ import { syncStatusPayload } from "./globalSyncStale.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { isUsdCashKindSlug } from "./movementTransfer.js";
-import { usdCashBalanceLive } from "./usdCashAccounts.js";
+import { isUsdCashKindSlug, isUsdCashAccount } from "./movementTransfer.js";
+import { usdCashBalanceLive, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
-import { buildFxCoverage } from "./fxCoverage.js";
+import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
   convertTs,
@@ -46,6 +46,7 @@ import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js"
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
+import { inversionesPeriodMetrics } from "./netWorthConsolidation.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
@@ -283,10 +284,13 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         if (position.value_as_of != null) valuation_as_of = position.value_as_of;
       }
       const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
-      const current_value_usd =
-        includeUsd && current_value_clp != null && fxRow != null
-          ? current_value_clp / fxRow.clp_per_usd
-          : null;
+      const current_value_usd = includeUsd
+        ? isUsdCashAccount(a.id)
+          ? usdCashBalanceUsdAt(a.id, valuation_as_of ?? today)
+          : current_value_clp != null && fxRow != null
+            ? current_value_clp / fxRow.clp_per_usd
+            : null
+        : null;
       const fx_missing =
         includeUsd &&
         ((current_value_clp != null && fxRow == null) ||
@@ -444,7 +448,8 @@ async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) 
     dashboard_layout: nav.dashboard_layout,
     suecia_snapshot: nav.suecia_snapshot,
     nw_bucket_totals: nav.nw_bucket_totals,
+    inversiones_period_metrics: inversionesPeriodMetrics(unit),
     overview: ts,
-    fx_coverage: includeUsd ? buildFxCoverage() : null,
+    fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
   };
 }

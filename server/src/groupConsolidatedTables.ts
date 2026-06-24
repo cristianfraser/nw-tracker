@@ -8,7 +8,7 @@ import {
   getGroupConsolidationAccountMonthly,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupMonthlyPerfConsolidation.js";
-import { buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
+import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -42,7 +42,9 @@ export function getGroupConsolidatedTables(
   const consolidated_monthly =
     groupSlug === "net_worth"
       ? buildNetWorthConsolidatedMonthly(unit)
-      : consolidateGroupMonthlyPerf(
+      : groupSlug === "inversiones" && tabSubgroup == null
+        ? buildInversionesConsolidatedMonthly(unit)
+        : consolidateGroupMonthlyPerf(
           account_monthly.map((p) => ({
             account_id: p.account_id,
             bucket_slug: p.bucket_slug,

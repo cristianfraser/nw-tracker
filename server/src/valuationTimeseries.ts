@@ -1,9 +1,10 @@
 import {
   loadMergedDepositInflowEvents,
   loadMergedDisplayDepositInflowEvents,
-  totalDepositsClpForAccount,
+  totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
+import { depositInflowEventUsd } from "./flowsDeposits.js";
 import { loadDividendReinvestedInflowEvents } from "./equityDividendReinvested.js";
 import {
   accountUsesEquityMtm,
@@ -144,48 +145,6 @@ const GROUP_TAB_DEP_TOTAL = "__group_dep_total";
 /** Liability categories: balance is debt, not equity — no cumulative “aportes” line on charts. */
 const CATEGORY_NO_CHART_DEPOSIT_LINE = new Set(["credit_card", "mortgage", "other_debt"]);
 
-function depositInflowEventsEqual(
-  full: DepositInflowEvent[],
-  display: DepositInflowEvent[]
-): boolean {
-  if (full.length !== display.length) return false;
-  for (let i = 0; i < full.length; i++) {
-    const a = full[i]!;
-    const b = display[i]!;
-    if (a.occurred_on !== b.occurred_on || a.amt !== b.amt) return false;
-  }
-  return true;
-}
-
-/** Pocket + reinvested dividends — chart “aportes acum.” for equity MTM (cost basis). */
-function equityCostBasisChartInflowEvents(
-  displayMovs: DepositInflowEvent[],
-  dividendMovs: DepositInflowEvent[]
-): DepositInflowEvent[] {
-  return [...displayMovs, ...dividendMovs]
-    .filter((e) => e.amt !== 0 && Number.isFinite(e.amt))
-    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
-}
-
-/** “aportes propios acum.” when personal pocket differs from full capital, or equity has DRIP dividends. */
-function shouldAttachDisplayDepositSeries(
-  accountId: number,
-  depMovs: Map<number, DepositInflowEvent[]>,
-  displayDepMovs: Map<number, DepositInflowEvent[]>,
-  dividendDepMovs: Map<number, DepositInflowEvent[]>,
-  slugById: Map<number, string>
-): boolean {
-  const slug = slugById.get(accountId);
-  if (slug && accountBucketKindSlug(slug) === "property") return false;
-  if (accountUsesEquityMtm(accountId) && (dividendDepMovs.get(accountId)?.length ?? 0) > 0) {
-    return true;
-  }
-  return !depositInflowEventsEqual(
-    depMovs.get(accountId) ?? [],
-    displayDepMovs.get(accountId) ?? []
-  );
-}
-
 /** Per-row sum of all class-tab valuation lines and of all cumulative deposit lines. */
 function appendGroupTabTotals(block: GroupTabValuationBlock): GroupTabValuationBlock {
   const src = block.accounts;
@@ -245,7 +204,7 @@ function appendGroupTabTotals(block: GroupTabValuationBlock): GroupTabValuationB
   return { accounts, points, ...(block.lines?.length ? { lines: block.lines } : {}) };
 }
 
-type MovDep = { occurred_on: string; amt: number };
+type MovDep = DepositInflowEvent;
 
 /** UF per CLP at the payment date, rounded (matches “UF con 5 decimales” ledger style). */
 const DEPOSIT_CROSS_RATE_DECIMALS = 5;
@@ -260,14 +219,9 @@ function clpToUfAtPaymentRounded(clp: number, paymentDate: string): number | nul
   return Math.round(uf * f) / f;
 }
 
-/** CLP → USD at payment date’s FX row, same rounding policy as UF leg. */
+/** CLP → USD at payment date (buy rate with mid fallback). */
 function clpToUsdAtPaymentRounded(clp: number, paymentDate: string): number | null {
-  if (!Number.isFinite(clp) || clp === 0) return 0;
-  const fx = fxRowOnOrBefore(paymentDate);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  const usd = clp / fx.clp_per_usd;
-  const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
-  return Math.round(usd * f) / f;
+  return depositInflowEventUsd({ occurred_on: paymentDate, amt: clp });
 }
 
 /** Flows through snapshot date `d` (month-end `YYYY-MM-DD`, or legacy `YYYY-MM-01` converted to month-end). */
@@ -328,7 +282,7 @@ function cumulativeDepUsdByDate(datesAsc: string[], movs: MovDep[]): Map<string,
     const cut = depositCutoffForSnapshotRow(d);
     while (i < sorted.length && sorted[i].occurred_on <= cut) {
       const m = sorted[i];
-      const part = clpToUsdAtPaymentRounded(m.amt, m.occurred_on);
+      const part = depositInflowEventUsd(m);
       if (part != null) cum += part;
       i++;
     }
@@ -387,7 +341,7 @@ function accountChartMetaById(
 
 function attachDepositSeriesKeys(
   top: AccountLine[],
-  depMovs: Map<number, { occurred_on: string; amt: number }[]>,
+  pocketDepMovs: Map<number, { occurred_on: string; amt: number }[]>,
   merge: MergePairOpts | undefined,
   slugById: Map<number, string>
 ): AccountLine[] {
@@ -395,20 +349,20 @@ function attachDepositSeriesKeys(
     if (t.dataKey === "crypto_total") {
       const { btcId, ethId } = merge ?? {};
       const has =
-        (btcId != null && (depMovs.get(btcId)?.length ?? 0) > 0) ||
-        (ethId != null && (depMovs.get(ethId)?.length ?? 0) > 0);
+        (btcId != null && (pocketDepMovs.get(btcId)?.length ?? 0) > 0) ||
+        (ethId != null && (pocketDepMovs.get(ethId)?.length ?? 0) > 0);
       return has ? { ...t, depositDataKey: "crypto_total__dep" } : { ...t };
     }
     if (t.dataKey === "stocks_total") {
       const { spyId, veaId } = merge ?? {};
       const has =
-        (spyId != null && (depMovs.get(spyId)?.length ?? 0) > 0) ||
-        (veaId != null && (depMovs.get(veaId)?.length ?? 0) > 0);
+        (spyId != null && (pocketDepMovs.get(spyId)?.length ?? 0) > 0) ||
+        (veaId != null && (pocketDepMovs.get(veaId)?.length ?? 0) > 0);
       return has ? { ...t, depositDataKey: "stocks_total__dep" } : { ...t };
     }
     if (t.dataKey === "mutual_funds_total") {
       const ids = merge?.mutualFundsIds ?? [];
-      const has = ids.some((id) => (depMovs.get(id)?.length ?? 0) > 0);
+      const has = ids.some((id) => (pocketDepMovs.get(id)?.length ?? 0) > 0);
       return has ? { ...t, depositDataKey: "mutual_funds_total__dep" } : { ...t };
     }
     if (t.account_id > 0) {
@@ -416,43 +370,14 @@ function attachDepositSeriesKeys(
       const kind = slug ? accountBucketKindSlug(slug) : "";
       if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
       if (kind && CATEGORY_NO_CHART_DEPOSIT_LINE.has(kind)) return { ...t };
-      const depLen = (depMovs.get(t.account_id) ?? []).length;
+      const depLen = (pocketDepMovs.get(t.account_id) ?? []).length;
       const propertyWithCapital =
-        kind === "property" && Math.abs(totalDepositsClpForAccount(t.account_id)) > 0.5;
+        kind === "property" && Math.abs(totalDisplayDepositsClpForAccount(t.account_id)) > 0.5;
       if (depLen > 0 || propertyWithCapital) {
         return { ...t, depositDataKey: `${t.dataKey}__dep` };
       }
     }
     return { ...t };
-  });
-}
-
-function attachDisplayDepositSeriesKeys(
-  top: AccountLine[],
-  depMovs: Map<number, DepositInflowEvent[]>,
-  displayDepMovs: Map<number, DepositInflowEvent[]>,
-  dividendDepMovs: Map<number, DepositInflowEvent[]>,
-  slugById: Map<number, string>
-): AccountLine[] {
-  const displayName = "aportes propios acum.";
-  return top.map((t) => {
-    if (!t.depositDataKey || t.account_id <= 0) return t;
-    if (
-      !shouldAttachDisplayDepositSeries(
-        t.account_id,
-        depMovs,
-        displayDepMovs,
-        dividendDepMovs,
-        slugById
-      )
-    ) {
-      return t;
-    }
-    return {
-      ...t,
-      displayDepositDataKey: `${t.dataKey}__dep_display`,
-      display_deposit_series_name: displayName,
-    };
   });
 }
 
@@ -891,34 +816,18 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       };
   const { closeByDate: propertyDeptoCloseByDate, pagoAcumuladoByDate: propertyDeptoPagoAcumByDate } =
     propertyDeptoSheets;
-  const topOut = attachDisplayDepositSeriesKeys(
-    attachDepositSeriesKeys(top, depMovs, merge, slugById),
-    depMovs,
-    displayDepMovs,
-    dividendDepMovs,
-    slugById
-  );
+  const topOut = attachDepositSeriesKeys(top, displayDepMovs, merge, slugById);
   const depClpByAccAndDate = new Map<number, Map<string, number>>();
-  const depDisplayClpByAccAndDate = new Map<number, Map<string, number>>();
   const depUfByAccAndDate = new Map<number, Map<string, number>>();
-  const depDisplayUfByAccAndDate = new Map<number, Map<string, number>>();
   const depUsdByAccAndDate = new Map<number, Map<string, number>>();
-  const depDisplayUsdByAccAndDate = new Map<number, Map<string, number>>();
   for (const id of allIds) {
-    const movs = depMovs.get(id) ?? [];
-    const displayMovs = displayDepMovs.get(id) ?? [];
-    const chartDepMovs = accountUsesEquityMtm(id)
-      ? equityCostBasisChartInflowEvents(displayMovs, dividendDepMovs.get(id) ?? [])
-      : movs;
-    depClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, chartDepMovs));
-    depDisplayClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, displayMovs));
+    const pocketMovs = displayDepMovs.get(id) ?? [];
+    depClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, pocketMovs));
     if (unit === "uf") {
-      depUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, chartDepMovs));
-      depDisplayUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, displayMovs));
+      depUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, pocketMovs));
     }
     if (unit === "usd") {
-      depUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, chartDepMovs));
-      depDisplayUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, displayMovs));
+      depUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, pocketMovs));
     }
   }
 
@@ -958,7 +867,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   let stocksMergedDepSeen = false;
   let mutualFundsMergedDepSeen = false;
   const singleAccountDepSeen = new Map<number, boolean>();
-  const singleAccountDisplayDepSeen = new Map<number, boolean>();
   const trailingChartDate = dateStrs.length > 0 ? dateStrs[dateStrs.length - 1]! : "";
   const todayYmd = chileCalendarTodayYmd();
   const ccCloseByAccAndDate = new Map<number, Map<string, number>>();
@@ -1169,36 +1077,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         } else {
           row[dk] = depPlot;
         }
-      }
-      const displayDk = t.displayDepositDataKey;
-      if (!displayDk) continue;
-      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total") {
-        continue;
-      }
-      const aid = t.account_id;
-      let displayPlot =
-        unit === "uf"
-          ? (depDisplayUfByAccAndDate.get(aid)?.get(d) ?? 0)
-          : unit === "usd"
-            ? (depDisplayUsdByAccAndDate.get(aid)?.get(d) ?? 0)
-            : (depDisplayClpByAccAndDate.get(aid)?.get(d) ?? 0);
-      if (
-        unit === "clp" &&
-        propertyAccountIds.length === 1 &&
-        bucketKindFromSlugMap(slugById, aid) === "property"
-      ) {
-        const fromSheet = propertyDeptoPagoAcumByDate.get(d);
-        if (fromSheet != null && Number.isFinite(fromSheet)) displayPlot = fromSheet;
-      }
-      if (!singleAccountDisplayDepSeen.get(aid)) {
-        if (displayPlot === 0) {
-          row[displayDk] = null;
-        } else {
-          singleAccountDisplayDepSeen.set(aid, true);
-          row[displayDk] = displayPlot;
-        }
-      } else {
-        row[displayDk] = displayPlot;
       }
     }
     return row;
@@ -1807,11 +1685,6 @@ function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): 
       )
       .get(groupSlug, tabSubgroup, tabSubgroup, tabSubgroup) as { slug: string } | undefined;
     if (child) return listAccountsForPortfolioGroupSlug(child.slug);
-  }
-  if (groupSlug === "inversiones") {
-    const broIds = leafAssetGroupIdsUnder("brokerage");
-    const retIds = leafAssetGroupIdsUnder("retirement");
-    return toGroupTabAccountRows(listAccountsForBucketIds([...broIds, ...retIds], NOTE_STOCKS_LEGACY));
   }
   if (groupSlug === "net_worth") {
     const bucketIds = new Set<number>();

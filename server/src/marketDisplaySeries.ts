@@ -8,7 +8,10 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
-import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
+import { syncWatchlistFromApp } from "./watchlist.js";
+import { compositeLiveStats, RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
+
+export type WatchlistSource = "builtin" | "account" | "manual";
 
 export type MarketDisplaySeriesRow = {
   id: number;
@@ -16,16 +19,17 @@ export type MarketDisplaySeriesRow = {
   label: string;
   label_i18n_key: string | null;
   sort_order: number;
-  kind: "equity" | "fund_unit" | "fx_usd" | "uf";
+  kind: "equity" | "fund_unit" | "fx_usd" | "uf" | "composite";
   series_key: string | null;
   show_in_marquee: number;
   show_in_rates: number;
   rates_chart_title: string | null;
+  source: WatchlistSource;
 };
 
 const stmtAll = db.prepare(
   `SELECT id, slug, label, label_i18n_key, sort_order, kind, series_key,
-          show_in_marquee, show_in_rates, rates_chart_title
+          show_in_marquee, show_in_rates, rates_chart_title, source
    FROM market_display_series
    ORDER BY sort_order, id`
 );
@@ -67,15 +71,15 @@ export type MarketTickerEquityRow = {
   source: "live" | "eod";
 };
 
-const CRYPTO_MARQUEE_TICKERS = ["BTC-USD", "ETH-USD"] as const;
-
-/** Yahoo live/EOD symbols for the marquee: DB config + built-in/panel NYSE + crypto. */
+/** Yahoo live/EOD symbols for marquee rows with show_in_marquee = 1. */
 export function equityTickersForMarqueeQuotes(marqueeSeries: MarketDisplaySeriesRow[]): string[] {
-  const fromConfig = marqueeSeries
-    .filter((r) => r.kind === "equity" && r.series_key?.trim())
-    .map((r) => r.series_key!.trim().toUpperCase());
-  const fromAccounts = listDistinctEquityTickersForSync();
-  return [...new Set([...fromConfig, ...fromAccounts, ...CRYPTO_MARQUEE_TICKERS])];
+  return [
+    ...new Set(
+      marqueeSeries
+        .filter((r) => r.kind === "equity" && r.show_in_marquee === 1 && r.series_key?.trim())
+        .map((r) => r.series_key!.trim().toUpperCase())
+    ),
+  ];
 }
 
 export type MarketTickerPayload = {
@@ -84,6 +88,7 @@ export type MarketTickerPayload = {
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
   risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
+  risky_norris_proxy: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
   equities: MarketTickerEquityRow[];
   /** Series config used to build this payload (marquee labels / order). */
   marquee_series: MarketDisplaySeriesRow[];
@@ -93,6 +98,7 @@ export type MarketTickerPayload = {
  * Marquee snapshot driven by `market_display_series` rows with `show_in_marquee = 1`.
  */
 export function getMarketTickerPayloadFromDb(): MarketTickerPayload {
+  syncWatchlistFromApp();
   const today = chileCalendarTodayYmd();
   const now = new Date();
   const marquee_series = listMarqueeSeries();
@@ -101,6 +107,7 @@ export function getMarketTickerPayloadFromDb(): MarketTickerPayload {
   let usd: MarketTickerPayload["usd"] = null;
   let uno_a: MarketTickerPayload["uno_a"] = null;
   let risky_norris: MarketTickerPayload["risky_norris"] = null;
+  let risky_norris_proxy: MarketTickerPayload["risky_norris_proxy"] = null;
   const equities: MarketTickerEquityRow[] = [];
 
   for (const row of marquee_series) {
@@ -166,6 +173,17 @@ export function getMarketTickerPayloadFromDb(): MarketTickerPayload {
         continue;
       }
     }
+    if (row.kind === "composite" && row.series_key === RISKY_NORRIS_PROXY_BUCKET) {
+      const live = compositeLiveStats(RISKY_NORRIS_PROXY_BUCKET, now);
+      if (live.value != null && live.as_of_date != null && Number.isFinite(live.value) && live.value > 0) {
+        risky_norris_proxy = {
+          day: live.as_of_date,
+          unit_value_clp: live.value,
+          delta_pct: live.day_pct,
+        };
+      }
+      continue;
+    }
   }
 
   for (const ticker of equityTickersForMarqueeQuotes(marquee_series)) {
@@ -187,6 +205,7 @@ export function getMarketTickerPayloadFromDb(): MarketTickerPayload {
     usd,
     uno_a,
     risky_norris,
+    risky_norris_proxy,
     equities,
     marquee_series,
   };

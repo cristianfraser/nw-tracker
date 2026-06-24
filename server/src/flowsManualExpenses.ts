@@ -76,7 +76,7 @@ export function loadManualExpenseGastosLineDrafts(): FlowCcExpenseLineRowDraft[]
       statement_date: "",
       amount_clp: amountClp,
       amount_usd: null,
-      amount_usd_at_expense: expenseGastosAmountUsdAtDate(amountClp, row.spent_on),
+      amount_usd_at_expense: expenseGastosAmountUsdAtDate(amountClp, null, row.spent_on),
       merchant,
       merchant_key: normalizeCcExpenseMerchantKey(merchant),
       category_slug: categorySlug,

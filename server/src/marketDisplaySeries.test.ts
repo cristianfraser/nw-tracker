@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { equityTickersForMarqueeQuotes } from "./marketDisplaySeries.js";
-import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
+import { equityTickersForMarqueeQuotes } from "./marketDisplaySeries.js";import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
 
 function equityRow(series_key: string): MarketDisplaySeriesRow {
   return {
@@ -15,22 +13,21 @@ function equityRow(series_key: string): MarketDisplaySeriesRow {
     show_in_marquee: 1,
     show_in_rates: 1,
     rates_chart_title: series_key,
+    source: "builtin",
   };
 }
 
 describe("equityTickersForMarqueeQuotes", () => {
-  it("merges marquee config with distinct accounts.equity_ticker values", () => {
+  it("returns only marquee-enabled equity series keys", () => {
     const tickers = equityTickersForMarqueeQuotes([
       equityRow("SPY"),
       equityRow("VEA"),
+      { ...equityRow("OILK"), show_in_marquee: 0 },
       equityRow("BTC-USD"),
       equityRow("ETH-USD"),
     ]);
     expect(tickers).toContain("SPY");
     expect(tickers).toContain("BTC-USD");
-    const hasOilk = db
-      .prepare(`SELECT 1 FROM accounts WHERE equity_ticker = 'OILK' LIMIT 1`)
-      .get();
-    if (hasOilk) expect(tickers).toContain("OILK");
+    expect(tickers).not.toContain("OILK");
   });
 });

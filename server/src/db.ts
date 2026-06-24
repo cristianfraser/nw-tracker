@@ -186,12 +186,34 @@ export function initSchema() {
       label TEXT NOT NULL,
       label_i18n_key TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
-      kind TEXT NOT NULL CHECK (kind IN ('equity', 'fund_unit', 'fx_usd', 'uf')),
+      kind TEXT NOT NULL CHECK (kind IN ('equity', 'fund_unit', 'fx_usd', 'uf', 'composite')),
       series_key TEXT,
       show_in_marquee INTEGER NOT NULL DEFAULT 0 CHECK (show_in_marquee IN (0, 1)),
       show_in_rates INTEGER NOT NULL DEFAULT 0 CHECK (show_in_rates IN (0, 1)),
-      rates_chart_title TEXT
+      rates_chart_title TEXT,
+      source TEXT NOT NULL DEFAULT 'builtin' CHECK (source IN ('builtin', 'account', 'manual'))
     );
+
+    CREATE TABLE IF NOT EXISTS watchlist_composite_meta (
+      bucket_slug TEXT PRIMARY KEY,
+      fintual_managed_fund_id INTEGER NOT NULL,
+      composition_date TEXT NOT NULL,
+      anchor_fund_unit_clp REAL NOT NULL,
+      anchor_basket_usd REAL NOT NULL,
+      anchor_fx_clp REAL NOT NULL,
+      last_sync_ymd TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS watchlist_composite_holdings (
+      bucket_slug TEXT NOT NULL REFERENCES watchlist_composite_meta(bucket_slug) ON DELETE CASCADE,
+      ticker TEXT NOT NULL,
+      weight REAL NOT NULL,
+      synced_at TEXT NOT NULL,
+      PRIMARY KEY (bucket_slug, ticker)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_watchlist_composite_holdings_bucket
+      ON watchlist_composite_holdings(bucket_slug);
 
     CREATE TABLE IF NOT EXISTS movements (
       id INTEGER PRIMARY KEY,
@@ -243,6 +265,14 @@ export function initSchema() {
       raw_clp_per_usd REAL NOT NULL,
       reason TEXT NOT NULL,
       rejected_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS fx_daily_bid_ask (
+      date TEXT PRIMARY KEY,
+      buy_clp_per_usd REAL NOT NULL CHECK (buy_clp_per_usd > 0),
+      sell_clp_per_usd REAL NOT NULL CHECK (sell_clp_per_usd > 0),
+      source TEXT NOT NULL,
+      CHECK (buy_clp_per_usd >= sell_clp_per_usd)
     );
 
     CREATE TABLE IF NOT EXISTS uf_daily (
