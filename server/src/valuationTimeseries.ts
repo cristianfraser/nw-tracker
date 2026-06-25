@@ -137,6 +137,8 @@ type GroupTabValuationBlock = {
     color_rgb?: string;
   }[];
   synthetic_group_color_rgb?: Record<string, string>;
+  /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
+  referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
 };
 
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
@@ -1114,6 +1116,89 @@ function appendUsdMilestoneClpFields(
   }
 }
 
+function ymFromYmdChart(d: string): string | null {
+  const m = /^(\d{4}-\d{2})-\d{2}$/.exec(String(d ?? "").trim());
+  return m ? m[1]! : null;
+}
+
+function addCalendarMonthsChart(ym: string, delta: number): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(ym.trim());
+  if (!m) return ym;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (!Number.isFinite(y) || mo < 1 || mo > 12) return ym;
+  const d = new Date(Date.UTC(y, mo - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function lastDayOfMonthYmdChart(ym: string): string {
+  const [ys, ms] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(ys, ms, 0));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** Month-end or prior year-end immediately before `ymd`'s calendar bucket (chart zero anchors). */
+function priorCalendarPeriodEndYmdChart(
+  ymd: string,
+  granularity: "month" | "year"
+): string | null {
+  const t = String(ymd ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  if (granularity === "year") {
+    const y = Number(t.slice(0, 4));
+    if (!Number.isFinite(y)) return null;
+    return `${y - 1}-12-31`;
+  }
+  const ym = ymFromYmdChart(t);
+  if (!ym) return null;
+  return lastDayOfMonthYmdChart(addCalendarMonthsChart(ym, -1));
+}
+
+function milestoneClpFieldsForDate(asOfYmd: string): Record<string, number | null> {
+  const row: Record<string, string | number | null> = {};
+  appendUsdMilestoneClpFields(row, asOfYmd);
+  const out: Record<string, number | null> = {};
+  for (const usd of PATRIMONIO_USD_MILESTONE_AMOUNTS) {
+    const key = usdMilestoneDataKey(usd);
+    const v = row[key];
+    out[key] = typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+  return out;
+}
+
+/** FX-backed milestone levels for month/year anchor dates before the first overview point. */
+function buildReferenceMilestoneAnchorsByDate(
+  firstOverviewYmd: string
+): Record<string, Record<string, number | null>> {
+  const out: Record<string, Record<string, number | null>> = {};
+  for (const granularity of ["month", "year"] as const) {
+    const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, granularity);
+    if (!anchorDate || anchorDate >= firstOverviewYmd) continue;
+    out[anchorDate] = milestoneClpFieldsForDate(anchorDate);
+  }
+  return out;
+}
+
+/** Leading month-end row with USD milestone reference lines only (data series get client zero anchors). */
+function prependPatrimonioUsdMilestoneAnchorPoints(
+  points: Record<string, string | number | null>[],
+  firstOverviewYmd: string
+): Record<string, string | number | null>[] {
+  const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, "month");
+  if (!anchorDate || anchorDate >= firstOverviewYmd) return points;
+  const byDate = new Map(points.map((p) => [String(p.as_of_date), { ...p }]));
+  const existing = byDate.get(anchorDate);
+  if (existing) {
+    appendUsdMilestoneClpFields(existing, anchorDate);
+    byDate.set(anchorDate, existing);
+  } else {
+    const row: Record<string, string | number | null> = { as_of_date: anchorDate };
+    appendUsdMilestoneClpFields(row, anchorDate);
+    byDate.set(anchorDate, row);
+  }
+  return [...byDate.values()].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
+}
+
 /**
  * Patrimonio neto + invested (CLP) with USD milestone reference lines (always CLP; FX per date).
  * Y-axis on the client uses only the two `data` series; milestones may extend above the scale.
@@ -1121,6 +1206,9 @@ function appendUsdMilestoneClpFields(
 function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
   overviewClp: Record<string, string | number | null>[]
 ): GroupTabValuationBlock {
+  const firstOverviewYmd = overviewClp.length
+    ? [...overviewClp].map((r) => String(r.as_of_date)).sort((a, b) => a.localeCompare(b))[0]!
+    : "";
   const points = overviewClp.map((row) => {
     const d = String(row.as_of_date);
     const out: Record<string, string | number | null> = {
@@ -1131,6 +1219,9 @@ function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
     appendUsdMilestoneClpFields(out, d);
     return out;
   });
+  const withAnchor = firstOverviewYmd
+    ? prependPatrimonioUsdMilestoneAnchorPoints(points, firstOverviewYmd)
+    : points;
   const lines: NonNullable<GroupTabValuationBlock["lines"]> = [
     { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
     { dataKey: "invested", name: "Invested", valueSeriesType: "data" },
@@ -1140,7 +1231,10 @@ function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
       valueSeriesType: "reference" as const,
     })),
   ];
-  return { accounts: [], lines, points };
+  const referenceMilestoneByDate = firstOverviewYmd
+    ? buildReferenceMilestoneAnchorsByDate(firstOverviewYmd)
+    : undefined;
+  return { accounts: [], lines, points: withAnchor, referenceMilestoneByDate };
 }
 
 /** Overview + primary chart blocks from `portfolio_groups` net-worth buckets (one TS build). */
@@ -1158,7 +1252,7 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   const chartDates = datesAsc.filter((d) => d <= today);
   const accountsExProperty = buildDashboardPrimaryFromTotals(unit, chartDates, totalsBySlug);
   const totalsBySlugClp = clpTotals.totalsBySlug;
-  const overviewPoints = buildOverviewDisplayPointsFromPortfolioTotals(chartDates, unit, totalsBySlug);
+  const overviewPoints = buildOverviewDisplayPointsFromPortfolioTotals(chartDates, unit, totalsBySlugClp);
   const overviewPointsClp = buildOverviewDisplayPointsFromPortfolioTotals(
     chartDates,
     "clp",
@@ -1182,13 +1276,13 @@ const OVERVIEW_LINE_PORTFOLIO_SLUG: Record<string, string> = {
   real_estate: "real_estate",
   retirement: "retirement",
   brokerage: "brokerage",
-  cash: "cash_savings",
+  cash: "cash_eqs",
   liabilities: "liabilities",
   total_nw: "net_worth",
 };
 
-/** Portfolio slug for NW-linked cash on dashboard charts (not `cash_eqs` hub). */
-const DASHBOARD_NW_CASH_PORTFOLIO_SLUG = "cash_savings";
+/** Portfolio slug for NW-linked cash on dashboard charts (cash_eqs hub: savings + checking). */
+const DASHBOARD_NW_CASH_PORTFOLIO_SLUG = "cash_eqs";
 
 function overviewLineColorRgb(dataKey: string): string | undefined {
   const slug = OVERVIEW_LINE_PORTFOLIO_SLUG[dataKey];
@@ -1300,6 +1394,7 @@ const DASHBOARD_PRIMARY_CHART_ACCOUNT_ID: Record<string, number> = {
   retirement_afp_afc: -9101,
   retirement_apv: -9102,
   cash_savings: -9201,
+  cash_eqs: -9201,
 };
 
 type DashboardPrimaryLineSpec = { slug: string; chartAccountId: number };
@@ -1319,7 +1414,7 @@ function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
   }
   specs.push({
     slug: DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
-    chartAccountId: DASHBOARD_PRIMARY_CHART_ACCOUNT_ID.cash_savings,
+    chartAccountId: DASHBOARD_PRIMARY_CHART_ACCOUNT_ID.cash_eqs,
   });
   return specs;
 }
@@ -1596,6 +1691,7 @@ export type { GroupTabAccountRow };
 import {
   CASH_SAVINGS_BUCKET,
   CHECKING_ACCOUNTS_BUCKET,
+  isCashEqsNwValuationGroupSlug,
   isCashSavingsValuationGroupSlug,
   leafAssetGroupIdsUnder,
   listAccountsForBucketIds,
@@ -1689,8 +1785,9 @@ function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): 
   if (groupSlug === "net_worth") {
     const bucketIds = new Set<number>();
     for (const slug of NET_WORTH_DASHBOARD_BUCKET_SLUGS) {
-      if (slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG) {
+      if (slug === "cash_eqs") {
         for (const id of leafAssetGroupIdsUnder(CASH_SAVINGS_BUCKET)) bucketIds.add(id);
+        for (const id of leafAssetGroupIdsUnder(CHECKING_ACCOUNTS_BUCKET)) bucketIds.add(id);
       } else {
         for (const id of leafAssetGroupIdsUnder(slug)) bucketIds.add(id);
       }
@@ -1774,12 +1871,8 @@ function getGroupValuationTimeseriesInnerUncached(
   if (groupSlug === "liabilities" && !tabSubgroup && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "liabilities", unit);
   }
-  if (isCashSavingsValuationGroupSlug(groupSlug) && accounts_in_group.points.length > 0) {
-    accounts_in_group = appendChartHostReferenceOverlays(
-      accounts_in_group,
-      DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
-      unit
-    );
+  if (isCashEqsNwValuationGroupSlug(groupSlug) && accounts_in_group.points.length > 0) {
+    accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "cash_eqs", unit);
   }
   if (groupSlug === "real_estate") {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");

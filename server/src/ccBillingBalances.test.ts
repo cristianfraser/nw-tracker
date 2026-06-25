@@ -5,6 +5,8 @@ import {
   incrementalChargesClpForBillingMonth,
   sumRevolvingChargesClpForStatementDate,
 } from "./ccBillingBalances.js";
+import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
+import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -42,5 +44,21 @@ describe("facturadoFromStatement", () => {
     expect(chargesOnly).toBeGreaterThan(0);
     expect(derived.facturado_clp).toBeGreaterThanOrEqual(chargesOnly);
     expect(incrementalChargesClpForBillingMonth(master.id, openBm)).toBe(chargesOnly);
+  });
+});
+
+describe("statementSlotsByBillingMonth", () => {
+  it("picks primary CLP facturado for 4242 Oct 2025 multi-card month", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const slot = statementSlotsByBillingMonth(master.id).get("2025-10");
+    if (!slot?.clp) return;
+
+    const { facturado_clp } = facturadoClpUsdForStatementSlot(master.id, slot);
+    expect(facturado_clp).toBeGreaterThan(100_000);
+    expect(facturado_clp).not.toBeLessThan(3_000_000);
   });
 });

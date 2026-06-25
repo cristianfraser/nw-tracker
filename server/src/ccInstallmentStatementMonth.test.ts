@@ -3,6 +3,7 @@ import {
   ledgerInstallmentsPaid,
   planInstallmentsConsumed,
   purchaseFirstDueYm,
+  scheduledPaymentsPlanBreakdownByMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 
@@ -163,5 +164,60 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
     ];
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-05")).toBe(2);
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-06")).toBe(2);
+  });
+});
+
+describe("purchaseFirstDueYm 00/N preamble", () => {
+  const purchase = {
+    id: 1,
+    canonical_row_id: "blundstone-test",
+    card_group: "A",
+    purchase_date: "2026-06-03",
+    total_amount_clp: 189_900,
+    cuotas_totales: 3,
+    merchant: "BLUNDSTONE MUT",
+    description_merged: "BLUNDSTONE MUT",
+    matched_baseline_purchase_id: null,
+    source: "pdf",
+  };
+
+  it("anchors first indexed cuota on pay-by month after 00/03 preamble", () => {
+    const payList = [
+      {
+        id: 1,
+        purchase_id: 1,
+        pay_by_date: "2026-07-10",
+        statement_date: "20/06/2026",
+        statement_period_month: "2026-06",
+        period_to_join: null,
+        source_pdf: "june.pdf",
+        amount_clp: 63_300,
+        cuota_current: 0,
+      },
+    ];
+    expect(purchaseFirstDueYm(purchase, payList)).toBe("2026-08");
+  });
+
+  it("schedules 01/03 in August after June 00/03 only", () => {
+    const payList = [
+      {
+        id: 1,
+        purchase_id: 1,
+        pay_by_date: "2026-07-10",
+        statement_date: "20/06/2026",
+        statement_period_month: "2026-06",
+        period_to_join: null,
+        source_pdf: "june.pdf",
+        amount_clp: 63_300,
+        cuota_current: 0,
+      },
+    ];
+    const paymentsByPurchase = new Map([[1, payList]]);
+    const breakdown = scheduledPaymentsPlanBreakdownByMonth([purchase], paymentsByPurchase);
+    const aug = breakdown.get("2026-08") ?? [];
+    expect(aug).toHaveLength(1);
+    expect(aug[0]!.installment_index).toBe(0);
+    expect(aug[0]!.installment_count).toBe(3);
+    expect(aug[0]!.amount_clp).toBe(63_300);
   });
 });

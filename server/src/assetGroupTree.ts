@@ -106,9 +106,13 @@ export const CASH_SAVINGS_BUCKET = "cash_eqs__cash_savings";
 export const CHECKING_ACCOUNTS_KIND = "checking_accounts";
 export const CASH_SAVINGS_KIND = "cash_savings";
 
-/** NW dashboard charts / consolidation: ahorros y reservas (not the cash_eqs hub or checking). */
+/** NW dashboard charts / consolidation: cash_eqs hub or ahorros leaf (linked CC netting). */
 export function isCashSavingsValuationGroupSlug(groupSlug: string): boolean {
   return groupSlug === CASH_SAVINGS_KIND || groupSlug === CASH_SAVINGS_BUCKET;
+}
+
+export function isCashEqsNwValuationGroupSlug(groupSlug: string): boolean {
+  return groupSlug === "cash_eqs" || isCashSavingsValuationGroupSlug(groupSlug);
 }
 
 function assetGroupKindSlug(slug: string): string {
@@ -160,20 +164,24 @@ function buildDashboardBucketBySlugCache(): Map<string, string | null> {
 
   for (const row of rows) {
     let cur: AssetGroupParentRow | undefined = row;
-    let underChecking = false;
-    let underSavings = false;
+    let underCashEqs = false;
     const seen = new Set<number>();
     while (cur && !seen.has(cur.id)) {
       seen.add(cur.id);
       const kind = assetGroupKindSlug(cur.slug);
-      if (kind === CHECKING_ACCOUNTS_KIND) underChecking = true;
-      if (kind === CASH_SAVINGS_KIND) underSavings = true;
+      if (
+        cur.slug === "cash_eqs" ||
+        kind === "cash_eqs" ||
+        kind === CHECKING_ACCOUNTS_KIND ||
+        kind === CASH_SAVINGS_KIND
+      ) {
+        underCashEqs = true;
+        break;
+      }
       cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
     }
     let dashboard: string | null = null;
-    if (underChecking) {
-      dashboard = null;
-    } else if (underSavings) {
+    if (underCashEqs) {
       dashboard = "cash_eqs";
     } else if (row.slug === "cash_eqs" || assetGroupKindSlug(row.slug) === "cash_eqs") {
       dashboard = null;

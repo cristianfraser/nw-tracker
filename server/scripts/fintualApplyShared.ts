@@ -13,8 +13,15 @@ import {
   isFintualCertV2ValuationNotes,
   recordFintualGoalFundUnitDaily,
 } from "../src/fintualFundUnitDaily.js";
-import { formatSyncClp, type SyncFieldChange } from "../src/syncRunLog.js";
+import { formatSyncClp, formatSyncIndex, type SyncFieldChange } from "../src/syncRunLog.js";
 import type { FintualGoalNavResolution } from "./fintualRealAssetNav.js";
+import {
+  cleanupUnreconciledFintualCertFundUnits,
+  fintualCertV2GoalsCuotaReconciled,
+  fintualCertV2PollReconciled,
+  fintualCertV2PositionFromCuotaClp,
+  fintualGoalsNavFromResolution,
+} from "../src/fintualCertV2Reconcile.js";
 
 export type ValuationChange = SyncFieldChange;
 
@@ -115,20 +122,65 @@ function storedFintualPublishUnitAt(importNotes: string, asOfYmd: string): numbe
   return Math.round(row.unit_value_clp * 10000) / 10000;
 }
 
+function priorFintualPublishUnit(
+  importNotes: string,
+  beforeYmd: string
+): { day: string; unit_value_clp: number } | null {
+  if (!isFintualCertV2ValuationNotes(importNotes)) return null;
+  const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+  if (!seriesKey) return null;
+  const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
+    | { day: string; unit_value_clp: number }
+    | undefined;
+  if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
+  return { day: row.day, unit_value_clp: Math.round(row.unit_value_clp * 10000) / 10000 };
+}
+
 function fintualPublishUnitSynced(
   importNotes: string,
   asOfYmd: string,
-  fundPriceClp: number | null | undefined
+  fundPriceClp: number | null | undefined,
+  goalsNavClp: number | null | undefined,
+  accountId: number
 ): boolean {
   const stored = storedFintualPublishUnitAt(importNotes, asOfYmd);
   if (stored == null) return false;
   if (fundPriceClp != null && fundPriceClp > 0) {
-    return Math.abs(stored - fundPriceClp) <= 0.005;
+    if (Math.abs(stored - fundPriceClp) > 0.005) return false;
   }
-  return true;
+  if (goalsNavClp != null && Number.isFinite(goalsNavClp)) {
+    const cuotaPos = fintualCertV2PositionFromCuotaClp(accountId, importNotes, asOfYmd);
+    if (
+      cuotaPos != null &&
+      !fintualCertV2GoalsCuotaReconciled({ goalsNavClp, cuotaPositionClp: cuotaPos })
+    ) {
+      return false;
+    }
+  }
+  return fundPriceClp != null && fundPriceClp > 0;
 }
 
-/** Mapped Fintual goals whose API NAV differs from stored DB position on `snap.asOfDate`. */
+/** Evening fund_unit write: real_assets publish, or goals API NAV moved vs prior cuota position. */
+export function shouldRecordFintualCertFundUnit(opts: {
+  accountId: number;
+  importNotes: string;
+  asOfYmd: string;
+  goalsNavClp: number;
+  fundPriceClp: number | null | undefined;
+}): boolean {
+  if (
+    opts.fundPriceClp != null &&
+    Number.isFinite(opts.fundPriceClp) &&
+    opts.fundPriceClp > 0
+  ) {
+    return true;
+  }
+  const priorPos = priorFintualGoalNav(opts.accountId, opts.importNotes, opts.asOfYmd);
+  if (priorPos == null) return true;
+  return Math.abs(opts.goalsNavClp - priorPos.value_clp) > 1;
+}
+
+/** Mapped Fintual goals: v2 logs cuota, cuota position, and goals API; legacy logs valuation NAV. */
 export function collectFintualGoalValuationChanges(
   snap: FintualGoalSnapshot,
   resolutions?: FintualGoalNavResolution[]
@@ -140,16 +192,87 @@ export function collectFintualGoalValuationChanges(
     const target = resolveFintualGoalApplyAccount(g);
     if (!target) continue;
     const resolution = byGoalId.get(String(g.id));
+    const goalsNavClp = fintualGoalsNavFromResolution(resolution, g.navClp);
     const appliedNav = resolution?.appliedNavClp ?? g.navClp;
     const nextRounded = Math.round(appliedNav);
+
     if (isFintualCertV2ValuationNotes(target.importNotes)) {
-      if (fintualPublishUnitSynced(target.importNotes, snap.asOfDate, resolution?.fundPriceClp)) {
-        continue;
+      const priorPos = priorFintualGoalNav(target.accountId, target.importNotes, snap.asOfDate);
+      const priorUnit = priorFintualPublishUnit(target.importNotes, snap.asOfDate);
+      const nextUnit =
+        resolution?.fundPriceClp != null && resolution.fundPriceClp > 0
+          ? Math.round(resolution.fundPriceClp * 10000) / 10000
+          : goalsNavClp > 0 && fintualGoalUnitsFromMovements(target.accountId)
+            ? Math.round(
+                (goalsNavClp / fintualGoalUnitsFromMovements(target.accountId)!) * 10000
+              ) / 10000
+            : storedFintualPublishUnitAt(target.importNotes, snap.asOfDate);
+      const nextPos =
+        nextUnit != null && fintualGoalUnitsFromMovements(target.accountId)
+          ? Math.round(fintualGoalUnitsFromMovements(target.accountId)! * nextUnit)
+          : nextRounded;
+
+      const unitSynced = fintualPublishUnitSynced(
+        target.importNotes,
+        snap.asOfDate,
+        resolution?.fundPriceClp,
+        goalsNavClp,
+        target.accountId
+      );
+      const posUnchanged =
+        priorPos != null && nextPos != null && Math.abs(priorPos.value_clp - nextPos) <= 1;
+      const goalsUnchanged =
+        priorPos != null && Math.abs(priorPos.value_clp - goalsNavClp) <= 1;
+      if (unitSynced && posUnchanged && goalsUnchanged) continue;
+
+      if (
+        priorUnit != null &&
+        nextUnit != null &&
+        Math.abs(priorUnit.unit_value_clp - nextUnit) > 0.0005
+      ) {
+        changes.push({
+          group: "fintual",
+          label: `${g.name} (valor cuota)`,
+          oldValue: formatSyncIndex(priorUnit.unit_value_clp),
+          newValue: formatSyncIndex(nextUnit),
+          oldDate: priorUnit.day,
+          newDate: snap.asOfDate,
+        });
       }
-    } else {
-      const stored = storedFintualGoalNavAt(target.accountId, target.importNotes, snap.asOfDate);
-      if (stored != null && Math.abs(stored - nextRounded) <= 1) continue;
+      if (priorPos != null && nextPos != null && Math.abs(priorPos.value_clp - nextPos) > 1) {
+        changes.push({
+          group: "fintual",
+          label: `${g.name} (posición)`,
+          oldValue: formatSyncClp(Math.round(priorPos.value_clp)),
+          newValue: formatSyncClp(Math.round(nextPos)),
+          oldDate: priorPos.as_of_date,
+          newDate: snap.asOfDate,
+        });
+      }
+      if (!goalsUnchanged) {
+        changes.push({
+          group: "fintual",
+          label: `${g.name} (goals API)`,
+          oldValue: formatSyncClp(priorPos != null ? Math.round(priorPos.value_clp) : goalsNavClp),
+          newValue: formatSyncClp(Math.round(goalsNavClp)),
+          oldDate: priorPos?.as_of_date ?? null,
+          newDate: snap.asOfDate,
+        });
+      } else if (!unitSynced || !posUnchanged) {
+        changes.push({
+          group: "fintual",
+          label: `${g.name} (goals API)`,
+          oldValue: formatSyncClp(Math.round(goalsNavClp)),
+          newValue: formatSyncClp(Math.round(goalsNavClp)),
+          oldDate: snap.asOfDate,
+          newDate: snap.asOfDate,
+        });
+      }
+      continue;
     }
+
+    const stored = storedFintualGoalNavAt(target.accountId, target.importNotes, snap.asOfDate);
+    if (stored != null && Math.abs(stored - nextRounded) <= 1) continue;
     const prior = priorFintualGoalNav(target.accountId, target.importNotes, snap.asOfDate);
     changes.push({
       group: "fintual",
@@ -185,10 +308,22 @@ export function syncFintualFundUnitsFromResolutions(
       if (v2Acc) notesTargets.push({ importNotes: v2Notes, accountId: v2Acc.id });
     }
     for (const target of notesTargets) {
+      if (!isFintualCertV2ValuationNotes(target.importNotes)) continue;
       const unitsForTarget =
         target.importNotes === r.row.matchedNotes
           ? r.units
           : fintualGoalUnitsFromMovements(target.accountId);
+      if (
+        !shouldRecordFintualCertFundUnit({
+          accountId: target.accountId,
+          importNotes: target.importNotes,
+          asOfYmd,
+          goalsNavClp: r.goalsApiNavClp,
+          fundPriceClp: r.fundPriceClp,
+        })
+      ) {
+        continue;
+      }
       const fu = recordFintualGoalFundUnitDaily({
         accountId: target.accountId,
         importNotes: target.importNotes,
@@ -272,13 +407,15 @@ export function applyFintualGoalsSnapshotToDb(
         });
       }
     }
-    recordFintualGoalFundUnitDaily({
-      accountId: row.id,
-      importNotes: target.importNotes,
-      asOfYmd: snap.asOfDate,
-      navClp: g.navClp,
-      dryRun,
-    });
+    if (!isFintualCertV2ValuationNotes(target.importNotes)) {
+      recordFintualGoalFundUnitDaily({
+        accountId: row.id,
+        importNotes: target.importNotes,
+        asOfYmd: snap.asOfDate,
+        navClp: g.navClp,
+        dryRun,
+      });
+    }
     applied += 1;
   }
 
@@ -298,7 +435,16 @@ export function fintualSnapshotMatchesDb(
     if (!target) return false;
     const resolution = byGoalId.get(String(g.id));
     if (isFintualCertV2ValuationNotes(target.importNotes)) {
-      if (!fintualPublishUnitSynced(target.importNotes, snap.asOfDate, resolution?.fundPriceClp)) {
+      const goalsNav = fintualGoalsNavFromResolution(resolution, g.navClp);
+      if (
+        !fintualPublishUnitSynced(
+          target.importNotes,
+          snap.asOfDate,
+          resolution?.fundPriceClp,
+          goalsNav,
+          target.accountId
+        )
+      ) {
         return false;
       }
     } else {
@@ -381,16 +527,33 @@ export function markFintualAppliedFromPoll(
   state.fintualLastAppliedSig = sig;
 }
 
-/** Mark evening poll settled when today's mapped goals already match DB (≥18:00 Chile). */
+/** Mark evening poll settled when mapped goals match DB and v2 goals/cuota reconcile. */
 export function markFintualEveningSettledWhenCurrent(
   state: GlobalSyncStateFile,
   cl: ChileWallClock,
   snap: FintualGoalSnapshot,
-  dryRun: boolean
+  dryRun: boolean,
+  resolutions?: FintualGoalNavResolution[]
 ): void {
   if (dryRun || cl.hour < 18) return;
   if (fintualPublishLagsPollCalendarDay(cl, snap.asOfDate)) return;
-  if (fintualSnapshotMatchesDb(snap)) state.fintualEveningSettledYmd = cl.ymd;
+  if (!fintualSnapshotMatchesDb(snap, resolutions)) return;
+  if (!fintualCertV2PollReconciled(snap.asOfDate, state)) return;
+  state.fintualEveningSettledYmd = cl.ymd;
+}
+
+/** Remove unreconciled inferred fund_unit rows for `publishYmd` (goals API lagging cuota). */
+export function cleanupUnreconciledFintualCertFundUnitsForPoll(
+  publishYmd: string,
+  resolutions: FintualGoalNavResolution[],
+  dryRun: boolean
+): number {
+  const goalsById = new Map<string, number>();
+  for (const r of resolutions) {
+    if (!r.row.matchedNotes && !matchFintualCertGoalV2(String(r.row.id), r.row.name)) continue;
+    goalsById.set(String(r.row.id), Math.round(r.goalsApiNavClp));
+  }
+  return cleanupUnreconciledFintualCertFundUnits(publishYmd, goalsById, dryRun);
 }
 
 export function fintualMappedNavSignature(snap: FintualGoalSnapshot): string {
@@ -398,6 +561,17 @@ export function fintualMappedNavSignature(snap: FintualGoalSnapshot): string {
     .filter((g) => g.matchedNotes)
     .map((g) => `${g.id}:${Math.round(g.navClp * 100) / 100}`)
     .sort();
+  return parts.join("|");
+}
+
+/** Goals API NAV signature (evening stale / reconcile); not real_assets applied NAV. */
+export function fintualMappedGoalsApiSignature(resolutions: FintualGoalNavResolution[]): string {
+  const parts: string[] = [];
+  for (const r of resolutions) {
+    if (!r.row.matchedNotes && !matchFintualCertGoalV2(String(r.row.id), r.row.name)) continue;
+    parts.push(`${r.row.id}:${Math.round(r.goalsApiNavClp * 100) / 100}`);
+  }
+  parts.sort();
   return parts.join("|");
 }
 

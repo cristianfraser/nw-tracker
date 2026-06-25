@@ -16,6 +16,10 @@ import {
 } from "./ccStatementsImport.js";
 import { reconcileManualInstallmentPurchasesAfterStatementImport } from "./ccManualInstallmentStatementReconcile.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
+import {
+  reconcileOpenWebPasteAfterPdfImports,
+  type CcOpenWebPastePdfReconcileResult,
+} from "./ccOpenWebPastePdfReconcile.js";
 import { assertCcImportReconcilesOrThrow } from "./ccStatementImportReconcile.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
@@ -333,6 +337,7 @@ export type CcAccountImportMergeResult = {
   overlap_removed: number;
   manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
   web_paste_repair: ReturnType<typeof repairMisplacedOpenWebPasteBuckets>;
+  web_paste_pdf_reconcile: CcOpenWebPastePdfReconcileResult[];
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
@@ -364,12 +369,14 @@ export function mergeCcAccountFromParsedRows(
   );
   const overlap = removeOneShotLinesSupersededByInstallmentPurchases(accountId);
   const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId);
+  const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records);
   return {
     statements,
     ledger,
     overlap_removed: overlap.removed_count,
     manual_installment_reconcile,
     web_paste_repair,
+    web_paste_pdf_reconcile,
   };
 }
 

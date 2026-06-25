@@ -1,3 +1,4 @@
+import { invalidateLinkedCreditCardAggregationCache } from "./aggregationCache.js";
 import { clearAccountCategoryMetaCache } from "./liabilitiesValuation.js";
 import { db } from "./db.js";
 
@@ -58,6 +59,7 @@ export function updateAccountExcludeFromGroupTotals(
   });
   tx();
   clearAccountCategoryMetaCache();
+  invalidateLinkedCreditCardAggregationCache();
 
   return { exclude_from_group_totals: value };
 }

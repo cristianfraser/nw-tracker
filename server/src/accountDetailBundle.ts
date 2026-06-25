@@ -22,7 +22,6 @@ import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { kindSlugForAccount } from "./portfolioGroupTree.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId } from "./portfolioGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
@@ -130,7 +129,7 @@ export async function buildAccountDetailBundle(
 
   if (!cat) return null;
 
-  const category_slug = kindSlugForAccount(accountId) ?? accountBucketKindSlug(cat.bucket_slug);
+  const category_slug = accountBucketKindSlug(cat.bucket_slug);
   const dashSlug = dashboardBucketSlugForAccountId(accountId);
   const group_slug = dashSlug ?? cat.bucket_slug;
   const group_label =

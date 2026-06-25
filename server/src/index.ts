@@ -142,6 +142,8 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
+import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
+import { mortgageGroupLedgerResponse } from "./mortgageGroupLedger.js";
 import { documentImportSpecsForAccount } from "./accountDocumentRegistry.js";
 import {
   importAccountDocument,
@@ -350,6 +352,7 @@ app.get("/api/accounts", async (req, res) => {
          INNER JOIN asset_groups g ON g.id = a.asset_group_id
          WHERE (a.notes IS NULL OR a.notes != ?)
            AND g.slug != 'individual_stocks'
+           AND a.notes != 'liability_view|credit_card'
          ORDER BY g.sort_order, a.id, a.name`
       )
       .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];
@@ -523,6 +526,25 @@ app.patch("/api/portfolio-groups/:slug/color", (req, res) => {
     return;
   }
   res.json(updated);
+});
+
+app.get("/api/portfolio-groups/:slug/cc-ledger", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  if (!slug || !isResolvablePortfolioGroupSlug(slug)) {
+    res.status(404).json({ error: "portfolio group not found" });
+    return;
+  }
+  const extra = parseExtraOffsetsJson(req.query.extraOffsets);
+  res.json(creditCardGroupLedgerResponse(slug, extra));
+});
+
+app.get("/api/portfolio-groups/:slug/mortgage-ledger", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  if (!slug || !isResolvablePortfolioGroupSlug(slug)) {
+    res.status(404).json({ error: "portfolio group not found" });
+    return;
+  }
+  res.json(mortgageGroupLedgerResponse(slug));
 });
 
 app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
@@ -718,7 +740,7 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
   const accountRow = accountRowForId(id);
   const deposits_clp = pocketDepositsClpForAccount(id);
   const deposits_full_clp = totalDepositsClpForAccount(id);
-  let latest = await latestValuationDisplayForAccount(id, bucketSlug || null, {
+  let latest = await latestValuationDisplayForAccount(id, bucketKind || null, {
     notes: metaRow?.account_notes ?? null,
     name: metaRow?.account_name ?? null,
   });
@@ -728,14 +750,14 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
   }
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
   const positionMeta = metaRow
-    ? getAccountPositionMeta(id, bucketSlug, {
+    ? getAccountPositionMeta(id, bucketKind, {
         afpCuotasAsOfYmd: bucketKind === "afp" ? asOfCuotas : undefined,
         accountNotes: metaRow.account_notes,
         accountName: metaRow.account_name,
       })
     : null;
   const position = positionSnapshotFromMeta(
-    bucketSlug || null,
+    bucketKind || null,
     positionMeta,
     deposits_clp,
     latest ?? undefined,

@@ -518,19 +518,51 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
     )
 
 
+def parse_only_basenames(argv: list[str]) -> set[str] | None:
+    for arg in argv:
+        if arg.startswith("--only="):
+            names = [n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()]
+            return set(names) if names else None
+    return None
+
+
+def merge_cartola_json(
+    out_path: Path, new_cartolas: list[dict], *, only_mode: bool
+) -> list[dict]:
+    if not only_mode or not out_path.is_file():
+        return list(new_cartolas)
+    try:
+        existing = json.loads(out_path.read_text(encoding="utf-8")).get("cartolas") or []
+    except (OSError, json.JSONDecodeError):
+        existing = []
+    replaced = {str(c.get("source_file") or "") for c in new_cartolas}
+    return [c for c in existing if str(c.get("source_file") or "") not in replaced] + new_cartolas
+
+
 def main() -> int:
+    only = parse_only_basenames(sys.argv)
     pdfs_dir = resolve_pdfs_dir()
     out_path = resolve_output_json()
-    pdfs = sorted(pdfs_dir.glob("*.pdf")) if pdfs_dir.is_dir() else []
+    all_pdfs = sorted(pdfs_dir.glob("*.pdf")) if pdfs_dir.is_dir() else []
+    if only is not None:
+        pdfs = [p for p in all_pdfs if p.name in only]
+        missing = sorted(only - {p.name for p in pdfs})
+        for name in missing:
+            print(f"  WARN --only missing PDF: {name}", file=sys.stderr)
+    else:
+        pdfs = all_pdfs
     cartolas = [asdict(parse_cartola_pdf(p)) for p in pdfs]
+    merged_cartolas = merge_cartola_json(out_path, cartolas, only_mode=only is not None)
     payload = {
         "generated_at": date.today().isoformat(),
         "pdfs_dir": str(pdfs_dir),
-        "cartolas": cartolas,
+        "cartolas": merged_cartolas,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Wrote {out_path} ({len(cartolas)} cartola(s) from {len(pdfs)} PDF(s)).")
+    print(
+        f"Wrote {out_path} ({len(cartolas)} parsed, {len(merged_cartolas)} total cartola(s) from {len(pdfs)} PDF(s))."
+    )
     for c in cartolas:
         status = c.get("parse_status")
         if status == "ok":

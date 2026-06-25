@@ -26,11 +26,11 @@ describe("assetGroupTree", () => {
   it("walks asset_groups tree to dashboard parent buckets", () => {
     expect(dashboardBucketForAssetGroupSlug("brokerage_acciones")).toBe("brokerage");
     expect(dashboardBucketForAssetGroupSlug("retirement_apv_a")).toBe("retirement");
-    expect(dashboardBucketForAssetGroupSlug("cash_eqs")).toBe(null);
+    expect(dashboardBucketForAssetGroupSlug("cash_eqs")).toBe("cash_eqs");
     expect(dashboardBucketForAssetGroupSlug("cash_eqs__cash_savings")).toBe("cash_eqs");
-    expect(dashboardBucketForAssetGroupSlug("cash_eqs__checking_accounts")).toBe(null);
+    expect(dashboardBucketForAssetGroupSlug("cash_eqs__checking_accounts")).toBe("cash_eqs");
     expect(dashboardBucketForAssetGroupSlug("cash_eqs__fondo_reserva")).toBe("cash_eqs");
-    expect(dashboardBucketForAssetGroupSlug("cash_eqs__cuenta_corriente")).toBe(null);
+    expect(dashboardBucketForAssetGroupSlug("cash_eqs__cuenta_corriente")).toBe("cash_eqs");
     expect(
       accountBelongsToDashboardBucket({
         group_slug: "brokerage_acciones",

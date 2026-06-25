@@ -71,8 +71,18 @@ function purchaseIsoFromLineFields(transaction_date: string | null, posting_date
 }
 
 function isIsoInInclusivePeriod(iso: string, periodFrom: string | null, periodTo: string | null): boolean {
-  if (!periodFrom?.trim() || !periodTo?.trim()) return false;
-  return iso >= periodFrom.trim() && iso <= periodTo.trim();
+  const fromIso =
+    parseDdMmYyToIso(String(periodFrom ?? "").trim()) ??
+    (/^\d{4}-\d{2}-\d{2}$/.test(String(periodFrom ?? "").trim())
+      ? String(periodFrom).trim()
+      : null);
+  const toIso =
+    parseDdMmYyToIso(String(periodTo ?? "").trim()) ??
+    (/^\d{4}-\d{2}-\d{2}$/.test(String(periodTo ?? "").trim())
+      ? String(periodTo).trim()
+      : null);
+  if (!fromIso || !toIso) return false;
+  return iso >= fromIso && iso <= toIso;
 }
 
 function contractAmountClpFromLine(line: {
@@ -96,18 +106,23 @@ function manualMatchesInstallmentLine(
     transaction_date: string | null;
     posting_date: string | null;
     nro_cuota_total: number | null;
+    nro_cuota_current: number | null;
     amount_clp: number | null;
     valor_cuota_mensual_clp: number | null;
   }
 ): boolean {
-  const lineIso = purchaseIsoFromLineFields(line.transaction_date, line.posting_date);
-  if (!lineIso || lineIso !== manual.purchase_date) return false;
   if (!merchantsMatchForCrossDedupe(manual.merchant, line.merchant)) return false;
   const lineNt = line.nro_cuota_total;
   if (lineNt != null && lineNt > 0 && manual.cuotas_totales !== lineNt) return false;
   const contractAmt = contractAmountClpFromLine(line);
   if (!purchaseAmountsMatch(manual.total_amount_clp, contractAmt)) return false;
-  return true;
+
+  const lineIso = purchaseIsoFromLineFields(line.transaction_date, line.posting_date);
+  if (lineIso && lineIso === manual.purchase_date) return true;
+
+  const cur = line.nro_cuota_current;
+  const isContractResumen = cur == null || cur === 0;
+  return isContractResumen && purchaseAmountsMatch(manual.total_amount_clp, contractAmt);
 }
 
 function resolveCategoryIdForManualPurchase(accountId: number, manualId: number, manualKey: string | null): number | null {

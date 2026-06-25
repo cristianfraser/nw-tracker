@@ -1,6 +1,7 @@
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
 export function partialMovementNote(mv: UltimosMovimientoRow): string {
@@ -14,6 +15,7 @@ const noteExists = db.prepare(`SELECT 1 AS o FROM movements WHERE account_id = ?
 export type PartialMovementsImportResult = {
   inserted: number;
   skipped_duplicate: number;
+  skipped_superseded_by_cartola: number;
 };
 
 export function importCheckingPartialMovements(
@@ -27,12 +29,17 @@ export function importCheckingPartialMovements(
 
   let inserted = 0;
   let skipped_duplicate = 0;
+  let skipped_superseded_by_cartola = 0;
 
   const tx = db.transaction(() => {
     for (const mv of movements) {
       const note = partialMovementNote(mv);
       if (noteExists.get(accountId, note)) {
         skipped_duplicate += 1;
+        continue;
+      }
+      if (partialMovementSupersededByCartola(accountId, mv)) {
+        skipped_superseded_by_cartola += 1;
         continue;
       }
       ins.run(accountId, mv.amount_clp, mv.occurred_on, note);
@@ -48,5 +55,5 @@ export function importCheckingPartialMovements(
     }
     invalidateAggregationForAccountDate(accountId, minOn);
   }
-  return { inserted, skipped_duplicate };
+  return { inserted, skipped_duplicate, skipped_superseded_by_cartola };
 }

@@ -122,4 +122,45 @@ describe("net worth surfaces reconcile", () => {
       }
     });
   });
+
+  it("page-bundle totals and overview chart total_nw align in USD", async () => {
+    await withPortfolioGroupIndex(async () => {
+      const payload = await buildDashboardPagePayload(true);
+      const ts = getDashboardValuationTimeseries("usd");
+      const overview = ts.overview?.points ?? [];
+      const lastOverview = overview.length ? overview[overview.length - 1] : null;
+      const chartNw =
+        lastOverview && typeof lastOverview.total_nw === "number"
+          ? Math.round(lastOverview.total_nw)
+          : null;
+
+      if (payload.totals.net_worth_usd <= 0 || chartNw == null) return;
+
+      expect(chartNw).toBeCloseTo(Math.round(payload.totals.net_worth_usd), -2);
+    });
+  });
+
+  it("patrimonio USD milestone chart backfills reference lines on leading anchor date", async () => {
+    await withPortfolioGroupIndex(async () => {
+      const ts = getDashboardValuationTimeseries("clp");
+      const block = ts.patrimonio_usd_milestones_chart;
+      if (!block?.points.length) return;
+
+      const sorted = [...block.points].sort((a, b) =>
+        String(a.as_of_date).localeCompare(String(b.as_of_date))
+      );
+      const firstData = sorted.find(
+        (r) => typeof r.total_nw === "number" && Number.isFinite(r.total_nw)
+      );
+      if (!firstData) return;
+
+      const firstDate = String(firstData.as_of_date);
+      const leading = sorted.filter((r) => String(r.as_of_date) < firstDate);
+      expect(leading.length).toBeGreaterThan(0);
+      for (const row of leading) {
+        expect(typeof row.usd_50k === "number" && row.usd_50k > 0).toBe(true);
+        expect(block.referenceMilestoneByDate?.[String(row.as_of_date)]?.usd_50k).toBe(row.usd_50k);
+      }
+    });
+  });
 });

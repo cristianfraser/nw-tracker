@@ -571,7 +571,7 @@ export function listCheckingCartolaXlsxFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .filter((f) => f.toLowerCase().endsWith(".xlsx"))
+    .filter((f) => isCheckingCartolaXlsxFileName(f))
     .sort((a, b) => {
       const ma = periodMonthFromCartolaFileName(a) ?? "";
       const mb = periodMonthFromCartolaFileName(b) ?? "";

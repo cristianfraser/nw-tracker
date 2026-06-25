@@ -21,7 +21,9 @@ import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsD
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
 export type CcBillingMonthBalanceRow = {
   id: number;
@@ -123,6 +125,14 @@ export function incrementalChargesClpForBillingMonth(
     seenDates.add(st.statement_date);
     sum += sumRevolvingChargesClpForStatementDate(accountId, st.statement_date);
   }
+  const openBm = billingMonthForManualLedgerPurchase(accountId);
+  if (openBm === billingMonth) {
+    for (const stmtDate of listStaleOpenWebPasteStatementDates(accountId, billingMonth)) {
+      if (seenDates.has(stmtDate)) continue;
+      seenDates.add(stmtDate);
+      sum += sumRevolvingChargesClpForStatementDate(accountId, stmtDate);
+    }
+  }
   return sum;
 }
 
@@ -202,7 +212,7 @@ function installmentCuotaDueForAccountStatementDateClp(
 export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
-  stmt: { currency: string; monto_facturado: number | null },
+  stmt: { currency: string; monto_facturado: number | null; source_pdf?: string | null },
   fxDate: string
 ): { facturado_clp: number | null; facturado_usd: number | null } {
   const headerMonto =
@@ -227,58 +237,16 @@ export function facturadoFromStatement(
   const cuota = installmentCuotaDueForAccountStatementDateClp(accountId, statementDate);
   let clp = revolving + cuota;
   if (clp <= 0) {
-    const billingMonth = billingMonthForStatementDate(fxDate);
-    if (billingMonth) {
-      clp = ledgerFacturadoClpForBillingMonth(accountId, billingMonth);
+    const isWebPaste = String(stmt.source_pdf ?? "").trim().startsWith("import:web-paste");
+    if (!isWebPaste) {
+      const billingMonth = billingMonthForStatementDate(fxDate);
+      if (billingMonth) {
+        clp = ledgerFacturadoClpForBillingMonth(accountId, billingMonth);
+      }
     }
   }
   return { facturado_clp: clp > 0 ? clp : null, facturado_usd: null };
 }
-
-/** One facturado per close (CLP + USD PDFs share the same statement_date). */
-function facturadoForCloseStatements(
-  accountId: number,
-  stmtsAtClose: CcStatementRow[]
-): { facturado_clp: number; facturado_usd: number } {
-  const clpStmt = stmtsAtClose.find((s) => s.currency !== "usd") ?? null;
-  const usdStmt = stmtsAtClose.find((s) => s.currency === "usd") ?? null;
-  const clpDerived = clpStmt
-    ? facturadoFromStatement(
-        accountId,
-        clpStmt.statement_date,
-        clpStmt,
-        clpStmt.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-  const usdDerived = usdStmt
-    ? facturadoFromStatement(
-        accountId,
-        usdStmt.statement_date,
-        usdStmt,
-        usdStmt.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-
-  const facturado_clp =
-    clpStmt?.monto_facturado != null && clpStmt.monto_facturado > 0
-      ? Math.round(clpStmt.monto_facturado)
-      : (clpDerived.facturado_clp ?? 0);
-  const facturado_usd =
-    usdStmt?.monto_facturado != null && usdStmt.monto_facturado > 0
-      ? usdStmt.monto_facturado
-      : (usdDerived.facturado_usd ?? 0);
-  return { facturado_clp, facturado_usd };
-}
-
-type StatementBalanceAgg = {
-  billing_month: string;
-  as_of_date: string;
-  facturado_clp: number;
-  facturado_usd: number;
-  cupo_utilizado_clp: number;
-  saldo_total_clp: number;
-  saldo_total_usd: number;
-};
 
 function cupoEnCuotasForBillingMonth(
   billingMonth: string,
@@ -288,6 +256,38 @@ function cupoEnCuotasForBillingMonth(
 ): number {
   if (currentBillingMonth && billingMonth === currentBillingMonth) return cupoLive;
   return remainingByMonth.get(billingMonth) ?? 0;
+}
+
+function facturadoClpUsdForStatementSlotLocal(
+  accountId: number,
+  slot: import("./ccBillingStatementSlots.js").CcStatementSlotByCurrency
+): { facturado_clp: number; facturado_usd: number } {
+  const clpDerived = slot.clp
+    ? facturadoFromStatement(
+        accountId,
+        slot.clp.statement_date,
+        slot.clp,
+        slot.clp.statement_date_iso
+      )
+    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+  const usdDerived = slot.usd
+    ? facturadoFromStatement(
+        accountId,
+        slot.usd.statement_date,
+        slot.usd,
+        slot.usd.statement_date_iso
+      )
+    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+
+  const facturado_clp =
+    slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
+      ? Math.round(slot.clp.monto_facturado)
+      : (clpDerived.facturado_clp ?? 0);
+  const facturado_usd =
+    slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
+      ? slot.usd.monto_facturado
+      : (usdDerived.facturado_usd ?? 0);
+  return { facturado_clp, facturado_usd };
 }
 
 export function recomputeCcBillingMonthBalances(accountId: number): number {
@@ -302,26 +302,13 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
 
   db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
 
-  const byClose = new Map<string, StatementBalanceAgg>();
-  const stmtsByClose = new Map<string, CcStatementRow[]>();
-
-  for (const stmt of statements) {
-    const billingMonth = stmt.billing_month;
-    const asOfIso = stmt.statement_date_iso;
-    if (!billingMonth || !asOfIso) continue;
-    const key = `${billingMonth}|${asOfIso}`;
-    const list = stmtsByClose.get(key) ?? [];
-    list.push(stmt);
-    stmtsByClose.set(key, list);
-  }
-
-  for (const [key, stmtsAtClose] of stmtsByClose) {
-    const primary = stmtsAtClose.find((s) => s.currency !== "usd") ?? stmtsAtClose[0]!;
-    const billingMonth = primary.billing_month!;
+  for (const [billingMonth, slot] of statementSlotsByBillingMonth(accountId)) {
+    const primary = slot.clp ?? slot.usd;
+    if (!primary?.statement_date_iso) continue;
     const asOfIso = primary.statement_date_iso;
-    const { facturado_clp, facturado_usd } = facturadoForCloseStatements(
+    const { facturado_clp, facturado_usd } = facturadoClpUsdForStatementSlotLocal(
       accountId,
-      stmtsAtClose
+      slot
     );
     const cupoAtMonth = cupoEnCuotasForBillingMonth(
       billingMonth,
@@ -329,31 +316,21 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
       cupoLive,
       currentBillingMonth
     );
-    const revolving = sumNonInstallmentLinesClp(primary.id);
-    const usdStmt = stmtsAtClose.find((s) => s.currency === "usd");
-    byClose.set(key, {
-      billing_month: billingMonth,
-      as_of_date: asOfIso,
-      facturado_clp,
-      facturado_usd,
-      cupo_utilizado_clp: cupoAtMonth,
-      saldo_total_clp: cupoAtMonth + revolving,
-      saldo_total_usd:
-        usdStmt?.deuda_total != null && usdStmt.deuda_total > 0 ? usdStmt.deuda_total : 0,
-    });
-  }
+    const clpStmtId = slot.clp?.id ?? primary.id;
+    const revolving = sumNonInstallmentLinesClp(clpStmtId);
+    const saldo_total_usd =
+      slot.usd?.deuda_total != null && slot.usd.deuda_total > 0 ? slot.usd.deuda_total : 0;
 
-  for (const agg of byClose.values()) {
     upsertBalance.run({
       account_id: accountId,
-      billing_month: agg.billing_month,
-      as_of_date: agg.as_of_date,
+      billing_month: billingMonth,
+      as_of_date: asOfIso,
       as_of_kind: "statement",
-      facturado_clp: agg.facturado_clp > 0 ? agg.facturado_clp : null,
-      facturado_usd: agg.facturado_usd > 0 ? agg.facturado_usd : null,
-      cupo_utilizado_clp: agg.cupo_utilizado_clp,
-      saldo_total_clp: agg.saldo_total_clp,
-      saldo_total_usd: agg.saldo_total_usd > 0 ? agg.saldo_total_usd : null,
+      facturado_clp: facturado_clp > 0 ? facturado_clp : null,
+      facturado_usd: facturado_usd > 0 ? facturado_usd : null,
+      cupo_utilizado_clp: cupoAtMonth,
+      saldo_total_clp: cupoAtMonth + revolving,
+      saldo_total_usd: saldo_total_usd > 0 ? saldo_total_usd : null,
     });
     n += 1;
   }

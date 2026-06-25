@@ -52,7 +52,7 @@ export function syncLatestDisplayValueClp(
   if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
     return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
   }
-  if (categorySlug === "afp") {
+  if (bucketKind === "afp") {
     const live = liveAfpDisplayValueClp(accountId);
     if (live) return live;
   }

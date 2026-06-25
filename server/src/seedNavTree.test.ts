@@ -25,7 +25,7 @@ describe("seedNavTree cash_eqs hub", () => {
 
     const children = db
       .prepare(
-        `SELECT slug, route_path, active_prefix, asset_group_slug, dashboard_bucket_slug
+        `SELECT slug, route_path, active_prefix, asset_group_slug, dashboard_bucket_slug, group_kind
          FROM portfolio_groups
          WHERE parent_id = ?
          ORDER BY sort_order`
@@ -36,6 +36,7 @@ describe("seedNavTree cash_eqs hub", () => {
       active_prefix: string | null;
       asset_group_slug: string | null;
       dashboard_bucket_slug: string | null;
+      group_kind: string;
     }[];
     const slugs = children.map((c) => c.slug);
     expect(slugs).toContain("cash_savings");
@@ -45,11 +46,12 @@ describe("seedNavTree cash_eqs hub", () => {
     expect(savings?.route_path).toBe("/cash_eqs/savings");
     expect(savings?.active_prefix).toBe("/cash_eqs/savings");
     expect(savings?.asset_group_slug).toBe("cash_eqs__cash_savings");
-    expect(savings?.dashboard_bucket_slug).toBe("cash_eqs");
+    expect(savings?.dashboard_bucket_slug).toBeNull();
 
     const checking = children.find((c) => c.slug === "checking_accounts");
     expect(checking?.route_path).toBe("/cash_eqs/checking");
     expect(checking?.asset_group_slug).toBe("cash_eqs__checking_accounts");
+    expect(checking?.group_kind).toBe("bucket");
 
     const savingsAccounts = db
       .prepare(

@@ -22,6 +22,15 @@ function resolveDatabaseFilePath(): string {
     }
     return path.join(dataDir, override);
   }
+  // Hard stop: a Vitest run with no NW_TRACKER_TEST_DB means the server's
+  // vitest.config.ts was bypassed (e.g. `npx vitest` from the repo root).
+  // Opening the real DB lets destructive test setup wipe live data — refuse it.
+  if (process.env.VITEST) {
+    throw new Error(
+      "Refusing to open the real nw-tracker.db under Vitest without NW_TRACKER_TEST_DB. " +
+        "Run tests from server/ (`npm run test`) so vitest.config.ts sets NW_TRACKER_TEST_DB."
+    );
+  }
   return path.join(dataDir, "nw-tracker.db");
 }
 

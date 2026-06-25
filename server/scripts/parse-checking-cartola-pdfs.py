@@ -842,7 +842,29 @@ def write_cartolas_csv(cartolas: List[ParsedCartola], out_path: Path) -> None:
                 )
 
 
+def parse_only_basenames(argv: list[str]) -> set[str] | None:
+    for arg in argv:
+        if arg.startswith("--only="):
+            names = [n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()]
+            return set(names) if names else None
+    return None
+
+
+def merge_cartola_json_entries(
+    out_path: Path, new_cartolas: List[dict], *, only_mode: bool
+) -> List[dict]:
+    if not only_mode or not out_path.is_file():
+        return list(new_cartolas)
+    try:
+        existing = json.loads(out_path.read_text(encoding="utf-8")).get("cartolas") or []
+    except (OSError, json.JSONDecodeError):
+        existing = []
+    replaced = {str(c.get("source_file") or "") for c in new_cartolas}
+    return [c for c in existing if str(c.get("source_file") or "") not in replaced] + new_cartolas
+
+
 def main() -> int:
+    only = parse_only_basenames(sys.argv)
     pdfs_dir = resolve_pdfs_dir()
     json_path = CFRASER_DIR / "checking-cartolas-from-pdf.json"
     csv_path = CFRASER_DIR / "checking-cartolas-from-pdf.csv"
@@ -850,9 +872,16 @@ def main() -> int:
         print(f"No PDF directory: {pdfs_dir}", file=sys.stderr)
         return 1
 
-    pdfs = sorted(pdfs_dir.glob("*.pdf"))
+    all_pdfs = sorted(pdfs_dir.glob("*.pdf"))
+    if only is not None:
+        pdfs = [p for p in all_pdfs if p.name in only]
+        missing = sorted(only - {p.name for p in pdfs})
+        for name in missing:
+            print(f"  WARN --only missing PDF: {name}", file=sys.stderr)
+    else:
+        pdfs = all_pdfs
     if not pdfs:
-        print(f"No PDFs in {pdfs_dir}")
+        print(f"No PDFs to parse in {pdfs_dir}")
         return 0
 
     parsed_list: List[ParsedCartola] = []
@@ -871,16 +900,22 @@ def main() -> int:
                 f"({len(parsed.movements)} movements, saldo final {parsed.saldo_final_clp})"
             )
 
+    merged_cartolas = merge_cartola_json_entries(
+        json_path, cartolas_json, only_mode=only is not None
+    )
     payload = {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pdfs_dir": str(pdfs_dir),
-        "cartolas": cartolas_json,
+        "cartolas": merged_cartolas,
     }
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    write_cartolas_csv(parsed_list, csv_path)
+    if only is None:
+        write_cartolas_csv(parsed_list, csv_path)
+        print(f"Wrote {csv_path} ({sum(len(c.movements) for c in parsed_list if c.parse_status == 'ok')} movement rows)")
+    else:
+        print(f"Wrote {json_path} ({len(cartolas_json)} parsed, {len(merged_cartolas)} total cartola(s))")
     print(f"Wrote {json_path}")
-    print(f"Wrote {csv_path} ({sum(len(c.movements) for c in parsed_list if c.parse_status == 'ok')} movement rows)")
     return 1 if errors else 0
 
 

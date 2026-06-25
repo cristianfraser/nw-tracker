@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
+import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
 import {
   propagateCcExpenseMerchantRulesAcrossGroup,
   propagateCcExpenseMerchantRulesFromLegacy,
@@ -89,6 +89,8 @@ export type CcStatementsMergeResult = {
   lineCount: number;
   linesInserted: number;
   linesSkippedDuplicate: number;
+  /** One-shot line skipped — same date+amount+fuzzy merchant already exists (different truncation). */
+  linesSkippedFuzzyDuplicate: number;
   /** One-shot line skipped — same purchase already in installment ledger. */
   linesSkippedInstallmentOverlap: number;
   /** Existing lines whose origin_card_last4 was updated on dedupe skip. */
@@ -218,6 +220,7 @@ export function importCcStatementsMerge(
   let lineCount = 0;
   let linesInserted = 0;
   let linesSkippedDuplicate = 0;
+  let linesSkippedFuzzyDuplicate = 0;
   let linesSkippedInstallmentOverlap = 0;
   let linesOriginCardPatched = 0;
   let additionalCardCategoriesApplied = 0;
@@ -334,15 +337,13 @@ export function importCcStatementsMerge(
         const purchaseDateIso =
           parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
           parseDdMmYyToIso(String(row.posting_date ?? "").trim());
-        if (
-          shouldSkipOneShotStatementImport(
-            accountId,
-            String(row.merchant ?? "").trim() || null,
-            purchaseDateIso,
-            amountClp
-          )
-        ) {
+        const merchant = String(row.merchant ?? "").trim() || null;
+        if (shouldSkipOneShotStatementImport(accountId, merchant, purchaseDateIso, amountClp)) {
           linesSkippedInstallmentOverlap += 1;
+          continue;
+        }
+        if (oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp)) {
+          linesSkippedFuzzyDuplicate += 1;
           continue;
         }
       }
@@ -391,6 +392,7 @@ export function importCcStatementsMerge(
     lineCount,
     linesInserted,
     linesSkippedDuplicate,
+    linesSkippedFuzzyDuplicate,
     linesSkippedInstallmentOverlap,
     linesOriginCardPatched,
     additionalCardCategoriesApplied,

@@ -3,12 +3,16 @@ import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
   assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
   assignCcExpenseLineCategory,
+  BILLS_CC_EXPENSE_SLUG,
   categoryUniqueForExpenseLine,
   countsTowardCcExpenseGastosMes,
+  darkenHexColor,
   getCcExpenseCategoryBySlug,
+  listCcExpenseCategories,
   listStatementLineIdsForPurchaseKey,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
+  REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
   resolveCcExpenseCategorySlug,
   resolveCcExpensePurchaseKey,
   resolveMerchantCategorySlug,
@@ -160,12 +164,27 @@ describe("ccExpenseCategories", () => {
     expect(isGenericTransferMerchantKey("MACH ONE CLICK")).toBe(true);
     expect(isGenericTransferMerchantKey("MACH WEBPAY ONECLICK")).toBe(true);
     expect(isGenericTransferMerchantKey("TRASPASO A CUENTA DE OTRO BANCO")).toBe(true);
+    expect(isGenericTransferMerchantKey("TRASPASO A DEUDA NACIONAL")).toBe(true);
     expect(isGenericTransferMerchantKey("1234567890 CARGO MERCADO CAPITALES")).toBe(true);
     expect(isGenericTransferMerchantKey("CARGO MERCADO CAPITALES")).toBe(true);
     expect(isGenericTransferMerchantKey("TRANSFERENCIA A JUAN PEREZ")).toBe(false);
     expect(isGenericTransferMerchantKey("TRANSF 123456")).toBe(false);
     expect(isGenericTransferMerchantKey("TRANSF. A PEDRO PAINEL GAJARDO")).toBe(false);
     expect(isGenericTransferMerchantKey("0768106274 TRANSF A FINTUAL")).toBe(false);
+  });
+
+  it("assigns no_cuenta to traspaso deuda nacional", () => {
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 1,
+        accountId: 15,
+        merchantKey: "TRASPASO A DEUDA NACIONAL",
+        purchaseKey: "one:1",
+        lineOverrides: new Map(),
+        merchantRules: new Map(),
+        uniquePurchases: new Map(),
+      })
+    ).toBe("no_cuenta");
   });
 
   it("generic transfer merchants skip merchant rules", () => {
@@ -599,5 +618,15 @@ describe("ccExpenseCategories", () => {
       }
       deleteManualCcInstallmentPurchase(master.id, created.id);
     }
+  });
+
+  it("darkens bills chart color for real_estate_amortization category", () => {
+    const bills = getCcExpenseCategoryBySlug(BILLS_CC_EXPENSE_SLUG);
+    expect(bills).not.toBeNull();
+    const categories = listCcExpenseCategories();
+    const amort = categories.find((c) => c.slug === REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG);
+    expect(amort).toBeDefined();
+    expect(amort!.chart_color).toBe(darkenHexColor(bills!.chart_color));
+    expect(amort!.chart_color).not.toBe(bills!.chart_color);
   });
 });

@@ -1,7 +1,6 @@
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import {
   dashboardBucketSlugForAccountId,
-  kindSlugForAccount,
   portfolioGroupBySlug,
 } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
@@ -26,9 +25,11 @@ export function bucketSlugForAccountId(accountId: number): string | null {
   return row?.slug ?? null;
 }
 
-/** Account behavior kind (`afp`, `spy`, `cuenta_corriente`, …) from portfolio leaf, not slug parsing. */
+/** Account behavior kind (`afp`, `spy`, `cuenta_corriente`, …) from `accounts.asset_group_id`, not nav bucket kind. */
 export function accountKindSlugForAccountId(accountId: number): string | null {
-  return kindSlugForAccount(accountId);
+  const bucketSlug = bucketSlugForAccountId(accountId);
+  if (!bucketSlug) return null;
+  return accountBucketKindSlug(bucketSlug);
 }
 
 export function dashboardBucketSlugForPortfolioGroupSlug(portfolioGroupSlug: string): string | null {

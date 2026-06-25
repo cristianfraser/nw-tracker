@@ -50,7 +50,6 @@ import { inversionesPeriodMetrics } from "./netWorthConsolidation.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
-  kindSlugForAccount,
   leafPortfolioGroupSlugByAccountIds,
   nwDashboardMetricGroupForAccount,
   withPortfolioGroupIndex,
@@ -221,7 +220,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const deposits = depositsNetByAccount.get(a.id) ?? 0;
       const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
       const leafSlug = a.bucket_slug;
-      const kindSlug = kindSlugForAccount(a.id) ?? leafSlug;
+      const kindSlug = accountBucketKindSlug(leafSlug);
       const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
       const metricGroup = nwDashboardMetricGroupForAccount(a.id) ?? leafSlug;
       const dashboard_bucket_slug = nwDashboardMetricGroupForAccount(a.id);
@@ -410,7 +409,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     credit_card_usd: depositClpToUsdAtDate(liabilitiesClp.credit_card_clp, asOfToday),
   };
   const dashboard_layout = getDashboardLayoutCards().map((card) =>
-    card.slug === "cash_savings"
+    card.slug === "cash_eqs"
       ? {
           ...card,
           linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd),

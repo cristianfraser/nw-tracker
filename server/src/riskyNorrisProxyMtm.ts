@@ -1,5 +1,6 @@
 import { chileCalendarTodayYmd, chileWallClockNow } from "./chileDate.js";
 import { fintualPollDayCaughtUp } from "./fintualPublishDate.js";
+import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { isBeforeNyseRegularOpen, isNyseRegularSessionOpen, nyseWallClock } from "./nyseSession.js";
@@ -45,7 +46,10 @@ export function fintualGlobalSyncSettledForChileToday(now = new Date()): boolean
   const state = loadGlobalSyncState();
   const publishYmd = state.fintualLastAppliedPublishYmd ?? state.fintualLastPublishYmd;
   const sig = state.fintualLastAppliedSig ?? state.fintualLastCheckSig;
-  return fintualPollDayCaughtUp(cl.ymd, publishYmd, state, sig);
+  if (!fintualPollDayCaughtUp(cl.ymd, publishYmd, state, sig)) return false;
+  const reconcileYmd = publishYmd ?? cl.ymd;
+  if (!fintualCertV2PollReconciled(reconcileYmd, state)) return false;
+  return true;
 }
 
 /**

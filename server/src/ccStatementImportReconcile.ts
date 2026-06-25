@@ -5,7 +5,10 @@ import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import {
+  isClpSection3Merchant,
+  isUsdSection3Merchant,
+} from "./ccStatementSection3.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import {
   currencyFromRow,
@@ -15,12 +18,6 @@ import {
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
-
-const RE_CLP_SECTION3_CHARGE =
-  /IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\.|SERVICIO\s+USO\s+INTERNACIONAL|IVA\s+USO\s+INTERNACIONAL|NOTA\s+DE\s+CREDITO|DCTO\s+COM|ADM\|MANTENCION/i;
-
-const RE_USD_SECTION3 =
-  /IMPUESTOS|INTERESES|TRASPASO|COMISION|ABONO\s+DE\s+DIVISAS|SERVICIO|NOTA\s+DE\s+CREDITO/i;
 
 export type CcReconcileRow = {
   currency: "clp" | "usd";
@@ -102,20 +99,6 @@ function installmentCuotaCountsTowardOperaciones(row: CcReconcileRow): boolean {
   return false;
 }
 
-function isClpSection3Line(merchant: string | null): boolean {
-  const m = String(merchant ?? "").trim();
-  if (isCcPaymentMerchant(m)) return false;
-  return RE_CLP_SECTION3_CHARGE.test(m);
-}
-
-function isUsdSection3Line(merchant: string | null, amountUsd: number): boolean {
-  const m = String(merchant ?? "").trim().toUpperCase();
-  if (!m) return false;
-  if (isCcPaymentMerchant(m) || m.includes("ABONO DE DIVISAS")) return true;
-  if (amountUsd <= 0) return true;
-  return RE_USD_SECTION3.test(m);
-}
-
 function reconcileCurrencyFromRows(rows: readonly CcReconcileRow[]): "clp" | "usd" {
   return rows.some((r) => r.currency === "usd") ? "usd" : "clp";
 }
@@ -177,7 +160,7 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
       continue;
     }
 
-    if (isClpSection3Line(row.merchant)) {
+    if (isClpSection3Merchant(row.merchant)) {
       cargos_abonos += row.amount_clp;
       continue;
     }
@@ -222,7 +205,7 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
     if (row.installment_flag) continue;
 
     const amt = row.amount_usd;
-    if (isUsdSection3Line(row.merchant, amt)) {
+    if (isUsdSection3Merchant(row.merchant, amt)) {
       cargos_abonos += amt;
       const merchant = String(row.merchant ?? "").toUpperCase();
       if (merchant.includes("TRASPASO") && merchant.includes("DEUDA")) {
@@ -498,11 +481,31 @@ function purchaseDateForReconcileRow(row: CcReconcileRow): string {
   return row.transaction_date ?? row.posting_date ?? "";
 }
 
-function reconcilePurchaseRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
+function isPaymentReconcileRow(row: CcReconcileRow): boolean {
+  return isCcPaymentMerchant(row.merchant) || row.amount_clp < 0;
+}
+
+function reconcilePaymentRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
   if (a.installment_flag || b.installment_flag) return false;
   if (a.currency !== "clp" || b.currency !== "clp") return false;
-  if (a.amount_clp !== b.amount_clp || a.amount_clp <= 0) return false;
+  if (!isPaymentReconcileRow(a) || !isPaymentReconcileRow(b)) return false;
+  const absA = Math.abs(a.amount_clp);
+  const absB = Math.abs(b.amount_clp);
+  return absA > 0 && absA === absB;
+}
+
+export function reconcilePurchaseRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
+  if (a.installment_flag || b.installment_flag) return false;
+  if (a.currency !== "clp" || b.currency !== "clp") return false;
   const crossSource = Boolean(a.from_web_paste) !== Boolean(b.from_web_paste);
+  if (isPaymentReconcileRow(a) || isPaymentReconcileRow(b)) {
+    if (!crossSource) {
+      if (a.amount_clp !== b.amount_clp) return false;
+      return isCcPaymentMerchant(a.merchant) && isCcPaymentMerchant(b.merchant);
+    }
+    return reconcilePaymentRowsMatch(a, b);
+  }
+  if (a.amount_clp !== b.amount_clp || a.amount_clp <= 0) return false;
   if (
     !crossSource &&
     purchaseDateForReconcileRow(a) !== purchaseDateForReconcileRow(b)
@@ -510,6 +513,13 @@ function reconcilePurchaseRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boole
     return false;
   }
   return merchantsMatchForCrossDedupe(a.merchant, b.merchant);
+}
+
+/** Web-paste vs PDF match for post-close reconcile (charges + payments). */
+export function reconcileWebPastePdfRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
+  const crossSource = Boolean(a.from_web_paste) !== Boolean(b.from_web_paste);
+  if (!crossSource) return reconcilePurchaseRowsMatch(a, b);
+  return reconcilePurchaseRowsMatch(a, b);
 }
 
 function pickPreferredReconcilePurchase(prev: CcReconcileRow, next: CcReconcileRow): CcReconcileRow {
@@ -527,7 +537,7 @@ export function buildFacturadoReconcileRows(rows: readonly CcReconcileRow[]): Cc
   const pdfRows = rows.filter((r) => !r.from_web_paste);
   const webRows = rows.filter((r) => r.from_web_paste);
   const extraWeb = webRows.filter(
-    (w) => !pdfRows.some((p) => reconcilePurchaseRowsMatch(p, w))
+    (w) => !pdfRows.some((p) => reconcileWebPastePdfRowsMatch(p, w))
   );
   return dedupeCrossSourceReconcileRows([...pdfRows, ...extraWeb]);
 }
@@ -551,7 +561,7 @@ export function dedupeCrossSourceReconcileRows(rows: readonly CcReconcileRow[]):
   return [...installments, ...merged];
 }
 
-function dbLineToReconcileRow(
+export function dbLineToReconcileRow(
   line: ReturnType<typeof listCcStatementLinesForStatement>[number],
   stmt: { currency: string; layout: string; source_pdf: string }
 ): CcReconcileRow {

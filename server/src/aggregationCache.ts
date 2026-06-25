@@ -81,18 +81,6 @@ function buildRollupSlugsByAccountId(): Map<number, Set<string>> {
     for (const masterId of masterIds) {
       addSlugs(masterId, [issuer, "liabilities_credit_card", "liabilities"]);
     }
-    if (masterIds.length) {
-      const ph = masterIds.map(() => "?").join(",");
-      const views = db
-        .prepare(
-          `SELECT id FROM accounts
-           WHERE account_kind = 'liability_view' AND source_account_id IN (${ph})`
-        )
-        .all(...masterIds) as { id: number }[];
-      for (const v of views) {
-        addSlugs(v.id, [issuer, "liabilities_credit_card", "liabilities"]);
-      }
-    }
   }
 
   return out;
@@ -167,4 +155,28 @@ function forwardMonthKeysFrom(startYmd: string): string[] {
 /** @internal Test hook: month keys invalidated from a change date (includes YTD-forward months). */
 export function forwardMonthKeysForInvalidationTest(startYmd: string): string[] {
   return forwardMonthKeysFrom(startYmd);
+}
+
+const LINKED_CC_AGGREGATION_GROUP_SLUGS = [
+  "cash_eqs",
+  "net_worth",
+  "liabilities",
+  "liabilities_credit_card",
+  "santander",
+  "bci",
+] as const;
+
+/**
+ * EFECTIVO header uses consolidated `cash_eqs`; footer uses live linked CC math.
+ * Call when CC link membership changes (exclude flag, group items, nav_retired).
+ */
+export function invalidateLinkedCreditCardAggregationCache(): void {
+  rollupSlugsByAccountId = null;
+  for (const unit of ["clp", "usd", "uf"] as const) {
+    for (const slug of LINKED_CC_AGGREGATION_GROUP_SLUGS) {
+      cache.delete(cacheKeyGroupConsolidatedMonthly(slug, unit));
+      cache.delete(cacheKeyGroupClosingByDate(slug, unit));
+    }
+    cache.delete(`dashboard.portfolio_totals|${unit}`);
+  }
 }
