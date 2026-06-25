@@ -162,7 +162,7 @@ export function installmentPurchaseShowsActive(
   return ymCompare(lastStmtYm, latestStatementYm) >= 0;
 }
 
-/** First installment month (YYYY-MM): cuota 1 statement month, else earliest payment statement month, else purchase month. */
+/** First installment month (YYYY-MM): cuota 1 statement month, else month after 00/N preamble, else purchase month. */
 export function purchaseFirstDueYm(
   pr: PurchaseRow,
   payList: PaymentRow[],
@@ -180,15 +180,17 @@ export function purchaseFirstDueYm(
     const ym = paymentBillingMonth(withCuota[0]!);
     if (ym) return ym;
   }
-  if (payList.length > 0) {
-    const sorted = [...payList].sort((a, b) => {
-      const ya = paymentBillingMonth(a) ?? a.pay_by_date;
-      const yb = paymentBillingMonth(b) ?? b.pay_by_date;
-      return ya.localeCompare(yb);
-    });
-    const ym = paymentBillingMonth(sorted[0]!);
-    if (ym) return ym;
+
+  const preambleOnly = payList.filter(
+    (p) => p.amount_clp > 0 && (p.cuota_current == null || p.cuota_current <= 0)
+  );
+  if (withCuota.length === 0 && preambleOnly.length > 0) {
+    const sorted = [...preambleOnly].sort((a, b) => a.pay_by_date.localeCompare(b.pay_by_date));
+    const last = sorted[sorted.length - 1]!;
+    const lastPayYm = monthKeyFromYmd(last.pay_by_date);
+    if (lastPayYm) return addCalendarMonths(lastPayYm, 1);
   }
+
   if (pr.source === "manual" && accountId != null) {
     const openBm = billingMonthForLedgerPurchase(accountId, pr);
     if (openBm) return openBm;
@@ -282,6 +284,21 @@ export function ledgerInstallmentsPaid(
       paid = Math.max(paid, p.cuota_current!);
     }
   }
+
+  const cuotaAmounts = cuotaAmountsForPurchase(pr, payList);
+  for (const p of payList) {
+    if (p.cuota_current != null && p.cuota_current > 0) continue;
+    const stmtYm = paymentBillingMonth(p);
+    if (!stmtYm || ymCompare(stmtYm, nowYm) > 0) continue;
+    if (p.amount_clp <= 0) continue;
+    for (let i = 0; i < cuotaAmounts.length; i++) {
+      if (Math.abs(cuotaAmounts[i]! - p.amount_clp) <= 1) {
+        paid = Math.max(paid, i + 1);
+        break;
+      }
+    }
+  }
+
   return Math.min(pr.cuotas_totales, paid);
 }
 
@@ -494,7 +511,7 @@ function purchaseLabel(pr: PurchaseRow): string {
 }
 
 /** Per-purchase cuota lines due each calendar month (plan schedule; matches `scheduledPaymentsPlanDueByMonth` totals). */
-function scheduledPaymentsPlanBreakdownByMonth(
+export function scheduledPaymentsPlanBreakdownByMonth(
   purchasesRaw: PurchaseRow[],
   paymentsByPurchase: Map<number, PaymentRow[]>,
   accountId?: number
@@ -677,6 +694,12 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
     paymentsByPurchase.set(row.purchase_id, list);
   }
   return { purchasesRaw, paymentsByPurchase };
+}
+
+/** Plan cuota breakdown keyed by calendar due month (YYYY-MM). */
+export function installmentPlanBreakdownByMonth(accountId: number): Map<string, CcInstallmentMonthBreakdown[]> {
+  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  return scheduledPaymentsPlanBreakdownByMonth(purchasesRaw, paymentsByPurchase, accountId);
 }
 
 function purchaseDateIso(iso: string): string {

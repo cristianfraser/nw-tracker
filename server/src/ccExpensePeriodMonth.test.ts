@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
+  gastosPeriodMonthForLine,
   gastosSumMonthForLine,
   installmentModalLines,
   lineMatchesGastosPeriodMonth,
@@ -167,6 +168,30 @@ describe("ccExpensePeriodMonth", () => {
     expect(mar?.line_count).toBe(1);
     expect(apr?.gastos_mes_clp).toBe(1_000);
     expect(mar?.gastos_mes_clp).toBe(3_000);
+  });
+
+  it("gastos_period_month override moves totals and modal without changing purchase_month", () => {
+    const line = ccLine({
+      expense_month: "2025-02",
+      billing_month: "2025-02",
+      purchase_month: "2025-02",
+      purchase_on: "2025-02-10",
+      gastos_period_month: "2025-01",
+      line_role: "purchase",
+      amount_clp: 3_071_622,
+      category_slug: "bills",
+    });
+    expect(gastosPeriodMonthForLine(line)).toBe("2025-01");
+    expect(gastosSumMonthForLine(line, "split")).toBe("2025-01");
+    expect(periodMonthsForGastosLine(line)).toEqual(["2025-01"]);
+    expect(purchaseModalLines([line], "2025-01")).toHaveLength(1);
+    expect(purchaseModalLines([line], "2025-02")).toHaveLength(0);
+    expect(line.purchase_month).toBe("2025-02");
+    expect(line.purchase_on).toBe("2025-02-10");
+
+    const { by_month } = aggregateGastosFromLines([line], ["bills"]);
+    expect(by_month.find((m) => m.period_month === "2025-01")?.gastos_mes_clp).toBe(3_071_622);
+    expect(by_month.find((m) => m.period_month === "2025-02")?.gastos_mes_clp ?? 0).toBe(0);
   });
 });
 

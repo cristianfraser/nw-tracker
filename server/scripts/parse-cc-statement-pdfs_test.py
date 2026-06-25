@@ -264,6 +264,37 @@ class OriginCardLast4Test(unittest.TestCase):
         self.assertEqual(london.get("origin_card_last4"), "3670")
         self.assertEqual(don.get("origin_card_last4"), "3670")
 
+    def test_section3_charges_use_primary_card_not_sticky_additional(self) -> None:
+        """Section 3 rows after MOVIMIENTOS TARJETA must not inherit adicional last4."""
+        sample = (
+            "Número tarjeta XXXX XXXX XXXX 4242\n"
+            "2. PERÍODO ACTUAL\n"
+            "MOVIMIENTOS TARJETA XXXX-3670 $ 44.870\n"
+            "LAS CONDES 10/06/2026 MP*WINECAINA1 $ 44.870\n"
+            "2. PRODUCTOS O SERVICIOS VOLUNTARIAMENTE CONTRATADOS $ 0\n"
+            "3. CARGOS, COMISIONES, IMPUESTOS Y ABONOS $ 176.923\n"
+            "SANTIAGO 27/05/2026 IMPTO. DECRETO LEY 3475 CLINICA ARCAYA $ 1.791\n"
+            "09/06/2026 TRASPASO A DEUDA NACIONAL $ 167.192\n"
+            "23/06/2026 INTERESES $ 7.030\n"
+            "23/06/2026 IMPUESTOS $ 110\n"
+        )
+        rows = mod.parse_clp_document(sample, "compact", movement_full=sample)
+        wine = next(
+            r for r in rows if "WINECAINA" in str(r.get("merchant", "")).upper()
+        )
+        intereses = next(
+            r for r in rows if str(r.get("merchant", "")).upper() == "INTERESES"
+        )
+        traspaso = next(
+            r
+            for r in rows
+            if "TRASPASO A DEUDA NACIONAL" in str(r.get("merchant", "")).upper()
+        )
+        self.assertEqual(wine.get("origin_card_last4"), "3670")
+        self.assertEqual(intereses.get("origin_card_last4"), "4242")
+        self.assertEqual(traspaso.get("origin_card_last4"), "4242")
+        mod.assert_movimientos_tarjeta_origin_totals(sample, rows, "fixture.pdf")
+
     def test_jan_2025_4242_pdf_has_additional_card_rows(self) -> None:
         path = cc_statement_pdf(
             "4242", "clp", "2025-01-22 estado de cuenta tarjeta 4242.pdf"

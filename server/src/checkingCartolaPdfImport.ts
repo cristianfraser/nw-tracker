@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type {
   CartolaSkippedRow,
@@ -42,15 +42,22 @@ export function resolveParseCheckingCartolaPdfsScript(): string {
 }
 
 /** Run Python parser; writes `cfraser/checking-cartolas-from-pdf.json`. */
-export function runParseCheckingCartolaPdfs(): void {
+export function runParseCheckingCartolaPdfs(onlyBasenames?: string[]): void {
   const script = resolveParseCheckingCartolaPdfsScript();
   const deps = path.join(REPO_ROOT, "server", "scripts", ".pdf_deps");
-  const env = { ...process.env, PYTHONPATH: deps };
-  execSync(`python3 "${script}"`, {
+  const args = [script];
+  if (onlyBasenames?.length) {
+    args.push(`--only=${onlyBasenames.join(",")}`);
+  }
+  const result = spawnSync("python3", args, {
     cwd: REPO_ROOT,
-    env,
+    env: { ...process.env, PYTHONPATH: deps },
     stdio: "inherit",
   });
+  if (result.status !== 0) {
+    const detail = result.error?.message ?? `exit code ${result.status ?? "unknown"}`;
+    throw new Error(`parse-checking-cartola-pdfs.py failed: ${detail}`);
+  }
 }
 
 export function loadCheckingCartolasFromPdfJson(

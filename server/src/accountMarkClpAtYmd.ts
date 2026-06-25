@@ -46,7 +46,7 @@ function historicalMarkClpAtYmd(
   categorySlug: string,
   opts?: { notes?: string | null; name?: string | null }
 ): AccountMarkAtYmd | null {
-  if (categorySlug === "afp") {
+  if (accountBucketKindSlug(categorySlug) === "afp") {
     const live = liveAfpDisplayValueClp(accountId, asOfYmd);
     if (live) return live;
   }

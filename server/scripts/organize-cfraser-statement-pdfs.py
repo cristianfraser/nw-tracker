@@ -16,11 +16,13 @@ From repo root:
   npm run import:cfraser-inbox          # organize + parse + import (recommended)
   python3 server/scripts/organize-cfraser-statement-pdfs.py
   python3 server/scripts/organize-cfraser-statement-pdfs.py --dry-run
+  python3 server/scripts/organize-cfraser-statement-pdfs.py --manifest=cfraser/inbox-organize-manifest.json
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import re
 import shutil
 import subprocess
@@ -78,6 +80,37 @@ CART_DIR = CFRASER / "cartolas-cuenta-corriente"
 VISTA_DIR = CFRASER / "cartolas-cuenta-vista"
 LINEA_DIR = CFRASER / "cartolas-linea-credito"
 CSV_PATH = CFRASER / "cc-statements-parsed-all.csv"
+
+_INBOX_MANIFEST: dict[str, list[str]] = {
+    "cuenta_vista_pdfs": [],
+    "checking_pdfs": [],
+    "credit_card_pdfs": [],
+}
+
+
+def reset_inbox_manifest() -> None:
+    for bucket in _INBOX_MANIFEST.values():
+        bucket.clear()
+
+
+def record_inbox_filed(category: str, dest: Path, source: Path) -> None:
+    inbox = resolve_inbox_dir()
+    if not inbox.is_dir() or source.parent.resolve() != inbox.resolve():
+        return
+    bucket = _INBOX_MANIFEST.get(category)
+    if bucket is None:
+        return
+    rel = str(dest.relative_to(CFRASER))
+    if rel not in bucket:
+        bucket.append(rel)
+
+
+def write_inbox_manifest(path: Path | None) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_INBOX_MANIFEST, indent=2) + "\n", encoding="utf-8")
+    print(f"inbox manifest: {path.relative_to(REPO_ROOT)}")
 RE_ORGANIZED = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 # Santander email/download name: 80_<seq>_<account>_YYYYMMDD.pdf
 RE_SANTANDER_80_DATE = re.compile(r"^80_\d+_\d+_(\d{8})\.pdf$", re.I)
@@ -428,6 +461,7 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
         if not dry_run:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(p), str(dest))
+        record_inbox_filed("credit_card_pdfs", dest, p)
         moved += 1
     return moved, errors
 
@@ -524,6 +558,7 @@ def organize_cuenta_vista(dry_run: bool) -> int:
                 if not dry_run:
                     canonical.unlink()
                     shutil.move(str(p), str(canonical))
+                record_inbox_filed("cuenta_vista_pdfs", canonical, p)
                 moved += 1
                 continue
             reason = f"{canonical.relative_to(CFRASER)} already exists"
@@ -542,6 +577,7 @@ def organize_cuenta_vista(dry_run: bool) -> int:
         if not dry_run:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(p), str(dest))
+        record_inbox_filed("cuenta_vista_pdfs", dest, p)
         moved += 1
     return moved
 
@@ -677,6 +713,7 @@ def organize_checking_cartolas_inbox(dry_run: bool) -> int:
         print(f"{p.name} -> {dest.relative_to(CFRASER)}")
         if not dry_run:
             shutil.move(str(p), str(dest))
+        record_inbox_filed("checking_pdfs", dest, p)
         moved += 1
     return moved
 
@@ -708,7 +745,14 @@ def main() -> int:
     load_repo_dotenv()
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--manifest",
+        metavar="PATH",
+        help="Write JSON manifest of PDFs filed from cfraser/inbox/ this run",
+    )
     args = ap.parse_args()
+    reset_inbox_manifest()
+    manifest_path = Path(args.manifest) if args.manifest else None
     by_pdf = load_csv_by_pdf()
     # Vista PDFs in cfraser/inbox/ must be filed before credit-card organize reads the same inbox.
     n_vista = organize_cuenta_vista(args.dry_run)
@@ -724,6 +768,7 @@ def main() -> int:
         f"credit-card: {n_cc} file(s); "
         f"cc-clean (n): {n_clean}; cc-relocate: {n_reloc}; cartolas: {n_cart} file(s)"
     )
+    write_inbox_manifest(manifest_path)
     if cc_errors:
         for err in cc_errors:
             print(f"ERROR: {err}", file=sys.stderr)

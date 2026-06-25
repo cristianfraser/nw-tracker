@@ -24,7 +24,7 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
-import { isCashSavingsValuationGroupSlug } from "./assetGroupTree.js";
+import { isCashEqsNwValuationGroupSlug, isCashSavingsValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
@@ -454,7 +454,7 @@ function buildGroupConsolidatedMonthlyPerfUncached(
     })),
     unit
   );
-  if (isCashSavingsValuationGroupSlug(groupSlug)) {
+  if (isCashEqsNwValuationGroupSlug(groupSlug)) {
     return netLinkedCreditCardFromCashConsolidated(consolidated, unit);
   }
   return consolidated;

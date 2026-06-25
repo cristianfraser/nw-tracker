@@ -5,6 +5,11 @@ import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
+import {
+  isCheckingPartialWithdrawalNote,
+  parsePartialMovementNote,
+  partialMovementSupersededByCartola,
+} from "./checkingCartolaPartialReconcile.js";
 import { checkingCartolaStablePurchaseKey, stripTrailingCartolaNoteTags } from "./checkingCartolaParse.js";
 import {
   legacyCheckingGastosPurchaseKey,
@@ -61,6 +66,12 @@ export function isInvestmentDepositTarget(groupSlug: string): boolean {
   return INVESTMENT_DEPOSIT_GROUPS.has(groupSlug);
 }
 
+export function isCheckingGastosWithdrawalNote(note: string | null | undefined): boolean {
+  const n = String(note ?? "").trim();
+  if (!n || isCheckingLedgerAnchorNote(n)) return false;
+  return n.startsWith("import:cartola|") || isCheckingPartialWithdrawalNote(n);
+}
+
 export function checkingGastosMovementPurchaseKey(
   movementId: number,
   portion: "gastos" | "deposit" = "gastos"
@@ -100,7 +111,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
   }
 
   const note = String(row.note ?? "").trim();
-  if (!note.startsWith("import:cartola|") || isCheckingLedgerAnchorNote(note)) {
+  if (!isCheckingGastosWithdrawalNote(note)) {
     return { ok: false };
   }
 
@@ -534,9 +545,11 @@ function dapAbonoAmountMatchesCargo(cargoAmount: number, abonoAmount: number, da
   return abono <= Math.round(cargo * (1 + maxPremium));
 }
 
-/** Parse cartola `description` from `import:cartola|period|branch|description…`. */
+/** Parse withdrawal description from official cartola or partial import notes. */
 export function cartolaDescriptionFromNote(note: string | null | undefined): string {
   const n = String(note ?? "").trim();
+  const partial = parsePartialMovementNote(n);
+  if (partial) return partial.description;
   if (!n.startsWith("import:cartola|")) return n;
   const rest = n.slice("import:cartola|".length);
   const firstBar = rest.indexOf("|");
@@ -619,6 +632,40 @@ export function loadCheckingCartolaWithdrawals(accountId: number): CheckingCarto
        ORDER BY occurred_on, id`
     )
     .all(accountId) as CheckingCartolaWithdrawal[];
+}
+
+type CheckingGastosWithdrawalRow = {
+  id: number;
+  occurred_on: string;
+  amount_clp: number;
+  note: string | null;
+};
+
+/** Cartola + non-superseded partial withdrawals for gastos (partial excluded when official cartola exists). */
+export function loadCheckingGastosWithdrawalRows(accountId: number): CheckingGastosWithdrawalRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, occurred_on, amount_clp, note
+       FROM movements
+       WHERE account_id = ?
+         AND amount_clp < 0
+         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%')
+         AND note NOT LIKE 'import:cartola|anchor|%'
+       ORDER BY occurred_on DESC, id DESC`
+    )
+    .all(accountId) as CheckingGastosWithdrawalRow[];
+
+  return rows.filter((row) => {
+    if (!isCheckingPartialWithdrawalNote(row.note)) return true;
+    const parsed = parsePartialMovementNote(String(row.note ?? ""));
+    if (!parsed) return false;
+    return !partialMovementSupersededByCartola(accountId, {
+      occurred_on: parsed.occurred_on,
+      amount_clp: parsed.amount_clp,
+      description: parsed.description,
+      document_no: parsed.document_no,
+    });
+  });
 }
 
 /**
@@ -1684,21 +1731,7 @@ export function buildCheckingGastosLines(opts?: {
   /** NULL-category Único rows from DB — do not treat in-request generic Único registration as cleared. */
   const userClearedUniqueAtLoad = new Set(uniquePurchaseModeKeys);
 
-  const rows = db
-    .prepare(
-      `SELECT id, occurred_on, amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND amount_clp < 0
-         AND note LIKE 'import:cartola|%'
-       ORDER BY occurred_on DESC, id DESC`
-    )
-    .all(accountId) as {
-    id: number;
-    occurred_on: string;
-    amount_clp: number;
-    note: string | null;
-  }[];
+  const rows = loadCheckingGastosWithdrawalRows(accountId);
 
   const internalMcMonths = computeMercadoCapitalesInternalTransferMonths(accountId, deposits, {
     checkingWithdrawals: rows,

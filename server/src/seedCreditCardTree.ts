@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
-import { ensureCreditCardLiabilityViews } from "./liabilityTabAccounts.js";
+import { invalidateLinkedCreditCardAggregationCache } from "./aggregationCache.js";
+import { ensureMortgageLiabilityView } from "./liabilityTabAccounts.js";
 
 const upsertGroup = db.prepare(`
   INSERT INTO credit_card_groups (parent_id, slug, label, sort_order, label_i18n_key, route_path)
@@ -70,7 +71,7 @@ export function seedCreditCardTree(): void {
         insertAccountChild.run(groupId, id, sort++);
       }
     }
-    ensureCreditCardLiabilityViews();
   });
   tx();
+  invalidateLinkedCreditCardAggregationCache();
 }

@@ -14,7 +14,7 @@ import {
 } from "./afpModeloCotizacionesParse.js";
 
 /** Official AFP UNO Fondo A cuotas total (private site); reconciled after cert/modelo import. */
-export const AFP_UNO_WEBSITE_CUOTAS_TARGET = 296.46;
+export const AFP_UNO_WEBSITE_CUOTAS_TARGET = 297.84;
 
 export function readOptionalAfpUnoWebsiteCuotasTarget(cfraserDir: string): number | null {
   const p = path.join(cfraserDir, "afp-uno-website-cuotas.txt");

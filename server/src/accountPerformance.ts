@@ -310,10 +310,13 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   resolveLiveClp?: () => number | null
 ): AccountMonthlyPerformanceRow[] {
   if (!sortedAsc.length) return sortedAsc;
+
   const today = chileCalendarTodayYmd();
   const curMk = monthKeyFromYmd(today);
   const priorMk = priorCalendarMonthKeyFromToday(today);
   const meta = accountMetaForLivePerfClose(accountId);
+  const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
+  if (bucketKind === "credit_card") return sortedAsc;
   const markOpts: MonthEndCloseForAccountOpts = {
     notes: meta?.notes ?? null,
     name: meta?.name ?? null,
@@ -341,7 +344,6 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     else return sortedAsc;
   }
 
-  const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
   const netFlow = (() => {
     if (bucketKind === "property") {
       const ledger = loadDeptoDividendosSheetLedgerFromDb();

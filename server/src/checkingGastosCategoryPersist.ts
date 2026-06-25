@@ -62,6 +62,48 @@ function migratePurchaseNotesKey(
     .run(accountId, stableKey, row.notes);
 }
 
+/** Copy Único category + notes from `checking-mv:{id}` to stable cartola note key. */
+export function transferCheckingGastosCategoryFromMovementToNote(
+  accountId: number,
+  fromMovementId: number,
+  toCartolaNote: string,
+  dbHandle: Database = db
+): number {
+  let migrated = 0;
+  for (const portion of ["gastos", "deposit"] as const) {
+    const fromKey = legacyCheckingGastosPurchaseKey(fromMovementId, portion);
+    const toKey = checkingCartolaStablePurchaseKey(accountId, toCartolaNote, portion);
+    if (!toKey) continue;
+    const row = dbHandle
+      .prepare(
+        `SELECT category_id FROM cc_expense_unique_purchases
+         WHERE account_id = ? AND purchase_key = ?`
+      )
+      .get(accountId, fromKey) as { category_id: number | null } | undefined;
+    const notesRow = dbHandle
+      .prepare(
+        `SELECT notes FROM cc_expense_purchase_notes
+         WHERE account_id = ? AND purchase_key = ?`
+      )
+      .get(accountId, fromKey) as { notes: string } | undefined;
+    if (!row && !notesRow?.notes?.trim()) continue;
+    if (row) {
+      upsertUniquePurchaseCategory(accountId, toKey, row.category_id, dbHandle);
+    }
+    migratePurchaseNotesKey(accountId, fromKey, toKey, dbHandle);
+    dbHandle
+      .prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      )
+      .run(accountId, fromKey);
+    dbHandle
+      .prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
+      .run(accountId, fromKey);
+    migrated += 1;
+  }
+  return migrated;
+}
+
 /** Copy Único category from legacy `checking-mv:{id}` to stable cartola note key. */
 export function migrateCheckingGastosCategoryToStableKey(
   accountId: number,

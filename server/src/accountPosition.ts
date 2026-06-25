@@ -27,6 +27,10 @@ import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import {
+  fintualCertV2PreferGoalsNavDisplay,
+  fintualGoalsApiNavClpForImportNotes,
+} from "./fintualCertV2Reconcile.js";
+import {
   isRiskyNorrisProxyMtmSeries,
   riskyNorrisProxyCuotaForMtm,
   shouldUseRiskyNorrisProxyMtm,
@@ -69,8 +73,21 @@ function fintualCertPositionMeta(
   let px = fu?.unit_value_clp;
   let pxDay = fu?.day;
   const today = chileCalendarTodayYmd();
+  const goalsNavClp = fintualGoalsApiNavClpForImportNotes(importNotes);
+  const cuotaPositionClp =
+    cuotas != null && cuotas > 1e-9 && px != null && px > 0
+      ? Math.round(cuotas * px * 100) / 100
+      : null;
+  const goalsCuotaUnreconciled = fintualCertV2PreferGoalsNavDisplay({
+    goalsNavClp,
+    cuotaPositionClp,
+    asOfYmd,
+    todayYmd: today,
+  });
+
   if (
     asOfYmd === today &&
+    !goalsCuotaUnreconciled &&
     isRiskyNorrisProxyMtmSeries(seriesKey) &&
     shouldUseRiskyNorrisProxyMtm(now)
   ) {
@@ -83,6 +100,12 @@ function fintualCertPositionMeta(
     units_kind: "shares",
     units: cuotas != null && cuotas > 1e-9 ? cuotas : null,
   };
+  if (goalsCuotaUnreconciled && cuotas != null && cuotas > 1e-9 && goalsNavClp != null) {
+    out.afp_override_value_clp = Math.round(goalsNavClp * 100) / 100;
+    out.afp_override_value_as_of = today;
+    out.afp_override_valor_cuota_clp = Math.round((goalsNavClp / cuotas) * 10000) / 10000;
+    return out;
+  }
   if (cuotas != null && cuotas > 1e-9 && px != null && px > 0 && pxDay) {
     out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
     out.afp_override_value_as_of = pxDay;

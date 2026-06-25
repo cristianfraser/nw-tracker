@@ -118,8 +118,8 @@ export function signedUsdDeltaForAccountMovement(
   if (fk === "compra_usd" || fk === "compra_usd_venta_clp") {
     const units = row.units_delta;
     if (units != null && Number.isFinite(units) && units !== 0) return 0;
-    // migration:fx-merge compra rows mirror CLP deposits; USD cash was not credited at import.
-    if (row.note?.includes("migration:fx-merge")) return 0;
+    // Mirror compra legs (historical import / CLP-wire link); USD cash was not credited at import.
+    if (row.note?.includes("migration:fx-merge") || row.note?.includes("clp-wire-link")) return 0;
     return absAmount(row.amount_usd);
   }
   if (fk === "withdrawal_usd") return -absAmount(row.amount_usd);

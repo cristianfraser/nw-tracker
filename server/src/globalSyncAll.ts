@@ -82,10 +82,11 @@ import {
 } from "../scripts/fintualApiLib.js";
 import {
   applyFintualGoalsSnapshotToDb,
+  cleanupUnreconciledFintualCertFundUnitsForPoll,
   collectFintualGoalValuationChanges,
   cleanupMistakenPollDayFintualValuations,
   fintualEveningCatchUpComplete,
-  fintualMappedNavSignature,
+  fintualMappedGoalsApiSignature,
   fintualNavUnchangedSinceLastApply,
   fintualSnapshotMatchesDb,
   markFintualAppliedFromPoll,
@@ -94,6 +95,8 @@ import {
   priorAccountValuation,
   syncFintualFundUnitsFromResolutions,
 } from "../scripts/fintualApplyShared.js";
+import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
+import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import {
   clearFintualRealAssetNavCaches,
   formatClp,
@@ -412,7 +415,8 @@ async function runFintual(
     clearFintualRealAssetNavCaches();
   }
   for (const r of resolutions) {
-    if (!r.mismatch || !r.row.matchedNotes || r.realAssetsNavClp == null) continue;
+    if (!r.mismatch || r.realAssetsNavClp == null) continue;
+    if (!r.row.matchedNotes && !matchFintualCertGoalV2(String(r.row.id), r.row.name)) continue;
     const unitLine =
       r.units != null ? ` · cuotas ${r.units.toLocaleString("es-CL", { maximumFractionDigits: 4 })}` : "";
     const priceLine =
@@ -426,7 +430,7 @@ async function runFintual(
   const snap = picked.snap;
   writeGoalsSnapshot(snap);
 
-  const sig = fintualMappedNavSignature(snap);
+  const sig = fintualMappedGoalsApiSignature(resolutions);
   const stillUnresolved =
     carryPollYmd != null &&
     cl.hour < 18 &&
@@ -446,8 +450,20 @@ async function runFintual(
     delete state.fintualEveningSettledYmd;
   }
 
-  const anyMapped = snap.goals.some((g) => g.matchedNotes);
+  const anyMapped = snap.goals.some(
+    (g) => g.matchedNotes || matchFintualCertGoalV2(String(g.id), g.name)
+  );
   const fintualLogChanges = collectFintualGoalValuationChanges(snap, resolutions);
+  const unreconciledRemoved = cleanupUnreconciledFintualCertFundUnitsForPoll(
+    snap.asOfDate,
+    resolutions,
+    syncDryRun
+  );
+  if (unreconciledRemoved > 0) {
+    console.log(
+      `sync: Fintual — removed ${unreconciledRemoved} unreconciled inferred fund_unit row(s) for ${snap.asOfDate}.`
+    );
+  }
 
   if (fintualNavUnchangedSinceLastApply(sig, state, publishYmd)) {
     if (fintualSnapshotMatchesDb(snap, resolutions)) {
@@ -455,7 +471,7 @@ async function runFintual(
       if (cleaned > 0) {
         console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
       }
-      markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
+      markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun, resolutions);
     }
     console.log(
       "sync: Fintual — API NAV unchanged since last apply; skip DB write (valuations already current)."
@@ -473,6 +489,16 @@ async function runFintual(
   }
 
   syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
+  const unreconciledAfterSync = cleanupUnreconciledFintualCertFundUnitsForPoll(
+    snap.asOfDate,
+    resolutions,
+    syncDryRun
+  );
+  if (unreconciledAfterSync > 0) {
+    console.log(
+      `sync: Fintual — removed ${unreconciledAfterSync} unreconciled inferred fund_unit row(s) after apply.`
+    );
+  }
 
   if (fintualSnapshotMatchesDb(snap, resolutions)) {
     changes.push(...fintualLogChanges);
@@ -481,8 +507,12 @@ async function runFintual(
       console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
     }
     markFintualAppliedFromPoll(state, cl, publishYmd, sig, syncDryRun);
-    markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
-    if (!syncDryRun && fintualEveningCatchUpComplete(rows, overrides, pollCl, publishYmd)) {
+    markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun, resolutions);
+    if (
+      !syncDryRun &&
+      fintualEveningCatchUpComplete(rowsWithMatch, overrides, pollCl, publishYmd) &&
+      fintualCertV2PollReconciled(snap.asOfDate, state)
+    ) {
       state.fintualEveningSettledYmd = pollCl.ymd;
     }
     console.log(
@@ -508,8 +538,11 @@ async function runFintual(
   changes.push(...fintualChanges);
   if (!syncDryRun) {
     markFintualAppliedFromPoll(state, cl, publishYmd, sig, syncDryRun);
-    markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun);
-    if (fintualEveningCatchUpComplete(rows, overrides, pollCl, publishYmd)) {
+    markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun, resolutions);
+    if (
+      fintualEveningCatchUpComplete(rowsWithMatch, overrides, pollCl, publishYmd) &&
+      fintualCertV2PollReconciled(snap.asOfDate, state)
+    ) {
       state.fintualEveningSettledYmd = pollCl.ymd;
     }
   }

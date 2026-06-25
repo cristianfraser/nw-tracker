@@ -1,3 +1,4 @@
+import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { getAccountSourceRow } from "./accountSource.js";
 import {
@@ -31,11 +32,21 @@ export function accountIdForInactiveCheck(accountId: number): number {
   return accountId;
 }
 
+/** Credit-card masters/views: never tail-inactive (installment projections + retired cards). */
+function isCreditCardChartAccount(accountId: number): boolean {
+  const effectiveId = accountIdForInactiveCheck(accountId);
+  const slug = bucketSlugForAccountId(effectiveId);
+  if (slug != null && accountBucketKindSlug(slug) === "credit_card") return true;
+  const row = getAccountSourceRow(effectiveId);
+  return String(row?.notes ?? "").startsWith("credit_card_master|");
+}
+
 /**
  * True when month-end closes show a long trailing-zero tail (chart tail-clip rule).
  * Uses performance closes when available; otherwise stored `valuations`.
  */
 export function accountChartInactive(accountId: number): boolean {
+  if (isCreditCardChartAccount(accountId)) return false;
   const effectiveId = accountIdForInactiveCheck(accountId);
   const closing = monthEndClosingAscForInactiveCheck(effectiveId);
   if (!closing.length) return false;

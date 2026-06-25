@@ -15,6 +15,7 @@ import {
   type TransferCreateInput,
 } from "./movementTransfer.js";
 import { accountRowForId } from "./accountRowForMovement.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
 export type AccountRow = {
   bucket_slug: string;
@@ -70,7 +71,7 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
       units_required_for_flow_kinds: [],
     };
   }
-  const spec = MOVEMENTS_UNITS_BY_CATEGORY[account.bucket_slug];
+  const spec = MOVEMENTS_UNITS_BY_CATEGORY[accountBucketKindSlug(account.bucket_slug)];
   if (!spec) {
     return { ledger: "movements", units_delta: "optional", unit_label: "unidades" };
   }

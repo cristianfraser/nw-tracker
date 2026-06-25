@@ -1,4 +1,4 @@
-import { accountChartInactive } from "./accountChartInactive.js";
+import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
@@ -66,7 +66,7 @@ function buildCreditCardGroupNode(
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
       if (isSupersededSantanderCcMaster(item.account_id)) continue;
-      if (accountChartInactive(item.account_id)) continue;
+      if (isNavRetiredCcMaster(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const operationalId = resolveOperationalAccountId(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
@@ -141,7 +141,9 @@ export function listCreditCardMasterAccountIds(): number[] {
        ORDER BY a.notes`
     )
     .all() as { id: number }[];
-  return rows.map((r) => r.id).filter((id) => !isSupersededSantanderCcMaster(id));
+  return rows
+    .map((r) => r.id)
+    .filter((id) => !isSupersededSantanderCcMaster(id));
 }
 
 /** Master account ids under one `credit_card_groups` issuer slug (nav, imports with `--santander`). */

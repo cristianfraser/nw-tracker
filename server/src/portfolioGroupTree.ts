@@ -48,17 +48,7 @@ export function isResolvablePortfolioGroupSlug(slug: string): boolean {
 }
 
 function accountIdsInCreditCardIssuerGroup(issuerSlug: string): number[] {
-  const masterIds = listCreditCardGroupMasterAccountIds(issuerSlug);
-  if (!masterIds.length) return [];
-  const ph = masterIds.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT id FROM accounts
-       WHERE account_kind = 'liability_view' AND source_account_id IN (${ph})
-       ORDER BY id`
-    )
-    .all(...masterIds) as { id: number }[];
-  return rows.map((r) => r.id);
+  return listCreditCardGroupMasterAccountIds(issuerSlug);
 }
 
 export function portfolioGroupById(id: number): PortfolioGroupRow | null {
@@ -137,7 +127,7 @@ export function accountIdsInPortfolioGroup(slugOrId: string | number): number[] 
 
 /**
  * Account ids that roll up into a parent portfolio group total.
- * Skips child groups with `exclude_from_parent_total` (e.g. checking under efectivo).
+ * Skips child groups with `exclude_from_parent_total`.
  */
 export function accountIdsInPortfolioGroupForTotals(slugOrId: string | number): number[] {
   const root =
@@ -272,9 +262,7 @@ export function nwDashboardMetricGroupForAccount(accountId: number): string | nu
   while (currentId != null) {
     const pg = portfolioGroupById(currentId);
     if (!pg) break;
-    if (pg.slug === "cash_savings") return "cash_eqs";
-    if (pg.slug === "checking_accounts") return null;
-    if (NW_METRIC_GROUP_SLUGS.has(pg.slug) && pg.slug !== "cash_eqs") return pg.slug;
+    if (NW_METRIC_GROUP_SLUGS.has(pg.slug)) return pg.slug;
     currentId = pg.parent_id;
   }
   return null;

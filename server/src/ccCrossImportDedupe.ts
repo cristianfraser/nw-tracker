@@ -37,12 +37,32 @@ export function merchantsMatchForCrossDedupe(
   const na = normalizeCcExpenseMerchantKey(a);
   const nb = normalizeCcExpenseMerchantKey(b);
   if (na && nb && na === nb) return true;
+  if (plazaLyonMerchantsMatch(a, b)) return true;
   const sa = merchantStemForInstallmentDedupe(a);
   const sb = merchantStemForInstallmentDedupe(b);
   if (!sa || !sb) return false;
   const ua = sa.toUpperCase();
   const ub = sb.toUpperCase();
   return ua === ub || ua.startsWith(ub) || ub.startsWith(ua);
+}
+
+/** Web-paste «EXPRESS PLAZA L» vs PDF «RECAUDACION EX PLAZA LYON» (same Lyon parking charge). */
+export function plazaLyonMerchantsMatch(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  const ua = normalizeCcExpenseMerchantKey(a);
+  const ub = normalizeCcExpenseMerchantKey(b);
+  if (!ua || !ub) return false;
+  const plazaA = ua.includes("PLAZA") && (ua.includes("LYON") || ua.endsWith("PLAZA L"));
+  const plazaB = ub.includes("PLAZA") && (ub.includes("LYON") || ub.endsWith("PLAZA L"));
+  if (!plazaA || !plazaB) return false;
+  return (
+    ua.includes("RECAUDACION") ||
+    ub.includes("RECAUDACION") ||
+    ua.includes("EXPRESS") ||
+    ub.includes("EXPRESS")
+  );
 }
 
 function purchaseDateIsoFromLine(
@@ -195,6 +215,37 @@ export function shouldSkipOneShotStatementImport(
   amountClp: number
 ): boolean {
   return findMatchingInstallmentPurchase(accountId, merchant, purchaseDateIso, amountClp) != null;
+}
+
+const dbOneShotCandidates = db.prepare<[number, number]>(
+  `SELECT l.merchant, l.transaction_date, l.posting_date
+   FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?`
+);
+
+/**
+ * Returns true when an existing one-shot line has the same date, same CLP amount, and a
+ * fuzzy-matching merchant — catches re-imports where the bank truncated the merchant name.
+ */
+export function oneShotLineFuzzyMatchExists(
+  accountId: number,
+  merchant: string | null,
+  purchaseDateIso: string | null,
+  amountClp: number
+): boolean {
+  if (!purchaseDateIso || amountClp <= 0) return false;
+  const rows = dbOneShotCandidates.all(accountId, amountClp) as {
+    merchant: string | null;
+    transaction_date: string | null;
+    posting_date: string | null;
+  }[];
+  for (const row of rows) {
+    const rowDateIso = purchaseDateIsoFromLine(row.transaction_date, row.posting_date);
+    if (rowDateIso !== purchaseDateIso) continue;
+    if (merchantsMatchForCrossDedupe(row.merchant, merchant)) return true;
+  }
+  return false;
 }
 
 const delLines = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);

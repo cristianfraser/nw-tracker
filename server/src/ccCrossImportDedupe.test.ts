@@ -16,6 +16,9 @@ describe("ccCrossImportDedupe", () => {
         "MERCADOPAGO*MIBICIO 12 CUOTAS"
       )
     ).toBe(true);
+    expect(
+      merchantsMatchForCrossDedupe("EXPRESS PLAZA L", "RECAUDACION EX PLAZA LYON")
+    ).toBe(true);
   });
 
   it("matches purchase total to one-shot line amount within tolerance", () => {

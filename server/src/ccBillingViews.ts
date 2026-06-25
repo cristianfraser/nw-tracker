@@ -3,17 +3,29 @@ import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   incrementalChargesClpForBillingMonth,
   listCcBillingMonthBalances,
+  facturadoFromStatement,
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
-import { facturadoFromStatement } from "./ccBillingBalances.js";
 import {
+  statementSlotsByBillingMonth,
+  type CcStatementSlotByCurrency,
+} from "./ccBillingStatementSlots.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import {
+  ccInstallmentLedgerRowCount,
+  creditCardInstallmentPaymentsByBillingMonth,
   cupoEnCuotasClpForCalendarMonth,
+  installmentRemainingClpByCalendarMonth,
   ledgerFacturadoClpForBillingMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
-import { isPdfStatementSource, lastPdfBillingMonthForAccount } from "./ccManualBillingMonth.js";
+import {
+  billingMonthForManualLedgerPurchase,
+  isPdfStatementSource,
+  lastPdfBillingMonthForAccount,
+} from "./ccManualBillingMonth.js";
+import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { db } from "./db.js";
@@ -46,6 +58,8 @@ export type CcFacturacionRow = {
   facturado_usd_clp: number | null;
   facturado_total_clp: number | null;
   cuota_a_pagar_clp: number | null;
+  /** No imported PDF close yet — facturado = únicos + cuota a pagar. */
+  is_open_month: boolean;
 };
 
 function pickSnapshotRow(
@@ -71,25 +85,40 @@ function cupoEnCuotasForBillingMonth(
   return cupoEnCuotasClpForCalendarMonth(accountId, billingMonth);
 }
 
-export type CcStatementSlotByCurrency = {
-  clp: CcStatementRow | null;
-  usd: CcStatementRow | null;
-};
+export type { CcStatementSlotByCurrency } from "./ccBillingStatementSlots.js";
+export { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
-function statementSlotsByBillingMonth(accountId: number): Map<string, CcStatementSlotByCurrency> {
-  const byMonth = new Map<string, CcStatementSlotByCurrency>();
-  for (const st of listCcStatementsForAccount(accountId)) {
-    const bm = st.billing_month;
-    if (!bm) continue;
-    let slot = byMonth.get(bm);
-    if (!slot) {
-      slot = { clp: null, usd: null };
-      byMonth.set(bm, slot);
-    }
-    if (st.currency === "usd") slot.usd = st;
-    else slot.clp = st;
-  }
-  return byMonth;
+/** CLP and USD facturado headers for a billing-month statement slot (matches buildFacturaciones). */
+export function facturadoClpUsdForStatementSlot(
+  accountId: number,
+  slot: CcStatementSlotByCurrency
+): { facturado_clp: number; facturado_usd: number } {
+  const clpDerived = slot.clp
+    ? facturadoFromStatement(
+        accountId,
+        slot.clp.statement_date,
+        slot.clp,
+        slot.clp.statement_date_iso
+      )
+    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+  const usdDerived = slot.usd
+    ? facturadoFromStatement(
+        accountId,
+        slot.usd.statement_date,
+        slot.usd,
+        slot.usd.statement_date_iso
+      )
+    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+
+  const facturado_clp =
+    slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
+      ? Math.round(slot.clp.monto_facturado)
+      : (clpDerived.facturado_clp ?? 0);
+  const facturado_usd =
+    slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
+      ? slot.usd.monto_facturado
+      : (usdDerived.facturado_usd ?? 0);
+  return { facturado_clp, facturado_usd };
 }
 
 /** CLP+USD facturado for a billing month from imported statements (header or line-derived). */
@@ -156,8 +185,15 @@ export function paymentAbonosClpForBillingMonth(
   billingMonth: string
 ): number {
   let sum = 0;
+  const openBm = billingMonthForManualLedgerPurchase(accountId);
+  const staleDates =
+    openBm === billingMonth
+      ? new Set(listStaleOpenWebPasteStatementDates(accountId, billingMonth))
+      : null;
+
   for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.billing_month !== billingMonth) continue;
+    const staleCarry = staleDates?.has(st.statement_date) === true;
+    if (!staleCarry && st.billing_month !== billingMonth) continue;
     const rows = stmtPaymentLinesForStatement.all(st.id) as {
       merchant: string | null;
       amount_clp: number | null;
@@ -170,6 +206,17 @@ export function paymentAbonosClpForBillingMonth(
     }
   }
   return sum;
+}
+
+/** Open-month facturado from imported statement lines only (matches facturación modal scope). */
+export function facturadoClpFromOpenMonthStatementLines(
+  accountId: number,
+  billingMonth: string
+): number {
+  const charges = incrementalChargesClpForBillingMonth(accountId, billingMonth);
+  const payments = paymentAbonosClpForBillingMonth(accountId, billingMonth);
+  const net = charges - payments;
+  return net > 0 ? Math.round(net) : 0;
 }
 
 function closedFacturadoClpForPdfBillingMonth(
@@ -218,6 +265,40 @@ export function rolledFacturadoForOpenBillingMonth(
 ): number | null {
   void _statementOrBalanceFacturado;
   return openFacturadoEstimateClp(accountId, openBillingMonth, slots, ledgerMonths);
+}
+
+/** Same balance rule as Detalle por mes / historial (closed statement months subtract next cuota). */
+export function billingDetailBalanceClp(
+  facturadoClp: number | null,
+  cupoEnCuotasClp: number,
+  cuotaAPagarNextMesClp: number,
+  hasPdfClose: boolean
+): number {
+  return hasPdfClose
+    ? (facturadoClp ?? 0) + cupoEnCuotasClp - cuotaAPagarNextMesClp
+    : (facturadoClp ?? 0) + cupoEnCuotasClp;
+}
+
+/**
+ * Billing month right after the open month inherits saldo/facturado from the open row
+ * until PAGO or PDF cierre (e.g. Jun open → Jul placeholder matches Jun).
+ */
+export function applyOpenBillingMonthSaldoToNextMonth(
+  rows: CcBillingDetailMonthRow[],
+  accountId: number,
+  slots: Map<string, CcStatementSlotByCurrency>
+): void {
+  const openBm =
+    billingMonthForStatementDate(chileCalendarTodayYmd()) ??
+    billingMonthForManualLedgerPurchase(accountId);
+  if (!openBm) return;
+  const nextBm = addCalendarMonths(openBm, 1);
+  const openRow = rows.find((r) => r.billing_month === openBm);
+  const nextRow = rows.find((r) => r.billing_month === nextBm);
+  if (!openRow || !nextRow) return;
+  if (hasPdfStatementCloseForBillingMonth(slots.get(nextBm))) return;
+  nextRow.total_facturado_clp = openRow.total_facturado_clp;
+  nextRow.balance_total_clp = openRow.balance_total_clp;
 }
 
 function cuotaAPagarNextMesClp(
@@ -304,10 +385,12 @@ export function buildBillingDetailByMonth(
 
     const cupo = cupoEnCuotasForBillingMonth(accountId, billingMonth, cupoLive);
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
-    const balanceTotal =
+    const balanceTotal = billingDetailBalanceClp(
+      totalFacturado,
+      cupo,
+      cuotaNext,
       hasPdfClose || inactive
-        ? (totalFacturado ?? 0) + cupo - cuotaNext
-        : (totalFacturado ?? 0) + cupo;
+    );
     out.push({
       billing_month: billingMonth,
       as_of_date: asOfDate,
@@ -320,8 +403,94 @@ export function buildBillingDetailByMonth(
     });
   }
 
-  out.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
-  return out;
+  applyOpenBillingMonthSaldoToNextMonth(out, accountId, slots);
+
+  const withProjected = appendProjectedBillingDetailRows(
+    accountId,
+    ledgerMonths,
+    slots,
+    out
+  );
+  withProjected.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
+  return withProjected;
+}
+
+function planMonthHasProjectedInstallmentData(
+  ym: string,
+  payByMonth: Map<string, number>,
+  remainingByMonth: Map<string, number>
+): boolean {
+  const cupo = remainingByMonth.get(ym) ?? 0;
+  const pay = payByMonth.get(ym) ?? 0;
+  return pay > 0 || cupo > 0;
+}
+
+/** Future billing months: plan cupo + cuota schedule; saldo = cupo when no closed facturado. */
+function appendProjectedBillingDetailRows(
+  accountId: number,
+  ledgerMonths: CcInstallmentMonthRow[],
+  slots: Map<string, CcStatementSlotByCurrency>,
+  existing: CcBillingDetailMonthRow[]
+): CcBillingDetailMonthRow[] {
+  if (ccInstallmentLedgerRowCount(accountId) === 0 || existing.length === 0) {
+    return existing;
+  }
+
+  const existingMonths = new Set(existing.map((r) => r.billing_month));
+  const lastDetalleYm = [...existingMonths].sort((a, b) => b.localeCompare(a))[0]!;
+  const payByMonth = creditCardInstallmentPaymentsByBillingMonth(accountId);
+  const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
+
+  const openBm =
+    billingMonthForStatementDate(chileCalendarTodayYmd()) ??
+    billingMonthForManualLedgerPurchase(accountId);
+  const openRow = openBm ? existing.find((r) => r.billing_month === openBm) : undefined;
+  const nextAfterOpenBm = openBm ? addCalendarMonths(openBm, 1) : null;
+
+  const candidateMonths = new Set<string>([...payByMonth.keys(), ...remainingByMonth.keys()]);
+  let maxProjectedYm: string | null = null;
+  for (const ym of candidateMonths) {
+    if (ymCompare(ym, lastDetalleYm) <= 0) continue;
+    if (!planMonthHasProjectedInstallmentData(ym, payByMonth, remainingByMonth)) continue;
+    if (maxProjectedYm == null || ymCompare(ym, maxProjectedYm) > 0) {
+      maxProjectedYm = ym;
+    }
+  }
+  if (maxProjectedYm == null) return existing;
+
+  const projected: CcBillingDetailMonthRow[] = [];
+  for (const ym of [...candidateMonths].sort(ymCompare)) {
+    if (ymCompare(ym, lastDetalleYm) <= 0) continue;
+    if (ymCompare(ym, maxProjectedYm) > 0) continue;
+    if (existingMonths.has(ym)) continue;
+    if (!planMonthHasProjectedInstallmentData(ym, payByMonth, remainingByMonth)) continue;
+
+    const cupo = cupoEnCuotasClpForCalendarMonth(accountId, ym);
+    const cuotaNext = cuotaAPagarNextMesClp(ym, ledgerMonths, slots);
+    let totalFacturado: number | null = null;
+    let balanceTotal = billingDetailBalanceClp(null, cupo, cuotaNext, false);
+    if (
+      nextAfterOpenBm &&
+      ym === nextAfterOpenBm &&
+      openRow &&
+      !existingMonths.has(nextAfterOpenBm)
+    ) {
+      totalFacturado = openRow.total_facturado_clp;
+      balanceTotal = openRow.balance_total_clp;
+    }
+    projected.push({
+      billing_month: ym,
+      as_of_date: `${ym}-01`,
+      as_of_kind: "manual",
+      total_facturado_actual_clp: null,
+      total_facturado_clp: totalFacturado,
+      cupo_en_cuotas_clp: cupo,
+      cuota_a_pagar_next_mes_clp: cuotaNext,
+      balance_total_clp: balanceTotal,
+    });
+  }
+
+  return projected.length > 0 ? [...existing, ...projected] : existing;
 }
 
 function usdToClpAtPayBy(usd: number, payByIso: string | null): number | null {
@@ -414,15 +583,18 @@ export function buildFacturaciones(
       facturadoUsd != null
         ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
+    const cuotaAPagar = cuotaForPayByMonth(payByIso, ledgerMonths);
     let facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
-    const inactive = creditCardBillingDetailInactive(accountId);
-    if (!hasPdfClose && !inactive) {
+    if (!hasPdfClose) {
       const estimate = openFacturadoEstimateClp(accountId, billingMonth, byMonth, ledgerMonths);
       if (estimate != null) {
         facturadoTotal = estimate;
-        facturadoClp = estimate - (facturadoUsdClp ?? 0);
+      } else {
+        const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth);
+        facturadoTotal = uniquo + (cuotaAPagar ?? 0);
       }
+      facturadoClp = facturadoTotal - (facturadoUsdClp ?? 0);
     }
 
     out.push({
@@ -435,7 +607,8 @@ export function buildFacturaciones(
       facturado_usd: facturadoUsd,
       facturado_usd_clp: facturadoUsdClp,
       facturado_total_clp: facturadoTotal,
-      cuota_a_pagar_clp: cuotaForPayByMonth(payByIso, ledgerMonths),
+      cuota_a_pagar_clp: cuotaAPagar,
+      is_open_month: !hasPdfClose,
     });
   }
 
