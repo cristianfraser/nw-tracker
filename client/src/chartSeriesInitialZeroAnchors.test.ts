@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceKeptTrailingZeroMonth,
   prependInitialZeroAnchors,
+  prependInitialZeroAnchorsOnBlock,
   priorCalendarPeriodEndYmd,
   valuationDataKeysForInitialZeroAnchors,
 } from "./chartSeriesInitialZeroAnchors";
@@ -51,9 +52,51 @@ describe("prependInitialZeroAnchors", () => {
         { account_id: 2, name: "B", dataKey: "42", valueSeriesType: "data" },
         { account_id: -1, name: "ref", dataKey: "ref:foo", valueSeriesType: "reference" },
       ],
+      lines: [
+        { dataKey: "usd_50k", name: "US$50,000", valueSeriesType: "reference" },
+        { dataKey: "total_nw", name: "NW", valueSeriesType: "data" },
+      ],
       points: [],
     });
-    expect(keys).toEqual(["42"]);
+    expect(keys).toEqual(["42", "total_nw"]);
+  });
+
+  it("does not prepend 0 before USD milestone reference lines", () => {
+    const block = {
+      accounts: [],
+      lines: [
+        { dataKey: "total_nw", name: "NW", valueSeriesType: "data" as const },
+        { dataKey: "usd_50k", name: "US$50,000", valueSeriesType: "reference" as const },
+      ],
+      points: [
+        { as_of_date: "2017-04-30", total_nw: 0, usd_50k: 32_000_000 },
+        { as_of_date: "2017-05-31", total_nw: 1_000_000, usd_50k: 32_500_000 },
+      ],
+    };
+    const out = prependInitialZeroAnchorsOnBlock(block, "month").points;
+    expect(out.some((r) => r.usd_50k === 0)).toBe(false);
+    expect(out.find((r) => r.as_of_date === "2017-03-31")).toMatchObject({ total_nw: 0 });
+  });
+
+  it("backfills USD milestone reference lines on synthetic zero anchors", () => {
+    const block = {
+      accounts: [],
+      lines: [
+        { dataKey: "total_nw", name: "NW", valueSeriesType: "data" as const },
+        { dataKey: "usd_50k", name: "US$50,000", valueSeriesType: "reference" as const },
+      ],
+      points: [
+        { as_of_date: "2017-04-30", total_nw: 0 },
+        { as_of_date: "2017-05-31", total_nw: 1_000_000 },
+      ],
+      referenceMilestoneByDate: {
+        "2017-03-31": { usd_50k: 31_500_000 },
+      },
+    };
+    const anchor = prependInitialZeroAnchorsOnBlock(block, "month").points.find(
+      (r) => r.as_of_date === "2017-03-31"
+    );
+    expect(anchor).toMatchObject({ total_nw: 0, usd_50k: 31_500_000 });
   });
 });
 

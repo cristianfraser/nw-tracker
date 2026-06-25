@@ -1,17 +1,3 @@
-import {
-  isCashSavingsNavNode,
-  mainValueAndMetricsForNavChild,
-  navAccountIdSet,
-  routableNavStripChildren,
-  stripMetricsRowsForNavChild,
-} from "../portfolioNavDashboardCards";
-import {
-  isNavHubNode,
-  portfolioStripAccountChildren,
-  portfolioStripGroupChildren,
-} from "../portfolioNavFromApi";
-import { findPortfolioGroupInNav } from "../portfolioGroupTotals";
-import { dashPickForNavStrip } from "../queries/fetchers";
 import type { GroupPageShell } from "../queries/groupPageShell";
 import { readSidebarNavCache } from "../queries/sidebarNavCache";
 import type {
@@ -25,277 +11,34 @@ import type {
 
 type NwBucketTotals = NonNullable<DashboardNavSnapshotResponse["nw_bucket_totals"]>;
 
-function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+export const PERTURB_FACTOR_MIN = 0.85;
+export const PERTURB_FACTOR_MAX = 0.95;
+
+/** One random scale factor per cached snapshot perturbation (reload placeholder only). */
+export function randomPerturbFactor(): number {
+  return PERTURB_FACTOR_MIN + Math.random() * (PERTURB_FACTOR_MAX - PERTURB_FACTOR_MIN);
 }
 
-function absRoundedDigits(s: number): { absRounded: number; str: string; x: number } {
-  const absRounded = Math.round(Math.abs(s));
-  const str = String(absRounded);
-  return { absRounded, str, x: str.length };
-}
-
-/** Inclusive random offset bounds for cached amount S. Returns null when S is not perturbed. */
-export function cachedAmountPerturbBounds(s: number): { minR: number; maxR: number } | null {
-  if (!Number.isFinite(s) || s === 0) return null;
-  const { absRounded, str, x } = absRoundedDigits(s);
-  const firstDigit = Number(str[0]);
-  const secondDigit = x >= 2 ? Number(str[1]) : 0;
-
-  let minR: number;
-  let maxR: number;
-
-  if (x === 1) {
-    minR = 1;
-    maxR = absRounded - 1;
-  } else if (x <= 3) {
-    minR = 10 ** (x - 2);
-    maxR = secondDigit * 10 ** (x - 2) - 1;
-  } else if (firstDigit === 1) {
-    minR = 10 ** (x - 2) - 1;
-    maxR = secondDigit * 10 ** (x - 2);
-  } else {
-    const y = firstDigit > 1 ? firstDigit - 1 : 1;
-    minR = 10 ** (x - 2);
-    maxR = y * 10 ** (x - 1);
-  }
-
-  maxR = Math.max(minR, maxR);
-  if (maxR <= 0) return null;
-  return { minR, maxR };
-}
-
-/** Subtract a random offset from a cached monetary amount (reload placeholder only). */
-export function perturbCachedAmount(s: number): number {
-  const bounds = cachedAmountPerturbBounds(s);
-  if (!bounds) return s;
-  const sign = Math.sign(s);
-  const { absRounded } = absRoundedDigits(s);
-  const r = randomInt(bounds.minR, bounds.maxR);
-  return sign * Math.max(0, absRounded - r);
+/** Scale a cached monetary amount by the session perturb factor. */
+export function perturbCachedAmount(s: number, factor: number): number {
+  if (!Number.isFinite(s) || s === 0) return s;
+  return Math.round(s * factor);
 }
 
 /**
- * Perturb parallel amounts so descending sort order matches the originals
- * (used for sibling nav card totals).
+ * Perturb parallel amounts with the same factor (descending sort order is preserved).
  */
-export function perturbCachedAmountsPreservingSortOrder(values: readonly number[]): number[] {
-  const n = values.length;
-  if (n === 0) return [];
-  if (n === 1) return [perturbCachedAmount(values[0]!)];
-
-  const indices = values.map((_, i) => i);
-  indices.sort((a, b) => values[b]! - values[a]!);
-
-  const out = values.map((v) => perturbCachedAmount(v));
-  for (let k = 0; k < n - 1; k++) {
-    const hi = indices[k]!;
-    const lo = indices[k + 1]!;
-    if (out[hi]! <= out[lo]!) {
-      out[lo] = Math.max(0, out[hi]! - 1);
-    }
-  }
-  return out;
-}
-
-function scaleAccountValuesToTotal(
-  accountIds: Iterable<number>,
-  valueByAccount: Map<number, number>,
-  targetTotal: number
-): void {
-  const ids: number[] = [];
-  let total = 0;
-  for (const id of accountIds) {
-    const v = valueByAccount.get(id);
-    if (v != null && Number.isFinite(v) && v > 0) {
-      ids.push(id);
-      total += v;
-    }
-  }
-  if (ids.length === 0 || total <= 0) return;
-
-  const target = Math.max(0, Math.round(targetTotal));
-  let remaining = target;
-  for (let i = 0; i < ids.length; i++) {
-    const id = ids[i]!;
-    const v = valueByAccount.get(id)!;
-    if (i === ids.length - 1) {
-      valueByAccount.set(id, Math.max(0, remaining));
-      continue;
-    }
-    const scaled = Math.round((v / total) * target);
-    valueByAccount.set(id, Math.max(0, scaled));
-    remaining -= scaled;
-  }
+export function perturbCachedAmountsPreservingSortOrder(
+  values: readonly number[],
+  factor: number
+): number[] {
+  return values.map((v) => perturbCachedAmount(v, factor));
 }
 
 type SnapshotSortContext = Pick<
   DashboardNavSnapshotResponse,
   "dashboard_layout" | "liabilities_breakdown" | "suecia_snapshot"
 >;
-
-function linkedCreditCardBalanceClp(
-  dashboard_layout: DashboardResponse["dashboard_layout"] | undefined
-): number {
-  return (
-    dashboard_layout
-      ?.find((c) => c.slug === "cash_savings")
-      ?.linked_balances?.find((lb) => lb.slug === "credit_card")?.clp ?? 0
-  );
-}
-
-function mergeAccountsWithClpMap(
-  accounts: DashboardAccountRow[],
-  clpByAccount: Map<number, number>
-): DashboardAccountRow[] {
-  return accounts.map((row) => ({
-    ...row,
-    current_value_clp: clpByAccount.has(row.account_id)
-      ? clpByAccount.get(row.account_id)!
-      : row.current_value_clp,
-  }));
-}
-
-function buildDashForSort(
-  accounts: DashboardAccountRow[],
-  snapshot: SnapshotSortContext,
-  netWorthRoot: NavTreeNodeDto | null | undefined,
-  clpByAccount: Map<number, number>
-): Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout" | "suecia_snapshot"> {
-  const merged = mergeAccountsWithClpMap(accounts, clpByAccount);
-  return dashPickForNavStrip(
-    {
-      accounts: merged,
-      liabilities_breakdown: snapshot.liabilities_breakdown,
-      dashboard_layout: snapshot.dashboard_layout,
-      suecia_snapshot: snapshot.suecia_snapshot,
-      overviewPoints: [],
-    },
-    netWorthRoot
-  );
-}
-
-/** Same CLP sort key as `PortfolioNavChildDetailCards` / `mainValueAndMetricsForNavChild`. */
-function navChildCardSortKeyClp(
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
-  navChild: NavTreeNodeDto
-): number {
-  return mainValueAndMetricsForNavChild(dash, navChild, "month", false).clp;
-}
-
-function navNodeDepth(node: NavTreeNodeDto, root: NavTreeNodeDto): number {
-  let depth = 0;
-  const walk = (n: NavTreeNodeDto, d: number): boolean => {
-    if (n.node_id === node.node_id) {
-      depth = d;
-      return true;
-    }
-    for (const c of n.children ?? []) {
-      if (walk(c, d + 1)) return true;
-    }
-    return false;
-  };
-  walk(root, 0);
-  return depth;
-}
-
-type SiblingGroup = {
-  depth: number;
-  parent: NavTreeNodeDto;
-  siblings: NavTreeNodeDto[];
-  kind: "group" | "account";
-};
-
-function collectSiblingGroups(root: NavTreeNodeDto): SiblingGroup[] {
-  const out: SiblingGroup[] = [];
-  const visit = (node: NavTreeNodeDto) => {
-    if (!isNavHubNode(node)) {
-      const groupChildren = routableNavStripChildren(portfolioStripGroupChildren(node));
-      if (groupChildren.length >= 2) {
-        out.push({ depth: navNodeDepth(node, root), parent: node, siblings: groupChildren, kind: "group" });
-      }
-      const accountChildren = routableNavStripChildren(portfolioStripAccountChildren(node));
-      if (accountChildren.length >= 2) {
-        out.push({
-          depth: navNodeDepth(node, root),
-          parent: node,
-          siblings: accountChildren,
-          kind: "account",
-        });
-      }
-    }
-    for (const c of node.children ?? []) visit(c);
-  };
-  visit(root);
-  return out;
-}
-
-function isNetWorthRoot(node: NavTreeNodeDto): boolean {
-  return node.slug === "net_worth" || node.asset_group_slug === "net_worth";
-}
-
-/** Dashboard home bucket cards must be fixed last (exact totals-based sort keys). */
-function orderSiblingGroups(groups: SiblingGroup[], netWorthRoot: NavTreeNodeDto | null): SiblingGroup[] {
-  if (!netWorthRoot) {
-    return [...groups].sort((a, b) => b.depth - a.depth);
-  }
-  const netWorthGroups = groups.filter((g) => g.parent.node_id === netWorthRoot.node_id);
-  const rest = groups.filter((g) => g.parent.node_id !== netWorthRoot.node_id);
-  rest.sort((a, b) => b.depth - a.depth);
-  return [...rest, ...netWorthGroups];
-}
-
-function applyNavChildSortKeyTarget(
-  navChild: NavTreeNodeDto,
-  targetSortKey: number,
-  clpByAccount: Map<number, number>,
-  accounts: DashboardAccountRow[],
-  snapshot: SnapshotSortContext,
-  netWorthRoot: NavTreeNodeDto | null | undefined
-): void {
-  const dash = buildDashForSort(accounts, snapshot, netWorthRoot, clpByAccount);
-
-  if (isCashSavingsNavNode(navChild)) {
-    const linkedCc = linkedCreditCardBalanceClp(snapshot.dashboard_layout);
-    const cc = Math.round(linkedCc);
-    const targetRaw = cc > 0 ? targetSortKey + cc : targetSortKey;
-    const cashNode = netWorthRoot ? findPortfolioGroupInNav(netWorthRoot, "cash_savings") : null;
-    if (!cashNode) return;
-    const ids = [...navAccountIdSet(cashNode)].filter((id) => {
-      const row = dash.accounts.find((a) => a.account_id === id);
-      return (
-        row &&
-        row.exclude_from_group_totals !== 1 &&
-        row.current_value_clp != null &&
-        Number.isFinite(row.current_value_clp) &&
-        row.current_value_clp > 0
-      );
-    });
-    scaleAccountValuesToTotal(ids, clpByAccount, targetRaw);
-    return;
-  }
-
-  const metricRows = stripMetricsRowsForNavChild(dash, navChild);
-  scaleAccountValuesToTotal(
-    metricRows.map((r) => r.account_id),
-    clpByAccount,
-    targetSortKey
-  );
-}
-
-function preservesSortOrder(originalKeys: readonly number[], actualKeys: readonly number[]): boolean {
-  const n = originalKeys.length;
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const oi = originalKeys[i]!;
-      const oj = originalKeys[j]!;
-      if (oi === oj) continue;
-      if (oi > oj && actualKeys[i]! <= actualKeys[j]!) return false;
-      if (oi < oj && actualKeys[i]! >= actualKeys[j]!) return false;
-    }
-  }
-  return true;
-}
 
 /** Permute perturbed targets so higher original balance keeps a higher perturbed value. */
 export function reassignPerturbedKeysByOriginalRank(
@@ -312,118 +55,16 @@ export function reassignPerturbedKeysByOriginalRank(
   return out;
 }
 
-function applySiblingGroupPerturbedKeys(
-  group: SiblingGroup,
-  perturbedKeys: readonly number[],
-  clpByAccount: Map<number, number>,
-  accounts: DashboardAccountRow[],
-  snapshot: SnapshotSortContext,
-  netWorthRoot: NavTreeNodeDto | null | undefined
-): void {
-  for (let i = 0; i < group.siblings.length; i++) {
-    applyNavChildSortKeyTarget(
-      group.siblings[i]!,
-      perturbedKeys[i]!,
-      clpByAccount,
-      accounts,
-      snapshot,
-      netWorthRoot
-    );
-  }
-}
-
-function verifyAndFixSiblingGroupSortOrder(
-  group: SiblingGroup,
-  originalKeys: readonly number[],
-  perturbedKeys: readonly number[],
-  clpByAccount: Map<number, number>,
-  accounts: DashboardAccountRow[],
-  snapshot: SnapshotSortContext,
-  netWorthRoot: NavTreeNodeDto | null | undefined
-): void {
-  const dash = buildDashForSort(accounts, snapshot, netWorthRoot, clpByAccount);
-  const actualKeys = group.siblings.map((child) => navChildCardSortKeyClp(dash, child));
-  if (preservesSortOrder(originalKeys, actualKeys)) return;
-
-  const fixedKeys = reassignPerturbedKeysByOriginalRank(originalKeys, perturbedKeys);
-  applySiblingGroupPerturbedKeys(
-    group,
-    fixedKeys,
-    clpByAccount,
-    accounts,
-    snapshot,
-    netWorthRoot
-  );
-
-  const dashAfterFix = buildDashForSort(accounts, snapshot, netWorthRoot, clpByAccount);
-  const actualAfterFix = group.siblings.map((child) => navChildCardSortKeyClp(dashAfterFix, child));
-  if (preservesSortOrder(originalKeys, actualAfterFix)) return;
-
-  const strictKeys = [...fixedKeys];
-  const rankIdx = originalKeys.map((_, i) => i).sort((a, b) => originalKeys[b]! - originalKeys[a]!);
-  let ceiling = Number.POSITIVE_INFINITY;
-  for (const i of rankIdx) {
-    strictKeys[i] = Math.min(strictKeys[i]!, Math.max(0, ceiling - 1));
-    ceiling = strictKeys[i]!;
-  }
-  applySiblingGroupPerturbedKeys(
-    group,
-    strictKeys,
-    clpByAccount,
-    accounts,
-    snapshot,
-    netWorthRoot
-  );
-}
-
-/** Keep nav card sort keys stable while perturbing underlying account balances. */
+/** Scale account balances by the session perturb factor (nav card order is preserved). */
 export function perturbAccountValuesPreservingNavCardOrder(
   clpByAccount: Map<number, number>,
-  accounts: DashboardAccountRow[],
-  snapshot: SnapshotSortContext,
-  navRoots: NavTreeNodeDto[]
+  _accounts: DashboardAccountRow[],
+  _snapshot: SnapshotSortContext,
+  _navRoots: NavTreeNodeDto[],
+  factor: number
 ): void {
-  const netWorthRoot = navRoots.find(isNetWorthRoot) ?? null;
-  const groups: SiblingGroup[] = [];
-  for (const root of navRoots) {
-    groups.push(...collectSiblingGroups(root));
-  }
-
-  const orderedGroups = orderSiblingGroups(groups, netWorthRoot);
-  const initialClp = new Map(clpByAccount);
-  const groupPasses: {
-    group: SiblingGroup;
-    originalKeys: number[];
-    perturbedKeys: number[];
-  }[] = [];
-
-  for (const group of orderedGroups) {
-    const dashOriginal = buildDashForSort(accounts, snapshot, netWorthRoot, initialClp);
-    const originalKeys = group.siblings.map((child) => navChildCardSortKeyClp(dashOriginal, child));
-    if (originalKeys.every((k) => k === 0)) continue;
-
-    const perturbedKeys = perturbCachedAmountsPreservingSortOrder(originalKeys);
-    applySiblingGroupPerturbedKeys(
-      group,
-      perturbedKeys,
-      clpByAccount,
-      accounts,
-      snapshot,
-      netWorthRoot
-    );
-    groupPasses.push({ group, originalKeys, perturbedKeys });
-  }
-
-  for (const { group, originalKeys, perturbedKeys } of groupPasses) {
-    verifyAndFixSiblingGroupSortOrder(
-      group,
-      originalKeys,
-      perturbedKeys,
-      clpByAccount,
-      accounts,
-      snapshot,
-      netWorthRoot
-    );
+  for (const [id, v] of clpByAccount) {
+    clpByAccount.set(id, perturbCachedAmount(v, factor));
   }
 }
 
@@ -590,61 +231,67 @@ export function synthesizeMissingUsdOnGroupPageShell(
   };
 }
 
-function perturbOptionalNumber(v: number | null | undefined): number | null | undefined {
+function perturbOptionalNumber(
+  v: number | null | undefined,
+  factor: number
+): number | null | undefined {
   if (v == null) return v;
   if (!Number.isFinite(v)) return v;
-  return perturbCachedAmount(v);
+  return perturbCachedAmount(v, factor);
 }
 
 function perturbDashboardLayout(
-  dashboard_layout: DashboardResponse["dashboard_layout"] | undefined
+  dashboard_layout: DashboardResponse["dashboard_layout"] | undefined,
+  factor: number
 ): DashboardResponse["dashboard_layout"] | undefined {
   return dashboard_layout?.map((card) => ({
     ...card,
     linked_balances: card.linked_balances?.map((lb) => ({
       ...lb,
-      clp: perturbCachedAmount(lb.clp),
-      usd: perturbOptionalNumber(lb.usd),
+      clp: perturbCachedAmount(lb.clp, factor),
+      usd: perturbOptionalNumber(lb.usd, factor),
     })),
   }));
 }
 
 function perturbDashboardAccountRow(
   row: DashboardAccountRow,
+  factor: number,
   overrides?: Pick<DashboardAccountRow, "current_value_clp" | "current_value_usd">
 ): DashboardAccountRow {
   return {
     ...row,
-    deposits_clp: perturbCachedAmount(row.deposits_clp),
-    deposits_usd: perturbOptionalNumber(row.deposits_usd),
-    delta_month_clp: perturbOptionalNumber(row.delta_month_clp),
-    delta_month_usd: perturbOptionalNumber(row.delta_month_usd),
-    delta_year_clp: perturbOptionalNumber(row.delta_year_clp),
-    delta_year_usd: perturbOptionalNumber(row.delta_year_usd),
-    delta_total_clp: perturbOptionalNumber(row.delta_total_clp),
-    delta_total_usd: perturbOptionalNumber(row.delta_total_usd),
-    deposits_month_clp: perturbOptionalNumber(row.deposits_month_clp),
-    deposits_month_usd: perturbOptionalNumber(row.deposits_month_usd),
-    deposits_year_clp: perturbOptionalNumber(row.deposits_year_clp),
-    deposits_year_usd: perturbOptionalNumber(row.deposits_year_usd),
-    prior_month_close_clp: perturbOptionalNumber(row.prior_month_close_clp),
-    prior_month_close_usd: perturbOptionalNumber(row.prior_month_close_usd),
-    prior_year_close_clp: perturbOptionalNumber(row.prior_year_close_clp),
-    prior_year_close_usd: perturbOptionalNumber(row.prior_year_close_usd),
+    deposits_clp: perturbCachedAmount(row.deposits_clp, factor),
+    deposits_usd: perturbOptionalNumber(row.deposits_usd, factor),
+    delta_month_clp: perturbOptionalNumber(row.delta_month_clp, factor),
+    delta_month_usd: perturbOptionalNumber(row.delta_month_usd, factor),
+    delta_year_clp: perturbOptionalNumber(row.delta_year_clp, factor),
+    delta_year_usd: perturbOptionalNumber(row.delta_year_usd, factor),
+    delta_total_clp: perturbOptionalNumber(row.delta_total_clp, factor),
+    delta_total_usd: perturbOptionalNumber(row.delta_total_usd, factor),
+    deposits_month_clp: perturbOptionalNumber(row.deposits_month_clp, factor),
+    deposits_month_usd: perturbOptionalNumber(row.deposits_month_usd, factor),
+    deposits_year_clp: perturbOptionalNumber(row.deposits_year_clp, factor),
+    deposits_year_usd: perturbOptionalNumber(row.deposits_year_usd, factor),
+    prior_month_close_clp: perturbOptionalNumber(row.prior_month_close_clp, factor),
+    prior_month_close_usd: perturbOptionalNumber(row.prior_month_close_usd, factor),
+    prior_year_close_clp: perturbOptionalNumber(row.prior_year_close_clp, factor),
+    prior_year_close_usd: perturbOptionalNumber(row.prior_year_close_usd, factor),
     current_value_clp:
       overrides?.current_value_clp !== undefined
         ? overrides.current_value_clp
-        : perturbOptionalNumber(row.current_value_clp),
+        : perturbOptionalNumber(row.current_value_clp, factor),
     current_value_usd:
       overrides?.current_value_usd !== undefined
         ? overrides.current_value_usd
-        : perturbOptionalNumber(row.current_value_usd),
+        : perturbOptionalNumber(row.current_value_usd, factor),
   };
 }
 
 function perturbAccountBalanceMaps(
   accounts: DashboardAccountRow[],
-  snapshot: SnapshotSortContext
+  snapshot: SnapshotSortContext,
+  factor: number
 ): {
   clp: Map<number, number>;
   usd: Map<number, number>;
@@ -657,16 +304,8 @@ function perturbAccountBalanceMaps(
   if (nav?.net_worth) navRoots.push(nav.net_worth);
   if (nav?.main?.length) navRoots.push(...nav.main);
 
-  if (navRoots.length > 0 && clp.size > 0) {
-    perturbAccountValuesPreservingNavCardOrder(clp, accounts, snapshot, navRoots);
-  } else if (clp.size > 1) {
-    const ids = [...clp.keys()];
-    const values = ids.map((id) => clp.get(id)!);
-    const perturbed = perturbCachedAmountsPreservingSortOrder(values);
-    ids.forEach((id, i) => clp.set(id, perturbed[i]!));
-  } else if (clp.size === 1) {
-    const [id] = clp.keys();
-    clp.set(id!, perturbCachedAmount(clp.get(id!)!));
+  if (clp.size > 0) {
+    perturbAccountValuesPreservingNavCardOrder(clp, accounts, snapshot, navRoots, factor);
   }
 
   const snapshotFxRate = resolveSnapshotFxRate(accounts, undefined);
@@ -688,17 +327,20 @@ function perturbAccountBalanceMaps(
   return { clp, usd };
 }
 
-function perturbBucketCloseTotals(close: DashboardBucketCloseTotals): DashboardBucketCloseTotals {
-  const real_estate_clp = perturbCachedAmount(close.real_estate_clp);
-  const retirement_clp = perturbCachedAmount(close.retirement_clp);
-  const brokerage_clp = perturbCachedAmount(close.brokerage_clp);
-  const cash_eqs_clp = perturbCachedAmount(close.cash_eqs_clp);
+function perturbBucketCloseTotals(
+  close: DashboardBucketCloseTotals,
+  factor: number
+): DashboardBucketCloseTotals {
+  const real_estate_clp = perturbCachedAmount(close.real_estate_clp, factor);
+  const retirement_clp = perturbCachedAmount(close.retirement_clp, factor);
+  const brokerage_clp = perturbCachedAmount(close.brokerage_clp, factor);
+  const cash_eqs_clp = perturbCachedAmount(close.cash_eqs_clp, factor);
   const net_worth_clp = real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
 
-  const real_estate_usd = perturbOptionalNumber(close.real_estate_usd);
-  const retirement_usd = perturbOptionalNumber(close.retirement_usd);
-  const brokerage_usd = perturbOptionalNumber(close.brokerage_usd);
-  const cash_eqs_usd = perturbOptionalNumber(close.cash_eqs_usd);
+  const real_estate_usd = perturbOptionalNumber(close.real_estate_usd, factor);
+  const retirement_usd = perturbOptionalNumber(close.retirement_usd, factor);
+  const brokerage_usd = perturbOptionalNumber(close.brokerage_usd, factor);
+  const cash_eqs_usd = perturbOptionalNumber(close.cash_eqs_usd, factor);
   const hasUsd =
     real_estate_usd != null ||
     retirement_usd != null ||
@@ -725,17 +367,17 @@ function perturbBucketCloseTotals(close: DashboardBucketCloseTotals): DashboardB
   };
 }
 
-function perturbNwBucketTotals(buckets: NwBucketTotals): NwBucketTotals {
-  const real_estate_clp = perturbCachedAmount(buckets.real_estate_clp);
-  const retirement_clp = perturbCachedAmount(buckets.retirement_clp);
-  const brokerage_clp = perturbCachedAmount(buckets.brokerage_clp);
-  const cash_eqs_clp = perturbCachedAmount(buckets.cash_eqs_clp);
+function perturbNwBucketTotals(buckets: NwBucketTotals, factor: number): NwBucketTotals {
+  const real_estate_clp = perturbCachedAmount(buckets.real_estate_clp, factor);
+  const retirement_clp = perturbCachedAmount(buckets.retirement_clp, factor);
+  const brokerage_clp = perturbCachedAmount(buckets.brokerage_clp, factor);
+  const cash_eqs_clp = perturbCachedAmount(buckets.cash_eqs_clp, factor);
   const net_worth_clp = real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
 
-  const real_estate_usd = perturbOptionalNumber(buckets.real_estate_usd);
-  const retirement_usd = perturbOptionalNumber(buckets.retirement_usd);
-  const brokerage_usd = perturbOptionalNumber(buckets.brokerage_usd);
-  const cash_eqs_usd = perturbOptionalNumber(buckets.cash_eqs_usd);
+  const real_estate_usd = perturbOptionalNumber(buckets.real_estate_usd, factor);
+  const retirement_usd = perturbOptionalNumber(buckets.retirement_usd, factor);
+  const brokerage_usd = perturbOptionalNumber(buckets.brokerage_usd, factor);
+  const cash_eqs_usd = perturbOptionalNumber(buckets.cash_eqs_usd, factor);
   const hasUsd =
     real_estate_usd != null ||
     retirement_usd != null ||
@@ -748,8 +390,8 @@ function perturbNwBucketTotals(buckets: NwBucketTotals): NwBucketTotals {
     ? {
         month_end: prior.month_end,
         year_end: prior.year_end,
-        month: perturbBucketCloseTotals(prior.month),
-        year: perturbBucketCloseTotals(prior.year),
+        month: perturbBucketCloseTotals(prior.month, factor),
+        year: perturbBucketCloseTotals(prior.year, factor),
       }
     : prior;
 
@@ -776,51 +418,57 @@ function perturbNwBucketTotals(buckets: NwBucketTotals): NwBucketTotals {
 export function perturbDashboardNavSnapshot(
   snapshot: DashboardNavSnapshotResponse
 ): DashboardNavSnapshotResponse {
+  const factor = randomPerturbFactor();
   const liabilities = snapshot.liabilities_breakdown;
   const suecia = snapshot.suecia_snapshot;
-  const dashboard_layout = perturbDashboardLayout(snapshot.dashboard_layout);
+  const dashboard_layout = perturbDashboardLayout(snapshot.dashboard_layout, factor);
   const sortSnapshot: SnapshotSortContext = {
     ...snapshot,
     dashboard_layout,
   };
   const { clp: clpByAccount, usd: usdByAccount } = perturbAccountBalanceMaps(
     snapshot.accounts,
-    sortSnapshot
+    sortSnapshot,
+    factor
   );
 
   const nw_bucket_totals = snapshot.nw_bucket_totals
-    ? perturbNwBucketTotals(snapshot.nw_bucket_totals)
+    ? perturbNwBucketTotals(snapshot.nw_bucket_totals, factor)
     : snapshot.nw_bucket_totals;
 
   return {
     ...snapshot,
     nw_bucket_totals,
     accounts: snapshot.accounts.map((row) =>
-      perturbDashboardAccountRow(row, {
-        current_value_clp: clpByAccount.has(row.account_id)
-          ? clpByAccount.get(row.account_id)!
-          : row.current_value_clp,
-        current_value_usd: usdByAccount.has(row.account_id)
-          ? usdByAccount.get(row.account_id)!
-          : row.current_value_usd,
-      })
+      perturbDashboardAccountRow(
+        row,
+        factor,
+        {
+          current_value_clp: clpByAccount.has(row.account_id)
+            ? clpByAccount.get(row.account_id)!
+            : row.current_value_clp,
+          current_value_usd: usdByAccount.has(row.account_id)
+            ? usdByAccount.get(row.account_id)!
+            : row.current_value_usd,
+        }
+      )
     ),
     liabilities_breakdown: liabilities
       ? {
-          mortgage_clp: perturbCachedAmount(liabilities.mortgage_clp),
-          credit_card_clp: perturbCachedAmount(liabilities.credit_card_clp),
-          mortgage_usd: perturbOptionalNumber(liabilities.mortgage_usd),
-          credit_card_usd: perturbOptionalNumber(liabilities.credit_card_usd),
+          mortgage_clp: perturbCachedAmount(liabilities.mortgage_clp, factor),
+          credit_card_clp: perturbCachedAmount(liabilities.credit_card_clp, factor),
+          mortgage_usd: perturbOptionalNumber(liabilities.mortgage_usd, factor),
+          credit_card_usd: perturbOptionalNumber(liabilities.credit_card_usd, factor),
         }
       : liabilities,
     suecia_snapshot: suecia
       ? {
-          valor_clp: perturbCachedAmount(suecia.valor_clp),
-          net_value_clp: perturbCachedAmount(suecia.net_value_clp),
-          mortgage_clp: perturbCachedAmount(suecia.mortgage_clp),
-          valor_usd: perturbOptionalNumber(suecia.valor_usd),
-          net_value_usd: perturbOptionalNumber(suecia.net_value_usd),
-          mortgage_usd: perturbOptionalNumber(suecia.mortgage_usd),
+          valor_clp: perturbCachedAmount(suecia.valor_clp, factor),
+          net_value_clp: perturbCachedAmount(suecia.net_value_clp, factor),
+          mortgage_clp: perturbCachedAmount(suecia.mortgage_clp, factor),
+          valor_usd: perturbOptionalNumber(suecia.valor_usd, factor),
+          net_value_usd: perturbOptionalNumber(suecia.net_value_usd, factor),
+          mortgage_usd: perturbOptionalNumber(suecia.mortgage_usd, factor),
         }
       : suecia,
     dashboard_layout,
@@ -828,18 +476,27 @@ export function perturbDashboardNavSnapshot(
 }
 
 export function perturbGroupPageShell(shell: GroupPageShell): GroupPageShell {
-  const { clp: clpByAccount, usd: usdByAccount } = perturbAccountBalanceMaps(shell.dashAccounts, {});
+  const factor = randomPerturbFactor();
+  const { clp: clpByAccount, usd: usdByAccount } = perturbAccountBalanceMaps(
+    shell.dashAccounts,
+    {},
+    factor
+  );
   return {
     ...shell,
     dashAccounts: shell.dashAccounts.map((row) =>
-      perturbDashboardAccountRow(row, {
-        current_value_clp: clpByAccount.has(row.account_id)
-          ? clpByAccount.get(row.account_id)!
-          : row.current_value_clp,
-        current_value_usd: usdByAccount.has(row.account_id)
-          ? usdByAccount.get(row.account_id)!
-          : row.current_value_usd,
-      })
+      perturbDashboardAccountRow(
+        row,
+        factor,
+        {
+          current_value_clp: clpByAccount.has(row.account_id)
+            ? clpByAccount.get(row.account_id)!
+            : row.current_value_clp,
+          current_value_usd: usdByAccount.has(row.account_id)
+            ? usdByAccount.get(row.account_id)!
+            : row.current_value_usd,
+        }
+      )
     ),
   };
 }

@@ -16,7 +16,7 @@ import {
   portfolioNavParentTitleModeForNavNode,
   type InversionesPeriodMetricsDto,
 } from "../../portfolioNavDashboardCards";
-import { buildCashEqsCardBreakdown, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
@@ -107,8 +107,8 @@ export function PortfolioNavEntityCardsStrip({
       return breakdownForNavChild(parentNavNode, rows, dash);
     }
     if (isCashEqsHub) {
-      const lines = buildCashEqsCardBreakdown(dash.accounts);
-      return lines.length ? { lines } : null;
+      const rows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
+      return breakdownForNavChild(parentNavNode, rows, dash);
     }
     return null;
   }, [isCashSavings, isCashEqsHub, dash, parentNavNode]);

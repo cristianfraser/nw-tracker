@@ -4,6 +4,8 @@ import { Navigate, useLocation, useParams } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
+import { LiabilitiesCreditCardGroupSection } from "../components/liabilities/LiabilitiesCreditCardGroupSection";
+import { LiabilitiesMortgageGroupSection } from "../components/liabilities/LiabilitiesMortgageGroupSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
@@ -12,6 +14,7 @@ import {
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
 import { liabilitiesChartBucketNavNodes } from "../liabilitiesChartBuckets";
+import { resolveLiabilitiesPageKind } from "../liabilitiesPageKind";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
 import { findBestNavNodeForPathname, findNavNodeBySlug } from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
@@ -28,11 +31,14 @@ import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCac
 import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
+  useAccountMonthlyPerformance,
   useAccountsByPortfolioGroup,
   useDashboardNavContext,
   useDashboardNavSnapshot,
   useGroupPageShell,
   usePortfolioGroupBundle,
+  usePortfolioGroupCcLedger,
+  usePortfolioGroupMortgageLedger,
   useSidebarNav,
 } from "../queries/hooks";
 
@@ -60,6 +66,11 @@ export function LiabilitiesGroupPage() {
     if (issuerNode?.asset_group_slug === "credit_cards") return issuerNode;
     return best;
   }, [sidebarNav, pathname, issuerParam]);
+
+  const pageKind = useMemo(
+    () => (navMatchNode ? resolveLiabilitiesPageKind(navMatchNode) : null),
+    [navMatchNode]
+  );
 
   const queryClient = useQueryClient();
   const portfolioGroup =
@@ -98,6 +109,25 @@ export function LiabilitiesGroupPage() {
     enabled: Boolean(navMatchNode),
   });
 
+  const ccLedgerSlug =
+    pageKind === "pasivos_root" || pageKind === "credit_card" ? portfolioGroup : undefined;
+  const mortgageLedgerSlug =
+    pageKind === "pasivos_root"
+      ? "liabilities"
+      : pageKind === "mortgage"
+        ? portfolioGroup
+        : undefined;
+
+  const { data: ccLedger } = usePortfolioGroupCcLedger(
+    ccLedgerSlug,
+    {},
+    shapeEnabled && ccLedgerSlug != null
+  );
+  const { data: mortgageLedger } = usePortfolioGroupMortgageLedger(
+    mortgageLedgerSlug,
+    shapeEnabled && mortgageLedgerSlug != null
+  );
+
   useEffect(() => {
     if (!navMatchNode) return;
     void prefetchPortfolioGroupBundle(queryClient, {
@@ -105,11 +135,6 @@ export function LiabilitiesGroupPage() {
       unit: displayUnit,
     });
   }, [queryClient, navMatchNode, portfolioGroup, displayUnit]);
-
-  const chartCtx = useMemo(
-    () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode) : null),
-    [navMatchNode]
-  );
 
   const placeholderBundle = useMemo(
     () => buildPlaceholderPortfolioGroupBundle(displayUnit, shell?.accounts ?? [], portfolioGroup),
@@ -130,6 +155,11 @@ export function LiabilitiesGroupPage() {
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
+
+  const chartCtx = useMemo(
+    () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode, accounts) : null),
+    [navMatchNode, accounts]
+  );
 
   const accountsTreeRoot = useMemo(
     () => (navMatchNode ? enrichNavTreeWithAllAccounts(navMatchNode, accounts) : null),
@@ -192,7 +222,7 @@ export function LiabilitiesGroupPage() {
 
   const chartSeriesCount = useMemo(() => {
     if (chartCtx?.liabilitiesGrouped && navMatchNode) {
-      return liabilitiesChartBucketNavNodes(navMatchNode).length;
+      return liabilitiesChartBucketNavNodes(navMatchNode, accounts).length;
     }
     return accounts.length;
   }, [chartCtx, navMatchNode, accounts.length]);
@@ -207,6 +237,120 @@ export function LiabilitiesGroupPage() {
     groupColorRgb: navMatchNode?.color_rgb,
     navGroupSlug: navMatchNode?.slug,
   });
+
+  const mortgageAccount = useMemo(() => {
+    if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return null;
+    return (
+      accounts.find((a) => {
+        const cat = a.category_slug ?? a.bucket_slug ?? "";
+        return cat.includes("mortgage") || cat === "mortgage";
+      }) ?? null
+    );
+  }, [accounts, pageKind]);
+
+  const mortgageOperationalId = useMemo(() => {
+    if (mortgageAccount) {
+      return String(mortgageAccount.source_account_id ?? mortgageAccount.id);
+    }
+    if (mortgageLedger?.account_id) return String(mortgageLedger.account_id);
+    return undefined;
+  }, [mortgageAccount, mortgageLedger?.account_id]);
+
+  const { data: mortgagePerf } = useAccountMonthlyPerformance(mortgageOperationalId, displayUnit);
+
+  const mortgageDashRow = useMemo(() => {
+    if (!mortgageOperationalId) return null;
+    const id = Number(mortgageOperationalId);
+    const rows = navCtx?.accounts ?? navSnapshot?.accounts ?? [];
+    return rows.find((a) => a.account_id === id) ?? null;
+  }, [mortgageOperationalId, navCtx?.accounts, navSnapshot?.accounts]);
+
+  const mortgageSummary = useMemo(
+    () => ({
+      account_id: mortgageDashRow?.account_id ?? mortgageLedger?.account_id ?? 0,
+      latest_valuation_clp: mortgageDashRow?.current_value_clp ?? null,
+    }),
+    [mortgageDashRow, mortgageLedger?.account_id]
+  );
+
+  const mortgageColorRgb = useMemo(() => {
+    if (!mortgageAccount) return navMatchNode?.color_rgb ?? null;
+    return (
+      ts?.accounts_in_group?.accounts?.find(
+        (a) => a.account_id === (mortgageAccount.source_account_id ?? mortgageAccount.id)
+      )?.color_rgb ??
+      navMatchNode?.color_rgb ??
+      null
+    );
+  }, [mortgageAccount, ts?.accounts_in_group?.accounts, navMatchNode?.color_rgb]);
+
+  const chartsSection = (
+    <>
+      <PortfolioGroupChartsSection
+        accountsEmpty={accounts.length === 0}
+        accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
+        chartSeriesCount={chartSeriesCount}
+        valuationBlockForChart={charts.valuationBlockForChart}
+        displayPieSlices={displayPieSlices}
+        displayUnit={displayUnit}
+        xAxisGranularity={xAxisGranularity}
+        chartColorSlug={charts.chartColorSlug}
+        pieAllocationSlug={charts.pieAllocationSlug}
+        colorPlanGroupSlug={charts.colorPlanGroupSlug}
+        groupColorMaps={charts.groupColorMaps}
+        groupPerfForChart={charts.groupPerfForChart}
+        groupPerfBarSeries={charts.groupPerfBarSeries}
+        groupTotalStroke={charts.groupTotalStroke}
+        groupColorRgb={navMatchNode?.color_rgb}
+        chartCtx={chartCtx}
+        hideGroupPerf
+      />
+
+      {pageKind === "pasivos_root" && ccLedger ? (
+        <LiabilitiesCreditCardGroupSection
+          ccLedger={ccLedger}
+          displayUnit={displayUnit}
+          xAxisGranularity={xAxisGranularity}
+          linkTo="/liabilities/credit-card"
+        />
+      ) : null}
+
+      {pageKind === "pasivos_root" && mortgageLedger ? (
+        <LiabilitiesMortgageGroupSection
+          mortgageLedger={mortgageLedger}
+          displayUnit={displayUnit}
+          metricsPeriod={metricsPeriod}
+          xAxisGranularity={xAxisGranularity}
+          monthlyPerfRows={mortgagePerf?.monthly ?? []}
+          summary={mortgageSummary}
+          accountDashRow={mortgageDashRow}
+          accountColorRgb={mortgageColorRgb}
+          linkTo="/liabilities/mortgage"
+        />
+      ) : null}
+
+      {pageKind === "credit_card" && ccLedger ? (
+        <LiabilitiesCreditCardGroupSection
+          ccLedger={ccLedger}
+          displayUnit={displayUnit}
+          xAxisGranularity={xAxisGranularity}
+        />
+      ) : null}
+
+      {pageKind === "mortgage" && mortgageLedger ? (
+        <LiabilitiesMortgageGroupSection
+          mortgageLedger={mortgageLedger}
+          displayUnit={displayUnit}
+          metricsPeriod={metricsPeriod}
+          xAxisGranularity={xAxisGranularity}
+          monthlyPerfRows={mortgagePerf?.monthly ?? []}
+          summary={mortgageSummary}
+          accountDashRow={mortgageDashRow}
+          accountColorRgb={mortgageColorRgb}
+        />
+      ) : null}
+    </>
+  );
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
   const pageColorTarget = navMatchNode ? navColorTargetFromDto(navMatchNode) : undefined;
@@ -255,6 +399,7 @@ export function LiabilitiesGroupPage() {
       colorRgb={navMatchNode.color_rgb}
       colorTarget={pageColorTarget}
       loading={contentLoading}
+      hideConsolidatedTables
       portfolio={
         dashForStrip
           ? {
@@ -269,26 +414,7 @@ export function LiabilitiesGroupPage() {
             }
           : null
       }
-      charts={
-        <PortfolioGroupChartsSection
-          accountsEmpty={accounts.length === 0}
-          accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
-          chartSeriesCount={chartSeriesCount}
-          valuationBlockForChart={charts.valuationBlockForChart}
-          displayPieSlices={displayPieSlices}
-          displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
-          chartColorSlug={charts.chartColorSlug}
-          pieAllocationSlug={charts.pieAllocationSlug}
-          colorPlanGroupSlug={charts.colorPlanGroupSlug}
-          groupColorMaps={charts.groupColorMaps}
-          groupPerfForChart={charts.groupPerfForChart}
-          groupPerfBarSeries={charts.groupPerfBarSeries}
-          groupTotalStroke={charts.groupTotalStroke}
-          groupColorRgb={navMatchNode.color_rgb}
-          chartCtx={chartCtx}
-        />
-      }
+      charts={chartsSection}
       tableAccounts={tableAccountsForPerf}
       monthlyDetailHint={t("groupPage.monthlyDetailHintLiabilities")}
       flowsHint={t("groupPage.flowsHintLiabilities")}

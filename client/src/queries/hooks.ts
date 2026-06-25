@@ -462,6 +462,29 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
   });
 }
 
+export function usePortfolioGroupCcLedger(
+  slug: string | undefined,
+  extraOffsets: Record<string, number> = {},
+  enabled = true
+) {
+  const ccOffsetsKey = JSON.stringify(extraOffsets);
+  return useQuery({
+    queryKey: queryKeys.portfolioGroupCcLedger(slug ?? "", ccOffsetsKey),
+    queryFn: () => api.portfolioGroupCcLedger(slug!, extraOffsets),
+    enabled: enabled && Boolean(slug),
+    ...displayUnitQueryBehavior,
+  });
+}
+
+export function usePortfolioGroupMortgageLedger(slug: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.portfolioGroupMortgageLedger(slug ?? ""),
+    queryFn: () => api.portfolioGroupMortgageLedger(slug!),
+    enabled: enabled && Boolean(slug),
+    ...displayUnitQueryBehavior,
+  });
+}
+
 const SKIP_MONTHLY_PERF_SLUGS = new Set(["cuenta_corriente", "cuenta_vista", "cuenta_ahorro_vivienda"]);
 
 export function useGroupAccountsMonthlyPerformance(

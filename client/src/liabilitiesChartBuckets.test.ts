@@ -3,7 +3,11 @@ import {
   applyMultiSeriesTrailingZeroTailClip,
 } from "./components/charts/AppLineChart";
 import { buildLineChartTailClipOptions } from "./components/charts/ValuationLineCharts";
-import { buildLiabilitiesBucketPlan } from "./liabilitiesChartBuckets";
+import {
+  buildLiabilitiesBucketPlan,
+  liabilitiesChartBucketNavNodes,
+  shouldAggregateLiabilitiesCharts,
+} from "./liabilitiesChartBuckets";
 import { aggregateLiabilitiesNavGroupedValuationBlock } from "./liabilitiesGroupedAggregation";
 import type { AccountListRow, NavTreeNodeDto, TimeseriesBlock } from "./types";
 
@@ -253,6 +257,16 @@ describe("buildLiabilitiesBucketPlan", () => {
     expect(ccPlan.idToBucket(35)).toBe("santander");
     expect(ccPlan.idToBucket(42)).toBe("bci");
     expect(ccPlan.idToBucket(74)).toBe("santander");
+  });
+
+  it("derives issuer buckets from listRows when sidebar nav omits Santander", () => {
+    const prunedNav: NavTreeNodeDto = {
+      ...pasivosCreditCardNav,
+      children: [pasivosCreditCardNav.children[1]!],
+    };
+    const buckets = liabilitiesChartBucketNavNodes(prunedNav, listRows);
+    expect(buckets.map((b) => b.slug)).toEqual(["santander", "bci"]);
+    expect(shouldAggregateLiabilitiesCharts(prunedNav, listRows)).toBe(true);
   });
 
   it("maps mortgage master id via liability_view source_account_id", () => {

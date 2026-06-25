@@ -495,21 +495,6 @@ export function useUnmatchRealEstateExpenseMutation() {
   });
 }
 
-export function useCreateManualIncomeMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: {
-      amount_clp: number;
-      received_on: string;
-      source?: string | null;
-      note?: string | null;
-    }) => api.createIncome(body),
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
-    },
-  });
-}
-
 export function usePatchWorkEarningMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -562,21 +547,6 @@ export function useRestoreIncomeMovementMutation() {
     mutationFn: (movement_id: number) => api.restoreIncomeMovement(movement_id),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
-    },
-  });
-}
-
-export function useCreateManualExpenseMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: {
-      amount_clp: number;
-      spent_on: string;
-      category: string;
-      note?: string | null;
-    }) => api.createExpense(body),
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
     },
   });
 }

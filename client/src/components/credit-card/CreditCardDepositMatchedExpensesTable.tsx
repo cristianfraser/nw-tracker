@@ -13,6 +13,10 @@ import {
 
 const DEPOSIT_MATCHED_PAGE_SIZE = 10;
 
+function isDepositLinkedExpenseLine(line: FlowCcExpenseLineRow): boolean {
+  return isAutoDepositMatchedPurchaseNote(line.purchase_notes) || line.expense_deposit_link != null;
+}
+
 export function CreditCardDepositMatchedExpensesTable({
   lines,
   categories,
@@ -30,7 +34,7 @@ export function CreditCardDepositMatchedExpensesTable({
           (ln) =>
             ln.line_role !== "installment_purchase_total" &&
             ln.amount_clp > 0 &&
-            isAutoDepositMatchedPurchaseNote(ln.purchase_notes)
+            isDepositLinkedExpenseLine(ln)
         )
         .sort(sortCreditCardExpenseLinesByAmountDesc),
     [lines]

@@ -67,6 +67,23 @@ describe("buildCreditCardExpenseMonthBucket", () => {
     expect(bucket.excluded).toHaveLength(1);
   });
 
+  it("gastos_period_month override lists purchase under overridden month", () => {
+    const purchase = line({
+      line_role: "purchase",
+      expense_month: "2025-02",
+      billing_month: "2025-02",
+      purchase_month: "2025-02",
+      purchase_on: "2025-02-10",
+      gastos_period_month: "2025-01",
+      installment_flag: 0,
+      amount_clp: 3_071_622,
+      category_slug: "bills",
+    });
+    expect(buildCreditCardExpenseMonthBucket([purchase], "2025-01", "split").purchases).toHaveLength(1);
+    expect(buildCreditCardExpenseMonthBucket([purchase], "2025-02", "split").purchases).toHaveLength(0);
+    expect(purchase.purchase_on).toBe("2025-02-10");
+  });
+
   it("shows installment purchase total in Excluded for split mode", () => {
     const total = line({
       line_role: "installment_purchase_total",

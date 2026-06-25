@@ -20,6 +20,7 @@ import {
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
+import { chartCategorySlugsForFlowsExpenses } from "../expenseDepositLinks";
 import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTotals";
 
 /** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
@@ -33,9 +34,11 @@ export function ExpensesPage() {
 
   const chartCategorySlugs = useMemo(
     () =>
-      (data?.categories ?? [])
-        .map((c) => c.slug)
-        .filter((slug) => !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(slug)),
+      chartCategorySlugsForFlowsExpenses(
+        (data?.categories ?? [])
+          .map((c) => c.slug)
+          .filter((slug) => !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(slug))
+      ),
     [data?.categories]
   );
 

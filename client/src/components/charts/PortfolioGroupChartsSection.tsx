@@ -38,6 +38,7 @@ export function PortfolioGroupChartsSection({
   chartCtx,
   showValuationDeposits = true,
   chartControls,
+  hideGroupPerf = false,
 }: {
   accountsEmpty: boolean;
   accountsEmptyMessage: string;
@@ -58,6 +59,8 @@ export function PortfolioGroupChartsSection({
   showValuationDeposits?: boolean;
   /** Rendered below the valuation/pie charts and above monthly P/L (e.g. Agrupado / Aportes acumulados). */
   chartControls?: ReactNode;
+  /** Omit investment-style group P/L charts (pasivos routes). */
+  hideGroupPerf?: boolean;
 }) {
   if (accountsEmpty) {
     return (
@@ -115,7 +118,8 @@ export function PortfolioGroupChartsSection({
 
       {chartControls}
 
-      {groupPerfForChart &&
+      {!hideGroupPerf &&
+      groupPerfForChart &&
       groupPerfForChart.points.length > 0 &&
       groupPerfBarSeries.length > 0 ? (
         <>
