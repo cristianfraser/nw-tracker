@@ -6,6 +6,7 @@ import {
   forwardMonthKeysForInvalidationTest,
   getAggregationCached,
   invalidateAggregationForAccountDate,
+  invalidateLinkedCreditCardAggregationCache,
 } from "./aggregationCache.js";
 
 describe("aggregationCache", () => {
@@ -52,5 +53,26 @@ describe("aggregationCache", () => {
     const keys = forwardMonthKeysForInvalidationTest("2026-03-10");
     expect(keys[0]).toBe("2026-03");
     expect(keys).toContain("2026-04");
+  });
+
+  it("invalidateLinkedCreditCardAggregationCache clears cash_eqs consolidated keys", () => {
+    getAggregationCached(cacheKeyGroupConsolidatedMonthly("cash_eqs", "clp"), () => ({ rows: [1] }));
+    getAggregationCached(cacheKeyGroupConsolidatedMonthly("brokerage", "clp"), () => []);
+
+    invalidateLinkedCreditCardAggregationCache();
+
+    let cashEqsRebuilds = 0;
+    getAggregationCached(cacheKeyGroupConsolidatedMonthly("cash_eqs", "clp"), () => {
+      cashEqsRebuilds += 1;
+      return { rows: [2] };
+    });
+    expect(cashEqsRebuilds).toBe(1);
+
+    let brokerageRebuilds = 0;
+    getAggregationCached(cacheKeyGroupConsolidatedMonthly("brokerage", "clp"), () => {
+      brokerageRebuilds += 1;
+      return [];
+    });
+    expect(brokerageRebuilds).toBe(0);
   });
 });

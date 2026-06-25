@@ -103,6 +103,22 @@ describe("movementTransfer", () => {
     expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
   });
 
+  it("skips USD credit for clp-wire-link compra mirror legs (migration 129 SPY/VEA)", () => {
+    const row = {
+      account_id: fromId,
+      from_account_id: null,
+      to_account_id: null,
+      amount_clp: 50_000,
+      occurred_on: "2026-03-03",
+      note: "migration:129|vea-clp-wire-link|leg=50k-initial",
+      units_delta: null,
+      flow_kind: "compra_usd_venta_clp",
+      amount_usd: 54.35,
+      ticker: null,
+    };
+    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
+  });
+
   it("stock_sell transfer debits shares on from_account and credits USD on to_account", () => {
     const row = {
       account_id: null,

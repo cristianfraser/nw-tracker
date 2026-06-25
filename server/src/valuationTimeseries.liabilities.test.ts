@@ -29,6 +29,17 @@ function liabilitiesTotalClpAsOf(
 }
 
 describe("listLiabilitiesTabAccountRows", () => {
+  it("CC tab rows use master accounts (one id for Gastos and Pasivos)", () => {
+    const ccRows = listLiabilitiesTabAccountRows("credit_card");
+    if (!ccRows.length) return;
+    for (const r of ccRows) {
+      const kind = db
+        .prepare(`SELECT account_kind FROM accounts WHERE id = ?`)
+        .get(r.account_id) as { account_kind: string } | undefined;
+      expect(kind?.account_kind).toBe("master");
+    }
+  });
+
   it("excludes legacy combined worldmember when per-card Santander masters exist", () => {
     const perCard = db
       .prepare(`SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`)

@@ -1,8 +1,11 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { db } from "./db.js";
 import {
+  applyOpenBillingMonthSaldoToNextMonth,
+  billingDetailBalanceClp,
   buildBillingDetailByMonth,
   buildFacturaciones,
+  facturadoClpFromOpenMonthStatementLines,
   paymentAbonosClpForBillingMonth,
 } from "./ccBillingViews.js";
 import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
@@ -20,6 +23,57 @@ import {
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { ymCompare } from "./calendarMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
+import * as chileDate from "./chileDate.js";
+
+describe("billingDetailBalanceClp", () => {
+  it("closed statement subtracts cuota a pagar del mes siguiente", () => {
+    expect(billingDetailBalanceClp(100, 5_000_000, 561_728, true)).toBe(4_438_372);
+  });
+
+  it("open month does not subtract next cuota", () => {
+    expect(billingDetailBalanceClp(100, 5_000_000, 561_728, false)).toBe(5_000_100);
+  });
+
+  it("projected plan month with no facturado uses open rule (saldo equals cupo)", () => {
+    expect(billingDetailBalanceClp(null, 4_200_000, 300_000, false)).toBe(4_200_000);
+  });
+});
+
+describe("applyOpenBillingMonthSaldoToNextMonth", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("copies open month saldo and facturado to the next billing month without PDF cierre", () => {
+    vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-06-24");
+    const rows = [
+      {
+        billing_month: "2026-06",
+        as_of_date: "2026-06-23",
+        as_of_kind: "manual" as const,
+        total_facturado_actual_clp: 2_200_000,
+        total_facturado_clp: 2_200_000,
+        cupo_en_cuotas_clp: 3_800_000,
+        cuota_a_pagar_next_mes_clp: 500_000,
+        balance_total_clp: 6_000_000,
+      },
+      {
+        billing_month: "2026-07",
+        as_of_date: "2026-07-01",
+        as_of_kind: "manual" as const,
+        total_facturado_actual_clp: null,
+        total_facturado_clp: 500_000,
+        cupo_en_cuotas_clp: 3_200_000,
+        cuota_a_pagar_next_mes_clp: 180_000,
+        balance_total_clp: 3_700_000,
+      },
+    ];
+    applyOpenBillingMonthSaldoToNextMonth(rows, 0, new Map());
+    expect(rows[1]?.balance_total_clp).toBe(6_000_000);
+    expect(rows[1]?.total_facturado_clp).toBe(2_200_000);
+    expect(rows[1]?.cupo_en_cuotas_clp).toBe(3_200_000);
+  });
+});
 
 describe("buildBillingDetailByMonth", () => {
   it("open month rolls prior PDF facturado into total_facturado and balance_total", () => {
@@ -234,6 +288,27 @@ describe("buildFacturaciones", () => {
     expect(row.close_date_iso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(det).toBeDefined();
     expect(det!.total_facturado_clp).toBe(row.facturado_total_clp);
+  });
+
+  it("open month facturado_total equals uniquo statement lines plus cuota a pagar", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
+
+    const openBm = billingMonthForManualLedgerPurchase(master.id);
+    if (!openBm) return;
+
+    const payload = ccInstallmentsDbApiPayload(master.id);
+    const openRow = buildFacturaciones(master.id, payload.months).find(
+      (f) => f.billing_month === openBm
+    );
+    if (!openRow?.is_open_month) return;
+
+    const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
+    const cuota = openRow.cuota_a_pagar_clp ?? 0;
+    expect(openRow.facturado_total_clp).toBe(uniquo + cuota);
+    expect(openRow.is_open_month).toBe(true);
   });
 
   it("open month facturado_total equals facturado_clp plus facturado_usd_clp", () => {

@@ -5,23 +5,26 @@ export type CcInstallmentGastosMode = "split" | "total";
 export type CcExpenseLineRole = "purchase" | "installment_cuota" | "installment_purchase_total";
 
 export type GastosPeriodLine = {
-  source: "cc" | "checking";
+  source: "cc" | "checking" | "manual";
   expense_month: string;
+  gastos_period_month?: string;
   billing_month: string;
   purchase_month: string;
   line_role: CcExpenseLineRole;
   installment_flag?: number;
 };
 
+/** Gastos chart / table / modal calendar month for this line. */
+export function gastosPeriodMonthForLine(line: GastosPeriodLine): string {
+  if (line.gastos_period_month) return line.gastos_period_month;
+  if (line.line_role === "installment_purchase_total") return line.purchase_month;
+  if (line.line_role === "installment_cuota") return line.billing_month;
+  return line.expense_month;
+}
+
 /** Calendar months used for gastos table rows and line_count. */
 export function periodMonthsForGastosLine(line: GastosPeriodLine): string[] {
-  if (line.line_role === "installment_purchase_total") {
-    return [line.purchase_month];
-  }
-  if (line.line_role === "installment_cuota") {
-    return [line.billing_month];
-  }
-  return [line.expense_month];
+  return [gastosPeriodMonthForLine(line)];
 }
 
 /** Whether a line appears in any month modal bucket for that calendar month. */
@@ -29,7 +32,7 @@ export function lineMatchesGastosPeriodMonth(
   line: GastosPeriodLine,
   periodMonth: string
 ): boolean {
-  return periodMonthsForGastosLine(line).includes(periodMonth);
+  return gastosPeriodMonthForLine(line) === periodMonth;
 }
 
 /** Month bucket for gasto del mes / chart stacks. Empty string → skip in totals. */
@@ -38,7 +41,7 @@ export function gastosSumMonthForLine(
   mode: CcInstallmentGastosMode = "split"
 ): string {
   if (line.source === "checking" || line.line_role === "purchase") {
-    return line.expense_month;
+    return gastosPeriodMonthForLine(line);
   }
   if (line.line_role === "installment_purchase_total") {
     return mode === "total" ? line.purchase_month : "";
@@ -53,7 +56,7 @@ export function purchaseMonthFromLine(
   return purchaseOn ? monthKeyFromYmd(purchaseOn) : expenseMonth;
 }
 
-/** Compras table: one-shots and installment purchase totals in the purchase month. */
+/** Compras table: one-shots and installment purchase totals in the gastos period month. */
 export function purchaseModalLines<T extends GastosPeriodLine>(
   lines: readonly T[],
   periodMonth: string
@@ -61,7 +64,7 @@ export function purchaseModalLines<T extends GastosPeriodLine>(
   return lines.filter(
     (ln) =>
       (ln.line_role === "purchase" || ln.line_role === "installment_purchase_total") &&
-      ln.purchase_month === periodMonth
+      gastosPeriodMonthForLine(ln) === periodMonth
   );
 }
 

@@ -43,6 +43,8 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
   skipPdfParse?: boolean;
   pdfsDir?: string;
   forceReimport?: boolean;
+  /** When set, parse/import only these PDF basenames. */
+  onlyPdfBasenames?: string[];
 }): ImportCheckingCartolasResult {
   const accountId = opts?.accountId ?? cuentaVistaAccountId();
   const fileLogs: CheckingCartolaFileImportLog[] = [];
@@ -65,12 +67,16 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
       if (opts?.pdfsDir) {
         process.env.CFRASER_CUENTA_VISTA_PDFS_DIR = opts.pdfsDir;
       }
-      runParseCuentaVistaCartolaPdfs();
+      runParseCuentaVistaCartolaPdfs(opts?.onlyPdfBasenames);
     }
     const pdfData = loadCuentaVistaCartolasFromPdfJson();
+    const pdfFilter = opts?.onlyPdfBasenames?.length
+      ? new Set(opts.onlyPdfBasenames)
+      : null;
     const pdfCartolas: { cartola: ReturnType<typeof pdfEntryToParsedCartola>; label: string }[] =
       [];
     for (const entry of pdfData.cartolas) {
+      if (pdfFilter && !pdfFilter.has(entry.source_file)) continue;
       const label = `pdf:${entry.source_file}`;
       if (entry.parse_status === "skipped") {
         console.warn(`  skip ${label}: ${entry.parse_error ?? "skipped"}`);

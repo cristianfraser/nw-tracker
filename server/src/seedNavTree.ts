@@ -274,8 +274,7 @@ export function seedNavTree(): void {
       active_prefix: "/cash_eqs/checking",
       asset_group_slug: "cash_eqs__checking_accounts",
       kind_slug: "checking_accounts",
-      group_kind: "nav_bucket",
-      exclude_from_parent_total: true,
+      group_kind: "bucket",
       sidebar_section: "main",
     });
     const cashId = (groupIdBySlug.get("cash_eqs") as { id: number }).id;
@@ -568,7 +567,7 @@ function seedCashReferenceChartGroups() {
     label_i18n_key: "liabilities.creditCard",
     sort_order: 10,
     group_kind: "reference",
-    chart_host_slug: "cash_savings",
+    chart_host_slug: "cash_eqs",
     sidebar_section: "nested",
     nav_end: true,
   });
@@ -653,14 +652,16 @@ function applyDashboardBucketLayout() {
         dashboard_sort_order = 40,
         dashboard_card_kind = 'bucket',
         dashboard_bucket_slug = 'cash_eqs',
-        dashboard_card_css = 'cash'
-      WHERE slug = 'cash_savings';
+        dashboard_card_css = 'cash',
+        dashboard_card_label_i18n_key = COALESCE(dashboard_card_label_i18n_key, 'dashboard.buckets.cash_savings')
+      WHERE slug = 'cash_eqs';
       UPDATE portfolio_groups SET
         dashboard_sort_order = NULL,
         dashboard_card_kind = NULL,
         dashboard_bucket_slug = NULL,
-        dashboard_card_css = NULL
-      WHERE slug = 'cash_eqs';
+        dashboard_card_css = NULL,
+        dashboard_card_label_i18n_key = NULL
+      WHERE slug = 'cash_savings';
       UPDATE portfolio_groups
       SET dashboard_card_label_i18n_key = 'dashboard.cards.inversiones'
       WHERE slug = 'brokerage';

@@ -20,19 +20,17 @@ describe("accountChartInactive", () => {
     expect(isSupersededSantanderCcMaster(row.id)).toBe(true);
   });
 
-  it("resolves liability_view CC rows to operational master for inactivity", () => {
+  it("CC masters are used directly for inactivity (no liability_view duplicate)", () => {
     const row = db
       .prepare(
-        `SELECT v.id AS view_id, v.source_account_id AS master_id
-         FROM accounts v
-         WHERE v.account_kind = 'liability_view'
-           AND v.notes = 'liability_view|credit_card'
+        `SELECT id FROM accounts
+         WHERE notes = 'credit_card_master|santander|4242'
          LIMIT 1`
       )
-      .get() as { view_id: number; master_id: number } | undefined;
+      .get() as { id: number } | undefined;
     if (!row) return;
-    expect(accountIdForInactiveCheck(row.view_id)).toBe(row.master_id);
-    expect(accountChartInactive(row.view_id)).toBe(accountChartInactive(row.master_id));
+    expect(accountIdForInactiveCheck(row.id)).toBe(row.id);
+    expect(accountChartInactive(row.id)).toBe(false);
   });
 
   it("navBucketChartInactive mirrors per-account inactivity", () => {
@@ -45,6 +43,7 @@ describe("accountChartInactive", () => {
       )
       .get() as { id: number } | undefined;
     if (!active) return;
-    expect(navBucketChartInactive([active.id])).toBe(accountChartInactive(active.id));
+    expect(accountChartInactive(active.id)).toBe(false);
+    expect(navBucketChartInactive([active.id])).toBe(false);
   });
 });

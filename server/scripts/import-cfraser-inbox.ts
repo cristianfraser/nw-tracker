@@ -1,29 +1,27 @@
 /**
- * One-shot pipeline for new files dropped under `cfraser/`:
+ * Inbox pipeline for new files dropped under `cfraser/inbox/`:
  *
- * 1. qpdf repair on inbox PDFs only (`cfraser/inbox/`, decrypt before organize)
- * 2. Organize PDFs from `cfraser/inbox/`:
- *    - CUENTAMATICA → `cfraser/cartolas-cuenta-vista/`
- *    - credit-card → `cfraser/credit-card-statements/<card>/clp|usd/`
- *    - checking cartola PDFs → `cfraser/cartolas-cuenta-corriente/`
- * 3. Move checking cartola `.xlsx` from inbox → `cfraser/excels/cuenta corriente/`
- * 4. Parse all credit-card statement PDFs → `cfraser/cc-statements-parsed-all.csv`
- * 5. Merge-import parsed CC rows into SQLite (`import:cc-parsed`, default merge mode).
- * 6. Import Santander checking cartolas: `.xlsx` under `cfraser/excels/cuenta corriente/` plus
- *    PDFs under `cfraser/cartolas-cuenta-corriente/` (parse + incremental import).
- * 7. Import cuenta vista cartola PDFs under `cfraser/cartolas-cuenta-vista/`.
- * 8. Optionally run full `import:excel` (`--excel`, wipes/rebuilds net-worth import data).
+ * 1. qpdf repair on inbox PDFs only
+ * 2. Organize inbox PDFs → credit-card / cartola folders (writes inbox manifest)
+ * 3. Organize checking cartola `.xlsx` from inbox → `excels/cuenta corriente/`
+ * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV
+ * 5. Merge-import CC rows into SQLite
+ * 6. Optionally import checking / cuenta vista / sync / excel (see flags below)
+ *
+ * Default (credit-card inbox only): steps 1–5; skips checking, cuenta vista, sync, excel.
+ * Checking / cuenta vista run only when inbox filed PDFs or xlsx this run, unless forced.
  *
  * Usage (repo root):
  *   npm run import:cfraser-inbox
  *   npm run import:cfraser-inbox -- --dry-run
- *   npm run import:cfraser-inbox -- --skip-organize --account-id=35
- *   npm run import:cfraser-inbox -- --skip-qpdf-repair
+ *   npm run import:cfraser-inbox -- --checking          # full checking cartola import
+ *   npm run import:cfraser-inbox -- --cuenta-vista      # full cuenta vista import
+ *   npm run import:cfraser-inbox -- --sync              # run global sync after import
+ *   npm run import:cfraser-inbox -- --excel             # reload cfraser.xlsx + companion CSVs
+ *   npm run import:cfraser-inbox -- --skip-organize
  *   npm run import:cfraser-inbox -- --skip-checking-pdf
- *   npm run import:cfraser-inbox -- --excel
  *
- * Env: `CFRASER_PDFS_DIR`, `CFRASER_CSV_DIR`, `SANTANDER_CC_STATEMENT_PDF_PASSWORD`,
- * `LIDER_CC_STATEMENT_PDF_PASSWORD`, …
+ * Legacy `--skip-checking`, `--skip-cuenta-vista`, `--skip-sync` still disable those steps.
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -31,6 +29,12 @@ import { fileURLToPath } from "node:url";
 
 import { importCheckingCartolasFromDir } from "../src/checkingCartolaImport.js";
 import { organizeCheckingCartolaXlsxFromInbox } from "../src/checkingCartolaInbox.js";
+import {
+  basenamesFromCfraserOrganizePaths,
+  emptyCfraserOrganizeManifest,
+  loadCfraserOrganizeManifest,
+  resolveCfraserOrganizeManifestPath,
+} from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
 import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
@@ -76,12 +80,15 @@ function main(): void {
   const skipParse = hasFlag("skip-parse");
   const skipQpdfRepair = hasFlag("skip-qpdf-repair");
   const skipCcImport = hasFlag("skip-cc-import");
-  const skipChecking = hasFlag("skip-checking");
   const skipCheckingPdf = hasFlag("skip-checking-pdf");
   const skipExcel = hasFlag("skip-excel");
   const runExcel = hasFlag("excel");
   const accountId = argValue("account-id");
   const skipFintualCert = hasFlag("skip-fintual-cert");
+
+  const forceChecking = hasFlag("checking");
+  const forceCuentaVista = hasFlag("cuenta-vista");
+  const forceSync = hasFlag("sync");
 
   if (!skipFintualCert) {
     console.log("\n=== Fintual certificado de transacciones (CSV install) ===");
@@ -111,7 +118,7 @@ function main(): void {
     if (restoreCode !== 0) process.exit(restoreCode);
   }
 
-    if (!skipQpdfRepair) {
+  if (!skipQpdfRepair) {
     const inboxDir = resolveCfraserInboxDir();
     const pdfDeps = path.join(SERVER_ROOT, "scripts", ".pdf_deps");
     const repairArgs = [
@@ -131,17 +138,38 @@ function main(): void {
     console.log("\n=== qpdf repair credit-card PDFs (skipped) ===");
   }
 
+  let organizeManifest = emptyCfraserOrganizeManifest();
   if (!skipOrganize) {
+    const manifestPath = resolveCfraserOrganizeManifestPath();
     const organizeArgs = [
       path.join(SERVER_ROOT, "scripts", "organize-cfraser-statement-pdfs.py"),
+      `--manifest=${manifestPath}`,
     ];
     if (dryRun) organizeArgs.push("--dry-run");
     const code = runStep("Organize PDFs (cfraser/inbox → statements/)", "python3", organizeArgs, {
       PYTHONPATH: path.join(SERVER_ROOT, "scripts", ".pdf_deps"),
     });
     if (code !== 0) process.exit(code);
+    organizeManifest = loadCfraserOrganizeManifest(manifestPath);
   } else {
     console.log("\n=== Organize PDFs (skipped) ===");
+  }
+
+  let xlsxMoved: { from: string; to: string }[] = [];
+  if (!skipOrganize) {
+    console.log("\n=== Organize checking cartola xlsx (inbox → excels/) ===");
+    const xlsxOrg = organizeCheckingCartolaXlsxFromInbox({ dryRun });
+    xlsxMoved = xlsxOrg.moved;
+    for (const m of xlsxOrg.moved) {
+      console.log(`  ${m.from} -> excels/cuenta corriente/${m.to}`);
+    }
+    for (const s of xlsxOrg.skipped) {
+      console.log(`  skip ${s.file}: ${s.reason}`);
+    }
+    if (xlsxOrg.errors.length) {
+      console.error(xlsxOrg.errors.map((e) => `${e.file}: ${e.error}`).join("\n"));
+      process.exit(1);
+    }
   }
 
   if (!skipParse) {
@@ -170,30 +198,37 @@ function main(): void {
     console.log("\n=== Import parsed credit-card CSV (skipped) ===");
   }
 
-  if (!skipChecking) {
-    console.log("\n=== Organize checking cartola xlsx (inbox → excels/) ===");
-    const xlsxOrg = organizeCheckingCartolaXlsxFromInbox({ dryRun });
-    for (const m of xlsxOrg.moved) {
-      console.log(`  ${m.from} -> excels/cuenta corriente/${m.to}`);
-    }
-    for (const s of xlsxOrg.skipped) {
-      console.log(`  skip ${s.file}: ${s.reason}`);
-    }
-    if (xlsxOrg.errors.length) {
-      console.error(xlsxOrg.errors.map((e) => `${e.file}: ${e.error}`).join("\n"));
-      process.exit(1);
-    }
+  const inboxCheckingPdfs = basenamesFromCfraserOrganizePaths(organizeManifest.checking_pdfs);
+  const inboxChecking =
+    xlsxMoved.length > 0 || inboxCheckingPdfs.length > 0;
+  const runChecking =
+    !hasFlag("skip-checking") && (forceChecking || inboxChecking);
 
-    console.log(
-      "\n=== Import checking cartolas (xlsx + pdf, incremental) ==="
-    );
-    console.log(
-      "  PDFs: cfraser/cartolas-cuenta-corriente/ (organize inbox _CC.pdf downloads first)"
-    );
+  if (runChecking) {
+    const onlyXlsxBasenames = forceChecking
+      ? undefined
+      : xlsxMoved.map((m) => m.to);
+    const onlyPdfBasenames = forceChecking ? undefined : inboxCheckingPdfs;
+    const runCheckingPdf =
+      !skipCheckingPdf && (forceChecking || inboxCheckingPdfs.length > 0);
+
+    console.log("\n=== Import checking cartolas (incremental) ===");
+    if (forceChecking) {
+      console.log("  (--checking: full xlsx + pdf scan)");
+    } else {
+      if (onlyXlsxBasenames?.length) {
+        console.log(`  xlsx from inbox: ${onlyXlsxBasenames.join(", ")}`);
+      }
+      if (onlyPdfBasenames?.length) {
+        console.log(`  pdf from inbox: ${onlyPdfBasenames.join(", ")}`);
+      }
+    }
     const result = importCheckingCartolasFromDir({
       dryRun,
-      pdf: !skipCheckingPdf,
+      pdf: runCheckingPdf,
       skipPdfParse: hasFlag("skip-checking-pdf-parse"),
+      onlyXlsxBasenames,
+      onlyPdfBasenames,
     });
     const imported = result.filesImported.length;
     const skipped = result.filesSkipped.length;
@@ -206,17 +241,25 @@ function main(): void {
       process.exit(1);
     }
   } else {
-    console.log("\n=== Import checking cartolas (skipped) ===");
+    console.log("\n=== Import checking cartolas (skipped; pass --checking or drop cartola in inbox) ===");
   }
 
-  if (!hasFlag("skip-cuenta-vista")) {
-    console.log("\n=== Import cuenta vista cartolas (pdf, incremental) ===");
-    console.log(
-      "  PDFs: cfraser/cartolas-cuenta-vista/ (drop new files in cfraser/inbox/ and re-run inbox to organize)"
-    );
+  const inboxVistaPdfs = basenamesFromCfraserOrganizePaths(organizeManifest.cuenta_vista_pdfs);
+  const runCuentaVista =
+    !hasFlag("skip-cuenta-vista") &&
+    (forceCuentaVista || inboxVistaPdfs.length > 0);
+
+  if (runCuentaVista) {
+    console.log("\n=== Import cuenta vista cartolas (pdf) ===");
+    if (forceCuentaVista) {
+      console.log("  (--cuenta-vista: full pdf scan)");
+    } else {
+      console.log(`  pdf from inbox: ${inboxVistaPdfs.join(", ")}`);
+    }
     const vistaResult = importCuentaVistaCartolasFromPdfs({
       dryRun,
       skipPdfParse: hasFlag("skip-cuenta-vista-pdf-parse"),
+      onlyPdfBasenames: forceCuentaVista ? undefined : inboxVistaPdfs,
     });
     const imported = vistaResult.filesImported.length;
     const skipped = vistaResult.filesSkipped.length;
@@ -224,11 +267,6 @@ function main(): void {
     console.log(
       `  cuenta vista: ${imported} file(s) imported, ${skipped} month(s) already in DB, ${errs} error(s)`
     );
-    if (imported === 0 && skipped > 0 && errs === 0) {
-      console.log(
-        "  (No new months — drop PDFs in cfraser/inbox/ or cartolas-cuenta-vista/, then re-run without --skip-cuenta-vista-pdf-parse if parser cache is stale)"
-      );
-    }
     if (vistaResult.errors.length) {
       console.error(
         vistaResult.errors.map((e) => `${e.file}: ${e.error}`).join("\n")
@@ -236,10 +274,12 @@ function main(): void {
       process.exit(1);
     }
   } else {
-    console.log("\n=== Import cuenta vista cartolas (skipped) ===");
+    console.log(
+      "\n=== Import cuenta vista cartolas (skipped; pass --cuenta-vista or drop CM cartola in inbox) ==="
+    );
   }
 
-  if (!dryRun && !hasFlag("skip-sync")) {
+  if (!dryRun && forceSync && !hasFlag("skip-sync")) {
     console.log(
       "\n(Global sync below only refreshes Fintual/SBIF/equity — not bank PDFs. 'Stale: none' / 'No changes' is normal.)"
     );
@@ -250,8 +290,8 @@ function main(): void {
       "nw-tracker-server",
     ]);
     if (code !== 0) process.exit(code);
-  } else if (hasFlag("skip-sync")) {
-    console.log("\n=== Global sync (skipped) ===");
+  } else if (hasFlag("skip-sync") || !forceSync) {
+    console.log("\n=== Global sync (skipped; pass --sync to run sync:all) ===");
   }
 
   if (runExcel && !skipExcel) {

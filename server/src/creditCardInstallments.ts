@@ -7,6 +7,7 @@ import {
   type CcBillingDetailMonthRow,
   type CcFacturacionRow,
 } from "./ccBillingViews.js";
+import { buildCreditCardFinancingPlByBillingMonth, type CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
 import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
@@ -145,6 +146,28 @@ function balanceAfterPayments(
     bal = Math.max(0, bal - princPart);
   }
   return bal;
+}
+
+/** Interest portion of cuota at 0-based installment index (0% APR → 0). */
+export function installmentInterestClpForCuota(
+  principal: number,
+  annualPct: number,
+  installmentCount: number,
+  installmentIndex: number,
+  cuota: number
+): number {
+  if (annualPct <= 0 || principal <= 0 || installmentCount <= 0 || cuota <= 0) return 0;
+  if (installmentIndex < 0 || installmentIndex >= installmentCount) return 0;
+  const r = annualPct / 100 / 12;
+  let bal = principal;
+  for (let i = 0; i < installmentIndex; i++) {
+    if (bal <= 0) return 0;
+    const interest = bal * r;
+    const princPart = cuota - interest;
+    bal = Math.max(0, bal - princPart);
+  }
+  if (bal <= 0) return 0;
+  return Math.round(bal * r);
 }
 
 function parseIntCell(v: unknown, fallback: number): number {
@@ -389,6 +412,7 @@ export function creditCardInstallmentsResponse(
   billing_month_balances?: CcBillingMonthBalanceRow[];
   billing_detail_by_month?: CcBillingDetailMonthRow[];
   facturaciones?: CcFacturacionRow[];
+  financing_pl_by_month?: CcFinancingPlMonthRow[];
   billing_config?: CreditCardBillingConfig;
   /** Current open facturación month for manual / web-paste entries (`YYYY-MM`). */
   open_billing_month?: string | null;
@@ -421,6 +445,11 @@ export function creditCardInstallmentsResponse(
       billing_month_balances: listCcBillingMonthBalances(accountId),
       billing_detail_by_month: buildBillingDetailByMonth(accountId, db.months),
       facturaciones: buildFacturaciones(accountId, db.months),
+      financing_pl_by_month: buildCreditCardFinancingPlByBillingMonth(
+        accountId,
+        [...db.purchases, ...db.purchases_completed],
+        extraOffsets
+      ),
       billing_config: loadCreditCardBillingConfig(accountId),
     };
   }
@@ -454,6 +483,7 @@ export function creditCardInstallmentsResponse(
       billing_month_balances: billing,
       billing_detail_by_month: buildBillingDetailByMonth(accountId, []),
       facturaciones: buildFacturaciones(accountId, []),
+      financing_pl_by_month: buildCreditCardFinancingPlByBillingMonth(accountId, [], extraOffsets),
       billing_config: loadCreditCardBillingConfig(accountId),
     };
   }
@@ -474,5 +504,6 @@ export function creditCardInstallmentsResponse(
       next_calendar_month_total_clp: null,
       next_calendar_month: null,
     },
+    financing_pl_by_month: [],
   };
 }

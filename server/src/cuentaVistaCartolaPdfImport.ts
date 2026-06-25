@@ -25,11 +25,15 @@ export function resolveParseCuentaVistaCartolaPdfsScript(): string {
 }
 
 /** Run Python parser; writes `cfraser/cuenta-vista-cartolas-from-pdf.json`. */
-export function runParseCuentaVistaCartolaPdfs(): void {
+export function runParseCuentaVistaCartolaPdfs(onlyBasenames?: string[]): void {
   const script = resolveParseCuentaVistaCartolaPdfsScript();
   const deps = path.join(REPO_ROOT, "server", "scripts", ".pdf_deps");
   const jsonPath = resolveCuentaVistaCartolasFromPdfJsonPath();
-  const result = spawnSync("python3", [script], {
+  const args = [script];
+  if (onlyBasenames?.length) {
+    args.push(`--only=${onlyBasenames.join(",")}`);
+  }
+  const result = spawnSync("python3", args, {
     cwd: REPO_ROOT,
     env: { ...process.env, PYTHONPATH: deps },
     stdio: "inherit",

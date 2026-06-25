@@ -8,6 +8,7 @@ import {
 } from "./ccAdditionalCardExpenseMatch.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
+import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 
 /** Asset group slug for `GET /api/flows/expenses/credit-card` (all issuers, not one `credit_card_groups` row). */
@@ -23,12 +24,19 @@ export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 /** Internal transfers to investments — same exclusion bucket as no_cuenta. */
 export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
 
+/** Mortgage principal on real-estate deposit matches — chart stack only, excluded from gastos total. */
+export const REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG = "real_estate_amortization";
+
+/** Carrying cost bucket for linked mortgage payments (interest + insurance). */
+export const BILLS_CC_EXPENSE_SLUG = "bills";
+
 /** Corriente ↔ vista and other checking cash auto-matches — excluded from gastos totals. */
 export const CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG = "checking_internal_transfer";
 
 export const CC_EXPENSE_TOTALS_EXCLUDED_SLUGS = new Set([
   NO_CUENTA_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
+  REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 ]);
 
@@ -115,6 +123,7 @@ function matchesKnownGenericTransferTemplate(key: string): boolean {
 export function isGenericTransferMerchantKey(merchantKey: string): boolean {
   const key = merchantKey.trim();
   if (!key) return false;
+  if (isCcTraspasoDeudaMerchant(key)) return true;
   if (isExactGenericUniqueMerchantKey(key)) return true;
   if (/^(TRANSFERENCIA|TRANSF)$/.test(key)) return true;
   if (matchesKnownGenericTransferTemplate(key)) return true;
@@ -134,14 +143,43 @@ export function isGenericTransferMerchantKey(merchantKey: string): boolean {
   return true;
 }
 
+/** Mix hex toward black (e.g. 0.22 ≈ `color-mix(in srgb, color 78%, black)`). */
+export function darkenHexColor(hex: string, mixTowardBlack = 0.22): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const h = m[1]!;
+  const r0 = parseInt(h.slice(0, 2), 16);
+  const g0 = parseInt(h.slice(2, 4), 16);
+  const b0 = parseInt(h.slice(4, 6), 16);
+  const k = 1 - Math.min(1, Math.max(0, mixTowardBlack));
+  const r = Math.round(r0 * k);
+  const g = Math.round(g0 * k);
+  const b = Math.round(b0 * k);
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function enrichCcExpenseCategoryChartColors(
+  rows: readonly CcExpenseCategoryRow[]
+): CcExpenseCategoryRow[] {
+  const bills = rows.find((r) => r.slug === BILLS_CC_EXPENSE_SLUG);
+  if (!bills) return [...rows];
+  const amortColor = darkenHexColor(bills.chart_color);
+  return rows.map((r) =>
+    r.slug === REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG
+      ? { ...r, chart_color: amortColor }
+      : r
+  );
+}
+
 export function listCcExpenseCategories(): CcExpenseCategoryRow[] {
-  return db
+  const rows = db
     .prepare(
       `SELECT id, slug, label, label_i18n_key, sort_order, chart_color
        FROM cc_expense_categories
        ORDER BY sort_order, id`
     )
     .all() as CcExpenseCategoryRow[];
+  return enrichCcExpenseCategoryChartColors(rows);
 }
 
 export function getCcExpenseCategoryBySlug(slug: string): CcExpenseCategoryRow | null {
@@ -319,6 +357,10 @@ export function resolveCcExpenseCategorySlug(opts: {
 
   const lineSlug = opts.lineOverrides.get(opts.statementLineId);
   if (lineSlug) return lineSlug;
+
+  if (isCcTraspasoDeudaMerchant(opts.merchantKey)) {
+    return NO_CUENTA_CC_EXPENSE_SLUG;
+  }
 
   if (!isGenericTransferMerchantKey(opts.merchantKey)) {
     const merchantSlug = resolveMerchantCategorySlug(

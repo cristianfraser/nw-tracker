@@ -26,9 +26,8 @@ export function isNwDashboardBucketSlug(slug: string): slug is NwDashboardBucket
   return (NW_DASHBOARD_BUCKET_SLUGS as readonly string[]).includes(slug);
 }
 
-/** Portfolio group slug backing a dashboard bucket card (cash_eqs → cash_savings). */
+/** Portfolio group slug backing a dashboard bucket card. */
 export function portfolioGroupSlugForDashboardBucket(bucket: NwDashboardBucketSlug): string {
-  if (bucket === "cash_eqs") return "cash_savings";
   return bucket;
 }
 

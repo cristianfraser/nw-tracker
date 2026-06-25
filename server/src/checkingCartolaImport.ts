@@ -3,6 +3,9 @@ import { isCartolaDesdeBoundaryPhantomMonth, monthKeyFromYmd } from "./calendarM
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import {
+  reconcileCartolaPartialImports,
+} from "./checkingCartolaPartialReconcile.js";
+import {
   cartolaMovementDedupeKey,
   cartolaMovementMatchesImportedRow,
   listCheckingCartolaXlsxFiles,
@@ -271,7 +274,7 @@ export function importCheckingCartola(
   accountId: number,
   cartola: ParsedCheckingCartola,
   dbHandle: Database = db
-): { movementsInserted: number; movementsSkipped: number } {
+): { movementsInserted: number; movementsSkipped: number; partialsRemoved: number } {
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) {
@@ -321,6 +324,7 @@ export function importCheckingCartola(
 
   let movementsInserted = 0;
   let movementsSkipped = 0;
+  let partialsRemoved = 0;
   const tx = dbHandle.transaction(() => {
     cartola.movements.forEach((mv, cartolaIndex) => {
       const note = movementNote(cartola.period_month, mv.branch, mv.description, mv.document_no, {
@@ -371,11 +375,13 @@ export function importCheckingCartola(
         );
       }
     }
+    const reconcile = reconcileCartolaPartialImports(accountId, cartola.movements, dbHandle);
+    partialsRemoved = reconcile.removed;
     markImported.run(
       accountId,
       cartola.period_month,
       cartola.source_file,
-      movementsInserted,
+      cartola.movements.length,
       cartola.saldo_final_clp,
       cartola.saldo_inicial_clp,
       cartola.period_from,
@@ -384,7 +390,7 @@ export function importCheckingCartola(
   });
   tx();
   clearCheckingBalanceCache(accountId);
-  return { movementsInserted, movementsSkipped };
+  return { movementsInserted, movementsSkipped, partialsRemoved };
 }
 
 export type ImportCheckingCartolasResult = {
@@ -558,6 +564,14 @@ export function importCartolaList(
           );
           continue;
         }
+        if (!opts.dryRun && cartola.movements.length > 0) {
+          const { removed } = reconcileCartolaPartialImports(accountId, cartola.movements);
+          if (removed > 0) {
+            console.log(
+              `  reconciled ${removed} partial movement(s) superseded by cartola ${cartola.period_month}`
+            );
+          }
+        }
         fileLogs.push({
           file: label,
           period_month: cartola.period_month,
@@ -665,6 +679,10 @@ export function importCheckingCartolasFromDir(opts: {
   pdf?: boolean;
   skipPdfParse?: boolean;
   forceReimport?: boolean;
+  /** When set, import only these xlsx basenames from the cartola excels dir. */
+  onlyXlsxBasenames?: string[];
+  /** When set, parse/import only these checking PDF basenames. */
+  onlyPdfBasenames?: string[];
 }): ImportCheckingCartolasResult {
   const dir = opts.dir ?? resolveCfraserCheckingCartolasDir();
   const accountId = opts.accountId ?? checkingAccountId();
@@ -684,9 +702,13 @@ export function importCheckingCartolasFromDir(opts: {
   }
 
   const files = listCheckingCartolaXlsxFiles(dir);
+  const xlsxFilter = opts.onlyXlsxBasenames?.length
+    ? new Set(opts.onlyXlsxBasenames)
+    : null;
   const xlsxCartolas: { cartola: ParsedCheckingCartola; label: string }[] = [];
   for (const filePath of files) {
     const base = filePath.split(/[/\\]/).pop() ?? filePath;
+    if (xlsxFilter && !xlsxFilter.has(base)) continue;
     try {
       xlsxCartolas.push({ cartola: parseCheckingCartolaFile(filePath), label: base });
     } catch (e) {
@@ -698,11 +720,15 @@ export function importCheckingCartolasFromDir(opts: {
   if (opts.pdf) {
     try {
       if (!opts.skipPdfParse) {
-        runParseCheckingCartolaPdfs();
+        runParseCheckingCartolaPdfs(opts.onlyPdfBasenames);
       }
       const pdfData = loadCheckingCartolasFromPdfJson();
+      const pdfFilter = opts.onlyPdfBasenames?.length
+        ? new Set(opts.onlyPdfBasenames)
+        : null;
       const pdfCartolas: { cartola: ParsedCheckingCartola; label: string }[] = [];
       for (const entry of pdfData.cartolas) {
+        if (pdfFilter && !pdfFilter.has(entry.source_file)) continue;
         const label = `pdf:${entry.source_file}`;
         if (entry.parse_status !== "ok") {
           fileLogs.push({

@@ -4,6 +4,7 @@ import {
   importCcStatementsMerge,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
 function row(overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord {
   return {
@@ -40,13 +41,8 @@ function row(overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord {
 
 describe("importCcStatementsMerge CLP vs USD", () => {
   it("keeps separate statements for same close date when currency differs", () => {
-    const master = db
-      .prepare(
-        `SELECT id FROM accounts WHERE notes LIKE 'credit_card_master|%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!master) return;
-    const accountId = master.id;
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id IN (
       SELECT id FROM cc_statements WHERE account_id = ?
     )`).run(accountId);
@@ -85,5 +81,46 @@ describe("importCcStatementsMerge CLP vs USD", () => {
     expect(stmts.find((s) => s.currency === "usd")?.source_pdf).toBe(
       "2024-06-20 estado de cuenta tarjeta usd 4141.pdf"
     );
+  });
+});
+
+describe("importCcStatementsMerge fuzzy dedup", () => {
+  it("skips re-import when merchant is truncated but date+amount+stem match (METLIFE case)", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    db.prepare(
+      `DELETE FROM cc_statement_lines WHERE statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`
+    ).run(accountId);
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+
+    const firstImport = row({
+      merchant: "TOKU *METLIFE HIPOTE",
+      amount_clp: "1795575",
+      transaction_date: "11/06/2025",
+      row_id: "met-1",
+    });
+    const secondImport = row({
+      merchant: "TOKU *METLIFE HIPOTECAR,SANTIAGO",
+      amount_clp: "1795575",
+      transaction_date: "11/06/2025",
+      row_id: "met-2",
+    });
+
+    const r1 = importCcStatementsMerge(accountId, [firstImport], { skipGlobalDedupeKeys: true });
+    expect(r1.linesInserted).toBe(1);
+
+    const r2 = importCcStatementsMerge(accountId, [secondImport], { skipGlobalDedupeKeys: true });
+    expect(r2.linesInserted).toBe(0);
+    expect(r2.linesSkippedFuzzyDuplicate).toBe(1);
+
+    const count = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM cc_statement_lines l
+           JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`
+        )
+        .get(accountId) as { n: number }
+    ).n;
+    expect(count).toBe(1);
   });
 });

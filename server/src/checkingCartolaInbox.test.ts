@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalCheckingCartolaXlsxFileName,
   isCheckingCartolaXlsxFileName,
+  listCheckingCartolaXlsxFiles,
 } from "./checkingCartolaParse.js";
 import { organizeCheckingCartolaXlsxFromInbox } from "./checkingCartolaInbox.js";
 
@@ -39,6 +40,18 @@ describe("checkingCartolaInbox", () => {
       )
     ).toBe(true);
 
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("ignores net-worth cfraser.xlsx in cartola excels dir", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nw-cartola-xlsx-"));
+    fs.writeFileSync(path.join(root, "cfraser.xlsx"), Buffer.from("xlsx"));
+    fs.writeFileSync(
+      path.join(root, "2026-05-31 Cartola de cuenta Corriente - Mayo 2026.xlsx"),
+      Buffer.from("xlsx")
+    );
+    expect(isCheckingCartolaXlsxFileName("cfraser.xlsx")).toBe(false);
+    expect(listCheckingCartolaXlsxFiles(root)).toHaveLength(1);
     fs.rmSync(root, { recursive: true, force: true });
   });
 });

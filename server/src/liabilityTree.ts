@@ -182,29 +182,27 @@ export type CreditCardCashLinkRow = {
   clp: number;
 };
 
-type LinkedCreditCardLiabilityViewRow = {
-  liability_account_id: number;
+type LinkedCreditCardMasterRow = {
+  account_id: number;
   name: string;
-  source_account_id: number;
 };
 
-/** Liability views for CC masters under Pasivos → tarjeta de crédito (all linked issuers). */
-function linkedCreditCardLiabilityViews(): LinkedCreditCardLiabilityViewRow[] {
+/** CC masters under Pasivos → tarjeta de crédito (all linked issuers). */
+function linkedCreditCardMasters(): LinkedCreditCardMasterRow[] {
   return db
     .prepare(
-      `SELECT v.id AS liability_account_id, v.name, v.source_account_id
-       FROM accounts v
-       JOIN accounts m ON m.id = v.source_account_id
+      `SELECT m.id AS account_id, m.name
+       FROM accounts m
        JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
        JOIN credit_card_groups g ON g.id = i.group_id
        JOIN liability_group_items lgi
          ON lgi.child_credit_card_group_id = g.id AND lgi.item_kind = 'credit_card_group'
        JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
-       WHERE v.account_kind = 'liability_view'
-         AND v.exclude_from_group_totals = 0
-       ORDER BY v.name, v.id`
+       WHERE m.account_kind = 'master'
+         AND m.exclude_from_group_totals = 0
+       ORDER BY m.name, m.id`
     )
-    .all() as LinkedCreditCardLiabilityViewRow[];
+    .all() as LinkedCreditCardMasterRow[];
 }
 
 /**
@@ -212,20 +210,19 @@ function linkedCreditCardLiabilityViews(): LinkedCreditCardLiabilityViewRow[] {
  * otherwise liability valuation on or before `asOfYmd`.
  */
 function linkedCreditCardBalanceTotalClpAsOf(
-  view: LinkedCreditCardLiabilityViewRow,
+  master: LinkedCreditCardMasterRow,
   valuationRowsAsc: { as_of_date: string; value_clp: number }[],
   asOfYmd: string,
   todayYmd: string
 ): number | null {
-  const masterId = view.source_account_id;
+  const masterId = master.account_id;
   if (ccInstallmentLedgerRowCount(masterId) > 0) {
     const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
     if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
   }
   if (asOfYmd >= todayYmd) {
     return (
-      latestLiabilityValuationRowForSnapshot(view.liability_account_id, "credit_card", asOfYmd)
-        ?.value_clp ?? null
+      latestLiabilityValuationRowForSnapshot(masterId, "credit_card", asOfYmd)?.value_clp ?? null
     );
   }
   return latestValuationClpFromAscRows(valuationRowsAsc, asOfYmd);
@@ -260,24 +257,23 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
   for (const d of datesAsc) out.set(d, 0);
   if (!datesAsc.length) return out;
 
-  const views = linkedCreditCardLiabilityViews();
-  if (!views.length) return out;
+  const masters = linkedCreditCardMasters();
+  if (!masters.length) return out;
 
   const today = chileCalendarTodayYmd();
   const maxDate = [...datesAsc].sort().at(-1)!;
-  const perViewRows = views.map((view) => {
-    const effectiveId = resolveOperationalAccountId(view.liability_account_id);
-    const rows = stmtValuationsOnOrBefore.all(effectiveId, maxDate) as {
+  const perMasterRows = masters.map((master) => {
+    const rows = stmtValuationsOnOrBefore.all(master.account_id, maxDate) as {
       as_of_date: string;
       value_clp: number;
     }[];
-    return { view, rows };
+    return { master, rows };
   });
 
   for (const d of datesAsc) {
     let sum = 0;
-    for (const { view, rows } of perViewRows) {
-      const clp = linkedCreditCardBalanceTotalClpAsOf(view, rows, d, today);
+    for (const { master, rows } of perMasterRows) {
+      const clp = linkedCreditCardBalanceTotalClpAsOf(master, rows, d, today);
       if (clp != null && Number.isFinite(clp)) sum += clp;
     }
     out.set(d, sum);
@@ -285,22 +281,21 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
   return out;
 }
 
-/** Pasivos > tarjeta de crédito → cards linked under liabilities_credit_card (liability_view per master). */
+/** Pasivos > tarjeta de crédito → cards linked under liabilities_credit_card. */
 export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditCardCashLinkRow[] {
   const out: CreditCardCashLinkRow[] = [];
   const today = chileCalendarTodayYmd();
-  for (const row of linkedCreditCardLiabilityViews()) {
-    const effectiveId = resolveOperationalAccountId(row.liability_account_id);
-    const rows = stmtValuationsOnOrBefore.all(effectiveId, asOfYmd) as {
+  for (const master of linkedCreditCardMasters()) {
+    const rows = stmtValuationsOnOrBefore.all(master.account_id, asOfYmd) as {
       as_of_date: string;
       value_clp: number;
     }[];
-    const clp = linkedCreditCardBalanceTotalClpAsOf(row, rows, asOfYmd, today);
+    const clp = linkedCreditCardBalanceTotalClpAsOf(master, rows, asOfYmd, today);
     if (clp == null || !Number.isFinite(clp)) continue;
     out.push({
-      liability_account_id: row.liability_account_id,
-      operational_account_id: row.source_account_id,
-      name: row.name,
+      liability_account_id: master.account_id,
+      operational_account_id: master.account_id,
+      name: master.name,
       clp,
     });
   }

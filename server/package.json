@@ -18,6 +18,7 @@
     "import:excel": "tsx scripts/import-excel-history.ts",
     "import:cfraser-inbox": "tsx scripts/import-cfraser-inbox.ts",
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",
+    "repair:cc-web-paste-pdf-reconcile": "tsx scripts/repair-cc-web-paste-pdf-reconcile.ts",
     "repair:cc-source-pdf": "tsx scripts/repair-cc-statement-source-pdf-names.ts",
     "list:missing-cc-pdfs": "tsx scripts/list-missing-cc-statement-pdfs.ts",
     "repair:checking-cartola-period-month": "tsx scripts/repair-checking-cartola-period-month.ts",

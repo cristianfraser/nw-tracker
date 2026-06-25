@@ -38,7 +38,7 @@ function cuotaCoverageKey(opts: {
   ].join("\t");
 }
 
-function statementCuotaCoverageKeys(lines: readonly FlowCcExpenseLineRowDraft[]): Set<string> {
+export function installmentCuotaCoverageKeys(lines: readonly FlowCcExpenseLineRowDraft[]): Set<string> {
   const keys = new Set<string>();
   for (const ln of lines) {
     if (ln.line_role !== "installment_cuota" || ln.statement_line_id <= 0) continue;
@@ -67,7 +67,7 @@ function statementCuotaCoverageKeys(lines: readonly FlowCcExpenseLineRowDraft[])
   return keys;
 }
 
-function paymentCoveredByStatementLine(
+export function installmentCuotaSlotCovered(
   pay: {
     purchase_on: string;
     cuota_current: number | null;
@@ -127,7 +127,7 @@ export function buildInstallmentPaymentGastosLines(
 ): FlowCcExpenseLineRowDraft[] {
   if (accountIds.length === 0) return [];
 
-  const coverage = statementCuotaCoverageKeys(existingStatementLines);
+  const coverage = installmentCuotaCoverageKeys(existingStatementLines);
   const { lineOverrides, merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
     loadCcExpenseCategoryMaps(accountIds);
 
@@ -167,7 +167,7 @@ export function buildInstallmentPaymentGastosLines(
     const amount = Math.round(row.amount_clp);
 
     if (
-      paymentCoveredByStatementLine(
+      installmentCuotaSlotCovered(
         {
           purchase_on: purchaseOn,
           cuota_current: row.cuota_current,

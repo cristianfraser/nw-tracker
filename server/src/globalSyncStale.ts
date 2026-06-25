@@ -22,6 +22,7 @@ import {
   fintualPublishLagsPollCalendarDay,
   isFintualFundPublishDay,
 } from "./fintualPublishDate.js";
+import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { utcTodayYmd } from "./nyseSession.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
@@ -186,6 +187,8 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
     state.fintualLastCheckSig != null &&
     state.fintualLastCheckSig === state.fintualLastAppliedSig
   ) {
+    const publishYmd = state.fintualLastAppliedPublishYmd ?? cl.ymd;
+    if (!fintualCertV2PollReconciled(publishYmd, state)) return true;
     return false;
   }
   if (state.fintualLastCheckYmd !== cl.ymd) return true;
@@ -196,6 +199,16 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
     state.fintualLastPublishYmd != null &&
     state.fintualLastAppliedPublishYmd != null &&
     state.fintualLastPublishYmd !== state.fintualLastAppliedPublishYmd
+  ) {
+    return true;
+  }
+  const publishYmd = state.fintualLastAppliedPublishYmd ?? state.fintualLastPublishYmd ?? cl.ymd;
+  if (
+    cl.hour >= 18 &&
+    state.fintualLastCheckYmd === cl.ymd &&
+    state.fintualLastCheckSig != null &&
+    state.fintualLastCheckSig === state.fintualLastAppliedSig &&
+    !fintualCertV2PollReconciled(publishYmd, state)
   ) {
     return true;
   }

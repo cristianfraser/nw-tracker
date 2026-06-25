@@ -35,7 +35,7 @@ const insertCreditCardGroupChild = db.prepare(`
   ON CONFLICT(group_id, child_credit_card_group_id) DO UPDATE SET sort_order = excluded.sort_order
 `);
 
-/** Idempotent Pasivos subtree: CC liability leaf → master source; mortgage leaf → master account. */
+/** Idempotent Pasivos subtree: CC issuer groups; mortgage leaf → liability_view or master. */
 export function seedLiabilitiesTree(): void {
   const tx = db.transaction(() => {
     upsertGroup.run({

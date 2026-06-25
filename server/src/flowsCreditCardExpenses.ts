@@ -71,6 +71,7 @@ import {
   type NotaDeCreditoRole,
 } from "./ccNotaDeCreditoPairing.js";
 import { buildInstallmentPaymentGastosLines } from "./ccInstallmentPaymentGastosLines.js";
+import { buildInstallmentPlanGastosLines } from "./ccInstallmentPlanGastosLines.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
 import {
   type CcExpenseLineRole,
@@ -82,9 +83,21 @@ import {
 } from "./ccExpensePeriodMonth.js";
 
 export type { CcExpenseLineRole, CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
+import {
+  enrichFlowLinesWithGastosPeriodMonthOverrides,
+} from "./ccExpenseGastosPeriodMonthOverrides.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import {
+  BILLS_CC_EXPENSE_SLUG,
+  chartCategorySlugsForFlowsExpenses,
+  enrichFlowLinesWithExpenseDepositLinks,
+  expenseDepositAmortizationChartAmount,
+  hasSplittableMortgageExpenseDepositLink,
+  REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
+  syncExpenseDepositLinksFromGastosLines,
+} from "./expenseDepositLinks.js";
 
 
 
@@ -114,6 +127,12 @@ export type FlowCcExpenseLineRow = {
   /** Calendar month bucket for gastos (YYYY-MM). */
 
   expense_month: string;
+
+  /**
+   * Optional override for gastos chart / month table / modal bucketing only.
+   * purchase_on and purchase_month stay on the real transaction date.
+   */
+  gastos_period_month?: string;
 
   /** Facturación month for CC lines; same as expense_month for checking. */
 
@@ -181,6 +200,17 @@ export type FlowCcExpenseLineRow = {
 
   /** Statement billing card (`cc_statements.card_last4`); null for checking / synthetic lines. */
   primary_card_last4: string | null;
+
+  /** Linked net-worth deposit (mortgage amortization split). */
+  expense_deposit_link?: {
+    deposit_movement_id: number;
+    payment_clp: number;
+    amortization_clp: number;
+    carrying_clp: number;
+    depto_cuota: string | null;
+    depto_occurred_on: string | null;
+    link_source: "auto" | "manual";
+  };
 
 };
 
@@ -387,7 +417,35 @@ export function aggregateGastosFromLines(
       const sumBucket = touchBucket(sumMonth);
       if (amount > 0) {
         sumBucket.gastosReal += amount;
-        if (
+        const link = ln.expense_deposit_link;
+        const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
+        if (linkedMortgagePayment) {
+          if (
+            ln.nota_credito_role !== "annulled_purchase" &&
+            ln.nota_credito_role !== "matched_nota" &&
+            lineCountsTowardGastosSum(ln, mode, true)
+          ) {
+            sumBucket.gastos += link.carrying_clp;
+            const skipChartCategory =
+              ln.big_group_slug != null &&
+              excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
+            if (!skipChartCategory) {
+              const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
+              if (link.carrying_clp > 0) {
+                catBucket.set(
+                  BILLS_CC_EXPENSE_SLUG,
+                  (catBucket.get(BILLS_CC_EXPENSE_SLUG) ?? 0) + link.carrying_clp
+                );
+              }
+              catBucket.set(
+                REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
+                (catBucket.get(REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG) ?? 0) +
+                  expenseDepositAmortizationChartAmount(link.amortization_clp)
+              );
+              byMonthCategory.set(sumMonth, catBucket);
+            }
+          }
+        } else if (
           purchaseCountsAfterNotaPairing(ln) &&
           lineCountsTowardGastosSum(ln, mode, countsCategory)
         ) {
@@ -509,15 +567,20 @@ function computeFlowsExpenseTotals(
       continue;
     }
     if (r.amount_clp <= 0) continue;
-    const countsCategory = countsTowardCcExpenseGastosMes(r.category_slug, {
-      installment_flag: r.installment_flag,
-      nro_cuota_current: r.nro_cuota_current,
-    });
-    if (
-      purchaseCountsAfterNotaPairing(r) &&
-      lineCountsTowardGastosSum(r, mode, countsCategory)
-    ) {
-      total_clp += r.amount_clp;
+    const link = r.expense_deposit_link;
+    const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
+    const countsCategory = linkedMortgagePayment
+      ? true
+      : countsTowardCcExpenseGastosMes(r.category_slug, {
+          installment_flag: r.installment_flag,
+          nro_cuota_current: r.nro_cuota_current,
+        });
+    const countsAfterNota = linkedMortgagePayment
+      ? r.nota_credito_role !== "annulled_purchase" &&
+        r.nota_credito_role !== "matched_nota"
+      : purchaseCountsAfterNotaPairing(r);
+    if (countsAfterNota && lineCountsTowardGastosSum(r, mode, countsCategory)) {
+      total_clp += linkedMortgagePayment ? link.carrying_clp : r.amount_clp;
     }
     if (gastosSumMonthForLine(r, mode)) {
       total_real_clp += r.amount_clp;
@@ -850,10 +913,10 @@ export function buildCcExpenseLines(
   }
 
   const statementLines = dedupeDisplay ? dedupeFlowCcExpenseLines(lines) : lines;
-  const withLedgerCuotas = [
-    ...statementLines,
-    ...buildInstallmentPaymentGastosLines(accountIds, statementLines),
-  ];
+  const paymentGastosLines = buildInstallmentPaymentGastosLines(accountIds, statementLines);
+  const withPaymentCuotas = [...statementLines, ...paymentGastosLines];
+  const planGastosLines = buildInstallmentPlanGastosLines(accountIds, withPaymentCuotas);
+  const withLedgerCuotas = [...withPaymentCuotas, ...planGastosLines];
   const cuotaLines = dedupeDisplay ? dedupeFlowCcExpenseLines(withLedgerCuotas) : withLedgerCuotas;
   return mergeInstallmentPurchaseTotalsIntoLines(cuotaLines, accountIds, {
     lineOverrides,
@@ -884,31 +947,34 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   return lines;
 }
 
+function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]): FlowCcExpenseLineRow[] {
+  const withNotes = enrichFlowLinesWithPurchaseNotes([...drafts]);
+  syncExpenseDepositLinksFromGastosLines(withNotes);
+  const withGroups = enrichFlowLinesWithBigGroups(withNotes);
+  const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
+  const withDepositLinks = enrichFlowLinesWithExpenseDepositLinks(withOrigin);
+  return enrichFlowLinesWithGastosPeriodMonthOverrides(withDepositLinks);
+}
+
 export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPayload {
 
   const accountIds = listCreditCardMasterAccountIds();
 
   const categories = listCcExpenseCategories();
 
-  const chartCategorySlugs = categories
-
-    .map((c) => c.slug)
-
-    .filter((slug) => !isCcExpenseTotalsExcludedSlug(slug));
+  const chartCategorySlugs = chartCategorySlugsForFlowsExpenses(
+    categories.map((c) => c.slug).filter((slug) => !isCcExpenseTotalsExcludedSlug(slug))
+  );
 
 
 
   if (accountIds.length === 0) {
-    const checkingLines = enrichFlowLinesWithOriginLabels(
-      enrichFlowLinesWithBigGroups(
-        enrichFlowLinesWithPurchaseNotes([
-          ...loadCheckingGastosLinesForExpenses(),
-          ...loadManualExpenseGastosLineDrafts(),
-        ])
-      )
-    );
-    const agg = aggregateGastosFromLines(checkingLines, chartCategorySlugs);
-    const totals = computeFlowsExpenseTotals(checkingLines);
+    const lines = finalizeFlowExpenseLines([
+      ...loadCheckingGastosLinesForExpenses(),
+      ...loadManualExpenseGastosLineDrafts(),
+    ]);
+    const agg = aggregateGastosFromLines(lines, chartCategorySlugs);
+    const totals = computeFlowsExpenseTotals(lines);
 
     return {
 
@@ -920,7 +986,7 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
 
       big_groups: listCcExpenseBigGroups(),
 
-      lines: checkingLines,
+      lines: lines,
 
       ...agg,
 
@@ -935,14 +1001,10 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
   const ccLines = buildCcExpenseLines(accountIds);
   const checkingLines = loadCheckingGastosLinesForExpenses();
   const manualLines = loadManualExpenseGastosLineDrafts();
-  const lines = enrichFlowLinesWithOriginLabels(
-    enrichFlowLinesWithBigGroups(
-      enrichFlowLinesWithPurchaseNotes([
-        ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
-        ...manualLines,
-      ])
-    )
-  );
+  const lines = finalizeFlowExpenseLines([
+    ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
+    ...manualLines,
+  ]);
 
   const { by_month, chart_monthly, chart_monthly_by_category } = aggregateGastosFromLines(
 

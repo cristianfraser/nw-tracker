@@ -49,10 +49,10 @@ describe("portfolioGroupTree", () => {
     expect(broIds.has(mfAccount.id)).toBe(true);
   });
 
-  it("marks checking_accounts as nav_bucket excluded from parent total", () => {
+  it("marks checking_accounts as a leaf bucket under cash_eqs", () => {
     seedNavTree();
     const checking = portfolioGroupBySlug("checking_accounts");
-    expect(checking?.group_kind).toBe("nav_bucket");
-    expect(checking?.exclude_from_parent_total).toBe(1);
+    expect(checking?.group_kind).toBe("bucket");
+    expect(checking?.exclude_from_parent_total).toBe(0);
   });
 });

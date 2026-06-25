@@ -340,6 +340,13 @@ def parse_one_pdf(
                     seen_pay.add(key)
                 filtered.append(pr)
             parsed = filtered
+        reconcile_text = (
+            f"{full}\n{full_layout}" if full_layout.strip() else full
+        )
+        if RE_MOVIMIENTOS_TARJETA.search(reconcile_text):
+            assert_movimientos_tarjeta_origin_totals(
+                reconcile_text, parsed, pdf_path.name
+            )
         full = body
     meta["_parser"] = parser
     pdf_path = maybe_rename_parsed_cc_pdf(pdf_path, meta, full, cc_root=cc_root)
@@ -2363,6 +2370,10 @@ def _compact_line_is_summary_header(up: str) -> bool:
     return False
 
 
+def _is_santander_section3_header(up: str) -> bool:
+    return bool(re.search(r"3\.\s*CARGOS", up) and "COMISIONES" in up)
+
+
 def _advance_santander_compact_section(up: str, current: str) -> str:
     if re.search(r"III\.\s*INFORMACI", up) or (
         "INFORMACION DE PAGO" in up.replace("Ó", "O")
@@ -2372,13 +2383,60 @@ def _advance_santander_compact_section(up: str, current: str) -> str:
         return "skip"
     if re.search(r"2\.\s*PER[IÍ]ODO\s+ACTUAL", up):
         return "movimientos"
-    if re.search(r"3\.\s*CARGOS", up) and "COMISIONES" in up:
+    if _is_santander_section3_header(up):
         return "cargos"
     if "4." in up and "INFORMACION COMPRAS EN CUOTAS" in up:
         return "cuotas"
     if re.search(r"1\.\s*PER[IÍ]ODO\s+ANTERIOR", up):
         return "skip"
     return current
+
+
+def _row_counts_toward_movimientos_card_total(row: Dict[str, Any]) -> bool:
+    if row.get("installment_flag"):
+        return False
+    layout = str(row.get("layout") or "")
+    if layout in ("compact_cargos_charge", "compact_payment_abono", "ocr_payment"):
+        return False
+    merchant = str(row.get("merchant") or "")
+    if RE_CLP_SECTION3_CHARGE.search(merchant):
+        return False
+    return int(row.get("amount_clp") or 0) > 0
+
+
+RE_MOVIMIENTOS_TARJETA_TOTAL = re.compile(
+    r"MOVIMIENTOS\s+TARJETA\s+XXXX-(\d{4})\s*\$?\s*([\d.\-]+)", re.IGNORECASE
+)
+
+
+def assert_movimientos_tarjeta_origin_totals(
+    full_text: str, rows: List[Dict[str, Any]], source_pdf: str
+) -> None:
+    """Additional-card section headers must match sum of parsed purchase rows for that last4."""
+    primary = extract_card_last4(full_text)
+    headers: List[Tuple[str, int]] = []
+    for match in RE_MOVIMIENTOS_TARJETA_TOTAL.finditer(full_text):
+        last4 = match.group(1)
+        total = parse_clp_amount(match.group(2))
+        if last4 and total is not None:
+            headers.append((last4, int(total)))
+    if not headers:
+        return
+    for last4, expected in headers:
+        if primary and last4 == primary:
+            continue
+        actual = sum(
+            int(row.get("amount_clp") or 0)
+            for row in rows
+            if str(row.get("origin_card_last4") or "") == last4
+            and _row_counts_toward_movimientos_card_total(row)
+        )
+        if actual > expected:
+            raise ValueError(
+                f"{source_pdf}: MOVIMIENTOS TARJETA XXXX-{last4} total "
+                f"${expected:,} does not match parsed operaciones for origin {last4} "
+                f"(${actual:,}) — likely section-3 rows wrongly stamped with adicional origin"
+            )
 
 
 def _compact_should_skip_purchase_row(row: Dict[str, Any]) -> bool:
@@ -2530,7 +2588,10 @@ def parse_compact_document(full: str) -> List[Dict[str, Any]]:
         if not line or len(line) < 6:
             continue
         up = _ascii_upper(line)
+        prev_section = section
         section = _advance_santander_compact_section(up, section)
+        if section == "cargos" and prev_section != "cargos":
+            current_origin_card = primary_origin_card
         section_header = RE_MOVIMIENTOS_TARJETA_SECTION.search(up)
         if section_header:
             current_origin_card = section_header.group(1)
@@ -2545,7 +2606,7 @@ def parse_compact_document(full: str) -> List[Dict[str, Any]]:
                 continue
             cargos_row = _try_parse_compact_cargos_multiline(lines, idx, line)
             if cargos_row:
-                _append_compact_origin_row(out, cargos_row, current_origin_card)
+                _append_compact_origin_row(out, cargos_row, primary_origin_card)
                 continue
             if RE_COMPACT_SIMPLE.match(line):
                 row = try_parse_compact_simple(line)
@@ -2560,7 +2621,7 @@ def parse_compact_document(full: str) -> List[Dict[str, Any]]:
                             if adj is not None:
                                 row["amount_clp"] = int(adj)
                         row["layout"] = "compact_cargos_charge"
-                        _append_compact_origin_row(out, row, current_origin_card)
+                        _append_compact_origin_row(out, row, primary_origin_card)
                 continue
             continue
 
@@ -2683,6 +2744,9 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
             continue
 
         up = _ascii_upper(line)
+        if _is_santander_section3_header(up):
+            current_origin_card = primary_origin_card
+            continue
         section_header = RE_MOVIMIENTOS_TARJETA_SECTION.search(up)
         if section_header:
             current_origin_card = section_header.group(1)

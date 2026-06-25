@@ -47,7 +47,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       getDashboardLayoutCards().map((c) => [c.bucket_slug, c.label])
     );
     const layoutCards = getDashboardLayoutCards().map((card) =>
-      card.slug === "cash_savings"
+      card.slug === "cash_eqs"
         ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd) }
         : card
     );

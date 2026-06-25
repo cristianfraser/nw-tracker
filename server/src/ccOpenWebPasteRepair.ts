@@ -78,6 +78,8 @@ export type CcOpenWebPasteRepairResult = {
 /**
  * Move open-bucket web-paste lines dated after a month's facturación close into the
  * current open facturación bucket (post-close purchases belong on the next statement).
+ * Unmatched survivors on stale `open|{M}` after a PDF close stay put; read paths attribute
+ * them to the current open month (see {@link listStaleOpenWebPasteStatementDates}).
  */
 export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWebPasteRepairResult {
   const openBm = billingMonthForManualLedgerPurchase(accountId);
