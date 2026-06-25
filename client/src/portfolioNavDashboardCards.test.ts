@@ -245,7 +245,7 @@ describe("breakdownForNavChild cash_savings", () => {
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 500_000 },
       dashboard_layout: [
         {
-          slug: "cash_savings",
+          slug: "cash_eqs",
           label: "Ahorros",
           label_i18n_key: null,
           sort_order: 40,

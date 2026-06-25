@@ -182,7 +182,7 @@ export function dashPickForNavStrip(
   const brokerage_clp = bucketTotals.brokerage_clp;
   const linkedCcClp =
     ctx.dashboard_layout
-      ?.find((c) => c.slug === "cash_savings")
+      ?.find((c) => c.slug === "cash_eqs")
       ?.linked_balances?.find((lb) => lb.slug === "credit_card")?.clp ?? 0;
   const cash_eqs_clp = serverBuckets
     ? serverBuckets.cash_eqs_clp
@@ -196,7 +196,7 @@ export function dashPickForNavStrip(
 
   const linkedCcUsd =
     ctx.dashboard_layout
-      ?.find((c) => c.slug === "cash_savings")
+      ?.find((c) => c.slug === "cash_eqs")
       ?.linked_balances?.find((lb) => lb.slug === "credit_card")?.usd;
   const bucketUsd = nwBucketTotalsUsdFromNavStrip(netWorthRoot, ctx.accounts);
   const real_estate_usd = serverBuckets?.real_estate_usd ?? bucketUsd.real_estate_usd;

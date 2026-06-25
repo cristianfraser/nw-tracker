@@ -11,7 +11,29 @@ import {
   gastosSumMonthForLine,
   periodMonthsForGastosLine,
 } from "./ccExpensePeriodMonth";
-import { countsTowardGastosMes } from "./ccExpenseLineBuckets";
+import {
+  BILLS_CC_EXPENSE_SLUG,
+  countsTowardGastosMes,
+  REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
+} from "./ccExpenseLineBuckets";
+import { expenseDepositAmortizationChartAmount } from "./expenseDepositLinks";
+
+export function hasSplittableMortgageExpenseDepositLink(
+  link:
+    | {
+        payment_clp: number;
+        amortization_clp: number;
+        carrying_clp: number;
+      }
+    | undefined
+): link is { payment_clp: number; amortization_clp: number; carrying_clp: number } {
+  return (
+    link != null &&
+    link.amortization_clp > 0 &&
+    link.carrying_clp > 0 &&
+    link.carrying_clp < link.payment_clp
+  );
+}
 
 export function expenseLineGastosAmount(line: FlowCcExpenseLineRow, unit: DisplayUnit): number {
   if (unit === "usd") {
@@ -120,8 +142,36 @@ export function aggregateGastosFromLines(
       const sumBucket = touchBucket(sumMonth);
       if (amount > 0) {
         sumBucket.gastosReal += amount;
-        // Keep in sync with server aggregateGastosFromLines (purchaseCountsAfterNotaPairing + mode).
-        if (countsTowardGastosMes(ln, mode)) {
+        const link = ln.expense_deposit_link;
+        const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
+        if (linkedMortgagePayment) {
+          if (
+            ln.nota_credito_role !== "annulled_purchase" &&
+            ln.nota_credito_role !== "matched_nota" &&
+            (ln.line_role !== "installment_purchase_total" || mode === "total") &&
+            (ln.line_role !== "installment_cuota" || mode === "split")
+          ) {
+            sumBucket.gastos += link.carrying_clp;
+            const skipChartCategory =
+              ln.big_group_slug != null &&
+              excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
+            if (!skipChartCategory) {
+              const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
+              if (link.carrying_clp > 0) {
+                catBucket.set(
+                  BILLS_CC_EXPENSE_SLUG,
+                  (catBucket.get(BILLS_CC_EXPENSE_SLUG) ?? 0) + link.carrying_clp
+                );
+              }
+              catBucket.set(
+                REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
+                (catBucket.get(REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG) ?? 0) +
+                  expenseDepositAmortizationChartAmount(link.amortization_clp)
+              );
+              byMonthCategory.set(sumMonth, catBucket);
+            }
+          }
+        } else if (countsTowardGastosMes(ln, mode)) {
           sumBucket.gastos += amount;
           const skipChartCategory =
             ln.big_group_slug != null &&
@@ -201,7 +251,20 @@ export function computeExpensesTotal(
       continue;
     }
     if (amount > 0) {
-      if (countsTowardGastosMes(r, mode)) total += amount;
+      const link = r.expense_deposit_link;
+      const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
+      if (linkedMortgagePayment) {
+        if (
+          r.nota_credito_role !== "annulled_purchase" &&
+          r.nota_credito_role !== "matched_nota" &&
+          (r.line_role !== "installment_purchase_total" || mode === "total") &&
+          (r.line_role !== "installment_cuota" || mode === "split")
+        ) {
+          total += link.carrying_clp;
+        }
+      } else if (countsTowardGastosMes(r, mode)) {
+        total += amount;
+      }
       if (gastosSumMonthForLine(r, mode)) total_real += amount;
     }
   }

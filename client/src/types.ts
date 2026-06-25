@@ -313,6 +313,8 @@ export interface TimeseriesBlock {
   points: Record<string, string | number | null>[];
   /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */
   synthetic_group_color_rgb?: Record<string, string>;
+  /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
+  referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
 }
 
 /** Dashboard home, or `/api/...?group=` for class tabs */
@@ -495,6 +497,17 @@ export interface CcFacturacionDto {
   facturado_usd_clp: number | null;
   facturado_total_clp: number | null;
   cuota_a_pagar_clp: number | null;
+  /** True before PDF close — facturado includes únicos + cuota a pagar. */
+  is_open_month: boolean;
+}
+
+export interface CcFinancingPlMonthDto {
+  billing_month: string;
+  statement_charges_clp: number;
+  installment_interest_clp: number;
+  financing_cost_clp: number;
+  ytd_financing_cost_clp: number;
+  cumulative_financing_cost_clp: number;
 }
 
 export interface CreditCardBillingConfigDto {
@@ -588,12 +601,19 @@ export interface AccountCcInstallmentsResponse {
   billing_month_balances?: CcBillingMonthBalanceDto[];
   billing_detail_by_month?: CcBillingDetailMonthDto[];
   facturaciones?: CcFacturacionDto[];
+  financing_pl_by_month?: CcFinancingPlMonthDto[];
   billing_config?: CreditCardBillingConfigDto;
   /** Open facturación month for manual / web-paste (`YYYY-MM`). */
   open_billing_month?: string | null;
   /** Distinct physical card numbers billed on this master (titular first). */
   associated_card_last4s?: string[];
 }
+
+/** `GET /api/portfolio-groups/:slug/cc-ledger` — aggregated CC masters for a pasivos group. */
+export type PortfolioGroupCcLedgerResponse = AccountCcInstallmentsResponse;
+
+/** `GET /api/portfolio-groups/:slug/mortgage-ledger` — mortgage sheet for liabilities groups. */
+export type PortfolioGroupMortgageLedgerResponse = AccountMortgageLedgerResponse;
 
 /** `GET /api/accounts/:id/valuation-timeseries` */
 export interface AccountValuationTimeseriesResponse {
@@ -1066,6 +1086,11 @@ export interface FlowCcExpenseLineRow {
   account_id: number;
   /** Calendar month bucket (YYYY-MM). */
   expense_month: string;
+  /**
+   * Optional override for gastos chart / month table / modal bucketing only.
+   * purchase_on and purchase_month stay on the real transaction date.
+   */
+  gastos_period_month?: string;
   /** Facturación month (CC); same as expense_month for checking. */
   billing_month: string;
   /** Calendar month of purchase (YYYY-MM). */
@@ -1102,6 +1127,18 @@ export interface FlowCcExpenseLineRow {
   origin_card_last4?: string | null;
   /** Statement billing card; null for checking / synthetic lines. */
   primary_card_last4?: string | null;
+  /** Linked net-worth deposit (mortgage amortization split). */
+  expense_deposit_link?: ExpenseDepositLinkDto;
+}
+
+export interface ExpenseDepositLinkDto {
+  deposit_movement_id: number;
+  payment_clp: number;
+  amortization_clp: number;
+  carrying_clp: number;
+  depto_cuota: string | null;
+  depto_occurred_on: string | null;
+  link_source: "auto" | "manual";
 }
 
 export type FlowCcExpenseCategoryChartPoint = {

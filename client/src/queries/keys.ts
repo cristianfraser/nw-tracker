@@ -41,5 +41,8 @@ export const queryKeys = {
   ) => ["accountDetail", id, unit, granularity, ccOffsetsKey] as const,
   accountMonthlyPerformance: (id: string, unit: DisplayUnit) =>
     ["accountMonthlyPerformance", id, unit] as const,
+  portfolioGroupCcLedger: (slug: string, ccOffsetsKey: string) =>
+    ["portfolioGroupCcLedger", slug, ccOffsetsKey] as const,
+  portfolioGroupMortgageLedger: (slug: string) => ["portfolioGroupMortgageLedger", slug] as const,
   accountMovements: (id: number) => ["accountMovements", id] as const,
 };

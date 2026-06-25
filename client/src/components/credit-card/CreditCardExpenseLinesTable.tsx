@@ -332,7 +332,16 @@ export function CreditCardExpenseLinesTable({
             </td>
             <td className="mono">{isCc ? ln.statement_date : "—"}</td>
             <td className="mono">{ln.purchase_on ?? "—"}</td>
-            <td>{ln.merchant ?? "—"}</td>
+            <td>
+              {ln.merchant ?? "—"}
+              {ln.expense_deposit_link?.depto_cuota ? (
+                <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
+                  {t("expenses.creditCard.mortgageDepositLinkCuota", {
+                    cuota: ln.expense_deposit_link.depto_cuota,
+                  })}
+                </span>
+              ) : null}
+            </td>
             <td className="mono">{formatCcExpenseLineAmount(ln.amount_clp, ln.amount_usd)}</td>
             <td className="mono muted">
               {ln.line_role === "installment_purchase_total" ? (

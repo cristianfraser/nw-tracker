@@ -93,10 +93,26 @@ export function valuationDataKeysForInitialZeroAnchors(block: TimeseriesBlock): 
   }
   for (const ln of block.lines ?? []) {
     if (isAnchorExcludedDataKey(ln.dataKey) || seen.has(ln.dataKey)) continue;
+    // USD milestone / invested overlays: plot FX-backed levels only — no leading 0 anchor.
+    if (ln.valueSeriesType === "reference") continue;
     seen.add(ln.dataKey);
     keys.push(ln.dataKey);
   }
   return keys;
+}
+
+function mergeReferenceMilestonesAtAnchor(
+  row: ChartSparseRow,
+  anchorDate: string,
+  referenceMilestoneByDate?: Record<string, Record<string, number | null>>
+): ChartSparseRow {
+  const milestones = referenceMilestoneByDate?.[anchorDate];
+  if (!milestones) return row;
+  const out = { ...row };
+  for (const [key, value] of Object.entries(milestones)) {
+    if (out[key] == null && value != null) out[key] = value;
+  }
+  return out;
 }
 
 /**
@@ -106,7 +122,11 @@ export function valuationDataKeysForInitialZeroAnchors(block: TimeseriesBlock): 
 export function prependInitialZeroAnchors(
   points: readonly ChartSparseRow[],
   dataKeys: readonly string[],
-  opts: { dateKey?: string; granularity: "month" | "year" }
+  opts: {
+    dateKey?: string;
+    granularity: "month" | "year";
+    referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
+  }
 ): ChartSparseRow[] {
   const dateKey = opts.dateKey ?? "as_of_date";
   if (points.length === 0 || dataKeys.length === 0) return [];
@@ -137,12 +157,16 @@ export function prependInitialZeroAnchors(
     const existingIdx = indexByDate.get(anchorDate);
     if (existingIdx !== undefined) {
       const row = rows[existingIdx]!;
-      if (row[key] == null) rows[existingIdx] = { ...row, [key]: 0 };
+      const patched =
+        row[key] == null
+          ? mergeReferenceMilestonesAtAnchor({ ...row, [key]: 0 }, anchorDate, opts.referenceMilestoneByDate)
+          : mergeReferenceMilestonesAtAnchor(row, anchorDate, opts.referenceMilestoneByDate);
+      rows[existingIdx] = patched;
       continue;
     }
 
     const anchorRow: ChartSparseRow = { [dateKey]: anchorDate, [key]: 0 };
-    rows.push(anchorRow);
+    rows.push(mergeReferenceMilestonesAtAnchor(anchorRow, anchorDate, opts.referenceMilestoneByDate));
     indexByDate.set(anchorDate, rows.length - 1);
   }
 
@@ -160,6 +184,7 @@ export function prependInitialZeroAnchorsOnBlock(
     points: prependInitialZeroAnchors(block.points, dataKeys, {
       dateKey: "as_of_date",
       granularity,
+      referenceMilestoneByDate: block.referenceMilestoneByDate,
     }),
   };
 }

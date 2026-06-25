@@ -1,4 +1,8 @@
 import type { CcStatementDto } from "../../types";
+import {
+  isWebPasteStatementSource,
+  statementsForFacturacionMonth,
+} from "../../pages/accountDetail/ccOpenWebPasteSource";
 
 /** Statement line ids on open web-paste buckets for one billing month. */
 export function deletableWebPasteLineIds(
@@ -6,9 +10,8 @@ export function deletableWebPasteLineIds(
   billingMonth: string
 ): Set<number> {
   const ids = new Set<number>();
-  for (const st of statements) {
-    if (!String(st.source_pdf).startsWith("import:web-paste")) continue;
-    if (st.billing_month !== billingMonth) continue;
+  for (const st of statementsForFacturacionMonth(statements, billingMonth)) {
+    if (!isWebPasteStatementSource(st.source_pdf)) continue;
     for (const ln of st.lines) ids.add(ln.id);
   }
   return ids;

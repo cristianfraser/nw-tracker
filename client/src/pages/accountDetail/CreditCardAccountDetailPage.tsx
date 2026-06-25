@@ -1,81 +1,31 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
-import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
+import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
+import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { CreditCardDetailSections } from "./CreditCardSections";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
-import { buildCcHistorialChartRows, mergeFacturadoIntoPerfPoints } from "./ccChartData";
+import {
+  buildCcBillingMonthChartPoints,
+  buildCcHistorialChartRows,
+} from "./ccChartData";
 import {
   ACCOUNT_FLOWS_COLLAPSED,
   MONTHLY_PERF_COLLAPSED,
-  formatYmEs,
   movementUnitsKind,
 } from "./shared";
 import styles from "../AccountDetailPage.module.css";
 
-const FACTURADO_BAR_COLOR = "#d97706";
-
 type Props = {
   data: AccountDetailPageData;
 };
-
-function CreditCardSummaryCards({ data }: { data: AccountDetailPageData }) {
-  const { t } = useTranslation();
-  const detalle = data.ccLedger.billing_detail_by_month ?? [];
-  const latestClosed = detalle.find((r) => r.as_of_kind === "statement");
-  const latestRow = detalle[0];
-  const facturaciones = data.ccLedger.facturaciones ?? [];
-  const latestFact = facturaciones[0];
-
-  return (
-    <div className={cn("cards", styles.cardsBelow)}>
-      <div className="card">
-        <div className="label">{t("accountDetail.creditCard.lastFacturado")}</div>
-        <div className="value mono">
-          {latestClosed?.total_facturado_clp != null
-            ? formatClp(latestClosed.total_facturado_clp)
-            : latestFact?.facturado_total_clp != null
-              ? formatClp(latestFact.facturado_total_clp)
-              : "—"}
-        </div>
-        {latestClosed ? (
-          <div className="muted mono">
-            {latestClosed.billing_month} ({formatYmEs(latestClosed.billing_month)})
-          </div>
-        ) : null}
-      </div>
-      <div className="card">
-        <div className="label">{t("accountDetail.creditCard.nextPayment")}</div>
-        <div className={cn("value", "mono", styles.cardValueSecondary)}>
-          {data.ccLedger.totals.next_calendar_month
-            ? `${formatYmEs(data.ccLedger.totals.next_calendar_month)} · ${formatClp(data.ccLedger.totals.next_calendar_month_total_clp ?? 0)}`
-            : latestFact?.cuota_a_pagar_clp != null
-              ? formatClp(latestFact.cuota_a_pagar_clp)
-              : "—"}
-        </div>
-      </div>
-      <div className="card">
-        <div className="label">{t("accountDetail.creditCard.cupoUtilizado")}</div>
-        <div className="value mono">
-          {formatClp(latestRow?.cupo_en_cuotas_clp ?? data.ccLedger.totals.total_remaining_principal_clp)}
-        </div>
-      </div>
-      <div className="card">
-        <div className="label">{t("accountDetail.creditCard.saldoTotal")}</div>
-        <div className="value mono">
-          {latestRow != null ? formatClp(latestRow.balance_total_clp) : "—"}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function CreditCardAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
@@ -86,12 +36,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     displayUnit,
     metricsPeriod,
     xAxisGranularity,
-    monthlyPerfErr,
-    monthlyPerfRows,
-    ytdChartPoints,
-    accChartPoints,
     valuationBlockForChart,
-    accountChartTheme,
     movementsOnlyPersonalDeposits,
     setMovementsOnlyPersonalDeposits,
     displayedFlows,
@@ -100,31 +45,24 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     setExtraCcOffsets,
   } = data;
 
-  const ccChartsFromParsedLedger = ccLedger.has_installment_ledger;
   const hist = ccLedger.installment_history_months ?? [];
   const historialChartRows = useMemo(
     () =>
       buildCcHistorialChartRows(
         hist,
         ccLedger.billing_detail_by_month,
-        ccLedger.billing_month_balances
+        ccLedger.facturaciones
       ),
-    [hist, ccLedger.billing_detail_by_month, ccLedger.billing_month_balances]
+    [hist, ccLedger.billing_detail_by_month, ccLedger.facturaciones]
   );
-  const ytdWithFacturado = useMemo(
-    () => mergeFacturadoIntoPerfPoints(ytdChartPoints, ccLedger.billing_month_balances),
-    [ytdChartPoints, ccLedger.billing_month_balances]
+  const financingChartPoints = useMemo(
+    () =>
+      buildCcBillingMonthChartPoints(
+        ccLedger.facturaciones,
+        ccLedger.financing_pl_by_month
+      ),
+    [ccLedger.facturaciones, ccLedger.financing_pl_by_month]
   );
-  const accWithFacturado = useMemo(
-    () => mergeFacturadoIntoPerfPoints(accChartPoints, ccLedger.billing_month_balances),
-    [accChartPoints, ccLedger.billing_month_balances]
-  );
-
-  const facturadoBar = {
-    dataKey: "facturado_clp" as const,
-    name: t("accountDetail.creditCard.chartFacturado"),
-    color: FACTURADO_BAR_COLOR,
-  };
 
   const heroClp =
     displayUnit === "usd"
@@ -165,7 +103,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       loading={data.contentLoading}
       showNavChildCards={false}
     >
-      <CreditCardSummaryCards data={data} />
+      <CreditCardSummaryCards ccLedger={ccLedger} />
 
       {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
         <section className={styles.chartBlock}>
@@ -198,64 +136,16 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         />
       </div>
 
-      <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.monthlyPerfTitle")}</h2>
-      <p className={cn("muted", styles.proseMutedXs)}>
-        {t("accountDetail.creditCard.monthlyPerfHint")}
-        {ccChartsFromParsedLedger ? ` ${t("accountDetail.creditCard.monthlyPerfDbHint")}` : null}
-      </p>
-      {monthlyPerfErr ? (
-        <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
-      ) : monthlyPerfRows.length === 0 ? (
-        <p className="muted">{t("accountDetail.creditCard.monthlyPerfEmpty")}</p>
-      ) : (
-        <>
-          <h3 className={styles.subsectionTitleTight}>{t("accountDetail.creditCard.ytdSection")}</h3>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-            <MonthlyPerformanceComboChart
-              title={t("accountDetail.creditCard.ytdChartTitle")}
-              titleAs="h3"
-              points={ytdWithFacturado}
-              displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
-              barSeries={[
-                {
-                  dataKey: "nominal_pl",
-                  name: t("accountDetail.creditCard.barMonthlyPl"),
-                  color: accountChartTheme.bar,
-                },
-                facturadoBar,
-              ]}
-              areaKey="ytd_nominal_pl"
-              areaName="YTD"
-              areaFill={accountChartTheme.areaFill}
-              areaStroke={accountChartTheme.areaStroke}
-            />
-          </div>
-          <h3 className={styles.subsectionTitleLoose}>{t("accountDetail.creditCard.accSection")}</h3>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-            <MonthlyPerformanceComboChart
-              title={t("accountDetail.creditCard.accChartTitle")}
-              titleAs="h3"
-              points={accWithFacturado}
-              displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
-              barSeries={[
-                {
-                  dataKey: "delta_month",
-                  name: t("accountDetail.creditCard.barMonthlyDelta"),
-                  color: accountChartTheme.bar,
-                },
-                facturadoBar,
-              ]}
-              areaKey="accumulated_earnings"
-              areaName={t("accountDetail.creditCard.accAreaName")}
-              areaFill={accountChartTheme.areaFill}
-              areaStroke={accountChartTheme.areaStroke}
-              alternateYearAreaStripes={false}
-            />
-          </div>
-        </>
-      )}
+      <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
+      <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
+      <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
+        <CcBillingMonthFinancingChart
+          title={t("accountDetail.creditCard.financingChartTitle")}
+          titleAs="h3"
+          points={financingChartPoints}
+          displayUnit={displayUnit}
+        />
+      </div>
 
       {(ccLedger.billing_detail_by_month?.length ?? 0) > 0 ? (
         <>

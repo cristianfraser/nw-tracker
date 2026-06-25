@@ -69,7 +69,9 @@ export function PortfolioNavChildDetailCards({
         const br = breakdownForNavChild(child, childRows, dash);
         const rp = child.route_path?.trim() ?? "";
         const cashClass =
-          child.slug === "cash_savings" || child.asset_group_slug?.startsWith("cash_eqs")
+          child.slug === "cash_eqs" ||
+          child.slug === "cash_savings" ||
+          child.asset_group_slug?.startsWith("cash_eqs")
             ? "card--cash"
             : "";
         const cardSlug = `nav-${child.slug}-${child.node_id}`;

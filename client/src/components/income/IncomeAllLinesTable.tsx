@@ -36,9 +36,7 @@ export function IncomeAllLinesTable({
 
   if (rows.length === 0) {
     return (
-      <p className="muted">
-        {t("income.empty")} <span className="mono">{t("income.manualApiHint")}</span>
-      </p>
+      <p className="muted">{t("income.empty")}</p>
     );
   }
 

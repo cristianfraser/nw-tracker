@@ -3,6 +3,7 @@ import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "./ccExpenseLineBuckets";
 import type { CcExpenseCategoryDto, FlowCcExpenseCategoryChartPoint } from "./types";
 
 const PIN_FIRST_SLUGS = ["no_cuenta", "deposits", "checking_internal_transfer"] as const;
+const CHART_PIN_BOTTOM_SLUGS = ["real_estate_amortization"] as const;
 const PIN_LAST_SLUG = "others";
 
 function displayLocale(): string {
@@ -58,33 +59,41 @@ export function averageCcExpenseCategoryChartAmount(
   return sum / points.length;
 }
 
-/** Stacked chart / legend: highest average gasto first (bottom of stack), Otros penultimate, Sin clasificar last. */
+/** Stacked chart / legend: amortización at stack base, then highest average gasto first, Otros penultimate, Sin clasificar last. */
 export function chartCcExpenseCategories(
   categories: readonly CcExpenseCategoryDto[],
   points: readonly FlowCcExpenseCategoryChartPoint[] = []
 ): CcExpenseCategoryDto[] {
+  const pinBottom = categories.filter((c) =>
+    (CHART_PIN_BOTTOM_SLUGS as readonly string[]).includes(c.slug)
+  );
   const assignable = categories.filter(
     (c) =>
       c.slug !== "unclassified" &&
       c.slug !== PIN_LAST_SLUG &&
-      !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(c.slug)
+      (!CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(c.slug) ||
+        (CHART_PIN_BOTTOM_SLUGS as readonly string[]).includes(c.slug))
   );
   const others = categories.find((c) => c.slug === PIN_LAST_SLUG);
   const unclassified = categories.find((c) => c.slug === "unclassified");
 
+  const middlePool = assignable.filter(
+    (c) => !(CHART_PIN_BOTTOM_SLUGS as readonly string[]).includes(c.slug)
+  );
+
   const sortedMiddle =
     points.length > 0
-      ? [...assignable].sort((a, b) => {
+      ? [...middlePool].sort((a, b) => {
           const avgA = averageCcExpenseCategoryChartAmount(points, a.slug);
           const avgB = averageCcExpenseCategoryChartAmount(points, b.slug);
           if (avgB !== avgA) return avgB - avgA;
           return compareCcExpenseCategoryLabels(a.slug, b.slug);
         })
-      : sortCcExpenseCategoriesByLabel(assignable);
+      : sortCcExpenseCategoriesByLabel(middlePool);
 
   const tail: CcExpenseCategoryDto[] = [];
   if (others) tail.push(others);
   if (unclassified) tail.push(unclassified);
 
-  return [...sortedMiddle, ...tail];
+  return [...pinBottom, ...sortedMiddle, ...tail];
 }

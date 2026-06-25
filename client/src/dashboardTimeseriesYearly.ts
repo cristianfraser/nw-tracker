@@ -31,7 +31,7 @@ export function rollupTimeseriesBlockYearEnd(block: TimeseriesBlock): Timeseries
     return last;
   });
 
-  return { accounts, lines, points: newPoints };
+  return { accounts, lines, points: newPoints, referenceMilestoneByDate: block.referenceMilestoneByDate };
 }
 
 /**

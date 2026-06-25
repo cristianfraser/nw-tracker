@@ -6,12 +6,19 @@ export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 /** Internal transfers to investments — excluded from gastos totals and chart stacks. */
 export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
 
+/** Mortgage principal on real-estate deposit matches — chart stack only. */
+export const REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG = "real_estate_amortization";
+
+/** Carrying cost for linked mortgage payments. */
+export const BILLS_CC_EXPENSE_SLUG = "bills";
+
 /** Corriente ↔ vista checking auto-matches — excluded from gastos totals and chart stacks. */
 export const CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG = "checking_internal_transfer";
 
 export const CC_EXPENSE_TOTALS_EXCLUDED_SLUGS = new Set([
   NO_CUENTA_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
+  REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 ]);
 

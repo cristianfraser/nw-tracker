@@ -26,11 +26,14 @@ export type GroupPageChartContext = {
   brokerageSubgroup?: "acciones" | "mutual_funds" | "crypto";
 };
 
-export function resolveGroupPageChartContext(navNode: NavTreeNodeDto): GroupPageChartContext {
+export function resolveGroupPageChartContext(
+  navNode: NavTreeNodeDto,
+  listRows?: readonly AccountListRow[]
+): GroupPageChartContext {
   const sub = navNode.api_subgroup ?? undefined;
   const apiGroup = navNode.api_group ?? "";
 
-  const liabilitiesGrouped = shouldAggregateLiabilitiesCharts(navNode);
+  const liabilitiesGrouped = shouldAggregateLiabilitiesCharts(navNode, listRows);
   const showGroupedToggle = liabilitiesGrouped || shouldShowNavGroupedChartToggle(navNode);
 
   const chartColorSlug =

@@ -13,6 +13,7 @@ import {
 } from "../../ccExpenseLineBuckets";
 import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
 import {
+  gastosPeriodMonthForLine,
   installmentModalLines,
   purchaseModalLines,
 } from "../../ccExpensePeriodMonth";
@@ -39,12 +40,7 @@ function linesForAbonosAndExcluded(
   lines: readonly FlowCcExpenseLineRow[],
   periodMonth: string
 ): FlowCcExpenseLineRow[] {
-  return lines.filter(
-    (ln) =>
-      ln.billing_month === periodMonth ||
-      ln.expense_month === periodMonth ||
-      ln.purchase_month === periodMonth
-  );
+  return lines.filter((ln) => gastosPeriodMonthForLine(ln) === periodMonth);
 }
 
 /** Cuota lines billed this month that belong in the Cuotas table (gastos-eligible only). */

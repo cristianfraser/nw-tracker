@@ -3,21 +3,27 @@ import type { FlowCcExpenseLineRow } from "./types";
 export type CcInstallmentGastosMode = "split" | "total";
 
 /** Keep in sync with server/src/ccExpensePeriodMonth.ts */
+export function gastosPeriodMonthForLine(
+  line: Pick<
+    FlowCcExpenseLineRow,
+    "expense_month" | "gastos_period_month" | "billing_month" | "purchase_month" | "line_role"
+  >
+): string {
+  if (line.gastos_period_month) return line.gastos_period_month;
+  if (line.line_role === "installment_purchase_total") return line.purchase_month;
+  if (line.line_role === "installment_cuota") return line.billing_month;
+  return line.expense_month;
+}
+
 export function periodMonthsForGastosLine(line: FlowCcExpenseLineRow): string[] {
-  if (line.line_role === "installment_purchase_total") {
-    return [line.purchase_month];
-  }
-  if (line.line_role === "installment_cuota") {
-    return [line.billing_month];
-  }
-  return [line.expense_month];
+  return [gastosPeriodMonthForLine(line)];
 }
 
 export function lineMatchesGastosPeriodMonth(
   line: FlowCcExpenseLineRow,
   periodMonth: string
 ): boolean {
-  return periodMonthsForGastosLine(line).includes(periodMonth);
+  return gastosPeriodMonthForLine(line) === periodMonth;
 }
 
 export function gastosSumMonthForLine(
@@ -25,7 +31,7 @@ export function gastosSumMonthForLine(
   mode: CcInstallmentGastosMode = "split"
 ): string {
   if (line.source === "checking" || line.line_role === "purchase") {
-    return line.expense_month;
+    return gastosPeriodMonthForLine(line);
   }
   if (line.line_role === "installment_purchase_total") {
     return mode === "total" ? line.purchase_month : "";
@@ -40,7 +46,7 @@ export function purchaseModalLines(
   return lines.filter(
     (ln) =>
       (ln.line_role === "purchase" || ln.line_role === "installment_purchase_total") &&
-      ln.purchase_month === periodMonth
+      gastosPeriodMonthForLine(ln) === periodMonth
   );
 }
 

@@ -176,6 +176,20 @@ export const api = {
       `/api/accounts/${id}/cc-installments${qs ? `?${qs}` : ""}`
     );
   },
+  portfolioGroupCcLedger: (slug: string, extraOffsets?: Record<string, number>) => {
+    const q = new URLSearchParams();
+    if (extraOffsets && Object.keys(extraOffsets).length > 0) {
+      q.set("extraOffsets", JSON.stringify(extraOffsets));
+    }
+    const qs = q.toString();
+    return j<import("./types").PortfolioGroupCcLedgerResponse>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-ledger${qs ? `?${qs}` : ""}`
+    );
+  },
+  portfolioGroupMortgageLedger: (slug: string) =>
+    j<import("./types").PortfolioGroupMortgageLedgerResponse>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
+    ),
   createCcPurchase: (
     id: string | number,
     body: {
