@@ -65,6 +65,8 @@ export type GroupInfoBaseProps = {
   flowsHint?: string;
   /** Dims the whole page body (title, cards, charts, tables) while bundle data is loading. */
   loading?: boolean;
+  /** Skip consolidated monthly perf + flows tables (pasivos specialized layouts). */
+  hideConsolidatedTables?: boolean;
 };
 
 export function GroupInfoBase({
@@ -81,11 +83,13 @@ export function GroupInfoBase({
   monthlyDetailHint,
   flowsHint,
   loading = false,
+  hideConsolidatedTables = false,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const tablesEnabled =
-    tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug));
+    !hideConsolidatedTables &&
+    (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
   const { consolidatedMonthlyPerf, consolidatedFlows, tableFlags, tablesLoading, tablesError } =
     useGroupInfoConsolidatedTables(
       portfolio?.groupSlug ?? "",

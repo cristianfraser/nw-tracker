@@ -156,7 +156,9 @@ function rowsForCashSavingsCard(
 function cashSavingsLinkedBottomLines(
   dash: Pick<DashboardResponse, "dashboard_layout">
 ): CardBreakdownLine[] | undefined {
-  const card = dash.dashboard_layout?.find((c) => c.slug === "cash_savings");
+  const card =
+    dash.dashboard_layout?.find((c) => c.slug === "cash_eqs") ??
+    dash.dashboard_layout?.find((c) => c.slug === "cash_savings");
   const linked = card?.linked_balances ?? [];
   if (!linked.length) return undefined;
   return linked.map((lb) => ({
@@ -189,7 +191,7 @@ export function stripPlMetricsRowsForNavChild(
 function usesFullDashboardBucketTotals(navChild: NavTreeNodeDto): DashboardGroupSlug | null {
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (!bucket || bucket === "net_worth") return null;
-  if (isCashSavingsNavNode(navChild)) return "cash_eqs";
+  if (bucket === "cash_eqs") return "cash_eqs";
   if (navChild.slug === bucket) return bucket;
   return null;
 }
@@ -598,7 +600,12 @@ export function breakdownForNavChild(
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (bucket === "cash_eqs" && navChild.slug === "cash_eqs") {
     const byCash = breakdownByAssetGroup("cash_eqs", rows, dash);
-    if (byCash) return byCash;
+    const bottomLines = cashSavingsLinkedBottomLines(dash);
+    if (!byCash?.lines.length && !bottomLines?.length) return null;
+    return {
+      lines: byCash?.lines ?? [],
+      ...(bottomLines?.length ? { bottomLines, pinBottom: true } : {}),
+    };
   }
 
   const asset = navChild.asset_group_slug;

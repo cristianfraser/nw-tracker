@@ -147,7 +147,8 @@ export function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): Dashboar
 
 /** Routable portfolio group row for a detail card (bucket, pasivos, or inversiones sub-routes). */
 export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
-  if (!node.route_path?.trim() || isNavHubNode(node) || isLiabilityGroupNavNode(node)) return false;
+  if (!node.route_path?.trim() || isLiabilityGroupNavNode(node)) return false;
+  if (isNavHubNode(node) && node.slug !== "cash_eqs") return false;
   if (node.account_id != null || node.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(node) != null) return true;
   if (node.asset_group_slug === "liabilities") return true;
@@ -169,7 +170,7 @@ export function isPortfolioStripAccountNode(node: NavTreeNodeDto): boolean {
 export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   const out: NavTreeNodeDto[] = [];
   for (const child of root.children ?? []) {
-    if (isNavHubNode(child)) {
+    if (isNavHubNode(child) && child.slug !== "cash_eqs") {
       out.push(...portfolioStripGroupChildren(child));
       continue;
     }

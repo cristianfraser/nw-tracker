@@ -5,11 +5,13 @@ import {
   ComposedChart,
   Legend,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartRow } from "../../pages/accountDetail/ccChartData";
 import { formatClp } from "../../format";
@@ -48,8 +50,12 @@ const FACTURADO_FILL = "#d97706";
 const CUPO_STROKE = "#f472b6";
 const BALANCE_TOTAL_STROKE = "#38bdf8";
 
+const CURRENT_MONTH_STROKE = "#94a3b8";
+
 export function CcInstallmentHistoryChart({ rows }: { rows: CcHistorialChartRow[] }) {
   const { t } = useTranslation();
+  const currentYm = chileTodayYmd().slice(0, 7);
+  const showCurrentMonthLine = rows.some((r) => r.month === currentYm);
   const yScale = useMemo(() => {
     const { min, max } = unifiedMinMax(rows);
     return buildNiceYAxis(min, max);
@@ -125,6 +131,20 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcHistorialChartRow[
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 6 }}
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />
+          {showCurrentMonthLine ? (
+            <ReferenceLine
+              x={currentYm}
+              stroke={CURRENT_MONTH_STROKE}
+              strokeDasharray="4 4"
+              strokeWidth={1.5}
+              label={{
+                value: t("accountDetail.creditCard.historialCurrentMonth"),
+                position: "insideTopRight",
+                fill: CURRENT_MONTH_STROKE,
+                fontSize: 10,
+              }}
+            />
+          ) : null}
           <Bar
             dataKey="installment_payments_clp"
             name="Pagos de cuotas (mes)"

@@ -57,10 +57,14 @@ function accountLeaf(id: number): NavTreeNodeDto {
   };
 }
 
-function listRow(id: number, bucketSlug: string): AccountListRow {
+function listRow(
+  id: number,
+  bucketSlug: string,
+  opts?: { source_account_id?: number; name?: string }
+): AccountListRow {
   return {
     id,
-    name: `Account ${id}`,
+    name: opts?.name ?? `Account ${id}`,
     notes: null,
     created_at: "",
     category_slug: "stock",
@@ -69,6 +73,7 @@ function listRow(id: number, bucketSlug: string): AccountListRow {
     group_label: bucketSlug,
     bucket_slug: bucketSlug,
     chart_inactive: true,
+    source_account_id: opts?.source_account_id,
   };
 }
 

@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { mainValueAndMetricsForNavChild } from "../portfolioNavDashboardCards";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import {
-  cachedAmountPerturbBounds,
+  PERTURB_FACTOR_MAX,
+  PERTURB_FACTOR_MIN,
   clpToUsdPlaceholder,
   perturbAccountValuesPreservingNavCardOrder,
   perturbCachedAmount,
   perturbCachedAmountsPreservingSortOrder,
   perturbDashboardNavSnapshot,
+  randomPerturbFactor,
   reassignPerturbedKeysByOriginalRank,
   resolveSnapshotFxRate,
   synthesizeMissingUsdOnNavSnapshot,
@@ -27,77 +29,41 @@ function dashRow(partial: Partial<DashboardAccountRow> & Pick<DashboardAccountRo
   };
 }
 
-describe("cachedAmountPerturbBounds", () => {
-  it("5234 → R ∈ [100, 4000]", () => {
-    expect(cachedAmountPerturbBounds(5234)).toEqual({ minR: 100, maxR: 4000 });
-  });
-
-  it("1234 → R ∈ [99, 200]", () => {
-    expect(cachedAmountPerturbBounds(1234)).toEqual({ minR: 99, maxR: 200 });
-  });
-
-  it("123 → R ∈ [10, 19]", () => {
-    expect(cachedAmountPerturbBounds(123)).toEqual({ minR: 10, maxR: 19 });
-  });
-
-  it("8 → R ∈ [1, 7]", () => {
-    expect(cachedAmountPerturbBounds(8)).toEqual({ minR: 1, maxR: 7 });
-  });
-
-  it("100 clamps max to min when second digit is zero", () => {
-    expect(cachedAmountPerturbBounds(100)).toEqual({ minR: 10, maxR: 10 });
-  });
-
-  it("returns null for zero and non-finite", () => {
-    expect(cachedAmountPerturbBounds(0)).toBeNull();
-    expect(cachedAmountPerturbBounds(Number.NaN)).toBeNull();
+describe("randomPerturbFactor", () => {
+  it("stays within [0.85, 0.95]", () => {
+    for (let i = 0; i < 50; i++) {
+      const factor = randomPerturbFactor();
+      expect(factor).toBeGreaterThanOrEqual(PERTURB_FACTOR_MIN);
+      expect(factor).toBeLessThanOrEqual(PERTURB_FACTOR_MAX);
+    }
   });
 });
 
 describe("perturbCachedAmount", () => {
-  it("5234 stays within [1234, 5134]", () => {
-    for (let i = 0; i < 50; i++) {
-      const out = perturbCachedAmount(5234);
-      expect(out).toBeGreaterThanOrEqual(1234);
-      expect(out).toBeLessThanOrEqual(5134);
-    }
+  const factor = 0.9;
+
+  it("scales positive values by factor", () => {
+    expect(perturbCachedAmount(5234, factor)).toBe(4711);
+    expect(perturbCachedAmount(1234, factor)).toBe(1111);
+    expect(perturbCachedAmount(123, factor)).toBe(111);
+    expect(perturbCachedAmount(8, factor)).toBe(7);
   });
 
-  it("1234 stays within [1034, 1135]", () => {
-    for (let i = 0; i < 50; i++) {
-      const out = perturbCachedAmount(1234);
-      expect(out).toBeGreaterThanOrEqual(1034);
-      expect(out).toBeLessThanOrEqual(1135);
-    }
-  });
-
-  it("123 stays within [104, 113]", () => {
-    for (let i = 0; i < 50; i++) {
-      const out = perturbCachedAmount(123);
-      expect(out).toBeGreaterThanOrEqual(104);
-      expect(out).toBeLessThanOrEqual(113);
-    }
-  });
-
-  it("8 stays within [1, 7]", () => {
-    for (let i = 0; i < 50; i++) {
-      const out = perturbCachedAmount(8);
-      expect(out).toBeGreaterThanOrEqual(1);
-      expect(out).toBeLessThanOrEqual(7);
-    }
-  });
-
-  it("negative values reduce magnitude and keep sign", () => {
-    for (let i = 0; i < 50; i++) {
-      const out = perturbCachedAmount(-5234);
-      expect(out).toBeLessThan(0);
-      expect(out).toBeGreaterThanOrEqual(-5134);
-      expect(out).toBeLessThanOrEqual(-1234);
-    }
+  it("scales negative values and keeps sign", () => {
+    expect(perturbCachedAmount(-5234, factor)).toBe(-4711);
   });
 
   it("leaves zero unchanged", () => {
-    expect(perturbCachedAmount(0)).toBe(0);
+    expect(perturbCachedAmount(0, factor)).toBe(0);
+  });
+
+  it("random factor keeps output within [0.85S, 0.95S]", () => {
+    for (let i = 0; i < 50; i++) {
+      const f = randomPerturbFactor();
+      const out = perturbCachedAmount(5234, f);
+      expect(out).toBeGreaterThanOrEqual(Math.round(5234 * PERTURB_FACTOR_MIN));
+      expect(out).toBeLessThanOrEqual(Math.round(5234 * PERTURB_FACTOR_MAX));
+    }
   });
 });
 
@@ -118,12 +84,11 @@ describe("reassignPerturbedKeysByOriginalRank", () => {
 
 describe("perturbCachedAmountsPreservingSortOrder", () => {
   it("keeps descending order", () => {
-    for (let i = 0; i < 50; i++) {
-      const original = [5100, 4900, 1200];
-      const perturbed = perturbCachedAmountsPreservingSortOrder(original);
-      expect(perturbed[0]).toBeGreaterThan(perturbed[1]!);
-      expect(perturbed[1]).toBeGreaterThan(perturbed[2]!);
-    }
+    const factor = 0.9;
+    const original = [5100, 4900, 1200];
+    const perturbed = perturbCachedAmountsPreservingSortOrder(original, factor);
+    expect(perturbed[0]).toBeGreaterThan(perturbed[1]!);
+    expect(perturbed[1]).toBeGreaterThan(perturbed[2]!);
   });
 });
 
@@ -145,7 +110,8 @@ describe("perturbDashboardNavSnapshot", () => {
     const perturbedSum = perturbed.accounts.reduce((s, a) => s + (a.current_value_clp ?? 0), 0);
 
     expect(perturbedSum).not.toBe(rawSum);
-    expect(perturbedSum).toBeLessThan(rawSum);
+    expect(perturbedSum).toBeGreaterThanOrEqual(Math.round(rawSum * PERTURB_FACTOR_MIN));
+    expect(perturbedSum).toBeLessThanOrEqual(Math.round(rawSum * PERTURB_FACTOR_MAX));
   });
 
   it("perturbs nw_bucket_totals away from raw cache", () => {
@@ -181,7 +147,12 @@ describe("perturbDashboardNavSnapshot", () => {
 
     const perturbed = perturbDashboardNavSnapshot(raw);
     expect(perturbed.nw_bucket_totals!.net_worth_clp).not.toBe(raw.nw_bucket_totals!.net_worth_clp);
-    expect(perturbed.nw_bucket_totals!.net_worth_clp).toBeLessThan(raw.nw_bucket_totals!.net_worth_clp);
+    expect(perturbed.nw_bucket_totals!.net_worth_clp).toBeGreaterThanOrEqual(
+      Math.round(raw.nw_bucket_totals!.net_worth_clp * PERTURB_FACTOR_MIN)
+    );
+    expect(perturbed.nw_bucket_totals!.net_worth_clp).toBeLessThanOrEqual(
+      Math.round(raw.nw_bucket_totals!.net_worth_clp * PERTURB_FACTOR_MAX)
+    );
     expect(perturbed.nw_bucket_totals!.prior_closes!.month.net_worth_clp).not.toBe(
       raw.nw_bucket_totals!.prior_closes!.month.net_worth_clp
     );
@@ -266,7 +237,12 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
     const converted = 9_500_000 / 950;
     const perturbed = perturbDashboardNavSnapshot(synthesizeMissingUsdOnNavSnapshot(raw));
     expect(perturbed.accounts[0]!.current_value_usd).not.toBe(converted);
-    expect(perturbed.accounts[0]!.current_value_usd!).toBeLessThan(converted);
+    expect(perturbed.accounts[0]!.current_value_usd!).toBeGreaterThanOrEqual(
+      converted * PERTURB_FACTOR_MIN
+    );
+    expect(perturbed.accounts[0]!.current_value_usd!).toBeLessThanOrEqual(
+      converted * PERTURB_FACTOR_MAX
+    );
   });
 });
 
@@ -432,8 +408,9 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
     );
 
     for (let run = 0; run < 50; run++) {
+      const factor = randomPerturbFactor();
       const clpByAccount = new Map(accounts.map((a) => [a.account_id, a.current_value_clp!]));
-      perturbAccountValuesPreservingNavCardOrder(clpByAccount, accounts, snapshot, [netWorth]);
+      perturbAccountValuesPreservingNavCardOrder(clpByAccount, accounts, snapshot, [netWorth], factor);
 
       const perturbedAccounts = accounts.map((row) => ({
         ...row,

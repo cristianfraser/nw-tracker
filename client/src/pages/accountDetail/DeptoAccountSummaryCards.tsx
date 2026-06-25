@@ -47,7 +47,8 @@ export function DeptoAccountSummaryCards({
 }: {
   variant: "mortgage" | "property";
   ledger: AccountMortgageLedgerResponse;
-  summary: AccountSummaryResponse;
+  summary: Pick<AccountSummaryResponse, "latest_valuation_clp"> &
+    Partial<Pick<AccountSummaryResponse, "deposits_clp">>;
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   accountDashRow: DashboardAccountRow | null;
 }) {
@@ -64,7 +65,15 @@ export function DeptoAccountSummaryCards({
   const propertyData = useMemo(
     () =>
       variant === "property"
-        ? buildPropertySummaryCardsData(ledger, summary, monthlyPerfRows, accountDashRow)
+        ? buildPropertySummaryCardsData(
+            ledger,
+            {
+              latest_valuation_clp: summary.latest_valuation_clp,
+              deposits_clp: summary.deposits_clp ?? 0,
+            },
+            monthlyPerfRows,
+            accountDashRow
+          )
         : null,
     [variant, ledger, summary, monthlyPerfRows, accountDashRow]
   );

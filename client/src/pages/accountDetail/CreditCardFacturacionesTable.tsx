@@ -5,7 +5,6 @@ import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
-import { mergedFacturacionLines } from "./mergedFacturacionLines";
 import type { CcFacturacionDto, CcStatementDto } from "../../types";
 import { PaginatedTable } from "../../components/ui/PaginatedTable";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
@@ -13,7 +12,7 @@ import {
   buildFacturacionModalBucket,
   emptyFacturacionModalBucket,
 } from "../../components/credit-card/buildFacturacionModalBucket";
-import { flowLinesForBillingStatementMonth } from "../../components/credit-card/flowLinesForStatementMonth";
+import { flowLinesForFacturacionMonth } from "../../components/credit-card/flowLinesForStatementMonth";
 import { deletableWebPasteLineIds } from "../../components/credit-card/deletableWebPasteLineIds";
 import type { DisplayUnit } from "../../queries/keys";
 import {
@@ -124,18 +123,15 @@ export function CreditCardFacturacionesTable({
 
   const scopedLines = useMemo(() => {
     if (!selected || !flows) return [];
-    return flowLinesForBillingStatementMonth(
+    return flowLinesForFacturacionMonth(
       flows.lines,
       statements,
       accountId,
-      selected.billing_month
+      selected
     );
   }, [accountId, flows, selected, statements]);
 
-  const statementLineCount = useMemo(() => {
-    if (!selected) return 0;
-    return mergedFacturacionLines(statements, selected.billing_month).length;
-  }, [selected, statements]);
+  const facturacionLineCount = useMemo(() => scopedLines.length, [scopedLines]);
 
   const facturacionBucket = useMemo(() => {
     if (!selected) return emptyFacturacionModalBucket();
@@ -262,7 +258,7 @@ export function CreditCardFacturacionesTable({
         }
         subtitle={modalSubtitle}
       >
-        {statementLineCount === 0 ? (
+        {facturacionLineCount === 0 ? (
           <p className="muted">{t("accountDetail.creditCard.facturacionModalEmpty")}</p>
         ) : (
           <CreditCardFacturacionModalSections

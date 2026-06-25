@@ -1,4 +1,5 @@
 import type { CcStatementDto, CcStatementLineDto } from "../../types";
+import { statementsForFacturacionMonth } from "./ccOpenWebPasteSource";
 
 export type MergedFacturacionLine = CcStatementLineDto & {
   currency: "clp" | "usd";
@@ -28,8 +29,7 @@ export function mergedFacturacionLines(
   billingMonth: string
 ): MergedFacturacionLine[] {
   const out: MergedFacturacionLine[] = [];
-  for (const st of statements) {
-    if (st.billing_month !== billingMonth) continue;
+  for (const st of statementsForFacturacionMonth(statements, billingMonth)) {
     const currency = st.currency === "usd" ? "usd" : "clp";
     for (const ln of st.lines) {
       out.push({ ...ln, currency, statement_id: st.id });
