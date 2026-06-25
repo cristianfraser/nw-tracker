@@ -144,7 +144,7 @@ export function ccWebPasteToCsvRecords(
       card_last4: cardLast4,
       transaction_date: ddMm,
       merchant: line.merchant,
-      amount_clp: String(webPasteAmountClpForDb(line.amount_clp, line.merchant)),
+      amount_clp: String(webPasteAmountClpForDb(line.amount_clp, line.merchant, cardGroup)),
       installment_flag: "false",
       dedupe_key,
       raw_line: line.raw_line,
