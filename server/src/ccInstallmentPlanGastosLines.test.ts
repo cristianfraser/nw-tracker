@@ -48,7 +48,10 @@ describe("ccInstallmentPlanGastosLines", () => {
         ln.line_role === "installment_cuota" &&
         ln.billing_month === "2026-06"
     );
-    if (june.length === 0) return;
+    // Only assert deduplication when PDF-sourced (positive-ID) cuota lines exist for June;
+    // if June is only covered by plan lines (negative IDs) they won't be in the coverage set
+    // and this scenario doesn't apply.
+    if (june.filter((l) => l.statement_line_id > 0).length === 0) return;
 
     const fromPlanOnly = buildInstallmentPlanGastosLines([accountId], payload.lines);
     const junePlan = fromPlanOnly.filter(
