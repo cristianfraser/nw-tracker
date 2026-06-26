@@ -163,6 +163,7 @@ import {
   flowsDepositsNetTotalUsdByAccount,
 } from "./flowsDeposits.js";
 import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "./ccExpenseCategories.js";
+import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
@@ -1882,8 +1883,11 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
       return;
     }
     if (lineId < 0) {
+      // Plan gastos lines encode purchaseId as -(3_000_000_000 + purchaseId*1000 + cuotaIndex).
+      // Simple negative statement line ids encode purchaseId as -lineId directly.
+      const purchaseId = purchaseIdFromPlanGastosLineId(lineId) ?? -lineId;
       const result = assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
-        purchaseId: -lineId,
+        purchaseId,
         unique,
         categorySlug: categorySlug || null,
         clearCategory,
