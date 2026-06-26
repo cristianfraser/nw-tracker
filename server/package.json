@@ -78,6 +78,7 @@
     "test": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",
     "propose:synthetic-gastos-from-excel": "tsx scripts/propose-synthetic-gastos-from-excel.ts",
+    "propose:categorize-uncat": "tsx scripts/propose-categorize-uncat-from-excel.ts",
     "parse:payroll-liquidaciones": "python3 scripts/parse-payroll-liquidaciones.py",
     "import:payroll-liquidaciones": "tsx scripts/import-payroll-liquidaciones.ts",
     "seed:payroll-dealsy-2019-h2": "tsx scripts/seed-payroll-dealsy-2019-h2.ts",
