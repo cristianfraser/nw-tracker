@@ -192,8 +192,13 @@ export function purchaseFirstDueYm(
   }
 
   if (pr.source === "manual" && accountId != null) {
+    // A manual purchase posts into the open facturación (the purchase falls in that
+    // period), but its first real cuota (01) bills the *next* facturación — the open
+    // statement only carries it as cuota 00 / informativa. So the first installment's
+    // expense month is one facturación after the open month. The open-month PDF, once
+    // imported, replaces this guess with the statement's actual cuota-01 month.
     const openBm = billingMonthForLedgerPurchase(accountId, pr);
-    if (openBm) return openBm;
+    if (openBm) return addCalendarMonths(openBm, 1);
   }
   return parseYearMonth(pr.purchase_date.slice(0, 7)) ?? "1970-01";
 }
