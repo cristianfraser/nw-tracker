@@ -7,6 +7,7 @@ import {
   assignCheckingGastosMovementCategory,
   checkingGastosMovementBelongs,
 } from "./flowsCheckingGastos.js";
+import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 
 export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual";
 
@@ -28,8 +29,9 @@ export function assignFlowExpenseLineCategory(opts: {
   }
 
   if (opts.lineId < 0) {
+    const purchaseId = purchaseIdFromPlanGastosLineId(opts.lineId) ?? -opts.lineId;
     return assignCcExpenseCategoryForManualLedgerInstallmentPurchase({
-      purchaseId: -opts.lineId,
+      purchaseId,
       unique: opts.unique,
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,

@@ -21,6 +21,12 @@ export function installmentPlanGastosLineId(purchaseDbId: number, installmentInd
   return -PLAN_LINE_ID_OFFSET - purchaseDbId * 1_000 - installmentIndex;
 }
 
+/** Returns the cc_installment_purchases.id encoded in a plan gastos line id, or null if not a plan line. */
+export function purchaseIdFromPlanGastosLineId(lineId: number): number | null {
+  if (lineId >= -PLAN_LINE_ID_OFFSET) return null;
+  return Math.floor((-lineId - PLAN_LINE_ID_OFFSET) / 1_000);
+}
+
 type PurchaseMeta = {
   id: number;
   account_id: number;
