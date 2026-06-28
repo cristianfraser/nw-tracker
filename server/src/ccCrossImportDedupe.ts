@@ -30,6 +30,19 @@ export function purchaseAmountsMatch(a: number, b: number): boolean {
   return Math.abs(a - b) <= tol;
 }
 
+/**
+ * Strip BCI Lider merchant suffixes before cross-source comparison:
+ * - PDF merchants append " (T)" (e.g. "ENTEL HOGAR (T)")
+ * - Web-paste merchants append ",CITY" (e.g. "ENTEL HOGAR,SANTIAGO")
+ */
+function normalizeBciMerchantForDedupe(merchant: string | null | undefined): string {
+  const s = normalizeCcExpenseMerchantKey(merchant);
+  return s
+    .replace(/\s*\(T\)\s*$/i, "")   // strip trailing " (T)" from PDF lines
+    .replace(/,\s*[A-ZÁÉÍÓÚÑ ]+$/i, "") // strip trailing ",CITY" from web-paste lines
+    .trim();
+}
+
 export function merchantsMatchForCrossDedupe(
   a: string | null | undefined,
   b: string | null | undefined
@@ -38,6 +51,10 @@ export function merchantsMatchForCrossDedupe(
   const nb = normalizeCcExpenseMerchantKey(b);
   if (na && nb && na === nb) return true;
   if (plazaLyonMerchantsMatch(a, b)) return true;
+  // BCI Lider: PDF adds " (T)", web-paste adds ",CITY" — strip both and compare.
+  const ba = normalizeBciMerchantForDedupe(a);
+  const bb = normalizeBciMerchantForDedupe(b);
+  if (ba && bb && ba === bb) return true;
   const sa = merchantStemForInstallmentDedupe(a);
   const sb = merchantStemForInstallmentDedupe(b);
   if (!sa || !sb) return false;

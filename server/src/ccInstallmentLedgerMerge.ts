@@ -351,33 +351,49 @@ export function mergeCcAccountFromParsedRows(
   }
 ): CcAccountImportMergeResult {
   const replaceKeys = opts?.replaceStatementKeys;
+  // Validate before writing anything — throws if reconcile pre-checks fail.
   assertCcImportReconcilesOrThrow(accountId, records, {
     replaceStatementKeys: replaceKeys,
   });
-  const statements = importCcStatementsMerge(accountId, records, {
-    replaceAll: false,
-    replaceStatementKeys: replaceKeys,
-    skipGlobalDedupeKeys: true,
-    ...opts?.statements,
-  });
-  const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
-    replaceLedger: opts?.replaceLedger ?? false,
-  });
-  const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(
-    accountId,
-    records
-  );
-  const overlap = removeOneShotLinesSupersededByInstallmentPurchases(accountId);
-  const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId);
-  const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records);
-  return {
-    statements,
-    ledger,
-    overlap_removed: overlap.removed_count,
-    manual_installment_reconcile,
-    web_paste_repair,
-    web_paste_pdf_reconcile,
-  };
+
+  // All writes in one transaction so a mid-merge error (e.g. missing import) leaves
+  // no partial state and a retry is a true no-op.
+  const result = db.transaction((): CcAccountImportMergeResult => {
+    const statements = importCcStatementsMerge(accountId, records, {
+      replaceAll: false,
+      replaceStatementKeys: replaceKeys,
+      skipGlobalDedupeKeys: true,
+      ...opts?.statements,
+    });
+    const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
+      replaceLedger: opts?.replaceLedger ?? false,
+    });
+    const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(
+      accountId,
+      records
+    );
+    const overlap = removeOneShotLinesSupersededByInstallmentPurchases(accountId);
+    const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId, {
+      skipRecompute: true,
+    });
+    const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records, {
+      skipRecompute: true,
+    });
+    return {
+      statements,
+      ledger,
+      overlap_removed: overlap.removed_count,
+      manual_installment_reconcile,
+      web_paste_repair,
+      web_paste_pdf_reconcile,
+    };
+  })();
+
+  // Recompute billing balances once after the transaction commits so it reads
+  // the fully-consistent post-merge state.
+  recomputeCcBillingMonthBalances(accountId);
+
+  return result;
 }
 
 export function replaceStatementKeysFromRecords(records: CcStatementCsvRecord[]): Set<string> {
