@@ -411,10 +411,10 @@ describe("flowsCreditCardExpenses", () => {
   it("annuls APPLE purchase when a matching NOTA DE CREDITO appears later", () => {
     const payload = buildFlowsCreditCardExpensesPayload();
     const apple = payload.lines.find(
-      (ln) => ln.statement_line_id === 23086 && ln.merchant === "APPLE.COM CL"
+      (ln) => ln.merchant === "APPLE.COM CL" && ln.nota_credito_role === "annulled_purchase"
     );
     const nota = payload.lines.find(
-      (ln) => ln.statement_line_id === 23138 && ln.merchant === "NOTA DE CREDITO"
+      (ln) => ln.merchant === "NOTA DE CREDITO" && ln.nota_credito_role === "matched_nota"
     );
     if (!apple || !nota) return;
 
@@ -437,7 +437,7 @@ describe("flowsCreditCardExpenses", () => {
         );
       })
       .map((ln) => ln.statement_line_id);
-    expect(novCountedIds).not.toContain(23086);
+    expect(novCountedIds).not.toContain(apple.statement_line_id);
 
     const dec = payload.by_month.find((m) => m.period_month === "2024-12");
     expect(dec).toBeDefined();

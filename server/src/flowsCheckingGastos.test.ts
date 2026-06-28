@@ -1089,7 +1089,13 @@ describe("flowsCheckingGastos", () => {
 
     const lines = buildCheckingGastosLines();
     if (lines.length === 0) return;
-    const decLines = lines.filter((l) => l.statement_line_id === 1374);
+    const movId = (
+      db.prepare(
+        `SELECT id FROM movements WHERE account_id = ? AND occurred_on = '2024-12-10' AND amount_clp = -4600000 LIMIT 1`
+      ).get(checkingAccountId()) as { id: number } | undefined
+    )?.id;
+    if (movId == null) return;
+    const decLines = lines.filter((l) => l.statement_line_id === movId);
     const dec10Gastos = decLines.find((l) => !l.checking_purchase_portion);
     const dec10Deposit = decLines.find((l) => l.checking_purchase_portion === "deposit");
     if (dec10Gastos == null || dec10Deposit == null) return;
@@ -1100,16 +1106,16 @@ describe("flowsCheckingGastos", () => {
     expect(dec10Gastos?.expense_month).toBe("2024-12");
   });
 
-  it("excludes duplicate Fintual reserva wires from Jan 2025 gastos", () => {
+  it("excludes Fintual reserva wires from Jan 2025 gastos", () => {
     const lines = buildCheckingGastosLines();
-    const fintualJan9 = lines.filter(
+    const fintualJan = lines.filter(
       (l) =>
         l.source === "checking" &&
         l.expense_month === "2025-01" &&
         l.merchant?.includes("FINTUAL")
     );
-    expect(fintualJan9.some((l) => l.statement_line_id === 1399)).toBe(false);
-    expect(fintualJan9.some((l) => l.statement_line_id === 1400)).toBe(false);
+    // Fintual wires are capital flows, not gastos; they must be excluded by isExcludedCheckingWithdrawal.
+    expect(fintualJan).toHaveLength(0);
   });
 
   it("investment deposit match ignores cash/efectivo inflows", () => {
