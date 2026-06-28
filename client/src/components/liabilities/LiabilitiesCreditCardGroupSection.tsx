@@ -10,7 +10,6 @@ import {
   buildCcBillingMonthChartPoints,
   buildCcHistorialChartRows,
 } from "../../pages/accountDetail/ccChartData";
-import { MONTHLY_PERF_COLLAPSED } from "../../pages/accountDetail/shared";
 import type { AccountCcInstallmentsResponse, TimeseriesBlock } from "../../types";
 import { CreditCardSummaryCards } from "./CreditCardSummaryCards";
 import styles from "../../pages/AccountDetailPage.module.css";
@@ -120,7 +119,6 @@ export function LiabilitiesCreditCardGroupSection({
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}
-            collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
           />
         </>
       ) : null}

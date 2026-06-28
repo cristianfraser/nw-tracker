@@ -20,7 +20,6 @@ import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import {
-  ACCOUNT_FLOWS_COLLAPSED,
   MONTHLY_PERF_COLLAPSED,
   isDeptoMortgageCategory,
   isDeptoPropertyCategory,
@@ -50,10 +49,6 @@ export function StandardAccountDetailPage({ data }: Props) {
     accChartPoints,
     valuationBlockForChart,
     accountChartTheme,
-    movementsOnlyPersonalDeposits,
-    setMovementsOnlyPersonalDeposits,
-    displayedFlows,
-    allFlows,
     checkingCartolaMonths,
     extraCcOffsets,
   } = data;
@@ -379,7 +374,6 @@ export function StandardAccountDetailPage({ data }: Props) {
                 key={`${id}-${displayUnit}-mp-detail`}
                 rows={monthlyPerfRows}
                 displayUnit={displayUnit}
-                collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
                 isMortgageAccount={isMortgageAccount}
                 isAfpAccount={isAfpAccount}
                 movementUnitsKind={movementUnitsKind}
@@ -481,15 +475,8 @@ export function StandardAccountDetailPage({ data }: Props) {
             />
           ) : null
         }
-        rows={displayedFlows.map((row) => ({
-          ...row,
-          category_slug: summary.category_slug ?? undefined,
-        }))}
-        totalCount={allFlows.length}
-        movementsOnlyPersonalDeposits={movementsOnlyPersonalDeposits}
-        onMovementsOnlyPersonalDepositsChange={setMovementsOnlyPersonalDeposits}
+        accountId={summary.account_id}
         movementUnitsKind={movementUnitsKind}
-        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
       />
     </AccountDetailSharedLayout>
   );

@@ -235,6 +235,11 @@ export function formatUfBalance(uf: number | null | undefined): string {
   return formatUfUnitsFine(uf);
 }
 
+/** Returns `fmt(value)` when value is a finite number, otherwise `"—"`. */
+export function formatOrDash(value: number | null | undefined, fmt: (n: number) => string): string {
+  return value != null && Number.isFinite(value) ? fmt(value) : "—";
+}
+
 export type PieMoneyUnit = "clp" | "usd";
 
 /** Legend / tooltips on pies: CLP whole pesos; USD with cents and en-US grouping. */

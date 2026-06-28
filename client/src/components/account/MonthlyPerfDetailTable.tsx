@@ -2,12 +2,17 @@ import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatClpUfDay, formatInstrumentUnits, formatUfBalance, formatUsdFine } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
-import { PaginatedTable } from "../ui/PaginatedTable";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
+import { Table } from "../ui/Table";
 import {
   TableMobileCard,
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
+import { formatYmEs } from "../../pages/accountDetail/shared";
+
+const PAGE_SIZE = 12;
 
 function cellPct(p: number | null | undefined) {
   if (p == null || !Number.isFinite(p)) return "—";
@@ -31,6 +36,79 @@ function formatStockInflow(
   return formatInstrumentUnits(u, kind);
 }
 
+function formatPerfPeriodLabel(asOfDate: string, isYearly: boolean): string {
+  if (isYearly) return asOfDate.slice(0, 4);
+  const ym = asOfDate.slice(0, 7);
+  return formatYmEs(ym);
+}
+
+function decadeStartYear(y: number): number {
+  // Decade: 2020–2029, 2010–2019, etc. (resets on years ending in 0)
+  return y - (y % 10);
+}
+
+function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {
+  if (!rows.length) return [];
+
+  const byYear = new Map<string, PerfRow[]>();
+  for (const row of rows) {
+    const year = row.as_of_date.slice(0, 4);
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year)!.push(row);
+  }
+
+  // Build annual rows ascending, then compute DTD as running sum within each decade
+  const yearsAsc = [...byYear.keys()].sort((a, b) => a.localeCompare(b));
+
+  let dtdSum = 0;
+  let currentDecadeStart = -1;
+
+  const ascRows: PerfRow[] = yearsAsc.map((year) => {
+    const monthRows = byYear.get(year)!;
+    // Sort months ascending for compound return (rows arrive desc from caller)
+    const monthsAsc = [...monthRows].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+    const latest = monthRows[0]; // desc-sorted → first is latest
+
+    const netCapitalFlow = monthRows.reduce((s, r) => s + (r.net_capital_flow ?? 0), 0);
+    const stockUnitsInflow = monthRows.reduce((s, r) => s + (r.stock_units_inflow ?? 0), 0);
+    const nominalPl = monthRows.reduce((s, r) => s + (r.nominal_pl ?? 0), 0);
+
+    // Compound monthly returns: Π(1 + pct_month) - 1
+    const pctYear = monthsAsc.reduce((prod, r) => {
+      const p = r.pct_month;
+      return prod * (1 + (p != null && Number.isFinite(p) ? p : 0));
+    }, 1) - 1;
+
+    // DTD: running sum within decade, reset at decade boundary
+    const y = Number(year);
+    const ds = decadeStartYear(y);
+    if (ds !== currentDecadeStart) {
+      dtdSum = 0;
+      currentDecadeStart = ds;
+    }
+    dtdSum += nominalPl;
+
+    const mortgageLast = latest as AccountMonthlyPerformanceRow;
+
+    return {
+      ...latest,
+      as_of_date: `${year}-12-31`,
+      net_capital_flow: netCapitalFlow,
+      stock_units_inflow: stockUnitsInflow,
+      nominal_pl: nominalPl,
+      pct_month: pctYear,
+      ytd_nominal_pl: dtdSum,
+      cumulative_nominal_pl: latest.cumulative_nominal_pl,
+      closing_value: latest.closing_value,
+      closing_balance_uf: mortgageLast.closing_balance_uf,
+      uf_clp_day: mortgageLast.uf_clp_day,
+    } as PerfRow;
+  });
+
+  // Return newest-first for the table
+  return ascRows.reverse();
+}
+
 function MonthlyPerfDetailMobileCard({
   row,
   fmtPerf,
@@ -38,6 +116,7 @@ function MonthlyPerfDetailMobileCard({
   isAfpAccount,
   showStockInflowsColumn,
   movementUnitsKind,
+  isYearly,
   labels,
 }: {
   row: PerfRow;
@@ -46,6 +125,7 @@ function MonthlyPerfDetailMobileCard({
   isAfpAccount: boolean;
   showStockInflowsColumn: boolean;
   movementUnitsKind?: (slug: string) => "shares" | "coin";
+  isYearly: boolean;
   labels: {
     closing: string;
     ufDay: string;
@@ -62,7 +142,7 @@ function MonthlyPerfDetailMobileCard({
     isMortgageAccount && "closing_balance_uf" in row ? (row as AccountMonthlyPerformanceRow) : null;
 
   return (
-    <TableMobileCard title={row.as_of_date}>
+    <TableMobileCard title={formatPerfPeriodLabel(row.as_of_date, isYearly)}>
       <TableMobileCardSection>
         <TableMobileCardRow label={labels.closing} value={fmtPerf(row.closing_value)} />
         {isMortgageAccount ? (
@@ -110,7 +190,6 @@ function MonthlyPerfDetailMobileCard({
 export function MonthlyPerfDetailTable({
   rows,
   displayUnit,
-  collapsedVisibleRows = 12,
   isMortgageAccount = false,
   isAfpAccount = false,
   movementUnitsKind,
@@ -118,7 +197,6 @@ export function MonthlyPerfDetailTable({
 }: {
   rows: readonly PerfRow[];
   displayUnit: "clp" | "usd";
-  collapsedVisibleRows?: number;
   isMortgageAccount?: boolean;
   isAfpAccount?: boolean;
   movementUnitsKind?: (slug: string) => "shares" | "coin";
@@ -126,16 +204,23 @@ export function MonthlyPerfDetailTable({
   showStockInflowsColumn?: boolean;
 }) {
   const { t } = useTranslation();
+  const { metricsPeriod } = useDisplayPreferences();
+  const isYearly = metricsPeriod === "year";
+
   const fmtPerf: FmtPerf = (n) => {
     if (n == null || !Number.isFinite(n)) return "—";
     return displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
   };
 
-  const plLabel = isMortgageAccount ? "Coste fin. mes" : "P/L mes";
-  const pctLabel = isMortgageAccount ? "% s/ saldo ant." : "% mes";
-  const ytdLabel = isMortgageAccount ? "Coste fin. YTD" : "P/L YTD";
-  const cumLabel = isMortgageAccount ? "Coste fin. acum." : "P/L acum.";
-  const inflowLabel = isAfpAccount ? "Cuotas (aportes)" : "Stock inflows";
+  const plLabel = isMortgageAccount ? t("accountDetail.perf.plMortgage") : t("accountDetail.perf.plInvestment");
+  const pctLabel = isMortgageAccount
+    ? (isYearly ? t("accountDetail.perf.pctMortgageYearly") : t("accountDetail.perf.pctMortgageMonthly"))
+    : (isYearly ? t("accountDetail.perf.pctInvestmentYearly") : t("accountDetail.perf.pctInvestmentMonthly"));
+  const ytdLabel = isMortgageAccount
+    ? (isYearly ? t("accountDetail.perf.ytdMortgageYearly") : t("accountDetail.perf.ytdMortgageMonthly"))
+    : (isYearly ? t("accountDetail.perf.ytdInvestmentYearly") : t("accountDetail.perf.ytdInvestmentMonthly"));
+  const cumLabel = isMortgageAccount ? t("accountDetail.perf.cumMortgage") : t("accountDetail.perf.cumInvestment");
+  const inflowLabel = isAfpAccount ? t("accountDetail.perf.inflowAfp") : t("accountDetail.perf.inflowDefault");
 
   const mobileLabels = {
     closing: t("accountDetail.closingColumn"),
@@ -149,64 +234,68 @@ export function MonthlyPerfDetailTable({
     cum: cumLabel,
   };
 
-  const pages = useMemo(() => {
-    const byYear = new Map<string, PerfRow[]>();
-    for (const row of rows) {
-      const year = String(row.as_of_date ?? "").slice(0, 4);
-      const bucket = byYear.get(year) ?? [];
-      bucket.push(row);
-      byYear.set(year, bucket);
-    }
+  const sortedRows = useMemo(
+    () => [...rows].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date)),
+    [rows]
+  );
 
-    const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
-    return yearsAsc.map((year, pageNumber) => ({
-      pageNumber,
-      data: byYear.get(year) ?? [],
-    }));
-  }, [rows]);
+  const displayRows = useMemo(
+    () => isYearly ? rollupMonthlyPerfRowsYearly(sortedRows) : sortedRows,
+    [sortedRows, isYearly]
+  );
+
+  const { page, setPage, pageRows, total } = useClientPagination(displayRows, PAGE_SIZE);
+
+  const periodColumnLabel = isYearly
+    ? t("accountDetail.yearColumn")
+    : t("accountDetail.monthCloseColumn");
+
+  const header = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{periodColumnLabel}</th>
+        <th className="desktop-only">{t("accountDetail.closingColumn")}</th>
+        {isMortgageAccount ? (
+          <>
+            <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
+              {t("accountDetail.ufDayColumn")}
+            </th>
+            <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
+              {t("accountDetail.balanceUfColumn")}
+            </th>
+          </>
+        ) : null}
+        <th className="desktop-only">{t("accountDetail.netDepositsColumn")}</th>
+        {showStockInflowsColumn ? (
+          <th className="desktop-only">{inflowLabel}</th>
+        ) : null}
+        <th className="desktop-only">{plLabel}</th>
+        <th className="desktop-only">{pctLabel}</th>
+        <th className="desktop-only">{ytdLabel}</th>
+        <th className="desktop-only">{cumLabel}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
 
   return (
     <PaginatedTable
-      pages={pages}
-      collapsedVisibleRows={collapsedVisibleRows}
-      showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
-      showLessLabel={t("table.showLessMonths")}
-      tableClassName="table--parallel-mobile"
-      header={
-        <thead>
-          <tr>
-            <th className="desktop-only">{t("accountDetail.monthCloseColumn")}</th>
-            <th className="desktop-only">{t("accountDetail.closingColumn")}</th>
-            {isMortgageAccount ? (
-              <>
-                <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
-                  {t("accountDetail.ufDayColumn")}
-                </th>
-                <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
-                  {t("accountDetail.balanceUfColumn")}
-                </th>
-              </>
-            ) : null}
-            <th className="desktop-only">{t("accountDetail.netDepositsColumn")}</th>
-            {showStockInflowsColumn ? (
-              <th className="desktop-only">{inflowLabel}</th>
-            ) : null}
-            <th className="desktop-only">{plLabel}</th>
-            <th className="desktop-only">{pctLabel}</th>
-            <th className="desktop-only">{ytdLabel}</th>
-            <th className="desktop-only">{cumLabel}</th>
-            <th className="mobile-only" aria-hidden="true" />
-          </tr>
-        </thead>
-      }
-      getPageLabel={(page) => page.data[0]?.as_of_date.slice(0, 4) ?? String(page.pageNumber)}
-      renderBody={(pageRows) =>
-        pageRows.map((row) => {
+      page={page}
+      pageSize={PAGE_SIZE}
+      total={total}
+      onPageChange={setPage}
+    >
+      <Table
+        key={`monthly-detail-page-${page}-${metricsPeriod}`}
+        header={header}
+        tableClassName="table--parallel-mobile"
+      >
+        {pageRows.map((row) => {
           const mortgageRow =
             isMortgageAccount && "closing_balance_uf" in row ? (row as AccountMonthlyPerformanceRow) : null;
           return (
             <tr key={row.as_of_date}>
-              <td className="mono desktop-only">{row.as_of_date}</td>
+              <td className="mono desktop-only">{formatPerfPeriodLabel(row.as_of_date, isYearly)}</td>
               <td className="mono desktop-only">{fmtPerf(row.closing_value)}</td>
               {isMortgageAccount ? (
                 <>
@@ -240,13 +329,14 @@ export function MonthlyPerfDetailTable({
                   isAfpAccount={isAfpAccount}
                   showStockInflowsColumn={showStockInflowsColumn}
                   movementUnitsKind={movementUnitsKind}
+                  isYearly={isYearly}
                   labels={mobileLabels}
                 />
               </td>
             </tr>
           );
-        })
-      }
-    />
+        })}
+      </Table>
+    </PaginatedTable>
   );
 }

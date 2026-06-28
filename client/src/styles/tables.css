@@ -197,13 +197,22 @@ tr:hover td {
 }
 
 .flows-table {
-  table-layout: fixed;
+  table-layout: auto;
   width: 100%;
 }
 
 .flows-table th.flows-table__account,
 .flows-table td.flows-table__account {
-  width: 22%;
+  width: auto;
+}
+
+/* Note column absorbs all leftover space; td truncates with ellipsis */
+.flows-table th.flows-table__note {
+  width: 99%;
+}
+
+.flows-table td.flows-table__note {
+  max-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

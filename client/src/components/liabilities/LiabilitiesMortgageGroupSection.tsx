@@ -6,7 +6,6 @@ import { MonthlyPerformanceComboChart } from "../charts/MonthlyPerformanceComboC
 import { LineChartPanel } from "../charts/ValuationLineCharts";
 import { DeptoAccountSummaryCards } from "../../pages/accountDetail/DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "../../pages/accountDetail/MortgageTables";
-import { MONTHLY_PERF_COLLAPSED } from "../../pages/accountDetail/shared";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { rollupPerfPointsYearly } from "../../dashboardTimeseriesYearly";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
@@ -174,7 +173,6 @@ export function LiabilitiesMortgageGroupSection({
           <MonthlyPerfDetailTable
             rows={monthlyPerfRows}
             displayUnit={displayUnit}
-            collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
             isMortgageAccount
             showStockInflowsColumn={false}
           />

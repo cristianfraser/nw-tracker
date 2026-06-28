@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { cn } from "../../cn";
-import { FlowsTable } from "../account/FlowsTable";
+import { FlowsPanel } from "../account/FlowsPanel";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
@@ -13,15 +13,9 @@ import {
 } from "../../useGroupInfoConsolidatedTables";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { InversionesPeriodMetricsDto } from "../../portfolioNavDashboardCards";
-import {
-  buildPlaceholderConsolidatedMonthlyRows,
-  buildPlaceholderGroupFlowRows,
-} from "../../placeholders/groupPageTablePlaceholders";
+import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
-
-const GROUP_MONTHLY_PERF_COLLAPSED = 12;
-const GROUP_FLOWS_COLLAPSED = 10;
 
 export type GroupInfoPortfolioStrip = {
   navNode: NavTreeNodeDto;
@@ -90,7 +84,7 @@ export function GroupInfoBase({
   const tablesEnabled =
     !hideConsolidatedTables &&
     (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
-  const { consolidatedMonthlyPerf, consolidatedFlows, tableFlags, tablesLoading, tablesError } =
+  const { consolidatedMonthlyPerf, tableFlags, tablesLoading, tablesError } =
     useGroupInfoConsolidatedTables(
       portfolio?.groupSlug ?? "",
       tableAccounts,
@@ -100,17 +94,14 @@ export function GroupInfoBase({
 
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
   const placeholderMonthlyRows = useMemo(() => buildPlaceholderConsolidatedMonthlyRows(), []);
-  const placeholderFlowRows = useMemo(
-    () => buildPlaceholderGroupFlowRows(tableAccounts),
-    [tableAccounts]
-  );
+
   const monthlyRows = loading
     ? placeholderMonthlyRows
     : tablesLoading
       ? []
       : consolidatedMonthlyPerf;
 
-  const flowRows = loading ? placeholderFlowRows : consolidatedFlows;
+  const flowsEnabled = tablesEnabled && Boolean(portfolio?.groupSlug) && !loading;
 
   return (
     <main className={mainClassName}>
@@ -146,7 +137,6 @@ export function GroupInfoBase({
               <MonthlyPerfDetailTable
                 rows={monthlyRows}
                 displayUnit={displayUnit}
-                collapsedVisibleRows={GROUP_MONTHLY_PERF_COLLAPSED}
                 isMortgageAccount={tableFlags.isMortgageAccount}
                 showStockInflowsColumn={false}
               />
@@ -161,12 +151,11 @@ export function GroupInfoBase({
             {tablesError ? (
               <p className="error">{tablesError}</p>
             ) : (
-              <FlowsTable
-                rows={flowRows}
-                collapsedVisibleRows={GROUP_FLOWS_COLLAPSED}
-                showAccountColumn
+              <FlowsPanel
+                kind="group"
+                groupSlug={portfolio?.groupSlug ?? ""}
                 showUnitsColumn={false}
-                emptyMessage={t("accountDetail.flowsEmpty")}
+                enabled={flowsEnabled}
               />
             )}
           </>

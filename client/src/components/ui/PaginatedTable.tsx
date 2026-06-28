@@ -1,79 +1,59 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { Table } from "./Table";
 
-export type PaginatedTablePage<T> = {
-  pageNumber: number;
-  data: readonly T[];
-};
+/** Client-side pagination state + page slice. Pass the full sorted array; get back the current page's rows. */
+export function useClientPagination<T>(rows: readonly T[], pageSize: number) {
+  const [page, setPage] = useState(1);
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const pageRows = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, safePage, pageSize]);
+  return { page: safePage, setPage, pageRows, total };
+}
 
-export type PaginatedTableProps<T> = {
-  header: ReactNode;
-  pages: readonly PaginatedTablePage<T>[];
-  renderBody: (rows: readonly T[]) => ReactNode;
-
-  collapsedVisibleRows?: number;
-  showMoreLabel?: string | ((hiddenCount: number) => string);
-  showLessLabel?: string;
-
-  tableStyle?: CSSProperties;
-  tableClassName?: string;
+export type PaginatedTableProps = {
+  /** Current page number, 1-based. */
+  page: number;
+  pageSize: number;
+  /** Total rows across all pages. */
+  total: number;
+  onPageChange: (page: number) => void;
+  /** Optional filter bar rendered above the controls + table. */
+  filters?: ReactNode;
+  /** Dim table while a server request is in flight (keepPreviousData). */
+  loading?: boolean;
   wrapStyle?: CSSProperties;
   wrapClassName?: string;
-
-  /**
-   * Optional label for the year dropdown.
-   * For example: "2022".
-   */
-  getPageLabel?: (page: PaginatedTablePage<T>) => ReactNode;
+  children: ReactNode;
 };
 
 /**
- * Uncontrolled pagination helper on top of `Table`.
- * It shows prev/next buttons plus a year dropdown and renders only the selected page rows.
+ * Controlled prev/next/select paginator.
+ * The caller slices rows (client-side) or fetches a server page and passes them as children.
  */
-export function PaginatedTable<T>({
-  header,
-  pages,
-  renderBody,
-  collapsedVisibleRows,
-  showMoreLabel,
-  showLessLabel,
-  getPageLabel,
-  tableStyle,
-  tableClassName,
+export function PaginatedTable({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  filters,
+  loading = false,
   wrapStyle,
   wrapClassName,
-}: PaginatedTableProps<T>) {
+  children,
+}: PaginatedTableProps) {
   const { t } = useTranslation();
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
 
-  const canPaginate = pages.length > 1;
-
-  const [currentPageIndex, setCurrentPageIndex] = useState(() => Math.max(0, pages.length - 1));
-
-  // If the dataset changes (e.g. different account/year range), clamp selection to valid range.
-  useEffect(() => {
-    if (pages.length === 0) {
-      setCurrentPageIndex(0);
-      return;
-    }
-    setCurrentPageIndex((prev) => Math.min(Math.max(prev, 0), pages.length - 1));
-  }, [pages.length]);
-
-  const pageRows = pages[currentPageIndex]?.data ?? [];
-
-  const hiddenCount = useMemo(() => {
-    if (typeof collapsedVisibleRows !== "number" || collapsedVisibleRows <= 0) return 0;
-    return Math.max(0, pageRows.length - collapsedVisibleRows);
-  }, [collapsedVisibleRows, pageRows.length]);
-
-  const showMoreLabelResolved = useMemo(() => {
-    if (typeof showMoreLabel === "function") return showMoreLabel(hiddenCount);
-    return showMoreLabel;
-  }, [showMoreLabel, hiddenCount]);
+  const canPaginate = totalPages > 1;
 
   return (
-    <div>
+    <div className={wrapClassName} style={wrapStyle}>
+      {filters ? <div style={{ marginBottom: "0.5rem" }}>{filters}</div> : null}
       {canPaginate ? (
         <div
           style={{
@@ -87,8 +67,8 @@ export function PaginatedTable<T>({
           <button
             type="button"
             className="muted"
-            disabled={currentPageIndex === 0}
-            onClick={() => setCurrentPageIndex((i) => Math.max(0, i - 1))}
+            disabled={safePage <= 1}
+            onClick={() => onPageChange(safePage - 1)}
             style={{ padding: "0.15rem 0.35rem" }}
           >
             {t("table.paginationPrev")}
@@ -97,47 +77,35 @@ export function PaginatedTable<T>({
           <label className="muted" style={{ fontSize: "0.9rem" }}>
             {t("table.paginationPageAria")}
             <select
-              value={currentPageIndex}
-              onChange={(e) => setCurrentPageIndex(Number(e.target.value))}
+              value={safePage}
+              onChange={(e) => onPageChange(Number(e.target.value))}
               style={{ marginLeft: "0.5rem" }}
             >
-              {pages.map((page, idx) => {
-                const label = getPageLabel?.(page) ?? page.pageNumber;
-                return (
-                  <option key={`${page.pageNumber}-${idx}`} value={idx}>
-                    {label}
-                  </option>
-                );
-              })}
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
             </select>
           </label>
 
           <button
             type="button"
             className="muted"
-            disabled={currentPageIndex === pages.length - 1}
-            onClick={() => setCurrentPageIndex((i) => Math.min(pages.length - 1, i + 1))}
+            disabled={safePage >= totalPages}
+            onClick={() => onPageChange(safePage + 1)}
             style={{ padding: "0.15rem 0.35rem" }}
           >
             {t("table.paginationNext")}
           </button>
+
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            {t("table.paginationPageOf", { page: safePage, total: totalPages })}
+          </span>
         </div>
       ) : null}
 
-      <Table
-        key={`paginated-table-${currentPageIndex}`}
-        collapsedVisibleRows={collapsedVisibleRows}
-        showMoreLabel={showMoreLabelResolved}
-        showLessLabel={showLessLabel}
-        header={header}
-        tableStyle={tableStyle}
-        tableClassName={tableClassName}
-        wrapStyle={wrapStyle}
-        wrapClassName={wrapClassName}
-      >
-        {renderBody(pageRows)}
-      </Table>
+      <div style={{ opacity: loading ? 0.5 : 1, transition: "opacity 0.15s" }}>{children}</div>
     </div>
   );
 }
-
