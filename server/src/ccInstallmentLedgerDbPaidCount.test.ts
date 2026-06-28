@@ -132,8 +132,8 @@ describe("ccInstallmentsDbApiPayload", () => {
     const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     insertedStatementIds.push(sid);
     db.prepare(
-      `INSERT INTO cc_statement_lines (statement_id, merchant, description_merged, amount_clp, installment_flag)
-       VALUES (?, 'NOTA DE CREDITO', 'SANTIAGO | NOTA DE CREDITO', ?, 0)`
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, description_merged, amount_clp, installment_flag)
+       VALUES (?, '2025-03-10', 'NOTA DE CREDITO', 'SANTIAGO | NOTA DE CREDITO', ?, 0)`
     ).run(sid, -54_990);
 
     const payload = ccInstallmentsDbApiPayload(master.id);
