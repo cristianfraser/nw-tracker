@@ -16,7 +16,6 @@ import {
   creditCardInstallmentPaymentsByBillingMonth,
   cupoEnCuotasClpForCalendarMonth,
   installmentRemainingClpByCalendarMonth,
-  ledgerFacturadoClpForBillingMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
@@ -233,53 +232,6 @@ export function openMonthFacturadoTotalClp(
   return uniquo + cuotaAPagarClp;
 }
 
-function closedFacturadoClpForPdfBillingMonth(
-  accountId: number,
-  priorPdfMonth: string,
-  slots: Map<string, CcStatementSlotByCurrency>
-): number | null {
-  const slot = slots.get(priorPdfMonth);
-  if (!slot) return null;
-  return facturadoTotalClpForStatementSlot(accountId, slot);
-}
-
-/**
- * Open month before PDF close: prior PDF facturado + único charges + ledger cuotas − abonos
- * + cuota_a_pagar_next_mes (installment dues for this billing cycle).
- * Returns null when there is no prior PDF month to roll forward.
- */
-export function openFacturadoEstimateClp(
-  accountId: number,
-  openBillingMonth: string,
-  slots: Map<string, CcStatementSlotByCurrency>,
-  ledgerMonths: CcInstallmentMonthRow[]
-): number | null {
-  const priorPdf = lastPdfBillingMonthForAccount(accountId);
-  if (!priorPdf || ymCompare(openBillingMonth, priorPdf) <= 0) return null;
-
-  const priorFacturado = closedFacturadoClpForPdfBillingMonth(accountId, priorPdf, slots);
-  if (priorFacturado == null || priorFacturado <= 0) return null;
-
-  const ledgerIncremental = ledgerFacturadoClpForBillingMonth(accountId, openBillingMonth);
-  const chargeIncremental = incrementalChargesClpForBillingMonth(accountId, openBillingMonth);
-  const incremental = chargeIncremental + ledgerIncremental;
-  const payments = paymentAbonosClpForBillingMonth(accountId, openBillingMonth);
-  const rolledBase = priorFacturado + incremental - payments;
-  const cuotaDue = cuotaAPagarNextMesClp(openBillingMonth, ledgerMonths, slots);
-  return Math.round(rolledBase + cuotaDue);
-}
-
-/** @deprecated Use {@link openFacturadoEstimateClp} */
-export function rolledFacturadoForOpenBillingMonth(
-  accountId: number,
-  openBillingMonth: string,
-  slots: Map<string, CcStatementSlotByCurrency>,
-  _statementOrBalanceFacturado: number | null,
-  ledgerMonths: CcInstallmentMonthRow[] = []
-): number | null {
-  void _statementOrBalanceFacturado;
-  return openFacturadoEstimateClp(accountId, openBillingMonth, slots, ledgerMonths);
-}
 
 /** Same balance rule as Detalle por mes / historial (closed statement months subtract next cuota). */
 export function billingDetailBalanceClp(
