@@ -16,6 +16,7 @@ import {
 } from "./ccInstallmentLedgerMerge.js";
 import { currencyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
+import { cardLast4FromParsedRow } from "./ccParsedImportAccounts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -44,11 +45,6 @@ export type CcStatementPdfImportResult = {
   };
   parse_failures: string[];
 };
-
-function cardLast4FromFilename(name: string): string | null {
-  const m = /(\d{4})\.pdf$/i.exec(name);
-  return m?.[1] ?? null;
-}
 
 function runParsePdfsInDir(pdfDir: string, outCsv: string): string[] {
   const env = {
@@ -156,15 +152,24 @@ export function importCcStatementPdfsForAccount(
     }
 
     const allRecords = readCommaCsvRecords(outCsv);
-    const allowedNames = new Set(uploadedNames);
     const records: CcStatementCsvRecord[] = [];
     const bySourcePdf = new Map<string, CcStatementCsvRecord[]>();
+    // Track what the uploaded PDFs actually resolved to, for a diagnosable error.
+    const seenLast4: Set<string> = new Set();
+    const seenAccountIds: Set<number> = new Set();
 
     for (const row of allRecords) {
       const src = String(row.source_pdf ?? "").trim();
-      if (!allowedNames.has(src)) continue;
-      const l4 = cardLast4FromFilename(src) ?? String(row.card_last4 ?? "").trim();
+      // The parser renames PDFs to canonical names (e.g. `155028273.pdf` →
+      // `2026-06-26 estado de cuenta tarjeta 4343.pdf`) so source_pdf never
+      // matches the original upload filename. The tmp dir is isolated to the
+      // uploaded files, so all rows here come from them — no allowedNames guard needed.
+      // Match parity with the CLI/inbox import: prefer the parser's card_last4,
+      // fall back to the filename only when it is absent.
+      const l4 = cardLast4FromParsedRow(row);
       const target = resolveMasterAccountIdForImportCardLast4(l4);
+      if (l4) seenLast4.add(l4);
+      if (target != null) seenAccountIds.add(target);
       if (target !== accountId) continue;
       records.push(row);
       const list = bySourcePdf.get(src) ?? [];
@@ -173,7 +178,12 @@ export function importCcStatementPdfsForAccount(
     }
 
     if (records.length === 0) {
-      throw new Error("No parsed rows matched this card account");
+      const last4s = [...seenLast4].sort().join(", ") || "none";
+      const accIds = [...seenAccountIds].sort((a, b) => a - b).join(", ") || "none";
+      throw new Error(
+        `No parsed rows matched this card account (account_id=${accountId}). ` +
+          `Parsed card last4: [${last4s}]; resolved to account ids: [${accIds}].`
+      );
     }
 
     const replaceKeys = replaceStatementKeysFromRecords(records);
