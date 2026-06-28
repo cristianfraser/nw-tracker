@@ -587,13 +587,11 @@ export function buildFacturaciones(
     let facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
     if (!hasPdfClose) {
-      const estimate = openFacturadoEstimateClp(accountId, billingMonth, byMonth, ledgerMonths);
-      if (estimate != null) {
-        facturadoTotal = estimate;
-      } else {
-        const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth);
-        facturadoTotal = uniquo + (cuotaAPagar ?? 0);
-      }
+      // Open month: "facturado" is what is billed in THIS cycle — únicos billed so far plus
+      // the cuota a pagar — not the prior unpaid balance rolled forward. The carried-over
+      // balance belongs to deuda/saldo (Detalle por mes), not to the facturación amount.
+      const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth);
+      facturadoTotal = uniquo + (cuotaAPagar ?? 0);
       facturadoClp = facturadoTotal - (facturadoUsdClp ?? 0);
     }
 
