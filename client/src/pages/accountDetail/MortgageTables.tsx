@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { useTranslation } from "../../i18n";
-import { PaginatedTable } from "../../components/ui/PaginatedTable";
+import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
+import { Table } from "../../components/ui/Table";
 import {
   TableMobileCard,
   TableMobileCardRow,
@@ -31,20 +31,6 @@ function tasaPlusLabel(n: number | null | undefined) {
   return `${n}%`;
 }
 
-function rowsByOccurredOnYear<T extends { occurred_on: string }>(rows: readonly T[]) {
-  const byYear = new Map<string, T[]>();
-  for (const row of rows) {
-    const year = row.occurred_on.slice(0, 4);
-    const bucket = byYear.get(year) ?? [];
-    bucket.push(row);
-    byYear.set(year, bucket);
-  }
-  const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
-  return yearsAsc.map((year, pageNumber) => ({
-    pageNumber,
-    data: byYear.get(year) ?? [],
-  }));
-}
 
 function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
   return (
@@ -144,16 +130,17 @@ export function MortgageDividendosTable({
   /** `property` = inmueble (incl. pie); `mortgage` = pasivo (solo cuotas / prepagos). */
   variant?: "property" | "mortgage";
 }) {
-  const { t } = useTranslation();
   const m = ledger.meta;
   const isMortgageView = variant === "mortgage";
-  // Display newest payments first. `occurred_on` is ISO-like (`YYYY-MM-DD`), so lexicographic
-  // order matches chronological order.
+
   const rowsSorted = useMemo(
     () => [...ledger.rows].sort((a, b) => String(b.occurred_on).localeCompare(String(a.occurred_on))),
     [ledger.rows]
   );
-  const pages = useMemo(() => rowsByOccurredOnYear(rowsSorted), [rowsSorted]);
+
+  // Display newest payments first. `occurred_on` is ISO-like (`YYYY-MM-DD`), so lexicographic
+  // order matches chronological order.
+  const { page, setPage, pageRows, total } = useClientPagination(rowsSorted, 12);
 
   return (
     <>
@@ -199,14 +186,10 @@ export function MortgageDividendosTable({
           </div>
         </div>
       )}
-      <PaginatedTable
-        pages={pages}
-        collapsedVisibleRows={12}
-        showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
-        showLessLabel={t("table.showLessMonths")}
-        tableClassName={cn("mortgage-sheet", "table--parallel-mobile", styles.tableMortgage)}
-        getPageLabel={(page) => page.data[0]?.occurred_on.slice(0, 4) ?? "—"}
-        header={
+      <PaginatedTable page={page} pageSize={12} total={total} onPageChange={setPage}>
+        <Table
+          tableClassName={cn("mortgage-sheet", "table--parallel-mobile", styles.tableMortgage)}
+          header={
           <thead>
             <tr>
               <th rowSpan={2} className="desktop-only">
@@ -334,17 +317,17 @@ export function MortgageDividendosTable({
             </tr>
           </thead>
         }
-        renderBody={(pageRows) =>
-          pageRows.map((row, idx) => (
+        >
+          {pageRows.map((row, idx) => (
             <tr key={`${row.cuota}-${row.occurred_on}-${idx}`}>
               <MortgageDividendosDesktopRow row={row} />
               <td className="mobile-only">
                 <MortgageDividendosMobileCard row={row} />
               </td>
             </tr>
-          ))
-        }
-      />
+          ))}
+        </Table>
+      </PaginatedTable>
     </>
   );
 }
@@ -416,9 +399,10 @@ function DeptoPaymentScenarioMobileCard({ row }: { row: DeptoPaymentScenarioRow 
 }
 
 export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }) {
-  const { t } = useTranslation();
   const rowsDisplay = useMemo(() => [...rows].reverse(), [rows]);
-  const pages = useMemo(() => rowsByOccurredOnYear(rowsDisplay), [rowsDisplay]);
+
+  const { page: scenarioPage, setPage: setScenarioPage, pageRows: scenarioPageRows, total: scenarioTotal } =
+    useClientPagination(rowsDisplay, 12);
 
   if (!rows.length) return null;
 
@@ -430,29 +414,25 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
         La primera fila es la próxima cuota proyectada. El pago mínimo (30 años) es editable en Numbers; el máximo
         (~80 UF) aproxima amortizar en 5 años al inicio del crédito.
       </p>
-      <PaginatedTable
-        pages={pages}
-        collapsedVisibleRows={12}
-        showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
-        showLessLabel={t("table.showLessMonths")}
-        tableClassName={cn("table--parallel-mobile", styles.tableScenario)}
-        getPageLabel={(page) => page.data[0]?.occurred_on.slice(0, 4) ?? "—"}
-        header={
-          <thead>
-            <tr>
-              <th className="desktop-only">Cuota</th>
-              <th className="desktop-only">Fecha</th>
-              {SCENARIO_TERMS.map((term) => (
-                <th key={String(term)} className={cn("desktop-only", styles.nowrap)}>
-                  {SCENARIO_TERM_LABELS[term]}
-                </th>
-              ))}
-              <th className="mobile-only" aria-hidden="true" />
-            </tr>
-          </thead>
-        }
-        renderBody={(pageRows) =>
-          pageRows.map((row) => {
+      <PaginatedTable page={scenarioPage} pageSize={12} total={scenarioTotal} onPageChange={setScenarioPage}>
+        <Table
+          tableClassName={cn("table--parallel-mobile", styles.tableScenario)}
+          header={
+            <thead>
+              <tr>
+                <th className="desktop-only">Cuota</th>
+                <th className="desktop-only">Fecha</th>
+                {SCENARIO_TERMS.map((term) => (
+                  <th key={String(term)} className={cn("desktop-only", styles.nowrap)}>
+                    {SCENARIO_TERM_LABELS[term]}
+                  </th>
+                ))}
+                <th className="mobile-only" aria-hidden="true" />
+              </tr>
+            </thead>
+          }
+        >
+          {scenarioPageRows.map((row) => {
             const byTerm = new Map(row.scenarios.map((s) => [s.term, s]));
             return (
               <tr key={`${row.cuota}-${row.occurred_on}`}>
@@ -479,9 +459,9 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
                 </td>
               </tr>
             );
-          })
-        }
-      />
+          })}
+        </Table>
+      </PaginatedTable>
     </>
   );
 }

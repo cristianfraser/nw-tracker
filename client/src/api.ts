@@ -328,6 +328,54 @@ export const api = {
       `/api/accounts/${id}/detail-bundle${qs ? `?${qs}` : ""}`
     );
   },
+  groupFlows: (
+    slug: string,
+    opts: {
+      page?: number;
+      pageSize?: number;
+      year?: string;
+      type?: string;
+      account_id?: number;
+      category?: string;
+      q?: string;
+    }
+  ) => {
+    const qu = new URLSearchParams();
+    if (opts.page) qu.set("page", String(opts.page));
+    if (opts.pageSize) qu.set("page_size", String(opts.pageSize));
+    if (opts.year) qu.set("year", opts.year);
+    if (opts.type) qu.set("type", opts.type);
+    if (opts.account_id != null) qu.set("account_id", String(opts.account_id));
+    if (opts.category) qu.set("category", opts.category);
+    if (opts.q) qu.set("q", opts.q);
+    const qs = qu.toString();
+    return j<import("./types").FlowsPageResponse>(
+      `/api/groups/${encodeURIComponent(slug)}/flows${qs ? `?${qs}` : ""}`
+    );
+  },
+  accountFlows: (
+    id: string | number,
+    opts: {
+      page?: number;
+      pageSize?: number;
+      year?: string;
+      type?: string;
+      q?: string;
+      personal_only?: boolean;
+    }
+  ) => {
+    const qu = new URLSearchParams();
+    if (opts.page) qu.set("page", String(opts.page));
+    if (opts.pageSize) qu.set("page_size", String(opts.pageSize));
+    if (opts.year) qu.set("year", opts.year);
+    if (opts.type) qu.set("type", opts.type);
+    if (opts.q) qu.set("q", opts.q);
+    if (opts.personal_only) qu.set("personal_only", "1");
+    const qs = qu.toString();
+    return j<import("./types").FlowsPageResponse>(
+      `/api/accounts/${id}/flows${qs ? `?${qs}` : ""}`
+    );
+  },
   groupMonthlyPerformance: (slug: string, unit: "clp" | "usd", subgroup?: string) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");

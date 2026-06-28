@@ -85,8 +85,8 @@
   "dashboard": {
     "title": "Dashboard",
     "chartGranularityLabel": "Período:",
-    "monthly": "MTD",
-    "yearly": "YTD",
+    "monthly": "Mensual",
+    "yearly": "Anual",
     "yearlyViewHint": "Vista anual: las valorizaciones usan el <1>último mes</1> de cada año calendario. El P/L de inversiones suma los <2>Δ mensuales</2> de ese año en un solo punto.",
     "cards": {
       "netWorth": "Patrimonio neto",
@@ -439,7 +439,7 @@
       "asOf": "Al"
     },
     "movements": {
-      "counterpartAccount": "Cuenta destino/origen"
+      "counterpartAccount": "In/Out"
     },
     "bookLedger": {
       "sectionTitle": "Valorización y flujos (manual)",
@@ -485,12 +485,29 @@
       "invalid": "Completa fecha y montos CLP válidos."
     },
     "flowsTitle": "Flujos",
-    "monthCloseColumn": "Mes (cierre)",
+    "monthCloseColumn": "Mes",
+    "yearColumn": "Año",
     "closingColumn": "Cierre",
     "ufDayColumn": "UF día",
     "balanceUfColumn": "Saldo UF",
     "priorClosingColumn": "Cierre ant.",
     "netDepositsColumn": "Aportes netos",
+    "perf": {
+      "plMortgage": "Coste financiero",
+      "plInvestment": "P/L",
+      "pctMortgageYearly": "% año",
+      "pctMortgageMonthly": "% s/ saldo ant.",
+      "pctInvestmentYearly": "% año",
+      "pctInvestmentMonthly": "% mes",
+      "ytdMortgageYearly": "Coste financiero DTD",
+      "ytdMortgageMonthly": "Coste financiero YTD",
+      "ytdInvestmentYearly": "P/L DTD",
+      "ytdInvestmentMonthly": "P/L YTD",
+      "cumMortgage": "Coste financiero acum.",
+      "cumInvestment": "P/L acum.",
+      "inflowAfp": "Cuotas (aportes)",
+      "inflowDefault": "Stock inflows"
+    },
     "flowTypeColumn": "Tipo",
     "flowDateColumn": "Fecha",
     "flowTickerColumn": "Ticker",
@@ -702,7 +719,8 @@
     "showLess": "Mostrar menos…",
     "paginationPrev": "Página anterior",
     "paginationNext": "Página siguiente",
-    "paginationPageAria": "Página"
+    "paginationPageAria": "Página",
+    "paginationPageOf": "Pág. {{page}} de {{total}}"
   },
   "common": {
     "loading": "Cargando…",
@@ -715,7 +733,18 @@
   },
   "flows": {
     "layoutTitle": "Flujos",
-    "subnavAria": "Secciones de flujos"
+    "subnavAria": "Secciones de flujos",
+    "filters": {
+      "year": "Año",
+      "allYears": "Todos los años",
+      "type": "Tipo",
+      "allTypes": "Todos los tipos",
+      "account": "Cuenta",
+      "allAccounts": "Todas las cuentas",
+      "category": "Categoría",
+      "allCategories": "Todas las categorías",
+      "notePlaceholder": "Buscar en nota…"
+    }
   },
   "income": {
     "intro": "Ingresos desde abonos de cartola en cuentas corrientes y cuenta vista, excluyendo traspasos internos y depósitos a inversiones.",
@@ -1006,7 +1035,7 @@
       "colMonthCuotaTotal": "Total cuota del mes",
       "colInstallmentDebt": "Deuda en cuotas",
       "colMonthBreakdown": "Detalle",
-      "monthCuotasBreakdownLine": "{{label}}: {{amount}} (cuota {{current}} de {{total}})",
+      "monthCuotasBreakdownLine": "{{current}}/{{total}} - {{label}}: {{amount}}",
       "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
       "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import)."
     }

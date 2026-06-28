@@ -1,28 +1,18 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "../../i18n";
-import type { FlowsTableRow } from "../../accountFlows";
-import { FlowsTable } from "./FlowsTable";
-import styles from "../../pages/AccountDetailPage.module.css";
+import { FlowsPanel } from "./FlowsPanel";
 
 export function AccountFlowsSection({
   hint,
   addMovementsForm,
-  rows,
-  totalCount,
-  movementsOnlyPersonalDeposits,
-  onMovementsOnlyPersonalDepositsChange,
+  accountId,
   movementUnitsKind,
-  collapsedVisibleRows,
 }: {
   hint: ReactNode;
   /** Brokerage manual movement entry, rendered under the Flujos heading. */
   addMovementsForm?: ReactNode;
-  rows: readonly FlowsTableRow[];
-  totalCount: number;
-  movementsOnlyPersonalDeposits: boolean;
-  onMovementsOnlyPersonalDepositsChange: (checked: boolean) => void;
+  accountId: number;
   movementUnitsKind?: (slug: string) => "shares" | "coin";
-  collapsedVisibleRows: number;
 }) {
   const { t } = useTranslation();
 
@@ -31,20 +21,7 @@ export function AccountFlowsSection({
       <h2>{t("accountDetail.flowsTitle")}</h2>
       {hint}
       {addMovementsForm}
-      <label className={styles.flowsFilterToggle}>
-        <input
-          type="checkbox"
-          checked={movementsOnlyPersonalDeposits}
-          onChange={(e) => onMovementsOnlyPersonalDepositsChange(e.target.checked)}
-        />
-        {t("accountDetail.flowsPersonalOnly")}
-      </label>
-      <FlowsTable
-        rows={rows}
-        collapsedVisibleRows={collapsedVisibleRows}
-        movementUnitsKind={movementUnitsKind}
-        totalCount={totalCount}
-      />
+      <FlowsPanel kind="account" accountId={accountId} movementUnitsKind={movementUnitsKind} showPersonalOnlyFilter />
     </>
   );
 }

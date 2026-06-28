@@ -538,3 +538,64 @@ export function useAccountDetailBundle(
     ...displayUnitQueryBehavior,
   });
 }
+
+export type FlowsQueryFilters = {
+  page: number;
+  pageSize: number;
+  year?: string;
+  type?: string;
+  account_id?: number;
+  category?: string;
+  q?: string;
+  personal_only?: boolean;
+};
+
+function serializeFlowFilters(f: FlowsQueryFilters): string {
+  return JSON.stringify({
+    p: f.page,
+    ps: f.pageSize,
+    y: f.year ?? "",
+    t: f.type ?? "",
+    a: f.account_id ?? "",
+    c: f.category ?? "",
+    q: f.q ?? "",
+    po: f.personal_only ?? false,
+  });
+}
+
+export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled = true) {
+  const filtersKey = useMemo(() => serializeFlowFilters(filters), [filters]);
+  return useQuery({
+    queryKey: queryKeys.groupFlows(slug, filtersKey),
+    queryFn: () =>
+      api.groupFlows(slug, {
+        page: filters.page,
+        pageSize: filters.pageSize,
+        year: filters.year,
+        type: filters.type,
+        account_id: filters.account_id,
+        category: filters.category,
+        q: filters.q,
+      }),
+    enabled: enabled && Boolean(slug),
+    ...displayUnitQueryBehavior,
+  });
+}
+
+export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilters, enabled = true) {
+  const filtersKey = useMemo(() => serializeFlowFilters(filters), [filters]);
+  return useQuery({
+    queryKey: queryKeys.accountFlows(id ?? "", filtersKey),
+    queryFn: () =>
+      api.accountFlows(id!, {
+        page: filters.page,
+        pageSize: filters.pageSize,
+        year: filters.year,
+        type: filters.type,
+        q: filters.q,
+        personal_only: filters.personal_only,
+      }),
+    enabled: enabled && Boolean(id),
+    ...displayUnitQueryBehavior,
+  });
+}

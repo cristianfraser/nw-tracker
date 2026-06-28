@@ -16,11 +16,7 @@ import {
   buildCcBillingMonthChartPoints,
   buildCcHistorialChartRows,
 } from "./ccChartData";
-import {
-  ACCOUNT_FLOWS_COLLAPSED,
-  MONTHLY_PERF_COLLAPSED,
-  movementUnitsKind,
-} from "./shared";
+import { movementUnitsKind } from "./shared";
 import styles from "../AccountDetailPage.module.css";
 
 type Props = {
@@ -37,10 +33,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     metricsPeriod,
     xAxisGranularity,
     valuationBlockForChart,
-    movementsOnlyPersonalDeposits,
-    setMovementsOnlyPersonalDeposits,
-    displayedFlows,
-    allFlows,
     extraCcOffsets,
     setExtraCcOffsets,
   } = data;
@@ -155,7 +147,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}
-            collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
           />
         </>
       ) : null}
@@ -178,15 +169,8 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         hint={
           <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.flowsHint")}</p>
         }
-        rows={displayedFlows.map((row) => ({
-          ...row,
-          category_slug: summary.category_slug ?? undefined,
-        }))}
-        totalCount={allFlows.length}
-        movementsOnlyPersonalDeposits={movementsOnlyPersonalDeposits}
-        onMovementsOnlyPersonalDepositsChange={setMovementsOnlyPersonalDeposits}
+        accountId={summary.account_id}
         movementUnitsKind={movementUnitsKind}
-        collapsedVisibleRows={ACCOUNT_FLOWS_COLLAPSED}
       />
     </AccountDetailSharedLayout>
   );
