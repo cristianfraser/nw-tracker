@@ -161,16 +161,16 @@ function CreditCardInstallmentsSection({
       <tr>
         <th className="desktop-only">Compra</th>
         <th className="desktop-only">Cuotas</th>
-        <th className="desktop-only">Pagadas</th>
-        <th className="desktop-only">Restan</th>
+        {dueColumn !== "last" ? <th className="desktop-only">Pagadas</th> : null}
+        {dueColumn !== "last" ? <th className="desktop-only">Restan</th> : null}
         <th className="desktop-only">Principal</th>
         {!hasLedger ? <th className="desktop-only">Tasa % anual</th> : null}
         <th className="desktop-only">Mes compra</th>
-        <th className="desktop-only">1.ª cuota (MES)</th>
+        {dueColumn !== "last" ? <th className="desktop-only">1.ª cuota (MES)</th> : null}
         {!hasLedger ? <th className="desktop-only">Offset CSV (meses)</th> : null}
         {!hasLedger ? <th className="desktop-only">Offset UI (meses)</th> : null}
         <th className="desktop-only">Cuota CLP</th>
-        <th className="desktop-only">Restante CLP</th>
+        {dueColumn !== "last" ? <th className="desktop-only">Restante CLP</th> : null}
         {dueColumn !== "none" ? <th className="desktop-only">Mes último pago</th> : null}
         <th className="mobile-only" aria-hidden="true" />
       </tr>
@@ -205,14 +205,14 @@ function CreditCardInstallmentsSection({
               ) : null}
             </td>
             <td className="mono desktop-only">{p.installment_count}</td>
-            <td className="mono desktop-only">{p.installments_paid}</td>
-            <td className="mono desktop-only">{p.remaining_installments}</td>
+            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.installments_paid}</td> : null}
+            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.remaining_installments}</td> : null}
             <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
             {!hasLedger ? (
               <td className="mono desktop-only">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
             ) : null}
             <td className="mono desktop-only">{p.purchase_month ?? "—"}</td>
-            <td className="mono desktop-only">{p.first_due_month}</td>
+            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.first_due_month}</td> : null}
             {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
             {!hasLedger ? (
               <td className="desktop-only">
@@ -234,12 +234,12 @@ function CreditCardInstallmentsSection({
               </td>
             ) : null}
             <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
-            <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td>
+            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td> : null}
             {opts.dueColumn !== "none" ? (
               <td className="mono desktop-only">
                 {opts.dueColumn === "last"
                   ? p.last_paid_month
-                    ? `${p.last_paid_month} (${formatYmEs(p.last_paid_month)})`
+                    ? formatYmEs(p.last_paid_month)
                     : "—"
                   : p.next_due_month
                     ? `${p.next_due_month} (${formatYmEs(p.next_due_month)})`
@@ -294,24 +294,13 @@ function CreditCardInstallmentsSection({
       );
     });
 
-  const purchasesCompletedPages = useMemo(() => {
-    const pageSize = 10;
-    if (purchasesCompletedSorted.length === 0) {
-      return [{ pageNumber: 0, data: [] as CcInstallmentPurchaseComputed[] }];
-    }
+  const COMPLETED_PAGE_SIZE = 10;
+  const [completedPage, setCompletedPage] = useState(1);
 
-    const chunks: CcInstallmentPurchaseComputed[][] = [];
-    for (let i = 0; i < purchasesCompletedSorted.length; i += pageSize) {
-      chunks.push(purchasesCompletedSorted.slice(i, i + pageSize));
-    }
-
-    const totalChunks = chunks.length;
-    // PaginatedTable defaults to the last page; we want the last array element to be the newest chunk.
-    // Keep `pageNumber` aligned with "Página {pageNumber + 1}" where Página 1 is the newest chunk.
-    return chunks
-      .reverse()
-      .map((data, revIdx) => ({ pageNumber: totalChunks - 1 - revIdx, data }));
-  }, [purchasesCompletedSorted]);
+  const completedPageRows = useMemo(() => {
+    const start = (completedPage - 1) * COMPLETED_PAGE_SIZE;
+    return purchasesCompletedSorted.slice(start, start + COMPLETED_PAGE_SIZE);
+  }, [purchasesCompletedSorted, completedPage]);
 
   return (
     <>
@@ -461,24 +450,27 @@ function CreditCardInstallmentsSection({
           </p>
           <PaginatedTable
             key={`cc-completed-${accountId}`}
-            pages={purchasesCompletedPages}
-            collapsedVisibleRows={10}
+            page={completedPage}
+            pageSize={COMPLETED_PAGE_SIZE}
+            total={purchasesCompletedSorted.length}
+            onPageChange={setCompletedPage}
             wrapClassName={styles.tableWrapSpaced}
-            tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-            getPageLabel={(page) => `${t("table.paginationPageAria")} ${page.pageNumber + 1}`}
-            header={purchaseTableHeader("last")}
-            renderBody={(pageRows) =>
-              purchasesCompletedSorted.length === 0 ? (
+          >
+            <Table
+              tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
+              header={purchaseTableHeader("last")}
+            >
+              {purchasesCompletedSorted.length === 0 ? (
                 <tr>
                   <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
                     No hay compras en cuotas liquidadas en el ledger.
                   </td>
                 </tr>
               ) : (
-                renderPurchaseRows(pageRows, { dueColumn: "last" })
-              )
-            }
-          />
+                renderPurchaseRows(completedPageRows, { dueColumn: "last" })
+              )}
+            </Table>
+          </PaginatedTable>
 
           <h3 className={styles.subsectionTitle}>{t("account.creditCard.monthCuotasTitle")}</h3>
           <Table
@@ -507,7 +499,7 @@ function CreditCardInstallmentsSection({
                 return (
                   <tr key={row.month}>
                     <td className="mono desktop-only">
-                      {row.month} ({formatYmEs(row.month)})
+                      {formatYmEs(row.month)}
                     </td>
                     <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
                     <td className="mono muted desktop-only">
@@ -517,7 +509,7 @@ function CreditCardInstallmentsSection({
                       {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
                     </td>
                     <td className="mobile-only">
-                      <TableMobileCard title={`${row.month} (${formatYmEs(row.month)})`}>
+                      <TableMobileCard title={formatYmEs(row.month)}>
                         <TableMobileCardSection>
                           <TableMobileCardRow
                             label={t("account.creditCard.colMonthCuotaTotal")}
