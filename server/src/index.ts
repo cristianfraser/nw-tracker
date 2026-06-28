@@ -124,6 +124,8 @@ import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
+import { buildGroupFlows, buildAccountFlows, type FlowsFilters } from "./flowsApi.js";
+import { parsePageParams } from "./pagination.js";
 import {
   createManualCcInstallmentPurchase,
   deleteManualCcInstallmentPurchase,
@@ -1321,6 +1323,59 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(getGroupConsolidatedTables(tabSlug, unit, undefined));
+});
+
+/** Paginated + filtered flows for a group (server-side). */
+app.get("/api/groups/:slug/flows", (req, res) => {
+  const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
+  if (!isKnownClassTabGroup(slug)) {
+    res.status(400).json({ error: "unknown group slug" });
+    return;
+  }
+  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
+  if (subRaw === null) {
+    res.status(400).json({ error: "invalid subgroup" });
+    return;
+  }
+  const tabSlug =
+    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
+    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
+  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
+    res.status(400).json({ error: "unknown group slug" });
+    return;
+  }
+  const { page, pageSize } = parsePageParams(req.query as Record<string, unknown>, 20);
+  const filters: FlowsFilters = {};
+  if (typeof req.query.year === "string" && req.query.year.trim()) filters.year = req.query.year.trim();
+  if (typeof req.query.type === "string" && req.query.type.trim()) filters.type = req.query.type.trim();
+  if (req.query.account_id) {
+    const aid = Number(req.query.account_id);
+    if (Number.isFinite(aid) && aid > 0) filters.account_id = aid;
+  }
+  if (typeof req.query.category === "string" && req.query.category.trim()) filters.category = req.query.category.trim();
+  if (typeof req.query.q === "string" && req.query.q.trim()) filters.q = req.query.q.trim();
+  res.json(buildGroupFlows(tabSlug, filters, page, pageSize));
+});
+
+/** Paginated + filtered flows for a single account (server-side). */
+app.get("/api/accounts/:id/flows", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const { page, pageSize } = parsePageParams(req.query as Record<string, unknown>, 20);
+  const filters: FlowsFilters = {};
+  if (typeof req.query.year === "string" && req.query.year.trim()) filters.year = req.query.year.trim();
+  if (typeof req.query.type === "string" && req.query.type.trim()) filters.type = req.query.type.trim();
+  if (typeof req.query.q === "string" && req.query.q.trim()) filters.q = req.query.q.trim();
+  if (req.query.personal_only === "1" || req.query.personal_only === "true") filters.personal_only = true;
+  const result = buildAccountFlows(id, filters, page, pageSize);
+  if (!result) {
+    res.status(404).json({ error: "account not found" });
+    return;
+  }
+  res.json(result);
 });
 
 /** Per-class tab: month P/L bars per account + combined YTD area + ΣΔ line (derived, not stored). */
