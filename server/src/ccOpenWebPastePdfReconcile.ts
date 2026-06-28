@@ -1,6 +1,7 @@
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import {
   openWebPasteSourcePdf,
@@ -12,7 +13,37 @@ import {
   type CcReconcileRow,
 } from "./ccStatementImportReconcile.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
-import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
+import {
+  listCcStatementLinesForStatement,
+  listCcStatementsForAccount,
+  type CcStatementLineRow,
+} from "./ccStatementsDb.js";
+
+function fieldToIso(raw: string | null | undefined): string | null {
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return parseDdMmYyToIso(t);
+}
+
+function linePurchaseIso(line: CcStatementLineRow): string | null {
+  return fieldToIso(line.transaction_date) ?? fieldToIso(line.posting_date);
+}
+
+/** Inclusive [from, to] ISO period covered by the PDF close(s) for a billing month. */
+function closedPeriodIsoRange(
+  pdfStatements: ReturnType<typeof listCcStatementsForAccount>
+): { from: string; to: string } | null {
+  let from: string | null = null;
+  let to: string | null = null;
+  for (const st of pdfStatements) {
+    const f = fieldToIso(st.period_from);
+    const t = fieldToIso(st.period_to);
+    if (f && (from == null || f < from)) from = f;
+    if (t && (to == null || t > to)) to = t;
+  }
+  return from && to ? { from, to } : null;
+}
 
 export type CcOpenWebPastePdfReconcileResult = {
   billing_month: string;
@@ -51,14 +82,28 @@ function openWebPasteStatementsForBucketMonth(
   return listCcStatementsForAccount(accountId).filter((st) => st.source_pdf === target);
 }
 
-/** Delete web-paste one-shots on `open|{M}` that match PDF lines for closed month M. */
+/**
+ * Supersede the `open|{M}` web-paste bucket once a PDF closes billing month M.
+ *
+ * The web-paste open bucket is a placeholder for the in-progress cycle; the PDF is
+ * authoritative once it arrives. Web-paste amounts are pre-auth snapshots that don't
+ * line up one-to-one with settled PDF lines (e.g. several grocery pre-auths collapse to
+ * one settled charge), so we don't try to match line-by-line. Instead, every web-paste
+ * line whose purchase date falls inside the closed PDF's billing period is removed —
+ * it's already represented on the PDF. Lines dated after period_to belong to the next
+ * cycle (moved forward by repairMisplacedOpenWebPasteBuckets) and are left untouched.
+ *
+ * Falls back to exact line matching when the PDF lacks a parseable billing period.
+ */
 export function reconcileOpenWebPasteAfterPdfClose(
   accountId: number,
   billingMonth: string,
-  opts?: { dryRun?: boolean }
+  opts?: { dryRun?: boolean; skipRecompute?: boolean }
 ): CcOpenWebPastePdfReconcileResult {
-  const pdfRows = pdfReconcileRowsForBillingMonth(accountId, billingMonth);
-  if (pdfRows.length === 0) {
+  const pdfStatements = listCcStatementsForAccount(accountId).filter(
+    (st) => st.billing_month === billingMonth && isPdfStatementSource(st.source_pdf)
+  );
+  if (pdfStatements.length === 0) {
     return {
       billing_month: billingMonth,
       deleted_count: 0,
@@ -68,23 +113,41 @@ export function reconcileOpenWebPasteAfterPdfClose(
     };
   }
 
+  const closedPeriod = closedPeriodIsoRange(pdfStatements);
+  const pdfRows = pdfReconcileRowsForBillingMonth(accountId, billingMonth);
+
   const toDelete: number[] = [];
   for (const st of openWebPasteStatementsForBucketMonth(accountId, billingMonth)) {
     for (const line of listCcStatementLinesForStatement(st.id)) {
-      const webRow = dbLineToReconcileRow(line, {
-        currency: st.currency,
-        layout: st.layout,
-        source_pdf: st.source_pdf,
-      });
-      if (pdfRows.some((pdfRow) => reconcileWebPastePdfRowsMatch(pdfRow, webRow))) {
+      const purchaseIso = linePurchaseIso(line);
+      const inClosedPeriod =
+        closedPeriod != null &&
+        purchaseIso != null &&
+        purchaseIso >= closedPeriod.from &&
+        purchaseIso <= closedPeriod.to;
+      if (inClosedPeriod) {
         toDelete.push(line.id);
+        continue;
+      }
+      // Fallback for statements without a parseable period: exact line match.
+      if (closedPeriod == null) {
+        const webRow = dbLineToReconcileRow(line, {
+          currency: st.currency,
+          layout: st.layout,
+          source_pdf: st.source_pdf,
+        });
+        if (pdfRows.some((pdfRow) => reconcileWebPastePdfRowsMatch(pdfRow, webRow))) {
+          toDelete.push(line.id);
+        }
       }
     }
   }
 
   if (!opts?.dryRun && toDelete.length > 0) {
     deleteStatementLinesByIds(toDelete);
-    recomputeCcBillingMonthBalances(accountId);
+    if (!opts?.skipRecompute) {
+      recomputeCcBillingMonthBalances(accountId);
+    }
   }
 
   return {
@@ -115,7 +178,7 @@ export function pdfClosedBillingMonthsFromImportRecords(
 export function reconcileOpenWebPasteAfterPdfImports(
   accountId: number,
   records: readonly CcStatementCsvRecord[],
-  opts?: { dryRun?: boolean }
+  opts?: { dryRun?: boolean; skipRecompute?: boolean }
 ): CcOpenWebPastePdfReconcileResult[] {
   const months = pdfClosedBillingMonthsFromImportRecords(records);
   return months.map((bm) => reconcileOpenWebPasteAfterPdfClose(accountId, bm, opts));
