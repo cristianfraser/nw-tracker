@@ -107,6 +107,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
         source_pdf: "may.pdf",
         amount_clp: 30_973,
         cuota_current: null,
+        cuota_total: 3,
       },
     ];
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-05")).toBe(0);
@@ -138,6 +139,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
         source_pdf: "mar.pdf",
         amount_clp: 68_333,
         cuota_current: null,
+        cuota_total: 3,
       },
       {
         id: 2,

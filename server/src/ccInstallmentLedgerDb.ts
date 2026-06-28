@@ -49,6 +49,7 @@ type PaymentRow = {
   source_pdf: string | null;
   amount_clp: number;
   cuota_current: number | null;
+  cuota_total: number | null;
 };
 
 export function ccLedgerMonthEndIso(ym: string): string {
@@ -293,6 +294,8 @@ export function ledgerInstallmentsPaid(
   const cuotaAmounts = cuotaAmountsForPurchase(pr, payList);
   for (const p of payList) {
     if (p.cuota_current != null && p.cuota_current > 0) continue;
+    // cuota 00/N preamble: cuota_current null but cuota_total known → informational only, not paid
+    if (p.cuota_current == null && (p.cuota_total ?? 0) > 0) continue;
     const stmtYm = paymentBillingMonth(p);
     if (!stmtYm || ymCompare(stmtYm, nowYm) > 0) continue;
     if (p.amount_clp <= 0) continue;
@@ -681,7 +684,7 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   const allPayments = db
     .prepare(
       `SELECT p.id, p.purchase_id, p.pay_by_date, p.statement_date, p.statement_period_month,
-              p.source_pdf, p.amount_clp, p.cuota_current, s.period_to AS period_to_join
+              p.source_pdf, p.amount_clp, p.cuota_current, p.cuota_total, s.period_to AS period_to_join
        FROM cc_installment_payments p
        JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
        LEFT JOIN cc_statement_lines l ON l.parser_row_id IS NOT NULL AND l.parser_row_id != ''
@@ -1013,17 +1016,20 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     paymentsByPurchase,
     accountId
   );
-  const months: CcInstallmentMonthRow[] = [...payByMonth.keys()].sort(ymCompare).map((month) => {
-    const breakdown = breakdownByMonth.get(month) ?? [];
-    const total_clp = payByMonth.get(month) ?? 0;
-    const breakdownSum = breakdown.reduce((s, b) => s + b.amount_clp, 0);
-    if (breakdown.length > 0 && breakdownSum !== total_clp) {
-      throw new Error(
-        `installment month breakdown mismatch for account ${accountId} month ${month}: breakdown=${breakdownSum} total=${total_clp}`
-      );
-    }
-    return { month, total_clp, breakdown };
-  });
+  const months: CcInstallmentMonthRow[] = [...payByMonth.keys()]
+    .filter((month) => ymCompare(month, nowYm) >= 0)
+    .sort(ymCompare)
+    .map((month) => {
+      const breakdown = breakdownByMonth.get(month) ?? [];
+      const total_clp = payByMonth.get(month) ?? 0;
+      const breakdownSum = breakdown.reduce((s, b) => s + b.amount_clp, 0);
+      if (breakdown.length > 0 && breakdownSum !== total_clp) {
+        throw new Error(
+          `installment month breakdown mismatch for account ${accountId} month ${month}: breakdown=${breakdownSum} total=${total_clp}`
+        );
+      }
+      return { month, total_clp, breakdown };
+    });
 
   const installment_history_months = installmentHistoryMonthsFromLedgerData(
     purchasesRaw,
