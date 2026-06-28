@@ -28,7 +28,7 @@ import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
-import { monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
+import { expandYearMonthsInclusive, monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   deptoAccountMarkClpAtYmd,
@@ -1083,7 +1083,37 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
     return row;
   });
-  return { accounts: topOut, points };
+  return { accounts: topOut, points: densifyMonthlyValuationPoints(points) };
+}
+
+/**
+ * Fill every calendar month between the first and last point with null-valued rows
+ * so the valuation line chart doesn't jump across interior gaps.
+ */
+function densifyMonthlyValuationPoints(
+  points: readonly Record<string, string | number | null>[]
+): Record<string, string | number | null>[] {
+  if (points.length < 2) return [...points];
+  const byYm = new Map<string, Record<string, string | number | null>>();
+  for (const p of points) {
+    const d = String(p.as_of_date ?? "");
+    const ym = d.slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
+    const prev = byYm.get(ym);
+    if (!prev || d > String(prev.as_of_date ?? "")) byYm.set(ym, p);
+  }
+  const yms = [...byYm.keys()].sort();
+  if (yms.length < 2) return [...points];
+  const allKeys = new Set<string>();
+  for (const p of points) for (const k of Object.keys(p)) allKeys.add(k);
+  allKeys.delete("as_of_date");
+  const allYms = expandYearMonthsInclusive(yms[0]!, yms[yms.length - 1]!);
+  return allYms.map((ym) => {
+    if (byYm.has(ym)) return byYm.get(ym)!;
+    const row: Record<string, string | number | null> = { as_of_date: monthEndUtcYmd(ym) };
+    for (const k of allKeys) row[k] = null;
+    return row;
+  });
 }
 
 import {

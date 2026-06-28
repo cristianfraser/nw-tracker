@@ -13,7 +13,6 @@ import {
 } from "recharts";
 import type { TooltipProps } from "recharts";
 import { useMemo } from "react";
-import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { formatClp } from "../../format";
 import { expenseApartmentLabel } from "../../i18n";
 import type { ExpenseApartmentSlug, FlowExpenseChartPoint } from "../../types";
@@ -72,17 +71,7 @@ export function ExpensesByApartmentChart({
     return APARTMENT_BAR.filter((b) => set.has(b.dataKey));
   }, [accountFilter]);
 
-  const densePoints = useMemo(() => {
-    const zeroKeys = [...bars.map((b) => b.dataKey), "total"];
-    return densifyRecordsByCalendarPeriod(
-      points as unknown as Record<string, string | number | null>[],
-      {
-        granularity: xAxisGranularity,
-        dateKey: "as_of_date",
-        fillMissing: { zeroKeys },
-      }
-    ) as unknown as FlowExpenseChartPoint[];
-  }, [points, xAxisGranularity, bars]);
+  const densePoints = points;
 
   const yKeys = useMemo(() => [...bars.map((b) => b.dataKey), "total"], [bars]);
 

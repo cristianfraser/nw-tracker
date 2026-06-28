@@ -137,6 +137,55 @@ export function monthEndsBetweenInclusive(minYmd: string, maxYmd: string): strin
   return out;
 }
 
+/**
+ * Fill every month between the first and last point in `points` (interior gaps only).
+ * Missing months are inserted using `makeEmpty(lastDayOfMonth)`.
+ * Points are keyed by the `YYYY-MM` of their `as_of_date`; when two points share a
+ * month the later `as_of_date` wins.
+ */
+export function densifyMonthlyPoints<T extends { as_of_date: string }>(
+  points: readonly T[],
+  makeEmpty: (asOfDate: string) => T
+): T[] {
+  if (points.length === 0) return [];
+  const byYm = new Map<string, T>();
+  for (const p of points) {
+    const ym = p.as_of_date.slice(0, 7);
+    const prev = byYm.get(ym);
+    if (!prev || p.as_of_date > prev.as_of_date) byYm.set(ym, p);
+  }
+  const yms = [...byYm.keys()].sort();
+  const minYm = yms[0]!;
+  const maxYm = yms[yms.length - 1]!;
+  const allYms = expandYearMonthsInclusive(minYm, maxYm);
+  return allYms.map((ym) => byYm.get(ym) ?? makeEmpty(monthEndUtcYmd(ym)));
+}
+
+/**
+ * Fill every year between first and last point.
+ * `makeEmpty` receives a `YYYY-12-31` date string for the missing year.
+ */
+export function densifyYearlyPoints<T extends { as_of_date: string }>(
+  points: readonly T[],
+  makeEmpty: (asOfDate: string) => T
+): T[] {
+  if (points.length === 0) return [];
+  const byYear = new Map<number, T>();
+  for (const p of points) {
+    const y = Number(p.as_of_date.slice(0, 4));
+    if (!Number.isFinite(y)) continue;
+    const prev = byYear.get(y);
+    if (!prev || p.as_of_date > prev.as_of_date) byYear.set(y, p);
+  }
+  const years = [...byYear.keys()].sort((a, b) => a - b);
+  if (years.length === 0) return [...points];
+  const out: T[] = [];
+  for (let y = years[0]!; y <= years[years.length - 1]!; y++) {
+    out.push(byYear.get(y) ?? makeEmpty(`${y}-12-31`));
+  }
+  return out;
+}
+
 /** Every `YYYY-MM` from `minYm` through `maxYm` inclusive. */
 export function expandYearMonthsInclusive(minYm: string, maxYm: string): string[] {
   const out: string[] = [];
