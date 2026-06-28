@@ -1,4 +1,4 @@
-import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 import { merchantMatchesExpectation } from "./realEstateExpenseMerchants.js";
 import {
@@ -119,7 +119,12 @@ function aggregateChartPoints(
     pt.real_estate += slot.display_amount_clp;
     pt.total += slot.display_amount_clp;
   }
-  return [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  const sorted = [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  const emptyPoint = (as_of_date: string): RealEstateExpenseChartPoint => ({
+    as_of_date, real_estate: 0, lastarria: 0, suecia: 0, el_vergel: 0, total: 0,
+  });
+  if (granularity === "year") return densifyYearlyPoints(sorted, emptyPoint);
+  return densifyMonthlyPoints(sorted, emptyPoint);
 }
 
 function linkToDto(

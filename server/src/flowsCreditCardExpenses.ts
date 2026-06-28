@@ -1,4 +1,4 @@
-import { monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
+import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 
@@ -517,33 +517,31 @@ export function aggregateGastosFromLines(
 
   const by_month = [...byMonthAsc].reverse();
 
-  const chart_monthly: FlowCcExpenseChartPoint[] = byMonthAsc.map((m) => ({
-
+  const chart_monthly_sparse: FlowCcExpenseChartPoint[] = byMonthAsc.map((m) => ({
     as_of_date: m.as_of_date,
-
     gastos_clp: m.gastos_mes_clp,
-
   }));
+  const chart_monthly = densifyMonthlyPoints(
+    chart_monthly_sparse,
+    (as_of_date) => ({ as_of_date, gastos_clp: 0 })
+  );
 
-
-
-  const chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[] = byMonthAsc.map((m) => {
-
+  const chart_monthly_by_category_sparse: FlowCcExpenseCategoryChartPoint[] = byMonthAsc.map((m) => {
     const point: FlowCcExpenseCategoryChartPoint = { as_of_date: m.as_of_date };
-
     const catSums = byMonthCategory.get(m.period_month) ?? new Map<string, number>();
-
     for (const slug of chartCategorySlugs) {
-
       point[slug] = Math.round(catSums.get(slug) ?? 0);
-
     }
-
     return point;
-
   });
-
-
+  const chart_monthly_by_category = densifyMonthlyPoints(
+    chart_monthly_by_category_sparse,
+    (as_of_date) => {
+      const pt: FlowCcExpenseCategoryChartPoint = { as_of_date };
+      for (const slug of chartCategorySlugs) pt[slug] = 0;
+      return pt;
+    }
+  );
 
   return { by_month, chart_monthly, chart_monthly_by_category };
 

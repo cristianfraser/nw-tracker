@@ -4,7 +4,7 @@ import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDepositInflowEvents, type DepositInflowEvent } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
@@ -313,7 +313,12 @@ function aggregateDepositChartPoints(
     pt[r.category] += amt;
     pt.total += amt;
   }
-  return [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  const sorted = [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  const emptyPoint = (as_of_date: string): FlowDepositChartPoint => ({
+    as_of_date, real_estate: 0, cash: 0, brokerage: 0, inversiones: 0, total: 0,
+  });
+  if (granularity === "year") return densifyYearlyPoints(sorted, emptyPoint);
+  return densifyMonthlyPoints(sorted, emptyPoint);
 }
 
 /** Retiro (inversiones) + brokerage net deposits per chart period. */
