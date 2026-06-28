@@ -16,6 +16,7 @@ import {
   resolveExpenseMonth,
 } from "./flowsCreditCardExpenses.js";
 import { gastosSumMonthForLine, lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
+import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
 describe("effectiveCcExpenseLineAmountClp", () => {
@@ -393,11 +394,12 @@ describe("flowsCreditCardExpenses", () => {
           installment_flag: ln.installment_flag,
           nro_cuota_current: ln.nro_cuota_current,
         });
-        if (
-          ln.amount_clp > 0 &&
-          lineCountsTowardGastosSum(ln, "split", countsCategory)
-        ) {
-          return s + ln.amount_clp;
+        if (ln.amount_clp > 0 && lineCountsTowardGastosSum(ln, "split", countsCategory)) {
+          // Mortgage-linked lines contribute only the carrying portion (deuda amortization
+          // is tracked separately), matching the production aggregateGastosFromLines logic.
+          const link = ln.expense_deposit_link;
+          const mortgageSplit = hasSplittableMortgageExpenseDepositLink(link);
+          return s + (mortgageSplit ? link.carrying_clp : ln.amount_clp);
         }
         return s;
       }, 0);
