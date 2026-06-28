@@ -1,5 +1,4 @@
 export const MONTHLY_PERF_COLLAPSED = 12;
-export const ACCOUNT_FLOWS_COLLAPSED = 10;
 export const CC_EXTRA_OFFSET_LS = "nw-credit-card-extra-offsets";
 
 export function formatYmEs(ym: string): string {

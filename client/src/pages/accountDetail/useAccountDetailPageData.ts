@@ -21,7 +21,6 @@ import { hasDashboardNavSnapshotCache } from "../../queries/dashboardNavSnapshot
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
-import { filterAccountFlowsPersonalOnly, accountMovementsToFlowRows } from "../../accountFlows";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
 import i18n from "../../i18n";
@@ -53,7 +52,6 @@ export type AccountDetailPageData = {
   ccLedger: AccountCcInstallmentsResponse;
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   invNavAccounts: DetailBundle["invNavAccounts"]["accounts"];
-  movements: DetailBundle["movements"];
   dash: ReturnType<typeof dashPickForNavStrip> | null;
   overviewPoints: Record<string, string | number | null>[];
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
@@ -61,8 +59,6 @@ export type AccountDetailPageData = {
   metricsPeriod: "month" | "year";
   isYearly: boolean;
   xAxisGranularity: "month" | "year";
-  movementsOnlyPersonalDeposits: boolean;
-  setMovementsOnlyPersonalDeposits: (v: boolean) => void;
   extraCcOffsets: Record<string, number>;
   setExtraCcOffsets: (next: Record<string, number>) => void;
   valuationTailClipEndDate: string | null;
@@ -70,8 +66,6 @@ export type AccountDetailPageData = {
   ytdChartPoints: Record<string, string | number | null>[];
   accChartPoints: Record<string, string | number | null>[];
   valuationBlockForChart: NonNullable<DetailBundle["ts"]>["accounts"] | null;
-  allFlows: ReturnType<typeof accountMovementsToFlowRows>;
-  displayedFlows: ReturnType<typeof accountMovementsToFlowRows>;
   navSelf: ReturnType<typeof findNavTreeNodeByAccountId>;
   accountColorRgb: string | null;
   pageColorTarget: EntityColorTarget | undefined;
@@ -89,7 +83,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
   const xAxisGranularity = isYearly ? "year" : "month";
-  const [movementsOnlyPersonalDeposits, setMovementsOnlyPersonalDeposits] = useState(false);
   const deferredCcOffsets = useDeferredValue(extraCcOffsets);
 
   const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
@@ -126,7 +119,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const contentLoading = detailPending || !bundleReady;
 
   const summary = detail?.summary ?? placeholder.summary;
-  const movements = detail?.movements ?? placeholder.movements;
   const ts: NonNullable<DetailBundle["ts"]> = detail?.ts ?? placeholder.ts!;
   const depositInflows = detail?.depositInflows ?? placeholder.depositInflows;
   const mortgageLedger = detail?.mortgageLedger ?? placeholder.mortgageLedger;
@@ -210,11 +202,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     return rollupTimeseriesBlockYearEnd(ts.accounts);
   }, [ts?.accounts, isYearly]);
 
-  const allFlows = useMemo(() => accountMovementsToFlowRows(movements), [movements]);
-  const displayedFlows = useMemo(() => {
-    if (!movementsOnlyPersonalDeposits) return allFlows;
-    return filterAccountFlowsPersonalOnly(allFlows);
-  }, [allFlows, movementsOnlyPersonalDeposits]);
 
   useLayoutEffect(() => {
     if (!id) return;
@@ -283,7 +270,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     ccLedger,
     checkingCartolaMonths,
     invNavAccounts,
-    movements,
     dash,
     overviewPoints,
     monthlyPerf,
@@ -291,8 +277,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     metricsPeriod,
     isYearly,
     xAxisGranularity,
-    movementsOnlyPersonalDeposits,
-    setMovementsOnlyPersonalDeposits,
     extraCcOffsets,
     setExtraCcOffsets,
     valuationTailClipEndDate,
@@ -300,8 +284,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     ytdChartPoints,
     accChartPoints,
     valuationBlockForChart,
-    allFlows,
-    displayedFlows,
     navSelf,
     accountColorRgb,
     pageColorTarget,

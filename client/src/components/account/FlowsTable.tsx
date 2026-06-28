@@ -1,13 +1,8 @@
-import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import {
-  accountFlowsShowCounterpartColumn,
-  accountFlowsShowTickerColumn,
-  accountFlowsShowUsdColumn,
-  type FlowsTableRow,
-} from "../../accountFlows";
-import { formatClp, formatInstrumentUnits, formatUsdFine } from "../../format";
+import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
+import { formatClp, formatInstrumentUnits, formatOrDash, formatUsdFine } from "../../format";
 import { PaginatedTable } from "../ui/PaginatedTable";
+import { Table } from "../ui/Table";
 import {
   TableMobileCard,
   TableMobileCardRow,
@@ -15,7 +10,7 @@ import {
 } from "../ui/TableMobileCard";
 
 function formatFlowUnits(
-  row: FlowsTableRow,
+  row: FlowsApiRow,
   movementUnitsKind?: (slug: string) => "shares" | "coin"
 ): string {
   if (
@@ -31,12 +26,17 @@ function formatFlowUnits(
   );
 }
 
-function formatFlowClp(amount: number | null): string {
-  return amount != null && Number.isFinite(amount) ? formatClp(amount) : "—";
+
+function showTickerColumn(rows: readonly FlowsApiRow[]): boolean {
+  return rows.some((r) => r.ticker != null && String(r.ticker).trim() !== "");
 }
 
-function formatFlowUsd(amount: number | null): string {
-  return amount != null && Number.isFinite(amount) ? formatUsdFine(amount) : "—";
+function showUsdColumn(rows: readonly FlowsApiRow[]): boolean {
+  return rows.some((r) => r.amount_usd != null && Number.isFinite(r.amount_usd));
+}
+
+function showCounterpartColumn(rows: readonly FlowsApiRow[]): boolean {
+  return rows.some((r) => r.counterpart_account_name != null && r.counterpart_account_name.trim() !== "");
 }
 
 function flowsColumnCount(
@@ -66,7 +66,7 @@ function FlowsMobileCard({
   showUnitsColumn,
   movementUnitsKind,
 }: {
-  row: FlowsTableRow;
+  row: FlowsApiRow;
   labels: {
     account: string;
     type: string;
@@ -103,9 +103,9 @@ function FlowsMobileCard({
       </TableMobileCardSection>
 
       <TableMobileCardSection>
-        <TableMobileCardRow label={labels.amountClp} value={formatFlowClp(row.amount_clp)} />
+        <TableMobileCardRow label={labels.amountClp} value={formatOrDash(row.amount_clp, formatClp)} />
         {showFlowUsdCol ? (
-          <TableMobileCardRow label={labels.amountUsd} value={formatFlowUsd(row.amount_usd)} />
+          <TableMobileCardRow label={labels.amountUsd} value={formatOrDash(row.amount_usd, formatUsdFine)} />
         ) : null}
         {showUnitsColumn ? (
           <TableMobileCardRow
@@ -127,31 +127,51 @@ function FlowsMobileCard({
   );
 }
 
+export type FlowsFilterState = {
+  year: string;
+  type: string;
+  account_id: string;
+  category: string;
+  q: string;
+  personal_only: boolean;
+};
+
 export function FlowsTable({
   rows,
-  collapsedVisibleRows = 10,
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  loading,
   showAccountColumn = false,
   showUnitsColumn = true,
   movementUnitsKind,
   emptyMessage,
   filteredEmptyMessage,
-  totalCount,
+  filterOptions,
+  filterState,
+  onFilterChange,
 }: {
-  rows: readonly FlowsTableRow[];
-  collapsedVisibleRows?: number;
+  rows: readonly FlowsApiRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  loading?: boolean;
   showAccountColumn?: boolean;
   /** Off for consolidated group tables (mixed instruments). */
   showUnitsColumn?: boolean;
   movementUnitsKind?: (slug: string) => "shares" | "coin";
   emptyMessage?: string;
   filteredEmptyMessage?: string;
-  totalCount?: number;
+  filterOptions?: FlowsFilterOptions;
+  filterState?: FlowsFilterState;
+  onFilterChange?: (patch: Partial<FlowsFilterState>) => void;
 }) {
   const { t } = useTranslation();
-  const showFlowTickerCol = accountFlowsShowTickerColumn(rows);
-  const showFlowUsdCol = accountFlowsShowUsdColumn(rows);
-  const showCounterpartCol = accountFlowsShowCounterpartColumn(rows);
-  const allCount = totalCount ?? rows.length;
+  const showFlowTickerCol = showTickerColumn(rows);
+  const showFlowUsdCol = showUsdColumn(rows);
+  const showCounterpartCol = showCounterpartColumn(rows);
 
   const mobileLabels = {
     account: t("groupPage.flowsAccountColumn"),
@@ -165,25 +185,6 @@ export function FlowsTable({
     counterpart: t("accountDetail.movements.counterpartAccount"),
   };
 
-  const pages = useMemo(() => {
-    if (rows.length === 0) return [];
-
-    const byYear = new Map<string, FlowsTableRow[]>();
-    for (const row of rows) {
-      const year = row.occurred_on.slice(0, 4);
-      const bucket = byYear.get(year) ?? [];
-      bucket.push(row);
-      byYear.set(year, bucket);
-    }
-
-    const yearsSorted = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
-
-    return yearsSorted.map((year, pageNumber) => ({
-      pageNumber,
-      data: byYear.get(year) ?? [],
-    }));
-  }, [rows]);
-
   const colSpan = flowsColumnCount(
     showAccountColumn,
     showFlowTickerCol,
@@ -192,53 +193,156 @@ export function FlowsTable({
     showCounterpartCol
   );
 
+  const hasActiveFilter = filterState
+    ? filterState.year || filterState.type || filterState.account_id || filterState.category || filterState.q || filterState.personal_only
+    : false;
+
+  const filterBar =
+    filterOptions && filterState && onFilterChange ? (
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+          alignItems: "center",
+          fontSize: "0.875rem",
+        }}
+      >
+        {filterOptions.years.length > 0 ? (
+          <select
+            value={filterState.year}
+            onChange={(e) => onFilterChange({ year: e.target.value, account_id: filterState.account_id })}
+            aria-label={t("flows.filters.year")}
+          >
+            <option value="">{t("flows.filters.allYears")}</option>
+            {filterOptions.years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        ) : null}
+
+        {filterOptions.types.length > 0 ? (
+          <select
+            value={filterState.type}
+            onChange={(e) => onFilterChange({ type: e.target.value })}
+            aria-label={t("flows.filters.type")}
+          >
+            <option value="">{t("flows.filters.allTypes")}</option>
+            {filterOptions.types.map((tp) => (
+              <option key={tp.value} value={tp.value}>
+                {tp.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+
+        {showAccountColumn && filterOptions.accounts.length > 0 ? (
+          <select
+            value={filterState.account_id}
+            onChange={(e) => onFilterChange({ account_id: e.target.value })}
+            aria-label={t("flows.filters.account")}
+          >
+            <option value="">{t("flows.filters.allAccounts")}</option>
+            {filterOptions.accounts.map((a) => (
+              <option key={a.id} value={String(a.id)}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+
+        {showAccountColumn && filterOptions.categories.length > 0 ? (
+          <select
+            value={filterState.category}
+            onChange={(e) => onFilterChange({ category: e.target.value })}
+            aria-label={t("flows.filters.category")}
+          >
+            <option value="">{t("flows.filters.allCategories")}</option>
+            {filterOptions.categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        ) : null}
+
+        <input
+          type="search"
+          value={filterState.q}
+          onChange={(e) => onFilterChange({ q: e.target.value })}
+          placeholder={t("flows.filters.notePlaceholder")}
+          style={{ minWidth: "10rem", maxWidth: "16rem" }}
+        />
+
+        {filterState.personal_only !== undefined ? (
+          <label style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <input
+              type="checkbox"
+              checked={filterState.personal_only}
+              onChange={(e) => onFilterChange({ personal_only: e.target.checked })}
+            />
+            {t("accountDetail.flowsPersonalOnly")}
+          </label>
+        ) : null}
+      </div>
+    ) : null;
+
+  const header = (
+    <thead>
+      <tr>
+        {showAccountColumn ? (
+          <th className="desktop-only flows-table__account">
+            {t("groupPage.flowsAccountColumn")}
+          </th>
+        ) : null}
+        <th className="desktop-only">{t("accountDetail.flowTypeColumn")}</th>
+        <th className="desktop-only">{t("accountDetail.flowDateColumn")}</th>
+        {showFlowTickerCol ? (
+          <th className="desktop-only">{t("accountDetail.flowTickerColumn")}</th>
+        ) : null}
+        <th className="desktop-only">{t("accountDetail.flowAmountClpColumn")}</th>
+        {showFlowUsdCol ? (
+          <th className="desktop-only">{t("accountDetail.flowAmountUsdColumn")}</th>
+        ) : null}
+        {showUnitsColumn ? (
+          <th className="desktop-only">{t("accountDetail.flowUnitsColumn")}</th>
+        ) : null}
+        {showCounterpartCol ? (
+          <th className="desktop-only">{t("accountDetail.movements.counterpartAccount")}</th>
+        ) : null}
+        <th className="desktop-only flows-table__note">{t("accountDetail.flowNoteColumn")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+
   return (
     <PaginatedTable
-      pages={pages}
-      collapsedVisibleRows={collapsedVisibleRows}
-      showMoreLabel={(hiddenCount) => t("table.showMoreFlows", { count: hiddenCount })}
-      showLessLabel={t("table.showLessFlows")}
-      tableClassName="table--parallel-mobile flows-table"
-      getPageLabel={(page) => page.data[0]?.occurred_on.slice(0, 4) ?? "—"}
-      header={
-        <thead>
-          <tr>
-            {showAccountColumn ? (
-              <th className="desktop-only flows-table__account">
-                {t("groupPage.flowsAccountColumn")}
-              </th>
-            ) : null}
-            <th className="desktop-only">{t("accountDetail.flowTypeColumn")}</th>
-            <th className="desktop-only">{t("accountDetail.flowDateColumn")}</th>
-            {showFlowTickerCol ? (
-              <th className="desktop-only">{t("accountDetail.flowTickerColumn")}</th>
-            ) : null}
-            <th className="desktop-only">{t("accountDetail.flowAmountClpColumn")}</th>
-            {showFlowUsdCol ? (
-              <th className="desktop-only">{t("accountDetail.flowAmountUsdColumn")}</th>
-            ) : null}
-            {showUnitsColumn ? (
-              <th className="desktop-only">{t("accountDetail.flowUnitsColumn")}</th>
-            ) : null}
-            {showCounterpartCol ? (
-              <th className="desktop-only">{t("accountDetail.movements.counterpartAccount")}</th>
-            ) : null}
-            <th className="desktop-only">{t("accountDetail.flowNoteColumn")}</th>
-            <th className="mobile-only" aria-hidden="true" />
-          </tr>
-        </thead>
-      }
-      renderBody={(pageRows) =>
-        pageRows.length === 0 ? (
+      page={page}
+      pageSize={pageSize}
+      total={total}
+      onPageChange={onPageChange}
+      filters={filterBar}
+      loading={loading}
+    >
+      <Table
+        key={`flows-table-page-${page}`}
+        header={header}
+        tableClassName="table--parallel-mobile flows-table"
+        tableStyle={{ whiteSpace: "nowrap" }}
+      >
+        {rows.length === 0 ? (
           <tr>
             <td colSpan={colSpan} className="muted">
-              {allCount === 0
-                ? (emptyMessage ?? t("accountDetail.flowsEmpty"))
-                : (filteredEmptyMessage ?? t("accountDetail.flowsFilteredEmpty"))}
+              {hasActiveFilter
+                ? (filteredEmptyMessage ?? t("accountDetail.flowsFilteredEmpty"))
+                : (emptyMessage ?? t("accountDetail.flowsEmpty"))}
             </td>
           </tr>
         ) : (
-          pageRows.map((row) => (
+          rows.map((row) => (
             <tr key={row.key}>
               {showAccountColumn ? (
                 <td
@@ -253,9 +357,9 @@ export function FlowsTable({
               {showFlowTickerCol ? (
                 <td className="desktop-only">{row.ticker ?? "—"}</td>
               ) : null}
-              <td className="mono desktop-only">{formatFlowClp(row.amount_clp)}</td>
+              <td className="mono desktop-only">{formatOrDash(row.amount_clp, formatClp)}</td>
               {showFlowUsdCol ? (
-                <td className="mono desktop-only">{formatFlowUsd(row.amount_usd)}</td>
+                <td className="mono desktop-only">{formatOrDash(row.amount_usd, formatUsdFine)}</td>
               ) : null}
               {showUnitsColumn ? (
                 <td className="mono desktop-only">
@@ -263,9 +367,16 @@ export function FlowsTable({
                 </td>
               ) : null}
               {showCounterpartCol ? (
-                <td className="desktop-only">{row.counterpart_account_name ?? "—"}</td>
+                <td className="desktop-only">
+                  {row.counterpart_account_name
+                    ? `${row.transfer_direction === "out" ? "→" : row.transfer_direction === "in" ? "←" : ""} ${row.counterpart_account_name}`.trim()
+                    : "—"}
+                </td>
               ) : null}
-              <td className="muted desktop-only">{row.note ?? "—"}</td>
+              <td
+                className="muted desktop-only flows-table__note"
+                title={row.note ?? undefined}
+              >{row.note ?? "—"}</td>
               <td className="mobile-only">
                 <FlowsMobileCard
                   row={row}
@@ -279,8 +390,8 @@ export function FlowsTable({
               </td>
             </tr>
           ))
-        )
-      }
-    />
+        )}
+      </Table>
+    </PaginatedTable>
   );
 }

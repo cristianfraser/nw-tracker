@@ -704,21 +704,6 @@ export interface AccountSummaryResponse {
 /** `GET /api/accounts/:id/detail-bundle` */
 export interface AccountDetailBundleResponse {
   summary: AccountSummaryResponse;
-  movements: {
-    id: number;
-    amount_clp: number;
-    occurred_on: string;
-    note: string | null;
-    units_delta: number | null;
-    flow_kind: string | null;
-    amount_usd: number | null;
-    ticker: string | null;
-    flow_type: string;
-    flow_type_label: string;
-    counterpart_account_id?: number | null;
-    counterpart_account_name?: string | null;
-    transfer_direction?: "out" | "in" | null;
-  }[];
   ts: AccountValuationTimeseriesResponse | null;
   depositInflows: AccountDepositInflowsResponse;
   mortgageLedger: AccountMortgageLedgerResponse;
@@ -869,13 +854,47 @@ export interface GroupConsolidatedTablesResponse {
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
-  account_movements: {
-    account_id: number;
-    name: string;
-    category_slug: string;
-    movements: AccountDetailBundleResponse["movements"];
-  }[];
 }
+
+/** Server-side paginated response shape. */
+export type Paginated<T> = {
+  rows: T[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+/** `GET /api/groups/:slug/flows` and `GET /api/accounts/:id/flows` */
+export type FlowsApiRow = {
+  id: number;
+  key: string;
+  account_id: number;
+  account_name: string;
+  category_slug: string;
+  amount_clp: number;
+  occurred_on: string;
+  note: string | null;
+  units_delta: number | null;
+  flow_kind: string | null;
+  amount_usd: number | null;
+  ticker: string | null;
+  flow_type: string;
+  flow_type_label: string;
+  counterpart_account_id: number | null;
+  counterpart_account_name: string | null;
+  transfer_direction: "out" | "in" | null;
+};
+
+export type FlowsFilterOptions = {
+  years: string[];
+  types: { value: string; label: string }[];
+  accounts: { id: number; name: string }[];
+  categories: string[];
+};
+
+export type FlowsPageResponse = Paginated<FlowsApiRow> & {
+  filter_options: FlowsFilterOptions;
+};
 
 /** `GET /api/dashboard/stocks-earnings-monthly` — merged SPY+VEA (or single), derived. */
 export interface StocksLifetimeEarningsResponse {

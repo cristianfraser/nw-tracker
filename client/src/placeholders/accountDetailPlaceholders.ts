@@ -59,7 +59,6 @@ export function buildPlaceholderAccountDetailBundle(
       latest_valuation_date: null,
       position: null,
     },
-    movements: [],
     ts: {
       unit: unitTs,
       account_id: accountId,

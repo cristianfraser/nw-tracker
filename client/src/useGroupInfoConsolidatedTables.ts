@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { consolidateAccountFlowRows } from "./accountFlows";
 import i18n from "./i18n";
 import { useGroupConsolidatedTables } from "./queries/hooks";
 import type { DisplayUnit } from "./queries/keys";
@@ -28,19 +27,6 @@ export function useGroupInfoConsolidatedTables(
     [data?.consolidated_monthly]
   );
 
-  const consolidatedFlows = useMemo(() => {
-    const byAccount = data?.account_movements ?? [];
-    if (!byAccount.length) return [];
-    return consolidateAccountFlowRows(
-      byAccount.map((d) => ({
-        id: d.account_id,
-        name: d.name,
-        category_slug: d.category_slug,
-        movements: d.movements,
-      }))
-    );
-  }, [data?.account_movements]);
-
   const tableFlags = useMemo(() => {
     const slugs = _accounts.map((a) => a.category_slug);
     return {
@@ -50,7 +36,6 @@ export function useGroupInfoConsolidatedTables(
 
   return {
     consolidatedMonthlyPerf,
-    consolidatedFlows,
     tableFlags,
     tablesLoading,
     tablesError: isError

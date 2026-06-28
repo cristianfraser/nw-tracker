@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
+import { formatClp, formatOrDash } from "../../format";
 import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
 import type { CcFacturacionDto, CcStatementDto } from "../../types";
-import { PaginatedTable } from "../../components/ui/PaginatedTable";
+import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
+import { Table } from "../../components/ui/Table";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
 import {
   buildFacturacionModalBucket,
@@ -60,25 +61,27 @@ function FacturacionMobileCard({
       <TableMobileCardSection>
         <TableMobileCardRow
           label={labels.facturado}
-          value={row.facturado_clp != null ? formatClp(row.facturado_clp) : "—"}
+          value={formatOrDash(row.facturado_clp, formatClp)}
         />
         <TableMobileCardRow label={labels.facturadoUsd} value={fmtUsd(row.facturado_usd)} />
         <TableMobileCardRow
           label={labels.facturadoUsdClp}
-          value={row.facturado_usd_clp != null ? formatClp(row.facturado_usd_clp) : "—"}
+          value={formatOrDash(row.facturado_usd_clp, formatClp)}
         />
         <TableMobileCardRow
           label={labels.facturadoTotal}
-          value={row.facturado_total_clp != null ? formatClp(row.facturado_total_clp) : "—"}
+          value={formatOrDash(row.facturado_total_clp, formatClp)}
         />
         <TableMobileCardRow
           label={labels.cuotaAPagar}
-          value={row.cuota_a_pagar_clp != null ? formatClp(row.cuota_a_pagar_clp) : "—"}
+          value={formatOrDash(row.cuota_a_pagar_clp, formatClp)}
         />
       </TableMobileCardSection>
     </TableMobileCard>
   );
 }
+
+const PAGE_SIZE = 12;
 
 export function CreditCardFacturacionesTable({
   rows,
@@ -86,14 +89,12 @@ export function CreditCardFacturacionesTable({
   accountId,
   displayUnit,
   extraCcOffsetsKey,
-  collapsedVisibleRows = 12,
 }: {
   rows: readonly CcFacturacionDto[];
   statements?: readonly CcStatementDto[];
   accountId: number;
   displayUnit: DisplayUnit;
   extraCcOffsetsKey: string;
-  collapsedVisibleRows?: number;
 }) {
   const { t } = useTranslation();
   const { data: flows } = useFlowsCreditCardExpenses();
@@ -159,91 +160,70 @@ export function CreditCardFacturacionesTable({
         </>
       ) : null}
       {selected.facturado_total_clp != null ? (
-        <>
-          {" "}
-          · {t("account.creditCard.colFacturadoTotal")}: {formatClp(selected.facturado_total_clp)}
-        </>
+        <> · {t("account.creditCard.colFacturadoTotal")}: {formatOrDash(selected.facturado_total_clp, formatClp)}</>
       ) : null}
     </>
   ) : null;
 
-  const pages = useMemo(() => {
-    const byYear = new Map<string, CcFacturacionDto[]>();
-    for (const row of rows) {
-      const year = row.billing_month.slice(0, 4);
-      const bucket = byYear.get(year) ?? [];
-      bucket.push(row);
-      byYear.set(year, bucket);
-    }
+  const sortedRows = useMemo(
+    () => [...rows].sort((a, b) => b.billing_month.localeCompare(a.billing_month)),
+    [rows]
+  );
 
-    const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
-    return yearsAsc.map((year, pageNumber) => ({
-      pageNumber,
-      data: byYear.get(year) ?? [],
-    }));
-  }, [rows]);
+  const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
 
   return (
     <>
       <PaginatedTable
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
         wrapClassName={styles.tableWrapSpaced}
-        tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-        collapsedVisibleRows={collapsedVisibleRows}
-        showMoreLabel={(hiddenCount) => t("table.showMoreMonths", { count: hiddenCount })}
-        showLessLabel={t("table.showLessMonths")}
-        header={
-          <thead>
-            <tr>
-              <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colCloseDate")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colPayBy")}</th>
-              <th className="desktop-only">{t("account.creditCard.colFacturado")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsd")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsdClp")}</th>
-              <th className="desktop-only">{t("account.creditCard.colFacturadoTotal")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colCuotaAPagar")}</th>
-              <th className="mobile-only" aria-hidden="true" />
-            </tr>
-          </thead>
-        }
-        pages={pages}
-        getPageLabel={(page) => page.data[0]?.billing_month.slice(0, 4) ?? String(page.pageNumber)}
-        renderBody={(pageRows) => (
-          <>
-            {pageRows.map((row) => (
-              <tr key={row.billing_month}>
-                <td className="mono desktop-only">
-                  <button
-                    type="button"
-                    className={linkStyles.dateLink}
-                    onClick={() => openFacturacion(row)}
-                  >
-                    {row.billing_month} ({formatYmEs(row.billing_month)})
-                  </button>
-                </td>
-                <td className="mono desktop-only">{row.close_date}</td>
-                <td className="mono desktop-only">{row.pay_by ?? "—"}</td>
-                <td className="mono desktop-only">
-                  {row.facturado_clp != null ? formatClp(row.facturado_clp) : "—"}
-                </td>
-                <td className="mono desktop-only">{fmtUsd(row.facturado_usd)}</td>
-                <td className="mono desktop-only">
-                  {row.facturado_usd_clp != null ? formatClp(row.facturado_usd_clp) : "—"}
-                </td>
-                <td className="mono desktop-only">
-                  {row.facturado_total_clp != null ? formatClp(row.facturado_total_clp) : "—"}
-                </td>
-                <td className="mono desktop-only">
-                  {row.cuota_a_pagar_clp != null ? formatClp(row.cuota_a_pagar_clp) : "—"}
-                </td>
-                <td className="mobile-only">
-                  <FacturacionMobileCard row={row} labels={mobileLabels} onOpen={openFacturacion} />
-                </td>
+      >
+        <Table
+          tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
+          header={
+            <thead>
+              <tr>
+                <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
+                <th className="desktop-only">{t("accountDetail.creditCard.colCloseDate")}</th>
+                <th className="desktop-only">{t("accountDetail.creditCard.colPayBy")}</th>
+                <th className="desktop-only">{t("account.creditCard.colFacturado")}</th>
+                <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsd")}</th>
+                <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsdClp")}</th>
+                <th className="desktop-only">{t("account.creditCard.colFacturadoTotal")}</th>
+                <th className="desktop-only">{t("accountDetail.creditCard.colCuotaAPagar")}</th>
+                <th className="mobile-only" aria-hidden="true" />
               </tr>
-            ))}
-          </>
-        )}
-      />
+            </thead>
+          }
+        >
+          {pageRows.map((row) => (
+            <tr key={row.billing_month}>
+              <td className="mono desktop-only">
+                <button
+                  type="button"
+                  className={linkStyles.dateLink}
+                  onClick={() => openFacturacion(row)}
+                >
+                  {row.billing_month} ({formatYmEs(row.billing_month)})
+                </button>
+              </td>
+              <td className="mono desktop-only">{row.close_date}</td>
+              <td className="mono desktop-only">{row.pay_by ?? "—"}</td>
+              <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatClp)}</td>
+              <td className="mono desktop-only">{fmtUsd(row.facturado_usd)}</td>
+              <td className="mono desktop-only">{formatOrDash(row.facturado_usd_clp, formatClp)}</td>
+              <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatClp)}</td>
+              <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatClp)}</td>
+              <td className="mobile-only">
+                <FacturacionMobileCard row={row} labels={mobileLabels} onOpen={openFacturacion} />
+              </td>
+            </tr>
+          ))}
+        </Table>
+      </PaginatedTable>
 
       <Modal
         open={modalOpen}
