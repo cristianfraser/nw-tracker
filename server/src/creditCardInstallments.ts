@@ -19,6 +19,12 @@ import {
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
 import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
+import {
+  buildCcHistorialChartSeries,
+  buildCcBillingMonthChartSeries,
+  type CcHistorialChartPoint,
+  type CcBillingMonthChartPoint,
+} from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import { ccPurchaseSourceLegacyFromOrigin } from "./dataOrigin.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
@@ -418,11 +424,22 @@ export function creditCardInstallmentsResponse(
   open_billing_month?: string | null;
   /** Distinct physical card numbers billed on this master (titular first). */
   associated_card_last4s?: string[];
+  /** Dense month series for the Historial chart (interior gaps filled with nulls). */
+  historial_chart?: CcHistorialChartPoint[];
+  /** Dense billing-month series for the facturado/financing-cost chart (interior gaps filled with nulls). */
+  billing_month_chart?: CcBillingMonthChartPoint[];
 } {
   const associated_card_last4s = associatedCardLast4sForMaster(accountId);
   const open_billing_month = billingMonthForManualLedgerPurchase(accountId);
   if (ccInstallmentLedgerRowCount(accountId) > 0) {
     const db = ccInstallmentsDbApiPayload(accountId);
+    const billingDetail = buildBillingDetailByMonth(accountId, db.months);
+    const facturaciones = buildFacturaciones(accountId, db.months);
+    const financingPl = buildCreditCardFinancingPlByBillingMonth(
+      accountId,
+      [...db.purchases, ...db.purchases_completed],
+      extraOffsets
+    );
     return {
       account_id: accountId,
       has_installment_ledger: true,
@@ -443,14 +460,16 @@ export function creditCardInstallmentsResponse(
       installment_history_months: db.installment_history_months,
       statements: ccStatementsPayloadForAccount(accountId).statements,
       billing_month_balances: listCcBillingMonthBalances(accountId),
-      billing_detail_by_month: buildBillingDetailByMonth(accountId, db.months),
-      facturaciones: buildFacturaciones(accountId, db.months),
-      financing_pl_by_month: buildCreditCardFinancingPlByBillingMonth(
-        accountId,
-        [...db.purchases, ...db.purchases_completed],
-        extraOffsets
-      ),
+      billing_detail_by_month: billingDetail,
+      facturaciones,
+      financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
+      historial_chart: buildCcHistorialChartSeries(
+        db.installment_history_months,
+        billingDetail,
+        facturaciones
+      ),
+      billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
     };
   }
 
@@ -460,6 +479,9 @@ export function creditCardInstallmentsResponse(
       billing.length > 0
         ? [...billing].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date))[0]!.cupo_utilizado_clp
         : 0;
+    const billingDetail = buildBillingDetailByMonth(accountId, []);
+    const facturaciones = buildFacturaciones(accountId, []);
+    const financingPl = buildCreditCardFinancingPlByBillingMonth(accountId, [], extraOffsets);
     return {
       account_id: accountId,
       has_installment_ledger: false,
@@ -481,10 +503,12 @@ export function creditCardInstallmentsResponse(
       },
       statements: ccStatementsPayloadForAccount(accountId).statements,
       billing_month_balances: billing,
-      billing_detail_by_month: buildBillingDetailByMonth(accountId, []),
-      facturaciones: buildFacturaciones(accountId, []),
-      financing_pl_by_month: buildCreditCardFinancingPlByBillingMonth(accountId, [], extraOffsets),
+      billing_detail_by_month: billingDetail,
+      facturaciones,
+      financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
+      historial_chart: buildCcHistorialChartSeries([], billingDetail, facturaciones),
+      billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
     };
   }
 

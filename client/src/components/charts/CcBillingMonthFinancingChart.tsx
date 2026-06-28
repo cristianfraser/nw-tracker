@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import type { TooltipProps } from "recharts";
 import { useTranslation } from "../../i18n";
-import type { CcBillingMonthChartPoint } from "../../pages/accountDetail/ccChartData";
+import type { CcBillingMonthChartPoint } from "../../types";
 import { formatClp, formatUsd } from "../../format";
 import {
   buildNiceYAxis,

@@ -579,6 +579,24 @@ export interface CcInstallmentHistoryMonthPoint {
   ledger_remaining_installments_clp?: number;
 }
 
+/** One point in the server-built dense Historial chart series. */
+export type CcHistorialChartPoint = {
+  month: string;
+  installment_payments_clp: number;
+  facturado_clp: number | null;
+  cupo_en_cuotas_clp: number | null;
+  balance_total_clp: number | null;
+};
+
+/** One point in the server-built dense billing-month chart series. */
+export type CcBillingMonthChartPoint = {
+  billing_month: string;
+  facturado_clp: number | null;
+  facturado_usd_clp: number | null;
+  financing_cost_clp: number | null;
+  ytd_financing_cost_clp: number | null;
+};
+
 export interface AccountCcInstallmentsResponse {
   account_id: number;
   has_installment_ledger: boolean;
@@ -607,6 +625,10 @@ export interface AccountCcInstallmentsResponse {
   open_billing_month?: string | null;
   /** Distinct physical card numbers billed on this master (titular first). */
   associated_card_last4s?: string[];
+  /** Dense Historial chart series — interior month gaps filled with nulls. Built server-side. */
+  historial_chart?: CcHistorialChartPoint[];
+  /** Dense billing-month chart series — interior month gaps filled with nulls. Built server-side. */
+  billing_month_chart?: CcBillingMonthChartPoint[];
 }
 
 /** `GET /api/portfolio-groups/:slug/cc-ledger` — aggregated CC masters for a pasivos group. */

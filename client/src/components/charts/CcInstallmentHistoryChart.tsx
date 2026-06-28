@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
-import type { CcHistorialChartRow } from "../../pages/accountDetail/ccChartData";
+import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { formatClp } from "../../format";
 import { buildNiceYAxis, RECHARTS_MONEY_CHART_MARGIN } from "./ValuationLineCharts";
 
