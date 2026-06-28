@@ -81,7 +81,10 @@ export type CcOpenWebPasteRepairResult = {
  * Unmatched survivors on stale `open|{M}` after a PDF close stay put; read paths attribute
  * them to the current open month (see {@link listStaleOpenWebPasteStatementDates}).
  */
-export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWebPasteRepairResult {
+export function repairMisplacedOpenWebPasteBuckets(
+  accountId: number,
+  opts?: { skipRecompute?: boolean }
+): CcOpenWebPasteRepairResult {
   const openBm = billingMonthForManualLedgerPurchase(accountId);
   if (!openBm) {
     return { lines_moved: 0, target_billing_month: null };
@@ -120,7 +123,7 @@ export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWeb
     }
   }
 
-  if (linesMoved > 0) {
+  if (linesMoved > 0 && !opts?.skipRecompute) {
     recomputeCcBillingMonthBalances(accountId);
   }
 
