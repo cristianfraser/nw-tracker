@@ -22,6 +22,17 @@ describe("ccParsedImportAccounts", () => {
     ).toBe("4141");
   });
 
+  it("prefers card_last4 over trailing digits of a numeric filename", () => {
+    // BCI Lider statements arrive named like `155028273.pdf`; the trailing
+    // `8273` is not the card. The PDF-upload path must match on card_last4.
+    expect(
+      cardLast4FromParsedRow({
+        card_last4: "4343",
+        source_pdf: "155028273.pdf",
+      })
+    ).toBe("4343");
+  });
+
   it("discovers master accounts from parsed rows", () => {
     const id4141 = resolveMasterAccountIdForCardLast4("4141");
     if (id4141 == null) return;
