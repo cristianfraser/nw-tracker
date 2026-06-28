@@ -23,8 +23,11 @@ function lastImportedStatementBillingMonth(accountId: number): string | null {
  * whose last imported statement is before the current billing month and $0 live outstanding.
  */
 export function creditCardBillingDetailInactive(accountId: number): boolean {
-  if (accountInactiveByValuationTail(accountId)) return true;
+  // A card with an active installment ledger is still billing (cuotas ongoing), even when
+  // its projected valuation tail reaches zero at payoff. Check the ledger before the
+  // valuation-tail heuristic, which is for revolving-only cards (see docstring).
   if (ccInstallmentLedgerRowCount(accountId) > 0) return false;
+  if (accountInactiveByValuationTail(accountId)) return true;
 
   const lastStatementMonth = lastImportedStatementBillingMonth(accountId);
   if (!lastStatementMonth) return false;
