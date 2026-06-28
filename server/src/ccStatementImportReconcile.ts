@@ -5,6 +5,7 @@ import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
+import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import {
   isClpSection3Merchant,
   isUsdSection3Merchant,
@@ -517,8 +518,6 @@ export function reconcilePurchaseRowsMatch(a: CcReconcileRow, b: CcReconcileRow)
 
 /** Web-paste vs PDF match for post-close reconcile (charges + payments). */
 export function reconcileWebPastePdfRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
-  const crossSource = Boolean(a.from_web_paste) !== Boolean(b.from_web_paste);
-  if (!crossSource) return reconcilePurchaseRowsMatch(a, b);
   return reconcilePurchaseRowsMatch(a, b);
 }
 
