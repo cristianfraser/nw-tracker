@@ -59,6 +59,29 @@ function seedCartolaImport(
   );
 }
 
+/** Creates an isolated synthetic cuenta_vista account with no real movements for anchor tests. */
+function createSyntheticAnchorAccount(): number {
+  const bucket = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug = 'cash_eqs__cuenta_vista' LIMIT 1`)
+    .get() as { id: number } | undefined;
+  if (!bucket) throw new Error("cuenta_vista asset group not found");
+  const id = Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
+         VALUES (?, 'Vitest · anchor fixture', 'vitest:cartola-anchor', 'master')`
+      )
+      .run(bucket.id).lastInsertRowid
+  );
+  return id;
+}
+
+function destroySyntheticAnchorAccount(accountId: number): void {
+  db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+}
+
 describe("checkingCartolaBalances", () => {
   it("computes balance as movement cumsum", () => {
     const row = db
@@ -126,97 +149,98 @@ describe("checkingCartolaBalances", () => {
 
   describe("ledger anchor", () => {
     it("uses latest cartola saldo final and removes legacy opening rows", () => {
-      const accountId = cartolaCashAccountIdOptional("cuenta_vista");
-      if (accountId == null) return;
+      // Use a synthetic isolated account so real movements don't pollute the balance calc.
+      const accountId = createSyntheticAnchorAccount();
+      try {
+        seedCartolaImport(accountId, TEST_MONTH_EARLY, 500, 1000);
+        seedCartolaImport(accountId, TEST_MONTH_LATE, 900, 500);
 
-      cleanupAnchorFixture(accountId);
-      seedCartolaImport(accountId, TEST_MONTH_EARLY, 500, 1000);
-      seedCartolaImport(accountId, TEST_MONTH_LATE, 900, 500);
+        db.prepare(
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+           VALUES (?, -100, ?, ?, NULL)`
+        ).run(
+          accountId,
+          `${TEST_MONTH_LATE}-10`,
+          `import:cartola|${TEST_MONTH_LATE}|401|Test|on:${TEST_MONTH_LATE}-10|amt:-100|idx:0`
+        );
 
-      db.prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, -100, ?, ?, NULL)`
-      ).run(
-        accountId,
-        `${TEST_MONTH_LATE}-10`,
-        `import:cartola|${TEST_MONTH_LATE}|401|Test|on:${TEST_MONTH_LATE}-10|amt:-100|idx:0`
-      );
+        db.prepare(
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+           VALUES (?, 811098, '2017-07-31', 'import:cartola|opening|2017-07|saldo inicial', NULL)`
+        ).run(accountId);
 
-      db.prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, 811098, '2017-07-31', 'import:cartola|opening|2017-07|saldo inicial', NULL)`
-      ).run(accountId);
+        const anchor = ensureCheckingLedgerAnchor(accountId);
+        expect(anchor.inserted || anchor.updated).toBe(true);
+        expect(anchor.anchor_period_month).toBe(TEST_MONTH_LATE);
+        // saldo_final(late)=900, minus movement -100 after anchor = anchor=1000
+        expect(anchor.amount_clp).toBe(1000);
+        expect(anchor.occurred_on).toBe(TEST_DEFAULT_ANCHOR_DATE);
 
-      const anchor = ensureCheckingLedgerAnchor(accountId);
-      expect(anchor.inserted || anchor.updated).toBe(true);
-      expect(anchor.anchor_period_month).toBe(TEST_MONTH_LATE);
-      expect(anchor.amount_clp).toBe(1000);
-      expect(anchor.occurred_on).toBe(TEST_DEFAULT_ANCHOR_DATE);
+        const openingLeft = db
+          .prepare(`SELECT COUNT(*) AS c FROM movements WHERE account_id = ? AND note LIKE ?`)
+          .get(accountId, "import:cartola|opening|%") as { c: number };
+        expect(openingLeft.c).toBe(0);
 
-      const openingLeft = db
-        .prepare(`SELECT COUNT(*) AS c FROM movements WHERE account_id = ? AND note LIKE ?`)
-        .get(accountId, "import:cartola|opening|%") as { c: number };
-      expect(openingLeft.c).toBe(0);
-
-      const balanceAtAnchor = checkingMovementBalanceClpAt(
-        accountId,
-        monthEndUtcYmd(TEST_MONTH_LATE)
-      );
-      expect(balanceAtAnchor).toBe(900);
-
-      cleanupAnchorFixture(accountId);
+        const balanceAtAnchor = checkingMovementBalanceClpAt(
+          accountId,
+          monthEndUtcYmd(TEST_MONTH_LATE)
+        );
+        expect(balanceAtAnchor).toBe(900);
+      } finally {
+        destroySyntheticAnchorAccount(accountId);
+      }
     });
 
     it("recomputes anchor amount when a manual gap-fill movement is added", () => {
-      const accountId = cartolaCashAccountIdOptional("cuenta_vista");
-      if (accountId == null) return;
+      const accountId = createSyntheticAnchorAccount();
+      try {
+        seedCartolaImport(accountId, TEST_MONTH_EARLY, 500);
+        seedCartolaImport(accountId, TEST_MONTH_LATE, 900);
 
-      cleanupAnchorFixture(accountId);
-      seedCartolaImport(accountId, TEST_MONTH_EARLY, 500);
-      seedCartolaImport(accountId, TEST_MONTH_LATE, 900);
+        ensureCheckingLedgerAnchor(accountId);
+        const before = getCheckingLedgerAnchor(accountId);
+        // no movements → anchor = saldo_final = 900
+        expect(before?.amount_clp).toBe(900);
 
-      ensureCheckingLedgerAnchor(accountId);
-      const before = getCheckingLedgerAnchor(accountId);
-      expect(before?.amount_clp).toBe(900);
+        db.prepare(
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
+           VALUES (?, 50, ?, 'manual gap-fill', NULL)`
+        ).run(accountId, `${TEST_MONTH_LATE}-15`);
 
-      db.prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, 50, ?, 'manual gap-fill', NULL)`
-      ).run(accountId, `${TEST_MONTH_LATE}-15`);
+        const resync = ensureCheckingLedgerAnchor(accountId);
+        expect(resync.updated).toBe(true);
+        // anchor = saldo_final(900) - movement(50) = 850
+        expect(resync.amount_clp).toBe(850);
 
-      const resync = ensureCheckingLedgerAnchor(accountId);
-      expect(resync.updated).toBe(true);
-      expect(resync.amount_clp).toBe(850);
-
-      const balanceAtAnchor = checkingMovementBalanceClpAt(
-        accountId,
-        monthEndUtcYmd(TEST_MONTH_LATE)
-      );
-      expect(balanceAtAnchor).toBe(900);
-
-      cleanupAnchorFixture(accountId);
+        const balanceAtAnchor = checkingMovementBalanceClpAt(
+          accountId,
+          monthEndUtcYmd(TEST_MONTH_LATE)
+        );
+        expect(balanceAtAnchor).toBe(900);
+      } finally {
+        destroySyntheticAnchorAccount(accountId);
+      }
     });
 
     it("auto-sync overwrites manual UI anchor amount and date", () => {
-      const accountId = cartolaCashAccountIdOptional("cuenta_vista");
-      if (accountId == null) return;
+      const accountId = createSyntheticAnchorAccount();
+      try {
+        seedCartolaImport(accountId, TEST_MONTH_EARLY, 500);
+        seedCartolaImport(accountId, TEST_MONTH_LATE, 900);
+        ensureCheckingLedgerAnchor(accountId);
 
-      cleanupAnchorFixture(accountId);
-      seedCartolaImport(accountId, TEST_MONTH_EARLY, 500);
-      seedCartolaImport(accountId, TEST_MONTH_LATE, 900);
-      ensureCheckingLedgerAnchor(accountId);
+        upsertCheckingLedgerAnchor(accountId, { amount_clp: 123, occurred_on: `${TEST_MONTH_LATE}-20` });
+        const manual = getCheckingLedgerAnchor(accountId);
+        expect(manual?.amount_clp).toBe(123);
+        expect(manual?.occurred_on).toBe(`${TEST_MONTH_LATE}-20`);
 
-      upsertCheckingLedgerAnchor(accountId, { amount_clp: 123, occurred_on: `${TEST_MONTH_LATE}-20` });
-      const manual = getCheckingLedgerAnchor(accountId);
-      expect(manual?.amount_clp).toBe(123);
-      expect(manual?.occurred_on).toBe(`${TEST_MONTH_LATE}-20`);
-
-      const resync = ensureCheckingLedgerAnchor(accountId);
-      expect(resync.updated).toBe(true);
-      expect(resync.amount_clp).toBe(900);
-      expect(resync.occurred_on).toBe(TEST_DEFAULT_ANCHOR_DATE);
-
-      cleanupAnchorFixture(accountId);
+        const resync = ensureCheckingLedgerAnchor(accountId);
+        expect(resync.updated).toBe(true);
+        expect(resync.amount_clp).toBe(900);
+        expect(resync.occurred_on).toBe(TEST_DEFAULT_ANCHOR_DATE);
+      } finally {
+        destroySyntheticAnchorAccount(accountId);
+      }
     });
 
     it("clearCheckingLedgerAnchor removes the anchor movement", () => {
