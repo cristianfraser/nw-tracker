@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
@@ -12,10 +11,6 @@ import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { CreditCardDetailSections } from "./CreditCardSections";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
-import {
-  buildCcBillingMonthChartPoints,
-  buildCcHistorialChartRows,
-} from "./ccChartData";
 import { movementUnitsKind } from "./shared";
 import styles from "../AccountDetailPage.module.css";
 
@@ -37,24 +32,8 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     setExtraCcOffsets,
   } = data;
 
-  const hist = ccLedger.installment_history_months ?? [];
-  const historialChartRows = useMemo(
-    () =>
-      buildCcHistorialChartRows(
-        hist,
-        ccLedger.billing_detail_by_month,
-        ccLedger.facturaciones
-      ),
-    [hist, ccLedger.billing_detail_by_month, ccLedger.facturaciones]
-  );
-  const financingChartPoints = useMemo(
-    () =>
-      buildCcBillingMonthChartPoints(
-        ccLedger.facturaciones,
-        ccLedger.financing_pl_by_month
-      ),
-    [ccLedger.facturaciones, ccLedger.financing_pl_by_month]
-  );
+  const historialChartRows = ccLedger.historial_chart ?? [];
+  const financingChartPoints = ccLedger.billing_month_chart ?? [];
 
   const heroClp =
     displayUnit === "usd"
