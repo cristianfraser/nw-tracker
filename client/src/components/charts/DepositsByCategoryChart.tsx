@@ -13,7 +13,6 @@ import {
 } from "recharts";
 import type { TooltipProps } from "recharts";
 import { useMemo } from "react";
-import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { allocationBucketColor } from "../../chartColors";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
@@ -78,17 +77,7 @@ export function DepositsByCategoryChart({
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();
-  const densePoints = useMemo(() => {
-    const zeroKeys = [...CATEGORY_BAR.map((b) => b.dataKey), "total"];
-    return densifyRecordsByCalendarPeriod(
-      points as unknown as Record<string, string | number | null>[],
-      {
-        granularity: xAxisGranularity,
-        dateKey: "as_of_date",
-        fillMissing: { zeroKeys },
-      }
-    ) as unknown as FlowDepositChartPoint[];
-  }, [points, xAxisGranularity]);
+  const densePoints = points;
 
   const yKeys = useMemo(
     () => [...CATEGORY_BAR.map((b) => b.dataKey), "total"],
