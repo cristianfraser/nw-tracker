@@ -104,7 +104,7 @@ describe("buildBillingDetailByMonth", () => {
     );
   });
 
-  it("open month facturado estimate includes charges, ledger cuotas, and cuota_a_pagar_next_mes", () => {
+  it("open month facturado is this cycle's charges plus cuota a pagar (not rolled)", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
       .get() as { id: number } | undefined;
@@ -121,13 +121,14 @@ describe("buildBillingDetailByMonth", () => {
     const may = det.find((d) => d.billing_month === lastPdf);
     if (!openRow || !may?.total_facturado_clp) return;
 
-    const charges = incrementalChargesClpForBillingMonth(master.id, openBm);
-    const ledger = ledgerFacturadoClpForBillingMonth(master.id, openBm);
-    const payments = paymentAbonosClpForBillingMonth(master.id, openBm);
-    const expected =
-      (may.total_facturado_clp ?? 0) + charges + ledger - payments + openRow.cuota_a_pagar_next_mes_clp;
+    // Facturado for the open cycle = únicos billed this cycle + cuota a pagar; the prior
+    // closed month's facturado is NOT rolled in (that lives in deuda/saldo).
+    const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
+    const expected = uniquo + openRow.cuota_a_pagar_next_mes_clp;
 
     expect(openRow.total_facturado_clp).toBe(expected);
+    // Open month did not roll the prior closed facturado into this cycle.
+    expect(openRow.total_facturado_clp ?? 0).toBeLessThan(may.total_facturado_clp ?? 0);
     expect(openRow.balance_total_clp).toBe(
       (openRow.total_facturado_clp ?? 0) + openRow.cupo_en_cuotas_clp
     );
@@ -184,12 +185,15 @@ describe("buildBillingDetailByMonth", () => {
         (d) => d.billing_month === openBm
       );
       expect(after).toBeDefined();
-      expect(after!.total_facturado_clp).toBe(
-        (before.total_facturado_clp ?? 0) + chargeA + chargeB - pagoClp
-      );
+      // Open-month facturado tracks únicos billed this cycle (charges net of the PAGO,
+      // floored at 0) plus cuota a pagar — both the purchases and the PAGO flow through.
+      const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
+      expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
       expect(after!.balance_total_clp).toBe(
-        before.balance_total_clp + chargeA + chargeB - pagoClp
+        (after!.total_facturado_clp ?? 0) + after!.cupo_en_cuotas_clp
       );
+      // The large PAGO drives net únicos to zero (floored), below the pre-insert facturado.
+      expect(uniquo).toBe(0);
     } finally {
       for (const id of [insA.lastInsertRowid, insB.lastInsertRowid, insPago.lastInsertRowid]) {
         db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
@@ -197,7 +201,7 @@ describe("buildBillingDetailByMonth", () => {
     }
   });
 
-  it("PAGO in open month reduces rolled facturado and balance_total", () => {
+  it("PAGO in open month reduces facturado and balance_total", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
       .get() as { id: number } | undefined;
@@ -232,39 +236,66 @@ describe("buildBillingDetailByMonth", () => {
         (d) => d.billing_month === openBm
       );
       expect(after).toBeDefined();
-      expect(after!.total_facturado_clp).toBe((before.total_facturado_clp ?? 0) - pagoClp);
-      expect(after!.balance_total_clp).toBe(before.balance_total_clp - pagoClp);
+      // Facturado tracks the non-rolled cycle formula; a PAGO does not increase it.
+      const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
+      expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
+      expect(after!.balance_total_clp).toBe(
+        (after!.total_facturado_clp ?? 0) + after!.cupo_en_cuotas_clp
+      );
+      expect(after!.total_facturado_clp ?? 0).toBeLessThanOrEqual(before.total_facturado_clp ?? 0);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
     }
   });
 
   it("inactive card omits synthetic open months without imported statements", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
+    // Synthetic dormant card: closed statements months ago, no installment ledger, $0 live.
+    // (A real use case, not a reference to a live card whose state drifts over time.)
+    const bucket = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%credit_card%' LIMIT 1`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!bucket) return;
 
-    const stmtCount = (
-      db.prepare(`SELECT COUNT(*) AS c FROM cc_statements WHERE account_id = ?`).get(master.id) as {
-        c: number;
-      }
-    ).c;
-    if (stmtCount === 0) return;
+    const notes = `credit_card_master|test|inactive-${Date.now()}`;
+    const acctId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
+           VALUES (?, 'Vitest · inactive fixture', ?, 'master')`
+        )
+        .run(bucket.id, notes).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
+       VALUES (?, 21, 20, '0000')`
+    ).run(acctId);
+    const insStmt = db.prepare(
+      `INSERT INTO cc_statements
+         (account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency)
+       VALUES (?, 'test', ?, ?, ?, ?, '0000', 'compact', 'clp')`
+    );
+    // Both billing months are well before the current month (period_to month wins).
+    insStmt.run(acctId, "2025-01-21 estado de cuenta.pdf", "21/01/2025", "21/12/2024", "20/01/2025");
+    insStmt.run(acctId, "2025-02-21 estado de cuenta.pdf", "21/02/2025", "21/01/2025", "20/02/2025");
 
-    expect(creditCardBillingDetailInactive(master.id)).toBe(true);
+    try {
+      expect(creditCardBillingDetailInactive(acctId)).toBe(true);
 
-    recomputeCcBillingMonthBalances(master.id);
-    const payload = ccInstallmentsDbApiPayload(master.id);
-    const det = buildBillingDetailByMonth(master.id, payload.months);
-    expect(det.length).toBeGreaterThan(0);
+      recomputeCcBillingMonthBalances(acctId);
+      const payload = ccInstallmentsDbApiPayload(acctId);
+      const det = buildBillingDetailByMonth(acctId, payload.months);
+      expect(det.length).toBeGreaterThan(0);
+      expect(det.every((row) => row.as_of_kind === "statement")).toBe(true);
 
-    const last = det[0]!.billing_month;
-    expect(det.every((row) => row.as_of_kind === "statement")).toBe(true);
-
-    const todayMonth = new Date().toISOString().slice(0, 7);
-    expect(det.some((row) => row.billing_month >= todayMonth)).toBe(false);
-    expect(last < todayMonth).toBe(true);
+      const todayMonth = new Date().toISOString().slice(0, 7);
+      expect(det.some((row) => row.billing_month >= todayMonth)).toBe(false);
+      expect(det[0]!.billing_month < todayMonth).toBe(true);
+    } finally {
+      db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(acctId);
+      db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(acctId);
+      db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(acctId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(acctId);
+    }
   });
 });
 
