@@ -219,6 +219,20 @@ export function facturadoClpFromOpenMonthStatementLines(
   return net > 0 ? Math.round(net) : 0;
 }
 
+/**
+ * Open-month facturado: what is billed in THIS facturación cycle — charges/únicos billed so
+ * far (net of payments) plus the cuota a pagar — not the prior balance rolled forward.
+ * Shared by Facturaciones and Detalle por mes so both views report the same facturado.
+ */
+export function openMonthFacturadoTotalClp(
+  accountId: number,
+  billingMonth: string,
+  cuotaAPagarClp: number
+): number {
+  const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth);
+  return uniquo + cuotaAPagarClp;
+}
+
 function closedFacturadoClpForPdfBillingMonth(
   accountId: number,
   priorPdfMonth: string,
@@ -292,6 +306,11 @@ export function applyOpenBillingMonthSaldoToNextMonth(
     billingMonthForStatementDate(chileCalendarTodayYmd()) ??
     billingMonthForManualLedgerPurchase(accountId);
   if (!openBm) return;
+  // billingMonthForStatementDate returns the calendar month, which lags the real open
+  // month in the gap after an early statement close (e.g. card closes the 26th, today is
+  // the 28th → calendar says June but June already has a PDF cierre). Don't propagate a
+  // closed month's saldo onto the next month — it isn't the open month.
+  if (hasPdfStatementCloseForBillingMonth(slots.get(openBm))) return;
   const nextBm = addCalendarMonths(openBm, 1);
   const openRow = rows.find((r) => r.billing_month === openBm);
   const nextRow = rows.find((r) => r.billing_month === nextBm);
@@ -367,9 +386,11 @@ export function buildBillingDetailByMonth(
     let totalFacturado = fromStatement ?? fromBalance;
 
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
+    const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
     if (!hasPdfClose && !inactive) {
-      const estimate = openFacturadoEstimateClp(accountId, billingMonth, slots, ledgerMonths);
-      if (estimate != null) totalFacturado = estimate;
+      // Open month: facturado is what is billed this cycle (matches Facturaciones), not the
+      // prior balance rolled forward.
+      totalFacturado = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaNext);
     }
 
     const kind: "statement" | "manual" =
@@ -384,7 +405,6 @@ export function buildBillingDetailByMonth(
       primary?.statement_date_iso ?? snap?.as_of_date ?? `${billingMonth}-01`;
 
     const cupo = cupoEnCuotasForBillingMonth(accountId, billingMonth, cupoLive);
-    const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
     const balanceTotal = billingDetailBalanceClp(
       totalFacturado,
       cupo,
@@ -588,10 +608,9 @@ export function buildFacturaciones(
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
     if (!hasPdfClose) {
       // Open month: "facturado" is what is billed in THIS cycle — únicos billed so far plus
-      // the cuota a pagar — not the prior unpaid balance rolled forward. The carried-over
-      // balance belongs to deuda/saldo (Detalle por mes), not to the facturación amount.
-      const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth);
-      facturadoTotal = uniquo + (cuotaAPagar ?? 0);
+      // the cuota a pagar — not the prior unpaid balance rolled forward. Detalle por mes uses
+      // the same helper so both views report the same facturado.
+      facturadoTotal = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagar ?? 0);
       facturadoClp = facturadoTotal - (facturadoUsdClp ?? 0);
     }
 
