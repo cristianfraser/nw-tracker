@@ -1,9 +1,5 @@
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import {
-  listAccountMovementsForApiBulk,
-  type AccountMovementApiRow,
-} from "./accountMovementsApi.js";
-import {
   consolidateGroupMonthlyPerf,
   getGroupConsolidationAccountMonthly,
   type ConsolidatedMonthlyPerfRow,
@@ -24,12 +20,6 @@ export type GroupConsolidatedTablesResponse = {
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
-  account_movements: {
-    account_id: number;
-    name: string;
-    category_slug: string;
-    movements: AccountMovementApiRow[];
-  }[];
 };
 
 export function getGroupConsolidatedTables(
@@ -55,13 +45,5 @@ export function getGroupConsolidatedTables(
           unit
         );
 
-  const movementsByAccount = listAccountMovementsForApiBulk(rows.map((r) => r.account_id));
-  const account_movements: GroupConsolidatedTablesResponse["account_movements"] = rows.map((r) => ({
-    account_id: r.account_id,
-    name: r.name,
-    category_slug: r.bucket_slug,
-    movements: movementsByAccount.get(r.account_id) ?? [],
-  }));
-
-  return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly, account_movements };
+  return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly };
 }

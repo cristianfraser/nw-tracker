@@ -47,7 +47,6 @@ import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
 
-import { listAccountMovementsForApi } from "./accountMovementsApi.js";
 
 function positionSnapshotFromMeta(
   categorySlug: string | null | undefined,
@@ -194,7 +193,6 @@ export async function buildAccountDetailBundle(
     mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(accountId),
   };
 
-  const movements = listAccountMovementsForApi(accountId);
   const tsRaw = getAccountValuationTimeseries(accountId, unit, { granularity });
   const ts = tsRaw ? attachColorsToValuationPayload(tsRaw) : null;
 
@@ -324,7 +322,6 @@ export async function buildAccountDetailBundle(
 
   return {
     summary,
-    movements,
     ts,
     depositInflows,
     mortgageLedger,
