@@ -61,8 +61,8 @@ export function CreditCardPurchaseMobileCard({
 
       <TableMobileCardSection>
         <TableMobileCardRow label="Cuotas" value={String(purchase.installment_count)} />
-        <TableMobileCardRow label="Pagadas" value={String(purchase.installments_paid)} />
-        <TableMobileCardRow label="Restan" value={String(purchase.remaining_installments)} />
+        {dueColumn !== "last" ? <TableMobileCardRow label="Pagadas" value={String(purchase.installments_paid)} /> : null}
+        {dueColumn !== "last" ? <TableMobileCardRow label="Restan" value={String(purchase.remaining_installments)} /> : null}
         <TableMobileCardRow label="Principal" value={formatClp(purchase.principal_clp)} />
       </TableMobileCardSection>
 
@@ -74,15 +74,11 @@ export function CreditCardPurchaseMobileCard({
           />
         ) : null}
         <TableMobileCardRow label="Mes compra" value={purchase.purchase_month ?? "—"} />
-        <TableMobileCardRow label="1.ª cuota (MES)" value={purchase.first_due_month} />
+        {dueColumn !== "last" ? <TableMobileCardRow label="1.ª cuota (MES)" value={purchase.first_due_month} /> : null}
         {dueColumn === "last" ? (
           <TableMobileCardRow
             label="Mes último pago"
-            value={
-              purchase.last_paid_month
-                ? `${purchase.last_paid_month} (${formatYmEs(purchase.last_paid_month)})`
-                : "—"
-            }
+            value={purchase.last_paid_month ? formatYmEs(purchase.last_paid_month) : "—"}
           />
         ) : null}
         {dueColumn === "next" ? (
@@ -122,7 +118,7 @@ export function CreditCardPurchaseMobileCard({
 
       <TableMobileCardSection>
         <TableMobileCardRow label="Cuota CLP" value={formatClp(purchase.cuota_clp)} />
-        <TableMobileCardRow label="Restante CLP" value={formatClp(purchase.remaining_principal_clp)} />
+        {dueColumn !== "last" ? <TableMobileCardRow label="Restante CLP" value={formatClp(purchase.remaining_principal_clp)} /> : null}
       </TableMobileCardSection>
 
       {dueColumn === "none" && purchase.payment_statements && purchase.payment_statements.length > 0 ? (
@@ -157,6 +153,14 @@ export function purchaseTableColSpan(
   hasLedger: boolean,
   dueColumn: "next" | "last" | "none"
 ): number {
-  const desktop = hasLedger ? (dueColumn === "none" ? 9 : 10) : dueColumn === "none" ? 12 : 13;
+  const desktop = hasLedger
+    ? dueColumn === "last"
+      ? 6
+      : dueColumn === "none"
+        ? 9
+        : 10
+    : dueColumn === "none"
+      ? 12
+      : 13;
   return desktop + 1;
 }
