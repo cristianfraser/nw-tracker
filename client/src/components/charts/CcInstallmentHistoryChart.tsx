@@ -52,10 +52,17 @@ const BALANCE_TOTAL_STROKE = "#38bdf8";
 
 const CURRENT_MONTH_STROKE = "#94a3b8";
 
-export function CcInstallmentHistoryChart({ rows }: { rows: CcHistorialChartRow[] }) {
+export function CcInstallmentHistoryChart({
+  rows,
+  openBillingMonth,
+}: {
+  rows: CcHistorialChartRow[];
+  openBillingMonth?: string | null;
+}) {
   const { t } = useTranslation();
   const currentYm = chileTodayYmd().slice(0, 7);
-  const showCurrentMonthLine = rows.some((r) => r.month === currentYm);
+  const refMonth = openBillingMonth ?? currentYm;
+  const showCurrentMonthLine = rows.some((r) => r.month === refMonth);
   const yScale = useMemo(() => {
     const { min, max } = unifiedMinMax(rows);
     return buildNiceYAxis(min, max);
@@ -133,12 +140,16 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcHistorialChartRow[
           />
           {showCurrentMonthLine ? (
             <ReferenceLine
-              x={currentYm}
+              x={refMonth}
               stroke={CURRENT_MONTH_STROKE}
               strokeDasharray="4 4"
               strokeWidth={1.5}
               label={{
-                value: t("accountDetail.creditCard.historialCurrentMonth"),
+                value: t(
+                  openBillingMonth
+                    ? "accountDetail.creditCard.historialOpenMonth"
+                    : "accountDetail.creditCard.historialCurrentMonth"
+                ),
                 position: "insideTopRight",
                 fill: CURRENT_MONTH_STROKE,
                 fontSize: 10,
@@ -146,16 +157,16 @@ export function CcInstallmentHistoryChart({ rows }: { rows: CcHistorialChartRow[
             />
           ) : null}
           <Bar
-            dataKey="installment_payments_clp"
-            name="Pagos de cuotas (mes)"
-            fill="#64748b"
+            dataKey="facturado_clp"
+            name={t("accountDetail.creditCard.chartFacturadoClose")}
+            fill={FACTURADO_FILL}
             maxBarSize={32}
             radius={[2, 2, 0, 0]}
           />
           <Bar
-            dataKey="facturado_clp"
-            name={t("accountDetail.creditCard.chartFacturadoClose")}
-            fill={FACTURADO_FILL}
+            dataKey="installment_payments_clp"
+            name="Pagos de cuotas (mes)"
+            fill="#64748b"
             maxBarSize={32}
             radius={[2, 2, 0, 0]}
           />

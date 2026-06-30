@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
 import { useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
-import { formatCcExpenseLineAmount } from "../../format";
+import { formatCcExpenseLineAmount, formatClp } from "../../format";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Table } from "../ui/Table";
 import { Pill } from "../ui/Pill";
@@ -206,6 +206,9 @@ export function CreditCardExpenseLinesTable({
   deletableLineIds,
   onDeleteLine,
   deletePendingLineId,
+  makeInstallmentLineIds,
+  onMakeInstallmentLine,
+  makeInstallmentBusyLineId,
   enableCheckingNotes = false,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
@@ -223,6 +226,9 @@ export function CreditCardExpenseLinesTable({
   deletableLineIds?: ReadonlySet<number>;
   onDeleteLine?: (line: FlowCcExpenseLineRow) => void;
   deletePendingLineId?: number;
+  makeInstallmentLineIds?: ReadonlySet<number>;
+  onMakeInstallmentLine?: (line: FlowCcExpenseLineRow) => void;
+  makeInstallmentBusyLineId?: number;
   /** Show note inputs for cuenta corriente (checking) rows — expenses tab only. */
   enableCheckingNotes?: boolean;
 }) {
@@ -293,6 +299,12 @@ export function CreditCardExpenseLinesTable({
           deletableLineIds?.has(ln.statement_line_id) === true &&
           ln.statement_line_id > 0;
         const deleteBusy = deletePendingLineId === ln.statement_line_id;
+        const canMakeInstallment =
+          showDeleteAction &&
+          makeInstallmentLineIds?.has(ln.statement_line_id) === true &&
+          ln.statement_line_id > 0 &&
+          !ln.installment_flag;
+        const makeInstallmentBusy = makeInstallmentBusyLineId === ln.statement_line_id;
         const showNoteInput =
           Boolean(ln.purchase_key) &&
           (isCc || (enableCheckingNotes && ln.source === "checking"));
@@ -342,7 +354,16 @@ export function CreditCardExpenseLinesTable({
                 </span>
               ) : null}
             </td>
-            <td className="mono">{formatCcExpenseLineAmount(ln.amount_clp, ln.amount_usd)}</td>
+            <td className="mono" style={{ whiteSpace: "nowrap" }}>
+              <span>
+                {formatCcExpenseLineAmount(ln.amount_clp, ln.amount_usd)}
+                {ln.line_role === "installment_cuota" && ln.nro_cuota_total != null ? (
+                  <sup style={{ marginLeft: "0.15em", opacity: 0.6, fontSize: "0.75em", verticalAlign: "top" }}>
+                    /{formatClp(ln.amount_clp * ln.nro_cuota_total)}
+                  </sup>
+                ) : null}
+              </span>
+            </td>
             <td className="mono muted">
               {ln.line_role === "installment_purchase_total" ? (
                 <Pill
@@ -398,19 +419,28 @@ export function CreditCardExpenseLinesTable({
             ) : null}
             {showDeleteAction ? (
               <td>
+                {canMakeInstallment ? (
+                  <button
+                    type="button"
+                    className="muted"
+                    disabled={makeInstallmentBusy || deleteBusy}
+                    onClick={() => onMakeInstallmentLine?.(ln)}
+                    style={{ marginRight: "0.5rem" }}
+                  >
+                    {t("accountDetail.creditCard.makeInstallmentAction")}
+                  </button>
+                ) : null}
                 {canDelete ? (
                   <button
                     type="button"
                     className="muted"
-                    disabled={deleteBusy}
+                    disabled={deleteBusy || makeInstallmentBusy}
                     aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
                     onClick={() => onDeleteLine?.(ln)}
                   >
                     {t("accountDetail.creditCard.facturacionDeleteLine")}
                   </button>
-                ) : (
-                  "—"
-                )}
+                ) : (!canMakeInstallment ? "—" : null)}
               </td>
             ) : null}
           </tr>

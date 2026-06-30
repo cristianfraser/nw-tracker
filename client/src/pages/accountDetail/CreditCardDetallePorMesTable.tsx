@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatOrDash } from "../../format";
 import { formatYmEs } from "./shared";
+import { cn } from "../../cn";
+import styles from "../AccountDetailPage.module.css";
 import type { CcBillingDetailMonthDto } from "../../types";
 import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
@@ -13,6 +15,17 @@ import {
 
 const PAGE_SIZE = 12;
 
+function renderFacturado(row: CcBillingDetailMonthDto, projectedHint: string): ReactNode {
+  if (row.total_facturado_clp != null) {
+    return formatOrDash(row.total_facturado_clp, formatClp);
+  }
+  return (
+    <span className="muted" title={projectedHint}>
+      ≈ {formatClp(row.cuota_a_pagar_next_mes_clp)}
+    </span>
+  );
+}
+
 function CreditCardDetallePorMesMobileCard({
   row,
   labels,
@@ -22,15 +35,13 @@ function CreditCardDetallePorMesMobileCard({
     totalFacturado: string;
     cupoEnCuotas: string;
     balanceTotal: string;
-    manualNote: string;
+    projectedHint: string;
   };
 }) {
   const title = (
     <>
-      {row.billing_month} ({formatYmEs(row.billing_month)})
-      {row.as_of_kind === "manual" ? (
-        <span className="muted"> · {labels.manualNote}</span>
-      ) : null}
+      {formatYmEs(row.billing_month)}
+      {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
     </>
   );
 
@@ -39,7 +50,7 @@ function CreditCardDetallePorMesMobileCard({
       <TableMobileCardSection>
         <TableMobileCardRow
           label={labels.totalFacturado}
-          value={formatOrDash(row.total_facturado_clp, formatClp)}
+          value={renderFacturado(row, labels.projectedHint)}
         />
         <TableMobileCardRow label={labels.cupoEnCuotas} value={formatClp(row.cupo_en_cuotas_clp)} />
         <TableMobileCardRow label={labels.balanceTotal} value={formatClp(row.balance_total_clp)} />
@@ -55,11 +66,12 @@ export function CreditCardDetallePorMesTable({
 }) {
   const { t } = useTranslation();
 
+  const projectedHint = t("accountDetail.creditCard.colTotalFacturadoProjectedHint");
   const mobileLabels = {
     totalFacturado: t("accountDetail.creditCard.colTotalFacturado"),
     cupoEnCuotas: t("accountDetail.creditCard.colCupoEnCuotas"),
     balanceTotal: t("accountDetail.creditCard.colBalanceTotal"),
-    manualNote: t("accountDetail.creditCard.manualRowNote"),
+    projectedHint,
   };
 
   const sortedRows = useMemo(
@@ -87,15 +99,11 @@ export function CreditCardDetallePorMesTable({
       >
         {pageRows.map((row) => (
           <tr key={`${row.billing_month}-${row.as_of_date}`}>
-            <td className="mono desktop-only">
-              {row.billing_month} ({formatYmEs(row.billing_month)})
-              {row.as_of_kind === "manual" ? (
-                <span className="muted"> · {t("accountDetail.creditCard.manualRowNote")}</span>
-              ) : null}
+            <td className={cn("mono", "desktop-only", styles.nowrap)}>
+              {formatYmEs(row.billing_month)}
+              {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
             </td>
-            <td className="mono desktop-only">
-              {formatOrDash(row.total_facturado_clp, formatClp)}
-            </td>
+            <td className="mono desktop-only">{renderFacturado(row, projectedHint)}</td>
             <td className="mono desktop-only">{formatClp(row.cupo_en_cuotas_clp)}</td>
             <td className="mono desktop-only">{formatClp(row.balance_total_clp)}</td>
             <td className="mobile-only">

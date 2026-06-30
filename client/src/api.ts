@@ -190,26 +190,15 @@ export const api = {
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
     ),
-  createCcPurchase: (
-    id: string | number,
-    body: {
-      purchase_date: string;
-      total_amount_clp: number;
-      cuotas_totales: number;
-      merchant?: string;
-      description?: string;
-      card_group?: string;
-    }
-  ) =>
-    j<{ id: number; canonical_row_id: string }>(`/api/accounts/${id}/cc-purchases`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
   deleteCcPurchase: (id: string | number, purchaseId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, { method: "DELETE" }),
   deleteCcStatementLine: (id: string | number, lineId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-statement-lines/${lineId}`, { method: "DELETE" }),
+  makeStatementLineInstallment: (id: string | number, lineId: number, cuotas_totales: number) =>
+    j<{ ok: boolean; purchase_id: number }>(
+      `/api/accounts/${id}/cc-statement-lines/${lineId}/make-installment`,
+      { method: "POST", body: JSON.stringify({ cuotas_totales }), headers: { "Content-Type": "application/json" } }
+    ),
   accountValuationTimeseries: (
     id: string | number,
     unit: "clp" | "usd",

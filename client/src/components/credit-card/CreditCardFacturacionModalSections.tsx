@@ -5,7 +5,11 @@ import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import type { DisplayUnit } from "../../queries/keys";
 import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { useDeleteCcStatementLineMutation } from "../../queries/hooks";
+import { Modal } from "../ui/Modal";
+import {
+  useDeleteCcStatementLineMutation,
+  useMakeStatementLineInstallmentMutation,
+} from "../../queries/hooks";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import type { FacturacionModalBucket } from "./buildFacturacionModalBucket";
 import { isFacturacionModalBucketEmpty } from "./buildFacturacionModalBucket";
@@ -28,7 +32,16 @@ export function CreditCardFacturacionModalSections({
 }) {
   const { t } = useTranslation();
   const [pendingDelete, setPendingDelete] = useState<FlowCcExpenseLineRow | null>(null);
+  const [pendingMakeInstallment, setPendingMakeInstallment] =
+    useState<FlowCcExpenseLineRow | null>(null);
+  const [cuotasInput, setCuotasInput] = useState("");
+
   const deleteLine = useDeleteCcStatementLineMutation({
+    accountId,
+    displayUnit,
+    extraCcOffsetsKey,
+  });
+  const makeInstallment = useMakeStatementLineInstallmentMutation({
     accountId,
     displayUnit,
     extraCcOffsetsKey,
@@ -48,6 +61,14 @@ export function CreditCardFacturacionModalSections({
         deletableLineIds,
         onDeleteLine: setPendingDelete,
         deletePendingLineId: deleteLine.isPending ? deleteLine.variables : undefined,
+        makeInstallmentLineIds: deletableLineIds,
+        onMakeInstallmentLine: (ln: FlowCcExpenseLineRow) => {
+          setPendingMakeInstallment(ln);
+          setCuotasInput("");
+        },
+        makeInstallmentBusyLineId: makeInstallment.isPending
+          ? makeInstallment.variables?.lineId
+          : undefined,
       }
     : {};
 
@@ -64,6 +85,23 @@ export function CreditCardFacturacionModalSections({
         window.alert(msg);
       },
     });
+  };
+
+  const cuotasValue = parseInt(cuotasInput, 10);
+  const cuotasValid = Number.isFinite(cuotasValue) && cuotasValue >= 2;
+
+  const handleConfirmMakeInstallment = () => {
+    if (!pendingMakeInstallment || !cuotasValid) return;
+    makeInstallment.mutate(
+      { lineId: pendingMakeInstallment.statement_line_id, cuotas_totales: cuotasValue },
+      {
+        onSuccess: () => setPendingMakeInstallment(null),
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          window.alert(msg);
+        },
+      }
+    );
   };
 
   if (isFacturacionModalBucketEmpty(bucket)) {
@@ -140,7 +178,60 @@ export function CreditCardFacturacionModalSections({
         onConfirm={handleConfirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
+
+      <Modal
+        open={pendingMakeInstallment != null}
+        onClose={() => setPendingMakeInstallment(null)}
+        title={t("accountDetail.creditCard.makeInstallmentDialogTitle")}
+      >
+        {pendingMakeInstallment ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <p className="muted" style={{ margin: 0 }}>
+              {t("accountDetail.creditCard.makeInstallmentDialogBody", {
+                merchant: pendingMakeInstallment.merchant ?? "—",
+                amount: formatCcExpenseLineAmount(
+                  pendingMakeInstallment.amount_clp,
+                  pendingMakeInstallment.amount_usd
+                ),
+              })}
+            </p>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <span style={{ fontSize: "0.9rem" }}>
+                {t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
+              </span>
+              <input
+                type="number"
+                min={2}
+                step={1}
+                value={cuotasInput}
+                onChange={(e) => setCuotasInput(e.target.value)}
+                disabled={makeInstallment.isPending}
+                style={{ width: "6rem" }}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && cuotasValid) handleConfirmMakeInstallment();
+                }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setPendingMakeInstallment(null)}
+                disabled={makeInstallment.isPending}
+              >
+                {t("accountDetail.creditCard.makeInstallmentDialogCancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMakeInstallment}
+                disabled={!cuotasValid || makeInstallment.isPending}
+              >
+                {t("accountDetail.creditCard.makeInstallmentDialogConfirm")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 }
-
