@@ -80,6 +80,7 @@ export type FlowCcExpenseLineBeforeNotes = Omit<
 > & {
   auto_deposit_match_note?: string;
   auto_additional_card_note?: string;
+  split_purchase_key_suffix?: string;
 };
 
 export function enrichFlowLinesWithPurchaseNotes(
@@ -93,8 +94,8 @@ export function enrichFlowLinesWithPurchaseNotes(
       accountIds.length > 0 ? accountIds : listCreditCardMasterAccountIds()
     );
   return lines.map((ln) => {
-    const { auto_deposit_match_note, auto_additional_card_note, ...rest } = ln;
-    const purchase_key = resolvePurchaseKeyForGastosLine(rest);
+    const { auto_deposit_match_note, auto_additional_card_note, split_purchase_key_suffix, ...rest } = ln;
+    const purchase_key = resolvePurchaseKeyForGastosLine(rest) + (split_purchase_key_suffix ?? "");
     const dbNotes =
       notes.get(purchaseNotesMapKey(ln.account_id, purchase_key)) ??
       (purchase_key.startsWith("checking-cartola:") && ln.statement_line_id > 0
