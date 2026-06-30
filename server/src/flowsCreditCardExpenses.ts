@@ -105,6 +105,13 @@ export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
+import { loadExcelGapLineSplits } from "./ccExpenseLineSplits.js";
+import {
+  buildNormalPurchaseProxyForAccount,
+  getCcProxyTickers,
+  type ProxyLotResult,
+} from "./ccInvestmentProxy.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 
 export { listCreditCardMasterAccountIds };
 
@@ -223,6 +230,8 @@ export type FlowCcExpenseLineRowDraft = Omit<
   /** Ephemeral auto-match note merged into purchase_notes at enrich time. */
   auto_deposit_match_note?: string;
   auto_additional_card_note?: string;
+  /** Appended to the computed purchase_key for split sub-lines (ensures uniqueness in dedupe/notes). */
+  split_purchase_key_suffix?: string;
 };
 
 export type FlowCcExpenseMonthRow = {
@@ -302,6 +311,15 @@ export type FlowsCreditCardExpensesPayload = {
   /** All positive charges. */
 
   total_real_clp: number;
+
+  /** Tracked tickers for proxy earnings. */
+  proxy_tickers?: string[];
+
+  /**
+   * Investment proxy earnings for normal (non-installment) purchase lines,
+   * keyed by statement_line_id.
+   */
+  line_proxy?: Record<number, import("./ccInvestmentProxy.js").ProxyLotResult>;
 
 };
 
@@ -945,8 +963,39 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   return lines;
 }
 
+function expandLineSplitsInDrafts(
+  drafts: readonly FlowCcExpenseLineRowDraft[]
+): FlowCcExpenseLineRowDraft[] {
+  const splitsMap = loadExcelGapLineSplits();
+  if (splitsMap.size === 0) return [...drafts];
+
+  const result: FlowCcExpenseLineRowDraft[] = [];
+  for (const draft of drafts) {
+    if (draft.source === "cc" || draft.source === "checking") {
+      const splits = splitsMap.get(`${draft.source}:${draft.statement_line_id}`);
+      if (splits && splits.length > 0) {
+        for (const split of splits) {
+          result.push({
+            ...draft,
+            amount_clp: split.amount_clp,
+            amount_usd: null,
+            amount_usd_at_expense: null,
+            category_slug: split.category_slug,
+            category_unique: true,
+            split_purchase_key_suffix: `#split:${split.seq}`,
+          });
+        }
+        continue;
+      }
+    }
+    result.push(draft);
+  }
+  return result;
+}
+
 function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]): FlowCcExpenseLineRow[] {
-  const withNotes = enrichFlowLinesWithPurchaseNotes([...drafts]);
+  const expanded = expandLineSplitsInDrafts(drafts);
+  const withNotes = enrichFlowLinesWithPurchaseNotes([...expanded]);
   syncExpenseDepositLinksFromGastosLines(withNotes);
   const withGroups = enrichFlowLinesWithBigGroups(withNotes);
   const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
@@ -954,7 +1003,9 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   return enrichFlowLinesWithGastosPeriodMonthOverrides(withDepositLinks);
 }
 
-export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPayload {
+export function buildFlowsCreditCardExpensesPayload(
+  proxyTickers?: string[]
+): FlowsCreditCardExpensesPayload {
 
   const accountIds = listCreditCardMasterAccountIds();
 
@@ -1014,7 +1065,16 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
 
   const totals = computeFlowsExpenseTotals(lines);
 
-
+  // Build proxy for normal purchase lines (keyed by statement_line_id)
+  const tickers = proxyTickers ?? getCcProxyTickers();
+  const today = chileCalendarTodayYmd();
+  const line_proxy: Record<number, ProxyLotResult> = {};
+  for (const accountId of accountIds) {
+    const { lineProxy } = buildNormalPurchaseProxyForAccount(accountId, tickers, today);
+    for (const [lineId, result] of lineProxy) {
+      line_proxy[lineId] = result;
+    }
+  }
 
   return {
 
@@ -1035,6 +1095,10 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
     chart_monthly_by_category,
 
     ...totals,
+
+    proxy_tickers: tickers,
+
+    line_proxy,
 
   };
 

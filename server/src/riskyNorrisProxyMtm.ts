@@ -1,9 +1,13 @@
-import { chileCalendarTodayYmd, chileWallClockNow } from "./chileDate.js";
+import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { fintualPollDayCaughtUp } from "./fintualPublishDate.js";
 import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
-import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
-import { isBeforeNyseRegularOpen, isNyseRegularSessionOpen, nyseWallClock } from "./nyseSession.js";
+import { isChileBusinessDay, isNyseTradingDay, priorNyseSessionYmd } from "./marketHolidays.js";
+import {
+  isBeforeNyseRegularOpen,
+  isNyseRegularSessionOpen,
+  nyseWallClock,
+} from "./nyseSession.js";
 import {
   loadCompositeHoldings,
   loadCompositeMeta,
@@ -42,7 +46,7 @@ export function isRiskyNorrisApvMtmSeries(seriesKey: string | null | undefined):
 
 /** Global evening Fintual sync caught up for Chile today (official cuotas in DB). */
 export function fintualGlobalSyncSettledForChileToday(now = new Date()): boolean {
-  const cl = chileWallClockNow(now);
+  const cl = chileWallClockAt(now);
   const state = loadGlobalSyncState();
   const publishYmd = state.fintualLastAppliedPublishYmd ?? state.fintualLastPublishYmd;
   const sig = state.fintualLastAppliedSig ?? state.fintualLastCheckSig;
@@ -53,14 +57,50 @@ export function fintualGlobalSyncSettledForChileToday(now = new Date()): boolean
 }
 
 /**
- * Intraday RN proxy MTM window: NYSE trading + Chile business day, after NYSE open, before Fintual evening sync settles.
+ * Chile-holiday proxy hold: window where the proxy overrides Fintual's official cuota
+ * because the fund value cannot reflect the live NYSE session yet.
+ *
+ * On a Chile holiday that is an NYSE trading day, Fintual still publishes a *flat carry*
+ * cuota (the fund didn't trade), which would otherwise mark the day "settled" and disable
+ * the proxy. We instead follow the proxy from that day's NYSE open, and keep the held
+ * value across the overnight gap until the next session opens.
+ *
+ * - (A) Today is a Chile non-business day: hold from NYSE open onward (incl. after close).
+ *       Before NYSE open we don't hold — the last official cuota is still shown.
+ * - (B) Today is a Chile business day, before NYSE open, and the just-closed NYSE session
+ *       fell on a Chile non-business day (so Fintual still hasn't caught up to it) and
+ *       tonight's sync hasn't settled — keep the held proxy until this session opens.
+ */
+export function inChileHolidayProxyHold(now = new Date()): boolean {
+  const nyYmd = nyseWallClock(now).ymd;
+  const today = chileCalendarTodayYmd();
+
+  if (!isChileBusinessDay(today)) {
+    return !isBeforeNyseRegularOpen(now);
+  }
+
+  if (!isBeforeNyseRegularOpen(now)) return false;
+  const priorSession = priorNyseSessionYmd(nyYmd);
+  if (priorSession == null || isChileBusinessDay(priorSession)) return false;
+  return !fintualGlobalSyncSettledForChileToday(now);
+}
+
+/**
+ * RN proxy MTM window. Follows the live/EOD basket proxy instead of the official Fintual
+ * cuota when the cuota cannot yet reflect the current NYSE session.
+ *
+ * - Chile-holiday hold (see {@link inChileHolidayProxyHold}) overrides the "settled" and
+ *   pre-open gates: on a holiday Fintual's flat carry cuota is ignored in favor of the proxy.
+ * - Otherwise the normal business-day intraday window applies: NYSE trading, after open,
+ *   before the Fintual evening sync settles.
  */
 export function shouldUseRiskyNorrisProxyMtm(now = new Date()): boolean {
-  if (fintualGlobalSyncSettledForChileToday(now)) return false;
-  const chileToday = chileCalendarTodayYmd();
   const nyYmd = nyseWallClock(now).ymd;
   if (!isNyseTradingDay(nyYmd)) return false;
-  if (!isChileBusinessDay(chileToday)) return false;
+
+  if (inChileHolidayProxyHold(now)) return true;
+
+  if (fintualGlobalSyncSettledForChileToday(now)) return false;
   if (isBeforeNyseRegularOpen(now)) return false;
   return true;
 }

@@ -375,6 +375,25 @@ export function buildBillingDetailByMonth(
     });
   }
 
+  // Roll the most-recently-closed month's balance into the open month.
+  // Balance = priorClosedBalance + (charges this cycle − payments this cycle).
+  // This means: before any PAGO row is imported, open month mirrors the closed balance.
+  const openBmRoll = billingMonthForManualLedgerPurchase(accountId);
+  if (openBmRoll && !inactive) {
+    const openIdx = out.findIndex((r) => r.billing_month === openBmRoll);
+    if (openIdx >= 0) {
+      const priorClosed = out
+        .filter((r) => r.billing_month < openBmRoll && r.as_of_kind === "statement")
+        .sort((a, b) => b.billing_month.localeCompare(a.billing_month))[0];
+      if (priorClosed) {
+        const netCharges =
+          incrementalChargesClpForBillingMonth(accountId, openBmRoll) -
+          paymentAbonosClpForBillingMonth(accountId, openBmRoll);
+        out[openIdx]!.balance_total_clp = Math.round(priorClosed.balance_total_clp + netCharges);
+      }
+    }
+  }
+
   applyOpenBillingMonthSaldoToNextMonth(out, accountId, slots);
 
   const withProjected = appendProjectedBillingDetailRows(

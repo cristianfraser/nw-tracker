@@ -1,11 +1,24 @@
 import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js";
 import { db } from "./db.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
-import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
+import {
+  normalizeCcExpenseMerchantKey,
+  stableInstallmentHPurchaseKeyFromLedgerArgs,
+} from "./ccExpenseCategories.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+
+export const selLineCategory = db.prepare<[number]>(
+  `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
+);
+
+export const upsertUniqueCat = db.prepare(
+  `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+   VALUES (?, ?, ?)
+   ON CONFLICT(account_id, purchase_key) DO NOTHING`
+);
 
 export type CcInstallmentPurchaseMatch = {
   id: number;
@@ -201,12 +214,12 @@ export function findOneShotLinesMatchingPurchase(
   return ids;
 }
 
-export function oneShotStatementLineIdsSupersededByInstallmentPurchases(
+function oneShotLinesSupersededByInstallmentPurchases(
   accountId: number
-): Set<number> {
-  const redundant = new Set<number>();
+): Map<number, CcInstallmentPurchaseMatch> {
+  const superseded = new Map<number, CcInstallmentPurchaseMatch>();
   const purchases = listInstallmentPurchasesForAccount(accountId);
-  if (purchases.length === 0) return redundant;
+  if (purchases.length === 0) return superseded;
   for (const line of listOneShotLinesForAccount(accountId)) {
     for (const p of purchases) {
       if (
@@ -217,12 +230,18 @@ export function oneShotStatementLineIdsSupersededByInstallmentPurchases(
           line.amount_clp
         )
       ) {
-        redundant.add(line.statement_line_id);
+        superseded.set(line.statement_line_id, p);
         break;
       }
     }
   }
-  return redundant;
+  return superseded;
+}
+
+export function oneShotStatementLineIdsSupersededByInstallmentPurchases(
+  accountId: number
+): Set<number> {
+  return new Set(oneShotLinesSupersededByInstallmentPurchases(accountId).keys());
 }
 
 export function shouldSkipOneShotStatementImport(
@@ -284,8 +303,20 @@ export function removeOneShotLinesSupersededByInstallmentPurchases(
   accountId: number,
   opts?: { recompute?: boolean }
 ): CcCrossImportDedupeResult {
-  const redundant = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
-  const ids = [...redundant];
+  const superseded = oneShotLinesSupersededByInstallmentPurchases(accountId);
+  for (const [lineId, purchase] of superseded) {
+    const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
+    if (cat?.category_id != null) {
+      const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+        accountId,
+        purchaseDateIso: purchase.purchase_date,
+        cuotasTotales: purchase.cuotas_totales,
+        merchant: purchase.merchant,
+      });
+      upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
+    }
+  }
+  const ids = [...superseded.keys()];
   const removed_count = deleteStatementLinesByIds(ids);
   if (opts?.recompute !== false && removed_count > 0) {
     upsertCreditCardValuationsFromLedger(accountId);

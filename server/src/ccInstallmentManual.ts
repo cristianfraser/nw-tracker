@@ -1,8 +1,13 @@
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
-import { removeOneShotLinesForInstallmentPurchase } from "./ccCrossImportDedupe.js";
+import {
+  removeOneShotLinesForInstallmentPurchase,
+  selLineCategory,
+  upsertUniqueCat,
+} from "./ccCrossImportDedupe.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 
 export type ManualCcPurchaseInput = {
   purchase_date: string;
@@ -106,6 +111,66 @@ export function updateManualCcInstallmentPurchase(
 
   upsertCreditCardValuationsFromLedger(accountId);
   recomputeCcBillingMonthBalances(accountId);
+}
+
+const selStatementLineForConvert = db.prepare(`
+  SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp,
+         l.installment_flag, s.account_id, s.card_group
+  FROM cc_statement_lines l
+  JOIN cc_statements s ON s.id = l.statement_id
+  WHERE l.id = ?
+`);
+
+export function convertStatementLineToInstallmentPurchase(
+  accountId: number,
+  lineId: number,
+  cuotasTotales: number
+): { id: number; canonical_row_id: string } {
+  const cuotas = Math.trunc(cuotasTotales);
+  if (cuotas <= 0) throw new Error("cuotas_totales must be positive");
+
+  const line = selStatementLineForConvert.get(lineId) as
+    | {
+        id: number;
+        merchant: string | null;
+        transaction_date: string | null;
+        posting_date: string | null;
+        amount_clp: number | null;
+        installment_flag: number;
+        account_id: number;
+        card_group: string | null;
+      }
+    | undefined;
+
+  if (!line) throw new Error("statement line not found");
+  if (line.account_id !== accountId) throw new Error("line does not belong to this account");
+  if (line.installment_flag !== 0) throw new Error("line is already an installment line");
+  if (!line.amount_clp || line.amount_clp <= 0) throw new Error("line has no positive CLP amount");
+
+  const purchaseDateIso =
+    parseDdMmYyToIso(line.transaction_date ?? "") ??
+    parseDdMmYyToIso(line.posting_date ?? "");
+  if (!purchaseDateIso) throw new Error("line has no parseable purchase date");
+
+  // Transfer category before the line is deleted by createManualCcInstallmentPurchase
+  const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
+  if (cat?.category_id != null) {
+    const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
+      accountId,
+      purchaseDateIso,
+      cuotasTotales: cuotas,
+      merchant: line.merchant,
+    });
+    upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
+  }
+
+  return createManualCcInstallmentPurchase(accountId, {
+    purchase_date: purchaseDateIso,
+    total_amount_clp: line.amount_clp,
+    cuotas_totales: cuotas,
+    merchant: line.merchant ?? undefined,
+    card_group: line.card_group ?? undefined,
+  });
 }
 
 export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId: number): void {
