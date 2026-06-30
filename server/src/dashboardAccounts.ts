@@ -63,6 +63,7 @@ import {
   latestDisplayedBalanceForAccount,
   latestValuationRowOnOrBeforeChileToday,
 } from "./valuationLatest.js";
+import { creditCardFinancingPlSummaryForDashboard } from "./creditCardPerformancePl.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
@@ -91,12 +92,15 @@ export function listDashboardSourceAccounts(): {
   exclude_from_group_totals: number;
   bucket_slug: string;
   bucket_label: string;
+  account_kind: string | null;
+  source_account_id: number | null;
 }[] {
   return db
     .prepare(
       `
       SELECT a.id, a.name, a.notes, a.exclude_from_group_totals,
-             g.slug AS bucket_slug, g.label AS bucket_label
+             g.slug AS bucket_slug, g.label AS bucket_label,
+             a.account_kind, a.source_account_id
       FROM accounts a
       INNER JOIN asset_groups g ON g.id = a.asset_group_id
       WHERE (a.notes IS NULL OR a.notes != ?)
@@ -119,6 +123,8 @@ export function listDashboardSourceAccounts(): {
     exclude_from_group_totals: number;
     bucket_slug: string;
     bucket_label: string;
+    account_kind: string | null;
+    source_account_id: number | null;
   }[];
 }
 
@@ -355,7 +361,34 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         includeUsd,
         reconcilePeriodDeltas: dashboardCardReconcilePeriodDeltas(metricGroup),
       });
-      return { ...rowBeforeReconcile, ...reconciled };
+
+      if (kindSlug === "credit_card") {
+        const masterAccountId = a.source_account_id ?? a.id;
+        const todayYm = today.slice(0, 7);
+        const plSummary = creditCardFinancingPlSummaryForDashboard(masterAccountId, todayYm);
+        if (plSummary !== null) {
+          reconciled.delta_total_clp = -plSummary.cumulative_clp;
+          reconciled.delta_month_clp = -plSummary.current_month_clp;
+          reconciled.delta_year_clp = -plSummary.ytd_clp;
+          if (includeUsd && fxRow != null) {
+            const rate = fxRow.clp_per_usd;
+            reconciled.delta_total_usd = -plSummary.cumulative_clp / rate;
+            reconciled.delta_month_usd = -plSummary.current_month_clp / rate;
+            reconciled.delta_year_usd = -plSummary.ytd_clp / rate;
+          }
+        } else {
+          reconciled.delta_total_clp = null;
+          reconciled.delta_month_clp = null;
+          reconciled.delta_year_clp = null;
+          if (includeUsd) {
+            reconciled.delta_total_usd = null;
+            reconciled.delta_month_usd = null;
+            reconciled.delta_year_usd = null;
+          }
+        }
+      }
+
+      return { ...rowBeforeReconcile, ...reconciled } as DashboardAccountStats;
     })
   );
   return applyCashSavingsShortfallToDashboardRows(

@@ -472,6 +472,17 @@ export function tryAutoLinkExpenseDepositLine(line: {
   return link;
 }
 
+function assignBillsCategoryToMortgageLinkedLines(): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO cc_expense_line_categories (statement_line_id, category_id)
+     SELECT csl.id, cat.id
+     FROM expense_deposit_links edl
+     JOIN cc_statement_lines csl ON csl.parser_row_id = substr(edl.purchase_key, 9)
+     JOIN cc_expense_categories cat ON cat.slug = ?
+     WHERE edl.purchase_key LIKE 'line-pr:%'`
+  ).run(BILLS_CC_EXPENSE_SLUG);
+}
+
 export function syncExpenseDepositLinksFromGastosLines(
   lines: readonly GastosLineForExpenseDepositLink[]
 ): void {
@@ -480,6 +491,7 @@ export function syncExpenseDepositLinksFromGastosLines(
   for (const line of lines) {
     tryAutoLinkExpenseDepositLine(line);
   }
+  assignBillsCategoryToMortgageLinkedLines();
 }
 
 export function enrichFlowLinesWithExpenseDepositLinks<

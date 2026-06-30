@@ -4,6 +4,7 @@ import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   ccInstallmentLedgerRowCount,
   ccLedgerMonthEndIso,
@@ -17,13 +18,25 @@ const upsertValuationMonth = db.prepare(`
   ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp
 `);
 
-/** Latest billing-detail balance total (facturado + cupo − cuota próxima), same as account «Balance total». */
+/**
+ * Latest billing-detail balance total (open month rolled balance), same as account «Balance total».
+ * detail is sorted descending and includes far-future projected rows — find the open/current month,
+ * not detail[0] which may be a near-zero projection.
+ */
+function latestBillingDetailRow(
+  detail: ReturnType<typeof billingDetailCacheForAccount>["detail"]
+): (typeof detail)[0] | undefined {
+  const todayYm = chileCalendarTodayYmd().slice(0, 7);
+  const cutoff = addCalendarMonths(todayYm, 1);
+  return detail.find((r) => r.billing_month <= cutoff);
+}
+
 export function latestCreditCardBillingBalanceTotalClp(accountId: number): number | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
-  if (detail.length === 0) return null;
-  const v = detail[0]!.balance_total_clp;
-  return Number.isFinite(v) ? Math.round(v) : null;
+  const row = latestBillingDetailRow(detail);
+  if (!row || !Number.isFinite(row.balance_total_clp)) return null;
+  return Math.round(row.balance_total_clp);
 }
 
 export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
@@ -31,9 +44,8 @@ export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
 ): { value_clp: number; as_of_date: string } | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
-  if (detail.length === 0) return null;
-  const row = detail[0]!;
-  if (!Number.isFinite(row.balance_total_clp)) return null;
+  const row = latestBillingDetailRow(detail);
+  if (!row || !Number.isFinite(row.balance_total_clp)) return null;
   return {
     value_clp: Math.round(row.balance_total_clp),
     as_of_date: row.as_of_date,
