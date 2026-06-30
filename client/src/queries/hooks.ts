@@ -28,15 +28,22 @@ import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 import type { GroupPageShell } from "./groupPageShell";
 import type { NavTreeNodeDto } from "../types";
 
-function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
+function prepareNavSnapshotForDisplay(
+  unit: DisplayUnit,
+  raw: import("../types").DashboardNavSnapshotResponse
+) {
   const cachedFx = readFxLatestCache();
+  const prepared = unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, cachedFx) : raw;
+  if (unit === "usd") return prepared;
+  return perturbDashboardNavSnapshot(prepared);
+}
+
+function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
   const raw =
     readDashboardNavSnapshotCache(unit) ??
     (unit === "usd" ? readDashboardNavSnapshotCache("clp") : undefined);
   if (!raw) return undefined;
-  const prepared = unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, cachedFx) : raw;
-  if (unit === "usd") return prepared;
-  return perturbDashboardNavSnapshot(prepared);
+  return prepareNavSnapshotForDisplay(unit, raw);
 }
 
 function readGroupPageShellCacheForUnit(
@@ -84,7 +91,7 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     queryFn: async () => {
       const snapshot = await fetchDashboardNavSnapshot(unit);
       writeDashboardNavSnapshotCache(unit, snapshot);
-      return snapshot;
+      return prepareNavSnapshotForDisplay(unit, snapshot);
     },
     initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
     initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
