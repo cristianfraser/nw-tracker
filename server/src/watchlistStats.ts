@@ -290,6 +290,17 @@ function statsForComposite(row: MarketDisplaySeriesRow, today: string, now: Date
   };
 }
 
+/**
+ * UF year-over-year growth as a decimal fraction (e.g. 0.047 = 4.7%).
+ * Returns null if UF data is insufficient.
+ */
+export function ufYoyAnnualRate(today = chileCalendarTodayYmd()): number | null {
+  const current = ufValueOnOrBefore(today);
+  const prior = ufValueOnOrBefore(yoyAnchorYmd(today));
+  if (current == null || prior == null || prior === 0) return null;
+  return (current - prior) / prior;
+}
+
 export function watchlistStatsForRow(row: MarketDisplaySeriesRow, now = new Date()): WatchlistRowStats {
   const today = chileCalendarTodayYmd();
   if (row.kind === "uf") return statsForUf(today);

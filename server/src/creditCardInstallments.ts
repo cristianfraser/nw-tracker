@@ -30,6 +30,17 @@ import { ccPurchaseSourceLegacyFromOrigin } from "./dataOrigin.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { numCsv, readSemicolonCsv } from "./deptoDividendosLedger.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import {
+  computeProxyLot,
+  getCcProxyTickers,
+  installmentPurchaseToLot,
+  aggregateProxyByFacturacion,
+  buildNormalPurchaseProxyForAccount,
+  tickersWithData,
+  type ProxyLotResult,
+  type ProxyFacturacionAggregate,
+} from "./ccInvestmentProxy.js";
 
 export { parseYearMonth, addCalendarMonths } from "./ccYearMonth.js";
 
@@ -395,10 +406,7 @@ export function buildCreditCardInstallmentSchedule(
   };
 }
 
-export function creditCardInstallmentsResponse(
-  accountId: number,
-  extraOffsets: Record<string, number>
-): {
+export type CcInstallmentsResponseBase = {
   account_id: number;
   has_installment_ledger: boolean;
   has_imported_statements: boolean;
@@ -420,25 +428,79 @@ export function creditCardInstallmentsResponse(
   facturaciones?: CcFacturacionRow[];
   financing_pl_by_month?: CcFinancingPlMonthRow[];
   billing_config?: CreditCardBillingConfig;
-  /** Current open facturación month for manual / web-paste entries (`YYYY-MM`). */
   open_billing_month?: string | null;
-  /** Distinct physical card numbers billed on this master (titular first). */
   associated_card_last4s?: string[];
-  /** Dense month series for the Historial chart (interior gaps filled with nulls). */
   historial_chart?: CcHistorialChartPoint[];
-  /** Dense billing-month series for the facturado/financing-cost chart (interior gaps filled with nulls). */
   billing_month_chart?: CcBillingMonthChartPoint[];
-} {
+  /** Tracked proxy tickers for this response. */
+  proxy_tickers?: string[];
+  /** Per-purchase proxy earnings, keyed by purchase_db_id. */
+  purchase_proxy?: Record<number, ProxyLotResult>;
+  /** Per-facturación aggregated proxy earnings. */
+  facturacion_proxy?: ProxyFacturacionAggregate[];
+};
+
+function buildInstallmentProxy(
+  accountId: number,
+  purchases: readonly CcInstallmentPurchaseComputed[],
+  tickers: string[],
+  today: string
+): { purchaseProxy: Record<number, ProxyLotResult>; facturacionProxy: ProxyFacturacionAggregate[] } {
+  const purchaseProxy: Record<number, ProxyLotResult> = {};
+  const allLotResults: ProxyLotResult[] = [];
+  const activeTickers = tickersWithData(tickers);
+
+  if (activeTickers.length > 0) {
+    for (const p of purchases) {
+      if (!p.purchase_db_id) continue;
+      const lot = installmentPurchaseToLot(p);
+      if (!lot) continue;
+      const result = computeProxyLot(lot, activeTickers, today);
+      purchaseProxy[p.purchase_db_id] = result;
+      allLotResults.push(result);
+    }
+  }
+
+  // Normal purchase lots — each withdrawal already carries its billing_month
+  const { lotResults: normalLotResults } = buildNormalPurchaseProxyForAccount(accountId, tickers, today);
+  allLotResults.push(...normalLotResults);
+
+  const facturacionProxy = aggregateProxyByFacturacion(allLotResults, activeTickers);
+  return { purchaseProxy, facturacionProxy };
+}
+
+export function creditCardInstallmentsResponse(
+  accountId: number,
+  extraOffsets: Record<string, number>,
+  proxyTickers?: string[]
+): CcInstallmentsResponseBase {
   const associated_card_last4s = associatedCardLast4sForMaster(accountId);
   const open_billing_month = billingMonthForManualLedgerPurchase(accountId);
+  const tickers = proxyTickers ?? getCcProxyTickers();
+  const today = chileCalendarTodayYmd();
+
   if (ccInstallmentLedgerRowCount(accountId) > 0) {
     const db = ccInstallmentsDbApiPayload(accountId);
-    const billingDetail = buildBillingDetailByMonth(accountId, db.months);
-    const facturaciones = buildFacturaciones(accountId, db.months);
+    // Build billing detail and facturaciones with the full history schedule so
+    // cuota_a_pagar_next_mes_clp / cuota_a_pagar_clp are non-zero for past billing months too.
+    // db.months is filtered to >= nowYm; passing it to either builder would leave those lookups
+    // returning 0/null for past months — causing the historial chart to show flat bars, wrong
+    // balance_total_clp in the detalle table, and an empty "cuota a pagar" column in facturaciones.
+    const allScheduleMonths: CcInstallmentMonthRow[] = db.installment_history_months.map(
+      (h) => ({ month: h.month, total_clp: h.installment_payments_clp, breakdown: [] })
+    );
+    const billingDetail = buildBillingDetailByMonth(accountId, allScheduleMonths);
+    const facturaciones = buildFacturaciones(accountId, allScheduleMonths);
     const financingPl = buildCreditCardFinancingPlByBillingMonth(
       accountId,
       [...db.purchases, ...db.purchases_completed],
       extraOffsets
+    );
+    const { purchaseProxy, facturacionProxy } = buildInstallmentProxy(
+      accountId,
+      [...db.purchases, ...db.purchases_completed],
+      tickers,
+      today
     );
     return {
       account_id: accountId,
@@ -470,6 +532,9 @@ export function creditCardInstallmentsResponse(
         facturaciones
       ),
       billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
+      proxy_tickers: tickers,
+      purchase_proxy: purchaseProxy,
+      facturacion_proxy: facturacionProxy,
     };
   }
 

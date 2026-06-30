@@ -127,7 +127,7 @@ import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { buildGroupFlows, buildAccountFlows, type FlowsFilters } from "./flowsApi.js";
 import { parsePageParams } from "./pagination.js";
 import {
-  createManualCcInstallmentPurchase,
+  convertStatementLineToInstallmentPurchase,
   deleteManualCcInstallmentPurchase,
   updateManualCcInstallmentPurchase,
 } from "./ccInstallmentManual.js";
@@ -144,6 +144,7 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "./creditCardInstallments.js";
+import { getCcProxyTickers, setCcProxyTickers } from "./ccInvestmentProxy.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "./mortgageGroupLedger.js";
 import { documentImportSpecsForAccount } from "./accountDocumentRegistry.js";
@@ -237,6 +238,14 @@ function operationalAccountIdFromReq(req: { params: { id?: string } }): number {
   const raw = Number(req.params.id);
   if (!Number.isFinite(raw)) return NaN;
   return resolveOperationalAccountId(raw);
+}
+
+function parseProxyTickersParam(raw: unknown): string[] | null {
+  if (raw == null || raw === "") return null;
+  const str = String(raw).trim();
+  if (!str) return null;
+  const tickers = str.split(",").map((t) => t.trim()).filter(Boolean);
+  return tickers.length > 0 ? tickers : null;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -893,29 +902,27 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
     return;
   }
   const extra = parseExtraOffsetsJson(req.query.extraOffsets);
-  res.json(creditCardInstallmentsResponse(id, extra));
+  const proxyTickers = parseProxyTickersParam(req.query.proxy_tickers);
+  res.json(creditCardInstallmentsResponse(id, extra, proxyTickers ?? undefined));
 });
 
-app.post("/api/accounts/:id/cc-purchases", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
-  if (accountKindSlugForAccountId(id) !== "credit_card") {
-    res.status(400).json({ error: "account is not a credit card" });
+app.get("/api/cc-proxy-tickers", (_req, res) => {
+  res.json({ tickers: getCcProxyTickers() });
+});
+
+app.put("/api/cc-proxy-tickers", (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  if (!Array.isArray(body.tickers) || !body.tickers.every((t) => typeof t === "string")) {
+    res.status(400).json({ error: "tickers must be an array of strings" });
     return;
   }
-  const body = req.body as Record<string, unknown>;
-  try {
-    const created = createManualCcInstallmentPurchase(id, {
-      purchase_date: String(body.purchase_date ?? ""),
-      total_amount_clp: Number(body.total_amount_clp),
-      cuotas_totales: Number(body.cuotas_totales),
-      merchant: body.merchant != null ? String(body.merchant) : undefined,
-      description: body.description != null ? String(body.description) : undefined,
-      card_group: body.card_group != null ? String(body.card_group) : undefined,
-    });
-    res.status(201).json(created);
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "invalid body" });
+  const tickers = (body.tickers as string[]).map((t) => t.trim()).filter(Boolean);
+  if (tickers.length === 0) {
+    res.status(400).json({ error: "tickers must not be empty" });
+    return;
   }
+  setCcProxyTickers(tickers);
+  res.json({ tickers });
 });
 
 app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
@@ -968,6 +975,26 @@ app.delete("/api/accounts/:id/cc-statement-lines/:lineId", (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "delete failed" });
+  }
+});
+
+app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const lineId = Number(req.params.lineId);
+  if (!Number.isFinite(lineId) || lineId <= 0) {
+    res.status(400).json({ error: "invalid statement line id" });
+    return;
+  }
+  const cuotas = Number(req.body?.cuotas_totales);
+  if (!Number.isFinite(cuotas) || cuotas <= 0) {
+    res.status(400).json({ error: "cuotas_totales must be a positive number" });
+    return;
+  }
+  try {
+    const result = convertStatementLineToInstallmentPurchase(id, lineId, cuotas);
+    res.json({ ok: true, purchase_id: result.id });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "conversion failed" });
   }
 });
 
@@ -1746,8 +1773,9 @@ app.get("/api/expenses", (_req, res) => {
   res.json({ expenses: rows });
 });
 
-app.get("/api/flows/expenses/credit-card", (_req, res) => {
-  res.json(buildFlowsCreditCardExpensesPayload());
+app.get("/api/flows/expenses/credit-card", (req, res) => {
+  const proxyTickers = parseProxyTickersParam(req.query.proxy_tickers);
+  res.json(buildFlowsCreditCardExpensesPayload(proxyTickers ?? undefined));
 });
 
 app.get("/api/flows/expenses/real-estate", (_req, res) => {

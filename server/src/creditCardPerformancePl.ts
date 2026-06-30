@@ -5,6 +5,10 @@ import {
   type CcInstallmentPurchaseComputed,
   installmentInterestClpForCuota,
 } from "./creditCardInstallments.js";
+import {
+  ccInstallmentLedgerRowCount,
+  ccInstallmentsDbApiPayload,
+} from "./ccInstallmentLedgerDb.js";
 
 export type CcFinancingPlMonthRow = {
   billing_month: string;
@@ -101,4 +105,42 @@ export function buildCreditCardFinancingPlByBillingMonth(
   }
 
   return out;
+}
+
+export type CcFinancingPlSummary = {
+  cumulative_clp: number;
+  ytd_clp: number;
+  current_month_clp: number;
+};
+
+/**
+ * Lightweight dashboard summary of CC financing costs (intereses + installment interest).
+ * Pass the master account ID (not the liability_view account id).
+ * Returns null when no statement data exists for the account.
+ */
+export function creditCardFinancingPlSummaryForDashboard(
+  masterAccountId: number,
+  todayYm: string
+): CcFinancingPlSummary | null {
+  const hasLedger = ccInstallmentLedgerRowCount(masterAccountId) > 0;
+  let purchases: CcInstallmentPurchaseComputed[] = [];
+  if (hasLedger) {
+    const payload = ccInstallmentsDbApiPayload(masterAccountId);
+    purchases = [...payload.purchases, ...payload.purchases_completed];
+  }
+
+  const rows = buildCreditCardFinancingPlByBillingMonth(masterAccountId, purchases, {});
+  if (rows.length === 0) return null;
+
+  let currentRow: CcFinancingPlMonthRow | undefined;
+  for (const row of rows) {
+    if (row.billing_month <= todayYm) currentRow = row;
+  }
+  if (!currentRow) currentRow = rows[rows.length - 1];
+
+  return {
+    cumulative_clp: currentRow.cumulative_financing_cost_clp,
+    ytd_clp: currentRow.ytd_financing_cost_clp,
+    current_month_clp: currentRow.financing_cost_clp,
+  };
 }

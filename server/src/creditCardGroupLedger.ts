@@ -6,7 +6,9 @@ import {
   creditCardInstallmentsResponse,
   type CcInstallmentsTotals,
 } from "./creditCardInstallments.js";
+import { buildCcBillingMonthChartSeries, buildCcHistorialChartSeries } from "./creditCardChartSeries.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
+import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 
 type CcLedgerResponse = ReturnType<typeof creditCardInstallmentsResponse>;
 
@@ -180,6 +182,15 @@ function mergeTotals(ledgers: CcLedgerResponse[]): CcInstallmentsTotals {
   };
 }
 
+function mergeOpenBillingMonth(ledgers: CcLedgerResponse[]): string | null {
+  const active = ledgers.filter(
+    (l) => l.open_billing_month != null && !isNavRetiredCcMaster(l.account_id)
+  );
+  if (active.length === 0) return null;
+  const first = active[0]!.open_billing_month!;
+  return active.every((l) => l.open_billing_month === first) ? first : null;
+}
+
 /** Merge per-master CC ledger payloads into one group-shaped response. */
 export function mergeCreditCardLedgers(ledgers: CcLedgerResponse[]): CcLedgerResponse {
   if (ledgers.length === 0) {
@@ -210,6 +221,10 @@ export function mergeCreditCardLedgers(ledgers: CcLedgerResponse[]): CcLedgerRes
     }
   }
 
+  const facturaciones = mergeFacturaciones(ledgers);
+  const financing_pl_by_month = mergeFinancingPl(ledgers);
+  const installment_history_months = mergeInstallmentHistory(ledgers);
+  const billing_detail_by_month = mergeBillingDetail(ledgers);
   return {
     account_id: 0,
     has_installment_ledger: ledgers.some((l) => l.has_installment_ledger),
@@ -219,10 +234,13 @@ export function mergeCreditCardLedgers(ledgers: CcLedgerResponse[]): CcLedgerRes
     purchases_completed: [],
     months: [],
     totals: mergeTotals(ledgers),
-    installment_history_months: mergeInstallmentHistory(ledgers),
-    facturaciones: mergeFacturaciones(ledgers),
-    billing_detail_by_month: mergeBillingDetail(ledgers),
-    financing_pl_by_month: mergeFinancingPl(ledgers),
+    installment_history_months,
+    facturaciones,
+    billing_detail_by_month,
+    financing_pl_by_month,
+    billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financing_pl_by_month),
+    historial_chart: buildCcHistorialChartSeries(installment_history_months, billing_detail_by_month, facturaciones),
+    open_billing_month: mergeOpenBillingMonth(ledgers),
     associated_card_last4s: [...associated].sort(),
   };
 }
