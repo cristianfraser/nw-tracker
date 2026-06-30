@@ -68,6 +68,7 @@ export function AccountImportPanel({
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileMap, setFileMap] = useState<Record<string, File | undefined>>({});
+  const [inputKey, setInputKey] = useState(0);
   const busy = importMutation.isPending;
 
   const run = useCallback(
@@ -75,7 +76,12 @@ export function AccountImportPanel({
       setError(null);
       setResult(null);
       importMutation.mutate(fn, {
-        onSuccess: (data) => setResult(formatResult(data)),
+        onSuccess: (data) => {
+          setResult(formatResult(data));
+          setPasteText("");
+          setFileMap({});
+          setInputKey((k) => k + 1);
+        },
         onError: (e) => setError(e instanceof Error ? e.message : String(e)),
       });
     },
@@ -117,6 +123,7 @@ export function AccountImportPanel({
               {slot.kind === "file" && (
                 <>
                   <input
+                    key={inputKey}
                     type="file"
                     accept={slot.accept}
                     onChange={(e) => {
@@ -144,6 +151,7 @@ export function AccountImportPanel({
                     <label key={field.name} className={styles.fileLabel}>
                       {field.label}
                       <input
+                        key={inputKey}
                         type="file"
                         accept={field.accept}
                         onChange={(e) => {

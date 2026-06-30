@@ -446,9 +446,9 @@ export function useFlowsCreditCardExpenses() {
 export {
   useAssignCcExpenseLineCategory,
   useMarkCcExpenseLineUniqueMutation,
-  useCreateCcPurchaseMutation,
   useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
+  useMakeStatementLineInstallmentMutation,
   useAccountImportMutation,
   usePatchCcExpenseLineCategoryMutation,
   usePatchCcExpensePurchaseNoteMutation,
