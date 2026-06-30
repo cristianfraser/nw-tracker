@@ -71,7 +71,7 @@ describe("flowLinesForBillingStatementMonth", () => {
 });
 
 describe("flowLinesForFacturacionMonth", () => {
-  it("open month includes deduced installment cuotas for pay-by calendar month", () => {
+  it("open month includes deduced installment cuotas for the billing month", () => {
     const statements: CcStatementDto[] = [
       {
         id: 20,
@@ -92,15 +92,22 @@ describe("flowLinesForFacturacionMonth", () => {
       line({
         statement_line_id: -2_000_000_042,
         line_role: "installment_cuota",
-        billing_month: "2026-08",
+        billing_month: "2026-07",
         amount_clp: 18_660,
         nro_cuota_current: 2,
+        nro_cuota_total: 12,
+      }),
+      line({
+        statement_line_id: -2_000_000_043,
+        line_role: "installment_cuota",
+        billing_month: "2026-08",
+        amount_clp: 18_660,
+        nro_cuota_current: 3,
         nro_cuota_total: 12,
       }),
     ];
     const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
       billing_month: "2026-07",
-      pay_by_iso: "2026-08-10",
       is_open_month: true,
     });
     expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([-2_000_000_042, 200]);
@@ -128,7 +135,6 @@ describe("flowLinesForFacturacionMonth", () => {
     ];
     const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
       billing_month: "2026-06",
-      pay_by_iso: "2026-08-10",
       is_open_month: false,
     });
     expect(scoped.map((ln) => ln.statement_line_id)).toEqual([100]);

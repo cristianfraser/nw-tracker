@@ -2,7 +2,6 @@ import { useTranslation } from "../../i18n";
 import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
-import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
 import { formatClp } from "../../format";
@@ -26,8 +25,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     ccLedger,
     displayUnit,
     metricsPeriod,
-    xAxisGranularity,
-    valuationBlockForChart,
     extraCcOffsets,
     setExtraCcOffsets,
   } = data;
@@ -94,18 +91,9 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         <section className={styles.chartBlock}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
           <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.historialHint")}</p>
-          <CcInstallmentHistoryChart rows={historialChartRows} />
+          <CcInstallmentHistoryChart rows={historialChartRows} openBillingMonth={ccLedger.open_billing_month} />
         </section>
       ) : null}
-
-      <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
-        <LineChartPanel
-          title={t("accountDetail.creditCard.valuationTitle")}
-          block={valuationBlockForChart ?? ts.accounts}
-          displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
-        />
-      </div>
 
       <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
       <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>

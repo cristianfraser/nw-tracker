@@ -386,32 +386,6 @@ export function useDeleteCcExpenseBigGroupMutation() {
   });
 }
 
-export function useCreateCcPurchaseMutation(opts: {
-  accountId: number;
-  displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
-}) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: {
-      purchase_date: string;
-      total_amount_clp: number;
-      cuotas_totales: number;
-      merchant?: string;
-      description?: string;
-      card_group?: string;
-    }) => api.createCcPurchase(opts.accountId, body),
-    onSettled: () => {
-      invalidateAccountAndFlowQueries(
-        queryClient,
-        opts.accountId,
-        opts.displayUnit,
-        opts.extraCcOffsetsKey
-      );
-    },
-  });
-}
-
 export function useDeleteCcPurchaseMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;
@@ -439,6 +413,26 @@ export function useDeleteCcStatementLineMutation(opts: {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (lineId: number) => api.deleteCcStatementLine(opts.accountId, lineId),
+    onSettled: () => {
+      invalidateAccountAndFlowQueries(
+        queryClient,
+        opts.accountId,
+        opts.displayUnit,
+        opts.extraCcOffsetsKey
+      );
+    },
+  });
+}
+
+export function useMakeStatementLineInstallmentMutation(opts: {
+  accountId: number;
+  displayUnit: DisplayUnit;
+  extraCcOffsetsKey: string;
+}) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, cuotas_totales }: { lineId: number; cuotas_totales: number }) =>
+      api.makeStatementLineInstallment(opts.accountId, lineId, cuotas_totales),
     onSettled: () => {
       invalidateAccountAndFlowQueries(
         queryClient,

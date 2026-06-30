@@ -5,6 +5,7 @@ import type {
   AccountCcInstallmentsResponse,
   CcInstallmentMonthBreakdown,
   CcInstallmentPurchaseComputed,
+  CcProxyLotResult,
 } from "../../types";
 import { formatClp } from "../../format";
 import { cn } from "../../cn";
@@ -20,10 +21,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
-import {
-  useCreateCcPurchaseMutation,
-  useDeleteCcPurchaseMutation,
-} from "../../queries/hooks";
+import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
 
 function CreditCardInstallmentsSection({
@@ -45,7 +43,6 @@ function CreditCardInstallmentsSection({
     displayUnit,
     extraCcOffsetsKey: JSON.stringify(extraOffsets),
   };
-  const createPurchase = useCreateCcPurchaseMutation(mutationOpts);
   const deletePurchase = useDeleteCcPurchaseMutation(mutationOpts);
   const m = ledger.meta;
   const hasLedger = ledger.has_installment_ledger;
@@ -56,32 +53,7 @@ function CreditCardInstallmentsSection({
     (ledger.purchases_completed?.length ?? 0) > 0;
   const statements = ledger.statements ?? [];
   const facturaciones = ledger.facturaciones ?? [];
-  const [manualOpen, setManualOpen] = useState(false);
-  const [manualForm, setManualForm] = useState({
-    purchase_date: "",
-    total_amount_clp: "",
-    cuotas_totales: "",
-    merchant: "",
-  });
-
-  const manualBusy = createPurchase.isPending || deletePurchase.isPending;
-
-  const submitManualPurchase = () => {
-    createPurchase.mutate(
-      {
-        purchase_date: manualForm.purchase_date,
-        total_amount_clp: Number(manualForm.total_amount_clp.replace(/\./g, "")),
-        cuotas_totales: Number(manualForm.cuotas_totales),
-        merchant: manualForm.merchant || undefined,
-      },
-      {
-        onSuccess: () => {
-          setManualOpen(false);
-          setManualForm({ purchase_date: "", total_amount_clp: "", cuotas_totales: "", merchant: "" });
-        },
-      }
-    );
-  };
+  const manualBusy = deletePurchase.isPending;
   const purchasesCompleted = ledger.purchases_completed ?? [];
 
   const installmentDebtClpForMonth = useMemo(() => {
@@ -155,6 +127,21 @@ function CreditCardInstallmentsSection({
     p.origin === "manual"
       ? t("account.creditCard.originManual")
       : t("account.creditCard.originImportDocument");
+
+  const inlineTicker = ledger.proxy_tickers?.[0] ?? "fintual_cert_reserva2";
+
+  const formatProxyForCuota = (
+    proxy: CcProxyLotResult | undefined,
+    payByDate: string
+  ): string | null => {
+    if (!proxy) return null;
+    const r = proxy.by_ticker[inlineTicker];
+    if (!r || !r.cuotas) return null;
+    const cuota = r.cuotas.find((c) => c.pay_by_date === payByDate);
+    if (!cuota) return null;
+    const sign = cuota.accumulated_gain_clp >= 0 ? "+" : "";
+    return `ret. acum. ${inlineTicker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${cuota.accumulated_return_pct.toFixed(2)}%)`;
+  };
 
   const purchaseTableHeader = (dueColumn: "next" | "last" | "none") => (
     <thead>
@@ -265,6 +252,10 @@ function CreditCardInstallmentsSection({
                   persistExtraCcOffsets(accountId, next);
                   onExtraOffsetsChange(next);
                 }}
+                purchaseProxy={
+                  p.purchase_db_id != null ? ledger.purchase_proxy?.[p.purchase_db_id] : undefined
+                }
+                inlineTicker={inlineTicker}
               />
             </td>
           </tr>
@@ -281,12 +272,19 @@ function CreditCardInstallmentsSection({
                   <div className="mono">heuristics: {p.heuristic_hints.join(" | ")}</div>
                 ) : null}
                 <div>Estado(s) con cuota para esta compra:</div>
-                {p.payment_statements.map((st, idx) => (
-                  <div key={`${p.purchase_id}:st:${idx}`} className="mono">
-                    {st.statement_date ?? "sin fecha estado"} · {st.source_pdf ?? "sin source_pdf"} · pay_by{" "}
-                    {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
-                  </div>
-                ))}
+                {p.payment_statements.map((st, idx) => {
+                  const purchaseProxy = p.purchase_db_id != null
+                    ? ledger.purchase_proxy?.[p.purchase_db_id]
+                    : undefined;
+                  const proxyInline = formatProxyForCuota(purchaseProxy, st.pay_by_date);
+                  return (
+                    <div key={`${p.purchase_id}:st:${idx}`} className="mono">
+                      {st.statement_date ?? "sin fecha estado"} · {st.source_pdf ?? "sin source_pdf"} · pay_by{" "}
+                      {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
+                      {proxyInline ? <span className="muted"> · {proxyInline}</span> : null}
+                    </div>
+                  );
+                })}
               </td>
             </tr>
           ) : null}
@@ -348,82 +346,11 @@ function CreditCardInstallmentsSection({
                 accountId={accountId}
                 displayUnit={displayUnit}
                 extraCcOffsetsKey={JSON.stringify(extraOffsets)}
+                facturacionProxy={ledger.facturacion_proxy}
+                proxyTickers={ledger.proxy_tickers}
               />
             </>
           ) : null}
-
-          {hasLedger ? (
-            <div className={styles.marginBottomBase}>
-              {!manualOpen ? (
-                <button type="button" onClick={() => setManualOpen(true)}>
-                  {t("account.creditCard.manualAdd")}
-                </button>
-              ) : (
-                <div className={cn("card", styles.cardsBelow)}>
-                  <div className="label">{t("account.creditCard.manualAdd")}</div>
-                  {ledger.open_billing_month ? (
-                    <p className={cn("muted", styles.proseSmTight)}>
-                      {t("account.creditCard.manualOpenBillingMonthHint", {
-                        month: formatYmEs(ledger.open_billing_month),
-                      })}
-                    </p>
-                  ) : null}
-                  <div className={styles.manualFormGrid}>
-                    <label>
-                      {t("account.creditCard.manualDate")}
-                      <input
-                        type="date"
-                        value={manualForm.purchase_date}
-                        onChange={(e) =>
-                          setManualForm((f) => ({ ...f, purchase_date: e.target.value }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      {t("account.creditCard.manualPrincipal")}
-                      <input
-                        type="text"
-                        className="mono"
-                        value={manualForm.total_amount_clp}
-                        onChange={(e) =>
-                          setManualForm((f) => ({ ...f, total_amount_clp: e.target.value }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      {t("account.creditCard.manualCuotas")}
-                      <input
-                        type="number"
-                        min={1}
-                        className="mono"
-                        value={manualForm.cuotas_totales}
-                        onChange={(e) =>
-                          setManualForm((f) => ({ ...f, cuotas_totales: e.target.value }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      {t("account.creditCard.manualMerchant")}
-                      <input
-                        type="text"
-                        value={manualForm.merchant}
-                        onChange={(e) => setManualForm((f) => ({ ...f, merchant: e.target.value }))}
-                      />
-                    </label>
-                  </div>
-                  <div className={styles.manualFormActions}>
-                    <button type="button" disabled={manualBusy} onClick={submitManualPurchase}>
-                      {t("account.creditCard.manualSubmit")}
-                    </button>
-                    <button type="button" disabled={manualBusy} onClick={() => setManualOpen(false)}>
-                      {t("account.creditCard.manualCancel")}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
-
 
           <h3 className={styles.subsectionTitle}>Compras activas (cuotas pendientes)</h3>
           <Table

@@ -597,6 +597,36 @@ export type CcBillingMonthChartPoint = {
   ytd_financing_cost_clp: number | null;
 };
 
+export interface CcProxyCuotaResult {
+  pay_by_date: string;
+  billing_month: string;
+  cuota_amount_clp: number;
+  realized_gain_clp: number;
+  accumulated_gain_clp: number;
+  accumulated_return_pct: number;
+  projected: boolean;
+}
+
+export interface CcProxyTickerResult {
+  gain_clp: number;
+  return_pct: number;
+  projected: boolean;
+  cuotas: CcProxyCuotaResult[];
+}
+
+export interface CcProxyLotResult {
+  by_ticker: Record<string, CcProxyTickerResult>;
+}
+
+export interface CcProxyFacturacionAggregate {
+  billing_month: string;
+  by_ticker: Record<string, {
+    total_gain_clp: number;
+    blended_return_pct: number;
+    projected: boolean;
+  }>;
+}
+
 export interface AccountCcInstallmentsResponse {
   account_id: number;
   has_installment_ledger: boolean;
@@ -629,6 +659,12 @@ export interface AccountCcInstallmentsResponse {
   historial_chart?: CcHistorialChartPoint[];
   /** Dense billing-month chart series — interior month gaps filled with nulls. Built server-side. */
   billing_month_chart?: CcBillingMonthChartPoint[];
+  /** Tracked tickers for proxy earnings computation. */
+  proxy_tickers?: string[];
+  /** Per-installment-purchase proxy earnings, keyed by purchase_db_id. */
+  purchase_proxy?: Record<number, CcProxyLotResult>;
+  /** Per-facturación aggregated proxy earnings (installments + normal purchases). */
+  facturacion_proxy?: CcProxyFacturacionAggregate[];
 }
 
 /** `GET /api/portfolio-groups/:slug/cc-ledger` — aggregated CC masters for a pasivos group. */
@@ -1199,6 +1235,13 @@ export interface FlowsCreditCardExpensesResponse {
   chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
   total_clp: number;
   total_real_clp: number;
+  /** Tracked tickers used to compute proxy earnings. */
+  proxy_tickers?: string[];
+  /**
+   * Investment proxy earnings for normal (non-installment) purchase lines,
+   * keyed by statement_line_id.
+   */
+  line_proxy?: Record<number, CcProxyLotResult>;
 }
 
 /** `GET /api/income` — cartola abonos + manual income_entries. */

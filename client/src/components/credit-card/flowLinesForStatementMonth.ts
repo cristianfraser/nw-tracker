@@ -1,12 +1,6 @@
 import { mergedFacturacionLines } from "../../pages/accountDetail/mergedFacturacionLines";
 import type { CcFacturacionDto, CcStatementDto, FlowCcExpenseLineRow } from "../../types";
 
-function payByCalendarMonth(payByIso: string | null | undefined): string | null {
-  const iso = String(payByIso ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
-  return iso.slice(0, 7);
-}
-
 function flowLinesFromImportedStatements(
   flowsLines: readonly FlowCcExpenseLineRow[],
   statements: readonly CcStatementDto[],
@@ -28,15 +22,12 @@ function flowLinesFromImportedStatements(
 function deducedInstallmentCuotaLines(
   flowsLines: readonly FlowCcExpenseLineRow[],
   accountId: number,
-  payByIso: string | null | undefined
+  billingMonth: string
 ): FlowCcExpenseLineRow[] {
-  const payByYm = payByCalendarMonth(payByIso);
-  if (!payByYm) return [];
-
   return flowsLines.filter((ln) => {
     if (ln.account_id !== accountId) return false;
     if (ln.line_role !== "installment_cuota") return false;
-    return ln.billing_month === payByYm;
+    return ln.billing_month === billingMonth;
   });
 }
 
@@ -52,13 +43,13 @@ export function flowLinesForBillingStatementMonth(
 
 /**
  * Facturación modal lines: closed months = PDF/imported statement rows only;
- * open month = web-paste únicos + ledger-deduced installment cuotas (pay-by month).
+ * open month = web-paste únicos + ledger-deduced installment cuotas for that billing month.
  */
 export function flowLinesForFacturacionMonth(
   flowsLines: readonly FlowCcExpenseLineRow[],
   statements: readonly CcStatementDto[],
   accountId: number,
-  row: Pick<CcFacturacionDto, "billing_month" | "pay_by_iso" | "is_open_month">
+  row: Pick<CcFacturacionDto, "billing_month" | "is_open_month">
 ): FlowCcExpenseLineRow[] {
   const imported = flowLinesFromImportedStatements(
     flowsLines,
@@ -72,7 +63,7 @@ export function flowLinesForFacturacionMonth(
   for (const ln of imported) {
     byKey.set(`stmt:${ln.statement_line_id}`, ln);
   }
-  for (const ln of deducedInstallmentCuotaLines(flowsLines, accountId, row.pay_by_iso)) {
+  for (const ln of deducedInstallmentCuotaLines(flowsLines, accountId, row.billing_month)) {
     byKey.set(`cuota:${ln.statement_line_id}`, ln);
   }
   return [...byKey.values()];

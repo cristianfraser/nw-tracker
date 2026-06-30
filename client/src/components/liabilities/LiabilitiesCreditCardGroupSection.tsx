@@ -69,7 +69,7 @@ export function LiabilitiesCreditCardGroupSection({
         <section className={styles.chartBlock}>
           <h3 className={styles.subsectionTitleMid}>{t("accountDetail.creditCard.historialTitle")}</h3>
           <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.historialHint")}</p>
-          <CcInstallmentHistoryChart rows={historialChartRows} />
+          <CcInstallmentHistoryChart rows={historialChartRows} openBillingMonth={ccLedger.open_billing_month} />
         </section>
       ) : null}
 
