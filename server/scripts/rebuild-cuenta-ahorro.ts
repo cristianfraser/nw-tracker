@@ -57,6 +57,26 @@ function main() {
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta) VALUES (?,?,?,?,?)`
   ) as ExcelMovementInsertStmt;
 
+  // Fail fast: this rebuild owns only the CSV/forensic-imported rows. A manual (or otherwise
+  // foreign) movement on the account would be silently destroyed by a blanket delete — refuse.
+  const foreign = db
+    .prepare(
+      `SELECT id, occurred_on, amount_clp, note FROM movements
+       WHERE account_id = ?
+         AND (note IS NULL OR note NOT LIKE 'import:excel|csv|cash|ahorro-vivienda|%')`
+    )
+    .all(accountId) as { id: number; occurred_on: string; amount_clp: number; note: string | null }[];
+  if (foreign.length > 0) {
+    console.error(
+      `rebuild:cuenta-ahorro: refusing to rebuild — ${foreign.length} non-import movement(s) on account ${accountId} would be destroyed:`
+    );
+    for (const f of foreign.slice(0, 10)) {
+      console.error(`  mov ${f.id} ${f.occurred_on} ${f.amount_clp} note=${f.note ?? "(null)"}`);
+    }
+    console.error("Move them to the forensic CSV or delete them explicitly, then re-run.");
+    process.exit(1);
+  }
+
   let movN = 0;
   const tx = db.transaction(() => {
     // Scoped strictly to this one account — nothing else is touched.

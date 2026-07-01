@@ -303,14 +303,14 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     let status: DepositReconciliationStatus;
     if (linkSource === "auto" || linkSource === "manual") {
       status = "linked";
+    } else if (pureFamilyAhorroMovementIds.has(m.id) || ahorroDepositNoteIsForensicFamily(m.note)) {
+      // cuenta_ahorro deposit that is a family gift — either the split marks self = 0, or the forensic
+      // per-deposit history tags it funding=family. Checked BEFORE synthetic: the forensic record is
+      // authoritative, so a stale self-funded mirror must not present a family gift as linked_synthetic.
+      status = "resolved_family_funded";
     } else if (linkSource === "synthetic") {
       // Includes cuenta_ahorro splits with a self-funded portion (partial synthetic mirror).
       status = "linked_synthetic";
-    } else if (pureFamilyAhorroMovementIds.has(m.id) || ahorroDepositNoteIsForensicFamily(m.note)) {
-      // cuenta_ahorro deposit that is a family gift — either the split marks self = 0, or the forensic
-      // per-deposit history tags it funding=family. No own outflow to mirror, but it is reconciled —
-      // resolved, not "needs attention".
-      status = "resolved_family_funded";
     } else {
       const month = monthKeyFromYmd(m.occurred_on);
       status =
@@ -362,9 +362,9 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   }
   const redemptions: DepositRedemptionRow[] = [];
   for (const outflow of loadNetWorthCapitalReturnLedgerOutflows()) {
+    // DAP outflows never appear here: kind `dap` is excluded from the matcher candidate pools at
+    // the source (MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS in flowsCheckingGastos).
     if (cryptoCoinIds.has(outflow.account_id)) continue;
-    // DAP retiros return to checking as "DAP … ABONADO" credits the income filter already excludes.
-    if (accountKindSlugForAccountId(outflow.account_id) === DAP_ACCOUNT_KIND_SLUG) continue;
     if (
       outflow.account_id === budaBufferId &&
       !budaRetiroKeys.has(netWorthCapitalLedgerOutflowPairKey(outflow))
