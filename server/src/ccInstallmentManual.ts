@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
+  deleteStatementLinesByIds,
   removeOneShotLinesForInstallmentPurchase,
   selLineCategory,
   upsertUniqueCat,
@@ -27,7 +28,8 @@ function parsePurchaseDateIso(raw: string): string | null {
 
 export function createManualCcInstallmentPurchase(
   accountId: number,
-  input: ManualCcPurchaseInput
+  input: ManualCcPurchaseInput,
+  opts?: { removeSupersededOneShotLines?: boolean }
 ): { id: number; canonical_row_id: string } {
   const purchaseDate = parsePurchaseDateIso(input.purchase_date);
   if (!purchaseDate) throw new Error("invalid purchase_date");
@@ -58,7 +60,15 @@ export function createManualCcInstallmentPurchase(
     );
 
   const purchaseId = Number(r.lastInsertRowid);
-  removeOneShotLinesForInstallmentPurchase(accountId, purchaseId);
+  // Fuzzy cross-source dedupe (merchant + date + amount tolerance) is only appropriate
+  // when the caller has no exact source line — e.g. a hand-entered manual purchase that
+  // supersedes a previously imported one-shot line. Callers that already know exactly which
+  // statement line the purchase came from (see convertStatementLineToInstallmentPurchase)
+  // pass removeSupersededOneShotLines: false and delete that line by id, so a second
+  // same-merchant/same-day line is never collateral-deleted.
+  if (opts?.removeSupersededOneShotLines !== false) {
+    removeOneShotLinesForInstallmentPurchase(accountId, purchaseId);
+  }
 
   upsertCreditCardValuationsFromLedger(accountId);
   recomputeCcBillingMonthBalances(accountId);
@@ -159,18 +169,29 @@ export function convertStatementLineToInstallmentPurchase(
       accountId,
       purchaseDateIso,
       cuotasTotales: cuotas,
+      totalAmountClp: line.amount_clp,
       merchant: line.merchant,
     });
     upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
   }
 
-  return createManualCcInstallmentPurchase(accountId, {
-    purchase_date: purchaseDateIso,
-    total_amount_clp: line.amount_clp,
-    cuotas_totales: cuotas,
-    merchant: line.merchant ?? undefined,
-    card_group: line.card_group ?? undefined,
-  });
+  // Delete exactly the converted line by id. Do NOT let createManualCcInstallmentPurchase
+  // fuzzy-match one-shot lines: two distinct purchases with the same merchant and date
+  // (e.g. two "EXPRESS PLAZA L" charges on 30/06) would otherwise collide and the sibling
+  // line would be deleted too.
+  deleteStatementLinesByIds([lineId]);
+
+  return createManualCcInstallmentPurchase(
+    accountId,
+    {
+      purchase_date: purchaseDateIso,
+      total_amount_clp: line.amount_clp,
+      cuotas_totales: cuotas,
+      merchant: line.merchant ?? undefined,
+      card_group: line.card_group ?? undefined,
+    },
+    { removeSupersededOneShotLines: false }
+  );
 }
 
 export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId: number): void {
