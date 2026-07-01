@@ -19,6 +19,7 @@
     "backfill:apv-aporte-estatal": "tsx -e \"import { backfillApvAporteEstatal } from './src/apvAporteEstatalBackfill.ts'; import { resolveCfraserCsvDir } from './src/cfraserPaths.ts'; console.log('tagged', backfillApvAporteEstatal(resolveCfraserCsvDir()), 'aporte estatal deposits')\"",
     "import:excel": "tsx scripts/import-excel-history.ts",
     "rebuild:cuenta-ahorro": "tsx scripts/rebuild-cuenta-ahorro.ts",
+    "import:dap": "tsx scripts/import-dap-history.ts",
     "import:cfraser-inbox": "tsx scripts/import-cfraser-inbox.ts",
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",
     "repair:cc-web-paste-pdf-reconcile": "tsx scripts/repair-cc-web-paste-pdf-reconcile.ts",

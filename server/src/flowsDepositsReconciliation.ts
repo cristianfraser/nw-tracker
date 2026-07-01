@@ -106,6 +106,12 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 // below) rather than showing up as perpetually "unlinked".
 const PAYROLL_ACCOUNT_KIND_SLUGS = new Set(["afp", "afc"]);
 
+// The DAP ledger account (import:dap) holds term-deposit principal between checking round-trips.
+// Its checking counterparts (Cargo Mercado Capitales out, DAP ... ABONADO back) are already netted
+// as internal on the checking side, so DAP inflows/outflows are excluded from reconciliation on
+// both sides — including them would demand links for flows the matcher intentionally ignores.
+const DAP_ACCOUNT_KIND_SLUG = "dap";
+
 // The checking bucket (cuenta_corriente + cuenta_vista) is the *funding source* for this feature,
 // never a reconciliation target. Its own inflows are income (salary) and internal corriente↔vista
 // transfers — out of scope here (handled by the future liquidaciones / income tab). We reconcile
@@ -260,7 +266,10 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     .filter((id) => !cryptoCoinIds.has(id))
     .filter((id) => {
       const kindSlug = accountKindSlugForAccountId(id);
-      return kindSlug == null || !PAYROLL_ACCOUNT_KIND_SLUGS.has(kindSlug);
+      return (
+        kindSlug == null ||
+        (!PAYROLL_ACCOUNT_KIND_SLUGS.has(kindSlug) && kindSlug !== DAP_ACCOUNT_KIND_SLUG)
+      );
     });
 
   const linkSourceByMovementId = loadBestLinkSourceByMovementId();
@@ -354,6 +363,8 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   const redemptions: DepositRedemptionRow[] = [];
   for (const outflow of loadNetWorthCapitalReturnLedgerOutflows()) {
     if (cryptoCoinIds.has(outflow.account_id)) continue;
+    // DAP retiros return to checking as "DAP … ABONADO" credits the income filter already excludes.
+    if (accountKindSlugForAccountId(outflow.account_id) === DAP_ACCOUNT_KIND_SLUG) continue;
     if (
       outflow.account_id === budaBufferId &&
       !budaRetiroKeys.has(netWorthCapitalLedgerOutflowPairKey(outflow))
