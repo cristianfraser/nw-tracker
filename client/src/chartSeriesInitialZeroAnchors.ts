@@ -56,7 +56,7 @@ function isPositivePlottedValue(v: unknown): boolean {
 export function coerceKeptTrailingZeroMonth(
   points: readonly ChartSparseRow[],
   dataKeys: readonly string[],
-  dateKey = "as_of_date"
+  _dateKey = "as_of_date"
 ): ChartSparseRow[] {
   if (!points.length || !dataKeys.length) return [...points];
   const out = points.map((r) => ({ ...r }));

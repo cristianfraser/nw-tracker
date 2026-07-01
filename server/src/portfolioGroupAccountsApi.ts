@@ -1,5 +1,6 @@
 import { accountChartInactive } from "./accountChartInactive.js";
 import { db } from "./db.js";
+import { leafPortfolioGroupSlugByAccountIds } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
 /**
@@ -13,6 +14,7 @@ export async function listPortfolioGroupAccountsForApi(
   if (!tabRows.length) return [];
 
   const inactiveById = new Map(tabRows.map((r) => [r.account_id, r.chart_inactive === true]));
+  const leafGroupSlugById = leafPortfolioGroupSlugByAccountIds(tabRows.map((r) => r.account_id));
 
   const ph = tabRows.map(() => "?").join(",");
   const rows = db
@@ -28,6 +30,7 @@ export async function listPortfolioGroupAccountsForApi(
 
   return rows.map((row) => ({
     ...row,
+    group_slug: leafGroupSlugById.get(row.id as number) ?? row.bucket_slug,
     chart_inactive: inactiveById.get(row.id as number) ?? false,
   }));
 }

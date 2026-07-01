@@ -6,10 +6,7 @@ import { USD_CASH_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
 import {
   buildUsdCashMovementPostBody,
 } from "../../panelAccounts/usdCashAccountFormTypes";
-import {
-  emptyMovementRow,
-  type InitialMovementDraft,
-} from "../../panelAccounts/stockAccountFormTypes";
+import { type InitialMovementDraft } from "../../panelAccounts/stockAccountFormTypes";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { BrokerageMovementsSection } from "../panel/BrokerageMovementsSection";
 

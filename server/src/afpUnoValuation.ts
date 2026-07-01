@@ -14,6 +14,7 @@ import {
   readOptionalAfpUnoWebsiteCuotasTarget,
 } from "./afpModeloPriorCuotasBackfill.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 
 function afpUnoWebsiteCuotasTarget(): number {
   return readOptionalAfpUnoWebsiteCuotasTarget(resolveCfraserCsvDir()) ?? AFP_UNO_WEBSITE_CUOTAS_TARGET;
@@ -65,11 +66,12 @@ export function afpCuotasLedgerExcludingWebsiteReconcile(
  * (import used to reconcile against Σ through 2017-06 only, leaving a bogus +291 cuota bump).
  */
 export function afpCuotasCumulativeThroughDate(accountId: number, asOfYmd: string): number {
+  const manual = transferLegUnitsThroughDate(accountId, asOfYmd);
   const ledger = afpCuotasLedgerExcludingWebsiteReconcile(accountId, asOfYmd);
   const recon = afpCuotasWebsiteReconcileDelta(accountId, asOfYmd);
-  if (recon != null) return Math.round((ledger + recon) * 10000) / 10000;
+  if (recon != null) return Math.round((ledger + recon + manual) * 10000) / 10000;
   const target = afpUnoWebsiteCuotasTarget();
-  if (ledger >= target * 0.15) return ledger;
+  if (ledger >= target * 0.15) return Math.round((ledger + manual) * 10000) / 10000;
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(COALESCE(units_delta, 0)), 0) AS u
@@ -79,7 +81,7 @@ export function afpCuotasCumulativeThroughDate(accountId: number, asOfYmd: strin
          AND date(occurred_on) <= date(?)`
     )
     .get(accountId, asOfYmd) as { u: number };
-  return row?.u ?? 0;
+  return Math.round(((row?.u ?? 0) + manual) * 10000) / 10000;
 }
 
 /**

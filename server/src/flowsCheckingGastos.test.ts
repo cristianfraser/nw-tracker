@@ -1106,7 +1106,7 @@ describe("flowsCheckingGastos", () => {
     expect(dec10Gastos?.expense_month).toBe("2024-12");
   });
 
-  it("excludes Fintual reserva wires from Jan 2025 gastos", () => {
+  it("Fintual reserva wires emit deposit-portion lines (excluded from gastos totals), not gastos", () => {
     const lines = buildCheckingGastosLines();
     const fintualJan = lines.filter(
       (l) =>
@@ -1114,8 +1114,13 @@ describe("flowsCheckingGastos", () => {
         l.expense_month === "2025-01" &&
         l.merchant?.includes("FINTUAL")
     );
-    // Fintual wires are capital flows, not gastos; they must be excluded by isExcludedCheckingWithdrawal.
-    expect(fintualJan).toHaveLength(0);
+    // Fintual wires are capital flows, not consumption. They emit deposit-portion lines (so the funded
+    // Reserva2 deposit gets linked through the shared matcher) with the `deposits` category, which is
+    // excluded from gastos totals — never a gastos-portion (consumption) line.
+    for (const l of fintualJan) {
+      expect(l.checking_purchase_portion).toBe("deposit");
+      expect(l.category_slug).toBe("deposits");
+    }
   });
 
   it("investment deposit match ignores cash/efectivo inflows", () => {

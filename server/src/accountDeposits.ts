@@ -51,6 +51,9 @@ const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
   "dividend_usd",
 ]);
 
+/** Bank-paid yield (Abonos / Intereses) on cuenta_ahorro_vivienda — P/L, not personal capital. */
+export const SAVINGS_EARNINGS_FLOW_KIND = "savings_earnings";
+
 /** Equity MTM accounts — ignore legacy Table 1-3 `dep_stocks` rows without `flow_kind`. */
 function equityMtmAccountIdsSet(accountIds: number[]): Set<number> {
   return new Set(accountIds.filter((id) => id > 0 && accountUsesEquityMtm(id)));
@@ -87,6 +90,7 @@ function loadMovementSignedFlowEvents(
     if (usdCashIds.has(r.account_id)) continue;
     if (equityMtmIds.has(r.account_id) && r.flow_kind == null) continue;
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
+    if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND) continue;
     if (personalOnly) {
       if (
         movementIsStateContribution(r.note) ||

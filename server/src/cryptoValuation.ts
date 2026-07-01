@@ -12,6 +12,7 @@ import {
 } from "./equityQuote.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 
 /** @deprecated Import/backfill only — runtime uses `equity_ticker` + `units_delta`. */
 export const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
@@ -111,7 +112,7 @@ export function cryptoCoinCumulativeThroughDate(
     )
     .get(accountId, asOfYmd) as { u: number };
 
-  const sum = row?.u ?? 0;
+  const sum = (row?.u ?? 0) + transferLegUnitsThroughDate(accountId, asOfYmd);
   if (sum !== 0) return sum;
 
   const legacyAsset =

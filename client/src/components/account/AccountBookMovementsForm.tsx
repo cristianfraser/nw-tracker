@@ -8,10 +8,12 @@ import {
   brokerageMovementFieldRowStyle,
 } from "../panel/BrokerageMovementsSection";
 import { CounterpartAccountSelect } from "./CounterpartAccountSelect";
+import { FlowDirectionToggle, type FlowDirection } from "./FlowDirectionToggle";
 
 type BookMovementDraft = {
   id: string;
   occurredOn: string;
+  direction: FlowDirection;
   amountClp: string;
   note: string;
   counterpartAccountId: number | "";
@@ -22,28 +24,44 @@ function newRowId(): string {
 }
 
 function emptyRow(): BookMovementDraft {
-  return { id: newRowId(), occurredOn: "", amountClp: "", note: "", counterpartAccountId: "" };
+  return {
+    id: newRowId(),
+    occurredOn: "",
+    direction: "in",
+    amountClp: "",
+    note: "",
+    counterpartAccountId: "",
+  };
 }
 
-function parseSignedClp(raw: string): number | null {
+/** Parse a positive CLP magnitude (sign comes from the In/Out toggle, not the number). */
+function parseAbsClp(raw: string): number | null {
   const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
   if (!normalized) return null;
-  const n = Number(normalized);
+  const n = Math.abs(Number(normalized));
   return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
 function buildPostBody(row: BookMovementDraft): Record<string, unknown> | null {
-  const amount_clp = parseSignedClp(row.amountClp);
-  if (amount_clp == null) return null;
+  const magnitude = parseAbsClp(row.amountClp);
+  if (magnitude == null) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn.trim())) return null;
   const note = row.note.trim();
+  if (row.counterpartAccountId !== "") {
+    // Transfer: absolute amount, direction picks which side the current account is on.
+    return {
+      amount_clp: magnitude,
+      occurred_on: row.occurredOn.trim(),
+      ...(note ? { note } : {}),
+      counterpart_account_id: row.counterpartAccountId,
+      counterpart_role: row.direction === "in" ? ("from" as const) : ("to" as const),
+    };
+  }
+  // Plain movement on this account: In = deposit (+), Out = withdrawal (−).
   return {
-    amount_clp,
+    amount_clp: row.direction === "in" ? magnitude : -magnitude,
     occurred_on: row.occurredOn.trim(),
     ...(note ? { note } : {}),
-    ...(row.counterpartAccountId !== ""
-      ? { counterpart_account_id: row.counterpartAccountId, counterpart_role: "to" as const }
-      : {}),
   };
 }
 
@@ -129,13 +147,24 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
                 }
               />
             </label>
+            <div style={brokerageMovementFieldRowStyle()}>
+              <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.flowDirection.label")}</span>
+              <FlowDirectionToggle
+                value={row.direction}
+                onChange={(direction) =>
+                  setMovements((prev) =>
+                    prev.map((r) => (r.id === row.id ? { ...r, direction } : r))
+                  )
+                }
+              />
+            </div>
             <label style={brokerageMovementFieldRowStyle()}>
               <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.amountClpLabel")}</span>
               <input
                 type="text"
                 inputMode="decimal"
                 value={row.amountClp}
-                placeholder="-1325724"
+                placeholder="1325724"
                 onChange={(e) =>
                   setMovements((prev) =>
                     prev.map((r) => (r.id === row.id ? { ...r, amountClp: e.target.value } : r))

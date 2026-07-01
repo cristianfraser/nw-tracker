@@ -54,4 +54,17 @@ describe("resolvePurchaseKeyForGastosLine", () => {
     );
     expect(key).toBe(checkingGastosMovementPurchaseKey(42));
   });
+
+  it("includes the total so same-identity purchases get distinct keys", () => {
+    // Two EXPRESS-PLAZA-L-style purchases: same account/date/cuotas/merchant, different amount.
+    const a = resolvePurchaseKeyForGastosLine(
+      line({ statement_line_id: -1, installment_total_clp: 1_267_034 })
+    );
+    const b = resolvePurchaseKeyForGastosLine(
+      line({ statement_line_id: -2, installment_total_clp: 1_200_000 })
+    );
+    expect(a).toBe("installment-h:1:2024-12-15:6:1267034:TEST SHOP");
+    expect(b).toBe("installment-h:1:2024-12-15:6:1200000:TEST SHOP");
+    expect(a).not.toBe(b);
+  });
 });

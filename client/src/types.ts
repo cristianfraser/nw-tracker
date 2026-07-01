@@ -1157,6 +1157,17 @@ export interface CcExpenseBigGroupDto {
 
 export type FlowCcExpenseLineSource = "cc" | "checking" | "manual";
 
+/** Installment-mode scope override; default `both`. See ccExpensePeriodMonth.ts. */
+export type CcFacturadoFinancingGastosScope = "both" | "total_only" | "split_only" | "excluded";
+
+/** A facturado paid in cuotas via a set of installment purchases. */
+export interface CcFacturadoFinancingLink {
+  id: number;
+  financed_account_id: number;
+  financed_billing_month: string;
+  financing: { account_id: number; purchase_key: string }[];
+}
+
 export interface FlowCcExpenseLineRow {
   source: FlowCcExpenseLineSource;
   statement_line_id: number;
@@ -1173,6 +1184,10 @@ export interface FlowCcExpenseLineRow {
   /** Calendar month of purchase (YYYY-MM). */
   purchase_month: string;
   line_role: "purchase" | "installment_cuota" | "installment_purchase_total";
+  /** Ledger total for installment lines (disambiguates same-identity purchase_keys). */
+  installment_total_clp?: number | null;
+  /** Installment-mode scope override (facturado-financing projection); default `both`. */
+  gastos_scope?: CcFacturadoFinancingGastosScope;
   occurred_on: string;
   purchase_on: string | null;
   statement_date: string;
@@ -1204,8 +1219,8 @@ export interface FlowCcExpenseLineRow {
   origin_card_last4?: string | null;
   /** Statement billing card; null for checking / synthetic lines. */
   primary_card_last4?: string | null;
-  /** Linked net-worth deposit (mortgage amortization split). */
-  expense_deposit_link?: ExpenseDepositLinkDto;
+  /** Linked net-worth deposits (investment capital + mortgage amortization splits). */
+  expense_deposit_links?: ExpenseDepositLinkDto[];
 }
 
 export interface ExpenseDepositLinkDto {
@@ -1222,6 +1237,65 @@ export type FlowCcExpenseCategoryChartPoint = {
   as_of_date: string;
   [categorySlug: string]: string | number;
 };
+
+export type DepositReconciliationStatus =
+  | "linked"
+  | "linked_synthetic"
+  | "resolved_family_funded"
+  | "unlinked_no_checking_source"
+  | "unlinked_checking_present";
+
+export interface DepositReconciliationRow {
+  movement_id: number;
+  occurred_on: string;
+  account_id: number;
+  account_name: string;
+  category: DepositFlowCategory;
+  amount_clp: number;
+  amount_usd: number | null;
+  status: DepositReconciliationStatus;
+}
+
+export interface DepositReconciliationStatusTotals {
+  count: number;
+  total_clp: number;
+  total_usd: number | null;
+}
+
+export interface DepositReconciliationByMonth {
+  month: string;
+  linked_clp: number;
+  linked_synthetic_clp: number;
+  resolved_family_funded_clp: number;
+  unlinked_no_checking_source_clp: number;
+  unlinked_checking_present_clp: number;
+  total_clp: number;
+}
+
+export type DepositRedemptionStatus =
+  | "linked"
+  | "unlinked_no_checking_source"
+  | "unlinked_checking_present";
+
+export interface DepositRedemptionRow {
+  occurred_on: string;
+  account_id: number;
+  account_name: string;
+  category: DepositFlowCategory;
+  amount_clp: number;
+  amount_usd: number | null;
+  status: DepositRedemptionStatus;
+}
+
+export interface DepositsReconciliationPayload {
+  rows: DepositReconciliationRow[];
+  by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals>;
+  by_month: DepositReconciliationByMonth[];
+  redemptions: DepositRedemptionRow[];
+  redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals>;
+  fx_conversion_error: boolean;
+  fx_conversion_warnings: unknown[];
+}
 
 /** `GET /api/flows/expenses/credit-card` — Pasivos tarjeta de crédito (grupo, líneas de estado de cuenta). */
 export interface FlowsCreditCardExpensesResponse {

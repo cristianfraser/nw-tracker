@@ -24,6 +24,19 @@ export function latestFundUnitRow(
   return r;
 }
 
+/** Valor cuota (CLP) for a series on or before `ymd` — nearest prior day with a positive value. */
+export function fundUnitClpOnOrBefore(seriesKey: string, ymd: string): number | null {
+  const r = db
+    .prepare(
+      `SELECT unit_value_clp FROM fund_unit_daily
+       WHERE series_key = ? AND day <= ? AND unit_value_clp > 0
+       ORDER BY day DESC LIMIT 1`
+    )
+    .get(seriesKey, ymd) as { unit_value_clp: number } | undefined;
+  const v = r?.unit_value_clp;
+  return v != null && Number.isFinite(v) && v > 0 ? v : null;
+}
+
 /** Insert missing calendar days in (fromExclusive, toExclusive) with a fixed unit value. */
 export function fillFundUnitDailyCalendarGap(opts: {
   seriesKey: string;

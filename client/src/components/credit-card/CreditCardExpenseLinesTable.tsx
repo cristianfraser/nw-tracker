@@ -346,13 +346,27 @@ export function CreditCardExpenseLinesTable({
             <td className="mono">{ln.purchase_on ?? "—"}</td>
             <td>
               {ln.merchant ?? "—"}
-              {ln.expense_deposit_link?.depto_cuota ? (
-                <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
-                  {t("expenses.creditCard.mortgageDepositLinkCuota", {
-                    cuota: ln.expense_deposit_link.depto_cuota,
-                  })}
-                </span>
-              ) : null}
+              {(() => {
+                const mortgageLink = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
+                if (mortgageLink) {
+                  return (
+                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
+                      {t("expenses.creditCard.mortgageDepositLinkCuota", {
+                        cuota: mortgageLink.depto_cuota,
+                      })}
+                    </span>
+                  );
+                }
+                const hasInvestmentLink = (ln.expense_deposit_links?.length ?? 0) > 0;
+                if (hasInvestmentLink) {
+                  return (
+                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
+                      {t("expenses.creditCard.investmentDepositLink")}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
             </td>
             <td className="mono" style={{ whiteSpace: "nowrap" }}>
               <span>

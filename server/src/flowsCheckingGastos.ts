@@ -282,8 +282,15 @@ export const CUENTA_VISTA_TRANSFER_DESC_RE =
 const RESERVA_TRANSFER_DESC_RE =
   /\bRESERVA\b|FONDO\s+RESERVA|TRASPASO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b|DEP[OÓ]SITO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b/i;
 
-/** Wires to Fintual (investment funding — excluded from gastos list). */
+/** Direct "FINTUAL ADMINISTRADORA" wires — excluded from the gastos list outright. Kept narrow so
+ *  "TRASPASO A FINTUAL" / "Transf a Fintual" stay OUT of the exclusion set and flow through the
+ *  gastos matcher instead (see the excludes-internal-transfer test). */
 const FINTUAL_TRANSFER_DESC_RE = /FINTUAL\s+ADMINISTRADORA/i;
+
+/** Any transfer mentioning Fintual (Transf a Fintual, PAC FINTUAL, FINTUAL ADMINISTRADORA) is
+ *  investment funding — used for auto-matching a withdrawal to a Fintual deposit. Broader than the
+ *  exclusion regex; safe because the deposit pairing still requires an exact amount + date match. */
+const FINTUAL_INVESTMENT_TRANSFER_RE = /\bFINTUAL\b/i;
 
 /** Incoming checking abono from Fintual (capital return from net-worth accounts). */
 const FINTUAL_INCOMING_TRANSFER_RE = /\bFINTUAL\b/i;
@@ -335,7 +342,7 @@ export function checkingWithdrawalMayAutoMatchDeposit(description: string): bool
   if (INTERNAL_TRANSFER_RE.test(d)) return true;
   if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
   if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
   const merchantKey = normalizeCcExpenseMerchantKey(d);
   if (isExactGenericUniqueMerchantKey(merchantKey)) return true;
   if (isGenericTransferMerchantKey(merchantKey)) return true;
@@ -896,7 +903,7 @@ export const AFP_RETIRO_RETURN_MAX_DAY_GAP = 31;
 /** Wires from checking into Fintual / reserva (capital funding, not consumption). */
 export function checkingWithdrawalFundsInvestmentCapital(note: string | null): boolean {
   const d = stripCheckingBranchPrefix(cartolaDescriptionFromNote(note)).trim();
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
   if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
   return false;
 }
@@ -947,7 +954,7 @@ function checkingWithdrawalPairKey(row: {
   return `${row.account_id}|${row.occurred_on}|${Math.round(Math.abs(row.amount_clp))}`;
 }
 
-function netWorthCapitalLedgerOutflowPairKey(o: DepositMatchCandidate): string {
+export function netWorthCapitalLedgerOutflowPairKey(o: DepositMatchCandidate): string {
   return `${o.account_id}|${o.occurred_on}|${o.amount_clp}`;
 }
 
@@ -1265,7 +1272,7 @@ export function checkingCreditMatchesInvestmentCapitalReturn(
 export function withdrawalMayUseSplittableReservaPool(description: string): boolean {
   const d = description.trim();
   if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
+  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
   return false;
 }
 
@@ -1332,11 +1339,18 @@ function withdrawalMatchesInternalCashTransferExact(
 }
 
 /** Lump-sum reserva imports share one cartola day; only same-day checking wires may split against them. */
+/** Fintual (fondo reserva) credits the deposit up to a few days after the wire leaves checking, so
+ *  the splittable pool can't require an exact same-date match. Exact amount still gates the pairing. */
+const SPLITTABLE_INTERNAL_TRANSFER_MAX_DAY_GAP = 8;
+
 function depositMatchesSplittableInternalTransferTiming(
   withdrawal: { occurred_on: string },
   deposit: Pick<DepositMatchCandidate, "occurred_on">
 ): boolean {
-  return withdrawal.occurred_on === deposit.occurred_on;
+  return (
+    daysBetweenYmd(deposit.occurred_on, withdrawal.occurred_on) <=
+    SPLITTABLE_INTERNAL_TRANSFER_MAX_DAY_GAP
+  );
 }
 
 function tryAllocateSplittableInternalTransferAmount(
@@ -1640,7 +1654,7 @@ function loadCuentaVistaInternalTransferCredits(): DepositMatchCandidate[] {
     }));
 }
 
-function checkingGastosAccountCategorySlug(accountId: number): string {
+export function checkingGastosAccountCategorySlug(accountId: number): string {
   const row = db
     .prepare(
       `SELECT g.slug AS bucket_slug FROM accounts a
@@ -1868,7 +1882,35 @@ export function buildCheckingGastosLines(opts?: {
 
   for (const row of [...rows].reverse()) {
     const description = cartolaDescriptionFromNote(row.note);
-    if (isExcludedCheckingWithdrawal(description)) continue;
+    if (isExcludedCheckingWithdrawal(description)) {
+      // Fintual / reserva investment-funding transfers are excluded from the gastos list, but must
+      // still emit their deposit-portion line so the funded net-worth deposit gets linked through the
+      // SAME matcher + shared pool as every other deposit (no parallel post-pass; the shared pool also
+      // stops two same-amount outflows from both claiming one deposit). Other exclusions stay dropped.
+      const em = monthKeyFromYmd(row.occurred_on);
+      if (em && checkingWithdrawalFundsInvestmentCapital(row.note)) {
+        const split = splitCheckingWithdrawalAgainstDeposits(
+          { occurred_on: row.occurred_on, amount_clp: row.amount_clp, description },
+          deposits,
+          { splittablePool, usedDepositKeys, withdrawalAccountId: accountId, withdrawalCategorySlug }
+        );
+        if (split.internalClp > 0) {
+          pushCheckingLine(row, split.internalClp, em, description, {
+            purchasePortion: "deposit",
+            autoMatchedDeposits: split.internalMatchedDeposits,
+          });
+        }
+        if (split.investmentDeposit != null && split.investmentMatchClp > 0) {
+          pushCheckingLine(row, split.investmentMatchClp, em, description, {
+            matchedDeposit: split.investmentDeposit,
+            autoMatchedDeposits: [
+              { deposit: split.investmentDeposit, amount_clp: split.investmentMatchClp },
+            ],
+          });
+        }
+      }
+      continue;
+    }
     if (
       withdrawalIsReversedByDapAbono(
         { occurred_on: row.occurred_on, amount_clp: row.amount_clp, note: row.note },

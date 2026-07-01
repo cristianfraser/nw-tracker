@@ -81,14 +81,14 @@ export type FlowDepositsPayload = {
   >;
 };
 
-type AccountRow = {
+export type DepositFlowAccountRow = {
   account_id: number;
   name: string;
   group_slug: string;
   category_slug: string;
 };
 
-function listDepositFlowAccounts(includeExcludedFromGroupTotals = false): AccountRow[] {
+export function listDepositFlowAccounts(includeExcludedFromGroupTotals = false): DepositFlowAccountRow[] {
   const excludedClause = includeExcludedFromGroupTotals
     ? ""
     : "AND COALESCE(a.exclude_from_group_totals, 0) = 0";
@@ -116,7 +116,7 @@ function listDepositFlowAccounts(includeExcludedFromGroupTotals = false): Accoun
         category_slug: accountBucketKindSlug(r.bucket_slug),
       };
     })
-    .filter((r): r is AccountRow => r != null);
+    .filter((r): r is DepositFlowAccountRow => r != null);
 }
 
 /** CLP → USD using `fx_daily` on or before the event date (not latest FX). */

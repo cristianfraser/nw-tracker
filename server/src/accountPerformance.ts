@@ -644,7 +644,7 @@ export function getAccountMonthlyPerformance(
     .get(accountId) as { id: number; bucket_slug: string } | undefined;
   if (!row) return null;
 
-  if (isMovementBalanceCashCategory(row.bucket_slug) || row.bucket_slug === "cuenta_ahorro_vivienda" || isUsdCashKindSlug(row.bucket_slug)) {
+  if (isMovementBalanceCashCategory(row.bucket_slug) || isUsdCashKindSlug(row.bucket_slug)) {
     return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
   }
 
@@ -1016,7 +1016,7 @@ export function getGroupMonthlyPerformanceSeries(
 } {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const perfRows = rows.filter(
-    (r) => !isMovementBalanceCashCategory(r.bucket_slug) && r.bucket_slug !== "cuenta_ahorro_vivienda"
+    (r) => !isMovementBalanceCashCategory(r.bucket_slug)
   );
 
   const byIdAsc = new Map<number, AccountMonthlyPerformanceRow[]>();

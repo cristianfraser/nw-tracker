@@ -97,7 +97,7 @@ describe("expense deposit link aggregate split", () => {
       link_source: "auto",
     };
     const line = baseLine({
-      expense_deposit_link: expenseDepositLinkDto(linkRow),
+      expense_deposit_links: [expenseDepositLinkDto(linkRow)],
     });
     expect(carryingClpForExpenseDepositLink(linkRow)).toBe(400_000);
 
@@ -155,7 +155,7 @@ describe("expense deposit link aggregate split", () => {
         category_slug: BILLS_CC_EXPENSE_SLUG,
         purchase_key: "line-pr:metlife-cuota-27",
       }),
-      expense_deposit_link: expenseDepositLinkDto(linkRow),
+      expense_deposit_links: [expenseDepositLinkDto(linkRow)],
     };
     expect(carryingClpForExpenseDepositLink(linkRow)).toBe(356_757);
 
@@ -174,7 +174,7 @@ describe("expense deposit link aggregate split", () => {
 describe("cuota 4 Jun 2024 MUTUARIA on card 4141", () => {
   const MUTUARIA_4141_KEY = "line-pr:14155140355ba3fc";
 
-  it("enriches expense_deposit_link by purchase_key regardless of account_id on link row", () => {
+  it("enriches expense_deposit_links by purchase_key regardless of account_id on link row", () => {
     const linkRow: ExpenseDepositLinkRow = {
       account_id: 99,
       purchase_key: MUTUARIA_4141_KEY,
@@ -195,9 +195,9 @@ describe("cuota 4 Jun 2024 MUTUARIA on card 4141", () => {
       merchant_key: "MUTUARIA",
       category_slug: BILLS_CC_EXPENSE_SLUG,
       purchase_key: MUTUARIA_4141_KEY,
-      expense_deposit_link: expenseDepositLinkDto(linkRow),
+      expense_deposit_links: [expenseDepositLinkDto(linkRow)],
     });
-    expect(line.expense_deposit_link?.depto_cuota).toBe("4");
+    expect(line.expense_deposit_links?.[0]?.depto_cuota).toBe("4");
     expect(carryingClpForExpenseDepositLink(linkRow)).toBe(273_619);
 
     const { by_month, chart_monthly_by_category } = aggregateGastosFromLines(
