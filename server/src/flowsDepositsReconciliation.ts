@@ -9,6 +9,7 @@ import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSplits.js";
+import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
 import {
@@ -26,6 +27,7 @@ export type DepositReconciliationStatus =
   | "linked"
   | "linked_synthetic"
   | "resolved_family_funded"
+  | "resolved_internal_transfer"
   | "unlinked_no_checking_source"
   | "unlinked_checking_present";
 
@@ -51,6 +53,7 @@ export type DepositReconciliationByMonth = {
   linked_clp: number;
   linked_synthetic_clp: number;
   resolved_family_funded_clp: number;
+  resolved_internal_transfer_clp: number;
   unlinked_no_checking_source_clp: number;
   unlinked_checking_present_clp: number;
   total_clp: number;
@@ -61,6 +64,7 @@ export type DepositReconciliationByMonth = {
 // by the income filter (linked) or not (unlinked, split by whether the month has cuenta_corriente data).
 export type DepositRedemptionStatus =
   | "linked"
+  | "resolved_internal_transfer"
   | "unlinked_no_checking_source"
   | "unlinked_checking_present";
 
@@ -90,6 +94,8 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
   "stock_buy",
   "stock_sell",
   "dividend_usd",
+  // Cash dividend paid from a stock to USD cash — return of capital, not a checking-funded deposit.
+  "dividend_payout",
   // Bank-paid yield on cuenta_ahorro_vivienda (Abonos / Intereses) — P/L, not a funded deposit.
   SAVINGS_EARNINGS_FLOW_KIND,
 ]);
@@ -155,6 +161,86 @@ function loadPositiveInflowMovements(
     .all(...accountIds) as RawMovementRow[];
 }
 
+/** Max day gap between the two legs of an internal net-worth transfer (settlement/booking lag). */
+const INTERNAL_TRANSFER_MAX_DAY_GAP = 7;
+
+function daysBetweenYmd(a: string, b: string): number {
+  return Math.abs((Date.parse(a) - Date.parse(b)) / 86_400_000);
+}
+
+/**
+ * Reclassify direct net-worth ↔ net-worth transfers that bypass checking. A still-unlinked deposit in
+ * one account and a still-unlinked redemption of the same amount in a *different* account, within a few
+ * days, are two legs of one internal move (no checking counterpart by construction — both lists already
+ * exclude checking). Pairs are consumed 1:1, closest-gap first, so same-amount peers don't strand each
+ * other; both legs become `resolved_internal_transfer`. Only unlinked rows are touched, so a leg that
+ * already matched a real checking flow is never stolen. Mutates the passed arrays in place.
+ */
+export function resolveInternalNetWorthTransfers(
+  rows: DepositReconciliationRow[],
+  redemptions: DepositRedemptionRow[]
+): void {
+  const isUnlinked = (s: DepositReconciliationStatus | DepositRedemptionStatus): boolean =>
+    s === "unlinked_checking_present" || s === "unlinked_no_checking_source";
+
+  const depIdx = rows.map((_, i) => i).filter((i) => isUnlinked(rows[i]!.status));
+  const redIdx = redemptions.map((_, i) => i).filter((i) => isUnlinked(redemptions[i]!.status));
+
+  const pairs: { di: number; ri: number; gap: number }[] = [];
+  for (const di of depIdx) {
+    const dep = rows[di]!;
+    for (const ri of redIdx) {
+      const red = redemptions[ri]!;
+      if (red.account_id === dep.account_id) continue;
+      if (Math.round(red.amount_clp) !== Math.round(dep.amount_clp)) continue;
+      const gap = daysBetweenYmd(dep.occurred_on, red.occurred_on);
+      if (gap > INTERNAL_TRANSFER_MAX_DAY_GAP) continue;
+      pairs.push({ di, ri, gap });
+    }
+  }
+  // Closest gap first, then larger amounts, so the most confident pairs claim their legs first.
+  pairs.sort((a, b) => a.gap - b.gap || rows[b.di]!.amount_clp - rows[a.di]!.amount_clp);
+
+  const usedDep = new Set<number>();
+  const usedRed = new Set<number>();
+  for (const p of pairs) {
+    if (usedDep.has(p.di) || usedRed.has(p.ri)) continue;
+    usedDep.add(p.di);
+    usedRed.add(p.ri);
+    rows[p.di]!.status = "resolved_internal_transfer";
+    redemptions[p.ri]!.status = "resolved_internal_transfer";
+  }
+}
+
+/**
+ * From-leg keys (netWorthCapitalLedgerOutflowPairKey format) of manual transfer rows whose two
+ * endpoints are both net-worth accounts outside the checking bucket. The form's "in/out" moves
+ * store one row (`account_id IS NULL`, from → to); its derived from-leg needs no heuristic match —
+ * the row itself is the link. Transfers touching checking are NOT internal (they cross the boundary).
+ */
+function loadInternalNetWorthTransferOutflowKeys(
+  netWorthAccountIds: ReadonlySet<number>,
+  checkingBucketIds: ReadonlySet<number>
+): Set<string> {
+  const rows = db
+    .prepare(
+      `SELECT from_account_id, to_account_id, occurred_on, amount_clp
+       FROM movements
+       WHERE account_id IS NULL
+         AND from_account_id IS NOT NULL
+         AND to_account_id IS NOT NULL
+         AND amount_clp != 0`
+    )
+    .all() as { from_account_id: number; to_account_id: number; occurred_on: string; amount_clp: number }[];
+  const out = new Set<string>();
+  for (const r of rows) {
+    if (!netWorthAccountIds.has(r.from_account_id) || !netWorthAccountIds.has(r.to_account_id)) continue;
+    if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
+    out.add(`${r.from_account_id}|${r.occurred_on}|${Math.round(Math.abs(r.amount_clp))}`);
+  }
+  return out;
+}
+
 /** @heavy Classify all net-worth positive inflows against the expense_deposit_links table. */
 export function buildDepositsReconciliationPayload(): DepositReconciliationPayload {
   clearFxConversionWarnings();
@@ -211,9 +297,10 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     } else if (linkSource === "synthetic") {
       // Includes cuenta_ahorro splits with a self-funded portion (partial synthetic mirror).
       status = "linked_synthetic";
-    } else if (pureFamilyAhorroMovementIds.has(m.id)) {
-      // cuenta_ahorro deposit the user marked entirely family-funded (self = 0): no own outflow to
-      // mirror, but it is reconciled — resolved, not "needs attention".
+    } else if (pureFamilyAhorroMovementIds.has(m.id) || ahorroDepositNoteIsForensicFamily(m.note)) {
+      // cuenta_ahorro deposit that is a family gift — either the split marks self = 0, or the forensic
+      // per-deposit history tags it funding=family. No own outflow to mirror, but it is reconciled —
+      // resolved, not "needs attention".
       status = "resolved_family_funded";
     } else {
       const month = monthKeyFromYmd(m.occurred_on);
@@ -235,55 +322,20 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     });
   }
 
-  rows.sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.account_name.localeCompare(b.account_name));
-
-  const emptyTotals = (): DepositReconciliationStatusTotals => ({ count: 0, total_clp: 0, total_usd: 0 });
-  const by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals> = {
-    linked: emptyTotals(),
-    linked_synthetic: emptyTotals(),
-    resolved_family_funded: emptyTotals(),
-    unlinked_no_checking_source: emptyTotals(),
-    unlinked_checking_present: emptyTotals(),
-  };
-  for (const r of rows) {
-    const bucket = by_status[r.status];
-    bucket.count += 1;
-    bucket.total_clp += r.amount_clp;
-    if (bucket.total_usd != null) {
-      if (r.amount_usd == null) bucket.total_usd = null;
-      else bucket.total_usd += r.amount_usd;
-    }
-  }
-
-  const byMonthMap = new Map<string, DepositReconciliationByMonth>();
-  for (const r of rows) {
-    const month = monthKeyFromYmd(r.occurred_on) ?? r.occurred_on.slice(0, 7);
-    let pt = byMonthMap.get(month);
-    if (!pt) {
-      pt = {
-        month,
-        linked_clp: 0,
-        linked_synthetic_clp: 0,
-        resolved_family_funded_clp: 0,
-        unlinked_no_checking_source_clp: 0,
-        unlinked_checking_present_clp: 0,
-        total_clp: 0,
-      };
-      byMonthMap.set(month, pt);
-    }
-    pt.total_clp += r.amount_clp;
-    if (r.status === "linked") pt.linked_clp += r.amount_clp;
-    else if (r.status === "linked_synthetic") pt.linked_synthetic_clp += r.amount_clp;
-    else if (r.status === "resolved_family_funded") pt.resolved_family_funded_clp += r.amount_clp;
-    else if (r.status === "unlinked_no_checking_source") pt.unlinked_no_checking_source_clp += r.amount_clp;
-    else pt.unlinked_checking_present_clp += r.amount_clp;
-  }
-  const by_month = [...byMonthMap.values()].sort((a, b) => b.month.localeCompare(a.month));
-
   // Negative deposits (redemptions): net-worth capital leaving a non-checking account back into
   // checking. Reuse the income filter's own consumed-outflow set so this view can never disagree with
   // what income excludes as a capital return. Keys are identical (same loadNetWorthCapitalReturnLedgerOutflows).
+  // Built before the deposit totals so the internal-transfer pass can reclassify both sides first.
   const consumedOutflowKeys = loadConsumedNetWorthCapitalReturnOutflowKeys();
+  // From-leg keys of manual transfer rows (account_id IS NULL, from → to) whose destination is
+  // another net-worth account outside the checking bucket. Such an outflow is internal by
+  // construction — the row itself names where the money went, so no matching is needed. Transfers
+  // *into* checking are excluded here: those really cross the boundary and must reconcile against
+  // the cartola inflow like any other redemption.
+  const internalTransferOutflowKeys = loadInternalNetWorthTransferOutflowKeys(
+    new Set(accounts.map((a) => a.account_id)),
+    checkingBucketIds
+  );
   // Buda buffer outflows are mostly internal (buys fund coins); only `retiro` (Buda → checking) is a
   // real crypto→checking redemption. Keep those, skip the rest of the buffer's outflows and all coin
   // outflows (coin → Buda sells are internal too).
@@ -319,7 +371,12 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     const amount_usd = amount_usd_raw != null && Number.isFinite(amount_usd_raw) ? amount_usd_raw : null;
 
     let status: DepositRedemptionStatus;
-    if (consumedOutflowKeys.has(netWorthCapitalLedgerOutflowPairKey(outflow))) {
+    if (internalTransferOutflowKeys.has(netWorthCapitalLedgerOutflowPairKey(outflow))) {
+      // The outflow is the from-leg of a manual transfer row whose destination is another
+      // net-worth account (form "in/out" moves store one row with from/to) — internal by
+      // construction, stronger evidence than any amount/date heuristic.
+      status = "resolved_internal_transfer";
+    } else if (consumedOutflowKeys.has(netWorthCapitalLedgerOutflowPairKey(outflow))) {
       status = "linked";
     } else {
       const month = monthKeyFromYmd(outflow.occurred_on);
@@ -339,12 +396,67 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
       status,
     });
   }
+
+  // Internal net-worth ↔ net-worth transfers (e.g. caca daca → Reserva2 between Fintual goals) never
+  // cross the checking boundary, so neither leg has a checking counterpart. Pair a still-unlinked
+  // deposit with a still-unlinked redemption of the same amount in a different account within a few
+  // days and mark both `resolved_internal_transfer` — they net out and are out of reconciliation scope.
+  resolveInternalNetWorthTransfers(rows, redemptions);
+
+  rows.sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.account_name.localeCompare(b.account_name));
   redemptions.sort(
     (a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.account_name.localeCompare(b.account_name)
   );
 
+  const emptyTotals = (): DepositReconciliationStatusTotals => ({ count: 0, total_clp: 0, total_usd: 0 });
+  const by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals> = {
+    linked: emptyTotals(),
+    linked_synthetic: emptyTotals(),
+    resolved_family_funded: emptyTotals(),
+    resolved_internal_transfer: emptyTotals(),
+    unlinked_no_checking_source: emptyTotals(),
+    unlinked_checking_present: emptyTotals(),
+  };
+  for (const r of rows) {
+    const bucket = by_status[r.status];
+    bucket.count += 1;
+    bucket.total_clp += r.amount_clp;
+    if (bucket.total_usd != null) {
+      if (r.amount_usd == null) bucket.total_usd = null;
+      else bucket.total_usd += r.amount_usd;
+    }
+  }
+
+  const byMonthMap = new Map<string, DepositReconciliationByMonth>();
+  for (const r of rows) {
+    const month = monthKeyFromYmd(r.occurred_on) ?? r.occurred_on.slice(0, 7);
+    let pt = byMonthMap.get(month);
+    if (!pt) {
+      pt = {
+        month,
+        linked_clp: 0,
+        linked_synthetic_clp: 0,
+        resolved_family_funded_clp: 0,
+        resolved_internal_transfer_clp: 0,
+        unlinked_no_checking_source_clp: 0,
+        unlinked_checking_present_clp: 0,
+        total_clp: 0,
+      };
+      byMonthMap.set(month, pt);
+    }
+    pt.total_clp += r.amount_clp;
+    if (r.status === "linked") pt.linked_clp += r.amount_clp;
+    else if (r.status === "linked_synthetic") pt.linked_synthetic_clp += r.amount_clp;
+    else if (r.status === "resolved_family_funded") pt.resolved_family_funded_clp += r.amount_clp;
+    else if (r.status === "resolved_internal_transfer") pt.resolved_internal_transfer_clp += r.amount_clp;
+    else if (r.status === "unlinked_no_checking_source") pt.unlinked_no_checking_source_clp += r.amount_clp;
+    else pt.unlinked_checking_present_clp += r.amount_clp;
+  }
+  const by_month = [...byMonthMap.values()].sort((a, b) => b.month.localeCompare(a.month));
+
   const redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals> = {
     linked: emptyTotals(),
+    resolved_internal_transfer: emptyTotals(),
     unlinked_no_checking_source: emptyTotals(),
     unlinked_checking_present: emptyTotals(),
   };
