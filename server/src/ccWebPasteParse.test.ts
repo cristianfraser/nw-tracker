@@ -89,6 +89,25 @@ describe("parseCcWebPasteText", () => {
     });
   });
 
+  it("parses USD charges into amount_usd with Chilean decimals and preserved sign", () => {
+    const { lines, errors } = parseCcWebPasteText(
+      "30/06/2026\tANTHROPIC* CLAU\t-USD99,28\n25/06/2026\tAPPLE.COM/BILL\t-US$1.234,50"
+    );
+    expect(errors).toEqual([]);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ merchant: "ANTHROPIC* CLAU", currency: "usd", amount_usd: -99.28, amount_clp: 0 });
+    expect(lines[1]).toMatchObject({ merchant: "APPLE.COM/BILL", currency: "usd", amount_usd: -1234.5, amount_clp: 0 });
+  });
+
+  it("emits USD charges as amount_usd (charge positive) with amount_clp empty and orig_currency usd", () => {
+    const { lines } = parseCcWebPasteText("30/06/2026\tANTHROPIC* CLAU\t-USD99,28");
+    const records = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
+    const r = records.find((x) => x.merchant === "ANTHROPIC* CLAU");
+    expect(r?.amount_clp).toBe(""); // no bogus CLP value
+    expect(r?.amount_usd).toBe("99.28"); // Santander charge → positive
+    expect(r?.orig_currency).toBe("usd");
+  });
+
   it("maps BCI master to BCI card_group", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)

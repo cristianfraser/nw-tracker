@@ -644,7 +644,9 @@ export function getAccountMonthlyPerformance(
     .get(accountId) as { id: number; bucket_slug: string } | undefined;
   if (!row) return null;
 
-  if (isMovementBalanceCashCategory(row.bucket_slug) || isUsdCashKindSlug(row.bucket_slug)) {
+  // Checking (cartola movement-balance) accounts have their own monthly table; skip the perf builder.
+  // USD / CLP ledger cash accounts DO get a perf series (value − deposited = interest earned).
+  if (isMovementBalanceCashCategory(row.bucket_slug)) {
     return { account_id: accountId, bucket_slug: row.bucket_slug, monthly: [] };
   }
 
@@ -721,7 +723,7 @@ function buildAccountMonthlyPerformanceUncached(
       : null;
   const deptoCloseClpByDate = mortgageCloseClpByDate ?? propertyCloseClpByDate;
   const ccBillingPayByMonth =
-    bucketSlug === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
+    bucketKind === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
       ? creditCardInstallmentPaymentsByBillingMonth(accountId)
       : null;
   const stockUnitsInflowForPerfRow = (asOf: string) =>

@@ -8,6 +8,7 @@ import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFrom
 import { db } from "./db.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { cashInterestClpThroughDate, cashInterestUsdThroughDate } from "./cashAccountInterest.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
   clearFxConversionWarnings,
@@ -147,19 +148,23 @@ function flowsDepositsNetTotalsByAccount(opts?: {
   const usd = new Map<number, number | null>();
   for (const acc of accounts) {
     if (isUsdCashAccount(acc.account_id)) {
-      const balanceClp = usdCashBalanceClpAt(acc.account_id, today);
-      const balanceUsd = usdCashBalanceUsdAt(acc.account_id, today);
+      // Deposited capital = balance − cumulative interest (interest is rentabilidad/P/L, not a deposit),
+      // so delta = value − deposited = interest earned in the window.
+      const depClp = (ymd: string) =>
+        usdCashBalanceClpAt(acc.account_id, ymd) - cashInterestClpThroughDate(acc.account_id, ymd);
+      const depUsd = (ymd: string) =>
+        usdCashBalanceUsdAt(acc.account_id, ymd) - cashInterestUsdThroughDate(acc.account_id, ymd);
       if (opts?.period === "month") {
         const prior = priorPeriodEndYmd("mtd", today);
-        clp.set(acc.account_id, balanceClp - usdCashBalanceClpAt(acc.account_id, prior));
-        usd.set(acc.account_id, balanceUsd - usdCashBalanceUsdAt(acc.account_id, prior));
+        clp.set(acc.account_id, depClp(today) - depClp(prior));
+        usd.set(acc.account_id, depUsd(today) - depUsd(prior));
       } else if (opts?.period === "year") {
         const prior = priorPeriodEndYmd("ytd", today);
-        clp.set(acc.account_id, balanceClp - usdCashBalanceClpAt(acc.account_id, prior));
-        usd.set(acc.account_id, balanceUsd - usdCashBalanceUsdAt(acc.account_id, prior));
+        clp.set(acc.account_id, depClp(today) - depClp(prior));
+        usd.set(acc.account_id, depUsd(today) - depUsd(prior));
       } else {
-        clp.set(acc.account_id, balanceClp);
-        usd.set(acc.account_id, balanceUsd);
+        clp.set(acc.account_id, depClp(today));
+        usd.set(acc.account_id, depUsd(today));
       }
       continue;
     }

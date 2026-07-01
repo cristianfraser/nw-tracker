@@ -4,8 +4,13 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
+import {
+  isUsdCashAccount,
+  signedClpDeltaForAccountMovement,
+  type MovementTransferRow,
+} from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
+import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 
 /**
  * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
@@ -49,6 +54,7 @@ const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
   "stock_buy",
   "stock_sell",
   "dividend_usd",
+  "dividend_payout",
 ]);
 
 /** Bank-paid yield (Abonos / Intereses) on cuenta_ahorro_vivienda — P/L, not personal capital. */
@@ -110,17 +116,82 @@ function loadMovementSignedFlowEvents(
   return map;
 }
 
+/**
+ * Manual aporte/retiro transfer legs (Fintual/crypto/AFP/book-ledger cash) touching `accountIds`.
+ * These change the account's valuation (cuotas/coin/balance) via `signedClpDeltaForAccountMovement`,
+ * so they must also land on the aportes line — otherwise the flow reads as phantom P/L. Equity
+ * buy/sell and USD-cash staging legs are excluded (the equity capital-flow path counts those).
+ */
+function loadTransferLegSignedFlowEvents(
+  accountIds: number[],
+  personalOnly: boolean
+): Map<number, SortFlow[]> {
+  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
+  if (uniq.length === 0) return new Map();
+  const ph = uniq.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT id, account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+              flow_kind, amount_usd, units_delta
+       FROM movements
+       WHERE account_id IS NULL
+         AND (from_account_id IN (${ph}) OR to_account_id IN (${ph}))
+       ORDER BY occurred_on, id`
+    )
+    .all(...uniq, ...uniq) as (MovementTransferRow & { id: number; note: string | null })[];
+  const equityMtmIds = equityMtmAccountIdsSet(uniq);
+  const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
+  const requested = new Set(uniq);
+  const map = new Map<number, SortFlow[]>();
+  for (const r of rows) {
+    // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
+    // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
+    // together (the USD `to` leg is dropped below via usdCashIds). Other non-cash brokerage flows
+    // (stock buys/sells, DRIP) are handled by the equity capital-flow path, so they stay skipped.
+    if (
+      r.flow_kind != null &&
+      r.flow_kind !== "compra_usd_venta_clp" &&
+      BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)
+    ) {
+      continue;
+    }
+    for (const endpoint of [r.from_account_id, r.to_account_id]) {
+      if (endpoint == null || !requested.has(endpoint)) continue;
+      if (equityMtmIds.has(endpoint) || usdCashIds.has(endpoint)) continue;
+      if (
+        personalOnly &&
+        (movementIsStateContribution(r.note) || movementIsApvAStateBonus(endpoint, r.id, r.note))
+      ) {
+        continue;
+      }
+      const amt = signedClpDeltaForAccountMovement(r, endpoint);
+      if (amt === 0 || !Number.isFinite(amt)) continue;
+      if (!map.has(endpoint)) map.set(endpoint, []);
+      map.get(endpoint)!.push({ occurred_on: r.occurred_on, amt, tie: `t:${r.id}:${endpoint}` });
+    }
+  }
+  return map;
+}
+
 function buildMergedDepositMap(
   accountIds: number[],
   personalOnly: boolean
 ): Map<number, DepositInflowEvent[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
+  const transfers = loadTransferLegSignedFlowEvents(accountIds, personalOnly);
   const equityCap = loadEquityBrokerageCapitalSortFlows(accountIds, personalOnly);
-  const ids = new Set<number>([...mov.keys(), ...equityCap.keys(), ...requested]);
+  const ids = new Set<number>([
+    ...mov.keys(),
+    ...transfers.keys(),
+    ...equityCap.keys(),
+    ...requested,
+  ]);
   const out = new Map<number, DepositInflowEvent[]>();
   for (const id of ids) {
-    const movFlows: MergedSortFlow[] = (mov.get(id) ?? []).map((f) => ({ ...f }));
+    const movFlows: MergedSortFlow[] = [...(mov.get(id) ?? []), ...(transfers.get(id) ?? [])].map(
+      (f) => ({ ...f })
+    );
     const eqFlows: MergedSortFlow[] = (equityCap.get(id) ?? []).map((f) => ({
       occurred_on: f.occurred_on,
       amt: f.amt,
@@ -209,16 +280,22 @@ export function totalStateContributionsClpForAccount(accountId: number): number 
 /** Net external CLP capital (movements); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
   if (isUsdCashAccount(accountId)) {
-    return usdCashBalanceClpAt(accountId, chileCalendarTodayYmd());
+    return usdCashDepositedClpToday(accountId);
   }
   return getMergedDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
   if (isUsdCashAccount(accountId)) {
-    return usdCashBalanceClpAt(accountId, chileCalendarTodayYmd());
+    return usdCashDepositedClpToday(accountId);
   }
   return getMergedDisplayDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
+}
+
+/** USD cash deposited (own capital) in CLP today = balance − interest (interest is P/L, not capital). */
+function usdCashDepositedClpToday(accountId: number): number {
+  const today = chileCalendarTodayYmd();
+  return usdCashBalanceClpAt(accountId, today) - cashInterestClpThroughDate(accountId, today);
 }
 
 const wdwSumStmt = db.prepare(

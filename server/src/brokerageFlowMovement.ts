@@ -12,6 +12,8 @@ export const BROKERAGE_FLOW_KINDS = [
   "stock_buy",
   "stock_sell",
   "dividend_usd",
+  "dividend_payout",
+  "savings_earnings",
   "withdrawal_clp",
   "withdrawal_usd",
   "other",
@@ -37,6 +39,8 @@ export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
   stock_buy: "Compra acciones",
   stock_sell: "Venta acciones",
   dividend_usd: "Dividendo USD",
+  dividend_payout: "Dividendo",
+  savings_earnings: "Interés / rentabilidad",
   withdrawal_usd: "Retiro USD",
   other: "Otro",
 };

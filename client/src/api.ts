@@ -76,19 +76,12 @@ export const api = {
   panelNetWorthTree: () =>
     j<{ net_worth: import("./types").NavTreeNodeDto | null }>("/api/meta/panel-net-worth-tree"),
   accountsAll: () => j<{ accounts: import("./types").AccountListRow[] }>("/api/accounts"),
-  createStockAccount: (body: import("./panelAccounts/stockAccountFormTypes").StockAccountCreatePreview) =>
-    j<{
-      account_id: number;
-      category_id: number;
-      movement_ids: number[];
-      created_category: boolean;
-    }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
-  createUsdCashAccount: (body: import("./panelAccounts/usdCashAccountFormTypes").UsdCashAccountCreatePreview) =>
+  createAccount: (body: import("./panelAccounts/panelAccountFormTypes").PanelAccountCreateBody) =>
     j<{
       account_id: number;
       asset_group_id: number;
-      movement_ids: number[];
       created_leaf_bucket: boolean;
+      ticker: string | null;
     }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
   deleteAccount: (id: number) => j<{ ok: boolean; deleted: number }>(`/api/accounts/${id}`, { method: "DELETE" }),
   portfolioTree: () => j<import("./types").PortfolioTreeResponse>("/api/meta/portfolio-tree"),

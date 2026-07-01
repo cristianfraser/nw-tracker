@@ -2,12 +2,19 @@ import { useTranslation } from "react-i18next";
 import type { CSSProperties } from "react";
 import {
   BROKERAGE_FLOW_KINDS,
+  brokerageFlowKindCounterpartIsCash,
+  brokerageFlowKindCounterpartIsEquity,
+  brokerageFlowKindCounterpartIsUsdCash,
   brokerageFlowKindNeedsClp,
   brokerageFlowKindShowsCounterpart,
   brokerageFlowKindShowsUnits,
   brokerageFlowKindNeedsUsd,
+  isInterestFlowKind,
   type BrokerageFlowKind,
 } from "../../panelAccounts/brokerageFlowKinds";
+
+/** Native currency of a ledger cash form; interest (savings_earnings) is entered in this currency. */
+export type CashFormCurrency = "usd" | "clp";
 import {
   appendMovementRow,
   removeMovementRow,
@@ -31,6 +38,7 @@ export function BrokerageMovementRowFields({
   canRemove,
   currentAccountId,
   flowKinds = BROKERAGE_FLOW_KINDS,
+  cashCurrency,
 }: {
   row: InitialMovementDraft;
   onChange: (next: InitialMovementDraft) => void;
@@ -38,10 +46,13 @@ export function BrokerageMovementRowFields({
   canRemove: boolean;
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
+  cashCurrency?: CashFormCurrency;
 }) {
   const { t } = useTranslation();
-  const showClp = brokerageFlowKindNeedsClp(row.flowKind);
-  const showUsd = brokerageFlowKindNeedsUsd(row.flowKind);
+  const interestInClp = isInterestFlowKind(row.flowKind) && cashCurrency === "clp";
+  const interestInUsd = isInterestFlowKind(row.flowKind) && cashCurrency === "usd";
+  const showClp = brokerageFlowKindNeedsClp(row.flowKind) || interestInClp;
+  const showUsd = brokerageFlowKindNeedsUsd(row.flowKind) || interestInUsd;
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
 
   return (
@@ -130,9 +141,18 @@ export function BrokerageMovementRowFields({
       {brokerageFlowKindShowsCounterpart(row.flowKind) ? (
         <div style={{ gridColumn: "1 / -1" }}>
           <CounterpartAccountSelect
-            label={t("accountDetail.movements.counterpartAccount")}
+            label={
+              brokerageFlowKindCounterpartIsEquity(row.flowKind)
+                ? t("accountDetail.movements.dividendOriginAccount")
+                : brokerageFlowKindCounterpartIsCash(row.flowKind)
+                  ? t("accountDetail.movements.compraSourceAccount")
+                  : t("accountDetail.movements.counterpartAccount")
+            }
             value={row.counterpartAccountId}
             excludeAccountId={currentAccountId}
+            equityBrokerageOnly={brokerageFlowKindCounterpartIsEquity(row.flowKind)}
+            cashAndCheckingOnly={brokerageFlowKindCounterpartIsCash(row.flowKind)}
+            usdCashOnly={brokerageFlowKindCounterpartIsUsdCash(row.flowKind)}
             onChange={(counterpartAccountId) => onChange({ ...row, counterpartAccountId })}
           />
         </div>
@@ -163,6 +183,7 @@ export function BrokerageMovementsSection({
   hintKey,
   currentAccountId,
   flowKinds,
+  cashCurrency,
 }: {
   movements: InitialMovementDraft[];
   onChange: (next: InitialMovementDraft[]) => void;
@@ -173,6 +194,7 @@ export function BrokerageMovementsSection({
   hintKey?: string;
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
+  cashCurrency?: CashFormCurrency;
 }) {
   const { t } = useTranslation();
   const resolvedTitleKey =
@@ -213,6 +235,7 @@ export function BrokerageMovementsSection({
             canRemove
             currentAccountId={currentAccountId}
             flowKinds={flowKinds}
+            cashCurrency={cashCurrency}
           />
         ))
       )}

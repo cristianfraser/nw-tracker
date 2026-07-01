@@ -4,6 +4,8 @@ import {
   incrementalChargesClpForBillingMonth,
   listCcBillingMonthBalances,
   facturadoFromStatement,
+  openMonthUsdFacturado,
+  postCloseLiveBalanceAdjustmentClp,
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
 import {
@@ -13,6 +15,7 @@ import {
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   ccInstallmentLedgerRowCount,
+  ccLedgerMonthEndIso,
   creditCardInstallmentPaymentsByBillingMonth,
   cupoEnCuotasClpForCalendarMonth,
   installmentRemainingClpByCalendarMonth,
@@ -402,6 +405,23 @@ export function buildBillingDetailByMonth(
     slots,
     out
   );
+
+  // Live end-of-month balance: closed statement months carry their statement-close anchor plus any
+  // activity dated after the close but on/before the calendar month-end (charges +, payments −),
+  // billed on a later statement. Runs after the open-month rollforward so its base stays the anchor
+  // (no double-counting). The open month is already live via its rollforward; projected rows have
+  // no lines so the adjustment is 0.
+  for (const row of withProjected) {
+    if (row.as_of_kind !== "statement") continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.as_of_date)) continue;
+    const adj = postCloseLiveBalanceAdjustmentClp(
+      accountId,
+      row.as_of_date,
+      ccLedgerMonthEndIso(row.billing_month)
+    );
+    if (adj !== 0) row.balance_total_clp = Math.round(row.balance_total_clp + adj);
+  }
+
   withProjected.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
   return withProjected;
 }
@@ -564,13 +584,13 @@ export function buildFacturaciones(
       slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
         ? Math.round(slot.clp.monto_facturado)
         : clpDerived.facturado_clp;
-    const facturadoUsd =
+    let facturadoUsd =
       slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
         ? slot.usd.monto_facturado
         : usdDerived.facturado_usd;
 
     const { pay_by, pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
-    const facturadoUsdClp =
+    let facturadoUsdClp =
       facturadoUsd != null
         ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
@@ -582,6 +602,13 @@ export function buildFacturaciones(
       // the cuota a pagar — not the prior unpaid balance rolled forward. Detalle por mes uses
       // the same helper so both views report the same facturado.
       facturadoTotal = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagar ?? 0);
+      // Manually-entered USD purchases in the open cycle are billed too — split them out of the
+      // total so they show as the US$ stacked bar instead of being lumped into facturado_clp.
+      const openUsd = openMonthUsdFacturado(accountId, billingMonth);
+      if (openUsd.usd !== 0 || openUsd.clp !== 0) {
+        facturadoUsd = openUsd.usd;
+        facturadoUsdClp = Math.round(openUsd.clp);
+      }
       facturadoClp = facturadoTotal - (facturadoUsdClp ?? 0);
     }
 

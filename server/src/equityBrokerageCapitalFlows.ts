@@ -92,6 +92,27 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
 }
 
+/**
+ * Cash dividends paid out to USD cash (`dividend_payout` transfer, stock = `from_account_id`).
+ * Treated as a return of capital: reduces the stock's deposited / cost-basis line (units unchanged).
+ */
+function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
+  if (accountIds.length === 0) return [];
+  const ph = accountIds.map(() => "?").join(",");
+  return db
+    .prepare(
+      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
+       FROM movements m
+       WHERE m.account_id IS NULL
+         AND m.from_account_id IN (${ph})
+         AND m.flow_kind = 'dividend_payout'
+         AND m.amount_usd IS NOT NULL
+         AND m.amount_usd != 0
+       ORDER BY m.occurred_on, m.id`
+    )
+    .all(...accountIds) as TransferCapitalRow[];
+}
+
 function loadDividendUsdRows(accountIds: number[]): DividendRow[] {
   if (accountIds.length === 0) return [];
   const ph = accountIds.map(() => "?").join(",");
@@ -271,6 +292,14 @@ export function loadEquityBrokerageCapitalSortFlows(
   }
 
   for (const row of sells) {
+    const flow = usdReferenceFlow(row, -1);
+    if (!flow) continue;
+    if (!out.has(row.account_id)) out.set(row.account_id, []);
+    out.get(row.account_id)!.push(flow);
+  }
+
+  // Cash dividends: return of capital → reduce deposited / cost basis at the USD reference rate.
+  for (const row of loadDividendPayoutRows(mtmIds)) {
     const flow = usdReferenceFlow(row, -1);
     if (!flow) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);

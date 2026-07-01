@@ -5,58 +5,61 @@ import {
 } from "./panelAccountFormTypes";
 
 describe("panelAccountFormTypes", () => {
-  it("builds stock preview for stocks_nyse", () => {
+  it("builds an equity body with ticker, in the chosen bucket", () => {
     const draft = {
-      ...defaultPanelAccountFormDraft("stocks_nyse"),
+      ...defaultPanelAccountFormDraft("equity"),
       displayName: "QQQ",
       tickerSymbol: "QQQ",
     };
-    const preview = buildPanelAccountCreatePreview(draft);
-    expect(preview).not.toBeNull();
-    expect(preview && "account" in preview && "ticker" in preview.account).toBe(true);
-    if (!preview || !("ticker" in preview.account)) return;
-    expect(preview.account.ticker).toBe("QQQ");
-    expect(preview.account.price_source).toBe("stocks_nyse");
-    expect(preview.account.bucket_slug).toBe("brokerage_acciones");
+    const body = buildPanelAccountCreatePreview(draft);
+    expect(body).not.toBeNull();
+    expect(body?.account.account_type).toBe("equity");
+    expect(body?.account.ticker).toBe("QQQ");
+    expect(body?.account.category_slug).toBe("qqq");
+    expect(body?.account.bucket_slug).toBe("brokerage_acciones");
   });
 
-  it("builds stock preview for crypto_eod", () => {
+  it("builds a crypto body", () => {
     const draft = {
-      ...defaultPanelAccountFormDraft("crypto_eod"),
+      ...defaultPanelAccountFormDraft("crypto"),
       displayName: "Bitcoin",
       tickerSymbol: "BTC-USD",
     };
-    const preview = buildPanelAccountCreatePreview(draft);
-    expect(preview).not.toBeNull();
-    if (!preview || !("ticker" in preview.account)) return;
-    expect(preview.account.ticker).toBe("BTC-USD");
-    expect(preview.account.price_source).toBe("crypto_eod");
-    expect(preview.account.bucket_slug).toBe("brokerage_crypto");
+    const body = buildPanelAccountCreatePreview(draft);
+    expect(body?.account.account_type).toBe("crypto");
+    expect(body?.account.ticker).toBe("BTC-USD");
+    expect(body?.account.bucket_slug).toBe("brokerage_crypto");
   });
 
-  it("builds USD cash preview with kind discriminator", () => {
-    const draft = defaultPanelAccountFormDraft("usd_cash");
-    const preview = buildPanelAccountCreatePreview(draft);
-    expect(preview).not.toBeNull();
-    if (!preview) return;
-    expect("kind" in preview.account && preview.account.kind).toBe("usd_cash");
-    expect(preview.account.bucket_slug).toBe("cash_savings");
-  });
-
-  it("returns null when equity ticker is missing", () => {
+  it("builds a CLP cash body (no ticker) and lets the bucket be overridden", () => {
     const draft = {
-      ...defaultPanelAccountFormDraft("stocks_nyse"),
+      ...defaultPanelAccountFormDraft("clp_cash"),
+      displayName: "Efectivo CLP",
+      bucketSlug: "real_estate",
+    };
+    const body = buildPanelAccountCreatePreview(draft);
+    expect(body?.account.account_type).toBe("clp_cash");
+    expect("ticker" in (body?.account ?? {})).toBe(false);
+    expect(body?.account.bucket_slug).toBe("real_estate");
+  });
+
+  it("builds a USD cash body", () => {
+    const body = buildPanelAccountCreatePreview(defaultPanelAccountFormDraft("usd_cash"));
+    expect(body?.account.account_type).toBe("usd_cash");
+    expect(body?.account.bucket_slug).toBe("cash_savings");
+  });
+
+  it("returns null when an equity ticker is missing", () => {
+    const draft = {
+      ...defaultPanelAccountFormDraft("equity"),
       displayName: "QQQ",
       tickerSymbol: "",
     };
     expect(buildPanelAccountCreatePreview(draft)).toBeNull();
   });
 
-  it("returns null when USD cash name is missing", () => {
-    const draft = {
-      ...defaultPanelAccountFormDraft("usd_cash"),
-      displayName: "",
-    };
+  it("returns null when the name is missing", () => {
+    const draft = { ...defaultPanelAccountFormDraft("usd_cash"), displayName: "" };
     expect(buildPanelAccountCreatePreview(draft)).toBeNull();
   });
 });

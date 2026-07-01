@@ -33,6 +33,7 @@ import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug, isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceLive, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
@@ -146,8 +147,12 @@ function positionSnapshotFromMeta(
     ovc > 0 &&
     meta.afp_override_valor_cuota_clp != null &&
     Number.isFinite(meta.afp_override_valor_cuota_clp);
+  // Fully-withdrawn cuota/coin position: meta emits ovc = 0 with a date → mark as 0, not stale stored.
+  const explicitZeroMark =
+    ovc === 0 && meta.afp_override_value_as_of != null && (units == null || units <= 0);
   const mtmMark =
     fundUnitMark ||
+    explicitZeroMark ||
     ((afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0)));
   const value_clp = mtmMark ? ovc : v != null && Number.isFinite(v) ? v : null;
   const value_as_of = mtmMark ? meta.afp_override_value_as_of ?? null : latest?.as_of_date ?? null;
@@ -185,6 +190,9 @@ export async function latestValuationDisplayForAccount(
   if (categorySlug && isUsdCashKindSlug(categorySlug)) {
     const live = usdCashBalanceLive(accountId);
     return { value_clp: live.value_clp, as_of_date: live.as_of_date };
+  }
+  if (categorySlug && isClpCashKindSlug(categorySlug)) {
+    return clpCashBalanceLive(accountId);
   }
   const equityTicker = equityTickerForAccount(accountId);
   if (equityTicker != null && accountUsesEquityMtm(accountId)) {

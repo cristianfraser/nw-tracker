@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
 import { BROKERAGE_FLOW_KINDS } from "./brokerageFlowMovement.js";
-import { createPanelStockAccount } from "./createPanelStockAccount.js";
+import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 
 describe("accountDetailBundle movement_create", () => {
@@ -32,16 +32,15 @@ describe("accountDetailBundle movement_create", () => {
 
   it("exposes brokerage_flow_kinds for panel-created stocks (leaf slug ≠ bucket)", () => {
     const slug = `panel_mv_create_${Date.now()}`;
-    const result = createPanelStockAccount({
+    const result = createPanelAccount({
       account: {
+        account_type: "equity",
         name: "Panel movement form test",
         category_slug: slug,
         bucket_slug: "brokerage_acciones",
         ticker: "QQQ",
-        price_source: "stocks_nyse",
         exclude_from_group_totals: false,
       },
-      initial_movements: [],
     });
 
     return buildAccountDetailBundle(result.account_id, "clp", "monthly", {}).then((bundle) => {

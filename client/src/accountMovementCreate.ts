@@ -22,6 +22,18 @@ export function supportsUsdCashMovements(schema: unknown): boolean {
   return kinds.includes("compra_usd_venta_clp") && !kinds.includes("stock_buy");
 }
 
+/** CLP ledger cash (base currency): `savings_earnings` + CLP deposits/withdrawals, no USD/share kinds. */
+export function supportsClpCashMovements(schema: unknown): boolean {
+  if (!supportsBrokerageMovements(schema)) return false;
+  const kinds = schema.brokerage_flow_kinds as readonly string[];
+  return (
+    kinds.includes("savings_earnings") &&
+    !kinds.includes("compra_usd_venta_clp") &&
+    !kinds.includes("stock_buy") &&
+    !kinds.includes("withdrawal_usd")
+  );
+}
+
 /**
  * Cuota/coin accounts (Fintual v2, crypto, AFP): units required, no brokerage flow kinds.
  * These take the manual aporte/retiro form (CLP + cuotas + counterpart transfer).

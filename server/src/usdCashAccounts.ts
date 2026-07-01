@@ -14,22 +14,26 @@ export function usdCashBalanceUsdAt(accountId: number, asOfYmd: string): number 
   return Math.round(balance * 100) / 100;
 }
 
-export function usdCashBalanceClpAt(accountId: number, asOfYmd: string): number {
-  const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
+/** CLP-per-USD rate used for USD cash valuation (sell rate, else fx_daily mid). */
+export function usdCashClpRateOnOrBefore(asOfYmd: string, context: string): number {
   const sell = fxSellClpPerUsdOnOrBefore(asOfYmd);
-  if (sell != null && sell > 0) {
-    return Math.round(usd * sell);
-  }
+  if (sell != null && sell > 0) return sell;
   const fx = fxRowOnOrBefore(asOfYmd);
   if (!fx) {
-    throw new Error(`fx_daily missing on or before ${asOfYmd} for USD cash account ${accountId}`);
+    throw new Error(`fx_daily missing on or before ${asOfYmd} for ${context}`);
   }
-  recordFxConversionWarning({
-    code: "sell_rate_missing",
-    date: asOfYmd,
-    context: `usdCashBalanceClpAt:${accountId}`,
-  });
-  return Math.round(usd * fx.clp_per_usd);
+  recordFxConversionWarning({ code: "sell_rate_missing", date: asOfYmd, context });
+  return fx.clp_per_usd;
+}
+
+/** Convert a USD amount to CLP at the USD-cash valuation rate (same rate as the balance). */
+export function usdCashUsdToClpAt(usd: number, asOfYmd: string, context: string): number {
+  return Math.round(usd * usdCashClpRateOnOrBefore(asOfYmd, context));
+}
+
+export function usdCashBalanceClpAt(accountId: number, asOfYmd: string): number {
+  const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
+  return usdCashUsdToClpAt(usd, asOfYmd, `usdCashBalanceClpAt:${accountId}`);
 }
 
 export function usdCashBalanceLive(accountId: number): { value_usd: number; value_clp: number; as_of_date: string } {

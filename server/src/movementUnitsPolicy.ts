@@ -4,6 +4,7 @@
 
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { accountUsesUsdCashFlowKinds } from "./accountUsdCashFlows.js";
+import { accountUsesClpCashFlowKinds } from "./accountClpCashFlows.js";
 import {
   BROKERAGE_FLOW_KINDS,
   BROKERAGE_UNITS_REQUIRED_FLOW_KINDS,
@@ -15,6 +16,7 @@ import {
   type TransferCreateInput,
 } from "./movementTransfer.js";
 import { accountRowForId } from "./accountRowForMovement.js";
+import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
 import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
@@ -65,10 +67,20 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
       brokerage_flow_kinds: [
         "deposit_clp",
         "compra_usd_venta_clp",
+        "savings_earnings",
         "withdrawal_usd",
         "withdrawal_clp",
         "other",
       ],
+      units_required_for_flow_kinds: [],
+    };
+  }
+  if (accountUsesClpCashFlowKinds(account)) {
+    return {
+      ledger: "movements",
+      units_delta: "optional",
+      unit_label: "CLP",
+      brokerage_flow_kinds: ["deposit_clp", "savings_earnings", "withdrawal_clp", "other"],
       units_required_for_flow_kinds: [],
     };
   }
@@ -140,12 +152,48 @@ function validateBrokerageTransferEndpoints(
   input: TransferCreateInput
 ): MovementCreateValidation | null {
   const fk = input.flow_kind;
-  if (fk === "compra_usd_venta_clp") {
+  // Fail fast on stray fields that don't belong to the flow kind (e.g. a stale value left in a
+  // hidden input on the client): these are USD-denominated, so a CLP amount is never valid on them.
+  if (fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout") {
+    if (input.amount_clp != null && input.amount_clp !== 0) {
+      return {
+        ok: false,
+        status: 400,
+        error: `amount_clp is not allowed on ${fk} (USD-denominated; a CLP wire is a separate compra_usd_venta_clp movement).`,
+      };
+    }
+  }
+  if (fk === "dividend_payout" && input.units_delta != null && input.units_delta !== 0) {
     return {
       ok: false,
       status: 400,
-      error: "compra_usd_venta_clp must be posted on the USD cash account without a counterpart transfer.",
+      error: "units_delta is not allowed on dividend_payout (a cash dividend does not change share units).",
     };
+  }
+  if (fk === "compra_usd_venta_clp") {
+    // With a counterpart, this is a CLP→USD conversion moving money between two cash accounts:
+    // debit CLP from the source (from_account), credit USD to the USD cash account (to_account).
+    if (!isUsdCashAccount(input.to_account_id)) {
+      return {
+        ok: false,
+        status: 400,
+        error: "compra_usd_venta_clp must credit the bought USD to a USD cash account (to_account).",
+      };
+    }
+    if (isUsdCashAccount(input.from_account_id)) {
+      return {
+        ok: false,
+        status: 400,
+        error: "compra_usd_venta_clp from_account must be the CLP source account, not USD cash.",
+      };
+    }
+    if (input.amount_clp == null || input.amount_clp === 0) {
+      return { ok: false, status: 400, error: "amount_clp (CLP spent) is required for compra_usd_venta_clp." };
+    }
+    if (input.amount_usd == null || input.amount_usd === 0) {
+      return { ok: false, status: 400, error: "amount_usd (USD bought) is required for compra_usd_venta_clp." };
+    }
+    return null;
   }
   if (fk === "stock_buy") {
     if (!isUsdCashAccount(input.from_account_id)) {
@@ -181,6 +229,26 @@ function validateBrokerageTransferEndpoints(
       };
     }
   }
+  if (fk === "dividend_payout") {
+    if (!isUsdCashAccount(input.to_account_id)) {
+      return {
+        ok: false,
+        status: 400,
+        error: "dividend_payout must credit the cash dividend to USD cash (to_account).",
+      };
+    }
+    const fromRow = accountRowForId(input.from_account_id);
+    if (!fromRow || !accountUsesBrokerageFlowKinds(fromRow)) {
+      return {
+        ok: false,
+        status: 400,
+        error: "dividend_payout from_account must be an equity brokerage account (the paying stock).",
+      };
+    }
+    if (input.amount_usd == null || input.amount_usd === 0) {
+      return { ok: false, status: 400, error: "amount_usd is required for dividend_payout." };
+    }
+  }
   return null;
 }
 
@@ -212,6 +280,13 @@ function validateBrokerageMovementCreate(
       ok: false,
       status: 400,
       error: `${flow_kind} requires counterpart_account_id (USD cash transfer).`,
+    };
+  }
+  if (flow_kind === "dividend_payout") {
+    return {
+      ok: false,
+      status: 400,
+      error: "dividend_payout requires counterpart_account_id (stock → USD cash transfer).",
     };
   }
 
@@ -339,6 +414,9 @@ function validateUsdCashMovementCreate(
   if (flow_kind === "withdrawal_usd" && (amount_usd == null || amount_usd === 0)) {
     return { ok: false, status: 400, error: "amount_usd is required for withdrawal_usd." };
   }
+  if (flow_kind === "savings_earnings" && (amount_usd == null || amount_usd === 0)) {
+    return { ok: false, status: 400, error: "amount_usd is required for savings_earnings (interest received in USD)." };
+  }
   if (flow_kind === "compra_usd_venta_clp") {
     if (amount_usd == null || amount_usd === 0) {
       return { ok: false, status: 400, error: "amount_usd is required for compra_usd_venta_clp." };
@@ -363,6 +441,49 @@ function validateUsdCashMovementCreate(
     flow_kind,
     amount_clp: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, amount_usd),
     amount_usd: amount_usd != null ? Math.abs(amount_usd) : null,
+    ticker: null,
+    note,
+    units_delta: null,
+  };
+}
+
+function validateClpCashMovementCreate(
+  account: AccountRow,
+  body: Record<string, unknown>
+): MovementCreateValidation {
+  const schema = movementCreateSchemaForAccount(account);
+  if (!schema?.brokerage_flow_kinds) {
+    return { ok: false, status: 400, error: "CLP cash flows are only supported for CLP cash accounts." };
+  }
+  const flow_kind = typeof body.flow_kind === "string" ? body.flow_kind : "";
+  const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
+  if (!occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
+    return { ok: false, status: 400, error: "occurred_on is required (YYYY-MM-DD)." };
+  }
+  if (!flow_kind || !(schema.brokerage_flow_kinds as readonly string[]).includes(flow_kind)) {
+    return { ok: false, status: 400, error: "occurred_on and valid flow_kind are required." };
+  }
+  const amount_clp =
+    body.amount_clp === undefined || body.amount_clp === null
+      ? null
+      : typeof body.amount_clp === "number"
+        ? body.amount_clp
+        : Number(body.amount_clp);
+  const unitsRaw = parseUnitsDeltaField(body);
+  if (unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw)) {
+    return { ok: false, status: 400, error: "units_delta is not supported on CLP cash accounts." };
+  }
+  if (amount_clp == null || amount_clp === 0 || !Number.isFinite(amount_clp)) {
+    return { ok: false, status: 400, error: "amount_clp is required." };
+  }
+  const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
+  return {
+    ok: true,
+    mode: "brokerage",
+    occurred_on,
+    flow_kind,
+    amount_clp: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, null),
+    amount_usd: null,
     ticker: null,
     note,
     units_delta: null,
@@ -442,8 +563,15 @@ function validateTransferMovementCreate(
     flow_kind = unitsRaw! > 0 ? "stock_buy" : "stock_sell";
   }
   const tickerRaw = body.ticker;
-  const ticker =
+  let ticker =
     typeof tickerRaw === "string" && tickerRaw.trim() ? tickerRaw.trim().toUpperCase() : null;
+  // Default the ticker from the equity account on share trades (the client may not know it on the
+  // first buy, before a position exists): stock_buy → to_account, stock_sell → from_account.
+  if (ticker == null && (flow_kind === "stock_buy" || flow_kind === "stock_sell")) {
+    const equityAccountId =
+      flow_kind === "stock_buy" ? endpoints.to_account_id : endpoints.from_account_id;
+    ticker = equityTickerForAccount(equityAccountId);
+  }
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
 
   const input: TransferCreateInput = {
@@ -505,6 +633,9 @@ export function validateMovementCreate(
   }
   if (accountUsesUsdCashFlowKinds(account)) {
     return validateUsdCashMovementCreate(account, body);
+  }
+  if (accountUsesClpCashFlowKinds(account)) {
+    return validateClpCashMovementCreate(account, body);
   }
 
   const amount_clp = typeof body.amount_clp === "number" ? body.amount_clp : Number(body.amount_clp);
