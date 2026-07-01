@@ -100,6 +100,15 @@ function fintualCertPositionMeta(
     units_kind: "shares",
     units: cuotas != null && cuotas > 1e-9 ? cuotas : null,
   };
+  // Fully withdrawn (or never funded): value = Σ cuotas × valor cuota = 0. Emit an explicit 0 mark
+  // so live value / net worth don't fall back to the last stored (stale) valuation snapshot.
+  if (cuotas == null || cuotas <= 1e-9) {
+    out.units = 0;
+    out.afp_override_value_clp = 0;
+    out.afp_override_value_as_of = pxDay ?? today;
+    if (px != null && px > 0) out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+    return out;
+  }
   if (goalsCuotaUnreconciled && cuotas != null && cuotas > 1e-9 && goalsNavClp != null) {
     out.afp_override_value_clp = Math.round(goalsNavClp * 100) / 100;
     out.afp_override_value_as_of = today;

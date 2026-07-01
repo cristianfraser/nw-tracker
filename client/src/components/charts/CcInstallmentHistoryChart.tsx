@@ -28,7 +28,6 @@ function formatYmEs(ym: string): string {
 }
 
 function unifiedMinMax(points: CcHistorialChartRow[]) {
-  let minV = 0;
   let maxV = 0;
   for (const row of points) {
     for (const v of [
@@ -38,12 +37,13 @@ function unifiedMinMax(points: CcHistorialChartRow[]) {
       row.balance_total_clp,
     ]) {
       if (typeof v === "number" && Number.isFinite(v)) {
-        minV = Math.min(minV, v);
         maxV = Math.max(maxV, v);
       }
     }
   }
-  return { min: minV, max: Math.max(maxV, 1) };
+  // Credit-card balances are debts (≥ 0); a rare negative month is an artifact, so floor the axis at
+  // 0 instead of expanding it below zero for a single outlier.
+  return { min: 0, max: Math.max(maxV, 1) };
 }
 
 const FACTURADO_FILL = "#d97706";

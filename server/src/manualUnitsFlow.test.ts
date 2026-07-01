@@ -5,6 +5,9 @@ import { movementCreateSchemaForAccount, validateMovementCreate } from "./moveme
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
+import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
+import { accountKindSlugForAccountId } from "./accountBucket.js";
+import { liveFintualCertDisplayValueClp } from "./accountPosition.js";
 
 /** A Fintual cuota account (units required, no brokerage flow kinds) with a fund series key. */
 function findFintualAccountId(): number | null {
@@ -24,6 +27,19 @@ function findOtherAccountId(exclude: number): number | null {
     .prepare(`SELECT id FROM accounts WHERE id != ? LIMIT 1`)
     .get(exclude) as { id: number } | undefined;
   return row?.id ?? null;
+}
+
+function findCheckingAccountId(): number | null {
+  const rows = db.prepare(`SELECT id FROM accounts`).all() as { id: number }[];
+  for (const { id } of rows) {
+    const kind = accountKindSlugForAccountId(id);
+    if (kind === "cuenta_corriente" || kind === "cuenta_vista") return id;
+  }
+  return null;
+}
+
+function depositSumClp(accountId: number): number {
+  return getMergedDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 
 describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
@@ -82,6 +98,39 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     }
   });
 
+  it("puts the aporte on the fund's deposit line and nets to zero across the two accounts (no phantom P/L, no external double-count)", () => {
+    const fund = findFintualAccountId();
+    if (fund == null) return;
+    const checking = findCheckingAccountId();
+    if (checking == null) return;
+
+    const fundBase = depositSumClp(fund);
+    const checkingBase = depositSumClp(checking);
+
+    const amt = 3_000_000;
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta)
+           VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(checking, fund, amt, "2024-03-10", "manual aporte", 25)
+        .lastInsertRowid
+    );
+
+    try {
+      // Aporte now shows on the fund's aportes line → offsets the +cuotas valuation (no phantom gain).
+      expect(depositSumClp(fund) - fundBase).toBeCloseTo(amt, 2);
+      // Checking gets the matching −amt leg → external capital nets to 0 (internal transfer, no double-count).
+      expect(depositSumClp(checking) - checkingBase).toBeCloseTo(-amt, 2);
+      const netExternal =
+        depositSumClp(fund) - fundBase + (depositSumClp(checking) - checkingBase);
+      expect(netExternal).toBeCloseTo(0, 2);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+    }
+  });
+
   it("throws (fail fast) when CLP and cuotas disagree against valor cuota", () => {
     const fund = findFintualAccountId();
     if (fund == null) return;
@@ -115,6 +164,39 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
       expect(good.ok).toBe(true);
     } finally {
       db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day = ?`).run(seriesKey, testDay);
+    }
+  });
+
+  it("values a fully-withdrawn Fintual account at 0, not the last stored valuation", () => {
+    const fund = findFintualAccountId();
+    if (fund == null) return;
+    const other = findOtherAccountId(fund);
+    if (other == null) return;
+    const notes = accountRowForId(fund)?.notes ?? null;
+    if (!notes) return;
+
+    const today = "2999-12-31";
+    const cuotas = fintualGoalUnitsFromMovementsThroughDate(fund, today);
+    if (cuotas == null || cuotas <= 0) return; // needs a funded account to withdraw from
+
+    // Withdraw every cuota (fund → other) so Σ cuotas = 0.
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta)
+           VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(fund, other, 1, "2999-12-30", "test:full-withdrawal", cuotas)
+        .lastInsertRowid
+    );
+
+    try {
+      expect(fintualGoalUnitsFromMovementsThroughDate(fund, today)).toBeNull();
+      const live = liveFintualCertDisplayValueClp(fund, notes, null, today);
+      expect(live).not.toBeNull();
+      expect(live!.value_clp).toBe(0);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
     }
   });
 });

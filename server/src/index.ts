@@ -41,13 +41,9 @@ import { accountUsesCryptoMtm } from "./cryptoValuation.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { syncEquityEodFromYahoo } from "./equityEodSync.js";
 import {
-  createPanelStockAccount,
-  type PanelStockAccountCreateBody,
-} from "./createPanelStockAccount.js";
-import {
-  createPanelUsdCashAccount,
-  type PanelUsdCashAccountCreateBody,
-} from "./createPanelUsdCashAccount.js";
+  createPanelAccount,
+  type PanelAccountCreateBody,
+} from "./createPanelAccount.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
@@ -85,6 +81,7 @@ import {
   clearAggregationCache,
   invalidateAggregationForAccountDate,
 } from "./aggregationCache.js";
+import { supersedeImportedCheckingRowsForTransfer } from "./checkingTransferLegReconcile.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -416,16 +413,9 @@ app.post("/api/accounts", async (req, res) => {
   if (body.account != null && typeof body.account === "object") {
     const acc = body.account as Record<string, unknown>;
     try {
-      if (acc.kind === "usd_cash") {
-        const result = createPanelUsdCashAccount(body as PanelUsdCashAccountCreateBody);
-        res.status(201).json(result);
-        return;
-      }
-      const stockBody = body as PanelStockAccountCreateBody;
-      const result = createPanelStockAccount(stockBody);
-      const ticker = stockBody.account.ticker?.trim().toUpperCase();
-      if (ticker) {
-        await syncEquityEodFromYahoo([ticker], { force: true });
+      const result = createPanelAccount(body as PanelAccountCreateBody);
+      if (result.ticker) {
+        await syncEquityEodFromYahoo([result.ticker], { force: true });
       }
       res.status(201).json(result);
     } catch (e) {
@@ -1190,12 +1180,20 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     const id = Number(r.lastInsertRowid);
     invalidateAggregationForAccountDate(validated.from_account_id, validated.occurred_on);
     invalidateAggregationForAccountDate(validated.to_account_id, validated.occurred_on);
+    // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
+    const superseded = supersedeImportedCheckingRowsForTransfer(
+      validated.from_account_id,
+      validated.to_account_id,
+      validated.amount_clp,
+      validated.occurred_on
+    );
     res.status(201).json({
       id,
       from_account_id: validated.from_account_id,
       to_account_id: validated.to_account_id,
       units_delta: validated.units_delta,
       flow_kind: validated.flow_kind,
+      superseded_imported_checking_ids: superseded.removed_ids,
     });
     return;
   }

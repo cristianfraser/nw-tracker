@@ -23,6 +23,8 @@ import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
+import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import { isCashEqsNwValuationGroupSlug, isCashSavingsValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
@@ -161,6 +163,24 @@ function usdCashMonthlyPerfRows(
   return [...asc].reverse();
 }
 
+function clpCashMonthlyPerfRows(
+  accountId: number,
+  categorySlug: string,
+  unit: TsUnit
+): AccountMonthlyPerformanceRow[] {
+  const bounds = movementBoundsByAccountIds([accountId]).get(accountId);
+  if (!bounds?.min_d || !bounds.max_d) return [];
+
+  const today = chileCalendarTodayYmd();
+  const maxD = bounds.max_d > today ? bounds.max_d : today;
+  const monthEndsAsc = monthEndsBetweenInclusive(bounds.min_d, maxD);
+  const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
+    const clp = clpCashBalanceClpAt(accountId, asOf);
+    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
+  });
+  return [...asc].reverse();
+}
+
 function movementBalanceMonthlyPerfRows(
   accountId: number,
   categorySlug: string,
@@ -212,8 +232,12 @@ export function loadAccountRowsForGroupConsolidation(
   if (isMovementBalanceCashCategory(bucketSlug)) {
     return movementBalanceMonthlyPerfRows(accountId, bucketSlug, unit);
   }
-  if (isUsdCashKindSlug(bucketSlug)) {
+  const kindSlug = accountBucketKindSlug(bucketSlug);
+  if (isUsdCashKindSlug(kindSlug)) {
     return usdCashMonthlyPerfRows(accountId, bucketSlug, unit);
+  }
+  if (isClpCashKindSlug(kindSlug)) {
+    return clpCashMonthlyPerfRows(accountId, bucketSlug, unit);
   }
   if (bucketSlug === "cuenta_ahorro_vivienda") {
     return bookValuationMonthlyPerfRows(accountId, bucketSlug, unit);

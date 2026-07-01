@@ -10,6 +10,7 @@ server/data/*.db-journal
 server/data/*.db-wal
 server/data/*.db-shm
 server/data/*.db.backup-*
+server/data/*.db.bak-*
 server/data/snapshots/
 server/data/.global-sync-state.json
 server/data/.fintual-api-session.json

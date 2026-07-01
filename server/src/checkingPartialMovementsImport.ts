@@ -2,6 +2,7 @@ import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
+import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
 export function partialMovementNote(mv: UltimosMovimientoRow): string {
@@ -16,6 +17,7 @@ export type PartialMovementsImportResult = {
   inserted: number;
   skipped_duplicate: number;
   skipped_superseded_by_cartola: number;
+  skipped_superseded_by_transfer: number;
 };
 
 export function importCheckingPartialMovements(
@@ -30,6 +32,8 @@ export function importCheckingPartialMovements(
   let inserted = 0;
   let skipped_duplicate = 0;
   let skipped_superseded_by_cartola = 0;
+  let skipped_superseded_by_transfer = 0;
+  const consumedTransferLegs = new Set<number>();
 
   const tx = db.transaction(() => {
     for (const mv of movements) {
@@ -40,6 +44,17 @@ export function importCheckingPartialMovements(
       }
       if (partialMovementSupersededByCartola(accountId, mv)) {
         skipped_superseded_by_cartola += 1;
+        continue;
+      }
+      const transferLegId = findMatchingInternalTransferLegId(
+        accountId,
+        mv.occurred_on,
+        mv.amount_clp,
+        consumedTransferLegs
+      );
+      if (transferLegId != null) {
+        consumedTransferLegs.add(transferLegId);
+        skipped_superseded_by_transfer += 1;
         continue;
       }
       ins.run(accountId, mv.amount_clp, mv.occurred_on, note);
@@ -55,5 +70,5 @@ export function importCheckingPartialMovements(
     }
     invalidateAggregationForAccountDate(accountId, minOn);
   }
-  return { inserted, skipped_duplicate, skipped_superseded_by_cartola };
+  return { inserted, skipped_duplicate, skipped_superseded_by_cartola, skipped_superseded_by_transfer };
 }

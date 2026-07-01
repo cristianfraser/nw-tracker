@@ -1,109 +1,92 @@
-import {
-  BROKERAGE_FLOW_KINDS,
-  USD_CASH_FLOW_KINDS,
-  type BrokerageFlowKind,
-} from "./brokerageFlowKinds";
-import {
-  type InitialMovementDraft,
-  type StockAccountCreatePreview,
-  type StockPriceSource,
-  buildStockAccountCreatePreview,
-  defaultStockAccountFormDraft,
-} from "./stockAccountFormTypes";
-import {
-  type UsdCashAccountCreatePreview,
-  buildUsdCashAccountCreatePreview,
-  defaultUsdCashAccountFormDraft,
-} from "./usdCashAccountFormTypes";
+import { categorySlugFromTicker } from "./stockAccountFormTypes";
 
-export type PanelAccountKind = "stocks_nyse" | "crypto_eod" | "usd_cash";
+/**
+ * Account *type* is a first-class choice, independent of the bucket it is filed under. The type
+ * drives behavior (equity/crypto carry a ticker; cash types are ledger accounts); the bucket is a
+ * free choice of any non-liability leaf bucket. Accounts are created empty — flows are added later
+ * through the per-account movement forms, so there are no initial movements here.
+ */
+export type PanelAccountType = "equity" | "crypto" | "clp_cash" | "usd_cash";
 
-export const PANEL_ACCOUNT_KINDS: PanelAccountKind[] = [
-  "stocks_nyse",
-  "crypto_eod",
+export const PANEL_ACCOUNT_TYPES: PanelAccountType[] = [
+  "equity",
+  "crypto",
+  "clp_cash",
   "usd_cash",
 ];
 
-/** Mirrors server allowlists in createPanelStockAccount / createPanelUsdCashAccount. */
-export const PANEL_ACCOUNT_BUCKETS: Record<PanelAccountKind, readonly string[]> = {
-  stocks_nyse: ["brokerage_acciones"],
-  crypto_eod: ["brokerage_crypto"],
-  usd_cash: ["cash_savings"],
+/** Suggested default bucket per type (the user may pick any bucket). */
+const DEFAULT_BUCKET_BY_TYPE: Record<PanelAccountType, string> = {
+  equity: "brokerage_acciones",
+  crypto: "brokerage_crypto",
+  clp_cash: "cash_savings",
+  usd_cash: "cash_savings",
 };
 
 export type PanelAccountFormDraft = {
-  accountKind: PanelAccountKind;
+  accountType: PanelAccountType;
   displayName: string;
   bucketSlug: string;
   tickerSymbol: string;
   excludeFromGroupTotals: boolean;
-  initialMovements: InitialMovementDraft[];
 };
 
-function bucketForKind(kind: PanelAccountKind): string {
-  return PANEL_ACCOUNT_BUCKETS[kind][0]!;
-}
-
-function priceSourceForKind(kind: PanelAccountKind): StockPriceSource {
-  return kind === "crypto_eod" ? "crypto_eod" : "stocks_nyse";
+export function isEquityPanelAccountType(type: PanelAccountType): boolean {
+  return type === "equity" || type === "crypto";
 }
 
 export function defaultPanelAccountFormDraft(
-  kind: PanelAccountKind = "stocks_nyse"
+  type: PanelAccountType = "equity"
 ): PanelAccountFormDraft {
-  const bucketSlug = bucketForKind(kind);
-  if (kind === "usd_cash") {
-    const usd = defaultUsdCashAccountFormDraft(bucketSlug);
-    return {
-      accountKind: kind,
-      displayName: usd.displayName,
-      bucketSlug: usd.bucketSlug,
-      tickerSymbol: "",
-      excludeFromGroupTotals: usd.excludeFromGroupTotals,
-      initialMovements: usd.initialMovements,
-    };
-  }
-  const stock = defaultStockAccountFormDraft(bucketSlug);
-  stock.priceSource = priceSourceForKind(kind);
   return {
-    accountKind: kind,
-    displayName: stock.displayName,
-    bucketSlug: stock.bucketSlug,
-    tickerSymbol: stock.tickerSymbol,
-    excludeFromGroupTotals: stock.excludeFromGroupTotals,
-    initialMovements: stock.initialMovements,
+    accountType: type,
+    displayName: type === "usd_cash" ? "USD" : type === "clp_cash" ? "CLP" : "",
+    bucketSlug: DEFAULT_BUCKET_BY_TYPE[type],
+    tickerSymbol: "",
+    excludeFromGroupTotals: false,
   };
 }
 
-export type PanelAccountCreatePreview = StockAccountCreatePreview | UsdCashAccountCreatePreview;
+/** Body for `POST /api/accounts` (unified panel create — no initial movements). */
+export type PanelAccountCreateBody = {
+  account: {
+    account_type: PanelAccountType;
+    name: string;
+    bucket_slug: string;
+    category_slug?: string;
+    ticker?: string;
+    exclude_from_group_totals: boolean;
+  };
+};
 
 export function buildPanelAccountCreatePreview(
   draft: PanelAccountFormDraft
-): PanelAccountCreatePreview | null {
-  if (draft.accountKind === "usd_cash") {
-    return buildUsdCashAccountCreatePreview({
-      displayName: draft.displayName,
-      bucketSlug: draft.bucketSlug,
-      excludeFromGroupTotals: draft.excludeFromGroupTotals,
-      initialMovements: draft.initialMovements,
-    });
+): PanelAccountCreateBody | null {
+  const name = draft.displayName.trim();
+  if (!name || !draft.bucketSlug) return null;
+
+  if (isEquityPanelAccountType(draft.accountType)) {
+    const ticker = draft.tickerSymbol.trim().toUpperCase();
+    const categorySlug = categorySlugFromTicker(ticker);
+    if (!ticker || !categorySlug) return null;
+    return {
+      account: {
+        account_type: draft.accountType,
+        name,
+        bucket_slug: draft.bucketSlug,
+        category_slug: categorySlug,
+        ticker,
+        exclude_from_group_totals: draft.excludeFromGroupTotals,
+      },
+    };
   }
-  return buildStockAccountCreatePreview({
-    displayName: draft.displayName,
-    tickerSymbol: draft.tickerSymbol,
-    bucketSlug: draft.bucketSlug,
-    priceSource: priceSourceForKind(draft.accountKind),
-    excludeFromGroupTotals: draft.excludeFromGroupTotals,
-    initialMovements: draft.initialMovements,
-  });
-}
 
-export function flowKindsForPanelAccountKind(
-  kind: PanelAccountKind
-): readonly BrokerageFlowKind[] {
-  return kind === "usd_cash" ? USD_CASH_FLOW_KINDS : BROKERAGE_FLOW_KINDS;
-}
-
-export function isEquityPanelAccountKind(kind: PanelAccountKind): boolean {
-  return kind !== "usd_cash";
+  return {
+    account: {
+      account_type: draft.accountType,
+      name,
+      bucket_slug: draft.bucketSlug,
+      exclude_from_group_totals: draft.excludeFromGroupTotals,
+    },
+  };
 }

@@ -97,6 +97,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
         queryClient.invalidateQueries({
           queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
         }),
+        queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
       ]);
@@ -189,6 +190,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
                 label={t("accountDetail.movements.counterpartAccount")}
                 value={row.counterpartAccountId}
                 excludeAccountId={accountId}
+                cashAndCheckingOnly
                 onChange={(counterpartAccountId) =>
                   setMovements((prev) =>
                     prev.map((r) => (r.id === row.id ? { ...r, counterpartAccountId } : r))

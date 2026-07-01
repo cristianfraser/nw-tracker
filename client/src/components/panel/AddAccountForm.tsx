@@ -5,22 +5,20 @@ import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
 import { listLeafPortfolioGroupBuckets } from "../../panelAccounts/portfolioNavBuckets";
 import {
-  PANEL_ACCOUNT_BUCKETS,
-  PANEL_ACCOUNT_KINDS,
+  PANEL_ACCOUNT_TYPES,
   buildPanelAccountCreatePreview,
   defaultPanelAccountFormDraft,
-  flowKindsForPanelAccountKind,
-  isEquityPanelAccountKind,
+  isEquityPanelAccountType,
   type PanelAccountFormDraft,
-  type PanelAccountKind,
+  type PanelAccountType,
 } from "../../panelAccounts/panelAccountFormTypes";
 import type { NavTreeNodeDto } from "../../types";
-import { BrokerageMovementsSection } from "./BrokerageMovementsSection";
 
-const ACCOUNT_KIND_LABEL_KEYS: Record<PanelAccountKind, string> = {
-  stocks_nyse: "panelAccounts.addAccount.accountKind.stocksNyse",
-  crypto_eod: "panelAccounts.addAccount.accountKind.cryptoEod",
-  usd_cash: "panelAccounts.addAccount.accountKind.usdCash",
+const ACCOUNT_TYPE_LABEL_KEYS: Record<PanelAccountType, string> = {
+  equity: "panelAccounts.addAccount.accountType.equity",
+  crypto: "panelAccounts.addAccount.accountType.crypto",
+  clp_cash: "panelAccounts.addAccount.accountType.clpCash",
+  usd_cash: "panelAccounts.addAccount.accountType.usdCash",
 };
 
 type Props = {
@@ -39,28 +37,20 @@ export function AddAccountForm({ netWorthRoot }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<PanelAccountFormDraft>(() =>
-    defaultPanelAccountFormDraft("stocks_nyse")
+    defaultPanelAccountFormDraft("equity")
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [createdAccountId, setCreatedAccountId] = useState<number | null>(null);
 
-  const allowedBucketSlugs = useMemo(
-    () => new Set(PANEL_ACCOUNT_BUCKETS[draft.accountKind]),
-    [draft.accountKind]
-  );
+  // Any non-liability leaf bucket in the net-worth tree is a valid home for a new account.
   const leafBuckets = useMemo(
-    () =>
-      listLeafPortfolioGroupBuckets(netWorthRoot).filter((b) => allowedBucketSlugs.has(b.slug)),
-    [netWorthRoot, allowedBucketSlugs]
+    () => listLeafPortfolioGroupBuckets(netWorthRoot),
+    [netWorthRoot]
   );
 
   const createMutation = useMutation({
-    mutationFn: async (payload: NonNullable<ReturnType<typeof buildPanelAccountCreatePreview>>) => {
-      if ("kind" in payload.account && payload.account.kind === "usd_cash") {
-        return api.createUsdCashAccount(payload as Parameters<typeof api.createUsdCashAccount>[0]);
-      }
-      return api.createStockAccount(payload as Parameters<typeof api.createStockAccount>[0]);
-    },
+    mutationFn: async (payload: NonNullable<ReturnType<typeof buildPanelAccountCreatePreview>>) =>
+      api.createAccount(payload),
     onSuccess: async (result) => {
       setCreatedAccountId(result.account_id);
       setFormError(null);
@@ -84,8 +74,8 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     setCreatedAccountId(null);
   }
 
-  function onAccountKindChange(kind: PanelAccountKind) {
-    setDraft(defaultPanelAccountFormDraft(kind));
+  function onAccountTypeChange(type: PanelAccountType) {
+    setDraft(defaultPanelAccountFormDraft(type));
     setFormError(null);
     setCreatedAccountId(null);
   }
@@ -95,7 +85,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
   }
 
   function resetForm() {
-    setDraft(defaultPanelAccountFormDraft(draft.accountKind));
+    setDraft(defaultPanelAccountFormDraft(draft.accountType));
     setFormError(null);
     setCreatedAccountId(null);
     createMutation.reset();
@@ -113,7 +103,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     createMutation.mutate(payload);
   }
 
-  const isEquity = isEquityPanelAccountKind(draft.accountKind);
+  const isEquity = isEquityPanelAccountType(draft.accountType);
   const displayNamePlaceholder = isEquity
     ? t("panelAccounts.addAccount.displayNamePlaceholder")
     : t("panelAccounts.addUsdAccount.displayNamePlaceholder");
@@ -121,14 +111,14 @@ export function AddAccountForm({ netWorthRoot }: Props) {
   return (
     <form onSubmit={onCreateSubmit} style={{ maxWidth: "52rem", marginBottom: "2rem" }}>
       <label style={fieldRowStyle()}>
-        <span style={fieldLabelStyle()}>{t("panelAccounts.addAccount.accountKind")}</span>
+        <span style={fieldLabelStyle()}>{t("panelAccounts.addAccount.accountType")}</span>
         <select
-          value={draft.accountKind}
-          onChange={(e) => onAccountKindChange(e.target.value as PanelAccountKind)}
+          value={draft.accountType}
+          onChange={(e) => onAccountTypeChange(e.target.value as PanelAccountType)}
         >
-          {PANEL_ACCOUNT_KINDS.map((kind) => (
-            <option key={kind} value={kind}>
-              {t(ACCOUNT_KIND_LABEL_KEYS[kind])}
+          {PANEL_ACCOUNT_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {t(ACCOUNT_TYPE_LABEL_KEYS[type])}
             </option>
           ))}
         </select>
@@ -181,17 +171,6 @@ export function AddAccountForm({ netWorthRoot }: Props) {
         />
         <span>{t("panelAccounts.addAccount.excludeFromTotals")}</span>
       </label>
-
-      <BrokerageMovementsSection
-        movements={draft.initialMovements}
-        onChange={(initialMovements) => {
-          setDraft((prev) => ({ ...prev, initialMovements }));
-          setFormError(null);
-          setCreatedAccountId(null);
-        }}
-        flowKinds={flowKindsForPanelAccountKind(draft.accountKind)}
-        legend="optional"
-      />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1.25rem" }}>
         <button type="submit" disabled={createMutation.isPending}>
