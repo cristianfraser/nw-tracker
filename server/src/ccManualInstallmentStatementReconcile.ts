@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import {
+  legacyInstallmentHPurchaseKey,
   listInstallmentPurchaseSiblingStatementLineIds,
   loadCcStatementLineExpenseCtx,
   stableCcExpensePurchaseKeyFromCtx,
@@ -129,6 +130,13 @@ function resolveCategoryIdForManualPurchase(accountId: number, manualId: number,
   if (manualKey) {
     const r = selUniqueCat.get(accountId, manualKey) as { category_id: number } | undefined;
     if (r?.category_id != null) return r.category_id;
+    // Fall back to the pre-amount (legacy) installment-h key so categories stored before the
+    // key gained the total-amount segment still resolve.
+    const legacy = legacyInstallmentHPurchaseKey(manualKey);
+    if (legacy) {
+      const rLegacy = selUniqueCat.get(accountId, legacy) as { category_id: number } | undefined;
+      if (rLegacy?.category_id != null) return rLegacy.category_id;
+    }
   }
   const instKey = `installment:${manualId}`;
   const r2 = selUniqueCat.get(accountId, instKey) as { category_id: number } | undefined;
@@ -253,6 +261,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
           accountId,
           purchaseDateIso: manual.purchase_date,
           cuotasTotales: manual.cuotas_totales,
+          totalAmountClp: manual.total_amount_clp,
           merchant: manual.merchant,
         });
 

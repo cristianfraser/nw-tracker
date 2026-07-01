@@ -54,6 +54,19 @@ function identityKeyFromLine(ln: FlowCcExpenseLineRow): string | null {
   );
 }
 
+/**
+ * Dedupe key for installment purchase totals that includes the amount, so two genuinely
+ * distinct purchases sharing account+date+cuotas+merchant (e.g. two EXPRESS PLAZA L charges on
+ * the same day, one converted to a 1.200.000 installment and another to 1.267.034) are kept as
+ * separate totals instead of collapsing into one. The amount-free identityKeyFromLine is still
+ * used for matching cuota/purchase lines to totals, where the amount legitimately differs.
+ */
+function installmentTotalDedupeKey(ln: FlowCcExpenseLineRow): string | null {
+  const base = identityKeyFromLine(ln);
+  if (!base) return null;
+  return `${base}:${Math.round(ln.amount_clp)}`;
+}
+
 function loadInstallmentPurchases(accountIds: number[]): InstallmentPurchaseRow[] {
   if (accountIds.length === 0) return [];
   const ph = accountIds.map(() => "?").join(",");
@@ -75,12 +88,54 @@ export function purchaseLineMatchesInstallmentPurchase(
   return merchantsMatchForCrossDedupe(ln.merchant, pr.merchant);
 }
 
+/**
+ * A plain purchase line (not a contract-summary / resumen line) only represents — or is
+ * superseded by — an installment purchase when its amount matches either the full principal
+ * or a single cuota (statements sometimes list the first cuota as the "purchase"). Two charges
+ * with the same merchant and date but an unrelated amount are different purchases; without this
+ * guard the total for one hijacks the sibling's line (matched by merchant+date alone). Summary /
+ * resumen lines carry different amounts by design and are matched elsewhere.
+ */
+function plainPurchaseLineAmountBlocksInstallmentMatch(
+  ln: FlowCcExpenseLineRow,
+  installmentTotalClp: number,
+  cuotasTotal: number | null
+): boolean {
+  if (ln.line_role !== "purchase") return false;
+  if (isInstallmentContractSummaryMerchant(ln.merchant)) return false;
+  if (isUnindexedInstallmentResumenLine(ln)) return false;
+  if (purchaseAmountsMatch(ln.amount_clp, installmentTotalClp)) return false;
+  if (cuotasTotal && cuotasTotal > 0) {
+    const perCuota = Math.round(installmentTotalClp / cuotasTotal);
+    if (purchaseAmountsMatch(ln.amount_clp, perCuota)) return false;
+  }
+  return true;
+}
+
 function findMatchingCuotaLine(
   cuotaLines: readonly FlowCcExpenseLineRow[],
   pr: InstallmentPurchaseRow
 ): FlowCcExpenseLineRow | undefined {
   const purchaseOn = purchaseOnIso(pr.purchase_date);
   const merchantKey = normalizeCcExpenseMerchantKey(pr.merchant);
+  // Prefer the cuota whose ledger total matches this purchase's amount. Two purchases that share
+  // account/date/cuotas/merchant but differ by amount (e.g. two same-day EXPRESS PLAZA 3-cuotas buys)
+  // are only distinguishable here by `installment_total_clp` — cuota drafts have no purchase_key yet —
+  // so this stops one purchase's total line from inheriting the other's category / Único state.
+  if (pr.total_amount_clp != null && Number.isFinite(pr.total_amount_clp)) {
+    const wantTotal = Math.round(pr.total_amount_clp);
+    const exact = cuotaLines.find(
+      (ln) =>
+        ln.line_role === "installment_cuota" &&
+        ln.account_id === pr.account_id &&
+        ln.purchase_on === purchaseOn &&
+        ln.nro_cuota_total === pr.cuotas_totales &&
+        ln.merchant_key === merchantKey &&
+        ln.installment_total_clp != null &&
+        Math.round(ln.installment_total_clp) === wantTotal
+    );
+    if (exact) return exact;
+  }
   return (
     cuotaLines.find(
       (ln) =>
@@ -98,6 +153,44 @@ function findMatchingCuotaLine(
         ln.nro_cuota_total === pr.cuotas_totales
     )
   );
+}
+
+/**
+ * A cuota group is keyed by account+purchase_on+cuotas_total+merchant (amount-free). When no
+ * `cc_installment_purchases` row backs the group, we reconstruct the purchase total by summing
+ * its cuotas — which is only valid if the group is a single purchase. Two distinct installments
+ * that share that key but have different cuota amounts (e.g. two EXPRESS PLAZA L charges on the
+ * same day billed as 3 cuotas of 400.000 and 3 of 422.345) would be silently summed into one
+ * wrong total. Detect that (same cuota index appearing with conflicting amounts) and fail fast.
+ *
+ * This is an unlikely edge: manual conversions always create a purchase row (keyed per id/amount),
+ * so it can only arise from PDF-only installments. Potential fix when it does: key cuota groups by
+ * an amount bucket, or carry `cc_installment_purchases.id` onto cuota lines and build one synthetic
+ * total per distinct purchase instead of per merchant/date/cuotas group.
+ */
+function assertSingleInstallmentInCuotaGroup(group: readonly FlowCcExpenseLineRow[]): void {
+  const amountsByCuota = new Map<number, number[]>();
+  for (const ln of group) {
+    const idx = ln.nro_cuota_current;
+    if (idx == null || idx <= 0) continue;
+    const list = amountsByCuota.get(idx) ?? [];
+    list.push(ln.amount_clp);
+    amountsByCuota.set(idx, list);
+  }
+  for (const [idx, amounts] of amountsByCuota) {
+    for (let i = 1; i < amounts.length; i++) {
+      if (!purchaseAmountsMatch(amounts[0]!, amounts[i]!)) {
+        const first = group[0];
+        throw new Error(
+          `Ambiguous installment cuota group for account ${first?.account_id} ` +
+            `${first?.purchase_on} (${first?.merchant_key}): cuota ${idx} has conflicting amounts ` +
+            `${amounts.join(", ")}. Multiple installment purchases share the same ` +
+            `merchant/date/cuotas key with no purchase row to disambiguate — cannot reconstruct ` +
+            `per-purchase totals. See assertSingleInstallmentInCuotaGroup for the fix.`
+        );
+      }
+    }
+  }
 }
 
 function estimateInstallmentTotalFromCuotas(group: readonly FlowCcExpenseLineRow[]): number {
@@ -182,6 +275,7 @@ function buildSyntheticRow(opts: {
     category_slug: opts.categorySlug,
     category_unique: opts.categoryUnique,
     installment_flag: 1,
+    installment_total_clp: opts.amountClp,
     nro_cuota_current: null,
     nro_cuota_total: opts.cuotasTotales,
     line_role: "installment_purchase_total",
@@ -212,7 +306,12 @@ function representativeScore(
   if (isInstallmentContractSummaryMerchant(ln.merchant)) return 100;
   if (isUnindexedInstallmentResumenLine(ln)) return 80;
   if (purchaseAmountsMatch(ln.amount_clp, synth.amount_clp)) return 60;
-  return 40;
+  // Promote a first-cuota-amount purchase line, but never an unrelated same-merchant/same-day
+  // sibling whose amount matches neither the principal nor a cuota (that is a different purchase).
+  if (!plainPurchaseLineAmountBlocksInstallmentMatch(ln, synth.amount_clp, synth.nro_cuota_total)) {
+    return 40;
+  }
+  return 0;
 }
 
 function findRepresentativeLineIndex(
@@ -245,6 +344,7 @@ export function promoteLineToInstallmentPurchaseTotal(
     ...ln,
     line_role: "installment_purchase_total",
     installment_flag: 1,
+    installment_total_clp: synth.amount_clp,
     nro_cuota_current: null,
     nro_cuota_total: synth.nro_cuota_total,
     amount_clp: synth.amount_clp,
@@ -263,6 +363,9 @@ function inferInstallmentPurchaseKey(
 ): string | null {
   for (const pr of purchases) {
     if (!purchaseLineMatchesInstallmentPurchase(ln, pr)) continue;
+    if (plainPurchaseLineAmountBlocksInstallmentMatch(ln, pr.total_amount_clp, pr.cuotas_totales)) {
+      continue;
+    }
     return installmentPurchaseIdentityKey(
       pr.account_id,
       purchaseOnIso(pr.purchase_date),
@@ -283,6 +386,9 @@ function purchaseLineSupersededByExistingTotal(
     if (ln.account_id !== total.account_id) continue;
     if (ln.purchase_on !== total.purchase_on) continue;
     if (!merchantsMatchForCrossDedupe(ln.merchant, total.merchant)) continue;
+    if (plainPurchaseLineAmountBlocksInstallmentMatch(ln, total.amount_clp, total.nro_cuota_total)) {
+      continue;
+    }
     return true;
   }
   return false;
@@ -419,6 +525,7 @@ export function buildInstallmentPurchaseTotalLines(
     );
     if (already) continue;
 
+    assertSingleInstallmentInCuotaGroup(group);
     const amountClp = estimateInstallmentTotalFromCuotas(group);
     if (amountClp <= 0) continue;
 
@@ -485,13 +592,13 @@ function dedupeInstallmentPurchaseTotalLines(lines: FlowCcExpenseLineRow[]): Flo
       continue;
     }
     const key =
-      identityKeyFromLine(ln) ??
-      installmentPurchaseIdentityKey(
+      installmentTotalDedupeKey(ln) ??
+      `${installmentPurchaseIdentityKey(
         ln.account_id,
         ln.purchase_on ?? "",
         ln.nro_cuota_total ?? 0,
         ln.merchant_key
-      );
+      )}:${Math.round(ln.amount_clp)}`;
     const prev = totalsByKey.get(key);
     if (!prev) {
       totalsByKey.set(key, ln);
@@ -514,7 +621,9 @@ export function mergeInstallmentPurchaseTotalsIntoLines(
   const satisfiedTotalKeys = new Set<string>();
 
   for (const synth of synthetics) {
-    const synthKey = identityKeyFromLine(synth);
+    // Amount-aware key so two distinct same-merchant/same-day/same-cuotas purchases each keep
+    // their own total instead of the second being skipped as already satisfied.
+    const synthKey = installmentTotalDedupeKey(synth);
     if (synthKey && satisfiedTotalKeys.has(synthKey)) continue;
 
     const repIdx = findRepresentativeLineIndex(result, synth);

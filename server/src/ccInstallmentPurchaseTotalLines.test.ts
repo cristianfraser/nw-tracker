@@ -147,4 +147,116 @@ describe("ccInstallmentPurchaseTotalLines merge", () => {
       )
     ).toBe(true);
   });
+
+  it("does not let an installment total hijack a same-merchant/same-day purchase with a different amount", () => {
+    // Two distinct EXPRESS PLAZA L charges on 30/06: one stays a one-shot purchase (1.267.034),
+    // the other was turned into a 3-cuota installment (1.200.000). The installment total must
+    // not promote/overwrite or drop the unrelated one-shot sibling.
+    const oneShot = line({
+      statement_line_id: 241231,
+      line_role: "purchase",
+      installment_flag: 0,
+      merchant: "EXPRESS PLAZA L",
+      merchant_key: "EXPRESS PLAZA L",
+      amount_clp: 1_267_034,
+      purchase_on: "2026-06-30",
+      purchase_month: "2026-06",
+      billing_month: "2026-07",
+      nro_cuota_total: null,
+      nro_cuota_current: null,
+    });
+    const cuotas = [1, 2, 3].map((c) =>
+      line({
+        statement_line_id: 5000 + c,
+        line_role: "installment_cuota",
+        installment_flag: 1,
+        merchant: "EXPRESS PLAZA L",
+        merchant_key: "EXPRESS PLAZA L",
+        amount_clp: 400_000,
+        purchase_on: "2026-06-30",
+        purchase_month: "2026-06",
+        nro_cuota_current: c,
+        nro_cuota_total: 3,
+      })
+    );
+
+    const merged = mergeInstallmentPurchaseTotalsIntoLines([oneShot, ...cuotas], [], emptyMaps);
+
+    const survivor = merged.find((l) => l.statement_line_id === 241231);
+    expect(survivor).toBeDefined();
+    expect(survivor!.line_role).toBe("purchase");
+    expect(survivor!.amount_clp).toBe(1_267_034);
+
+    const total = merged.find((l) => l.line_role === "installment_purchase_total");
+    expect(total).toBeDefined();
+    expect(total!.amount_clp).toBe(1_200_000);
+    expect(total!.statement_line_id).not.toBe(241231);
+  });
+
+  it("still promotes a same-day purchase line whose amount matches the installment total", () => {
+    // Guard against over-restriction: when the one-shot purchase amount equals the installment
+    // principal, it is the purchase and should be promoted in place (id preserved), not duplicated.
+    const purchase = line({
+      statement_line_id: 777,
+      line_role: "purchase",
+      installment_flag: 0,
+      merchant: "EXPRESS PLAZA L",
+      merchant_key: "EXPRESS PLAZA L",
+      amount_clp: 1_200_000,
+      purchase_on: "2026-06-30",
+      purchase_month: "2026-06",
+      billing_month: "2026-07",
+      nro_cuota_total: null,
+      nro_cuota_current: null,
+    });
+    const cuotas = [1, 2, 3].map((c) =>
+      line({
+        statement_line_id: 6000 + c,
+        line_role: "installment_cuota",
+        installment_flag: 1,
+        merchant: "EXPRESS PLAZA L",
+        merchant_key: "EXPRESS PLAZA L",
+        amount_clp: 400_000,
+        purchase_on: "2026-06-30",
+        purchase_month: "2026-06",
+        nro_cuota_current: c,
+        nro_cuota_total: 3,
+      })
+    );
+
+    const merged = mergeInstallmentPurchaseTotalsIntoLines([purchase, ...cuotas], [], emptyMaps);
+
+    const promoted = merged.find((l) => l.statement_line_id === 777);
+    expect(promoted).toBeDefined();
+    expect(promoted!.line_role).toBe("installment_purchase_total");
+    expect(promoted!.amount_clp).toBe(1_200_000);
+    const totals = merged.filter((l) => l.line_role === "installment_purchase_total");
+    expect(totals).toHaveLength(1);
+  });
+
+  it("throws on an ambiguous cuota group (no purchase row) that conflates two purchases", () => {
+    // Two installments share account+date+cuotas+merchant with no cc_installment_purchases row and
+    // different cuota amounts, so their cuota lines merge into one amount-free group. Summing them
+    // would produce a wrong total — fail fast instead.
+    const mk = (idBase: number, per: number) =>
+      [1, 2, 3].map((c) =>
+        line({
+          statement_line_id: idBase + c,
+          line_role: "installment_cuota",
+          installment_flag: 1,
+          merchant: "EXPRESS PLAZA L",
+          merchant_key: "EXPRESS PLAZA L",
+          amount_clp: per,
+          purchase_on: "2026-06-30",
+          purchase_month: "2026-06",
+          nro_cuota_current: c,
+          nro_cuota_total: 3,
+        })
+      );
+    const cuotas = [...mk(7000, 400_000), ...mk(8000, 422_345)];
+
+    expect(() => mergeInstallmentPurchaseTotalsIntoLines(cuotas, [], emptyMaps)).toThrow(
+      /Ambiguous installment cuota group/
+    );
+  });
 });
