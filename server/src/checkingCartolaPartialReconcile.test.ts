@@ -11,7 +11,9 @@ import {
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 import {
+  checkingMovementContentMatches,
   parsePartialMovementNote,
+  partialDescriptionsMatch,
   prunePartialMovementsSupersededByCartola,
   reconcileCartolaPartialImports,
 } from "./checkingCartolaPartialReconcile.js";
@@ -47,6 +49,64 @@ describe("checkingCartolaPartialReconcile", () => {
       description: "0560112904 Transf a COMUNIDAD EDIFICIO",
       document_no: "5592808",
     });
+  });
+
+  it("matches últimos-vs-cartola description variants (June 2026 regression pairs)", () => {
+    // Real pairs from the June 2026 import where the strict matcher left duplicates.
+    // case only
+    expect(
+      partialDescriptionsMatch("0768106274 TRANSF. FINTUAL AGF", "0768106274 Transf. Fintual AGF")
+    ).toBe(true);
+    // cartola truncates the tail
+    expect(
+      partialDescriptionsMatch(
+        "0768106274 TRANSF A FINTUAL ADMINISTRADORA GENERAL DE FONDO",
+        "0768106274 Transf a FINTUAL ADMINISTRADORA G"
+      )
+    ).toBe(true);
+    // últimos truncates the tail (reverse direction)
+    expect(
+      partialDescriptionsMatch(
+        "0081172943 Transf. Cristian Alejandro Fraser",
+        "0081172943 TRANSF. CRISTIAN ALEJANDRO FRASER VILLABLANCA"
+      )
+    ).toBe(true);
+    // cartola marker prefix
+    expect(partialDescriptionsMatch("Giro Nacional VD", "*/Giro Nacional VD")).toBe(true);
+    // diverging mojibake for accents
+    expect(
+      partialDescriptionsMatch(
+        "0177670952 TRANSF A SEBASTIÃ,N SCHUCHHARDT",
+        "0177670952 Transf a SebastiÃ¡n Schuchhardt"
+      )
+    ).toBe(true);
+    // different counterparties must NOT match
+    expect(
+      partialDescriptionsMatch(
+        "0194904959 TRANSF A JORGE BRITO",
+        "0194904959 Transf a JORGE DANIEL EMILIA"
+      )
+    ).toBe(false);
+    // degenerate short prefixes must NOT match
+    expect(partialDescriptionsMatch("Transf", "Transf a FINTUAL ADMINISTRADORA G")).toBe(false);
+
+    // Documents that disagree across sources (counterparty account vs bank doc) must not veto.
+    expect(
+      checkingMovementContentMatches(
+        {
+          occurred_on: "2026-06-08",
+          amount_clp: 6_000_000,
+          description: "0768106274 TRANSF. FINTUAL AGF",
+          document_no: "0768106274",
+        },
+        {
+          occurred_on: "2026-06-08",
+          amount_clp: 6_000_000,
+          description: "0768106274 Transf. Fintual AGF",
+          document_no: "6000000",
+        }
+      )
+    ).toBe(true);
   });
 
   it("removes partial rows when official cartola is imported", () => {

@@ -4,6 +4,7 @@ import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { db } from "./db.js";
 import {
   cartolaMovementMatchesImportedRow,
+  cartolaNoteContent,
   type ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
 import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
@@ -46,8 +47,27 @@ export function parsePartialMovementNote(note: string): ParsedPartialMovementNot
   return { occurred_on, amount_clp, description, document_no };
 }
 
-function normalizeDescription(description: string): string {
-  return description.replace(/\s+/g, " ").trim();
+/**
+ * The two sources render the same movement differently: the "últimos movimientos" web view
+ * UPPERCASES, the cartola may prefix an asterisk-slash marker ("Giro Nacional VD"), either side truncates the tail
+ * ("…ADMINISTRADORA GENERAL DE FONDO" vs "…ADMINISTRADORA G", "…Fraser" vs "…FRASER VILLABLANCA"),
+ * and mojibake for accents diverges ("SEBASTIÃ,N" vs "SebastiÃ¡n"). Reduce to the A-Z0-9 skeleton
+ * so only the stable characters compare.
+ */
+function normalizeForPartialMatch(description: string): string {
+  return description.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Min normalized length for a truncation (prefix) match; exact equality has no floor. */
+const PARTIAL_DESC_PREFIX_MIN_CHARS = 10;
+
+export function partialDescriptionsMatch(a: string, b: string): boolean {
+  const na = normalizeForPartialMatch(a);
+  const nb = normalizeForPartialMatch(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const [shorter, longer] = na.length <= nb.length ? [na, nb] : [nb, na];
+  return shorter.length >= PARTIAL_DESC_PREFIX_MIN_CHARS && longer.startsWith(shorter);
 }
 
 export function checkingMovementContentMatches(
@@ -56,21 +76,10 @@ export function checkingMovementContentMatches(
 ): boolean {
   if (a.occurred_on !== b.occurred_on) return false;
   if (a.amount_clp !== b.amount_clp) return false;
-  if (normalizeDescription(a.description) !== normalizeDescription(b.description)) return false;
-  const docA = (a.document_no ?? "").trim();
-  const docB = (b.document_no ?? "").trim();
-  if (docA && docB && docA !== docB) return false;
-  return true;
-}
-
-function parsedCheckingMovementFromUltimos(mv: UltimosMovimientoRow): ParsedCheckingMovement {
-  return {
-    occurred_on: mv.occurred_on,
-    amount_clp: mv.amount_clp,
-    branch: "",
-    description: mv.description,
-    document_no: mv.document_no,
-  };
+  // No document check: the sources disagree on what "document" means (últimos = counterparty
+  // account number, cartola = bank document number), so a doc veto rejects true duplicates.
+  // Date + exact amount + description skeleton is the identity.
+  return partialDescriptionsMatch(a.description, b.description);
 }
 
 /** True when an official cartola movement row matches this partial import note. */
@@ -89,7 +98,6 @@ export function partialMovementSupersededByCartola(
   mv: UltimosMovimientoRow,
   dbHandle: Database = db
 ): boolean {
-  const pseudo = parsedCheckingMovementFromUltimos(mv);
   const rows = dbHandle
     .prepare(
       `SELECT note FROM movements
@@ -98,7 +106,10 @@ export function partialMovementSupersededByCartola(
     )
     .all(accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
   for (const row of rows) {
-    if (cartolaMovementMatchesImportedRow(pseudo, row.note)) return true;
+    // Tolerant compare — the últimos web view and the cartola render descriptions/documents
+    // differently (case, truncation, markers), see partialDescriptionsMatch.
+    const content = cartolaNoteContent(row.note);
+    if (content && partialDescriptionsMatch(mv.description, content.description)) return true;
   }
   return false;
 }
