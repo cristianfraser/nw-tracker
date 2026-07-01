@@ -311,6 +311,7 @@ export function removeOneShotLinesSupersededByInstallmentPurchases(
         accountId,
         purchaseDateIso: purchase.purchase_date,
         cuotasTotales: purchase.cuotas_totales,
+        totalAmountClp: purchase.total_amount_clp,
         merchant: purchase.merchant,
       });
       upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
