@@ -15,6 +15,7 @@ import { accountUsesCryptoMtm, computeCryptoMtmClp } from "./cryptoValuation.js"
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
+import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import { db } from "./db.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
@@ -62,6 +63,10 @@ function historicalMarkClpAtYmd(
     const clp = usdCashBalanceClpAt(accountId, asOfYmd);
     if (Number.isFinite(clp)) return { value_clp: clp, as_of_date: asOfYmd };
   }
+  if (isClpCashAccount(accountId)) {
+    const clp = clpCashBalanceClpAt(accountId, asOfYmd);
+    if (Number.isFinite(clp)) return { value_clp: clp, as_of_date: asOfYmd };
+  }
   if (accountUsesEquityMtm(accountId)) {
     const clp = computeEquityMtmClp(accountId, asOfYmd);
     if (clp != null && Number.isFinite(clp)) return { value_clp: clp, as_of_date: asOfYmd };
@@ -84,7 +89,7 @@ function historicalMarkClpAtYmd(
       }
     }
   }
-  if (categorySlug === "credit_card") {
+  if (accountBucketKindSlug(categorySlug) === "credit_card") {
     const cc = creditCardBillingBalanceTotalClpAsOf(accountId, asOfYmd);
     if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) {
       return { value_clp: cc.value_clp, as_of_date: cc.as_of_date };

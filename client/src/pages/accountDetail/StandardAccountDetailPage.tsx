@@ -10,6 +10,7 @@ import { formatClp, formatInstrumentUnits } from "../../format";
 import { cn } from "../../cn";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
+import { AccountClpCashMovementsForm } from "../../components/account/AccountClpCashMovementsForm";
 import { AccountUnitsFlowForm } from "../../components/account/AccountUnitsFlowForm";
 import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
@@ -17,6 +18,7 @@ import { AccountImportSection } from "../../components/account/AccountImportSect
 import {
   supportsBrokerageMovements,
   supportsUsdCashMovements,
+  supportsClpCashMovements,
   supportsUnitsFlowMovements,
 } from "../../accountMovementCreate";
 import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
@@ -60,8 +62,9 @@ export function StandardAccountDetailPage({ data }: Props) {
 
   const isUsdCashAccount = supportsUsdCashMovements(summary.movement_create);
   const showUsdCashMovementsForm = isUsdCashAccount;
+  const showClpCashMovementsForm = supportsClpCashMovements(summary.movement_create);
   const showBrokerageMovementsForm =
-    supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount;
+    supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount && !showClpCashMovementsForm;
   const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
   const showUnitsFlowForm = supportsUnitsFlowMovements(summary.movement_create);
   const unitsFlowUnitLabel = showUnitsFlowForm
@@ -81,6 +84,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showManualEntryForm =
     showBrokerageMovementsForm ||
     showUsdCashMovementsForm ||
+    showClpCashMovementsForm ||
     showBookLedgerEdit ||
     showUnitsFlowForm ||
     showMortgagePaymentForm;
@@ -475,6 +479,12 @@ export function StandardAccountDetailPage({ data }: Props) {
         addMovementsForm={
           showUsdCashMovementsForm ? (
             <AccountUsdCashMovementsForm
+              accountId={summary.account_id}
+              displayUnit={displayUnit}
+              extraCcOffsetsKey={extraCcOffsetsKey}
+            />
+          ) : showClpCashMovementsForm ? (
+            <AccountClpCashMovementsForm
               accountId={summary.account_id}
               displayUnit={displayUnit}
               extraCcOffsetsKey={extraCcOffsetsKey}

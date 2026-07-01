@@ -15,6 +15,7 @@ import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceLive } from "./usdCashAccounts.js";
+import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import {
   latestDisplayedBalanceForAccount,
@@ -40,6 +41,9 @@ export function syncLatestDisplayValueClp(
     const live = usdCashBalanceLive(accountId);
     return { value_clp: live.value_clp, as_of_date: live.as_of_date };
   }
+  if (bucketKind && isClpCashKindSlug(bucketKind)) {
+    return clpCashBalanceLive(accountId);
+  }
   if (accountUsesEquityMtm(accountId)) {
     const eq = computeEquityMtmClpDisplaySync(accountId);
     if (eq != null) return eq;
@@ -56,7 +60,7 @@ export function syncLatestDisplayValueClp(
     const live = liveAfpDisplayValueClp(accountId);
     if (live) return live;
   }
-  if (categorySlug === "credit_card") {
+  if (bucketKind === "credit_card") {
     const v = latestCreditCardBillingBalanceTotalClpAndAsOfDate(accountId);
     if (v?.value_clp != null && v.as_of_date) {
       return { value_clp: v.value_clp, as_of_date: v.as_of_date };

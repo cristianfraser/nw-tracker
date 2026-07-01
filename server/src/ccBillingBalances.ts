@@ -5,7 +5,7 @@ import {
   redundantInstallmentSummaryLineIds,
   type CcStatementLineForInstallmentTotals,
 } from "./ccInstallmentLineDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -65,6 +65,35 @@ type RevolvingLineRow = {
   valor_cuota_mensual_usd: number | null;
 };
 
+const stmtPayByMetaByDate = db.prepare(
+  `SELECT pay_by, period_to FROM cc_statements WHERE account_id = ? AND statement_date = ? LIMIT 1`
+);
+
+function isoAddDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * FX date for valuing USD credit-card charges in DISPLAYED balances (facturado / balance_total /
+ * detalle / graph): the facturación pay-by date minus one day. A foreign charge settles to CLP at
+ * pay-by, so this locks the rate once that date passes (and floats on the latest rate before it),
+ * instead of drifting with the statement-close rate. Import dedupe/matching keeps the raw
+ * statement-date FX (only affects amount comparisons, not what the user sees).
+ */
+export function balanceUsdFxDateIso(accountId: number, statementDate: string): string | null {
+  const meta = stmtPayByMetaByDate.get(accountId, statementDate) as
+    | { pay_by: string | null; period_to: string | null }
+    | undefined;
+  const payByIso = resolveInstallmentPayByIso({
+    pay_by: meta?.pay_by ?? undefined,
+    statement_date: statementDate,
+    period_to: meta?.period_to ?? undefined,
+  });
+  return payByIso ? isoAddDays(payByIso, -1) : parseDdMmYyToIso(statementDate);
+}
+
 function listRevolvingLineRowsForStatementDate(
   accountId: number,
   statementDate: string
@@ -85,7 +114,7 @@ function sumRevolvingLinesForAccountStatementDateClp(
   statementDate: string,
   opts?: { excludePayments?: boolean }
 ): number {
-  const fxDateIso = parseDdMmYyToIso(statementDate);
+  const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   const rows = listRevolvingLineRowsForStatementDate(accountId, statementDate);
   const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
   let sum = 0;
@@ -112,6 +141,68 @@ export function sumRevolvingChargesClpForStatementDate(
   });
 }
 
+/** ISO of a stored transaction_date (accepts `YYYY-MM-DD` or `DD/MM/YYYY` parser output). */
+function normalizeTransactionDateIso(td: string | null): string | null {
+  if (!td) return null;
+  const t = td.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return parseDdMmYyToIso(t);
+}
+
+type PostCloseLineRow = RevolvingLineRow & {
+  transaction_date: string | null;
+  statement_date: string;
+  dedupe_key: string | null;
+};
+
+/**
+ * Net CLP of non-installment statement lines whose `transaction_date` falls AFTER a billing
+ * month's statement close and ON/BEFORE the calendar month-end — i.e. charges and payments that
+ * belong to the live end-of-month balance but are billed on a later statement. Payments carry
+ * negative CLP, so they net against charges. Installments are excluded (tracked live via cupo).
+ * Deduped across statement versions by dedupe key so a transaction billed on both a web-paste and
+ * a PDF statement is counted once.
+ *
+ * Added to the statement-anchored `balance_total` so the Detalle por mes / chart show the true
+ * end-of-month liability (e.g. a card paid off within its own closing cycle drops that month,
+ * not the next). The statement anchor keeps the series drift-free across missing periods.
+ */
+export function postCloseLiveBalanceAdjustmentClp(
+  accountId: number,
+  closeIso: string,
+  monthEndIso: string
+): number {
+  if (!closeIso || !monthEndIso || closeIso >= monthEndIso) return 0;
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
+              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
+              l.transaction_date, s.statement_date, l.dedupe_key
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ? AND l.installment_flag = 0`
+    )
+    .all(accountId) as PostCloseLineRow[];
+  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const seen = new Set<string>();
+  let sum = 0;
+  for (const r of rows) {
+    if (superseded.has(r.id)) continue;
+    if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+    const iso = normalizeTransactionDateIso(r.transaction_date);
+    if (!iso || iso <= closeIso || iso > monthEndIso) continue;
+    const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const clp = effectiveCcExpenseLineAmountClp(
+      { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
+      balanceUsdFxDateIso(accountId, r.statement_date)
+    );
+    if (clp != null && Number.isFinite(clp)) sum += clp;
+  }
+  return sum;
+}
+
 /** Σ positive revolving charges in a billing month (all statement closes on distinct dates). */
 export function incrementalChargesClpForBillingMonth(
   accountId: number,
@@ -134,6 +225,55 @@ export function incrementalChargesClpForBillingMonth(
     }
   }
   return sum;
+}
+
+/**
+ * Open-cycle USD (foreign) charges billed so far, in USD and CLP — used to split the open month's
+ * facturado into its CLP and US$ stacked components. Mirrors the statement iteration of
+ * {@link incrementalChargesClpForBillingMonth} but keeps only USD-denominated lines (foreign charges
+ * that carry `amount_usd` with no CLP amount, or lines on a USD statement). Payments/abonos net in
+ * via their negative amounts.
+ */
+export function openMonthUsdFacturado(
+  accountId: number,
+  billingMonth: string
+): { usd: number; clp: number } {
+  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const seenDates = new Set<string>();
+  let usd = 0;
+  let clp = 0;
+  const addStatement = (statementDate: string) => {
+    const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
+    for (const r of listRevolvingLineRowsForStatementDate(accountId, statementDate)) {
+      if (superseded.has(r.id)) continue;
+      if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+      const isUsdLine =
+        (r.amount_clp == null && r.amount_usd != null) ||
+        String(r.statement_currency).toLowerCase() === "usd";
+      if (!isUsdLine) continue;
+      if (r.amount_usd != null && Number.isFinite(r.amount_usd)) usd += r.amount_usd;
+      const c = effectiveCcExpenseLineAmountClp(
+        { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
+        fxDateIso
+      );
+      if (c != null && Number.isFinite(c)) clp += c;
+    }
+  };
+  for (const st of listCcStatementsForAccount(accountId)) {
+    if (st.billing_month !== billingMonth) continue;
+    if (seenDates.has(st.statement_date)) continue;
+    seenDates.add(st.statement_date);
+    addStatement(st.statement_date);
+  }
+  const openBm = billingMonthForManualLedgerPurchase(accountId);
+  if (openBm === billingMonth) {
+    for (const stmtDate of listStaleOpenWebPasteStatementDates(accountId, billingMonth)) {
+      if (seenDates.has(stmtDate)) continue;
+      seenDates.add(stmtDate);
+      addStatement(stmtDate);
+    }
+  }
+  return { usd, clp };
 }
 
 function sumNonInstallmentLinesForAccountStatementDateClp(
@@ -160,7 +300,7 @@ function installmentCuotaDueForAccountStatementDateClp(
   accountId: number,
   statementDate: string
 ): number {
-  const fxDateIso = parseDdMmYyToIso(statementDate);
+  const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   const rows = db
     .prepare(
       `SELECT l.id, l.merchant, l.installment_flag, l.amount_clp, l.amount_usd,
@@ -223,7 +363,7 @@ export function facturadoFromStatement(
       : null;
   if (headerMonto != null) {
     if (stmt.currency === "usd") {
-      const fx = fxMonthEndForBalanceUsd(fxDate)?.clp_per_usd;
+      const fx = fxMonthEndForBalanceUsd(balanceUsdFxDateIso(accountId, statementDate))?.clp_per_usd;
       const clp =
         fx != null && fx > 0 ? Math.round(headerMonto * fx) : null;
       return { facturado_clp: clp, facturado_usd: headerMonto };

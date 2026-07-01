@@ -44,6 +44,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit, extraCcOff
         queryClient.invalidateQueries({
           queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
         }),
+        queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),
       ]);
@@ -69,6 +70,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit, extraCcOff
         emptyTextKey="accountDetail.usdCashMovements.emptyDraft"
         currentAccountId={accountId}
         flowKinds={USD_CASH_FLOW_KINDS}
+        cashCurrency="usd"
       />
 
       {movements.length > 0 ? (

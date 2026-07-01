@@ -123,6 +123,9 @@ export function signedUsdDeltaForAccountMovement(
     return absAmount(row.amount_usd);
   }
   if (fk === "withdrawal_usd") return -absAmount(row.amount_usd);
+  // Interest / bank-paid yield credited in USD raises the cash balance (P/L, not capital — the
+  // deposited line excludes it, see accountDeposits / cash interest helpers).
+  if (fk === "savings_earnings") return absAmount(row.amount_usd);
   return 0;
 }
 

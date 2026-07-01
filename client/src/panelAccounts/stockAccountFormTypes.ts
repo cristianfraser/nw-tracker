@@ -1,9 +1,10 @@
 import type { BrokerageFlowKind } from "./brokerageFlowKinds";
 import {
+  brokerageFlowKindNeedsClp,
+  brokerageFlowKindNeedsUsd,
+  brokerageFlowKindShowsUnits,
   counterpartRoleForBrokerageFlowKind,
 } from "./brokerageFlowKinds";
-
-export type StockPriceSource = "stocks_nyse" | "crypto_eod";
 
 export type InitialMovementDraft = {
   id: string;
@@ -13,16 +14,6 @@ export type InitialMovementDraft = {
   amountUsd: string;
   unitsDelta: string;
   counterpartAccountId: number | "";
-};
-
-export type StockAccountFormDraft = {
-  displayName: string;
-  tickerSymbol: string;
-  /** Leaf bucket slug, e.g. brokerage_acciones. */
-  bucketSlug: string;
-  priceSource: StockPriceSource;
-  excludeFromGroupTotals: boolean;
-  initialMovements: InitialMovementDraft[];
 };
 
 export function categorySlugFromTicker(ticker: string): string {
@@ -48,36 +39,6 @@ export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit_clp"): I
     counterpartAccountId: "",
   };
 }
-
-export function defaultStockAccountFormDraft(bucketSlug = "brokerage_acciones"): StockAccountFormDraft {
-  return {
-    displayName: "",
-    tickerSymbol: "",
-    bucketSlug,
-    priceSource: "stocks_nyse",
-    excludeFromGroupTotals: false,
-    initialMovements: [],
-  };
-}
-
-/** Shape for a future POST — form-only preview, not sent to the API yet. */
-export type StockAccountCreatePreview = {
-  account: {
-    name: string;
-    category_slug: string;
-    bucket_slug: string;
-    ticker: string;
-    price_source: StockPriceSource;
-    exclude_from_group_totals: boolean;
-  };
-  initial_movements: {
-    occurred_on: string;
-    flow_kind: BrokerageFlowKind;
-    amount_clp: number | null;
-    amount_usd: number | null;
-    units_delta: number | null;
-  }[];
-};
 
 /** Accepts CLP-style thousands (3.000.000), Chilean decimal (3.353,07), or plain/dot decimal. */
 export function parseOptionalNumber(raw: string): number | null {
@@ -126,12 +87,20 @@ export function buildBrokerageMovementPostBody(
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
+  // Only submit the fields that the flow kind actually shows — a value left behind in a now-hidden
+  // input (e.g. CLP typed before switching to "compra acciones") must not be sent.
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    amount_clp: parseOptionalNumber(row.amountClp),
-    amount_usd: parseOptionalNumber(row.amountUsd),
-    units_delta: parseOptionalNumber(row.unitsDelta),
+    ...(brokerageFlowKindNeedsClp(row.flowKind)
+      ? { amount_clp: parseOptionalNumber(row.amountClp) }
+      : {}),
+    ...(brokerageFlowKindNeedsUsd(row.flowKind)
+      ? { amount_usd: parseOptionalNumber(row.amountUsd) }
+      : {}),
+    ...(brokerageFlowKindShowsUnits(row.flowKind)
+      ? { units_delta: parseOptionalNumber(row.unitsDelta) }
+      : {}),
     ...(ticker ? { ticker } : {}),
     ...(row.counterpartAccountId !== ""
       ? {
@@ -142,40 +111,3 @@ export function buildBrokerageMovementPostBody(
   };
 }
 
-export function buildStockAccountCreatePreview(
-  draft: StockAccountFormDraft
-): StockAccountCreatePreview | null {
-  const name = draft.displayName.trim();
-  const ticker = draft.tickerSymbol.trim().toUpperCase();
-  const categorySlug = categorySlugFromTicker(ticker);
-  if (!name || !ticker || !categorySlug || !draft.bucketSlug) return null;
-
-  const movements = draft.initialMovements
-    .map((row) => {
-      const occurred_on = row.occurredOn.trim();
-      if (!occurred_on) return null;
-      return {
-        occurred_on,
-        flow_kind: row.flowKind,
-        amount_clp: parseOptionalNumber(row.amountClp),
-        amount_usd: parseOptionalNumber(row.amountUsd),
-        units_delta: parseOptionalNumber(row.unitsDelta),
-        ...(row.counterpartAccountId !== ""
-          ? { counterpart_account_id: row.counterpartAccountId }
-          : {}),
-      };
-    })
-    .filter((m): m is NonNullable<typeof m> => m != null);
-
-  return {
-    account: {
-      name,
-      category_slug: categorySlug,
-      bucket_slug: draft.bucketSlug,
-      ticker,
-      price_source: draft.priceSource,
-      exclude_from_group_totals: draft.excludeFromGroupTotals,
-    },
-    initial_movements: movements,
-  };
-}

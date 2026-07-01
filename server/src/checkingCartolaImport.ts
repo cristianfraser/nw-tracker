@@ -41,6 +41,7 @@ import {
 } from "./checkingCartolaSaldoValidation.js";
 import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
+import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
 import { resolveCartolaFilePath } from "./importSyncDocumentFilePath.js";
 
@@ -324,7 +325,9 @@ export function importCheckingCartola(
 
   let movementsInserted = 0;
   let movementsSkipped = 0;
+  let movementsSupersededByTransfer = 0;
   let partialsRemoved = 0;
+  const consumedTransferLegs = new Set<number>();
   const tx = dbHandle.transaction(() => {
     cartola.movements.forEach((mv, cartolaIndex) => {
       const note = movementNote(cartola.period_month, mv.branch, mv.description, mv.document_no, {
@@ -343,10 +346,25 @@ export function importCheckingCartola(
         movementsSkipped += 1;
         return;
       }
+      // Already represented by a manual internal transfer leg (from/to touching this account)?
+      // Keep the single transfer row instead of inserting a duplicate bank line.
+      const transferLegId = findMatchingInternalTransferLegId(
+        accountId,
+        mv.occurred_on,
+        mv.amount_clp,
+        consumedTransferLegs,
+        dbHandle
+      );
+      if (transferLegId != null) {
+        consumedTransferLegs.add(transferLegId);
+        movementsSkipped += 1;
+        movementsSupersededByTransfer += 1;
+        return;
+      }
       insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
       movementsInserted += 1;
     });
-    if (cartola.movements.length > 0 && movementsInserted === 0) {
+    if (cartola.movements.length > 0 && movementsInserted === 0 && movementsSupersededByTransfer === 0) {
       const existing = countExistingCartolaMovementsForMonth(
         accountId,
         cartola.period_month,

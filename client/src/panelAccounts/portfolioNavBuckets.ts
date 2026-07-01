@@ -1,7 +1,7 @@
 import { navAccountIdSet } from "../portfolioNavDashboardCards";
 import type { NavTreeNodeDto } from "../types";
 
-/** Leaf portfolio groups that accept panel stock creates (`brokerage_acciones`, `brokerage_crypto`, …). */
+/** Leaf portfolio groups (no group children) under net worth — any is a valid home for a new account. */
 export function listLeafPortfolioGroupBuckets(
   netWorthRoot: NavTreeNodeDto | null
 ): { slug: string; label: string; portfolio_group_id: number }[] {

@@ -25,7 +25,24 @@ export function webPasteAmountClpForDb(
   merchant?: string | null,
   cardGroup?: string | null
 ): number {
-  const abs = Math.abs(Math.trunc(pasteAmount));
+  return webPasteSignedAmount(Math.trunc(pasteAmount), merchant, cardGroup);
+}
+
+/** Same sign convention as {@link webPasteAmountClpForDb} but keeps USD decimals (no truncation). */
+export function webPasteAmountUsdForDb(
+  pasteAmount: number,
+  merchant?: string | null,
+  cardGroup?: string | null
+): number {
+  return webPasteSignedAmount(pasteAmount, merchant, cardGroup);
+}
+
+function webPasteSignedAmount(
+  pasteAmount: number,
+  merchant?: string | null,
+  cardGroup?: string | null
+): number {
+  const abs = Math.abs(pasteAmount);
   if (abs === 0) return 0;
   if (isCcPaymentMerchant(merchant)) return -abs;
   if (isSantanderWebPasteGroup(cardGroup)) {

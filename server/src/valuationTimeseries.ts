@@ -28,6 +28,8 @@ import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
+import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
+import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { expandYearMonthsInclusive, monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -372,6 +374,11 @@ function attachDepositSeriesKeys(
       const kind = slug ? accountBucketKindSlug(slug) : "";
       if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
       if (kind && CATEGORY_NO_CHART_DEPOSIT_LINE.has(kind)) return { ...t };
+      // Ledger cash (USD / CLP): always draw the deposited line (= balance − interest), computed
+      // directly below rather than from deposit events, so interest shows as P/L.
+      if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {
+        return { ...t, depositDataKey: `${t.dataKey}__dep` };
+      }
       const depLen = (pocketDepMovs.get(t.account_id) ?? []).length;
       const propertyWithCapital =
         kind === "property" && Math.abs(totalDisplayDepositsClpForAccount(t.account_id)) > 0.5;
@@ -393,8 +400,12 @@ function valuationRawClpForAccount(
     return checkingMovementBalanceClpAtCached(accountId, asOf);
   }
   const slug = slugById?.get(accountId) ?? "";
-  if (isUsdCashKindSlug(slug)) {
+  const kind = accountBucketKindSlug(slug);
+  if (isUsdCashKindSlug(kind)) {
     return usdCashBalanceClpAt(accountId, asOf);
+  }
+  if (isClpCashKindSlug(kind)) {
+    return clpCashBalanceClpAt(accountId, asOf);
   }
   if (accountUsesEquityMtm(accountId)) {
     const clp = computeEquityMtmClp(accountId, asOf);
@@ -416,11 +427,17 @@ function augmentChartDatesForCheckingAccounts(
 ): string[] {
   const aug = new Set(dateStrs);
   const today = chileCalendarTodayYmd();
-  const checkingIds = allIds.filter((id) =>
-    isMovementBalanceCashCategory(slugById.get(id) ?? "")
-  );
-  const boundsById = movementBoundsByAccountIds(checkingIds);
-  for (const id of checkingIds) {
+  // Movement-balance checking + ledger cash accounts (USD / CLP) have no `valuations` rows; derive
+  // their monthly chart dates from movement bounds so they get a value + P/L series like any account.
+  const ledgerCashIds = allIds.filter((id) => {
+    const slug = slugById.get(id) ?? "";
+    const kind = accountBucketKindSlug(slug);
+    return (
+      isMovementBalanceCashCategory(slug) || isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)
+    );
+  });
+  const boundsById = movementBoundsByAccountIds(ledgerCashIds);
+  for (const id of ledgerCashIds) {
     const bounds = boundsById.get(id);
     if (!bounds?.min_d || !bounds?.max_d) continue;
     const maxD = bounds.max_d > today ? bounds.max_d : today;
@@ -823,6 +840,27 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const depUfByAccAndDate = new Map<number, Map<string, number>>();
   const depUsdByAccAndDate = new Map<number, Map<string, number>>();
   for (const id of allIds) {
+    const kind = accountBucketKindSlug(slugById.get(id) ?? "");
+    // Ledger cash (USD / CLP): deposited = balance − cumulative interest, per snapshot date, so the
+    // value/deposit gap is exactly the interest earned (P/L). Converted to the display unit like values.
+    if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {
+      const clpMap = new Map<string, number>();
+      const usdMap = new Map<string, number>();
+      const ufMap = new Map<string, number>();
+      for (const d of dateStrs) {
+        const valClp = isUsdCashKindSlug(kind)
+          ? usdCashBalanceClpAt(id, d)
+          : clpCashBalanceClpAt(id, d);
+        const depClp = valClp - cashInterestClpThroughDate(id, d);
+        clpMap.set(d, depClp);
+        if (unit === "usd") usdMap.set(d, convertTs(depClp, d, "usd"));
+        if (unit === "uf") ufMap.set(d, convertTs(depClp, d, "uf"));
+      }
+      depClpByAccAndDate.set(id, clpMap);
+      if (unit === "usd") depUsdByAccAndDate.set(id, usdMap);
+      if (unit === "uf") depUfByAccAndDate.set(id, ufMap);
+      continue;
+    }
     const pocketMovs = displayDepMovs.get(id) ?? [];
     depClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, pocketMovs));
     if (unit === "uf") {

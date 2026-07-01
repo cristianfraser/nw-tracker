@@ -252,6 +252,8 @@
       "stock_buy": "Compra acciones",
       "stock_sell": "Venta acciones",
       "dividend_usd": "Dividendo USD",
+      "dividend_payout": "Dividendo",
+      "savings_earnings": "Interés / rentabilidad",
       "withdrawal_clp": "Retiro CLP",
       "withdrawal_usd": "Retiro USD",
       "other": "Otro"
@@ -269,6 +271,11 @@
       "accountKind.stocksNyse": "Acción / ETF (NYSE)",
       "accountKind.cryptoEod": "Cripto (BTC-USD, ETH-USD)",
       "accountKind.usdCash": "Efectivo USD",
+      "accountType": "Tipo de cuenta",
+      "accountType.equity": "Acción / ETF (NYSE)",
+      "accountType.crypto": "Cripto (BTC-USD, ETH-USD)",
+      "accountType.clpCash": "Efectivo CLP",
+      "accountType.usdCash": "Efectivo USD",
       "stockSection": "Acción / ETF (brokerage)",
       "displayName": "Nombre de la cuenta",
       "displayNamePlaceholder": "p. ej. QQQ",
@@ -427,8 +434,15 @@
     },
     "usdCashMovements": {
       "title": "Añadir movimientos",
-      "hint": "Elige el tipo en cada fila: depósito CLP, compra USD / venta CLP (ambos montos), retiros u otro.",
+      "hint": "Elige el tipo en cada fila: depósito CLP, compra USD / venta CLP (ambos montos), dividendo (desde una acción), interés / rentabilidad (en USD), retiros u otro.",
       "emptyDraft": "Sin borradores. Añade depósitos, compras USD o traspasos a otra cuenta.",
+      "saveBtn": "Registrar movimientos",
+      "saved": "{{count}} movimiento(s) registrado(s)."
+    },
+    "clpCashMovements": {
+      "title": "Añadir movimientos",
+      "hint": "Elige el tipo en cada fila: depósito CLP, interés / rentabilidad (en CLP), retiro u otro. El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad).",
+      "emptyDraft": "Sin borradores. Añade depósitos, interés o retiros.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."
     },
@@ -439,7 +453,9 @@
       "asOf": "Al"
     },
     "movements": {
-      "counterpartAccount": "Cuenta contraparte"
+      "counterpartAccount": "Cuenta contraparte",
+      "dividendOriginAccount": "Acción que paga el dividendo",
+      "compraSourceAccount": "Cuenta CLP de origen (opcional)"
     },
     "flowDirection": {
       "label": "Ingreso / Retiro",
@@ -888,11 +904,13 @@
     "sectionLinked": "Vinculados a gasto",
     "sectionLinkedSynthetic": "Vinculados (mirror sintético — cartola faltante)",
     "sectionResolvedFamilyFunded": "Aportes de familia (sin flujo propio)",
+    "sectionResolvedInternalTransfer": "Traspaso interno entre cuentas (sin pasar por checking)",
     "sectionNoCheckingSource": "Sin cartola (mes sin datos)",
     "sectionNeedsAttention": "Sin vincular (cartola disponible)",
     "emptyLinked": "No hay depósitos vinculados.",
     "emptyLinkedSynthetic": "No hay mirrors sintéticos generados.",
     "emptyResolvedFamilyFunded": "No hay depósitos marcados como aporte familiar.",
+    "emptyResolvedInternalTransfer": "No hay traspasos internos entre cuentas de patrimonio.",
     "emptyNoCheckingSource": "No hay depósitos en meses sin cartola.",
     "emptyNeedsAttention": "Todos los depósitos están vinculados o sin cartola.",
     "byMonth": "Por mes",
@@ -900,6 +918,7 @@
     "colLinked": "Vinculado",
     "colLinkedSynthetic": "Vinculado (sintético)",
     "colResolvedFamilyFunded": "Aporte familiar",
+    "colResolvedInternalTransfer": "Traspaso interno",
     "colNoChecking": "Sin cartola",
     "colUnlinked": "Sin vincular",
     "colTotal": "Total",
