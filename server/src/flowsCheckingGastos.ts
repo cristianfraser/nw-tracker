@@ -1208,7 +1208,9 @@ export function loadNetWorthCapitalReturnLedgerOutflows(): DepositMatchCandidate
 
 export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] {
   const accounts = listDepositFlowAccounts().filter(
-    (a) => !isMovementBalanceCashCategory(a.category_slug)
+    (a) =>
+      !isMovementBalanceCashCategory(a.category_slug) &&
+      !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug)
   );
   const ids = accounts.map((a) => a.account_id);
   const metaById = new Map(
@@ -1684,8 +1686,18 @@ export function checkingGastosAccountCategorySlug(accountId: number): string {
   return row ? accountBucketKindSlug(row.bucket_slug) : "";
 }
 
+/**
+ * Account kinds whose flows never enter the matcher candidate pools. DAP round-trips are already
+ * netted internal on the checking side (Cargo Mercado Capitales out / "DAP … ABONADO" back), so a
+ * DAP abono must not be claimable by an unrelated same-amount checking wire, and a DAP retiro must
+ * not be consumable as a capital return.
+ */
+const MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS = new Set(["dap"]);
+
 export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
-  const accounts = listDepositFlowAccounts();
+  const accounts = listDepositFlowAccounts().filter(
+    (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug)
+  );
   const ids = accounts.map((a) => a.account_id);
   const metaById = new Map(
     accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
