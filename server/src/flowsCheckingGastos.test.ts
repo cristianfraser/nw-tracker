@@ -690,6 +690,63 @@ describe("flowsCheckingGastos", () => {
     expect(split.investmentDeposit).toBeNull();
   });
 
+  it("pairs two same-amount reserva deposits 1:1 with two same-amount outflows (same-date first)", () => {
+    // Reserva2 (fondo_reserva, cash bucket): two 3M deposits on different days plus two 3M
+    // checking wires. Sharing one usedDepositKeys set across the loop must give a 1:1 pairing —
+    // not both outflows claiming the earlier deposit (which orphaned mov 10721).
+    const reservaId = 44;
+    const checkingId = 10;
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2024-11-19",
+        amount_clp: 3_000_000,
+        account_id: reservaId,
+        category_slug: "fondo_reserva",
+        group_slug: "cash_eqs",
+      },
+      {
+        occurred_on: "2024-11-22",
+        amount_clp: 3_000_000,
+        account_id: reservaId,
+        category_slug: "fondo_reserva",
+        group_slug: "cash_eqs",
+      },
+    ];
+    const opts = {
+      splittablePool: createSplittableInternalTransferPool(deposits),
+      usedDepositKeys: new Set<string>(),
+      withdrawalAccountId: checkingId,
+      withdrawalCategorySlug: "cuenta_corriente",
+    };
+
+    // Process the later outflow first: same-date preference should still pick the 11-22 deposit.
+    const splitNov22 = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2024-11-22",
+        amount_clp: -3_000_000,
+        description: "Transf. Internet a otro Bancos",
+      },
+      deposits,
+      opts
+    );
+    expect(splitNov22.internalClp).toBe(3_000_000);
+    expect(splitNov22.internalMatchedDeposits).toHaveLength(1);
+    expect(splitNov22.internalMatchedDeposits[0].deposit.occurred_on).toBe("2024-11-22");
+
+    const splitNov19 = splitCheckingWithdrawalAgainstDeposits(
+      {
+        occurred_on: "2024-11-19",
+        amount_clp: -3_000_000,
+        description: "Transf. Internet a otro Bancos",
+      },
+      deposits,
+      opts
+    );
+    expect(splitNov19.internalClp).toBe(3_000_000);
+    expect(splitNov19.internalMatchedDeposits).toHaveLength(1);
+    expect(splitNov19.internalMatchedDeposits[0].deposit.occurred_on).toBe("2024-11-19");
+  });
+
   it("shows both Jul 2019 cuenta vista $700k outflows when not exactly paired (Jul 2019)", () => {
     const vistaId = 99;
     const corrienteId = 10;

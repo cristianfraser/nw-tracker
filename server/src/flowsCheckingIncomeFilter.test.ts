@@ -11,6 +11,7 @@ import {
   checkingCreditMayAutoMatchNetWorthCapitalReturn,
   checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn,
   checkingWithdrawalFundsInvestmentCapital,
+  isExcludedCheckingInflow,
   ledgerCapitalReturnMatchesTiming,
 } from "./flowsCheckingGastos.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
@@ -80,6 +81,29 @@ describe("checkingCreditMatchesMonthBucketLedgerCapitalReturn", () => {
       })
     ).toBe(true);
   });
+
+  it("also recognises Vales Vista / Cheque cash deposits as month-bucket cash returns", () => {
+    expect(checkingCreditLooksLikeMonthBucketCashReturn("Depósito con Vales Vista")).toBe(true);
+    expect(checkingCreditLooksLikeMonthBucketCashReturn("Depósito con Vale Vista")).toBe(true);
+    expect(checkingCreditLooksLikeMonthBucketCashReturn("Depósito con Cheque")).toBe(true);
+    // A plain transfer must not be mistaken for a cash-deposit return.
+    expect(checkingCreditLooksLikeMonthBucketCashReturn("0768106274 Transf.")).toBe(false);
+
+    const credit = {
+      occurred_on: "2024-03-13",
+      amount_clp: 10_100_000,
+      note:
+        "import:cartola|2024-03|CENTRO EXP|Depósito con Vales Vista|on:2024-03-13|amt:10100000|idx:13",
+    };
+    const ledgerRetiro = {
+      occurred_on: "2024-03-31",
+      amount_clp: 10_100_000,
+      account_id: 80,
+      category_slug: "cuenta_ahorro_vivienda",
+      group_slug: "cash_eqs",
+    };
+    expect(checkingCreditMatchesMonthBucketLedgerCapitalReturn(credit, [ledgerRetiro])).toBe(true);
+  });
 });
 
 describe("checkingCreditLooksLikeFintualIncomingWire", () => {
@@ -128,6 +152,33 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
         consumedLedgerOutflowKeys: new Set(),
       })
     ).toBe(false);
+  });
+
+  // A "Fintual AGF"-named incoming wire is BOTH dropped by isExcludedCheckingInflow AND a real
+  // capital return. The income classifier must run the ledger match before the exclusion (see
+  // classifyCheckingCreditForIncome) or these redemptions never link. Guard both halves so a future
+  // exclusion/gate tweak can't silently re-orphan them.
+  it("recognises an excluded Fintual-AGF wire as a capital return (ordering invariant)", () => {
+    const description = "0768106274 Transf. Fintual AGF";
+    expect(isExcludedCheckingInflow(description)).toBe(true);
+
+    const fintualAgfCredit = {
+      occurred_on: "2099-05-07",
+      amount_clp: 5_500_000,
+      note: `import:cartola|2099-05|Agustinas|${description}|on:2099-05-07|amt:5500000|idx:4`,
+    };
+    const reservaRetiro = {
+      occurred_on: "2099-05-06",
+      amount_clp: 5_500_000,
+      account_id: 44,
+      category_slug: "fondo_reserva",
+      group_slug: "cash_eqs",
+    };
+    expect(
+      checkingCreditMatchesLedgerNetWorthCapitalReturn(fintualAgfCredit, [reservaRetiro], {
+        consumedLedgerOutflowKeys: new Set(),
+      })
+    ).toBe(true);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   cartolaDescriptionFromNote,
   checkingCreditMatchesAfpRetiroReturn,
   checkingCreditMatchesInternalWithdrawal,
+  checkingCreditMatchesLedgerNetWorthCapitalReturn,
   checkingCreditMatchesNetWorthCapitalReturn,
   checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn,
   createSplittableInternalTransferPool,
@@ -19,6 +20,7 @@ import {
   loadDepositMatchCandidates,
   type FintualIncomingWireBatch,
 } from "./flowsCheckingGastos.js";
+import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
   mergedIncomeKindByMovementIdRecord,
@@ -143,6 +145,7 @@ type IncomeFilterContext = {
   splittablePool: Map<string, number>;
   afpOutflows: ReturnType<typeof loadAfpRetiroOutflowCandidates>;
   ledgerCapitalOutflows: ReturnType<typeof loadNetWorthCapitalReturnLedgerOutflows>;
+  budaBufferAccountId: number | null;
   fintualWireBatchByMovementId: Map<number, FintualIncomingWireBatch>;
   matchedFintualWireBatchKeys: Set<string>;
   consumedCapitalReturnWithdrawalKeys: Set<string>;
@@ -158,7 +161,36 @@ function classifyCheckingCreditForIncome(
   }
 
   const description = cartolaDescriptionFromNote(credit.note);
-  if (isExcludedCheckingInflow(description)) return "excluded_description";
+
+  // Buda buffer retiros arrive under Buda's commercial name ("BUDA COM SPA" / "SURBTC SPA"), which
+  // isExcludedCheckingInflow drops as a generic transfer. Match them first so the retiro outflow key
+  // is consumed (excluding it from income *and* marking the redemption linked) — otherwise the
+  // exclusion below swallows the credit and the retiro stays unlinked.
+  if (
+    ctx.budaBufferAccountId != null &&
+    checkingCreditMatchesBudaRetiro(credit, ctx.ledgerCapitalOutflows, {
+      budaAccountId: ctx.budaBufferAccountId,
+      consumedLedgerOutflowKeys: ctx.consumedCapitalReturnLedgerOutflowKeys,
+    })
+  ) {
+    return "net_worth_capital_return";
+  }
+
+  if (isExcludedCheckingInflow(description)) {
+    // A Fintual-named incoming wire ("… Transf. Fintual AGF") is dropped here as a generic transfer,
+    // yet it returns capital when it matches a same-amount reserva/brokerage retiro. Recognize and
+    // consume that retiro before dropping the credit so the redemption links. Only excluded credits
+    // take this path, so the bare-"Transf." wire-batch flow below is untouched. Income is unaffected
+    // either way (capital returns are filtered from income like the exclusion is).
+    if (
+      checkingCreditMatchesLedgerNetWorthCapitalReturn(credit, ctx.ledgerCapitalOutflows, {
+        consumedLedgerOutflowKeys: ctx.consumedCapitalReturnLedgerOutflowKeys,
+      })
+    ) {
+      return "net_worth_capital_return";
+    }
+    return "excluded_description";
+  }
 
   const accountWithdrawals =
     ctx.accountWithdrawalsByAccountId.get(credit.account_id) ??
@@ -251,6 +283,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   const allWithdrawals = loadAllCheckingCartolaWithdrawals();
   const afpOutflows = loadAfpRetiroOutflowCandidates();
   const ledgerCapitalOutflows = loadNetWorthCapitalReturnLedgerOutflows();
+  const budaBufferAccountId = loadBudaBufferAccountId();
 
   const excludedMovementIds = loadExcludedCheckingIncomeMovementIds();
   const forceIncludedMovementIds = loadForceIncludedCheckingIncomeMovementIds();
@@ -277,6 +310,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     splittablePool,
     afpOutflows,
     ledgerCapitalOutflows,
+    budaBufferAccountId,
     fintualWireBatchByMovementId,
     matchedFintualWireBatchKeys: new Set(),
     consumedCapitalReturnWithdrawalKeys: new Set(),
@@ -312,6 +346,20 @@ function computeCheckingIncome(): CheckingIncomeComputation {
       }
 
       lines.push(toCheckingIncomeLine(credit, accountLabels));
+    }
+  }
+
+  // Income-excluded credits are still real money returning to checking — e.g. a cuenta_ahorro
+  // withdrawal booked as "Depósito en Efectivo" / "con Vales Vista", which the user excludes from
+  // income. They must not count as income, but they DO consume the matching net-worth redemption so
+  // those outflows link (per the rule: cuenta de ahorro outflows pair with checking inflows). Run them
+  // through the same matcher purely for its key-consumption side effect, after the income pass so an
+  // excluded credit never pre-empts a redemption that a real income inflow should claim.
+  for (const accountId of accountIds) {
+    for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
+      if (!excludedMovementIds.has(credit.movement_id)) continue;
+      if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
+      classifyCheckingCreditForIncome(credit, filterCtx);
     }
   }
 
