@@ -305,7 +305,10 @@ const AFP_CHECKING_INFLOW_DESC_RE = /\bABONO\s+10\s*%\s*AFP\b|\bANTI\s+PREV\s+AF
 export const PAYROLL_REMUNERACION_INFLOW_RE = /\bREMUNERACION(?:ES)?\b/i;
 
 /** ATM / branch cash deposit on cartola (often cuenta ahorro month-end retiro proceeds). */
-const CHECKING_CASH_DEPOSIT_INFLOW_RE = /DEP[OÓ]SITO\s+EN\s+EFECTIVO/i;
+// Cash-style deposits into checking that book a cuenta_ahorro (or similar month-bucket) withdrawal
+// returning to the account: "Depósito en Efectivo", "Depósito con Vales Vista", "… con Cheque".
+const CHECKING_CASH_DEPOSIT_INFLOW_RE =
+  /DEP[OÓ]SITO\s+(?:EN\s+EFECTIVO|CON\s+(?:VALES?\s+VISTA|CHEQUES?))/i;
 
 export function isPayrollRemuneracionCheckingInflow(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
@@ -1388,17 +1391,29 @@ function findExactInternalCashTransferDeposit(
   withdrawal: { occurred_on: string; amount_clp: number },
   deposits: readonly DepositMatchCandidate[],
   maxDayGap: number,
-  withdrawalAccountId: number
+  withdrawalAccountId: number,
+  usedDepositKeys?: Set<string>
 ): DepositMatchCandidate | null {
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) return null;
+  // Skip deposits already consumed by another outflow and prefer the closest date, so two
+  // same-amount outflows pair 1:1 with two same-amount deposits (same-date first) instead of
+  // both greedily claiming the earliest deposit.
+  let best: DepositMatchCandidate | null = null;
+  let bestGap = Number.POSITIVE_INFINITY;
   for (const d of deposits) {
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
     if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
-    if (depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) return d;
+    if (usedDepositKeys?.has(splittableDepositPoolKey(d))) continue;
+    if (!depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) continue;
+    const gap = daysBetweenYmd(d.occurred_on, withdrawal.occurred_on);
+    if (gap < bestGap) {
+      best = d;
+      bestGap = gap;
+    }
   }
-  return null;
+  return best;
 }
 
 function resolveInternalCashTransferMatch(
@@ -1406,7 +1421,8 @@ function resolveInternalCashTransferMatch(
   deposits: readonly DepositMatchCandidate[],
   splittablePool: Map<string, number>,
   maxDayGap: number,
-  withdrawalAccountId: number
+  withdrawalAccountId: number,
+  usedDepositKeys?: Set<string>
 ): { matched: boolean; allocations: DepositMatchAllocation[] } {
   if (checkingOutflowIsAtmWithdrawal(withdrawal.description ?? "")) {
     return { matched: false, allocations: [] };
@@ -1417,9 +1433,11 @@ function resolveInternalCashTransferMatch(
       withdrawal,
       deposits,
       maxDayGap,
-      withdrawalAccountId
+      withdrawalAccountId,
+      usedDepositKeys
     );
     if (exact != null) {
+      usedDepositKeys?.add(splittableDepositPoolKey(exact));
       return { matched: true, allocations: [{ deposit: exact, amount_clp: want }] };
     }
   }
@@ -1534,7 +1552,8 @@ export function splitCheckingWithdrawalAgainstDeposits(
         withdrawal,
         deposits,
         maxDayGap,
-        opts.withdrawalAccountId
+        opts.withdrawalAccountId,
+        opts.usedDepositKeys
       )
     : null;
   if (exactDeposit != null) {
@@ -1995,7 +2014,8 @@ export function buildCheckingGastosLines(opts?: {
         deposits,
         splittablePool,
         3,
-        accountId
+        accountId,
+        usedDepositKeys
       );
       if (internalMatch.matched) {
         const fullAbs = Math.round(Math.abs(row.amount_clp));
