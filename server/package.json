@@ -34,6 +34,7 @@
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",
     "import:depto-expenses": "tsx scripts/import-depto-apartment-expenses.ts",
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
+    "reconcile:cartola-partials": "tsx scripts/reconcile-cartola-partials.ts",
     "propose:synthetic-deposit-mirrors": "tsx scripts/propose-synthetic-deposit-mirrors.ts",
     "propose:cuenta-ahorro-splits": "tsx scripts/propose-cuenta-ahorro-splits.ts",
     "import:buda": "tsx scripts/import-buda-history.ts",
