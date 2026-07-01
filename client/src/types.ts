@@ -1242,6 +1242,7 @@ export type DepositReconciliationStatus =
   | "linked"
   | "linked_synthetic"
   | "resolved_family_funded"
+  | "resolved_internal_transfer"
   | "unlinked_no_checking_source"
   | "unlinked_checking_present";
 
@@ -1267,6 +1268,7 @@ export interface DepositReconciliationByMonth {
   linked_clp: number;
   linked_synthetic_clp: number;
   resolved_family_funded_clp: number;
+  resolved_internal_transfer_clp: number;
   unlinked_no_checking_source_clp: number;
   unlinked_checking_present_clp: number;
   total_clp: number;
@@ -1274,6 +1276,7 @@ export interface DepositReconciliationByMonth {
 
 export type DepositRedemptionStatus =
   | "linked"
+  | "resolved_internal_transfer"
   | "unlinked_no_checking_source"
   | "unlinked_checking_present";
 

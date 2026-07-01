@@ -14,6 +14,7 @@ import type {
 const STATUS_ORDER: DepositReconciliationStatus[] = [
   "unlinked_checking_present",
   "unlinked_no_checking_source",
+  "resolved_internal_transfer",
   "resolved_family_funded",
   "linked_synthetic",
   "linked",
@@ -27,6 +28,8 @@ function statusSectionKey(status: DepositReconciliationStatus): string {
       return "depositsReconciliation.sectionLinkedSynthetic";
     case "resolved_family_funded":
       return "depositsReconciliation.sectionResolvedFamilyFunded";
+    case "resolved_internal_transfer":
+      return "depositsReconciliation.sectionResolvedInternalTransfer";
     case "unlinked_no_checking_source":
       return "depositsReconciliation.sectionNoCheckingSource";
     case "unlinked_checking_present":
@@ -42,6 +45,8 @@ function statusEmptyKey(status: DepositReconciliationStatus): string {
       return "depositsReconciliation.emptyLinkedSynthetic";
     case "resolved_family_funded":
       return "depositsReconciliation.emptyResolvedFamilyFunded";
+    case "resolved_internal_transfer":
+      return "depositsReconciliation.emptyResolvedInternalTransfer";
     case "unlinked_no_checking_source":
       return "depositsReconciliation.emptyNoCheckingSource";
     case "unlinked_checking_present":
@@ -117,6 +122,7 @@ function ReconciliationSection({
 const REDEMPTION_STATUS_ORDER: DepositRedemptionStatus[] = [
   "unlinked_checking_present",
   "unlinked_no_checking_source",
+  "resolved_internal_transfer",
   "linked",
 ];
 
@@ -124,6 +130,8 @@ function redemptionSectionKey(status: DepositRedemptionStatus): string {
   switch (status) {
     case "linked":
       return "depositsReconciliation.redemptionSectionLinked";
+    case "resolved_internal_transfer":
+      return "depositsReconciliation.sectionResolvedInternalTransfer";
     case "unlinked_no_checking_source":
       return "depositsReconciliation.redemptionSectionNoCheckingSource";
     case "unlinked_checking_present":
@@ -135,6 +143,8 @@ function redemptionEmptyKey(status: DepositRedemptionStatus): string {
   switch (status) {
     case "linked":
       return "depositsReconciliation.redemptionEmptyLinked";
+    case "resolved_internal_transfer":
+      return "depositsReconciliation.emptyResolvedInternalTransfer";
     case "unlinked_no_checking_source":
       return "depositsReconciliation.redemptionEmptyNoCheckingSource";
     case "unlinked_checking_present":
@@ -272,6 +282,7 @@ export function DepositsReconciliationPage() {
                 <th>{t("depositsReconciliation.colLinked")}</th>
                 <th>{t("depositsReconciliation.colLinkedSynthetic")}</th>
                 <th>{t("depositsReconciliation.colResolvedFamilyFunded")}</th>
+                <th>{t("depositsReconciliation.colResolvedInternalTransfer")}</th>
                 <th>{t("depositsReconciliation.colNoChecking")}</th>
                 <th>{t("depositsReconciliation.colUnlinked")}</th>
                 <th>{t("depositsReconciliation.colTotal")}</th>
@@ -285,6 +296,7 @@ export function DepositsReconciliationPage() {
               <td className="mono">{formatFlowMoney(pt.linked_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.linked_synthetic_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.resolved_family_funded_clp, displayUnit)}</td>
+              <td className="mono">{formatFlowMoney(pt.resolved_internal_transfer_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.unlinked_no_checking_source_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.unlinked_checking_present_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.total_clp, displayUnit)}</td>
