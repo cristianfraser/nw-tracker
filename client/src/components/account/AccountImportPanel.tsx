@@ -41,13 +41,35 @@ type Props = {
 };
 
 function formatResult(data: Record<string, unknown>): string {
+  // Web-paste responses use snake_case; the statement-merge response uses camelCase. Read either
+  // so every skip bucket is surfaced — otherwise "insertados: 0" looks unexplained when lines were
+  // actually skipped as installment-overlap or fuzzy-duplicate (both previously hidden here).
+  const num = (...keys: string[]): number | undefined => {
+    for (const k of keys) {
+      if (typeof data[k] === "number") return data[k] as number;
+    }
+    return undefined;
+  };
+
   const parts: string[] = [];
-  if (typeof data.inserted === "number") parts.push(`insertados: ${data.inserted}`);
-  if (typeof data.linesInserted === "number") parts.push(`líneas: ${data.linesInserted}`);
-  if (typeof data.skipped_duplicate === "number")
-    parts.push(`omitidos (duplicado): ${data.skipped_duplicate}`);
-  if (typeof data.linesSkippedDuplicate === "number")
-    parts.push(`omitidos (duplicado): ${data.linesSkippedDuplicate}`);
+  const parsed = num("lines_parsed", "lineCount");
+  if (parsed != null) parts.push(`parseados: ${parsed}`);
+
+  const inserted = num("inserted", "linesInserted");
+  if (inserted != null) parts.push(`insertados: ${inserted}`);
+
+  const dup = num("skipped_duplicate", "linesSkippedDuplicate");
+  if (dup != null) parts.push(`omitidos (duplicado): ${dup}`);
+
+  const fuzzy = num("skipped_fuzzy_duplicate", "linesSkippedFuzzyDuplicate");
+  if (fuzzy) parts.push(`omitidos (duplicado aprox.): ${fuzzy}`);
+
+  const overlap = num("skipped_installment_overlap", "linesSkippedInstallmentOverlap");
+  if (overlap) parts.push(`omitidos (ya en cuotas): ${overlap}`);
+
+  const removed = num("overlap_removed");
+  if (removed) parts.push(`removidos (cuotas): ${removed}`);
+
   if (Array.isArray(data.parse_errors) && data.parse_errors.length > 0) {
     parts.push(`avisos: ${(data.parse_errors as string[]).slice(0, 3).join("; ")}`);
   }
