@@ -80,7 +80,7 @@ function nwBucketTotalsFromNavStrip(
   DashboardResponse["totals"],
   "real_estate_clp" | "retirement_clp" | "brokerage_clp" | "cash_eqs_clp"
 > {
-  const out: Record<DashboardGroupSlug, number> = {
+  const out: Record<"real_estate" | "retirement" | "brokerage" | "cash_eqs", number> = {
     real_estate: 0,
     retirement: 0,
     brokerage: 0,

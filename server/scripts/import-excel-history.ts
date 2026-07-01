@@ -118,6 +118,7 @@ import { db } from "../src/db.js";
 import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
+import { backfillApvAporteEstatal } from "../src/apvAporteEstatalBackfill.js";
 import { resolveBundledUfSiiDailyCsvPath } from "../src/ufSiiDailyPath.js";
 import {
   enrichDeptoLedgerFromBankFile,
@@ -1121,7 +1122,9 @@ function importCashCsvMovements(
   });
 }
 
-/** “Cuenta ahorro” cols 3–5: Depósitos, Abonos, Intereses → movements + cumulative month-end valuations. */
+/** “Cuenta ahorro” cols 3–5: Depósitos, Abonos, Intereses → movements + cumulative month-end valuations.
+ *  Abonos/Intereses always get flow_kind='savings_earnings' (BancoEstado annual yield, not personal capital).
+ *  Depósitos have no flow_kind (counted as capital/aportes). */
 function importCashCsvAhorroVivienda(
   cfraserDir: string,
   maxMonth: MonthKey,
@@ -1129,26 +1132,28 @@ function importCashCsvAhorroVivienda(
   insMov: MovStmt,
   upsertVal: ReturnType<typeof db.prepare>
 ) {
+  const insMovWithFlowKind = db.prepare(
+    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta) VALUES (?,?,?,?,?,?)`
+  );
   let movN = 0;
   let cum = 0;
   walkCashCsvMonthRows(cfraserDir, maxMonth, (row, _mk, day) => {
     const dep = numCsv(row[3]);
     const abo = numCsv(row[4]);
     const int = numCsv(row[5]);
-    const tryEmit = (amt: number | null, tag: string) => {
+    const tryEmit = (amt: number | null, tag: string, flowKind: string | null = null) => {
       if (amt == null || !Number.isFinite(amt) || amt === 0) return;
-      emitSignedMonthlyMovement(
-        insMov,
-        ahorroAccountId,
-        amt,
-        day,
-        `import:excel|csv|cash|ahorro-vivienda|${tag}`
-      );
+      const note = `import:excel|csv|cash|ahorro-vivienda|${tag}`;
+      if (flowKind != null) {
+        insMovWithFlowKind.run(ahorroAccountId, amt, day, note, flowKind, null);
+      } else {
+        emitSignedMonthlyMovement(insMov, ahorroAccountId, amt, day, note);
+      }
       movN += 1;
     };
     tryEmit(dep, "Depósitos");
-    tryEmit(abo, "Abonos");
-    tryEmit(int, "Intereses");
+    tryEmit(abo, "Abonos", "savings_earnings");
+    tryEmit(int, "Intereses", "savings_earnings");
     cum += (dep ?? 0) + (abo ?? 0) + (int ?? 0);
     if (Number.isFinite(cum)) {
       upsertVal.run({ account_id: ahorroAccountId, as_of_date: day, value_clp: cum });
@@ -2162,6 +2167,11 @@ async function main() {
       `import:excel: Tarjeta de crédito (account_id=${ccAcc.id}) has no PDF installment ledger in DB, but ${ccCsv} exists. ` +
       `Run: npm run import:cc-parsed -w nw-tracker-server`
     );
+  }
+
+  const aporteEstatalN = backfillApvAporteEstatal(cfraserDir);
+  if (aporteEstatalN > 0) {
+    console.log(`import:excel: tagged ${aporteEstatalN} APV-A aporte estatal deposit(s) from net worth-retiro.csv`);
   }
 
   seedNavTree();

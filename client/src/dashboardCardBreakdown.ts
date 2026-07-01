@@ -156,22 +156,6 @@ function cashAccountPath(row: DashboardAccountRow): string {
   return accountDetailPath(row.account_id);
 }
 
-function accountHasFinitePriorClose(
-  row: DashboardAccountRow,
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd"
-): boolean {
-  const close =
-    period === "year"
-      ? unit === "usd"
-        ? row.prior_year_close_usd
-        : row.prior_year_close_clp
-      : unit === "usd"
-        ? row.prior_month_close_usd
-        : row.prior_month_close_clp;
-  return close != null && Number.isFinite(close);
-}
-
 export function cardGroupMetricsFromAccounts(
   rows: DashboardAccountRow[],
   period: CardGroupMetricsPeriod

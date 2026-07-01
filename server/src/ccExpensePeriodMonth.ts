@@ -4,6 +4,13 @@ export type CcInstallmentGastosMode = "split" | "total";
 
 export type CcExpenseLineRole = "purchase" | "installment_cuota" | "installment_purchase_total";
 
+/**
+ * Per-line override of which installment mode(s) a line counts in. Default `both`.
+ * `total_only` / `split_only` place a line in one mode only (facturado-financing projection);
+ * `excluded` drops it from both. Keep in sync with client/src/ccExpensePeriodMonth.ts.
+ */
+export type CcExpenseGastosScope = "both" | "total_only" | "split_only" | "excluded";
+
 export type GastosPeriodLine = {
   source: "cc" | "checking" | "manual";
   expense_month: string;
@@ -12,6 +19,7 @@ export type GastosPeriodLine = {
   purchase_month: string;
   line_role: CcExpenseLineRole;
   installment_flag?: number;
+  gastos_scope?: CcExpenseGastosScope;
 };
 
 /** Gastos chart / table / modal calendar month for this line. */
@@ -40,6 +48,10 @@ export function gastosSumMonthForLine(
   line: GastosPeriodLine,
   mode: CcInstallmentGastosMode = "split"
 ): string {
+  const scope = line.gastos_scope ?? "both";
+  if (scope === "excluded") return "";
+  if (scope === "total_only" && mode !== "total") return "";
+  if (scope === "split_only" && mode !== "split") return "";
   if (line.source === "checking" || line.line_role === "purchase") {
     return gastosPeriodMonthForLine(line);
   }
@@ -91,6 +103,10 @@ export function lineCountsTowardGastosSum(
   countsTowardCategory: boolean
 ): boolean {
   if (!countsTowardCategory) return false;
+  const scope = line.gastos_scope ?? "both";
+  if (scope === "excluded") return false;
+  if (scope === "total_only") return mode === "total";
+  if (scope === "split_only") return mode === "split";
   if (line.line_role === "installment_purchase_total") return mode === "total";
   if (line.line_role === "installment_cuota") return mode === "split";
   return true;

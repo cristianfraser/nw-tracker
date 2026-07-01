@@ -10,10 +10,15 @@ import { formatClp, formatInstrumentUnits } from "../../format";
 import { cn } from "../../cn";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
+import { AccountUnitsFlowForm } from "../../components/account/AccountUnitsFlowForm";
 import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
-import { supportsBrokerageMovements, supportsUsdCashMovements } from "../../accountMovementCreate";
+import {
+  supportsBrokerageMovements,
+  supportsUsdCashMovements,
+  supportsUnitsFlowMovements,
+} from "../../accountMovementCreate";
 import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
@@ -58,6 +63,10 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showBrokerageMovementsForm =
     supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount;
   const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
+  const showUnitsFlowForm = supportsUnitsFlowMovements(summary.movement_create);
+  const unitsFlowUnitLabel = showUnitsFlowForm
+    ? summary.movement_create?.unit_label ?? "unidades"
+    : null;
   const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
@@ -70,7 +79,11 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showMortgagePaymentForm =
     isMortgageAccount && summary.mortgage_payment_create != null;
   const showManualEntryForm =
-    showBrokerageMovementsForm || showUsdCashMovementsForm || showBookLedgerEdit || showMortgagePaymentForm;
+    showBrokerageMovementsForm ||
+    showUsdCashMovementsForm ||
+    showBookLedgerEdit ||
+    showUnitsFlowForm ||
+    showMortgagePaymentForm;
   const showPositionBlock =
     !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
   const showEquityReturnColumns = summary.position?.cost_basis_clp != null;
@@ -254,7 +267,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                 )}
               </td>
               <td className="muted">
-                {data.accountDashRow?.as_of_date ?? summary.latest_valuation_date ?? "—"}
+                {summary.latest_valuation_date ?? "—"}
               </td>
             </tr>
           </Table>
@@ -470,6 +483,13 @@ export function StandardAccountDetailPage({ data }: Props) {
             <AccountBrokerageMovementsForm
               accountId={summary.account_id}
               ticker={summary.position?.ticker ?? null}
+              displayUnit={displayUnit}
+              extraCcOffsetsKey={extraCcOffsetsKey}
+            />
+          ) : showUnitsFlowForm && unitsFlowUnitLabel ? (
+            <AccountUnitsFlowForm
+              accountId={summary.account_id}
+              unitLabel={unitsFlowUnitLabel}
               displayUnit={displayUnit}
               extraCcOffsetsKey={extraCcOffsetsKey}
             />

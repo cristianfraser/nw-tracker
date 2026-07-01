@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   cupoEnCuotasClpForCalendarMonth,
@@ -7,12 +7,20 @@ import {
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import {
-  ccLedgerStatementClosingPointsClp,
   latestCreditCardBillingBalanceTotalClp,
   upsertCreditCardValuationsFromLedger,
 } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { monthKeyFromYmd } from "./calendarMonth.js";
+import {
+  ensureVitestCreditCardFixtures,
+  getVitestSantanderCcMasterAccountId,
+} from "./test/vitestDbSeed.js";
+
+/** Same UTC-based current calendar month the ledger uses (avoids Chile/UTC boundary drift). */
+function utcCurrentYm(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 
 describe("filterLedgerPurchasesForSchedule", () => {
   it("excludes N/CUOTAS PRECIO when a matching indexed purchase exists", () => {
@@ -66,37 +74,76 @@ describe("filterLedgerPurchasesForSchedule", () => {
   });
 });
 
-describe("card 4242 ledger valuations", () => {
-  it("uses live cupo for current calendar month (matches historial)", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+describe("installment ledger cupo (synthetic)", () => {
+  // Isolated vitest CC master, seeded with a synthetic installment purchase — no real-DB coupling.
+  let accountId: number;
 
-    const todayYm = monthKeyFromYmd(chileCalendarTodayYmd());
-    if (!todayYm) return;
+  function seedPurchase(): void {
+    const nowYm = utcCurrentYm();
+    db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
+         purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id, source
+       ) VALUES (?, 'A', 'cupo-synth', NULL, NULL, NULL, ?, ?, ?, 'VITEST CUPO', 'VITEST CUPO', NULL, 'pdf')`
+    ).run(accountId, `${nowYm}-05`, 1_200_000, 3);
+  }
 
-    const live = liveCreditCardOutstandingClp(master.id);
-    const plan = installmentRemainingClpByCalendarMonth(master.id).get(todayYm);
-    const cupo = cupoEnCuotasClpForCalendarMonth(master.id, todayYm);
+  function cleanup(): void {
+    if (!accountId) return;
+    db.prepare(
+      `DELETE FROM cc_installment_payments WHERE purchase_id IN
+         (SELECT id FROM cc_installment_purchases WHERE account_id = ? AND canonical_row_id = 'cupo-synth')`
+    ).run(accountId);
+    db.prepare(
+      `DELETE FROM cc_installment_purchases WHERE account_id = ? AND canonical_row_id = 'cupo-synth'`
+    ).run(accountId);
+    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+  }
+
+  afterEach(cleanup);
+
+  it("current month cupo equals live outstanding; other months use plan saldo", () => {
+    ensureVitestCreditCardFixtures();
+    const id = getVitestSantanderCcMasterAccountId();
+    if (id == null) return;
+    accountId = id;
+    cleanup();
+    seedPurchase();
+
+    const nowYm = utcCurrentYm();
+    const live = liveCreditCardOutstandingClp(accountId);
     expect(live).not.toBeNull();
-    expect(cupo).toBe(live);
-    if (plan != null && live != null && live > plan) {
-      expect(cupo).toBeGreaterThan(plan);
+    expect(live!).toBeGreaterThan(0);
+
+    // Current month → live outstanding; every other scheduled month → plan saldo.
+    expect(cupoEnCuotasClpForCalendarMonth(accountId, nowYm)).toBe(live);
+    const remaining = installmentRemainingClpByCalendarMonth(accountId);
+    for (const [ym, planSaldo] of remaining) {
+      const cupo = cupoEnCuotasClpForCalendarMonth(accountId, ym);
+      expect(cupo).toBe(ym === nowYm ? live : planSaldo);
     }
+  });
 
-    const valuationLive = latestCreditCardBillingBalanceTotalClp(master.id) ?? live;
-    const pts = ccLedgerStatementClosingPointsClp(master.id);
-    const curPt = pts?.find((p) => monthKeyFromYmd(p.as_of_date) === todayYm);
-    expect(curPt?.value_clp).toBe(valuationLive);
+  it("persists a today valuation equal to the live balance", () => {
+    ensureVitestCreditCardFixtures();
+    const id = getVitestSantanderCcMasterAccountId();
+    if (id == null) return;
+    accountId = id;
+    cleanup();
+    seedPurchase();
 
-    upsertCreditCardValuationsFromLedger(master.id);
+    const live = liveCreditCardOutstandingClp(accountId);
+    // upsert persists the billing-detail balance when available, else the live outstanding.
+    const expected = latestCreditCardBillingBalanceTotalClp(accountId) ?? live;
+    expect(expected).not.toBeNull();
+
+    const written = upsertCreditCardValuationsFromLedger(accountId);
+    expect(written).toBeGreaterThan(0);
+
     const today = chileCalendarTodayYmd();
     const row = db
-      .prepare(
-        `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
-      )
-      .get(master.id, today) as { value_clp: number } | undefined;
-    expect(row?.value_clp).toBe(valuationLive);
+      .prepare(`SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`)
+      .get(accountId, today) as { value_clp: number } | undefined;
+    expect(row?.value_clp).toBe(expected);
   });
 });

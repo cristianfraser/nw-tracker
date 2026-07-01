@@ -211,9 +211,11 @@ function rebuildBrokerageNav() {
   linkGroup("brokerage", "brokerage_mutual_funds", 0);
   linkGroup("brokerage", "brokerage_acciones", 10);
   linkGroup("brokerage", "brokerage_crypto", 20);
+  linkGroup("brokerage", "brokerage_cash", 30);
   linkAccountsByAssetGroup("brokerage_mutual_funds", "brokerage_mutual_funds", 0);
   linkAccountsByAssetGroup("brokerage_acciones", "brokerage_acciones", 0);
   linkAccountsByAssetGroup("brokerage_crypto", "brokerage_crypto", 0);
+  linkAccountsByAssetGroup("brokerage_cash", "brokerage_cash", 0);
 }
 
 /** Idempotent full sidebar + inversiones nav tree (matches legacy layout). */
@@ -396,6 +398,18 @@ export function seedNavTree(): void {
       kind_slug: "crypto",
       group_kind: "bucket",
       color_rgb: "234,179,8",
+    });
+    upsert({
+      slug: "brokerage_cash",
+      label: "Cash",
+      parent_slug: "brokerage",
+      sort_order: 40,
+      route_path: "/inversiones/brokerage/cash",
+      active_prefix: "/inversiones/brokerage/cash",
+      api_group: "brokerage",
+      api_subgroup: "cash",
+      kind_slug: "brokerage_cash",
+      group_kind: "bucket",
     });
 
     upsert({

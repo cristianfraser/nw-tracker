@@ -102,7 +102,7 @@ export function findNavNodeBySlug(
 }
 
 export function isNavBucketNode(node: NavTreeNodeDto): boolean {
-  return node.group_kind === "nav_bucket" || node.group_kind === "nav_hub";
+  return node.group_kind === "nav_bucket";
 }
 
 /** @deprecated Use {@link isNavBucketNode}. */

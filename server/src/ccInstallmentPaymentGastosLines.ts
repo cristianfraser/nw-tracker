@@ -7,6 +7,7 @@ import {
   normalizeCcExpenseMerchantKey,
   registerGenericUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
+  stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
@@ -115,6 +116,7 @@ type PaymentRow = {
   cuota_total: number | null;
   purchase_date: string;
   merchant: string | null;
+  total_amount_clp: number;
 };
 
 /**
@@ -136,7 +138,7 @@ export function buildInstallmentPaymentGastosLines(
     .prepare(
       `SELECT p.id AS payment_id, pr.account_id, p.pay_by_date, p.statement_date,
               p.amount_clp, p.cuota_current, p.cuota_total,
-              pr.purchase_date, pr.merchant
+              pr.purchase_date, pr.merchant, pr.total_amount_clp
        FROM cc_installment_payments p
        JOIN cc_installment_purchases pr ON pr.id = p.purchase_id
        WHERE pr.account_id IN (${ph})
@@ -183,7 +185,13 @@ export function buildInstallmentPaymentGastosLines(
 
     const purchaseKey =
       row.cuota_total != null && row.cuota_total > 0
-        ? `installment-h:${row.account_id}:${purchaseOn}:${row.cuota_total}:${merchantKey}`
+        ? stableInstallmentHPurchaseKeyFromLedgerArgs({
+            accountId: row.account_id,
+            purchaseDateIso: purchaseOn,
+            cuotasTotales: row.cuota_total,
+            totalAmountClp: row.total_amount_clp,
+            merchant: row.merchant,
+          }) ?? `line-fallback:${row.account_id}:${merchantKey}:${purchaseOn}`
         : `line-fallback:${row.account_id}:${merchantKey}:${purchaseOn}`;
     const lineId = installmentPaymentGastosLineId(row.payment_id);
     registerGenericUniquePurchaseMode(
@@ -232,6 +240,7 @@ export function buildInstallmentPaymentGastosLines(
       amount_usd_at_expense: expenseGastosAmountUsdAtDate(amount, null, purchaseOn ?? payByIso),
       merchant: row.merchant,
       installment_flag: 1,
+      installment_total_clp: row.total_amount_clp,
       nro_cuota_current: row.cuota_current,
       nro_cuota_total: row.cuota_total,
       merchant_key: merchantKey,

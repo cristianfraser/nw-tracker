@@ -157,6 +157,7 @@ import {
 } from "./accountImports.js";
 import { uploadFields, uploadSingle } from "./uploadMiddleware.js";
 import { resolveCfraserCsvDir, resolveDeptoDividendosCsvPath } from "./cfraserPaths.js";
+import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
 import {
   buildFlowsDepositsPayload,
   depositClpToUsdAtDate,
@@ -177,6 +178,11 @@ import {
   setCcExpensePurchaseBigGroup,
 } from "./ccExpenseBigGroups.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import {
+  deleteCcFacturadoFinancingLink,
+  listCcFacturadoFinancingLinks,
+  upsertCcFacturadoFinancingLink,
+} from "./ccFacturadoFinancingLinksDb.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import {
   type CheckingIncomeKind,
@@ -1594,6 +1600,14 @@ app.get("/api/flows/deposits", (_req, res) => {
   res.json(buildFlowsDepositsPayload());
 });
 
+app.get("/api/flows/deposits/reconciliation", (_req, res) => {
+  try {
+    res.json(buildDepositsReconciliationPayload());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.get("/api/income", (_req, res) => {
   res.json(buildFlowsCheckingIncomePayload());
 });
@@ -1776,6 +1790,47 @@ app.get("/api/expenses", (_req, res) => {
 app.get("/api/flows/expenses/credit-card", (req, res) => {
   const proxyTickers = parseProxyTickersParam(req.query.proxy_tickers);
   res.json(buildFlowsCreditCardExpensesPayload(proxyTickers ?? undefined));
+});
+
+app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {
+  res.json({ links: listCcFacturadoFinancingLinks() });
+});
+
+app.post("/api/flows/expenses/credit-card/financing-links", (req, res) => {
+  const body = req.body as {
+    financed_account_id?: number;
+    financed_billing_month?: string;
+    financing?: { account_id?: number; purchase_key?: string }[];
+  };
+  const financedAccountId = Number(body.financed_account_id);
+  const financedBillingMonth = String(body.financed_billing_month ?? "").trim();
+  const financing = (body.financing ?? [])
+    .map((f) => ({ account_id: Number(f.account_id), purchase_key: String(f.purchase_key ?? "").trim() }))
+    .filter((f) => Number.isFinite(f.account_id) && f.account_id > 0 && f.purchase_key.length > 0);
+  if (!Number.isFinite(financedAccountId) || financedAccountId <= 0 || !financedBillingMonth) {
+    res.status(400).json({ error: "financed_account_id and financed_billing_month required" });
+    return;
+  }
+  try {
+    const link = upsertCcFacturadoFinancingLink({
+      financedAccountId,
+      financedBillingMonth,
+      financing,
+    });
+    res.json({ ok: true, id: link.id });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "link failed" });
+  }
+});
+
+app.delete("/api/flows/expenses/credit-card/financing-links/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid link id" });
+    return;
+  }
+  deleteCcFacturadoFinancingLink(id);
+  res.status(204).send();
 });
 
 app.get("/api/flows/expenses/real-estate", (_req, res) => {

@@ -35,6 +35,10 @@ function sameInstallmentPurchaseGroup(
   a: FlowCcExpenseLineRow,
   b: FlowCcExpenseLineRow
 ): boolean {
+  // Distinct purchase_keys ⇒ distinct purchases, even when account/date/cuotas/merchant coincide
+  // (e.g. two same-day EXPRESS PLAZA 3-cuotas buys of different amounts). Without this, toggling
+  // Único / a category on one optimistically flips the other.
+  if (a.purchase_key && b.purchase_key && a.purchase_key !== b.purchase_key) return false;
   return (
     a.account_id === b.account_id &&
     a.purchase_on != null &&
@@ -113,6 +117,10 @@ export function countsTowardGastosMes(
   if (line.amount_clp <= 0) return false;
   if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;
+  const scope = line.gastos_scope ?? "both";
+  if (scope === "excluded") return false;
+  if (scope === "total_only") return mode === "total";
+  if (scope === "split_only") return mode === "split";
   if (line.line_role === "installment_purchase_total") return mode === "total";
   if (line.line_role === "installment_cuota") return mode === "split";
   return true;

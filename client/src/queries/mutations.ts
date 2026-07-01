@@ -544,3 +544,29 @@ export function useRestoreIncomeMovementMutation() {
     },
   });
 }
+
+export function useUpsertCcFacturadoFinancingLinkMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      financed_account_id: number;
+      financed_billing_month: string;
+      financing: { account_id: number; purchase_key: string }[];
+    }) => api.upsertCcFacturadoFinancingLink(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
+    },
+  });
+}
+
+export function useDeleteCcFacturadoFinancingLinkMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCcFacturadoFinancingLink(id),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
+    },
+  });
+}

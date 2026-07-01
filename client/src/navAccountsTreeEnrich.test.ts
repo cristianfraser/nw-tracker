@@ -60,7 +60,7 @@ function accountLeaf(id: number): NavTreeNodeDto {
 function listRow(
   id: number,
   bucketSlug: string,
-  opts?: { source_account_id?: number; name?: string }
+  opts?: { source_account_id?: number; name?: string; groupSlug?: string }
 ): AccountListRow {
   return {
     id,
@@ -69,12 +69,25 @@ function listRow(
     created_at: "",
     category_slug: "stock",
     category_label: "stock",
-    group_slug: bucketSlug,
+    group_slug: opts?.groupSlug ?? bucketSlug,
     group_label: bucketSlug,
     bucket_slug: bucketSlug,
     chart_inactive: true,
     source_account_id: opts?.source_account_id,
   };
+}
+
+/** Recursively find the group node whose slug matches, returning its account leaf ids. */
+function childAccountIdsOf(root: NavTreeNodeDto, slug: string): number[] {
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.slug === slug) {
+      return node.children.filter((c) => c.account_id != null).map((c) => c.account_id!);
+    }
+    stack.push(...node.children);
+  }
+  return [];
 }
 
 describe("enrichNavTreeWithAllAccounts", () => {
@@ -87,5 +100,17 @@ describe("enrichNavTreeWithAllAccounts", () => {
     const ids = collectNavAccountDataKeys(enriched).map(Number);
     expect(ids).toContain(85);
     expect(ids).toContain(60);
+  });
+
+  it("places a chart-inactive account in its portfolio sub-bucket via group_slug", () => {
+    // cash_eqs > cash_savings; account #80 lives under cash_savings (portfolio group slug),
+    // but its asset bucket is cash_eqs__cuenta_ahorro_vivienda. It must land under cash_savings,
+    // not directly under cash_eqs.
+    const root = groupNode("cash_eqs", [groupNode("cash_savings", [accountLeaf(44)])]);
+    const enriched = enrichNavTreeWithAllAccounts(root, [
+      listRow(80, "cash_eqs__cuenta_ahorro_vivienda", { groupSlug: "cash_savings" }),
+    ]);
+    expect(childAccountIdsOf(enriched, "cash_savings")).toContain(80);
+    expect(childAccountIdsOf(enriched, "cash_eqs")).not.toContain(80);
   });
 });

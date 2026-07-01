@@ -143,6 +143,46 @@ export function unitsDeltaForAccountMovement(
   return row.account_id === accountId ? units : 0;
 }
 
+/** Equity flow kinds whose transfer-leg units are read by the stock/share path, not the cuota path. */
+const EQUITY_TRANSFER_FLOW_KINDS = new Set([
+  "stock_buy",
+  "stock_sell",
+  "compra_usd",
+  "compra_usd_venta_clp",
+]);
+
+/**
+ * Σ manual transfer-leg `units_delta` for a cuota/coin account through `asOfYmd`
+ * (account as `to` = +units, as `from` = −units). Excludes equity flow-kind legs, which
+ * the brokerage share path already counts. Fintual / crypto / AFP readers add this on top of
+ * their `account_id`-ledger sums so a `checking → fund` transfer moves the fund balance too.
+ */
+export function transferLegUnitsThroughDate(
+  accountId: number,
+  asOfYmd: string,
+  dbHandle: Database = db
+): number {
+  const rows = dbHandle
+    .prepare(
+      `SELECT from_account_id, to_account_id, units_delta, flow_kind
+       FROM movements
+       WHERE account_id IS NULL
+         AND units_delta IS NOT NULL
+         AND (from_account_id = ? OR to_account_id = ?)
+         AND date(occurred_on) <= date(?)`
+    )
+    .all(accountId, accountId, asOfYmd) as MovementTransferRow[];
+  let total = 0;
+  for (const r of rows) {
+    if (r.flow_kind != null && EQUITY_TRANSFER_FLOW_KINDS.has(r.flow_kind)) continue;
+    const mag = absAmount(r.units_delta);
+    if (mag === 0) continue;
+    if (r.to_account_id === accountId) total += mag;
+    else if (r.from_account_id === accountId) total -= mag;
+  }
+  return Number.isFinite(total) ? total : 0;
+}
+
 export function isUsdCashKindSlug(kindSlug: string): boolean {
   return kindSlug === "usd";
 }

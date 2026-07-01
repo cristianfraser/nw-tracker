@@ -26,6 +26,8 @@ import {
 
   resolveCcExpensePurchaseKey,
 
+  installmentLedgerTotalForIdentity,
+
   type CcExpenseCategoryRow,
 
 } from "./ccExpenseCategories.js";
@@ -73,8 +75,10 @@ import {
 import { buildInstallmentPaymentGastosLines } from "./ccInstallmentPaymentGastosLines.js";
 import { buildInstallmentPlanGastosLines } from "./ccInstallmentPlanGastosLines.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
+import { applyCcFacturadoFinancingProjection } from "./ccFacturadoFinancingProjectionLines.js";
 import {
   type CcExpenseLineRole,
+  type CcExpenseGastosScope,
   type CcInstallmentGastosMode,
   gastosSumMonthForLine,
   lineCountsTowardGastosSum,
@@ -82,7 +86,11 @@ import {
   purchaseMonthFromLine,
 } from "./ccExpensePeriodMonth.js";
 
-export type { CcExpenseLineRole, CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
+export type {
+  CcExpenseLineRole,
+  CcExpenseGastosScope,
+  CcInstallmentGastosMode,
+} from "./ccExpensePeriodMonth.js";
 import {
   enrichFlowLinesWithGastosPeriodMonthOverrides,
 } from "./ccExpenseGastosPeriodMonthOverrides.js";
@@ -97,6 +105,7 @@ import {
   hasSplittableMortgageExpenseDepositLink,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
   syncExpenseDepositLinksFromGastosLines,
+  type ExpenseDepositLinkDto,
 } from "./expenseDepositLinks.js";
 
 
@@ -105,6 +114,7 @@ export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
+import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
 import { loadExcelGapLineSplits } from "./ccExpenseLineSplits.js";
 import {
   buildNormalPurchaseProxyForAccount,
@@ -184,6 +194,12 @@ export type FlowCcExpenseLineRow = {
 
   line_role: CcExpenseLineRole;
 
+  /** Ledger total_amount_clp for installment lines (disambiguates same-identity purchase_keys). */
+  installment_total_clp?: number | null;
+
+  /** Installment-mode scope override (facturado-financing projection); default `both`. */
+  gastos_scope?: CcExpenseGastosScope;
+
   /** Set when a NOTA DE CREDITO annuls or adjusts prior card charges. */
   nota_credito_role?: NotaDeCreditoRole;
 
@@ -208,16 +224,8 @@ export type FlowCcExpenseLineRow = {
   /** Statement billing card (`cc_statements.card_last4`); null for checking / synthetic lines. */
   primary_card_last4: string | null;
 
-  /** Linked net-worth deposit (mortgage amortization split). */
-  expense_deposit_link?: {
-    deposit_movement_id: number;
-    payment_clp: number;
-    amortization_clp: number;
-    carrying_clp: number;
-    depto_cuota: string | null;
-    depto_occurred_on: string | null;
-    link_source: "auto" | "manual";
-  };
+  /** Linked net-worth deposits (investment capital + mortgage amortization splits). */
+  expense_deposit_links?: ExpenseDepositLinkDto[];
 
 };
 
@@ -435,7 +443,7 @@ export function aggregateGastosFromLines(
       const sumBucket = touchBucket(sumMonth);
       if (amount > 0) {
         sumBucket.gastosReal += amount;
-        const link = ln.expense_deposit_link;
+        const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
         const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
         if (linkedMortgagePayment) {
           if (
@@ -583,7 +591,7 @@ function computeFlowsExpenseTotals(
       continue;
     }
     if (r.amount_clp <= 0) continue;
-    const link = r.expense_deposit_link;
+    const link = r.expense_deposit_links?.find((l) => l.depto_cuota != null);
     const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
     const countsCategory = linkedMortgagePayment
       ? true
@@ -803,6 +811,15 @@ export function buildCcExpenseLines(
     });
     const purchaseMonth = purchaseMonthFromLine(purchaseOn, expenseMonth);
     const lineRole: CcExpenseLineRole = isInstallment ? "installment_cuota" : "purchase";
+    const installmentTotalClp =
+      isInstallment && purchaseOn && row.nro_cuota_total != null && row.nro_cuota_total > 0
+        ? installmentLedgerTotalForIdentity(
+            row.account_id,
+            purchaseOn,
+            row.nro_cuota_total,
+            row.merchant
+          )
+        : null;
 
     const merchantKey = normalizeCcExpenseMerchantKey(row.merchant);
 
@@ -907,6 +924,8 @@ export function buildCcExpenseLines(
       merchant: row.merchant,
 
       installment_flag: isInstallment ? 1 : 0,
+
+      installment_total_clp: installmentTotalClp,
 
       nro_cuota_current: row.nro_cuota_current,
 
@@ -1021,6 +1040,7 @@ export function buildFlowsCreditCardExpensesPayload(
     const lines = finalizeFlowExpenseLines([
       ...loadCheckingGastosLinesForExpenses(),
       ...loadManualExpenseGastosLineDrafts(),
+      ...loadCheckingGapDepositMirrorGastosLineDrafts(),
     ]);
     const agg = aggregateGastosFromLines(lines, chartCategorySlugs);
     const totals = computeFlowsExpenseTotals(lines);
@@ -1050,10 +1070,14 @@ export function buildFlowsCreditCardExpensesPayload(
   const ccLines = buildCcExpenseLines(accountIds);
   const checkingLines = loadCheckingGastosLinesForExpenses();
   const manualLines = loadManualExpenseGastosLineDrafts();
-  const lines = finalizeFlowExpenseLines([
-    ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
-    ...manualLines,
-  ]);
+  const mirrorLines = loadCheckingGapDepositMirrorGastosLineDrafts();
+  const lines = applyCcFacturadoFinancingProjection(
+    finalizeFlowExpenseLines([
+      ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
+      ...manualLines,
+      ...mirrorLines,
+    ])
+  );
 
   const { by_month, chart_monthly, chart_monthly_by_category } = aggregateGastosFromLines(
 

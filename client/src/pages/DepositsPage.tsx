@@ -50,8 +50,11 @@ export function DepositsPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsDeposits")}</h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.75rem" }}>
+      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.5rem" }}>
         {t("deposits.intro")}
+      </p>
+      <p style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+        <Link to="reconciliation">{t("depositsReconciliation.title")}</Link>
       </p>
 
       <p className="muted" style={{ marginBottom: "1rem" }}>

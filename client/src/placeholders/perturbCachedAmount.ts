@@ -231,13 +231,10 @@ export function synthesizeMissingUsdOnGroupPageShell(
   };
 }
 
-function perturbOptionalNumber(
-  v: number | null | undefined,
-  factor: number
-): number | null | undefined {
+function perturbOptionalNumber<T extends number | null | undefined>(v: T, factor: number): T {
   if (v == null) return v;
   if (!Number.isFinite(v)) return v;
-  return perturbCachedAmount(v, factor);
+  return perturbCachedAmount(v, factor) as T;
 }
 
 function perturbDashboardLayout(
@@ -479,7 +476,7 @@ export function perturbGroupPageShell(shell: GroupPageShell): GroupPageShell {
   const factor = randomPerturbFactor();
   const { clp: clpByAccount, usd: usdByAccount } = perturbAccountBalanceMaps(
     shell.dashAccounts,
-    {},
+    {} as SnapshotSortContext,
     factor
   );
   return {

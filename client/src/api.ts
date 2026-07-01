@@ -478,6 +478,8 @@ export const api = {
       body: JSON.stringify(body),
     }),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
+  flowsDepositsReconciliation: () =>
+    j<import("./types").DepositsReconciliationPayload>("/api/flows/deposits/reconciliation"),
   flowsRealEstateExpenses: () =>
     j<import("./types").RealEstateExpensesResponse>("/api/flows/expenses/real-estate"),
   realEstateExpenseLinkCandidates: (expenseEntryId: number) =>
@@ -540,6 +542,22 @@ export const api = {
       `/api/flows/expenses/credit-card/big-groups/${encodeURIComponent(slug)}`,
       { method: "DELETE" }
     ),
+  ccFacturadoFinancingLinks: () =>
+    j<{ links: import("./types").CcFacturadoFinancingLink[] }>(
+      "/api/flows/expenses/credit-card/financing-links"
+    ),
+  upsertCcFacturadoFinancingLink: (body: {
+    financed_account_id: number;
+    financed_billing_month: string;
+    financing: { account_id: number; purchase_key: string }[];
+  }) =>
+    j<{ ok: boolean; id: number }>("/api/flows/expenses/credit-card/financing-links", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    }),
+  deleteCcFacturadoFinancingLink: (id: number) =>
+    j<void>(`/api/flows/expenses/credit-card/financing-links/${id}`, { method: "DELETE" }),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
   fxCoverage: () => j<import("./types").FxCoverage>("/api/fx/coverage"),
   fxBidAskGaps: () => j<{ gaps: import("./types").FxBidAskGapRow[] }>("/api/fx/bid-ask/gaps"),

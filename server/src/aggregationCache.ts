@@ -11,6 +11,24 @@ const cache = new Map<string, unknown>();
 
 let rollupSlugsByAccountId: Map<number, Set<string>> | null = null;
 
+/**
+ * Chile calendar day the cached entries were built for. Aggregations bake in "today"
+ * (live current-month perf row, appended today chart point, current-month cierre), so a
+ * long-running process must drop them at calendar rollover — otherwise a server that built
+ * the dashboard on June 30 keeps serving June-current consolidations after midnight, and the
+ * new month shows zeros / missing rows until restart.
+ */
+let cacheDayYmd: string | null = null;
+
+function ensureCacheFreshForChileDay(): void {
+  const today = chileCalendarTodayYmd();
+  if (cacheDayYmd !== today) {
+    cache.clear();
+    rollupSlugsByAccountId = null;
+    cacheDayYmd = today;
+  }
+}
+
 function deleteKeysMatchingPrefix(prefix: string): void {
   for (const key of [...cache.keys()]) {
     if (key.startsWith(prefix)) cache.delete(key);
@@ -23,6 +41,7 @@ export function clearAggregationCache(): void {
 }
 
 export function getAggregationCached<T>(key: string, build: () => T): T {
+  ensureCacheFreshForChileDay();
   if (cache.has(key)) return cache.get(key) as T;
   const value = build();
   cache.set(key, value);

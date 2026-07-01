@@ -421,6 +421,13 @@ export function useFlowsDeposits() {
   });
 }
 
+export function useFlowsDepositsReconciliation() {
+  return useQuery({
+    queryKey: queryKeys.flowsDepositsReconciliation(),
+    queryFn: () => api.flowsDepositsReconciliation(),
+  });
+}
+
 export function useRealEstateExpenses() {
   return useQuery({
     queryKey: queryKeys.flowsRealEstateExpenses(),
@@ -443,6 +450,13 @@ export function useFlowsCreditCardExpenses() {
   });
 }
 
+export function useCcFacturadoFinancingLinks() {
+  return useQuery({
+    queryKey: queryKeys.ccFacturadoFinancingLinks(),
+    queryFn: () => api.ccFacturadoFinancingLinks(),
+  });
+}
+
 export {
   useAssignCcExpenseLineCategory,
   useMarkCcExpenseLineUniqueMutation,
@@ -458,6 +472,8 @@ export {
   useDeleteCcExpenseBigGroupMutation,
   useLinkRealEstateExpenseMutation,
   useUnmatchRealEstateExpenseMutation,
+  useUpsertCcFacturadoFinancingLinkMutation,
+  useDeleteCcFacturadoFinancingLinkMutation,
 } from "./mutations";
 
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {

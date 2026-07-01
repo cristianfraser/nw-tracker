@@ -226,7 +226,24 @@ function toCheckingIncomeLine(
   };
 }
 
+type CheckingIncomeComputation = {
+  payload: FlowsCheckingIncomePayload;
+  /** Net-worth ledger-outflow keys (netWorthCapitalLedgerOutflowPairKey) consumed as capital returns
+   *  — i.e. net-worth redemptions that this income build matched to (and excluded from) a checking
+   *  inflow. Reused by the deposits reconciliation to mark those redemptions as linked. */
+  consumedLedgerOutflowKeys: Set<string>;
+};
+
 export function buildFlowsCheckingIncomePayload(): FlowsCheckingIncomePayload {
+  return computeCheckingIncome().payload;
+}
+
+/** Net-worth capital-return outflow keys the income filter matched to checking inflows. */
+export function loadConsumedNetWorthCapitalReturnOutflowKeys(): Set<string> {
+  return computeCheckingIncome().consumedLedgerOutflowKeys;
+}
+
+function computeCheckingIncome(): CheckingIncomeComputation {
   const accountIds = listMovementBalanceCashAccountIds();
   const accountLabels = loadAccountLabels(accountIds);
   const deposits = loadDepositMatchCandidates();
@@ -318,13 +335,16 @@ export function buildFlowsCheckingIncomePayload(): FlowsCheckingIncomePayload {
   }
 
   return {
-    lines,
-    manual: loadManualIncomeEntries(),
-    monthly_totals,
-    work_earnings: loadPayrollWorkEarnings(),
-    income_kind_by_movement_id: mergedIncomeKindByMovementIdRecord(),
-    payroll_period_by_movement_id: payrollPeriodByMovementIdRecord(),
-    excluded_lines: loadExcludedCheckingIncomeLines(),
-    filtered_lines,
+    payload: {
+      lines,
+      manual: loadManualIncomeEntries(),
+      monthly_totals,
+      work_earnings: loadPayrollWorkEarnings(),
+      income_kind_by_movement_id: mergedIncomeKindByMovementIdRecord(),
+      payroll_period_by_movement_id: payrollPeriodByMovementIdRecord(),
+      excluded_lines: loadExcludedCheckingIncomeLines(),
+      filtered_lines,
+    },
+    consumedLedgerOutflowKeys: filterCtx.consumedCapitalReturnLedgerOutflowKeys,
   };
 }

@@ -142,7 +142,7 @@ export function aggregateGastosFromLines(
       const sumBucket = touchBucket(sumMonth);
       if (amount > 0) {
         sumBucket.gastosReal += amount;
-        const link = ln.expense_deposit_link;
+        const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
         const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
         if (linkedMortgagePayment) {
           if (
@@ -251,7 +251,7 @@ export function computeExpensesTotal(
       continue;
     }
     if (amount > 0) {
-      const link = r.expense_deposit_link;
+      const link = r.expense_deposit_links?.find((l) => l.depto_cuota != null);
       const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
       if (linkedMortgagePayment) {
         if (
