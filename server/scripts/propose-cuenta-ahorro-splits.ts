@@ -39,7 +39,7 @@ function loadAhorroDeposits(): AhorroDepositRow[] {
        FROM movements m
        LEFT JOIN cuenta_ahorro_deposit_splits s ON s.deposit_movement_id = m.id
        WHERE m.amount_clp > 0
-         AND m.note LIKE '%|Depósitos'
+         AND (m.note LIKE '%|Depósitos' OR m.note LIKE '%|Depósitos|forensic:%')
        ORDER BY m.occurred_on DESC, m.id`
     )
     .all() as AhorroDepositRow[];
