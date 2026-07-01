@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 
 /** A user-declared split of a cuenta_ahorro_vivienda Depósito into self-funded vs family-funded. */
@@ -54,11 +55,16 @@ export function upsertCuentaAhorroDepositSplit(
 export function syncCuentaAhorroDepositSplitMirrors(): void {
   const splits = db
     .prepare(
-      `SELECT s.deposit_movement_id, s.self_funded_clp, m.occurred_on
+      `SELECT s.deposit_movement_id, s.self_funded_clp, m.occurred_on, m.note
        FROM cuenta_ahorro_deposit_splits s
        JOIN movements m ON m.id = s.deposit_movement_id`
     )
-    .all() as { deposit_movement_id: number; self_funded_clp: number; occurred_on: string }[];
+    .all() as {
+    deposit_movement_id: number;
+    self_funded_clp: number;
+    occurred_on: string;
+    note: string | null;
+  }[];
   if (splits.length === 0) return;
 
   const corrienteId = cartolaCashAccountId("cuenta_corriente");
@@ -70,6 +76,9 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
   const tx = db.transaction(() => {
     for (const s of splits) {
       del.run(s.deposit_movement_id);
+      // Forensic funding=family is authoritative: an external gift has no own outflow to mirror,
+      // even if a stale split row claims a self-funded portion.
+      if (ahorroDepositNoteIsForensicFamily(s.note)) continue;
       const self = Math.round(s.self_funded_clp);
       if (self > 0) {
         ins.run(corrienteId, s.deposit_movement_id, self, s.occurred_on, "ahorro-split|self_funded");

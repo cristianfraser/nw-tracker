@@ -14,8 +14,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../src/db.js";
+import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import { readSemicolonCsv } from "../src/cfraserCsv.js";
+import { monthEndDate, numCsv, readSemicolonCsv, type MonthKey } from "../src/cfraserCsv.js";
 
 const CASH_SAVINGS_PARENT_ASSET_GROUP_SLUG = "cash_eqs__cash_savings";
 const CASH_SAVINGS_PORTFOLIO_GROUP_SLUG = "cash_savings";
@@ -44,8 +45,9 @@ function loadDapCsv(): DapRow[] {
     if (!numero || numero === "numero") continue;
     const inicio = String(row[1] ?? "").trim();
     const vencimiento = String(row[2] ?? "").trim();
-    const inicial = Math.round(Number(row[3]));
-    const final = Math.round(Number(row[4]));
+    // numCsv handles es-CL formats (thousand dots, parenthesized negatives) like every cfraser importer.
+    const inicial = Math.round(numCsv(row[3]) ?? NaN);
+    const final = Math.round(numCsv(row[4]) ?? NaN);
     if (!YMD_RE.test(inicio) || !YMD_RE.test(vencimiento) || vencimiento < inicio) {
       throw new Error(`import:dap: bad dates for ${numero}: ${inicio} → ${vencimiento}`);
     }
@@ -158,8 +160,30 @@ function main() {
         `import:dap: closing balance ${cum.toLocaleString("es-CL")} ≠ 0 — a DAP is still open or the CSV is incomplete`
       );
     }
+
+    // Month-end rows for every month from the first event through today (cuenta-ahorro pattern).
+    // The perf builder reads month-end closes without forward-fill; a gap month would read as
+    // "no data" and swing monthly P/L by the accumulated interest (down then back up).
+    const todayYmd = chileCalendarTodayYmd();
+    let running = 0;
+    let fi = 0;
+    let monthEnds = 0;
+    let mk = flows[0]!.date.slice(0, 7) as MonthKey;
+    const lastMk = todayYmd.slice(0, 7) as MonthKey;
+    while (mk <= lastMk) {
+      const me = monthEndDate(mk);
+      while (fi < flows.length && flows[fi]!.date <= me) {
+        running += flows[fi]!.amount;
+        fi += 1;
+      }
+      upsertVal.run(accountId, me <= todayYmd ? me : todayYmd, running);
+      monthEnds += 1;
+      const [y, m] = mk.split("-").map(Number) as [number, number];
+      mk = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}` as MonthKey;
+    }
+
     console.log(
-      `import:dap: account ${accountId}, ${rows.length} DAPs → ${flows.length} movements, closing balance ${cum.toLocaleString("es-CL")}`
+      `import:dap: account ${accountId}, ${rows.length} DAPs → ${flows.length} movements, ${monthEnds} month-end valuations, closing balance ${cum.toLocaleString("es-CL")}`
     );
   });
   tx();

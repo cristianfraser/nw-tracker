@@ -29,13 +29,14 @@ type AhorroDepositRow = {
   account_id: number;
   occurred_on: string;
   amount_clp: number;
+  note: string | null;
   self_funded_clp: number | null;
 };
 
 function loadAhorroDeposits(): AhorroDepositRow[] {
   const rows = db
     .prepare(
-      `SELECT m.id AS movement_id, m.account_id, m.occurred_on, m.amount_clp, s.self_funded_clp
+      `SELECT m.id AS movement_id, m.account_id, m.occurred_on, m.amount_clp, m.note, s.self_funded_clp
        FROM movements m
        LEFT JOIN cuenta_ahorro_deposit_splits s ON s.deposit_movement_id = m.id
        WHERE m.amount_clp > 0
@@ -46,7 +47,15 @@ function loadAhorroDeposits(): AhorroDepositRow[] {
   return rows.filter((r) => accountKindSlugForAccountId(r.account_id) === AHORRO_KIND_SLUG);
 }
 
+/** Forensic `funding=` classification on the movement note (cuenta-ahorro-deposits.csv) is authoritative. */
+function forensicFundingTag(row: AhorroDepositRow): string | null {
+  const m = /\|funding=(\w+)/.exec(row.note ?? "");
+  return m ? m[1]! : null;
+}
+
 function splitLabel(row: AhorroDepositRow): string {
+  const funding = forensicFundingTag(row);
+  if (funding) return `(forensic: funding=${funding})`;
   if (row.self_funded_clp == null) return "(sin split)";
   const family = Math.round(row.amount_clp) - Math.round(row.self_funded_clp);
   return `self ${formatClp(row.self_funded_clp)} / family ${formatClp(family)}`;
@@ -127,9 +136,12 @@ function main() {
   if (familyDefaultPct != null) {
     // Fill every un-split deposit: full self when an exact cartola outflow exists (clearly self-funded),
     // else self = (100 − pct)% (the rest assumed family). Explicit --set entries still take precedence.
+    // Deposits with a forensic funding= tag are skipped — the forensic CSV is authoritative for them
+    // (family → resolved_family_funded without a mirror; self → matched like any deposit).
     for (const r of rows) {
       if (r.self_funded_clp != null) continue;
       if (assignments.has(r.movement_id)) continue;
+      if (forensicFundingTag(r) != null) continue;
       const self = hasExactCartolaOutflow(r.amount_clp, r.occurred_on)
         ? Math.round(r.amount_clp)
         : Math.round(r.amount_clp * (100 - familyDefaultPct) / 100);

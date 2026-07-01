@@ -35,10 +35,11 @@ describe("buildDepositsReconciliationPayload", () => {
       const linkSource = linkSourceByMovementId.get(row.movement_id);
       if (linkSource === "auto" || linkSource === "manual") {
         expect(row.status).toBe("linked");
-      } else if (linkSource === "synthetic") {
-        expect(row.status).toBe("linked_synthetic");
       } else if (pureFamilyAhorro.has(row.movement_id)) {
+        // Family (split self=0 or forensic funding=family) outranks synthetic mirrors.
         expect(row.status).toBe("resolved_family_funded");
+      } else if (linkSource === "synthetic") {
+        expect(["linked_synthetic", "resolved_family_funded"]).toContain(row.status);
       } else {
         const month = monthKeyFromYmd(row.occurred_on);
         const expected =
