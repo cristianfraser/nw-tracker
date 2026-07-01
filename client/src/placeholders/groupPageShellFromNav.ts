@@ -13,7 +13,7 @@ export type NavAccountLeaf = {
 /** All nav nodes with `account_id > 0` under `navNode`. */
 export function collectNavAccountLeaves(navNode: NavTreeNodeDto): NavAccountLeaf[] {
   const out: NavAccountLeaf[] = [];
-  const visit = (n: NavTreeNodeDto, groupSlug: string, groupLabel: string) => {
+  const visit = (n: NavTreeNodeDto, groupSlug: string, _groupLabel: string) => {
     const slug = n.asset_group_slug ?? groupSlug;
     const label = resolveNavTreeLabel(n);
     if (n.account_id != null && n.account_id > 0) {

@@ -5,6 +5,7 @@ import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpenses
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
 import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/CreditCardUnclassifiedExpensesTable";
 import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
+import { CreditCardFacturadoFinancingManager } from "../components/credit-card/CreditCardFacturadoFinancingManager";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useTranslation } from "../i18n";
 import {
@@ -78,31 +79,61 @@ export function ExpensesPage() {
     return { table: tableAgg, chart: chartAgg, ...totals };
   }, [chartCategorySlugs, data, displayUnit, excludedBigGroups, installmentMode]);
 
+  /**
+   * Latest month (YYYY-MM) with any real spend. Trailing months beyond this are dropped so the
+   * table/chart don't show an empty future tail — installment cuota lines create future month
+   * buckets that are $0 in Total mode; Cuotas mode keeps them because they carry real gastos.
+   */
+  const latestNonEmptyMonth = useMemo(() => {
+    if (!view) return null;
+    let latest: string | null = null;
+    for (const row of view.table.by_month) {
+      if (row.gastos_real_mes_clp !== 0 && (latest == null || row.period_month > latest)) {
+        latest = row.period_month;
+      }
+    }
+    return latest;
+  }, [view]);
+
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    const monthly = view.chart.chart_monthly_by_category;
+    const monthly =
+      latestNonEmptyMonth == null
+        ? view.chart.chart_monthly_by_category
+        : view.chart.chart_monthly_by_category.filter(
+            (p) => p.as_of_date.slice(0, 7) <= latestNonEmptyMonth
+          );
     if (chartGranularity === "year") {
       return rollupChartPointsByYear(monthly, chartCategorySlugs);
     }
     return monthly;
-  }, [chartCategorySlugs, chartGranularity, view]);
+  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view]);
 
   /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
   const chartSortPoints = useMemo(() => {
     if (!view) return [];
-    const monthly = view.table.chart_monthly_by_category;
+    const monthly =
+      latestNonEmptyMonth == null
+        ? view.table.chart_monthly_by_category
+        : view.table.chart_monthly_by_category.filter(
+            (p) => p.as_of_date.slice(0, 7) <= latestNonEmptyMonth
+          );
     if (chartGranularity === "year") {
       return rollupChartPointsByYear(monthly, chartCategorySlugs);
     }
     return monthly;
-  }, [chartCategorySlugs, chartGranularity, view]);
+  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view]);
 
   const monthTableRows = useMemo(() => {
     if (!view) return [];
-    if (chartGranularity === "month") return view.table.by_month;
-    const asc = [...view.table.by_month].reverse();
+    const clipped =
+      latestNonEmptyMonth == null
+        ? view.table.by_month
+        : view.table.by_month.filter((r) => r.period_month <= latestNonEmptyMonth);
+    if (chartGranularity === "month") return clipped;
+    const asc = [...clipped].reverse();
     return [...rollupExpenseMonthRowsByYear(asc)].reverse();
-  }, [chartGranularity, view]);
+  }, [chartGranularity, latestNonEmptyMonth, view]);
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 
@@ -150,6 +181,9 @@ export function ExpensesPage() {
           />
           {t("expenses.creditCard.installmentModeTotal")}
         </label>
+        <span style={{ marginLeft: "auto" }}>
+          <CreditCardFacturadoFinancingManager lines={data.lines} />
+        </span>
       </div>
 
       {bigGroupUsage.length > 0 ? (

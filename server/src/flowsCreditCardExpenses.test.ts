@@ -324,7 +324,24 @@ describe("flowsCreditCardExpenses", () => {
       expect(row.period_month).toMatch(/^\d{4}-\d{2}$/);
       expect(row.as_of_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
-    expect(payload.chart_monthly.length).toBe(asc.length);
+
+    // chart_monthly is densified (server/src/calendarMonth.ts densifyMonthlyPoints): it fills
+    // every interior calendar month between the first and last by_month entry, even months with
+    // zero gastos lines (and thus no by_month row). chart_monthly is therefore >= by_month in
+    // length; every by_month row's gastos_clp must be reflected in the matching chart point, and
+    // every chart-only month must be a real activity gap (zero gastos, not in by_month).
+    const byMonthMap = new Map(asc.map((r) => [r.period_month, r]));
+    const chartByMonth = new Map(payload.chart_monthly.map((p) => [p.as_of_date.slice(0, 7), p]));
+    expect(chartByMonth.size).toBeGreaterThanOrEqual(byMonthMap.size);
+    for (const [month, row] of byMonthMap) {
+      const point = chartByMonth.get(month);
+      expect(point).toBeDefined();
+      expect(point!.gastos_clp).toBe(row.gastos_mes_clp);
+    }
+    for (const [month, point] of chartByMonth) {
+      if (byMonthMap.has(month)) continue;
+      expect(point.gastos_clp).toBe(0);
+    }
   });
 
   it("groups installment lines by billing month, not purchase month", () => {
@@ -397,7 +414,7 @@ describe("flowsCreditCardExpenses", () => {
         if (ln.amount_clp > 0 && lineCountsTowardGastosSum(ln, "split", countsCategory)) {
           // Mortgage-linked lines contribute only the carrying portion (deuda amortization
           // is tracked separately), matching the production aggregateGastosFromLines logic.
-          const link = ln.expense_deposit_link;
+          const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
           const mortgageSplit = hasSplittableMortgageExpenseDepositLink(link);
           return s + (mortgageSplit ? link.carrying_clp : ln.amount_clp);
         }

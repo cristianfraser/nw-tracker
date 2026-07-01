@@ -2,6 +2,11 @@ import { collectNavAccountDataKeys } from "./portfolioNavFromApi";
 import type { AccountListRow, NavTreeNodeDto } from "./types";
 
 function leafBucketGroupSlug(account: AccountListRow): string {
+  // Portfolio group slugs use single underscores (e.g. "cash_savings"); asset group slugs
+  // use double underscores as level separators (e.g. "cash_eqs__cash_savings__usd").
+  // When group_slug is a portfolio slug, use it directly so chart-inactive accounts that
+  // are missing from the sidebar nav tree get inserted into the correct sub-bucket.
+  if (account.group_slug && !account.group_slug.includes("__")) return account.group_slug;
   const slug = account.bucket_slug ?? account.group_slug;
   const idx = slug.indexOf("__");
   return idx >= 0 ? slug.slice(0, idx) : slug;

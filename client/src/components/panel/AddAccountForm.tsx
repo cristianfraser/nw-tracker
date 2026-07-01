@@ -57,9 +57,9 @@ export function AddAccountForm({ netWorthRoot }: Props) {
   const createMutation = useMutation({
     mutationFn: async (payload: NonNullable<ReturnType<typeof buildPanelAccountCreatePreview>>) => {
       if ("kind" in payload.account && payload.account.kind === "usd_cash") {
-        return api.createUsdCashAccount(payload);
+        return api.createUsdCashAccount(payload as Parameters<typeof api.createUsdCashAccount>[0]);
       }
-      return api.createStockAccount(payload);
+      return api.createStockAccount(payload as Parameters<typeof api.createStockAccount>[0]);
     },
     onSuccess: async (result) => {
       setCreatedAccountId(result.account_id);

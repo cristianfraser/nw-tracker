@@ -17,12 +17,19 @@ import {
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { loadDeptoDividendosSheetRowsRawFromDb } from "./deptoSheetDb.js";
+import { syncCuentaAhorroDepositSplitMirrors } from "./cuentaAhorroDepositSplits.js";
+import { syncBudaAbonoDepositMirrors } from "./budaWallet.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
 export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
 
 /** Max days between CC purchase_on and depto sheet occurred_on for mortgage cuota match. */
 export const MORTGAGE_CC_PURCHASE_DAY_GAP = 14;
+
+/** Priority for conflict resolution when the same (purchase_key, deposit_movement_id) pair is
+ *  written by more than one path: manual (user-curated) > auto (real checking/CC match) >
+ *  synthetic (fabricated mirror for a confirmed cuenta_corriente cartola gap). */
+export type ExpenseDepositLinkSource = "auto" | "manual" | "synthetic";
 
 export type ExpenseDepositLinkRow = {
   account_id: number;
@@ -32,7 +39,7 @@ export type ExpenseDepositLinkRow = {
   amortization_clp: number;
   depto_cuota: string | null;
   depto_occurred_on: string | null;
-  link_source: "auto" | "manual";
+  link_source: ExpenseDepositLinkSource;
 };
 
 export type ExpenseDepositLinkDto = {
@@ -42,7 +49,7 @@ export type ExpenseDepositLinkDto = {
   carrying_clp: number;
   depto_cuota: string | null;
   depto_occurred_on: string | null;
-  link_source: "auto" | "manual";
+  link_source: ExpenseDepositLinkSource;
 };
 
 export type GastosLineForExpenseDepositLink = Pick<
@@ -319,7 +326,7 @@ function resolveAmortizationForSegment(
   };
 }
 
-export function loadExpenseDepositLinksMap(): Map<string, ExpenseDepositLinkRow> {
+export function loadExpenseDepositLinksMap(): Map<string, ExpenseDepositLinkRow[]> {
   const rows = db
     .prepare(
       `SELECT account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp,
@@ -327,37 +334,68 @@ export function loadExpenseDepositLinksMap(): Map<string, ExpenseDepositLinkRow>
        FROM expense_deposit_links`
     )
     .all() as ExpenseDepositLinkRow[];
-  const out = new Map<string, ExpenseDepositLinkRow>();
+  const out = new Map<string, ExpenseDepositLinkRow[]>();
   for (const row of rows) {
-    out.set(row.purchase_key, row);
+    const arr = out.get(row.purchase_key);
+    if (arr) arr.push(row);
+    else out.set(row.purchase_key, [row]);
   }
   return out;
 }
 
-function upsertExpenseDepositLink(
-  row: Omit<ExpenseDepositLinkRow, "link_source"> & { link_source: "auto" | "manual" }
-): void {
+/** Movement ids that already have a durable expense_deposit_links row (any source). */
+export function loadLinkedMovementIds(): Set<number> {
+  const rows = db
+    .prepare(`SELECT deposit_movement_id FROM expense_deposit_links`)
+    .all() as { deposit_movement_id: number }[];
+  return new Set(rows.map((r) => r.deposit_movement_id));
+}
+
+const LINK_SOURCE_PRIORITY: Record<ExpenseDepositLinkSource, number> = {
+  manual: 3,
+  auto: 2,
+  synthetic: 1,
+};
+
+/** Best (highest-priority) link source per deposit movement id — manual > auto > synthetic. */
+export function loadBestLinkSourceByMovementId(): Map<number, ExpenseDepositLinkSource> {
+  const rows = db
+    .prepare(`SELECT deposit_movement_id, link_source FROM expense_deposit_links`)
+    .all() as { deposit_movement_id: number; link_source: ExpenseDepositLinkSource }[];
+  const out = new Map<number, ExpenseDepositLinkSource>();
+  for (const row of rows) {
+    const prev = out.get(row.deposit_movement_id);
+    if (!prev || LINK_SOURCE_PRIORITY[row.link_source] > LINK_SOURCE_PRIORITY[prev]) {
+      out.set(row.deposit_movement_id, row.link_source);
+    }
+  }
+  return out;
+}
+
+function upsertExpenseDepositLink(row: ExpenseDepositLinkRow): void {
   const existing = db
-    .prepare(`SELECT link_source FROM expense_deposit_links WHERE purchase_key = ?`)
-    .get(row.purchase_key) as { link_source: "auto" | "manual" } | undefined;
-  if (existing?.link_source === "manual" && row.link_source === "auto") return;
+    .prepare(
+      `SELECT link_source FROM expense_deposit_links WHERE purchase_key = ? AND deposit_movement_id = ?`
+    )
+    .get(row.purchase_key, row.deposit_movement_id) as
+    | { link_source: ExpenseDepositLinkSource }
+    | undefined;
+  if (existing && LINK_SOURCE_PRIORITY[existing.link_source] > LINK_SOURCE_PRIORITY[row.link_source]) {
+    return;
+  }
 
   db.prepare(
     `INSERT INTO expense_deposit_links (
        account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp,
        depto_cuota, depto_occurred_on, link_source
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(purchase_key) DO UPDATE SET
+     ON CONFLICT(purchase_key, deposit_movement_id) DO UPDATE SET
        account_id = excluded.account_id,
-       deposit_movement_id = excluded.deposit_movement_id,
        payment_clp = excluded.payment_clp,
        amortization_clp = excluded.amortization_clp,
        depto_cuota = excluded.depto_cuota,
        depto_occurred_on = excluded.depto_occurred_on,
-       link_source = CASE
-         WHEN expense_deposit_links.link_source = 'manual' THEN expense_deposit_links.link_source
-         ELSE excluded.link_source
-       END`
+       link_source = excluded.link_source`
   ).run(
     row.account_id,
     row.purchase_key,
@@ -368,6 +406,41 @@ function upsertExpenseDepositLink(
     row.depto_occurred_on,
     row.link_source
   );
+}
+
+function clearSyntheticExpenseDepositLinks(): void {
+  db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'synthetic'`).run();
+}
+
+/** Direct 1:1 link from a checking_gap_deposit_mirrors row to its target deposit movement —
+ *  no fuzzy date/amount search, the movement id is already known. */
+function syncCheckingGapDepositMirrorLinks(): void {
+  clearSyntheticExpenseDepositLinks();
+  const rows = db
+    .prepare(
+      `SELECT id, account_id, deposit_movement_id, amount_clp FROM checking_gap_deposit_mirrors`
+    )
+    .all() as { id: number; account_id: number; deposit_movement_id: number; amount_clp: number }[];
+  for (const row of rows) {
+    const amt = Math.round(row.amount_clp);
+    upsertExpenseDepositLink({
+      account_id: row.account_id,
+      purchase_key: checkingGapDepositMirrorPurchaseKey(row.id),
+      deposit_movement_id: row.deposit_movement_id,
+      payment_clp: amt,
+      amortization_clp: amt,
+      depto_cuota: null,
+      depto_occurred_on: null,
+      link_source: "synthetic",
+    });
+  }
+}
+
+/** Must match the `source: "checking"`, negative-`statement_line_id` branch in
+ *  ccExpensePurchaseKey.ts's resolvePurchaseKeyForGastosLine exactly — that's the purchase_key
+ *  the gastos line actually resolves to once enrichFlowLinesWithPurchaseNotes runs on it. */
+export function checkingGapDepositMirrorPurchaseKey(mirrorId: number): string {
+  return `synthetic-checking-gap-mirror:${mirrorId}`;
 }
 
 function clearAutoExpenseDepositLinks(): void {
@@ -429,14 +502,17 @@ export function tryAutoLinkExpenseDepositLine(line: {
   category_slug: string;
   amount_clp: number;
   purchase_notes: string;
-}): ExpenseDepositLinkRow | null {
-  if (line.category_slug !== DEPOSITS_CC_EXPENSE_SLUG) return null;
-  if (line.amount_clp <= 0) return null;
+}): ExpenseDepositLinkRow[] {
+  if (line.category_slug !== DEPOSITS_CC_EXPENSE_SLUG) return [];
+  if (line.amount_clp <= 0) return [];
 
   const segments = parseAutoDepositMatchNote(line.purchase_notes);
-  if (segments.length === 0) return null;
+  if (segments.length === 0) return [];
 
   const paymentClp = Math.round(line.amount_clp);
+  const created: ExpenseDepositLinkRow[] = [];
+
+  // Real-estate segment: amortization/carrying split (existing mortgage path).
   let realEstateSegment: ParsedDepositMatchSegment | null = null;
   for (const seg of segments) {
     if (depositAccountDashboardGroup(seg.account_id) !== "real_estate") continue;
@@ -447,29 +523,58 @@ export function tryAutoLinkExpenseDepositLine(line: {
     }
     realEstateSegment = seg;
   }
-  if (realEstateSegment == null) return null;
+  if (realEstateSegment != null) {
+    const resolved = resolveAmortizationForSegment(realEstateSegment, paymentClp);
+    if (resolved != null) {
+      const carrying = carryingClpForExpenseDepositLink({
+        payment_clp: paymentClp,
+        amortization_clp: resolved.amortization_clp,
+      });
+      if (carrying < paymentClp) {
+        const link: ExpenseDepositLinkRow = {
+          account_id: line.account_id,
+          purchase_key: line.purchase_key,
+          deposit_movement_id: resolved.movement_id,
+          payment_clp: paymentClp,
+          amortization_clp: resolved.amortization_clp,
+          depto_cuota: resolved.depto_cuota,
+          depto_occurred_on: resolved.depto_occurred_on,
+          link_source: "auto",
+        };
+        upsertExpenseDepositLink(link);
+        created.push(link);
+      }
+    }
+  }
 
-  const resolved = resolveAmortizationForSegment(realEstateSegment, paymentClp);
-  if (resolved == null) return null;
+  // Generic non-real_estate segments: full amount is capital (amortization = segment amount).
+  // Multiple movements with the same amount on the same day (e.g. splittable pool) → skip;
+  // we can't uniquely identify which movement to link.
+  for (const seg of segments) {
+    if (depositAccountDashboardGroup(seg.account_id) === "real_estate") continue;
+    let movement: ReturnType<typeof findDepositMovement>;
+    try {
+      movement = findDepositMovement(seg.account_id, seg.occurred_on, seg.amount_clp);
+    } catch {
+      continue;
+    }
+    if (movement == null) continue;
+    const segAmt = Math.round(seg.amount_clp);
+    const link: ExpenseDepositLinkRow = {
+      account_id: line.account_id,
+      purchase_key: line.purchase_key,
+      deposit_movement_id: movement.id,
+      payment_clp: segAmt,
+      amortization_clp: segAmt,
+      depto_cuota: null,
+      depto_occurred_on: null,
+      link_source: "auto",
+    };
+    upsertExpenseDepositLink(link);
+    created.push(link);
+  }
 
-  const carrying = carryingClpForExpenseDepositLink({
-    payment_clp: paymentClp,
-    amortization_clp: resolved.amortization_clp,
-  });
-  if (carrying === paymentClp) return null;
-
-  const link: ExpenseDepositLinkRow = {
-    account_id: line.account_id,
-    purchase_key: line.purchase_key,
-    deposit_movement_id: resolved.movement_id,
-    payment_clp: paymentClp,
-    amortization_clp: resolved.amortization_clp,
-    depto_cuota: resolved.depto_cuota,
-    depto_occurred_on: resolved.depto_occurred_on,
-    link_source: "auto",
-  };
-  upsertExpenseDepositLink(link);
-  return link;
+  return created;
 }
 
 function assignBillsCategoryToMortgageLinkedLines(): void {
@@ -479,7 +584,8 @@ function assignBillsCategoryToMortgageLinkedLines(): void {
      FROM expense_deposit_links edl
      JOIN cc_statement_lines csl ON csl.parser_row_id = substr(edl.purchase_key, 9)
      JOIN cc_expense_categories cat ON cat.slug = ?
-     WHERE edl.purchase_key LIKE 'line-pr:%'`
+     WHERE edl.purchase_key LIKE 'line-pr:%'
+       AND edl.depto_cuota IS NOT NULL`
   ).run(BILLS_CC_EXPENSE_SLUG);
 }
 
@@ -492,16 +598,22 @@ export function syncExpenseDepositLinksFromGastosLines(
     tryAutoLinkExpenseDepositLine(line);
   }
   assignBillsCategoryToMortgageLinkedLines();
+  // Materialize cuenta_ahorro self-funded split portions and Buda buffer abonos into
+  // checking_gap_deposit_mirrors first, so syncCheckingGapDepositMirrorLinks picks them up alongside
+  // the propose-script mirrors.
+  syncCuentaAhorroDepositSplitMirrors();
+  syncBudaAbonoDepositMirrors();
+  syncCheckingGapDepositMirrorLinks();
 }
 
 export function enrichFlowLinesWithExpenseDepositLinks<
   T extends Pick<FlowCcExpenseLineRow, "purchase_key">
->(lines: readonly T[]): (T & { expense_deposit_link?: ExpenseDepositLinkDto })[] {
+>(lines: readonly T[]): (T & { expense_deposit_links?: ExpenseDepositLinkDto[] })[] {
   const links = loadExpenseDepositLinksMap();
   return lines.map((line) => {
-    const row = links.get(line.purchase_key);
-    if (!row) return line;
-    return { ...line, expense_deposit_link: expenseDepositLinkDto(row) };
+    const rows = links.get(line.purchase_key);
+    if (!rows || rows.length === 0) return line;
+    return { ...line, expense_deposit_links: rows.map(expenseDepositLinkDto) };
   });
 }
 

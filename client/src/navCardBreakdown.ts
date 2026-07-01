@@ -9,7 +9,6 @@ import {
   hasMaterialDashboardBalance,
   isChartActiveAccount,
 } from "./accountGroupTotals";
-import i18n from "./i18n";
 import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
 import { stripChartBucketNavNodes } from "./navChartBuckets";

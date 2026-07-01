@@ -35,15 +35,17 @@ function baseLine(
     purchase_notes: "",
     big_group_slug: null,
     origin_label: "Cuenta corriente",
-    expense_deposit_link: {
-      deposit_movement_id: 99,
-      payment_clp: 1_000_000,
-      amortization_clp: 600_000,
-      carrying_clp: 400_000,
-      depto_cuota: "2024-03",
-      depto_occurred_on: "2024-03-11",
-      link_source: "auto",
-    },
+    expense_deposit_links: [
+      {
+        deposit_movement_id: 99,
+        payment_clp: 1_000_000,
+        amortization_clp: 600_000,
+        carrying_clp: 400_000,
+        depto_cuota: "2024-03",
+        depto_occurred_on: "2024-03-11",
+        link_source: "auto",
+      },
+    ],
     ...overrides,
   };
 }
@@ -75,15 +77,17 @@ describe("client expense deposit link aggregate", () => {
       merchant_key: "METLIFE CHILE SEGUROS",
       category_slug: BILLS_CC_EXPENSE_SLUG,
       purchase_key: "line-pr:metlife-cuota-27",
-      expense_deposit_link: {
-        deposit_movement_id: 99,
-        payment_clp: 3_212_395,
-        amortization_clp: 2_855_638,
-        carrying_clp: 356_757,
-        depto_cuota: "27",
-        depto_occurred_on: "2026-05-11",
-        link_source: "auto",
-      },
+      expense_deposit_links: [
+        {
+          deposit_movement_id: 99,
+          payment_clp: 3_212_395,
+          amortization_clp: 2_855_638,
+          carrying_clp: 356_757,
+          depto_cuota: "27",
+          depto_occurred_on: "2026-05-11",
+          link_source: "auto",
+        },
+      ],
     });
 
     const { by_month, chart_monthly_by_category } = aggregateGastosFromLines(

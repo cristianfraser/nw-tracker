@@ -14,7 +14,7 @@ import {
 const DEPOSIT_MATCHED_PAGE_SIZE = 10;
 
 function isDepositLinkedExpenseLine(line: FlowCcExpenseLineRow): boolean {
-  return isAutoDepositMatchedPurchaseNote(line.purchase_notes) || line.expense_deposit_link != null;
+  return isAutoDepositMatchedPurchaseNote(line.purchase_notes) || (line.expense_deposit_links?.length ?? 0) > 0;
 }
 
 export function CreditCardDepositMatchedExpensesTable({

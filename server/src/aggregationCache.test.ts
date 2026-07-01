@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   cacheKeyAccountMonthlyPerf,
   cacheKeyGroupConsolidatedMonthly,
@@ -74,5 +74,32 @@ describe("aggregationCache", () => {
       return [];
     });
     expect(brokerageRebuilds).toBe(0);
+  });
+
+  describe("Chile calendar day rollover", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("drops all cached entries when the day rolls over", () => {
+      vi.useFakeTimers();
+      // Late on June 30 in Chile (UTC-4): a long-running server warms the cache before midnight.
+      vi.setSystemTime(new Date("2026-06-30T22:00:00-04:00"));
+      let builds = 0;
+      const build = () => {
+        builds += 1;
+        return builds;
+      };
+
+      expect(getAggregationCached("test|rollover", build)).toBe(1);
+      expect(getAggregationCached("test|rollover", build)).toBe(1); // cached, no rebuild
+
+      // Clock advances past midnight into July — cache must rebuild with the new "today".
+      vi.setSystemTime(new Date("2026-07-01T01:00:00-04:00"));
+      expect(getAggregationCached("test|rollover", build)).toBe(2);
+      expect(builds).toBe(2);
+
+      // Same day again keeps the freshly built value cached.
+      expect(getAggregationCached("test|rollover", build)).toBe(2);
+      expect(builds).toBe(2);
+    });
   });
 });

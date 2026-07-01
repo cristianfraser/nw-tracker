@@ -60,4 +60,26 @@ describe("ccCrossImportDedupe", () => {
       )
     ).toBe(false);
   });
+
+  it("matches a re-imported single cuota against the converted installment", () => {
+    // BCI Lider website first lists a purchase as the full total (92.918, 6 cuotas), then
+    // re-lists it as the per-cuota charge (92.918 / 6 ≈ 15.486). Both must dedupe.
+    const purchase = {
+      id: 2,
+      purchase_date: "2026-06-28",
+      total_amount_clp: 92_918,
+      cuotas_totales: 6,
+      merchant: "TGR",
+    };
+    expect(
+      installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 92_918)
+    ).toBe(true);
+    expect(
+      installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 15_486)
+    ).toBe(true);
+    // Unrelated amount at the same merchant/date is still a distinct purchase.
+    expect(
+      installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 30_000)
+    ).toBe(false);
+  });
 });

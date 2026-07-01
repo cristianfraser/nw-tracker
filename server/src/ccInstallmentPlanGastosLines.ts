@@ -4,6 +4,7 @@ import {
   normalizeCcExpenseMerchantKey,
   registerGenericUniquePurchaseMode,
   resolveCcExpenseCategorySlug,
+  stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { ccLedgerMonthEndIso, installmentPlanBreakdownByMonth } from "./ccInstallmentLedgerDb.js";
 import {
@@ -34,6 +35,7 @@ type PurchaseMeta = {
   purchase_date: string;
   merchant: string | null;
   cuotas_totales: number;
+  total_amount_clp: number;
 };
 
 function loadPurchaseMetaByCanonicalId(accountIds: number[]): Map<string, PurchaseMeta> {
@@ -41,7 +43,7 @@ function loadPurchaseMetaByCanonicalId(accountIds: number[]): Map<string, Purcha
   const ph = accountIds.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT id, account_id, canonical_row_id, purchase_date, merchant, cuotas_totales
+      `SELECT id, account_id, canonical_row_id, purchase_date, merchant, cuotas_totales, total_amount_clp
        FROM cc_installment_purchases
        WHERE account_id IN (${ph})`
     )
@@ -103,7 +105,14 @@ export function buildInstallmentPlanGastosLines(
           continue;
         }
 
-        const purchaseKey = `installment-h:${accountId}:${purchaseOn}:${cuotaTotal}:${merchantKey}`;
+        const purchaseKey =
+          stableInstallmentHPurchaseKeyFromLedgerArgs({
+            accountId,
+            purchaseDateIso: purchaseOn,
+            cuotasTotales: cuotaTotal,
+            totalAmountClp: purchase.total_amount_clp,
+            merchant,
+          }) ?? `installment-h:${accountId}:${purchaseOn}:${cuotaTotal}:${merchantKey}`;
         const lineId = installmentPlanGastosLineId(purchase.id, slot.installment_index);
         registerGenericUniquePurchaseMode(
           accountId,
@@ -147,6 +156,7 @@ export function buildInstallmentPlanGastosLines(
           amount_usd_at_expense: expenseGastosAmountUsdAtDate(amount, null, purchaseOn ?? occurredOn),
           merchant,
           installment_flag: 1,
+          installment_total_clp: purchase.total_amount_clp,
           nro_cuota_current: cuotaCurrent,
           nro_cuota_total: cuotaTotal,
           merchant_key: merchantKey,

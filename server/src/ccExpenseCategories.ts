@@ -332,6 +332,13 @@ export function resolveCcExpenseCategorySlug(opts: {
 }): string {
   const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
   let uniqueSlug = opts.uniquePurchases.get(uniqueKey);
+  if (uniqueSlug == null) {
+    const legacyKey = legacyInstallmentHPurchaseKey(opts.purchaseKey);
+    if (legacyKey) {
+      uniqueSlug =
+        opts.uniquePurchases.get(uniquePurchaseMapKey(opts.accountId, legacyKey)) ?? undefined;
+    }
+  }
   if (uniqueSlug == null && opts.purchaseKey.startsWith("checking-cartola:")) {
     const portion: "gastos" | "deposit" = opts.purchaseKey.endsWith(":deposit")
       ? "deposit"
@@ -395,21 +402,22 @@ function resolveInstallmentPurchaseIdsFromKey(
       .all(parserRowId) as { purchase_id: number }[];
     return hits.map((h) => h.purchase_id);
   }
-  if (purchaseKey.startsWith("installment-h:")) {
-    const parts = purchaseKey.split(":");
-    if (parts.length < 5) return [];
-    const purchaseIso = parts[2]!;
-    const nroTotal = Number(parts[3]);
-    const merchantKey = parts[4]!;
-    if (!purchaseIso || !Number.isFinite(nroTotal)) return [];
+  const parsed = parseInstallmentHPurchaseKey(purchaseKey);
+  if (parsed) {
     const rows = db
       .prepare(
-        `SELECT id, merchant FROM cc_installment_purchases
+        `SELECT id, merchant, total_amount_clp FROM cc_installment_purchases
          WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ?`
       )
-      .all(accountId, purchaseIso, nroTotal) as { id: number; merchant: string | null }[];
+      .all(accountId, parsed.purchaseIso, parsed.nroTotal) as {
+      id: number;
+      merchant: string | null;
+      total_amount_clp: number;
+    }[];
     return rows
-      .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey)
+      .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === parsed.merchantKey)
+      // When the key carries a total, disambiguate same-identity purchases by amount.
+      .filter((r) => parsed.totalClp == null || Math.round(r.total_amount_clp) === parsed.totalClp)
       .map((r) => r.id);
   }
   return [];
@@ -530,22 +538,67 @@ export type CcStatementLineExpenseCtx = {
   posting_date: string | null;
   nro_cuota_total: number | null;
   valor_cuota_mensual_clp: number | null;
+  /** Ledger `total_amount_clp` for the installment purchase (disambiguates same-identity purchases). */
+  installment_total_clp: number | null;
   parser_row_id: string | null;
 };
 
 /**
- * Same `installment-h:` key as {@link stableCcExpensePurchaseKeyFromCtx} for installment contracts
- * (manual ledger purchases without a statement line row).
+ * Canonical `installment-h:` key. Includes the ledger total so two purchases that share
+ * account/date/cuotas/merchant but differ by amount get distinct keys. When the total is absent it
+ * emits the legacy (no-total) key, which read paths still resolve via
+ * {@link legacyInstallmentHPurchaseKey}. Keep in sync with the parsers in this file.
  */
 export function stableInstallmentHPurchaseKeyFromLedgerArgs(opts: {
   accountId: number;
   purchaseDateIso: string;
   cuotasTotales: number;
+  totalAmountClp?: number | null;
   merchant: string | null | undefined;
 }): string | null {
   const merchantKey = normalizeCcExpenseMerchantKey(opts.merchant);
   if (!opts.purchaseDateIso || !merchantKey || opts.cuotasTotales <= 0) return null;
+  const total = opts.totalAmountClp;
+  if (total != null && Number.isFinite(total)) {
+    return `installment-h:${opts.accountId}:${opts.purchaseDateIso}:${opts.cuotasTotales}:${Math.round(total)}:${merchantKey}`;
+  }
   return `installment-h:${opts.accountId}:${opts.purchaseDateIso}:${opts.cuotasTotales}:${merchantKey}`;
+}
+
+/**
+ * Legacy (pre-amount) form of a new `installment-h:` key — drops the total segment. Returns null
+ * when the key is already legacy (or not an installment-h key). Used for read fallback so category /
+ * notes / big-group rows stored before the amount was added keep resolving.
+ */
+export function legacyInstallmentHPurchaseKey(purchaseKey: string): string | null {
+  if (!purchaseKey.startsWith("installment-h:")) return null;
+  const parts = purchaseKey.split(":");
+  // New: installment-h:acct:iso:cuotaTotal:total:merchant...  (total is a pure integer at index 4)
+  if (parts.length < 6 || !/^\d+$/.test(parts[4] ?? "")) return null;
+  return [parts[0], parts[1], parts[2], parts[3], ...parts.slice(5)].join(":");
+}
+
+/** Parse an `installment-h:` key (new-with-total or legacy). `totalClp` is null for legacy keys. */
+export function parseInstallmentHPurchaseKey(purchaseKey: string): {
+  accountId: number;
+  purchaseIso: string;
+  nroTotal: number;
+  totalClp: number | null;
+  merchantKey: string;
+} | null {
+  if (!purchaseKey.startsWith("installment-h:")) return null;
+  const parts = purchaseKey.split(":");
+  if (parts.length < 5) return null;
+  const accountId = Number(parts[1]);
+  const purchaseIso = parts[2] ?? "";
+  const nroTotal = Number(parts[3]);
+  const hasTotal = parts.length >= 6 && /^\d+$/.test(parts[4] ?? "");
+  const totalClp = hasTotal ? Number(parts[4]) : null;
+  const merchantKey = hasTotal ? parts.slice(5).join(":") : parts.slice(4).join(":");
+  if (!Number.isFinite(accountId) || !purchaseIso || !Number.isFinite(nroTotal) || !merchantKey) {
+    return null;
+  }
+  return { accountId, purchaseIso, nroTotal, totalClp, merchantKey };
 }
 
 /** Stable across PDF reimports (uses parser_row_id / installment-h, not DB line id). */
@@ -557,6 +610,7 @@ export function stableCcExpensePurchaseKeyFromCtx(ctx: CcStatementLineExpenseCtx
         accountId: ctx.account_id,
         purchaseDateIso: purchaseIso,
         cuotasTotales: ctx.nro_cuota_total,
+        totalAmountClp: ctx.installment_total_clp,
         merchant: ctx.merchant,
       });
       if (hKey) return hKey;
@@ -599,8 +653,51 @@ export function loadCcStatementLineExpenseCtx(statementLineId: number): CcStatem
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE l.id = ?`
     )
-    .get(statementLineId) as CcStatementLineExpenseCtx | undefined;
-  return row ?? null;
+    .get(statementLineId) as Omit<CcStatementLineExpenseCtx, "installment_total_clp"> | undefined;
+  if (!row) return null;
+  return { ...row, installment_total_clp: installmentLedgerTotalForCtx(row) };
+}
+
+/**
+ * Ledger `total_amount_clp` for an installment statement line, matched by identity
+ * (account/date/cuotas/merchant). Returns null unless exactly one ledger purchase matches (so a
+ * rare same-identity collision falls back to the legacy no-total key rather than guessing).
+ */
+function installmentLedgerTotalForCtx(
+  ctx: Omit<CcStatementLineExpenseCtx, "installment_total_clp">
+): number | null {
+  if (ctx.installment_flag !== 1 || ctx.nro_cuota_total == null || ctx.nro_cuota_total <= 0) {
+    return null;
+  }
+  const iso = parseDdMmYyToIso(ctx.transaction_date ?? "") ?? parseDdMmYyToIso(ctx.posting_date ?? "");
+  if (!iso) return null;
+  return installmentLedgerTotalForIdentity(ctx.account_id, iso, ctx.nro_cuota_total, ctx.merchant);
+}
+
+/**
+ * Ledger `total_amount_clp` for an installment identity (account/date/cuotas/merchant), or null
+ * unless exactly one ledger purchase matches (so same-identity collisions fall back to the legacy
+ * no-total key). Used to stamp `installment_total_clp` on statement cuota lines.
+ */
+export function installmentLedgerTotalForIdentity(
+  accountId: number,
+  purchaseDateIso: string,
+  cuotasTotales: number,
+  merchant: string | null | undefined
+): number | null {
+  const merchantKey = normalizeCcExpenseMerchantKey(merchant);
+  if (!purchaseDateIso || !merchantKey || cuotasTotales <= 0) return null;
+  const rows = db
+    .prepare(
+      `SELECT total_amount_clp, merchant FROM cc_installment_purchases
+       WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ?`
+    )
+    .all(accountId, purchaseDateIso, cuotasTotales) as {
+    total_amount_clp: number;
+    merchant: string | null;
+  }[];
+  const matches = rows.filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey);
+  return matches.length === 1 ? Math.round(matches[0]!.total_amount_clp) : null;
 }
 
 /** Statement line ids that share one installment purchase (cuotas 1..N). */
@@ -680,6 +777,7 @@ function listInstallmentSiblingIdsViaHeuristic(ctx: CcStatementLineExpenseCtx): 
       posting_date: row.posting_date,
       nro_cuota_total: cuotasTotal,
       valor_cuota_mensual_clp: row.valor_cuota_mensual_clp,
+      installment_total_clp: null,
       parser_row_id: null,
     };
     if (purchaseDateIsoFromLine(rowCtx) !== purchaseIso) continue;
@@ -710,6 +808,7 @@ function listInstallmentHHeuristicStatementLineIds(
     nro_cuota_total: nroTotal,
     valor_cuota_mensual_clp:
       anchorCuotaClp != null && Number.isFinite(anchorCuotaClp) ? anchorCuotaClp : null,
+    installment_total_clp: null,
     parser_row_id: null,
   };
   const candidates = db
@@ -782,24 +881,18 @@ export function listStatementLineIdsForPurchaseKey(
     return out.length > 0 ? out : [statementLineId];
   }
 
-  if (key.startsWith("installment-h:")) {
-    const parts = key.split(":");
-    if (parts.length >= 5) {
-      const accountId = Number(parts[1]);
-      const purchaseIso = parts[2]!;
-      const nroTotal = Number(parts[3]);
-      const merchantKey = parts[4]!;
-      const cuotaClp = ctx.valor_cuota_mensual_clp;
-      const out = listInstallmentHHeuristicStatementLineIds(
-        accountId,
-        purchaseIso,
-        nroTotal,
-        merchantKey,
-        Number.isFinite(cuotaClp as number) ? (cuotaClp as number) : null,
-        true
-      );
-      if (out.length > 0) return out;
-    }
+  const parsedH = parseInstallmentHPurchaseKey(key);
+  if (parsedH) {
+    const cuotaClp = ctx.valor_cuota_mensual_clp;
+    const out = listInstallmentHHeuristicStatementLineIds(
+      parsedH.accountId,
+      parsedH.purchaseIso,
+      parsedH.nroTotal,
+      parsedH.merchantKey,
+      Number.isFinite(cuotaClp as number) ? (cuotaClp as number) : null,
+      true
+    );
+    if (out.length > 0) return out;
     return listInstallmentPurchaseSiblingStatementLineIds(statementLineId);
   }
 
@@ -956,14 +1049,9 @@ function executeCcExpenseCategoryAssignment(opts: {
 }
 
 function statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey: string): number[] {
-  if (!purchaseKey.startsWith("installment-h:")) return [];
-  const parts = purchaseKey.split(":");
-  if (parts.length < 5) return [];
-  const accountId = Number(parts[1]);
-  const purchaseIso = parts[2]!;
-  const nroTotal = Number(parts[3]);
-  const merchantKey = parts[4]!;
-  if (!Number.isFinite(accountId) || !Number.isFinite(nroTotal) || !merchantKey) return [];
+  const parsed = parseInstallmentHPurchaseKey(purchaseKey);
+  if (!parsed) return [];
+  const { accountId, purchaseIso, nroTotal, merchantKey } = parsed;
   return listInstallmentHHeuristicStatementLineIds(
     accountId,
     purchaseIso,
@@ -991,7 +1079,7 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
 } {
   const pr = db
     .prepare(
-      `SELECT id, account_id, purchase_date, cuotas_totales, merchant FROM cc_installment_purchases WHERE id = ?`
+      `SELECT id, account_id, purchase_date, cuotas_totales, total_amount_clp, merchant FROM cc_installment_purchases WHERE id = ?`
     )
     .get(opts.purchaseId) as
     | {
@@ -999,6 +1087,7 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
         account_id: number;
         purchase_date: string;
         cuotas_totales: number;
+        total_amount_clp: number;
         merchant: string | null;
       }
     | undefined;
@@ -1038,6 +1127,7 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
     accountId: pr.account_id,
     purchaseDateIso: purchaseIso,
     cuotasTotales: pr.cuotas_totales,
+    totalAmountClp: pr.total_amount_clp,
     merchant: pr.merchant,
   });
   if (!purchaseKey) {

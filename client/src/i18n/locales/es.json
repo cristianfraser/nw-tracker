@@ -439,7 +439,21 @@
       "asOf": "Al"
     },
     "movements": {
-      "counterpartAccount": "In/Out"
+      "counterpartAccount": "Cuenta contraparte"
+    },
+    "flowDirection": {
+      "label": "Ingreso / Retiro",
+      "in": "Ingreso",
+      "out": "Retiro"
+    },
+    "unitsFlow": {
+      "title": "Añadir aporte / retiro",
+      "hint": "Aporte o retiro con contraparte. Ingresa el monto en CLP y las {{unit}}; el monto debe cuadrar con {{unit}} × valor cuota (si no, se rechaza).",
+      "emptyDraft": "Sin borradores. Añade una fila, completa fecha, monto, cuotas y contraparte.",
+      "addRow": "Añadir flujo",
+      "saveBtn": "Registrar flujos",
+      "saved": "{{count}} flujo(s) registrado(s).",
+      "invalid": "Cada fila requiere fecha (AAAA-MM-DD), monto CLP, cuotas y cuenta contraparte."
     },
     "bookLedger": {
       "sectionTitle": "Valorización y flujos (manual)",
@@ -864,6 +878,40 @@
     "colAmount": "Monto",
     "emptyCategory": "Sin depósitos en esta categoría."
   },
+  "depositsReconciliation": {
+    "title": "Reconciliación de depósitos",
+    "intro": "Movimientos positivos en cuentas de patrimonio neto clasificados por cobertura en el libro de gastos.",
+    "colDate": "Fecha",
+    "colAccount": "Cuenta",
+    "colCategory": "Categoría",
+    "colAmount": "Monto",
+    "sectionLinked": "Vinculados a gasto",
+    "sectionLinkedSynthetic": "Vinculados (mirror sintético — cartola faltante)",
+    "sectionResolvedFamilyFunded": "Aportes de familia (sin flujo propio)",
+    "sectionNoCheckingSource": "Sin cartola (mes sin datos)",
+    "sectionNeedsAttention": "Sin vincular (cartola disponible)",
+    "emptyLinked": "No hay depósitos vinculados.",
+    "emptyLinkedSynthetic": "No hay mirrors sintéticos generados.",
+    "emptyResolvedFamilyFunded": "No hay depósitos marcados como aporte familiar.",
+    "emptyNoCheckingSource": "No hay depósitos en meses sin cartola.",
+    "emptyNeedsAttention": "Todos los depósitos están vinculados o sin cartola.",
+    "byMonth": "Por mes",
+    "colMonth": "Mes",
+    "colLinked": "Vinculado",
+    "colLinkedSynthetic": "Vinculado (sintético)",
+    "colResolvedFamilyFunded": "Aporte familiar",
+    "colNoChecking": "Sin cartola",
+    "colUnlinked": "Sin vincular",
+    "colTotal": "Total",
+    "redemptionsTitle": "Rescates (salidas de patrimonio → cuenta)",
+    "redemptionsIntro": "Capital que sale de una cuenta de patrimonio (no checking) y vuelve al checking: rescates de fondos, vencimientos de DAP, retiros. Se vinculan al abono en el checking que ya se excluye de ingresos.",
+    "redemptionSectionLinked": "Vinculados a ingreso de cuenta",
+    "redemptionSectionNoCheckingSource": "Sin cartola (mes sin datos)",
+    "redemptionSectionNeedsAttention": "Sin vincular (cartola disponible)",
+    "redemptionEmptyLinked": "No hay rescates vinculados.",
+    "redemptionEmptyNoCheckingSource": "No hay rescates en meses sin cartola.",
+    "redemptionEmptyNeedsAttention": "Todos los rescates están vinculados o sin cartola."
+  },
   "expenses": {
     "realEstateIntro": "Cuentas de servicios por departamento vinculadas a gastos reales (tarjeta o cuenta corriente). Las filas del CSV definen mes y tipo de boleta; el cargo puede coincidir con ese mes o aparecer uno o dos meses después. El monto en gráficos usa el gasto vinculado o, si falta, el valor esperado del CSV.",
     "realEstate": {
@@ -898,6 +946,22 @@
       "installmentModeLabel": "Cuotas",
       "installmentModeSplit": "Por cuota",
       "installmentModeTotal": "Total",
+      "financing": {
+        "openButton": "Financiamiento en cuotas…",
+        "title": "Financiamiento de facturado en cuotas",
+        "intro": "Vincula un facturado (p. ej. Líder) que pagaste en cuotas con la tarjeta Santander. En «Total» el facturado se muestra en su mes; en «Por cuota» cada gasto se reparte en las cuotas del pago.",
+        "existingTitle": "Vínculos existentes",
+        "newTitle": "Nuevo vínculo",
+        "none": "Sin vínculos.",
+        "accountLabel": "Cuenta del facturado",
+        "monthLabel": "Mes del facturado",
+        "selectAccount": "Selecciona cuenta",
+        "selectMonth": "Selecciona mes",
+        "financingLabel": "Compras en cuotas que lo pagan",
+        "financingShort": "compras",
+        "save": "Guardar vínculo",
+        "remove": "Quitar"
+      },
       "installmentPurchaseTotalLabel": "Compra en cuotas · {{count}} cuotas",
       "chartTitle": "Gasto por categoría",
       "chartStyleLabel": "Vista",
@@ -969,6 +1033,7 @@
       "depositMatchedTableHint": "Cargos emparejados con un depósito a inversión: cuenta corriente (nota auto:deposit-match) o tarjeta ligada a cuota Suecia (amortización en el gráfico). Revisa posibles falsos positivos en transferencias.",
       "depositMatchedTableEmpty": "No hay gastos emparejados con depósitos.",
       "mortgageDepositLinkCuota": "· Suecia cuota {{cuota}}",
+      "investmentDepositLink": "· depósito inversión",
       "bigGroups": {
         "colGroup": "Grupo grande",
         "none": "—",

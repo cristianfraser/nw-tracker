@@ -93,10 +93,12 @@ export function CreditCardGroupExpensesChart({
         extendThroughYmd: chileTodayYmd(),
       }
     ) as unknown as FlowCcExpenseCategoryChartPoint[];
-    return filled.map((row) => ({
-      ...row,
-      [EXPENSE_CHART_TOTAL_KEY]: expenseCategoryChartPointTotal(row, barKeys),
-    }));
+    return filled.map(
+      (row): FlowCcExpenseCategoryChartPoint => ({
+        ...row,
+        [EXPENSE_CHART_TOTAL_KEY]: expenseCategoryChartPointTotal(row, barKeys),
+      })
+    );
   }, [displayPoints, barKeys, xAxisGranularity]);
 
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);

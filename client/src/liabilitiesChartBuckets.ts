@@ -95,7 +95,7 @@ function stubCreditCardIssuerNavNode(slug: string): NavTreeNodeDto {
     kind_slug: null,
     dashboard_bucket_slug: null,
     exclude_from_parent_total: false,
-    group_kind: "normal",
+    group_kind: "bucket",
     children: [],
   };
 }

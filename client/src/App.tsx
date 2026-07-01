@@ -9,6 +9,7 @@ import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DepositsPage } from "./pages/DepositsPage";
+import { DepositsReconciliationPage } from "./pages/DepositsReconciliationPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { RealEstateExpensesPage } from "./pages/RealEstateExpensesPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="expenses/real_estate" element={<RealEstateExpensesPage />} />
               <Route path="expenses/real_estate/:accountSlug" element={<RealEstateExpensesPage />} />
               <Route path="deposits" element={<DepositsPage />} />
+              <Route path="deposits/reconciliation" element={<DepositsReconciliationPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />

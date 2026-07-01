@@ -17,6 +17,7 @@ import {
 import { accountRowForId } from "./accountRowForMovement.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
+import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
 export type AccountRow = {
   bucket_slug: string;
   group_slug: string;
@@ -409,8 +410,35 @@ function validateTransferMovementCreate(
   const unitsRaw = parseUnitsDeltaField(body);
   const flow_kind_raw = typeof body.flow_kind === "string" && body.flow_kind.trim() ? body.flow_kind.trim() : null;
   const unitsProvided = unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw);
+  const currentRow = accountRowForId(currentAccountId);
+  const currentSchema = currentRow ? movementCreateSchemaForAccount(currentRow) : null;
+  const isManualUnitsAccount =
+    !!currentSchema && currentSchema.units_delta === "required" && !currentSchema.brokerage_flow_kinds;
+
   let flow_kind = flow_kind_raw;
-  if (unitsProvided && flow_kind == null) {
+  if (isManualUnitsAccount) {
+    if (!unitsProvided) {
+      return {
+        ok: false,
+        status: 400,
+        error: `units_delta is required for this account (${currentSchema!.unit_label}).`,
+      };
+    }
+    if (!Number.isFinite(amount_clp_raw) || amount_clp_raw === 0) {
+      return { ok: false, status: 400, error: "amount_clp is required." };
+    }
+    try {
+      assertManualUnitsClpReconcile({
+        accountId: currentAccountId,
+        ymd: occurred_on,
+        amountClpAbs: Math.abs(amount_clp_raw),
+        unitsAbs: Math.abs(unitsRaw!),
+      });
+    } catch (e) {
+      return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e) };
+    }
+    // Fintual/crypto/AFP transfers carry cuotas but no equity flow_kind; the sign is derived from the leg.
+  } else if (unitsProvided && flow_kind == null) {
     flow_kind = unitsRaw! > 0 ? "stock_buy" : "stock_sell";
   }
   const tickerRaw = body.ticker;
@@ -427,7 +455,11 @@ function validateTransferMovementCreate(
     amount_usd:
       amount_usd_raw != null && Number.isFinite(amount_usd_raw) ? Math.abs(amount_usd_raw) : null,
     units_delta:
-      unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw) ? unitsRaw : null,
+      unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw)
+        ? isManualUnitsAccount
+          ? Math.abs(unitsRaw)
+          : unitsRaw
+        : null,
     flow_kind,
     ticker,
   };
@@ -436,8 +468,10 @@ function validateTransferMovementCreate(
   } catch (e) {
     return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e) };
   }
-  const endpointErr = validateBrokerageTransferEndpoints(input);
-  if (endpointErr) return endpointErr;
+  if (!isManualUnitsAccount) {
+    const endpointErr = validateBrokerageTransferEndpoints(input);
+    if (endpointErr) return endpointErr;
+  }
 
   return {
     ok: true,

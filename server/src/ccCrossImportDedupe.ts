@@ -116,13 +116,34 @@ export function listInstallmentPurchasesForAccount(
   return dedupeInstallmentPurchaseLedgerRows(rows);
 }
 
+/**
+ * A one-shot line represents an installment purchase when its amount matches either the full
+ * principal or a single cuota. The bank's website lists a purchase as the full total at buy time
+ * (e.g. a 6-cuota TGR buy of 92.918), then later re-lists the same purchase as the per-cuota
+ * charge that will post (15.486) — a re-import of that cuota line must still dedupe against the
+ * converted installment. Mirrors `plainPurchaseLineAmountBlocksInstallmentMatch` in
+ * ccInstallmentPurchaseTotalLines.ts.
+ */
+export function installmentPurchaseAmountMatchesOneShot(
+  purchase: CcInstallmentPurchaseMatch,
+  amountClp: number
+): boolean {
+  if (purchaseAmountsMatch(purchase.total_amount_clp, amountClp)) return true;
+  const n = purchase.cuotas_totales;
+  if (n && n > 1 && Number.isFinite(purchase.total_amount_clp) && purchase.total_amount_clp > 0) {
+    const perCuota = Math.round(purchase.total_amount_clp / n);
+    if (purchaseAmountsMatch(perCuota, amountClp)) return true;
+  }
+  return false;
+}
+
 export function installmentPurchaseMatchesOneShot(
   purchase: CcInstallmentPurchaseMatch,
   merchant: string | null,
   purchaseDateIso: string | null,
   amountClp: number
 ): boolean {
-  if (!purchaseAmountsMatch(purchase.total_amount_clp, amountClp)) return false;
+  if (!installmentPurchaseAmountMatchesOneShot(purchase, amountClp)) return false;
   if (!merchantsMatchForCrossDedupe(purchase.merchant, merchant)) return false;
   if (purchaseDateIso && purchase.purchase_date !== purchaseDateIso) return false;
   return true;
