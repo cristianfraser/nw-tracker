@@ -272,6 +272,17 @@ export function checkingCartolaStablePurchaseKey(
   return portion === "deposit" ? `${base}:deposit` : base;
 }
 
+/** Description + document parsed back out of an `import:cartola|…` movement note. */
+export function cartolaNoteContent(
+  note: string
+): { description: string; document_no: string } | null {
+  if (!note.startsWith("import:cartola|")) return null;
+  return {
+    description: stripTrailingCartolaNoteTags(cartolaDescriptionFragmentFromNote(note)),
+    document_no: cartolaDocumentFragmentFromNote(note) ?? "",
+  };
+}
+
 export function cartolaMovementMatchesImportedRow(
   mv: ParsedCheckingMovement,
   note: string
