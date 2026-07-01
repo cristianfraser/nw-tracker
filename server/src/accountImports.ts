@@ -79,8 +79,10 @@ export function importCcWebPaste(accountId: number, text: string) {
 
   return {
     batch_id,
+    lines_parsed: parsed.lines.length,
     inserted: merged.statements.linesInserted,
     skipped_duplicate: merged.statements.linesSkippedDuplicate,
+    skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
     skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
     overlap_removed: merged.overlap_removed ?? 0,
     parse_errors: parsed.errors,
