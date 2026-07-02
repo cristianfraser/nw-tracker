@@ -119,17 +119,22 @@ export function buildSyntheticDeelUsdRow(spec: {
   const liquido_usd = deelNetUsdForGrossScale(spec.gross_scale);
   const feeUsd = DEEL_WIRE_FEE_USD;
 
-  const total_haberes_clp = usdToClpAtPaymentRounded(grossUsd, spec.wire_received_on);
-  const desc_other_clp = usdToClpAtPaymentRounded(feeUsd, spec.wire_received_on);
+  const haberesRaw = usdToClpAtPaymentRounded(grossUsd, spec.wire_received_on);
+  const descOtherRaw = usdToClpAtPaymentRounded(feeUsd, spec.wire_received_on);
 
-  if (total_haberes_clp == null || desc_other_clp == null) {
+  if (haberesRaw == null || descOtherRaw == null) {
     throw new Error(
       `${spec.period_month}: missing fx_daily for wire date ${spec.wire_received_on}`
     );
   }
 
+  // Payroll rows are whole pesos and readers assert haberes − descuentos === liquido
+  // exactly; the fx helper keeps cross-rate decimals, so round the components once and
+  // derive liquido (rounding only the difference broke the identity on scaled months).
+  const total_haberes_clp = Math.round(haberesRaw);
+  const desc_other_clp = Math.round(descOtherRaw);
   const total_descuentos_clp = desc_other_clp;
-  const liquido_clp = Math.round(total_haberes_clp - total_descuentos_clp);
+  const liquido_clp = total_haberes_clp - total_descuentos_clp;
   if (liquido_clp <= 0) {
     throw new Error(`${spec.period_month}: liquido_clp must be positive, got ${liquido_clp}`);
   }
