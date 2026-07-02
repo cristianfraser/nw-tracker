@@ -6,7 +6,7 @@ import type {
   TimeseriesBlock,
   ValuationTimeseriesResponse,
 } from "../types";
-import { monthEndYmdsThroughToday } from "./placeholderMonthRows";
+import { monthEndYmdsForSkeleton } from "./placeholderMonthRows";
 
 function unitForTs(unit: DisplayUnit): "clp" | "usd" {
   return unit === "usd" ? "usd" : "clp";
@@ -14,7 +14,8 @@ function unitForTs(unit: DisplayUnit): "clp" | "usd" {
 
 /** Flat zero valuation block — one line per account, month-end points at 0. */
 export function buildPlaceholderGroupValuationBlock(
-  accounts: readonly AccountListRow[]
+  accounts: readonly AccountListRow[],
+  firstMonth?: string | null
 ): TimeseriesBlock {
   const accountLines = accounts.map((a) => ({
     account_id: a.id,
@@ -24,7 +25,7 @@ export function buildPlaceholderGroupValuationBlock(
     color_rgb: a.color_rgb ?? undefined,
   }));
 
-  const points = monthEndYmdsThroughToday().map((as_of_date) => {
+  const points = monthEndYmdsForSkeleton(firstMonth).map((as_of_date) => {
     const row: Record<string, string | number | null> = { as_of_date };
     for (const a of accounts) {
       row[String(a.id)] = 0;
@@ -52,7 +53,8 @@ export function buildPlaceholderGroupAllocationPie(
 export function buildPlaceholderGroupPerf(
   accounts: readonly AccountListRow[],
   groupSlug: string,
-  unit: DisplayUnit
+  unit: DisplayUnit,
+  firstMonth?: string | null
 ): GroupMonthlyPerformanceResponse {
   const unitTs = unitForTs(unit);
   const bar_accounts = accounts.map((a) => ({
@@ -62,7 +64,7 @@ export function buildPlaceholderGroupPerf(
     color_rgb: a.color_rgb ?? undefined,
   }));
 
-  const points = monthEndYmdsThroughToday().map((as_of_date) => {
+  const points = monthEndYmdsForSkeleton(firstMonth).map((as_of_date) => {
     const row: Record<string, string | number | null> = {
       as_of_date,
       delta_total: 0,
@@ -85,11 +87,12 @@ export function buildPlaceholderGroupPerf(
 
 export function buildPlaceholderGroupTimeseries(
   accounts: readonly AccountListRow[],
-  unit: DisplayUnit
+  unit: DisplayUnit,
+  firstMonth?: string | null
 ): Pick<ValuationTimeseriesResponse, "unit" | "accounts_in_group" | "group_allocation_pie"> {
   return {
     unit: unitForTs(unit),
-    accounts_in_group: buildPlaceholderGroupValuationBlock(accounts),
+    accounts_in_group: buildPlaceholderGroupValuationBlock(accounts, firstMonth),
     group_allocation_pie: buildPlaceholderGroupAllocationPie(accounts),
   };
 }
@@ -97,7 +100,8 @@ export function buildPlaceholderGroupTimeseries(
 export function buildPlaceholderPortfolioGroupBundle(
   unit: DisplayUnit,
   accounts: readonly AccountListRow[] = [],
-  portfolioGroup = ""
+  portfolioGroup = "",
+  firstMonth?: string | null
 ): PortfolioGroupBundle {
   if (accounts.length === 0) {
     const unitTs = unitForTs(unit);
@@ -114,7 +118,7 @@ export function buildPlaceholderPortfolioGroupBundle(
 
   return {
     accounts: [...accounts],
-    ts: buildPlaceholderGroupTimeseries(accounts, unit),
-    groupPerf: buildPlaceholderGroupPerf(accounts, portfolioGroup, unit),
+    ts: buildPlaceholderGroupTimeseries(accounts, unit, firstMonth),
+    groupPerf: buildPlaceholderGroupPerf(accounts, portfolioGroup, unit, firstMonth),
   };
 }

@@ -5,36 +5,21 @@ import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
-/** Tables that reference `movements` — must be wiped first (FKs are ON) and restored with it. */
-const MOVEMENT_CHILD_TABLES = [
-  "payroll_work_earnings",
-  "checking_income_movement_overrides",
-  "checking_gap_deposit_mirrors",
-  "expense_deposit_links",
-  "cuenta_ahorro_deposit_splits",
-] as const;
-
+// These fx functions read only the fx tables (buildFxCoverage → fx_daily +
+// fx_daily_yahoo_rejected; depositClpToUsdAtDate / fxMonthEndForBalanceUsd → fx_daily
+// [+ bid-ask]). Snapshot exactly those and restore in afterAll so wiping them for a
+// controlled fixture doesn't poison later test files sharing the DB.
 const restoreTables = snapshotTables([
   "fx_daily",
   "fx_daily_bid_ask",
   "fx_daily_yahoo_rejected",
-  "valuations",
-  "movements",
-  ...MOVEMENT_CHILD_TABLES,
 ]);
 afterAll(() => restoreTables());
-
-function wipeMovementsAndValuations() {
-  for (const t of MOVEMENT_CHILD_TABLES) db.exec(`DELETE FROM ${t}`);
-  db.exec("DELETE FROM movements");
-  db.exec("DELETE FROM valuations");
-}
 
 describe("buildFxCoverage", () => {
   beforeEach(() => {
     db.exec("DELETE FROM fx_daily");
     db.exec("DELETE FROM fx_daily_yahoo_rejected");
-    wipeMovementsAndValuations();
   });
 
   it("reports incomplete when fx_daily is empty", () => {

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyMultiSeriesTrailingZeroTailClip,
-} from "./components/charts/AppLineChart";
-import { buildLineChartTailClipOptions } from "./components/charts/ValuationLineCharts";
-import {
   buildLiabilitiesBucketPlan,
   liabilitiesChartBucketNavNodes,
   shouldAggregateLiabilitiesCharts,
@@ -277,8 +273,9 @@ describe("buildLiabilitiesBucketPlan", () => {
   });
 });
 
-describe("aggregateLiabilitiesNavGroupedValuationBlock total after tail clip", () => {
-  it("keeps Total aligned with synthetic bucket lines", () => {
+describe("aggregateLiabilitiesNavGroupedValuationBlock total", () => {
+  it("keeps Total aligned with synthetic bucket lines when accounts arrive server-clipped", () => {
+    // Server tail-clip already nulled the always-zero card ("35") past its kept zero month.
     const block: TimeseriesBlock = {
       accounts: [
         { account_id: 32, name: "4242", dataKey: "32", valueSeriesType: "data" },
@@ -287,24 +284,20 @@ describe("aggregateLiabilitiesNavGroupedValuationBlock total after tail clip", (
       ],
       points: [
         { date: "2025-07-31", "32": 10_000_000, "35": 0, "42": 500_000 },
-        { date: "2025-08-31", "32": 10_800_000, "35": 0, "42": 566_338 },
-        { date: "2025-09-30", "32": 10_836_954, "35": 0, "42": 566_338 },
-        { date: "2025-10-31", "32": 10_836_954, "35": 0, "42": 566_338 },
-        { date: "2025-11-30", "32": 10_836_954, "35": 0, "42": 566_338 },
-        { date: "2025-12-31", "32": 10_836_954, "35": 0, "42": 566_338 },
+        { date: "2025-08-31", "32": 10_800_000, "35": null, "42": 566_338 },
+        { date: "2025-09-30", "32": 10_836_954, "35": null, "42": 566_338 },
+        { date: "2025-10-31", "32": 10_836_954, "35": null, "42": 566_338 },
+        { date: "2025-11-30", "32": 10_836_954, "35": null, "42": 566_338 },
+        { date: "2025-12-31", "32": 10_836_954, "35": null, "42": 566_338 },
       ],
+      tail_clipped_keys: ["35"],
     };
     const aggregated = aggregateLiabilitiesNavGroupedValuationBlock(
       block,
       listRows,
       pasivosCreditCardNav
     );
-    const tailOpts = buildLineChartTailClipOptions(aggregated, false);
-    expect(tailOpts?.groupValTotalSourceKeys).toEqual(
-      expect.arrayContaining(["liab_santander", "liab_bci"])
-    );
-    const { points } = applyMultiSeriesTrailingZeroTailClip(aggregated.points, tailOpts!);
-    const last = points[points.length - 1]!;
+    const last = aggregated.points[aggregated.points.length - 1]!;
     expect(last.__group_val_total).toBe(10_836_954 + 566_338);
     expect(last.liab_santander).toBe(10_836_954);
     expect(last.liab_bci).toBe(566_338);

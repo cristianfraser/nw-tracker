@@ -1,36 +1,3 @@
-import type { TimeseriesBlock, ValueSeriesType } from "./types";
-
-export type TailClipSeriesEntry = {
-  dataKey: string;
-  type: ValueSeriesType;
-};
-
-/** Build tail-clip metadata from series definitions on the block (no dataKey heuristics). */
-export function collectTailClipSeriesFromBlock(
-  block: TimeseriesBlock,
-  includeAccumulatedLines: boolean
-): TailClipSeriesEntry[] {
-  const entries: TailClipSeriesEntry[] = [];
-  for (const a of block.accounts ?? []) {
-    const valType = a.valueSeriesType;
-    entries.push({ dataKey: a.dataKey, type: valType });
-    if (includeAccumulatedLines && a.depositDataKey) {
-      entries.push({ dataKey: a.depositDataKey, type: valType });
-    }
-    if (includeAccumulatedLines && a.displayDepositDataKey) {
-      entries.push({ dataKey: a.displayDepositDataKey, type: valType });
-    }
-  }
-  for (const ln of block.lines ?? []) {
-    entries.push({ dataKey: ln.dataKey, type: ln.valueSeriesType });
-  }
-  return entries;
-}
-
-export function dataSeriesKeysFromTailClip(series: readonly TailClipSeriesEntry[]): string[] {
-  return [...new Set(series.filter((s) => s.type === "data").map((s) => s.dataKey))];
-}
-
 /**
  * Hide values outside the plot Y domain (set to `null`) so lines do not render above/below the axis.
  * Use with `YAxis allowDataOverflow={false}` and `type="linear"` to avoid monotone overshoot between points.

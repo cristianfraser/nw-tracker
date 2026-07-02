@@ -15,12 +15,14 @@ export function useGroupInfoConsolidatedTables(
   displayUnit: DisplayUnit,
   enabled: boolean
 ) {
-  const { data, isPending, isFetching, isError, error } = useGroupConsolidatedTables(
+  const { data, isPending, isError, error } = useGroupConsolidatedTables(
     portfolioGroupSlug,
     displayUnit,
     enabled
   );
-  const tablesLoading = enabled && (isPending || isFetching);
+  // Pending only (not background refetch): callers substitute placeholder rows while
+  // tablesLoading, and a refetch must keep showing the already-loaded rows.
+  const tablesLoading = enabled && isPending;
 
   const consolidatedMonthlyPerf = useMemo(
     () => data?.consolidated_monthly ?? [],
