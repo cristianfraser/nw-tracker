@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
+import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -41,6 +42,8 @@ function insertTransfer(v: {
   );
 }
 
+let restoreFx: (() => void) | null = null;
+
 describe("compra_usd_venta_clp with a CLP source counterpart", () => {
   let usdId = 0;
   let clpId = 0;
@@ -63,7 +66,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     clpId = Number(ins.run(clpLeaf.id, FIXTURE_CLP).lastInsertRowid);
     usdAccountRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
 
-    db.prepare(`INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES (?, 935)`).run(DATE);
+    restoreFx = overrideFxDaily([[DATE, 935]]);
 
     // Seed the CLP account with an opening balance so it has funds to spend.
     db.prepare(
@@ -72,6 +75,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
   });
 
   afterAll(() => {
+    restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
   });

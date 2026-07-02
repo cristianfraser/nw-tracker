@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCcStatementsMerge } from "./ccStatementsImport.js";
 import {
@@ -7,7 +7,7 @@ import {
   getCcExpenseCategoryBySlug,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
-import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 /** Reserved web-paste keys for this file only; cleaned up so a failed run does not pollute dev DB. */
 const SRC_DEDUPE = "import:web-paste|vitest-cc-merge-dedupe";
 const SRC_OVERLAP = "import:web-paste|vitest-cc-merge-overlap";
@@ -187,4 +187,8 @@ describe("importCcStatementsMerge", () => {
       cleanupVitestCcMergeRows();
     }
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });

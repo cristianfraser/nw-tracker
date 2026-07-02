@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
+import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
 import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapitalFlows.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
@@ -47,6 +48,8 @@ function insertValidatedTransfer(v: {
   );
 }
 
+let restoreFx: (() => void) | null = null;
+
 describe("dividend_payout (stock cash dividend → USD cash)", () => {
   let usdId = 0;
   let stockId = 0;
@@ -69,9 +72,10 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     stockId = Number(ins.run(stockLeaf.id, FIXTURE_STOCK, "VITEST").lastInsertRowid);
     usdAccountRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
 
-    db.prepare(
-      `INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES ('2026-05-05', 900), (?, 950)`
-    ).run(DIV_DATE);
+    restoreFx = overrideFxDaily([
+      ["2026-05-05", 900],
+      [DIV_DATE, 950],
+    ]);
 
     // Seed a stock_buy so the stock has positive deposited capital and 3 shares.
     insertValidatedTransfer({
@@ -88,6 +92,7 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
   });
 
   afterAll(() => {
+    restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_STOCK);
   });

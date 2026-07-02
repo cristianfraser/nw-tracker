@@ -44,7 +44,12 @@ describe("AFP position implied units", () => {
     const meta = getAccountPositionMeta(accountId, "afp", { afpCuotasAsOfYmd: asOf });
     expect(meta?.units).toBe(293);
 
+    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day = ? AND note = 'vitest:px'`).run(
+      AFP_UNO_CUOTA_SERIES_KEY,
+      asOf
+    );
   });
 });
 

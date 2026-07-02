@@ -917,6 +917,7 @@ function importDeptoDividendosMortgagePayments(
     uf_clp_day: s.uf_clp_day,
     credito_restante_uf: s.credito_restante_uf,
     valor_neto_uf: s.valor_neto_uf,
+    valor_vivienda_uf: s.valor_vivienda_uf,
     valor_neto_clp: s.valor_neto_clp,
     pagado_neto_uf: s.pagado_neto_uf,
     pago_acumulado_clp: s.pago_acumulado_clp,

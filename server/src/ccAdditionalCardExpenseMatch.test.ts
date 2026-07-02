@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   AUTO_ADDITIONAL_CARD_NOTE_PREFIX,
   applyAdditionalCardNoCuentaForLine,
@@ -13,7 +13,7 @@ import {
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
-import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 describe("ccAdditionalCardExpenseMatch", () => {
   it("detects adicional lines when origin differs from statement card", () => {
@@ -132,4 +132,8 @@ describe("ccAdditionalCardExpenseMatch", () => {
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });

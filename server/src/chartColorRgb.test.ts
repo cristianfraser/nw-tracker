@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   clearPortfolioGroupColorCache,
@@ -6,13 +6,19 @@ import {
   resolvePortfolioGroupColorRgbBySlug,
 } from "./chartColorRgb.js";
 
+const createdGroupIds: number[] = [];
+const createdAccountIds: number[] = [];
+
 function insertGroup(slug: string, color_rgb: string | null = null): number {
   db.prepare(
     `INSERT INTO portfolio_groups (slug, label, sort_order, color_rgb)
      VALUES (?, ?, 0, ?)`
   ).run(slug, slug, color_rgb);
-  return (db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`).get(slug) as { id: number })
-    .id;
+  const id = (
+    db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`).get(slug) as { id: number }
+  ).id;
+  createdGroupIds.push(id);
+  return id;
 }
 
 function linkGroupChild(parentId: number, childGroupId: number, sort = 0): void {
@@ -40,11 +46,25 @@ function insertAccount(color_rgb: string | null, balance: number): number {
     id,
     balance
   );
+  createdAccountIds.push(id);
   return id;
 }
 
 describe("resolvePortfolioGroupColorRgb", () => {
   afterEach(() => {
+    clearPortfolioGroupColorCache();
+  });
+
+  afterAll(() => {
+    for (const id of createdGroupIds) {
+      db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ?`).run(id);
+      db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(id);
+    }
+    for (const id of createdAccountIds) {
+      db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    }
     clearPortfolioGroupColorCache();
   });
 

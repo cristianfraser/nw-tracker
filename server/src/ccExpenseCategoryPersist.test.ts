@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   propagateCcExpenseMerchantRulesFromLegacy,
-  restoreCcExpenseCategories,
   snapshotCcExpenseCategories,
 } from "./ccExpenseCategoryPersist.js";
 import {
@@ -10,93 +9,128 @@ import {
   getCcExpenseCategoryBySlug,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
-  resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
-import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
+
+/**
+ * All statements/rules here live on the ISOLATED vitest fixture master.
+ * `importCcStatementsFromCsvRecords` has replaceAll semantics — pointing it at a shared
+ * santander master (as this file once did) wipes that account's statements, which on the
+ * generated test DB destroyed the demo card's data for every later run.
+ */
+function fixtureAccountId(): number {
+  const row = db
+    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+  if (!row) throw new Error("vitest CC fixture master missing (vitestDbSeed)");
+  return row.id;
+}
+
+const SOURCE_PDF = "vitest-cat-persist.pdf";
+const PARSER_ROW_ID = "vitest-cat-persist-row-1";
+const MERCHANT = "VITEST PERSIST MERCHANT";
+
+function seedRecord() {
+  return {
+    card_group: "santander",
+    source_pdf: SOURCE_PDF,
+    statement_date: "20/01/2025",
+    period_from: "2024-12-21",
+    period_to: "2025-01-20",
+    card_last4: "",
+    parser_layout: "compact",
+    installment_flag: "false",
+    amount_clp: "1000",
+    merchant: MERCHANT,
+    transaction_date: "01/01/2025",
+    row_id: PARSER_ROW_ID,
+    dedupe_key: "vitest-cat-persist-dedupe",
+    raw_line: "01/01/2025 VITEST PERSIST MERCHANT $1.000",
+    description_merged: "VITEST PERSIST MERCHANT",
+  };
+}
+
+function cleanupFixtureAccount(accountId: number): void {
+  db.prepare(
+    `DELETE FROM cc_expense_line_categories WHERE statement_line_id IN (
+       SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+       WHERE s.account_id = ?)`
+  ).run(accountId);
+  db.prepare(
+    `DELETE FROM cc_statement_lines WHERE statement_id IN (
+       SELECT id FROM cc_statements WHERE account_id = ?)`
+  ).run(accountId);
+  db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(accountId);
+}
 
 describe("ccExpenseCategoryPersist", () => {
-  it("propagates merchant rules from legacy master onto per-card accounts", () => {
-    const ids = listCreditCardGroupMasterAccountIds("santander");
-    if (ids.length === 0) return;
-    const n = propagateCcExpenseMerchantRulesFromLegacy(ids[0]!, 15);
-    expect(n).toBeGreaterThanOrEqual(0);
-    const count = db
-      .prepare(`SELECT COUNT(*) AS c FROM cc_expense_merchant_categories WHERE account_id = ?`)
-      .get(ids[0]!) as { c: number };
-    expect(count.c).toBeGreaterThan(0);
+  let accountId = 0;
+  beforeAll(() => {
+    accountId = fixtureAccountId();
+    cleanupFixtureAccount(accountId);
+  });
+  afterAll(() => {
+    cleanupFixtureAccount(accountId);
+  });
+
+  it("propagates merchant rules from a legacy account onto per-card accounts", () => {
+    // Own source rules on a throwaway "legacy" account — never a shared master.
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
+      id: number;
+    };
+    const legacyId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
+           VALUES (?, 'vitest-legacy-rules', 'vitest:legacy-rules', 'master')`
+        )
+        .run(group.id).lastInsertRowid
+    );
+    try {
+      const fun = getCcExpenseCategoryBySlug("fun")!;
+      db.prepare(
+        `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
+         VALUES (?, ?, ?)`
+      ).run(legacyId, normalizeCcExpenseMerchantKey("VITEST LEGACY MERCHANT"), fun.id);
+
+      const n = propagateCcExpenseMerchantRulesFromLegacy(accountId, legacyId);
+      expect(n).toBe(1);
+      const count = db
+        .prepare(`SELECT COUNT(*) AS c FROM cc_expense_merchant_categories WHERE account_id = ?`)
+        .get(accountId) as { c: number };
+      expect(count.c).toBeGreaterThan(0);
+    } finally {
+      db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(legacyId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(legacyId);
+      db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(accountId);
+    }
   });
 
   it("restores per-line override after reimport via parser_row_id", () => {
-    const accountIds = listCreditCardGroupMasterAccountIds("santander");
-    const accountId = accountIds.find((id) => {
-      const c = db
-        .prepare(
-          `SELECT COUNT(*) AS c FROM cc_statement_lines l
-           JOIN cc_statements s ON s.id = l.statement_id
-           WHERE s.account_id = ? AND l.parser_row_id IS NOT NULL`
-        )
-        .get(id) as { c: number };
-      return c.c > 0;
-    });
-    if (!accountId) return;
-
+    importCcStatementsFromCsvRecords(accountId, [seedRecord()]);
     const line = db
       .prepare(
-        `SELECT l.id, l.parser_row_id, l.merchant, s.statement_date, s.source_pdf, s.card_group,
-                s.period_from, s.period_to
-         FROM cc_statement_lines l
+        `SELECT l.id FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND l.parser_row_id IS NOT NULL AND l.amount_clp > 0
-           AND s.period_from IS NOT NULL AND s.period_to IS NOT NULL
-         LIMIT 1`
+         WHERE s.account_id = ? AND l.parser_row_id = ?`
       )
-      .get(accountId) as {
-      id: number;
-      parser_row_id: string;
-      merchant: string;
-      statement_date: string;
-      source_pdf: string;
-      card_group: string;
-      period_from: string;
-      period_to: string;
-    } | undefined;
-    if (!line) return;
+      .get(accountId, PARSER_ROW_ID) as { id: number } | undefined;
+    expect(line).toBeDefined();
 
-    const supermarket = getCcExpenseCategoryBySlug("supermarket");
-    if (!supermarket) return;
-
+    const supermarket = getCcExpenseCategoryBySlug("supermarket")!;
     db.prepare(
       `INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)
        ON CONFLICT(statement_line_id) DO UPDATE SET category_id = excluded.category_id`
-    ).run(line.id, supermarket.id);
-
-    const records = [
-      {
-        card_group: line.card_group,
-        source_pdf: line.source_pdf,
-        statement_date: line.statement_date,
-        // Import now fails fast without the billing period (matrix month = period_to).
-        period_from: line.period_from,
-        period_to: line.period_to,
-        card_last4: "",
-        parser_layout: "compact",
-        installment_flag: "false",
-        amount_clp: "1000",
-        merchant: line.merchant,
-        transaction_date: "01/01/2025",
-        row_id: line.parser_row_id,
-        dedupe_key: "test-dedupe",
-        raw_line: "01/01/2025 TEST $1.000",
-        description_merged: "TEST",
-      },
-    ];
+    ).run(line!.id, supermarket.id);
 
     const snap = snapshotCcExpenseCategories(accountId);
-    expect(snap.lineCategoryByParserRowId.get(line.parser_row_id)).toBe(supermarket.id);
+    expect(snap.lineCategoryByParserRowId.get(PARSER_ROW_ID)).toBe(supermarket.id);
 
-    importCcStatementsFromCsvRecords(accountId, records);
+    importCcStatementsFromCsvRecords(accountId, [seedRecord()]);
 
     const newLine = db
       .prepare(
@@ -104,7 +138,7 @@ describe("ccExpenseCategoryPersist", () => {
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ? AND l.parser_row_id = ?`
       )
-      .get(accountId, line.parser_row_id) as { id: number } | undefined;
+      .get(accountId, PARSER_ROW_ID) as { id: number } | undefined;
     expect(newLine).toBeDefined();
 
     const cat = db
@@ -118,19 +152,14 @@ describe("ccExpenseCategoryPersist", () => {
   });
 
   it("merchant rules on per-card accounts survive statement reimport", () => {
-    const accountIds = listCreditCardGroupMasterAccountIds("santander");
-    if (accountIds.length === 0) return;
-    const accountId = accountIds[0]!;
-
+    importCcStatementsFromCsvRecords(accountId, [seedRecord()]);
     const line = db
       .prepare(
         `SELECT l.id, l.merchant FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
-         WHERE s.account_id = ? AND l.merchant IS NOT NULL AND TRIM(l.merchant) != ''
-         LIMIT 1`
+         WHERE s.account_id = ? AND l.parser_row_id = ?`
       )
-      .get(accountId) as { id: number; merchant: string } | undefined;
-    if (!line) return;
+      .get(accountId, PARSER_ROW_ID) as { id: number; merchant: string };
 
     assignCcExpenseLineCategory({
       statementLineId: line.id,

@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   importCcStatementsMerge,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
-import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 function row(overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord {
   return {
@@ -123,4 +123,8 @@ describe("importCcStatementsMerge fuzzy dedup", () => {
     ).n;
     expect(count).toBe(1);
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });

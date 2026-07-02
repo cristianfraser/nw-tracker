@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import {
   isMovementTransferRow,
@@ -23,6 +23,13 @@ describe("movementTransfer", () => {
     const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`);
     fromId = Number(ins.run(g.id, "vitest-transfer-from").lastInsertRowid);
     toId = Number(ins.run(g2.id, "vitest-transfer-to").lastInsertRowid);
+  });
+
+  afterAll(() => {
+    db.prepare(`DELETE FROM movements WHERE note LIKE 'vitest-%'`).run();
+    for (const id of [fromId, toId]) {
+      if (id) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    }
   });
 
   it("detects transfer rows", () => {
