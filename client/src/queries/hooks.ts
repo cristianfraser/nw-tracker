@@ -95,6 +95,8 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     },
     initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
     initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
+    // With a cached strip this query never refetches; freshness relies on DashboardPage
+    // re-writing the cache from the live page bundle (writeDashboardNavSnapshotCache there).
     enabled: enabled && !cachedStrip,
     ...displayUnitQueryBehavior,
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
@@ -110,6 +112,23 @@ export function useGroupConsolidatedTables(
   return useQuery({
     queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit),
     queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
+    enabled: enabled && Boolean(portfolioGroup),
+    ...displayUnitQueryBehavior,
+  });
+}
+
+/** One server page of the consolidated detalle table (dashboard net_worth). */
+export function useGroupConsolidatedMonthlyPage(
+  portfolioGroup: string,
+  unit: DisplayUnit,
+  period: "month" | "year",
+  page: number,
+  pageSize: number,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page),
+    queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period }),
     enabled: enabled && Boolean(portfolioGroup),
     ...displayUnitQueryBehavior,
   });

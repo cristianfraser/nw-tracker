@@ -36,6 +36,23 @@ th[data-sort-key]:hover {
   color: var(--text);
 }
 
+/* Sort control is a real <button> (keyboard/AT access); visually identical to the bare th text. */
+.table-sort-button {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  white-space: inherit;
+  display: inline;
+}
+
+.table-sort-button:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 2px;
+}
+
 th.table-th--sort-asc,
 th.table-th--sort-desc {
   color: var(--text);
