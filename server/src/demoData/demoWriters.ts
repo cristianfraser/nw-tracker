@@ -1,17 +1,20 @@
 /**
- * Month writers for the synthetic demo DB. Everything is written through the same tables
- * the real imports use (movements, valuations, cc_statements + cc_statement_lines), so
- * balances, billing months, gastos categories and charts are consistent by construction.
+ * Month writers for the synthetic databases (demo + test presets). Everything is written
+ * through the same tables the real imports use (movements, valuations, cc_statements +
+ * cc_statement_lines, cc_installment_purchases/payments), so balances, billing months,
+ * gastos categories, installment ledgers and charts are consistent by construction.
  *
  * Conventions:
  * - Checking balance = movements cumsum (no valuations rows needed) — same as real
  *   cuenta corriente accounts.
  * - CC statements use `import:web-paste|demo|…` sources: web-paste statements are exempt
  *   from the on-disk-PDF invariants (assertAllCcStatementPdfsResolvable skips them).
+ * - Cuota events also write the installment LEDGER (purchase + one payment per billed
+ *   cuota) so plan/paid-tracking views have rows, mirroring what import:cc-parsed builds.
  * - Fund/AFP/property values are book `valuations` at month-end: cumulative deposits
- *   growing along a seeded return path (2020-03 crash + recovery baked in so the
- *   pandemic chapter shows in the chart). Swap for real `equity_daily`/`fund_unit_daily`
- *   backfills later if the demo should track real market series.
+ *   growing along a seeded return path (2020-03 crash + recovery baked in). Swap for
+ *   real `equity_daily`/`fund_unit_daily` backfills later if the demo should track real
+ *   market series.
  */
 import { db } from "../db.js";
 import {
@@ -20,23 +23,31 @@ import {
 } from "../ccExpenseCategories.js";
 import { monthEndUtcYmd } from "../calendarMonth.js";
 import {
-  DEFAULT_DEMO_NARRATIVE,
   chapterForMonth,
+  type DemoCard,
   type DemoChapter,
   type DemoMonth,
+  type DemoNarrative,
 } from "./demoNarrative.js";
 
 export type DemoAccounts = {
   checkingId: number;
-  ccMasterId: number;
+  /** last4 → CC master account id. */
+  ccMasterIdByLast4: Map<string, number>;
   fondoId: number;
-  afpId: number;
+  afpId: number | null;
+  afcId: number | null;
+  savingsId: number | null;
+  vistaId: number | null;
   propertyId: number | null;
 };
 
 /* ------------------------------- merchant pools ---------------------------------- */
 
-type DemoMerchant = { name: string; category: "supermarket" | "fun" | "delivery" | "bills" | "home" | "transport" };
+type DemoMerchant = {
+  name: string;
+  category: "supermarket" | "fun" | "delivery" | "bills" | "home" | "transport";
+};
 
 const MERCHANTS: DemoMerchant[] = [
   { name: "SUPERMERCADO AUSTRAL", category: "supermarket" },
@@ -51,8 +62,17 @@ const MERCHANTS: DemoMerchant[] = [
   { name: "CAFETERIA LA PLAZA", category: "fun" },
 ];
 
-function pickMerchant(rng: () => number, weights: DemoChapter["categoryWeights"]): DemoMerchant {
-  const pool = MERCHANTS.map((m) => ({ m, w: weights?.[m.category] ?? 1 }));
+const USD_MERCHANTS = ["STREAMING GLOBAL INC", "CLOUD TOOLS LLC", "BOOKSTORE INTL"];
+
+function pickMerchant(
+  rng: () => number,
+  chapterWeights: DemoChapter["categoryWeights"],
+  cardBias: DemoCard["merchantBias"]
+): DemoMerchant {
+  const pool = MERCHANTS.map((m) => ({
+    m,
+    w: (chapterWeights?.[m.category] ?? 1) * (cardBias?.[m.category] ?? 1),
+  }));
   const total = pool.reduce((s, p) => s + p.w, 0);
   let r = rng() * total;
   for (const p of pool) {
@@ -69,7 +89,13 @@ const insMovement = db.prepare(
    VALUES (?, ?, ?, ?, ?)`
 );
 
-function movement(accountId: number, amountClp: number, ymd: string, note: string, flowKind: string | null = null): void {
+function movement(
+  accountId: number,
+  amountClp: number,
+  ymd: string,
+  note: string,
+  flowKind: string | null = null
+): void {
   insMovement.run(accountId, Math.round(amountClp), ymd, note, flowKind);
 }
 
@@ -89,6 +115,16 @@ function dayInMonth(month: DemoMonth, day: number): string {
 function ddmmyyyy(ymd: string): string {
   const [y, m, d] = ymd.split("-");
   return `${d}/${m}/${y}`;
+}
+
+function prevMonthOf(month: DemoMonth): DemoMonth {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+function nextMonthOf(month: DemoMonth): DemoMonth {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
 function jitter(rng: () => number, base: number, pct: number): number {
@@ -111,28 +147,52 @@ export function demoMonthlyReturn(month: DemoMonth, rng: () => number): number {
 
 /* --------------------------------- month state ----------------------------------- */
 
-export type DemoRunState = {
-  /** Facturado of the previous CC billing month — paid from checking this month. */
+type CardState = {
+  /** Facturado of the previous CLP billing month — paid from checking this month. */
   prevFacturadoClp: number;
-  /** Active installment plans: remaining cuotas billed monthly on the card. */
-  installments: { merchant: string; cuotaClp: number; remaining: number; total: number; startedOn: string }[];
+  /** Active installment plans billing one cuota per month on this card. */
+  installments: {
+    merchant: string;
+    cuotaClp: number;
+    remaining: number;
+    total: number;
+    startedOn: string;
+    /** cc_installment_purchases id (ledger rows are appended per billed cuota). */
+    purchaseId: number;
+  }[];
+};
+
+export type DemoRunState = {
+  cards: Map<string, CardState>;
   fondoValueClp: number;
   fondoDepositsClp: number;
   afpValueClp: number;
-  monthsWorked: number;
-  propertyCreated: boolean;
+  afcValueClp: number;
+  savingsValueClp: number;
+  checkingBalanceClp: number;
 };
 
-export function initialDemoRunState(): DemoRunState {
+export function initialDemoRunState(narrative: DemoNarrative): DemoRunState {
   return {
-    prevFacturadoClp: 0,
-    installments: [],
+    cards: new Map(
+      narrative.cards.map((c) => [c.last4, { prevFacturadoClp: 0, installments: [] }])
+    ),
     fondoValueClp: 0,
     fondoDepositsClp: 0,
     afpValueClp: 0,
-    monthsWorked: 0,
-    propertyCreated: false,
+    afcValueClp: 0,
+    savingsValueClp: 0,
+    checkingBalanceClp: 0,
   };
+}
+
+function activeCards(narrative: DemoNarrative, month: DemoMonth): DemoCard[] {
+  return narrative.cards.filter((c) => c.from <= month);
+}
+
+/** Real cartola note format: `import:cartola|<month>|<branch>|<desc>|on:<ymd>|amt:<signed>|idx:<i>`. */
+function cartolaNote(month: DemoMonth, desc: string, ymd: string, amountClp: number, idx: number): string {
+  return `import:cartola|${month}|Demo|${desc}|on:${ymd}|amt:${Math.round(amountClp)}|idx:${idx}`;
 }
 
 /* --------------------------------- writers --------------------------------------- */
@@ -142,197 +202,394 @@ function salaryForMonth(ch: DemoChapter, monthsSinceChapterStart: number): numbe
   return ch.salaryClp * Math.pow(1 + ch.salaryAnnualGrowth, years);
 }
 
-/** Salary in, fixed costs + CC payment + events out, sweep to fondo. Returns the sweep. */
+/** Salary in, fixed costs + per-card CC payments + events out, sweep to fondo. */
 export function writeCheckingMonth(
+  narrative: DemoNarrative,
   accounts: DemoAccounts,
   month: DemoMonth,
   state: DemoRunState,
   rng: () => number
 ): { sweepClp: number; afpContribClp: number } {
-  const ch = chapterForMonth(DEFAULT_DEMO_NARRATIVE, month);
-  const chapterStartIdx = DEFAULT_DEMO_NARRATIVE.chapters.findIndex((c) => c.id === ch.id);
+  const ch = chapterForMonth(narrative, month);
   const monthsIn = Math.max(
     0,
     (Number(month.slice(0, 4)) - Number(ch.from.slice(0, 4))) * 12 +
       (Number(month.slice(5, 7)) - Number(ch.from.slice(5, 7)))
   );
-  void chapterStartIdx;
 
   const gross = jitter(rng, salaryForMonth(ch, monthsIn), 0.02);
-  const afpContribClp = Math.round(gross * 0.12);
+  const afpContribClp = narrative.withAfp ? Math.round(gross * 0.12) : 0;
   const net = Math.round(gross - afpContribClp);
 
-  movement(accounts.checkingId, net, dayInMonth(month, 25), "ABONO REMUNERACIONES EMPRESA DEMO SPA");
+  let idx = 0;
+  const checkingMove = (amountClp: number, day: number, desc: string) => {
+    const ymd = dayInMonth(month, day);
+    movement(accounts.checkingId, amountClp, ymd, cartolaNote(month, desc, ymd, amountClp, idx++));
+  };
 
-  movement(
-    accounts.checkingId,
+  checkingMove(net, 25, "ABONO REMUNERACIONES EMPRESA DEMO SPA");
+
+  checkingMove(
     -Math.round(jitter(rng, ch.fixedExpensesClp, 0.05)),
-    dayInMonth(month, 5),
+    5,
     ch.id === "own_house" ? "PAGO GASTOS CASA / CONTRIBUCIONES" : "PAGO ARRIENDO / GASTOS COMUNES"
   );
 
-  if (state.prevFacturadoClp > 0) {
-    movement(
-      accounts.checkingId,
-      -state.prevFacturadoClp,
-      dayInMonth(month, 8),
-      "PAGO TARJETA DE CREDITO DEMO BANK"
-    );
+  // One PAGO per card with a closed facturado.
+  let pagosTotal = 0;
+  for (const card of activeCards(narrative, month)) {
+    const cs = state.cards.get(card.last4)!;
+    if (cs.prevFacturadoClp > 0) {
+      checkingMove(-cs.prevFacturadoClp, 8, `PAGO TARJETA CREDITO ${card.last4}`);
+      pagosTotal += cs.prevFacturadoClp;
+    }
   }
 
   // Checking-side one-off events (e.g. pie de la casa).
-  for (const ev of DEFAULT_DEMO_NARRATIVE.events) {
+  let eventChecking = 0;
+  for (const ev of narrative.events) {
     if (ev.month !== month || !ev.viaChecking) continue;
-    movement(accounts.checkingId, -ev.amountClp, dayInMonth(month, 15), ev.label.toUpperCase());
+    checkingMove(-ev.amountClp, 15, ev.label.toUpperCase());
+    eventChecking += ev.amountClp;
   }
 
-  // Sweep whatever the chapter's savings rate says into the fondo (single-leg pair:
-  // cargo on checking + deposit on the fondo — same shape the real imports produce,
-  // which is what the deposits reconciliation machinery matches on).
-  const eventChecking = DEFAULT_DEMO_NARRATIVE.events
-    .filter((ev) => ev.month === month && ev.viaChecking)
-    .reduce((s, ev) => s + ev.amountClp, 0);
-  const leftover = net - ch.fixedExpensesClp - state.prevFacturadoClp - eventChecking;
-  const sweepClp = Math.max(0, Math.round(leftover * ch.savingsRate / 50_000) * 50_000);
+  // Sweep the chapter's savings rate into the fondo (single-leg pair: cargo on checking +
+  // deposit on the fondo — same shape the real imports produce, which is what the
+  // deposits reconciliation machinery matches on).
+  const leftover = net - ch.fixedExpensesClp - pagosTotal - eventChecking;
+  const sweepClp = Math.max(0, Math.round((leftover * ch.savingsRate) / 50_000) * 50_000);
   if (sweepClp > 0) {
-    movement(accounts.checkingId, -sweepClp, dayInMonth(month, 26), "TRANSFERENCIA FONDO DEMO");
+    checkingMove(-sweepClp, 26, "TRANSFERENCIA FONDO DEMO");
   }
+
+  // Quarterly top-up of the cash-savings account.
+  let savingsDeposit = 0;
+  if (accounts.savingsId != null && Number(month.slice(5, 7)) % 3 === 0) {
+    savingsDeposit = 100_000;
+    checkingMove(-savingsDeposit, 12, "TRANSF FONDO RESERVA DEMO");
+    movement(accounts.savingsId, savingsDeposit, dayInMonth(month, 12), "Depósito|demo");
+  }
+
+  // Register the month in the cartola registry so cartola-months / ledger-anchor
+  // machinery sees a normal imported month (saldo chain from the movement cumsum).
+  const saldoInicial = Math.round(state.checkingBalanceClp);
+  const monthNet =
+    net -
+    Math.round(jitterlessMonthOutflows(state, accounts, month)) ;
+  void monthNet;
+  const movementCount = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM movements WHERE account_id = ? AND occurred_on BETWEEN ? AND ?`
+      )
+      .get(accounts.checkingId, dayInMonth(month, 1), monthEndUtcYmd(month)) as { c: number }
+  ).c;
+  const saldoFinal = (
+    db
+      .prepare(
+        `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`
+      )
+      .get(accounts.checkingId, monthEndUtcYmd(month)) as { t: number }
+  ).t;
+  db.prepare(
+    `INSERT INTO checking_cartola_imports (
+       account_id, period_month, source_file, movement_count,
+       saldo_inicial_clp, saldo_final_clp, period_from, period_to
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(account_id, period_month) DO UPDATE SET
+       movement_count = excluded.movement_count, saldo_final_clp = excluded.saldo_final_clp`
+  ).run(
+    accounts.checkingId,
+    month,
+    `screenshot:demo-cartola-${month}`,
+    movementCount,
+    saldoInicial,
+    Math.round(saldoFinal),
+    dayInMonth(month, 1),
+    monthEndUtcYmd(month)
+  );
+  state.checkingBalanceClp = saldoFinal;
+
+  // Cuenta vista: token monthly activity so vista-kind machinery has an account to resolve.
+  if (accounts.vistaId != null) {
+    const inYmd = dayInMonth(month, 3);
+    movement(
+      accounts.vistaId,
+      30_000,
+      inYmd,
+      cartolaNote(month, "ABONO CUENTA VISTA DEMO", inYmd, 30_000, 0)
+    );
+    const outYmd = dayInMonth(month, 18);
+    movement(
+      accounts.vistaId,
+      -25_000,
+      outYmd,
+      cartolaNote(month, "COMPRA DEBITO DEMO", outYmd, -25_000, 1)
+    );
+    const vistaSaldo = (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`
+        )
+        .get(accounts.vistaId, monthEndUtcYmd(month)) as { t: number }
+    ).t;
+    db.prepare(
+      `INSERT INTO checking_cartola_imports (
+         account_id, period_month, source_file, movement_count,
+         saldo_inicial_clp, saldo_final_clp, period_from, period_to
+       ) VALUES (?, ?, ?, 2, ?, ?, ?, ?)
+       ON CONFLICT(account_id, period_month) DO NOTHING`
+    ).run(
+      accounts.vistaId,
+      month,
+      `screenshot:demo-vista-${month}`,
+      Math.round(vistaSaldo) - 5_000,
+      Math.round(vistaSaldo),
+      dayInMonth(month, 1),
+      monthEndUtcYmd(month)
+    );
+  }
+
   return { sweepClp, afpContribClp };
 }
+
+/** Placeholder for readability in the registry block (outflows already posted above). */
+function jitterlessMonthOutflows(_s: DemoRunState, _a: DemoAccounts, _m: DemoMonth): number {
+  return 0;
+}
+
+/* ------------------------------ credit-card month -------------------------------- */
 
 const insStatement = db.prepare(
   `INSERT INTO cc_statements (
      account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
      card_last4, layout, currency, saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado
-   ) VALUES (?, 'santander', ?, ?, ?, ?, ?, '4321', 'compact', 'clp', ?, ?, ?, ?, ?)`
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 const insLine = db.prepare(
   `INSERT INTO cc_statement_lines (
-     statement_id, transaction_date, merchant, amount_clp, installment_flag,
+     statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag,
      nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, dedupe_key
-   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
+const insLedgerPurchase = db.prepare(
+  `INSERT INTO cc_installment_purchases (
+     account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
+     cuotas_totales, merchant, source
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pdf')`
+);
+
+const insLedgerPayment = db.prepare(
+  `INSERT INTO cc_installment_payments (
+     purchase_id, pay_by_date, statement_date, source_pdf, amount_clp,
+     cuota_current, cuota_total, statement_period_month
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 /**
- * One closed billing month (21 prev → 20 this), lines drawn from the merchant pool +
- * active installment cuotas + new event purchases in cuotas. Returns this month's
- * facturado (paid from checking next month).
+ * One closed CLP billing month per active card (21 prev → 20 this): merchant-pool lines
+ * split by spend share, active installment cuotas (statement lines + ledger payments),
+ * PAGO of the prior facturado, plus a small USD statement for USD-enabled cards.
  */
 export function writeCreditCardMonth(
+  narrative: DemoNarrative,
   accounts: DemoAccounts,
   month: DemoMonth,
   state: DemoRunState,
   rng: () => number
 ): void {
-  const ch = chapterForMonth(DEFAULT_DEMO_NARRATIVE, month);
+  const ch = chapterForMonth(narrative, month);
+  const cards = activeCards(narrative, month);
+  if (cards.length === 0) return;
+  const shareTotal = cards.reduce((s, c) => s + c.spendShare, 0);
+
   const periodTo = dayInMonth(month, 20);
-  const prevMonthEnd = monthEndUtcYmd(
-    `${month.slice(0, 4)}-${month.slice(5, 7)}` === "01"
-      ? month
-      : `${month.slice(0, 7)}`
-  );
-  void prevMonthEnd;
-  const [y, m] = month.split("-").map(Number);
-  const prevMonth = m === 1 ? `${y! - 1}-12` : `${y}-${String(m! - 1).padStart(2, "0")}`;
+  const prevMonth = prevMonthOf(month);
   const periodFrom = dayInMonth(prevMonth, 21);
   const statementDate = periodTo;
-  const payBy = dayInMonth(month, 8);
+  const payBy = dayInMonth(nextMonthOf(month), 8);
 
-  const lines: {
-    date: string;
-    merchant: string;
-    amount: number;
-    installment?: { current: number; total: number; cuota: number };
-  }[] = [];
+  for (const card of cards) {
+    const cs = state.cards.get(card.last4)!;
+    const ccMasterId = accounts.ccMasterIdByLast4.get(card.last4)!;
+    const lines: {
+      date: string;
+      merchant: string;
+      amount: number;
+      installment?: { current: number; total: number; cuota: number };
+    }[] = [];
 
-  // Discretionary spend: 6–14 purchases summing ~ccSpendMeanClp.
-  const target = jitter(rng, ch.ccSpendMeanClp, 0.25);
-  const nPurchases = 6 + Math.floor(rng() * 9);
-  let spent = 0;
-  for (let i = 0; i < nPurchases && spent < target; i++) {
-    const merchant = pickMerchant(rng, ch.categoryWeights);
-    const amount = Math.max(3_000, Math.round(jitter(rng, target / nPurchases, 0.6) / 10) * 10);
-    const day = 21 + Math.floor(rng() * 28);
-    const date = day <= 31 && day > 20 ? dayInMonth(prevMonth, Math.min(day, 28)) : dayInMonth(month, day - 28);
-    lines.push({ date, merchant: merchant.name, amount });
-    spent += amount;
-  }
-
-  // New events billed on the card this month (with or without cuotas).
-  for (const ev of DEFAULT_DEMO_NARRATIVE.events) {
-    if (ev.month !== month || ev.viaChecking) continue;
-    if (ev.cuotas && ev.cuotas > 1) {
-      const cuota = Math.round(ev.amountClp / ev.cuotas / 10) * 10;
-      state.installments.push({
-        merchant: ev.label.toUpperCase(),
-        cuotaClp: cuota,
-        remaining: ev.cuotas,
-        total: ev.cuotas,
-        startedOn: dayInMonth(month, 10),
-      });
-    } else {
-      lines.push({ date: dayInMonth(month, 10), merchant: ev.label.toUpperCase(), amount: ev.amountClp });
+    // Discretionary spend for this card's share of the chapter mean.
+    const target = jitter(rng, (ch.ccSpendMeanClp * card.spendShare) / shareTotal, 0.25);
+    const nPurchases = 4 + Math.floor(rng() * 8);
+    let spent = 0;
+    for (let i = 0; i < nPurchases && spent < target; i++) {
+      const merchant = pickMerchant(rng, ch.categoryWeights, card.merchantBias);
+      const amount = Math.max(3_000, Math.round(jitter(rng, target / nPurchases, 0.6) / 10) * 10);
+      const day = 21 + Math.floor(rng() * 28);
+      const date =
+        day <= 31 && day > 20 ? dayInMonth(prevMonth, Math.min(day, 28)) : dayInMonth(month, day - 28);
+      lines.push({ date, merchant: merchant.name, amount });
+      spent += amount;
     }
-  }
 
-  // Bill one cuota for every active installment plan.
-  for (const plan of state.installments) {
-    if (plan.remaining <= 0) continue;
-    const current = plan.total - plan.remaining + 1;
-    lines.push({
-      date: plan.startedOn,
-      merchant: plan.merchant,
-      amount: plan.cuotaClp,
-      installment: { current, total: plan.total, cuota: plan.cuotaClp },
-    });
-    plan.remaining -= 1;
-  }
-  state.installments = state.installments.filter((p) => p.remaining > 0);
+    // New events billed on this card this month.
+    const defaultCard = cards[0]!.last4;
+    for (const ev of narrative.events) {
+      if (ev.month !== month || ev.viaChecking) continue;
+      if ((ev.cardLast4 ?? defaultCard) !== card.last4) continue;
+      const purchaseOn = dayInMonth(month, 10);
+      if (ev.cuotas && ev.cuotas > 1) {
+        const cuota = Math.round(ev.amountClp / ev.cuotas / 10) * 10;
+        // Ledger purchase row — payments append monthly as cuotas bill.
+        const purchaseId = Number(
+          insLedgerPurchase.run(
+            ccMasterId,
+            card.cardGroup,
+            `demo:${month}:${ev.label}`,
+            purchaseOn,
+            Math.max(1, cuota * ev.cuotas),
+            ev.cuotas,
+            ev.label.toUpperCase()
+          ).lastInsertRowid
+        );
+        cs.installments.push({
+          merchant: ev.label.toUpperCase(),
+          cuotaClp: cuota,
+          remaining: ev.cuotas,
+          total: ev.cuotas,
+          startedOn: purchaseOn,
+          purchaseId,
+        });
+      } else {
+        lines.push({ date: purchaseOn, merchant: ev.label.toUpperCase(), amount: ev.amountClp });
+      }
+    }
 
-  // PAGO of the previous facturado lands inside this cycle.
-  const pago = state.prevFacturadoClp;
-  const compras = lines.reduce((s, l) => s + l.amount, 0);
-  const facturado = compras;
+    // Bill one cuota per active plan: statement line + ledger payment row.
+    for (const plan of cs.installments) {
+      if (plan.remaining <= 0) continue;
+      const current = plan.total - plan.remaining + 1;
+      lines.push({
+        date: plan.startedOn,
+        merchant: plan.merchant,
+        amount: plan.cuotaClp,
+        installment: { current, total: plan.total, cuota: plan.cuotaClp },
+      });
+      insLedgerPayment.run(
+        plan.purchaseId,
+        payBy,
+        ddmmyyyy(statementDate),
+        `import:web-paste|demo|${card.last4}|${month}`,
+        plan.cuotaClp,
+        current,
+        plan.total,
+        month
+      );
+      plan.remaining -= 1;
+    }
+    cs.installments = cs.installments.filter((p) => p.remaining > 0);
 
-  const stmt = insStatement.run(
-    accounts.ccMasterId,
-    `import:web-paste|demo|${month}`,
-    ddmmyyyy(statementDate),
-    ddmmyyyy(periodFrom),
-    ddmmyyyy(periodTo),
-    ddmmyyyy(payBy),
-    pago > 0 ? pago : null,
-    pago > 0 ? pago : null,
-    compras,
-    facturado,
-    facturado
-  );
-  const statementId = Number(stmt.lastInsertRowid);
+    const pago = cs.prevFacturadoClp;
+    const compras = lines.reduce((s, l) => s + l.amount, 0);
+    const facturado = compras;
 
-  let i = 0;
-  for (const l of lines) {
-    insLine.run(
-      statementId,
-      ddmmyyyy(l.date),
-      l.merchant,
-      Math.round(l.amount),
-      l.installment ? 1 : 0,
-      l.installment?.current ?? null,
-      l.installment?.total ?? null,
-      l.installment?.cuota ?? null,
-      `demo|${month}|${i++}|${l.merchant}`
+    const stmt = insStatement.run(
+      ccMasterId,
+      card.cardGroup,
+      `import:web-paste|demo|${card.last4}|${month}`,
+      ddmmyyyy(statementDate),
+      ddmmyyyy(periodFrom),
+      ddmmyyyy(periodTo),
+      ddmmyyyy(payBy),
+      card.last4,
+      "compact",
+      "clp",
+      pago > 0 ? pago : null,
+      pago > 0 ? pago : null,
+      compras,
+      facturado,
+      facturado
     );
-  }
-  if (pago > 0) {
-    insLine.run(statementId, ddmmyyyy(dayInMonth(month, 8)), "PAGO", -pago, 0, null, null, null, `demo|${month}|pago`);
-  }
+    const statementId = Number(stmt.lastInsertRowid);
 
-  state.prevFacturadoClp = Math.round(facturado);
+    let i = 0;
+    for (const l of lines) {
+      insLine.run(
+        statementId,
+        ddmmyyyy(l.date),
+        l.merchant,
+        Math.round(l.amount),
+        null,
+        l.installment ? 1 : 0,
+        l.installment?.current ?? null,
+        l.installment?.total ?? null,
+        l.installment?.cuota ?? null,
+        `demo|${card.last4}|${month}|${i++}|${l.merchant}`
+      );
+    }
+    if (pago > 0) {
+      insLine.run(
+        statementId,
+        ddmmyyyy(dayInMonth(month, 8)),
+        "PAGO",
+        -pago,
+        null,
+        0,
+        null,
+        null,
+        null,
+        `demo|${card.last4}|${month}|pago`
+      );
+    }
+
+    // Small international USD statement for USD-enabled cards.
+    if (card.usdMonthly) {
+      const usdStmt = insStatement.run(
+        ccMasterId,
+        card.cardGroup,
+        `import:web-paste|demo-usd|${card.last4}|${month}`,
+        ddmmyyyy(statementDate),
+        ddmmyyyy(periodFrom),
+        ddmmyyyy(periodTo),
+        ddmmyyyy(payBy),
+        card.last4,
+        "international_usd",
+        "usd",
+        null,
+        null,
+        null,
+        null,
+        null
+      );
+      const usdStatementId = Number(usdStmt.lastInsertRowid);
+      const nUsd = 1 + Math.floor(rng() * 3);
+      for (let k = 0; k < nUsd; k++) {
+        const amountUsd = Math.round(jitter(rng, card.usdMonthly.meanUsd / nUsd, 0.5) * 100) / 100;
+        insLine.run(
+          usdStatementId,
+          ddmmyyyy(dayInMonth(prevMonth, 22 + k)),
+          USD_MERCHANTS[k % USD_MERCHANTS.length]!,
+          null,
+          Math.max(1, amountUsd),
+          0,
+          null,
+          null,
+          null,
+          `demo-usd|${card.last4}|${month}|${k}`
+        );
+      }
+    }
+
+    cs.prevFacturadoClp = Math.round(facturado);
+  }
 }
 
 /** Fondo + AFP month-end valuations along the seeded return path; property once bought. */
 export function writeInvestmentMonth(
+  narrative: DemoNarrative,
   accounts: DemoAccounts,
   month: DemoMonth,
   state: DemoRunState,
@@ -350,13 +607,35 @@ export function writeInvestmentMonth(
   state.fondoValueClp = Math.max(0, state.fondoValueClp * (1 + r) + sweepClp);
   if (state.fondoValueClp > 0) valuation(accounts.fondoId, monthEnd, state.fondoValueClp);
 
-  movement(accounts.afpId, afpContribClp, dayInMonth(month, 25), "Cotización obligatoria|demo");
-  state.afpValueClp = Math.max(0, state.afpValueClp * (1 + r * 0.7) + afpContribClp);
-  valuation(accounts.afpId, monthEnd, state.afpValueClp);
+  if (accounts.afpId != null && afpContribClp > 0) {
+    movement(accounts.afpId, afpContribClp, dayInMonth(month, 25), "Cotización obligatoria|demo");
+    state.afpValueClp = Math.max(0, state.afpValueClp * (1 + r * 0.7) + afpContribClp);
+    valuation(accounts.afpId, monthEnd, state.afpValueClp);
+  }
+
+  if (accounts.afcId != null) {
+    const afcContrib = Math.round(afpContribClp * 0.125);
+    if (afcContrib > 0) {
+      movement(accounts.afcId, afcContrib, dayInMonth(month, 25), "Cotización AFC|demo");
+      state.afcValueClp = Math.max(0, state.afcValueClp * (1 + r * 0.4) + afcContrib);
+      valuation(accounts.afcId, monthEnd, state.afcValueClp);
+    }
+  }
+
+  if (accounts.savingsId != null) {
+    const deposited = (
+      db
+        .prepare(`SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`)
+        .get(accounts.savingsId, monthEnd) as { t: number }
+    ).t;
+    if (deposited > 0) {
+      state.savingsValueClp = deposited;
+      valuation(accounts.savingsId, monthEnd, deposited);
+    }
+  }
 
   if (accounts.propertyId != null && month >= "2024-08") {
-    const monthsOwned =
-      (Number(month.slice(0, 4)) - 2024) * 12 + (Number(month.slice(5, 7)) - 8);
+    const monthsOwned = (Number(month.slice(0, 4)) - 2024) * 12 + (Number(month.slice(5, 7)) - 8);
     valuation(accounts.propertyId, monthEnd, 18_000_000 * Math.pow(1.003, monthsOwned));
   }
 }
@@ -372,18 +651,75 @@ const MERCHANT_CATEGORY_SLUGS: Record<DemoMerchant["category"], string> = {
   transport: "transportation",
 };
 
-/** Merchant → category rules so the demo gastos charts show category stacks out of the box. */
-export function seedDemoMerchantCategoryRules(ccMasterId: number): number {
+/** Merchant → category rules per card so the gastos charts stack out of the box. */
+export function seedDemoMerchantCategoryRules(ccMasterIds: readonly number[]): number {
   const ins = db.prepare(
     `INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
      VALUES (?, ?, ?)`
   );
   let n = 0;
-  for (const m of MERCHANTS) {
-    const slug = MERCHANT_CATEGORY_SLUGS[m.category];
-    const cat = getCcExpenseCategoryBySlug(slug);
-    if (!cat) throw new Error(`demo: cc_expense_categories missing slug ${slug} (reference migrations not applied?)`);
-    n += ins.run(ccMasterId, normalizeCcExpenseMerchantKey(m.name), cat.id).changes;
+  for (const masterId of ccMasterIds) {
+    for (const m of MERCHANTS) {
+      const slug = MERCHANT_CATEGORY_SLUGS[m.category];
+      const cat = getCcExpenseCategoryBySlug(slug);
+      if (!cat) {
+        throw new Error(
+          `demo: cc_expense_categories missing slug ${slug} (reference migrations not applied?)`
+        );
+      }
+      n += ins.run(masterId, normalizeCcExpenseMerchantKey(m.name), cat.id).changes;
+    }
   }
   return n;
+}
+
+/* ------------------------------ market series ------------------------------------ */
+
+/**
+ * Synthetic fx_daily (weekly) + uf_daily (monthly) across the narrative window: USD/CLP
+ * conversions, UF valuations and bid/ask inference (transient, from fx_daily) all read
+ * these tables — without them every USD/UF code path is dead on a generated DB.
+ */
+export function writeMarketSeries(narrative: DemoNarrative, rng: () => number): void {
+  const insFx = db.prepare(
+    `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
+  );
+  const insUf = db.prepare(
+    `INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET clp_per_uf = excluded.clp_per_uf`
+  );
+
+  const startYmd = dayInMonth(narrative.firstMonth, 1);
+  const endYmd = monthEndUtcYmd(narrative.lastMonth);
+
+  // Era-anchored level (~610 CLP/USD in 2018 drifting ~5.5%/yr to ~950 by 2026) so a
+  // preset starting mid-history still opens at a realistic rate.
+  const yearsSince2018 =
+    (new Date(`${startYmd}T00:00:00Z`).getTime() - Date.UTC(2018, 0, 1)) / (365.25 * 24 * 3600 * 1000);
+  let fx = 610 * Math.pow(1.055, Math.max(0, yearsSince2018));
+  let d = new Date(`${startYmd}T00:00:00Z`);
+  const end = new Date(`${endYmd}T00:00:00Z`);
+  while (d <= end) {
+    const ymd = d.toISOString().slice(0, 10);
+    fx = Math.min(1100, Math.max(550, fx * (1 + (rng() * 2 - 1) * 0.012 + 0.00105)));
+    insFx.run(ymd, Math.round(fx * 100) / 100);
+    d = new Date(d.getTime() + 7 * 24 * 3600 * 1000);
+  }
+  // Always a rate on the final day so "today" conversions never reach past the window.
+  insFx.run(endYmd, Math.round(fx * 100) / 100);
+
+  // Era-anchored UF (~26.800 in early 2018, ~39.000 by 2026 at 0.35%/month).
+  const monthsSince2018 =
+    (Number(narrative.firstMonth.slice(0, 4)) - 2018) * 12 + (Number(narrative.firstMonth.slice(5, 7)) - 1);
+  let uf = 26_800 * Math.pow(1.0035, Math.max(0, monthsSince2018));
+  let m = narrative.firstMonth;
+  for (;;) {
+    insUf.run(dayInMonth(m, 1), Math.round(uf * 100) / 100);
+    uf *= 1.0035;
+    if (m === narrative.lastMonth) break;
+    const [y, mo] = m.split("-").map(Number) as [number, number];
+    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+  }
+  insUf.run(monthEndUtcYmd(narrative.lastMonth), Math.round(uf * 100) / 100);
 }

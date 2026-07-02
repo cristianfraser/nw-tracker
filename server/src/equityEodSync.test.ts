@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChileWallClock } from "./chileDate.js";
+import {
+  installCryptoTickerFixture,
+  removeCryptoTickerFixture,
+} from "./test/cryptoTickerFixture.js";
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
@@ -87,6 +91,9 @@ describe("capCryptoEodSeriesToCompletedUtcDay", () => {
 });
 
 describe("cryptoEodDueUtcYmd", () => {
+  beforeAll(() => installCryptoTickerFixture());
+  afterAll(() => removeCryptoTickerFixture());
+
   it("at Tue 23:55 Chile due is last completed UTC day (Tuesday)", () => {
     const at2355Utc = utcYmdAtChileWallClock("2026-05-26", 23, 55);
     expect(at2355Utc).toBe("2026-05-27");

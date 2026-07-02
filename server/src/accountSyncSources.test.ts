@@ -72,28 +72,37 @@ describe("accountSyncSources", () => {
   });
 
   it("reseedAllAccountSyncSources persists rows for synced accounts", () => {
-    const fintual = db
-      .prepare(`SELECT id FROM accounts WHERE notes LIKE 'import:fintual|cert|key=%' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    const afp = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=afp' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    const equity = db
-      .prepare(`SELECT id FROM accounts WHERE equity_ticker IS NOT NULL LIMIT 1`)
-      .get() as { id: number } | undefined;
+    // Own fixtures — one account per inference rule (fintual / afp_uno / equity ticker).
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
+      id: number;
+    };
+    const mk = (name: string, notes: string, ticker: string | null) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker) VALUES (?, ?, ?, ?)`
+          )
+          .run(group.id, name, notes, ticker).lastInsertRowid
+      );
+    const fintualId = mk("Sync fixture fintual", "import:fintual|cert|key=apv_b", null);
+    const hadAfp =
+      db.prepare(`SELECT 1 FROM accounts WHERE notes = 'import:excel|key=afp'`).get() != null;
+    const afpId = hadAfp ? null : mk("Sync fixture AFP", "import:excel|key=afp", null);
+    const equityId = mk("Sync fixture SPY", "test:sync-fixture-spy", "SPY");
 
-    const { links } = reseedAllAccountSyncSources();
-    expect(links).toBeGreaterThan(0);
+    try {
+      const { links } = reseedAllAccountSyncSources();
+      expect(links).toBeGreaterThan(0);
 
-    if (fintual) {
-      expect(syncSourcesForAccountId(fintual.id)).toContain("fintual");
-    }
-    if (afp) {
-      expect(syncSourcesForAccountId(afp.id)).toEqual(["afp_uno"]);
-    }
-    if (equity) {
-      const sources = syncSourcesForAccountId(equity.id);
-      expect(sources.some((s) => s === "stocks_nyse" || s === "crypto_eod")).toBe(true);
+      expect(syncSourcesForAccountId(fintualId)).toContain("fintual");
+      if (afpId != null) {
+        expect(syncSourcesForAccountId(afpId)).toEqual(["afp_uno"]);
+      }
+      expect(syncSourcesForAccountId(equityId)).toContain("stocks_nyse");
+    } finally {
+      const ids = [fintualId, afpId, equityId].filter((x): x is number => x != null);
+      for (const id of ids) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+      reseedAllAccountSyncSources();
     }
   });
 

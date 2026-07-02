@@ -1228,7 +1228,20 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("uses stable purchase keys for checking gastos lines", () => {
-    expect(checkingGastosMovementPurchaseKey(42)).toBe("checking-mv:42");
+    // Movement without a cartola note → legacy id-based key.
+    const legacyId = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, occurred_on, amount_clp, note)
+           VALUES (1, '2024-03-01', -1000, 'manual|stable-key-test')`
+        )
+        .run().lastInsertRowid
+    );
+    try {
+      expect(checkingGastosMovementPurchaseKey(legacyId)).toBe(`checking-mv:${legacyId}`);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(legacyId);
+    }
     const row = db
       .prepare(`SELECT id FROM movements WHERE note LIKE 'import:cartola|%' LIMIT 1`)
       .get() as { id: number } | undefined;

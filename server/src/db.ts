@@ -85,7 +85,12 @@ const BASELINE_REFERENCE_DATA_MIGRATIONS = new Set([
   "055_cc_expense_category_no_cuenta.sql",
   "056_cc_expense_merge_food_category.sql",
   "063_cc_expense_deposits_category.sql",
+  "076_cc_expense_generic_unique_merchants.sql",
+  "077_cargo_mercado_capitales_unique.sql",
   "083_checking_internal_transfer_category.sql",
+  // 135 mixes a table (already in the baseline, IF NOT EXISTS) with the
+  // real_estate_amortization category seed — its only INSERT is guarded.
+  "135_expense_deposit_links.sql",
 ]);
 
 /** Fresh DB: record every migration up to the baseline as applied (see `schemaBaseline.ts`). */
@@ -108,172 +113,75 @@ function markBaselineMigrationsApplied() {
   console.log(`schema baseline: marked ${files.length} migration(s) as pre-applied on fresh DB`);
 }
 
-type SeedGroup = {
+type SeedAssetGroupRow = {
   slug: string;
   label: string;
+  parent: string | null;
   sort: number;
-  parent_slug?: string;
-  cats: { slug: string; label: string }[];
 };
 
-function seedReferenceData() {
-  const groups: SeedGroup[] = [
-    {
-      slug: "net_worth",
-      label: "Net worth",
-      sort: 5,
-      cats: [],
-    },
-    {
-      slug: "retirement",
-      label: "Retirement",
-      sort: 10,
-      cats: [],
-    },
-    {
-      slug: "retirement_afp_afc",
-      label: "AFP + AFC",
-      sort: 10,
-      parent_slug: "retirement",
-      cats: [
-        { slug: "afp", label: "AFP" },
-        { slug: "afc", label: "AFC" },
-      ],
-    },
-    {
-      slug: "retirement_apv",
-      label: "APV",
-      sort: 20,
-      parent_slug: "retirement",
-      cats: [],
-    },
-    {
-      slug: "retirement_apv_a",
-      label: "APV A",
-      sort: 10,
-      parent_slug: "retirement_apv",
-      cats: [{ slug: "apv", label: "APV" }],
-    },
-    {
-      slug: "retirement_apv_b",
-      label: "APV B",
-      sort: 20,
-      parent_slug: "retirement_apv",
-      cats: [{ slug: "apv", label: "APV" }],
-    },
-    {
-      slug: "brokerage",
-      label: "Brokerage",
-      sort: 20,
-      cats: [],
-    },
-    {
-      slug: "brokerage_acciones",
-      label: "Acciones",
-      sort: 10,
-      parent_slug: "brokerage",
-      cats: [
-        { slug: "spy", label: "SPY" },
-        { slug: "vea", label: "VEA" },
-        { slug: "individual_stocks", label: "Acciones (USD)" },
-      ],
-    },
-    {
-      slug: "brokerage_mutual_funds",
-      label: "Mutual funds",
-      sort: 20,
-      parent_slug: "brokerage",
-      cats: [{ slug: "fintual_risky_norris", label: "Fintual RN" }],
-    },
-    {
-      slug: "brokerage_crypto",
-      label: "Crypto",
-      sort: 30,
-      parent_slug: "brokerage",
-      cats: [
-        { slug: "bitcoin", label: "Bitcoin" },
-        { slug: "eth", label: "ETH" },
-      ],
-    },
-    {
-      slug: "cash_eqs",
-      label: "Cash & equivalents",
-      sort: 30,
-      cats: [],
-    },
-    {
-      slug: "cash_eqs__checking_accounts",
-      label: "Checking accounts",
-      sort: 10,
-      parent_slug: "cash_eqs",
-      cats: [
-        { slug: "cuenta_corriente", label: "Cuenta corriente" },
-        { slug: "cuenta_vista", label: "Cuenta vista" },
-      ],
-    },
-    {
-      slug: "cash_eqs__cash_savings",
-      label: "Cash savings",
-      sort: 20,
-      parent_slug: "cash_eqs",
-      cats: [
-        { slug: "cuenta_ahorro_vivienda", label: "Cuenta de ahorro para la vivienda — BancoEstado" },
-        { slug: "fondo_reserva", label: "Fondo reserva" },
-        { slug: "usd", label: "USD" },
-      ],
-    },
-    {
-      slug: "real_estate",
-      label: "Real estate",
-      sort: 50,
-      cats: [{ slug: "property", label: "Property" }],
-    },
-    {
-      slug: "liabilities",
-      label: "Liabilities",
-      sort: 60,
-      cats: [
-        { slug: "mortgage", label: "Mortgage" },
-        { slug: "credit_card", label: "Credit card" },
-        { slug: "other_debt", label: "Other debt" },
-      ],
-    },
-    {
-      slug: "credit_cards",
-      label: "Credit cards",
-      sort: 55,
-      cats: [{ slug: "credit_card", label: "Credit card" }],
-    },
-  ];
+/**
+ * Asset-group reference tree, dumped from the live DB (2026-07). Fresh DBs must match
+ * the modern shape (flat `cash_eqs__cuenta_corriente`-style leaves plus the legacy nested
+ * groups some code still walks) — the old inline seed only knew the 2023 nested layout.
+ */
+const SEED_ASSET_GROUPS: SeedAssetGroupRow[] = [
+    { slug: "retirement", label: "Retirement", parent: null, sort: 10 },
+    { slug: "brokerage", label: "Brokerage", parent: null, sort: 20 },
+    { slug: "cash_eqs", label: "Cash & equivalents", parent: null, sort: 30 },
+    { slug: "real_estate", label: "Real estate", parent: null, sort: 50 },
+    { slug: "liabilities", label: "Liabilities", parent: null, sort: 60 },
+    { slug: "credit_cards", label: "Credit cards", parent: null, sort: 55 },
+    { slug: "net_worth", label: "Net worth", parent: null, sort: 5 },
+    { slug: "brokerage_acciones", label: "Acciones", parent: "brokerage", sort: 10 },
+    { slug: "brokerage_mutual_funds", label: "Mutual funds", parent: "brokerage", sort: 20 },
+    { slug: "brokerage_crypto", label: "Crypto", parent: "brokerage", sort: 30 },
+    { slug: "retirement_afp_afc", label: "AFP + AFC", parent: "retirement", sort: 10 },
+    { slug: "retirement_apv", label: "APV", parent: "retirement", sort: 20 },
+    { slug: "retirement_apv_a", label: "APV A", parent: "retirement_apv", sort: 10 },
+    { slug: "retirement_apv_b", label: "APV B", parent: "retirement_apv", sort: 20 },
+    { slug: "cash_eqs__checking_accounts", label: "Checking accounts", parent: "cash_eqs", sort: 10 },
+    { slug: "cash_eqs__cuenta_corriente", label: "Cuenta corriente", parent: "cash_eqs__checking_accounts", sort: 0 },
+    { slug: "credit_cards__credit_card", label: "Credit card", parent: "credit_cards", sort: 0 },
+    { slug: "liabilities__credit_card", label: "Credit card", parent: "liabilities", sort: 15 },
+    { slug: "cash_eqs__cuenta_vista", label: "Cuenta vista", parent: "cash_eqs__checking_accounts", sort: 4 },
+    { slug: "cash_eqs__cash_savings", label: "Cash savings", parent: "cash_eqs", sort: 20 },
+    { slug: "cash_eqs__fondo_reserva", label: "Fondo reserva", parent: "cash_eqs__cash_savings", sort: 1 },
+    { slug: "brokerage_mutual_funds__fintual_risky_norris", label: "Fintual RN", parent: "brokerage_mutual_funds", sort: 1 },
+    { slug: "retirement_apv_a__apv", label: "APV", parent: "retirement_apv_a", sort: 1 },
+    { slug: "retirement_apv_b__apv", label: "APV", parent: "retirement_apv_b", sort: 1 },
+    { slug: "retirement_afp_afc__afp", label: "AFP", parent: "retirement_afp_afc", sort: 0 },
+    { slug: "retirement_afp_afc__afc", label: "AFC", parent: "retirement_afp_afc", sort: 2 },
+    { slug: "cash_eqs__cuenta_ahorro_vivienda", label: "Cuenta de ahorro para la vivienda \u2014 BancoEstado", parent: "cash_eqs__cash_savings", sort: 2 },
+    { slug: "brokerage_crypto__bitcoin", label: "Bitcoin", parent: "brokerage_crypto", sort: 0 },
+    { slug: "brokerage_crypto__eth", label: "ETH", parent: "brokerage_crypto", sort: 1 },
+    { slug: "real_estate__property", label: "Property", parent: "real_estate", sort: 0 },
+    { slug: "liabilities__mortgage", label: "Mortgage", parent: "liabilities", sort: 0 },
+    { slug: "brokerage_acciones__spy", label: "SPY", parent: "brokerage_acciones", sort: 2 },
+    { slug: "brokerage_acciones__vea", label: "VEA", parent: "brokerage_acciones", sort: 3 },
+    { slug: "brokerage_acciones__oilk", label: "OILK", parent: "brokerage_acciones", sort: 5 },
+    { slug: "cash_eqs__usd", label: "USD", parent: "cash_eqs__cash_savings", sort: 30 },
+    { slug: "cash_eqs__cash_savings__usd", label: "USD", parent: "cash_eqs__cash_savings", sort: 31 },
+    { slug: "brokerage_acciones__lin", label: "Linde", parent: "brokerage_acciones", sort: 6 },
+    { slug: "brokerage_acciones__ccj", label: "CCJ", parent: "brokerage_acciones", sort: 7 },
+    { slug: "brokerage_cash", label: "Cash", parent: "brokerage", sort: 40 },
+    { slug: "brokerage_cash__usd", label: "USD", parent: "brokerage_cash", sort: 10 },
+    { slug: "brokerage_cash__clp", label: "CLP", parent: "brokerage_cash", sort: 20 },
+    { slug: "brokerage_crypto__buda_clp", label: "Buda CLP", parent: "brokerage_crypto", sort: 2 },
+    { slug: "brokerage_acciones__slv", label: "SLV", parent: "brokerage_acciones", sort: 8 },
+    { slug: "cash_eqs__dap", label: "DAP", parent: "cash_eqs__cash_savings", sort: 32 },
+];
 
-  const insG = dbInternal.prepare(
+function seedReferenceData() {
+  const ins = dbInternal.prepare(
     "INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (@slug, @label, @sort, @parent_id)"
   );
-  const slugToId = new Map<string, number>();
-
+  const idBySlug = new Map<string, number>();
   const tx = dbInternal.transaction(() => {
-    for (const g of groups) {
-      const parentId =
-        g.parent_slug != null ? (slugToId.get(g.parent_slug) ?? null) : null;
-      const r = insG.run({
-        slug: g.slug,
-        label: g.label,
-        sort: g.sort,
-        parent_id: parentId,
-      });
-      const gid = Number(r.lastInsertRowid);
-      slugToId.set(g.slug, gid);
-      let so = 0;
-      for (const c of g.cats) {
-        const leafSlug = g.slug === c.slug ? c.slug : `${g.slug}__${c.slug}`;
-        const cr = insG.run({
-          slug: leafSlug,
-          label: c.label,
-          sort: so++,
-          parent_id: gid,
-        });
-        slugToId.set(leafSlug, Number(cr.lastInsertRowid));
-      }
+    for (const g of SEED_ASSET_GROUPS) {
+      const parent_id = g.parent ? (idBySlug.get(g.parent) ?? null) : null;
+      const r = ins.run({ slug: g.slug, label: g.label, sort: g.sort, parent_id });
+      idBySlug.set(g.slug, Number(r.lastInsertRowid));
     }
   });
   tx();
