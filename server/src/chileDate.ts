@@ -12,16 +12,36 @@ export type ChileWallClock = {
   monthKey: string;
 };
 
+// Intl.DateTimeFormat construction costs ~20µs and these helpers run in hot per-line/per-month
+// loops (dashboard builds call them tens of thousands of times) — build each formatter once.
+const wallClockFormatterByTimeZone = new Map<string, Intl.DateTimeFormat>();
+
+function wallClockFormatter(timeZone: string): Intl.DateTimeFormat {
+  let fmt = wallClockFormatterByTimeZone.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    wallClockFormatterByTimeZone.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
+const chileDateOnlyFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Santiago",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 export function chileWallClockAt(now: Date): ChileWallClock {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Santiago",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
+  const parts = wallClockFormatter("America/Santiago").formatToParts(now);
   const g = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value;
   const y = g("year");
   const m = g("month");
@@ -81,15 +101,7 @@ export function dateAtTimeZoneWallClock(
   }
   let ms = Date.UTC(y, m - 1, d, hour, minute);
   for (let i = 0; i < 10; i++) {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(new Date(ms));
+    const parts = wallClockFormatter(timeZone).formatToParts(new Date(ms));
     const g = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value;
     const wy = g("year");
     const wmo = g("month");
@@ -111,20 +123,21 @@ export function dateAtTimeZoneWallClock(
   return new Date(ms);
 }
 
+let todayYmdCache: { atSecond: number; ymd: string } | null = null;
+
 export function chileCalendarTodayYmd(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Santiago",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
+  const atSecond = Math.floor(Date.now() / 1000);
+  if (todayYmdCache?.atSecond === atSecond) return todayYmdCache.ymd;
+  const parts = chileDateOnlyFormatter.formatToParts(new Date());
   const y = parts.find((p) => p.type === "year")?.value;
   const m = parts.find((p) => p.type === "month")?.value;
   const d = parts.find((p) => p.type === "day")?.value;
   if (!y || !m || !d) {
     throw new Error("Could not format Chile date");
   }
-  return `${y}-${m}-${d}`;
+  const ymd = `${y}-${m}-${d}`;
+  todayYmdCache = { atSecond, ymd };
+  return ymd;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
@@ -172,7 +173,24 @@ export function postCloseLiveBalanceAdjustmentClp(
   closeIso: string,
   monthEndIso: string
 ): number {
-  if (!closeIso || !monthEndIso || closeIso >= monthEndIso) return 0;
+  return postCloseLiveBalanceAdjustmentsClp(accountId, [{ closeIso, monthEndIso }])[0]!;
+}
+
+/**
+ * Batch form of {@link postCloseLiveBalanceAdjustmentClp}: one line scan + per-line
+ * normalization for the account, reused across every (close, month-end] window — the detalle
+ * builder calls this once per account instead of re-scanning all lines per billing month.
+ */
+export function postCloseLiveBalanceAdjustmentsClp(
+  accountId: number,
+  windows: readonly { closeIso: string; monthEndIso: string }[]
+): number[] {
+  if (windows.length === 0) return [];
+  const anyActive = windows.some(
+    (w) => w.closeIso && w.monthEndIso && w.closeIso < w.monthEndIso
+  );
+  if (!anyActive) return windows.map(() => 0);
+
   const rows = db
     .prepare(
       `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
@@ -184,23 +202,43 @@ export function postCloseLiveBalanceAdjustmentClp(
     )
     .all(accountId) as PostCloseLineRow[];
   const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
-  const seen = new Set<string>();
-  let sum = 0;
+
+  const fxDateByStatementDate = new Map<string, string | null>();
+  const fxDateFor = (statementDate: string): string | null => {
+    if (!fxDateByStatementDate.has(statementDate)) {
+      fxDateByStatementDate.set(statementDate, balanceUsdFxDateIso(accountId, statementDate));
+    }
+    return fxDateByStatementDate.get(statementDate) ?? null;
+  };
+
+  // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
+  // inside a window (same as the single-window loop did).
+  const lines: { iso: string; key: string; clp: number | null }[] = [];
   for (const r of rows) {
     if (superseded.has(r.id)) continue;
     if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
     const iso = normalizeTransactionDateIso(r.transaction_date);
-    if (!iso || iso <= closeIso || iso > monthEndIso) continue;
+    if (!iso) continue;
     const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     const clp = effectiveCcExpenseLineAmountClp(
       { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
-      balanceUsdFxDateIso(accountId, r.statement_date)
+      fxDateFor(r.statement_date)
     );
-    if (clp != null && Number.isFinite(clp)) sum += clp;
+    lines.push({ iso, key, clp: clp != null && Number.isFinite(clp) ? clp : null });
   }
-  return sum;
+
+  return windows.map((w) => {
+    if (!w.closeIso || !w.monthEndIso || w.closeIso >= w.monthEndIso) return 0;
+    const seen = new Set<string>();
+    let sum = 0;
+    for (const l of lines) {
+      if (l.iso <= w.closeIso || l.iso > w.monthEndIso) continue;
+      if (seen.has(l.key)) continue;
+      seen.add(l.key);
+      if (l.clp != null) sum += l.clp;
+    }
+    return sum;
+  });
 }
 
 /** Σ positive revolving charges in a billing month (all statement closes on distinct dates). */
@@ -431,6 +469,7 @@ function facturadoClpUsdForStatementSlotLocal(
 }
 
 export function recomputeCcBillingMonthBalances(accountId: number): number {
+  invalidateCcBillingDetail(accountId);
   const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
   const cupoLive =
     remainingByMonth.get(billingMonthForStatementDate(chileCalendarTodayYmd()) ?? "") ??
@@ -528,4 +567,5 @@ export function patchCreditCardBillingConfig(
        billing_cycle_start_day = excluded.billing_cycle_start_day,
        billing_cycle_end_day = excluded.billing_cycle_end_day`
   ).run(accountId, start, end ?? null);
+  invalidateCcBillingDetail(accountId);
 }

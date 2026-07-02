@@ -70,6 +70,12 @@ function formatResult(data: Record<string, unknown>): string {
   const removed = num("overlap_removed");
   if (removed) parts.push(`removidos (cuotas): ${removed}`);
 
+  const cartola = num("skipped_superseded_by_cartola");
+  if (cartola) parts.push(`omitidos (ya en cartola): ${cartola}`);
+
+  const transfer = num("skipped_superseded_by_transfer");
+  if (transfer) parts.push(`omitidos (ya como traspaso interno): ${transfer}`);
+
   if (Array.isArray(data.parse_errors) && data.parse_errors.length > 0) {
     parts.push(`avisos: ${(data.parse_errors as string[]).slice(0, 3).join("; ")}`);
   }
@@ -210,6 +216,7 @@ export function useAccountImportSlots(
     supports_cc_statement_pdf?: boolean;
     supports_checking_recent_xlsx?: boolean;
     supports_checking_cartola_xlsx?: boolean;
+    supports_cuenta_vista_web_paste?: boolean;
     document_imports?: { type: string; labelKey: string; accept: string }[];
   } | null,
   t: (key: string) => string
@@ -237,6 +244,15 @@ export function useAccountImportSlots(
         { name: "usd", label: t("accountDetail.import.ccPdfUsd"), accept: ".pdf" },
       ],
       onSubmit: (files) => api.importCcStatementPdf(accountId, files),
+    });
+  }
+  if (specs.supports_cuenta_vista_web_paste) {
+    slots.push({
+      kind: "textarea",
+      label: t("accountDetail.import.cuentaVistaWebPaste"),
+      hint: t("accountDetail.import.cuentaVistaWebPasteHint"),
+      submitLabel: t("accountDetail.import.submit"),
+      onSubmit: (text) => api.importCuentaVistaWebPaste(accountId, text),
     });
   }
   if (specs.supports_checking_recent_xlsx) {

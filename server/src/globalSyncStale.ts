@@ -1,7 +1,7 @@
 /**
  * Stale checks for external sync sources (no Fintual script imports — safe for `tsc` / in-server use).
  */
-import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
+import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   loadGlobalSyncState,
@@ -16,7 +16,12 @@ import {
   equityEodNyseSyncDue,
   equityNyseEodCaughtUp,
 } from "./equityEodSync.js";
-import { attachSyncSourceSchedule, type SyncSourceDayKind, type SyncWallTime } from "./syncSourceSchedule.js";
+import {
+  attachSyncSourceSchedule,
+  FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE,
+  type SyncSourceDayKind,
+  type SyncWallTime,
+} from "./syncSourceSchedule.js";
 import {
   fintualPriorEveningUnresolved,
   fintualPublishLagsPollCalendarDay,
@@ -30,12 +35,15 @@ import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
 import { maxEurDateOnOrBefore, maxFxBcentralDateOnOrBefore, maxUfDate, safeMaxUtmMonthParts } from "./sbifSyncDb.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 
-const FINTUAL_RN_COMPOSITION_STALE_DAYS = 30;
-
+/**
+ * Due once per Chile business day from 10:00: stale until today's composition sync ran.
+ * Weekends/holidays are never stale (nothing to re-check), and re-running when the composition
+ * is unchanged is fine — the sync just re-stamps today's `fintualRnCompositionLastSyncYmd`.
+ */
 export function isFintualRnCompositionStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
-  const last = state.fintualRnCompositionLastSyncYmd?.trim();
-  if (!last || !/^\d{4}-\d{2}-\d{2}$/.test(last)) return true;
-  return cl.ymd >= chileCalendarAddDays(last, FINTUAL_RN_COMPOSITION_STALE_DAYS);
+  if (!isChileBusinessDay(cl.ymd)) return false;
+  if (cl.hour * 60 + cl.minute < FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60) return false;
+  return state.fintualRnCompositionLastSyncYmd?.trim() !== cl.ymd;
 }
 
 export type GlobalSyncSource =

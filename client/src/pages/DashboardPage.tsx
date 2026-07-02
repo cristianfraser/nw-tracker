@@ -543,6 +543,7 @@ export function DashboardPage() {
       }
       charts={dashboardCharts}
       tableAccounts={netWorthTableAccounts}
+      serverPaginatedMonthlyDetail
       monthlyDetailHint={t("dashboard.monthlyDetailHint")}
       flowsHint={t("dashboard.flowsHint")}
       accountsTree={

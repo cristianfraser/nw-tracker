@@ -1,4 +1,7 @@
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import {
+  invalidateAggregationForAccountDate,
+  invalidateCcBillingDetail,
+} from "./aggregationCache.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
@@ -115,6 +118,9 @@ export function ccLedgerStatementClosingPointsClpForAccounts(
  * Run after ledger + billing recompute so dashboard / charts match account detail.
  */
 export function upsertCreditCardValuationsFromLedger(accountId: number): number {
+  // This runs after CC writes — drop the cached detail first so the points below (and every
+  // later read) reflect the new ledger/statement state instead of a pre-write cache entry.
+  invalidateCcBillingDetail(accountId);
   const pts = ccLedgerStatementClosingPointsClp(accountId);
   if (!pts || pts.length === 0) return 0;
   const row = db

@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
+import { snapshotTables } from "./test/snapshotTables.js";
 import {
   isYahooFxEodSyncWindow,
   isYahooFxUsdStale,
@@ -16,6 +17,9 @@ vi.mock("./equityYahooEod.js", () => ({
     closes: [910.29, 911.0],
   })),
 }));
+
+const restoreTables = snapshotTables(["fx_daily"]);
+afterAll(() => restoreTables());
 
 afterEach(() => {
   db.exec("DELETE FROM fx_daily");
