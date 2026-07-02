@@ -61,7 +61,7 @@ import { listFxBidAskGaps, upsertManualFxBidAskRow } from "../fxBidAskGaps.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
-import { accountBucketKindSlug, accountKindSlugForAccountId, bucketSlugForAccountId } from "../accountBucket.js";
+import { accountKindSlugForAccountId } from "../accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "../assetGroupTree.js";
 import { db } from "../db.js";
 import { listRatesInstrumentSeries, listMarketDisplaySeries } from "../marketDisplaySeries.js";
@@ -270,15 +270,17 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const bucketSlug = bucketSlugForAccountId(id);
-  if (!bucketSlug) {
+  // Behavior kind, not raw asset-group slug — generated DBs use the legacy
+  // `parent__kind` slug form (`real_estate__property`) for the same accounts.
+  const kindSlug = accountKindSlugForAccountId(id);
+  if (!kindSlug) {
     res.status(404).json({ error: "account not found" });
     return;
   }
-  if (bucketSlug === "property" || bucketSlug === "mortgage") {
+  if (kindSlug === "property" || kindSlug === "mortgage") {
     const sheetRowsAll = loadDeptoLedgerFromMovements();
     const sheetRows =
-      bucketSlug === "mortgage"
+      kindSlug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
         : sheetRowsAll;
     const payment_scenarios = buildDeptoPaymentScenarioRows(sheetRowsAll);
