@@ -53,7 +53,6 @@ import { accountChartInactive } from "../accountChartInactive.js";
 import { reconcileDashboardCardMetrics } from "../dashboardCardMetricsReconcile.js";
 import {
   isDeptoMortgagePaymentCuota,
-  loadDeptoDividendosSheetLedgerFromDb,
   mortgageMetaFromSheetRows,
   noteIsDeptoPiePayment,
 } from "../deptoDividendosLedger.js";
