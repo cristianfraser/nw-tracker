@@ -123,9 +123,17 @@ function upsert(g: GroupUpsert): number {
 }
 
 function linkLinkedGroup(parentSlug: string, childSlug: string, sort: number, weight: number) {
-  const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
-  const cid = (groupIdBySlug.get(childSlug) as { id: number }).id;
-  insertLinkedGroupChild.run(pid, cid, sort, weight);
+  const parent = groupIdBySlug.get(parentSlug) as { id: number } | undefined;
+  const child = groupIdBySlug.get(childSlug) as { id: number } | undefined;
+  if (!parent || !child) {
+    // Empty/bootstrap DB: reference chart groups point at asset groups that only exist
+    // once accounts are seeded. Re-running `nav:reseed` after an import creates the link.
+    console.warn(
+      `seedNavTree: skipping linked group ${parentSlug} -> ${childSlug} (missing ${!parent ? parentSlug : childSlug})`
+    );
+    return;
+  }
+  insertLinkedGroupChild.run(parent.id, child.id, sort, weight);
 }
 
 function linkGroup(parentSlug: string, childSlug: string, sort: number) {
