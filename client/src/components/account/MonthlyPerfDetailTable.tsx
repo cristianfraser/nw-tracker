@@ -14,6 +14,17 @@ import { formatYmEs } from "../../pages/accountDetail/shared";
 
 const PAGE_SIZE = 12;
 
+/** Shared with server-paginated callers so `page_size` matches the client-paginated tables. */
+export const MONTHLY_PERF_DETAIL_PAGE_SIZE = PAGE_SIZE;
+
+export type MonthlyPerfServerPagination = {
+  page: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  /** Dim while a page request is in flight (keepPreviousData). */
+  loading?: boolean;
+};
+
 function cellPct(p: number | null | undefined) {
   if (p == null || !Number.isFinite(p)) return "—";
   const s = (p * 100).toFixed(2).replace(".", ",");
@@ -194,6 +205,7 @@ export function MonthlyPerfDetailTable({
   isAfpAccount = false,
   movementUnitsKind,
   showStockInflowsColumn = true,
+  serverPagination,
 }: {
   rows: readonly PerfRow[];
   displayUnit: "clp" | "usd";
@@ -202,6 +214,11 @@ export function MonthlyPerfDetailTable({
   movementUnitsKind?: (slug: string) => "shares" | "coin";
   /** Off for consolidated group tables (mixed instruments). */
   showStockInflowsColumn?: boolean;
+  /**
+   * When set, `rows` are one server page in final shape (yearly rollup included when
+   * metricsPeriod is "year") and pagination state is controlled by the caller.
+   */
+  serverPagination?: MonthlyPerfServerPagination;
 }) {
   const { t } = useTranslation();
   const { metricsPeriod } = useDisplayPreferences();
@@ -240,11 +257,15 @@ export function MonthlyPerfDetailTable({
   );
 
   const displayRows = useMemo(
-    () => isYearly ? rollupMonthlyPerfRowsYearly(sortedRows) : sortedRows,
-    [sortedRows, isYearly]
+    () => (isYearly && !serverPagination ? rollupMonthlyPerfRowsYearly(sortedRows) : sortedRows),
+    [sortedRows, isYearly, serverPagination]
   );
 
-  const { page, setPage, pageRows, total } = useClientPagination(displayRows, PAGE_SIZE);
+  const clientPagination = useClientPagination(displayRows, PAGE_SIZE);
+  const page = serverPagination?.page ?? clientPagination.page;
+  const total = serverPagination?.total ?? clientPagination.total;
+  const pageRows = serverPagination ? displayRows : clientPagination.pageRows;
+  const setPage = serverPagination?.onPageChange ?? clientPagination.setPage;
 
   const periodColumnLabel = isYearly
     ? t("accountDetail.yearColumn")
@@ -284,6 +305,7 @@ export function MonthlyPerfDetailTable({
       pageSize={PAGE_SIZE}
       total={total}
       onPageChange={setPage}
+      loading={serverPagination?.loading ?? false}
     >
       <Table
         key={`monthly-detail-page-${page}-${metricsPeriod}`}

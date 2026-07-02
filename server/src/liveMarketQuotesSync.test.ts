@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import {
   clearLiveMarketQuotesForTest,
@@ -7,6 +7,7 @@ import {
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { syncAllLiveMarketQuotes } from "./liveMarketQuotesSync.js";
+import { snapshotTables } from "./test/snapshotTables.js";
 
 vi.mock("./equityYahooEod.js", () => ({
   fetchYahooLiveQuote: vi.fn(async (symbol: string) => ({
@@ -43,6 +44,9 @@ vi.mock("./bcentralApi.js", async (importOriginal) => {
     isBcentralConfigured: () => false,
   };
 });
+
+const restoreTables = snapshotTables(["fx_daily"]);
+afterAll(() => restoreTables());
 
 afterEach(() => {
   clearLiveMarketQuotesForTest();

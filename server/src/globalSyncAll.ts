@@ -1050,6 +1050,7 @@ async function runSbifIpc(
 
 async function runFintualRnComposition(
   cl: ReturnType<typeof chileWallClockNow>,
+  state: GlobalSyncStateFile,
   changes: SyncFieldChange[],
   notes: SyncStepNote[]
 ): Promise<void> {
@@ -1057,7 +1058,7 @@ async function runFintualRnComposition(
     console.log("sync: Risky Norris composition — dry-run skip");
     return;
   }
-  const result = await syncRiskyNorrisComposition(cl);
+  const result = await syncRiskyNorrisComposition(cl, state);
   notes.push({
     step: "Risky Norris composition",
     message: `${result.holdings_count} ETFs as of ${result.composition_date} (ETF sleeve ${(result.raw_etf_weight_sum * 100).toFixed(1)}% normalized); anchor cuota ${formatClp(result.anchor_fund_unit_clp)} CLP`,
@@ -1116,7 +1117,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       state!,
       cl,
       async () => {
-        await runFintualRnComposition(cl, syncChanges, stepNotes);
+        await runFintualRnComposition(cl, state!, syncChanges, stepNotes);
       }
     );
 

@@ -1,12 +1,16 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "../../cn";
 import { FlowsPanel } from "../account/FlowsPanel";
-import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
+import {
+  MONTHLY_PERF_DETAIL_PAGE_SIZE,
+  MonthlyPerfDetailTable,
+} from "../account/MonthlyPerfDetailTable";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { EntityColorTarget } from "../../entityColor";
 import { useTranslation } from "../../i18n";
+import { useGroupConsolidatedMonthlyPage } from "../../queries/hooks";
 import {
   useGroupInfoConsolidatedTables,
   type GroupInfoTableAccount,
@@ -61,6 +65,11 @@ export type GroupInfoBaseProps = {
   loading?: boolean;
   /** Skip consolidated monthly perf + flows tables (pasivos specialized layouts). */
   hideConsolidatedTables?: boolean;
+  /**
+   * Fetch the detalle-por-mes table page by page from the server instead of loading the
+   * whole consolidated-tables payload (dashboard net_worth; group pages stay client-paginated).
+   */
+  serverPaginatedMonthlyDetail?: boolean;
 };
 
 export function GroupInfoBase({
@@ -78,30 +87,56 @@ export function GroupInfoBase({
   flowsHint,
   loading = false,
   hideConsolidatedTables = false,
+  serverPaginatedMonthlyDetail = false,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const tablesEnabled =
     !hideConsolidatedTables &&
     (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
+  const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug) && !loading;
   const { consolidatedMonthlyPerf, tableFlags, tablesLoading, tablesError } =
     useGroupInfoConsolidatedTables(
       portfolio?.groupSlug ?? "",
       tableAccounts,
       displayUnit,
-      tablesEnabled && Boolean(portfolio?.groupSlug) && !loading
+      tablesFetchEnabled && !serverPaginatedMonthlyDetail
     );
+
+  // Page state is tied to the period it was set under: a month↔year toggle changes the
+  // row count, so the derived page snaps back to 1 without an effect (no stale-page fetch).
+  const [monthlyPageState, setMonthlyPageState] = useState({ period: metricsPeriod, page: 1 });
+  const monthlyPage = monthlyPageState.period === metricsPeriod ? monthlyPageState.page : 1;
+  const setMonthlyPage = (page: number) => setMonthlyPageState({ period: metricsPeriod, page });
+  const serverMonthly = useGroupConsolidatedMonthlyPage(
+    portfolio?.groupSlug ?? "",
+    displayUnit,
+    metricsPeriod,
+    monthlyPage,
+    MONTHLY_PERF_DETAIL_PAGE_SIZE,
+    tablesFetchEnabled && serverPaginatedMonthlyDetail
+  );
 
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
   const placeholderMonthlyRows = useMemo(() => buildPlaceholderConsolidatedMonthlyRows(), []);
 
   const monthlyRows = loading
     ? placeholderMonthlyRows
-    : tablesLoading
-      ? []
-      : consolidatedMonthlyPerf;
+    : serverPaginatedMonthlyDetail
+      ? serverMonthly.data?.rows ?? []
+      : tablesLoading
+        ? []
+        : consolidatedMonthlyPerf;
 
-  const flowsEnabled = tablesEnabled && Boolean(portfolio?.groupSlug) && !loading;
+  const monthlyError = serverPaginatedMonthlyDetail
+    ? serverMonthly.isError
+      ? serverMonthly.error instanceof Error
+        ? serverMonthly.error.message
+        : t("common.loadFailedTables")
+      : null
+    : tablesError;
+
+  const flowsEnabled = tablesFetchEnabled;
 
   return (
     <main className={mainClassName}>
@@ -131,14 +166,24 @@ export function GroupInfoBase({
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
               {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
             </p>
-            {tablesError ? (
-              <p className="error">{tablesError}</p>
+            {monthlyError ? (
+              <p className="error">{monthlyError}</p>
             ) : monthlyRows.length > 0 ? (
               <MonthlyPerfDetailTable
                 rows={monthlyRows}
                 displayUnit={displayUnit}
                 isMortgageAccount={tableFlags.isMortgageAccount}
                 showStockInflowsColumn={false}
+                serverPagination={
+                  serverPaginatedMonthlyDetail && !loading
+                    ? {
+                        page: serverMonthly.data?.page ?? monthlyPage,
+                        total: serverMonthly.data?.total ?? 0,
+                        onPageChange: setMonthlyPage,
+                        loading: serverMonthly.isFetching,
+                      }
+                    : undefined
+                }
               />
             ) : (
               <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>

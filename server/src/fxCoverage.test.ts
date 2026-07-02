@@ -1,15 +1,40 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterAll, describe, expect, it, beforeEach } from "vitest";
 import { db } from "./db.js";
 import { buildFxCoverage } from "./fxCoverage.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { snapshotTables } from "./test/snapshotTables.js";
+
+/** Tables that reference `movements` — must be wiped first (FKs are ON) and restored with it. */
+const MOVEMENT_CHILD_TABLES = [
+  "payroll_work_earnings",
+  "checking_income_movement_overrides",
+  "checking_gap_deposit_mirrors",
+  "expense_deposit_links",
+  "cuenta_ahorro_deposit_splits",
+] as const;
+
+const restoreTables = snapshotTables([
+  "fx_daily",
+  "fx_daily_bid_ask",
+  "fx_daily_yahoo_rejected",
+  "valuations",
+  "movements",
+  ...MOVEMENT_CHILD_TABLES,
+]);
+afterAll(() => restoreTables());
+
+function wipeMovementsAndValuations() {
+  for (const t of MOVEMENT_CHILD_TABLES) db.exec(`DELETE FROM ${t}`);
+  db.exec("DELETE FROM movements");
+  db.exec("DELETE FROM valuations");
+}
 
 describe("buildFxCoverage", () => {
   beforeEach(() => {
     db.exec("DELETE FROM fx_daily");
     db.exec("DELETE FROM fx_daily_yahoo_rejected");
-    db.exec("DELETE FROM valuations");
-    db.exec("DELETE FROM movements");
+    wipeMovementsAndValuations();
   });
 
   it("reports incomplete when fx_daily is empty", () => {

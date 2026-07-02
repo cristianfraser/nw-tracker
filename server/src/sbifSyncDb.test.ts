@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   maxFxBcentralDateOnOrBefore,
@@ -6,6 +6,10 @@ import {
   upsertFxBcentralRows,
   upsertFxRows,
 } from "./sbifSyncDb.js";
+import { snapshotTables } from "./test/snapshotTables.js";
+
+const restoreTables = snapshotTables(["fx_daily", "fx_daily_bcentral"]);
+afterAll(() => restoreTables());
 
 afterEach(() => {
   db.exec("DELETE FROM fx_daily");

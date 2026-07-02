@@ -5,9 +5,10 @@ import {
   listCcBillingMonthBalances,
   facturadoFromStatement,
   openMonthUsdFacturado,
-  postCloseLiveBalanceAdjustmentClp,
+  postCloseLiveBalanceAdjustmentsClp,
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
+import { withCcOneShotScanCache } from "./ccCrossImportDedupe.js";
 import {
   statementSlotsByBillingMonth,
   type CcStatementSlotByCurrency,
@@ -296,6 +297,14 @@ export function buildBillingDetailByMonth(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[] = []
 ): CcBillingDetailMonthRow[] {
+  // Memoize the account-level one-shot scans for this synchronous build (read-only).
+  return withCcOneShotScanCache(() => buildBillingDetailByMonthInner(accountId, ledgerMonths));
+}
+
+function buildBillingDetailByMonthInner(
+  accountId: number,
+  ledgerMonths: CcInstallmentMonthRow[]
+): CcBillingDetailMonthRow[] {
   const balances = listCcBillingMonthBalances(accountId).filter(
     (r) => r.as_of_kind !== "month_end"
   );
@@ -411,16 +420,20 @@ export function buildBillingDetailByMonth(
   // billed on a later statement. Runs after the open-month rollforward so its base stays the anchor
   // (no double-counting). The open month is already live via its rollforward; projected rows have
   // no lines so the adjustment is 0.
-  for (const row of withProjected) {
-    if (row.as_of_kind !== "statement") continue;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.as_of_date)) continue;
-    const adj = postCloseLiveBalanceAdjustmentClp(
-      accountId,
-      row.as_of_date,
-      ccLedgerMonthEndIso(row.billing_month)
-    );
+  const statementRows = withProjected.filter(
+    (row) => row.as_of_kind === "statement" && /^\d{4}-\d{2}-\d{2}$/.test(row.as_of_date)
+  );
+  const adjustments = postCloseLiveBalanceAdjustmentsClp(
+    accountId,
+    statementRows.map((row) => ({
+      closeIso: row.as_of_date,
+      monthEndIso: ccLedgerMonthEndIso(row.billing_month),
+    }))
+  );
+  statementRows.forEach((row, i) => {
+    const adj = adjustments[i]!;
     if (adj !== 0) row.balance_total_clp = Math.round(row.balance_total_clp + adj);
-  }
+  });
 
   withProjected.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
   return withProjected;
@@ -553,6 +566,13 @@ function cuotaForPayByMonth(
 }
 
 export function buildFacturaciones(
+  accountId: number,
+  ledgerMonths: CcInstallmentMonthRow[]
+): CcFacturacionRow[] {
+  return withCcOneShotScanCache(() => buildFacturacionesInner(accountId, ledgerMonths));
+}
+
+function buildFacturacionesInner(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {

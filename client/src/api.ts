@@ -248,9 +248,15 @@ export const api = {
       supports_cc_statement_pdf: boolean;
       supports_checking_recent_xlsx: boolean;
       supports_checking_cartola_xlsx: boolean;
+      supports_cuenta_vista_web_paste: boolean;
     }>(`/api/accounts/${id}/import-specs`),
   importCcWebPaste: (id: string | number, text: string) =>
     j<Record<string, unknown>>(`/api/accounts/${id}/imports/cc-web-paste`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  importCuentaVistaWebPaste: (id: string | number, text: string) =>
+    j<Record<string, unknown>>(`/api/accounts/${id}/imports/cuenta-vista-web-paste`, {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
@@ -292,6 +298,21 @@ export const api = {
     const qs = q.toString();
     return j<import("./types").GroupConsolidatedTablesResponse>(
       `/api/groups/${encodeURIComponent(slug)}/consolidated-tables${qs ? `?${qs}` : ""}`
+    );
+  },
+  groupConsolidatedMonthly: (
+    slug: string,
+    unit: "clp" | "usd",
+    opts: { page?: number; pageSize?: number; period?: "month" | "year" }
+  ) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    if (opts.period === "year") q.set("period", "year");
+    if (opts.page) q.set("page", String(opts.page));
+    if (opts.pageSize) q.set("page_size", String(opts.pageSize));
+    const qs = q.toString();
+    return j<import("./types").GroupConsolidatedMonthlyPageResponse>(
+      `/api/groups/${encodeURIComponent(slug)}/consolidated-monthly${qs ? `?${qs}` : ""}`
     );
   },
   accountDetailBundle: (

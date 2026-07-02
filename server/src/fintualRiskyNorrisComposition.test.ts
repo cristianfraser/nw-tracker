@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { chileCalendarAddDays } from "./chileDate.js";
+import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isFintualRnCompositionStale } from "./globalSyncStale.js";
-import {
-  COMPOSITION_STALE_DAYS,
-  parseManagedFundPositionsBody,
-} from "./fintualRiskyNorrisComposition.js";
+import { holdingsForPricing, parseManagedFundPositionsBody } from "./fintualRiskyNorrisComposition.js";
 
 const FIXTURE = {
   date: "2026-06-22",
@@ -60,22 +57,70 @@ describe("parseManagedFundPositionsBody", () => {
   });
 });
 
+describe("holdingsForPricing", () => {
+  it("maps Fintual SPXS (Invesco S&P 500 UCITS) to SPY, not Yahoo's Direxion bear ETF", () => {
+    const holdings = holdingsForPricing(
+      [
+        { weight: 0.9, etf: { asset: { ticker: "QQQM" } } },
+        { weight: 0.1, etf: { asset: { ticker: "SPXS" } } },
+      ],
+      "2026-06-30"
+    );
+    expect(holdings).toEqual([
+      { ticker: "QQQM", weight: 0.9, synced_at: "2026-06-30" },
+      { ticker: "SPY", weight: 0.1, synced_at: "2026-06-30" },
+    ]);
+  });
+
+  it("merges weights when a mapped ticker collides with a direct holding", () => {
+    const holdings = holdingsForPricing(
+      [
+        { weight: 0.9, etf: { asset: { ticker: "SPY" } } },
+        { weight: 0.1, etf: { asset: { ticker: "SPXS" } } },
+      ],
+      "2026-06-30"
+    );
+    expect(holdings).toEqual([{ ticker: "SPY", weight: 1, synced_at: "2026-06-30" }]);
+  });
+});
+
 describe("isFintualRnCompositionStale", () => {
-  const cl = { ymd: "2026-06-23" } as import("./chileDate.js").ChileWallClock;
-
-  it("is stale when last sync is missing", () => {
-    expect(isFintualRnCompositionStale(cl, {})).toBe(true);
+  // 2026-06-23 is a Tuesday (Chile business day); 2026-06-20 is a Saturday.
+  const businessDay = (hour: number, minute = 0): ChileWallClock => ({
+    ymd: "2026-06-23",
+    year: 2026,
+    month: 6,
+    day: 23,
+    hour,
+    minute,
+    monthKey: "2026-06",
+  });
+  const weekend = (hour: number): ChileWallClock => ({
+    ymd: "2026-06-20",
+    year: 2026,
+    month: 6,
+    day: 20,
+    hour,
+    minute: 0,
+    monthKey: "2026-06",
   });
 
-  it("is stale when last sync is older than 30 days", () => {
-    const last = chileCalendarAddDays(cl.ymd, -(COMPOSITION_STALE_DAYS + 1));
-    const state: GlobalSyncStateFile = { fintualRnCompositionLastSyncYmd: last };
-    expect(isFintualRnCompositionStale(cl, state)).toBe(true);
+  it("is not stale on a weekend", () => {
+    expect(isFintualRnCompositionStale(weekend(11), {})).toBe(false);
   });
 
-  it("is fresh within 30 days", () => {
-    const last = chileCalendarAddDays(cl.ymd, -5);
-    const state: GlobalSyncStateFile = { fintualRnCompositionLastSyncYmd: last };
-    expect(isFintualRnCompositionStale(cl, state)).toBe(false);
+  it("is not stale before 10:00 on a business day", () => {
+    expect(isFintualRnCompositionStale(businessDay(9, 59), {})).toBe(false);
+  });
+
+  it("is stale from 10:00 when not yet synced today", () => {
+    expect(isFintualRnCompositionStale(businessDay(10, 0), {})).toBe(true);
+    const staleState: GlobalSyncStateFile = { fintualRnCompositionLastSyncYmd: "2026-06-22" };
+    expect(isFintualRnCompositionStale(businessDay(10, 0), staleState)).toBe(true);
+  });
+
+  it("is fresh once today's composition sync ran", () => {
+    const state: GlobalSyncStateFile = { fintualRnCompositionLastSyncYmd: "2026-06-23" };
+    expect(isFintualRnCompositionStale(businessDay(14), state)).toBe(false);
   });
 });

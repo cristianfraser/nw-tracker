@@ -2,6 +2,7 @@ import { db } from "./db.js";
 
 export type ImportBatchKind =
   | "cc_web_paste"
+  | "cuenta_vista_web_paste"
   | "cc_statement_pdf"
   | "checking_recent_xlsx"
   | "checking_cartola_xlsx"
