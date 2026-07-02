@@ -58,28 +58,6 @@ export type DeptoDividendosPaymentRow = {
   desgravamen_clp: number | null;
 };
 
-/** Fila para API / UI: movimiento + campos parseados de la nota. */
-export type DeptoMortgageLedgerRow = {
-  movement_id: number;
-  occurred_on: string;
-  amount_clp: number;
-  cuota: string | null;
-  amount_uf: number | null;
-  uf_clp_day: number | null;
-  credito_restante_uf: number | null;
-  valor_neto_uf: number | null;
-  valor_neto_clp: number | null;
-  pagado_neto_uf: number | null;
-  pago_acumulado_clp: number | null;
-  min_uf: number | null;
-  amortizacion_clp: number | null;
-  amortizacion_uf: number | null;
-  amortizacion_ext_clp: number | null;
-  amortizacion_ext_uf: number | null;
-  interes_clp: number | null;
-  interes_uf: number | null;
-};
-
 const COL = {
   cuota: 0,
   fecha: 1,
@@ -479,19 +457,37 @@ export function deptoSueciaDashboardSnapshotAt(
   return { valor_clp: net + mortgage, net_value_clp: net, mortgage_clp: mortgage };
 }
 
-/** Net equity UF = {@link DEPTO_PROPERTY_VALOR_UF} − mortgage balance UF (only on/after pie / compra). */
+/**
+ * Net equity UF: forward-filled **valor neto (UF)** from the ledger rows (only on/after
+ * pie / compra). Prepago rows are skipped like the balance fill — their vnuf is as
+ * unreliable as their cruf in the Numbers export. Data-derived (vnuf ≡ gross − balance
+ * per row), so it works for any property, not just the 5400-UF Suecia sheet.
+ */
 export function deptoSueciaNetEquityUfBySnapshotDates(
   dateStrsAsc: readonly string[],
   ledger: readonly DeptoMortgageSheetRow[]
 ): Map<string, number> {
-  const mortgageUf = deptoMortgageBalanceUfBySnapshotDates(dateStrsAsc, ledger);
   const firstOwn = firstDeptoPropertyOwnershipYmd(ledger);
   const out = new Map<string, number>();
+  if (dateStrsAsc.length === 0 || ledger.length === 0) return out;
+  const sorted = [...ledger].sort((a, b) => {
+    const c = a.occurred_on.localeCompare(b.occurred_on);
+    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
+  });
+  let j = 0;
+  let last: number | null = null;
   for (const d of dateStrsAsc) {
+    const cut = snapshotDepositCutoff(d);
+    while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
+      const row = sorted[j]!;
+      if (!isDeptoPrepagoCuota(row.cuota)) {
+        const v = row.valor_neto_uf;
+        if (v != null && Number.isFinite(v)) last = v;
+      }
+      j++;
+    }
     if (firstOwn != null && d < firstOwn) continue;
-    const bal = mortgageUf.get(d);
-    if (bal == null) continue;
-    out.set(d, roundUf4(Math.max(0, DEPTO_PROPERTY_VALOR_UF - bal)));
+    if (last != null) out.set(d, roundUf4(Math.max(0, last)));
   }
   return out;
 }
@@ -785,8 +781,18 @@ export function enrichDeptoRowsUfClpFromDb<T extends { occurred_on: string; uf_c
 
 export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[]): DeptoMortgageCsvMeta {
   const pie = rows.find((r) => r.cuota.toLowerCase() === "pie");
+  // Gross value derived from row data (vnuf + cruf ≡ valor vivienda per row) — no constant,
+  // so any property works (demo house included). Pie row first, else first derivable row.
+  const grossOf = (r: DeptoMortgageSheetRow): number | null =>
+    r.valor_neto_uf != null && r.credito_restante_uf != null
+      ? roundUf4(r.valor_neto_uf + r.credito_restante_uf)
+      : null;
+  const valorViviendaUf =
+    (pie ? grossOf(pie) : null) ??
+    rows.map(grossOf).find((v): v is number => v != null) ??
+    null;
   return {
-    valor_vivienda_uf: DEPTO_PROPERTY_VALOR_UF,
+    valor_vivienda_uf: valorViviendaUf,
     hipoteca_tras_pie_uf: pie?.credito_restante_uf ?? null,
     pie_clp: pie?.pago_clp ?? null,
     pie_uf: pie?.pago_uf ?? null,
@@ -946,37 +952,3 @@ export function parseDeptoDividendosMovementNote(note: string | null): Partial<D
   };
 }
 
-const NOTE_PREFIXES = ["import:excel|depto-dividendos", "import:excel|depto-mortgage"] as const;
-
-export function mortgageLedgerRowsFromDbRows(
-  rows: { id: number; amount_clp: number; occurred_on: string; note: string | null }[]
-): DeptoMortgageLedgerRow[] {
-  const out: DeptoMortgageLedgerRow[] = [];
-  for (const r of rows) {
-    if (!r.note || !NOTE_PREFIXES.some((p) => r.note!.startsWith(p))) continue;
-    const p = parseDeptoDividendosMovementNote(r.note);
-    if (!p) continue;
-    const ufDay = ufRowOnOrBefore(r.occurred_on)?.clp_per_uf ?? null;
-    out.push({
-      movement_id: r.id,
-      occurred_on: r.occurred_on,
-      amount_clp: r.amount_clp,
-      cuota: p.cuota ?? null,
-      amount_uf: p.amount_uf ?? null,
-      uf_clp_day: ufDay,
-      credito_restante_uf: p.credito_restante_uf ?? null,
-      valor_neto_uf: p.valor_neto_uf ?? null,
-      valor_neto_clp: p.valor_neto_clp ?? null,
-      pagado_neto_uf: p.pagado_neto_uf ?? null,
-      pago_acumulado_clp: p.pago_acumulado_clp ?? null,
-      min_uf: p.min_uf ?? null,
-      amortizacion_clp: p.amortizacion_clp ?? null,
-      amortizacion_uf: p.amortizacion_uf ?? null,
-      amortizacion_ext_clp: p.amortizacion_ext_clp ?? null,
-      amortizacion_ext_uf: p.amortizacion_ext_uf ?? null,
-      interes_clp: p.interes_clp ?? null,
-      interes_uf: p.interes_uf ?? null,
-    });
-  }
-  return out;
-}
