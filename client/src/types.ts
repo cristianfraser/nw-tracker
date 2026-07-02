@@ -220,15 +220,6 @@ export interface DashboardResponse {
     color_rgb?: string;
   }[];
   accounts: DashboardAccountRow[];
-  /** Depto depto snapshot for dashboard RE card (valor / net / mortgage). */
-  depto_snapshot?: {
-    valor_clp: number;
-    net_value_clp: number;
-    mortgage_clp: number;
-    valor_usd?: number | null;
-    net_value_usd?: number | null;
-    mortgage_usd?: number | null;
-  } | null;
   liabilities_breakdown?: {
     mortgage_clp: number;
     credit_card_clp: number;
@@ -857,7 +848,6 @@ export interface DashboardNavSnapshotResponse {
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
-  depto_snapshot?: DashboardResponse["depto_snapshot"];
   nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
   chart_shape?: DashboardChartShape;
 }
@@ -867,7 +857,6 @@ export interface DashboardNavContextResponse {
   accounts: DashboardAccountRow[];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
-  depto_snapshot?: DashboardResponse["depto_snapshot"];
   cash_credit_card_links: DashboardResponse["cash_credit_card_links"];
   /** Live NW bucket totals + prior closes (same as page-bundle `dash.totals` buckets). */
   nw_bucket_totals: Pick<

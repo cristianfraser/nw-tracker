@@ -182,7 +182,6 @@ export function LiabilitiesGroupPage() {
         liabilities_breakdown:
           navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
         dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
-        depto_snapshot: navCtx?.depto_snapshot ?? navSnapshot.depto_snapshot,
         nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
         overviewPoints,
       },
