@@ -12,7 +12,9 @@ import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
 import { expandYearMonthsInclusive } from "../calendarMonth.js";
 import { demoNarrativeForPreset, demoRng, type DemoPreset } from "./demoNarrative.js";
 import {
+  DEMO_FONDO_FUND_SERIES_KEY,
   initialDemoRunState,
+  writeDemoPriceSeries,
   seedDemoCheckingBillCategoryRules,
   seedDemoEventAndUsdCategoryRules,
   seedDemoGenericTransferMerchants,
@@ -92,10 +94,16 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   const accounts: DemoAccounts = {
     checkingId,
     ccMasterIdByLast4,
-    fondoId: createAccount(
-      "brokerage_mutual_funds__fintual_risky_norris",
-      "Fondo Demo Moderado",
-      "demo:fondo"
+    fondoId: Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, fund_series_key)
+           VALUES (?, 'Fondo Demo Moderado', 'demo:fondo', ?)`
+        )
+        .run(
+          assetGroupId("brokerage_mutual_funds__fintual_risky_norris"),
+          DEMO_FONDO_FUND_SERIES_KEY
+        ).lastInsertRowid
     ),
     afpId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afp", "AFP", "demo:afp")
@@ -103,11 +111,37 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
     afcId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afc", "AFC", "demo:afc")
       : null,
-    stocksId: narrative.stocks
-      ? createAccount("brokerage_acciones__spy", "Acciones Tech · Demo Broker", "demo:stocks")
+    stockIdByTicker: new Map(
+      (narrative.stocks?.positions ?? []).map((p) => {
+        const leaf = `brokerage_acciones__${p.ticker.toLowerCase()}`;
+        const id = Number(
+          db
+            .prepare(
+              `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker)
+               VALUES (?, ?, ?, ?)`
+            )
+            .run(
+              assetGroupId(leaf),
+              `${p.ticker} · Demo Broker`,
+              `import:panel|ticker=${p.ticker}|key=demo_${p.ticker.toLowerCase()}`,
+              p.ticker
+            ).lastInsertRowid
+        );
+        return [p.ticker, id] as const;
+      })
+    ),
+    usdCashId: narrative.stocks
+      ? createAccount("brokerage_cash__usd", "USD · Demo Broker", "demo:usd-cash")
       : null,
     cryptoId: narrative.withCrypto
-      ? createAccount("brokerage_crypto__bitcoin", "Bitcoin · Demo Exchange", "demo:crypto")
+      ? Number(
+          db
+            .prepare(
+              `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker)
+               VALUES (?, 'Bitcoin · Demo Exchange', 'demo:crypto', 'BTC-USD')`
+            )
+            .run(assetGroupId("brokerage_crypto__bitcoin")).lastInsertRowid
+        )
       : null,
     savingsId: createAccount(
       "cash_eqs__fondo_reserva",
@@ -139,7 +173,8 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
 
   const rng = demoRng(narrative.seed);
   writeMarketSeries(narrative, rng);
-  const state = initialDemoRunState(narrative);
+  const state = initialDemoRunState(narrative, rng);
+  writeDemoPriceSeries(state);
   const months = expandYearMonthsInclusive(narrative.firstMonth, narrative.lastMonth);
   for (const month of months) {
     const { flows, afpContribClp } = writeCheckingMonth(narrative, accounts, month, state, rng);

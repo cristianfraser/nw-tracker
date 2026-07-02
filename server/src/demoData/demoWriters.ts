@@ -26,10 +26,10 @@ import {
   buildDeptoMortgageMovementNote,
   type DeptoDividendosPaymentRow,
 } from "../deptoDividendosLedger.js";
-import { ufRowOnOrBefore } from "../fxRates.js";
+import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { invalidateCcExpenseGenericUniqueMerchantCache } from "../ccExpenseGenericUniqueMerchants.js";
-import { monthEndUtcYmd } from "../calendarMonth.js";
+import { expandYearMonthsInclusive, monthEndUtcYmd } from "../calendarMonth.js";
 import {
   chapterForMonth,
   type DemoCard,
@@ -44,7 +44,10 @@ export type DemoAccounts = {
   /** last4 → CC master account id. */
   ccMasterIdByLast4: Map<string, number>;
   fondoId: number;
-  stocksId: number | null;
+  /** One account per configured ticker (equity_ticker set — MTM valuation). */
+  stockIdByTicker: Map<string, number>;
+  /** Corredora USD cash hub (compra_usd_venta_clp in, stock_buy out). */
+  usdCashId: number | null;
   cryptoId: number | null;
   afpId: number | null;
   afcId: number | null;
@@ -99,6 +102,64 @@ function pickMerchant(
 }
 
 /* ------------------------------- movement helpers -------------------------------- */
+
+const insMovementFull = db.prepare(
+  `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
+function movementWithUnits(
+  accountId: number,
+  m: {
+    amount_clp: number;
+    occurred_on: string;
+    note: string;
+    units_delta?: number | null;
+    flow_kind?: string | null;
+    amount_usd?: number | null;
+    ticker?: string | null;
+  }
+): void {
+  insMovementFull.run(
+    accountId,
+    m.amount_clp,
+    m.occurred_on,
+    m.note,
+    m.units_delta ?? null,
+    m.flow_kind ?? null,
+    m.amount_usd ?? null,
+    m.ticker ?? null
+  );
+}
+
+const insTransferFull = db.prepare(
+  `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
+   VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
+/** Transfer row (account_id NULL, from/to set) — the manual stock_buy/stock_sell shape. */
+function stockTransfer(m: {
+  from_account_id: number;
+  to_account_id: number;
+  occurred_on: string;
+  note: string;
+  flow_kind: "stock_buy" | "stock_sell";
+  amount_usd: number;
+  units_delta: number;
+  ticker: string;
+}): void {
+  insTransferFull.run(
+    m.from_account_id,
+    m.to_account_id,
+    0,
+    m.occurred_on,
+    m.note,
+    m.units_delta,
+    m.flow_kind,
+    m.amount_usd,
+    m.ticker
+  );
+}
 
 const insMovement = db.prepare(
   `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
@@ -155,6 +216,142 @@ function jitter(rng: () => number, base: number, pct: number): number {
   return base * (1 + (rng() * 2 - 1) * pct);
 }
 
+/* --------------------------- synthetic price series ------------------------------ */
+
+/**
+ * Era-realistic USD price anchors per ticker (log-linear interpolation + small seeded
+ * weekly noise). These drive BOTH the written `equity_daily` rows and the generator's own
+ * unit math, so demo holdings are valued exactly like real ones: units × close × fx.
+ */
+const EQUITY_PRICE_ANCHORS: Record<string, ReadonlyArray<[string, number]>> = {
+  SPY: [
+    ["2018-01-01", 265], ["2020-02-15", 335], ["2020-03-20", 230], ["2020-12-31", 372],
+    ["2021-12-31", 475], ["2022-10-15", 358], ["2023-12-31", 475], ["2024-12-31", 590],
+    ["2025-04-15", 505], ["2026-12-31", 640],
+  ],
+  OILK: [
+    ["2018-01-01", 30], ["2020-01-01", 27], ["2020-04-20", 6], ["2021-12-31", 17],
+    ["2022-06-15", 27], ["2023-12-31", 22], ["2026-12-31", 28],
+  ],
+  CCJ: [
+    ["2018-01-01", 12], ["2020-03-20", 9], ["2021-11-15", 26], ["2022-12-31", 21],
+    ["2024-05-31", 52], ["2025-12-31", 60], ["2026-12-31", 64],
+  ],
+  "BTC-USD": [
+    ["2018-01-01", 13500], ["2018-12-15", 3300], ["2019-06-30", 11000], ["2020-03-15", 5300],
+    ["2020-12-31", 29000], ["2021-04-15", 63000], ["2021-07-20", 29800], ["2021-11-10", 67500],
+    ["2022-06-18", 18000], ["2022-12-31", 16500], ["2024-03-15", 70000], ["2024-12-31", 95000],
+    ["2025-10-01", 115000], ["2026-12-31", 105000],
+  ],
+};
+
+function daysSinceEpoch(ymd: string): number {
+  return Date.parse(`${ymd}T00:00:00Z`) / 86_400_000;
+}
+
+function anchorPriceUsd(ticker: string, ymd: string): number {
+  const anchors = EQUITY_PRICE_ANCHORS[ticker];
+  if (!anchors) throw new Error(`demo: no price anchors for ticker ${ticker}`);
+  const t = daysSinceEpoch(ymd);
+  if (t <= daysSinceEpoch(anchors[0]![0])) return anchors[0]![1];
+  for (let i = 1; i < anchors.length; i++) {
+    const [d1, p1] = anchors[i]!;
+    const t1 = daysSinceEpoch(d1);
+    if (t <= t1) {
+      const [d0, p0] = anchors[i - 1]!;
+      const t0 = daysSinceEpoch(d0);
+      const w = (t - t0) / (t1 - t0);
+      return Math.exp(Math.log(p0) + w * (Math.log(p1) - Math.log(p0)));
+    }
+  }
+  return anchors[anchors.length - 1]![1];
+}
+
+/** Weekly [ymd, closeUsd] series per ticker, built once per run (used for rows AND unit math). */
+export type DemoEquitySeries = Map<string, [string, number][]>;
+
+function ymdAddDays(ymd: string, days: number): string {
+  return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+export function buildDemoEquitySeries(
+  narrative: DemoNarrative,
+  rng: () => number
+): DemoEquitySeries {
+  const tickers = new Set<string>();
+  for (const p of narrative.stocks?.positions ?? []) tickers.add(p.ticker);
+  if (narrative.withCrypto) tickers.add("BTC-USD");
+  const start = dayInMonth(narrative.firstMonth, 1);
+  const end = monthEndUtcYmd(narrative.lastMonth);
+  const out: DemoEquitySeries = new Map();
+  for (const ticker of tickers) {
+    const rows: [string, number][] = [];
+    for (let d = start; d <= end; d = ymdAddDays(d, 7)) {
+      const noisy = anchorPriceUsd(ticker, d) * (1 + (rng() * 2 - 1) * 0.015);
+      rows.push([d, Math.round(noisy * 100) / 100]);
+    }
+    out.set(ticker, rows);
+  }
+  return out;
+}
+
+/** Last close ≤ ymd from the built series (same rule as `equityCloseUsdEod`). */
+export function demoEquityCloseUsd(series: DemoEquitySeries, ticker: string, ymd: string): number {
+  const rows = series.get(ticker);
+  if (!rows?.length) throw new Error(`demo: no price series for ${ticker}`);
+  let last: number | null = null;
+  for (const [d, p] of rows) {
+    if (d > ymd) break;
+    last = p;
+  }
+  if (last == null) throw new Error(`demo: no ${ticker} close on/before ${ymd}`);
+  return last;
+}
+
+export const DEMO_FONDO_FUND_SERIES_KEY = "fintual_risky_norris";
+
+/** Monthly valor-cuota series for the demo fondo (fund units × this = valuation). */
+export function buildDemoFondoCuotaSeries(
+  narrative: DemoNarrative,
+  rng: () => number
+): [string, number][] {
+  const months = expandYearMonthsInclusive(narrative.firstMonth, narrative.lastMonth);
+  const rows: [string, number][] = [];
+  let cuota = 30_000;
+  for (const m of months) {
+    rows.push([dayInMonth(m, 1), Math.round(cuota * 10000) / 10000]);
+    cuota *= 1 + demoMonthlyReturn(m, rng);
+    rows.push([monthEndUtcYmd(m), Math.round(cuota * 10000) / 10000]);
+  }
+  return rows;
+}
+
+export function demoFondoCuotaAt(series: [string, number][], ymd: string): number {
+  let last: number | null = null;
+  for (const [d, v] of series) {
+    if (d > ymd) break;
+    last = v;
+  }
+  if (last == null) throw new Error(`demo: no fondo cuota on/before ${ymd}`);
+  return last;
+}
+
+/** Persist the built price series: equity_daily (weekly closes) + fund_unit_daily. */
+export function writeDemoPriceSeries(state: DemoRunState): void {
+  const insEq = db.prepare(
+    `INSERT INTO equity_daily (ticker, trade_date, close_usd) VALUES (?, ?, ?)
+     ON CONFLICT(ticker, trade_date) DO UPDATE SET close_usd = excluded.close_usd`
+  );
+  for (const [ticker, rows] of state.equitySeries) {
+    for (const [d, p] of rows) insEq.run(ticker, d, p);
+  }
+  const insFu = db.prepare(
+    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'demo')
+     ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp`
+  );
+  for (const [d, v] of state.fondoCuotaSeries) insFu.run(DEMO_FONDO_FUND_SERIES_KEY, d, v);
+}
+
 /* ---------------------------- synthetic return path ------------------------------ */
 
 /**
@@ -172,50 +369,6 @@ export function demoMonthlyReturn(month: DemoMonth, rng: () => number): number {
   return 0.005 + (rng() * 2 - 1) * 0.02;
 }
 
-/**
- * Volatile tech/semis-flavored monthly return: melt-up 2019–2021, COVID crash/rip,
- * ~-50% grind through 2022, AI recovery 2023–2024, choppy 2025 with the April air pocket.
- */
-export function demoStocksMonthlyReturn(month: DemoMonth, rng: () => number): number {
-  if (month === "2020-03") return -0.18;
-  if (month === "2020-04") return 0.13;
-  if (month === "2022-06") return -0.11;
-  if (month === "2022-10") return -0.09;
-  if (month === "2025-04") return -0.1;
-  const noise = (base: number, amp: number) => base + (rng() * 2 - 1) * amp;
-  const year = month.slice(0, 4);
-  switch (year) {
-    case "2018": return noise(0.0, 0.05);
-    case "2019": return noise(0.03, 0.04);
-    case "2020": return noise(0.045, 0.05);
-    case "2021": return noise(0.025, 0.06);
-    case "2022": return noise(-0.05, 0.05);
-    case "2023": return noise(0.042, 0.05);
-    case "2024": return noise(0.028, 0.05);
-    case "2025": return noise(0.008, 0.06);
-    default: return noise(0.01, 0.05);
-  }
-}
-
-/** Crypto-flavored monthly return: 2020–21 mania, May-2021 flush, 2022 winter, 2023–24 recovery. */
-export function demoCryptoMonthlyReturn(month: DemoMonth, rng: () => number): number {
-  if (month === "2021-05") return -0.32;
-  if (month === "2021-12") return -0.14;
-  if (month === "2022-06") return -0.35;
-  if (month === "2024-03") return 0.25;
-  const noise = (base: number, amp: number) => base + (rng() * 2 - 1) * amp;
-  if (month >= "2020-10" && month <= "2020-12") return noise(0.22, 0.1);
-  if (month >= "2021-01" && month <= "2021-04") return noise(0.16, 0.12);
-  if (month >= "2021-06" && month <= "2021-11") return noise(0.1, 0.08);
-  const year = month.slice(0, 4);
-  switch (year) {
-    case "2022": return noise(-0.14, 0.08);
-    case "2023": return noise(0.075, 0.1);
-    case "2024": return noise(0.065, 0.12);
-    case "2025": return noise(0.0, 0.1);
-    default: return noise(0.01, 0.08);
-  }
-}
 
 /* --------------------------------- month state ----------------------------------- */
 
@@ -236,14 +389,19 @@ type CardState = {
 
 export type DemoRunState = {
   cards: Map<string, CardState>;
-  fondoValueClp: number;
-  fondoDepositsClp: number;
-  stocksValueClp: number;
-  cryptoValueClp: number;
+  /** Fund cuotas held (fondo valuation = cuotas × valor cuota, like real Fintual accounts). */
+  fondoUnits: number;
+  /** Shares held per stock ticker (valuation = units × equity_daily close × fx — MTM). */
+  stockUnits: Map<string, number>;
+  /** BTC held (crypto MTM: units × BTC-USD close × fx). */
+  cryptoUnits: number;
   afpValueClp: number;
   afcValueClp: number;
   savingsValueClp: number;
   checkingBalanceClp: number;
+  /** Built once per run: weekly USD closes per ticker + monthly fondo valor cuota. */
+  equitySeries: DemoEquitySeries;
+  fondoCuotaSeries: [string, number][];
   /** Outstanding mortgage principal once the house is bought (null before). */
   mortgageOutstandingClp: number | null;
   /** Depto ledger counters (cuota number, CLP paid, principal UF incl. pie). */
@@ -252,19 +410,23 @@ export type DemoRunState = {
   deptoAmortAcumUf: number;
 };
 
-export function initialDemoRunState(narrative: DemoNarrative): DemoRunState {
+export function initialDemoRunState(
+  narrative: DemoNarrative,
+  rng: () => number
+): DemoRunState {
   return {
     cards: new Map(
       narrative.cards.map((c) => [c.last4, { prevFacturadoClp: 0, installments: [] }])
     ),
-    fondoValueClp: 0,
-    fondoDepositsClp: 0,
-    stocksValueClp: 0,
-    cryptoValueClp: 0,
+    fondoUnits: 0,
+    stockUnits: new Map((narrative.stocks?.positions ?? []).map((p) => [p.ticker, 0])),
+    cryptoUnits: 0,
     afpValueClp: 0,
     afcValueClp: 0,
     savingsValueClp: 0,
     checkingBalanceClp: 0,
+    equitySeries: buildDemoEquitySeries(narrative, rng),
+    fondoCuotaSeries: buildDemoFondoCuotaSeries(narrative, rng),
     mortgageOutstandingClp: null,
     deptoCuotaN: 0,
     deptoPagoAcumClp: 0,
@@ -363,43 +525,77 @@ export function writeCheckingMonth(
   const fondoSweepClp = sweepClp - stocksSweepClp;
 
   // Buys accumulate per asset and post as ONE checking transfer each — the asset side
-  // writes one Depósito per asset too, so the internal-transfer matcher pairs them 1:1
-  // on amount+day (two checking legs against one merged deposit never match).
-  const tradeFlows = { stocksBuy: stocksSweepClp, stocksSell: 0, cryptoBuy: 0, cryptoSell: 0, fondoBuy: fondoSweepClp, fondoSell: 0 };
+  // writes matching inflow rows, so the internal-transfer matcher pairs legs 1:1 on
+  // amount+day. Sells are valued from HOLDINGS: units × close(price series) × fx — the
+  // same MTM math the app uses — never from a synthetic balance walk.
+  const sellDay = 18;
+  const sellYmd = dayInMonth(month, sellDay);
+  const fxSell = fxRowOnOrBefore(sellYmd)?.clp_per_usd ?? null;
+  const tradeFlows: DemoMonthFlows = {
+    stockBuys: [],
+    stockSells: [],
+    cryptoBuy: 0,
+    cryptoSell: null,
+    fondoBuy: fondoSweepClp,
+    fondoSell: null,
+  };
+  if (narrative.stocks && stocksSweepClp > 0) {
+    const weightSum = narrative.stocks.positions.reduce((a, p) => a + p.weight, 0);
+    let assigned = 0;
+    narrative.stocks.positions.forEach((p, i) => {
+      const last = i === narrative.stocks!.positions.length - 1;
+      const clp = last
+        ? stocksSweepClp - assigned
+        : Math.round((stocksSweepClp * p.weight) / weightSum / 1000) * 1000;
+      assigned += clp;
+      if (clp > 0) tradeFlows.stockBuys.push({ ticker: p.ticker, clp });
+    });
+  }
   for (const tr of narrative.trades) {
     if (tr.month !== month) continue;
     if (tr.action === "buy") {
       const amt = Math.round(tr.amountClp ?? 0);
       if (amt <= 0) continue;
       if (tr.asset === "crypto") tradeFlows.cryptoBuy += amt;
-      else if (tr.asset === "stocks") tradeFlows.stocksBuy += amt;
-      else tradeFlows.fondoBuy += amt;
+      else if (tr.asset === "stocks") {
+        const ticker = tr.ticker ?? narrative.stocks?.positions[0]?.ticker;
+        if (!ticker) throw new Error(`demo: stock buy at ${month} without a ticker`);
+        tradeFlows.stockBuys.push({ ticker, clp: amt });
+      } else tradeFlows.fondoBuy += amt;
+    } else if (tr.asset === "stocks") {
+      const ticker = tr.ticker ?? narrative.stocks?.positions[0]?.ticker;
+      if (!ticker) throw new Error(`demo: stock sell at ${month} without a ticker`);
+      if (fxSell == null) throw new Error(`demo: no fx on/before ${sellYmd}`);
+      const held = state.stockUnits.get(ticker) ?? 0;
+      const units = held * (tr.fraction ?? 0);
+      if (units <= 0) continue;
+      const priceUsd = demoEquityCloseUsd(state.equitySeries, ticker, sellYmd);
+      const usd = Math.round(units * priceUsd * 100) / 100;
+      const clp = Math.round(usd * fxSell);
+      tradeFlows.stockSells.push({ ticker, units, usd, clp });
+      checkingMove(clp, sellDay, "ABONO VENTA CORREDORA DEMO");
+    } else if (tr.asset === "crypto") {
+      if (fxSell == null) throw new Error(`demo: no fx on/before ${sellYmd}`);
+      const units = state.cryptoUnits * (tr.fraction ?? 0);
+      if (units <= 0) continue;
+      const priceUsd = demoEquityCloseUsd(state.equitySeries, "BTC-USD", sellYmd);
+      const clp = Math.round(units * priceUsd * fxSell);
+      tradeFlows.cryptoSell = { units, clp };
+      checkingMove(clp, sellDay, "ABONO VENTA EXCHANGE DEMO");
     } else {
-      const held =
-        tr.asset === "crypto"
-          ? state.cryptoValueClp
-          : tr.asset === "stocks"
-            ? state.stocksValueClp
-            : state.fondoValueClp;
-      const amt = Math.round(held * (tr.fraction ?? 0));
-      if (amt <= 0) continue;
-      const desc =
-        tr.asset === "crypto"
-          ? "ABONO VENTA EXCHANGE DEMO"
-          : tr.asset === "stocks"
-            ? "ABONO VENTA CORREDORA DEMO"
-            : "ABONO RESCATE FONDO DEMO";
-      checkingMove(amt, 18, desc);
-      if (tr.asset === "crypto") tradeFlows.cryptoSell += amt;
-      else if (tr.asset === "stocks") tradeFlows.stocksSell += amt;
-      else tradeFlows.fondoSell += amt;
+      const cuota = demoFondoCuotaAt(state.fondoCuotaSeries, sellYmd);
+      const units = state.fondoUnits * (tr.fraction ?? 0);
+      if (units <= 0) continue;
+      const clp = Math.round(units * cuota);
+      tradeFlows.fondoSell = { units, clp };
+      checkingMove(clp, sellDay, "ABONO RESCATE FONDO DEMO");
     }
   }
   if (tradeFlows.fondoBuy > 0) {
     checkingMove(-tradeFlows.fondoBuy, 26, "TRANSFERENCIA FONDO DEMO");
   }
-  if (tradeFlows.stocksBuy > 0) {
-    checkingMove(-tradeFlows.stocksBuy, 26, "TRANSFERENCIA CORREDORA DEMO");
+  for (const lot of tradeFlows.stockBuys) {
+    checkingMove(-lot.clp, 26, "TRANSFERENCIA CORREDORA DEMO");
   }
   if (tradeFlows.cryptoBuy > 0) {
     checkingMove(-tradeFlows.cryptoBuy, 17, "TRANSFERENCIA EXCHANGE DEMO");
@@ -523,12 +719,17 @@ export function writeCheckingMonth(
 }
 
 export type DemoMonthFlows = {
-  stocksBuy: number;
-  stocksSell: number;
+  /**
+   * One lot per ticker per month: each lot is its own checking wire + CLP→USD conversion
+   * + stock_buy with IDENTICAL USD on both rows, so the funding pairing and the
+   * deposit-matcher line up exactly (pooled wires never match per-buy capital flows).
+   */
+  stockBuys: { ticker: string; clp: number }[];
+  stockSells: { ticker: string; units: number; usd: number; clp: number }[];
   cryptoBuy: number;
-  cryptoSell: number;
+  cryptoSell: { units: number; clp: number } | null;
   fondoBuy: number;
-  fondoSell: number;
+  fondoSell: { units: number; clp: number } | null;
 };
 
 /** Placeholder for readability in the registry block (outflows already posted above). */
@@ -782,48 +983,121 @@ export function writeInvestmentMonth(
 ): void {
   const monthEnd = monthEndUtcYmd(month);
   const r = demoMonthlyReturn(month, rng);
+  const buyYmd = dayInMonth(month, 26);
+  const sellYmd = dayInMonth(month, 18);
+  const cryptoYmd = dayInMonth(month, 17);
 
+  // Fondo: cuota purchases (units × valor cuota = valuation, like real Fintual accounts).
   if (flows.fondoBuy > 0) {
-    movement(accounts.fondoId, flows.fondoBuy, dayInMonth(month, 26), "Depósito|demo");
-    state.fondoDepositsClp += flows.fondoBuy;
+    const cuota = demoFondoCuotaAt(state.fondoCuotaSeries, buyYmd);
+    const units = Math.round((flows.fondoBuy / cuota) * 1e4) / 1e4;
+    state.fondoUnits = Math.round((state.fondoUnits + units) * 1e4) / 1e4;
+    movementWithUnits(accounts.fondoId, {
+      amount_clp: flows.fondoBuy,
+      occurred_on: buyYmd,
+      note: "Depósito|demo",
+      units_delta: units,
+    });
   }
-  if (flows.fondoSell > 0) {
-    movement(accounts.fondoId, -flows.fondoSell, dayInMonth(month, 18), "Retiro|demo");
+  if (flows.fondoSell) {
+    state.fondoUnits = Math.max(0, Math.round((state.fondoUnits - flows.fondoSell.units) * 1e4) / 1e4);
+    movementWithUnits(accounts.fondoId, {
+      amount_clp: -flows.fondoSell.clp,
+      occurred_on: sellYmd,
+      note: "Retiro|demo",
+      units_delta: -Math.round(flows.fondoSell.units * 1e4) / 1e4,
+    });
   }
-  state.fondoValueClp = Math.max(
-    0,
-    state.fondoValueClp * (1 + r) + flows.fondoBuy - flows.fondoSell
-  );
-  if (state.fondoValueClp > 0) valuation(accounts.fondoId, monthEnd, state.fondoValueClp);
-
-  if (accounts.stocksId != null) {
-    if (flows.stocksBuy > 0) {
-      movement(accounts.stocksId, flows.stocksBuy, dayInMonth(month, 26), "Depósito|demo");
-    }
-    if (flows.stocksSell > 0) {
-      movement(accounts.stocksId, -flows.stocksSell, dayInMonth(month, 18), "Retiro|demo");
-    }
-    const rs = demoStocksMonthlyReturn(month, rng);
-    state.stocksValueClp = Math.max(
-      0,
-      state.stocksValueClp * (1 + rs) + flows.stocksBuy - flows.stocksSell
-    );
-    if (state.stocksValueClp > 0) valuation(accounts.stocksId, monthEnd, state.stocksValueClp);
+  if (state.fondoUnits > 0) {
+    const cuotaEnd = demoFondoCuotaAt(state.fondoCuotaSeries, monthEnd);
+    valuation(accounts.fondoId, monthEnd, Math.round(state.fondoUnits * cuotaEnd));
   }
 
+  // Stocks: per lot, CLP→USD conversion on the corredora cash account + a stock_buy
+  // transfer with the SAME USD amount (funding pairing + deposit matching line up), then
+  // units × close × fx MTM — no book valuations; equity_daily carries the prices.
+  if (narrative.stocks && accounts.usdCashId != null && accounts.stockIdByTicker.size > 0) {
+    for (const lot of flows.stockBuys) {
+      const fx = fxRowOnOrBefore(buyYmd)?.clp_per_usd;
+      if (fx == null || fx <= 0) throw new Error(`demo: no fx on/before ${buyYmd}`);
+      const stockId = accounts.stockIdByTicker.get(lot.ticker);
+      if (stockId == null) throw new Error(`demo: no account for ticker ${lot.ticker}`);
+      const usd = Math.round((lot.clp / fx) * 100) / 100;
+      if (usd <= 0) continue;
+      movementWithUnits(accounts.usdCashId, {
+        amount_clp: lot.clp,
+        occurred_on: buyYmd,
+        note: "import:panel|demo|compra-usd",
+        flow_kind: "compra_usd_venta_clp",
+        amount_usd: usd,
+      });
+      const price = demoEquityCloseUsd(state.equitySeries, lot.ticker, buyYmd);
+      const units = Math.round((usd / price) * 1e6) / 1e6;
+      state.stockUnits.set(lot.ticker, (state.stockUnits.get(lot.ticker) ?? 0) + units);
+      stockTransfer({
+        from_account_id: accounts.usdCashId,
+        to_account_id: stockId,
+        occurred_on: buyYmd,
+        note: "import:panel|demo|stock-buy",
+        flow_kind: "stock_buy",
+        amount_usd: usd,
+        units_delta: units,
+        ticker: lot.ticker,
+      });
+    }
+    for (const sale of flows.stockSells) {
+      const stockId = accounts.stockIdByTicker.get(sale.ticker);
+      if (stockId == null) throw new Error(`demo: no account for ticker ${sale.ticker}`);
+      state.stockUnits.set(
+        sale.ticker,
+        Math.max(0, (state.stockUnits.get(sale.ticker) ?? 0) - sale.units)
+      );
+      stockTransfer({
+        from_account_id: stockId,
+        to_account_id: accounts.usdCashId,
+        occurred_on: sellYmd,
+        note: "import:panel|demo|stock-sell",
+        flow_kind: "stock_sell",
+        amount_usd: sale.usd,
+        units_delta: Math.round(sale.units * 1e6) / 1e6,
+        ticker: sale.ticker,
+      });
+      // Proceeds leave USD cash the same day (wired back to checking as the ABONO leg).
+      movementWithUnits(accounts.usdCashId, {
+        amount_clp: -sale.clp,
+        occurred_on: sellYmd,
+        note: "import:panel|demo|venta-usd",
+        flow_kind: "withdrawal_usd",
+        amount_usd: -sale.usd,
+      });
+    }
+  }
+
+  // Crypto: wallet-style rows like the real cripto-sheet import (units in `coin=`).
   if (accounts.cryptoId != null) {
     if (flows.cryptoBuy > 0) {
-      movement(accounts.cryptoId, flows.cryptoBuy, dayInMonth(month, 17), "Depósito|demo");
+      const fx = fxRowOnOrBefore(cryptoYmd)?.clp_per_usd;
+      if (fx == null || fx <= 0) throw new Error(`demo: no fx on/before ${cryptoYmd}`);
+      const price = demoEquityCloseUsd(state.equitySeries, "BTC-USD", cryptoYmd);
+      const units = Math.round((flows.cryptoBuy / (price * fx)) * 1e8) / 1e8;
+      state.cryptoUnits = Math.round((state.cryptoUnits + units) * 1e8) / 1e8;
+      movementWithUnits(accounts.cryptoId, {
+        amount_clp: flows.cryptoBuy,
+        occurred_on: cryptoYmd,
+        note: `import:excel|cripto-sheet|BTC|dep|coin=${units}|demo`,
+        units_delta: units,
+      });
     }
-    if (flows.cryptoSell > 0) {
-      movement(accounts.cryptoId, -flows.cryptoSell, dayInMonth(month, 18), "Retiro|demo");
+    if (flows.cryptoSell) {
+      const units = Math.round(flows.cryptoSell.units * 1e8) / 1e8;
+      state.cryptoUnits = Math.max(0, Math.round((state.cryptoUnits - units) * 1e8) / 1e8);
+      movementWithUnits(accounts.cryptoId, {
+        amount_clp: -flows.cryptoSell.clp,
+        occurred_on: sellYmd,
+        note: `import:excel|cripto-sheet|BTC|wdw|coin=${units}|demo`,
+        units_delta: -units,
+      });
     }
-    const rc = demoCryptoMonthlyReturn(month, rng);
-    state.cryptoValueClp = Math.max(
-      0,
-      state.cryptoValueClp * (1 + rc) + flows.cryptoBuy - flows.cryptoSell
-    );
-    if (state.cryptoValueClp > 0) valuation(accounts.cryptoId, monthEnd, state.cryptoValueClp);
   }
 
   if (accounts.afpId != null && afpContribClp > 0) {
@@ -1134,7 +1408,9 @@ export function writeMarketSeries(narrative: DemoNarrative, rng: () => number): 
      ON CONFLICT(date) DO UPDATE SET clp_per_uf = excluded.clp_per_uf`
   );
 
-  const startYmd = dayInMonth(narrative.firstMonth, 1);
+  // Start ~6 weeks before the first month: prior-month-close marks (e.g. USD cash
+  // balance at firstMonth − 1 month-end) need fx/UF coverage on or before that date.
+  const startYmd = ymdAddDays(dayInMonth(narrative.firstMonth, 1), -40);
   const endYmd = monthEndUtcYmd(narrative.lastMonth);
 
   // Era-anchored level (~610 CLP/USD in 2018 drifting ~5.5%/yr to ~950 by 2026) so a
