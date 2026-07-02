@@ -77,6 +77,25 @@ export function reseedAccountSyncSources(accountId: number): GlobalSyncSource[] 
   return sources;
 }
 
+/**
+ * Backfill `account_sync_sources` when the table is empty but accounts exist (fresh
+ * demo/imported DBs, or migration 109 having run before its hook existed). Called at
+ * server boot and from the demo generator — NOT from db.ts module scope (a require
+ * cycle there resolves to an incomplete module under tsx).
+ */
+export function ensureAccountSyncSourcesSeeded(): void {
+  const table = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'account_sync_sources'`)
+    .get() as { 1: number } | undefined;
+  if (!table) return;
+  const linkCount = db.prepare(`SELECT COUNT(*) AS c FROM account_sync_sources`).get() as { c: number };
+  if (linkCount.c > 0) return;
+  const accountCount = db.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number };
+  if (accountCount.c === 0) return;
+  const r = reseedAllAccountSyncSources();
+  console.log(`account_sync_sources seed: accounts=${r.accounts} links=${r.links}`);
+}
+
 export function reseedAllAccountSyncSources(): { accounts: number; links: number } {
   const ids = db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[];
   let links = 0;
