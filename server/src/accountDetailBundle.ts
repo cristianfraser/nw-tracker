@@ -7,11 +7,11 @@ import {
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import {
   isDeptoMortgagePaymentCuota,
-  loadDeptoDividendosSheetLedgerFromDb,
   mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
@@ -256,7 +256,7 @@ export async function buildAccountDetailBundle(
     category_slug === "real_estate" ||
     category_slug === "mortgage"
   ) {
-    const sheetRowsAll = loadDeptoDividendosSheetLedgerFromDb();
+    const sheetRowsAll = loadDeptoLedgerFromMovements();
     const sheetRows =
       category_slug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))

@@ -19,9 +19,14 @@ export default defineConfig({
         minForks: 1,
       },
     },
-    /** Must be set before `db.ts` loads so Vitest never opens `nw-tracker.db`. */
+    /**
+     * Must be set before `db.ts` loads so Vitest never opens `nw-tracker.db`.
+     * `test.env` overrides the process env inside workers, so honor an explicit
+     * shell-provided NW_TRACKER_TEST_DB (e.g. running the suite against a dev-DB
+     * copy) instead of silently clobbering it.
+     */
     env: {
-      NW_TRACKER_TEST_DB: "nw-tracker.test.db",
+      NW_TRACKER_TEST_DB: process.env.NW_TRACKER_TEST_DB?.trim() || "nw-tracker.test.db",
     },
     globalSetup: ["src/vitest.globalSetup.ts"],
     setupFiles: ["src/vitest.setup.ts"],

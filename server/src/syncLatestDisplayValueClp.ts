@@ -6,7 +6,7 @@ import {
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { deptoAccountMarkClpAtYmd } from "./deptoDividendosLedger.js";
+import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import {
   accountUsesCryptoMtm,
   computeCryptoMtmClpDisplaySync,
