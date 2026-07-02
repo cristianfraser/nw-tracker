@@ -220,6 +220,43 @@ describe("breakdownForNavChild real_estate", () => {
     expect(br?.lines?.[0]?.label).toBe("suecia");
   });
 
+  it("synthesizes valor and hipoteca from a paired mortgage account without snapshot", () => {
+    const demoProperty = {
+      ...propertyRow,
+      account_id: 12,
+      name: "Casa propia · Demo",
+      category_slug: undefined,
+      bucket_slug: "real_estate__property",
+      current_value_clp: 27_110_948,
+    } as DashboardAccountRow;
+    // Page-bundle rows have no category_slug; master + liability_view both appear.
+    const demoMortgage = {
+      account_id: 13,
+      name: "Casa propia · Demo",
+      group_slug: "liabilities__mortgage",
+      group_label: "Mortgage",
+      bucket_slug: "liabilities__mortgage",
+      current_value_clp: 68_878_583,
+      current_value_usd: null,
+      deposits_clp: 0,
+      exclude_from_group_totals: 0,
+    } as DashboardAccountRow;
+    const demoMortgageView = { ...demoMortgage, account_id: 14 } as DashboardAccountRow;
+    const br = breakdownForNavChild(realEstateNode, [demoProperty], {
+      suecia_snapshot: null,
+      liabilities_breakdown: undefined,
+      accounts: [demoProperty, demoMortgage, demoMortgageView],
+    });
+    const lines = br?.lines ?? [];
+    expect(lines).toHaveLength(3);
+    expect(lines[0]?.label).toBe("casa propia · demo");
+    expect(lines[0]?.clp).toBe(27_110_948);
+    expect(lines[1]?.label).toBe("valor");
+    expect(lines[1]?.clp).toBe(27_110_948 + 68_878_583);
+    expect(lines[2]?.label).toBe("hipoteca");
+    expect(lines[2]?.clp).toBe(68_878_583);
+  });
+
   it("adds valor and hipoteca when suecia_snapshot is present", () => {
     const br = breakdownForNavChild(realEstateNode, [propertyRow], {
       suecia_snapshot: {

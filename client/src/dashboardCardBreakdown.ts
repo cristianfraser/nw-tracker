@@ -140,16 +140,28 @@ function mortgageAccountForPropertyRow(
   allAccounts: DashboardAccountRow[],
   propertyRow: DashboardAccountRow | undefined
 ): DashboardAccountRow | undefined {
-  const mortgages = allAccounts.filter(
-    (a) => a.category_slug === "mortgage" && a.current_value_clp != null
-  );
-  if (!mortgages.length) return undefined;
+  // Page-bundle rows carry group/bucket slugs but not category_slug; match either. The
+  // master and its liability_view both appear — dedupe by name keeping the lowest id.
+  const mortgages = allAccounts
+    .filter(
+      (a) =>
+        (a.category_slug === "mortgage" || a.group_slug === "liabilities__mortgage") &&
+        a.current_value_clp != null
+    )
+    .sort((a, b) => a.account_id - b.account_id);
+  const byNameFirst = new Map<string, DashboardAccountRow>();
+  for (const m of mortgages) {
+    const key = m.name.trim().toLowerCase();
+    if (!byNameFirst.has(key)) byNameFirst.set(key, m);
+  }
+  const unique = [...byNameFirst.values()];
+  if (!unique.length) return undefined;
   if (propertyRow) {
     const key = propertyRow.name.trim().toLowerCase();
-    const byName = mortgages.find((m) => m.name.trim().toLowerCase() === key);
+    const byName = byNameFirst.get(key);
     if (byName) return byName;
   }
-  return mortgages.length === 1 ? mortgages[0] : undefined;
+  return unique.length === 1 ? unique[0] : undefined;
 }
 
 function cashAccountPath(row: DashboardAccountRow): string {
@@ -802,14 +814,17 @@ export type SueciaSnapshot = {
 /** Real estate card: Suecia (net) with valor and mortgage detail lines. */
 export function buildRealEstateCardBreakdown(
   accounts: DashboardAccountRow[],
-  suecia: SueciaSnapshot | null | undefined
+  suecia: SueciaSnapshot | null | undefined,
+  allAccounts?: DashboardAccountRow[]
 ): CardBreakdownLine[] {
   const props = valueRows(accounts.filter((a) => a.group_slug === "real_estate"));
   if (!suecia && props.length === 0) return [];
 
   const lines: CardBreakdownLine[] = [];
-  const propertyRow = props.find((a) => a.category_slug === "property");
-  const mortgageRow = mortgageAccountForPropertyRow(accounts, propertyRow);
+  const propertyRow = props.find(
+    (a) => a.category_slug === "property" || a.bucket_slug === "real_estate__property"
+  );
+  const mortgageRow = mortgageAccountForPropertyRow(allAccounts ?? accounts, propertyRow);
   const propertyName = props[0]?.name.trim().toLowerCase() ?? "suecia";
   const netFromAccount = props.length ? sumClp(props, (r) => r.current_value_clp ?? 0) : null;
   const netClp = suecia?.net_value_clp ?? netFromAccount ?? 0;
@@ -843,6 +858,30 @@ export function buildRealEstateCardBreakdown(
       label: i18n.t("realEstate.mortgage"),
       clp: suecia.mortgage_clp,
       usd: suecia.mortgage_usd,
+      depth: 1,
+      to: mortgageTo,
+    });
+  } else if (
+    props.length === 1 &&
+    propertyRow != null &&
+    mortgageRow?.current_value_clp != null
+  ) {
+    // No sheet-driven snapshot (e.g. demo DB) but the property has a paired mortgage:
+    // synthesize the same valor / hipoteca detail from account values. Property rows
+    // store equity, so gross valor = equity + outstanding mortgage.
+    const mortgageClp = mortgageRow.current_value_clp;
+    const mortgageUsd = mortgageRow.current_value_usd ?? null;
+    lines.push({
+      label: i18n.t("realEstate.propertyValue"),
+      clp: netClp + mortgageClp,
+      usd: groupUsd != null && mortgageUsd != null ? groupUsd + mortgageUsd : null,
+      depth: 1,
+      to: propertyTo,
+    });
+    lines.push({
+      label: i18n.t("realEstate.mortgage"),
+      clp: mortgageClp,
+      usd: mortgageUsd,
       depth: 1,
       to: mortgageTo,
     });

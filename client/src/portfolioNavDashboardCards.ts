@@ -508,7 +508,8 @@ export type NavChildBreakdownResult = {
 type BreakdownDash = Pick<
   DashboardResponse,
   "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
->;
+> &
+  Partial<Pick<DashboardResponse, "accounts">>;
 
 function breakdownByAssetGroup(
   assetGroup: string,
@@ -517,7 +518,9 @@ function breakdownByAssetGroup(
 ): NavChildBreakdownResult | null {
   switch (assetGroup) {
     case "real_estate":
-      return { lines: buildRealEstateCardBreakdown(rows, dash.suecia_snapshot ?? null) };
+      return {
+        lines: buildRealEstateCardBreakdown(rows, dash.suecia_snapshot ?? null, dash.accounts),
+      };
     case "cash_eqs": {
       const lines = buildCashEqsCardBreakdown(rows);
       return lines.length ? { lines } : null;
