@@ -1,5 +1,4 @@
 import {
-  DEPTO_PROPERTY_VALOR_UF,
   type DeptoMortgageSheetRow,
   isDeptoMortgagePaymentCuota,
 } from "./deptoDividendosLedger.js";
@@ -257,10 +256,21 @@ export function computeMortgagePaymentRow(
     throw new Error(`Negative crédito restante UF after payment: ${credito_restante_uf}`);
   }
 
-  const valor_neto_uf = roundUf4(Math.max(0, DEPTO_PROPERTY_VALOR_UF - credito_restante_uf));
+  // Gross value derived from the prior ledger row (vnuf + cruf ≡ valor vivienda) — no
+  // hardcoded tasación, so any tracked property works. Fail fast when underivable.
+  const grossUf =
+    prior?.valor_neto_uf != null && prior?.credito_restante_uf != null
+      ? roundUf4(prior.valor_neto_uf + prior.credito_restante_uf)
+      : null;
+  if (grossUf == null) {
+    throw new Error(
+      "Cannot derive valor vivienda UF: prior ledger row lacks valor_neto_uf/credito_restante_uf"
+    );
+  }
+  const valor_neto_uf = roundUf4(Math.max(0, grossUf - credito_restante_uf));
   const restante_clp = Math.round(credito_restante_uf * uf_clp_day);
   const valor_neto_clp = Math.round(valor_neto_uf * uf_clp_day);
-  const valor_vivienda_clp = Math.round(DEPTO_PROPERTY_VALOR_UF * uf_clp_day);
+  const valor_vivienda_clp = Math.round(grossUf * uf_clp_day);
 
   const priorRestanteClp = prior?.restante_clp ?? Math.round(balanceBeforeUf * uf_clp_day);
   const priorValorNetoClp = prior?.valor_neto_clp ?? null;
@@ -306,7 +316,7 @@ export function computeMortgagePaymentRow(
     pagado_neto_uf,
     delta_valor_neto_clp:
       priorValorNetoClp != null ? valor_neto_clp - priorValorNetoClp : null,
-    valor_vivienda_uf: DEPTO_PROPERTY_VALOR_UF,
+    valor_vivienda_uf: grossUf,
     valor_vivienda_clp,
     min_uf,
     incendio_clp,

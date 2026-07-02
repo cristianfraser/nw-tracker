@@ -1,12 +1,12 @@
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   deptoMortgageCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
-  loadDeptoDividendosSheetLedgerFromDb,
 } from "./deptoDividendosLedger.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
@@ -86,8 +86,8 @@ export function latestCreditCardValuationRowAsOf(
 }
 
 /**
- * Mortgage balance for display: **crédito restante** from `depto-dividendos.csv` (UF × UF día),
- * same as account detail and {@link liabilitiesBreakdownClpAsOf} with `mortgageFromDeptoSheet`.
+ * Mortgage balance for display: **crédito restante** from the movement ledger (UF × UF día),
+ * same as account detail and {@link liabilitiesBreakdownClpAsOf}; stored valuations when no ledger.
  */
 export function latestMortgageDisplayedBalance(
   accountId: number,
@@ -99,7 +99,7 @@ export function latestMortgageDisplayedBalance(
   if (!cat || accountBucketKindSlug(cat.bucket_slug) !== "mortgage") {
     return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
   }
-  const ledger = loadDeptoDividendosSheetLedgerFromDb();
+  const ledger = loadDeptoLedgerFromMovements();
   if (ledger.length > 0) {
     const firstOwn = firstDeptoPropertyOwnershipYmd(ledger);
     if (firstOwn != null && asOfYmd >= firstOwn) {

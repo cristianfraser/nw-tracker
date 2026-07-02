@@ -417,29 +417,6 @@ export type DeptoSueciaDashboardSnapshot = {
 
 export type DeptoAccountMarkAtYmd = { value_clp: number; as_of_date: string };
 
-/**
- * Suecia property or mortgage CLP mark at a calendar date: sheet UF balance × `uf_daily` on or before `asOfYmd`.
- * Same source as perf charts and dashboard Suecia snapshot (not stale `valuations` rows).
- */
-export function deptoAccountMarkClpAtYmd(
-  categorySlug: string,
-  asOfYmd: string
-): DeptoAccountMarkAtYmd | null {
-  if (categorySlug !== "property" && categorySlug !== "mortgage") return null;
-  const ledger = loadDeptoDividendosSheetLedgerFromDb();
-  if (!ledger.length) return null;
-
-  const dates = [asOfYmd] as const;
-  const ufMap = ufClpBySnapshotDatesAsc(dates);
-  const closeBy =
-    categorySlug === "property"
-      ? deptoSueciaPropertyCloseClpBySnapshotDates(dates, ledger, ufMap)
-      : deptoMortgageCloseClpBySnapshotDates(dates, ledger, ufMap);
-  const clp = closeBy.get(asOfYmd);
-  if (clp == null || !Number.isFinite(clp)) return null;
-  return { value_clp: clp, as_of_date: asOfYmd };
-}
-
 /** Latest Suecia property snapshot for dashboard RE card (UF día × net equity UF, same as perf charts). */
 export function deptoSueciaDashboardSnapshotAt(
   asOfYmd: string,
@@ -713,6 +690,11 @@ export function loadDeptoDividendosSheetLedger(cfraserDir: string): DeptoMortgag
   return loadDeptoDividendosSheetLedgerFromFile(cfraserDir);
 }
 
+/**
+ * @deprecated Import/manual WRITE paths and their tests only. Runtime reads use
+ * `loadDeptoLedgerFromMovements()` (movements + uf_daily) — the sheet table is the
+ * spreadsheet master mirror, never a request-path source.
+ */
 export function loadDeptoDividendosSheetLedgerFromDb(): DeptoMortgageSheetRow[] {
   return enrichDeptoRowsUfClpFromDb(loadDeptoDividendosSheetRowsRawFromDb());
 }

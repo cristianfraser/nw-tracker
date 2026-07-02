@@ -5,6 +5,7 @@ import {
   type DepositInflowEvent,
 } from "./accountDeposits.js";
 import { depositInflowEventUsd } from "./flowsDeposits.js";
+import { deptoAccountMarkClpAtYmd, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { loadDividendReinvestedInflowEvents } from "./equityDividendReinvested.js";
 import {
   accountUsesEquityMtm,
@@ -33,12 +34,10 @@ import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { expandYearMonthsInclusive, monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
-  deptoAccountMarkClpAtYmd,
   deptoMortgageBalanceClpBySnapshotDates,
   deptoMortgageCloseClpBySnapshotDates,
   deptoSueciaPropertyCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,
-  loadDeptoDividendosSheetLedgerFromDb,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
@@ -486,7 +485,7 @@ function augmentChartDatesForDeptoSheetAccounts(
   if (!hasDeptoAccount) return dateStrs;
   const minD = dateStrs[0]!;
   const aug = new Set(dateStrs);
-  for (const r of loadDeptoDividendosSheetLedgerFromDb()) {
+  for (const r of loadDeptoLedgerFromMovements()) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
     if (r.occurred_on >= minD) aug.add(r.occurred_on);
   }
@@ -853,7 +852,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const propertyDeptoSheets =
     propertyAccountIds.length === 1
       ? (() => {
-        const ledger = loadDeptoDividendosSheetLedgerFromDb();
+        const ledger = loadDeptoLedgerFromMovements();
         const sheetSeries = propertyDeptoClpSeriesBySnapshotDate(dateStrs, ledger);
         const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
         return {
@@ -952,7 +951,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const mtgCloseByAccAndDate = new Map<number, Map<string, number>>();
   const mortgageChartIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "mortgage");
   if (mortgageChartIds.length > 0 && dateStrs.length > 0) {
-    const ledger = loadDeptoDividendosSheetLedgerFromDb();
+    const ledger = loadDeptoLedgerFromMovements();
     if (ledger.length > 0) {
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrs);
       const closeByDate = deptoMortgageCloseClpBySnapshotDates(dateStrs, ledger, ufClpByDate);
@@ -1601,7 +1600,7 @@ function convertDashboardPortfolioGroupTotals(
 
 function liabilitiesBucketTotalByDates(datesAsc: string[], unit: TsUnit): Map<string, number> {
   const out = new Map<string, number>();
-  const breakdowns = liabilitiesBreakdownClpByDates(datesAsc, { mortgageFromDeptoSheet: true });
+  const breakdowns = liabilitiesBreakdownClpByDates(datesAsc);
   for (const d of datesAsc) {
     const breakdown = breakdowns.get(d) ?? { mortgage_clp: 0, credit_card_clp: 0 };
     const totalClp = breakdown.mortgage_clp + breakdown.credit_card_clp;
@@ -2039,7 +2038,7 @@ function getGroupValuationTimeseriesInnerUncached(
   if (groupSlug === "real_estate") {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");
     if (propertyRows.length === 1 && accounts_in_group.points.length > 0) {
-      const ledger = loadDeptoDividendosSheetLedgerFromDb();
+      const ledger = loadDeptoLedgerFromMovements();
       if (ledger.length > 0) {
         const dateStrsAsc = accounts_in_group.points.map((p) => String(p.as_of_date));
         const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
@@ -2141,7 +2140,7 @@ export function getAccountValuationTimeseries(
   const bucketKind = bucketSlug ? accountBucketKindSlug(bucketSlug) : null;
 
   if (bucketKind === "mortgage" && accounts.points.length > 0) {
-    const ledger = loadDeptoDividendosSheetLedgerFromDb();
+    const ledger = loadDeptoLedgerFromMovements();
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
@@ -2192,7 +2191,7 @@ export function getAccountValuationTimeseries(
   }
 
   if (bucketKind === "property" && accounts.points.length > 0) {
-    const ledger = loadDeptoDividendosSheetLedgerFromDb();
+    const ledger = loadDeptoLedgerFromMovements();
     if (ledger.length > 0) {
       const dateStrsAsc = accounts.points.map((p) => String(p.as_of_date));
       const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);

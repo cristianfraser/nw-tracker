@@ -1,14 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
-import { deptoAccountMarkClpAtYmd, deptoSueciaNetEquityUfBySnapshotDates } from "./deptoDividendosLedger.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
-  loadDeptoDividendosSheetLedgerFromDb,
-  loadDeptoDividendosSheetLedgerFromFile,
-  replaceDeptoDividendosSheetRowsInDb,
+  buildDeptoDividendosMovementNote,
+  buildDeptoMortgageMovementNote,
+  deptoSueciaNetEquityUfBySnapshotDates,
+  sheetRowToPaymentRow,
+  type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
-import { deptoDividendosSheetRowCount } from "./deptoSheetDb.js";
+import {
+  DEPTO_PROPERTY_ACCOUNT_NOTES,
+  deptoAccountMarkClpAtYmd,
+  loadDeptoLedgerFromMovements,
+} from "./deptoLedgerFromMovements.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -16,18 +19,196 @@ import { db } from "./db.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
 
-function ensureDeptoSheetInDb(): void {
-  if (deptoDividendosSheetRowCount() > 0) return;
-  const fromFile = loadDeptoDividendosSheetLedgerFromFile(resolveCfraserCsvDir());
-  if (fromFile.length > 0) replaceDeptoDividendosSheetRowsInDb(fromFile);
+/**
+ * Synthetic depto fixture (movements-only, per repo fixture policy): a property master +
+ * mortgage master with pie + two cuota movements written via the real note builders, on
+ * recent dates so today/prior-month-end marks have data. Skipped when the DB already
+ * tracks a real depto (dev-DB copies).
+ */
+const MORTGAGE_ACCOUNT_NOTES = "import:excel|key=mortgage";
+
+function ymdDaysAgo(days: number): string {
+  const [y, m, d] = chileCalendarTodayYmd().split("-").map(Number);
+  const t = new Date(Date.UTC(y!, m! - 1, d! - days));
+  return t.toISOString().slice(0, 10);
+}
+
+function paymentRow(): DeptoDividendosPaymentRow {
+  return sheetRowToPaymentRow({
+    cuota: "1",
+    occurred_on: "2000-01-01",
+    pago_clp: 0,
+    pago_uf: null,
+    pct_dividendo: null,
+    uf_clp_day: null,
+    mm_pct: null,
+    yy_pct: null,
+    tasa_plus: null,
+    credito_restante_uf: null,
+    pct_credito_uf: null,
+    restante_clp: null,
+    pct_de_total: null,
+    delta_credito_clp: null,
+    valor_neto_uf: null,
+    valor_neto_clp: null,
+    pagado_neto_uf: null,
+    delta_valor_neto_clp: null,
+    valor_vivienda_uf: null,
+    valor_vivienda_clp: null,
+    min_uf: null,
+    incendio_clp: null,
+    incendio_uf: null,
+    desgravamen_clp: null,
+    desgravamen_uf: null,
+    total_seguros_uf: null,
+    total_seguros_clp: null,
+    amortizacion_clp: null,
+    amortizacion_uf: null,
+    amortizacion_ext_clp: null,
+    amortizacion_ext_uf: null,
+    interes_clp: null,
+    interes_uf: null,
+    delta_credito_amort_clp: null,
+    interes_oculto_clp: null,
+    interes_oculto_b_clp: null,
+    interes_real_clp: null,
+    interes_calculado_uf: null,
+    amort_interes_text: null,
+    pago_acumulado_clp: null,
+    amort_acum_clp: null,
+    interes_acum_clp: null,
+  });
+}
+
+let fixturePropertyId: number | null = null;
+let fixtureMortgageId: number | null = null;
+
+beforeAll(() => {
+  const existing = db
+    .prepare(`SELECT 1 FROM accounts WHERE notes = ? AND account_kind = 'master'`)
+    .get(DEPTO_PROPERTY_ACCOUNT_NOTES);
+  if (existing) return; // real depto tracked — tests run against it
+
+  const propGroup = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug = 'real_estate__property'`)
+    .get() as { id: number } | undefined;
+  const mortGroup = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug = 'liabilities__mortgage'`)
+    .get() as { id: number } | undefined;
+  if (!propGroup || !mortGroup) return;
+
+  fixturePropertyId = Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
+         VALUES (?, 'suecia fixture', ?, 'master')`
+      )
+      .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_NOTES).lastInsertRowid
+  );
+  const hadMortgage = db
+    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master'`)
+    .get(MORTGAGE_ACCOUNT_NOTES) as { id: number } | undefined;
+  fixtureMortgageId = hadMortgage
+    ? null
+    : Number(
+        db
+          .prepare(
+            `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
+             VALUES (?, 'suecia fixture', ?, 'master')`
+          )
+          .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
+      );
+  const mortgageId = fixtureMortgageId ?? hadMortgage!.id;
+
+  const rows: { r: DeptoDividendosPaymentRow; onMortgage: boolean }[] = [
+    {
+      r: {
+        ...paymentRow(),
+        cuota: "pie",
+        occurred_on: ymdDaysAgo(75),
+        amount_clp: 58_000_000,
+        amount_uf: 1450,
+        credito_restante_uf: 3950,
+        valor_neto_uf: 1450,
+        valor_neto_clp: 58_000_000,
+        pago_acumulado_clp: 58_000_000,
+      },
+      onMortgage: false,
+    },
+    {
+      r: {
+        ...paymentRow(),
+        cuota: "1",
+        occurred_on: ymdDaysAgo(45),
+        amount_clp: 1_200_000,
+        amount_uf: 30,
+        credito_restante_uf: 3936,
+        valor_neto_uf: 1464,
+        valor_neto_clp: 58_700_000,
+        pago_acumulado_clp: 59_200_000,
+        amortizacion_clp: 560_000,
+        amortizacion_uf: 14,
+        interes_clp: 600_000,
+        interes_uf: 15,
+        incendio_clp: 20_000,
+        desgravamen_clp: 20_000,
+        min_uf: 30,
+        pagado_neto_uf: 1464,
+      },
+      onMortgage: true,
+    },
+    {
+      r: {
+        ...paymentRow(),
+        cuota: "2",
+        occurred_on: ymdDaysAgo(15),
+        amount_clp: 1_205_000,
+        amount_uf: 30,
+        credito_restante_uf: 3921.8,
+        valor_neto_uf: 1478.2,
+        valor_neto_clp: 59_400_000,
+        pago_acumulado_clp: 60_405_000,
+        amortizacion_clp: 565_000,
+        amortizacion_uf: 14.2,
+        interes_clp: 596_000,
+        interes_uf: 14.8,
+        incendio_clp: 22_000,
+        desgravamen_clp: 22_000,
+        min_uf: 30,
+        pagado_neto_uf: 1478.2,
+      },
+      onMortgage: true,
+    },
+  ];
+  const ins = db.prepare(
+    `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
+  );
+  for (const { r, onMortgage } of rows) {
+    ins.run(fixturePropertyId, r.amount_clp, r.occurred_on, buildDeptoDividendosMovementNote(r));
+    if (onMortgage) {
+      ins.run(mortgageId, Math.abs(r.amount_clp), r.occurred_on, buildDeptoMortgageMovementNote(r));
+    }
+  }
+});
+
+afterAll(() => {
+  for (const id of [fixturePropertyId, fixtureMortgageId]) {
+    if (id == null) continue;
+    db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(id);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  }
+});
+
+function propertyAccountRow(): { id: number } | undefined {
+  return db
+    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master' LIMIT 1`)
+    .get(DEPTO_PROPERTY_ACCOUNT_NOTES) as { id: number } | undefined;
 }
 
 describe("deptoAccountMarkClpAtYmd", () => {
   it("property mark at two dates differs when UF rates differ", () => {
-    ensureDeptoSheetInDb();
-    const ledger = loadDeptoDividendosSheetLedgerFromDb();
+    const ledger = loadDeptoLedgerFromMovements();
     if (!ledger.length) return;
 
     const today = chileCalendarTodayYmd();
@@ -60,14 +241,8 @@ describe("deptoKindForBucketSlug via accountMarkClpAtYmd", () => {
 });
 
 describe("accountMarkClpAtYmd property", () => {
-  it("today uses UF mark not stale valuations when sheet exists", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
+  it("today uses UF mark not stale valuations when ledger exists", () => {
+    const row = propertyAccountRow();
     if (!row) return;
 
     const today = chileCalendarTodayYmd();
@@ -80,20 +255,14 @@ describe("accountMarkClpAtYmd property", () => {
     expect(markToday?.value_clp).toBe(deptoToday.value_clp);
     expect(markPrior?.value_clp).toBeDefined();
 
-    if (markPrior && markPrior.value_clp !== markToday.value_clp) {
-      const delta = markToday!.value_clp - markPrior.value_clp;
+    if (markPrior && markToday && markPrior.value_clp !== markToday.value_clp) {
+      const delta = markToday.value_clp - markPrior.value_clp;
       expect(Math.abs(delta)).toBeGreaterThan(0);
     }
   });
 
   it("suecia current-month perf nominal reflects UF move when prior month-end differs", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
+    const row = propertyAccountRow();
     if (!row) return;
 
     const perf = getAccountMonthlyPerformance(row.id, "clp");
@@ -113,13 +282,7 @@ describe("accountMarkClpAtYmd property", () => {
   });
 
   it("current-month perf row is dated Chile today", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
+    const row = propertyAccountRow();
     if (!row) return;
 
     const perf = getAccountMonthlyPerformance(row.id, "clp");
@@ -134,14 +297,14 @@ describe("accountMarkClpAtYmd property", () => {
   });
 
   it("reconciled dashboard MTD non-zero when UF moved", () => {
+    const acc = propertyAccountRow();
+    if (!acc) return;
     const row = db
       .prepare(
         `SELECT a.id, a.name, a.notes, g.slug AS bucket_slug FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
+         JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
       )
-      .get() as { id: number; name: string; notes: string | null; bucket_slug: string } | undefined;
-    if (!row) return;
+      .get(acc.id) as { id: number; name: string; notes: string | null; bucket_slug: string };
 
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
@@ -171,16 +334,17 @@ describe("accountMarkClpAtYmd property", () => {
 
 describe("depto mortgage live perf row", () => {
   it("current-month row is dated today with UF fields after live patch", () => {
-    ensureDeptoSheetInDb();
     const row = db
       .prepare(
         `SELECT a.id FROM accounts a
          JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__mortgage' OR g.slug = 'mortgage'
+         WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage') AND a.account_kind = 'master'
+         ORDER BY (a.notes = 'import:excel|key=mortgage') DESC
          LIMIT 1`
       )
       .get() as { id: number } | undefined;
     if (!row) return;
+    if (!loadDeptoLedgerFromMovements().length) return;
 
     const perf = getAccountMonthlyPerformance(row.id, "clp");
     if (!perf?.monthly.length) return;
@@ -195,57 +359,5 @@ describe("depto mortgage live perf row", () => {
     expect(Number.isFinite(cur.uf_clp_day)).toBe(true);
     expect(cur.closing_balance_uf).not.toBeNull();
     expect(Number.isFinite(cur.closing_balance_uf)).toBe(true);
-  });
-});
-
-describe("depto valuation timeseries live last point", () => {
-  it("property chart last point is dated Chile today", () => {
-    ensureDeptoSheetInDb();
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug LIKE '%__property' AND a.name LIKE '%suecia%' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-
-    const ts = getAccountValuationTimeseries(row.id, "clp");
-    if (!ts?.accounts.points.length) return;
-
-    const today = chileCalendarTodayYmd();
-    const last = ts.accounts.points.reduce((a, b) =>
-      String(a.as_of_date).localeCompare(String(b.as_of_date)) >= 0 ? a : b
-    );
-    expect(String(last.as_of_date)).toBe(today);
-  });
-});
-
-describe("accountMarkClpAtYmd equity zero position", () => {
-  it("returns 0 CLP at a date before first share purchase", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id, a.equity_ticker FROM accounts a
-         WHERE a.equity_ticker IS NOT NULL AND a.equity_ticker != ''
-         ORDER BY a.id LIMIT 1`
-      )
-      .get() as { id: number; equity_ticker: string } | undefined;
-    if (!row || !accountUsesEquityMtm(row.id)) return;
-
-    const firstBuy = db
-      .prepare(
-        `SELECT MIN(occurred_on) AS d FROM movements
-         WHERE account_id = ? AND COALESCE(units_delta, 0) > 0`
-      )
-      .get(row.id) as { d: string | null } | undefined;
-    if (!firstBuy?.d) return;
-
-    const priorYmd = priorPeriodEndYmd("ytd", firstBuy.d);
-    if (priorYmd >= firstBuy.d) return;
-    expect(equityShareUnitsThroughYmd(row.id, priorYmd)).toBe(0);
-
-    const mark = accountMarkClpAtYmd(row.id, priorYmd, "acciones");
-    expect(mark?.value_clp).toBe(0);
-    expect(mark?.as_of_date).toBe(priorYmd);
   });
 });

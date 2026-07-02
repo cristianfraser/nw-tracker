@@ -3,6 +3,7 @@ import {
   computeLatestDisplayedEquityClp,
 } from "./brokerageEquityMtm.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
@@ -58,7 +59,6 @@ import {
 } from "./portfolioGroupTree.js";
 import {
   deptoSueciaDashboardSnapshotAt,
-  loadDeptoDividendosSheetLedgerFromDb,
 } from "./deptoDividendosLedger.js";
 import { db } from "./db.js";
 import {
@@ -421,7 +421,7 @@ export function buildDashboardSueciaSnapshot(
   asOfYmd: string,
   includeUsd: boolean
 ): DashboardSueciaSnapshot | null {
-  const deptoLedger = loadDeptoDividendosSheetLedgerFromDb();
+  const deptoLedger = loadDeptoLedgerFromMovements();
   const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfYmd, deptoLedger);
   if (!sueciaRaw) return null;
   if (!includeUsd) return sueciaRaw;
@@ -443,7 +443,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
   }));
   const asOfToday = chileCalendarTodayYmd();
   const suecia_snapshot = buildDashboardSueciaSnapshot(asOfToday, includeUsd);
-  const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, { mortgageFromDeptoSheet: true });
+  const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
   const liabilities_breakdown = {
     mortgage_clp: liabilitiesClp.mortgage_clp,
     credit_card_clp: liabilitiesClp.credit_card_clp,

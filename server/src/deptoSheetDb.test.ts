@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { db } from "./db.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   loadDeptoDividendosSheetLedgerFromDb,
@@ -8,6 +9,23 @@ import {
 import { deptoDividendosSheetRowCount, loadStoredDeptoSheetRowsFromDb } from "./deptoSheetDb.js";
 
 describe("depto_dividendos_sheet_rows", () => {
+  // Snapshot/restore the staging table — this test writes REAL CSV rows and must not
+  // leave them in the shared test DB (synthetic-fixtures policy).
+  let saved: { sort_order: number; cuota: string; occurred_on: string; row_json: string }[] = [];
+  beforeAll(() => {
+    saved = db
+      .prepare(`SELECT sort_order, cuota, occurred_on, row_json FROM depto_dividendos_sheet_rows`)
+      .all() as typeof saved;
+  });
+  afterAll(() => {
+    db.prepare(`DELETE FROM depto_dividendos_sheet_rows`).run();
+    const ins = db.prepare(
+      `INSERT INTO depto_dividendos_sheet_rows (sort_order, cuota, occurred_on, row_json)
+       VALUES (?, ?, ?, ?)`
+    );
+    for (const r of saved) ins.run(r.sort_order, r.cuota, r.occurred_on, r.row_json);
+  });
+
   it("round-trips sheet rows through SQLite", () => {
     const fromFile = loadDeptoDividendosSheetLedgerFromFile(resolveCfraserCsvDir());
     if (fromFile.length === 0) return;

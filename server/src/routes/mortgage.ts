@@ -1,5 +1,6 @@
 /** Mortgage ledger + payment preview/commit. Split verbatim from index.ts; paths unchanged. */
 import cors from "cors";
+import { loadDeptoLedgerFromMovements } from "../deptoLedgerFromMovements.js";
 import express from "express";
 import { httpRequestLogMiddleware } from "../httpRequestLog.js";
 import fs from "node:fs";
@@ -277,7 +278,7 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
     return;
   }
   if (bucketSlug === "property" || bucketSlug === "mortgage") {
-    const sheetRowsAll = loadDeptoDividendosSheetLedgerFromDb();
+    const sheetRowsAll = loadDeptoLedgerFromMovements();
     const sheetRows =
       bucketSlug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))

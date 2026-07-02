@@ -1,11 +1,11 @@
 import { db } from "./db.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import {
   buildDeptoDividendosMovementNote,
   buildDeptoMortgageMovementNote,
-  loadDeptoDividendosSheetLedgerFromDb,
   sheetRowToPaymentRow,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
@@ -50,7 +50,7 @@ export function mortgagePaymentCreateSchemaForAccount(
       .get(accountId) as { notes: string | null } | undefined;
     if (master?.notes !== MORTGAGE_ACCOUNT_NOTES) return null;
   }
-  const ledger = loadDeptoDividendosSheetLedgerFromDb();
+  const ledger = loadDeptoLedgerFromMovements();
   if (ledger.length === 0) return null;
   return {
     next_cuota: suggestNextMortgageCuota(ledger),
@@ -101,7 +101,7 @@ export function previewMortgagePayment(
   rawInput: MortgagePaymentInput
 ): MortgagePaymentPreviewResponse {
   requireSueciaMortgageAccount(accountId);
-  const ledger = loadDeptoDividendosSheetLedgerFromDb();
+  const ledger = loadDeptoLedgerFromMovements();
   const computed = computeMortgagePaymentRow(ledger, rawInput);
   return {
     ...computed,
@@ -128,7 +128,7 @@ export function commitMortgagePayment(
   }
   const propertyId = propertyAccountId();
 
-  const ledger = loadDeptoDividendosSheetLedgerFromDb();
+  const ledger = loadDeptoLedgerFromMovements();
   const computed = computeMortgagePaymentRow(ledger, rawInput);
   const { sheet, input } = computed;
   const cuota = sheet.cuota;
@@ -136,6 +136,9 @@ export function commitMortgagePayment(
 
   if (deptoSheetRowExists(cuota, occurred_on)) {
     throw new Error(`Sheet row already exists for cuota ${cuota} on ${occurred_on}`);
+  }
+  if (ledger.some((r) => r.cuota === cuota && r.occurred_on === occurred_on)) {
+    throw new Error(`Movement ledger already has cuota ${cuota} on ${occurred_on}`);
   }
 
   const paymentRow = sheetRowToPaymentRow(sheet);
@@ -190,11 +193,24 @@ export function recomputeStoredMortgagePaymentRow(
     .filter((s) => !(s.sheet.cuota === cuota && s.sheet.occurred_on === occurredOn))
     .map((s) => s.sheet);
   const computed = computeMortgagePaymentRow(ledger, stored.input);
-  updateDeptoDividendosSheetRowInDb(cuota, occurredOn, {
-    sheet: computed.sheet,
-    origin: stored.origin ?? "manual",
-    input: computed.input,
+  const paymentRow = sheetRowToPaymentRow(computed.sheet);
+  const mortgageNote = buildManualDeptoMovementNote(paymentRow, "depto-mortgage");
+  const propertyNote = buildManualDeptoMovementNote(paymentRow, "depto-dividendos");
+  const tx = db.transaction(() => {
+    updateDeptoDividendosSheetRowInDb(cuota, occurredOn, {
+      sheet: computed.sheet,
+      origin: stored.origin ?? "manual",
+      input: computed.input,
+    });
+    // Movements are the runtime ledger — a recompute that only touched the staging row
+    // would drift the two sources apart (that is how cuota 28's amort/ext split diverged).
+    const upd = db.prepare(
+      `UPDATE movements SET note = ? WHERE account_id = ? AND occurred_on = ? AND note LIKE ?`
+    );
+    upd.run(mortgageNote, mortgageAccountId(), occurredOn, `%|depto-mortgage|cuota=${encodeURIComponent(cuota)}|%`);
+    upd.run(propertyNote, propertyAccountId(), occurredOn, `%|depto-dividendos|cuota=${encodeURIComponent(cuota)}|%`);
   });
+  tx();
   return computed.sheet;
 }
 

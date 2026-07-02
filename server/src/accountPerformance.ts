@@ -3,6 +3,7 @@ import {
   getAggregationCached,
 } from "./aggregationCache.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
   getAccountValuationTimeseries,
   listAccountsForGroupTab,
@@ -19,7 +20,6 @@ import {
   deptoMortgageCloseClpBySnapshotDates,
   deptoPropertyClpPaymentsThroughDate,
   deptoSueciaPropertyCloseClpBySnapshotDates,
-  loadDeptoDividendosSheetLedgerFromDb,
   mortgageSheetPaymentsClpThroughDate,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
@@ -166,7 +166,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   const isDeptoProperty = kind === "property";
   const isCreditCard = kind === "credit_card";
   const deptoLedger =
-    isMortgage || isDeptoProperty ? loadDeptoDividendosSheetLedgerFromDb() : [];
+    isMortgage || isDeptoProperty ? loadDeptoLedgerFromMovements() : [];
 
   const out: AccountMonthlyPerformanceRow[] = [];
   for (const row of pickedAsc) {
@@ -346,7 +346,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
 
   const netFlow = (() => {
     if (bucketKind === "property") {
-      const ledger = loadDeptoDividendosSheetLedgerFromDb();
+      const ledger = loadDeptoLedgerFromMovements();
       if (ledger.length > 0) {
         return perfDeptoPropertyPaymentsInUnit(ledger, today, null, unit);
       }
@@ -361,7 +361,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const mortgageUfFields =
     bucketKind === "mortgage"
       ? (() => {
-          const ledger = loadDeptoDividendosSheetLedgerFromDb();
+          const ledger = loadDeptoLedgerFromMovements();
           if (!ledger.length) return {};
           const ufMap = ufClpBySnapshotDatesAsc([today]);
           const ufByDate = deptoCreditoRestanteUfBySnapshotDates([today], ledger);
@@ -699,7 +699,7 @@ function buildAccountMonthlyPerformanceUncached(
   const bucketKind = accountBucketKindSlug(bucketSlug);
   const deptoLedger =
     bucketKind === "mortgage" || bucketKind === "property"
-      ? loadDeptoDividendosSheetLedgerFromDb()
+      ? loadDeptoLedgerFromMovements()
       : null;
   const isMortgage = bucketKind === "mortgage";
   const isDeptoProperty = bucketKind === "property";

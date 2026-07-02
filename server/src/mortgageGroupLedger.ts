@@ -1,9 +1,9 @@
 import { resolveOperationalAccountId } from "./accountSource.js";
 import {
   isDeptoMortgagePaymentCuota,
-  loadDeptoDividendosSheetLedgerFromDb,
   mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { ensureMortgageLiabilityView, listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 
@@ -11,7 +11,7 @@ export type MortgageGroupLedgerResponse = {
   account_id: number;
   has_sheet_rows: boolean;
   meta: ReturnType<typeof mortgageMetaFromSheetRows> | null;
-  rows: ReturnType<typeof loadDeptoDividendosSheetLedgerFromDb>;
+  rows: ReturnType<typeof loadDeptoLedgerFromMovements>;
   payment_scenarios?: ReturnType<typeof buildDeptoPaymentScenarioRows>;
 };
 
@@ -26,7 +26,7 @@ function emptyMortgageGroupLedger(): MortgageGroupLedgerResponse {
 }
 
 function mortgageLedgerForOperationalAccount(operationalId: number): MortgageGroupLedgerResponse {
-  const sheetRowsAll = loadDeptoDividendosSheetLedgerFromDb();
+  const sheetRowsAll = loadDeptoLedgerFromMovements();
   const sheetRows = sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota));
   return {
     account_id: operationalId,

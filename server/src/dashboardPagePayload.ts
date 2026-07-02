@@ -79,9 +79,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       notes: notes ?? null,
     }));
     const suecia_snapshot = buildDashboardSueciaSnapshot(asOfToday, includeUsd);
-    const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday, {
-      mortgageFromDeptoSheet: true,
-    });
+    const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
     const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
     const liabilities_breakdown = {
       mortgage_clp: liabilitiesClp.mortgage_clp,
