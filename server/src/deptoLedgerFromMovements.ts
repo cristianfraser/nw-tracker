@@ -9,7 +9,7 @@
  *
  * Derivations for fields not present in notes (all display-only or recomputed):
  * - `uf_clp_day` from `uf_daily` (same as the sheet loader — the note `ufdia` is ignored),
- * - `restante_clp` = round(cruf × ufdia); `valor_vivienda_uf` = roundUf4(vnuf + cruf),
+ * - `restante_clp` = round(cruf × ufdia); gross `valor_vivienda_uf` comes from the note (`vvuf`),
  * - UF insurance legs from CLP ÷ ufdia; deltas from consecutive rows; acumulados as cumsums,
  * - analysis columns via `computeMortgagePaymentAnalytics` (already used for manual rows).
  *
@@ -110,7 +110,8 @@ export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
     const cruf = p.credito_restante_uf ?? null;
     const vnuf = p.valor_neto_uf ?? null;
     const restanteClp = cruf != null && ufDay != null ? Math.round(cruf * ufDay) : null;
-    const viviendaUf = cruf != null && vnuf != null ? roundUf4(cruf + vnuf) : null;
+    // Gross (tasación) is the observed value, carried in the note as `vvuf`.
+    const viviendaUf = p.valor_vivienda_uf ?? null;
     const incendioClp = p.incendio_clp ?? null;
     const desgravamenClp = p.desgravamen_clp ?? null;
     const incendioUf =
@@ -178,6 +179,11 @@ export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
     const c = a.occurred_on.localeCompare(b.occurred_on);
     return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
   });
+  if (!base.some((r) => r.valor_vivienda_uf != null)) {
+    throw new Error(
+      "depto ledger: no movement note carries vvuf (valor vivienda UF) — regenerate notes from the staging rows (backfill)"
+    );
+  }
 
   // Pass 2 — consecutive deltas, cumsums, and recomputed analysis columns.
   const meta = mortgageAnalyticsMetaFromLedger(base);

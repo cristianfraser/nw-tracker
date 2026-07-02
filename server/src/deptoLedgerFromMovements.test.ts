@@ -32,6 +32,7 @@ function paymentRow(overrides: Partial<DeptoDividendosPaymentRow>): DeptoDividen
     amount_uf: null,
     uf_clp_day: null,
     credito_restante_uf: null,
+    valor_vivienda_uf: null,
     valor_neto_uf: null,
     valor_neto_clp: null,
     pagado_neto_uf: null,
@@ -91,6 +92,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
         amount_clp: 58_000_000,
         amount_uf: 1450,
         credito_restante_uf: 3950,
+        valor_vivienda_uf: 5400,
         valor_neto_uf: 1450,
         valor_neto_clp: 58_000_000,
         pago_acumulado_clp: 58_000_000,
@@ -101,6 +103,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
         amount_clp: 1_203_000,
         amount_uf: 30,
         credito_restante_uf: 3936,
+        valor_vivienda_uf: 5400,
         valor_neto_uf: 1464,
         valor_neto_clp: 58_706_400,
         pago_acumulado_clp: 59_203_000,
@@ -119,6 +122,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
         amount_clp: 1_206_000,
         amount_uf: 30,
         credito_restante_uf: 3921.8,
+        valor_vivienda_uf: 5400,
         valor_neto_uf: 1478.2,
         valor_neto_clp: 59_423_640,
         pago_acumulado_clp: 60_409_000,
@@ -138,6 +142,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
         amount_clp: 4_025_000,
         amount_uf: 100,
         credito_restante_uf: 3821.8,
+        valor_vivienda_uf: 5400,
         valor_neto_uf: 1578.2,
         amortizacion_ext_clp: 4_025_000,
         amortizacion_ext_uf: 100,
@@ -240,6 +245,7 @@ describe("loadDeptoLedgerFromMovements (dev-DB parity)", () => {
       expect(b.occurred_on, ctx).toBe(a.occurred_on);
       // exact UF fields (builders write the sheet-rounded values verbatim)
       expect(b.credito_restante_uf, ctx).toBe(a.credito_restante_uf);
+      expect(b.valor_vivienda_uf, ctx).toBe(a.valor_vivienda_uf);
       expect(b.valor_neto_uf, ctx).toBe(a.valor_neto_uf);
       expect(b.pago_uf, ctx).toBe(a.pago_uf);
       expect(b.min_uf, ctx).toBe(a.min_uf);

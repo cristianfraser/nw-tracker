@@ -42,6 +42,8 @@ export type DeptoDividendosPaymentRow = {
   amount_uf: number | null;
   uf_clp_day: number | null;
   credito_restante_uf: number | null;
+  /** Tasación / valor vivienda (UF) — observed value; net equity is DERIVED (gross − balance). */
+  valor_vivienda_uf: number | null;
   valor_neto_uf: number | null;
   valor_neto_clp: number | null;
   pagado_neto_uf: number | null;
@@ -272,6 +274,7 @@ export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosP
     amount_uf: s.pago_uf,
     uf_clp_day: s.uf_clp_day,
     credito_restante_uf: s.credito_restante_uf,
+    valor_vivienda_uf: s.valor_vivienda_uf,
     valor_neto_uf: s.valor_neto_uf,
     valor_neto_clp: s.valor_neto_clp,
     pagado_neto_uf: s.pagado_neto_uf,
@@ -411,10 +414,10 @@ export function deptoMortgageBalanceClpBySnapshotDates(
 export type DeptoAccountMarkAtYmd = { value_clp: number; as_of_date: string };
 
 /**
- * Net equity UF: forward-filled **valor neto (UF)** from the ledger rows (only on/after
- * pie / compra). Prepago rows are skipped like the balance fill — their vnuf is as
- * unreliable as their cruf in the Numbers export. Data-derived (vnuf ≡ gross − balance
- * per row), so it works for any property, not just the 5400-UF Suecia sheet.
+ * Net equity UF at each snapshot — DERIVED as gross − balance: forward-filled
+ * **valor vivienda (UF)** (the observed tasación, a row column) minus forward-filled
+ * **crédito restante (UF)**. Prepago rows are skipped in both fills (their balances are
+ * unreliable in the Numbers export). Only on/after pie / compra.
  */
 export function deptoSueciaNetEquityUfBySnapshotDates(
   dateStrsAsc: readonly string[],
@@ -428,19 +431,26 @@ export function deptoSueciaNetEquityUfBySnapshotDates(
     return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
   });
   let j = 0;
-  let last: number | null = null;
+  let gross: number | null = null;
+  let balance: number | null = null;
   for (const d of dateStrsAsc) {
     const cut = snapshotDepositCutoff(d);
     while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
       const row = sorted[j]!;
       if (!isDeptoPrepagoCuota(row.cuota)) {
-        const v = row.valor_neto_uf;
-        if (v != null && Number.isFinite(v)) last = v;
+        if (row.valor_vivienda_uf != null && Number.isFinite(row.valor_vivienda_uf)) {
+          gross = row.valor_vivienda_uf;
+        }
+        if (row.credito_restante_uf != null && Number.isFinite(row.credito_restante_uf)) {
+          balance = row.credito_restante_uf;
+        }
       }
       j++;
     }
     if (firstOwn != null && d < firstOwn) continue;
-    if (last != null) out.set(d, roundUf4(Math.max(0, last)));
+    if (gross != null && balance != null) {
+      out.set(d, roundUf4(Math.max(0, gross - balance)));
+    }
   }
   return out;
 }
@@ -739,15 +749,10 @@ export function enrichDeptoRowsUfClpFromDb<T extends { occurred_on: string; uf_c
 
 export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[]): DeptoMortgageCsvMeta {
   const pie = rows.find((r) => r.cuota.toLowerCase() === "pie");
-  // Gross value derived from row data (vnuf + cruf ≡ valor vivienda per row) — no constant,
-  // so any property works (demo house included). Pie row first, else first derivable row.
-  const grossOf = (r: DeptoMortgageSheetRow): number | null =>
-    r.valor_neto_uf != null && r.credito_restante_uf != null
-      ? roundUf4(r.valor_neto_uf + r.credito_restante_uf)
-      : null;
+  // Gross is an observed row column (tasación) — pie row first, else first row carrying it.
   const valorViviendaUf =
-    (pie ? grossOf(pie) : null) ??
-    rows.map(grossOf).find((v): v is number => v != null) ??
+    pie?.valor_vivienda_uf ??
+    rows.map((r) => r.valor_vivienda_uf).find((v): v is number => v != null) ??
     null;
   return {
     valor_vivienda_uf: valorViviendaUf,
@@ -847,6 +852,7 @@ export function buildDeptoDividendosMovementNote(
       ? `ufdia=${Math.round(r.uf_clp_day * 100) / 100}`
       : null,
     r.credito_restante_uf != null ? `cruf=${r.credito_restante_uf}` : null,
+    r.valor_vivienda_uf != null ? `vvuf=${r.valor_vivienda_uf}` : null,
     r.valor_neto_uf != null ? `vnuf=${r.valor_neto_uf}` : null,
     r.valor_neto_clp != null ? `vnclp=${Math.round(r.valor_neto_clp)}` : null,
     r.pagado_neto_uf != null ? `pnuf=${r.pagado_neto_uf}` : null,
@@ -894,6 +900,7 @@ export function parseDeptoDividendosMovementNote(note: string | null): Partial<D
     amount_uf: num("uf"),
     uf_clp_day: num("ufdia"),
     credito_restante_uf: num("cruf"),
+    valor_vivienda_uf: num("vvuf"),
     valor_neto_uf: num("vnuf"),
     valor_neto_clp: num("vnclp"),
     pagado_neto_uf: num("pnuf"),

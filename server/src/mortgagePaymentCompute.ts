@@ -256,15 +256,12 @@ export function computeMortgagePaymentRow(
     throw new Error(`Negative crédito restante UF after payment: ${credito_restante_uf}`);
   }
 
-  // Gross value derived from the prior ledger row (vnuf + cruf ≡ valor vivienda) — no
-  // hardcoded tasación, so any tracked property works. Fail fast when underivable.
-  const grossUf =
-    prior?.valor_neto_uf != null && prior?.credito_restante_uf != null
-      ? roundUf4(prior.valor_neto_uf + prior.credito_restante_uf)
-      : null;
+  // Gross (tasación) is an observed value carried forward from the prior ledger row —
+  // net equity is the derived quantity. Fail fast when the ledger lacks it.
+  const grossUf = prior?.valor_vivienda_uf ?? null;
   if (grossUf == null) {
     throw new Error(
-      "Cannot derive valor vivienda UF: prior ledger row lacks valor_neto_uf/credito_restante_uf"
+      "Cannot resolve valor vivienda UF: prior ledger row lacks valor_vivienda_uf"
     );
   }
   const valor_neto_uf = roundUf4(Math.max(0, grossUf - credito_restante_uf));
