@@ -844,7 +844,6 @@ export function writeInvestmentMonth(
     const monthsOwned =
       (Number(month.slice(0, 4)) - Number(house.month.slice(0, 4))) * 12 +
       (Number(month.slice(5, 7)) - Number(house.month.slice(5, 7)));
-    valuation(accounts.propertyId, monthEnd, house.valueClp * Math.pow(1.003, monthsOwned));
 
     if (accounts.mortgageId != null) {
       if (state.mortgageOutstandingClp == null) {
@@ -862,6 +861,13 @@ export function writeInvestmentMonth(
       }
       valuation(accounts.mortgageId, monthEnd, Math.round(state.mortgageOutstandingClp));
     }
+
+    // Property valuations are EQUITY (gross − outstanding hipoteca), mirroring the real
+    // DB where the depto account is maintained net of the linked mortgage. At purchase
+    // equity == the pie that left checking, so net worth stays continuous.
+    const grossClp = house.valueClp * Math.pow(1.003, monthsOwned);
+    const equityClp = Math.max(0, grossClp - (state.mortgageOutstandingClp ?? 0));
+    valuation(accounts.propertyId, monthEnd, Math.round(equityClp));
   } else if (accounts.propertyId != null && narrative.withProperty && !house && month >= "2024-08") {
     const monthsOwned = (Number(month.slice(0, 4)) - 2024) * 12 + (Number(month.slice(5, 7)) - 8);
     valuation(accounts.propertyId, monthEnd, 18_000_000 * Math.pow(1.003, monthsOwned));
