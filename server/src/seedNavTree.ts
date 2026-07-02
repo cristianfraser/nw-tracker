@@ -58,6 +58,9 @@ const upsertGroup = db.prepare(`
 
 const groupIdBySlug = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`);
 
+/** Apartments tracked on Flujos > Gastos > Inmuebles (rows in `expense_accounts`). */
+const REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS = ["el_vergel", "lastarria", "suecia"] as const;
+
 const deleteGroupItems = db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ?`);
 
 const deleteRetiredPortfolioGroups = db.prepare(`
@@ -516,15 +519,33 @@ export function seedNavTree(): void {
       route_path: "/flows/expenses",
       active_prefix: "/flows/expenses",
     });
-    upsert({
-      slug: "flows_expenses_real_estate",
-      label: "Inmuebles",
-      label_i18n_key: "sidebar.flowsExpensesRealEstate",
-      parent_slug: "flows_expenses",
-      sort_order: 0,
-      route_path: "/flows/expenses/real_estate",
-      active_prefix: "/flows/expenses/real_estate",
-    });
+    // "Inmuebles" (per-apartment expected-bills tracking) only exists when its expense
+    // accounts do — generated/demo DBs have no expense_accounts rows, and an always-on
+    // node would just route to a permanently empty page there.
+    const hasRealEstateExpenseAccounts =
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM expense_accounts a
+             WHERE a.slug IN (${REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS.map(() => "?").join(",")})`
+          )
+          .get(...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS) as { c: number }
+      ).c > 0;
+    if (hasRealEstateExpenseAccounts) {
+      upsert({
+        slug: "flows_expenses_real_estate",
+        label: "Inmuebles",
+        label_i18n_key: "sidebar.flowsExpensesRealEstate",
+        parent_slug: "flows_expenses",
+        sort_order: 0,
+        route_path: "/flows/expenses/real_estate",
+        active_prefix: "/flows/expenses/real_estate",
+      });
+    } else {
+      // Items cascade on group delete (parent link + expense children).
+      const stale = groupIdBySlug.get("flows_expenses_real_estate") as { id: number } | undefined;
+      if (stale) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(stale.id);
+    }
     upsert({
       slug: "flows_deposits",
       label: "Depósitos",
@@ -540,8 +561,10 @@ export function seedNavTree(): void {
     linkGroup("flows", "flows_income", 0);
     linkGroup("flows", "flows_expenses", 10);
     linkGroup("flows", "flows_deposits", 20);
-    linkGroup("flows_expenses", "flows_expenses_real_estate", 0);
-    linkExpenseAccounts("flows_expenses_real_estate", ["el_vergel", "lastarria", "suecia"]);
+    if (hasRealEstateExpenseAccounts) {
+      linkGroup("flows_expenses", "flows_expenses_real_estate", 0);
+      linkExpenseAccounts("flows_expenses_real_estate", [...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS]);
+    }
 
     upsert({
       slug: "rates",
