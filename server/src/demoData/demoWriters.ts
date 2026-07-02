@@ -216,6 +216,71 @@ function jitter(rng: () => number, base: number, pct: number): number {
   return base * (1 + (rng() * 2 - 1) * pct);
 }
 
+/* --------------------------- demo mortgage (UF schedule) ------------------------- */
+
+/** Flat seguros charged on top of the dividendo. */
+const DEMO_DEPTO_INCENDIO_CLP = 25_000;
+const DEMO_DEPTO_DESGRAVAMEN_CLP = 3_000;
+
+type DemoHouse = NonNullable<DemoNarrative["house"]>;
+
+function ufClpOnOrBefore(ymd: string): number {
+  const uf = ufRowOnOrBefore(ymd)?.clp_per_uf;
+  if (uf == null || uf <= 0) {
+    throw new Error(`demo: uf_daily missing on/before ${ymd} (writeMarketSeries first)`);
+  }
+  return uf;
+}
+
+/** Mortgage principal in UF, fixed at the purchase-month payment day (UF-denominated credit). */
+function demoMortgagePrincipalUf(house: DemoHouse): number {
+  return house.mortgageClp / ufClpOnOrBefore(dayInMonth(house.month, 10));
+}
+
+/**
+ * Chilean-style French schedule in UF: the dividendo is a FIXED UF amount whose CLP value
+ * tracks UF, and `credito_restante_uf` follows the UF schedule — so the implied rate the
+ * payment-projection scenarios recompute from the ledger equals `house.monthlyRate`.
+ * Closed form (no run state) so the checking bill and the ledger movements derive the
+ * identical cuota independently.
+ */
+function demoMortgageCuotaUf(
+  house: DemoHouse,
+  cuotaN: number
+): { pmtUf: number; interestUf: number; amortUf: number; balanceAfterUf: number } {
+  const i = house.monthlyRate;
+  const principalUf = demoMortgagePrincipalUf(house);
+  const pmtUf = (principalUf * i) / (1 - Math.pow(1 + i, -house.termMonths));
+  const growth = Math.pow(1 + i, cuotaN - 1);
+  const balanceBeforeUf = principalUf * growth - (pmtUf * (growth - 1)) / i;
+  const interestUf = balanceBeforeUf * i;
+  const amortUf = pmtUf - interestUf;
+  return { pmtUf, interestUf, amortUf, balanceAfterUf: balanceBeforeUf - amortUf };
+}
+
+/** UF balance after the cuotas paid so far (the full principal before the first one). */
+function demoMortgageBalanceUf(house: DemoHouse, cuotasPaid: number): number {
+  return cuotasPaid >= 1
+    ? demoMortgageCuotaUf(house, cuotasPaid).balanceAfterUf
+    : demoMortgagePrincipalUf(house);
+}
+
+/**
+ * CLP the dividendo takes out of checking for `month` (cuota × UF that day + seguros), or
+ * null when no cuota posts that month (purchase month = pie only; pay day still ahead).
+ */
+function demoDeptoCuotaClpForMonth(house: DemoHouse, month: DemoMonth): number | null {
+  const cuotaN = monthsBetween(house.month, month);
+  if (cuotaN < 1) return null;
+  const payYmd = dayInMonth(month, 10);
+  if (payYmd > chileCalendarTodayYmd()) return null;
+  return (
+    Math.round(demoMortgageCuotaUf(house, cuotaN).pmtUf * ufClpOnOrBefore(payYmd)) +
+    DEMO_DEPTO_INCENDIO_CLP +
+    DEMO_DEPTO_DESGRAVAMEN_CLP
+  );
+}
+
 /* --------------------------- synthetic price series ------------------------------ */
 
 /**
@@ -419,7 +484,7 @@ export type DemoRunState = {
   /** Built once per run: weekly USD closes per ticker + monthly fondo valor cuota. */
   equitySeries: DemoEquitySeries;
   fondoCuotaSeries: [string, number][];
-  /** Outstanding mortgage principal once the house is bought (null before). */
+  /** CLP mark of the UF mortgage balance once the house is bought (null before). */
   mortgageOutstandingClp: number | null;
   /** Depto ledger counters (cuota number, CLP paid, principal UF incl. pie). */
   deptoCuotaN: number;
@@ -504,7 +569,17 @@ export function writeCheckingMonth(
   for (const b of ch.bills) {
     const everyN = b.everyNMonths ?? 1;
     if (everyN > 1 && monthNo % everyN !== 0) continue;
-    const amt = Math.round(jitter(rng, b.meanClp, 0.1));
+    let amt: number;
+    if (b.exactDeptoCuota) {
+      if (narrative.house == null) {
+        throw new Error(`demo: bill ${b.desc} has exactDeptoCuota but the narrative has no house`);
+      }
+      const cuotaClp = demoDeptoCuotaClpForMonth(narrative.house, month);
+      if (cuotaClp == null) continue;
+      amt = cuotaClp;
+    } else {
+      amt = Math.round(jitter(rng, b.meanClp, 0.1));
+    }
     checkingMove(-amt, b.day, b.desc);
     billsTotal += amt;
   }
@@ -645,7 +720,22 @@ export function writeCheckingMonth(
     const holdForPie =
       monthsToHouseForCash != null && monthsToHouseForCash >= 0 && monthsToHouseForCash <= 1;
     const lazyMonth = rng() < 0.15;
-    const targetClp = 3_500_000 + Math.round((rng() * 3_000_000) / 50_000) * 50_000;
+    // Next month's pre-salary fixed outflows (bills incl. dividendo + card pagos land on
+    // days 5–15, salary on the 25th) must survive the sweep — proxy with this month's,
+    // plus this month's card-billed events: they close into THIS facturado and get paid
+    // next month, which the plain pago proxy misses (e.g. the Verano spikes).
+    const cardEventClp = narrative.events
+      .filter((ev) => ev.month === month && !ev.viaChecking)
+      .reduce(
+        (s, ev) => s + (ev.cuotas && ev.cuotas > 1 ? Math.round(ev.amountClp / ev.cuotas) : ev.amountClp),
+        0
+      );
+    const preSalaryFloorClp =
+      Math.ceil((billsTotal + pagosTotal + cardEventClp + 700_000) / 50_000) * 50_000;
+    const targetClp = Math.max(
+      3_500_000 + Math.round((rng() * 3_000_000) / 50_000) * 50_000,
+      preSalaryFloorClp
+    );
     const sweepClp =
       holdForPie || lazyMonth
         ? 0
@@ -1243,42 +1333,47 @@ export function writeInvestmentMonth(
           payYmd
         );
       } else if (payYmd <= chileCalendarTodayYmd()) {
-        // French amortization: fixed dividendo, principal share grows over time. The
-        // current month's cuota only exists once its payment day has passed — the real
-        // ledger never carries future-dated payments.
-        const i = house.monthlyRate;
-        const pmt = (house.mortgageClp * i) / (1 - Math.pow(1 + i, -house.termMonths));
-        const interest = state.mortgageOutstandingClp * i;
-        const amort = pmt - interest;
-        state.mortgageOutstandingClp = Math.max(0, state.mortgageOutstandingClp - amort);
+        // UF French schedule (see demoMortgageCuotaUf): the dividendo is a fixed UF
+        // amount, its CLP value rises with UF, and cruf follows the schedule. The current
+        // month's cuota only exists once its payment day has passed — the real ledger
+        // never carries future-dated payments.
         state.deptoCuotaN += 1;
-        const fireClp = 25_000;
-        const desClp = 3_000;
-        const pagoClp = Math.round(pmt + fireClp + desClp);
+        const s = demoMortgageCuotaUf(house, state.deptoCuotaN);
+        const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
+        const r5 = (v: number) => Math.round(v * 1e5) / 1e5;
+        const fireClp = DEMO_DEPTO_INCENDIO_CLP;
+        const desClp = DEMO_DEPTO_DESGRAVAMEN_CLP;
+        const pagoClp = Math.round(s.pmtUf * ufDay) + fireClp + desClp;
         state.deptoPagoAcumClp += pagoClp;
-        state.deptoAmortAcumUf = Math.round((state.deptoAmortAcumUf + uf5(amort)) * 1e4) / 1e4;
+        state.deptoAmortAcumUf = r4(state.deptoAmortAcumUf + s.amortUf);
+        const crufR = r4(s.balanceAfterUf);
+        const vvufR = uf4(grossClp);
         emitDeptoMovements(
           baseRow({
             cuota: String(state.deptoCuotaN),
             amount_clp: pagoClp,
             amount_uf: uf5(pagoClp),
-            credito_restante_uf: uf4(state.mortgageOutstandingClp),
-            valor_vivienda_uf: uf4(grossClp),
-            valor_neto_uf: uf4(grossClp - state.mortgageOutstandingClp),
-            valor_neto_clp: Math.round(grossClp - state.mortgageOutstandingClp),
+            credito_restante_uf: crufR,
+            valor_vivienda_uf: vvufR,
+            valor_neto_uf: r4(vvufR - crufR),
+            valor_neto_clp: Math.round((vvufR - crufR) * ufDay),
             pagado_neto_uf: state.deptoAmortAcumUf,
             pago_acumulado_clp: state.deptoPagoAcumClp,
-            min_uf: uf5(pmt),
-            amortizacion_clp: Math.round(amort),
-            amortizacion_uf: uf5(amort),
-            interes_clp: Math.round(interest),
-            interes_uf: uf5(interest),
+            min_uf: r5(s.pmtUf),
+            amortizacion_clp: Math.round(s.amortUf * ufDay),
+            amortizacion_uf: r5(s.amortUf),
+            interes_clp: Math.round(s.interestUf * ufDay),
+            interes_uf: r5(s.interestUf),
             incendio_clp: fireClp,
             desgravamen_clp: desClp,
           }),
           payYmd
         );
       }
+      // CLP mark: UF balance × month-end UF — a UF credit's CLP balance can rise while
+      // the UF balance falls, which is the real shape of a Chilean mortgage.
+      state.mortgageOutstandingClp =
+        demoMortgageBalanceUf(house, state.deptoCuotaN) * ufClpOnOrBefore(monthEnd);
       valuation(accounts.mortgageId, monthEnd, Math.round(state.mortgageOutstandingClp));
     } else if (state.mortgageOutstandingClp == null) {
       state.mortgageOutstandingClp = house.mortgageClp;
