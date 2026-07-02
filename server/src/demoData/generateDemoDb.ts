@@ -13,6 +13,9 @@ import { expandYearMonthsInclusive } from "../calendarMonth.js";
 import { demoNarrativeForPreset, demoRng, type DemoPreset } from "./demoNarrative.js";
 import {
   initialDemoRunState,
+  seedDemoCheckingBillCategoryRules,
+  seedDemoEventAndUsdCategoryRules,
+  seedDemoGenericTransferMerchants,
   seedDemoMerchantCategoryRules,
   writeCheckingMonth,
   writeCreditCardMonth,
@@ -145,6 +148,11 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
     recomputeCcBillingMonthBalances(id);
   }
   seedDemoMerchantCategoryRules([...ccMasterIdByLast4.values()]);
+  seedDemoCheckingBillCategoryRules(checkingId, narrative);
+  seedDemoGenericTransferMerchants();
+  seedDemoEventAndUsdCategoryRules(narrative, checkingId, accounts.vistaId, [
+    ...ccMasterIdByLast4.values(),
+  ]);
   ensureAccountSyncSourcesSeeded();
   seedNavTree();
 

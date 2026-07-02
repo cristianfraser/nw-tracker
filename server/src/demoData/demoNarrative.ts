@@ -32,6 +32,18 @@ export type DemoChapterId =
   | "own_house"
   | "test_baseline";
 
+/** A recurring checking bill (rent, luz, internet, dividendo, …) with its gastos category. */
+export type DemoBill = {
+  /** Cartola description — also the merchant key the seeded category rule matches on. */
+  desc: string;
+  meanClp: number;
+  /** `cc_expense_categories` slug (bills / others / real_estate_amortization / …). */
+  categorySlug: string;
+  day: number;
+  /** Bill fires on calendar months divisible by this (contribuciones = 3). Default 1. */
+  everyNMonths?: number;
+};
+
 export type DemoChapter = {
   id: DemoChapterId;
   /** Inclusive start month. Chapter runs until the next chapter's start. */
@@ -39,8 +51,8 @@ export type DemoChapter = {
   /** Net monthly salary landing in checking (CLP). Grows by `salaryAnnualGrowth`. */
   salaryClp: number;
   salaryAnnualGrowth: number;
-  /** Fixed monthly outflows from checking (rent/mortgage, bills, fees). */
-  fixedExpensesClp: number;
+  /** Itemized fixed outflows from checking — one movement per bill, categorized. */
+  bills: DemoBill[];
   /** Mean discretionary CC spend per month across all cards. */
   ccSpendMeanClp: number;
   /** Fraction of leftover cash swept to investments/savings each month (0–1). */
@@ -161,7 +173,11 @@ function demoNarrative(): DemoNarrative {
         from: "2018-03",
         salaryClp: 900_000,
         salaryAnnualGrowth: 0.08,
-        fixedExpensesClp: 80_000,
+        bills: [
+          { desc: "APORTE GASTOS CASA FAMILIAR", meanClp: 45_000, categorySlug: "others", day: 5 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 20_000, categorySlug: "bills", day: 10 },
+          { desc: "GIMNASIO POWER FIT", meanClp: 15_000, categorySlug: "fun", day: 6 },
+        ],
         ccSpendMeanClp: 150_000,
         savingsRate: 0.55,
         categoryWeights: { fun: 1.4, supermarket: 0.3 },
@@ -171,7 +187,15 @@ function demoNarrative(): DemoNarrative {
         from: "2019-06",
         salaryClp: 1_250_000,
         salaryAnnualGrowth: 0.07,
-        fixedExpensesClp: 520_000,
+        bills: [
+          { desc: "PAGO ARRIENDO DEPTO PROVIDENCIA", meanClp: 350_000, categorySlug: "others", day: 5 },
+          { desc: "GASTOS COMUNES EDIFICIO", meanClp: 55_000, categorySlug: "bills", day: 6 },
+          { desc: "ENEL CHILE", meanClp: 28_000, categorySlug: "bills", day: 12 },
+          { desc: "AGUAS ANDINAS", meanClp: 14_000, categorySlug: "bills", day: 12 },
+          { desc: "VTR INTERNET", meanClp: 26_000, categorySlug: "bills", day: 15 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 22_000, categorySlug: "bills", day: 10 },
+          { desc: "GIMNASIO POWER FIT", meanClp: 25_000, categorySlug: "fun", day: 6 },
+        ],
         ccSpendMeanClp: 320_000,
         savingsRate: 0.2,
         categoryWeights: { supermarket: 1.3, bills: 1.2 },
@@ -181,7 +205,14 @@ function demoNarrative(): DemoNarrative {
         from: "2020-04",
         salaryClp: 1_320_000,
         salaryAnnualGrowth: 0.05,
-        fixedExpensesClp: 520_000,
+        bills: [
+          { desc: "PAGO ARRIENDO DEPTO PROVIDENCIA", meanClp: 350_000, categorySlug: "others", day: 5 },
+          { desc: "GASTOS COMUNES EDIFICIO", meanClp: 55_000, categorySlug: "bills", day: 6 },
+          { desc: "ENEL CHILE", meanClp: 36_000, categorySlug: "bills", day: 12 },
+          { desc: "AGUAS ANDINAS", meanClp: 16_000, categorySlug: "bills", day: 12 },
+          { desc: "VTR INTERNET", meanClp: 32_000, categorySlug: "bills", day: 15 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 22_000, categorySlug: "bills", day: 10 },
+        ],
         ccSpendMeanClp: 140_000,
         savingsRate: 0.45,
         categoryWeights: { fun: 0.2, supermarket: 1.5, delivery: 1.6 },
@@ -191,7 +222,11 @@ function demoNarrative(): DemoNarrative {
         from: "2021-09",
         salaryClp: 1_650_000,
         salaryAnnualGrowth: 0.08,
-        fixedExpensesClp: 120_000,
+        bills: [
+          { desc: "APORTE GASTOS CASA FAMILIAR", meanClp: 60_000, categorySlug: "others", day: 5 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 25_000, categorySlug: "bills", day: 10 },
+          { desc: "BODEGA STORAGE CENTRO", meanClp: 35_000, categorySlug: "others", day: 8 },
+        ],
         ccSpendMeanClp: 260_000,
         savingsRate: 0.55,
       },
@@ -200,7 +235,15 @@ function demoNarrative(): DemoNarrative {
         from: "2022-11",
         salaryClp: 2_100_000,
         salaryAnnualGrowth: 0.07,
-        fixedExpensesClp: 680_000,
+        bills: [
+          { desc: "PAGO ARRIENDO DEPTO LAS CONDES", meanClp: 470_000, categorySlug: "others", day: 5 },
+          { desc: "GASTOS COMUNES EDIFICIO", meanClp: 85_000, categorySlug: "bills", day: 6 },
+          { desc: "ENEL CHILE", meanClp: 35_000, categorySlug: "bills", day: 12 },
+          { desc: "AGUAS ANDINAS", meanClp: 17_000, categorySlug: "bills", day: 12 },
+          { desc: "VTR INTERNET", meanClp: 28_000, categorySlug: "bills", day: 15 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 25_000, categorySlug: "bills", day: 10 },
+          { desc: "GIMNASIO POWER FIT", meanClp: 20_000, categorySlug: "fun", day: 6 },
+        ],
         ccSpendMeanClp: 420_000,
         savingsRate: 0.3,
       },
@@ -209,7 +252,19 @@ function demoNarrative(): DemoNarrative {
         from: "2024-08",
         salaryClp: 2_600_000,
         salaryAnnualGrowth: 0.06,
-        fixedExpensesClp: 950_000,
+        bills: [
+          { desc: "DIVIDENDO HIPOTECARIO BANCO DEMO", meanClp: 420_000, categorySlug: "real_estate_amortization", day: 5 },
+          { desc: "CONTRIBUCIONES TESORERIA", meanClp: 270_000, categorySlug: "bills", day: 28, everyNMonths: 3 },
+          { desc: "ENEL CHILE", meanClp: 60_000, categorySlug: "bills", day: 12 },
+          { desc: "AGUAS ANDINAS", meanClp: 30_000, categorySlug: "bills", day: 12 },
+          { desc: "METROGAS", meanClp: 45_000, categorySlug: "bills", day: 14 },
+          { desc: "VTR INTERNET", meanClp: 32_000, categorySlug: "bills", day: 15 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 30_000, categorySlug: "bills", day: 10 },
+          { desc: "SEGURO HOGAR DEMO", meanClp: 35_000, categorySlug: "bills", day: 20 },
+          { desc: "JARDINERO DON PEDRO", meanClp: 45_000, categorySlug: "trees", day: 22, everyNMonths: 2 },
+          { desc: "MANTENCION CASA VARIOS", meanClp: 60_000, categorySlug: "others", day: 18 },
+          { desc: "GIMNASIO POWER FIT", meanClp: 25_000, categorySlug: "fun", day: 6 },
+        ],
         ccSpendMeanClp: 480_000,
         savingsRate: 0.25,
         categoryWeights: { home: 1.5 },
@@ -306,7 +361,12 @@ function testNarrative(): DemoNarrative {
         from: first,
         salaryClp: 1_500_000,
         salaryAnnualGrowth: 0.05,
-        fixedExpensesClp: 450_000,
+        bills: [
+          { desc: "PAGO ARRIENDO DEPTO TEST", meanClp: 320_000, categorySlug: "others", day: 5 },
+          { desc: "ENEL CHILE", meanClp: 40_000, categorySlug: "bills", day: 12 },
+          { desc: "VTR INTERNET", meanClp: 30_000, categorySlug: "bills", day: 15 },
+          { desc: "PLAN CELULAR ENTEL", meanClp: 25_000, categorySlug: "bills", day: 10 },
+        ],
         ccSpendMeanClp: 300_000,
         savingsRate: 0.35,
       },

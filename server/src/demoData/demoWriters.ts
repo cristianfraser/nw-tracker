@@ -21,6 +21,7 @@ import {
   getCcExpenseCategoryBySlug,
   normalizeCcExpenseMerchantKey,
 } from "../ccExpenseCategories.js";
+import { invalidateCcExpenseGenericUniqueMerchantCache } from "../ccExpenseGenericUniqueMerchants.js";
 import { monthEndUtcYmd } from "../calendarMonth.js";
 import {
   chapterForMonth,
@@ -50,7 +51,7 @@ export type DemoAccounts = {
 
 type DemoMerchant = {
   name: string;
-  category: "supermarket" | "fun" | "delivery" | "bills" | "home" | "transport";
+  category: "supermarket" | "fun" | "delivery" | "bills" | "home" | "transport" | "subs" | "clothes";
 };
 
 const MERCHANTS: DemoMerchant[] = [
@@ -64,6 +65,10 @@ const MERCHANTS: DemoMerchant[] = [
   { name: "BENCINERA RUTA SUR", category: "transport" },
   { name: "TIENDA HOGAR CENTRO", category: "home" },
   { name: "CAFETERIA LA PLAZA", category: "fun" },
+  { name: "NETFLIX.COM", category: "subs" },
+  { name: "SPOTIFY", category: "subs" },
+  { name: "TIENDA ROPA URBANA", category: "clothes" },
+  { name: "GRANDES TIENDAS DEL PARQUE", category: "clothes" },
 ];
 
 const USD_MERCHANTS = ["STREAMING GLOBAL INC", "CLOUD TOOLS LLC", "BOOKSTORE INTL"];
@@ -288,11 +293,16 @@ export function writeCheckingMonth(
 
   checkingMove(net, 25, "ABONO REMUNERACIONES EMPRESA DEMO SPA");
 
-  checkingMove(
-    -Math.round(jitter(rng, ch.fixedExpensesClp, 0.15)),
-    5,
-    ch.id === "own_house" ? "PAGO GASTOS CASA / CONTRIBUCIONES" : "PAGO ARRIENDO / GASTOS COMUNES"
-  );
+  // Itemized bills — one categorized movement each (rent/dividendo, luz, agua, internet…).
+  let billsTotal = 0;
+  const monthNo = Number(month.slice(5, 7));
+  for (const b of ch.bills) {
+    const everyN = b.everyNMonths ?? 1;
+    if (everyN > 1 && monthNo % everyN !== 0) continue;
+    const amt = Math.round(jitter(rng, b.meanClp, 0.1));
+    checkingMove(-amt, b.day, b.desc);
+    billsTotal += amt;
+  }
 
   // One PAGO per card with a closed facturado.
   let pagosTotal = 0;
@@ -316,7 +326,7 @@ export function writeCheckingMonth(
   // on the destination — the pair shape the deposits reconciliation machinery matches on).
   // ~30% of months skip the sweep, a few sweep extra hard; the rest jitter around the
   // chapter's savings rate. Uniform monthly saving looked lifeless on the net-worth chart.
-  const leftover = net - ch.fixedExpensesClp - pagosTotal - eventChecking;
+  const leftover = net - billsTotal - pagosTotal - eventChecking;
   const sweepRoll = rng();
   const sweepFactor = sweepRoll < 0.3 ? 0 : sweepRoll > 0.85 ? 1.7 : 0.6 + rng() * 0.8;
   const sweepClp = Math.max(
@@ -329,27 +339,16 @@ export function writeCheckingMonth(
       Math.round((sweepClp * narrative.stocks.sweepShare) / 50_000) * 50_000;
   }
   const fondoSweepClp = sweepClp - stocksSweepClp;
-  if (fondoSweepClp > 0) {
-    checkingMove(-fondoSweepClp, 26, "TRANSFERENCIA FONDO DEMO");
-  }
-  if (stocksSweepClp > 0) {
-    checkingMove(-stocksSweepClp, 26, "TRANSFERENCIA CORREDORA DEMO");
-  }
 
-  // Scripted trades: buys leave checking; sells (fraction of current value) come back in.
+  // Buys accumulate per asset and post as ONE checking transfer each — the asset side
+  // writes one Depósito per asset too, so the internal-transfer matcher pairs them 1:1
+  // on amount+day (two checking legs against one merged deposit never match).
   const tradeFlows = { stocksBuy: stocksSweepClp, stocksSell: 0, cryptoBuy: 0, cryptoSell: 0, fondoBuy: fondoSweepClp, fondoSell: 0 };
   for (const tr of narrative.trades) {
     if (tr.month !== month) continue;
     if (tr.action === "buy") {
       const amt = Math.round(tr.amountClp ?? 0);
       if (amt <= 0) continue;
-      const desc =
-        tr.asset === "crypto"
-          ? "TRANSFERENCIA EXCHANGE DEMO"
-          : tr.asset === "stocks"
-            ? "TRANSFERENCIA CORREDORA DEMO"
-            : "TRANSFERENCIA FONDO DEMO";
-      checkingMove(-amt, 17, desc);
       if (tr.asset === "crypto") tradeFlows.cryptoBuy += amt;
       else if (tr.asset === "stocks") tradeFlows.stocksBuy += amt;
       else tradeFlows.fondoBuy += amt;
@@ -373,6 +372,15 @@ export function writeCheckingMonth(
       else if (tr.asset === "stocks") tradeFlows.stocksSell += amt;
       else tradeFlows.fondoSell += amt;
     }
+  }
+  if (tradeFlows.fondoBuy > 0) {
+    checkingMove(-tradeFlows.fondoBuy, 26, "TRANSFERENCIA FONDO DEMO");
+  }
+  if (tradeFlows.stocksBuy > 0) {
+    checkingMove(-tradeFlows.stocksBuy, 26, "TRANSFERENCIA CORREDORA DEMO");
+  }
+  if (tradeFlows.cryptoBuy > 0) {
+    checkingMove(-tradeFlows.cryptoBuy, 17, "TRANSFERENCIA EXCHANGE DEMO");
   }
 
   // Quarterly top-up of the cash-savings account.
@@ -835,6 +843,8 @@ const MERCHANT_CATEGORY_SLUGS: Record<DemoMerchant["category"], string> = {
   bills: "healthcare",
   home: "others",
   transport: "transportation",
+  subs: "subscriptions",
+  clothes: "clothes",
 };
 
 /** Merchant → category rules per card so the gastos charts stack out of the box. */
@@ -854,6 +864,115 @@ export function seedDemoMerchantCategoryRules(ccMasterIds: readonly number[]): n
         );
       }
       n += ins.run(masterId, normalizeCcExpenseMerchantKey(m.name), cat.id).changes;
+    }
+  }
+  return n;
+}
+
+/**
+ * Register the demo's named transfer descriptions as generic-unique merchants — the same
+ * extension point the admin panel offers for real cartolas. Without this the
+ * checking→investment legs fail `checkingWithdrawalMayAutoMatchDeposit` (named-payee
+ * guard) and every sweep/trade shows up as an unclassified gasto.
+ */
+export function seedDemoGenericTransferMerchants(): number {
+  const ins = db.prepare(
+    `INSERT OR IGNORE INTO cc_expense_generic_unique_merchants (merchant_key, sort_order)
+     VALUES (?, ?)`
+  );
+  const keys = [
+    "TRANSFERENCIA FONDO DEMO",
+    "TRANSFERENCIA CORREDORA DEMO",
+    "TRANSFERENCIA EXCHANGE DEMO",
+    "TRANSF FONDO RESERVA DEMO",
+  ];
+  let n = 0;
+  keys.forEach((k, i) => {
+    n += ins.run(normalizeCcExpenseMerchantKey(k), 1000 + i * 10).changes;
+  });
+  invalidateCcExpenseGenericUniqueMerchantCache();
+  return n;
+}
+
+const EVENT_KIND_CATEGORY_SLUGS: Record<string, string> = {
+  vacation_small: "fun",
+  vacation_medium: "fun",
+  vacation_big: "fun",
+  moving_costs: "others",
+  house_down_payment: "no_cuenta",
+};
+
+const USD_MERCHANT_CATEGORY_SLUGS: Record<string, string> = {
+  "STREAMING GLOBAL INC": "subscriptions",
+  "CLOUD TOOLS LLC": "others",
+  "BOOKSTORE INTL": "fun",
+};
+
+/** Rules for USD-statement merchants and one-off event purchases (viaje → Ocio, …). */
+export function seedDemoEventAndUsdCategoryRules(
+  narrative: DemoNarrative,
+  checkingId: number,
+  vistaId: number | null,
+  ccMasterIds: readonly number[]
+): number {
+  const ins = db.prepare(
+    `INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
+     VALUES (?, ?, ?)`
+  );
+  const catId = (slug: string): number => {
+    const cat = getCcExpenseCategoryBySlug(slug);
+    if (!cat) throw new Error(`demo: cc_expense_categories missing slug ${slug}`);
+    return cat.id;
+  };
+  let n = 0;
+  for (const masterId of ccMasterIds) {
+    for (const [name, slug] of Object.entries(USD_MERCHANT_CATEGORY_SLUGS)) {
+      n += ins.run(masterId, normalizeCcExpenseMerchantKey(name), catId(slug)).changes;
+    }
+  }
+  for (const ev of narrative.events) {
+    const slug = EVENT_KIND_CATEGORY_SLUGS[ev.kind];
+    if (!slug) continue;
+    const key = normalizeCcExpenseMerchantKey(ev.label.toUpperCase());
+    if (!key) continue;
+    const accountIds = ev.viaChecking ? [checkingId] : ccMasterIds;
+    for (const accountId of accountIds) {
+      n += ins.run(accountId, key, catId(slug)).changes;
+    }
+  }
+  if (vistaId != null) {
+    n += ins.run(
+      vistaId,
+      normalizeCcExpenseMerchantKey("COMPRA DEBITO DEMO"),
+      catId("supermarket")
+    ).changes;
+  }
+  return n;
+}
+
+/** Merchant-wide category rules for the checking bills (rent, luz, dividendo, …). */
+export function seedDemoCheckingBillCategoryRules(
+  checkingId: number,
+  narrative: DemoNarrative
+): number {
+  const ins = db.prepare(
+    `INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
+     VALUES (?, ?, ?)`
+  );
+  const seen = new Set<string>();
+  let n = 0;
+  for (const ch of narrative.chapters) {
+    for (const b of ch.bills) {
+      const key = normalizeCcExpenseMerchantKey(b.desc);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const cat = getCcExpenseCategoryBySlug(b.categorySlug);
+      if (!cat) {
+        throw new Error(
+          `demo: cc_expense_categories missing slug ${b.categorySlug} (bill ${b.desc})`
+        );
+      }
+      n += ins.run(checkingId, key, cat.id).changes;
     }
   }
   return n;
