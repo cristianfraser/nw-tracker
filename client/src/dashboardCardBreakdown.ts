@@ -802,23 +802,13 @@ export function cardGroupNetWorthTitleBalanceDelta(
   return any ? Math.round(sum) : null;
 }
 
-export type SueciaSnapshot = {
-  valor_clp: number;
-  net_value_clp: number;
-  mortgage_clp: number;
-  valor_usd?: number | null;
-  net_value_usd?: number | null;
-  mortgage_usd?: number | null;
-};
-
-/** Real estate card: Suecia (net) with valor and mortgage detail lines. */
+/** Real estate card: property (net equity) with valor and hipoteca detail lines. */
 export function buildRealEstateCardBreakdown(
   accounts: DashboardAccountRow[],
-  suecia: SueciaSnapshot | null | undefined,
   allAccounts?: DashboardAccountRow[]
 ): CardBreakdownLine[] {
   const props = valueRows(accounts.filter((a) => a.group_slug === "real_estate"));
-  if (!suecia && props.length === 0) return [];
+  if (props.length === 0) return [];
 
   const lines: CardBreakdownLine[] = [];
   const propertyRow = props.find(
@@ -826,8 +816,7 @@ export function buildRealEstateCardBreakdown(
   );
   const mortgageRow = mortgageAccountForPropertyRow(allAccounts ?? accounts, propertyRow);
   const propertyName = props[0]?.name.trim().toLowerCase() ?? "suecia";
-  const netFromAccount = props.length ? sumClp(props, (r) => r.current_value_clp ?? 0) : null;
-  const netClp = suecia?.net_value_clp ?? netFromAccount ?? 0;
+  const netClp = props.length ? sumClp(props, (r) => r.current_value_clp ?? 0) : 0;
   const groupUsd = props.length ? sumUsd(props) : null;
   const propertyTo =
     propertyRow != null
@@ -846,29 +835,13 @@ export function buildRealEstateCardBreakdown(
     to: propertyTo,
   });
 
-  if (suecia) {
-    lines.push({
-      label: i18n.t("realEstate.propertyValue"),
-      clp: suecia.valor_clp,
-      usd: suecia.valor_usd,
-      depth: 1,
-      to: propertyTo,
-    });
-    lines.push({
-      label: i18n.t("realEstate.mortgage"),
-      clp: suecia.mortgage_clp,
-      usd: suecia.mortgage_usd,
-      depth: 1,
-      to: mortgageTo,
-    });
-  } else if (
+  if (
     props.length === 1 &&
     propertyRow != null &&
     mortgageRow?.current_value_clp != null
   ) {
-    // No sheet-driven snapshot (e.g. demo DB) but the property has a paired mortgage:
-    // synthesize the same valor / hipoteca detail from account values. Property rows
-    // store equity, so gross valor = equity + outstanding mortgage.
+    // The single card path: property rows store equity (net of the linked hipoteca), so
+    // gross valor = equity + outstanding mortgage — both straight from account values.
     const mortgageClp = mortgageRow.current_value_clp;
     const mortgageUsd = mortgageRow.current_value_usd ?? null;
     lines.push({

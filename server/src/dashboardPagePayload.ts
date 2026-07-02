@@ -1,4 +1,4 @@
-import { buildDashboardAccountRows, buildDashboardSueciaSnapshot } from "./dashboardAccounts.js";
+import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import {
@@ -78,7 +78,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       ...rest,
       notes: notes ?? null,
     }));
-    const suecia_snapshot = buildDashboardSueciaSnapshot(asOfToday, includeUsd);
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
     const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
     const liabilities_breakdown = {
@@ -120,7 +119,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
           ...(includeUsd ? { value_usd: v.value_usd } : {}),
         })),
       accounts: clientAccounts,
-      suecia_snapshot,
       liabilities_breakdown,
       deposits_by_category: depositsFlow.by_category,
       inversiones_deposits_chart: {

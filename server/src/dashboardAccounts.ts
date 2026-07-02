@@ -3,7 +3,6 @@ import {
   computeLatestDisplayedEquityClp,
 } from "./brokerageEquityMtm.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
-import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
@@ -58,7 +57,6 @@ import {
   withPortfolioGroupIndex,
 } from "./portfolioGroupTree.js";
 import {
-  deptoSueciaDashboardSnapshotAt,
 } from "./deptoDividendosLedger.js";
 import { db } from "./db.js";
 import {
@@ -407,32 +405,6 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   );
 }
 
-export type DashboardSueciaSnapshot = {
-  valor_clp: number;
-  net_value_clp: number;
-  mortgage_clp: number;
-  valor_usd?: number | null;
-  net_value_usd?: number | null;
-  mortgage_usd?: number | null;
-};
-
-/** Suecia RE card snapshot from `depto_dividendos_sheet_rows` (import:excel → SQLite). */
-export function buildDashboardSueciaSnapshot(
-  asOfYmd: string,
-  includeUsd: boolean
-): DashboardSueciaSnapshot | null {
-  const deptoLedger = loadDeptoLedgerFromMovements();
-  const sueciaRaw = deptoSueciaDashboardSnapshotAt(asOfYmd, deptoLedger);
-  if (!sueciaRaw) return null;
-  if (!includeUsd) return sueciaRaw;
-  return {
-    ...sueciaRaw,
-    valor_usd: depositClpToUsdAtDate(sueciaRaw.valor_clp, asOfYmd),
-    net_value_usd: depositClpToUsdAtDate(sueciaRaw.net_value_clp, asOfYmd),
-    mortgage_usd: depositClpToUsdAtDate(sueciaRaw.mortgage_clp, asOfYmd),
-  };
-}
-
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
 /** @heavy One {@link getAccountMonthlyPerformance} per tracked account (via {@link buildDashboardAccountRows}). */
 export async function buildDashboardNavSnapshot(includeUsd: boolean) {
@@ -442,7 +414,6 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     notes: notes ?? null,
   }));
   const asOfToday = chileCalendarTodayYmd();
-  const suecia_snapshot = buildDashboardSueciaSnapshot(asOfToday, includeUsd);
   const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
   const liabilities_breakdown = {
     mortgage_clp: liabilitiesClp.mortgage_clp,
@@ -463,7 +434,6 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     accounts: clientAccounts,
     liabilities_breakdown,
     dashboard_layout,
-    suecia_snapshot,
     nw_bucket_totals,
     chart_shape: getDashboardChartShape(),
   };
@@ -488,7 +458,6 @@ async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) 
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
-    suecia_snapshot: nav.suecia_snapshot,
     nw_bucket_totals: nav.nw_bucket_totals,
     inversiones_period_metrics: inversionesPeriodMetrics(unit),
     overview: ts,

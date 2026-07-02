@@ -5,7 +5,7 @@ import {
   loadDeptoDividendosSheetRowsRawFromDb,
   replaceDeptoDividendosSheetRowsInDb,
 } from "./deptoSheetDb.js";
-import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
+import { ufRowOnOrBefore } from "./fxRates.js";
 
 /** Semicolon CSV + es-CL number parsing (aligned with `cfraserCsv.ts`). */
 export function numCsv(v: unknown): number | null {
@@ -409,30 +409,7 @@ export function deptoMortgageBalanceClpBySnapshotDates(
   return out;
 }
 
-export type DeptoSueciaDashboardSnapshot = {
-  valor_clp: number;
-  net_value_clp: number;
-  mortgage_clp: number;
-};
-
 export type DeptoAccountMarkAtYmd = { value_clp: number; as_of_date: string };
-
-/** Latest Suecia property snapshot for dashboard RE card (UF día × net equity UF, same as perf charts). */
-export function deptoSueciaDashboardSnapshotAt(
-  asOfYmd: string,
-  ledger: readonly DeptoMortgageSheetRow[]
-): DeptoSueciaDashboardSnapshot | null {
-  if (!ledger.length) return null;
-  const dates = [asOfYmd] as const;
-  const ufMap = ufClpBySnapshotDatesAsc(dates);
-  const netBy = deptoSueciaPropertyCloseClpBySnapshotDates(dates, ledger, ufMap);
-  const mortgageBy = deptoMortgageCloseClpBySnapshotDates(dates, ledger, ufMap);
-
-  const net = netBy.get(asOfYmd) ?? null;
-  const mortgage = mortgageBy.get(asOfYmd) ?? null;
-  if (net == null || mortgage == null) return null;
-  return { valor_clp: net + mortgage, net_value_clp: net, mortgage_clp: mortgage };
-}
 
 /**
  * Net equity UF: forward-filled **valor neto (UF)** from the ledger rows (only on/after

@@ -37,7 +37,7 @@ export function perturbCachedAmountsPreservingSortOrder(
 
 type SnapshotSortContext = Pick<
   DashboardNavSnapshotResponse,
-  "dashboard_layout" | "liabilities_breakdown" | "suecia_snapshot"
+  "dashboard_layout" | "liabilities_breakdown"
 >;
 
 /** Permute perturbed targets so higher original balance keeps a higher perturbed value. */
@@ -93,7 +93,7 @@ function rowFxRate(row: DashboardAccountRow): number | null {
   return null;
 }
 
-/** Snapshot-level FX for aggregate fields (liabilities, suecia, linked balances). */
+/** Snapshot-level FX for aggregate fields (liabilities, linked balances). */
 export function resolveSnapshotFxRate(
   accounts: DashboardAccountRow[],
   cachedFx: FxLatest | undefined
@@ -178,23 +178,6 @@ export function synthesizeMissingUsdOnNavSnapshot(
       }
     : liabilities;
 
-  const suecia = snapshot.suecia_snapshot;
-  const suecia_snapshot = suecia
-    ? {
-        ...suecia,
-        valor_usd: synthesizeUsdField(suecia.valor_clp, suecia.valor_usd, snapshotFxRate),
-        net_value_usd: synthesizeUsdField(
-          suecia.net_value_clp,
-          suecia.net_value_usd,
-          snapshotFxRate
-        ),
-        mortgage_usd: synthesizeUsdField(
-          suecia.mortgage_clp,
-          suecia.mortgage_usd,
-          snapshotFxRate
-        ),
-      }
-    : suecia;
 
   const dashboard_layout = snapshot.dashboard_layout?.map((card) => ({
     ...card,
@@ -208,7 +191,6 @@ export function synthesizeMissingUsdOnNavSnapshot(
     ...snapshot,
     accounts,
     liabilities_breakdown,
-    suecia_snapshot,
     dashboard_layout,
   };
 }
@@ -417,7 +399,6 @@ export function perturbDashboardNavSnapshot(
 ): DashboardNavSnapshotResponse {
   const factor = randomPerturbFactor();
   const liabilities = snapshot.liabilities_breakdown;
-  const suecia = snapshot.suecia_snapshot;
   const dashboard_layout = perturbDashboardLayout(snapshot.dashboard_layout, factor);
   const sortSnapshot: SnapshotSortContext = {
     ...snapshot,
@@ -458,16 +439,6 @@ export function perturbDashboardNavSnapshot(
           credit_card_usd: perturbOptionalNumber(liabilities.credit_card_usd, factor),
         }
       : liabilities,
-    suecia_snapshot: suecia
-      ? {
-          valor_clp: perturbCachedAmount(suecia.valor_clp, factor),
-          net_value_clp: perturbCachedAmount(suecia.net_value_clp, factor),
-          mortgage_clp: perturbCachedAmount(suecia.mortgage_clp, factor),
-          valor_usd: perturbOptionalNumber(suecia.valor_usd, factor),
-          net_value_usd: perturbOptionalNumber(suecia.net_value_usd, factor),
-          mortgage_usd: perturbOptionalNumber(suecia.mortgage_usd, factor),
-        }
-      : suecia,
     dashboard_layout,
   };
 }

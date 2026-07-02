@@ -209,9 +209,8 @@ describe("breakdownForNavChild real_estate", () => {
     exclude_from_group_totals: 0,
   } as DashboardAccountRow;
 
-  it("omits valor and hipoteca without suecia_snapshot", () => {
+  it("omits valor and hipoteca without a paired mortgage account", () => {
     const br = breakdownForNavChild(realEstateNode, [propertyRow], {
-      suecia_snapshot: null,
       liabilities_breakdown: undefined,
     });
     const labels = br?.lines?.map((l) => l.label) ?? [];
@@ -243,7 +242,6 @@ describe("breakdownForNavChild real_estate", () => {
     } as DashboardAccountRow;
     const demoMortgageView = { ...demoMortgage, account_id: 14 } as DashboardAccountRow;
     const br = breakdownForNavChild(realEstateNode, [demoProperty], {
-      suecia_snapshot: null,
       liabilities_breakdown: undefined,
       accounts: [demoProperty, demoMortgage, demoMortgageView],
     });
@@ -257,28 +255,11 @@ describe("breakdownForNavChild real_estate", () => {
     expect(lines[2]?.clp).toBe(68_878_583);
   });
 
-  it("adds valor and hipoteca when suecia_snapshot is present", () => {
-    const br = breakdownForNavChild(realEstateNode, [propertyRow], {
-      suecia_snapshot: {
-        valor_clp: 219_480_570,
-        net_value_clp: 144_878_576,
-        mortgage_clp: 74_601_994,
-      },
-      liabilities_breakdown: undefined,
-    });
-    expect(br?.lines).toHaveLength(3);
-    expect(br?.lines?.[0]?.label).toBe("suecia");
-    expect(br?.lines?.[1]?.label).toBe("valor");
-    expect(br?.lines?.[1]?.clp).toBe(219_480_570);
-    expect(br?.lines?.[2]?.label).toBe("hipoteca");
-    expect(br?.lines?.[2]?.clp).toBe(74_601_994);
-  });
 });
 
 describe("breakdownForNavChild cash_savings", () => {
   it("builds savings account lines and linked tarjeta bottom row", () => {
     const dash = {
-      suecia_snapshot: null,
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 500_000 },
       dashboard_layout: [
         {
@@ -342,7 +323,7 @@ describe("breakdownForNavChild cash_savings", () => {
           exclude_from_group_totals: 0,
         } as DashboardAccountRow,
       ],
-      { suecia_snapshot: null, liabilities_breakdown: undefined }
+      { liabilities_breakdown: undefined }
     );
     expect(br?.lines.length).toBeGreaterThan(0);
     expect(br?.lines[0]?.clp).toBe(2_000_000);

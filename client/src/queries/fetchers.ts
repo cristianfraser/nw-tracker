@@ -42,7 +42,6 @@ export type DashboardNavContext = {
   accounts: DashboardResponse["accounts"];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
-  suecia_snapshot?: DashboardResponse["suecia_snapshot"];
   nw_bucket_totals?: DashboardNavContextResponse["nw_bucket_totals"];
   inversiones_period_metrics?: DashboardNavContextResponse["inversiones_period_metrics"];
   overviewPoints: Record<string, string | number | null>[];
@@ -60,7 +59,6 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
-    suecia_snapshot: nav.suecia_snapshot,
     nw_bucket_totals: nav.nw_bucket_totals,
     inversiones_period_metrics: nav.inversiones_period_metrics,
     overviewPoints: nav.overview?.points ?? [],
@@ -162,7 +160,7 @@ export function dashPickForNavStrip(
   netWorthRoot: NavTreeNodeDto | null | undefined
 ): Pick<
   DashboardResponse,
-  "accounts" | "liabilities_breakdown" | "dashboard_layout" | "suecia_snapshot"
+  "accounts" | "liabilities_breakdown" | "dashboard_layout"
 > & {
   totals: DashboardResponse["totals"];
   inversiones_period_metrics?: DashboardNavContextResponse["inversiones_period_metrics"];
@@ -243,7 +241,6 @@ export function dashPickForNavStrip(
     accounts: ctx.accounts,
     liabilities_breakdown: ctx.liabilities_breakdown,
     dashboard_layout: ctx.dashboard_layout,
-    suecia_snapshot: ctx.suecia_snapshot,
     totals: {
       net_worth_clp,
       deposits_clp,

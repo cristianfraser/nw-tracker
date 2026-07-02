@@ -26,7 +26,7 @@ import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 export type PortfolioNavEntityCardsStripProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "suecia_snapshot" | "liabilities_breakdown" | "dashboard_layout"
+    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout"
   > & {
     inversiones_period_metrics?: InversionesPeriodMetricsDto;
   };

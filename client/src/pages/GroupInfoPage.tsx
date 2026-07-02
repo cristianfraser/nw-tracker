@@ -161,7 +161,6 @@ export function GroupInfoPage() {
         liabilities_breakdown:
           navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
         dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
-        suecia_snapshot: navCtx?.suecia_snapshot ?? navSnapshot.suecia_snapshot,
         nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
         overviewPoints,
       },
