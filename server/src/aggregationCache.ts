@@ -20,12 +20,26 @@ let rollupSlugsByAccountId: Map<number, Set<string>> | null = null;
  */
 let cacheDayYmd: string | null = null;
 
+/**
+ * SQLite `PRAGMA data_version` increments when *another connection* commits a write —
+ * exactly the case the in-process invalidation hooks can't see (CLI import scripts run in
+ * their own process against the same file). Same-connection writes don't bump it; those
+ * paths call `invalidateAggregationForAccountDate` explicitly.
+ */
+let cacheDbDataVersion: number | null = null;
+
+function currentDbDataVersion(): number {
+  return db.pragma("data_version", { simple: true }) as number;
+}
+
 function ensureCacheFreshForChileDay(): void {
   const today = chileCalendarTodayYmd();
-  if (cacheDayYmd !== today) {
+  const dataVersion = currentDbDataVersion();
+  if (cacheDayYmd !== today || cacheDbDataVersion !== dataVersion) {
     cache.clear();
     rollupSlugsByAccountId = null;
     cacheDayYmd = today;
+    cacheDbDataVersion = dataVersion;
   }
 }
 
@@ -35,9 +49,21 @@ function deleteKeysMatchingPrefix(prefix: string): void {
   }
 }
 
+/**
+ * Notified after every explicit invalidation (writes). The dashboard cache warmer registers
+ * here to schedule a debounced background rebuild; day-rollover / data_version clears are
+ * detected by the warmer's own timers instead (they happen lazily inside reads).
+ */
+let invalidationListener: (() => void) | null = null;
+
+export function setAggregationInvalidationListener(listener: (() => void) | null): void {
+  invalidationListener = listener;
+}
+
 export function clearAggregationCache(): void {
   cache.clear();
   rollupSlugsByAccountId = null;
+  invalidationListener?.();
 }
 
 export function getAggregationCached<T>(key: string, build: () => T): T {
@@ -58,6 +84,28 @@ export function cacheKeyGroupConsolidatedMonthly(groupSlug: string, unit: TsUnit
 
 export function cacheKeyGroupClosingByDate(slug: string, unit: TsUnit): string {
   return `group.valuation_closing_by_date|${slug}|${unit}`;
+}
+
+export function cacheKeyCcBillingDetail(accountId: number): string {
+  return `cc.billing_detail|${accountId}`;
+}
+
+/**
+ * Drop the cached CC billing detail (ledger months + detalle por mes) for one account, or for
+ * all accounts when omitted. Same-connection CC writes must call this (directly or via
+ * `invalidateAggregationForAccountDate` / `recomputeCcBillingMonthBalances` /
+ * `upsertCreditCardValuationsFromLedger`); cross-process writes and day rollover are covered
+ * by `ensureCacheFreshForChileDay`.
+ */
+export function invalidateCcBillingDetail(accountId?: number): void {
+  if (accountId == null) {
+    deleteKeysMatchingPrefix("cc.billing_detail|");
+  } else {
+    cache.delete(cacheKeyCcBillingDetail(accountId));
+    const operationalId = resolveOperationalAccountId(accountId);
+    if (operationalId !== accountId) cache.delete(cacheKeyCcBillingDetail(operationalId));
+  }
+  invalidationListener?.();
 }
 
 function ancestorGroupSlugsForGroupId(
@@ -126,6 +174,7 @@ export function invalidateAggregationForAccountDate(
   const operationalId = resolveOperationalAccountId(accountId);
   clearCheckingBalanceCache(operationalId);
   if (operationalId !== accountId) clearCheckingBalanceCache(accountId);
+  invalidateCcBillingDetail(accountId);
 
   const monthKeysToInvalidate = forwardMonthKeysFrom(occurredOrAsOfYmd);
   for (const unit of ["clp", "usd", "uf"] as const) {
@@ -150,6 +199,7 @@ export function invalidateAggregationForAccountDate(
   cache.delete("dashboard.portfolio_totals|clp");
   cache.delete("dashboard.portfolio_totals|usd");
   cache.delete("dashboard.portfolio_totals|uf");
+  invalidationListener?.();
 }
 
 function forwardMonthKeysFrom(startYmd: string): string[] {
@@ -191,6 +241,7 @@ const LINKED_CC_AGGREGATION_GROUP_SLUGS = [
  */
 export function invalidateLinkedCreditCardAggregationCache(): void {
   rollupSlugsByAccountId = null;
+  invalidateCcBillingDetail(); // also notifies the invalidation listener
   for (const unit of ["clp", "usd", "uf"] as const) {
     for (const slug of LINKED_CC_AGGREGATION_GROUP_SLUGS) {
       cache.delete(cacheKeyGroupConsolidatedMonthly(slug, unit));
