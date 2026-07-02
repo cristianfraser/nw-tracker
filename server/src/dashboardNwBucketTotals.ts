@@ -1,7 +1,7 @@
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { depositClpToUsdAtDate } from "./flowsDeposits.js";
+import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { nwDashboardMetricGroupForAccount } from "./portfolioGroupTree.js";
 import {
@@ -66,7 +66,7 @@ function cashEqsBucketClpAt(rawClp: number, asOfYmd: string): number {
 }
 
 function cashEqsBucketUsdAt(adjustedClp: number, asOfYmd: string): number {
-  const usd = depositClpToUsdAtDate(adjustedClp, asOfYmd);
+  const usd = clpToUsdForBalanceAt(adjustedClp, asOfYmd);
   return usd != null && Number.isFinite(usd) ? usd : 0;
 }
 
