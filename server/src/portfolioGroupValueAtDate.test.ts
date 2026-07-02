@@ -17,12 +17,15 @@ describe("portfolioGroupValueClpAt", () => {
       for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
         expect(payload.totals[`${slug}_clp`]).toBe(portfolioGroupValueClpAt(slug, asOf));
       }
-      expect(payload.totals.net_worth_clp).toBe(
+      // Headline total = round of the raw bucket sum (must equal the overview chart /
+      // consolidated closing exactly — see netWorthConsolidation.test.ts). Cards are
+      // rounded per bucket, so their sum may drift from the total by ±1 peso per bucket.
+      const cardSum =
         payload.totals.real_estate_clp +
-          payload.totals.retirement_clp +
-          payload.totals.brokerage_clp +
-          payload.totals.cash_eqs_clp
-      );
+        payload.totals.retirement_clp +
+        payload.totals.brokerage_clp +
+        payload.totals.cash_eqs_clp;
+      expect(Math.abs(payload.totals.net_worth_clp - cardSum)).toBeLessThanOrEqual(2);
     });
   });
 

@@ -1,6 +1,6 @@
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
-import { depositClpToUsdAtDate } from "./flowsDeposits.js";
+import { clpToUsdForBalanceAt } from "./fxRates.js";
 import {
   creditCardLiabilityLinkRowsForCashCard,
   linkedCreditCardClpForCashCardAsOf,
@@ -63,7 +63,7 @@ export function checkingAccountsBalanceClpAt(asOfYmd: string): number {
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clp;
   if (unit === "usd") {
-    const usd = depositClpToUsdAtDate(clp, asOf);
+    const usd = clpToUsdForBalanceAt(clp, asOf);
     return usd != null && Number.isFinite(usd) ? usd : Number.NaN;
   }
   return clp;
@@ -76,7 +76,7 @@ export function cashSavingsShortfallDashboardRow(
   includeUsd: boolean
 ): DashboardAccountStats | null {
   if (shortfallClp <= 0) return null;
-  const usdRaw = includeUsd ? depositClpToUsdAtDate(shortfallClp, asOfYmd) : null;
+  const usdRaw = includeUsd ? clpToUsdForBalanceAt(shortfallClp, asOfYmd) : null;
   return {
     account_id: syntheticCashSavingsShortfallAccountId(),
     name: "CC shortfall from savings",
@@ -94,6 +94,7 @@ export function cashSavingsShortfallDashboardRow(
     fx_clp_per_usd: null,
     fx_date_used: null,
     notes: null,
+    sync_stale: false,
     chart_inactive: false,
   };
 }
@@ -137,7 +138,7 @@ export function sumCashSavingsNwAdjusted(
   const usd =
     includeUsd && anyUsd
       ? (() => {
-          const u = depositClpToUsdAtDate(clp, asOfYmd);
+          const u = clpToUsdForBalanceAt(clp, asOfYmd);
           return u != null && Number.isFinite(u) ? u : 0;
         })()
       : 0;
@@ -160,7 +161,7 @@ export function cashSavingsLinkedBalances(
 ): DashboardLinkedBalanceDto[] {
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc <= 0) return [];
-  const usd = includeUsd ? depositClpToUsdAtDate(cc, asOfYmd) : null;
+  const usd = includeUsd ? clpToUsdForBalanceAt(cc, asOfYmd) : null;
   return [
     {
       slug: "credit_card",

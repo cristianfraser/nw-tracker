@@ -8,10 +8,14 @@ import {
   facturadoClpFromOpenMonthStatementLines,
   paymentAbonosClpForBillingMonth,
 } from "./ccBillingViews.js";
-import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
+import {
+  incrementalChargesClpForBillingMonth,
+  postCloseLiveBalanceAdjustmentClp,
+} from "./ccBillingBalances.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   ccInstallmentsDbApiPayload,
+  ccLedgerMonthEndIso,
   ledgerFacturadoClpForBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
@@ -75,8 +79,43 @@ describe("applyOpenBillingMonthSaldoToNextMonth", () => {
   });
 });
 
+
+type BillingDetailRowLike = {
+  billing_month: string;
+  as_of_date: string;
+  as_of_kind: "statement" | "manual";
+  balance_total_clp: number;
+};
+
+function postCloseAdjForRow(accountId: number, row: BillingDetailRowLike): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.as_of_date)) return 0;
+  return postCloseLiveBalanceAdjustmentClp(
+    accountId,
+    row.as_of_date,
+    ccLedgerMonthEndIso(row.billing_month)
+  );
+}
+
+/** Open month balance = prior closed balance (pre post-close adj) + charges − payments this cycle. */
+function expectedOpenRolledBalanceClp(
+  accountId: number,
+  det: readonly BillingDetailRowLike[],
+  openBm: string
+): number | null {
+  const priorClosed = det
+    .filter((r) => r.billing_month < openBm && r.as_of_kind === "statement")
+    .sort((a, b) => b.billing_month.localeCompare(a.billing_month))[0];
+  if (!priorClosed) return null;
+  const netCharges =
+    incrementalChargesClpForBillingMonth(accountId, openBm) -
+    paymentAbonosClpForBillingMonth(accountId, openBm);
+  return Math.round(
+    priorClosed.balance_total_clp - postCloseAdjForRow(accountId, priorClosed) + netCharges
+  );
+}
+
 describe("buildBillingDetailByMonth", () => {
-  it("open month rolls prior PDF facturado into total_facturado and balance_total", () => {
+  it("open month rolls prior closed balance into balance_total (facturado stays cycle-scoped)", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
       .get() as { id: number } | undefined;
@@ -96,11 +135,16 @@ describe("buildBillingDetailByMonth", () => {
 
     expect(openRow.as_of_kind).toBe("manual");
     expect(openRow.total_facturado_clp).toBeGreaterThan(0);
-    expect(openRow.balance_total_clp).toBe(
-      (openRow.total_facturado_clp ?? 0) + openRow.cupo_en_cuotas_clp
-    );
+    // Open month: live debt = prior closed balance rolled forward + this cycle's net charges.
+    expect(openRow.balance_total_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
+    // Closed month: statement anchor + post-close activity through its calendar month-end.
     expect(may.balance_total_clp).toBe(
-      (may.total_facturado_clp ?? 0) + may.cupo_en_cuotas_clp - may.cuota_a_pagar_next_mes_clp
+      Math.round(
+        (may.total_facturado_clp ?? 0) +
+          may.cupo_en_cuotas_clp -
+          may.cuota_a_pagar_next_mes_clp +
+          postCloseAdjForRow(master.id, may)
+      )
     );
   });
 
@@ -129,9 +173,8 @@ describe("buildBillingDetailByMonth", () => {
     expect(openRow.total_facturado_clp).toBe(expected);
     // Open month did not roll the prior closed facturado into this cycle.
     expect(openRow.total_facturado_clp ?? 0).toBeLessThan(may.total_facturado_clp ?? 0);
-    expect(openRow.balance_total_clp).toBe(
-      (openRow.total_facturado_clp ?? 0) + openRow.cupo_en_cuotas_clp
-    );
+    // …but the balance does roll the prior closed month's debt forward.
+    expect(openRow.balance_total_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
   });
 
   it("open month includes charges when PAGO and purchases share web-paste bucket", () => {
@@ -189,8 +232,9 @@ describe("buildBillingDetailByMonth", () => {
       // floored at 0) plus cuota a pagar — both the purchases and the PAGO flow through.
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
       expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
+      const detAfter = buildBillingDetailByMonth(master.id, payload.months);
       expect(after!.balance_total_clp).toBe(
-        (after!.total_facturado_clp ?? 0) + after!.cupo_en_cuotas_clp
+        expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
       );
       // The large PAGO drives net únicos to zero (floored), below the pre-insert facturado.
       expect(uniquo).toBe(0);
@@ -239,9 +283,12 @@ describe("buildBillingDetailByMonth", () => {
       // Facturado tracks the non-rolled cycle formula; a PAGO does not increase it.
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
       expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
+      const detAfter = buildBillingDetailByMonth(master.id, payload.months);
       expect(after!.balance_total_clp).toBe(
-        (after!.total_facturado_clp ?? 0) + after!.cupo_en_cuotas_clp
+        expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
       );
+      // The PAGO reduces the rolled balance relative to the pre-insert detail.
+      expect(after!.balance_total_clp).toBeLessThan(before.balance_total_clp);
       expect(after!.total_facturado_clp ?? 0).toBeLessThanOrEqual(before.total_facturado_clp ?? 0);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
