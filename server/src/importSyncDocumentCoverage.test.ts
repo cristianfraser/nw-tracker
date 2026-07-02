@@ -133,6 +133,9 @@ describe("importSyncDocumentCoverage", () => {
             | { period_month: string; source_file: string }
             | undefined;
           if (row) {
+            // Synthetic registry rows (screenshot:/web-paste imports) don't reference a
+            // document on disk — coverage cells for them can't be matched by basename.
+            if (row.source_file.startsWith("screenshot:")) continue;
             expect(path.basename(row.source_file)).toBe(base);
             expect(matrixMonthForCartolaPeriodMonth(row.period_month)).toBe(rowMonth);
           } else {

@@ -18,14 +18,16 @@ describe("acceptYahooClpPerUsdClose", () => {
 });
 
 describe("ingestYahooFxSeries", () => {
-  it("skips 2016-12-21 outlier in Dec 2016 sequence", () => {
+  it("skips a below-min outlier inside an otherwise sane sequence", () => {
+    // Modeled on the real 2016-12-21 Yahoo glitch (close of 5). Dates are far-future so
+    // they clear the ingest's portfolioStartYmd() anchor on any dataset.
     const series = {
-      dates: ["2016-12-19", "2016-12-20", "2016-12-21", "2016-12-22"],
+      dates: ["2099-06-01", "2099-06-02", "2099-06-03", "2099-06-04"],
       closes: [664.5, 663.77, 5, 663.75],
     };
     const { accepted, rejected } = ingestYahooFxSeries(series, { dryRun: true });
-    expect(accepted.map((r) => r.date)).toEqual(["2016-12-19", "2016-12-20", "2016-12-22"]);
+    expect(accepted.map((r) => r.date)).toEqual(["2099-06-01", "2099-06-02", "2099-06-04"]);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0]).toMatchObject({ date: "2016-12-21", rawClpPerUsd: 5, reason: "below_min" });
+    expect(rejected[0]).toMatchObject({ date: "2099-06-03", rawClpPerUsd: 5, reason: "below_min" });
   });
 });

@@ -88,6 +88,21 @@ describe("fintualMappedGoalsApiSignature", () => {
 
 describe("collectFintualGoalValuationChanges v2", () => {
   it("logs valor cuota and goals API separately", () => {
+    // Own v2 fixture: goal 2859 resolves to the risky_norris cert-v2 account; a prior
+    // fund_unit_daily bar (4100 ≠ resolution 4136.9078) forces the "valor cuota" change.
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
+      id: number;
+    };
+    const accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'caca daca', ?)`)
+        .run(group.id, "import:fintual|cert|key=risky_norris").lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)
+       VALUES ('fintual_cert_risky_norris', '2026-06-23', 4100, 'test:fixture')
+       ON CONFLICT(series_key, day) DO NOTHING`
+    ).run();
     const snap: FintualGoalSnapshot = {
       fetchedAt: "2026-06-24T00:00:00.000Z",
       asOfDate: "2026-06-24",
@@ -111,9 +126,17 @@ describe("collectFintualGoalValuationChanges v2", () => {
         mismatch: true,
       },
     ];
-    const changes = collectFintualGoalValuationChanges(snap, resolutions);
-    const labels = changes.map((c) => c.label);
-    expect(labels.some((l) => l.includes("valor cuota"))).toBe(true);
-    expect(labels.some((l) => l.includes("goals API"))).toBe(true);
+    try {
+      const changes = collectFintualGoalValuationChanges(snap, resolutions);
+      const labels = changes.map((c) => c.label);
+      expect(labels.some((l) => l.includes("valor cuota"))).toBe(true);
+      expect(labels.some((l) => l.includes("goals API"))).toBe(true);
+    } finally {
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+      db.prepare(
+        `DELETE FROM fund_unit_daily
+         WHERE series_key = 'fintual_cert_risky_norris' AND day = '2026-06-23' AND note = 'test:fixture'`
+      ).run();
+    }
   });
 });

@@ -74,8 +74,12 @@ describe("CC billing detail / valuation path invariant", () => {
       // Find billing months whose pay_by month is in the history and precedes nowYm
       // (these are the months that were broken: db.months was filtered to >= nowYm,
       //  so cuotaForPayByMonth returned null for them)
+      // Only months with actual cuota dues — trailing zero-due months (plan finished,
+      // timeline padded to now) legitimately report null cuota_a_pagar_clp.
       const historyMonthSet = new Set(
-        (response.installment_history_months ?? []).map((h) => h.month)
+        (response.installment_history_months ?? [])
+          .filter((h) => h.installment_payments_clp > 0)
+          .map((h) => h.month)
       );
 
       const broken: { billing_month: string; pay_by: string | undefined }[] = [];
