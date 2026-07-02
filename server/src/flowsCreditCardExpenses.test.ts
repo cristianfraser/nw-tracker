@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  legacyInstallmentHPurchaseKey,
   NO_CUENTA_CC_EXPENSE_SLUG,
   assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
@@ -247,32 +248,52 @@ describe("flowsCreditCardExpenses", () => {
     const purchaseKey = resolveCcExpensePurchaseKey(titularCuota.statement_line_id);
     expect(purchaseKey).toMatch(/^installment-h:/);
 
-    assignCcExpenseLineCategory({
-      statementLineId: titularCuota.statement_line_id,
-      unique: true,
-      categorySlug: "others",
-    });
-
-    const after = buildFlowsCreditCardExpensesPayload();
-    const contractLines = after.lines.filter(
-      (ln) =>
-        ln.source === "cc" &&
-        ln.merchant_key.includes("ROCA") &&
-        (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
-    );
-    expect(contractLines.length).toBeGreaterThan(0);
-    for (const ln of contractLines) {
-      expect(ln.category_slug).toBe("others");
-    }
-
-    const row = db
+    // Snapshot + restore: assignments persist in the shared DB and leaked into the
+    // clear_category test below (and into future suite runs).
+    const prior = db
       .prepare(
-        `SELECT c.slug FROM cc_expense_unique_purchases up
-         JOIN cc_expense_categories c ON c.id = up.category_id
-         WHERE up.account_id = ? AND up.purchase_key = ?`
+        `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
       )
-      .get(titularCuota.account_id, purchaseKey) as { slug: string } | undefined;
-    expect(row?.slug).toBe("others");
+      .get(titularCuota.account_id, purchaseKey) as { category_id: number | null } | undefined;
+
+    try {
+      assignCcExpenseLineCategory({
+        statementLineId: titularCuota.statement_line_id,
+        unique: true,
+        categorySlug: "others",
+      });
+
+      const after = buildFlowsCreditCardExpensesPayload();
+      const contractLines = after.lines.filter(
+        (ln) =>
+          ln.source === "cc" &&
+          ln.merchant_key.includes("ROCA") &&
+          (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
+      );
+      expect(contractLines.length).toBeGreaterThan(0);
+      for (const ln of contractLines) {
+        expect(ln.category_slug).toBe("others");
+      }
+
+      const row = db
+        .prepare(
+          `SELECT c.slug FROM cc_expense_unique_purchases up
+           JOIN cc_expense_categories c ON c.id = up.category_id
+           WHERE up.account_id = ? AND up.purchase_key = ?`
+        )
+        .get(titularCuota.account_id, purchaseKey) as { slug: string } | undefined;
+      expect(row?.slug).toBe("others");
+    } finally {
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(titularCuota.account_id, purchaseKey);
+      if (prior) {
+        db.prepare(
+          `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+           VALUES (?, ?, ?)`
+        ).run(titularCuota.account_id, purchaseKey, prior.category_id);
+      }
+    }
   });
 
   it("clear_category on installment contract stays unclassified after rebuild", () => {
@@ -290,30 +311,63 @@ describe("flowsCreditCardExpenses", () => {
     );
     if (!titularCuota) return;
 
-    assignCcExpenseLineCategory({
-      statementLineId: titularCuota.statement_line_id,
-      unique: true,
-      categorySlug: "others",
-    });
+    const purchaseKey = resolveCcExpensePurchaseKey(titularCuota.statement_line_id);
+    const legacyKey = legacyInstallmentHPurchaseKey(purchaseKey);
+    const snapshotKey = (key: string | null) =>
+      key
+        ? (db
+            .prepare(
+              `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+            )
+            .get(titularCuota.account_id, key) as { category_id: number | null } | undefined)
+        : undefined;
+    const prior = snapshotKey(purchaseKey);
+    const priorLegacy = snapshotKey(legacyKey);
 
-    assignCcExpenseLineCategory({
-      statementLineId: titularCuota.statement_line_id,
-      unique: true,
-      clearCategory: true,
-    });
+    try {
+      assignCcExpenseLineCategory({
+        statementLineId: titularCuota.statement_line_id,
+        unique: true,
+        categorySlug: "others",
+      });
 
-    for (let i = 0; i < 2; i++) {
-      const after = buildFlowsCreditCardExpensesPayload();
-      const contractLines = after.lines.filter(
-        (ln) =>
-          ln.source === "cc" &&
-          ln.merchant_key.includes("ROCA") &&
-          (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
-      );
-      expect(contractLines.length).toBeGreaterThan(0);
-      for (const ln of contractLines) {
-        expect(ln.category_slug).toBe("unclassified");
+      assignCcExpenseLineCategory({
+        statementLineId: titularCuota.statement_line_id,
+        unique: true,
+        clearCategory: true,
+      });
+
+      for (let i = 0; i < 2; i++) {
+        const after = buildFlowsCreditCardExpensesPayload();
+        const contractLines = after.lines.filter(
+          (ln) =>
+            ln.source === "cc" &&
+            ln.merchant_key.includes("ROCA") &&
+            (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
+        );
+        expect(contractLines.length).toBeGreaterThan(0);
+        for (const ln of contractLines) {
+          expect(ln.category_slug).toBe("unclassified");
+        }
       }
+    } finally {
+      const restoreKey = (
+        key: string | null,
+        snap: { category_id: number | null } | undefined
+      ) => {
+        if (!key) return;
+        db.prepare(
+          `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+        ).run(titularCuota.account_id, key);
+        if (snap) {
+          db.prepare(
+            `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
+             VALUES (?, ?, ?)`
+          ).run(titularCuota.account_id, key, snap.category_id);
+        }
+      };
+      restoreKey(purchaseKey, prior);
+      restoreKey(legacyKey, priorLegacy);
     }
   });
 
