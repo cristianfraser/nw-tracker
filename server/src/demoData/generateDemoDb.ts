@@ -39,22 +39,37 @@ function assertFreshDb(): void {
 }
 
 /** brokerage_acciones leaves exist for the real tickers; demo tickers may need new ones. */
-function ensureAccionesLeaf(ticker: string): number {
-  const slug = `brokerage_acciones__${ticker.toLowerCase()}`;
+/** Brokerage sub-bucket by slug, created under `brokerage` when the baseline lacks it
+ * (e.g. `brokerage_long_term` — only generated DBs have that bucket). */
+function ensureBrokerageBucket(slug: string, label: string, sortOrder: number): number {
   const existing = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as
     | { id: number }
     | undefined;
   if (existing) return existing.id;
-  const parent = db
-    .prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_acciones'`)
-    .get() as { id: number } | undefined;
-  if (!parent) throw new Error("asset_groups missing brokerage_acciones");
+  const parent = db.prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage'`).get() as
+    | { id: number }
+    | undefined;
+  if (!parent) throw new Error("asset_groups missing brokerage");
+  return Number(
+    db
+      .prepare(`INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, ?, ?)`)
+      .run(slug, label, sortOrder, parent.id).lastInsertRowid
+  );
+}
+
+function ensureTickerLeaf(bucketSlug: string, bucketLabel: string, ticker: string): number {
+  const slug = `${bucketSlug}__${ticker.toLowerCase()}`;
+  const existing = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as
+    | { id: number }
+    | undefined;
+  if (existing) return existing.id;
+  const parentId = ensureBrokerageBucket(bucketSlug, bucketLabel, 15);
   return Number(
     db
       .prepare(
         `INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, 90, ?)`
       )
-      .run(slug, ticker, parent.id).lastInsertRowid
+      .run(slug, ticker, parentId).lastInsertRowid
   );
 }
 
@@ -71,6 +86,21 @@ function createAccount(groupSlug: string, name: string, notes: string): number {
     db
       .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`)
       .run(assetGroupId(groupSlug), name, notes).lastInsertRowid
+  );
+}
+
+function createTickerAccount(bucketSlug: string, bucketLabel: string, ticker: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker) VALUES (?, ?, ?, ?)`
+      )
+      .run(
+        ensureTickerLeaf(bucketSlug, bucketLabel, ticker),
+        ticker,
+        `import:panel|ticker=${ticker}|key=demo_${ticker.toLowerCase()}`,
+        ticker
+      ).lastInsertRowid
   );
 }
 
@@ -93,6 +123,7 @@ const DEMO_GROUP_COLORS: ReadonlyArray<[slug: string, rgb: string]> = [
   ["inversiones", "17,19,143"],
   ["brokerage", "36,36,191"],
   ["brokerage_acciones", "29,153,168"],
+  ["brokerage_long_term", "35,55,217"],
   ["brokerage_crypto", "234,179,8"],
   ["cash_eqs", "160,218,232"],
   ["cash_savings", "157,227,245"],
@@ -111,7 +142,7 @@ function applyDemoColors(accounts: DemoAccounts): void {
 
   const updAccount = db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`);
   updAccount.run("161,11,29", accounts.checkingId);
-  updAccount.run("35,55,217", accounts.fondoId);
+  if (accounts.fondoId != null) updAccount.run("35,55,217", accounts.fondoId);
   if (accounts.cryptoId != null) updAccount.run("234,179,8", accounts.cryptoId);
   if (accounts.usdCashId != null) updAccount.run("90,90,150", accounts.usdCashId);
   const ccj = accounts.stockIdByTicker.get("CCJ");
@@ -155,41 +186,33 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   const accounts: DemoAccounts = {
     checkingId,
     ccMasterIdByLast4,
-    fondoId: Number(
-      db
-        .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, fund_series_key)
-           VALUES (?, 'Fondo Moderado', 'demo:fondo', ?)`
+    fondoId: narrative.withFondo
+      ? Number(
+          db
+            .prepare(
+              `INSERT INTO accounts (asset_group_id, name, notes, fund_series_key)
+               VALUES (?, 'Fondo Moderado', 'demo:fondo', ?)`
+            )
+            .run(
+              assetGroupId("brokerage_mutual_funds__fintual_risky_norris"),
+              DEMO_FONDO_FUND_SERIES_KEY
+            ).lastInsertRowid
         )
-        .run(
-          assetGroupId("brokerage_mutual_funds__fintual_risky_norris"),
-          DEMO_FONDO_FUND_SERIES_KEY
-        ).lastInsertRowid
-    ),
+      : null,
     afpId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afp", "AFP", "demo:afp")
       : null,
     afcId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afc", "AFC", "demo:afc")
       : null,
-    stockIdByTicker: new Map(
-      (narrative.stocks?.positions ?? []).map((p) => {
-        const id = Number(
-          db
-            .prepare(
-              `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker)
-               VALUES (?, ?, ?, ?)`
-            )
-            .run(
-              ensureAccionesLeaf(p.ticker),
-              p.ticker,
-              `import:panel|ticker=${p.ticker}|key=demo_${p.ticker.toLowerCase()}`,
-              p.ticker
-            ).lastInsertRowid
-        );
-        return [p.ticker, id] as const;
-      })
-    ),
+    stockIdByTicker: new Map([
+      ...(narrative.stocks?.positions ?? []).map(
+        (p) => [p.ticker, createTickerAccount("brokerage_acciones", "Acciones", p.ticker)] as const
+      ),
+      ...(narrative.stocks?.longTermPositions ?? []).map(
+        (p) => [p.ticker, createTickerAccount("brokerage_long_term", "Long-term", p.ticker)] as const
+      ),
+    ]),
     usdCashId: narrative.stocks
       ? createAccount("brokerage_cash__usd", "USD", "demo:usd-cash")
       : null,

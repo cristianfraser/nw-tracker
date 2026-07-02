@@ -110,7 +110,9 @@ describe("listLiabilitiesTabAccountRows", () => {
       ...listFirstLevelPortfolioGroupChildren("retirement").map((c) => c.slug),
       "cash_eqs",
     ];
-    expect(expectedSlugs.length).toBeGreaterThanOrEqual(6);
+    // Lean preset: brokerage sub-buckets without accounts stay unlinked (seedNavTree is
+    // data-gated), so the lean tree has fewer first-level children than the real one.
+    expect(expectedSlugs.length).toBeGreaterThanOrEqual(4);
     expect(accounts.length).toBe(expectedSlugs.length);
     const labels = new Set(accounts.map((a) => a.name));
     for (const child of [

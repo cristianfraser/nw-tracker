@@ -83,7 +83,7 @@ export type DemoEvent = {
 /** Scripted portfolio moves — buys are CLP from checking, sells a fraction of holdings. */
 export type DemoTrade = {
   month: DemoMonth;
-  asset: "stocks" | "crypto" | "fondo";
+  asset: "stocks" | "crypto";
   action: "buy" | "sell";
   /** CLP amount for buys. */
   amountClp?: number;
@@ -117,18 +117,26 @@ export type DemoNarrative = {
   chapters: DemoChapter[];
   events: DemoEvent[];
   cards: DemoCard[];
-  /** Investment accounts to create (fondo always; AFP/property optional). */
+  /** Investment accounts to create (AFP/property/fondo optional). */
   withAfp: boolean;
   withProperty: boolean;
   /**
+   * Mutual-fund account (fund_series_key + cuotas). The lean preset keeps one for
+   * fund-valuation bucket coverage in Vitest; the demo preset invests through the
+   * long-term ETFs instead.
+   */
+  withFondo: boolean;
+  /**
    * Stock portfolio: monthly buys redirect a share of the sweep from `from` on, split
-   * across positions by weight. Tickers must have `brokerage_acciones__<ticker>` leaves
-   * and synthetic `equity_daily` price anchors in the writers.
+   * across positions by weight; the rest of the sweep (after the reserva slice) buys the
+   * low-risk `longTermPositions` core. Tickers get `brokerage_acciones__<ticker>` /
+   * `brokerage_long_term__<ticker>` leaves and need synthetic price anchors in the writers.
    */
   stocks: {
     from: DemoMonth;
     sweepShare: number;
     positions: { ticker: string; weight: number }[];
+    longTermPositions: { ticker: string; weight: number }[];
   } | null;
   /** Crypto position (created only when `trades` buys into it). */
   withCrypto: boolean;
@@ -328,17 +336,23 @@ function demoNarrative(): DemoNarrative {
     ],
     withAfp: true,
     withProperty: true,
+    withFondo: false,
     stocks: {
       from: "2019-01",
       sweepShare: 0.4,
       positions: [
-        { ticker: "NVDA", weight: 0.4 },
-        { ticker: "SPY", weight: 0.2 },
-        { ticker: "SMH", weight: 0.25 },
-        { ticker: "CCJ", weight: 0.15 },
+        { ticker: "NVDA", weight: 0.5 },
+        { ticker: "SMH", weight: 0.3 },
+        { ticker: "CCJ", weight: 0.2 },
         // Weight 0: no sweep allocation — INTC exists only for the scripted 2024
         // turnaround bet that implodes (bought ~$44, exited ~$20).
         { ticker: "INTC", weight: 0 },
+      ],
+      // Low-risk core under brokerage > Long-term: absorbs the sweep remainder.
+      longTermPositions: [
+        { ticker: "SPY", weight: 0.5 },
+        { ticker: "VEA", weight: 0.35 },
+        { ticker: "BND", weight: 0.15 },
       ],
     },
     withCrypto: true,
@@ -361,12 +375,12 @@ function demoNarrative(): DemoNarrative {
       // Feb-2024: the Intel foundry-turnaround bet — promising on paper, imploding by
       // August (the same week as the house purchase), exited in December at a ~55% loss.
       { month: "2024-02", asset: "stocks", action: "buy", amountClp: 4_000_000, ticker: "INTC" },
-      // House funding: rebalance the big winners — sell most of NVDA and SMH + rescate
-      // fondo the month before the pie (the 100M down payment comes from the portfolio,
-      // keeping ~20M invested across the survivors).
+      // House funding: rebalance the big winners — sell most of NVDA and SMH + part of
+      // the long-term core the month before the pie (the 100M down payment comes from
+      // the portfolio, keeping ~20M invested across the survivors).
       { month: "2024-07", asset: "stocks", action: "sell", fraction: 0.9, ticker: "NVDA" },
       { month: "2024-07", asset: "stocks", action: "sell", fraction: 0.75, ticker: "SMH" },
-      { month: "2024-07", asset: "fondo", action: "sell", fraction: 0.35 },
+      { month: "2024-07", asset: "stocks", action: "sell", fraction: 0.4, ticker: "SPY" },
       { month: "2024-12", asset: "stocks", action: "sell", fraction: 1, ticker: "INTC" },
       { month: "2025-01", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "CCJ" },
     ],
@@ -430,6 +444,7 @@ function testNarrative(): DemoNarrative {
     ],
     withAfp: true,
     withProperty: false,
+    withFondo: true,
     stocks: null,
     withCrypto: false,
     trades: [],
