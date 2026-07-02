@@ -28,7 +28,8 @@ export type CheckingCartolaPdfEntry = {
   month_saldo_final_clp?: Record<string, number> | null;
   movements: ParsedCheckingMovement[];
   skipped?: CartolaSkippedRow[];
-  parse_status: "ok" | "unreadable" | "error";
+  /** `skipped` = parser intentionally ignored the PDF (e.g. cuenta-vista filter). */
+  parse_status: "ok" | "unreadable" | "error" | "skipped";
   parse_error?: string | null;
   extractor?: string;
 };

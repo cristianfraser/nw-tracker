@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/index.js",
     "migrate": "tsx -e \"import './src/db.ts'\"",
     "migrate:brokerage-usd-cash": "tsx scripts/migrate-brokerage-usd-cash.ts",
@@ -97,17 +97,17 @@
     "@types/multer": "^2.1.0",
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
-    "express": "4.21.2",
-    "multer": "^2.1.1"
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.5",
-    "xlsx": "^0.18.5"
+    "vitest": "^3.0.5"
   }
 }

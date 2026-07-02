@@ -403,7 +403,7 @@ export function consolidatedClosingRawByDate(
 }
 
 function buildConsolidationPayloads(
-  rows: GroupTabAccountRow[],
+  rows: readonly GroupTabAccountRow[],
   groupSlug: string,
   unit: TsUnit
 ): {

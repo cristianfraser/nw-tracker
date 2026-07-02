@@ -1,6 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 
 /** Below this CLP amount, NOTA DE CREDITO is an unmatched gastos adjustment (no purchase match). At or above, unmatched lines are abonos. */
 export const NOTA_DE_CREDITO_MATCH_MIN_CLP = 10_000;
@@ -35,20 +35,20 @@ export function isNotaDeCreditoMerchant(merchant: string | null | undefined): bo
   return /\bNOTA\s+DE\s+CREDITO\b/i.test(String(merchant ?? "").trim());
 }
 
-function linePurchaseDateIso(line: FlowCcExpenseLineRow): string {
+function linePurchaseDateIso(line: FlowCcExpenseLineRowDraft): string {
   return line.purchase_on ?? line.occurred_on;
 }
 
-function isNotaDeCreditoLine(line: FlowCcExpenseLineRow): boolean {
+function isNotaDeCreditoLine(line: FlowCcExpenseLineRowDraft): boolean {
   return line.source === "cc" && isNotaDeCreditoMerchant(line.merchant) && line.amount_clp < 0;
 }
 
-function isPurchaseMatchCandidate(line: FlowCcExpenseLineRow): boolean {
+function isPurchaseMatchCandidate(line: FlowCcExpenseLineRowDraft): boolean {
   return line.source === "cc" && line.amount_clp > 0;
 }
 
 export function pairNotaDeCreditoAnnulments(
-  lines: readonly FlowCcExpenseLineRow[]
+  lines: readonly FlowCcExpenseLineRowDraft[]
 ): NotaDeCreditoPairingResult {
   const annulledPurchaseIds = new Set<number>();
   const matchedNotaIds = new Set<number>();
@@ -79,7 +79,7 @@ export function pairNotaDeCreditoAnnulments(
       continue;
     }
 
-    let bestPurchase: FlowCcExpenseLineRow | null = null;
+    let bestPurchase: FlowCcExpenseLineRowDraft | null = null;
     let bestPurchaseDate = "";
 
     for (const { line: purchase, purchaseDate } of purchases) {
@@ -107,7 +107,7 @@ export function pairNotaDeCreditoAnnulments(
 }
 
 export function notaDeCreditoRoleForLine(
-  line: FlowCcExpenseLineRow,
+  line: FlowCcExpenseLineRowDraft,
   pairing: NotaDeCreditoPairingResult
 ): NotaDeCreditoRole | undefined {
   if (pairing.annulledPurchaseIds.has(line.statement_line_id)) return "annulled_purchase";
@@ -117,8 +117,8 @@ export function notaDeCreditoRoleForLine(
 }
 
 export function enrichLinesWithNotaDeCreditoPairing(
-  lines: readonly FlowCcExpenseLineRow[]
-): FlowCcExpenseLineRow[] {
+  lines: readonly FlowCcExpenseLineRowDraft[]
+): FlowCcExpenseLineRowDraft[] {
   const pairing = pairNotaDeCreditoAnnulments(lines);
   return lines.map((line) => {
     const role = notaDeCreditoRoleForLine(line, pairing);
@@ -127,7 +127,7 @@ export function enrichLinesWithNotaDeCreditoPairing(
 }
 
 /** Whether a positive CC line still counts toward gastos del mes after NOTA pairing. */
-export function purchaseCountsAfterNotaPairing(line: FlowCcExpenseLineRow): boolean {
+export function purchaseCountsAfterNotaPairing(line: FlowCcExpenseLineRowDraft): boolean {
   if (line.nota_credito_role === "annulled_purchase") return false;
   return countsTowardCcExpenseGastosMes(line.category_slug, {
     installment_flag: line.installment_flag,

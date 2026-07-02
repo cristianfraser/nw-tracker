@@ -85,11 +85,14 @@ function buildCreditCardGroupNode(
         expense_account_id: null,
         expense_account_slug: null,
         asset_group_slug: "credit_cards",
+        kind_slug: null,
+        dashboard_bucket_slug: null,
+        exclude_from_parent_total: false,
         api_group: null,
         api_subgroup: "credit_card",
         color_rgb,
         color: rgbTripletToCss(color_rgb),
-        group_kind: "normal",
+        group_kind: "bucket",
         children: [],
       });
     }
@@ -110,11 +113,14 @@ function buildCreditCardGroupNode(
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: "credit_cards",
+    kind_slug: null,
+    dashboard_bucket_slug: null,
+    exclude_from_parent_total: false,
     api_group: null,
     api_subgroup: "credit_card",
     color_rgb: null,
     color: null,
-    group_kind: "normal",
+    group_kind: "bucket",
     children: pruneEmptyCreditCardNavGroups(children),
   };
 }
