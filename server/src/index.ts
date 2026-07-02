@@ -239,6 +239,7 @@ import {
 } from "./globalSyncScheduler.js";
 import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
 import { loadRootDotenv } from "./rootDotenv.js";
+import { ensureAccountSyncSourcesSeeded } from "./accountSyncSources.js";
 import {
   isFiniteNumber,
   isOptionalString,
@@ -329,6 +330,7 @@ function positionSnapshotFromMeta(
 }
 
 loadRootDotenv();
+ensureAccountSyncSourcesSeeded();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
