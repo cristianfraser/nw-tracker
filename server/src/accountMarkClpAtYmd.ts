@@ -10,7 +10,7 @@ import {
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { deptoAccountMarkClpAtYmd } from "./deptoDividendosLedger.js";
+import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClp } from "./cryptoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";

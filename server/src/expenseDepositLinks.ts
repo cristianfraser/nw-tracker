@@ -16,7 +16,7 @@ import {
   parseDeptoDividendosMovementNote,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import { loadDeptoDividendosSheetRowsRawFromDb } from "./deptoSheetDb.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { syncCuentaAhorroDepositSplitMirrors } from "./cuentaAhorroDepositSplits.js";
 import { syncBudaAbonoDepositMirrors } from "./budaWallet.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
@@ -460,7 +460,7 @@ export function syncMortgageExpenseDepositLinksFromSheet(
   const usedPurchaseKeys = new Set(manualKeys);
   const created: ExpenseDepositLinkRow[] = [];
 
-  for (const sheet of loadDeptoDividendosSheetRowsRawFromDb()) {
+  for (const sheet of loadDeptoLedgerFromMovements()) {
     if (!isRegularMortgageCuotaSheetRow(sheet)) continue;
 
     const deposit = findPropertyDepositForSheetRow(sheet);
