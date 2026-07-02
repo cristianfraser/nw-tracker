@@ -11,6 +11,7 @@ import {
   checkingMovementBalanceLive,
 } from "./checkingCartolaBalances.js";
 import { monthEndsBetweenInclusive, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import {
@@ -102,14 +103,29 @@ function balanceOnlyMonthlyRowsAsc(
 ): AccountMonthlyPerformanceRow[] {
   const outAsc: AccountMonthlyPerformanceRow[] = [];
   let prevClose: number | null = null;
+  let prevDeposited: number | null = null;
   let ytdYear = 0;
   let ytdRun = 0;
   let cumPl = 0;
 
+  // Deposited capital = balance − cumulative interest (interest = savings_earnings = the
+  // account's only real P/L; every other balance change is a transfer/compra/deposit).
+  // Same definition the deposits view uses for cash accounts — with netFlow hardcoded to 0
+  // (the old behavior) every transfer read as phantom nominal P/L and the group's
+  // net_capital_flow diverged from Σ deposits (dashboardCardClosingReconcile).
+  const depositedAt = (asOf: string): number => {
+    const interestClp = cashInterestClpThroughDate(accountId, asOf);
+    const interest = unit === "clp" ? interestClp : convertTs(interestClp, asOf, unit);
+    return closeAt(asOf) - (Number.isFinite(interest) ? interest : 0);
+  };
+
   for (const asOf of monthEndsAsc) {
     const close = closeAt(asOf);
     if (!Number.isFinite(close)) continue;
-    const netFlow = 0;
+    const deposited = depositedAt(asOf);
+    // First month: flow = cumulative aportes at this date (vs 0) — same convention as
+    // the equity/AFP monthly perf builder.
+    const netFlow = prevDeposited != null ? deposited - prevDeposited : deposited;
     const nominal = prevClose != null ? close - prevClose - netFlow : null;
     const y = Number(asOf.slice(0, 4));
     if (Number.isFinite(y) && y !== ytdYear) {
@@ -133,6 +149,7 @@ function balanceOnlyMonthlyRowsAsc(
       unit,
     });
     prevClose = close;
+    prevDeposited = deposited;
   }
 
   if (isMovementBalanceCashCategory(categorySlug)) {

@@ -213,7 +213,7 @@ describe("groupMonthlyPerfConsolidation", () => {
     const r = getGroupConsolidatedTables("net_worth", "clp");
     expect(r.group_slug).toBe("net_worth");
     expect(Array.isArray(r.consolidated_monthly)).toBe(true);
-    expect(Array.isArray(r.account_movements)).toBe(true);
+    expect(Array.isArray(r.account_monthly)).toBe(true);
   });
 
   it("cash_eqs includes movement-balance accounts when movements exist", () => {

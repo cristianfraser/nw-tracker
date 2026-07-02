@@ -213,7 +213,10 @@ describe("getAccountMonthlyPerformance", () => {
       cur.closing_value - cur.prior_closing - cur.net_capital_flow,
       2
     );
-    expect(Math.abs(cur.nominal_pl)).toBeLessThan(50_000);
+    // Sanity bound, proportional: an absolute "near zero vs May cierre" bound rotted the
+    // moment months rolled; a fund's current-month move beyond 20% of value means the
+    // prior-month mark was wrong, which is what this test guards.
+    expect(Math.abs(cur.nominal_pl)).toBeLessThan(0.2 * Math.abs(cur.closing_value));
   });
 
   it("suecia property P/L reconciles CLP net-equity marks minus CLP payments in month", () => {
@@ -257,10 +260,13 @@ describe("getAccountMonthlyPerformance", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const mk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const clp = getAccountMonthlyPerformance(row.id, "clp")?.monthly.find(
-      (r) => monthKeyFromYmd(r.as_of_date) === mk
-    );
+    // Latest month with an actual sheet payment: early in a new month both units are 0
+    // flow (nothing posted yet) and the CLP-vs-USD scale check is vacuous.
+    const clpMonthly = getAccountMonthlyPerformance(row.id, "clp")?.monthly ?? [];
+    const clpWithFlow = clpMonthly.find((r) => Math.abs(r.net_capital_flow) > 1_000);
+    if (!clpWithFlow) return;
+    const mk = monthKeyFromYmd(clpWithFlow.as_of_date);
+    const clp = clpWithFlow;
     const usd = getAccountMonthlyPerformance(row.id, "usd")?.monthly.find(
       (r) => monthKeyFromYmd(r.as_of_date) === mk
     );

@@ -119,20 +119,19 @@ function scheduleForSource(
   if (disabled) {
     return { next_sync: null, next_sync_imminent: false, today_day_kind: "open" };
   }
+  // One instant for every clock: schedule math must follow the injected Chile wall
+  // clock (tests, replay), not a mix of `cl` and real `new Date()`.
+  const instant = dateAtTimeZoneWallClock(cl.ymd, cl.hour, cl.minute, "America/Santiago");
   if (stale) {
     return {
       next_sync: null,
       next_sync_imminent: true,
       today_day_kind:
-        source === "stocks_nyse"
-          ? nyDayKind(nyseWallClock().ymd)
-          : source === "crypto_eod"
-            ? chileDayKind(cl.ymd)
-            : chileDayKind(cl.ymd),
+        source === "stocks_nyse" ? nyDayKind(nyseWallClock(instant).ymd) : chileDayKind(cl.ymd),
     };
   }
 
-  const ny = nyseWallClock();
+  const ny = nyseWallClock(instant);
 
   switch (source) {
     case "afp_uno": {
@@ -182,7 +181,7 @@ function scheduleForSource(
       };
     case "stocks_nyse": {
       const nowNy = ny;
-      if (isNyseTradingDay(nowNy.ymd) && !isAfterNyseRegularClose(new Date())) {
+      if (isNyseTradingDay(nowNy.ymd) && !isAfterNyseRegularClose(instant)) {
         return {
           next_sync: nyTimeToday(nowNy, 16, 5),
           next_sync_imminent: false,
