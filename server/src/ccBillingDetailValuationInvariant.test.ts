@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccLedgerStatementClosingPointsClp } from "./ccCreditCardValuations.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
-import { currentCalendarYm } from "./calendarMonth.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 
 /**
  * Regression: billingDetailCacheForAccount (used by the valuation chart) and
@@ -53,7 +54,7 @@ describe("CC billing detail / valuation path invariant", () => {
   });
 
   it("facturaciones cuota_a_pagar_clp is non-null for past billing months when installment history exists", () => {
-    const nowYm = currentCalendarYm();
+    const nowYm = monthKeyFromYmd(chileCalendarTodayYmd());
     const ccAccounts = db
       .prepare(
         `SELECT a.id FROM accounts a

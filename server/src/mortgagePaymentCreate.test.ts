@@ -20,9 +20,12 @@ describe("mortgage payment create API layer", () => {
 
     const testCuota = `vitest-pay-${Date.now()}`;
     const occurredOn = "2098-07-11";
+    // pago must cover the SCHEDULED cuota (amortización from the min-UF schedule, which
+    // grows with the ledger/UF) plus any prepago — a hardcoded 400.000 rotted once the
+    // scheduled amortización outgrew its residual. Large pago keeps prepago ≥ 0.
     const input = {
       occurred_on: occurredOn,
-      pago_clp: 400_000,
+      pago_clp: 1_000_000,
       interes_clp: 250_000,
       incendio_clp: 41_651,
       desgravamen_clp: 3000,
@@ -30,7 +33,12 @@ describe("mortgage payment create API layer", () => {
     };
 
     const preview = previewMortgagePayment(mortgage.id, input);
-    expect(preview.sheet.amortizacion_clp).toBe(400_000 - 250_000 - 41_651 - 3000);
+    // Split semantics: scheduled amortización + prepago (ext) = pago − interés − seguros.
+    expect(preview.sheet.amortizacion_clp).toBeGreaterThan(0);
+    expect(preview.sheet.amortizacion_ext_clp ?? 0).toBeGreaterThanOrEqual(0);
+    expect(
+      (preview.sheet.amortizacion_clp ?? 0) + (preview.sheet.amortizacion_ext_clp ?? 0)
+    ).toBe(1_000_000 - 250_000 - 41_651 - 3000);
 
     const propertyBefore = deptoAccountMarkClpAtYmd("property", occurredOn);
 

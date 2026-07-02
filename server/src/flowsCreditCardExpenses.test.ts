@@ -234,6 +234,9 @@ describe("flowsCreditCardExpenses", () => {
     const titularCuota = payload.lines.find(
       (ln) =>
         ln.source === "cc" &&
+        // Real statement line only — synthesized contract/total lines carry negative ids
+        // and cannot be assigned/resolved through the statement-line APIs.
+        ln.statement_line_id > 0 &&
         ln.installment_flag === 1 &&
         ln.merchant_key.includes("ROCA") &&
         ln.nro_cuota_current === 1 &&
@@ -277,6 +280,9 @@ describe("flowsCreditCardExpenses", () => {
     const titularCuota = payload.lines.find(
       (ln) =>
         ln.source === "cc" &&
+        // Real statement line only — synthesized contract/total lines carry negative ids
+        // and cannot be assigned/resolved through the statement-line APIs.
+        ln.statement_line_id > 0 &&
         ln.installment_flag === 1 &&
         ln.merchant_key.includes("ROCA") &&
         ln.nro_cuota_current === 1 &&
