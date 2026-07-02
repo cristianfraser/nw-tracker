@@ -108,12 +108,14 @@ export function cartolaCalendarMonthsFromPeriod(
   return /^\d{4}-\d{2}$/.test(fb) ? [fb] : [];
 }
 
-/** Last UTC calendar day of month for `YYYY-MM`. */
+/** Last UTC calendar day of month for `YYYY-MM`. Throws on malformed input (fail fast). */
 export function monthEndUtcYmd(monthKey: string): string {
   const [ys, ms] = monthKey.split("-");
   const y = Number(ys);
   const mo = Number(ms);
-  if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) return `${monthKey}-28`;
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) {
+    throw new Error(`monthEndUtcYmd: invalid month key ${JSON.stringify(monthKey)}`);
+  }
   return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
 }
 

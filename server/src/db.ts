@@ -4,6 +4,10 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
+import {
+  SCHEMA_BASELINE_LAST_MIGRATION,
+  SCHEMA_BASELINE_STATEMENTS,
+} from "./schemaBaseline.js";
 
 const require = createRequire(import.meta.url);
 
@@ -44,287 +48,44 @@ const dbInternal = new Database(dbPath);
 dbInternal.pragma("journal_mode = WAL");
 dbInternal.pragma("foreign_keys = ON");
 
+/**
+ * Execute the full schema baseline (generated from the live DB; all statements are
+ * IF NOT EXISTS, so this is a no-op on an up-to-date DB). On a brand-new DB the
+ * migrations covered by the baseline are marked pre-applied: the early migration files
+ * target the legacy pre-074 schema (e.g. `accounts.category_id`) and cannot run against
+ * the modern schema the baseline creates.
+ */
 export function initSchema() {
-  dbInternal.exec(`
-    CREATE TABLE IF NOT EXISTS asset_groups (
-      id INTEGER PRIMARY KEY,
-      parent_id INTEGER REFERENCES asset_groups(id) ON DELETE RESTRICT,
-      slug TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      color_rgb TEXT
-    );
+  for (const stmt of SCHEMA_BASELINE_STATEMENTS) {
+    dbInternal.exec(stmt);
+  }
 
-    CREATE TABLE IF NOT EXISTS accounts (
-      id INTEGER PRIMARY KEY,
-      asset_group_id INTEGER NOT NULL REFERENCES asset_groups(id),
-      name TEXT NOT NULL,
-      notes TEXT,
-      color_rgb TEXT,
-      source_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      account_kind TEXT NOT NULL DEFAULT 'master' CHECK (account_kind IN ('master', 'liability_view')),
-      exclude_from_group_totals INTEGER NOT NULL DEFAULT 0 CHECK (exclude_from_group_totals IN (0, 1)),
-      /** Yahoo symbol for brokerage/crypto MTM (e.g. SPY, OILK, BTC-USD). Set at import or panel create. */
-      equity_ticker TEXT,
-      fund_series_key TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS credit_card_account_config (
-      account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
-      cupo_clp INTEGER,
-      cupo_usd REAL,
-      billing_cycle_start_day INTEGER NOT NULL DEFAULT 21
-        CHECK (billing_cycle_start_day BETWEEN 1 AND 31),
-      billing_cycle_end_day INTEGER
-        CHECK (billing_cycle_end_day IS NULL OR billing_cycle_end_day BETWEEN 1 AND 31),
-      card_last4 TEXT,
-      notes TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS liability_groups (
-      id INTEGER PRIMARY KEY,
-      parent_id INTEGER REFERENCES liability_groups(id) ON DELETE CASCADE,
-      slug TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      label_i18n_key TEXT,
-      route_path TEXT,
-      liability_kind TEXT CHECK (liability_kind IN ('credit_card', 'mortgage', 'other'))
-    );
-
-    CREATE TABLE IF NOT EXISTS credit_card_groups (
-      id INTEGER PRIMARY KEY,
-      parent_id INTEGER REFERENCES credit_card_groups(id) ON DELETE CASCADE,
-      slug TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      label_i18n_key TEXT,
-      route_path TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS credit_card_group_items (
-      id INTEGER PRIMARY KEY,
-      group_id INTEGER NOT NULL REFERENCES credit_card_groups(id) ON DELETE CASCADE,
-      item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account')),
-      child_group_id INTEGER REFERENCES credit_card_groups(id) ON DELETE CASCADE,
-      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      CHECK (
-        (item_kind = 'group' AND child_group_id IS NOT NULL AND account_id IS NULL)
-        OR (item_kind = 'account' AND account_id IS NOT NULL AND child_group_id IS NULL)
-      ),
-      UNIQUE (group_id, child_group_id),
-      UNIQUE (group_id, account_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS liability_group_items (
-      id INTEGER PRIMARY KEY,
-      group_id INTEGER NOT NULL REFERENCES liability_groups(id) ON DELETE CASCADE,
-      item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account', 'credit_card_group')),
-      child_group_id INTEGER REFERENCES liability_groups(id) ON DELETE CASCADE,
-      child_credit_card_group_id INTEGER REFERENCES credit_card_groups(id) ON DELETE CASCADE,
-      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      CHECK (
-        (item_kind = 'group' AND child_group_id IS NOT NULL AND account_id IS NULL AND child_credit_card_group_id IS NULL)
-        OR (item_kind = 'account' AND account_id IS NOT NULL AND child_group_id IS NULL AND child_credit_card_group_id IS NULL)
-        OR (item_kind = 'credit_card_group' AND child_credit_card_group_id IS NOT NULL AND child_group_id IS NULL AND account_id IS NULL)
-      ),
-      UNIQUE (group_id, child_group_id),
-      UNIQUE (group_id, account_id),
-      UNIQUE (group_id, child_credit_card_group_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS expense_groups (
-      id INTEGER PRIMARY KEY,
-      slug TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS expense_accounts (
-      id INTEGER PRIMARY KEY,
-      group_id INTEGER NOT NULL REFERENCES expense_groups(id) ON DELETE CASCADE,
-      slug TEXT NOT NULL,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      notes TEXT,
-      UNIQUE(group_id, slug)
-    );
-
-    CREATE TABLE IF NOT EXISTS portfolio_groups (
-      id INTEGER PRIMARY KEY,
-      parent_id INTEGER REFERENCES portfolio_groups(id) ON DELETE CASCADE,
-      slug TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      color_rgb TEXT,
-      route_path TEXT,
-      active_prefix TEXT,
-      nav_end INTEGER NOT NULL DEFAULT 0,
-      show_leaf_hyphen INTEGER NOT NULL DEFAULT 1,
-      label_i18n_key TEXT,
-      api_group TEXT,
-      api_subgroup TEXT,
-      asset_group_slug TEXT,
-      sidebar_section TEXT NOT NULL DEFAULT 'nested'
-    );
-
-    CREATE TABLE IF NOT EXISTS portfolio_group_items (
-      id INTEGER PRIMARY KEY,
-      group_id INTEGER NOT NULL REFERENCES portfolio_groups(id) ON DELETE CASCADE,
-      item_kind TEXT NOT NULL CHECK (item_kind IN ('group', 'account', 'expense_account')),
-      child_group_id INTEGER REFERENCES portfolio_groups(id) ON DELETE CASCADE,
-      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      expense_account_id INTEGER REFERENCES expense_accounts(id) ON DELETE CASCADE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      CHECK (
-        (item_kind = 'group' AND child_group_id IS NOT NULL AND account_id IS NULL AND expense_account_id IS NULL)
-        OR (item_kind = 'account' AND account_id IS NOT NULL AND child_group_id IS NULL AND expense_account_id IS NULL)
-        OR (item_kind = 'expense_account' AND expense_account_id IS NOT NULL AND child_group_id IS NULL AND account_id IS NULL)
-      ),
-      UNIQUE (group_id, child_group_id),
-      UNIQUE (group_id, account_id),
-      UNIQUE (group_id, expense_account_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS market_display_series (
-      id INTEGER PRIMARY KEY,
-      slug TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      label_i18n_key TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      kind TEXT NOT NULL CHECK (kind IN ('equity', 'fund_unit', 'fx_usd', 'uf', 'composite')),
-      series_key TEXT,
-      show_in_marquee INTEGER NOT NULL DEFAULT 0 CHECK (show_in_marquee IN (0, 1)),
-      show_in_rates INTEGER NOT NULL DEFAULT 0 CHECK (show_in_rates IN (0, 1)),
-      rates_chart_title TEXT,
-      source TEXT NOT NULL DEFAULT 'builtin' CHECK (source IN ('builtin', 'account', 'manual'))
-    );
-
-    CREATE TABLE IF NOT EXISTS watchlist_composite_meta (
-      bucket_slug TEXT PRIMARY KEY,
-      fintual_managed_fund_id INTEGER NOT NULL,
-      composition_date TEXT NOT NULL,
-      anchor_fund_unit_clp REAL NOT NULL,
-      anchor_basket_usd REAL NOT NULL,
-      anchor_fx_clp REAL NOT NULL,
-      last_sync_ymd TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS watchlist_composite_holdings (
-      bucket_slug TEXT NOT NULL REFERENCES watchlist_composite_meta(bucket_slug) ON DELETE CASCADE,
-      ticker TEXT NOT NULL,
-      weight REAL NOT NULL,
-      synced_at TEXT NOT NULL,
-      PRIMARY KEY (bucket_slug, ticker)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_watchlist_composite_holdings_bucket
-      ON watchlist_composite_holdings(bucket_slug);
-
-    CREATE TABLE IF NOT EXISTS movements (
-      id INTEGER PRIMARY KEY,
-      account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      from_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      to_account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
-      amount_clp REAL NOT NULL DEFAULT 0,
-      occurred_on TEXT NOT NULL,
-      note TEXT,
-      units_delta REAL,
-      flow_kind TEXT,
-      amount_usd REAL,
-      ticker TEXT,
-      CHECK (
-        (
-          account_id IS NOT NULL
-          AND from_account_id IS NULL
-          AND to_account_id IS NULL
-        )
-        OR (
-          account_id IS NULL
-          AND from_account_id IS NOT NULL
-          AND to_account_id IS NOT NULL
-          AND from_account_id != to_account_id
-        )
-      )
-    );
-
-    CREATE TABLE IF NOT EXISTS valuations (
-      id INTEGER PRIMARY KEY,
-      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      as_of_date TEXT NOT NULL,
-      value_clp REAL NOT NULL,
-      UNIQUE(account_id, as_of_date)
-    );
-
-    CREATE TABLE IF NOT EXISTS fx_daily (
-      date TEXT PRIMARY KEY,
-      clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)
-    );
-
-    CREATE TABLE IF NOT EXISTS fx_daily_bcentral (
-      date TEXT PRIMARY KEY,
-      clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)
-    );
-
-    CREATE TABLE IF NOT EXISTS fx_daily_yahoo_rejected (
-      date TEXT PRIMARY KEY,
-      raw_clp_per_usd REAL NOT NULL,
-      reason TEXT NOT NULL,
-      rejected_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS fx_daily_bid_ask (
-      date TEXT PRIMARY KEY,
-      buy_clp_per_usd REAL NOT NULL CHECK (buy_clp_per_usd > 0),
-      sell_clp_per_usd REAL NOT NULL CHECK (sell_clp_per_usd > 0),
-      source TEXT NOT NULL,
-      CHECK (buy_clp_per_usd >= sell_clp_per_usd)
-    );
-
-    CREATE TABLE IF NOT EXISTS uf_daily (
-      date TEXT PRIMARY KEY,
-      clp_per_uf REAL NOT NULL CHECK (clp_per_uf > 0)
-    );
-
-    CREATE TABLE IF NOT EXISTS income_entries (
-      id INTEGER PRIMARY KEY,
-      amount_clp REAL NOT NULL,
-      received_on TEXT NOT NULL,
-      source TEXT,
-      note TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS expense_entries (
-      id INTEGER PRIMARY KEY,
-      amount_clp REAL NOT NULL CHECK (amount_clp > 0),
-      spent_on TEXT NOT NULL,
-      category TEXT,
-      note TEXT,
-      import_batch_id INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS import_batches (
-      id INTEGER PRIMARY KEY,
-      kind TEXT NOT NULL DEFAULT 'bank_statement',
-      filename TEXT,
-      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
-      status TEXT NOT NULL DEFAULT 'pending',
-      raw_text TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      id TEXT PRIMARY KEY,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
+  const migCount = dbInternal
+    .prepare("SELECT COUNT(*) AS c FROM schema_migrations")
+    .get() as { c: number };
+  if (migCount.c === 0) {
+    markBaselineMigrationsApplied();
+  }
 
   const count = dbInternal.prepare("SELECT COUNT(*) AS c FROM asset_groups").get() as { c: number };
   if (count.c === 0) {
     seedReferenceData();
   }
+}
+
+/** Fresh DB: record every migration up to the baseline as applied (see `schemaBaseline.ts`). */
+function markBaselineMigrationsApplied() {
+  if (!fs.existsSync(migrationsDir)) return;
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql") && f <= SCHEMA_BASELINE_LAST_MIGRATION)
+    .sort();
+  const ins = dbInternal.prepare("INSERT OR IGNORE INTO schema_migrations (id) VALUES (?)");
+  const tx = dbInternal.transaction(() => {
+    for (const f of files) ins.run(f);
+  });
+  tx();
+  console.log(`schema baseline: marked ${files.length} migration(s) as pre-applied on fresh DB`);
 }
 
 type SeedGroup = {
@@ -504,6 +265,24 @@ const GENERIC_UNIQUE_MERCHANTS_MIGRATION = "076_cc_expense_generic_unique_mercha
 const CARGO_MERCADO_UNIQUE_MIGRATION = "077_cargo_mercado_capitales_unique.sql";
 const ACCOUNT_SYNC_SOURCES_MIGRATION = "109_account_sync_sources.sql";
 
+/**
+ * Post-migration hooks live in modules that import `db` back from this file, so they are
+ * loaded lazily (a static import would form a cycle resolved before `db` exists). Source
+ * runs under tsx (`.ts` on disk); the compiled build has only `.js` under `dist/` — pick
+ * whichever exists. Node ≥22.12 supports `require()` of these ESM `.js` files.
+ */
+function requireMigrationHookModule<T>(baseName: string): T {
+  const tsPath = path.join(__dirname, `${baseName}.ts`);
+  const jsPath = path.join(__dirname, `${baseName}.js`);
+  return require(fs.existsSync(tsPath) ? tsPath : jsPath) as T;
+}
+
+/**
+ * NOTE: naive SQL splitting — statements are split on every `;` and `--` comments are
+ * stripped without lexing string literals. Migrations must not contain triggers,
+ * multi-statement bodies, or `;` / `--` inside string literals; put such data changes in
+ * a post-migration hook (see `runMigrations`) instead.
+ */
 function splitMigrationStatements(sql: string): string[] {
   const withoutComments = sql.replace(/--[^\n]*/g, "");
   return withoutComments
@@ -550,36 +329,36 @@ export function runMigrations() {
       dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     })();
     if (file === GENERIC_TRANSFER_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
-      const { backfillGenericTransferUniquePurchases } = require(
-        path.join(__dirname, "ccExpenseGenericTransferBackfill.ts")
-      ) as typeof import("./ccExpenseGenericTransferBackfill.js");
+      const { backfillGenericTransferUniquePurchases } = requireMigrationHookModule<
+        typeof import("./ccExpenseGenericTransferBackfill.js")
+      >("ccExpenseGenericTransferBackfill");
       const r = backfillGenericTransferUniquePurchases();
       console.log(
         `generic-transfer unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
       );
     }
     if (file === GENERIC_UNIQUE_MERCHANTS_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
-      const { backfillGenericTransferUniquePurchases } = require(
-        path.join(__dirname, "ccExpenseGenericTransferBackfill.ts")
-      ) as typeof import("./ccExpenseGenericTransferBackfill.js");
+      const { backfillGenericTransferUniquePurchases } = requireMigrationHookModule<
+        typeof import("./ccExpenseGenericTransferBackfill.js")
+      >("ccExpenseGenericTransferBackfill");
       const r = backfillGenericTransferUniquePurchases();
       console.log(
         `generic-unique merchants backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
       );
     }
     if (file === CARGO_MERCADO_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
-      const { backfillGenericTransferUniquePurchases } = require(
-        path.join(__dirname, "ccExpenseGenericTransferBackfill.ts")
-      ) as typeof import("./ccExpenseGenericTransferBackfill.js");
+      const { backfillGenericTransferUniquePurchases } = requireMigrationHookModule<
+        typeof import("./ccExpenseGenericTransferBackfill.js")
+      >("ccExpenseGenericTransferBackfill");
       const r = backfillGenericTransferUniquePurchases();
       console.log(
         `cargo mercado capitales unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
       );
     }
     if (file === ACCOUNT_SYNC_SOURCES_MIGRATION) {
-      const { reseedAllAccountSyncSources } = require(
-        path.join(__dirname, "accountSyncSources.ts")
-      ) as typeof import("./accountSyncSources.js");
+      const { reseedAllAccountSyncSources } = requireMigrationHookModule<
+        typeof import("./accountSyncSources.js")
+      >("accountSyncSources");
       const r = reseedAllAccountSyncSources();
       console.log(`account_sync_sources backfill: accounts=${r.accounts} links=${r.links}`);
     }
@@ -661,18 +440,23 @@ function ensureAccountSyncSourcesSeeded() {
   const accountCount = dbInternal.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number };
   if (accountCount.c === 0) return;
 
-  const { reseedAllAccountSyncSources } = require(
-    path.join(__dirname, "accountSyncSources.ts")
-  ) as typeof import("./accountSyncSources.js");
+  const { reseedAllAccountSyncSources } = requireMigrationHookModule<
+    typeof import("./accountSyncSources.js")
+  >("accountSyncSources");
   const r = reseedAllAccountSyncSources();
   console.log(`account_sync_sources seed: accounts=${r.accounts} links=${r.links}`);
 }
+
+/**
+ * `db` is initialized BEFORE migrations run: post-migration hook modules import `db`
+ * back from this file mid-evaluation (require cycle), so the binding must already exist
+ * when they load. Their statements are only prepared inside functions, after migrations.
+ */
+const db = wrapDatabaseForVerboseLog(dbInternal);
+
+export { db };
 
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();
 ensureAccountSyncSourcesSeeded();
-
-const db = wrapDatabaseForVerboseLog(dbInternal);
-
-export { db };
