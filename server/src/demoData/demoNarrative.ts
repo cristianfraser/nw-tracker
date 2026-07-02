@@ -42,6 +42,11 @@ export type DemoBill = {
   day: number;
   /** Bill fires on calendar months divisible by this (contribuciones = 3). Default 1. */
   everyNMonths?: number;
+  /**
+   * Amount comes from the mortgage's UF French schedule (`meanClp` ignored, no jitter) so
+   * the checking dividendo equals the ledger cuota to the peso. Requires `narrative.house`.
+   */
+  exactDeptoCuota?: boolean;
 };
 
 export type DemoChapter = {
@@ -195,7 +200,7 @@ function demoNarrative(): DemoNarrative {
         salaryClp: 1_250_000,
         salaryAnnualGrowth: 0.07,
         bills: [
-          { desc: "PAGO ARRIENDO DEPTO PROVIDENCIA", meanClp: 350_000, categorySlug: "others", day: 5 },
+          { desc: "PAGO ARRIENDO DEPTO PROVIDENCIA", meanClp: 500_000, categorySlug: "others", day: 5 },
           { desc: "GASTOS COMUNES EDIFICIO", meanClp: 55_000, categorySlug: "bills", day: 6 },
           { desc: "ENEL CHILE", meanClp: 28_000, categorySlug: "bills", day: 12 },
           { desc: "AGUAS ANDINAS", meanClp: 14_000, categorySlug: "bills", day: 12 },
@@ -212,7 +217,7 @@ function demoNarrative(): DemoNarrative {
         salaryClp: 1_320_000,
         salaryAnnualGrowth: 0.05,
         bills: [
-          { desc: "PAGO ARRIENDO DEPTO PROVIDENCIA", meanClp: 350_000, categorySlug: "others", day: 5 },
+          { desc: "PAGO ARRIENDO DEPTO PROVIDENCIA", meanClp: 500_000, categorySlug: "others", day: 5 },
           { desc: "GASTOS COMUNES EDIFICIO", meanClp: 55_000, categorySlug: "bills", day: 6 },
           { desc: "ENEL CHILE", meanClp: 36_000, categorySlug: "bills", day: 12 },
           { desc: "AGUAS ANDINAS", meanClp: 16_000, categorySlug: "bills", day: 12 },
@@ -240,7 +245,7 @@ function demoNarrative(): DemoNarrative {
         salaryClp: 3_200_000,
         salaryAnnualGrowth: 0.07,
         bills: [
-          { desc: "PAGO ARRIENDO DEPTO LAS CONDES", meanClp: 470_000, categorySlug: "others", day: 5 },
+          { desc: "PAGO ARRIENDO DEPTO LAS CONDES", meanClp: 700_000, categorySlug: "others", day: 5 },
           { desc: "GASTOS COMUNES EDIFICIO", meanClp: 85_000, categorySlug: "bills", day: 6 },
           { desc: "ENEL CHILE", meanClp: 35_000, categorySlug: "bills", day: 12 },
           { desc: "AGUAS ANDINAS", meanClp: 17_000, categorySlug: "bills", day: 12 },
@@ -256,7 +261,8 @@ function demoNarrative(): DemoNarrative {
         salaryClp: 5_200_000,
         salaryAnnualGrowth: 0.06,
         bills: [
-          { desc: "DIVIDENDO HIPOTECARIO BANCO DEMO", meanClp: 2_250_000, categorySlug: "real_estate_amortization", day: 5 },
+          // Amount = the ledger cuota (UF French schedule), posted the same day it's paid.
+          { desc: "DIVIDENDO HIPOTECARIO BANCO DEMO", meanClp: 0, categorySlug: "real_estate_amortization", day: 10, exactDeptoCuota: true },
           { desc: "CONTRIBUCIONES TESORERIA", meanClp: 900_000, categorySlug: "bills", day: 28, everyNMonths: 3 },
           { desc: "ENEL CHILE", meanClp: 60_000, categorySlug: "bills", day: 12 },
           { desc: "AGUAS ANDINAS", meanClp: 30_000, categorySlug: "bills", day: 12 },
