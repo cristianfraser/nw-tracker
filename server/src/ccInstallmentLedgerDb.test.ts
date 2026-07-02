@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   cupoEnCuotasClpForCalendarMonth,
@@ -13,8 +13,7 @@ import {
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   ensureVitestCreditCardFixtures,
-  getVitestSantanderCcMasterAccountId,
-} from "./test/vitestDbSeed.js";
+  getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 /** Same UTC-based current calendar month the ledger uses (avoids Chile/UTC boundary drift). */
 function utcCurrentYm(): string {
@@ -146,4 +145,8 @@ describe("installment ledger cupo (synthetic)", () => {
       .get(accountId, today) as { value_clp: number } | undefined;
     expect(row?.value_clp).toBe(expected);
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });

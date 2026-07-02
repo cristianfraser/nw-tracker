@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { backfillAdditionalCardNoCuenta } from "./backfillAdditionalCardNoCuenta.js";
 import { AUTO_ADDITIONAL_CARD_NOTE_PREFIX } from "./ccAdditionalCardExpenseMatch.js";
 import {
@@ -8,7 +8,7 @@ import {
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
-import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 const SRC = "import:web-paste|vitest-additional-card-backfill";
 
@@ -69,4 +69,8 @@ describe("backfillAdditionalCardNoCuenta", () => {
       .get(accountId, purchaseKey) as { notes: string } | undefined;
     expect(note?.notes.startsWith(AUTO_ADDITIONAL_CARD_NOTE_PREFIX)).toBe(true);
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
+import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import {
   equityReturnSnapshot,
   getDividendReinvestedInflowEventsForAccount,
@@ -8,6 +9,8 @@ import {
 
 const FIXTURE_STOCK = "vitest-drip-equity-stock";
 const FIXTURE_NOTE = "vitest-drip-equity";
+
+let restoreFx: (() => void) | null = null;
 
 describe("equityDividendReinvested", () => {
   let stockId = 0;
@@ -24,9 +27,10 @@ describe("equityDividendReinvested", () => {
         .prepare(`INSERT INTO accounts (asset_group_id, name, equity_ticker) VALUES (?, ?, ?)`)
         .run(leaf.id, FIXTURE_STOCK, "VITEST").lastInsertRowid
     );
-    db.prepare(
-      `INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES ('2026-04-30', 900), ('2026-05-05', 900)`
-    ).run();
+    restoreFx = overrideFxDaily([
+      ["2026-04-30", 900],
+      ["2026-05-05", 900],
+    ]);
     db.prepare(
       `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd, units_delta, ticker)
        VALUES (?, 0, '2026-04-30', ?, 'dividend_usd', 1.57, 0.002175, 'VITEST')`
@@ -34,6 +38,7 @@ describe("equityDividendReinvested", () => {
   });
 
   afterAll(() => {
+    restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}%`);
     db.prepare(`DELETE FROM accounts WHERE name = ?`).run(FIXTURE_STOCK);
   });

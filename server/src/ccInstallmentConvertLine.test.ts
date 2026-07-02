@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   convertStatementLineToInstallmentPurchase,
@@ -9,8 +9,7 @@ import { loadCcExpenseCategoryMaps } from "./ccExpenseCategories.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
 import {
   ensureVitestCreditCardFixtures,
-  getVitestSantanderCcMasterAccountId,
-} from "./test/vitestDbSeed.js";
+  getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 function insertStatement(accountId: number, suffix: string): number {
   const r = db
@@ -158,4 +157,8 @@ describe("convertStatementLineToInstallmentPurchase", () => {
 
     expect(totals).toEqual([1_200_000, 1_267_034]);
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });
