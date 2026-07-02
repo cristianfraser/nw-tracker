@@ -331,10 +331,13 @@ function demoNarrative(): DemoNarrative {
       from: "2019-01",
       sweepShare: 0.4,
       positions: [
-        { ticker: "NVDA", weight: 0.45 },
-        { ticker: "SPY", weight: 0.25 },
-        { ticker: "OILK", weight: 0.1 },
-        { ticker: "CCJ", weight: 0.2 },
+        { ticker: "NVDA", weight: 0.4 },
+        { ticker: "SPY", weight: 0.2 },
+        { ticker: "SMH", weight: 0.25 },
+        { ticker: "CCJ", weight: 0.15 },
+        // Weight 0: no sweep allocation — INTC exists only for the scripted 2024
+        // turnaround bet that implodes (bought ~$44, exited ~$20).
+        { ticker: "INTC", weight: 0 },
       ],
     },
     withCrypto: true,
@@ -342,9 +345,11 @@ function demoNarrative(): DemoNarrative {
       { month: "2020-10", asset: "crypto", action: "buy", amountClp: 500_000 },
       { month: "2020-12", asset: "crypto", action: "buy", amountClp: 500_000 },
       { month: "2021-02", asset: "crypto", action: "buy", amountClp: 1_000_000 },
-      // Early NVDA conviction, doubled down on the COVID dip.
+      // Early NVDA conviction, doubled down on the COVID dip; semis ETF rides along.
       { month: "2019-10", asset: "stocks", action: "buy", amountClp: 1_000_000, ticker: "NVDA" },
       { month: "2020-04", asset: "stocks", action: "buy", amountClp: 1_500_000, ticker: "NVDA" },
+      { month: "2020-05", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "SMH" },
+      { month: "2021-03", asset: "stocks", action: "buy", amountClp: 1_500_000, ticker: "SMH" },
       // Nov-2021 top: take profit on both before the 2022 grind down.
       { month: "2021-11", asset: "crypto", action: "sell", fraction: 0.4 },
       { month: "2021-11", asset: "stocks", action: "sell", fraction: 0.3, ticker: "CCJ" },
@@ -352,10 +357,16 @@ function demoNarrative(): DemoNarrative {
       { month: "2022-10", asset: "stocks", action: "sell", fraction: 0.15, ticker: "SPY" },
       { month: "2022-10", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "NVDA" },
       { month: "2023-02", asset: "crypto", action: "buy", amountClp: 800_000 },
-      // House funding: sell most of the NVDA position + rescate fondo the month before
-      // the pie (the 100M down payment comes from the portfolio, keeping ~20M invested).
+      // Feb-2024: the Intel foundry-turnaround bet — promising on paper, imploding by
+      // August (the same week as the house purchase), exited in December at a ~55% loss.
+      { month: "2024-02", asset: "stocks", action: "buy", amountClp: 4_000_000, ticker: "INTC" },
+      // House funding: rebalance the big winners — sell most of NVDA and SMH + rescate
+      // fondo the month before the pie (the 100M down payment comes from the portfolio,
+      // keeping ~20M invested across the survivors).
       { month: "2024-07", asset: "stocks", action: "sell", fraction: 0.9, ticker: "NVDA" },
+      { month: "2024-07", asset: "stocks", action: "sell", fraction: 0.75, ticker: "SMH" },
       { month: "2024-07", asset: "fondo", action: "sell", fraction: 0.35 },
+      { month: "2024-12", asset: "stocks", action: "sell", fraction: 1, ticker: "INTC" },
       { month: "2025-01", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "CCJ" },
     ],
     house: {
