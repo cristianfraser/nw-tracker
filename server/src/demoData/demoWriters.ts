@@ -28,6 +28,7 @@ import {
   type DemoChapter,
   type DemoMonth,
   type DemoNarrative,
+  type DemoTrade,
 } from "./demoNarrative.js";
 
 export type DemoAccounts = {
@@ -35,11 +36,14 @@ export type DemoAccounts = {
   /** last4 → CC master account id. */
   ccMasterIdByLast4: Map<string, number>;
   fondoId: number;
+  stocksId: number | null;
+  cryptoId: number | null;
   afpId: number | null;
   afcId: number | null;
   savingsId: number | null;
   vistaId: number | null;
   propertyId: number | null;
+  mortgageId: number | null;
 };
 
 /* ------------------------------- merchant pools ---------------------------------- */
@@ -142,7 +146,55 @@ export function demoMonthlyReturn(month: DemoMonth, rng: () => number): number {
   if (month === "2020-03") return -0.12;
   if (month === "2020-04") return 0.05;
   if (month === "2022-06") return -0.06;
+  if (month === "2025-04") return -0.05;
+  // 2022: negative drift all year (rate-hike grind), not just the June air pocket.
+  if (month.startsWith("2022")) return -0.015 + (rng() * 2 - 1) * 0.025;
   return 0.005 + (rng() * 2 - 1) * 0.02;
+}
+
+/**
+ * Volatile tech/semis-flavored monthly return: melt-up 2019–2021, COVID crash/rip,
+ * ~-50% grind through 2022, AI recovery 2023–2024, choppy 2025 with the April air pocket.
+ */
+export function demoStocksMonthlyReturn(month: DemoMonth, rng: () => number): number {
+  if (month === "2020-03") return -0.18;
+  if (month === "2020-04") return 0.13;
+  if (month === "2022-06") return -0.11;
+  if (month === "2022-10") return -0.09;
+  if (month === "2025-04") return -0.1;
+  const noise = (base: number, amp: number) => base + (rng() * 2 - 1) * amp;
+  const year = month.slice(0, 4);
+  switch (year) {
+    case "2018": return noise(0.0, 0.05);
+    case "2019": return noise(0.03, 0.04);
+    case "2020": return noise(0.045, 0.05);
+    case "2021": return noise(0.025, 0.06);
+    case "2022": return noise(-0.05, 0.05);
+    case "2023": return noise(0.042, 0.05);
+    case "2024": return noise(0.028, 0.05);
+    case "2025": return noise(0.008, 0.06);
+    default: return noise(0.01, 0.05);
+  }
+}
+
+/** Crypto-flavored monthly return: 2020–21 mania, May-2021 flush, 2022 winter, 2023–24 recovery. */
+export function demoCryptoMonthlyReturn(month: DemoMonth, rng: () => number): number {
+  if (month === "2021-05") return -0.32;
+  if (month === "2021-12") return -0.14;
+  if (month === "2022-06") return -0.35;
+  if (month === "2024-03") return 0.25;
+  const noise = (base: number, amp: number) => base + (rng() * 2 - 1) * amp;
+  if (month >= "2020-10" && month <= "2020-12") return noise(0.22, 0.1);
+  if (month >= "2021-01" && month <= "2021-04") return noise(0.16, 0.12);
+  if (month >= "2021-06" && month <= "2021-11") return noise(0.1, 0.08);
+  const year = month.slice(0, 4);
+  switch (year) {
+    case "2022": return noise(-0.14, 0.08);
+    case "2023": return noise(0.075, 0.1);
+    case "2024": return noise(0.065, 0.12);
+    case "2025": return noise(0.0, 0.1);
+    default: return noise(0.01, 0.08);
+  }
 }
 
 /* --------------------------------- month state ----------------------------------- */
@@ -166,10 +218,14 @@ export type DemoRunState = {
   cards: Map<string, CardState>;
   fondoValueClp: number;
   fondoDepositsClp: number;
+  stocksValueClp: number;
+  cryptoValueClp: number;
   afpValueClp: number;
   afcValueClp: number;
   savingsValueClp: number;
   checkingBalanceClp: number;
+  /** Outstanding mortgage principal once the house is bought (null before). */
+  mortgageOutstandingClp: number | null;
 };
 
 export function initialDemoRunState(narrative: DemoNarrative): DemoRunState {
@@ -179,10 +235,13 @@ export function initialDemoRunState(narrative: DemoNarrative): DemoRunState {
     ),
     fondoValueClp: 0,
     fondoDepositsClp: 0,
+    stocksValueClp: 0,
+    cryptoValueClp: 0,
     afpValueClp: 0,
     afcValueClp: 0,
     savingsValueClp: 0,
     checkingBalanceClp: 0,
+    mortgageOutstandingClp: null,
   };
 }
 
@@ -209,7 +268,7 @@ export function writeCheckingMonth(
   month: DemoMonth,
   state: DemoRunState,
   rng: () => number
-): { sweepClp: number; afpContribClp: number } {
+): { flows: DemoMonthFlows; afpContribClp: number } {
   const ch = chapterForMonth(narrative, month);
   const monthsIn = Math.max(
     0,
@@ -230,7 +289,7 @@ export function writeCheckingMonth(
   checkingMove(net, 25, "ABONO REMUNERACIONES EMPRESA DEMO SPA");
 
   checkingMove(
-    -Math.round(jitter(rng, ch.fixedExpensesClp, 0.05)),
+    -Math.round(jitter(rng, ch.fixedExpensesClp, 0.15)),
     5,
     ch.id === "own_house" ? "PAGO GASTOS CASA / CONTRIBUCIONES" : "PAGO ARRIENDO / GASTOS COMUNES"
   );
@@ -253,13 +312,67 @@ export function writeCheckingMonth(
     eventChecking += ev.amountClp;
   }
 
-  // Sweep the chapter's savings rate into the fondo (single-leg pair: cargo on checking +
-  // deposit on the fondo — same shape the real imports produce, which is what the
-  // deposits reconciliation machinery matches on).
+  // Sweep a lumpy fraction of the leftover into investments (cargo on checking + deposit
+  // on the destination — the pair shape the deposits reconciliation machinery matches on).
+  // ~30% of months skip the sweep, a few sweep extra hard; the rest jitter around the
+  // chapter's savings rate. Uniform monthly saving looked lifeless on the net-worth chart.
   const leftover = net - ch.fixedExpensesClp - pagosTotal - eventChecking;
-  const sweepClp = Math.max(0, Math.round((leftover * ch.savingsRate) / 50_000) * 50_000);
-  if (sweepClp > 0) {
-    checkingMove(-sweepClp, 26, "TRANSFERENCIA FONDO DEMO");
+  const sweepRoll = rng();
+  const sweepFactor = sweepRoll < 0.3 ? 0 : sweepRoll > 0.85 ? 1.7 : 0.6 + rng() * 0.8;
+  const sweepClp = Math.max(
+    0,
+    Math.round((leftover * ch.savingsRate * sweepFactor) / 50_000) * 50_000
+  );
+  let stocksSweepClp = 0;
+  if (narrative.stocks && month >= narrative.stocks.from && sweepClp > 0) {
+    stocksSweepClp =
+      Math.round((sweepClp * narrative.stocks.sweepShare) / 50_000) * 50_000;
+  }
+  const fondoSweepClp = sweepClp - stocksSweepClp;
+  if (fondoSweepClp > 0) {
+    checkingMove(-fondoSweepClp, 26, "TRANSFERENCIA FONDO DEMO");
+  }
+  if (stocksSweepClp > 0) {
+    checkingMove(-stocksSweepClp, 26, "TRANSFERENCIA CORREDORA DEMO");
+  }
+
+  // Scripted trades: buys leave checking; sells (fraction of current value) come back in.
+  const tradeFlows = { stocksBuy: stocksSweepClp, stocksSell: 0, cryptoBuy: 0, cryptoSell: 0, fondoBuy: fondoSweepClp, fondoSell: 0 };
+  for (const tr of narrative.trades) {
+    if (tr.month !== month) continue;
+    if (tr.action === "buy") {
+      const amt = Math.round(tr.amountClp ?? 0);
+      if (amt <= 0) continue;
+      const desc =
+        tr.asset === "crypto"
+          ? "TRANSFERENCIA EXCHANGE DEMO"
+          : tr.asset === "stocks"
+            ? "TRANSFERENCIA CORREDORA DEMO"
+            : "TRANSFERENCIA FONDO DEMO";
+      checkingMove(-amt, 17, desc);
+      if (tr.asset === "crypto") tradeFlows.cryptoBuy += amt;
+      else if (tr.asset === "stocks") tradeFlows.stocksBuy += amt;
+      else tradeFlows.fondoBuy += amt;
+    } else {
+      const held =
+        tr.asset === "crypto"
+          ? state.cryptoValueClp
+          : tr.asset === "stocks"
+            ? state.stocksValueClp
+            : state.fondoValueClp;
+      const amt = Math.round(held * (tr.fraction ?? 0));
+      if (amt <= 0) continue;
+      const desc =
+        tr.asset === "crypto"
+          ? "ABONO VENTA EXCHANGE DEMO"
+          : tr.asset === "stocks"
+            ? "ABONO VENTA CORREDORA DEMO"
+            : "ABONO RESCATE FONDO DEMO";
+      checkingMove(amt, 18, desc);
+      if (tr.asset === "crypto") tradeFlows.cryptoSell += amt;
+      else if (tr.asset === "stocks") tradeFlows.stocksSell += amt;
+      else tradeFlows.fondoSell += amt;
+    }
   }
 
   // Quarterly top-up of the cash-savings account.
@@ -350,8 +463,17 @@ export function writeCheckingMonth(
     );
   }
 
-  return { sweepClp, afpContribClp };
+  return { flows: tradeFlows, afpContribClp };
 }
+
+export type DemoMonthFlows = {
+  stocksBuy: number;
+  stocksSell: number;
+  cryptoBuy: number;
+  cryptoSell: number;
+  fondoBuy: number;
+  fondoSell: number;
+};
 
 /** Placeholder for readability in the registry block (outflows already posted above). */
 function jitterlessMonthOutflows(_s: DemoRunState, _a: DemoAccounts, _m: DemoMonth): number {
@@ -422,7 +544,12 @@ export function writeCreditCardMonth(
     }[] = [];
 
     // Discretionary spend for this card's share of the chapter mean.
-    const target = jitter(rng, (ch.ccSpendMeanClp * card.spendShare) / shareTotal, 0.25);
+    // Lumpy discretionary spend: ~12% blowout months (1.6–2.2×), ~18% frugal months
+    // (0.55–0.75×), the rest 0.75–1.25× — flat 0.25 jitter read as lifeless.
+    const spendRoll = rng();
+    const spendMult =
+      spendRoll < 0.12 ? 1.6 + rng() * 0.6 : spendRoll < 0.3 ? 0.55 + rng() * 0.2 : 0.75 + rng() * 0.5;
+    const target = ((ch.ccSpendMeanClp * card.spendShare) / shareTotal) * spendMult;
     const nPurchases = 4 + Math.floor(rng() * 8);
     let spent = 0;
     for (let i = 0; i < nPurchases && spent < target; i++) {
@@ -587,25 +714,61 @@ export function writeCreditCardMonth(
   }
 }
 
-/** Fondo + AFP month-end valuations along the seeded return path; property once bought. */
+/** Fondo/stocks/crypto + AFP month-end valuations along seeded return paths; house once bought. */
 export function writeInvestmentMonth(
   narrative: DemoNarrative,
   accounts: DemoAccounts,
   month: DemoMonth,
   state: DemoRunState,
-  sweepClp: number,
+  flows: DemoMonthFlows,
   afpContribClp: number,
   rng: () => number
 ): void {
   const monthEnd = monthEndUtcYmd(month);
   const r = demoMonthlyReturn(month, rng);
 
-  if (sweepClp > 0) {
-    movement(accounts.fondoId, sweepClp, dayInMonth(month, 26), "Depósito|demo");
-    state.fondoDepositsClp += sweepClp;
+  if (flows.fondoBuy > 0) {
+    movement(accounts.fondoId, flows.fondoBuy, dayInMonth(month, 26), "Depósito|demo");
+    state.fondoDepositsClp += flows.fondoBuy;
   }
-  state.fondoValueClp = Math.max(0, state.fondoValueClp * (1 + r) + sweepClp);
+  if (flows.fondoSell > 0) {
+    movement(accounts.fondoId, -flows.fondoSell, dayInMonth(month, 18), "Retiro|demo");
+  }
+  state.fondoValueClp = Math.max(
+    0,
+    state.fondoValueClp * (1 + r) + flows.fondoBuy - flows.fondoSell
+  );
   if (state.fondoValueClp > 0) valuation(accounts.fondoId, monthEnd, state.fondoValueClp);
+
+  if (accounts.stocksId != null) {
+    if (flows.stocksBuy > 0) {
+      movement(accounts.stocksId, flows.stocksBuy, dayInMonth(month, 26), "Depósito|demo");
+    }
+    if (flows.stocksSell > 0) {
+      movement(accounts.stocksId, -flows.stocksSell, dayInMonth(month, 18), "Retiro|demo");
+    }
+    const rs = demoStocksMonthlyReturn(month, rng);
+    state.stocksValueClp = Math.max(
+      0,
+      state.stocksValueClp * (1 + rs) + flows.stocksBuy - flows.stocksSell
+    );
+    if (state.stocksValueClp > 0) valuation(accounts.stocksId, monthEnd, state.stocksValueClp);
+  }
+
+  if (accounts.cryptoId != null) {
+    if (flows.cryptoBuy > 0) {
+      movement(accounts.cryptoId, flows.cryptoBuy, dayInMonth(month, 17), "Depósito|demo");
+    }
+    if (flows.cryptoSell > 0) {
+      movement(accounts.cryptoId, -flows.cryptoSell, dayInMonth(month, 18), "Retiro|demo");
+    }
+    const rc = demoCryptoMonthlyReturn(month, rng);
+    state.cryptoValueClp = Math.max(
+      0,
+      state.cryptoValueClp * (1 + rc) + flows.cryptoBuy - flows.cryptoSell
+    );
+    if (state.cryptoValueClp > 0) valuation(accounts.cryptoId, monthEnd, state.cryptoValueClp);
+  }
 
   if (accounts.afpId != null && afpContribClp > 0) {
     movement(accounts.afpId, afpContribClp, dayInMonth(month, 25), "Cotización obligatoria|demo");
@@ -634,7 +797,30 @@ export function writeInvestmentMonth(
     }
   }
 
-  if (accounts.propertyId != null && month >= "2024-08") {
+  const house = narrative.house;
+  if (accounts.propertyId != null && house && month >= house.month) {
+    const monthsOwned =
+      (Number(month.slice(0, 4)) - Number(house.month.slice(0, 4))) * 12 +
+      (Number(month.slice(5, 7)) - Number(house.month.slice(5, 7)));
+    valuation(accounts.propertyId, monthEnd, house.valueClp * Math.pow(1.003, monthsOwned));
+
+    if (accounts.mortgageId != null) {
+      if (state.mortgageOutstandingClp == null) {
+        state.mortgageOutstandingClp = house.mortgageClp;
+      } else {
+        // French amortization: fixed dividendo, principal share grows over time.
+        const i = house.monthlyRate;
+        const pmt =
+          (house.mortgageClp * i) / (1 - Math.pow(1 + i, -house.termMonths));
+        const interest = state.mortgageOutstandingClp * i;
+        state.mortgageOutstandingClp = Math.max(
+          0,
+          state.mortgageOutstandingClp - (pmt - interest)
+        );
+      }
+      valuation(accounts.mortgageId, monthEnd, Math.round(state.mortgageOutstandingClp));
+    }
+  } else if (accounts.propertyId != null && narrative.withProperty && !house && month >= "2024-08") {
     const monthsOwned = (Number(month.slice(0, 4)) - 2024) * 12 + (Number(month.slice(5, 7)) - 8);
     valuation(accounts.propertyId, monthEnd, 18_000_000 * Math.pow(1.003, monthsOwned));
   }
