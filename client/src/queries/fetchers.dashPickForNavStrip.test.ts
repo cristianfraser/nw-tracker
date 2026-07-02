@@ -126,7 +126,9 @@ describe("dashPickForNavStrip USD totals", () => {
         overviewPoints: [],
         dashboard_layout: [
           {
-            slug: "cash_savings",
+            // Matches the server payload: the cash card keeps the hub slug `cash_eqs`
+            // (see getDashboardLayoutCards) — linked_balances lookups key on it.
+            slug: "cash_eqs",
             label: "Ahorros",
             label_i18n_key: null,
             sort_order: 1,

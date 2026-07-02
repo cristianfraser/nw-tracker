@@ -3,6 +3,12 @@
     "displayPreferences": {
       "toolbarAria": "Divisa (CLP o USD) y período MTD/YTD para tarjetas y gráficos",
       "displayCurrency": "Divisa: "
+    },
+    "errorBoundary": {
+      "title": "Algo salió mal",
+      "body": "La aplicación encontró un error inesperado al renderizar esta vista.",
+      "detailLabel": "Detalle técnico",
+      "reload": "Recargar la aplicación"
     }
   },
   "fxCoverage": {
@@ -608,6 +614,8 @@
       "ccStatementPdfHint": "Sube el PDF CLP y, si aplica, el PDF internacional en US$. Se fusiona con lo ya importado.",
       "ccPdfClp": "PDF CLP",
       "ccPdfUsd": "PDF USD (opcional)",
+      "cuentaVistaWebPaste": "Movimientos pegados (cuenta vista)",
+      "cuentaVistaWebPasteHint": "Un movimiento por línea: «fecha; descripción; monto» (monto negativo = cargo) o «fecha; descripción; cargo; abono». Fecha con año (dd/mm/aaaa). Ej: 15/06/2026; Traspaso Internet a Cta. Cte.; -5.000. Los duplicados y lo ya cubierto por cartola o traspaso interno se omiten.",
       "checkingRecent": "Últimos movimientos (Excel)",
       "checkingRecentHint": "Export «últimos movimientos» de la cuenta corriente. Se pueden volver a subir archivos con filas ya importadas.",
       "checkingCartola": "Cartola oficial (Excel)",
