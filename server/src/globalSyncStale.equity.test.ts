@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChileWallClock } from "./chileDate.js";
 import { isCryptoEodStale, isStocksNyseStale } from "./globalSyncStale.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
+import {
+  installCryptoTickerFixture,
+  removeCryptoTickerFixture,
+} from "./test/cryptoTickerFixture.js";
 
 const wed004Chile: ChileWallClock = {
   ymd: "2099-06-03",
@@ -24,6 +28,9 @@ const cl: ChileWallClock = {
 };
 
 describe("split equity sync buckets", () => {
+  beforeAll(() => installCryptoTickerFixture());
+  afterAll(() => removeCryptoTickerFixture());
+
   it("crypto is not stale before 23:55 Chile even if UTC day lags", () => {
     const early: ChileWallClock = { ...cl, hour: 20, minute: 0 };
     expect(isCryptoEodStale(early, {}, { force: false })).toBe(false);

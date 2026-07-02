@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import {
   effectiveCcExpenseLineAmountClp,
@@ -71,19 +72,30 @@ describe("effectiveCcExpenseLineAmountClp", () => {
   });
 
   it("converts USD cuota when CLP cuota is missing", () => {
+    // Own fx fixture — the date may predate whatever fx_daily history the test DB has.
     const fxDate = "2024-08-31";
-    const amount = effectiveCcExpenseLineAmountClp(
-      {
-        installment_flag: 1,
-        amount_clp: null,
-        amount_usd: 50,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: 25,
-      },
-      fxDate
-    );
-    expect(amount).not.toBeNull();
-    expect(amount!).toBeGreaterThan(20_000);
+    const hadRow =
+      db.prepare(`SELECT 1 FROM fx_daily WHERE date = ?`).get(fxDate) != null;
+    db.prepare(
+      `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, 920)
+       ON CONFLICT(date) DO NOTHING`
+    ).run(fxDate);
+    try {
+      const amount = effectiveCcExpenseLineAmountClp(
+        {
+          installment_flag: 1,
+          amount_clp: null,
+          amount_usd: 50,
+          valor_cuota_mensual_clp: null,
+          valor_cuota_mensual_usd: 25,
+        },
+        fxDate
+      );
+      expect(amount).not.toBeNull();
+      expect(amount!).toBeGreaterThan(20_000);
+    } finally {
+      if (!hadRow) db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run(fxDate);
+    }
   });
 });
 
