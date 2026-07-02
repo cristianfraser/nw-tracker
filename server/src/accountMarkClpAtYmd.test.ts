@@ -162,7 +162,7 @@ describe("accountMarkClpAtYmd property", () => {
         prior_month_close_clp: prior.value_clp,
         deposits_month_clp: 0,
       },
-      { includeUsd: false }
+      { includeUsd: false, reconcilePeriodDeltas: true }
     );
     expect(reconciled.delta_month_clp).not.toBe(0);
     expect(reconciled.delta_month_clp).toBeCloseTo(current.value_clp - prior.value_clp, 0);
