@@ -1,5 +1,8 @@
 import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type {
+  FlowCcExpenseLineRow,
+  FlowCcExpenseLineSource,
+} from "./flowsCreditCardExpenses.js";
 import { merchantMatchesExpectation } from "./realEstateExpenseMerchants.js";
 import {
   billMonthFromSpentOn,
@@ -28,7 +31,7 @@ export type RealEstateExpenseLinkDto = {
   purchase_on: string | null;
   amount_clp: number;
   origin_label: string;
-  source: "cc" | "checking";
+  source: FlowCcExpenseLineSource;
 };
 
 export type RealEstateBillSlot = {
@@ -74,7 +77,7 @@ export type RealEstateLinkCandidateDto = {
   purchase_on: string | null;
   amount_clp: number;
   origin_label: string;
-  source: "cc" | "checking";
+  source: FlowCcExpenseLineSource;
   merchant_matches: boolean;
   /** Months from bill month (0 = same month, 1–2 = later card payment). */
   purchase_month_offset: number;

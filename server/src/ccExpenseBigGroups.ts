@@ -151,10 +151,12 @@ export function setCcExpensePurchaseBigGroup(opts: {
 
 export type FlowCcExpenseLineBeforeBigGroup = Omit<FlowCcExpenseLineRow, "big_group_slug">;
 
-export function enrichFlowLinesWithBigGroups(
-  lines: FlowCcExpenseLineBeforeBigGroup[],
+export function enrichFlowLinesWithBigGroups<
+  T extends { account_id: number; purchase_key: string },
+>(
+  lines: T[],
   groupsByKey?: Map<string, string>
-): FlowCcExpenseLineRow[] {
+): (T & { big_group_slug: string | null })[] {
   const accountIds = [...new Set(lines.map((ln) => ln.account_id))];
   const groups =
     groupsByKey ??

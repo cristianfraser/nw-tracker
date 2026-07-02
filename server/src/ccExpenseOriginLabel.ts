@@ -38,9 +38,9 @@ export function expenseLineOriginLabel(
   return names.get(accountId) ?? "Cuenta corriente";
 }
 
-export function enrichFlowLinesWithOriginLabels(
-  lines: readonly FlowCcExpenseLineRowDraft[]
-): FlowCcExpenseLineRow[] {
+export function enrichFlowLinesWithOriginLabels<
+  T extends { account_id: number; source: FlowCcExpenseLineSource },
+>(lines: readonly T[]): (T & { origin_label: string })[] {
   const names = loadAccountNameById(lines.map((ln) => ln.account_id));
   return lines.map((ln) => ({
     ...ln,

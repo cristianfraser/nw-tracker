@@ -20,7 +20,7 @@ import { dedupeInstallmentPurchaseLedgerRows } from "./ccInstallmentLedgerDb.js"
 import { db } from "./db.js";
 import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
-import type { FlowCcExpenseLineRow, FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 
 export type InstallmentPurchaseRow = {
   id: number;
@@ -44,7 +44,7 @@ export function installmentPurchaseIdentityKey(
   return `${accountId}:${purchaseOn}:${cuotasTotal}:${merchantKey}`;
 }
 
-function identityKeyFromLine(ln: FlowCcExpenseLineRow): string | null {
+function identityKeyFromLine(ln: FlowCcExpenseLineBeforeNotes): string | null {
   if (!ln.purchase_on || !ln.nro_cuota_total) return null;
   return installmentPurchaseIdentityKey(
     ln.account_id,
@@ -61,7 +61,7 @@ function identityKeyFromLine(ln: FlowCcExpenseLineRow): string | null {
  * separate totals instead of collapsing into one. The amount-free identityKeyFromLine is still
  * used for matching cuota/purchase lines to totals, where the amount legitimately differs.
  */
-function installmentTotalDedupeKey(ln: FlowCcExpenseLineRow): string | null {
+function installmentTotalDedupeKey(ln: FlowCcExpenseLineBeforeNotes): string | null {
   const base = identityKeyFromLine(ln);
   if (!base) return null;
   return `${base}:${Math.round(ln.amount_clp)}`;
@@ -80,7 +80,7 @@ function loadInstallmentPurchases(accountIds: number[]): InstallmentPurchaseRow[
 }
 
 export function purchaseLineMatchesInstallmentPurchase(
-  ln: FlowCcExpenseLineRow,
+  ln: FlowCcExpenseLineBeforeNotes,
   pr: InstallmentPurchaseRow
 ): boolean {
   if (ln.account_id !== pr.account_id) return false;
@@ -97,7 +97,7 @@ export function purchaseLineMatchesInstallmentPurchase(
  * resumen lines carry different amounts by design and are matched elsewhere.
  */
 function plainPurchaseLineAmountBlocksInstallmentMatch(
-  ln: FlowCcExpenseLineRow,
+  ln: FlowCcExpenseLineBeforeNotes,
   installmentTotalClp: number,
   cuotasTotal: number | null
 ): boolean {
@@ -113,9 +113,9 @@ function plainPurchaseLineAmountBlocksInstallmentMatch(
 }
 
 function findMatchingCuotaLine(
-  cuotaLines: readonly FlowCcExpenseLineRow[],
+  cuotaLines: readonly FlowCcExpenseLineBeforeNotes[],
   pr: InstallmentPurchaseRow
-): FlowCcExpenseLineRow | undefined {
+): FlowCcExpenseLineBeforeNotes | undefined {
   const purchaseOn = purchaseOnIso(pr.purchase_date);
   const merchantKey = normalizeCcExpenseMerchantKey(pr.merchant);
   // Prefer the cuota whose ledger total matches this purchase's amount. Two purchases that share
@@ -168,7 +168,7 @@ function findMatchingCuotaLine(
  * an amount bucket, or carry `cc_installment_purchases.id` onto cuota lines and build one synthetic
  * total per distinct purchase instead of per merchant/date/cuotas group.
  */
-function assertSingleInstallmentInCuotaGroup(group: readonly FlowCcExpenseLineRow[]): void {
+function assertSingleInstallmentInCuotaGroup(group: readonly FlowCcExpenseLineBeforeNotes[]): void {
   const amountsByCuota = new Map<number, number[]>();
   for (const ln of group) {
     const idx = ln.nro_cuota_current;
@@ -193,7 +193,7 @@ function assertSingleInstallmentInCuotaGroup(group: readonly FlowCcExpenseLineRo
   }
 }
 
-function estimateInstallmentTotalFromCuotas(group: readonly FlowCcExpenseLineRow[]): number {
+function estimateInstallmentTotalFromCuotas(group: readonly FlowCcExpenseLineBeforeNotes[]): number {
   const first = group[0]!;
   const n = first.nro_cuota_total ?? group.length;
   if (n <= 0) return 0;
@@ -218,14 +218,14 @@ function syntheticPurchaseKey(
 }
 
 function resolveCategoryStatementLineId(
-  cuotaLines: readonly FlowCcExpenseLineRow[],
+  cuotaLines: readonly FlowCcExpenseLineBeforeNotes[],
   opts: {
     accountId: number;
     purchaseOn: string;
     cuotasTotales: number;
     merchantKey: string;
     merchant: string | null;
-    matchCuota?: FlowCcExpenseLineRow;
+    matchCuota?: FlowCcExpenseLineBeforeNotes;
   }
 ): number | null {
   if (opts.matchCuota && opts.matchCuota.statement_line_id > 0) {
@@ -286,8 +286,8 @@ function buildSyntheticRow(opts: {
 }
 
 function representativeScore(
-  ln: FlowCcExpenseLineRow,
-  synth: FlowCcExpenseLineRow
+  ln: FlowCcExpenseLineBeforeNotes,
+  synth: FlowCcExpenseLineBeforeNotes
 ): number {
   if (ln.statement_line_id <= 0) return 0;
   if (ln.line_role === "installment_purchase_total") return 0;
@@ -315,8 +315,8 @@ function representativeScore(
 }
 
 function findRepresentativeLineIndex(
-  lines: readonly FlowCcExpenseLineRow[],
-  synth: FlowCcExpenseLineRow
+  lines: readonly FlowCcExpenseLineBeforeNotes[],
+  synth: FlowCcExpenseLineBeforeNotes
 ): number {
   let bestIdx = -1;
   let bestScore = 0;
@@ -335,9 +335,9 @@ function findRepresentativeLineIndex(
 }
 
 export function promoteLineToInstallmentPurchaseTotal(
-  ln: FlowCcExpenseLineRow,
-  synth: FlowCcExpenseLineRow
-): FlowCcExpenseLineRow {
+  ln: FlowCcExpenseLineBeforeNotes,
+  synth: FlowCcExpenseLineBeforeNotes
+): FlowCcExpenseLineBeforeNotes {
   const stem = merchantStemForInstallmentDedupe(ln.merchant);
   const merchant = stem || synth.merchant || ln.merchant;
   return {
@@ -358,7 +358,7 @@ export function promoteLineToInstallmentPurchaseTotal(
 }
 
 function inferInstallmentPurchaseKey(
-  ln: FlowCcExpenseLineRow,
+  ln: FlowCcExpenseLineBeforeNotes,
   purchases: readonly InstallmentPurchaseRow[]
 ): string | null {
   for (const pr of purchases) {
@@ -377,8 +377,8 @@ function inferInstallmentPurchaseKey(
 }
 
 function purchaseLineSupersededByExistingTotal(
-  ln: FlowCcExpenseLineRow,
-  totals: readonly FlowCcExpenseLineRow[]
+  ln: FlowCcExpenseLineBeforeNotes,
+  totals: readonly FlowCcExpenseLineBeforeNotes[]
 ): boolean {
   if (ln.line_role !== "purchase") return false;
   for (const total of totals) {
@@ -395,10 +395,10 @@ function purchaseLineSupersededByExistingTotal(
 }
 
 function shouldDropPurchaseLineForInstallmentTotal(
-  ln: FlowCcExpenseLineRow,
+  ln: FlowCcExpenseLineBeforeNotes,
   totalKeys: ReadonlySet<string>,
   purchases: readonly InstallmentPurchaseRow[],
-  totals: readonly FlowCcExpenseLineRow[]
+  totals: readonly FlowCcExpenseLineBeforeNotes[]
 ): boolean {
   if (purchaseLineSupersededByExistingTotal(ln, totals)) return true;
   if (ln.line_role !== "purchase") return false;
@@ -412,7 +412,7 @@ function shouldDropPurchaseLineForInstallmentTotal(
   return false;
 }
 
-function collectInstallmentTotalKeys(lines: readonly FlowCcExpenseLineRow[]): Set<string> {
+function collectInstallmentTotalKeys(lines: readonly FlowCcExpenseLineBeforeNotes[]): Set<string> {
   const keys = new Set<string>();
   for (const ln of lines) {
     if (ln.line_role !== "installment_purchase_total") continue;
@@ -501,7 +501,7 @@ export function buildInstallmentPurchaseTotalLines(
     );
   }
 
-  const groups = new Map<string, FlowCcExpenseLineRow[]>();
+  const groups = new Map<string, FlowCcExpenseLineBeforeNotes[]>();
   for (const ln of cuotaLines) {
     if (ln.line_role !== "installment_cuota") continue;
     if (!ln.purchase_on || !ln.nro_cuota_total) continue;
@@ -554,9 +554,9 @@ export function buildInstallmentPurchaseTotalLines(
  * represent the purchase; append synthetics only when no statement row exists.
  */
 function pickPreferredInstallmentPurchaseTotal(
-  a: FlowCcExpenseLineRow,
-  b: FlowCcExpenseLineRow
-): FlowCcExpenseLineRow {
+  a: FlowCcExpenseLineBeforeNotes,
+  b: FlowCcExpenseLineBeforeNotes
+): FlowCcExpenseLineBeforeNotes {
   if (a.statement_line_id > 0 && b.statement_line_id <= 0) return a;
   if (b.statement_line_id > 0 && a.statement_line_id <= 0) return b;
   const aSummary = isInstallmentContractSummaryMerchant(a.merchant);
@@ -567,8 +567,8 @@ function pickPreferredInstallmentPurchaseTotal(
 }
 
 function dropInstallmentResumenCuotasSupersededByTotals(
-  lines: readonly FlowCcExpenseLineRow[]
-): FlowCcExpenseLineRow[] {
+  lines: readonly FlowCcExpenseLineBeforeNotes[]
+): FlowCcExpenseLineBeforeNotes[] {
   const totalKeys = collectInstallmentTotalKeys(lines);
   if (totalKeys.size === 0) return [...lines];
 
@@ -583,9 +583,9 @@ function dropInstallmentResumenCuotasSupersededByTotals(
   });
 }
 
-function dedupeInstallmentPurchaseTotalLines(lines: FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
-  const totalsByKey = new Map<string, FlowCcExpenseLineRow>();
-  const out: FlowCcExpenseLineRow[] = [];
+function dedupeInstallmentPurchaseTotalLines(lines: FlowCcExpenseLineBeforeNotes[]): FlowCcExpenseLineBeforeNotes[] {
+  const totalsByKey = new Map<string, FlowCcExpenseLineBeforeNotes>();
+  const out: FlowCcExpenseLineBeforeNotes[] = [];
   for (const ln of lines) {
     if (ln.line_role !== "installment_purchase_total") {
       out.push(ln);

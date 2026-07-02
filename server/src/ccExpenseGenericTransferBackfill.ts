@@ -6,7 +6,7 @@ import {
   stableCcExpensePurchaseKeyFromCtx,
 } from "./ccExpenseCategories.js";
 import { cartolaDescriptionFromNote, checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
-import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
 /**
@@ -92,8 +92,8 @@ export function backfillGenericTransferUniquePurchases(): {
 
   let merchant_rules_removed = 0;
   const accountIds = new Set<number>([
-    ...listCreditCardMasterAccountIds("santander"),
-    ...listCreditCardMasterAccountIds("bci"),
+    ...listCreditCardGroupMasterAccountIds("santander"),
+    ...listCreditCardGroupMasterAccountIds("bci"),
   ]);
   if (checkingId != null) accountIds.add(checkingId);
 
