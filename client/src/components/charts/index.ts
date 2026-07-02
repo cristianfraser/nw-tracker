@@ -1,5 +1,4 @@
-export { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "./AppLineChart";
-export type { TailClipSeriesEntry } from "./AppLineChart";
+export { AppLineChart } from "./AppLineChart";
 export {
   ValuationLineCharts,
   LineChartPanel,

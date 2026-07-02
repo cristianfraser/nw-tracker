@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 
 const apiProxy = {
   "/api": {
-    target: "http://localhost:3001",
+    target: process.env.NW_TRACKER_API_PROXY_TARGET ?? "http://localhost:3001",
     changeOrigin: true,
   },
 };

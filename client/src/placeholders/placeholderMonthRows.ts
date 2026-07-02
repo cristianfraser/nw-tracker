@@ -32,6 +32,17 @@ export function monthEndYmdsThroughToday(monthsBack = 24): string[] {
   return out;
 }
 
+/** Month-end dates from `firstYmd`'s month through the current month; default lookback when absent. */
+export function monthEndYmdsForSkeleton(firstYmd?: string | null): string[] {
+  if (!firstYmd || !/^\d{4}-\d{2}/.test(firstYmd)) return monthEndYmdsThroughToday();
+  const y = Number(firstYmd.slice(0, 4));
+  const m = Number(firstYmd.slice(5, 7));
+  const now = new Date();
+  const monthsBack = (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - m);
+  if (!Number.isFinite(monthsBack) || monthsBack < 0) return monthEndYmdsThroughToday();
+  return monthEndYmdsThroughToday(monthsBack);
+}
+
 export function emptyAccountMonthlyPerfRows(
   _accountId: number,
   unit: "clp" | "usd" | "uf" = "clp"

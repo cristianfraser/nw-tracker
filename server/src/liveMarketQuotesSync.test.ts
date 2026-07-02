@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import {
   clearLiveMarketQuotesForTest,
@@ -45,12 +45,21 @@ vi.mock("./bcentralApi.js", async (importOriginal) => {
   };
 });
 
-const restoreTables = snapshotTables(["fx_daily"]);
+// This file mutates fx_daily + live_market_quotes for controlled fixtures; snapshot both and
+// restore in afterAll so it doesn't poison other files sharing the DB.
+const restoreTables = snapshotTables(["fx_daily", "live_market_quotes"]);
 afterAll(() => restoreTables());
+
+// Each test asserts on the *latest* EOD / live quote, so it needs an empty slate: fx_daily
+// empty (its inserted date is the latest) and live_market_quotes empty (the dev-DB copy ships
+// real USD_CLP/equity quotes whose future-dated fetched_at would otherwise outrank the fixture).
+beforeEach(() => {
+  db.exec("DELETE FROM fx_daily");
+  clearLiveMarketQuotesForTest();
+});
 
 afterEach(() => {
   clearLiveMarketQuotesForTest();
-  db.prepare(`DELETE FROM live_market_quotes WHERE symbol IN ('SPY', 'VEA')`).run();
   db.exec("DELETE FROM fx_daily");
 });
 

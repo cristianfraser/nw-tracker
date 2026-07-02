@@ -99,11 +99,13 @@ export function buildGroupPageShellFromNav(navNode: NavTreeNodeDto, unit: Displa
 export function extractGroupPageShellFromReal(
   accounts: AccountListRow[],
   dashAccounts: DashboardAccountRow[],
-  navNode: NavTreeNodeDto
+  navNode: NavTreeNodeDto,
+  firstMonth?: string | null
 ): GroupPageShell {
   const idSet = navLeafAccountIdSet(navNode);
   return {
     accounts: accounts.filter((a) => idSet.has(a.id)),
     dashAccounts: dashAccounts.filter((a) => idSet.has(a.account_id)),
+    ...(firstMonth ? { first_month: firstMonth } : {}),
   };
 }
