@@ -120,7 +120,10 @@ import { listPortfolioGroupAccountsForApi } from "./portfolioGroupAccountsApi.js
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
-import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
+import {
+  getGroupConsolidatedMonthlyPage,
+  getGroupConsolidatedTables,
+} from "./groupConsolidatedTables.js";
 import { buildGroupFlows, buildAccountFlows, type FlowsFilters } from "./flowsApi.js";
 import { parsePageParams } from "./pagination.js";
 import {
@@ -149,6 +152,7 @@ import {
   importAccountDocument,
   importCcStatementPdfUpload,
   importCcWebPaste,
+  importCuentaVistaWebPaste,
   importCheckingCartolaXlsx,
   importCheckingRecentXlsx,
 } from "./accountImports.js";
@@ -234,6 +238,22 @@ import {
   startGlobalSyncScheduler,
 } from "./globalSyncScheduler.js";
 import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
+import { loadRootDotenv } from "./rootDotenv.js";
+import {
+  isFiniteNumber,
+  isOptionalString,
+  isPositiveFiniteNumber,
+  isPositiveInteger,
+  isYmdString,
+} from "./requestValidation.js";
+import {
+  resolveBindHost,
+  resolveCorsOrigins,
+  sharedAuthPasswordFromEnv,
+  sharedPasswordAuthMiddleware,
+} from "./httpSecurity.js";
+import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
+import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 
 seedNavTree();
 
@@ -308,12 +328,38 @@ function positionSnapshotFromMeta(
   };
 }
 
+loadRootDotenv();
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
+const HOST = resolveBindHost();
 
-app.use(cors({ origin: true }));
-app.use(express.json({ limit: "2mb" }));
+/**
+ * Express 4 does not forward async-handler rejections to middleware; on Node ≥15 an
+ * unhandled rejection kills the process. Every async route must go through this.
+ */
+const asyncHandler =
+  (fn: (req: express.Request, res: express.Response) => Promise<void>): express.RequestHandler =>
+  (req, res, next) => {
+    fn(req, res).catch(next);
+  };
+
+/** Safety net for rejections outside routes (schedulers catch their own; this logs stragglers). */
+process.on("unhandledRejection", (reason) => {
+  console.error(
+    "[process] unhandled rejection:",
+    reason instanceof Error ? (reason.stack ?? reason.message) : reason
+  );
+});
+
+app.use(cors({ origin: resolveCorsOrigins() }));
 app.use(httpRequestLogMiddleware);
+const authPassword = sharedAuthPasswordFromEnv();
+if (authPassword) {
+  app.use(sharedPasswordAuthMiddleware(authPassword));
+  console.log("auth: shared-password mode enabled (AUTH_PASSWORD set)");
+}
+app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
@@ -343,7 +389,7 @@ app.get("/api/meta/rates-instruments", (_req, res) => {
   res.json({ instruments: listRatesInstrumentSeries() });
 });
 
-app.get("/api/accounts", async (req, res) => {
+app.get("/api/accounts", asyncHandler(async (req, res) => {
   const portfolioGroupSlug =
     typeof req.query.portfolio_group === "string" ? req.query.portfolio_group.trim() : "";
   if (portfolioGroupSlug) {
@@ -406,9 +452,9 @@ app.get("/api/accounts", async (req, res) => {
     )
     .all(...ids) as Record<string, unknown>[];
   res.json({ accounts: rows });
-});
+}));
 
-app.post("/api/accounts", async (req, res) => {
+app.post("/api/accounts", asyncHandler(async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (body.account != null && typeof body.account === "object") {
     const acc = body.account as Record<string, unknown>;
@@ -427,11 +473,11 @@ app.post("/api/accounts", async (req, res) => {
   }
 
   const { asset_group_id, name, notes } = body as {
-    asset_group_id?: number;
+    asset_group_id?: unknown;
     name?: string;
     notes?: string;
   };
-  if (!asset_group_id || !name?.trim()) {
+  if (!isPositiveInteger(asset_group_id) || !name?.trim()) {
     res.status(400).json({ error: "asset_group_id and name required" });
     return;
   }
@@ -443,7 +489,7 @@ app.post("/api/accounts", async (req, res) => {
   const id = Number(r.lastInsertRowid);
   db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(id), id);
   res.status(201).json({ id });
-});
+}));
 
 app.delete("/api/accounts/:id", (req, res) => {
   const id = operationalAccountIdFromReq(req);
@@ -572,7 +618,7 @@ app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
   res.json(attachColorsToValuationPayload(payload));
 });
 
-app.get("/api/accounts/:id/detail-bundle", async (req, res) => {
+app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
   const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
@@ -591,7 +637,7 @@ app.get("/api/accounts/:id/detail-bundle", async (req, res) => {
     return;
   }
   res.json(payload);
-});
+}));
 
 /** Month-on-month P/L from valuations + merged capital flows (not persisted). Empty for `cuenta_corriente`. */
 app.get("/api/accounts/:id/performance-monthly", (req, res) => {
@@ -712,7 +758,7 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
   });
 });
 
-app.get("/api/accounts/:id/summary", async (req, res) => {
+app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
   const id = operationalAccountIdFromReq(req);
   const withdrawals_clp = totalWithdrawalsClpForAccount(id);
   const metaRow = db
@@ -802,7 +848,7 @@ app.get("/api/accounts/:id/summary", async (req, res) => {
     book_ledger_edit: bookLedgerEditSchemaForAccount(id),
     mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(id),
   });
-});
+}));
 
 app.get("/api/accounts/:id/movements", (req, res) => {
   const id = operationalAccountIdFromReq(req);
@@ -1010,7 +1056,7 @@ app.get("/api/accounts/:id/import-specs", (req, res) => {
     supports_cc_statement_pdf: bucketKind === "credit_card",
     supports_checking_recent_xlsx: bucketKind === "cuenta_corriente",
     supports_checking_cartola_xlsx: bucketKind === "cuenta_corriente",
-    supports_cuenta_vista_cartola_pdf: bucketKind === "cuenta_vista",
+    supports_cuenta_vista_web_paste: bucketKind === "cuenta_vista",
   });
 });
 
@@ -1023,6 +1069,20 @@ app.post("/api/accounts/:id/imports/cc-web-paste", (req, res) => {
   }
   try {
     res.json(importCcWebPaste(id, text));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+  }
+});
+
+app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  const text = typeof req.body?.text === "string" ? req.body.text : "";
+  if (!text.trim()) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+  try {
+    res.json(importCuentaVistaWebPaste(id, text));
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
   }
@@ -1247,9 +1307,15 @@ app.get("/api/accounts/:id/valuations", (req, res) => {
 
 app.post("/api/accounts/:id/valuations", (req, res) => {
   const accountId = operationalAccountIdFromReq(req);
-  const { as_of_date, value_clp } = req.body as { as_of_date?: string; value_clp?: number };
-  if (!as_of_date || value_clp === undefined || value_clp === null) {
-    res.status(400).json({ error: "as_of_date and value_clp required" });
+  const { as_of_date, value_clp } = req.body as { as_of_date?: unknown; value_clp?: unknown };
+  // Validate BEFORE the write: dates are compared lexically everywhere, so one malformed
+  // as_of_date row poisons every on-or-before lookup for this account.
+  if (!isYmdString(as_of_date)) {
+    res.status(400).json({ error: "as_of_date must be YYYY-MM-DD" });
+    return;
+  }
+  if (!isFiniteNumber(value_clp)) {
+    res.status(400).json({ error: "value_clp must be a finite number" });
     return;
   }
   db.prepare(
@@ -1266,29 +1332,29 @@ app.post("/api/panel/cache/aggregation/clear", (_req, res) => {
 });
 
 /** Home/group card strip shape only (accounts + layout; no valuation TS). */
-app.get("/api/dashboard/nav-snapshot", async (req, res) => {
+app.get("/api/dashboard/nav-snapshot", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   res.json(await buildDashboardNavSnapshot(includeUsd));
-});
+}));
 
 /** Group/account nav strip: accounts + liabilities links + overview (one round-trip). */
-app.get("/api/dashboard/nav-context", async (req, res) => {
+app.get("/api/dashboard/nav-context", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(await buildDashboardNavContext(includeUsd, unit));
-});
+}));
 
 /** Home dashboard: one response (dash + valuation TS + FX + group perf). */
-app.get("/api/dashboard/page-bundle", async (req, res) => {
+app.get("/api/dashboard/page-bundle", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(await buildDashboardPageBundle(unit));
-});
+}));
 
-app.get("/api/dashboard", async (req, res) => {
+app.get("/api/dashboard", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   res.json(await buildDashboardPagePayload(includeUsd));
-});
+}));
 
 /**
  * Valuation time series: main dashboard (no `group`) or per-class tab (`group=retirement|brokerage|…`).
@@ -1354,6 +1420,36 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(getGroupConsolidatedTables(tabSlug, unit, undefined));
+});
+
+/** Server-paginated consolidated detalle-por-mes rows (dashboard net_worth table). */
+app.get("/api/groups/:slug/consolidated-monthly", (req, res) => {
+  const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
+  if (!isKnownClassTabGroup(slug)) {
+    res.status(400).json({ error: "unknown group slug" });
+    return;
+  }
+  const subRaw = normalizeLegacyTabSubgroup(req.query.subgroup);
+  if (subRaw === null) {
+    res.status(400).json({ error: "invalid subgroup" });
+    return;
+  }
+  const tabSlug =
+    resolvePortfolioGroupSlugForLegacyTab(slug, subRaw) ??
+    (isResolvablePortfolioGroupSlug(slug) ? slug : null);
+  if (!tabSlug || !isKnownClassTabGroup(tabSlug)) {
+    res.status(400).json({ error: "unknown group slug" });
+    return;
+  }
+  const periodRaw = typeof req.query.period === "string" ? req.query.period : "month";
+  if (periodRaw !== "month" && periodRaw !== "year") {
+    res.status(400).json({ error: "invalid period" });
+    return;
+  }
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const { page, pageSize } = parsePageParams(req.query as Record<string, unknown>, 12);
+  res.json(getGroupConsolidatedMonthlyPage(tabSlug, unit, periodRaw, page, pageSize));
 });
 
 /** Paginated + filtered flows for a group (server-side). */
@@ -1491,9 +1587,13 @@ app.get("/api/fx", (_req, res) => {
 
 /** Upsert FX: body { date: 'YYYY-MM-DD', clp_per_usd: number } */
 app.post("/api/fx", (req, res) => {
-  const { date, clp_per_usd } = req.body as { date?: string; clp_per_usd?: number };
-  if (!date || !clp_per_usd || clp_per_usd <= 0) {
-    res.status(400).json({ error: "date and positive clp_per_usd required" });
+  const { date, clp_per_usd } = req.body as { date?: unknown; clp_per_usd?: unknown };
+  if (!isYmdString(date)) {
+    res.status(400).json({ error: "date must be YYYY-MM-DD" });
+    return;
+  }
+  if (!isPositiveFiniteNumber(clp_per_usd)) {
+    res.status(400).json({ error: "positive clp_per_usd required" });
     return;
   }
   db.prepare(
@@ -1517,9 +1617,13 @@ app.get("/api/uf", (_req, res) => {
 
 /** Upsert UF (CLF): body { date: 'YYYY-MM-DD', clp_per_uf: number } CLP per 1 UF */
 app.post("/api/uf", (req, res) => {
-  const { date, clp_per_uf } = req.body as { date?: string; clp_per_uf?: number };
-  if (!date || !clp_per_uf || clp_per_uf <= 0) {
-    res.status(400).json({ error: "date and positive clp_per_uf required" });
+  const { date, clp_per_uf } = req.body as { date?: unknown; clp_per_uf?: unknown };
+  if (!isYmdString(date)) {
+    res.status(400).json({ error: "date must be YYYY-MM-DD" });
+    return;
+  }
+  if (!isPositiveFiniteNumber(clp_per_uf)) {
+    res.status(400).json({ error: "positive clp_per_uf required" });
     return;
   }
   db.prepare(
@@ -1612,13 +1716,17 @@ app.get("/api/income", (_req, res) => {
 
 app.post("/api/income", (req, res) => {
   const { amount_clp, received_on, source, note } = req.body as {
-    amount_clp?: number;
-    received_on?: string;
+    amount_clp?: unknown;
+    received_on?: unknown;
     source?: string;
     note?: string;
   };
-  if (amount_clp == null || !received_on) {
-    res.status(400).json({ error: "amount_clp and received_on required" });
+  if (!isFiniteNumber(amount_clp)) {
+    res.status(400).json({ error: "amount_clp must be a finite number" });
+    return;
+  }
+  if (!isYmdString(received_on)) {
+    res.status(400).json({ error: "received_on must be YYYY-MM-DD" });
     return;
   }
   const r = db
@@ -2058,16 +2166,16 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
 
 app.post("/api/expenses", (req, res) => {
   const { amount_clp, spent_on, category, note } = req.body as {
-    amount_clp?: number;
-    spent_on?: string;
+    amount_clp?: unknown;
+    spent_on?: unknown;
     category?: string;
     note?: string;
   };
-  if (amount_clp == null || amount_clp <= 0 || !spent_on) {
-    res.status(400).json({ error: "positive amount_clp and spent_on required" });
+  if (!isPositiveFiniteNumber(amount_clp)) {
+    res.status(400).json({ error: "positive amount_clp required" });
     return;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(spent_on)) {
+  if (!isYmdString(spent_on)) {
     res.status(400).json({ error: "spent_on must be YYYY-MM-DD" });
     return;
   }
@@ -2201,7 +2309,11 @@ app.post("/api/messages/mark-read", (_req, res) => {
 
 /** Placeholder for future bank CSV / PDF pipeline */
 app.post("/api/imports/bank-statement", (req, res) => {
-  const { filename, raw_text } = req.body as { filename?: string; raw_text?: string };
+  const { filename, raw_text } = req.body as { filename?: unknown; raw_text?: unknown };
+  if (!isOptionalString(filename) || !isOptionalString(raw_text)) {
+    res.status(400).json({ error: "filename and raw_text must be strings" });
+    return;
+  }
   const r = db
     .prepare(
       `INSERT INTO import_batches (kind, filename, status, raw_text) VALUES ('bank_statement', ?, 'pending', ?)`
@@ -2210,8 +2322,25 @@ app.post("/api/imports/bank-statement", (req, res) => {
   res.status(201).json({ id: Number(r.lastInsertRowid), status: "pending" });
 });
 
-app.listen(PORT, () => {
-  console.log(`nw-tracker API http://localhost:${PORT}`);
+/**
+ * Terminal error handler: route throws (sync or via asyncHandler) return JSON instead of
+ * Express's default HTML stack-trace page, and the process stays up.
+ */
+app.use(
+  (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[api] route error: ${err instanceof Error ? (err.stack ?? msg) : msg}`
+    );
+    if (res.headersSent) return;
+    res.status(500).json({ error: msg });
+  }
+);
+
+app.listen(PORT, HOST, () => {
+  console.log(`nw-tracker API http://${HOST}:${PORT}`);
   startGlobalSyncScheduler();
   startLiveMarketQuotesScheduler();
+  startDbBackupScheduler();
+  startDashboardCacheWarmer();
 });
