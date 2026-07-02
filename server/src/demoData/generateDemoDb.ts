@@ -100,6 +100,12 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
     afcId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afc", "AFC", "demo:afc")
       : null,
+    stocksId: narrative.stocks
+      ? createAccount("brokerage_acciones__spy", "Acciones Tech · Demo Broker", "demo:stocks")
+      : null,
+    cryptoId: narrative.withCrypto
+      ? createAccount("brokerage_crypto__bitcoin", "Bitcoin · Demo Exchange", "demo:crypto")
+      : null,
     savingsId: createAccount(
       "cash_eqs__fondo_reserva",
       "Fondo reserva · Demo",
@@ -107,8 +113,21 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
     ),
     vistaId: createAccount("cash_eqs__cuenta_vista", "Cuenta vista · Demo", "demo:vista"),
     propertyId: narrative.withProperty
-      ? createAccount("real_estate__property", "Depto propio (pie)", "demo:property")
+      ? createAccount(
+          "real_estate__property",
+          narrative.house ? "Casa propia · Demo" : "Depto propio (pie)",
+          "demo:property"
+        )
       : null,
+    // Mortgage master: notes are the canonical identity ensureMortgageLiabilityView keys on.
+    mortgageId:
+      narrative.withProperty && narrative.house
+        ? createAccount(
+            "liabilities__mortgage",
+            "Casa propia · Demo",
+            "import:excel|key=mortgage"
+          )
+        : null,
   };
   seedCreditCardTree();
   seedNavTree();
@@ -118,9 +137,9 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   const state = initialDemoRunState(narrative);
   const months = expandYearMonthsInclusive(narrative.firstMonth, narrative.lastMonth);
   for (const month of months) {
-    const { sweepClp, afpContribClp } = writeCheckingMonth(narrative, accounts, month, state, rng);
+    const { flows, afpContribClp } = writeCheckingMonth(narrative, accounts, month, state, rng);
     writeCreditCardMonth(narrative, accounts, month, state, rng);
-    writeInvestmentMonth(narrative, accounts, month, state, sweepClp, afpContribClp, rng);
+    writeInvestmentMonth(narrative, accounts, month, state, flows, afpContribClp, rng);
   }
   for (const id of ccMasterIdByLast4.values()) {
     recomputeCcBillingMonthBalances(id);

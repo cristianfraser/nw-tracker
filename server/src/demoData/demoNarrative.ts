@@ -70,6 +70,17 @@ export type DemoEvent = {
   cardLast4?: string;
 };
 
+/** Scripted portfolio moves — buys are CLP from checking, sells a fraction of holdings. */
+export type DemoTrade = {
+  month: DemoMonth;
+  asset: "stocks" | "crypto" | "fondo";
+  action: "buy" | "sell";
+  /** CLP amount for buys. */
+  amountClp?: number;
+  /** Fraction of current value for sells (0–1). */
+  fraction?: number;
+};
+
 export type DemoCard = {
   last4: string;
   cardGroup: "santander" | "bci";
@@ -97,6 +108,24 @@ export type DemoNarrative = {
   /** Investment accounts to create (fondo always; AFP/property optional). */
   withAfp: boolean;
   withProperty: boolean;
+  /** Volatile stocks position: monthly buys redirect a share of the sweep from `from` on. */
+  stocks: { from: DemoMonth; sweepShare: number } | null;
+  /** Crypto position (created only when `trades` buys into it). */
+  withCrypto: boolean;
+  /** Scripted buys/sells (rescates, take-profits, capitulations) for the "life" in the chart. */
+  trades: DemoTrade[];
+  /**
+   * Leveraged house purchase: full property value + amortizing mortgage liability from
+   * `month` on (down payment stays a separate viaChecking event). Without this, presets
+   * with `withProperty` fall back to the bare down-payment valuation.
+   */
+  house: {
+    month: DemoMonth;
+    valueClp: number;
+    mortgageClp: number;
+    termMonths: number;
+    monthlyRate: number;
+  } | null;
 };
 
 function currentMonth(): DemoMonth {
@@ -188,15 +217,20 @@ function demoNarrative(): DemoNarrative {
     ],
     events: [
       { month: "2019-06", kind: "moving_costs", amountClp: 450_000, cuotas: 3, label: "Mudanza depto" },
+      { month: "2019-09", kind: "bonus", amountClp: -800_000, viaChecking: true, label: "Bono fiestas patrias" },
       { month: "2019-12", kind: "vacation_small", amountClp: 380_000, label: "Vacaciones sur" },
       { month: "2021-07", kind: "vacation_big", amountClp: 2_400_000, cuotas: 6, label: "Gran viaje" },
+      { month: "2020-12", kind: "bonus", amountClp: -1_200_000, viaChecking: true, label: "Bono desempeño" },
       { month: "2022-02", kind: "vacation_small", amountClp: 420_000, label: "Playa" },
+      { month: "2022-12", kind: "bonus", amountClp: -1_500_000, viaChecking: true, label: "Bono desempeño" },
       { month: "2022-11", kind: "moving_costs", amountClp: 380_000, label: "Mudanza arriendo" },
       { month: "2023-07", kind: "vacation_medium", amountClp: 1_100_000, cuotas: 3, label: "Viaje", cardLast4: "8912" },
       { month: "2024-01", kind: "vacation_medium", amountClp: 900_000, label: "Verano" },
       { month: "2024-08", kind: "house_down_payment", amountClp: 18_000_000, viaChecking: true, label: "Pie casa" },
       { month: "2024-08", kind: "moving_costs", amountClp: 600_000, cuotas: 6, label: "Mudanza casa" },
+      { month: "2024-12", kind: "bonus", amountClp: -1_800_000, viaChecking: true, label: "Bono desempeño" },
       { month: "2025-02", kind: "vacation_small", amountClp: 450_000, label: "Playa" },
+      { month: "2025-03", kind: "moving_costs", amountClp: 840_000, cuotas: 12, label: "Arreglos casa" },
       { month: "2025-09", kind: "vacation_big", amountClp: 2_100_000, cuotas: 6, label: "Viaje largo", cardLast4: "8912" },
       { month: "2026-01", kind: "vacation_medium", amountClp: 950_000, label: "Verano" },
     ],
@@ -228,6 +262,29 @@ function demoNarrative(): DemoNarrative {
     ],
     withAfp: true,
     withProperty: true,
+    stocks: { from: "2019-01", sweepShare: 0.4 },
+    withCrypto: true,
+    trades: [
+      { month: "2020-10", asset: "crypto", action: "buy", amountClp: 500_000 },
+      { month: "2020-12", asset: "crypto", action: "buy", amountClp: 500_000 },
+      { month: "2021-02", asset: "crypto", action: "buy", amountClp: 1_000_000 },
+      // Nov-2021 top: take profit on both before the 2022 grind down.
+      { month: "2021-11", asset: "crypto", action: "sell", fraction: 0.4 },
+      { month: "2021-11", asset: "stocks", action: "sell", fraction: 0.3 },
+      // Oct-2022 capitulation (realized loss near the bottom).
+      { month: "2022-10", asset: "stocks", action: "sell", fraction: 0.15 },
+      { month: "2023-02", asset: "crypto", action: "buy", amountClp: 800_000 },
+      // Rescate fondo the month before the pie (down payment liquidity).
+      { month: "2024-07", asset: "fondo", action: "sell", fraction: 0.35 },
+      { month: "2025-01", asset: "stocks", action: "buy", amountClp: 2_000_000 },
+    ],
+    house: {
+      month: "2024-08",
+      valueClp: 90_000_000,
+      mortgageClp: 72_000_000,
+      termMonths: 300,
+      monthlyRate: 0.00375,
+    },
   };
 }
 
@@ -277,6 +334,10 @@ function testNarrative(): DemoNarrative {
     ],
     withAfp: true,
     withProperty: false,
+    stocks: null,
+    withCrypto: false,
+    trades: [],
+    house: null,
   };
 }
 
