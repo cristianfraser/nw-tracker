@@ -44,10 +44,12 @@ describe("ccExpenseCategoryPersist", () => {
 
     const line = db
       .prepare(
-        `SELECT l.id, l.parser_row_id, l.merchant, s.statement_date, s.source_pdf, s.card_group
+        `SELECT l.id, l.parser_row_id, l.merchant, s.statement_date, s.source_pdf, s.card_group,
+                s.period_from, s.period_to
          FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ? AND l.parser_row_id IS NOT NULL AND l.amount_clp > 0
+           AND s.period_from IS NOT NULL AND s.period_to IS NOT NULL
          LIMIT 1`
       )
       .get(accountId) as {
@@ -57,6 +59,8 @@ describe("ccExpenseCategoryPersist", () => {
       statement_date: string;
       source_pdf: string;
       card_group: string;
+      period_from: string;
+      period_to: string;
     } | undefined;
     if (!line) return;
 
@@ -73,6 +77,9 @@ describe("ccExpenseCategoryPersist", () => {
         card_group: line.card_group,
         source_pdf: line.source_pdf,
         statement_date: line.statement_date,
+        // Import now fails fast without the billing period (matrix month = period_to).
+        period_from: line.period_from,
+        period_to: line.period_to,
         card_last4: "",
         parser_layout: "compact",
         installment_flag: "false",

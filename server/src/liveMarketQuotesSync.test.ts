@@ -56,7 +56,15 @@ afterEach(() => {
 
 describe("syncAllLiveMarketQuotes", () => {
   it("mirrors fx_daily EOD after NYSE close", async () => {
-    db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`).run("2026-06-05", 910.29);
+    // The fixture date can already exist in the refreshed test DB (real Yahoo history) —
+    // upsert the fixture rate and restore the original row afterwards.
+    const original = db
+      .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date = ?`)
+      .get("2026-06-05") as { clp_per_usd: number } | undefined;
+    db.prepare(
+      `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
+       ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
+    ).run("2026-06-05", 910.29);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-06T22:00:00.000Z"));
     try {
@@ -66,6 +74,14 @@ describe("syncAllLiveMarketQuotes", () => {
       expect(fx?.session_ymd).toBe("2026-06-05");
     } finally {
       vi.useRealTimers();
+      if (original) {
+        db.prepare(`UPDATE fx_daily SET clp_per_usd = ? WHERE date = ?`).run(
+          original.clp_per_usd,
+          "2026-06-05"
+        );
+      } else {
+        db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run("2026-06-05");
+      }
     }
   });
   it("inserts Yahoo CLP=X during NYSE session", async () => {
