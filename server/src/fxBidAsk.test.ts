@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   ensureBidAskForPaymentDate,
@@ -9,6 +9,13 @@ import {
 } from "./fxBidAsk.js";
 import { clearFxConversionWarnings, takeFxConversionWarnings } from "./fxConversionWarnings.js";
 import { clpToUsdAtPaymentRounded } from "./fxRates.js";
+import { snapshotTables } from "./test/snapshotTables.js";
+
+// One case does `DELETE FROM fx_daily_bid_ask WHERE date <= '2099-...'`, which wipes the whole
+// table; snapshot both fx tables and restore in afterAll so other files sharing the DB aren't
+// left with an empty bid-ask table.
+const restoreTables = snapshotTables(["fx_daily", "fx_daily_bid_ask"]);
+afterAll(() => restoreTables());
 
 describe("fxBidAsk infer", () => {
   it("inferBidAskFromMid spreads around mid", () => {

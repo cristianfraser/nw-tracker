@@ -23,15 +23,8 @@ import { formatClp, formatUsd, formatMoneyForPie } from "../../format";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../../chartColors";
 import type { TimeseriesBlock } from "../../types";
-import { clipChartDataToYDomain, collectTailClipSeriesFromBlock, dataSeriesKeysFromTailClip } from "../../chartTailClip";
-import {
-  AppLineChart,
-  filterChartRowsThroughDate,
-  groupValTotalSourceKeysForTailClip,
-  trailingZeroTailClipLastVisibleDate,
-  useMultiSeriesTrailingZeroTailClip,
-  type TailClipOptions,
-} from "./AppLineChart";
+import { clipChartDataToYDomain } from "../../chartTailClip";
+import { AppLineChart } from "./AppLineChart";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import {
@@ -715,42 +708,6 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
   return raw;
 }
 
-/** Tail-clip options for a valuation timeseries block (same rules as {@link LineChartPanel}). */
-export function buildLineChartTailClipOptions(
-  block: TimeseriesBlock,
-  includeAccumulatedLines: boolean
-): TailClipOptions | null {
-  if (!block.points.length) return null;
-  const series = collectTailClipSeriesFromBlock(block, includeAccumulatedLines);
-  if (dataSeriesKeysFromTailClip(series).length === 0) return null;
-  const accs = block.accounts;
-  const groupValTotalSourceKeys = groupValTotalSourceKeysForTailClip(accs);
-  const groupDepTotalSourceKeys =
-    accs?.some((a) => a.dataKey === "__group_dep_total") &&
-    accs.some((a) => a.valueSeriesType === "data" && Boolean(a.depositDataKey))
-      ? accs
-        .filter(
-          (a) =>
-            a.valueSeriesType === "data" &&
-            !a.exclude_from_group_totals &&
-            a.depositDataKey
-        )
-        .map((a) => a.depositDataKey!)
-      : undefined;
-  const depositKeysByValuationKey: Record<string, string[]> = {};
-  for (const a of accs ?? []) {
-    if (a.account_id <= 0) continue;
-    const deps = [a.depositDataKey, a.displayDepositDataKey].filter((dk): dk is string => Boolean(dk));
-    if (deps.length > 0) depositKeysByValuationKey[a.dataKey] = deps;
-  }
-  return {
-    series,
-    depositKeysByValuationKey,
-    groupValTotalSourceKeys,
-    groupDepTotalSourceKeys,
-  };
-}
-
 function InteractiveLegend({
   series,
   focusColorIndex,
@@ -875,15 +832,17 @@ export function LineChartPanel({
     () => valuationDataKeysForInitialZeroAnchors(blockWithAnchors),
     [blockWithAnchors]
   );
-  const denseForTailClip = useMemo(() => {
+  // Tail clip lives in the server payload build (`timeseriesTailClip.ts`): sold-out series
+  // arrive pre-nulled and `chart_end_ymd` bounds the x-axis when everything ends early.
+  const chartData = useMemo(() => {
     const densified = densifyRecordsByCalendarPeriod(blockWithAnchors.points, {
       granularity: xAxisGranularity,
       dateKey: "as_of_date",
       fillMissing: "null_all",
-      extendThroughYmd: chileTodayYmd(),
+      extendThroughYmd: block.chart_end_ymd ?? chileTodayYmd(),
     });
     return coerceKeptTrailingZeroMonth(densified, valuationKeys);
-  }, [blockWithAnchors.points, xAxisGranularity, valuationKeys]);
+  }, [blockWithAnchors.points, xAxisGranularity, valuationKeys, block.chart_end_ymd]);
   const series = useMemo(
     () => resolveLineSeriesColors(buildRawLineSeries(blockWithAnchors, includeAccumulatedLines), colorPlan),
     [blockWithAnchors, includeAccumulatedLines, colorPlan]
@@ -894,27 +853,7 @@ export function LineChartPanel({
     [series]
   );
 
-  const tailClipOptions = useMemo(
-    () => buildLineChartTailClipOptions(blockWithAnchors, includeAccumulatedLines),
-    [blockWithAnchors, includeAccumulatedLines]
-  );
-
-  const plotEndDate = useMemo(() => {
-    if (!tailClipOptions) return null;
-    return trailingZeroTailClipLastVisibleDate(denseForTailClip, tailClipOptions);
-  }, [denseForTailClip, tailClipOptions]);
-
-  const { chartData: clippedChartData, tailClippedKeys } = useMultiSeriesTrailingZeroTailClip(
-    denseForTailClip,
-    tailClipOptions
-  );
-
-  const clippedForPlot = useMemo(
-    () => filterChartRowsThroughDate(clippedChartData, plotEndDate),
-    [clippedChartData, plotEndDate]
-  );
-
-  const chartData = useMemo(() => clippedForPlot, [clippedForPlot]);
+  const tailClippedKeys = block.tail_clipped_keys;
 
   const yScale = useMemo(() => {
     const scaleSeries =

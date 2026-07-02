@@ -315,6 +315,10 @@ export interface TimeseriesBlock {
   synthetic_group_color_rgb?: Record<string, string>;
   /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
   referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
+  /** Server tail-clip: last visible date when every data series ends early (x-axis stops here). */
+  chart_end_ymd?: string;
+  /** Server tail-clip: data keys whose tails were nulled (`connectNulls={false}` on these lines). */
+  tail_clipped_keys?: string[];
 }
 
 /** Dashboard home, or `/api/...?group=` for class tabs */
@@ -827,6 +831,27 @@ export interface GroupMonthlyPerformanceResponse {
   points: Record<string, string | number | null>[];
 }
 
+export interface DashboardChartShapeLine {
+  dataKey: string;
+  name: string;
+  valueSeriesType: ValueSeriesType;
+  account_id?: number;
+  color_rgb?: string;
+}
+
+/**
+ * Dashboard chart skeleton — line specs, x-axis start, and which optional sections exist —
+ * so every chart/section mounts empty (correct shape) before the page bundle resolves.
+ */
+export interface DashboardChartShape {
+  /** Earliest valuation date; chart x-axes start on its month. Null on an empty DB. */
+  first_month: string | null;
+  overview_lines: DashboardChartShapeLine[];
+  primary_lines: DashboardChartShapeLine[];
+  has_patrimonio_usd_chart: boolean;
+  has_perf_sections: boolean;
+}
+
 /** `GET /api/dashboard/nav-snapshot` — card strip shape (no valuation TS). */
 export interface DashboardNavSnapshotResponse {
   accounts: DashboardAccountRow[];
@@ -834,6 +859,7 @@ export interface DashboardNavSnapshotResponse {
   dashboard_layout?: DashboardResponse["dashboard_layout"];
   suecia_snapshot?: DashboardResponse["suecia_snapshot"];
   nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
+  chart_shape?: DashboardChartShape;
 }
 
 /** `GET /api/dashboard/nav-context` — nav strip + overview in one response. */

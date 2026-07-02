@@ -7,7 +7,6 @@ import {
   valuationDataKeysForInitialZeroAnchors,
 } from "./chartSeriesInitialZeroAnchors";
 import { densifyRecordsByCalendarPeriod } from "./chartDensifyTimeSeries";
-import { applyMultiSeriesTrailingZeroTailClip } from "./components/charts/AppLineChart";
 
 describe("priorCalendarPeriodEndYmd", () => {
   it("returns prior month-end", () => {
@@ -116,6 +115,7 @@ describe("coerceKeptTrailingZeroMonth", () => {
 
 describe("OILK-style short equity position", () => {
   it("plots [0, x, 0] with anchor, densify-through-today, and one kept trailing zero", () => {
+    // Trailing-zero tail clip runs server-side now; the client pipeline is anchor → densify → coerce.
     const raw = [{ as_of_date: "2026-05-31", oilk: 900_000 }];
     const anchored = prependInitialZeroAnchors(raw, ["oilk"], { granularity: "month" });
     const dense = densifyRecordsByCalendarPeriod(anchored, {
@@ -123,10 +123,7 @@ describe("OILK-style short equity position", () => {
       fillMissing: "null_all",
       extendThroughYmd: "2026-06-24",
     });
-    const withTrail = coerceKeptTrailingZeroMonth(dense, ["oilk"]);
-    const { points } = applyMultiSeriesTrailingZeroTailClip(withTrail, {
-      series: [{ dataKey: "oilk", type: "data" }],
-    });
+    const points = coerceKeptTrailingZeroMonth(dense, ["oilk"]);
     const oilk = points.map((r) => r.oilk);
     expect(oilk).toContain(0);
     expect(oilk).toContain(900_000);

@@ -107,9 +107,16 @@ export function GroupInfoPage() {
 
   const groupedToggleOn = chartCtx?.showGroupedToggle ? chartsGrouped : false;
 
+  const placeholderFirstMonth = shell?.first_month ?? navSnapshot?.chart_shape?.first_month;
   const placeholderBundle = useMemo(
-    () => buildPlaceholderPortfolioGroupBundle(displayUnit, shell?.accounts ?? [], portfolioGroup),
-    [displayUnit, shell?.accounts, portfolioGroup]
+    () =>
+      buildPlaceholderPortfolioGroupBundle(
+        displayUnit,
+        shell?.accounts ?? [],
+        portfolioGroup,
+        placeholderFirstMonth
+      ),
+    [displayUnit, shell?.accounts, portfolioGroup, placeholderFirstMonth]
   );
   const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_pie);
   const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
@@ -134,7 +141,13 @@ export function GroupInfoPage() {
 
   useEffect(() => {
     if (!bundleReady || !data || !navMatchNode || !navCtx || !portfolioGroup) return;
-    const nextShell = extractGroupPageShellFromReal(data.accounts, navCtx.accounts, navMatchNode);
+    const firstChartDate = data.ts.accounts_in_group?.points[0]?.as_of_date;
+    const nextShell = extractGroupPageShellFromReal(
+      data.accounts,
+      navCtx.accounts,
+      navMatchNode,
+      typeof firstChartDate === "string" ? firstChartDate : undefined
+    );
     writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
     queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
   }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);

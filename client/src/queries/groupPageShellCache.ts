@@ -1,7 +1,8 @@
 import type { DisplayUnit } from "./keys";
 import type { GroupPageShell } from "./groupPageShell";
 
-const STORAGE_PREFIX = "nw:group-shell-v1";
+/** v2 adds `first_month`. */
+const STORAGE_PREFIX = "nw:group-shell-v2";
 
 /** True when localStorage has a group-page shell row (CLP fallback for USD). */
 export function hasGroupPageShellCache(portfolioGroup: string, unit: DisplayUnit): boolean {
@@ -34,6 +35,7 @@ export function writeGroupPageShellCache(
 ): void {
   try {
     localStorage.setItem(storageKey(portfolioGroup, unit), JSON.stringify(shell));
+    localStorage.removeItem(`nw:group-shell-v1:${portfolioGroup}:${unit}`);
   } catch {
     // quota / private mode
   }

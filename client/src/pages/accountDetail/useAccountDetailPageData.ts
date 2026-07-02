@@ -3,19 +3,7 @@ import { useParams } from "react-router-dom";
 import {
   filterPointsThroughAsOfDate,
   resolveMonthlyPerfClipEndDate,
-  trailingZeroTailClipLastVisibleDate,
 } from "../../components/charts/AppLineChart";
-import {
-  buildLineChartTailClipOptions,
-  trimLeadingInactivePoints,
-} from "../../components/charts/ValuationLineCharts";
-import { chileTodayYmd } from "../../calendarMonth";
-import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
-import {
-  coerceKeptTrailingZeroMonth,
-  prependInitialZeroAnchorsOnBlock,
-  valuationDataKeysForInitialZeroAnchors,
-} from "../../chartSeriesInitialZeroAnchors";
 import { useAccountDetailBundle, useDashboardNavContext, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
 import { hasDashboardNavSnapshotCache } from "../../queries/dashboardNavSnapshotCache";
 import { dashPickForNavStrip } from "../../queries/fetchers";
@@ -145,22 +133,8 @@ export function useAccountDetailPageData(): AccountDetailPageData {
 
   const monthlyPerfErr: string | null = null;
 
-  const valuationTailClipEndDate = useMemo(() => {
-    if (!ts?.accounts?.points?.length) return null;
-    const block = trimLeadingInactivePoints(ts.accounts, true);
-    const withAnchors = prependInitialZeroAnchorsOnBlock(block, xAxisGranularity);
-    const valuationKeys = valuationDataKeysForInitialZeroAnchors(withAnchors);
-    const dense = densifyRecordsByCalendarPeriod(withAnchors.points, {
-      granularity: xAxisGranularity,
-      dateKey: "as_of_date",
-      fillMissing: "null_all",
-      extendThroughYmd: chileTodayYmd(),
-    });
-    const denseForTailClip = coerceKeptTrailingZeroMonth(dense, valuationKeys);
-    const opts = buildLineChartTailClipOptions(withAnchors, true);
-    if (!opts) return null;
-    return trailingZeroTailClipLastVisibleDate(denseForTailClip, opts);
-  }, [ts?.accounts, xAxisGranularity]);
+  // Tail clip runs server-side; the block carries the clipped x-range when the account ended early.
+  const valuationTailClipEndDate = ts?.accounts?.chart_end_ymd ?? null;
 
   const monthlyPerfRows = useMemo(() => {
     const rows = monthlyPerf?.monthly ?? [];

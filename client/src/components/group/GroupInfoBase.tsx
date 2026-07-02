@@ -94,7 +94,9 @@ export function GroupInfoBase({
   const tablesEnabled =
     !hideConsolidatedTables &&
     (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
-  const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug) && !loading;
+  // Table queries start in parallel with the page bundle (not gated on `loading`);
+  // placeholder rows hold the layout until the first page of data resolves.
+  const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug);
   const { consolidatedMonthlyPerf, tableFlags, tablesLoading, tablesError } =
     useGroupInfoConsolidatedTables(
       portfolio?.groupSlug ?? "",
@@ -123,9 +125,9 @@ export function GroupInfoBase({
   const monthlyRows = loading
     ? placeholderMonthlyRows
     : serverPaginatedMonthlyDetail
-      ? serverMonthly.data?.rows ?? []
+      ? serverMonthly.data?.rows ?? placeholderMonthlyRows
       : tablesLoading
-        ? []
+        ? placeholderMonthlyRows
         : consolidatedMonthlyPerf;
 
   const monthlyError = serverPaginatedMonthlyDetail
@@ -175,7 +177,7 @@ export function GroupInfoBase({
                 isMortgageAccount={tableFlags.isMortgageAccount}
                 showStockInflowsColumn={false}
                 serverPagination={
-                  serverPaginatedMonthlyDetail && !loading
+                  serverPaginatedMonthlyDetail && !loading && serverMonthly.data != null
                     ? {
                         page: serverMonthly.data?.page ?? monthlyPage,
                         total: serverMonthly.data?.total ?? 0,

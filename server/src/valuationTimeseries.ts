@@ -60,7 +60,10 @@ import {
   ccInstallmentLedgerRowCount,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
-import { syntheticGroupColorRgbMapForValuationGroup } from "./chartColorRgb.js";
+import {
+  colorRgbForSyntheticAccountLine,
+  syntheticGroupColorRgbMapForValuationGroup,
+} from "./chartColorRgb.js";
 import {
   listFirstLevelPortfolioGroupChildren,
   portfolioGroupColorRgbBySlug,
@@ -94,6 +97,7 @@ import {
   getGroupConsolidatedMonthlyPerfForRows,
 } from "./groupMonthlyPerfConsolidation.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
+import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
 
@@ -465,6 +469,31 @@ function augmentChartDatesForCreditCardAccounts(
 }
 
 /**
+ * The depto-dividendos sheet is a payment ledger: a cuota paid mid-month must step the
+ * sheet-driven series (pago acumulado, restante hipoteca, valor neto) on its payment date,
+ * not on the next manual `valuations` row (same pattern as CC statement-close dates above).
+ */
+function augmentChartDatesForDeptoSheetAccounts(
+  dateStrs: string[],
+  allIds: number[],
+  slugById: Map<number, string>
+): string[] {
+  if (dateStrs.length === 0) return dateStrs;
+  const hasDeptoAccount = allIds.some((id) => {
+    const kind = bucketKindFromSlugMap(slugById, id);
+    return kind === "property" || kind === "mortgage";
+  });
+  if (!hasDeptoAccount) return dateStrs;
+  const minD = dateStrs[0]!;
+  const aug = new Set(dateStrs);
+  for (const r of loadDeptoDividendosSheetLedgerFromDb()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
+    if (r.occurred_on >= minD) aug.add(r.occurred_on);
+  }
+  return [...aug].sort();
+}
+
+/**
  * Month-end CLP series from `depto-dividendos.csv` (same as Numbers: **valor neto** + **pago acumulado**),
  * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the same amortization timeline as the sheet.
  */
@@ -797,7 +826,11 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const dividendDepMovs = loadDividendReinvestedInflowEvents(allIds);
   if (dateStrs.length > 0) {
     const minD = dateStrs[0]!;
-    const maxD = dateStrs[dateStrs.length - 1]!;
+    // Manual `valuations` rows can lag the ledgers (e.g. last row on the 8th, deposit on the
+    // 11th): chart month-ends for deposit events through today, not just through the last row.
+    const lastValuationD = dateStrs[dateStrs.length - 1]!;
+    const today = chileCalendarTodayYmd();
+    const maxD = lastValuationD > today ? lastValuationD : today;
     const aug = new Set(dateStrs);
     for (const id of allIds) {
       for (const ev of [
@@ -814,6 +847,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   }
   dateStrs = augmentChartDatesForCreditCardAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
+  dateStrs = augmentChartDatesForDeptoSheetAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   const propertyAccountIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "property");
   const propertyDeptoSheets =
@@ -960,9 +994,10 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         );
       }
       if (propertyAccountIds.length === 1 && aidKind === "property") {
+        // Sheet UF marks on every date including the trailing/today point: suecia CLP is
+        // (valor_neto_uf × UF(d)), the same daily re-mark as the Hipoteca line and the monthly table.
         const fromDepto = propertyDeptoCloseByDate.get(d);
-        const keepBookOnTrailing = d === todayYmd || d === trailingChartDate;
-        if (fromDepto != null && Number.isFinite(fromDepto) && !keepBookOnTrailing) {
+        if (fromDepto != null && Number.isFinite(fromDepto)) {
           raw = fromDepto;
         }
       }
@@ -1747,9 +1782,68 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
 
   return {
     unit,
-    accounts_ex_property: slice.accounts_ex_property,
-    overview: slice.overview,
-    patrimonio_usd_milestones_chart,
+    accounts_ex_property: applyTrailingZeroTailClipToBlock(slice.accounts_ex_property),
+    overview: applyTrailingZeroTailClipToBlock(slice.overview),
+    patrimonio_usd_milestones_chart: applyTrailingZeroTailClipToBlock(
+      patrimonio_usd_milestones_chart
+    ),
+  };
+}
+
+export type DashboardChartShapeLine = {
+  dataKey: string;
+  name: string;
+  valueSeriesType: "data" | "reference";
+  account_id?: number;
+  color_rgb?: string;
+};
+
+/** Dashboard chart skeleton: line specs + x-axis start + section presence, no points. */
+export type DashboardChartShape = {
+  /** Earliest valuation date — dashboard chart x-axes start on its month. Null on an empty DB. */
+  first_month: string | null;
+  overview_lines: DashboardChartShapeLine[];
+  primary_lines: DashboardChartShapeLine[];
+  has_patrimonio_usd_chart: boolean;
+  has_perf_sections: boolean;
+};
+
+/** Chart dates derive from monthly closes over valuations *and* movements — take the earlier. */
+const minValuationDateStmt = db.prepare(
+  `SELECT MIN(d) AS d FROM (
+     SELECT MIN(as_of_date) AS d FROM valuations
+     UNION ALL
+     SELECT MIN(occurred_on) AS d FROM movements
+   ) WHERE d IS NOT NULL`
+);
+
+/**
+ * Chart shape for the nav-snapshot quick call: lets the client mount every dashboard
+ * chart/section empty (correct x-range and lines) before the page bundle resolves.
+ * Cheap by design — no valuation timeseries build.
+ */
+export function getDashboardChartShape(): DashboardChartShape {
+  const first_month = (minValuationDateStmt.get() as { d: string | null }).d;
+  const primary_lines = listDashboardPrimaryPortfolioGroupSpecs().map((spec) => {
+    const row = portfolioGroupLabelStmt.get(spec.slug) as { label: string } | undefined;
+    const color_rgb = colorRgbForSyntheticAccountLine(spec.chartAccountId);
+    return {
+      dataKey: String(spec.chartAccountId),
+      name: row?.label ?? spec.slug,
+      valueSeriesType: "data" as const,
+      account_id: spec.chartAccountId,
+      ...(color_rgb ? { color_rgb } : {}),
+    };
+  });
+  const has_perf_sections =
+    accountIdsInPortfolioGroup("retirement").length > 0 ||
+    accountIdsInPortfolioGroup("brokerage").length > 0;
+  return {
+    first_month,
+    overview_lines: buildDashboardOverviewLines(),
+    primary_lines,
+    has_patrimonio_usd_chart: first_month != null,
+    has_perf_sections,
   };
 }
 
@@ -1978,7 +2072,7 @@ function getGroupValuationTimeseriesInnerUncached(
   return {
     unit,
     group_slug: groupSlug,
-    accounts_in_group,
+    accounts_in_group: applyTrailingZeroTailClipToBlock(accounts_in_group),
     group_allocation_pie,
   };
 }
@@ -2145,7 +2239,7 @@ export function getAccountValuationTimeseries(
     unit,
     account_id: row.account_id,
     name: row.name,
-    accounts,
+    accounts: applyTrailingZeroTailClipToBlock(accounts),
     allocation_pie,
     granularity: "monthly" as const,
   };

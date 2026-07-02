@@ -39,12 +39,18 @@ describe("getGroupValuationTimeseries equity zero position", () => {
       expect(row[dk]).toBeNull();
     }
 
+    // Server tail clip: the sell month keeps one plotted 0, later months are null (line ends).
     const afterSell = ts!.accounts_in_group!.points.filter(
       (p) => String(p.as_of_date) >= sell.occurred_on.slice(0, 10)
     );
     expect(afterSell.length).toBeGreaterThan(0);
+    expect(afterSell[0]![dk]).toBe(0);
     for (const row of afterSell) {
-      expect(row[dk]).toBe(0);
+      expect(row[dk] === 0 || row[dk] === null).toBe(true);
+    }
+    if (afterSell.length > 2) {
+      expect(afterSell[afterSell.length - 1]![dk]).toBeNull();
+      expect(ts!.accounts_in_group!.tail_clipped_keys).toContain(dk);
     }
   });
 });

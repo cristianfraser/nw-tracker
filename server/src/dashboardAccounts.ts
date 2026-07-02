@@ -39,6 +39,7 @@ import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
   convertTs,
+  getDashboardChartShape,
   getDashboardOverviewBlock,
   liabilitiesBreakdownClpAsOf,
   type TsUnit,
@@ -464,6 +465,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     dashboard_layout,
     suecia_snapshot,
     nw_bucket_totals,
+    chart_shape: getDashboardChartShape(),
   };
 }
 

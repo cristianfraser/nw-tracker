@@ -15,7 +15,11 @@ import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
-import { AppLineChart, useMultiSeriesTrailingZeroTailClip } from "../components/charts/AppLineChart";
+import { AppLineChart } from "../components/charts/AppLineChart";
+import { useDailyRateTailClip } from "./ratesDailyTailClip";
+
+const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
+const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
 import { Table } from "../components/ui/Table";
 import { formatClp, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
@@ -241,18 +245,9 @@ function FxUsdClpDualChart({
     [merged]
   );
 
-  const clip = useMultiSeriesTrailingZeroTailClip(
+  const clip = useDailyRateTailClip(
     denseData as unknown as Record<string, string | number | null>[],
-    denseData.length
-      ? {
-          series: [
-            { dataKey: "yahoo", type: "data" as const },
-            { dataKey: "bcentral", type: "data" as const },
-            { dataKey: "buy", type: "data" as const },
-            { dataKey: "sell", type: "data" as const },
-          ],
-        }
-      : null
+    FX_USD_DUAL_SERIES_KEYS
   );
   const chartData = clip.chartData as {
     date: string;
@@ -388,9 +383,9 @@ function MiniLineChart({
     [data]
   );
 
-  const clip = useMultiSeriesTrailingZeroTailClip(
+  const clip = useDailyRateTailClip(
     denseData as unknown as Record<string, string | number | null>[],
-    denseData.length ? { series: [{ dataKey: "value", type: "data" as const }] } : null
+    SINGLE_VALUE_SERIES_KEYS
   );
   const chartData = clip.chartData as { date: string; value: number | null }[];
   const tailClippedKeys = clip.tailClippedKeys;

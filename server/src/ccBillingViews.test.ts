@@ -1,4 +1,4 @@
-import { describe, expect, it, afterEach, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import {
   applyOpenBillingMonthSaldoToNextMonth,
@@ -28,6 +28,14 @@ import { addCalendarMonths } from "./ccYearMonth.js";
 import { ymCompare } from "./calendarMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import * as chileDate from "./chileDate.js";
+import { snapshotTables } from "./test/snapshotTables.js";
+
+// The manual-purchase cases run createManualCcInstallmentPurchase on the real 4242 CC master,
+// which upserts valuations (a today-dated row + restated month-ends) via
+// upsertCreditCardValuationsFromLedger. Deleting the purchase + recomputing balances doesn't
+// undo those valuation writes, so snapshot valuations and restore exact rows in afterAll.
+const restoreValuations = snapshotTables(["valuations"]);
+afterAll(() => restoreValuations());
 
 describe("billingDetailBalanceClp", () => {
   it("closed statement subtracts cuota a pagar del mes siguiente", () => {

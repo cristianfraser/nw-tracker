@@ -32,7 +32,10 @@ import {
 } from "../dashboardTimeseriesYearly";
 import { dashboardBucketLabel, useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
-import { buildPlaceholderDashboardBundle } from "../placeholders/dashboardPagePlaceholders";
+import {
+  buildPlaceholderDashboardBundle,
+  chartShapeFromLoadedDashboardBundle,
+} from "../placeholders/dashboardPagePlaceholders";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { formatMoneyForPie } from "../format";
@@ -80,8 +83,8 @@ export function DashboardPage() {
   }, [queryClient, displayUnit]);
 
   const placeholderBundle = useMemo(
-    () => buildPlaceholderDashboardBundle(displayUnit),
-    [displayUnit]
+    () => buildPlaceholderDashboardBundle(displayUnit, navSnapshot?.chart_shape),
+    [displayUnit, navSnapshot?.chart_shape]
   );
 
   const bundleReady = Boolean(
@@ -108,6 +111,7 @@ export function DashboardPage() {
       dashboard_layout: data.dash.dashboard_layout,
       suecia_snapshot: data.dash.suecia_snapshot,
       nw_bucket_totals: nwBucketTotalsFromDashTotals(data.dash.totals),
+      chart_shape: chartShapeFromLoadedDashboardBundle(data),
     });
     writeFxLatestCache(data.fx);
   }, [useRealBundle, data, displayUnit]);
