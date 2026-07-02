@@ -43,7 +43,7 @@ export type DemoAccounts = {
   checkingId: number;
   /** last4 → CC master account id. */
   ccMasterIdByLast4: Map<string, number>;
-  fondoId: number;
+  fondoId: number | null;
   /** One account per configured ticker (equity_ticker set — MTM valuation). */
   stockIdByTicker: Map<string, number>;
   /** Corredora USD cash hub (compra_usd_venta_clp in, stock_buy out). */
@@ -302,6 +302,18 @@ const EQUITY_PRICE_ANCHORS: Record<string, ReadonlyArray<[string, number]>> = {
     ["2021-12-31", 475], ["2022-10-15", 358], ["2023-12-31", 475], ["2024-12-31", 590],
     ["2025-04-15", 505], ["2026-12-31", 640],
   ],
+  // Developed-intl ETF: sideways decade, 2022 dip, strong 2025 rally.
+  VEA: [
+    ["2018-01-01", 45], ["2018-12-24", 37.5], ["2019-12-31", 44], ["2020-03-20", 30],
+    ["2020-12-31", 47], ["2021-12-31", 52], ["2022-10-14", 35.5], ["2023-12-31", 48],
+    ["2024-12-31", 50], ["2025-12-31", 61], ["2026-12-31", 64],
+  ],
+  // Total-bond ETF: the boring ballast (2022 rate shock, slow recovery).
+  BND: [
+    ["2018-01-01", 79], ["2020-08-01", 89], ["2021-12-31", 84], ["2022-10-14", 70],
+    ["2023-10-15", 68.5], ["2023-12-31", 72.5], ["2024-12-31", 72.5], ["2025-12-31", 74.5],
+    ["2026-12-31", 76],
+  ],
   // Semis ETF: the supercycle with the 2022 drawdown and the Aug-2024 air pocket.
   SMH: [
     ["2018-01-01", 95], ["2018-12-24", 78], ["2019-12-31", 142], ["2020-03-20", 98],
@@ -362,6 +374,7 @@ export function buildDemoEquitySeries(
 ): DemoEquitySeries {
   const tickers = new Set<string>();
   for (const p of narrative.stocks?.positions ?? []) tickers.add(p.ticker);
+  for (const p of narrative.stocks?.longTermPositions ?? []) tickers.add(p.ticker);
   if (narrative.withCrypto) tickers.add("BTC-USD");
   const start = dayInMonth(narrative.firstMonth, 1);
   const end = monthEndUtcYmd(narrative.lastMonth);
@@ -508,7 +521,7 @@ export function initialDemoRunState(
     savingsValueClp: 0,
     checkingBalanceClp: 0,
     equitySeries: buildDemoEquitySeries(narrative, rng),
-    fondoCuotaSeries: buildDemoFondoCuotaSeries(narrative, rng),
+    fondoCuotaSeries: narrative.withFondo ? buildDemoFondoCuotaSeries(narrative, rng) : [],
     mortgageOutstandingClp: null,
     deptoCuotaN: 0,
     deptoPagoAcumClp: 0,
@@ -607,7 +620,6 @@ export function writeCheckingMonth(
     cryptoBuy: 0,
     cryptoSell: null,
     fondoBuy: 0,
-    fondoSell: null,
   };
   for (const tr of narrative.trades) {
     if (tr.month !== month) continue;
@@ -615,11 +627,11 @@ export function writeCheckingMonth(
       const amt = Math.round(tr.amountClp ?? 0);
       if (amt <= 0) continue;
       if (tr.asset === "crypto") tradeFlows.cryptoBuy += amt;
-      else if (tr.asset === "stocks") {
+      else {
         const ticker = tr.ticker ?? narrative.stocks?.positions[0]?.ticker;
         if (!ticker) throw new Error(`demo: stock buy at ${month} without a ticker`);
         tradeFlows.stockBuys.push({ ticker, clp: amt });
-      } else tradeFlows.fondoBuy += amt;
+      }
     } else if (tr.asset === "stocks") {
       const ticker = tr.ticker ?? narrative.stocks?.positions[0]?.ticker;
       if (!ticker) throw new Error(`demo: stock sell at ${month} without a ticker`);
@@ -632,7 +644,7 @@ export function writeCheckingMonth(
       const clp = Math.round(usd * fxSell);
       tradeFlows.stockSells.push({ ticker, units, usd, clp });
       checkingMove(clp, sellDay, "ABONO VENTA CORREDORA DEMO");
-    } else if (tr.asset === "crypto") {
+    } else {
       if (fxSell == null) throw new Error(`demo: no fx on/before ${sellYmd}`);
       const units = state.cryptoUnits * (tr.fraction ?? 0);
       if (units <= 0) continue;
@@ -640,13 +652,6 @@ export function writeCheckingMonth(
       const clp = Math.round(units * priceUsd * fxSell);
       tradeFlows.cryptoSell = { units, clp };
       checkingMove(clp, sellDay, "ABONO VENTA EXCHANGE DEMO");
-    } else {
-      const cuota = demoFondoCuotaAt(state.fondoCuotaSeries, sellYmd);
-      const units = state.fondoUnits * (tr.fraction ?? 0);
-      if (units <= 0) continue;
-      const clp = Math.round(units * cuota);
-      tradeFlows.fondoSell = { units, clp };
-      checkingMove(clp, sellDay, "ABONO RESCATE FONDO DEMO");
     }
   }
   if (tradeFlows.fondoBuy > 0) {
@@ -695,9 +700,9 @@ export function writeCheckingMonth(
 
   // Cash-cap rule: checking targets ~5M max (soft — target jitters 2.5–5.5M and ~15% of
   // months skip the sweep, letting cash build before a catch-up). Everything above the
-  // target is invested (stocks share + fondo) or parked in the reserva. Runs LAST so the
-  // actual posted balance — salary, bills, pagos, sells, scripted buys, pie — drives it;
-  // a big sale or bonus gets swept the same month it lands.
+  // target is invested (trading share + long-term core) or parked in the reserva. Runs LAST
+  // so the actual posted balance — salary, bills, pagos, sells, scripted buys, pie —
+  // drives it; a big sale or bonus gets swept the same month it lands.
   {
     const balanceClp = (
       db
@@ -726,9 +731,18 @@ export function writeCheckingMonth(
       narrative.house != null && monthsBetween(narrative.house.month, month) === 1
         ? (demoDeptoCuotaClpForMonth(narrative.house, month) ?? 0)
         : 0;
+    // Upcoming scripted buys (the INTC bet, crypto dips…) also draw on this balance
+    // before their wires post — reserve over a two-month horizon (the last sweep before
+    // a buy can be a month early when the in-between month skips its sweep), or a big
+    // bet overdraws the account.
+    const buyHorizon = [nextMonthOf(month), nextMonthOf(nextMonthOf(month))];
+    const nextTradeBuysClp = narrative.trades
+      .filter((tr) => buyHorizon.includes(tr.month) && tr.action === "buy")
+      .reduce((s, tr) => s + Math.round(tr.amountClp ?? 0), 0);
     const preSalaryFloorClp =
       Math.ceil(
-        (billsTotal + pagosTotal + cardEventClp + firstCuotaBridgeClp + 700_000) / 50_000
+        (billsTotal + pagosTotal + cardEventClp + firstCuotaBridgeClp + nextTradeBuysClp + 700_000) /
+          50_000
       ) * 50_000;
     const targetClp = Math.max(
       3_500_000 + Math.round((rng() * 3_000_000) / 50_000) * 50_000,
@@ -739,34 +753,49 @@ export function writeCheckingMonth(
         ? 0
         : Math.max(0, Math.floor((balanceClp - targetClp) / 50_000) * 50_000);
     if (sweepClp >= 100_000) {
-      const stocksShare =
-        narrative.stocks && month >= narrative.stocks.from ? narrative.stocks.sweepShare : 0;
+      const stocksActive = narrative.stocks != null && month >= narrative.stocks.from;
+      const stocksShare = stocksActive ? narrative.stocks!.sweepShare : 0;
       const stocksClp = Math.round((sweepClp * stocksShare) / 50_000) * 50_000;
-      const reservaClp =
+      let reservaClp =
         accounts.savingsId != null ? Math.round((sweepClp * 0.15) / 50_000) * 50_000 : 0;
-      const fondoClp = sweepClp - stocksClp - reservaClp;
-      if (reservaClp > 0 && accounts.savingsId != null) {
-        checkingMove(-reservaClp, 26, "TRANSF FONDO RESERVA DEMO");
-        movement(accounts.savingsId, reservaClp, dayInMonth(month, 26), "Depósito|demo");
-      }
-      if (fondoClp > 0) {
-        tradeFlows.fondoBuy += fondoClp;
-        checkingMove(-fondoClp, 26, "TRANSFERENCIA FONDO DEMO");
-      }
-      if (stocksClp > 0 && narrative.stocks) {
-        const weightSum = narrative.stocks.positions.reduce((a, p) => a + p.weight, 0);
+      // Remainder = the low-risk core: long-term ETFs when configured (demo), else the
+      // fondo (lean preset); before the brokerage era it parks in the reserva.
+      const coreClp = sweepClp - stocksClp - reservaClp;
+      const longTerm = narrative.stocks?.longTermPositions ?? [];
+      const pushStockLots = (
+        positions: readonly { ticker: string; weight: number }[],
+        totalClp: number
+      ) => {
+        const weightSum = positions.reduce((a, p) => a + p.weight, 0);
         let assigned = 0;
-        narrative.stocks.positions.forEach((p, i) => {
-          const last = i === narrative.stocks!.positions.length - 1;
-          const clp = last
-            ? stocksClp - assigned
-            : Math.round((stocksClp * p.weight) / weightSum / 1000) * 1000;
+        positions.forEach((p, i) => {
+          const clp =
+            i === positions.length - 1
+              ? totalClp - assigned
+              : Math.round((totalClp * p.weight) / weightSum / 1000) * 1000;
           assigned += clp;
           if (clp > 0) {
             tradeFlows.stockBuys.push({ ticker: p.ticker, clp });
             checkingMove(-clp, 26, "TRANSFERENCIA CORREDORA DEMO");
           }
         });
+      };
+      if (coreClp > 0) {
+        if (stocksActive && longTerm.length > 0) {
+          pushStockLots(longTerm, coreClp);
+        } else if (accounts.fondoId != null) {
+          tradeFlows.fondoBuy += coreClp;
+          checkingMove(-coreClp, 26, "TRANSFERENCIA FONDO DEMO");
+        } else if (accounts.savingsId != null) {
+          reservaClp += coreClp;
+        }
+      }
+      if (reservaClp > 0 && accounts.savingsId != null) {
+        checkingMove(-reservaClp, 26, "TRANSF FONDO RESERVA DEMO");
+        movement(accounts.savingsId, reservaClp, dayInMonth(month, 26), "Depósito|demo");
+      }
+      if (stocksClp > 0 && narrative.stocks) {
+        pushStockLots(narrative.stocks.positions, stocksClp);
       }
     }
   }
@@ -865,7 +894,6 @@ export type DemoMonthFlows = {
   cryptoBuy: number;
   cryptoSell: { units: number; clp: number } | null;
   fondoBuy: number;
-  fondoSell: { units: number; clp: number } | null;
 };
 
 /** Placeholder for readability in the registry block (outflows already posted above). */
@@ -1145,7 +1173,7 @@ export function writeInvestmentMonth(
   const cryptoYmd = dayInMonth(month, 17);
 
   // Fondo: cuota purchases (units × valor cuota = valuation, like real Fintual accounts).
-  if (flows.fondoBuy > 0) {
+  if (accounts.fondoId != null && flows.fondoBuy > 0) {
     const cuota = demoFondoCuotaAt(state.fondoCuotaSeries, buyYmd);
     const units = Math.round((flows.fondoBuy / cuota) * 1e4) / 1e4;
     state.fondoUnits = Math.round((state.fondoUnits + units) * 1e4) / 1e4;
@@ -1156,16 +1184,7 @@ export function writeInvestmentMonth(
       units_delta: units,
     });
   }
-  if (flows.fondoSell) {
-    state.fondoUnits = Math.max(0, Math.round((state.fondoUnits - flows.fondoSell.units) * 1e4) / 1e4);
-    movementWithUnits(accounts.fondoId, {
-      amount_clp: -flows.fondoSell.clp,
-      occurred_on: sellYmd,
-      note: "Retiro|demo",
-      units_delta: -Math.round(flows.fondoSell.units * 1e4) / 1e4,
-    });
-  }
-  if (state.fondoUnits > 0) {
+  if (accounts.fondoId != null && state.fondoUnits > 0) {
     const cuotaEnd = demoFondoCuotaAt(state.fondoCuotaSeries, monthEnd);
     valuation(accounts.fondoId, monthEnd, Math.round(state.fondoUnits * cuotaEnd));
   }
