@@ -109,7 +109,6 @@ export function DashboardPage() {
       accounts: data.dash.accounts,
       liabilities_breakdown: data.dash.liabilities_breakdown,
       dashboard_layout: data.dash.dashboard_layout,
-      depto_snapshot: data.dash.depto_snapshot,
       nw_bucket_totals: nwBucketTotalsFromDashTotals(data.dash.totals),
       chart_shape: chartShapeFromLoadedDashboardBundle(data),
     });
@@ -126,7 +125,6 @@ export function DashboardPage() {
         accounts: navSnapshot.accounts,
         liabilities_breakdown: navSnapshot.liabilities_breakdown,
         dashboard_layout: navSnapshot.dashboard_layout,
-        depto_snapshot: navSnapshot.depto_snapshot,
         nw_bucket_totals: navSnapshot.nw_bucket_totals,
         overviewPoints,
       },

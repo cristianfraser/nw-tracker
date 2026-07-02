@@ -37,7 +37,7 @@ export function perturbCachedAmountsPreservingSortOrder(
 
 type SnapshotSortContext = Pick<
   DashboardNavSnapshotResponse,
-  "dashboard_layout" | "liabilities_breakdown" | "depto_snapshot"
+  "dashboard_layout" | "liabilities_breakdown"
 >;
 
 /** Permute perturbed targets so higher original balance keeps a higher perturbed value. */
@@ -93,7 +93,7 @@ function rowFxRate(row: DashboardAccountRow): number | null {
   return null;
 }
 
-/** Snapshot-level FX for aggregate fields (liabilities, depto, linked balances). */
+/** Snapshot-level FX for aggregate fields (liabilities, linked balances). */
 export function resolveSnapshotFxRate(
   accounts: DashboardAccountRow[],
   cachedFx: FxLatest | undefined
@@ -178,23 +178,6 @@ export function synthesizeMissingUsdOnNavSnapshot(
       }
     : liabilities;
 
-  const depto = snapshot.depto_snapshot;
-  const depto_snapshot = depto
-    ? {
-        ...depto,
-        valor_usd: synthesizeUsdField(depto.valor_clp, depto.valor_usd, snapshotFxRate),
-        net_value_usd: synthesizeUsdField(
-          depto.net_value_clp,
-          depto.net_value_usd,
-          snapshotFxRate
-        ),
-        mortgage_usd: synthesizeUsdField(
-          depto.mortgage_clp,
-          depto.mortgage_usd,
-          snapshotFxRate
-        ),
-      }
-    : depto;
 
   const dashboard_layout = snapshot.dashboard_layout?.map((card) => ({
     ...card,
@@ -208,7 +191,6 @@ export function synthesizeMissingUsdOnNavSnapshot(
     ...snapshot,
     accounts,
     liabilities_breakdown,
-    depto_snapshot,
     dashboard_layout,
   };
 }
@@ -417,7 +399,6 @@ export function perturbDashboardNavSnapshot(
 ): DashboardNavSnapshotResponse {
   const factor = randomPerturbFactor();
   const liabilities = snapshot.liabilities_breakdown;
-  const depto = snapshot.depto_snapshot;
   const dashboard_layout = perturbDashboardLayout(snapshot.dashboard_layout, factor);
   const sortSnapshot: SnapshotSortContext = {
     ...snapshot,
@@ -458,16 +439,6 @@ export function perturbDashboardNavSnapshot(
           credit_card_usd: perturbOptionalNumber(liabilities.credit_card_usd, factor),
         }
       : liabilities,
-    depto_snapshot: depto
-      ? {
-          valor_clp: perturbCachedAmount(depto.valor_clp, factor),
-          net_value_clp: perturbCachedAmount(depto.net_value_clp, factor),
-          mortgage_clp: perturbCachedAmount(depto.mortgage_clp, factor),
-          valor_usd: perturbOptionalNumber(depto.valor_usd, factor),
-          net_value_usd: perturbOptionalNumber(depto.net_value_usd, factor),
-          mortgage_usd: perturbOptionalNumber(depto.mortgage_usd, factor),
-        }
-      : depto,
     dashboard_layout,
   };
 }

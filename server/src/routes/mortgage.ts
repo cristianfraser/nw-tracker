@@ -50,7 +50,6 @@ import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "../brokerageAcci
 import { accountChartInactive } from "../accountChartInactive.js";
 import { reconcileDashboardCardMetrics } from "../dashboardCardMetricsReconcile.js";
 import {
-  deptoDeptoDashboardSnapshotAt,
   isDeptoMortgagePaymentCuota,
   loadDeptoDividendosSheetLedgerFromDb,
   mortgageMetaFromSheetRows,
