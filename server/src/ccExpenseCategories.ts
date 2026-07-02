@@ -1005,6 +1005,21 @@ function executeCcExpenseCategoryAssignment(opts: {
     if (clearCategory) {
       if (unique) {
         upsertUniquePurchase.run(accountId, purchaseKey, null);
+        // The resolver falls back to the legacy installment-h key (no amount segment)
+        // when the current key has no category — a populated legacy row would shadow
+        // this clear and the contract would keep its old category. Mirror the clear
+        // onto an existing legacy row (never create one).
+        const legacyKey = legacyInstallmentHPurchaseKey(purchaseKey);
+        if (
+          legacyKey &&
+          db
+            .prepare(
+              `SELECT 1 FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+            )
+            .get(accountId, legacyKey)
+        ) {
+          upsertUniquePurchase.run(accountId, legacyKey, null);
+        }
       } else {
         delUniquePurchase.run(accountId, purchaseKey);
         for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {

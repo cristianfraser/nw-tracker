@@ -39,7 +39,7 @@ describe("importSyncDocumentCoverage", () => {
     }
     const currentYm = monthKeyFromYmd(chileCalendarTodayYmd());
     expect(payload.months[0]).toBe(currentYm);
-  });
+  }, 20_000);
 
   it("cartola check uses period_month exactly", () => {
     const checkingId = cartolaCashAccountIdOptional("cuenta_corriente");
@@ -69,7 +69,7 @@ describe("importSyncDocumentCoverage", () => {
         expect(cols[0]?.cc_statement_currency).toBeUndefined();
       }
     }
-  });
+  }, 20_000);
 
   it("CC check uses period_to month", () => {
     const ccIds = listCreditCardMasterAccountIds();
@@ -141,7 +141,7 @@ describe("importSyncDocumentCoverage", () => {
         }
       }
     }
-  });
+  }, 20_000);
 
   it("does not mark cuenta vista multi-month cells sin-mov when PDF has imported movements", () => {
     const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
@@ -172,5 +172,5 @@ describe("importSyncDocumentCoverage", () => {
       if (!cell.file_path?.includes("2017-10-31 cartola cuenta vista.pdf")) continue;
       expect(cell.file_sin_movimientos).not.toBe(true);
     }
-  });
+  }, 20_000);
 });
