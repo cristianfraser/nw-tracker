@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import {
@@ -37,6 +38,8 @@ function hasStockBuyTransfer(accountId: number): boolean {
   );
 }
 
+let restoreFx: (() => void) | null = null;
+
 describe("equityBrokerageCapitalFlows fixture", () => {
   let usdId = 0;
   let stockId = 0;
@@ -71,12 +74,15 @@ describe("equityBrokerageCapitalFlows fixture", () => {
         .run(usdId, stockId, FIXTURE_NOTE).lastInsertRowid
     );
 
-    db.prepare(
-      `INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES ('2026-04-30', 900), ('2026-05-05', 900), ('2026-03-26', 900)`
-    ).run();
+    restoreFx = overrideFxDaily([
+      ["2026-04-30", 900],
+      ["2026-05-05", 900],
+      ["2026-03-26", 900],
+    ]);
   });
 
   afterAll(() => {
+    restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_STOCK);
   });

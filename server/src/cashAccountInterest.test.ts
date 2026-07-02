@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
+import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
 import { totalDepositsClpForAccount } from "./accountDeposits.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -30,6 +31,8 @@ function insertAccountIdMovement(v: {
   );
 }
 
+let restoreFx: (() => void) | null = null;
+
 describe("cash-account interest (savings_earnings): balance up, deposits flat, P/L", () => {
   let usdId = 0;
   let clpId = 0;
@@ -53,9 +56,11 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     usdRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
     clpRow = { bucket_slug: clpLeaf.slug, group_slug: clpLeaf.slug };
 
-    db.prepare(
-      `INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES ('2026-05-31', 900), ('2026-06-30', 900), ('2026-07-31', 900)`
-    ).run();
+    restoreFx = overrideFxDaily([
+      ["2026-05-31", 900],
+      ["2026-06-30", 900],
+      ["2026-07-31", 900],
+    ]);
 
     // USD cash: buy 1000 USD of capital in May, earn 10 USD interest in June.
     insertAccountIdMovement({ account_id: usdId, amount_clp: -900_000, amount_usd: 1000, occurred_on: "2026-05-15", flow_kind: "compra_usd_venta_clp" });
@@ -67,6 +72,7 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
   });
 
   afterAll(() => {
+    restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
   });

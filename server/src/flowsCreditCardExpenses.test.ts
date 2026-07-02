@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   legacyInstallmentHPurchaseKey,
   NO_CUENTA_CC_EXPENSE_SLUG,
@@ -18,7 +18,7 @@ import {
 } from "./flowsCreditCardExpenses.js";
 import { gastosSumMonthForLine, lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
-import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 describe("effectiveCcExpenseLineAmountClp", () => {
   it("uses valor_cuota_mensual_clp for installment lines", () => {
@@ -583,4 +583,8 @@ describe("flowsCreditCardExpenses", () => {
       seen.add(fp);
     }
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });

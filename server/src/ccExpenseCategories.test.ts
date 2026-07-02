@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
   assignCcExpenseCategoryForManualLedgerInstallmentPurchase,
@@ -20,7 +20,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
-import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
+import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import {
   createManualCcInstallmentPurchase,
@@ -649,4 +649,8 @@ function createMerchantPropagationFixture(tag: string): {
     expect(amort!.chart_color).toBe(darkenHexColor(bills!.chart_color));
     expect(amort!.chart_color).not.toBe(bills!.chart_color);
   });
+});
+
+afterAll(() => {
+  wipeVitestCcFixtureData();
 });
