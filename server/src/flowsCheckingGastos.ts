@@ -174,6 +174,8 @@ export function assignCheckingGastosMovementCategory(opts: {
   if (!belong.ok || belong.account_id == null) {
     throw new Error("checking gastos movement not found");
   }
+  // Hoist: property narrowing does not survive into the transaction closure below.
+  const accountId = belong.account_id;
 
   const categorySlug = opts.categorySlug != null ? String(opts.categorySlug).trim() : "";
   const hasCategory = categorySlug.length > 0;
@@ -224,14 +226,14 @@ export function assignCheckingGastosMovementCategory(opts: {
     if (opts.clearCategory) {
       if (opts.unique) {
         for (const key of purchaseKeys) {
-          upsertUniquePurchase.run(belong.account_id, key, null);
+          upsertUniquePurchase.run(accountId, key, null);
         }
       } else {
         for (const key of purchaseKeys) {
-          delUniquePurchase.run(belong.account_id, key);
+          delUniquePurchase.run(accountId, key);
         }
-        for (const ruleKey of merchantRuleKeysMatchingLineMerchant(belong.account_id, merchantKey)) {
-          delMerchant.run(belong.account_id, ruleKey);
+        for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
+          delMerchant.run(accountId, ruleKey);
         }
       }
       return;
@@ -239,15 +241,15 @@ export function assignCheckingGastosMovementCategory(opts: {
 
     if (opts.unique) {
       for (const key of purchaseKeys) {
-        delUniquePurchase.run(belong.account_id, key);
+        delUniquePurchase.run(accountId, key);
       }
       upsertUniquePurchase.run(belong.account_id, purchaseKey, catId);
     } else {
       for (const key of purchaseKeys) {
-        delUniquePurchase.run(belong.account_id, key);
+        delUniquePurchase.run(accountId, key);
       }
       if (catId != null && merchantKey) {
-        upsertMerchant.run(belong.account_id, merchantKey, catId);
+        upsertMerchant.run(accountId, merchantKey, catId);
       }
     }
   });

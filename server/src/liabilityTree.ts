@@ -95,11 +95,14 @@ function buildLiabilityNode(
         expense_account_id: null,
         expense_account_slug: null,
         asset_group_slug: "liabilities",
+        kind_slug: null,
+        dashboard_bucket_slug: null,
+        exclude_from_parent_total: false,
         api_group: null,
         api_subgroup: group.liability_kind,
         color_rgb,
         color: rgbTripletToCss(color_rgb),
-        group_kind: "normal",
+        group_kind: "bucket",
         children: [],
       });
     }
@@ -120,11 +123,14 @@ function buildLiabilityNode(
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: "liabilities",
+    kind_slug: null,
+    dashboard_bucket_slug: null,
+    exclude_from_parent_total: false,
     api_group: null,
     api_subgroup: group.liability_kind,
     color_rgb: null,
     color: null,
-    group_kind: "normal",
+    group_kind: "bucket",
     children: pruneEmptyLiabilityNavGroups(children),
   };
 }
