@@ -23,6 +23,17 @@ function testCheckingAccountId(): number | null {
   return row?.id ?? null;
 }
 
+function latestSaldoFinalClp(accountId: number): number {
+  const row = db
+    .prepare(
+      `SELECT saldo_final_clp FROM checking_cartola_imports
+       WHERE account_id = ? AND saldo_final_clp IS NOT NULL
+       ORDER BY period_month DESC LIMIT 1`
+    )
+    .get(accountId) as { saldo_final_clp: number } | undefined;
+  return row ? Math.round(row.saldo_final_clp) : 0;
+}
+
 describe("checkingCartolaImport", () => {
   it("rewriteCartolaMovementNotesPeriodMonth updates note prefixes", () => {
     const accountId = testCheckingAccountId();
@@ -102,12 +113,15 @@ describe("checkingCartolaImport", () => {
       `import:cartola|${periodMonth}|%`
     );
 
+    // Chain validation compares saldo_inicial against the account's latest real saldo
+    // final — anchor the fixture to it instead of a hardcoded 50.000.
+    const chainInicial = latestSaldoFinalClp(accountId);
     const cartola: ParsedCheckingCartola = {
       source_file: sourceFile,
       period_month: periodMonth,
       period_from: "2099-04-01",
       period_to: "2099-04-30",
-      saldo_inicial_clp: 50_000,
+      saldo_inicial_clp: chainInicial,
       saldo_final_clp: null,
       movements: [
         {
@@ -131,8 +145,8 @@ describe("checkingCartolaImport", () => {
 
     const updated: ParsedCheckingCartola = {
       ...cartola,
-      saldo_final_clp: 49_000,
-      saldo_inicial_clp: 50_000,
+      saldo_final_clp: chainInicial - 1_000,
+      saldo_inicial_clp: chainInicial,
     };
     expect(shouldBackfillCartolaSaldoRef(accountId, updated)).toBe(true);
     updateCheckingCartolaImportSaldos(accountId, updated);
@@ -142,7 +156,7 @@ describe("checkingCartolaImport", () => {
         `SELECT saldo_final_clp FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`
       )
       .get(accountId, periodMonth) as { saldo_final_clp: number };
-    expect(row.saldo_final_clp).toBe(49_000);
+    expect(row.saldo_final_clp).toBe(chainInicial - 1_000);
     expect(
       (
         db
@@ -219,13 +233,16 @@ describe("checkingCartolaImport", () => {
        ) VALUES (?, ?, ?, 0, NULL, 1000, ?, ?)`
     ).run(accountId, phantomMonth, "vitest-phantom.pdf", "2099-05-31", "2099-06-30");
 
+    // Saldo chain: the phantom row carries NULL saldo final, so validation reaches back
+    // to the account's latest real saldo final — anchor the fixture there.
+    const chainInicial = latestSaldoFinalClp(accountId);
     const realCartola: ParsedCheckingCartola = {
       source_file: "vitest-phantom.pdf",
       period_month: realMonth,
       period_from: "2099-05-31",
       period_to: "2099-06-30",
-      saldo_inicial_clp: 1000,
-      saldo_final_clp: 900,
+      saldo_inicial_clp: chainInicial,
+      saldo_final_clp: chainInicial - 100,
       movements: [
         {
           occurred_on: "2099-06-10",
