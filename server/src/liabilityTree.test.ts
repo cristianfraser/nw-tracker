@@ -17,6 +17,12 @@ afterEach(() => {
   clearAccountCategoryMetaCache();
 });
 
+function ymdMinusDays(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 function setExcludeFromGroupTotals(accountId: number, value: 0 | 1): void {
   const prev = db
     .prepare(`SELECT exclude_from_group_totals FROM accounts WHERE id = ?`)
@@ -48,11 +54,20 @@ describe("linked credit card for Efectivo net", () => {
   });
 
   it("omits liability_view rows with exclude_from_group_totals from linked CC total", () => {
-    const asOf = chileCalendarTodayYmd();
-    const linksBefore = creditCardLiabilityLinkRowsForCashCard(asOf);
-    if (linksBefore.length === 0) return;
+    // The linked balance is legitimately 0 in the window between a PAGO clearing the last
+    // facturación and the next one, so probe backwards for a date where a card carries one.
+    let asOf: string | null = null;
+    let target: { liability_account_id: number; clp: number } | null = null;
+    for (let back = 0; back < 90 && target == null; back += 3) {
+      const d = ymdMinusDays(chileCalendarTodayYmd(), back);
+      const hit = creditCardLiabilityLinkRowsForCashCard(d).find((r) => r.clp > 0);
+      if (hit) {
+        asOf = d;
+        target = hit;
+      }
+    }
+    if (asOf == null || target == null) return;
 
-    const target = linksBefore[0]!;
     const totalBefore = linkedCreditCardClpForCashCardAsOf(asOf);
     expect(totalBefore).toBeGreaterThan(0);
 

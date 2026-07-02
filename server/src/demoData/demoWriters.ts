@@ -531,24 +531,8 @@ export function writeCheckingMonth(
   // on the destination — the pair shape the deposits reconciliation machinery matches on).
   // ~30% of months skip the sweep, a few sweep extra hard; the rest jitter around the
   // chapter's savings rate. Uniform monthly saving looked lifeless on the net-worth chart.
-  const leftover = net - billsTotal - pagosTotal - eventChecking;
-  const sweepRoll = rng();
-  const sweepFactor = sweepRoll < 0.3 ? 0 : sweepRoll > 0.85 ? 1.7 : 0.6 + rng() * 0.8;
-  const sweepClp = Math.max(
-    0,
-    Math.round((leftover * ch.savingsRate * sweepFactor) / 50_000) * 50_000
-  );
-  let stocksSweepClp = 0;
-  if (narrative.stocks && month >= narrative.stocks.from && sweepClp > 0) {
-    stocksSweepClp =
-      Math.round((sweepClp * narrative.stocks.sweepShare) / 50_000) * 50_000;
-  }
-  const fondoSweepClp = sweepClp - stocksSweepClp;
-
-  // Buys accumulate per asset and post as ONE checking transfer each — the asset side
-  // writes matching inflow rows, so the internal-transfer matcher pairs legs 1:1 on
-  // amount+day. Sells are valued from HOLDINGS: units × close(price series) × fx — the
-  // same MTM math the app uses — never from a synthetic balance walk.
+  // Sells are valued from HOLDINGS: units × close(price series) × fx — the same MTM math
+  // the app uses — never from a synthetic balance walk.
   const sellDay = 18;
   const sellYmd = dayInMonth(month, sellDay);
   const fxSell = fxRowOnOrBefore(sellYmd)?.clp_per_usd ?? null;
@@ -557,21 +541,9 @@ export function writeCheckingMonth(
     stockSells: [],
     cryptoBuy: 0,
     cryptoSell: null,
-    fondoBuy: fondoSweepClp,
+    fondoBuy: 0,
     fondoSell: null,
   };
-  if (narrative.stocks && stocksSweepClp > 0) {
-    const weightSum = narrative.stocks.positions.reduce((a, p) => a + p.weight, 0);
-    let assigned = 0;
-    narrative.stocks.positions.forEach((p, i) => {
-      const last = i === narrative.stocks!.positions.length - 1;
-      const clp = last
-        ? stocksSweepClp - assigned
-        : Math.round((stocksSweepClp * p.weight) / weightSum / 1000) * 1000;
-      assigned += clp;
-      if (clp > 0) tradeFlows.stockBuys.push({ ticker: p.ticker, clp });
-    });
-  }
   for (const tr of narrative.trades) {
     if (tr.month !== month) continue;
     if (tr.action === "buy") {
@@ -652,6 +624,61 @@ export function writeCheckingMonth(
       if (rescate > 0) {
         checkingMove(rescate, 14, "TRANSF FONDO RESERVA DEMO");
         movement(accounts.savingsId, -rescate, dayInMonth(month, 14), "Retiro|demo");
+      }
+    }
+  }
+
+  // Cash-cap rule: checking targets ~5M max (soft — target jitters 2.5–5.5M and ~15% of
+  // months skip the sweep, letting cash build before a catch-up). Everything above the
+  // target is invested (stocks share + fondo) or parked in the reserva. Runs LAST so the
+  // actual posted balance — salary, bills, pagos, sells, scripted buys, pie — drives it;
+  // a big sale or bonus gets swept the same month it lands.
+  {
+    const balanceClp = (
+      db
+        .prepare(`SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ?`)
+        .get(accounts.checkingId) as { t: number }
+    ).t;
+    const monthsToHouseForCash =
+      narrative.house == null ? null : monthsBetween(month, narrative.house.month);
+    // Hold cash in the sale month and the pie month — the down payment needs the balance.
+    const holdForPie =
+      monthsToHouseForCash != null && monthsToHouseForCash >= 0 && monthsToHouseForCash <= 1;
+    const lazyMonth = rng() < 0.15;
+    const targetClp = 3_500_000 + Math.round((rng() * 3_000_000) / 50_000) * 50_000;
+    const sweepClp =
+      holdForPie || lazyMonth
+        ? 0
+        : Math.max(0, Math.floor((balanceClp - targetClp) / 50_000) * 50_000);
+    if (sweepClp >= 100_000) {
+      const stocksShare =
+        narrative.stocks && month >= narrative.stocks.from ? narrative.stocks.sweepShare : 0;
+      const stocksClp = Math.round((sweepClp * stocksShare) / 50_000) * 50_000;
+      const reservaClp =
+        accounts.savingsId != null ? Math.round((sweepClp * 0.15) / 50_000) * 50_000 : 0;
+      const fondoClp = sweepClp - stocksClp - reservaClp;
+      if (reservaClp > 0 && accounts.savingsId != null) {
+        checkingMove(-reservaClp, 26, "TRANSF FONDO RESERVA DEMO");
+        movement(accounts.savingsId, reservaClp, dayInMonth(month, 26), "Depósito|demo");
+      }
+      if (fondoClp > 0) {
+        tradeFlows.fondoBuy += fondoClp;
+        checkingMove(-fondoClp, 26, "TRANSFERENCIA FONDO DEMO");
+      }
+      if (stocksClp > 0 && narrative.stocks) {
+        const weightSum = narrative.stocks.positions.reduce((a, p) => a + p.weight, 0);
+        let assigned = 0;
+        narrative.stocks.positions.forEach((p, i) => {
+          const last = i === narrative.stocks!.positions.length - 1;
+          const clp = last
+            ? stocksClp - assigned
+            : Math.round((stocksClp * p.weight) / weightSum / 1000) * 1000;
+          assigned += clp;
+          if (clp > 0) {
+            tradeFlows.stockBuys.push({ ticker: p.ticker, clp });
+            checkingMove(-clp, 26, "TRANSFERENCIA CORREDORA DEMO");
+          }
+        });
       }
     }
   }
