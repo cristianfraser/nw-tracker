@@ -126,6 +126,14 @@ function ddmmyyyy(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
+/** Whole months from `a` to `b` (positive when `b` is after `a`). */
+function monthsBetween(a: DemoMonth, b: DemoMonth): number {
+  return (
+    (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 +
+    (Number(b.slice(5, 7)) - Number(a.slice(5, 7)))
+  );
+}
+
 function prevMonthOf(month: DemoMonth): DemoMonth {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
@@ -383,12 +391,38 @@ export function writeCheckingMonth(
     checkingMove(-tradeFlows.cryptoBuy, 17, "TRANSFERENCIA EXCHANGE DEMO");
   }
 
-  // Quarterly top-up of the cash-savings account.
-  let savingsDeposit = 0;
-  if (accounts.savingsId != null && Number(month.slice(5, 7)) % 3 === 0) {
-    savingsDeposit = 100_000;
-    checkingMove(-savingsDeposit, 12, "TRANSF FONDO RESERVA DEMO");
-    movement(accounts.savingsId, savingsDeposit, dayInMonth(month, 12), "Depósito|demo");
+  // Cash-savings flows. Baseline: quarterly 100k top-up. With a house on the horizon the
+  // reserva becomes the pie fund — 500k/month for the 24 months before the purchase, then
+  // most of the balance comes back to checking at the purchase month to pay the pie (the
+  // down payment must drain accumulated savings, not appear out of nowhere).
+  if (accounts.savingsId != null) {
+    const house = narrative.house;
+    const monthsToHouse = house == null ? null : monthsBetween(month, house.month);
+    if (house != null && monthsToHouse != null && monthsToHouse >= 1 && monthsToHouse <= 24) {
+      const ahorroPie = 500_000;
+      checkingMove(-ahorroPie, 12, "TRANSF FONDO RESERVA DEMO");
+      movement(accounts.savingsId, ahorroPie, dayInMonth(month, 12), "Depósito|demo");
+    } else if (Number(month.slice(5, 7)) % 3 === 0) {
+      checkingMove(-100_000, 12, "TRANSF FONDO RESERVA DEMO");
+      movement(accounts.savingsId, 100_000, dayInMonth(month, 12), "Depósito|demo");
+    }
+    if (house != null && month === house.month) {
+      const balance = (
+        db
+          .prepare(
+            `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ?`
+          )
+          .get(accounts.savingsId) as { t: number }
+      ).t;
+      const rescate = Math.max(
+        0,
+        Math.floor(Math.min(balance - 400_000, 15_000_000) / 100_000) * 100_000
+      );
+      if (rescate > 0) {
+        checkingMove(rescate, 14, "TRANSF FONDO RESERVA DEMO");
+        movement(accounts.savingsId, -rescate, dayInMonth(month, 14), "Retiro|demo");
+      }
+    }
   }
 
   // Register the month in the cartola registry so cartola-months / ledger-anchor
