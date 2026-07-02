@@ -14,13 +14,18 @@
 import { db } from "../src/db.js";
 import { seedNavTree } from "../src/seedNavTree.js";
 import { seedCreditCardTree } from "../src/seedCreditCardTree.js";
+import { DEFAULT_DEMO_NARRATIVE, demoRng } from "../src/demoData/demoNarrative.js";
 import {
-  DEFAULT_DEMO_NARRATIVE,
-  chapterForMonth,
-  demoRng,
-  type DemoMonth,
-} from "../src/demoData/demoNarrative.js";
+  initialDemoRunState,
+  seedDemoMerchantCategoryRules,
+  writeCheckingMonth,
+  writeCreditCardMonth,
+  writeInvestmentMonth,
+  type DemoAccounts,
+} from "../src/demoData/demoWriters.js";
 import { expandYearMonthsInclusive } from "../src/calendarMonth.js";
+import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { ensureAccountSyncSourcesSeeded } from "../src/accountSyncSources.js";
 
 const DEMO_CHECKING_NOTES = "demo:checking";
 const DEMO_CC_MASTER_NOTES = "credit_card_master|santander|demo-4321";
@@ -43,6 +48,14 @@ function assetGroupId(slug: string): number {
     | undefined;
   if (!row) throw new Error(`asset_groups slug missing: ${slug} (schema seed incomplete?)`);
   return row.id;
+}
+
+function createAccount(groupSlug: string, name: string, notes: string): number {
+  return Number(
+    db
+      .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`)
+      .run(assetGroupId(groupSlug), name, notes).lastInsertRowid
+  );
 }
 
 function createMasterAccounts(): { checkingId: number; ccMasterId: number } {
@@ -68,60 +81,50 @@ function createMasterAccounts(): { checkingId: number; ccMasterId: number } {
   return { checkingId, ccMasterId };
 }
 
-/* ---------------------------------------------------------------------------------- */
-/* Month writers — the actual generation work. Each must produce data through the same */
-/* tables the real imports write, so every reconciliation invariant holds by design.   */
-/* ---------------------------------------------------------------------------------- */
-
-function writeChackingMonth(_checkingId: number, month: DemoMonth, rng: () => number): void {
-  const ch = chapterForMonth(DEFAULT_DEMO_NARRATIVE, month);
-  void ch;
-  void rng;
-  // TODO(demo): insert checking `movements` — salary abono (~day 25), fixed-expense
-  // cargos, CC PAGO cargo matching the prior billing month's facturado, and the monthly
-  // sweep transfer to savings/investments (from/to transfer rows). Amounts from the
-  // chapter ± rng jitter. Keep a running balance and write month-end `valuations`.
-}
-
-function writeCreditCardMonth(_ccMasterId: number, month: DemoMonth, rng: () => number): void {
-  const ch = chapterForMonth(DEFAULT_DEMO_NARRATIVE, month);
-  void ch;
-  void rng;
-  // TODO(demo): insert one `cc_statements` row per billing month (period 21→20, canonical
-  // source_pdf naming from importSyncDocumentFilePath conventions or web-paste source) and
-  // `cc_statement_lines` drawn from a demo merchant pool weighted by chapter
-  // categoryWeights; narrative events with `cuotas` become installment lines so the
-  // billing/installment views light up. Then recomputeCcBillingMonthBalances(ccMasterId).
-}
-
-function writeInvestmentMonth(month: DemoMonth, rng: () => number): void {
-  void month;
-  void rng;
-  // TODO(demo): a simple brokerage account (equity_ticker e.g. SPY) receiving the sweep
-  // as buy movements + month-end valuations from a synthetic price walk, so charts,
-  // deposits reconciliation, and P/L tabs have content. Optionally an AFP-like account
-  // fed by a fixed % of salary.
-}
-
 function main(): void {
   assertFreshDemoDb();
   const { checkingId, ccMasterId } = createMasterAccounts();
+  const accounts: DemoAccounts = {
+    checkingId,
+    ccMasterId,
+    fondoId: createAccount(
+      "brokerage_mutual_funds__fintual_risky_norris",
+      "Fondo Demo Moderado",
+      "demo:fondo"
+    ),
+    afpId: createAccount("retirement_afp_afc__afp", "AFP Demo · Fondo C", "demo:afp"),
+    propertyId: createAccount("real_estate__property", "Depto propio (pie)", "demo:property"),
+  };
   seedCreditCardTree();
   seedNavTree();
 
   const rng = demoRng(DEFAULT_DEMO_NARRATIVE.seed);
+  const state = initialDemoRunState();
   const months = expandYearMonthsInclusive(
     DEFAULT_DEMO_NARRATIVE.firstMonth,
     DEFAULT_DEMO_NARRATIVE.lastMonth
   );
   for (const month of months) {
-    writeChackingMonth(checkingId, month, rng);
-    writeCreditCardMonth(ccMasterId, month, rng);
-    writeInvestmentMonth(month, rng);
+    const { sweepClp, afpContribClp } = writeCheckingMonth(accounts, month, state, rng);
+    writeCreditCardMonth(accounts, month, state, rng);
+    writeInvestmentMonth(accounts, month, state, sweepClp, afpContribClp, rng);
   }
+  recomputeCcBillingMonthBalances(ccMasterId);
+  seedDemoMerchantCategoryRules(ccMasterId);
+  ensureAccountSyncSourcesSeeded();
   seedNavTree();
+
+  const totals = db
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM movements) AS movs,
+              (SELECT COUNT(*) FROM valuations) AS vals,
+              (SELECT COUNT(*) FROM cc_statements) AS stmts,
+              (SELECT COUNT(*) FROM cc_statement_lines) AS lines`
+    )
+    .get() as { movs: number; vals: number; stmts: number; lines: number };
   console.log(
-    `demo data: ${months.length} months scaffolded for checking=${checkingId} cc=${ccMasterId} (writers are TODO stubs)`
+    `demo data: ${months.length} months — ${totals.movs} movements, ${totals.vals} valuations, ` +
+      `${totals.stmts} CC statements, ${totals.lines} CC lines`
   );
 }
 

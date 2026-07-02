@@ -73,12 +73,32 @@ export function initSchema() {
   }
 }
 
+/**
+ * Pre-baseline migrations that seed REFERENCE ROWS (not schema): the schema-only baseline
+ * skips their data, so fresh DBs must still run them. All are idempotent
+ * (WHERE NOT EXISTS guards) and their tables exist in the baseline.
+ */
+const BASELINE_REFERENCE_DATA_MIGRATIONS = new Set([
+  // NOT 031_expense_groups_accounts: those rows are personal (rental expense accounts),
+  // and its note literals contain ';' — unsplittable by the naive migration splitter.
+  "054_cc_expense_categories.sql",
+  "055_cc_expense_category_no_cuenta.sql",
+  "056_cc_expense_merge_food_category.sql",
+  "063_cc_expense_deposits_category.sql",
+  "083_checking_internal_transfer_category.sql",
+]);
+
 /** Fresh DB: record every migration up to the baseline as applied (see `schemaBaseline.ts`). */
 function markBaselineMigrationsApplied() {
   if (!fs.existsSync(migrationsDir)) return;
   const files = fs
     .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql") && f <= SCHEMA_BASELINE_LAST_MIGRATION)
+    .filter(
+      (f) =>
+        f.endsWith(".sql") &&
+        f <= SCHEMA_BASELINE_LAST_MIGRATION &&
+        !BASELINE_REFERENCE_DATA_MIGRATIONS.has(f)
+    )
     .sort();
   const ins = dbInternal.prepare("INSERT OR IGNORE INTO schema_migrations (id) VALUES (?)");
   const tx = dbInternal.transaction(() => {
@@ -421,32 +441,6 @@ function migrateMovementsSignedIfNeeded() {
   console.log(`migration applied: ${MOVEMENTS_SIGNED_MIGRATION_ID} (movements → signed amount_clp)`);
 }
 
-const ACCOUNT_SYNC_SOURCES_TABLE = "account_sync_sources";
-
-/** Backfill when migration 109 ran before the post-migration hook existed. */
-function ensureAccountSyncSourcesSeeded() {
-  const table = dbInternal
-    .prepare(
-      `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
-    )
-    .get(ACCOUNT_SYNC_SOURCES_TABLE) as { 1: number } | undefined;
-  if (!table) return;
-
-  const linkCount = dbInternal
-    .prepare(`SELECT COUNT(*) AS c FROM account_sync_sources`)
-    .get() as { c: number };
-  if (linkCount.c > 0) return;
-
-  const accountCount = dbInternal.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number };
-  if (accountCount.c === 0) return;
-
-  const { reseedAllAccountSyncSources } = requireMigrationHookModule<
-    typeof import("./accountSyncSources.js")
-  >("accountSyncSources");
-  const r = reseedAllAccountSyncSources();
-  console.log(`account_sync_sources seed: accounts=${r.accounts} links=${r.links}`);
-}
-
 /**
  * `db` is initialized BEFORE migrations run: post-migration hook modules import `db`
  * back from this file mid-evaluation (require cycle), so the binding must already exist
@@ -459,4 +453,6 @@ export { db };
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();
-ensureAccountSyncSourcesSeeded();
+// account_sync_sources backfill runs from index.ts / scripts via
+// ensureAccountSyncSourcesSeeded() (accountSyncSources.ts): the createRequire cycle from
+// inside this module never worked under tsx for the "accounts exist, links empty" case.
