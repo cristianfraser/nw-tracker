@@ -71,6 +71,18 @@ export function Pill({
         className
       )}
       style={baseStyle}
+      // Stays a <span> (pills render inside links/labels where <button> nesting is invalid),
+      // so clickable pills need explicit button semantics for keyboard/screen-reader users.
+      role={onClick ? (rest.role ?? "button") : rest.role}
+      tabIndex={onClick ? (rest.tabIndex ?? 0) : rest.tabIndex}
+      onKeyDown={(e) => {
+        rest.onKeyDown?.(e);
+        if (!onClick || e.defaultPrevented) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick(e as unknown as MouseEvent<HTMLSpanElement>);
+        }
+      }}
       onClick={onClick}
       onMouseEnter={(e) => {
         if (hoverBackgroundColor) {

@@ -33,7 +33,7 @@ const pasivosCreditCardNav: NavTreeNodeDto = {
   kind_slug: null,
   dashboard_bucket_slug: null,
   exclude_from_parent_total: false,
-  group_kind: "normal",
+  group_kind: "bucket",
   children: [
     {
       node_id: "cc-group.santander",
@@ -57,7 +57,7 @@ const pasivosCreditCardNav: NavTreeNodeDto = {
       kind_slug: null,
       dashboard_bucket_slug: null,
       exclude_from_parent_total: false,
-      group_kind: "normal",
+      group_kind: "bucket",
       children: [
         {
           node_id: "cc-acc.32",
@@ -81,7 +81,7 @@ const pasivosCreditCardNav: NavTreeNodeDto = {
           kind_slug: null,
           dashboard_bucket_slug: null,
           exclude_from_parent_total: false,
-          group_kind: "normal",
+          group_kind: "bucket",
           children: [],
         },
       ],
@@ -108,7 +108,7 @@ const pasivosCreditCardNav: NavTreeNodeDto = {
       kind_slug: null,
       dashboard_bucket_slug: null,
       exclude_from_parent_total: false,
-      group_kind: "normal",
+      group_kind: "bucket",
       children: [
         {
           node_id: "cc-acc.42",
@@ -132,7 +132,7 @@ const pasivosCreditCardNav: NavTreeNodeDto = {
           kind_slug: null,
           dashboard_bucket_slug: null,
           exclude_from_parent_total: false,
-          group_kind: "normal",
+          group_kind: "bucket",
           children: [],
         },
       ],
@@ -170,7 +170,7 @@ const pasivosRootNav: NavTreeNodeDto = {
       kind_slug: null,
       dashboard_bucket_slug: null,
       exclude_from_parent_total: false,
-      group_kind: "normal",
+      group_kind: "bucket",
       children: [
         {
           node_id: "liab-acc.89",
@@ -194,7 +194,7 @@ const pasivosRootNav: NavTreeNodeDto = {
           kind_slug: null,
           dashboard_bucket_slug: null,
           exclude_from_parent_total: false,
-          group_kind: "normal",
+          group_kind: "bucket",
           children: [],
         },
       ],

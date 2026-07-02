@@ -145,21 +145,24 @@ function enhanceHeader(
       return cloneElement(cell, {
         ...cell.props,
         className: className || undefined,
-        onClick: () => onToggleSort(key),
         "aria-sort": active
           ? direction === "asc"
             ? "ascending"
             : "descending"
           : "none",
         children: (
-          <>
+          <button
+            type="button"
+            className="table-sort-button"
+            onClick={() => onToggleSort(key)}
+          >
             {props.children}
             {active ? (
               <span className="table-sort-indicator" aria-hidden>
                 {direction === "asc" ? " ▲" : " ▼"}
               </span>
             ) : null}
-          </>
+          </button>
         ),
       } as HTMLAttributes<HTMLTableCellElement>);
     });
