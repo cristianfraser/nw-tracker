@@ -46,9 +46,12 @@ describe("dashboard card closing reconcile", () => {
         const bucketPrior = payload.totals.prior_closes.month[`${slug}_clp`];
         const titleDelta = bucketCurrent - bucketPrior;
 
-        expect(Math.round(sumCurrent)).toBe(bucketCurrent);
-        expect(Math.round(sumPrior)).toBe(bucketPrior);
-        expect(Math.round(titleDelta)).toBe(Math.round(sumDep + sumPl));
+        // Bucket totals are largest-remainder apportioned so cards sum EXACTLY to the
+        // headline (see portfolioGroupValueAtDate.ts); each bucket may sit ±1 CLP from
+        // its own independent rounding, and the delta compounds two apportioned values.
+        expect(Math.abs(Math.round(sumCurrent) - bucketCurrent)).toBeLessThanOrEqual(1);
+        expect(Math.abs(Math.round(sumPrior) - bucketPrior)).toBeLessThanOrEqual(1);
+        expect(Math.abs(Math.round(titleDelta) - Math.round(sumDep + sumPl))).toBeLessThanOrEqual(2);
         expect(Math.round(sumCurrent - sumPrior)).toBe(Math.round(sumDep + sumPl));
       }
     });

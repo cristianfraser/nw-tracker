@@ -95,18 +95,26 @@ describe("checkingCartolaBalances", () => {
 
     const last = db
       .prepare(
-        `SELECT occurred_on FROM movements WHERE account_id = ?
+        `SELECT occurred_on FROM movements
+         WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?
          ORDER BY occurred_on DESC, id DESC LIMIT 1`
       )
-      .get(row.id) as { occurred_on: string } | undefined;
+      .get(row.id, row.id, row.id) as { occurred_on: string } | undefined;
     if (!last) return;
 
+    // Balance = single-leg rows ± transfer legs (manual moves are from/to transfer rows).
     const sqlSum = db
       .prepare(
-        `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements
-         WHERE account_id = ? AND occurred_on <= ?`
+        `SELECT COALESCE(SUM(CASE
+             WHEN account_id = @id THEN amount_clp
+             WHEN to_account_id = @id THEN amount_clp
+             WHEN from_account_id = @id THEN -amount_clp
+           END), 0) AS t
+         FROM movements
+         WHERE (account_id = @id OR from_account_id = @id OR to_account_id = @id)
+           AND occurred_on <= @d`
       )
-      .get(row.id, last.occurred_on) as { t: number };
+      .get({ id: row.id, d: last.occurred_on }) as { t: number };
     expect(checkingMovementBalanceClpAt(row.id, last.occurred_on)).toBe(Math.round(Number(sqlSum.t)));
   });
 

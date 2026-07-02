@@ -101,8 +101,10 @@ describe("cryptoEodDueUtcYmd", () => {
   });
 
   it("12 Jun 00:01 Chile due is 11 Jun UTC, not in-progress 12 Jun", () => {
-    const now = new Date("2026-06-12T04:01:00Z");
-    expect(cryptoEodDueUtcYmd(cl("2026-06-12", 0, 1), now)).toBe("2026-06-11");
+    // 2099 like the carryover test above: the due check consults equity_daily, so a
+    // past fixture date starts passing/failing based on what the copied dev DB contains.
+    const now = new Date("2099-06-12T04:01:00Z");
+    expect(cryptoEodDueUtcYmd(cl("2099-06-12", 0, 1), now)).toBe("2099-06-11");
   });
 
   it("Tue 20:00 Chile is not due when prior window UTC is caught up", () => {

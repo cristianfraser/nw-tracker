@@ -23,7 +23,10 @@ describe("syncLatestDisplayValueClp", () => {
       name: row.name,
     });
     expect(v).not.toBeNull();
-    expect(v!.value_clp).toBeGreaterThan(0);
+    // Resolvability is the point (bucket slug, not kind slug); the balance itself can be
+    // legitimately ~0 (e.g. USD cash fully rotated into stocks).
+    expect(Number.isFinite(v!.value_clp)).toBe(true);
+    expect(v!.value_clp).toBeGreaterThanOrEqual(0);
   });
 
   it("returns a value for brokerage_acciones accounts that have dashboard marks", () => {
