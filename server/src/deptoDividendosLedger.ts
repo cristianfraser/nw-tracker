@@ -113,8 +113,7 @@ function roundUf5(v: number): number {
   return Math.round(v * 1e5) / 1e5;
 }
 
-/** Depto Suecia — fixed gross value (UF) and shared account label (Table 2-1 / product). */
-export const DEPTO_PROPERTY_VALOR_UF = 5400;
+/** Depto Suecia — shared account label (Table 2-1 / product). Gross UF is data-derived (vnuf + cruf). */
 export const DEPTO_SUECIA_ACCOUNT_DISPLAY_NAME = "suecia";
 
 /** Repayment term labels on row 2 of `depto-dividendos.csv` (years). */
@@ -662,7 +661,7 @@ export function loadDeptoDividendosSheetLedgerFromFile(cfraserDir: string): Dept
   return enrichDeptoRowsUfClpFromDb(mergeSupplementalPrepaymentsIntoLedger(out, cfraserDir));
 }
 
-/** @deprecated Import-only. Runtime uses `loadDeptoDividendosSheetLedgerFromDb`. */
+/** @deprecated Import-only. Runtime uses `loadDeptoLedgerFromMovements`. */
 export function loadDeptoDividendosSheetLedger(cfraserDir: string): DeptoMortgageSheetRow[] {
   return loadDeptoDividendosSheetLedgerFromFile(cfraserDir);
 }
