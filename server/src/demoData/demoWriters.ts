@@ -21,6 +21,13 @@ import {
   getCcExpenseCategoryBySlug,
   normalizeCcExpenseMerchantKey,
 } from "../ccExpenseCategories.js";
+import {
+  buildDeptoDividendosMovementNote,
+  buildDeptoMortgageMovementNote,
+  type DeptoDividendosPaymentRow,
+} from "../deptoDividendosLedger.js";
+import { ufRowOnOrBefore } from "../fxRates.js";
+import { chileCalendarTodayYmd } from "../chileDate.js";
 import { invalidateCcExpenseGenericUniqueMerchantCache } from "../ccExpenseGenericUniqueMerchants.js";
 import { monthEndUtcYmd } from "../calendarMonth.js";
 import {
@@ -239,6 +246,10 @@ export type DemoRunState = {
   checkingBalanceClp: number;
   /** Outstanding mortgage principal once the house is bought (null before). */
   mortgageOutstandingClp: number | null;
+  /** Depto ledger counters (cuota number, CLP paid, principal UF incl. pie). */
+  deptoCuotaN: number;
+  deptoPagoAcumClp: number;
+  deptoAmortAcumUf: number;
 };
 
 export function initialDemoRunState(narrative: DemoNarrative): DemoRunState {
@@ -255,6 +266,9 @@ export function initialDemoRunState(narrative: DemoNarrative): DemoRunState {
     savingsValueClp: 0,
     checkingBalanceClp: 0,
     mortgageOutstandingClp: null,
+    deptoCuotaN: 0,
+    deptoPagoAcumClp: 0,
+    deptoAmortAcumUf: 0,
   };
 }
 
@@ -844,28 +858,110 @@ export function writeInvestmentMonth(
     const monthsOwned =
       (Number(month.slice(0, 4)) - Number(house.month.slice(0, 4))) * 12 +
       (Number(month.slice(5, 7)) - Number(house.month.slice(5, 7)));
+    const grossClp = house.valueClp * Math.pow(1.003, monthsOwned);
 
     if (accounts.mortgageId != null) {
+      // Depto ledger movements — the SAME note format import/manual payments write on the
+      // real DB, so the movements loader, mortgage pages, payment scenarios, and the
+      // dashboard card all run the identical code path on the demo.
+      const payYmd = dayInMonth(month, 10);
+      const ufDay = ufRowOnOrBefore(payYmd)?.clp_per_uf ?? null;
+      if (ufDay == null || ufDay <= 0) {
+        throw new Error(`demo: uf_daily missing on/before ${payYmd} (writeMarketSeries first)`);
+      }
+      const uf4 = (v: number) => Math.round((v / ufDay) * 1e4) / 1e4;
+      const uf5 = (v: number) => Math.round((v / ufDay) * 1e5) / 1e5;
+      const emitDeptoMovements = (r: DeptoDividendosPaymentRow, ymd: string) => {
+        movement(accounts.propertyId!, r.amount_clp, ymd, buildDeptoDividendosMovementNote(r));
+        if (r.cuota !== "pie") {
+          movement(accounts.mortgageId!, Math.abs(r.amount_clp), ymd, buildDeptoMortgageMovementNote(r));
+        }
+      };
+      const baseRow = (over: Partial<DeptoDividendosPaymentRow>): DeptoDividendosPaymentRow => ({
+        cuota: "",
+        occurred_on: payYmd,
+        amount_clp: 0,
+        amount_uf: null,
+        uf_clp_day: ufDay,
+        credito_restante_uf: null,
+        valor_neto_uf: null,
+        valor_neto_clp: null,
+        pagado_neto_uf: null,
+        pago_acumulado_clp: null,
+        min_uf: null,
+        amortizacion_clp: null,
+        amortizacion_uf: null,
+        amortizacion_ext_clp: null,
+        amortizacion_ext_uf: null,
+        interes_clp: null,
+        interes_uf: null,
+        incendio_clp: null,
+        desgravamen_clp: null,
+        ...over,
+      });
+
       if (state.mortgageOutstandingClp == null) {
         state.mortgageOutstandingClp = house.mortgageClp;
-      } else {
-        // French amortization: fixed dividendo, principal share grows over time.
+        const pieClp = Math.round(house.valueClp - house.mortgageClp);
+        state.deptoPagoAcumClp = pieClp;
+        state.deptoAmortAcumUf = uf4(pieClp);
+        emitDeptoMovements(
+          baseRow({
+            cuota: "pie",
+            amount_clp: pieClp,
+            amount_uf: uf5(pieClp),
+            credito_restante_uf: uf4(house.mortgageClp),
+            valor_neto_uf: uf4(grossClp - house.mortgageClp),
+            valor_neto_clp: Math.round(grossClp - house.mortgageClp),
+            pagado_neto_uf: uf4(pieClp),
+            pago_acumulado_clp: pieClp,
+          }),
+          payYmd
+        );
+      } else if (payYmd <= chileCalendarTodayYmd()) {
+        // French amortization: fixed dividendo, principal share grows over time. The
+        // current month's cuota only exists once its payment day has passed — the real
+        // ledger never carries future-dated payments.
         const i = house.monthlyRate;
-        const pmt =
-          (house.mortgageClp * i) / (1 - Math.pow(1 + i, -house.termMonths));
+        const pmt = (house.mortgageClp * i) / (1 - Math.pow(1 + i, -house.termMonths));
         const interest = state.mortgageOutstandingClp * i;
-        state.mortgageOutstandingClp = Math.max(
-          0,
-          state.mortgageOutstandingClp - (pmt - interest)
+        const amort = pmt - interest;
+        state.mortgageOutstandingClp = Math.max(0, state.mortgageOutstandingClp - amort);
+        state.deptoCuotaN += 1;
+        const fireClp = 25_000;
+        const desClp = 3_000;
+        const pagoClp = Math.round(pmt + fireClp + desClp);
+        state.deptoPagoAcumClp += pagoClp;
+        state.deptoAmortAcumUf = Math.round((state.deptoAmortAcumUf + uf5(amort)) * 1e4) / 1e4;
+        emitDeptoMovements(
+          baseRow({
+            cuota: String(state.deptoCuotaN),
+            amount_clp: pagoClp,
+            amount_uf: uf5(pagoClp),
+            credito_restante_uf: uf4(state.mortgageOutstandingClp),
+            valor_neto_uf: uf4(grossClp - state.mortgageOutstandingClp),
+            valor_neto_clp: Math.round(grossClp - state.mortgageOutstandingClp),
+            pagado_neto_uf: state.deptoAmortAcumUf,
+            pago_acumulado_clp: state.deptoPagoAcumClp,
+            min_uf: uf5(pmt),
+            amortizacion_clp: Math.round(amort),
+            amortizacion_uf: uf5(amort),
+            interes_clp: Math.round(interest),
+            interes_uf: uf5(interest),
+            incendio_clp: fireClp,
+            desgravamen_clp: desClp,
+          }),
+          payYmd
         );
       }
       valuation(accounts.mortgageId, monthEnd, Math.round(state.mortgageOutstandingClp));
+    } else if (state.mortgageOutstandingClp == null) {
+      state.mortgageOutstandingClp = house.mortgageClp;
     }
 
     // Property valuations are EQUITY (gross − outstanding hipoteca), mirroring the real
     // DB where the depto account is maintained net of the linked mortgage. At purchase
     // equity == the pie that left checking, so net worth stays continuous.
-    const grossClp = house.valueClp * Math.pow(1.003, monthsOwned);
     const equityClp = Math.max(0, grossClp - (state.mortgageOutstandingClp ?? 0));
     valuation(accounts.propertyId, monthEnd, Math.round(equityClp));
   } else if (accounts.propertyId != null && narrative.withProperty && !house && month >= "2024-08") {

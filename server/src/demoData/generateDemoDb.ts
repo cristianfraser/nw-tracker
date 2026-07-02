@@ -119,7 +119,9 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
       ? createAccount(
           "real_estate__property",
           narrative.house ? "Casa propia · Demo" : "Depto propio (pie)",
-          "demo:property"
+          // Canonical depto identity: the movements loader, mortgage pages, and the
+          // manual payment form all resolve the property by these notes.
+          "import:excel|key=property"
         )
       : null,
     // Mortgage master: notes are the canonical identity ensureMortgageLiabilityView keys on.
