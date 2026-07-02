@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "nw-tracker-client", "--", "--port", "5199", "--strictPort"],
+      "port": 5199
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "nw-tracker-server"],
+      "port": 3001
+    },
+    {
+      "name": "client-alt",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "NW_TRACKER_API_PROXY_TARGET=http://localhost:3299 npm run dev -w nw-tracker-client -- --port 5299 --strictPort"
+      ],
+      "port": 5299
+    },
+    {
+      "name": "server-alt",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "PORT=3299 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+      ],
+      "port": 3299
+    }
+  ]
+}
