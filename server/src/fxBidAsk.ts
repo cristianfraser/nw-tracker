@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 
 export type FxBidAskRow = {
   date: string;
@@ -26,9 +27,33 @@ const stmtBuyOnOrBefore = db.prepare(
 
 const stmtSellOnOrBefore = stmtBuyOnOrBefore;
 
+const stmtMidRowOnOrBefore = db.prepare(
+  `SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
+);
+
+/**
+ * Latest bid/ask row on or before `date`. `mid_spread_inferred` rows are just cached
+ * `fx_daily` mids ± spread, so when `fx_daily` has a row at the same date or newer, the
+ * lookup re-infers from that fresher mid (transiently — nothing is persisted) instead of
+ * serving the stale materialized value. Without this, a row materialized weeks ago (or
+ * future-dated, e.g. a projected vencimiento) freezes every later conversion at that old
+ * rate. Real observed rows (`movement_compra_usd`, manual) are always served as stored.
+ */
 export function fxBidAskRowOnOrBefore(date: string | null): FxBidAskRow | null {
   if (!date) return null;
-  return (stmtBuyOnOrBefore.get(date) as FxBidAskRow | undefined) ?? null;
+  const row = (stmtBuyOnOrBefore.get(date) as FxBidAskRow | undefined) ?? null;
+  const midRow = stmtMidRowOnOrBefore.get(date) as
+    | { date: string; clp_per_usd: number }
+    | undefined;
+  const canInferFromMid =
+    midRow != null && Number.isFinite(midRow.clp_per_usd) && midRow.clp_per_usd > 0;
+  if (row && row.source === "mid_spread_inferred" && canInferFromMid && midRow.date >= row.date) {
+    return { date: midRow.date, ...inferBidAskFromMid(midRow.clp_per_usd), source: "mid_spread_inferred" };
+  }
+  if (!row && canInferFromMid) {
+    return { date: midRow.date, ...inferBidAskFromMid(midRow.clp_per_usd), source: "mid_spread_inferred" };
+  }
+  return row;
 }
 
 export function fxBuyClpPerUsdOnOrBefore(date: string | null): number | null {
@@ -99,8 +124,14 @@ export function materializeInferredBidAskForDate(date: string): FxBidAskRow | nu
   return row;
 }
 
-/** Ensure a buy rate exists on or before `paymentDate` (materialize on payment date when missing). */
+/**
+ * Ensure a buy rate exists on or before `paymentDate` (materialize on payment date when
+ * missing). Future dates are never materialized: persisting today's mid under a future
+ * date would freeze later conversions at a stale rate once that date passes (the lookup
+ * infers transiently for such dates instead).
+ */
 export function ensureBidAskForPaymentDate(paymentDate: string): void {
+  if (paymentDate > chileCalendarTodayYmd()) return;
   if (fxBuyClpPerUsdOnOrBefore(paymentDate) != null) return;
   materializeInferredBidAskForDate(paymentDate);
 }

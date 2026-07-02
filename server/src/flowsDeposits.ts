@@ -120,7 +120,7 @@ export function listDepositFlowAccounts(includeExcludedFromGroupTotals = false):
     .filter((r): r is DepositFlowAccountRow => r != null);
 }
 
-/** CLP → USD using `fx_daily` on or before the event date (not latest FX). */
+/** CLP → USD at the **buy rate** on or before the event date (deposit events = money actually moved). Balance display uses `clpToUsdForBalanceAt` instead. */
 export function depositClpToUsdAtDate(clp: number, occurredOn: string): number | null {
   return clpToUsdAtDate(clp, occurredOn);
 }
@@ -194,7 +194,8 @@ function flowsDepositsNetTotalsByAccount(opts?: {
 /** Net deposits in the current calendar month or year (flows-page accounts only). */
 export function flowsDepositsNetInPeriodByAccount(period: "month" | "year"): {
   clp: Map<number, number>;
-  usd: Map<number, number>;
+  /** `null` = a deposit in the period had no FX row on its date (conversion impossible). */
+  usd: Map<number, number | null>;
 } {
   return flowsDepositsNetTotalsByAccount({ period, includeExcludedFromGroupTotals: true });
 }

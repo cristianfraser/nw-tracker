@@ -1,12 +1,11 @@
-import { clearCreditCardBillingDetailCache } from "./ccBillingDetailCache.js";
 import { buildDashboardAccountRows, buildDashboardSueciaSnapshot } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import {
   buildFlowsDepositsPayload,
-  depositClpToUsdAtDate,
   inversionesBrokerageDepositsSeries,
 } from "./flowsDeposits.js";
+import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
@@ -22,7 +21,8 @@ const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "bro
 /** @heavy Account rows, flows deposits payload, liabilities breakdown, Suecia snapshot. */
 export async function buildDashboardPagePayload(includeUsd: boolean) {
   return withPortfolioGroupIndex(async () => {
-    clearCreditCardBillingDetailCache();
+    // CC billing detail is served from the aggregation cache (day/data_version fresh,
+    // invalidated on CC writes) — no longer rebuilt per request.
     const rowsBuilt = await timeHeavyAsync(HeavyWork.dashboardAccountRows, () =>
       buildDashboardAccountRows(includeUsd)
     );
@@ -59,7 +59,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
             clp: portfolioGroupValueClpAt(bucketSlug, asOfToday),
             usd: includeUsd
               ? (() => {
-                  const u = depositClpToUsdAtDate(
+                  const u = clpToUsdForBalanceAt(
                     portfolioGroupValueClpAt(bucketSlug, asOfToday),
                     asOfToday
                   );
@@ -86,8 +86,8 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const liabilities_breakdown = {
       mortgage_clp: liabilitiesClp.mortgage_clp,
       credit_card_clp: liabilitiesClp.credit_card_clp,
-      mortgage_usd: depositClpToUsdAtDate(liabilitiesClp.mortgage_clp, asOfToday),
-      credit_card_usd: depositClpToUsdAtDate(liabilitiesClp.credit_card_clp, asOfToday),
+      mortgage_usd: clpToUsdForBalanceAt(liabilitiesClp.mortgage_clp, asOfToday),
+      credit_card_usd: clpToUsdForBalanceAt(liabilitiesClp.credit_card_clp, asOfToday),
     };
     return {
       totals: {

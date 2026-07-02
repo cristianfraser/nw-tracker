@@ -1,7 +1,7 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
-import { depositClpToUsdAtDate } from "./flowsDeposits.js";
+import { clpToUsdForBalanceAt } from "./fxRates.js";
 import {
   consolidatedClosingRawByDate,
   getGroupConsolidatedMonthlyPerfForRows,
@@ -70,7 +70,7 @@ function rawPortfolioGroupAccountsClpAt(
       raw += mark.value_clp;
     }
   }
-  return Math.round(raw);
+  return raw;
 }
 
 function consolidatedBucketValueClpAt(
@@ -85,14 +85,14 @@ function consolidatedBucketValueClpAt(
   const raw = consolidatedClosingRawByDate(consolidated);
   const mapped = mapMonthlyClosingToChartDates(raw, [asOfYmd]);
   const v = mapped.get(asOfYmd);
-  return v != null && Number.isFinite(v) ? Math.round(v) : null;
+  return v != null && Number.isFinite(v) ? v : null;
 }
 
 /**
  * Single source of truth: NW dashboard bucket CLP value at any calendar date.
  * Uses consolidated monthly perf (same as overview chart), including CC net on cash_eqs.
  */
-export function portfolioGroupValueClpAt(
+function portfolioGroupValueClpAtRaw(
   bucket: NwDashboardBucketSlug,
   asOfYmd: string
 ): number {
@@ -104,6 +104,62 @@ export function portfolioGroupValueClpAt(
   return applyCashSavingsNwAdjustment(raw, cc);
 }
 
+/**
+ * Integer CLP per bucket via largest-remainder apportionment: bucket cards must sum
+ * EXACTLY to the headline total, and the headline total must equal the overview chart /
+ * consolidated closing rounded once (round of the raw sum). Independent per-bucket
+ * rounding satisfies neither — Σ round(bucket_i) can drift ±1-2 CLP from
+ * round(Σ bucket_i). Floor every bucket, then hand out the remaining pesos to the
+ * largest fractional parts (deterministic tie-break: bucket order).
+ */
+function apportionedBucketClpAt(asOfYmd: string): {
+  buckets: Record<NwDashboardBucketSlug, number>;
+  total: number;
+} {
+  const raw = {} as Record<NwDashboardBucketSlug, number>;
+  let rawSum = 0;
+  let allFinite = true;
+  for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+    raw[slug] = portfolioGroupValueClpAtRaw(slug, asOfYmd);
+    if (!Number.isFinite(raw[slug])) allFinite = false;
+    rawSum += raw[slug];
+  }
+  if (!allFinite) {
+    const buckets = {} as Record<NwDashboardBucketSlug, number>;
+    let total = 0;
+    for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+      buckets[slug] = Math.round(Number.isFinite(raw[slug]) ? raw[slug] : 0);
+      total += buckets[slug];
+    }
+    return { buckets, total };
+  }
+  const total = Math.round(rawSum);
+  const buckets = {} as Record<NwDashboardBucketSlug, number>;
+  let floorSum = 0;
+  const remainders: { slug: NwDashboardBucketSlug; frac: number }[] = [];
+  for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+    const fl = Math.floor(raw[slug]);
+    buckets[slug] = fl;
+    floorSum += fl;
+    remainders.push({ slug, frac: raw[slug] - fl });
+  }
+  remainders.sort((a, b) => b.frac - a.frac);
+  let residual = total - floorSum;
+  for (const r of remainders) {
+    if (residual <= 0) break;
+    buckets[r.slug] += 1;
+    residual -= 1;
+  }
+  return { buckets, total };
+}
+
+export function portfolioGroupValueClpAt(
+  bucket: NwDashboardBucketSlug,
+  asOfYmd: string
+): number {
+  return apportionedBucketClpAt(asOfYmd).buckets[bucket];
+}
+
 export function portfolioGroupValueAt(
   bucket: NwDashboardBucketSlug,
   asOfYmd: string,
@@ -111,18 +167,14 @@ export function portfolioGroupValueAt(
 ): number {
   const clp = portfolioGroupValueClpAt(bucket, asOfYmd);
   if (unit === "clp") return clp;
-  const usd = depositClpToUsdAtDate(clp, asOfYmd);
+  const usd = clpToUsdForBalanceAt(clp, asOfYmd);
   if (usd == null || !Number.isFinite(usd)) return Number.NaN;
   return usd;
 }
 
 /** Patrimonio neto (asset buckets only; liabilities excluded from headline NW). */
 export function netWorthValueClpAt(asOfYmd: string): number {
-  let sum = 0;
-  for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
-    sum += portfolioGroupValueClpAt(slug, asOfYmd);
-  }
-  return sum;
+  return apportionedBucketClpAt(asOfYmd).total;
 }
 
 export type DashboardBucketValueTotals = {
@@ -142,16 +194,17 @@ export function buildDashboardBucketValueTotals(
   asOfYmd: string,
   includeUsd: boolean
 ): DashboardBucketValueTotals {
-  const real_estate_clp = portfolioGroupValueClpAt("real_estate", asOfYmd);
-  const retirement_clp = portfolioGroupValueClpAt("retirement", asOfYmd);
-  const brokerage_clp = portfolioGroupValueClpAt("brokerage", asOfYmd);
-  const cash_eqs_clp = portfolioGroupValueClpAt("cash_eqs", asOfYmd);
-  const net_worth_clp = real_estate_clp + retirement_clp + brokerage_clp + cash_eqs_clp;
+  const { buckets, total } = apportionedBucketClpAt(asOfYmd);
+  const real_estate_clp = buckets.real_estate;
+  const retirement_clp = buckets.retirement;
+  const brokerage_clp = buckets.brokerage;
+  const cash_eqs_clp = buckets.cash_eqs;
+  const net_worth_clp = total;
   if (!includeUsd) {
     return { net_worth_clp, real_estate_clp, retirement_clp, brokerage_clp, cash_eqs_clp };
   }
   const toUsd = (clp: number) => {
-    const u = depositClpToUsdAtDate(clp, asOfYmd);
+    const u = clpToUsdForBalanceAt(clp, asOfYmd);
     return u != null && Number.isFinite(u) ? u : null;
   };
   return {

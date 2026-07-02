@@ -20,6 +20,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import {
   createManualCcInstallmentPurchase,
@@ -328,133 +329,152 @@ describe("ccExpenseCategories", () => {
     expect(updated?.category_slug).toBe("unclassified");
   });
 
-  it("merchant assignment applies to same comercio when not marked unique", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
-    const line = payload.lines.find((ln) => {
-      if (ln.amount_clp <= 0 || !ln.merchant || ln.category_unique) return false;
-      const peers = payload.lines.filter(
-        (p) =>
-          p.statement_line_id !== ln.statement_line_id &&
-          p.account_id === ln.account_id &&
-          p.merchant_key === ln.merchant_key &&
-          p.amount_clp > 0 &&
-          !p.category_unique
-      );
-      return peers.length > 0;
-    });
-    if (!line) return;
-
-    const supermarket = getCcExpenseCategoryBySlug("supermarket");
-    if (!supermarket) return;
-
-    assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
-      unique: false,
-      categorySlug: "supermarket",
-    });
-
-    const after = buildFlowsCreditCardExpensesPayload();
-    const sameMerchant = after.lines.filter(
-      (ln) =>
-        ln.account_id === line.account_id &&
-        ln.merchant_key === line.merchant_key &&
-        ln.amount_clp > 0 &&
-        !ln.category_unique
-    );
-    expect(sameMerchant.length).toBeGreaterThan(1);
-    for (const ln of sameMerchant) {
-      expect(ln.category_slug).toBe("supermarket");
+  /**
+ * Deterministic merchant-propagation fixture: three same-merchant lines on the isolated
+ * vitest CC master. Earlier versions picked arbitrary real lines from the payload, which
+ * broke as the copied dev data (and rows persisted by prior test runs) evolved.
+ */
+function createMerchantPropagationFixture(tag: string): {
+  accountId: number;
+  merchant: string;
+  lineIds: number[];
+  cleanup: () => void;
+} | null {
+  const accountId = getVitestSantanderCcMasterAccountId();
+  if (accountId == null) return null;
+  const merchant = `VITEST PROPAGATE ${tag.toUpperCase()}`;
+  const src = `vitest-merchant-${tag}.pdf`;
+  const stmt = db
+    .prepare(
+      `INSERT INTO cc_statements (
+         account_id, card_group, source_pdf, statement_date, period_from, period_to,
+         card_last4, layout, currency
+       ) VALUES (?, 'santander', ?, '20/05/2026', '01/05/2026', '19/05/2026', '0000', 'compact', 'clp')`
+    )
+    .run(accountId, src);
+  const statementId = Number(stmt.lastInsertRowid);
+  const lineIds: number[] = [];
+  for (const [i, amount] of [11_990, 22_990, 33_990].entries()) {
+    const r = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key
+         ) VALUES (?, ?, ?, ?, 0, ?)`
+      )
+      .run(statementId, `0${i + 2}/05/2026`, merchant, amount, `vitest-merchant-${tag}-${i}`);
+    lineIds.push(Number(r.lastInsertRowid));
+  }
+  const cleanup = () => {
+    const merchantKey = normalizeCcExpenseMerchantKey(merchant);
+    // Resolve purchase keys BEFORE deleting the lines (the resolver reads them).
+    const purchaseKeys = lineIds.map((id) => resolveCcExpensePurchaseKey(id));
+    for (const id of lineIds) {
+      db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`).run(id);
     }
-
-    assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
-      unique: true,
-      categorySlug: "others",
-    });
-
-    const uniqueAfter = buildFlowsCreditCardExpensesPayload();
-    const onlyLine = uniqueAfter.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
-    expect(onlyLine?.category_slug).toBe("others");
-    expect(onlyLine?.category_unique).toBe(true);
-
-    const peers = uniqueAfter.lines.filter(
-      (ln) =>
-        ln.statement_line_id !== line.statement_line_id &&
-        ln.account_id === line.account_id &&
-        ln.merchant_key === line.merchant_key &&
-        ln.amount_clp > 0 &&
-        !ln.category_unique
+    for (const pk of purchaseKeys) {
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(accountId, pk);
+    }
+    db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`).run(
+      accountId,
+      merchantKey
     );
-    if (peers.length > 0) {
-      for (const peer of peers) {
-        expect(peer.category_slug).toBe("supermarket");
+    db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
+    db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
+  };
+  return { accountId, merchant, lineIds, cleanup };
+}
+
+  it("merchant assignment applies to same comercio when not marked unique", () => {
+    const fx = createMerchantPropagationFixture("assign");
+    if (!fx) return;
+    try {
+      const merchantKey = normalizeCcExpenseMerchantKey(fx.merchant);
+      const [target, ...peerIds] = fx.lineIds;
+
+      assignCcExpenseLineCategory({
+        statementLineId: target!,
+        unique: false,
+        categorySlug: "supermarket",
+      });
+
+      const after = buildFlowsCreditCardExpensesPayload();
+      const sameMerchant = after.lines.filter(
+        (ln) => ln.account_id === fx.accountId && ln.merchant_key === merchantKey
+      );
+      expect(sameMerchant.length).toBe(3);
+      for (const ln of sameMerchant) {
+        expect(ln.category_slug).toBe("supermarket");
+        expect(ln.category_unique).toBe(false);
       }
+
+      assignCcExpenseLineCategory({
+        statementLineId: target!,
+        unique: true,
+        categorySlug: "others",
+      });
+
+      const uniqueAfter = buildFlowsCreditCardExpensesPayload();
+      const onlyLine = uniqueAfter.lines.find((ln) => ln.statement_line_id === target);
+      expect(onlyLine?.category_slug).toBe("others");
+      expect(onlyLine?.category_unique).toBe(true);
+
+      for (const peerId of peerIds) {
+        const peer = uniqueAfter.lines.find((ln) => ln.statement_line_id === peerId);
+        expect(peer?.category_slug).toBe("supermarket");
+        expect(peer?.category_unique).toBe(false);
+      }
+    } finally {
+      fx.cleanup();
     }
   });
 
   it("clear_category on unique purchase keeps Único, stays unclassified, and does not clear merchant rule", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
-    const line = payload.lines.find((ln) => {
-      if (ln.amount_clp <= 0 || !ln.merchant || ln.category_unique) return false;
-      const purchaseKey = resolveCcExpensePurchaseKey(ln.statement_line_id);
-      const peers = payload.lines.filter(
-        (p) =>
-          p.statement_line_id !== ln.statement_line_id &&
-          p.account_id === ln.account_id &&
-          p.merchant_key === ln.merchant_key &&
-          p.amount_clp > 0 &&
-          !p.category_unique &&
-          resolveCcExpensePurchaseKey(p.statement_line_id) !== purchaseKey
+    const fx = createMerchantPropagationFixture("clear");
+    if (!fx) return;
+    try {
+      const merchantKey = normalizeCcExpenseMerchantKey(fx.merchant);
+      const [target, ...peerIds] = fx.lineIds;
+
+      assignCcExpenseLineCategory({
+        statementLineId: target!,
+        unique: false,
+        categorySlug: "supermarket",
+      });
+
+      assignCcExpenseLineCategory({
+        statementLineId: target!,
+        unique: true,
+        categorySlug: "fun",
+      });
+
+      const cleared = assignCcExpenseLineCategory({
+        statementLineId: target!,
+        unique: true,
+        clearCategory: true,
+      });
+      expect(cleared.category_slug).toBe("unclassified");
+      expect(cleared.unique).toBe(true);
+
+      const after = buildFlowsCreditCardExpensesPayload();
+      const updated = after.lines.find((ln) => ln.statement_line_id === target);
+      expect(updated?.category_unique).toBe(true);
+      expect(updated?.category_slug).toBe("unclassified");
+
+      // Merchant rule survives the unique-line clear; peers keep supermarket.
+      const { merchantRules } = loadCcExpenseCategoryMaps([fx.accountId]);
+      expect(resolveMerchantCategorySlug(fx.accountId, merchantKey, merchantRules)).toBe(
+        "supermarket"
       );
-      return peers.length > 0;
-    });
-    if (!line) return;
-
-    assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
-      unique: false,
-      categorySlug: "supermarket",
-    });
-
-    const linePurchaseKey = resolveCcExpensePurchaseKey(line.statement_line_id);
-    const afterMerchant = buildFlowsCreditCardExpensesPayload();
-    const peers = afterMerchant.lines.filter(
-      (ln) =>
-        ln.statement_line_id !== line.statement_line_id &&
-        ln.account_id === line.account_id &&
-        ln.merchant_key === line.merchant_key &&
-        ln.amount_clp > 0 &&
-        !ln.category_unique &&
-        resolveCcExpensePurchaseKey(ln.statement_line_id) !== linePurchaseKey
-    );
-    expect(peers.length).toBeGreaterThan(0);
-    for (const peer of peers) {
-      expect(peer.category_slug).toBe("supermarket");
+      for (const peerId of peerIds) {
+        const peer = after.lines.find((ln) => ln.statement_line_id === peerId);
+        expect(peer?.category_slug).toBe("supermarket");
+        expect(peer?.category_unique).toBe(false);
+      }
+    } finally {
+      fx.cleanup();
     }
-
-    assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
-      unique: true,
-      categorySlug: "fun",
-    });
-
-    const cleared = assignCcExpenseLineCategory({
-      statementLineId: line.statement_line_id,
-      unique: true,
-      clearCategory: true,
-    });
-    expect(cleared.category_slug).toBe("unclassified");
-    expect(cleared.unique).toBe(true);
-
-    const after = buildFlowsCreditCardExpensesPayload();
-    const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
-    expect(updated?.category_unique).toBe(true);
-    expect(updated?.category_slug).toBe("unclassified");
-
-    const { merchantRules } = loadCcExpenseCategoryMaps([line.account_id]);
-    expect(
-      resolveMerchantCategorySlug(line.account_id, line.merchant_key, merchantRules)
-    ).toBe("supermarket");
   });
 
   it("clear_category on non-unique purchase removes merchant rule", () => {

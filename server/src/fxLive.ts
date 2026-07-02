@@ -1,4 +1,4 @@
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileWallClockAt } from "./chileDate.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { getLatestLiveFxQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
@@ -28,7 +28,7 @@ export async function fetchYahooLiveUsdClpPerUsd(now = new Date()): Promise<{
   }
   return {
     clp_per_usd: live.price_usd,
-    session_ymd: chileCalendarTodayYmd(now),
+    session_ymd: chileWallClockAt(now).ymd,
     previous_clp_per_usd: live.previous_close_usd,
   };
 }

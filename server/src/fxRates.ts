@@ -126,6 +126,19 @@ export function clpToUsdAtPaymentRounded(clp: number, paymentDate: string): numb
   return sign * (Math.round(usd * f) / f);
 }
 
+/**
+ * CLP → USD for **balance display** (dashboard totals, cards, liabilities breakdown) —
+ * divides by the same `fx_daily` row family charts use (`convertTs` /
+ * `fxMonthEndForBalanceUsd`), so totals and chart points agree to the peso. Payment and
+ * deposit-event conversions (money actually moved) use the bid-ask helpers instead.
+ */
+export function clpToUsdForBalanceAt(clp: number, asOfYmd: string): number | null {
+  if (!Number.isFinite(clp)) return null;
+  const fx = fxMonthEndForBalanceUsd(asOfYmd);
+  if (!fx || fx.clp_per_usd <= 0) return null;
+  return clp / fx.clp_per_usd;
+}
+
 export function ufRowOnOrBefore(date: string | null): { date: string; clp_per_uf: number } | null {
   if (!date) return null;
   return (
