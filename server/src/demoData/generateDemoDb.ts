@@ -38,6 +38,26 @@ function assertFreshDb(): void {
   }
 }
 
+/** brokerage_acciones leaves exist for the real tickers; demo tickers may need new ones. */
+function ensureAccionesLeaf(ticker: string): number {
+  const slug = `brokerage_acciones__${ticker.toLowerCase()}`;
+  const existing = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as
+    | { id: number }
+    | undefined;
+  if (existing) return existing.id;
+  const parent = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_acciones'`)
+    .get() as { id: number } | undefined;
+  if (!parent) throw new Error("asset_groups missing brokerage_acciones");
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, 90, ?)`
+      )
+      .run(slug, ticker, parent.id).lastInsertRowid
+  );
+}
+
 function assetGroupId(slug: string): number {
   const row = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as
     | { id: number }
@@ -69,7 +89,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
 
   const checkingId = createAccount(
     "cash_eqs__cuenta_corriente",
-    "Cuenta corriente · Demo Bank",
+    "Cuenta corriente",
     "demo:checking"
   );
   const ccMasterIdByLast4 = new Map<string, number>();
@@ -98,7 +118,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
       db
         .prepare(
           `INSERT INTO accounts (asset_group_id, name, notes, fund_series_key)
-           VALUES (?, 'Fondo Demo Moderado', 'demo:fondo', ?)`
+           VALUES (?, 'Fondo Moderado', 'demo:fondo', ?)`
         )
         .run(
           assetGroupId("brokerage_mutual_funds__fintual_risky_norris"),
@@ -113,7 +133,6 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
       : null,
     stockIdByTicker: new Map(
       (narrative.stocks?.positions ?? []).map((p) => {
-        const leaf = `brokerage_acciones__${p.ticker.toLowerCase()}`;
         const id = Number(
           db
             .prepare(
@@ -121,8 +140,8 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
                VALUES (?, ?, ?, ?)`
             )
             .run(
-              assetGroupId(leaf),
-              `${p.ticker} · Demo Broker`,
+              ensureAccionesLeaf(p.ticker),
+              p.ticker,
               `import:panel|ticker=${p.ticker}|key=demo_${p.ticker.toLowerCase()}`,
               p.ticker
             ).lastInsertRowid
@@ -131,28 +150,28 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
       })
     ),
     usdCashId: narrative.stocks
-      ? createAccount("brokerage_cash__usd", "USD · Demo Broker", "demo:usd-cash")
+      ? createAccount("brokerage_cash__usd", "USD", "demo:usd-cash")
       : null,
     cryptoId: narrative.withCrypto
       ? Number(
           db
             .prepare(
               `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker)
-               VALUES (?, 'Bitcoin · Demo Exchange', 'demo:crypto', 'BTC-USD')`
+               VALUES (?, 'Bitcoin', 'demo:crypto', 'BTC-USD')`
             )
             .run(assetGroupId("brokerage_crypto__bitcoin")).lastInsertRowid
         )
       : null,
     savingsId: createAccount(
       "cash_eqs__fondo_reserva",
-      "Fondo reserva · Demo",
+      "Fondo reserva",
       "demo:savings"
     ),
-    vistaId: createAccount("cash_eqs__cuenta_vista", "Cuenta vista · Demo", "demo:vista"),
+    vistaId: createAccount("cash_eqs__cuenta_vista", "Cuenta vista", "demo:vista"),
     propertyId: narrative.withProperty
       ? createAccount(
           "real_estate__property",
-          narrative.house ? "Casa propia · Demo" : "Depto propio (pie)",
+          narrative.house ? "Casa propia" : "Depto propio (pie)",
           // Canonical depto identity: the movements loader, mortgage pages, and the
           // manual payment form all resolve the property by these notes.
           "import:excel|key=property"
@@ -163,7 +182,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
       narrative.withProperty && narrative.house
         ? createAccount(
             "liabilities__mortgage",
-            "Casa propia · Demo",
+            "Casa propia",
             "import:excel|key=mortgage"
           )
         : null,

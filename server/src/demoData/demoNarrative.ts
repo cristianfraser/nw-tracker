@@ -243,7 +243,7 @@ function demoNarrative(): DemoNarrative {
       {
         id: "renting_again",
         from: "2022-11",
-        salaryClp: 2_100_000,
+        salaryClp: 3_200_000,
         salaryAnnualGrowth: 0.07,
         bills: [
           { desc: "PAGO ARRIENDO DEPTO LAS CONDES", meanClp: 470_000, categorySlug: "others", day: 5 },
@@ -260,11 +260,11 @@ function demoNarrative(): DemoNarrative {
       {
         id: "own_house",
         from: "2024-08",
-        salaryClp: 2_600_000,
+        salaryClp: 5_200_000,
         salaryAnnualGrowth: 0.06,
         bills: [
-          { desc: "DIVIDENDO HIPOTECARIO BANCO DEMO", meanClp: 420_000, categorySlug: "real_estate_amortization", day: 5 },
-          { desc: "CONTRIBUCIONES TESORERIA", meanClp: 270_000, categorySlug: "bills", day: 28, everyNMonths: 3 },
+          { desc: "DIVIDENDO HIPOTECARIO BANCO DEMO", meanClp: 2_250_000, categorySlug: "real_estate_amortization", day: 5 },
+          { desc: "CONTRIBUCIONES TESORERIA", meanClp: 900_000, categorySlug: "bills", day: 28, everyNMonths: 3 },
           { desc: "ENEL CHILE", meanClp: 60_000, categorySlug: "bills", day: 12 },
           { desc: "AGUAS ANDINAS", meanClp: 30_000, categorySlug: "bills", day: 12 },
           { desc: "METROGAS", meanClp: 45_000, categorySlug: "bills", day: 14 },
@@ -291,7 +291,7 @@ function demoNarrative(): DemoNarrative {
       { month: "2022-11", kind: "moving_costs", amountClp: 380_000, label: "Mudanza arriendo" },
       { month: "2023-07", kind: "vacation_medium", amountClp: 1_100_000, cuotas: 3, label: "Viaje", cardLast4: "8912" },
       { month: "2024-01", kind: "vacation_medium", amountClp: 900_000, label: "Verano" },
-      { month: "2024-08", kind: "house_down_payment", amountClp: 18_000_000, viaChecking: true, label: "Pie casa" },
+      { month: "2024-08", kind: "house_down_payment", amountClp: 100_000_000, viaChecking: true, label: "Pie casa" },
       { month: "2024-08", kind: "moving_costs", amountClp: 600_000, cuotas: 6, label: "Mudanza casa" },
       { month: "2024-12", kind: "bonus", amountClp: -1_800_000, viaChecking: true, label: "Bono desempeño" },
       { month: "2025-02", kind: "vacation_small", amountClp: 450_000, label: "Playa" },
@@ -303,14 +303,14 @@ function demoNarrative(): DemoNarrative {
       {
         last4: "4321",
         cardGroup: "santander",
-        displayName: "Tarjeta · Demo Bank 4321",
+        displayName: "Tarjeta Santander 4321",
         from: "2018-03",
         spendShare: 1,
       },
       {
         last4: "8912",
         cardGroup: "santander",
-        displayName: "Tarjeta · Demo Bank 8912",
+        displayName: "Tarjeta Santander 8912",
         from: "2022-11",
         spendShare: 0.6,
         merchantBias: { fun: 1.5, transport: 1.4 },
@@ -319,7 +319,7 @@ function demoNarrative(): DemoNarrative {
       {
         last4: "6605",
         cardGroup: "bci",
-        displayName: "Tarjeta · Demo Retail 6605",
+        displayName: "Tarjeta BCI 6605",
         from: "2023-06",
         spendShare: 0.35,
         merchantBias: { supermarket: 2.0, home: 1.5 },
@@ -331,9 +331,10 @@ function demoNarrative(): DemoNarrative {
       from: "2019-01",
       sweepShare: 0.4,
       positions: [
-        { ticker: "SPY", weight: 0.5 },
-        { ticker: "OILK", weight: 0.2 },
-        { ticker: "CCJ", weight: 0.3 },
+        { ticker: "NVDA", weight: 0.45 },
+        { ticker: "SPY", weight: 0.25 },
+        { ticker: "OILK", weight: 0.1 },
+        { ticker: "CCJ", weight: 0.2 },
       ],
     },
     withCrypto: true,
@@ -341,20 +342,26 @@ function demoNarrative(): DemoNarrative {
       { month: "2020-10", asset: "crypto", action: "buy", amountClp: 500_000 },
       { month: "2020-12", asset: "crypto", action: "buy", amountClp: 500_000 },
       { month: "2021-02", asset: "crypto", action: "buy", amountClp: 1_000_000 },
+      // Early NVDA conviction, doubled down on the COVID dip.
+      { month: "2019-10", asset: "stocks", action: "buy", amountClp: 1_000_000, ticker: "NVDA" },
+      { month: "2020-04", asset: "stocks", action: "buy", amountClp: 1_500_000, ticker: "NVDA" },
       // Nov-2021 top: take profit on both before the 2022 grind down.
       { month: "2021-11", asset: "crypto", action: "sell", fraction: 0.4 },
       { month: "2021-11", asset: "stocks", action: "sell", fraction: 0.3, ticker: "CCJ" },
-      // Oct-2022 capitulation (realized loss near the bottom).
+      // Oct-2022 rotation: capitulate on the index, buy the AI-winter NVDA dip.
       { month: "2022-10", asset: "stocks", action: "sell", fraction: 0.15, ticker: "SPY" },
+      { month: "2022-10", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "NVDA" },
       { month: "2023-02", asset: "crypto", action: "buy", amountClp: 800_000 },
-      // Rescate fondo the month before the pie (down payment liquidity).
+      // House funding: sell most of the NVDA position + rescate fondo the month before
+      // the pie (the 100M down payment comes from the portfolio, keeping ~20M invested).
+      { month: "2024-07", asset: "stocks", action: "sell", fraction: 0.9, ticker: "NVDA" },
       { month: "2024-07", asset: "fondo", action: "sell", fraction: 0.35 },
       { month: "2025-01", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "CCJ" },
     ],
     house: {
       month: "2024-08",
-      valueClp: 90_000_000,
-      mortgageClp: 72_000_000,
+      valueClp: 500_000_000,
+      mortgageClp: 400_000_000,
       termMonths: 300,
       monthlyRate: 0.00375,
     },
