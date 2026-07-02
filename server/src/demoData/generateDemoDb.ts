@@ -83,6 +83,47 @@ export type GenerateDemoDbResult = {
   installmentPurchases: number;
 };
 
+/**
+ * Colors lifted from the author's live dashboard (portfolio_groups.color_rgb +
+ * accounts.color_rgb) so the demo reads like the real thing. Bitcoin carries the
+ * brokerage_crypto group gold directly (the real account inherits it from the group).
+ */
+const DEMO_GROUP_COLORS: ReadonlyArray<[slug: string, rgb: string]> = [
+  ["net_worth", "255,255,255"],
+  ["inversiones", "17,19,143"],
+  ["brokerage", "36,36,191"],
+  ["brokerage_acciones", "29,153,168"],
+  ["brokerage_crypto", "234,179,8"],
+  ["cash_eqs", "160,218,232"],
+  ["cash_savings", "157,227,245"],
+  ["liabilities", "143,24,24"],
+  ["liabilities_ref_disponible", "94,234,212"],
+  ["liabilities_ref_disponible_total", "45,212,191"],
+  ["real_estate", "91,40,189"],
+  ["retirement", "26,171,19"],
+  ["retirement_afp_afc", "32,201,58"],
+  ["retirement_apv", "38,181,126"],
+];
+
+function applyDemoColors(accounts: DemoAccounts): void {
+  const updGroup = db.prepare(`UPDATE portfolio_groups SET color_rgb = ? WHERE slug = ?`);
+  for (const [slug, rgb] of DEMO_GROUP_COLORS) updGroup.run(rgb, slug);
+
+  const updAccount = db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`);
+  updAccount.run("161,11,29", accounts.checkingId);
+  updAccount.run("35,55,217", accounts.fondoId);
+  if (accounts.cryptoId != null) updAccount.run("234,179,8", accounts.cryptoId);
+  if (accounts.usdCashId != null) updAccount.run("90,90,150", accounts.usdCashId);
+  const ccj = accounts.stockIdByTicker.get("CCJ");
+  if (ccj != null) updAccount.run("80,184,176", ccj);
+  // Card colors by group (santander blue-gray / bci amber, like the real masters).
+  const updByNotes = db.prepare(
+    `UPDATE accounts SET color_rgb = ? WHERE notes LIKE ? AND account_kind = 'master'`
+  );
+  updByNotes.run("75,153,189", "credit_card_master|santander|%");
+  updByNotes.run("180,120,60", "credit_card_master|bci|%");
+}
+
 export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   assertFreshDb();
   const narrative = demoNarrativeForPreset(preset);
@@ -211,6 +252,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   ]);
   ensureAccountSyncSourcesSeeded();
   seedNavTree();
+  applyDemoColors(accounts);
 
   const totals = db
     .prepare(
