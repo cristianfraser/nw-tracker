@@ -224,6 +224,14 @@ function jitter(rng: () => number, base: number, pct: number): number {
  * unit math, so demo holdings are valued exactly like real ones: units × close × fx.
  */
 const EQUITY_PRICE_ANCHORS: Record<string, ReadonlyArray<[string, number]>> = {
+  // Split-adjusted-ish NVDA: the exponential engine of the story (≈30x 2018→2026, with
+  // the 2018 crypto-hangover, COVID dip, 2022 AI winter, and the 2023 earnings gap).
+  NVDA: [
+    ["2018-01-01", 5.9], ["2018-09-30", 7.1], ["2018-12-24", 3.2], ["2019-12-31", 5.9],
+    ["2020-03-20", 4.9], ["2020-12-31", 13], ["2021-11-20", 33], ["2022-10-14", 11.2],
+    ["2023-05-24", 30.5], ["2023-12-31", 49.5], ["2024-06-20", 130], ["2024-12-31", 137],
+    ["2025-04-07", 97], ["2025-12-31", 182], ["2026-12-31", 196],
+  ],
   SPY: [
     ["2018-01-01", 265], ["2020-02-15", 335], ["2020-03-20", 230], ["2020-12-31", 372],
     ["2021-12-31", 475], ["2022-10-15", 358], ["2023-12-31", 475], ["2024-12-31", 590],
@@ -475,6 +483,10 @@ export function writeCheckingMonth(
     movement(accounts.checkingId, amountClp, ymd, cartolaNote(month, desc, ymd, amountClp, idx++));
   };
 
+  // Opening balance so the first month's bills (days 5–12) clear before the first salary.
+  if (month === narrative.firstMonth) {
+    checkingMove(1_000_000, 1, "ABONO APERTURA CUENTA");
+  }
   checkingMove(net, 25, "ABONO REMUNERACIONES EMPRESA DEMO SPA");
 
   // Itemized bills — one categorized movement each (rent/dividendo, luz, agua, internet…).
