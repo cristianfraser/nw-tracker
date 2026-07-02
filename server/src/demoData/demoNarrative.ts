@@ -91,6 +91,8 @@ export type DemoTrade = {
   amountClp?: number;
   /** Fraction of current value for sells (0–1). */
   fraction?: number;
+  /** Stock trades target one ticker (defaults to the first configured position). */
+  ticker?: string;
 };
 
 export type DemoCard = {
@@ -120,8 +122,16 @@ export type DemoNarrative = {
   /** Investment accounts to create (fondo always; AFP/property optional). */
   withAfp: boolean;
   withProperty: boolean;
-  /** Volatile stocks position: monthly buys redirect a share of the sweep from `from` on. */
-  stocks: { from: DemoMonth; sweepShare: number } | null;
+  /**
+   * Stock portfolio: monthly buys redirect a share of the sweep from `from` on, split
+   * across positions by weight. Tickers must have `brokerage_acciones__<ticker>` leaves
+   * and synthetic `equity_daily` price anchors in the writers.
+   */
+  stocks: {
+    from: DemoMonth;
+    sweepShare: number;
+    positions: { ticker: string; weight: number }[];
+  } | null;
   /** Crypto position (created only when `trades` buys into it). */
   withCrypto: boolean;
   /** Scripted buys/sells (rescates, take-profits, capitulations) for the "life" in the chart. */
@@ -317,7 +327,15 @@ function demoNarrative(): DemoNarrative {
     ],
     withAfp: true,
     withProperty: true,
-    stocks: { from: "2019-01", sweepShare: 0.4 },
+    stocks: {
+      from: "2019-01",
+      sweepShare: 0.4,
+      positions: [
+        { ticker: "SPY", weight: 0.5 },
+        { ticker: "OILK", weight: 0.2 },
+        { ticker: "CCJ", weight: 0.3 },
+      ],
+    },
     withCrypto: true,
     trades: [
       { month: "2020-10", asset: "crypto", action: "buy", amountClp: 500_000 },
@@ -325,13 +343,13 @@ function demoNarrative(): DemoNarrative {
       { month: "2021-02", asset: "crypto", action: "buy", amountClp: 1_000_000 },
       // Nov-2021 top: take profit on both before the 2022 grind down.
       { month: "2021-11", asset: "crypto", action: "sell", fraction: 0.4 },
-      { month: "2021-11", asset: "stocks", action: "sell", fraction: 0.3 },
+      { month: "2021-11", asset: "stocks", action: "sell", fraction: 0.3, ticker: "CCJ" },
       // Oct-2022 capitulation (realized loss near the bottom).
-      { month: "2022-10", asset: "stocks", action: "sell", fraction: 0.15 },
+      { month: "2022-10", asset: "stocks", action: "sell", fraction: 0.15, ticker: "SPY" },
       { month: "2023-02", asset: "crypto", action: "buy", amountClp: 800_000 },
       // Rescate fondo the month before the pie (down payment liquidity).
       { month: "2024-07", asset: "fondo", action: "sell", fraction: 0.35 },
-      { month: "2025-01", asset: "stocks", action: "buy", amountClp: 2_000_000 },
+      { month: "2025-01", asset: "stocks", action: "buy", amountClp: 2_000_000, ticker: "CCJ" },
     ],
     house: {
       month: "2024-08",
