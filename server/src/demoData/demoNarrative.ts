@@ -42,11 +42,6 @@ export type DemoBill = {
   day: number;
   /** Bill fires on calendar months divisible by this (contribuciones = 3). Default 1. */
   everyNMonths?: number;
-  /**
-   * Amount comes from the mortgage's UF French schedule (`meanClp` ignored, no jitter) so
-   * the checking dividendo equals the ledger cuota to the peso. Requires `narrative.house`.
-   */
-  exactDeptoCuota?: boolean;
 };
 
 export type DemoChapter = {
@@ -261,8 +256,9 @@ function demoNarrative(): DemoNarrative {
         salaryClp: 5_200_000,
         salaryAnnualGrowth: 0.06,
         bills: [
-          // Amount = the ledger cuota (UF French schedule), posted the same day it's paid.
-          { desc: "DIVIDENDO HIPOTECARIO BANCO DEMO", meanClp: 0, categorySlug: "real_estate_amortization", day: 10, exactDeptoCuota: true },
+          // The dividendo is NOT a checking bill: it bills on the main credit card (like
+          // the real DB's PAT) so the mortgage expense-deposit link machinery splits it
+          // into carrying cost + amortization. See writeCreditCardMonth.
           { desc: "CONTRIBUCIONES TESORERIA", meanClp: 900_000, categorySlug: "bills", day: 28, everyNMonths: 3 },
           { desc: "ENEL CHILE", meanClp: 60_000, categorySlug: "bills", day: 12 },
           { desc: "AGUAS ANDINAS", meanClp: 30_000, categorySlug: "bills", day: 12 },

@@ -569,17 +569,7 @@ export function writeCheckingMonth(
   for (const b of ch.bills) {
     const everyN = b.everyNMonths ?? 1;
     if (everyN > 1 && monthNo % everyN !== 0) continue;
-    let amt: number;
-    if (b.exactDeptoCuota) {
-      if (narrative.house == null) {
-        throw new Error(`demo: bill ${b.desc} has exactDeptoCuota but the narrative has no house`);
-      }
-      const cuotaClp = demoDeptoCuotaClpForMonth(narrative.house, month);
-      if (cuotaClp == null) continue;
-      amt = cuotaClp;
-    } else {
-      amt = Math.round(jitter(rng, b.meanClp, 0.1));
-    }
+    const amt = Math.round(jitter(rng, b.meanClp, 0.1));
     checkingMove(-amt, b.day, b.desc);
     billsTotal += amt;
   }
@@ -730,8 +720,16 @@ export function writeCheckingMonth(
         (s, ev) => s + (ev.cuotas && ev.cuotas > 1 ? Math.round(ev.amountClp / ev.cuotas) : ev.amountClp),
         0
       );
+    // The first dividendo bills this month's facturado but only shows in pagosTotal from
+    // next month on — bridge it once so the first post-purchase sweep leaves room.
+    const firstCuotaBridgeClp =
+      narrative.house != null && monthsBetween(narrative.house.month, month) === 1
+        ? (demoDeptoCuotaClpForMonth(narrative.house, month) ?? 0)
+        : 0;
     const preSalaryFloorClp =
-      Math.ceil((billsTotal + pagosTotal + cardEventClp + 700_000) / 50_000) * 50_000;
+      Math.ceil(
+        (billsTotal + pagosTotal + cardEventClp + firstCuotaBridgeClp + 700_000) / 50_000
+      ) * 50_000;
     const targetClp = Math.max(
       3_500_000 + Math.round((rng() * 3_000_000) / 50_000) * 50_000,
       preSalaryFloorClp
@@ -884,11 +882,14 @@ const insStatement = db.prepare(
    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
+// parser_row_id = dedupe_key: real statement lines always carry a parser row id, and the
+// gastos purchase keys (line-pr:/installment-pr:) plus the mortgage-link bills assignment
+// key off it — fallback keys would leave linked dividendo lines unclassified.
 const insLine = db.prepare(
   `INSERT INTO cc_statement_lines (
      statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag,
-     nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, dedupe_key
-   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, dedupe_key, parser_row_id
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 const insLedgerPurchase = db.prepare(
@@ -990,6 +991,21 @@ export function writeCreditCardMonth(
       }
     }
 
+    // Dividendo bills on the main card (like the real DB's PAT), for the exact ledger
+    // cuota on the cuota day — syncMortgageExpenseDepositLinksFromSheet matches CC lines
+    // by amount + date against the depto ledger, splitting gastos into carrying cost
+    // (bills, in totals) and amortization (chart stack only).
+    if (narrative.house != null && card.last4 === defaultCard) {
+      const cuotaClp = demoDeptoCuotaClpForMonth(narrative.house, month);
+      if (cuotaClp != null) {
+        lines.push({
+          date: dayInMonth(month, 10),
+          merchant: "DIVIDENDO HIPOTECARIO BANCO DEMO",
+          amount: cuotaClp,
+        });
+      }
+    }
+
     // Bill one cuota per active plan: statement line + ledger payment row.
     for (const plan of cs.installments) {
       if (plan.remaining <= 0) continue;
@@ -1049,6 +1065,7 @@ export function writeCreditCardMonth(
         l.installment?.current ?? null,
         l.installment?.total ?? null,
         l.installment?.cuota ?? null,
+        `demo|${card.last4}|${month}|${i}|${l.merchant}`,
         `demo|${card.last4}|${month}|${i++}|${l.merchant}`
       );
     }
@@ -1063,6 +1080,7 @@ export function writeCreditCardMonth(
         null,
         null,
         null,
+        `demo|${card.last4}|${month}|pago`,
         `demo|${card.last4}|${month}|pago`
       );
     }
@@ -1100,6 +1118,7 @@ export function writeCreditCardMonth(
           null,
           null,
           null,
+          `demo-usd|${card.last4}|${month}|${k}`,
           `demo-usd|${card.last4}|${month}|${k}`
         );
       }
