@@ -216,17 +216,38 @@ function rebuildRetirementNav() {
   deleteRetiredPortfolioGroups.run();
 }
 
+/** Any non-view account in the asset-group subtree (empty buckets stay out of the nav). */
+function assetGroupSubtreeHasAccounts(bucketSlug: string): boolean {
+  const leafIds = leafAssetGroupIdsUnder(bucketSlug);
+  if (leafIds.length === 0) return false;
+  const ph = leafIds.map(() => "?").join(",");
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM accounts
+       WHERE asset_group_id IN (${ph}) AND account_kind != 'liability_view'`
+    )
+    .get(...leafIds) as { c: number };
+  return row.c > 0;
+}
+
 function rebuildBrokerageNav() {
   const brkId = (groupIdBySlug.get("brokerage") as { id: number }).id;
   deleteGroupItems.run(brkId);
-  linkGroup("brokerage", "brokerage_mutual_funds", 0);
-  linkGroup("brokerage", "brokerage_acciones", 10);
-  linkGroup("brokerage", "brokerage_crypto", 20);
-  linkGroup("brokerage", "brokerage_cash", 30);
-  linkAccountsByAssetGroup("brokerage_mutual_funds", "brokerage_mutual_funds", 0);
-  linkAccountsByAssetGroup("brokerage_acciones", "brokerage_acciones", 0);
-  linkAccountsByAssetGroup("brokerage_crypto", "brokerage_crypto", 0);
-  linkAccountsByAssetGroup("brokerage_cash", "brokerage_cash", 0);
+  // Data-driven: a sub-bucket links only when it holds accounts — the real DB has no
+  // long_term asset group, generated DBs have no mutual funds; neither should render an
+  // empty bucket.
+  const buckets: ReadonlyArray<[slug: string, sort: number]> = [
+    ["brokerage_mutual_funds", 0],
+    ["brokerage_long_term", 5],
+    ["brokerage_acciones", 10],
+    ["brokerage_crypto", 20],
+    ["brokerage_cash", 30],
+  ];
+  for (const [slug, sort] of buckets) {
+    if (!assetGroupSubtreeHasAccounts(slug)) continue;
+    linkGroup("brokerage", slug, sort);
+    linkAccountsByAssetGroup(slug, slug, 0);
+  }
 }
 
 /** Idempotent full sidebar + inversiones nav tree (matches legacy layout). */
@@ -383,6 +404,18 @@ export function seedNavTree(): void {
       api_group: "brokerage",
       api_subgroup: "mutual_funds",
       kind_slug: "mutual_funds",
+      group_kind: "bucket",
+    });
+    upsert({
+      slug: "brokerage_long_term",
+      label: "Long-term",
+      parent_slug: "brokerage",
+      sort_order: 15,
+      route_path: "/inversiones/brokerage/long-term",
+      active_prefix: "/inversiones/brokerage/long-term",
+      api_group: "brokerage",
+      api_subgroup: "long_term",
+      kind_slug: "long_term",
       group_kind: "bucket",
     });
     upsert({
