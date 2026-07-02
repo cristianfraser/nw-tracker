@@ -6,7 +6,11 @@ import {
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
 import { equityCloseUsdEod } from "./equityQuote.js";
-import { loadGlobalSyncState, saveGlobalSyncState } from "./globalSyncState.js";
+import {
+  loadGlobalSyncState,
+  saveGlobalSyncState,
+  type GlobalSyncStateFile,
+} from "./globalSyncState.js";
 import {
   APV_PROXY_NEGLIGIBLE_REL_DIFF,
   basketUsdForHoldings,
@@ -18,13 +22,22 @@ import {
 
 export const FINTUAL_RN_MANAGED_FUND_ID = 4;
 export const FINTUAL_INVERSIONES_API_BASE = "https://inversiones.fintual.com";
-export const COMPOSITION_STALE_DAYS = 30;
 const WEIGHT_SUM_MIN = 0.99;
 const WEIGHT_SUM_MAX = 1.01;
 /** Minimum raw ETF weight sum before normalization (excludes fund/bond sleeves). */
 const ETF_WEIGHT_SUM_MIN = 0.95;
 
 const ALLOWED_TOP_LEVEL_KEYS = new Set(["date", "etf_positions", "fund_positions", "bond_positions"]);
+
+/**
+ * Fintual tickers whose bare symbol resolves to a different instrument on Yahoo.
+ * Fintual's "SPXS" is the Invesco S&P 500 UCITS ETF (Acc, LSE, USD ~$1,000/share);
+ * Yahoo's bare SPXS is the Direxion Daily S&P 500 Bear 3X ETF (~$26). Price that
+ * sleeve with a same-index US-listed ETF so the NYSE EOD/live-quote pipelines apply.
+ */
+export const FINTUAL_TICKER_PRICE_PROXY: Readonly<Record<string, string>> = {
+  SPXS: "SPY",
+};
 
 export type FintualManagedFundPositionsResponse = {
   date: string;
@@ -140,6 +153,23 @@ export async function fetchRiskyNorrisComposition(): Promise<FintualManagedFundP
   return parseManagedFundPositionsBody(body);
 }
 
+/** Holdings keyed by the Yahoo ticker used for pricing (weights merged when two Fintual tickers map to one). */
+export function holdingsForPricing(
+  positions: FintualEtfPosition[],
+  compositionDate: string
+): CompositeHolding[] {
+  const weightByPriceTicker = new Map<string, number>();
+  for (const p of positions) {
+    const ticker = FINTUAL_TICKER_PRICE_PROXY[p.etf.asset.ticker] ?? p.etf.asset.ticker;
+    weightByPriceTicker.set(ticker, (weightByPriceTicker.get(ticker) ?? 0) + p.weight);
+  }
+  return [...weightByPriceTicker].map(([ticker, weight]) => ({
+    ticker,
+    weight,
+    synced_at: compositionDate,
+  }));
+}
+
 function fundUnitClpOnOrBefore(compositionDate: string): { day: string; unit_value_clp: number } {
   const resolved = officialRiskyNorrisFundUnitOnOrBefore(compositionDate);
   if (resolved.day === compositionDate) {
@@ -171,17 +201,21 @@ export type SyncRiskyNorrisCompositionResult = {
   raw_etf_weight_sum: number;
 };
 
+/**
+ * @param sharedState When called from `runGlobalSyncAll`, its in-memory state snapshot.
+ * The runner saves that snapshot in its `finally`, so the `fintualRnCompositionLastSyncYmd`
+ * stamp must land on the same object — a load/save here would be clobbered by that final save,
+ * leaving the source stale forever (15-minute re-sync loop). Standalone callers omit it and
+ * this function loads/saves the state file itself.
+ */
 export async function syncRiskyNorrisComposition(
-  cl: ChileWallClock = chileWallClockNow()
+  cl: ChileWallClock = chileWallClockNow(),
+  sharedState?: GlobalSyncStateFile
 ): Promise<SyncRiskyNorrisCompositionResult> {
   const api = await fetchRiskyNorrisComposition();
   const compositionDate = api.date;
-  const holdings: CompositeHolding[] = api.etf_positions.map((p) => ({
-    ticker: p.etf.asset.ticker,
-    weight: p.weight,
-    synced_at: compositionDate,
-  }));
-  const tickers = [...new Set(holdings.map((h) => h.ticker))];
+  const holdings = holdingsForPricing(api.etf_positions, compositionDate);
+  const tickers = holdings.map((h) => h.ticker);
 
   await ensureEquityDailyHistoryForWatchlistTickers(tickers, cl.ymd);
 
@@ -225,9 +259,13 @@ export async function syncRiskyNorrisComposition(
     }
   })();
 
-  const state = loadGlobalSyncState();
-  state.fintualRnCompositionLastSyncYmd = last_sync_ymd;
-  saveGlobalSyncState(state);
+  if (sharedState) {
+    sharedState.fintualRnCompositionLastSyncYmd = last_sync_ymd;
+  } else {
+    const state = loadGlobalSyncState();
+    state.fintualRnCompositionLastSyncYmd = last_sync_ymd;
+    saveGlobalSyncState(state);
+  }
 
   return {
     composition_date: compositionDate,

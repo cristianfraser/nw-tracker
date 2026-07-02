@@ -16,7 +16,8 @@ import { isChileBusinessDay, isChileHoliday, isNyseHoliday, isNyseTradingDay } f
 import { isAfterNyseRegularClose, nyseWallClock } from "./nyseSession.js";
 
 const SBIF_OBSERVED_STALE_AFTER_HOUR_CHILE = 18;
-const FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE = 10;
+/** Chile hour (inclusive) from which the daily Risky Norris composition sync is due. */
+export const FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE = 10;
 
 export type SyncWallTime = {
   ymd: string;
@@ -231,11 +232,14 @@ function scheduleForSource(
       };
     }
     case "fintual_rn_composition": {
+      // Due once per Chile business day at 10:00 (today if not yet reached, else next business day).
       const last = loadGlobalSyncState().fintualRnCompositionLastSyncYmd?.trim();
-      const nextYmd =
-        last && /^\d{4}-\d{2}-\d{2}$/.test(last) ? chileCalendarAddDays(last, 30) : cl.ymd;
+      const nowMins = cl.hour * 60 + cl.minute;
+      const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60;
+      const dueToday = isChileBusinessDay(cl.ymd) && nowMins < dueMins && last !== cl.ymd;
+      const nextYmd = dueToday ? cl.ymd : nextChileBusinessDayYmd(cl.ymd);
       return {
-        next_sync: chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, 0),
+        next_sync: nextYmd ? chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, 0) : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

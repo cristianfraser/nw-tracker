@@ -24,6 +24,7 @@ import {
   periodMonthFromCartolaFileName,
 } from "./checkingCartolaParse.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
+import { parseCuentaVistaWebPasteText } from "./cuentaVistaWebPasteParse.js";
 import {
   isUltimosMovimientosWorkbook,
   parseUltimosMovimientosBuffer,
@@ -85,6 +86,50 @@ export function importCcWebPaste(accountId: number, text: string) {
     skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
     skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
     overlap_removed: merged.overlap_removed ?? 0,
+    parse_errors: parsed.errors,
+  };
+}
+
+function assertCuentaVistaAccount(accountId: number): void {
+  const row = db
+    .prepare(
+      `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
+    )
+    .get(accountId) as { bucket_slug: string } | undefined;
+  if (!row || accountBucketKindSlug(row.bucket_slug) !== "cuenta_vista") {
+    throw new Error("Account is not cuenta vista");
+  }
+}
+
+export function importCuentaVistaWebPaste(accountId: number, text: string) {
+  assertCuentaVistaAccount(accountId);
+  const parsed = parseCuentaVistaWebPasteText(text);
+  if (parsed.movements.length === 0) {
+    return {
+      batch_id: null,
+      lines_parsed: 0,
+      inserted: 0,
+      skipped_duplicate: 0,
+      parse_errors: parsed.errors,
+    };
+  }
+
+  const result = importCheckingPartialMovements(accountId, parsed.movements);
+  const batch_id = createImportBatch(
+    "cuenta_vista_web_paste",
+    `web-paste|${newWebPasteBatchId()}`,
+    {
+      account_id: accountId,
+      lines_parsed: parsed.movements.length,
+      ...result,
+      parse_errors: parsed.errors,
+    }
+  );
+
+  return {
+    batch_id,
+    lines_parsed: parsed.movements.length,
+    ...result,
     parse_errors: parsed.errors,
   };
 }

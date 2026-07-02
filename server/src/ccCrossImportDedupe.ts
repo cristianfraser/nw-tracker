@@ -163,7 +163,36 @@ export function findMatchingInstallmentPurchase(
   return null;
 }
 
+/**
+ * Read-scope memo for the account-level line scan + superseded set. Only active inside
+ * `withCcOneShotScanCache` (synchronous read-only builds like detalle por mes, which call
+ * these once per billing month). Import/write flows never enter the scope, so their dedupe
+ * decisions always re-read the DB.
+ */
+let oneShotScanCache: {
+  lines: Map<number, CcOneShotLineMatch[]>;
+  superseded: Map<number, Set<number>>;
+} | null = null;
+
+export function withCcOneShotScanCache<T>(fn: () => T): T {
+  if (oneShotScanCache) return fn(); // already inside a scope — reuse it
+  oneShotScanCache = { lines: new Map(), superseded: new Map() };
+  try {
+    return fn();
+  } finally {
+    oneShotScanCache = null;
+  }
+}
+
 export function listOneShotLinesForAccount(accountId: number): CcOneShotLineMatch[] {
+  const cached = oneShotScanCache?.lines.get(accountId);
+  if (cached) return cached;
+  const out = listOneShotLinesForAccountUncached(accountId);
+  oneShotScanCache?.lines.set(accountId, out);
+  return out;
+}
+
+function listOneShotLinesForAccountUncached(accountId: number): CcOneShotLineMatch[] {
   const rows = db
     .prepare(
       `SELECT l.id AS statement_line_id, l.merchant, l.transaction_date, l.posting_date,
@@ -262,7 +291,11 @@ function oneShotLinesSupersededByInstallmentPurchases(
 export function oneShotStatementLineIdsSupersededByInstallmentPurchases(
   accountId: number
 ): Set<number> {
-  return new Set(oneShotLinesSupersededByInstallmentPurchases(accountId).keys());
+  const cached = oneShotScanCache?.superseded.get(accountId);
+  if (cached) return cached;
+  const out = new Set(oneShotLinesSupersededByInstallmentPurchases(accountId).keys());
+  oneShotScanCache?.superseded.set(accountId, out);
+  return out;
 }
 
 export function shouldSkipOneShotStatementImport(

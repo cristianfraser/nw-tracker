@@ -3,13 +3,7 @@ import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { allSyncSourceStatuses, isFintualSyncStale, staleSyncSources } from "./globalSyncStale.js";
 
-const cl: ChileWallClock = {
-  ymd: "2026-05-22",
-  hour: 20,
-  minute: 0,
-  day: 22,
-  monthKey: "2026-05",
-};
+const cl: ChileWallClock = wallClock("2026-05-22", 20);
 
 describe("userForcedStale", () => {
   it("marks an ok source stale in status and scheduler lists", () => {
@@ -35,13 +29,7 @@ describe("userForcedStale", () => {
 
 describe("isFintualSyncStale non-business block", () => {
   it("is stale on Sunday evening after Friday sync (weekend block ends Sunday)", () => {
-    const sunday: ChileWallClock = {
-      ymd: "2026-05-24",
-      hour: 20,
-      minute: 0,
-      day: 24,
-      monthKey: "2026-05",
-    };
+    const sunday = wallClock("2026-05-24", 20);
     const state: GlobalSyncStateFile = {
       fintualEveningSettledYmd: "2026-05-22",
       fintualLastCheckYmd: "2026-05-22",
@@ -54,13 +42,7 @@ describe("isFintualSyncStale non-business block", () => {
   });
 
   it("is not stale on Saturday evening (block not ended)", () => {
-    const saturday: ChileWallClock = {
-      ymd: "2026-05-23",
-      hour: 20,
-      minute: 0,
-      day: 23,
-      monthKey: "2026-05",
-    };
+    const saturday = wallClock("2026-05-23", 20);
     const state: GlobalSyncStateFile = {
       fintualEveningSettledYmd: "2026-05-22",
       fintualLastCheckYmd: "2026-05-22",
@@ -75,13 +57,7 @@ describe("isFintualSyncStale non-business block", () => {
 
 describe("isFintualSyncStale publish lag", () => {
   it("stays stale after a no-change poll when API publish is before poll day", () => {
-    const monday: ChileWallClock = {
-      ymd: "2026-05-25",
-      hour: 20,
-      minute: 0,
-      day: 25,
-      monthKey: "2026-05",
-    };
+    const monday = wallClock("2026-05-25", 20);
     const state: GlobalSyncStateFile = {
       fintualLastCheckYmd: "2026-05-25",
       fintualLastPublishYmd: "2026-05-24",

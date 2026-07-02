@@ -7,6 +7,12 @@ export const queryKeys = {
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
+  groupConsolidatedMonthlyPage: (
+    group: string,
+    unit: DisplayUnit,
+    period: "month" | "year",
+    page: number
+  ) => ["groupConsolidatedMonthlyPage", group, unit, period, page] as const,
   sidebarNav: () => ["sidebarNav"] as const,
   panelNetWorthTree: () => ["panelNetWorthTree"] as const,
   accountsAll: () => ["accountsAll"] as const,

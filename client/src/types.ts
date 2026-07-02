@@ -908,7 +908,8 @@ export interface GroupConsolidatedTablesResponse {
   account_monthly: {
     account_id: number;
     name: string;
-    category_slug: string;
+    bucket_slug: string;
+    notes: string | null;
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
@@ -920,6 +921,13 @@ export type Paginated<T> = {
   total: number;
   page: number;
   page_size: number;
+};
+
+/** `GET /api/groups/:slug/consolidated-monthly` — server-paginated detalle por mes. */
+export type GroupConsolidatedMonthlyPageResponse = Paginated<ConsolidatedMonthlyPerfRow> & {
+  unit: "clp" | "usd" | "uf";
+  group_slug: string;
+  period: "month" | "year";
 };
 
 /** `GET /api/groups/:slug/flows` and `GET /api/accounts/:id/flows` */
