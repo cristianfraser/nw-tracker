@@ -71,7 +71,7 @@ function dashboardRowAsNavRow(a: DashboardAccountRow): AccountListRow {
     name: a.name,
     notes: a.notes ?? null,
     created_at: "",
-    category_slug: a.category_slug,
+    category_slug: a.category_slug ?? "",
     category_label: a.category_label,
     group_slug: a.group_slug,
     group_label: a.group_label,

@@ -36,7 +36,7 @@ describe("syncLatestDisplayValueClp", () => {
     if (mtmRows.length < 2) return;
 
     const withValue = mtmRows.filter((r) => {
-      const v = syncLatestDisplayValueClp(r.account_id, r.category_slug, {
+      const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
         notes: r.notes,
         name: r.name,
       });
@@ -56,7 +56,7 @@ describe("getGroupValuationTimeseries acciones pie", () => {
     const pieIds = new Set((ts.group_allocation_pie ?? []).map((p) => p.account_id));
     let matched = 0;
     for (const r of mtmRows) {
-      const v = syncLatestDisplayValueClp(r.account_id, r.category_slug, {
+      const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
         notes: r.notes,
         name: r.name,
       });

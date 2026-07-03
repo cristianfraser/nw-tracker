@@ -4,7 +4,8 @@ import {
   commitMortgagePayment,
   previewMortgagePayment,
 } from "./mortgagePaymentCreate.js";
-import { loadDeptoDividendosSheetLedgerFromDb, deptoAccountMarkClpAtYmd } from "./deptoDividendosLedger.js";
+import { loadDeptoDividendosSheetLedgerFromDb } from "./deptoDividendosLedger.js";
+import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 
 describe("mortgage payment create API layer", () => {
   it("preview and commit update ledger balances", () => {

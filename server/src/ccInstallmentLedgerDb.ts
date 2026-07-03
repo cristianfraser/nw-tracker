@@ -39,7 +39,7 @@ type PurchaseRow = {
   source: string;
 };
 
-type PaymentRow = {
+export type PaymentRow = {
   id: number;
   purchase_id: number;
   pay_by_date: string;
