@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "./valuationValue.js";
 import {
   loadMergedDepositInflowEvents,
   loadMergedDisplayDepositInflowEvents,
@@ -892,14 +893,15 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
 
   const vals = db
     .prepare(
-      `SELECT account_id, as_of_date, value_clp
+      `SELECT account_id, as_of_date, value AS value_clp, currency
        FROM valuations
        WHERE account_id IN (${ph})
        ORDER BY as_of_date, account_id`
     )
-    .all(...allIds) as { account_id: number; as_of_date: string; value_clp: number }[];
+    .all(...allIds) as { account_id: number; as_of_date: string; value_clp: number; currency: string }[];
   const byDate = new Map<string, Map<number, number>>();
   for (const v of vals) {
+    assertValuationCurrencyClp(v.currency, "valuationTimeseries snapshots");
     let m = byDate.get(v.as_of_date);
     if (!m) {
       m = new Map();

@@ -114,8 +114,8 @@ function main() {
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind) VALUES (?, ?, ?, ?, ?)`
   );
   const upsertVal = db.prepare(
-    `INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, ?, ?)
-     ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp`
+    `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')
+     ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value, currency = excluded.currency`
   );
 
   type Flow = { date: string; amount: number; note: string; flow_kind: string | null };

@@ -42,7 +42,7 @@ function insertAccount(color_rgb: string | null, balance: number): number {
   ).run(color_rgb);
   const id = (db.prepare(`SELECT id FROM accounts ORDER BY id DESC LIMIT 1`).get() as { id: number })
     .id;
-  db.prepare(`INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, '2026-01-31', ?)`).run(
+  db.prepare(`INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, '2026-01-31', ?)`).run(
     id,
     balance
   );
