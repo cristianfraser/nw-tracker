@@ -19,7 +19,7 @@ const dryRun = process.argv.includes("--dry-run");
 async function main(): Promise<void> {
   loadRootDotenv();
   const tickers = listDistinctEquityTickersForSync();
-  const stockTickers = tickers.filter((t) => equityMarketKind(t) === "nyse");
+  const stockTickers = tickers.filter((t) => equityMarketKind(t) !== "crypto24");
   const results = [
     ...(stockTickers.length > 0
       ? await syncEquityEodFromYahoo(stockTickers, { dryRun, force })

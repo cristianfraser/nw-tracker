@@ -119,6 +119,44 @@ export function brokerageFlowKindCounterpartIsUsdCash(kind: BrokerageFlowKind): 
   return kind === "stock_buy" || kind === "stock_sell";
 }
 
+/** Quote currency of the stock behind a brokerage form (`.SN` = Bolsa de Santiago = clp). */
+export type StockQuoteCurrency = "usd" | "clp";
+
+export function stockQuoteCurrencyForTicker(ticker: string | null | undefined): StockQuoteCurrency {
+  return ticker?.trim().toUpperCase().endsWith(".SN") ? "clp" : "usd";
+}
+
+/** Trade kinds settle in the stock's quote currency (buy/sell move cash ↔ shares). */
+function brokerageTradeFlowKind(kind: BrokerageFlowKind): boolean {
+  return kind === "stock_buy" || kind === "stock_sell";
+}
+
+/** CLP amount field visibility, quote-currency aware (CLP-quoted stocks trade in CLP). */
+export function brokerageFlowKindNeedsClpForQuote(
+  kind: BrokerageFlowKind,
+  quote: StockQuoteCurrency | undefined
+): boolean {
+  if (quote === "clp" && brokerageTradeFlowKind(kind)) return true;
+  return brokerageFlowKindNeedsClp(kind);
+}
+
+/** USD amount field visibility, quote-currency aware (hidden on CLP-quoted trades). */
+export function brokerageFlowKindNeedsUsdForQuote(
+  kind: BrokerageFlowKind,
+  quote: StockQuoteCurrency | undefined
+): boolean {
+  if (quote === "clp" && brokerageTradeFlowKind(kind)) return false;
+  return brokerageFlowKindNeedsUsd(kind);
+}
+
+/**
+ * CLP ledger cash form: deposit/withdrawal may optionally name the other cash/checking account,
+ * posting a single internal-transfer leg (from/to) instead of a plain one-sided movement.
+ */
+export function clpCashFlowKindAllowsCounterpart(kind: BrokerageFlowKind): boolean {
+  return kind === "deposit_clp" || kind === "withdrawal_clp";
+}
+
 /** Counterpart on stock account form: USD cash source for buys, destination for sells. */
 export function counterpartRoleForBrokerageFlowKind(kind: BrokerageFlowKind): "from" | "to" {
   if (kind === "stock_buy") return "from";

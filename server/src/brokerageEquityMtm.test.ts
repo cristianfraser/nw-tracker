@@ -39,7 +39,8 @@ function firstAccionesAccountWithTicker(): { account_id: number; ticker: string 
 function seedLiveQuote(ticker: string, session: string, priceUsd: number): void {
   insertLiveMarketQuote({
     symbol: ticker,
-    kind: "equity_usd",
+    kind: "equity",
+    currency: "usd",
     value: priceUsd,
     session_ymd: session,
     previous_value: null,

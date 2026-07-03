@@ -18,7 +18,8 @@ import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
-  equityCloseUsdEod,
+  equityCloseEod,
+  equityQuoteCurrency,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
@@ -143,40 +144,47 @@ export function equityBrokeragePositionMeta(
   const session = equitySessionYmdForTicker(ticker, now);
   const useLive = asOfYmd === today && shouldUseLiveEquityQuote(ticker, session, now);
 
-  let closeUsd: number | null = null;
+  let close: number | null = null;
   let markDate = asOfYmd;
 
   if (useLive) {
     const live = getLiveEquityQuoteFromDb(ticker);
     if (live) {
-      closeUsd = live.price_usd;
+      close = live.price;
       markDate = live.trade_date;
     }
   }
 
-  if (closeUsd == null) {
+  if (close == null) {
     const closeRow = db
       .prepare(
-        `SELECT trade_date, close_usd FROM equity_daily
+        `SELECT trade_date, close FROM equity_daily
          WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
       )
-      .get(ticker, asOfYmd) as { trade_date: string; close_usd: number } | undefined;
-    closeUsd = closeRow?.close_usd ?? equityCloseUsdEod(ticker, asOfYmd);
+      .get(ticker, asOfYmd) as { trade_date: string; close: number } | undefined;
+    close = closeRow?.close ?? equityCloseEod(ticker, asOfYmd);
     markDate = closeRow?.trade_date ?? asOfYmd;
   }
 
-  if (closeUsd == null || !Number.isFinite(closeUsd)) return out;
-
-  const fx = useLive ? fxForLiveMtm(asOfYmd, now) : fxRowOnOrBefore(markDate);
-  if (!fx || fx.clp_per_usd <= 0) return out;
+  if (close == null || !Number.isFinite(close)) return out;
 
   const u = out.units;
   if (u == null || u <= 1e-12) return out;
 
-  const mtm = Math.round(u * closeUsd * fx.clp_per_usd * 100) / 100;
+  if (equityQuoteCurrency(ticker) === "clp") {
+    out.afp_override_value_clp = Math.round(u * close * 100) / 100;
+    out.afp_override_value_as_of = markDate;
+    out.afp_override_valor_cuota_clp = Math.round(close * 10000) / 10000;
+    return out;
+  }
+
+  const fx = useLive ? fxForLiveMtm(asOfYmd, now) : fxRowOnOrBefore(markDate);
+  if (!fx || fx.clp_per_usd <= 0) return out;
+
+  const mtm = Math.round(u * close * fx.clp_per_usd * 100) / 100;
   out.afp_override_value_clp = mtm;
   out.afp_override_value_as_of = markDate;
-  out.afp_override_valor_cuota_clp = Math.round(closeUsd * fx.clp_per_usd * 10000) / 10000;
+  out.afp_override_valor_cuota_clp = Math.round(close * fx.clp_per_usd * 10000) / 10000;
   return out;
 }
 
@@ -214,10 +222,10 @@ export function getAccountPositionMeta(
       const mtm = computeCryptoMtmClp(accountId, asOf);
       const closeRow = db
         .prepare(
-          `SELECT trade_date, close_usd FROM equity_daily
+          `SELECT trade_date, close FROM equity_daily
            WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
         )
-        .get(equityTickerRow, asOf) as { trade_date: string; close_usd: number } | undefined;
+        .get(equityTickerRow, asOf) as { trade_date: string; close: number } | undefined;
       const out: AccountPositionMeta = {
         ticker: asset === "BTC" ? "BTC" : "ETH",
         units_kind: "coin",
@@ -229,7 +237,7 @@ export function getAccountPositionMeta(
         const u = out.units;
         if (u != null && u > 1e-12) {
           const fx = fxRowOnOrBefore(closeRow.trade_date);
-          const pxUsd = closeRow.close_usd;
+          const pxUsd = closeRow.close;
           if (fx && fx.clp_per_usd > 0 && Number.isFinite(pxUsd)) {
             out.afp_override_valor_cuota_clp = Math.round(pxUsd * fx.clp_per_usd * 10000) / 10000;
           } else {

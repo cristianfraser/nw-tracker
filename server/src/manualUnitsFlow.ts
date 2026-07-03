@@ -8,7 +8,7 @@
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
 import { cryptoEquityTickerForAccount } from "./cryptoValuation.js";
-import { equityCloseUsdEod } from "./equityQuote.js";
+import { equityCloseEod } from "./equityQuote.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { fundUnitClpOnOrBefore } from "./fundUnitDaily.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
@@ -20,7 +20,7 @@ const RECONCILE_TOLERANCE_FRACTION = 0.01;
 export function valorCuotaClpOnDate(accountId: number, ymd: string): number | null {
   const cryptoTicker = cryptoEquityTickerForAccount(accountId);
   if (cryptoTicker) {
-    const closeUsd = equityCloseUsdEod(cryptoTicker, ymd);
+    const closeUsd = equityCloseEod(cryptoTicker, ymd);
     if (closeUsd == null || !Number.isFinite(closeUsd) || closeUsd <= 0) return null;
     const fx = fxMonthEndForBalanceUsd(ymd);
     if (!fx || fx.clp_per_usd <= 0) return null;

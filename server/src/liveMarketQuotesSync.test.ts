@@ -11,8 +11,8 @@ import { snapshotTables } from "./test/snapshotTables.js";
 
 vi.mock("./equityYahooEod.js", () => ({
   fetchYahooLiveQuote: vi.fn(async (symbol: string) => ({
-    price_usd: symbol === "CLP=X" ? 950 : symbol === "SPY" ? 600 : 42,
-    previous_close_usd: symbol === "CLP=X" ? 945 : symbol === "SPY" ? 590 : 40,
+    price: symbol === "CLP=X" ? 950 : symbol === "SPY" ? 600 : 42,
+    previous_close: symbol === "CLP=X" ? 945 : symbol === "SPY" ? 590 : 40,
     session_ymd: "2026-06-01",
   })),
 }));

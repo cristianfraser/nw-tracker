@@ -2,7 +2,7 @@ import { loadRootDotenv } from "./rootDotenv.js";
 
 export const LIVE_FX_SYMBOL = "USD_CLP";
 
-export type LiveMarketQuoteKind = "equity_usd" | "fx_clp_per_usd";
+export type LiveMarketQuoteKind = "equity" | "fx_clp_per_usd";
 
 function envFlag(name: string, defaultOn: boolean): boolean {
   loadRootDotenv();

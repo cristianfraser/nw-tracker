@@ -32,6 +32,42 @@
       "port": 3299
     },
     {
+      "name": "client-alt2",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "NW_TRACKER_API_PROXY_TARGET=http://localhost:3399 npm run dev -w nw-tracker-client -- --port 5399 --strictPort"
+      ],
+      "port": 5399
+    },
+    {
+      "name": "server-alt2",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "PORT=3399 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+      ],
+      "port": 3399
+    },
+    {
+      "name": "server-rehearsal",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "PORT=3499 NW_TRACKER_TEST_DB=split-rehearsal.db GLOBAL_SYNC_ENABLED=0 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+      ],
+      "port": 3499
+    },
+    {
+      "name": "client-rehearsal",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "NW_TRACKER_API_PROXY_TARGET=http://localhost:3499 npm run dev -w nw-tracker-client -- --port 5499 --strictPort"
+      ],
+      "port": 5499
+    },
+    {
       "name": "server-demo",
       "runtimeExecutable": "sh",
       "runtimeArgs": [

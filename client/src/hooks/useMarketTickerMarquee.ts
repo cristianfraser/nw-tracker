@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { formatGroupedDecimalTrimmed } from "../format";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { formatGroupedDecimal, formatGroupedDecimalTrimmed } from "../format";
 import { useTranslation } from "../i18n";
 import { useMarketTicker } from "../queries/hooks";
 import type { MarketDisplaySeriesRow, MarketTickerResponse } from "../types";
@@ -126,14 +127,14 @@ function buildItemsFromSeriesConfig(
     }
     if (row.kind === "equity" && row.series_key) {
       const eq = payload.equities.find((e) => e.ticker === row.series_key);
-      if (eq != null && Number.isFinite(eq.value_usd)) {
+      if (eq != null && Number.isFinite(eq.value)) {
         items.push({
           kind: "equity",
           label: tickerLabel(row.series_key),
-          value: eq.value_usd.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
+          value:
+            eq.currency === "clp"
+              ? formatGroupedDecimalTrimmed(eq.value)
+              : formatGroupedDecimal(eq.value, 2),
           delta: eq.delta_pct,
           fractionDigits: 2,
         });
@@ -151,6 +152,8 @@ function buildItems(payload: MarketTickerResponse, labels: MarqueeLabels): Ticke
 export function useMarketTickerMarquee(): { items: TickerMarqueeItem[]; loading: boolean } {
   const { t } = useTranslation();
   const { data: payload, isPending } = useMarketTicker();
+  // Items carry pre-formatted strings, so the memo must refresh on separator change.
+  const { decimalSeparator } = useDisplayPreferences();
 
   const labels = useMemo(
     () => ({
@@ -164,7 +167,7 @@ export function useMarketTickerMarquee(): { items: TickerMarqueeItem[]; loading:
   );
   const items = useMemo(
     () => (payload ? buildItems(payload, labels) : []),
-    [payload, labels]
+    [payload, labels, decimalSeparator]
   );
 
   return { items, loading: isPending };

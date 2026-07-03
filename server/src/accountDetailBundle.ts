@@ -18,6 +18,8 @@ import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { bookLedgerEditSchemaForAccount } from "./accountBookLedgerEdit.js";
 import { mortgagePaymentCreateSchemaForAccount } from "./mortgagePaymentCreate.js";
 import { accountRowForId } from "./accountRowForMovement.js";
+import { equityTickerForAccount } from "./accountEquityTicker.js";
+import { equityQuoteCurrency } from "./equityQuote.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
@@ -177,12 +179,14 @@ export async function buildAccountDetailBundle(
   }
 
   const accountRow = accountRowForId(accountId);
+  const bundleEquityTicker = equityTickerForAccount(accountId);
   const summary = {
     account_id: accountId,
     category_slug,
     group_slug,
     group_label,
     group_peer_count: cat.group_peer_count,
+    equity_quote_currency: bundleEquityTicker ? equityQuoteCurrency(bundleEquityTicker) : null,
     deposits_clp,
     deposits_full_clp: accountUsesEquityMtm(accountId) ? deposits_full_clp : undefined,
     dividends_reinvested_clp: accountUsesEquityMtm(accountId)

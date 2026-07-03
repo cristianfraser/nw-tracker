@@ -7,7 +7,8 @@ import { db } from "./db.js";
 import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
 export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
-  equityCloseUsdEod,
+  equityCloseEod,
+  equityQuoteCurrency,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
@@ -16,21 +17,22 @@ import type { EodCloseSeries } from "./equityYahooEod.js";
 import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
-/** Equity symbols loaded at `import:excel` into `equity_daily` (USD close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
+/** Equity symbols loaded at `import:excel` into `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
 
 const insEod = db.prepare(
-  `INSERT INTO equity_daily (ticker, trade_date, close_usd) VALUES (?,?,?)
-   ON CONFLICT(ticker, trade_date) DO UPDATE SET close_usd = excluded.close_usd`
+  `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?,?,?,?)
+   ON CONFLICT(ticker, trade_date) DO UPDATE SET close = excluded.close, currency = excluded.currency`
 );
 
 export function upsertEquityDailySeries(ticker: string, series: EodCloseSeries): number {
+  const currency = equityQuoteCurrency(ticker);
   let n = 0;
   for (let i = 0; i < series.dates.length; i++) {
     const d = series.dates[i]!;
     const c = series.closes[i]!;
     if (!Number.isFinite(c)) continue;
-    insEod.run(ticker, d, c);
+    insEod.run(ticker, d, c, currency);
     n += 1;
   }
   return n;
@@ -89,25 +91,32 @@ export function equityChartZeroClpAtYmd(accountId: number, asOfYmd: string): boo
   return equityShareUnitsThroughYmd(accountId, asOfYmd) <= 0;
 }
 
-/** CLP MTM: shares through `asOfYmd` × USD price × FX. Uses EOD from DB unless `priceUsd` passed. */
+/**
+ * CLP MTM: shares through `asOfYmd` × quote-currency price (× FX for USD-quoted tickers).
+ * Uses EOD from DB unless `price` passed.
+ */
 export function computeEquityMtmClp(
   accountId: number,
   asOfYmd: string,
-  priceUsd?: number | null,
+  price?: number | null,
   now: Date = new Date()
 ): number | null {
   if (!accountUsesEquityMtm(accountId)) return null;
   const ticker = requireEquityTicker(accountId);
   const units = equityShareUnitsThroughYmd(accountId, asOfYmd);
   if (units <= 0 || !Number.isFinite(units)) return null;
-  const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
-  if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
+  const close = price ?? equityCloseEod(ticker, asOfYmd);
+  if (close == null || !Number.isFinite(close)) return null;
+  if (equityQuoteCurrency(ticker) === "clp") {
+    const clp = units * close;
+    return Number.isFinite(clp) ? clp : null;
+  }
   const fx =
-    priceUsd != null && Number.isFinite(priceUsd)
+    price != null && Number.isFinite(price)
       ? fxForLiveMtm(asOfYmd, now)
       : fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = units * closeUsd * fx.clp_per_usd;
+  const clp = units * close * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
 }
 
@@ -122,7 +131,7 @@ export function computeEquityMtmClpCachedLive(
   if (!shouldUseLiveEquityQuote(ticker, session, now)) return null;
   const cached = getLiveEquityQuoteFromDb(ticker);
   if (!cached) return null;
-  return computeEquityMtmClp(accountId, session, cached.price_usd, now);
+  return computeEquityMtmClp(accountId, session, cached.price, now);
 }
 
 /**
@@ -180,7 +189,7 @@ export function computeEquityMtmClpLive(
   const session = equitySessionYmdForTicker(ticker, now);
   const quote = getLiveEquityQuoteFromDb(ticker);
   if (!quote) return null;
-  const clp = computeEquityMtmClp(accountId, session, quote.price_usd, now);
+  const clp = computeEquityMtmClp(accountId, session, quote.price, now);
   if (clp == null || !Number.isFinite(clp) || clp <= 0) return null;
   return { value_clp: clp, as_of_date: quote.trade_date, source: quote.source };
 }

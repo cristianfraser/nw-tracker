@@ -85,8 +85,8 @@ export function formatSyncUfRate(n: number): string {
   return normalizeIntlNum(intEsCl2.format(n));
 }
 
-/** Equity / crypto close in USD (e.g. `733,73`). */
-export function formatSyncUsdClose(n: number): string {
+/** Equity / crypto close in the ticker's quote currency (e.g. `733,73`). */
+export function formatSyncClose(n: number): string {
   if (!Number.isFinite(n)) return "—";
   return normalizeIntlNum(intEsCl2to4.format(n));
 }
@@ -145,7 +145,7 @@ function formatDeltaForGroup(group: SyncChangeGroup, delta: number): string {
       return formatSyncUfRate(delta);
     case "stocks_nyse":
     case "crypto_eod":
-      return formatSyncUsdClose(delta);
+      return formatSyncClose(delta);
     case "sbif_ipc":
     case "sbif_utm":
     case "tickers":
@@ -172,7 +172,7 @@ function formatChangeLine(c: SyncFieldChange, indent = ""): string {
   return `${indent}- ${c.label}: ${oldPart} > ${newPart}${formatChangeDeltaSuffix(c)}`;
 }
 
-export type EquityEodRow = { trade_date: string; close_usd: number };
+export type EquityEodRow = { trade_date: string; close: number };
 
 /** Build a sync-log change when trade date or close moved forward. */
 export function equityEodSyncFieldChange(
@@ -185,15 +185,15 @@ export function equityEodSyncFieldChange(
   if (
     before != null &&
     before.trade_date === after.trade_date &&
-    Math.abs(before.close_usd - after.close_usd) < 1e-8
+    Math.abs(before.close - after.close) < 1e-8
   ) {
     return null;
   }
   return {
     group,
     label,
-    oldValue: before != null ? formatSyncUsdClose(before.close_usd) : "—",
-    newValue: formatSyncUsdClose(after.close_usd),
+    oldValue: before != null ? formatSyncClose(before.close) : "—",
+    newValue: formatSyncClose(after.close),
     oldDate: before?.trade_date ?? null,
     newDate: after.trade_date,
   };

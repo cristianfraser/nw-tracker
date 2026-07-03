@@ -18,7 +18,8 @@ describe("liveMarketQuotesDb", () => {
     const fresh = new Date().toISOString();
     insertLiveMarketQuote({
       symbol: TEST_TICKER,
-      kind: "equity_usd",
+      kind: "equity",
+      currency: "usd",
       value: 100,
       session_ymd: "2026-06-01",
       previous_value: 90,
@@ -26,7 +27,8 @@ describe("liveMarketQuotesDb", () => {
     });
     insertLiveMarketQuote({
       symbol: TEST_TICKER,
-      kind: "equity_usd",
+      kind: "equity",
+      currency: "usd",
       value: 110,
       session_ymd: "2026-06-01",
       previous_value: 100,
@@ -41,7 +43,8 @@ describe("liveMarketQuotesDb", () => {
     const stale = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
     insertLiveMarketQuote({
       symbol: TEST_TICKER,
-      kind: "equity_usd",
+      kind: "equity",
+      currency: "usd",
       value: 1,
       session_ymd: "2026-01-01",
       previous_value: null,

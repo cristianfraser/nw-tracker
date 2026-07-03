@@ -5,7 +5,7 @@ import {
 } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
-import { equityCloseUsdEod } from "./equityQuote.js";
+import { equityCloseEod } from "./equityQuote.js";
 import {
   loadGlobalSyncState,
   saveGlobalSyncState,
@@ -220,7 +220,7 @@ export async function syncRiskyNorrisComposition(
   await ensureEquityDailyHistoryForWatchlistTickers(tickers, cl.ymd);
 
   for (const ticker of tickers) {
-    const close = equityCloseUsdEod(ticker, compositionDate);
+    const close = equityCloseEod(ticker, compositionDate);
     if (close == null || !Number.isFinite(close) || close <= 0) {
       throw new Error(
         `Risky Norris composition sync: missing equity_daily for ${ticker} on ${compositionDate}`

@@ -33,6 +33,8 @@ import { movementCreateSchemaForAccount, validateMovementCreate } from "../movem
 import { listAccountMovementsForApi } from "../accountMovementsApi.js";
 import { getAccountPositionMeta } from "../accountPosition.js";
 import { accountUsesEquityMtm } from "../brokerageEquityMtm.js";
+import { equityTickerForAccount } from "../accountEquityTicker.js";
+import { equityQuoteCurrency } from "../equityQuote.js";
 import {
   equityReturnSnapshot,
   pocketDepositsClpForAccount,
@@ -703,12 +705,16 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
     latest_valuation_clp = position.value_clp;
     if (position.value_as_of != null) latest_valuation_date = position.value_as_of;
   }
+  const equityTickerForSummary = equityTickerForAccount(id);
   res.json({
     account_id: id,
     bucket_slug: bucketSlug || null,
     group_slug: dashBucket,
     group_label: metaRow?.bucket_label ?? null,
     group_peer_count,
+    equity_quote_currency: equityTickerForSummary
+      ? equityQuoteCurrency(equityTickerForSummary)
+      : null,
     deposits_clp,
     deposits_full_clp: accountUsesEquityMtm(id) ? deposits_full_clp : undefined,
     dividends_reinvested_clp: accountUsesEquityMtm(id)

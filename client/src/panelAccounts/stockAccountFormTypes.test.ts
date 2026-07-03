@@ -21,5 +21,24 @@ describe("stockAccountFormTypes", () => {
     const body = buildBrokerageMovementPostBody(row, "LIN");
     expect(body?.counterpart_role).toBe("from");
     expect(body?.counterpart_account_id).toBe(90);
+    expect(body).toHaveProperty("amount_usd");
+    expect(body).not.toHaveProperty("amount_clp");
+  });
+
+  it("stock_buy for a .SN (CLP-quoted) stock sends amount_clp and never amount_usd", () => {
+    const row = {
+      ...emptyMovementRow("stock_buy"),
+      occurredOn: "2026-07-03",
+      amountClp: "2.985.000",
+      amountUsd: "123", // stale hidden-field value must not be sent
+      unitsDelta: "2282",
+      counterpartAccountId: 96 as const,
+    };
+    const body = buildBrokerageMovementPostBody(row, "CFIETFIPSA.SN");
+    expect(body?.amount_clp).toBe(2_985_000);
+    expect(body).not.toHaveProperty("amount_usd");
+    expect(body?.counterpart_role).toBe("from");
+    expect(body?.units_delta).toBe(2282);
+    expect(body?.ticker).toBe("CFIETFIPSA.SN");
   });
 });

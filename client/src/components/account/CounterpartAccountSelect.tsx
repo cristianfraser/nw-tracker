@@ -4,11 +4,16 @@ import { useAccountsAll } from "../../queries/hooks";
 const CASH_COUNTERPART_KINDS = new Set(["cuenta_corriente", "cuenta_vista", "usd", "clp"]);
 
 const USD_CASH_KIND = "usd";
+const CLP_CASH_KIND = "clp";
 
-/** Behaviour kind = `asset_groups.slug` suffix after `__` (e.g. `brokerage_cash__usd` → `usd`). */
+/**
+ * Behaviour kind = last `__` segment of the leaf `asset_groups.slug` (mirrors the server's
+ * `accountBucketKindSlug`), e.g. `brokerage_cash__usd` → `usd`,
+ * `brokerage_cash__caja_portafolio_ipsa__clp` → `clp`.
+ */
 function kindFromBucketSlug(slug: string | undefined): string | null {
   if (!slug) return null;
-  const i = slug.indexOf("__");
+  const i = slug.lastIndexOf("__");
   return i >= 0 ? slug.slice(i + 2) : slug;
 }
 
@@ -23,6 +28,8 @@ type Props = {
   equityBrokerageOnly?: boolean;
   /** Limit options to the USD cash account (stock buy/sell settlement account). */
   usdCashOnly?: boolean;
+  /** Limit options to CLP cash accounts (settlement for CLP-quoted `.SN` trades). */
+  clpCashOnly?: boolean;
 };
 
 export function CounterpartAccountSelect({
@@ -33,6 +40,7 @@ export function CounterpartAccountSelect({
   cashAndCheckingOnly,
   equityBrokerageOnly,
   usdCashOnly,
+  clpCashOnly,
 }: Props) {
   const { data } = useAccountsAll();
   const accounts = (data?.accounts ?? []).filter((a) => {
@@ -43,6 +51,7 @@ export function CounterpartAccountSelect({
     }
     if (equityBrokerageOnly && !a.bucket_slug?.startsWith("brokerage_acciones")) return false;
     if (usdCashOnly && kindFromBucketSlug(a.bucket_slug) !== USD_CASH_KIND) return false;
+    if (clpCashOnly && kindFromBucketSlug(a.bucket_slug) !== CLP_CASH_KIND) return false;
     return true;
   });
 

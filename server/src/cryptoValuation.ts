@@ -5,7 +5,7 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   cryptoDisplaySessionYmd,
-  equityCloseUsdEod,
+  equityCloseEod,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
@@ -133,7 +133,7 @@ export function computeCryptoMtmClp(
   const asset = ticker === "BTC-USD" ? "BTC" : "ETH";
   const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd);
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
-  const closeUsd = priceUsd ?? equityCloseUsdEod(ticker, asOfYmd);
+  const closeUsd = priceUsd ?? equityCloseEod(ticker, asOfYmd);
   if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
   const fx =
     priceUsd != null && Number.isFinite(priceUsd)
@@ -153,7 +153,7 @@ export function computeCryptoMtmClpLive(
   const session = equitySessionYmdForTicker(ticker, now);
   const quote = getLiveEquityQuoteFromDb(ticker);
   if (!quote) return null;
-  const clp = computeCryptoMtmClp(accountId, session, quote.price_usd, now);
+  const clp = computeCryptoMtmClp(accountId, session, quote.price, now);
   if (clp == null || !Number.isFinite(clp)) return null;
   return { value_clp: clp, as_of_date: quote.trade_date };
 }
@@ -169,7 +169,7 @@ export function computeCryptoMtmClpCachedLive(
   if (!shouldUseLiveEquityQuote(ticker, session, now)) return null;
   const cached = getLiveEquityQuoteFromDb(ticker);
   if (!cached) return null;
-  return computeCryptoMtmClp(accountId, session, cached.price_usd, now);
+  return computeCryptoMtmClp(accountId, session, cached.price, now);
 }
 
 /** Synchronous display mark: live when allowed, else last EOD for display session. */

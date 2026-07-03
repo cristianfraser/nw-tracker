@@ -1,8 +1,9 @@
 {
   "app": {
     "displayPreferences": {
-      "toolbarAria": "Divisa (CLP o USD) y período MTD/YTD para tarjetas y gráficos",
-      "displayCurrency": "Divisa: "
+      "toolbarAria": "Divisa (CLP o USD), período MTD/YTD y formato de números",
+      "displayCurrency": "Divisa: ",
+      "numberFormat": "Formato: "
     },
     "errorBoundary": {
       "title": "Algo salió mal",
@@ -447,7 +448,7 @@
     },
     "clpCashMovements": {
       "title": "Añadir movimientos",
-      "hint": "Elige el tipo en cada fila: depósito CLP, interés / rentabilidad (en CLP), retiro u otro. El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad).",
+      "hint": "Elige el tipo en cada fila: depósito CLP, interés / rentabilidad (en CLP), retiro u otro. El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). Opcional: cuenta contraparte en depósitos/retiros para registrar el traspaso entre cuentas en una sola fila.",
       "emptyDraft": "Sin borradores. Añade depósitos, interés o retiros.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."

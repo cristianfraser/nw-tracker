@@ -47,7 +47,7 @@ import {
 import {
   formatSyncClp,
   formatSyncFxRate,
-  formatSyncUsdClose,
+  formatSyncClose,
   insertSyncRunLog,
   formatSyncUfRate,
   formatSyncIndex,
@@ -127,7 +127,7 @@ import {
   upsertUfRows,
   upsertUtmRows,
 } from "./sbifSyncDb.js";
-import { listWatchlistNyseTickersForEodSync } from "./watchlist.js";
+import { listWatchlistStockTickersForEodSync } from "./watchlist.js";
 import {
   EQUITY_CRYPTO_TICKERS,
   equityEodCryptoStateYmd,
@@ -158,28 +158,28 @@ function parseYmdParts(ymd: string): { y: number; m: number } {
 
 function latestEquityEodRow(
   ticker: string
-): { trade_date: string; close_usd: number } | null {
+): { trade_date: string; close: number } | null {
   const row = db
     .prepare(
-      `SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
+      `SELECT trade_date, close FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
     )
-    .get(ticker) as { trade_date: string; close_usd: number } | undefined;
-  if (row?.close_usd == null || !Number.isFinite(row.close_usd)) return null;
-  return { trade_date: row.trade_date, close_usd: row.close_usd };
+    .get(ticker) as { trade_date: string; close: number } | undefined;
+  if (row?.close == null || !Number.isFinite(row.close)) return null;
+  return { trade_date: row.trade_date, close: row.close };
 }
 
 function equityEodCloseOnDate(ticker: string, tradeDate: string): number | null {
   const row = db
     .prepare(
-      `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date = ?`
+      `SELECT close FROM equity_daily WHERE ticker = ? AND trade_date = ?`
     )
-    .get(ticker, tradeDate) as { close_usd: number } | undefined;
-  if (row?.close_usd == null || !Number.isFinite(row.close_usd)) return null;
-  return row.close_usd;
+    .get(ticker, tradeDate) as { close: number } | undefined;
+  if (row?.close == null || !Number.isFinite(row.close)) return null;
+  return row.close;
 }
 
-function latestEquityCloseUsd(ticker: string): number | null {
-  return latestEquityEodRow(ticker)?.close_usd ?? null;
+function latestEquityClose(ticker: string): number | null {
+  return latestEquityEodRow(ticker)?.close ?? null;
 }
 
 function fxBcentralClpPerUsdAt(date: string): number | null {
@@ -799,7 +799,7 @@ async function runSyncStepIfStale(
 
 function applyEquityEodResultsToChanges(
   results: EquityEodSyncResult[],
-  eodBefore: Map<string, { trade_date: string; close_usd: number } | null>,
+  eodBefore: Map<string, { trade_date: string; close: number } | null>,
   changes: SyncFieldChange[],
   group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
   logPrefix: string,
@@ -825,15 +825,15 @@ function applyEquityEodResultsToChanges(
       if (
         before != null &&
         before.trade_date === newDate &&
-        Math.abs(before.close_usd - newClose) < 1e-8
+        Math.abs(before.close - newClose) < 1e-8
       ) {
         continue;
       }
       changes.push({
         group,
         label: r.ticker,
-        oldValue: oldClose != null ? formatSyncUsdClose(oldClose) : "—",
-        newValue: formatSyncUsdClose(newClose),
+        oldValue: oldClose != null ? formatSyncClose(oldClose) : "—",
+        newValue: formatSyncClose(newClose),
         oldDate,
         newDate,
       });
@@ -845,8 +845,8 @@ function applyEquityEodResultsToChanges(
   }
 }
 
-function snapshotEodBefore(tickers: readonly string[]): Map<string, { trade_date: string; close_usd: number } | null> {
-  const m = new Map<string, { trade_date: string; close_usd: number } | null>();
+function snapshotEodBefore(tickers: readonly string[]): Map<string, { trade_date: string; close: number } | null> {
+  const m = new Map<string, { trade_date: string; close: number } | null>();
   for (const ticker of tickers) m.set(ticker, latestEquityEodRow(ticker));
   return m;
 }
@@ -861,8 +861,8 @@ async function runStocksNyse(
     console.log("sync: NYSE stocks — skip (session EOD already in DB).");
     return;
   }
-  const nyseTickers = listWatchlistNyseTickersForEodSync();
-  const eodBefore = snapshotEodBefore(nyseTickers);
+  const stockTickers = listWatchlistStockTickersForEodSync();
+  const eodBefore = snapshotEodBefore(stockTickers);
   const results = await syncStocksNyseFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
   applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_nyse", "NYSE stocks", { notes });
   if (!syncDryRun) {

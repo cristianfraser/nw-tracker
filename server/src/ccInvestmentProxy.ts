@@ -50,7 +50,7 @@ const stmtFundUnitLatest = db.prepare(
   `SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? ORDER BY day DESC LIMIT 1`
 );
 const stmtEquityLatest = db.prepare(
-  `SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
+  `SELECT trade_date, close, currency FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
 );
 const stmtFxLatest = db.prepare(
   `SELECT date, clp_per_usd FROM fx_daily ORDER BY date DESC LIMIT 1`
@@ -71,8 +71,9 @@ export function tickerHasAnyPriceData(ticker: string): boolean {
     const row = stmtFundUnitLatest.get(ticker) as { unit_value_clp: number } | undefined;
     return row != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0;
   }
-  const eq = stmtEquityLatest.get(ticker) as { close_usd: number } | undefined;
-  if (eq == null || !Number.isFinite(eq.close_usd) || eq.close_usd <= 0) return false;
+  const eq = stmtEquityLatest.get(ticker) as { close: number; currency: string } | undefined;
+  if (eq == null || !Number.isFinite(eq.close) || eq.close <= 0) return false;
+  if (eq.currency === "clp") return true;
   const fx = stmtFxLatest.get() as { clp_per_usd: number } | undefined;
   return fx != null && Number.isFinite(fx.clp_per_usd) && fx.clp_per_usd > 0;
 }
@@ -85,7 +86,7 @@ export function tickersWithData(tickers: string[]): string[] {
 /**
  * Price in CLP for a ticker at or before `ymd`.
  * - Fund series (e.g. fintual_cert_reserva2): fund_unit_daily.unit_value_clp
- * - Equity (SPY, VEA, etc.): equity_daily.close_usd × fx_daily.clp_per_usd
+ * - Equity (SPY, VEA, etc.): equity_daily.close × fx_daily.clp_per_usd (CLP-quoted tickers use close directly)
  *
  * If no real price exists at/before `ymd`, projects forward from the last known
  * price using the UF YoY annual rate (for future open-month pay_by dates).
@@ -118,20 +119,23 @@ export function priceClpForTickerAt(
     };
   }
 
-  // Equity ticker: needs USD price + CLP/USD FX
+  // Equity ticker: quote-currency price (+ CLP/USD FX for USD-quoted tickers)
   const eodRow = db
     .prepare(
-      `SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
+      `SELECT trade_date, close, currency FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
     )
-    .get(ticker, ymd) as { trade_date: string; close_usd: number } | undefined;
+    .get(ticker, ymd) as { trade_date: string; close: number; currency: string } | undefined;
 
-  if (eodRow != null && Number.isFinite(eodRow.close_usd) && eodRow.close_usd > 0) {
+  if (eodRow != null && Number.isFinite(eodRow.close) && eodRow.close > 0) {
+    if (eodRow.currency === "clp") {
+      return { priceClp: eodRow.close, projected: false, lastRealDate: eodRow.trade_date };
+    }
     const fx = fxRowOnOrBefore(eodRow.trade_date);
     if (fx == null || fx.clp_per_usd <= 0) {
       throw new Error(`ccInvestmentProxy: no FX rate for date ${eodRow.trade_date} (ticker ${ticker})`);
     }
     return {
-      priceClp: eodRow.close_usd * fx.clp_per_usd,
+      priceClp: eodRow.close * fx.clp_per_usd,
       projected: false,
       lastRealDate: eodRow.trade_date,
     };
@@ -139,16 +143,23 @@ export function priceClpForTickerAt(
 
   // Project forward from latest
   const latest = stmtEquityLatest.get(ticker) as
-    | { trade_date: string; close_usd: number }
+    | { trade_date: string; close: number; currency: string }
     | undefined;
-  if (latest == null || !Number.isFinite(latest.close_usd) || latest.close_usd <= 0) {
+  if (latest == null || !Number.isFinite(latest.close) || latest.close <= 0) {
     throw new Error(`ccInvestmentProxy: no price data for equity ticker "${ticker}"`);
+  }
+  if (latest.currency === "clp") {
+    return {
+      priceClp: projectPrice(latest.close, latest.trade_date, ymd),
+      projected: true,
+      lastRealDate: latest.trade_date,
+    };
   }
   const fxRow = (stmtFxLatest.get() as { date: string; clp_per_usd: number } | undefined);
   if (fxRow == null || fxRow.clp_per_usd <= 0) {
     throw new Error(`ccInvestmentProxy: no FX data for equity projection (ticker ${ticker})`);
   }
-  const lastKnownClp = latest.close_usd * fxRow.clp_per_usd;
+  const lastKnownClp = latest.close * fxRow.clp_per_usd;
   return {
     priceClp: projectPrice(lastKnownClp, latest.trade_date, ymd),
     projected: true,
