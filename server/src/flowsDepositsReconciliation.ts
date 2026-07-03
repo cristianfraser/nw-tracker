@@ -1,7 +1,11 @@
 import { db } from "./db.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { SAVINGS_EARNINGS_FLOW_KIND } from "./accountDeposits.js";
-import { loadBestLinkSourceByMovementId } from "./expenseDepositLinks.js";
+import {
+  computeManualDepositAssertions,
+  loadBestLinkSourceByMovementId,
+} from "./expenseDepositLinks.js";
+import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsCreditCardExpenses.js";
 import { depositFlowCategoryFromGroupSlug, listDepositFlowAccounts, type DepositFlowCategory } from "./flowsDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
@@ -78,12 +82,34 @@ export type DepositRedemptionRow = {
   status: DepositRedemptionStatus;
 };
 
+// Checking outflows the user manually categorized as `deposits` — an assertion that a matching
+// deposit exists even though the auto-matcher couldn't pair it. `linked` = the relaxed assertion
+// pass found exactly one candidate (link written at gastos sync); `asserted_unmatched` = zero or
+// several candidates — surfaced instead of guessed.
+export type DepositManualAssertionStatus = "linked" | "asserted_unmatched";
+
+export type DepositManualAssertionRow = {
+  purchase_key: string;
+  account_id: number;
+  account_name: string;
+  occurred_on: string;
+  merchant: string | null;
+  amount_clp: number;
+  amount_usd: number | null;
+  deposit_movement_id: number | null;
+  deposit_account_id: number | null;
+  deposit_account_name: string | null;
+  candidate_count: number;
+  status: DepositManualAssertionStatus;
+};
+
 export type DepositReconciliationPayload = {
   rows: DepositReconciliationRow[];
   by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals>;
   by_month: DepositReconciliationByMonth[];
   redemptions: DepositRedemptionRow[];
   redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals>;
+  manual_assertions: DepositManualAssertionRow[];
   fx_conversion_error: boolean;
   fx_conversion_warnings: FxConversionWarning[];
 };
@@ -414,6 +440,43 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   // days and mark both `resolved_internal_transfer` — they net out and are out of reconciliation scope.
   resolveInternalNetWorthTransfers(rows, redemptions);
 
+  // Manually-asserted `deposits` outflows: recompute the assertion pass (same deterministic logic
+  // that wrote the auto links at gastos sync) so every asserted line is visible here — linked when
+  // a unique candidate existed, asserted_unmatched otherwise (never guessed).
+  const accountNameStmt = db.prepare(`SELECT name FROM accounts WHERE id = ?`);
+  const accountNameFor = (accountId: number | null): string | null => {
+    if (accountId == null) return null;
+    const fromMap = accountMap.get(accountId)?.name;
+    if (fromMap != null) return fromMap;
+    const row = accountNameStmt.get(accountId) as { name: string } | undefined;
+    return row?.name ?? null;
+  };
+  const manual_assertions: DepositManualAssertionRow[] = computeManualDepositAssertions(
+    loadFinalizedCheckingGastosLinesReadOnly()
+  ).map((a) => {
+    const amount_usd_raw = clpToUsdAtDate(a.amount_clp, a.occurred_on);
+    if ((amount_usd_raw == null || !Number.isFinite(amount_usd_raw)) && a.amount_clp !== 0) {
+      fxError = true;
+    }
+    return {
+      purchase_key: a.purchase_key,
+      account_id: a.account_id,
+      account_name: accountNameFor(a.account_id) ?? String(a.account_id),
+      occurred_on: a.occurred_on,
+      merchant: a.merchant,
+      amount_clp: a.amount_clp,
+      amount_usd: amount_usd_raw != null && Number.isFinite(amount_usd_raw) ? amount_usd_raw : null,
+      deposit_movement_id: a.deposit_movement_id,
+      deposit_account_id: a.deposit_account_id,
+      deposit_account_name: accountNameFor(a.deposit_account_id),
+      candidate_count: a.candidate_count,
+      status: a.deposit_movement_id != null ? "linked" : "asserted_unmatched",
+    };
+  });
+  manual_assertions.sort(
+    (a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.purchase_key.localeCompare(b.purchase_key)
+  );
+
   rows.sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.account_name.localeCompare(b.account_name));
   redemptions.sort(
     (a, b) => b.occurred_on.localeCompare(a.occurred_on) || a.account_name.localeCompare(b.account_name)
@@ -487,6 +550,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     by_month,
     redemptions,
     redemptions_by_status,
+    manual_assertions,
     fx_conversion_error: fxError,
     fx_conversion_warnings: takeFxConversionWarnings(),
   };

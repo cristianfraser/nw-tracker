@@ -982,6 +982,22 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   return lines;
 }
 
+/**
+ * Read-only finalized checking gastos lines (resolved purchase keys + purchase notes) for
+ * consumers that need the matcher's view of checking outflows WITHOUT the
+ * `syncExpenseDepositLinksFromGastosLines` side effect — syncing from a checking-only subset
+ * would wipe the CC-derived auto links. Used by the deposits reconciliation to classify
+ * manually-asserted `deposits` outflows.
+ */
+export function loadFinalizedCheckingGastosLinesReadOnly(): Omit<
+  FlowCcExpenseLineRow,
+  "origin_label" | "big_group_slug"
+>[] {
+  return enrichFlowLinesWithPurchaseNotes(
+    expandLineSplitsInDrafts(loadCheckingGastosLinesForExpenses())
+  );
+}
+
 function expandLineSplitsInDrafts(
   drafts: readonly FlowCcExpenseLineRowDraft[]
 ): FlowCcExpenseLineRowDraft[] {
