@@ -21,7 +21,7 @@ import { useDailyRateTailClip } from "./ratesDailyTailClip";
 const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
 const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
 import { Table } from "../components/ui/Table";
-import { formatClp, formatUsdFine } from "../format";
+import { formatClp, formatGroupedDecimal, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
 import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/charts/ValuationLineCharts";
 import { cn } from "../cn";
@@ -56,7 +56,7 @@ function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): Inst
 }
 
 function formatIpcIndex(n: number): string {
-  return new Intl.NumberFormat("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(n);
+  return formatGroupedDecimal(n, 1, 2);
 }
 
 function seriesFromPoints(

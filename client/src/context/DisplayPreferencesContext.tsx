@@ -7,6 +7,12 @@ import {
   type ReactNode,
 } from "react";
 import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import { setDecimalSeparatorForFormatting } from "../format";
+import {
+  persistDecimalSeparator,
+  readInitialDecimalSeparator,
+  type DecimalSeparator,
+} from "../numberFormatPreference";
 import type { DisplayUnit } from "../queries/keys";
 
 const LS_UNIT = "nw-tracker.displayUnit";
@@ -43,6 +49,9 @@ type DisplayPreferencesContextValue = {
   /** MTD vs YTD for card metrics, title deltas, and dashboard chart rollups (`month` = MTD, `year` = YTD). */
   metricsPeriod: CardGroupMetricsPeriod;
   setMetricsPeriod: (p: CardGroupMetricsPeriod) => void;
+  /** Separator convention shared by every number, whatever the display currency. */
+  decimalSeparator: DecimalSeparator;
+  setDecimalSeparator: (s: DecimalSeparator) => void;
 };
 
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
@@ -50,6 +59,9 @@ const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue |
 export function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
   const [displayUnit, setDisplayUnitState] = useState<DisplayUnit>(readStoredUnit);
   const [metricsPeriod, setMetricsPeriodState] = useState<CardGroupMetricsPeriod>(readStoredMetricsPeriod);
+  const [decimalSeparator, setDecimalSeparatorState] = useState<DecimalSeparator>(
+    readInitialDecimalSeparator
+  );
 
   const setDisplayUnit = useCallback((u: DisplayUnit) => {
     setDisplayUnitState(u);
@@ -69,14 +81,23 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     }
   }, []);
 
+  const setDecimalSeparator = useCallback((s: DecimalSeparator) => {
+    // Update the module-level formatter locale before React re-renders.
+    setDecimalSeparatorForFormatting(s);
+    persistDecimalSeparator(s);
+    setDecimalSeparatorState(s);
+  }, []);
+
   const value = useMemo(
     (): DisplayPreferencesContextValue => ({
       displayUnit,
       setDisplayUnit,
       metricsPeriod,
       setMetricsPeriod,
+      decimalSeparator,
+      setDecimalSeparator,
     }),
-    [displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod]
+    [displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod, decimalSeparator, setDecimalSeparator]
   );
 
   return (

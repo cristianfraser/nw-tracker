@@ -38,7 +38,6 @@ function PctCell({
   return (
     <DeltaMetricFlow
       delta={value}
-      showUsd={false}
       deltaFormat="percent"
       fractionDigits={2}
       mountSeedId={`${seedId}-${col}`}

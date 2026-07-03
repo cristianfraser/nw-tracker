@@ -10,7 +10,8 @@ import styles from "./AppDisplayPreferencesBar.module.css";
  */
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();
-  const { displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod } = useDisplayPreferences();
+  const { displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod, decimalSeparator, setDecimalSeparator } =
+    useDisplayPreferences();
   const dashboardFetching = useIsFetching({
     predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "dashboard",
   });
@@ -66,6 +67,27 @@ export function AppDisplayPreferencesBar() {
             onChange={() => setMetricsPeriod("year")}
           />{" "}
           {t("dashboard.yearly")}
+        </label>
+        <span className="muted" style={{ marginLeft: "1.25rem" }}>
+          {t("app.displayPreferences.numberFormat")}{" "}
+        </span>
+        <label>
+          <input
+            type="radio"
+            name="nw-global-ds"
+            checked={decimalSeparator === "comma"}
+            onChange={() => setDecimalSeparator("comma")}
+          />{" "}
+          <span className="mono">1.234,56</span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="nw-global-ds"
+            checked={decimalSeparator === "period"}
+            onChange={() => setDecimalSeparator("period")}
+          />{" "}
+          <span className="mono">1,234.56</span>
         </label>
           </div>
         </div>

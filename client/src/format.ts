@@ -1,27 +1,44 @@
+import {
+  numberLocaleForSeparator,
+  readInitialDecimalSeparator,
+  type DecimalSeparator,
+  type NumberLocale,
+} from "./numberFormatPreference";
+
 /** Narrow / figure spaces from Intl — normalize for mono display */
 function normalizeIntlNum(s: string): string {
   return s.replace(/\u202f|\u2007|\u00a0/g, " ").trim();
 }
 
-const intEsCl = new Intl.NumberFormat("es-CL", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
+/**
+ * One separator convention for every number in the app, regardless of the
+ * currency displayed (see numberFormatPreference.ts). Module-level so plain
+ * format helpers follow the toggle without threading React context; AppTree
+ * consumes the display-preferences context, so a change re-renders the whole
+ * tree and every render-time format call re-runs. Do not cache formatted
+ * strings in useMemo/state without `decimalSeparator` in the deps — memoize
+ * raw numbers and format at render time instead.
+ */
+let numberLocale: NumberLocale = numberLocaleForSeparator(readInitialDecimalSeparator());
 
-const intEnUs = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
+export function setDecimalSeparatorForFormatting(sep: DecimalSeparator): void {
+  numberLocale = numberLocaleForSeparator(sep);
+}
 
-const usdFineNum = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const numFmtCache = new Map<string, Intl.NumberFormat>();
 
-const ufUnitsFmt = new Intl.NumberFormat("es-CL", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
+function numFmt(minFrac: number, maxFrac: number): Intl.NumberFormat {
+  const key = `${numberLocale}|${minFrac}|${maxFrac}`;
+  let f = numFmtCache.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(numberLocale, {
+      minimumFractionDigits: minFrac,
+      maximumFractionDigits: maxFrac,
+    });
+    numFmtCache.set(key, f);
+  }
+  return f;
+}
 
 /** Matches `@number-flow/react` `format` prop (subset of `Intl.NumberFormatOptions`). */
 export const NUMBER_FLOW_INT_FORMAT = {
@@ -38,18 +55,19 @@ const CURRENCY_SYMBOL: Record<Exclude<CurrencyDisplayUnit, "usd-fine">, string> 
 };
 
 function intlFormatter(unit: CurrencyDisplayUnit): Intl.NumberFormat {
-  if (unit === "usd-fine") return usdFineNum;
-  return unit === "clp" ? intEsCl : intEnUs;
-}
-
-function currencyLocales(unit: CurrencyDisplayUnit): string {
-  return unit === "clp" ? "es-CL" : "en-US";
+  return unit === "usd-fine" ? numFmt(2, 2) : numFmt(0, 0);
 }
 
 /** Grouped digits with up to 2 fraction digits; trailing zeros omitted (e.g. `902`, `40,41`). */
 export function formatGroupedDecimalTrimmed(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  return normalizeIntlNum(ufUnitsFmt.format(n));
+  return normalizeIntlNum(numFmt(0, 2).format(n));
+}
+
+/** Grouped digits with a fixed fraction-digit range in the active separator convention. */
+export function formatGroupedDecimal(n: number, minFrac: number, maxFrac = minFrac): string {
+  if (!Number.isFinite(n)) return "—";
+  return normalizeIntlNum(numFmt(minFrac, maxFrac).format(n));
 }
 
 /**
@@ -67,23 +85,18 @@ export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): st
   return body;
 }
 
-/** Whole pesos: `$` + es-CL thousands (e.g. `$95.817.344`; negative `($1.234)`). */
+/** Whole pesos: `$` + grouped thousands (e.g. `$95.817.344`; negative `($1.234)`). */
 export function formatClp(n: number): string {
   return formatCurrency(n, "clp");
 }
 
-const clpUfDayFmt = new Intl.NumberFormat("es-CL", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-/** CLP per 1 UF (UF día) — `$` + es-CL with exactly 2 decimals (e.g. `$40.763,45`). */
+/** CLP per 1 UF (UF día) — `$` + exactly 2 decimals (e.g. `$40.763,45`). */
 export function formatClpUfDay(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `$${normalizeIntlNum(clpUfDayFmt.format(n))}`;
+  return `$${normalizeIntlNum(numFmt(2, 2).format(n))}`;
 }
 
-/** Whole USD: `US$` + en-US thousands (e.g. `US$123,456`; negative `(US$1,234)`). */
+/** Whole USD: `US$` + grouped thousands (e.g. `US$123.456`; negative `(US$1.234)`). */
 export function formatUsd(n: number): string {
   return formatCurrency(n, "usd");
 }
@@ -124,7 +137,7 @@ export function accountingCurrencyNumberFlowParts(
       value: abs,
       prefix: `(${symbol}`,
       suffix: ")",
-      locales: currencyLocales(unit),
+      locales: numberLocale,
       format: NUMBER_FLOW_INT_FORMAT,
     };
   }
@@ -132,7 +145,7 @@ export function accountingCurrencyNumberFlowParts(
     value: abs,
     prefix: symbol,
     suffix: "",
-    locales: currencyLocales(unit),
+    locales: numberLocale,
     format: NUMBER_FLOW_INT_FORMAT,
   };
 }
@@ -169,7 +182,7 @@ export function plainPercentNumberFlowParts(
   return {
     value: Math.abs(Math.round(n * factor) / factor),
     suffix: "%",
-    locales: "en-US",
+    locales: numberLocale,
     format: {
       minimumFractionDigits: fd,
       maximumFractionDigits: fd,
@@ -181,7 +194,6 @@ export function plainPercentNumberFlowParts(
 /** Plain grouped amount for NumberFlow (no sign, no currency) — use color/icon for direction. */
 export function plainNumberFlowParts(
   n: number,
-  unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp",
   fractionDigits = 0
 ): {
   value: number;
@@ -192,7 +204,7 @@ export function plainNumberFlowParts(
   const factor = 10 ** fd;
   return {
     value: Math.abs(Math.round(n * factor) / factor),
-    locales: currencyLocales(unit),
+    locales: numberLocale,
     format: {
       minimumFractionDigits: fd,
       maximumFractionDigits: fd,
@@ -204,30 +216,21 @@ export function plainNumberFlowParts(
 /** ETF shares or crypto coin units (no currency symbol) */
 export function formatInstrumentUnits(n: number, kind: "shares" | "coin") {
   const max = kind === "coin" ? 8 : 6;
-  return normalizeIntlNum(
-    new Intl.NumberFormat("es-CL", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: max,
-    }).format(n)
-  );
+  return normalizeIntlNum(numFmt(0, max).format(n));
 }
 
-/** Values already in UF units (e.g. CLP / clp_per_uf) — suffix ` UF`, es-CL decimals. */
+/** Values already in UF units (e.g. CLP / clp_per_uf) — suffix ` UF`, up to 2 decimals. */
 export function formatUfUnits(uf: number): string {
   if (!Number.isFinite(uf)) return "—";
   // NBSP keeps the unit attached to the number so line wrapping can't split "123,45 UF".
-  return `${normalizeIntlNum(ufUnitsFmt.format(uf))}\u00A0UF`;
+  return `${normalizeIntlNum(numFmt(0, 2).format(uf))}\u00A0UF`;
 }
 
 /** UF with up to 4 decimals (tables / certificates). */
 export function formatUfUnitsFine(uf: number | null | undefined): string {
   if (uf == null || !Number.isFinite(uf)) return "—";
-  const s = new Intl.NumberFormat("es-CL", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 4,
-  }).format(uf);
   // NBSP keeps the unit attached to the number so line wrapping can't split "123,45 UF".
-  return `${normalizeIntlNum(s)}\u00A0UF`;
+  return `${normalizeIntlNum(numFmt(0, 4).format(uf))}\u00A0UF`;
 }
 
 /** Mortgage / loan remaining balance — up to 4 UF decimals, no trailing zeros. */
@@ -242,7 +245,7 @@ export function formatOrDash(value: number | null | undefined, fmt: (n: number) 
 
 export type PieMoneyUnit = "clp" | "usd";
 
-/** Legend / tooltips on pies: CLP whole pesos; USD with cents and en-US grouping. */
+/** Legend / tooltips on pies: CLP whole pesos; USD with cents. */
 export function formatMoneyForPie(v: number, unit: PieMoneyUnit): string {
   return unit === "usd" ? formatUsdFine(v) : formatClp(v);
 }

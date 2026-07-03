@@ -96,7 +96,6 @@ function MetricsRow({
       <span className={styles.deltaWrap} title={deltaLabel}>
         <DeltaMetricFlow
           delta={delta}
-          showUsd={showUsd}
           animated={animated}
           placeholderPhase={placeholderPhase}
           mountSeedId={`${cardSlug}:delta:${rowKey}`}
