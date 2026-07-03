@@ -20,9 +20,15 @@ export function navColorTargetFromDto(dto: NavTreeNodeDto): EntityColorTarget | 
   return { kind: "portfolio_group", slug: dto.slug };
 }
 
+/** Inactive buckets stay in the payload for group pages; the sidebar hides them. */
+function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
+  return dtos.filter((c) => c.chart_inactive !== true);
+}
+
 function mapNode(dto: NavTreeNodeDto): SidebarNavNode {
+  const visible = visibleNavChildren(dto.children);
   const childDtos =
-    dto.children.length > 0 ? sortNavTreeLeavesFirst(dto.children).map(mapNode) : undefined;
+    visible.length > 0 ? sortNavTreeLeavesFirst(visible).map(mapNode) : undefined;
   const children = childDtos && childDtos.length > 0 ? childDtos : undefined;
   return {
     id: dto.node_id,
@@ -49,7 +55,7 @@ export function buildSidebarNavFromApi(payload: SidebarNavResponse): SidebarNavN
     const homeLabel = resolveNetWorthGroupLabel(payload);
     out.push({ ...mapNode(payload.dashboard), label: homeLabel });
   }
-  for (const n of payload.main) out.push(mapNode(n));
+  for (const n of visibleNavChildren(payload.main)) out.push(mapNode(n));
   if (payload.flows) out.push(mapNode(payload.flows));
   if (payload.rates) out.push(mapNode(payload.rates));
   return out;

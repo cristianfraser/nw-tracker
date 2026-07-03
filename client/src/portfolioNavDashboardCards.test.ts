@@ -3,6 +3,8 @@ import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
   mainValueAndMetricsForNavChild,
+  inactiveAccountNavLeavesWithPeriodActivity,
+  navChildCardHasPeriodActivity,
   navLeafAccountIdSet,
   navMetricsAccountIdSet,
   portfolioNavParentMainValue,
@@ -654,3 +656,105 @@ describe("mainValueAndMetricsForNavChild", () => {
   });
 });
 
+
+describe("navChildCardHasPeriodActivity", () => {
+  /** Wound-down bucket: only account is chart-inactive at $0, activity only in the year window. */
+  const inactiveMutualFundsNode: NavTreeNodeDto = {
+    slug: "brokerage_mutual_funds",
+    label: "Mutual funds",
+    route_path: "/inversiones/brokerage/mutual-funds",
+    portfolio_group_id: 1,
+    chart_inactive: true,
+    children: [],
+  } as NavTreeNodeDto;
+  const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
+    accounts: [
+      {
+        ...dashRow(45, 0, "brokerage__mutual_funds"),
+        chart_inactive: true,
+        deposits_month_clp: 0,
+        delta_month_clp: 0,
+        prior_month_close_clp: 0,
+        deposits_year_clp: -21_000_000,
+        delta_year_clp: 300_000,
+        prior_year_close_clp: 20_700_000,
+      },
+    ],
+    dashboard_layout: [],
+    totals: testTotals({
+      net_worth_clp: 0,
+      real_estate_clp: 0,
+      retirement_clp: 0,
+      brokerage_clp: 0,
+      cash_eqs_clp: 0,
+    }),
+  };
+
+  it("reports no activity for the month view (zero balance, zero month flows)", () => {
+    expect(navChildCardHasPeriodActivity(dash, [], inactiveMutualFundsNode, "month", false)).toBe(
+      false
+    );
+  });
+
+  it("reports activity for the year view (year flows and Δ nonzero)", () => {
+    expect(navChildCardHasPeriodActivity(dash, [], inactiveMutualFundsNode, "year", false)).toBe(
+      true
+    );
+  });
+});
+
+describe("inactiveAccountNavLeavesWithPeriodActivity", () => {
+  const mutualFundsNode: NavTreeNodeDto = {
+    slug: "brokerage_mutual_funds",
+    label: "Mutual funds",
+    route_path: "/inversiones/brokerage/mutual-funds",
+    portfolio_group_id: 1,
+    chart_inactive: true,
+    children: [],
+  } as NavTreeNodeDto;
+  const inactiveRow = {
+    ...dashRow(45, 0, "brokerage__mutual_funds", "caca daca"),
+    chart_inactive: true,
+    deposits_month_clp: 0,
+    delta_month_clp: 0,
+    prior_month_close_clp: 0,
+    deposits_year_clp: -21_000_000,
+    delta_year_clp: 300_000,
+    prior_year_close_clp: 20_700_000,
+  };
+  const dash = { accounts: [inactiveRow] };
+
+  it("synthesizes a leaf card only for the period with activity", () => {
+    expect(inactiveAccountNavLeavesWithPeriodActivity(dash, mutualFundsNode, [], "month")).toEqual(
+      []
+    );
+    const year = inactiveAccountNavLeavesWithPeriodActivity(dash, mutualFundsNode, [], "year");
+    expect(year.map((n) => n.account_id)).toEqual([45]);
+    expect(year[0]!.route_path).toBe("/account/45");
+    expect(year[0]!.chart_inactive).toBe(true);
+  });
+
+  it("skips rows already covered by a group-child detail card", () => {
+    const brokerageNode: NavTreeNodeDto = {
+      slug: "brokerage",
+      label: "Brokerage",
+      route_path: "/inversiones/brokerage",
+      children: [mutualFundsNode],
+    } as NavTreeNodeDto;
+    expect(
+      inactiveAccountNavLeavesWithPeriodActivity(dash, brokerageNode, [mutualFundsNode], "year")
+    ).toEqual([]);
+  });
+
+  it("skips accounts that are still nav leaves (active)", () => {
+    const parentWithLeaf: NavTreeNodeDto = {
+      slug: "brokerage_mutual_funds",
+      label: "Mutual funds",
+      route_path: "/inversiones/brokerage/mutual-funds",
+      children: [leafAccount(45)],
+    } as NavTreeNodeDto;
+    expect(
+      inactiveAccountNavLeavesWithPeriodActivity(dash, parentWithLeaf, [], "year")
+    ).toEqual([]);
+  });
+});

@@ -9,7 +9,7 @@ import {
   hasMaterialDashboardBalance,
   isChartActiveAccount,
 } from "./accountGroupTotals";
-import { brokerageAccountNavLabel, retirementAccountNavLabel } from "./navAccountLabels";
+import { dashboardAccountNavLabel } from "./navAccountLabels";
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
 import { stripChartBucketNavNodes } from "./navChartBuckets";
 import {
@@ -17,26 +17,11 @@ import {
   portfolioStripGroupChildren,
 } from "./portfolioNavFromApi";
 import { resolveNavTreeLabel } from "./sidebarNavFromApi";
-import type { AccountListRow, DashboardAccountRow, NavTreeNodeDto } from "./types";
+import type { DashboardAccountRow, NavTreeNodeDto } from "./types";
 
 
 function accountDetailPath(accountId: number): string {
   return `/account/${accountId}`;
-}
-
-function asNavRow(a: DashboardAccountRow): AccountListRow {
-  return {
-    id: a.account_id,
-    name: a.name,
-    notes: a.notes ?? null,
-    created_at: "",
-    category_slug: a.category_slug,
-    category_label: a.category_label,
-    group_slug: a.group_slug,
-    group_label: a.group_label,
-    bucket_slug: a.bucket_slug,
-    bucket_label: a.bucket_label,
-  };
 }
 
 function valueRows(rows: DashboardAccountRow[]): DashboardAccountRow[] {
@@ -68,20 +53,13 @@ function sortByClpDesc<T extends { clp: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.clp - a.clp);
 }
 
-function accountBreakdownLabel(row: DashboardAccountRow): string {
-  const dash = row.dashboard_bucket_slug;
-  if (dash === "brokerage") return brokerageAccountNavLabel(asNavRow(row));
-  if (dash === "retirement") return retirementAccountNavLabel(asNavRow(row));
-  return row.name;
-}
-
 function accountLines(
   rows: DashboardAccountRow[],
   depth: 1 | 2
 ): CardBreakdownLine[] {
   return sortByClpDesc(
     rows.map((r) => ({
-      label: accountBreakdownLabel(r),
+      label: dashboardAccountNavLabel(r),
       clp: r.current_value_clp ?? 0,
       usd: r.current_value_usd ?? null,
       depth,
