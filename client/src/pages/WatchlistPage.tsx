@@ -2,7 +2,7 @@ import { FormEvent, Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { Table } from "../components/ui/Table";
-import { formatClp, formatUsdFine } from "../format";
+import { formatClp, formatPct, formatUsdFine } from "../format";
 import { useTranslation } from "../i18n";
 import {
   useAddWatchlistTicker,
@@ -211,7 +211,7 @@ function WatchlistTable({
           })}
           {expandCompositeHoldings && row.kind === "composite" && row.composite_holdings?.length
             ? row.composite_holdings.map((holding) => {
-                const weightPct = `${(holding.weight * 100).toFixed(1)}%`;
+                const weightPct = formatPct(holding.weight * 100, 1);
                 return (
                   <Fragment key={`${row.id}-${holding.ticker}`}>
                     {watchlistTr({

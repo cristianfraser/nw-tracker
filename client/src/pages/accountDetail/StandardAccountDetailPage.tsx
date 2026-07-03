@@ -6,7 +6,7 @@ import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
 import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
-import { formatClp, formatInstrumentUnits } from "../../format";
+import { formatClp, formatGroupedDecimal, formatInstrumentUnits, formatPct } from "../../format";
 import { cn } from "../../cn";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
@@ -230,7 +230,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   </td>
                   <td className="mono">
                     {summary.position?.return_on_deposited_pct != null
-                      ? `${(summary.position.return_on_deposited_pct * 100).toFixed(2)}%`
+                      ? formatPct(summary.position.return_on_deposited_pct * 100)
                       : "—"}
                   </td>
                   <td className="mono">
@@ -262,7 +262,7 @@ export function StandardAccountDetailPage({ data }: Props) {
             <tr>
               <td className="mono">
                 {data.accountDashRow?.current_value_usd != null
-                  ? data.accountDashRow.current_value_usd.toFixed(2)
+                  ? formatGroupedDecimal(data.accountDashRow.current_value_usd, 2)
                   : "—"}
               </td>
               <td className="mono">

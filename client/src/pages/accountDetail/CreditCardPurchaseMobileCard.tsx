@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { CcInstallmentPurchaseComputed, CcProxyLotResult } from "../../types";
-import { formatClp } from "../../format";
+import { formatClp, formatGroupedDecimal, formatPct } from "../../format";
 import { cn } from "../../cn";
 import {
   TableMobileCard,
@@ -74,7 +74,7 @@ export function CreditCardPurchaseMobileCard({
         {!hasLedger ? (
           <TableMobileCardRow
             label="Tasa % anual"
-            value={purchase.annual_interest_pct.toFixed(2).replace(".", ",")}
+            value={formatGroupedDecimal(purchase.annual_interest_pct, 2)}
           />
         ) : null}
         <TableMobileCardRow label="Mes compra" value={purchase.purchase_month ?? "—"} />
@@ -138,7 +138,7 @@ export function CreditCardPurchaseMobileCard({
             let proxyInline: string | null = null;
             if (cuota) {
               const sign = cuota.accumulated_gain_clp >= 0 ? "+" : "";
-              proxyInline = `ret. acum. ${ticker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${cuota.accumulated_return_pct.toFixed(2)}%)`;
+              proxyInline = `ret. acum. ${ticker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${formatPct(cuota.accumulated_return_pct)})`;
             }
             return (
               <div key={`${purchase.purchase_id}:st:${st.pay_by_date}`} className={cn("mono", "muted", styles.purchaseMeta)}>

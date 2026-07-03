@@ -4,6 +4,7 @@ import {
   formatClpUfDay,
   formatCcExpenseLineAmount,
   formatGroupedDecimal,
+  formatPct,
   formatUsd,
   formatUsdFine,
   setDecimalSeparatorForFormatting,
@@ -22,6 +23,21 @@ describe("formatClp", () => {
 
   it("returns em dash for non-finite values", () => {
     expect(formatClp(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatPct", () => {
+  it("follows the active separator convention", () => {
+    setDecimalSeparatorForFormatting("comma");
+    expect(formatPct(12.345)).toBe("12,35%");
+    expect(formatPct(-3.2, 1)).toBe("-3,2%");
+    setDecimalSeparatorForFormatting("period");
+    expect(formatPct(12.345)).toBe("12.35%");
+  });
+
+  it("returns em dash for null and non-finite values", () => {
+    expect(formatPct(null)).toBe("—");
+    expect(formatPct(Number.NaN)).toBe("—");
   });
 });
 
