@@ -156,7 +156,6 @@ export function listCreditCardMasterAccountIds(): number[] {
 export function listCreditCardGroupMasterAccountIds(groupSlug: string): number[] {
   const groups = loadCreditCardGroups();
   const items = loadCreditCardGroupItems();
-  const groupsById = new Map(groups.map((g) => [g.id, g]));
   const itemsByGroup = new Map<number, CreditCardGroupItemRow[]>();
   for (const item of items) {
     const arr = itemsByGroup.get(item.group_id) ?? [];

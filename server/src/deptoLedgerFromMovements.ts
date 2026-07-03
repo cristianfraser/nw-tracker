@@ -28,7 +28,6 @@ import {
 import {
   computeMortgagePaymentAnalytics,
   mortgageAnalyticsMetaFromLedger,
-  roundUf4,
 } from "./mortgagePaymentAnalytics.js";
 import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 

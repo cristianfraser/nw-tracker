@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       console.warn(`skip goal ${g.id}: no asset_id`);
       continue;
     }
-    const { assetId, byDate } = best;
+    const { byDate } = best;
     for (const importNotes of notesTargets) {
       const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
       const acc = accStmt.get(importNotes) as { id: number } | undefined;

@@ -3,7 +3,6 @@ import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import {
   loadCcStatementLineExpenseCtx,
   stableCcExpensePurchaseKeyFromCtx,
-  type CcStatementLineExpenseCtx,
 } from "./ccExpenseCategories.js";
 
 export type CcExpenseCategorySnapshot = {

@@ -1,6 +1,9 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import {
+  describe,
+  expect,
+  it,
+} from "vitest";
 import {
   cartolaMovementDedupeKey,
   movementNote,
@@ -10,7 +13,6 @@ import {
 } from "./checkingCartolaParse.js";
 import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe("checkingCartolaParse", () => {
   it("parses period month from Spanish file name", () => {

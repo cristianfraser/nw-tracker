@@ -29,10 +29,14 @@ import {
 } from "./fintualPublishDate.js";
 import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
-import { utcTodayYmd } from "./nyseSession.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
-import { maxEurDateOnOrBefore, maxFxBcentralDateOnOrBefore, maxUfDate, safeMaxUtmMonthParts } from "./sbifSyncDb.js";
+import {
+  maxEurDateOnOrBefore,
+  maxFxBcentralDateOnOrBefore,
+  maxUfDate,
+  safeMaxUtmMonthParts,
+} from "./sbifSyncDb.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 
 /**

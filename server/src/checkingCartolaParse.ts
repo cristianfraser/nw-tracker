@@ -490,7 +490,7 @@ export function parseCheckingCartolaWorkbook(
       continue;
     }
 
-    for (const { kind, amount } of entries) {
+    for (const { amount } of entries) {
       movements.push({
         occurred_on: occurredOn,
         amount_clp: amount,

@@ -6,9 +6,7 @@ import {
   restoreCcExpenseCategories,
   snapshotCcExpenseCategories,
 } from "./ccExpenseCategoryPersist.js";
-import {
-  applyAdditionalCardNoCuentaForLine,
-} from "./ccAdditionalCardExpenseMatch.js";
+import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
   canonicalCcLineDedupeKeys,
   ccLineDedupeKeyExistsOnAccount,
@@ -303,7 +301,6 @@ export function importCcStatementsMerge(
       const amountClp = parseInt10(String(row.amount_clp ?? ""));
       const amountUsd = parseUsdAmount(String(row.amount_usd ?? ""));
       const dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
-      const dedupeKey = dedupeKeys[0] ?? null;
 
       if (dedupeKeys.length > 0) {
         const batchHit = dedupeKeys.some((k) => seenDedupeInBatch.has(k));

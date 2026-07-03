@@ -17,12 +17,6 @@ const groupIdBySlug = db.prepare(`SELECT id FROM liability_groups WHERE slug = ?
 
 const deleteGroupItems = db.prepare(`DELETE FROM liability_group_items WHERE group_id = ?`);
 
-const insertGroupChild = db.prepare(`
-  INSERT INTO liability_group_items (group_id, item_kind, child_group_id, sort_order)
-  VALUES (?, 'group', ?, ?)
-  ON CONFLICT(group_id, child_group_id) DO UPDATE SET sort_order = excluded.sort_order
-`);
-
 const insertAccountChild = db.prepare(`
   INSERT INTO liability_group_items (group_id, item_kind, account_id, sort_order)
   VALUES (?, 'account', ?, ?)

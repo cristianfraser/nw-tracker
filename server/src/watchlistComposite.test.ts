@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import { db } from "./db.js";
 import {
   basketUsdForHoldings,
@@ -6,7 +11,6 @@ import {
   loadCompositeHoldings,
   loadCompositeMeta,
   proxyClpFromMeta,
-  RISKY_NORRIS_PROXY_BUCKET,
   type CompositeHolding,
 } from "./watchlistComposite.js";
 import { watchlistStatsForRow } from "./watchlistStats.js";

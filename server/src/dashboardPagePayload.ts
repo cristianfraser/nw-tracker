@@ -1,12 +1,8 @@
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
-import {
-  buildFlowsDepositsPayload,
-  inversionesBrokerageDepositsSeries,
-} from "./flowsDeposits.js";
+import { buildFlowsDepositsPayload, inversionesBrokerageDepositsSeries } from "./flowsDeposits.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
@@ -14,7 +10,11 @@ import { isNwDashboardBucketSlug, portfolioGroupValueClpAt } from "./portfolioGr
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
 import { netWorthCurrentMonthMetrics } from "./netWorthConsolidation.js";
-import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
+import {
+  timeHeavy,
+  timeHeavyAsync,
+  HeavyWork,
+} from "./heavyWork.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 

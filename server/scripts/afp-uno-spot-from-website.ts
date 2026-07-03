@@ -9,11 +9,7 @@
 import "../src/db.js";
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { fetchUnoClFondoAValorCuota } from "../src/afpUnoWebsiteCuota.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "../src/afpQuetalmiApi.js";
-import {
-  upsertAfpSpotValuationWithExplicitPx,
-  upsertFundUnitDailyRow,
-} from "../src/afpUnoValuation.js";
+import { upsertAfpSpotValuationWithExplicitPx, upsertFundUnitDailyRow } from "../src/afpUnoValuation.js";
 
 function arg(name: string): string | undefined {
   const p = process.argv.find((a) => a.startsWith(`--${name}=`));

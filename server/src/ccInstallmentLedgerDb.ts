@@ -1,13 +1,10 @@
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { isCcStatementPdfSource } from "./importSyncDocumentMonth.js";
-import {
-  billingMonthForLedgerPurchase,
-} from "./ccManualBillingMonth.js";
+import { billingMonthForLedgerPurchase } from "./ccManualBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
   isInstallmentContractSummaryMerchant,
@@ -24,7 +21,10 @@ import type {
   CcInstallmentMonthRow,
   CcInstallmentPurchaseComputed,
 } from "./creditCardInstallments.js";
-import { ccPurchaseSourceLegacyFromOrigin, dataOriginFromCcPurchaseSource } from "./dataOrigin.js";
+import {
+  ccPurchaseSourceLegacyFromOrigin,
+  dataOriginFromCcPurchaseSource,
+} from "./dataOrigin.js";
 
 type PurchaseRow = {
   id: number;
@@ -59,12 +59,6 @@ export function ccLedgerMonthEndIso(ym: string): string {
   const last = new Date(Date.UTC(ys, ms, 0));
   const dd = String(last.getUTCDate()).padStart(2, "0");
   return `${ys}-${String(ms).padStart(2, "0")}-${dd}`;
-}
-
-function ymFromIsoDate(iso: string): string | null {
-  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(iso ?? "").trim());
-  if (!m) return null;
-  return `${m[1]}-${m[2]}`;
 }
 
 function parseDateLikeToIso(raw: string | null | undefined): string | null {
@@ -469,29 +463,6 @@ function collectScheduleTimelineBounds(
   if (ymCompare(nowYm, maxYm) > 0) maxYm = nowYm;
   if (ymCompare(minYm, maxYm) > 0) return null;
   return { minYm, maxYm };
-}
-
-/**
- * Monthly payment = sum of scheduled cuotas due that month (first_due + index), like flujos Table 3 row 17.
- * PDF rows define purchase shape and cuota amounts; they do not drive this total.
- */
-function scheduledPaymentsDueByMonth(
-  purchasesRaw: PurchaseRow[],
-  paymentsByPurchase: Map<number, PaymentRow[]>,
-  accountId?: number
-): Map<string, number> {
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
-  const bounds = collectScheduleTimelineBounds(purchasesRaw, schedules);
-  const out = new Map<string, number>();
-  if (!bounds) return out;
-  for (const ym of expandYearMonthsInclusive(bounds.minYm, bounds.maxYm)) {
-    let total = 0;
-    for (const sched of schedules.values()) {
-      total += scheduledCuotaDueInMonth(sched, ym, { unpaidOnly: true });
-    }
-    if (total > 0) out.set(ym, total);
-  }
-  return out;
 }
 
 /** Plan cuotas due each month (all indices — for month-end saldo / historial). */

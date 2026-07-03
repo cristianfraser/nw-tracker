@@ -3,7 +3,6 @@ import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   deptoMortgageCloseClpBySnapshotDates,
   firstDeptoPropertyOwnershipYmd,

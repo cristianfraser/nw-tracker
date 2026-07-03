@@ -1,15 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { db } from "../src/db.js";
-import {
-  findPayrollAutoLinkMovement,
-  listPayrollLinkCandidates,
-} from "../src/payrollWorkEarningsLinking.js";
+import { findPayrollAutoLinkMovement, listPayrollLinkCandidates } from "../src/payrollWorkEarningsLinking.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CFRASER_DIR = resolveCfraserCsvDir();
 const PARSE_INDEX = path.join(CFRASER_DIR, "payroll-parsing-output", "all.json");
 
