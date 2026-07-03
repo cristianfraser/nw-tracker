@@ -39,9 +39,11 @@ describe("seedPayrollDeelUsdSynthetic", () => {
       gross_scale: 18 / 31,
       wire_received_on: "2021-01-20",
     });
-    expect(row.liquido_usd).toBeCloseTo(4500 * (18 / 31) - 50, 2);
-    expect(row.liquido_clp).toBeGreaterThan(0);
-    expect(row.total_haberes_clp - row.total_descuentos_clp).toBe(row.liquido_clp);
+    expect(row.liquido_currency).toBe("usd");
+    expect(row.liquido).toBeCloseTo(4500 * (18 / 31) - 50, 2);
+    // CLP equivalent derives at read time as haberes − descuentos; the builder must
+    // keep that difference positive.
+    expect(row.total_haberes_clp - row.total_descuentos_clp).toBeGreaterThan(0);
   });
 
   it("builds eight rows for Jan–Aug 2021", () => {
@@ -58,8 +60,9 @@ describe("seedPayrollDeelUsdSynthetic", () => {
       "2021-08",
     ]);
     const feb = rows.find((r) => r.period_month === "2021-02")!;
-    expect(feb.liquido_usd).toBe(4450);
+    expect(feb.liquido).toBe(4450);
+    expect(feb.liquido_currency).toBe("usd");
     const aug = rows.find((r) => r.period_month === "2021-08")!;
-    expect(aug.liquido_usd).toBe(4500 * 0.5 - 50);
+    expect(aug.liquido).toBe(4500 * 0.5 - 50);
   });
 });
