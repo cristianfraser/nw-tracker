@@ -12,6 +12,11 @@ import {
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import {
+  loadDepositMatchCandidates,
+  type DepositMatchCandidate,
+} from "./flowsCheckingGastos.js";
+import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import {
   noteIsDeptoPiePayment,
   parseDeptoDividendosMovementNote,
   type DeptoMortgageSheetRow,
@@ -589,6 +594,182 @@ function assignBillsCategoryToMortgageLinkedLines(): void {
   ).run(BILLS_CC_EXPENSE_SLUG);
 }
 
+/**
+ * A manually-marked `deposits` outflow is an assertion that a matching deposit exists — the user
+ * categorized it because it funds *something*, even though the auto-matcher (exact amount within
+ * 3 days + description gate) couldn't pair it. The assertion pass re-searches with the same exact
+ * rounded-amount tolerance but a wider date window, restricted ONLY to those asserted lines.
+ */
+export const MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP = 14;
+
+export type ManualDepositAssertion = {
+  /** Checking account the outflow lives on. */
+  account_id: number;
+  purchase_key: string;
+  occurred_on: string;
+  merchant: string | null;
+  amount_clp: number;
+  /** Linked deposit movement when exactly one candidate exists (or a link already does). */
+  deposit_movement_id: number | null;
+  deposit_account_id: number | null;
+  /** Distinct eligible deposit movements found under the relaxed constraints. */
+  candidate_count: number;
+};
+
+function lineIsManualDepositAssertion(line: GastosLineForExpenseDepositLink): boolean {
+  if (line.source !== "checking") return false;
+  if (line.category_slug !== DEPOSITS_CC_EXPENSE_SLUG) return false;
+  if (line.amount_clp <= 0) return false;
+  // Auto-matched lines carry an `auto:deposit-match|…` note and are handled by
+  // tryAutoLinkExpenseDepositLine — only note-less (user-asserted) lines take this pass.
+  return parseAutoDepositMatchNote(line.purchase_notes).length === 0;
+}
+
+/** Positive movement rows on `accountId`/`occurredOn` whose rounded amount matches `amountClp`. */
+function listDepositMovementIdsAt(
+  accountId: number,
+  occurredOn: string,
+  amountClp: number
+): number[] {
+  const want = Math.round(amountClp);
+  const rows = db
+    .prepare(
+      `SELECT id, amount_clp FROM movements
+       WHERE account_id = ? AND occurred_on = ? AND amount_clp > 0
+       ORDER BY id`
+    )
+    .all(accountId, occurredOn) as { id: number; amount_clp: number }[];
+  return rows.filter((r) => Math.round(r.amount_clp) === want).map((r) => r.id);
+}
+
+/**
+ * Classify every manually-asserted `deposits` checking outflow against the matcher's own deposit
+ * candidate pool. Exactly one eligible deposit movement (same rounded amount, within
+ * {@link MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP} days, not linked elsewhere) → that movement is the
+ * link target. Zero or several candidates → no guess; the row is surfaced as asserted-unmatched.
+ * Deterministic given the DB state: lines are processed oldest-first so re-runs (sync vs.
+ * reconciliation read) resolve identically.
+ */
+export function computeManualDepositAssertions(
+  lines: readonly GastosLineForExpenseDepositLink[],
+  depositCandidates?: readonly DepositMatchCandidate[]
+): ManualDepositAssertion[] {
+  const asserted = lines
+    .filter(lineIsManualDepositAssertion)
+    .sort(
+      (a, b) =>
+        purchaseDateForGastosLine(a).localeCompare(purchaseDateForGastosLine(b)) ||
+        a.purchase_key.localeCompare(b.purchase_key)
+    );
+  if (asserted.length === 0) return [];
+
+  const checkingIds = new Set(listMovementBalanceCashAccountIds());
+  // Reuse the matcher's candidate pool. Checking-bucket inflows (corriente↔vista legs) are not
+  // deposits, and real_estate targets carry amortization semantics owned by the mortgage sync.
+  const pool = (depositCandidates ?? loadDepositMatchCandidates()).filter(
+    (d) => !checkingIds.has(d.account_id) && d.group_slug !== "real_estate"
+  );
+
+  // Existing durable links (auto from this sync's earlier passes + user-curated manual): a movement
+  // linked to some other purchase is not claimable; a link on the asserted line itself resolves it.
+  const linkRows = db
+    .prepare(
+      `SELECT purchase_key, deposit_movement_id, account_id FROM expense_deposit_links
+       WHERE link_source IN ('auto', 'manual')`
+    )
+    .all() as { purchase_key: string; deposit_movement_id: number; account_id: number }[];
+  const movementsByPurchaseKey = new Map<string, number[]>();
+  const claimedMovementIds = new Set<number>();
+  for (const row of linkRows) {
+    const arr = movementsByPurchaseKey.get(row.purchase_key);
+    if (arr) arr.push(row.deposit_movement_id);
+    else movementsByPurchaseKey.set(row.purchase_key, [row.deposit_movement_id]);
+    claimedMovementIds.add(row.deposit_movement_id);
+  }
+
+  const movementAccountStmt = db.prepare(`SELECT account_id FROM movements WHERE id = ?`);
+
+  const out: ManualDepositAssertion[] = [];
+  for (const line of asserted) {
+    const base = {
+      account_id: line.account_id,
+      purchase_key: line.purchase_key,
+      occurred_on: purchaseDateForGastosLine(line),
+      merchant: line.merchant ?? null,
+      amount_clp: Math.round(line.amount_clp),
+    };
+
+    const own = movementsByPurchaseKey.get(line.purchase_key);
+    if (own && own.length > 0) {
+      const movementId = own[0]!;
+      const acc = movementAccountStmt.get(movementId) as { account_id: number | null } | undefined;
+      out.push({
+        ...base,
+        deposit_movement_id: movementId,
+        deposit_account_id: acc?.account_id ?? null,
+        candidate_count: own.length,
+      });
+      continue;
+    }
+
+    const candidateAccountByMovementId = new Map<number, number>();
+    for (const d of pool) {
+      if (Math.round(d.amount_clp) !== base.amount_clp) continue;
+      if (
+        Math.abs(signedDaysFromTo(base.occurred_on, d.occurred_on)) >
+        MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP
+      ) {
+        continue;
+      }
+      // Candidate events without a movement row (transfer legs, derived capital flows) are not
+      // linkable deposit rows — they never show up in the reconciliation, so skip them here too.
+      for (const movementId of listDepositMovementIdsAt(d.account_id, d.occurred_on, d.amount_clp)) {
+        if (claimedMovementIds.has(movementId)) continue;
+        candidateAccountByMovementId.set(movementId, d.account_id);
+      }
+    }
+
+    const candidateIds = [...candidateAccountByMovementId.keys()];
+    if (candidateIds.length === 1) {
+      const movementId = candidateIds[0]!;
+      claimedMovementIds.add(movementId);
+      out.push({
+        ...base,
+        deposit_movement_id: movementId,
+        deposit_account_id: candidateAccountByMovementId.get(movementId)!,
+        candidate_count: 1,
+      });
+    } else {
+      // Ambiguous (or no candidate): do NOT guess — surface as asserted-unmatched instead.
+      out.push({
+        ...base,
+        deposit_movement_id: null,
+        deposit_account_id: null,
+        candidate_count: candidateIds.length,
+      });
+    }
+  }
+  return out;
+}
+
+function syncManualDepositAssertionLinks(
+  lines: readonly GastosLineForExpenseDepositLink[]
+): void {
+  for (const assertion of computeManualDepositAssertions(lines)) {
+    if (assertion.deposit_movement_id == null) continue;
+    upsertExpenseDepositLink({
+      account_id: assertion.account_id,
+      purchase_key: assertion.purchase_key,
+      deposit_movement_id: assertion.deposit_movement_id,
+      payment_clp: assertion.amount_clp,
+      amortization_clp: assertion.amount_clp,
+      depto_cuota: null,
+      depto_occurred_on: null,
+      link_source: "auto",
+    });
+  }
+}
+
 export function syncExpenseDepositLinksFromGastosLines(
   lines: readonly GastosLineForExpenseDepositLink[]
 ): void {
@@ -597,6 +778,9 @@ export function syncExpenseDepositLinksFromGastosLines(
   for (const line of lines) {
     tryAutoLinkExpenseDepositLine(line);
   }
+  // After the note-driven pass so an asserted line can never steal a deposit the matcher already
+  // paired with its real outflow.
+  syncManualDepositAssertionLinks(lines);
   assignBillsCategoryToMortgageLinkedLines();
   // Materialize cuenta_ahorro self-funded split portions and Buda buffer abonos into
   // checking_gap_deposit_mirrors first, so syncCheckingGapDepositMirrorLinks picks them up alongside

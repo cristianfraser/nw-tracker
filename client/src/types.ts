@@ -1342,12 +1342,31 @@ export interface DepositRedemptionRow {
   status: DepositRedemptionStatus;
 }
 
+/** Checking outflow manually categorized as `deposits` — asserts a matching deposit exists. */
+export type DepositManualAssertionStatus = "linked" | "asserted_unmatched";
+
+export interface DepositManualAssertionRow {
+  purchase_key: string;
+  account_id: number;
+  account_name: string;
+  occurred_on: string;
+  merchant: string | null;
+  amount_clp: number;
+  amount_usd: number | null;
+  deposit_movement_id: number | null;
+  deposit_account_id: number | null;
+  deposit_account_name: string | null;
+  candidate_count: number;
+  status: DepositManualAssertionStatus;
+}
+
 export interface DepositsReconciliationPayload {
   rows: DepositReconciliationRow[];
   by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals>;
   by_month: DepositReconciliationByMonth[];
   redemptions: DepositRedemptionRow[];
   redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals>;
+  manual_assertions: DepositManualAssertionRow[];
   fx_conversion_error: boolean;
   fx_conversion_warnings: unknown[];
 }
