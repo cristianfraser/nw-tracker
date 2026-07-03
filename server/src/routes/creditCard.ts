@@ -131,7 +131,14 @@ import {
   updateManualCcInstallmentPurchase,
 } from "../ccInstallmentManual.js";
 import { deleteCcWebPasteStatementLine } from "../ccStatementLineDelete.js";
-import { patchCreditCardBillingConfig, recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
+import {
+  applyCreditCardConfigPatch,
+  getCreditCardAccountConfig,
+  isCreditCardAccountId,
+  listOperationalCreditCards,
+  parseCreditCardConfigPatch,
+} from "../ccAccountConfig.js";
 import {
   checkingMovementBalanceLive,
   clearCheckingLedgerAnchor,
@@ -527,31 +534,39 @@ app.post(
   }
 );
 
+app.get("/api/accounts/:id/credit-card-config", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!isCreditCardAccountId(id)) {
+    res.status(404).json({ error: "not a credit-card account" });
+    return;
+  }
+  res.json({ config: getCreditCardAccountConfig(id) });
+});
+
 app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
   const id = operationalAccountIdFromReq(req);
-  const body = req.body as Record<string, unknown>;
-  const start =
-    body.billing_cycle_start_day != null ? Number(body.billing_cycle_start_day) : undefined;
-  const end =
-    body.billing_cycle_end_day !== undefined
-      ? body.billing_cycle_end_day == null
-        ? null
-        : Number(body.billing_cycle_end_day)
-      : undefined;
-  if (start != null && (!Number.isFinite(start) || start < 1 || start > 31)) {
-    res.status(400).json({ error: "invalid billing_cycle_start_day" });
+  if (!isCreditCardAccountId(id)) {
+    res.status(404).json({ error: "not a credit-card account" });
     return;
   }
-  if (end != null && end !== undefined && (!Number.isFinite(end) || end < 1 || end > 31)) {
-    res.status(400).json({ error: "invalid billing_cycle_end_day" });
+  let patch;
+  try {
+    patch = parseCreditCardConfigPatch(req.body);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "invalid body" });
     return;
   }
-  patchCreditCardBillingConfig(id, {
-    billing_cycle_start_day: start,
-    billing_cycle_end_day: end,
+  const result = applyCreditCardConfigPatch(id, patch);
+  if (result.billingCycleChanged) recomputeCcBillingMonthBalances(id);
+  res.json({
+    config: result.config,
+    billing_config: loadCreditCardBillingConfig(id),
   });
-  recomputeCcBillingMonthBalances(id);
-  res.json({ billing_config: loadCreditCardBillingConfig(id) });
+});
+
+/** Operational credit cards (Tarjetas de crédito page): masters + config + current balance. */
+app.get("/api/credit-cards", (_req, res) => {
+  res.json({ cards: listOperationalCreditCards() });
 });
 
 }

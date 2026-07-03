@@ -183,6 +183,20 @@ export const api = {
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
     ),
+  creditCards: () =>
+    j<{ cards: import("./types").OperationalCreditCardRow[] }>("/api/credit-cards"),
+  creditCardConfig: (id: string | number) =>
+    j<{ config: import("./types").CreditCardAccountConfigDto }>(
+      `/api/accounts/${id}/credit-card-config`
+    ),
+  patchCreditCardConfig: (
+    id: string | number,
+    body: import("./types").CreditCardConfigPatchBody
+  ) =>
+    j<{ config: import("./types").CreditCardAccountConfigDto }>(
+      `/api/accounts/${id}/credit-card-config`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
   deleteCcPurchase: (id: string | number, purchaseId: number) =>
     j<{ ok: boolean }>(`/api/accounts/${id}/cc-purchases/${purchaseId}`, { method: "DELETE" }),
   deleteCcStatementLine: (id: string | number, lineId: number) =>
