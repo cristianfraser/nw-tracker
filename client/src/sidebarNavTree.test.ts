@@ -86,4 +86,26 @@ describe("buildSidebarNavFromApi", () => {
     const flows = tree.find((n) => n.id === "flows");
     expect(flows?.children?.map((c) => c.id)).toEqual(["ingresos", "depositos", "gastos"]);
   });
+
+  it("hides chart_inactive buckets from the sidebar at any depth", () => {
+    const mutualFunds = { ...navNode("mutual_funds", "brokerage_mutual_funds"), chart_inactive: true };
+    const acciones = navNode("acciones", "brokerage_acciones", [navNode("acc.1", "account_1")]);
+    const inactiveRoot = { ...navNode("dead_root", "dead_root"), chart_inactive: true };
+    const payload: SidebarNavResponse = {
+      dashboard: null,
+      main: [
+        navNode("inversiones", "inversiones", [
+          navNode("brokerage", "brokerage", [mutualFunds, acciones]),
+        ]),
+        inactiveRoot,
+      ],
+      flows: null,
+      rates: null,
+      net_worth: null,
+    };
+    const tree = buildSidebarNavFromApi(payload);
+    expect(tree.map((n) => n.id)).toEqual(["inversiones"]);
+    const brokerage = tree[0]?.children?.find((c) => c.id === "brokerage");
+    expect(brokerage?.children?.map((c) => c.id)).toEqual(["acciones"]);
+  });
 });

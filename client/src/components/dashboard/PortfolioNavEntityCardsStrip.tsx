@@ -8,6 +8,7 @@ import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
+  inactiveAccountNavLeavesWithPeriodActivity,
   navMetricsAccountIdSet,
   parentTitleBalanceDelta,
   routableNavStripChildren,
@@ -95,8 +96,22 @@ export function PortfolioNavEntityCardsStrip({
     [stripAccountChildren]
   );
 
+  /** Accounts the nav tree hides (chart-inactive) still get a card when the period has activity. */
+  const accountCardChildren = useMemo(
+    () => [
+      ...filteredAccountChildren,
+      ...inactiveAccountNavLeavesWithPeriodActivity(
+        dash,
+        parentNavNode,
+        stripGroupChildren,
+        metricsPeriod
+      ),
+    ],
+    [filteredAccountChildren, dash, parentNavNode, stripGroupChildren, metricsPeriod]
+  );
+
   const showDetailSlots = filteredGroupChildren.length > 0;
-  const showAccountCompactSlots = filteredAccountChildren.length > 0;
+  const showAccountCompactSlots = accountCardChildren.length > 0;
 
   const isCashEqsHub = parentNavNode.slug === "cash_eqs";
   const isCashSavings = parentNavNode.slug === "cash_savings";
@@ -175,7 +190,7 @@ export function PortfolioNavEntityCardsStrip({
           showAccountCompactSlots ? (
             <PortfolioNavAccountCompactCards
               dash={dash}
-              navChildren={filteredAccountChildren}
+              navChildren={accountCardChildren}
               showUsd={showUsd}
               metricsPeriod={metricsPeriod}
               animated={animated}

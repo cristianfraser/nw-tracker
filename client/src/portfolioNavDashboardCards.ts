@@ -1,5 +1,6 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
 import {
+  accountCardTitleBalanceDelta,
   buildCashEqsCardBreakdown,
   buildCashSavingsCardBreakdown,
   buildLiabilitiesCardBreakdown,
@@ -20,6 +21,7 @@ import {
   isCashSavingsCcShortfallRow,
 } from "./dashboardCardBreakdown";
 import { buildNavCardBreakdown } from "./navCardBreakdown";
+import { dashboardAccountNavLabel } from "./navAccountLabels";
 import i18n from "./i18n";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import { DASHBOARD_NET_WORTH_BUCKET_SLUGS } from "./portfolioDashboardBuckets";
@@ -244,6 +246,96 @@ export function mainValueAndMetricsForNavChild(
     return { ...dashboardBucketMainValue(dash.totals, fullBucket, showUsd), metrics };
   }
   return { ...sumCurrentValueClpUsd(metricsRows, showUsd), metrics };
+}
+
+/**
+ * Detail card visibility for a `chart_inactive` bucket: render only when the selected period shows
+ * activity — nonzero balance, period deposits, or period Δ (monthly view hides a wound-down bucket;
+ * yearly view still shows the year it went to zero).
+ */
+export function navChildCardHasPeriodActivity(
+  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
+  overviewPoints: Record<string, string | number | null>[],
+  navChild: NavTreeNodeDto,
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean
+): boolean {
+  const { clp, metrics } = mainValueAndMetricsForNavChild(dash, navChild, period, showUsd);
+  const titleDelta = titleBalanceDeltaForNavChild(dash, overviewPoints, navChild, period, showUsd);
+  const material = (v: number | null | undefined) => v != null && Math.abs(v) >= 0.5;
+  return (
+    material(clp) ||
+    material(metrics.deposits_period_clp) ||
+    material(metrics.delta_period_clp) ||
+    material(titleDelta)
+  );
+}
+
+/** Same period-activity rule at account-row level (compact account cards). */
+export function inactiveAccountRowHasPeriodActivity(
+  row: DashboardAccountRow,
+  period: CardGroupMetricsPeriod
+): boolean {
+  const material = (v: number | null | undefined) => v != null && Math.abs(v) >= 0.5;
+  const deposits = period === "month" ? row.deposits_month_clp : row.deposits_year_clp;
+  const delta = period === "month" ? row.delta_month_clp : row.delta_year_clp;
+  return (
+    material(row.current_value_clp) ||
+    material(deposits) ||
+    material(delta) ||
+    material(accountCardTitleBalanceDelta(row, period, false))
+  );
+}
+
+/**
+ * Compact cards for `chart_inactive` accounts the nav tree omits: synthesize account leaves for
+ * rows in this node's bucket scope when the selected period has activity. Rows already covered by
+ * a group-child detail card are skipped (that card carries the activity).
+ */
+export function inactiveAccountNavLeavesWithPeriodActivity(
+  dash: Pick<DashboardResponse, "accounts">,
+  parentNavNode: NavTreeNodeDto,
+  stripGroupChildren: readonly NavTreeNodeDto[],
+  period: CardGroupMetricsPeriod
+): NavTreeNodeDto[] {
+  const leafIds = navLeafAccountIdSet(parentNavNode);
+  const coveredByGroups = new Set<number>();
+  for (const g of stripGroupChildren) {
+    for (const id of navMetricsAccountIdSet(g, dash.accounts)) coveredByGroups.add(id);
+  }
+  const out: NavTreeNodeDto[] = [];
+  for (const row of dash.accounts) {
+    if (row.chart_inactive !== true) continue;
+    if (leafIds.has(row.account_id) || coveredByGroups.has(row.account_id)) continue;
+    if (!accountInNavMetricsScope(row, parentNavNode, leafIds)) continue;
+    if (!inactiveAccountRowHasPeriodActivity(row, period)) continue;
+    out.push({
+      node_id: `acc.${row.account_id}`,
+      slug: `account_${row.account_id}`,
+      label: dashboardAccountNavLabel(row),
+      label_i18n_key: null,
+      route_path: `/account/${row.account_id}`,
+      active_prefix: null,
+      nav_end: true,
+      show_leaf_hyphen: true,
+      account_id: row.account_id,
+      portfolio_group_id: null,
+      source_account_id: null,
+      expense_account_id: null,
+      expense_account_slug: null,
+      asset_group_slug: null,
+      kind_slug: null,
+      dashboard_bucket_slug: null,
+      api_group: null,
+      api_subgroup: null,
+      color_rgb: null,
+      color: null,
+      group_kind: "bucket",
+      chart_inactive: true,
+      children: [],
+    });
+  }
+  return out;
 }
 
 /**

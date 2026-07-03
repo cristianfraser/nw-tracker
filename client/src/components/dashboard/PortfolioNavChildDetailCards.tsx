@@ -6,6 +6,7 @@ import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
   mainValueAndMetricsForNavChild,
+  navChildCardHasPeriodActivity,
   titleBalanceDeltaForNavChild,
 } from "../../portfolioNavDashboardCards";
 import {
@@ -39,13 +40,18 @@ export function PortfolioNavChildDetailCards({
   placeholderPhase = false,
 }: PortfolioNavChildDetailCardsProps) {
   const sorted = useMemo(() => {
-    const filtered = navChildren.filter((c) => c.route_path?.trim());
+    const filtered = navChildren.filter(
+      (c) =>
+        c.route_path?.trim() &&
+        (c.chart_inactive !== true ||
+          navChildCardHasPeriodActivity(dash, overviewPoints, c, metricsPeriod, showUsd))
+    );
     return [...filtered].sort((a, b) => {
       const aMain = mainValueAndMetricsForNavChild(dash, a, metricsPeriod, showUsd);
       const bMain = mainValueAndMetricsForNavChild(dash, b, metricsPeriod, showUsd);
       return compareDashboardCardMainDesc(aMain.clp, aMain.apiUsd, bMain.clp, bMain.apiUsd, showUsd);
     });
-  }, [navChildren, dash, metricsPeriod, showUsd]);
+  }, [navChildren, dash, overviewPoints, metricsPeriod, showUsd]);
 
   if (!sorted.length) return null;
 
