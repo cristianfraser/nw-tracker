@@ -59,14 +59,6 @@
     "propertyValue": "valor",
     "mortgage": "hipoteca"
   },
-  "retirement": {
-    "apv": "APV",
-    "afpAfc": "AFP + AFC",
-    "subgroups": {
-      "afp": "afp",
-      "afc": "afc"
-    }
-  },
   "cash": {
     "reserva": "reserva",
     "checkingAccount": "cuenta corriente",
@@ -77,7 +69,6 @@
     "bci": "BCI"
   },
   "creditCards": {
-    "navTitle": "Tarjetas de crédito",
     "pageTitle": "Tarjetas de crédito",
     "pageHint": "Administración operativa de las tarjetas — cupo, ciclo de facturación y compras — fuera de la vista de Pasivos.",
     "colCard": "Tarjeta",
@@ -94,16 +85,10 @@
   },
   "liabilities": {
     "mortgage": "hipoteca",
-    "creditCard": "tarjeta de crédito",
-    "ref": {
-      "disponible": "Disponible",
-      "disponibleTotal": "Disponible total"
-    }
+    "creditCard": "tarjeta de crédito"
   },
   "charts": {
-    "accumulatedDeposits": "aportes acum.",
     "groupAccumulatedDeposits": "Total aportes acum.",
-    "ownAccumulatedDeposits": "aportes propios acum.",
     "valuationAndDeposits": "Valorización y aportes",
     "currentValueByAccount": "Valor actual por cuenta",
     "monthlyDeltaConsolidated": "Δ mensual (consolidado)",
@@ -114,20 +99,11 @@
     "noRecentValuations": "Sin valorizaciones recientes para armar el gráfico."
   },
   "dashboard": {
-    "title": "Dashboard",
     "chartGranularityLabel": "Período:",
     "monthly": "Mensual",
     "yearly": "Anual",
-    "yearlyViewHint": "Vista anual: las valorizaciones usan el <1>último mes</1> de cada año calendario. El P/L de inversiones suma los <2>Δ mensuales</2> de ese año en un solo punto.",
     "cards": {
-      "netWorth": "Patrimonio neto",
-      "inversiones": "Inversiones",
-      "totalDeposits": "Depósitos totales",
-      "realEstate": "Inmuebles",
-      "retirement": "Retiro",
-      "brokerage": "Brokerage",
-      "cash": "Efectivo",
-      "liabilities": "Pasivos"
+      "netWorth": "Patrimonio neto"
     },
     "buckets": {
       "real_estate": "Inmuebles",
@@ -152,8 +128,6 @@
       "accumSectionTitleYearly": "Inversiones — acumulado (pasos anuales)",
       "accumSectionHintMonthly": "Arriba: ganancias acumuladas con Δ mensual y MM3. Abajo: Δ mensual, depósitos y sus MM3 (misma escala).",
       "accumSectionHintYearly": "Arriba: ganancias acumuladas con Δ anual y MM3. Abajo: Δ anual, depósitos y sus MM3 (misma escala).",
-      "accumChartTitleMonthly": "Δ mensual (inversiones), depósitos y ganancias acumuladas",
-      "accumChartTitleYearly": "Δ anual (inversiones), depósitos y ganancias acumuladas",
       "accumEarningsChartTitleMonthly": "Ganancias acumuladas y Δ mensual (inversiones)",
       "accumEarningsChartTitleYearly": "Ganancias acumuladas y Δ anual (inversiones)",
       "accumFlowsChartTitleMonthly": "Δ mensual y depósitos (inversiones)",
@@ -173,10 +147,6 @@
       "ma3DepositsInversionesMonthly": "MM3 depósitos del mes (inversiones)",
       "ma3DeltaCombinedYearly": "MM3 Δ anual (inversiones)",
       "ma3DepositsInversionesYearly": "MM3 depósitos del año (inversiones)"
-    },
-    "accountsTable": {
-      "title": "Cuentas principales",
-      "empty": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts."
     },
     "allocation": {
       "title": "Asignación (últimas valorizaciones)",
@@ -203,16 +173,10 @@
     "openMenu": "Abrir menú",
     "closeMenu": "Cerrar menú",
     "inversiones": "Inversiones",
-    "checking_accounts": "Cuentas corrientes",
-    "afp": "AFP",
-    "afc": "AFC",
-    "flows": "Flujos",
     "flowsIncome": "Ingresos",
     "flowsExpenses": "Gastos",
     "flowsExpensesRealEstate": "Inmuebles",
     "flowsDeposits": "Depósitos",
-    "rates": "Tipos de cambio",
-    "watchlist": "Watchlist",
     "controlPanel": "Panel de control",
     "notifications": "Notificaciones",
     "accounts": "Accounts",
@@ -254,13 +218,7 @@
     "marqueeAria": "Mostrar en marquee",
     "emptyManual": "Sin símbolos manuales.",
     "addError": "No se pudo agregar el ticker.",
-    "riskyNorrisProxy": "Risky Norris (intradía)",
-    "proxyValidationTitle": "Proxy vs cuota oficial (30 días)",
-    "proxyValidationMaxDrift": "Máx. desvío: {{pct}}%",
-    "proxyValidationColDate": "Fecha",
-    "proxyValidationColProxy": "Proxy",
-    "proxyValidationColOfficial": "Oficial",
-    "proxyValidationColDiff": "Δ%"
+    "riskyNorrisProxy": "Risky Norris (intradía)"
   },
   "panelAccounts": {
     "pageHint": "Vista de referencia: cuentas y la misma jerarquía de Patrimonio neto que el sidebar (portfolio_groups).",
@@ -270,18 +228,15 @@
     "netWorthTreeTitle": "Árbol de cuentas (Patrimonio neto)",
     "colGroupKind": "Tipo",
     "colAccount": "Cuenta",
-    "colCategory": "Categoría",
     "colBucket": "Bucket",
     "colExclude": "No sumar en totales",
     "excludeHint": "Las cuentas marcadas no entran en totales de bucket ni en Pasivos. En tarjetas de crédito, tampoco se restan del neto de Ahorros y reservas.",
     "colActions": "Acciones",
     "colSlug": "Slug",
-    "colCategories": "N categorías",
     "colAccounts": "N cuentas",
     "deleteBtn": "Eliminar",
     "deleteConfirm": "¿Eliminar la cuenta #{{id}} ({{name}})? Esta acción no se puede deshacer.",
     "emptyAccounts": "No hay cuentas.",
-    "emptyBuckets": "No hay buckets.",
     "emptyTree": "No se encontró el bucket maestro de patrimonio neto en el árbol de navegación.",
     "flowKinds": {
       "deposit_clp": "Depósito CLP",
@@ -297,34 +252,18 @@
       "other": "Otro"
     },
     "addUsdAccount": {
-      "sectionTitle": "Efectivo USD (cash_savings)",
-      "sectionHint": "Cuenta en USD bajo Ahorros y reservas. Balance en USD; valorización en CLP vía tipo de cambio.",
-      "displayNamePlaceholder": "USD",
-      "previewInvalid": "Completa nombre, slug y fecha en cada movimiento.",
-      "created": "Cuenta USD creada (#{{id}}).",
-      "submit": "Crear cuenta USD"
+      "displayNamePlaceholder": "USD"
     },
     "addAccount": {
-      "accountKind": "Tipo de cuenta",
-      "accountKind.stocksNyse": "Acción / ETF (NYSE)",
-      "accountKind.cryptoEod": "Cripto (BTC-USD, ETH-USD)",
-      "accountKind.usdCash": "Efectivo USD",
       "accountType": "Tipo de cuenta",
       "accountType.equity": "Acción / ETF (NYSE)",
       "accountType.crypto": "Cripto (BTC-USD, ETH-USD)",
       "accountType.clpCash": "Efectivo CLP",
       "accountType.usdCash": "Efectivo USD",
-      "stockSection": "Acción / ETF (brokerage)",
       "displayName": "Nombre de la cuenta",
       "displayNamePlaceholder": "p. ej. QQQ",
       "tickerSymbol": "Ticker (Yahoo / equity_daily)",
-      "categorySlug": "Categoría",
-      "categoryNewOption": "Nueva categoría…",
-      "categoryNewSlug": "Slug de la nueva categoría",
       "bucket": "Grupo portfolio (hoja)",
-      "priceSource": "Fuente de precio / sync",
-      "priceSource.stocksNyse": "NYSE — stocks_nyse (Yahoo EOD, como SPY/VEA)",
-      "priceSource.cryptoEod": "Cripto — crypto_eod (BTC-USD, ETH-USD)",
       "excludeFromTotals": "No sumar en totales de bucket (exclude_from_group_totals)",
       "initialMovementsTitle": "Movimientos iniciales (opcional)",
       "initialMovementsHint": "Misma lógica que SPY/VEA: flow_kind, montos CLP/USD y acciones (units_delta) cuando corresponda.",
@@ -335,7 +274,6 @@
       "amountUsd": "Monto USD",
       "unitsDelta": "Acciones (units_delta)",
       "addMovement": "Añadir movimiento",
-      "addCompraUsd": "Añadir compra USD",
       "removeMovement": "Quitar",
       "createBtn": "Crear cuenta",
       "resetBtn": "Limpiar",
@@ -385,7 +323,6 @@
       "confirmDelete": "¿Quitar «{{merchant}}» de la lista? Los gastos ya marcados como Único no se modifican."
     },
     "colMonth": "Mes",
-    "colAccount": "Cuenta",
     "importedYes": "{{account}}: documento de {{month}} importado",
     "cartolaSinMovimientosOnFile": "{{account}}: cartola en disco sin movimientos ({{month}})",
     "importedUnlinked": "{{account}}: {{month}} importado, PDF no enlazado",
@@ -412,7 +349,6 @@
       "colNextSync": "Próximo sync",
       "colHolidayToday": "Hoy",
       "colStatus": "Estado",
-      "colActions": "Acciones",
       "nextSyncNow": "Ahora",
       "nextSyncDash": "—",
       "nextSyncToday": "Hoy, {{time}}",
@@ -447,11 +383,6 @@
     }
   },
   "accountDetail": {
-    "chart": {
-      "seriesLabel": "Serie:",
-      "monthlyEnd": "Mensual (fin de mes)",
-      "daily": "Diario"
-    },
     "monthlyDetailTitle": "Detalle por mes",
     "positionHint": "Acciones y cripto: ticker y unidades (acciones o moneda) desde movimientos en la base (<1>movements.units_delta</1> y notas de import).",
     "positionHintAfp": " AFP UNO Fondo A: cuotas desde <1>movements.units_delta</1> (certificado en <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> o <3>.txt</3> al correr <4>import:excel</4>, o <5>npm run afp:uno:cert-sync</5>).",
@@ -572,7 +503,6 @@
     "closingColumn": "Cierre",
     "ufDayColumn": "UF día",
     "balanceUfColumn": "Saldo UF",
-    "priorClosingColumn": "Cierre ant.",
     "netDepositsColumn": "Aportes netos",
     "perf": {
       "plMortgage": "Coste financiero",
@@ -622,42 +552,6 @@
       "proxAbbrev": "próx.",
       "referenceMinMax": "Referencia: cuota mín / máx (UF)"
     },
-    "mortgageDividendosV2": {
-      "titleProperty": "Hipoteca / dividendos (vista resumida)",
-      "titleMortgage": "Dividendos hipoteca (vista resumida)",
-      "intro": "Misma hoja que la tabla detallada: montos CLP con equivalente UF en superíndice donde aplica.",
-      "colPayment": "Pago",
-      "colCredit": "Crédito",
-      "colExtra": "Otros",
-      "totalPaid": "Pago total",
-      "date": "Fecha",
-      "cuota": "Cuota / prepago",
-      "insurance": "Seguros (total)",
-      "amortization": "Amortización",
-      "amortExtShort": "Amort. ext.",
-      "interest": "Interés",
-      "newBalance": "Saldo restante",
-      "deltaCredit": "Δ crédito (CLP)",
-      "deltaCreditAmort": "Δ créd. (amort)",
-      "extraCreditBlock": "Extra",
-      "netValue": "Valor neto",
-      "deltaNetClp": "Δ VN CLP",
-      "pctCreditoUf": "% créd. UF",
-      "ufDay": "UF día (CLP)",
-      "pctDividendo": "% div.",
-      "mmYy": "m/m · y/y",
-      "tasaPlus": "+ tasa",
-      "vivienda": "Vivienda",
-      "minUf": "Min UF",
-      "pagadoNetoUf": "Pagado neto UF",
-      "interesesOcultos": "Int. oculto / B",
-      "interesReal": "Int. real",
-      "interesCalcUf": "Int. calc UF",
-      "amortInteres": "amort/int",
-      "acumulados": "Acumulados",
-      "amortAcum": "Amort acum",
-      "intAcum": "Int acum"
-    },
     "import": {
       "sectionTitle": "Importar movimientos y documentos",
       "pastePlaceholder": "Pegar movimientos copiados del sitio web del banco (fecha, comercio, monto por línea o tabulado)",
@@ -675,7 +569,6 @@
       "checkingRecentHint": "Export «últimos movimientos» de la cuenta corriente. Se pueden volver a subir archivos con filas ya importadas.",
       "checkingCartola": "Cartola oficial (Excel)",
       "checkingCartolaHint": "Cartola mensual completa. Si el mes ya fue importado, solo se agregan movimientos nuevos.",
-      "afpUnoCert": "Certificado AFP (PDF / CSV / TXT)",
       "resultInsertedFlows": "Flujos insertados ({{n}})",
       "resultSkippedFlows": "Flujos omitidos ({{n}})",
       "resultFlowNone": "ninguno",
@@ -717,26 +610,14 @@
       "cupoUtilizado": "Cupo utilizado",
       "deudaEnCuotas": "Deuda en cuotas",
       "saldoTotal": "Saldo total",
-      "heroCupoHint": "Cupo en cuotas (ledger PDF):",
-      "asOf": "a la fecha",
       "historialTitle": "Historial",
       "historialHint": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros con cuotas proyectadas usan cupo del plan; sin facturado cerrado el saldo sigue la regla abierta (cupo + facturado estimado).",
       "historialCurrentMonth": "Mes actual",
       "historialOpenMonth": "Facturación abierta",
       "valuationTitle": "Valorización y aportes",
-      "monthlyPerfTitle": "Rendimiento mensual (calculado)",
-      "monthlyPerfHint": "P/L mensual vs YTD y ganancias acumuladas. Barras ámbar = facturado al cierre del estado.",
-      "monthlyPerfDbHint": "Valorizaciones mensuales desde import PDF.",
-      "monthlyPerfLoading": "Cargando rendimiento…",
-      "monthlyPerfEmpty": "Sin suficientes meses de valorización para calcular variaciones.",
       "ytdSection": "YTD (año calendario)",
-      "ytdChartTitle": "P/L mensual vs YTD",
       "accSection": "Accumulated earnings",
-      "accChartTitle": "Monthly Δ y accumulated earnings",
       "accAreaName": "Accumulated earnings",
-      "barMonthlyPl": "Δ mes (P/L nominal)",
-      "barMonthlyDelta": "Monthly Δ",
-      "chartFacturado": "Facturado",
       "chartFacturadoClose": "Facturado (cierre)",
       "financingSectionTitle": "Coste financiero vs facturado",
       "financingSectionHint": "Mismos datos que la tabla Facturaciones. Barras apiladas = facturado CLP + facturado US$ (en CLP). Coste financiero = intereses y comisiones del estado + interés implícito de cuotas con tasa > 0% (cuotas al 0% no aportan).",
@@ -764,7 +645,6 @@
       "colTotalFacturadoProjectedHint": "Valor proyectado: cuota a pagar estimada de esta facturación (aún sin cierre de estado).",
       "colBalanceTotal": "Balance total",
       "colCupoEnCuotas": "Deuda en cuotas",
-      "manualRowNote": "sin cierre de estado aún",
       "facturacionesTitle": "Facturaciones",
       "facturacionesHint": "Una fila por mes de facturación (cierre ~20 del mes). Cuota a pagar = cargos con vencimiento en el mes del «pagar hasta» (~10 del mes siguiente).",
       "colCloseDate": "Fecha cierre",
@@ -774,13 +654,7 @@
       "colFacturadoTotal": "Facturado total",
       "colCuotaAPagar": "Cuota a pagar",
       "colProxyEarnings": "Ganancia potencial",
-      "proxyEarningsProjected": "~",
       "proxyEarningsHint": "Ganancia estimada al invertir el monto a cada vencimiento. Proyectado con IPC cuando no hay precio real.",
-      "proxyTickerEditorTitle": "Tickers de simulación",
-      "proxyTickerEditorPlaceholder": "SPY, VEA, GLD…",
-      "proxyTickerEditorSave": "Guardar",
-      "proxyTickerEditorEphemeral": "Simular con ticker:",
-      "proxyStatementEarnings": "ret. {{ticker}}",
       "facturacionModalTitle": "Facturación {{month}}",
       "facturacionModalClose": "Cerrar",
       "facturacionModalEmpty": "Sin movimientos importados para este mes.",
@@ -798,10 +672,6 @@
       "facturacionDeleteConfirmAction": "Eliminar",
       "facturacionDeleteConfirmCancel": "Cancelar",
       "lineColActions": "Acciones",
-      "lineColNotes": "Notas",
-      "purchaseNotePlaceholder": "Nota…",
-      "purchaseNoteAria": "Nota de la compra",
-      "colCardCurrency": "Tarjeta",
       "associatedCardsTitle": "Tarjetas asociadas",
       "associatedCardsHint": "Números de tarjeta física con estados importados en esta cuenta."
     }
@@ -818,10 +688,6 @@
     "flowsHintLiabilities": "Movimientos de todas las cuentas bajo este nodo (tarjetas, hipoteca, etc.), ordenados por fecha.",
     "accountsTreeTitle": "Cuentas en esta vista",
     "accountsTreeTitleLiabilities": "Grupos y cuentas en esta vista",
-    "accountsTreeName": "Nombre",
-    "accountsTreeCategory": "Categoría",
-    "accountsTreeGroup": "Clase",
-    "accountsTreeNotes": "Notas",
     "chartToggleGrouped": "Agrupado",
     "chartToggleAccumulatedDeposits": "Aportes acumulados",
     "chartToggleAccumulatedDepositsTitle": "Líneas punteadas de aportes acumulados por cuenta o grupo (misma escala que valorización).",
@@ -841,16 +707,14 @@
   },
   "table": {
     "showMoreMonths": "Mostrar más ({{count}} meses anteriores)",
-    "showMoreLines": "Mostrar más ({{count}} líneas)",
     "showLessMonths": "Ocultar meses anteriores",
-    "showMoreFlows": "Mostrar más ({{count}} flujos anteriores)",
-    "showLessFlows": "Ocultar flujos anteriores",
     "showMoreRows": "Mostrar más ({{count}})",
     "showLess": "Mostrar menos…",
     "paginationPrev": "Página anterior",
     "paginationNext": "Página siguiente",
     "paginationPageAria": "Página",
-    "paginationPageOf": "Pág. {{page}} de {{total}}"
+    "paginationPageOf": "Pág. {{page}} de {{total}}",
+    "showMore": "Mostrar más…"
   },
   "common": {
     "loading": "Cargando…",
@@ -882,9 +746,6 @@
     "emptyMonths": "Sin ingresos en ningún mes.",
     "totalLabel": "Total histórico:",
     "chartTitle": "Ingresos por período",
-    "chartGranularityLabel": "Gráfico",
-    "chartGranularityMonthly": "Mensual",
-    "chartGranularityYearly": "Anual",
     "chartEmpty": "Sin ingresos en este período.",
     "sectionMonthly": "Resumen mensual",
     "sectionAllLines": "Detalle por línea",
@@ -900,7 +761,6 @@
     "colPayrollPeriod": "líq. {{month}}",
     "colAmount": "Monto",
     "colDescription": "Descripción",
-    "colSource": "Fuente",
     "colAccount": "Cuenta",
     "colNote": "Nota",
     "colOrigin": "Origen",
@@ -935,14 +795,9 @@
       "net_worth_capital_return": "Retorno de capital invertido"
     },
     "colTotal": "Total",
-    "colMonthCartola": "Cartola",
-    "colMonthManual": "Manual",
     "colCumulative": "Acumulado",
     "originChecking": "Cartola",
-    "originManual": "Manual",
-    "monthlyTotalsTitle": "Totales mensuales (cartola)",
-    "sectionCartola": "Cartola",
-    "sectionManual": "Manual"
+    "originManual": "Manual"
   },
   "workEarnings": {
     "sectionTitle": "Liquidaciones de sueldo",
@@ -1046,7 +901,6 @@
     "colDate": "Fecha",
     "colKind": "Tipo",
     "colAmount": "Monto",
-    "colDetail": "Detalle",
     "groups": {
       "real_estate": "Inmuebles"
     },
@@ -1114,8 +968,6 @@
       "monthModalTitle": "Gastos {{month}}",
       "monthModalClose": "Cerrar",
       "monthModalEmpty": "Sin movimientos en este mes calendario.",
-      "monthModalGastosSum": "Suma gastos",
-      "monthModalAbonosSum": "Suma abonos",
       "modalSectionGastos": "Gastos",
       "modalSectionPurchases": "Compras",
       "modalSectionInstallments": "Cuotas",
@@ -1189,26 +1041,11 @@
   },
   "account": {
     "creditCard": {
-      "billingMonthTitle": "Por mes de facturación",
-      "billingMonthHint": "Facturado = cierre del estado (~20). Cupo en cuotas = saldo de compras en cuotas. Saldo total = cupo + compras del período no facturadas aún.",
       "colBillingMonth": "Mes",
-      "colAsOf": "A la fecha",
       "colFacturado": "Facturado",
       "colFacturadoTotal": "Facturado total",
-      "colCupo": "Cupo en cuotas",
-      "colSaldoTotal": "Saldo total",
-      "statementsTitle": "Movimientos del estado de cuenta",
-      "statementsEmpty": "Sin estados de cuenta importados. Ejecuta `npm run import:cfraser-inbox` (organiza PDFs/xlsx en cfraser/inbox, parsea e importa).",
-      "statementPeriod": "Período",
-      "statementPayBy": "Pagar hasta",
-      "lineDate": "Fecha",
       "lineMerchant": "Comercio",
-      "lineAmountClp": "CLP",
-      "lineAmountUsd": "US$",
-      "lineOrig": "Origen",
       "manualDelete": "Eliminar",
-      "sourcePdf": "PDF",
-      "sourceManual": "Manual",
       "originImportDocument": "Importado (documento)",
       "originManual": "Manual",
       "installmentsLedgerHint": "Datos importados a la base desde estados de cuenta (cuotas).",
