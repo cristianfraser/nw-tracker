@@ -4,7 +4,6 @@ import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingM
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
-import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
@@ -38,20 +37,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       ? 0
       : data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? ccLedger.totals.total_remaining_principal_clp;
 
-  const heroSubtitle =
-    ccLedger.has_installment_ledger ? (
-      <>
-        {t("accountDetail.creditCard.heroCupoHint")}{" "}
-        <span className="mono">{formatClp(ccLedger.totals.total_remaining_principal_clp)}</span>
-        {summary.latest_valuation_date ? (
-          <>
-            {" "}
-            · {t("accountDetail.creditCard.asOf")} {summary.latest_valuation_date}
-          </>
-        ) : null}
-      </>
-    ) : undefined;
-
   return (
     <AccountDetailSharedLayout
       title={ts.name}
@@ -68,12 +53,10 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       dash={data.dash}
       overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
-      heroSubtitle={heroSubtitle}
+      stripDetailSlots={<CreditCardSummaryCards ccLedger={ccLedger} stripSlots />}
       loading={data.contentLoading}
       showNavChildCards={false}
     >
-      <CreditCardSummaryCards ccLedger={ccLedger} />
-
       {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
         <section className={styles.chartBlock}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.associatedCardsTitle")}</h2>

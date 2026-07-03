@@ -1065,16 +1065,17 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     });
   const hidden_cancelled_purchases = computed.filter((c) => cancelledPurchaseIds.has(c.purchase_db_id ?? -1));
 
+  // Próximo pago = the next upcoming cuota payment. `months` is already filtered to >= nowYm and
+  // sorted ascending, so its first entry with a positive total is the next month a cuota is owed
+  // (the pay-by month of the latest facturación). Deriving this from per-purchase next_due_month
+  // instead let a stale/behind purchase whose next_due_month lags today drag "próximo pago" into
+  // the past (e.g. Santander ·4242 showing "mar 2025" instead of the June facturación pay-by).
   let next_calendar_month: string | null = null;
   let next_calendar_month_total_clp: number | null = null;
-  const dueSoon = purchases_active.filter((c) => c.remaining_installments > 0 && c.next_due_month);
-  if (dueSoon.length) {
-    next_calendar_month = [...dueSoon.map((c) => c.next_due_month!)].sort(ymCompare)[0] ?? null;
-    if (next_calendar_month) {
-      next_calendar_month_total_clp = dueSoon
-        .filter((c) => c.next_due_month === next_calendar_month)
-        .reduce((s, c) => s + c.upcoming_cuota_clp, 0);
-    }
+  const nextPaymentMonth = months.find((m) => m.total_clp > 0);
+  if (nextPaymentMonth) {
+    next_calendar_month = nextPaymentMonth.month;
+    next_calendar_month_total_clp = nextPaymentMonth.total_clp;
   }
 
   return {

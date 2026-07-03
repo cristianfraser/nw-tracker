@@ -30,6 +30,8 @@ type LayoutProps = {
     ReturnType<typeof import("../../portfolioNavFromApi").findNavTreeNodeByAccountId>
   >["children"];
   heroSubtitle?: ReactNode;
+  /** Extra bare cards for the strip's second row (same `.cards` grid as the hero, like group pages). */
+  stripDetailSlots?: ReactNode;
   children: ReactNode;
   loading?: boolean;
   /** Nav child dashboard cards (second strip row). Off for leaf pages that never show them (e.g. credit card). */
@@ -52,6 +54,7 @@ export function AccountDetailSharedLayout({
   overviewPoints,
   accountNavChildren,
   heroSubtitle,
+  stripDetailSlots,
   children,
   loading = false,
   showNavChildCards = true,
@@ -67,6 +70,14 @@ export function AccountDetailSharedLayout({
         animated
         placeholderPhase={loading}
       />
+    ) : null;
+
+  const detailSlots =
+    navChildDetailCards != null || stripDetailSlots != null ? (
+      <>
+        {navChildDetailCards}
+        {stripDetailSlots}
+      </>
     ) : null;
 
   return (
@@ -98,7 +109,7 @@ export function AccountDetailSharedLayout({
               }
             />
           }
-          detailSlots={navChildDetailCards}
+          detailSlots={detailSlots}
         />
         {heroSubtitle ? <p className="muted">{heroSubtitle}</p> : null}
         {children}

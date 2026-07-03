@@ -1,7 +1,7 @@
 {
   "app": {
     "displayPreferences": {
-      "toolbarAria": "Divisa (CLP o USD), período MTD/YTD y formato de números",
+      "toolbarAria": "Divisa (CLP o USD) y período MTD/YTD",
       "displayCurrency": "Divisa: ",
       "numberFormat": "Formato: "
     },
@@ -215,7 +215,11 @@
     "subnavAria": "Secciones del panel de control",
     "notificationsTitle": "Notificaciones",
     "accountsTitle": "Accounts",
-    "importSyncTitle": "Import sync"
+    "importSyncTitle": "Import sync",
+    "settingsTitle": "Ajustes"
+  },
+  "settings": {
+    "pageHint": "Preferencias de visualización guardadas en este navegador."
   },
   "watchlist": {
     "pageTitle": "Watchlist",
@@ -640,7 +644,16 @@
       "checkingRecentHint": "Export «últimos movimientos» de la cuenta corriente. Se pueden volver a subir archivos con filas ya importadas.",
       "checkingCartola": "Cartola oficial (Excel)",
       "checkingCartolaHint": "Cartola mensual completa. Si el mes ya fue importado, solo se agregan movimientos nuevos.",
-      "afpUnoCert": "Certificado AFP (PDF / CSV / TXT)"
+      "afpUnoCert": "Certificado AFP (PDF / CSV / TXT)",
+      "resultInsertedFlows": "Flujos insertados ({{n}})",
+      "resultSkippedFlows": "Flujos omitidos ({{n}})",
+      "resultFlowNone": "ninguno",
+      "resultSkipReasonDuplicate": "duplicado",
+      "resultSkipReasonDuplicateApprox": "duplicado aprox.",
+      "resultSkipReasonInstallmentOverlap": "ya en cuotas",
+      "resultSkipReasonAlreadyPresent": "ya en cartola",
+      "resultSkipReasonSupersededByCartola": "ya cubierto por cartola",
+      "resultSkipReasonSupersededByTransfer": "ya como traspaso interno"
     },
     "checking": {
       "cartolaMonthHint": "Una fila por cada mes del historial. Abonos y cargos solo con cartola importada. Saldo fin de mes = suma de movimientos (ledger). Saldo cartola = cierre impreso en el estado (solo referencia). Diferencia = saldo fin de mes − saldo cartola.",
@@ -671,6 +684,7 @@
       "lastFacturado": "Último facturado",
       "nextPayment": "Próximo pago",
       "cupoUtilizado": "Cupo utilizado",
+      "deudaEnCuotas": "Deuda en cuotas",
       "saldoTotal": "Saldo total",
       "heroCupoHint": "Cupo en cuotas (ledger PDF):",
       "asOf": "a la fecha",
