@@ -143,7 +143,7 @@ function CreditCardInstallmentsSection({
     return `ret. acum. ${inlineTicker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${cuota.accumulated_return_pct.toFixed(2)}%)`;
   };
 
-  const purchaseTableHeader = (dueColumn: "next" | "last" | "none") => (
+  const purchaseTableHeader = (dueColumn: "last" | "none") => (
     <thead>
       <tr>
         <th className="desktop-only">Compra</th>
@@ -158,7 +158,7 @@ function CreditCardInstallmentsSection({
         {!hasLedger ? <th className="desktop-only">Offset UI (meses)</th> : null}
         <th className="desktop-only">Cuota CLP</th>
         {dueColumn !== "last" ? <th className="desktop-only">Restante CLP</th> : null}
-        {dueColumn !== "none" ? <th className="desktop-only">Mes último pago</th> : null}
+        {dueColumn === "last" ? <th className="desktop-only">Mes último pago</th> : null}
         <th className="mobile-only" aria-hidden="true" />
       </tr>
     </thead>
@@ -166,7 +166,7 @@ function CreditCardInstallmentsSection({
 
   const renderPurchaseRows = (
     rows: ReadonlyArray<CcInstallmentPurchaseComputed>,
-    opts: { dueColumn: "next" | "last" | "none" }
+    opts: { dueColumn: "last" | "none" }
   ) =>
     rows.map((p) => {
       const detailColSpan = purchaseTableColSpan(hasLedger, opts.dueColumn);
@@ -222,15 +222,9 @@ function CreditCardInstallmentsSection({
             ) : null}
             <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td> : null}
-            {opts.dueColumn !== "none" ? (
+            {opts.dueColumn === "last" ? (
               <td className="mono desktop-only">
-                {opts.dueColumn === "last"
-                  ? p.last_paid_month
-                    ? formatYmEs(p.last_paid_month)
-                    : "—"
-                  : p.next_due_month
-                    ? `${p.next_due_month} (${formatYmEs(p.next_due_month)})`
-                    : "—"}
+                {p.last_paid_month ? formatYmEs(p.last_paid_month) : "—"}
               </td>
             ) : null}
             <td className="mobile-only">
