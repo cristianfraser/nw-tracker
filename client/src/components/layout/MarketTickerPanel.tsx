@@ -15,7 +15,6 @@ function MarqueeItemContent({
   value,
   delta,
   deltaFractionDigits,
-  deltaUsd,
   showDelta,
   seed,
 }: {
@@ -23,7 +22,6 @@ function MarqueeItemContent({
   value: string;
   delta?: number | null;
   deltaFractionDigits?: number;
-  deltaUsd?: boolean;
   showDelta?: boolean;
   seed: string;
 }) {
@@ -34,7 +32,6 @@ function MarqueeItemContent({
       {showDelta ? (
         <DeltaMetricFlow
           delta={delta ?? null}
-          showUsd={deltaUsd ?? false}
           animated={false}
           mountSeedId={seed}
           fractionDigits={deltaFractionDigits ?? 2}
@@ -56,7 +53,6 @@ function MarqueeTrack({ items }: { items: ReturnType<typeof useMarketTickerMarqu
             value={item.value}
             delta={"delta" in item ? item.delta : undefined}
             deltaFractionDigits={"fractionDigits" in item ? item.fractionDigits : 0}
-            deltaUsd={item.kind === "equity"}
             showDelta={
               item.kind === "usd_live" ||
               item.kind === "uno_a" ||
