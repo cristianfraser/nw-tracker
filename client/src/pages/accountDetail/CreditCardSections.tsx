@@ -9,7 +9,7 @@ import type {
 } from "../../types";
 import { formatClp, formatGroupedDecimal, formatPct } from "../../format";
 import { cn } from "../../cn";
-import { useTranslation } from "../../i18n";
+import { Trans, useTranslation } from "../../i18n";
 import { formatYmEs, persistExtraCcOffsets } from "./shared";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
 import {
@@ -146,19 +146,19 @@ function CreditCardInstallmentsSection({
   const purchaseTableHeader = (dueColumn: "last" | "none") => (
     <thead>
       <tr>
-        <th className="desktop-only">Compra</th>
-        <th className="desktop-only">Cuotas</th>
-        {dueColumn !== "last" ? <th className="desktop-only">Pagadas</th> : null}
-        {dueColumn !== "last" ? <th className="desktop-only">Restan</th> : null}
-        <th className="desktop-only">Principal</th>
-        {!hasLedger ? <th className="desktop-only">Tasa % anual</th> : null}
-        <th className="desktop-only">Mes compra</th>
-        {dueColumn !== "last" ? <th className="desktop-only">1.ª cuota (MES)</th> : null}
-        {!hasLedger ? <th className="desktop-only">Offset CSV (meses)</th> : null}
-        {!hasLedger ? <th className="desktop-only">Offset UI (meses)</th> : null}
-        <th className="desktop-only">Cuota CLP</th>
-        {dueColumn !== "last" ? <th className="desktop-only">Restante CLP</th> : null}
-        {dueColumn === "last" ? <th className="desktop-only">Mes último pago</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colPurchase")}</th>
+        <th className="desktop-only">{t("account.creditCard.colInstallments")}</th>
+        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colPaid")}</th> : null}
+        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colRemain")}</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th>
+        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colAnnualRate")}</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colPurchaseMonth")}</th>
+        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colFirstDue")}</th> : null}
+        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
+        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetUi")}</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
+        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colRemainingClp")}</th> : null}
+        {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th> : null}
         <th className="mobile-only" aria-hidden="true" />
       </tr>
     </thead>
@@ -216,7 +216,7 @@ function CreditCardInstallmentsSection({
                     persistExtraCcOffsets(accountId, next);
                     onExtraOffsetsChange(next);
                   }}
-                  aria-label={`Meses de offset adicionales para ${p.label}`}
+                  aria-label={t("account.creditCard.offsetAria", { label: p.label })}
                 />
               </td>
             ) : null}
@@ -258,14 +258,16 @@ function CreditCardInstallmentsSection({
               <td colSpan={detailColSpan} className={cn("muted", styles.purchaseMeta)}>
                 {p.merged_purchase_ids && p.merged_purchase_ids.length > 1 ? (
                   <div className="mono">
-                    duplicate purchase ids merged: {p.merged_purchase_ids.join(", ")}
+                    {t("account.creditCard.mergedIds", { ids: p.merged_purchase_ids.join(", ") })}
                   </div>
                 ) : null}
-                {p.merge_reason ? <div className="mono">merge reason: {p.merge_reason}</div> : null}
-                {p.heuristic_hints && p.heuristic_hints.length > 0 ? (
-                  <div className="mono">heuristics: {p.heuristic_hints.join(" | ")}</div>
+                {p.merge_reason ? (
+                  <div className="mono">{t("account.creditCard.mergeReason", { reason: p.merge_reason })}</div>
                 ) : null}
-                <div>Estado(s) con cuota para esta compra:</div>
+                {p.heuristic_hints && p.heuristic_hints.length > 0 ? (
+                  <div className="mono">{t("account.creditCard.heuristics", { hints: p.heuristic_hints.join(" | ") })}</div>
+                ) : null}
+                <div>{t("account.creditCard.statementsForPurchase")}</div>
                 {p.payment_statements.map((st, idx) => {
                   const purchaseProxy = p.purchase_db_id != null
                     ? ledger.purchase_proxy?.[p.purchase_db_id]
@@ -273,7 +275,8 @@ function CreditCardInstallmentsSection({
                   const proxyInline = formatProxyForCuota(purchaseProxy, st.pay_by_date);
                   return (
                     <div key={`${p.purchase_id}:st:${idx}`} className="mono">
-                      {st.statement_date ?? "sin fecha estado"} · {st.source_pdf ?? "sin source_pdf"} · pay_by{" "}
+                      {st.statement_date ?? t("account.creditCard.statementNoDate")} ·{" "}
+                      {st.source_pdf ?? t("account.creditCard.statementNoSourcePdf")} · pay_by{" "}
                       {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
                       {proxyInline ? <span className="muted"> · {proxyInline}</span> : null}
                     </div>
@@ -296,15 +299,19 @@ function CreditCardInstallmentsSection({
 
   return (
     <>
-      <h2 className={styles.sectionTitle}>Cupos en cuotas (tarjeta)</h2>
+      <h2 className={styles.sectionTitle}>{t("account.creditCard.installmentsTitle")}</h2>
       {hasLedger ? (
         <p className={cn("muted", styles.proseMuted)}>
           {t("account.creditCard.installmentsLedgerHint")}{" "}
           {m?.installment_purchase_count != null && m?.installment_payment_count != null ? (
-            <>
-              <span className="mono">{m.installment_purchase_count}</span> compras en cuotas,{" "}
-              <span className="mono">{m.installment_payment_count}</span> pagos de cuota registrados.
-            </>
+            <Trans
+              i18nKey="account.creditCard.installmentsCounts"
+              values={{
+                purchases: m.installment_purchase_count,
+                payments: m.installment_payment_count,
+              }}
+              components={{ 1: <span className="mono" />, 2: <span className="mono" /> }}
+            />
           ) : null}{" "}
           {m?.pay_by_rule ? (
             <span className={cn("muted", styles.stateNote)}>{m.pay_by_rule}</span>
@@ -317,11 +324,11 @@ function CreditCardInstallmentsSection({
         <>
           <div className={cn("cards", styles.cardsBelow)}>
             <div className="card">
-              <div className="label">Total cupos restantes (aprox.)</div>
+              <div className="label">{t("account.creditCard.totalRemainingLabel")}</div>
               <div className="value mono">{formatClp(ledger.totals.total_remaining_principal_clp)}</div>
             </div>
             <div className="card">
-              <div className="label">Próximo mes con cargos</div>
+              <div className="label">{t("account.creditCard.nextMonthWithCharges")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
                 {ledger.totals.next_calendar_month
                   ? `${formatYmEs(ledger.totals.next_calendar_month)} · ${formatClp(ledger.totals.next_calendar_month_total_clp ?? 0)}`
@@ -346,7 +353,7 @@ function CreditCardInstallmentsSection({
             </>
           ) : null}
 
-          <h3 className={styles.subsectionTitle}>Compras activas (cuotas pendientes)</h3>
+          <h3 className={styles.subsectionTitle}>{t("account.creditCard.activePurchasesTitle")}</h3>
           <Table
             wrapClassName={styles.tableWrapSpaced}
             tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
@@ -355,7 +362,7 @@ function CreditCardInstallmentsSection({
             {ledger.purchases.length === 0 ? (
               <tr>
                 <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
-                  No hay compras en cuotas con saldo pendiente.
+                  {t("account.creditCard.activePurchasesEmpty")}
                 </td>
               </tr>
             ) : (
@@ -363,11 +370,12 @@ function CreditCardInstallmentsSection({
             )}
           </Table>
 
-          <h3 className={styles.subsectionTitle}>Compras completadas (histórico)</h3>
+          <h3 className={styles.subsectionTitle}>{t("account.creditCard.completedPurchasesTitle")}</h3>
           <p className={cn("muted", styles.caption)}>
-            Incluye contratos cuyo total pagado alcanzó el principal (incl. última cuota en el PDF aunque{" "}
-            <span className="mono">nro_cuota_current</span> falte en filas resumen tipo{" "}
-            <span className="mono">03 CUOTAS COMERC</span>).
+            <Trans
+              i18nKey="account.creditCard.completedPurchasesCaption"
+              components={{ 1: <span className="mono" />, 2: <span className="mono" /> }}
+            />
           </p>
           <PaginatedTable
             key={`cc-completed-${accountId}`}
@@ -384,7 +392,7 @@ function CreditCardInstallmentsSection({
               {purchasesCompletedSorted.length === 0 ? (
                 <tr>
                   <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
-                    No hay compras en cuotas liquidadas en el ledger.
+                    {t("account.creditCard.completedPurchasesEmpty")}
                   </td>
                 </tr>
               ) : (

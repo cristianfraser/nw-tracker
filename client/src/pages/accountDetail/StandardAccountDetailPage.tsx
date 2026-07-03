@@ -136,7 +136,7 @@ export function StandardAccountDetailPage({ data }: Props) {
 
       {showPositionBlock ? (
         <div className={styles.positionBlock}>
-          <h2 className={styles.sectionTitleCompact}>Posición (ticker y cuotas)</h2>
+          <h2 className={styles.sectionTitleCompact}>{t("accountDetail.position.title")}</h2>
           <p className={cn("muted", styles.proseMutedXs)}>
             <Trans
               i18nKey="accountDetail.positionHint"
@@ -159,12 +159,12 @@ export function StandardAccountDetailPage({ data }: Props) {
             header={
               <thead>
                 <tr>
-                  <th>Ticker</th>
-                  <th>Cuotas / unidades</th>
+                  <th>{t("accountDetail.position.colTicker")}</th>
+                  <th>{t("accountDetail.position.colUnits")}</th>
                   <th>
                     {showEquityReturnColumns
                       ? t("accountDetail.equityPosition.depositedPocket")
-                      : "Depositado (CLP)"}
+                      : t("accountDetail.position.colDeposited")}
                   </th>
                   {showEquityReturnColumns ? (
                     <>
@@ -280,7 +280,7 @@ export function StandardAccountDetailPage({ data }: Props) {
 
       <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
         <LineChartPanel
-          title="Valorización y aportes"
+          title={t("charts.valuationAndDeposits")}
           block={valuationBlockForChart ?? ts.accounts}
           displayUnit={displayUnit}
           xAxisGranularity={xAxisGranularity}
@@ -311,7 +311,7 @@ export function StandardAccountDetailPage({ data }: Props) {
 
       {showMonthlyPerformance ? (
         <>
-          <h2 className={styles.sectionTitleSpaced}>Rendimiento mensual (calculado)</h2>
+          <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
           <p className={cn("muted", styles.proseMutedXs)}>
             Dos gráficos: (1) P/L mensual vs <strong>YTD</strong> (área reinicia cada enero). (2) mismo Δ mensual con
             área <strong>Accumulated earnings</strong> (continua desde el primer mes, sin franjas por año). La tabla
@@ -330,7 +330,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                 pestañas de clase (p. ej. Liabilities) leen la misma tabla.
               </>
             ) : (
-              <> Misma base que valorización y aportes.</>
+              <> {t("accountDetail.sameBaseAsValuation")}</>
             )}{" "}
             Unidad: <strong>{displayUnit === "usd" ? "USD" : "CLP"}</strong>
           </p>
@@ -343,10 +343,10 @@ export function StandardAccountDetailPage({ data }: Props) {
             </p>
           ) : (
             <>
-              <h3 className={styles.subsectionTitleTight}>YTD (año calendario)</h3>
+              <h3 className={styles.subsectionTitleTight}>{t("accountDetail.ytdCalendarTitle")}</h3>
               <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
                 <MonthlyPerformanceComboChart
-                  title="P/L mensual vs YTD"
+                  title={t("accountDetail.plMonthlyVsYtdTitle")}
                   titleAs="h3"
                   points={ytdChartPoints}
                   displayUnit={displayUnit}
@@ -354,7 +354,9 @@ export function StandardAccountDetailPage({ data }: Props) {
                   barSeries={[
                     {
                       dataKey: "nominal_pl",
-                      name: isMortgageAccount ? "Coste financiero mes" : "Δ mes (P/L nominal)",
+                      name: isMortgageAccount
+                        ? t("accountDetail.financingCostMonth")
+                        : t("accountDetail.deltaMonthNominal"),
                       color: accountChartTheme.bar,
                     },
                   ]}
@@ -364,10 +366,10 @@ export function StandardAccountDetailPage({ data }: Props) {
                   areaStroke={accountChartTheme.areaStroke}
                 />
               </div>
-              <h3 className={styles.subsectionTitleLoose}>Accumulated earnings</h3>
+              <h3 className={styles.subsectionTitleLoose}>{t("dashboard.sections.accumulatedEarnings")}</h3>
               <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
                 <MonthlyPerformanceComboChart
-                  title="Monthly Δ y accumulated earnings"
+                  title={t("accountDetail.monthlyDeltaAndAccumTitle")}
                   titleAs="h3"
                   points={accChartPoints}
                   displayUnit={displayUnit}
@@ -375,12 +377,14 @@ export function StandardAccountDetailPage({ data }: Props) {
                   barSeries={[
                     {
                       dataKey: "delta_month",
-                      name: isMortgageAccount ? "Coste financiero mes" : "Monthly Δ",
+                      name: isMortgageAccount
+                        ? t("accountDetail.financingCostMonth")
+                        : t("accountDetail.monthlyDelta"),
                       color: accountChartTheme.bar,
                     },
                   ]}
                   areaKey="accumulated_earnings"
-                  areaName="Accumulated earnings"
+                  areaName={t("dashboard.sections.accumulatedEarnings")}
                   areaFill={accountChartTheme.areaFill}
                   areaStroke={accountChartTheme.areaStroke}
                   alternateYearAreaStripes={false}

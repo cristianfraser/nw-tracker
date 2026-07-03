@@ -7,6 +7,7 @@ import {
 import { MonthlyPerformanceComboChart } from "./MonthlyPerformanceComboChart";
 import { groupTabPieSliceFill } from "../../chartColors";
 import { cn } from "../../cn";
+import i18n from "../../i18n";
 import type { GroupTabColorMaps, PortfolioGroupChartsColorSlug } from "../../usePortfolioGroupCharts";
 import type { GroupPageChartContext } from "../../groupPageChartViews";
 import type { TimeseriesBlock } from "../../types";
@@ -81,7 +82,7 @@ export function PortfolioGroupChartsSection({
         style={{ marginTop: "0.75rem" }}
       >
         <LineChartPanel
-          title="Valorización y aportes"
+          title={i18n.t("charts.valuationAndDeposits")}
           block={valuationBlockForChart}
           displayUnit={displayUnit}
           xAxisGranularity={xAxisGranularity}
@@ -104,7 +105,7 @@ export function PortfolioGroupChartsSection({
         />
         {chartSeriesCount > 1 && (
           <AllocationPiePanel
-            title="Valor actual por cuenta"
+            title={i18n.t("charts.currentValueByAccount")}
             slices={displayPieSlices}
             displayUnit={displayUnit}
             sliceFill={(slice) =>
@@ -162,19 +163,19 @@ export function PortfolioGroupChartsSection({
           </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
-              title="Monthly Δ (consolidado) y accumulated earnings"
+              title={i18n.t("charts.monthlyDeltaConsolidatedAccumTitle")}
               points={groupPerfForChart.points}
               displayUnit={displayUnit}
               xAxisGranularity={xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_total",
-                  name: "Monthly Δ (consolidated)",
+                  name: i18n.t("charts.monthlyDeltaConsolidated"),
                   color: groupTotalStroke,
                 },
               ]}
               areaKey="accumulated_earnings"
-              areaName="Accumulated earnings"
+              areaName={i18n.t("dashboard.sections.accumulatedEarnings")}
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes={false}
