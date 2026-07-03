@@ -279,11 +279,18 @@ export type CompositeStatsAnchors = {
   mom: number | null;
   ytd: number | null;
   yoy: number | null;
+  y3: number | null;
+  y5: number | null;
+  y10: number | null;
 };
 
-function yoyAnchorYmd(todayYmd: string): string {
+function yearsPriorYmd(todayYmd: string, years: number): string {
   const y = Number(todayYmd.slice(0, 4));
-  return `${y - 1}${todayYmd.slice(4)}`;
+  return `${y - years}${todayYmd.slice(4)}`;
+}
+
+function yoyAnchorYmd(todayYmd: string): string {
+  return yearsPriorYmd(todayYmd, 1);
 }
 
 export function compositeStatsAnchors(
@@ -307,6 +314,9 @@ export function compositeStatsAnchors(
     mom: momAnchor,
     ytd: ytdAnchor,
     yoy: yoyAnchor,
+    y3: yearsPriorYmd(today, 3),
+    y5: yearsPriorYmd(today, 5),
+    y10: yearsPriorYmd(today, 10),
   };
 
   const out: CompositeStatsAnchors = {
@@ -316,6 +326,9 @@ export function compositeStatsAnchors(
     mom: null,
     ytd: null,
     yoy: null,
+    y3: null,
+    y5: null,
+    y10: null,
   };
   for (const key of Object.keys(anchorYmds) as (keyof typeof anchorYmds)[]) {
     out[key] = tryProxyClp(meta, holdings, anchorYmds[key], { preferLive: false, now });

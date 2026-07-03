@@ -1069,6 +1069,9 @@ export interface WatchlistChanges {
   mom_pct: number | null;
   ytd_pct: number | null;
   yoy_pct: number | null;
+  y3_pct: number | null;
+  y5_pct: number | null;
+  y10_pct: number | null;
 }
 
 export interface WatchlistCompositeHoldingRow {

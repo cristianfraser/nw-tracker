@@ -31,6 +31,9 @@ export type WatchlistChanges = {
   mom_pct: number | null;
   ytd_pct: number | null;
   yoy_pct: number | null;
+  y3_pct: number | null;
+  y5_pct: number | null;
+  y10_pct: number | null;
 };
 
 export type WatchlistRowStats = {
@@ -45,9 +48,13 @@ function percentChange(live: number, prior: number | null | undefined): number |
   return ((live - prior) / prior) * 100;
 }
 
-function yoyAnchorYmd(todayYmd: string): string {
+function yearsPriorYmd(todayYmd: string, years: number): string {
   const y = Number(todayYmd.slice(0, 4));
-  return `${y - 1}${todayYmd.slice(4)}`;
+  return `${y - years}${todayYmd.slice(4)}`;
+}
+
+function yoyAnchorYmd(todayYmd: string): string {
+  return yearsPriorYmd(todayYmd, 1);
 }
 
 /** Same calendar day one month earlier (UTC date arithmetic; clamps e.g. Mar 31 → Feb 28/29). */
@@ -95,6 +102,9 @@ function changesFromAnchors(
     mom?: number | null;
     ytd?: number | null;
     yoy?: number | null;
+    y3?: number | null;
+    y5?: number | null;
+    y10?: number | null;
   },
   dayPct: number | null
 ): WatchlistChanges {
@@ -105,6 +115,9 @@ function changesFromAnchors(
     mom_pct: anchors.mom != null ? percentChange(current, anchors.mom) : null,
     ytd_pct: anchors.ytd != null ? percentChange(current, anchors.ytd) : null,
     yoy_pct: anchors.yoy != null ? percentChange(current, anchors.yoy) : null,
+    y3_pct: anchors.y3 != null ? percentChange(current, anchors.y3) : null,
+    y5_pct: anchors.y5 != null ? percentChange(current, anchors.y5) : null,
+    y10_pct: anchors.y10 != null ? percentChange(current, anchors.y10) : null,
   };
 }
 
@@ -162,6 +175,9 @@ function statsForEquity(row: MarketDisplaySeriesRow, today: string, now: Date): 
     mom: equityCloseEod(ticker, momAnchor),
     ytd: equityCloseEod(ticker, ytdAnchor),
     yoy: equityCloseEod(ticker, yoyAnchor),
+    y3: equityCloseEod(ticker, yearsPriorYmd(today, 3)),
+    y5: equityCloseEod(ticker, yearsPriorYmd(today, 5)),
+    y10: equityCloseEod(ticker, yearsPriorYmd(today, 10)),
   };
 
   return {
@@ -192,6 +208,9 @@ function statsForUf(today: string): WatchlistRowStats {
     mom: ufValueOnOrBefore(momAnchor),
     ytd: ufValueOnOrBefore(ytdAnchor),
     yoy: ufValueOnOrBefore(yoyAnchor),
+    y3: ufValueOnOrBefore(yearsPriorYmd(today, 3)),
+    y5: ufValueOnOrBefore(yearsPriorYmd(today, 5)),
+    y10: ufValueOnOrBefore(yearsPriorYmd(today, 10)),
   };
   const dayPrior = ufValueOnOrBefore(priorDay);
 
@@ -223,6 +242,9 @@ function statsForFx(today: string, now: Date): WatchlistRowStats {
     mom: fxValueOnOrBefore(momAnchor, now),
     ytd: fxValueOnOrBefore(ytdAnchor, now),
     yoy: fxValueOnOrBefore(yoyAnchor, now),
+    y3: fxValueOnOrBefore(yearsPriorYmd(today, 3), now),
+    y5: fxValueOnOrBefore(yearsPriorYmd(today, 5), now),
+    y10: fxValueOnOrBefore(yearsPriorYmd(today, 10), now),
   };
   const dayPrior = fxValueOnOrBefore(priorDay, now);
 
@@ -257,6 +279,9 @@ function statsForFundUnit(row: MarketDisplaySeriesRow, today: string): Watchlist
     mom: fundUnitValueOnOrBefore(seriesKey, momAnchor),
     ytd: fundUnitValueOnOrBefore(seriesKey, ytdAnchor),
     yoy: fundUnitValueOnOrBefore(seriesKey, yoyAnchor),
+    y3: fundUnitValueOnOrBefore(seriesKey, yearsPriorYmd(today, 3)),
+    y5: fundUnitValueOnOrBefore(seriesKey, yearsPriorYmd(today, 5)),
+    y10: fundUnitValueOnOrBefore(seriesKey, yearsPriorYmd(today, 10)),
   };
   const dayPrior = fundUnitValueOnOrBefore(seriesKey, priorDay);
 

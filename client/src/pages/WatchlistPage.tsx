@@ -73,6 +73,9 @@ function watchlistTr({
       data-sort-mom={changes?.mom_pct ?? ""}
       data-sort-ytd={changes?.ytd_pct ?? ""}
       data-sort-yoy={changes?.yoy_pct ?? ""}
+      data-sort-y3={changes?.y3_pct ?? ""}
+      data-sort-y5={changes?.y5_pct ?? ""}
+      data-sort-y10={changes?.y10_pct ?? ""}
     >
       <td className="watchlist-table__marquee">{marquee ?? null}</td>
       <td className={symbolClassName ?? "watchlist-table__symbol mono"}>{symbol}</td>
@@ -94,6 +97,15 @@ function watchlistTr({
       </td>
       <td className="watchlist-table__num">
         <PctCell value={changes?.yoy_pct ?? null} seedId={sortSeed} col="yoy" />
+      </td>
+      <td className="watchlist-table__num">
+        <PctCell value={changes?.y3_pct ?? null} seedId={sortSeed} col="y3" />
+      </td>
+      <td className="watchlist-table__num">
+        <PctCell value={changes?.y5_pct ?? null} seedId={sortSeed} col="y5" />
+      </td>
+      <td className="watchlist-table__num">
+        <PctCell value={changes?.y10_pct ?? null} seedId={sortSeed} col="y10" />
       </td>
       {showActionsColumn ? <td className="watchlist-table__actions">{actions ?? null}</td> : null}
     </tr>
@@ -148,6 +160,15 @@ function WatchlistTable({
             </th>
             <th className="watchlist-table__num" data-sort-key="yoy" data-sort-type="number">
               {t("watchlist.colYoy")}
+            </th>
+            <th className="watchlist-table__num" data-sort-key="y3" data-sort-type="number">
+              {t("watchlist.col3y")}
+            </th>
+            <th className="watchlist-table__num" data-sort-key="y5" data-sort-type="number">
+              {t("watchlist.col5y")}
+            </th>
+            <th className="watchlist-table__num" data-sort-key="y10" data-sort-type="number">
+              {t("watchlist.col10y")}
             </th>
             {showActions ? <th className="watchlist-table__actions">{t("watchlist.colActions")}</th> : null}
           </tr>
