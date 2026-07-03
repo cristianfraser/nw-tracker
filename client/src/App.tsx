@@ -3,7 +3,7 @@ import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
-import { DisplayPreferencesProvider } from "./context/DisplayPreferencesContext";
+import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
@@ -24,7 +24,20 @@ import { WatchlistPage } from "./pages/WatchlistPage";
 export default function App() {
   return (
     <DisplayPreferencesProvider>
-      <div className="layout layout--with-sidebar">
+      <AppTree />
+    </DisplayPreferencesProvider>
+  );
+}
+
+/**
+ * The whole tree lives inside a context consumer: a display-preference change
+ * (e.g. decimal separator) re-renders it top-down, so plain format helpers
+ * re-run everywhere without remounting anything (no loading flash, state kept).
+ */
+function AppTree() {
+  useDisplayPreferences();
+  return (
+    <div className="layout layout--with-sidebar">
         <MobileNavDrawer>
           <AppSidebar />
         </MobileNavDrawer>
@@ -70,6 +83,5 @@ export default function App() {
           </div>
         </div>
       </div>
-    </DisplayPreferencesProvider>
   );
 }

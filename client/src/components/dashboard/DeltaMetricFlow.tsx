@@ -14,7 +14,6 @@ const METRIC_TIMING = {
 
 type Props = {
   delta: number | null;
-  showUsd: boolean;
   animated?: boolean;
   mountSeedId?: string;
   className?: string;
@@ -25,7 +24,6 @@ type Props = {
 
 export function DeltaMetricFlow({
   delta,
-  showUsd,
   animated = true,
   mountSeedId = "delta",
   className = "",
@@ -57,7 +55,6 @@ export function DeltaMetricFlow({
   const sign = delta > 0 ? 1 : delta < 0 ? -1 : 0;
   const tone =
     sign > 0 ? styles.deltaUp : sign < 0 ? styles.deltaDown : "";
-  const unit = showUsd ? "usd" : "clp";
   return (
     <span
       className={cn(styles.delta, tone, className)}
@@ -82,7 +79,7 @@ export function DeltaMetricFlow({
         mapDisplayValue={(n) =>
           deltaFormat === "percent"
             ? plainPercentNumberFlowParts(n, fractionDigits)
-            : plainNumberFlowParts(n, unit, fractionDigits)
+            : plainNumberFlowParts(n, fractionDigits)
         }
         className={cn(styles.amount, "mono")}
         transformTiming={METRIC_TIMING.transformTiming}
