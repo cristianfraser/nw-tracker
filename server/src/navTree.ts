@@ -34,7 +34,10 @@ export type NavTreeNodeDto = {
   exclude_from_parent_total: boolean;
   /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo); `liability_group` = Pasivos root. */
   group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
-  /** Long zero tail: omitted from asset sidebar nav (still in bucket chart history via consolidated APIs). */
+  /**
+   * Inactive accounts (long zero tail) are omitted from the tree; group buckets whose children are
+   * all inactive are kept but marked — the sidebar hides them, group pages keep them for period cards.
+   */
   chart_inactive?: boolean;
   children: NavTreeNodeDto[];
 };
@@ -90,6 +93,24 @@ function loadItems(): ItemRow[] {
        ORDER BY sort_order, id`
     )
     .all() as ItemRow[];
+}
+
+/**
+ * Bucket inactivity for sidebar hiding: account/expense children are active; a group child is
+ * active unless itself marked. Asset buckets (`kind_slug`) with no active children are inactive —
+ * covers both "all accounts chart-inactive" and "no accounts linked". `nav_bucket` hubs collapse
+ * only when they have children and all are inactive (empty hubs stay routable links); reference
+ * and liability groups are never marked.
+ */
+export function navGroupChartInactive(
+  groupKind: NavTreeNodeDto["group_kind"],
+  kindSlug: string | null,
+  children: readonly NavTreeNodeDto[]
+): boolean {
+  const allInactive = children.every((c) => c.chart_inactive === true);
+  if (groupKind === "bucket" && kindSlug != null) return allInactive;
+  if (groupKind === "nav_bucket") return children.length > 0 && allInactive;
+  return false;
 }
 
 /** Drop portfolio group nodes that have no account/expense leaves after inactive filtering. */
@@ -201,6 +222,9 @@ function buildNode(
   /** Explicit `portfolio_groups.color_rgb` wins; otherwise same resolver as charts (largest child balance). */
   const resolved = group.color_rgb ?? resolvePortfolioGroupColorRgb(group.id);
 
+  const prunedChildren = pruneEmptyNavGroups(children);
+  const chartInactive = navGroupChartInactive(groupKind, group.kind_slug, prunedChildren);
+
   return {
     node_id: group.slug,
     slug: group.slug,
@@ -224,7 +248,8 @@ function buildNode(
     color_rgb: resolved,
     color: rgbTripletToCss(resolved),
     group_kind: groupKind,
-    children: pruneEmptyNavGroups(children),
+    ...(chartInactive ? { chart_inactive: true } : {}),
+    children: prunedChildren,
   };
 }
 
