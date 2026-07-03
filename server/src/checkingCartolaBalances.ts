@@ -105,22 +105,21 @@ export type EnsureCheckingLedgerAnchorResult = {
   anchor_period_month: string | null;
 };
 
-/** Fill saldo_inicial / period_from on import rows when migration 053 added empty columns. */
+/**
+ * Fill saldo_inicial / period_from on import rows left empty by migration 053.
+ * Reads cartola PDFs from cfraser/ — import-time only; request paths must not call this
+ * (they read SQLite only). The cartola import runs it before ensureCheckingLedgerAnchor.
+ */
 export function backfillCheckingImportSaldoInicial(
   accountId: number,
   dbHandle: Database = db
 ): void {
-  let rows: { period_month: string; source_file: string; saldo_inicial_clp: number | null }[];
-  try {
-    rows = dbHandle
-      .prepare(
-        `SELECT period_month, source_file, saldo_inicial_clp
-         FROM checking_cartola_imports WHERE account_id = ?`
-      )
-      .all(accountId) as typeof rows;
-  } catch {
-    return;
-  }
+  const rows = dbHandle
+    .prepare(
+      `SELECT period_month, source_file, saldo_inicial_clp
+       FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(accountId) as { period_month: string; source_file: string; saldo_inicial_clp: number | null }[];
   const dir = resolveCfraserCheckingCartolasDir();
   const upd = dbHandle.prepare(
     `UPDATE checking_cartola_imports
@@ -139,8 +138,11 @@ export function backfillCheckingImportSaldoInicial(
         accountId,
         row.period_month
       );
-    } catch {
-      /* unreadable file */
+    } catch (e) {
+      console.warn(
+        `saldo_inicial backfill: could not parse ${filePath} for ${row.period_month}:`,
+        e instanceof Error ? e.message : e
+      );
     }
   }
 }
@@ -232,21 +234,17 @@ function getLatestCartolaSaldoFinal(
   accountId: number,
   dbHandle: Database = db
 ): { period_month: string; saldo_final_clp: number } | null {
-  try {
-    const row = dbHandle
-      .prepare(
-        `SELECT period_month, saldo_final_clp
-         FROM checking_cartola_imports
-         WHERE account_id = ? AND saldo_final_clp IS NOT NULL
-         ORDER BY period_month DESC
-         LIMIT 1`
-      )
-      .get(accountId) as { period_month: string; saldo_final_clp: number } | undefined;
-    if (!row || !Number.isFinite(row.saldo_final_clp)) return null;
-    return { period_month: row.period_month, saldo_final_clp: Math.round(row.saldo_final_clp) };
-  } catch {
-    return null;
-  }
+  const row = dbHandle
+    .prepare(
+      `SELECT period_month, saldo_final_clp
+       FROM checking_cartola_imports
+       WHERE account_id = ? AND saldo_final_clp IS NOT NULL
+       ORDER BY period_month DESC
+       LIMIT 1`
+    )
+    .get(accountId) as { period_month: string; saldo_final_clp: number } | undefined;
+  if (!row || !Number.isFinite(row.saldo_final_clp)) return null;
+  return { period_month: row.period_month, saldo_final_clp: Math.round(row.saldo_final_clp) };
 }
 
 /** Sum movements excluding anchor and legacy opening rows (through `asOfYmd` inclusive). */
@@ -380,12 +378,13 @@ export function upsertCheckingLedgerAnchor(
 /**
  * Insert or update one ledger offset from the latest cartola saldo final.
  * Amount aligns ledger at latest month-end; default date is month-end before first timeline month.
+ * Reads SQLite only — safe on request paths (POST /movements via maybeSyncCheckingLedgerAnchor).
+ * The cartola import runs backfillCheckingImportSaldoInicial (cfraser/ file reads) beforehand.
  */
 export function ensureCheckingLedgerAnchor(
   accountId: number,
   dbHandle: Database = db
 ): EnsureCheckingLedgerAnchorResult {
-  backfillCheckingImportSaldoInicial(accountId, dbHandle);
   deleteLegacyOpeningMovements(accountId, dbHandle);
 
   const latest = getLatestCartolaSaldoFinal(accountId, dbHandle);
