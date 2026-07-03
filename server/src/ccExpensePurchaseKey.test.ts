@@ -24,6 +24,9 @@ function line(partial: Partial<FlowCcExpenseLineBeforeNotes> = {}): FlowCcExpens
     nro_cuota_total: 6,
     category_slug: "unclassified",
     category_unique: false,
+    amount_usd_at_expense: null,
+    origin_card_last4: null,
+    primary_card_last4: null,
     ...partial,
   };
 }

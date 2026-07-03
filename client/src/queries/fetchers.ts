@@ -156,7 +156,9 @@ function sumOptionalUsdParts(...parts: (number | undefined)[]): number | undefin
 }
 
 export function dashPickForNavStrip(
-  ctx: DashboardNavContext & { liabilities_breakdown?: DashboardResponse["liabilities_breakdown"] },
+  ctx: Omit<DashboardNavContext, "liabilities_breakdown"> & {
+    liabilities_breakdown?: DashboardResponse["liabilities_breakdown"];
+  },
   netWorthRoot: NavTreeNodeDto | null | undefined
 ): Pick<
   DashboardResponse,

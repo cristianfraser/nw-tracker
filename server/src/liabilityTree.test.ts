@@ -49,7 +49,7 @@ describe("linked credit card for Efectivo net", () => {
     const linked = linkedCreditCardClpForCashCardAsOf(asOf);
     if (linked <= 0) return;
 
-    const full = liabilitiesBreakdownClpAsOf(asOf, { mortgageFromDeptoSheet: true });
+    const full = liabilitiesBreakdownClpAsOf(asOf);
     expect(linked).toBeLessThanOrEqual(full.credit_card_clp + 1);
   });
 

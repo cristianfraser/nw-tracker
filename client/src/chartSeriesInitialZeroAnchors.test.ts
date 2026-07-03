@@ -127,7 +127,7 @@ describe("OILK-style short equity position", () => {
     const oilk = points.map((r) => r.oilk);
     expect(oilk).toContain(0);
     expect(oilk).toContain(900_000);
-    const lastNonNullIdx = oilk.findLastIndex((v) => v != null);
-    expect(oilk[lastNonNullIdx]).toBe(0);
+    const lastNonNull = [...oilk].reverse().find((v) => v != null);
+    expect(lastNonNull).toBe(0);
   });
 });

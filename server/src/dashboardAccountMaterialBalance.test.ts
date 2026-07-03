@@ -9,18 +9,19 @@ function row(
   partial: Partial<DashboardAccountStats> & Pick<DashboardAccountStats, "account_id">
 ): DashboardAccountStats {
   return {
-    account_id: partial.account_id,
     name: partial.name ?? "Test",
     group_slug: "brokerage",
     group_label: "Brokerage",
     bucket_slug: "brokerage_acciones",
     bucket_label: "Acciones",
-    dashboard_bucket_slug: null,
+    dashboard_bucket_slug: "brokerage",
     deposits_clp: 0,
     current_value_clp: partial.current_value_clp ?? null,
     valuation_as_of: null,
     current_value_usd: partial.current_value_usd ?? null,
     notes: null,
+    fx_clp_per_usd: null,
+    fx_date_used: null,
     chart_inactive: partial.chart_inactive ?? false,
     sync_stale: partial.sync_stale ?? false,
     ...partial,

@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const staleSyncSources = vi.fn<() => string[]>(() => []);
-const allSyncSourceStatuses = vi.fn(() => [] as { status: string; next_sync_imminent: boolean; next_sync: null }[]);
+const allSyncSourceStatuses = vi.fn(
+  () =>
+    [] as {
+      status: string;
+      next_sync_imminent: boolean;
+      next_sync: { ymd: string; hour: number; minute: number; timeZone: "America/Santiago" } | null;
+    }[]
+);
 const runGlobalSyncAll = vi.fn(async () => 0);
 
 vi.mock("./globalSyncStale.js", () => ({
-  staleSyncSources: (...args: unknown[]) => staleSyncSources(...args),
-  allSyncSourceStatuses: (...args: unknown[]) => allSyncSourceStatuses(...args),
+  staleSyncSources: () => staleSyncSources(),
+  allSyncSourceStatuses: () => allSyncSourceStatuses(),
 }));
 
 vi.mock("./globalSyncAll.js", () => ({
-  runGlobalSyncAll: (...args: unknown[]) => runGlobalSyncAll(...args),
+  runGlobalSyncAll: () => runGlobalSyncAll(),
 }));
 
 vi.mock("./globalSyncState.js", () => ({

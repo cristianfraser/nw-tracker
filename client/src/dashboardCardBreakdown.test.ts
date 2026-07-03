@@ -106,6 +106,8 @@ describe("dashboard card accounting identity", () => {
     ];
     const totals: DashboardBucketTotals = {
       net_worth_clp: 1_800_000,
+      deposits_clp: 0,
+      liabilities_clp: 0,
       real_estate_clp: 0,
       retirement_clp: 1_800_000,
       brokerage_clp: 0,
@@ -171,6 +173,8 @@ describe("cardGroupMetricsForDashboardBucket period delta", () => {
   it("period Δ is summed from server account rows, not recomputed from bucket totals", () => {
     const totals: DashboardBucketTotals = {
       net_worth_clp: 1_000,
+      deposits_clp: 0,
+      liabilities_clp: 0,
       real_estate_clp: 0,
       retirement_clp: 1_000,
       brokerage_clp: 0,
@@ -219,6 +223,8 @@ describe("cardGroupMetricsForDashboardBucket period delta", () => {
     });
     const totals: DashboardBucketTotals = {
       net_worth_clp: 96_517_783,
+      deposits_clp: 0,
+      liabilities_clp: 0,
       real_estate_clp: 0,
       retirement_clp: 96_517_783,
       brokerage_clp: 0,
@@ -269,6 +275,8 @@ describe("cash_eqs bucket CC period P/L decoupling", () => {
 
   const totals: DashboardBucketTotals = {
     net_worth_clp: 13_008_459,
+    deposits_clp: 0,
+    liabilities_clp: 0,
     real_estate_clp: 0,
     retirement_clp: 0,
     brokerage_clp: 0,
