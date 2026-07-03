@@ -14,8 +14,8 @@ describe("valuationLatest", () => {
   it("returns the latest valuation on or before the as-of date", () => {
     const row = db
       .prepare(
-        `SELECT account_id, as_of_date, value_clp FROM valuations
-         WHERE value_clp IS NOT NULL
+        `SELECT account_id, as_of_date, value AS value_clp FROM valuations
+         WHERE value IS NOT NULL
          ORDER BY as_of_date DESC LIMIT 1`
       )
       .get() as { account_id: number; as_of_date: string; value_clp: number } | undefined;

@@ -45,7 +45,7 @@ describe("AFP cuotas ledger / website-reconcile", () => {
     expect(afpCuotasCumulativeThroughDate(accountId, asOf)).toBeLessThan(300);
 
     db.prepare(
-      `INSERT INTO valuations (account_id, as_of_date, value_clp, units_snapshot)
+      `INSERT INTO valuations (account_id, as_of_date, value, units_snapshot)
        VALUES (?, '2026-04-30', ?, ?)`
     ).run(accountId, 27_000_000, AFP_UNO_WEBSITE_CUOTAS_TARGET);
     expect(afpCuotasForMarkToMarket(accountId, asOf, 96_889)).toBe(AFP_UNO_WEBSITE_CUOTAS_TARGET);

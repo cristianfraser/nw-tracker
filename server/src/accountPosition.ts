@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
@@ -261,9 +262,10 @@ export function getAccountPositionMeta(
 
     const stored = db
       .prepare(
-        `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+        `SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
       )
-      .get(accountId, asOfCuotas) as { value_clp: number } | undefined;
+      .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
+    if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition afp stored");
 
     const cuotasFromMovements = afpCuotasForMarkToMarket(accountId, asOfCuotas, px ?? undefined);
     let cuotas = cuotasFromMovements;

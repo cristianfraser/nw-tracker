@@ -267,10 +267,11 @@ function snapshotDatesForCryptoAccount(accountId: number, equityTicker: "BTC-USD
 }
 
 const upsertVal = db.prepare(`
-  INSERT INTO valuations (account_id, as_of_date, value_clp, units_snapshot)
-  VALUES (@account_id, @as_of_date, @value_clp, @units_snapshot)
+  INSERT INTO valuations (account_id, as_of_date, value, currency, units_snapshot)
+  VALUES (@account_id, @as_of_date, @value_clp, 'clp', @units_snapshot)
   ON CONFLICT(account_id, as_of_date) DO UPDATE SET
-    value_clp = excluded.value_clp,
+    value = excluded.value,
+    currency = excluded.currency,
     units_snapshot = excluded.units_snapshot
 `);
 

@@ -30,7 +30,7 @@ beforeAll(() => {
   clearAggregationCache();
   baseline = liabilitiesOnlyBalanceClpByDates([D1, D2], "credit_card");
   db.prepare(
-    `INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, ?, ?), (?, ?, ?)`
+    `INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, ?, ?), (?, ?, ?)`
   ).run(accountId, D1, V1, accountId, D2, V2);
   clearAggregationCache();
 });

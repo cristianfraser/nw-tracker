@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "../src/valuationValue.js";
 import { type ChileWallClock } from "../src/chileDate.js";
 import {
   fintualPublishLagsPollCalendarDay,
@@ -26,12 +27,12 @@ import {
 export type ValuationChange = SyncFieldChange;
 
 const stmtPriorValuation = db.prepare(
-  `SELECT as_of_date, value_clp FROM valuations
+  `SELECT as_of_date, value AS value_clp, currency FROM valuations
    WHERE account_id = ? AND as_of_date < ?
    ORDER BY as_of_date DESC LIMIT 1`
 );
 const stmtValuationOnDay = db.prepare(
-  `SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+  `SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
 );
 const stmtFundUnitOnDay = db.prepare(
   `SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day = ?`
@@ -48,8 +49,9 @@ export function priorAccountValuation(
   beforeYmd: string
 ): { as_of_date: string; value_clp: number } | null {
   const row = stmtPriorValuation.get(accountId, beforeYmd) as
-    | { as_of_date: string; value_clp: number }
+    | { as_of_date: string; value_clp: number; currency: string }
     | undefined;
+  if (row) assertValuationCurrencyClp(row.currency, "fintualApplyShared prior");
   if (row?.value_clp == null || !Number.isFinite(row.value_clp)) return null;
   return row;
 }
@@ -89,7 +91,10 @@ function storedFintualGoalNavAt(
     if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
     return Math.round(units * row.unit_value_clp);
   }
-  const row = stmtValuationOnDay.get(accountId, asOfYmd) as { value_clp: number } | undefined;
+  const row = stmtValuationOnDay.get(accountId, asOfYmd) as
+    | { value_clp: number; currency: string }
+    | undefined;
+  if (row) assertValuationCurrencyClp(row.currency, "fintualApplyShared onDay");
   if (row?.value_clp == null || !Number.isFinite(row.value_clp)) return null;
   return Math.round(row.value_clp);
 }
@@ -355,16 +360,17 @@ export function applyFintualGoalsSnapshotToDb(
 ): { applied: number; skipped: number; changes: ValuationChange[] } {
   const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
   const upsert = db.prepare(`
-    INSERT INTO valuations (account_id, as_of_date, value_clp)
-    VALUES (@account_id, @as_of_date, @value_clp)
+    INSERT INTO valuations (account_id, as_of_date, value, currency)
+    VALUES (@account_id, @as_of_date, @value_clp, 'clp')
     ON CONFLICT(account_id, as_of_date) DO UPDATE SET
-      value_clp = excluded.value_clp
+      value = excluded.value,
+      currency = excluded.currency
   `);
   /** Poll-day rows stamped before as_of fix (same NAV, date > snap.asOfDate). */
   const deleteMistakenFutureDup = db.prepare(
     `DELETE FROM valuations
      WHERE account_id = @account_id AND as_of_date > @as_of_date
-       AND ABS(value_clp - @value_clp) <= 1`
+       AND ABS(value - @value_clp) <= 1`
   );
 
   let applied = 0;
@@ -462,7 +468,7 @@ export function cleanupMistakenPollDayFintualValuations(snap: FintualGoalSnapsho
   const deleteMistakenFutureDup = db.prepare(
     `DELETE FROM valuations
      WHERE account_id = @account_id AND as_of_date > @as_of_date
-       AND ABS(value_clp - @value_clp) <= 1`
+       AND ABS(value - @value_clp) <= 1`
   );
   let n = 0;
   for (const g of snap.goals) {

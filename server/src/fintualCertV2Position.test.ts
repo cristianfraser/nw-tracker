@@ -68,7 +68,7 @@ describe("fintual cert v2 position", () => {
       dryRun: false,
     });
     db.prepare(
-      `INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, '2025-01-10', ?)`
+      `INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, '2025-01-10', ?)`
     ).run(accountId, 1005);
     const meta = getAccountPositionMeta(accountId, "fintual_risky_norris", {
       accountNotes: notes,

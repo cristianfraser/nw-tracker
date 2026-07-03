@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "../valuationValue.js";
 /** Manual movement create, valuations upsert, aggregation cache clear. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
 import { accountRowForId } from "../accountRowForMovement.js";
@@ -104,10 +105,11 @@ app.get("/api/accounts/:id/valuations", (req, res) => {
   const id = operationalAccountIdFromReq(req);
   const rows = db
     .prepare(
-      `SELECT id, as_of_date, value_clp FROM valuations WHERE account_id = ? ORDER BY as_of_date DESC`
+      `SELECT id, as_of_date, value AS value_clp, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date DESC`
     )
-    .all(id);
-  res.json({ valuations: rows });
+    .all(id) as { id: number; as_of_date: string; value_clp: number; currency: string }[];
+  for (const r of rows) assertValuationCurrencyClp(r.currency, "GET /valuations");
+  res.json({ valuations: rows.map(({ currency, ...r }) => r) });
 });
 
 app.post("/api/accounts/:id/valuations", (req, res) => {
@@ -124,8 +126,8 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
     return;
   }
   db.prepare(
-    `INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, ?, ?)
-     ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp`
+    `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')
+     ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value, currency = excluded.currency`
   ).run(accountId, as_of_date, value_clp);
   invalidateAggregationForAccountDate(accountId, as_of_date);
   res.json({ ok: true });

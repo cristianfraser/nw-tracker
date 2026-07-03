@@ -62,7 +62,7 @@ function main() {
       db
         .prepare(
           `SELECT COUNT(*) AS c FROM valuations v1
-           JOIN valuations v2 ON v1.as_of_date = v2.as_of_date AND v1.value_clp = v2.value_clp AND v1.value_clp > 0
+           JOIN valuations v2 ON v1.as_of_date = v2.as_of_date AND v1.value = v2.value AND v1.value > 0
            WHERE v1.account_id = ? AND v2.account_id = ?`
         )
         .get(id4141, id4242) as { c: number }
