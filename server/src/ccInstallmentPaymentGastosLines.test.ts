@@ -77,6 +77,9 @@ describe("ccInstallmentPaymentGastosLines", () => {
       merchant_key: normalizeCcExpenseMerchantKey(pay.merchant),
       category_slug: "unclassified",
       category_unique: false,
+      amount_usd_at_expense: null,
+      origin_card_last4: null,
+      primary_card_last4: null,
     };
 
     const fromLedger = buildInstallmentPaymentGastosLines([id4242], [aprilPdfLine]);

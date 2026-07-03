@@ -16,7 +16,6 @@ function synthPurchase(
   overrides: Partial<CcInstallmentPurchaseComputed> & Pick<CcInstallmentPurchaseComputed, "purchase_id">
 ): CcInstallmentPurchaseComputed {
   return {
-    purchase_id: overrides.purchase_id,
     label: "Test",
     principal_clp: 1_000_000,
     installment_count: 12,

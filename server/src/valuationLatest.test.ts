@@ -69,7 +69,7 @@ describe("valuationLatest", () => {
     expect(snap?.value_clp).toBeCloseTo(fromSheet.value_clp, 0);
     expect(snap?.as_of_date).toBe(today);
 
-    const breakdown = liabilitiesBreakdownClpAsOf(today, { mortgageFromDeptoSheet: true });
+    const breakdown = liabilitiesBreakdownClpAsOf(today);
     if (breakdown.mortgage_clp > 0) {
       expect(snap?.value_clp).toBeCloseTo(breakdown.mortgage_clp, 0);
     }

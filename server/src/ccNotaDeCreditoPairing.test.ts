@@ -27,6 +27,14 @@ function ccLine(
     installment_flag: 0,
     nro_cuota_current: null,
     nro_cuota_total: null,
+    amount_usd: null,
+    amount_usd_at_expense: null,
+    purchase_key: "",
+    purchase_notes: "",
+    big_group_slug: null,
+    origin_label: "",
+    origin_card_last4: null,
+    primary_card_last4: null,
     ...overrides,
   };
 }

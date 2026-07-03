@@ -37,6 +37,14 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     nro_cuota_total: null,
     category_slug: "unclassified",
     category_unique: false,
+    amount_usd: null,
+    amount_usd_at_expense: null,
+    purchase_key: "",
+    purchase_notes: "",
+    big_group_slug: null,
+    origin_label: "",
+    origin_card_last4: null,
+    primary_card_last4: null,
     ...partial,
   };
 }

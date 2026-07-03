@@ -404,14 +404,9 @@ export function importCcStatementsMerge(
 export function importCcStatementsFromCsvRecords(
   accountId: number,
   records: CcStatementCsvRecord[]
-): { statementCount: number; lineCount: number; categoriesRestored: number } {
-  const r = importCcStatementsMerge(accountId, records, {
+): CcStatementsMergeResult {
+  return importCcStatementsMerge(accountId, records, {
     replaceAll: true,
     skipGlobalDedupeKeys: false,
   });
-  return {
-    statementCount: r.statementCount,
-    lineCount: r.lineCount,
-    categoriesRestored: r.categoriesRestored,
-  };
 }

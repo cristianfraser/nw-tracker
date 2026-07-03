@@ -289,7 +289,7 @@ describe("getGroupMonthlyPerformanceSeries", () => {
 
       for (const pt of series.points) {
         if (pt.delta_total == null) continue;
-        const mk = monthKeyFromYmd(pt.as_of_date);
+        const mk = monthKeyFromYmd(String(pt.as_of_date));
         let sum = 0;
         for (const ba of series.bar_accounts) {
           const perf = getAccountMonthlyPerformance(ba.account_id, "clp");
@@ -306,7 +306,7 @@ describe("getGroupMonthlyPerformanceSeries", () => {
     const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
     if (!series.points.length) return;
     const last = series.points[series.points.length - 1]!;
-    if (monthKeyFromYmd(last.as_of_date) !== curMk) return;
+    if (monthKeyFromYmd(String(last.as_of_date)) !== curMk) return;
     if (last.delta_total == null) return;
 
     const { buildDashboardAccountRows } = await import("./dashboardAccounts.js");
@@ -330,7 +330,7 @@ describe("getGroupMonthlyPerformanceSeries", () => {
     const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
     if (!series.points.length) return;
     const last = series.points[series.points.length - 1]!;
-    if (monthKeyFromYmd(last.as_of_date) !== curMk) return;
+    if (monthKeyFromYmd(String(last.as_of_date)) !== curMk) return;
     if (last.ytd_group == null || !Number.isFinite(Number(last.ytd_group))) return;
 
     const { getGroupConsolidatedTables } = await import("./groupConsolidatedTables.js");

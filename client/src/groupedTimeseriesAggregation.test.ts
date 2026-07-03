@@ -4,7 +4,20 @@ import {
   aggregatePieByBucket,
   aggregateValuationByBucket,
 } from "./groupedTimeseriesAggregation";
-import type { GroupMonthlyPerformanceResponse, TimeseriesBlock } from "./types";
+import type { AccountListRow, GroupMonthlyPerformanceResponse, TimeseriesBlock } from "./types";
+
+function listRow(
+  partial: Pick<AccountListRow, "id" | "name" | "category_slug"> & Partial<AccountListRow>
+): AccountListRow {
+  return {
+    notes: null,
+    created_at: "",
+    category_label: partial.category_slug,
+    group_slug: "brokerage",
+    group_label: "Brokerage",
+    ...partial,
+  };
+}
 
 describe("aggregatePieByBucket", () => {
   it("sums slice values that map to the same bucket", () => {
@@ -153,8 +166,8 @@ describe("aggregatePerformanceByBucket", () => {
       points: [{ month: "2024-01", pl_10: 1000, pl_20: 500, ytd_group: 1500 }],
     };
     const listRows = [
-      { id: 10, name: "Fund A", category_slug: "fintual" },
-      { id: 20, name: "Stock B", category_slug: "acciones" },
+      listRow({ id: 10, name: "Fund A", category_slug: "fintual" }),
+      listRow({ id: 20, name: "Stock B", category_slug: "acciones" }),
     ];
     const meta = {
       funds: {
@@ -214,13 +227,13 @@ describe("aggregatePerformanceByBucket", () => {
       ],
     };
     const listRows = [
-      { id: 10, name: "SPY", category_slug: "brokerage_acciones__spy", chart_inactive: false },
-      {
+      listRow({ id: 10, name: "SPY", category_slug: "brokerage_acciones__spy", chart_inactive: false }),
+      listRow({
         id: 99,
         name: "OILK",
         category_slug: "brokerage_acciones__oilk",
         chart_inactive: true,
-      },
+      }),
     ];
     const meta = {
       spy: {
