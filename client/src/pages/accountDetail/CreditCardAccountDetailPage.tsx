@@ -8,6 +8,7 @@ import { formatClp } from "../../format";
 import { cn } from "../../cn";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
+import { CreditCardConfigSection } from "../../components/account/CreditCardConfigSection";
 import { CreditCardDetailSections } from "./CreditCardSections";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import { movementUnitsKind } from "./shared";
@@ -117,6 +118,8 @@ export function CreditCardAccountDetailPage({ data }: Props) {
           />
         </>
       ) : null}
+
+      <CreditCardConfigSection accountId={summary.account_id} />
 
       <AccountImportSection
         accountId={summary.account_id}
