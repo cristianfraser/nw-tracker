@@ -134,9 +134,10 @@ describe("net worth surfaces reconcile", () => {
           ? Math.round(lastOverview.total_nw)
           : null;
 
-      if (payload.totals.net_worth_usd <= 0 || chartNw == null) return;
+      const nwUsd = payload.totals.net_worth_usd;
+      if (nwUsd == null || nwUsd <= 0 || chartNw == null) return;
 
-      expect(chartNw).toBeCloseTo(Math.round(payload.totals.net_worth_usd), -2);
+      expect(chartNw).toBeCloseTo(Math.round(nwUsd), -2);
     });
   });
 

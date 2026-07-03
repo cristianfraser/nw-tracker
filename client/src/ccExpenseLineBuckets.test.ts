@@ -35,6 +35,10 @@ function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     purchase_notes: "",
     big_group_slug: null,
     origin_label: "4242",
+    amount_usd: null,
+    amount_usd_at_expense: null,
+    origin_card_last4: null,
+    primary_card_last4: null,
     ...partial,
   };
 }

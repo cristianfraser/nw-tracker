@@ -1,11 +1,11 @@
-import type { AccountListRow, DashboardNavSnapshotResponse } from "../types";
+import type { AccountListRow, CachedDashboardNavSnapshot } from "../types";
 
 /** Block first paint only when neither accounts nor nav snapshot shape exists yet. */
 export function isPageShapeLoading(
   accountsPending: boolean,
   accounts: AccountListRow[] | undefined,
   navSnapshotPending: boolean,
-  navSnapshot: DashboardNavSnapshotResponse | undefined
+  navSnapshot: CachedDashboardNavSnapshot | undefined
 ): boolean {
   if (accounts !== undefined || navSnapshot !== undefined) return false;
   return accountsPending || navSnapshotPending;

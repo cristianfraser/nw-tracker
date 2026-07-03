@@ -32,7 +32,7 @@ describe("CC billing detail / valuation path invariant", () => {
       const pts = ccLedgerStatementClosingPointsClp(id);
       if (!pts || pts.length === 0) continue;
 
-      const response = creditCardInstallmentsResponse(id);
+      const response = creditCardInstallmentsResponse(id, {});
       const detailByMonth = new Map(
         (response.billing_detail_by_month ?? []).map((r) => [r.billing_month, r.balance_total_clp])
       );
@@ -68,7 +68,7 @@ describe("CC billing detail / valuation path invariant", () => {
     if (ccAccounts.length === 0) return;
 
     for (const { id } of ccAccounts) {
-      const response = creditCardInstallmentsResponse(id);
+      const response = creditCardInstallmentsResponse(id, {});
       if (!response.facturaciones || !response.installment_history_months) continue;
 
       // Find billing months whose pay_by month is in the history and precedes nowYm

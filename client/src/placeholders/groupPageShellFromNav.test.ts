@@ -9,14 +9,12 @@ import type { AccountListRow, DashboardAccountRow, NavTreeNodeDto } from "../typ
 function navLeaf(partial: Partial<NavTreeNodeDto> & { account_id: number; slug: string }): NavTreeNodeDto {
   return {
     node_id: `n-${partial.account_id}`,
-    slug: partial.slug,
     label: partial.label ?? partial.slug,
     label_i18n_key: null,
     route_path: `/accounts/${partial.account_id}`,
     active_prefix: null,
     nav_end: true,
     show_leaf_hyphen: false,
-    account_id: partial.account_id,
     portfolio_group_id: null,
     source_account_id: null,
     expense_account_id: null,

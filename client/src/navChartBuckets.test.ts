@@ -7,6 +7,7 @@ import {
   stripChartBucketNavNodes,
 } from "./navChartBuckets";
 import type { NavTreeNodeDto } from "./types";
+import { navNodeFixture } from "./test/navNodeFixture";
 
 function groupNode(
   slug: string,
@@ -14,7 +15,7 @@ function groupNode(
   route = `/g/${slug}`,
   color_rgb?: string | null
 ): NavTreeNodeDto {
-  return {
+  return navNodeFixture({
     slug,
     label: slug,
     route_path: route,
@@ -22,7 +23,7 @@ function groupNode(
     api_group: "brokerage",
     color_rgb: color_rgb ?? null,
     children,
-  };
+  });
 }
 
 describe("navChartBuckets", () => {
@@ -45,7 +46,7 @@ describe("navChartBuckets", () => {
   });
 
   it("ungrouped on inversiones hub expands brokerage and retirement", () => {
-    const inversiones: NavTreeNodeDto = {
+    const inversiones: NavTreeNodeDto = navNodeFixture({
       slug: "inversiones",
       label: "Inversiones",
       group_kind: "nav_bucket",
@@ -60,7 +61,7 @@ describe("navChartBuckets", () => {
           "/ret"
         ),
       ],
-    };
+    });
 
     const grouped = stripChartBucketNavNodes(inversiones);
     expect(grouped.map((n) => n.slug)).toEqual(["brokerage", "retirement"]);
@@ -114,7 +115,7 @@ describe("navChartBuckets", () => {
   });
 
   it("maps chart_inactive pre-Fintual APV-a into inversiones retirement bucket", () => {
-    const inversiones: NavTreeNodeDto = {
+    const inversiones: NavTreeNodeDto = navNodeFixture({
       slug: "inversiones",
       label: "Inversiones",
       group_kind: "nav_bucket",
@@ -126,7 +127,7 @@ describe("navChartBuckets", () => {
           ]),
         ]),
       ],
-    };
+    });
 
     const { idToBucket } = buildNavChartBucketPlan(inversiones, true, [
       {

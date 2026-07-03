@@ -5,6 +5,10 @@ import * as displayUnitQueries from "./displayUnitQueries";
 import type { SidebarNavResponse } from "../types";
 
 const minimalPayload: SidebarNavResponse = {
+  dashboard: null,
+  net_worth: null,
+  flows: null,
+  rates: null,
   main: [
     {
       node_id: "inversiones",
@@ -17,6 +21,8 @@ const minimalPayload: SidebarNavResponse = {
       show_leaf_hyphen: true,
       account_id: null,
       expense_account_id: null,
+      expense_account_slug: null,
+      color: null,
       portfolio_group_id: 1,
       asset_group_slug: "inversiones",
       dashboard_bucket_slug: null,

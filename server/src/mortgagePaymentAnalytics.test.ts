@@ -30,6 +30,7 @@ function cuota27Row(): DeptoMortgageSheetRow {
     interes_uf: 7.7486,
     valor_neto_clp: 143_556_635,
     delta_credito_clp: -2_082_544,
+    delta_valor_neto_clp: null,
     incendio_clp: 41_651,
     desgravamen_clp: 3041,
     total_seguros_clp: 44_692,
