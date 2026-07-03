@@ -476,6 +476,33 @@ export function useCcFacturadoFinancingLinks() {
   });
 }
 
+export function useCreditCards() {
+  return useQuery({
+    queryKey: queryKeys.creditCards(),
+    queryFn: () => api.creditCards(),
+  });
+}
+
+export function useCreditCardConfig(accountId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.creditCardConfig(accountId ?? ""),
+    queryFn: () => api.creditCardConfig(accountId!),
+    enabled: enabled && Boolean(accountId),
+  });
+}
+
+export function usePatchCreditCardConfigMutation(accountId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: import("../types").CreditCardConfigPatchBody) =>
+      api.patchCreditCardConfig(accountId, body),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(queryKeys.creditCardConfig(accountId), result);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.creditCards() });
+    },
+  });
+}
+
 export {
   useAssignCcExpenseLineCategory,
   useMarkCcExpenseLineUniqueMutation,
