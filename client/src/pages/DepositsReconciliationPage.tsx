@@ -5,6 +5,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import { formatFlowMoney } from "../flowsDisplay";
 import type {
+  DepositManualAssertionRow,
   DepositReconciliationRow,
   DepositReconciliationStatus,
   DepositRedemptionRow,
@@ -115,6 +116,78 @@ function ReconciliationSection({
           })
         )}
       </Table>
+    </section>
+  );
+}
+
+function ManualAssertionsSection({ rows }: { rows: DepositManualAssertionRow[] }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const unmatched = rows.filter((r) => r.status === "asserted_unmatched");
+  const linkedCount = rows.length - unmatched.length;
+  const totalClp = unmatched.reduce((s, r) => s + r.amount_clp, 0);
+  const totalUsd = unmatched.reduce<number | null>(
+    (s, r) => (s == null || r.amount_usd == null ? null : s + r.amount_usd),
+    0
+  );
+  const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
+
+  return (
+    <section style={{ marginBottom: "1.5rem" }}>
+      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        {t("depositsReconciliation.assertedTitle")}
+        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          {formatFlowMoney(total, displayUnit)}
+        </span>
+      </h3>
+      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.5rem" }}>
+        {t("depositsReconciliation.assertedIntro")}
+      </p>
+      <Table
+        tableStyle={{ fontSize: "0.85rem" }}
+        collapsedVisibleRows={20}
+        showMoreLabel={t("notifications.showMore")}
+        showLessLabel={t("table.showLess")}
+        header={
+          <thead>
+            <tr>
+              <th>{t("depositsReconciliation.colDate")}</th>
+              <th>{t("depositsReconciliation.colAccount")}</th>
+              <th>{t("depositsReconciliation.colDescription")}</th>
+              <th>{t("depositsReconciliation.colAmount")}</th>
+              <th>{t("depositsReconciliation.colCandidates")}</th>
+            </tr>
+          </thead>
+        }
+      >
+        {unmatched.length === 0 ? (
+          <tr>
+            <td colSpan={5} className="muted">
+              {t("depositsReconciliation.assertedEmpty")}
+            </td>
+          </tr>
+        ) : (
+          unmatched.map((r) => {
+            const amount = displayUnit === "usd" ? (r.amount_usd ?? 0) : r.amount_clp;
+            return (
+              <tr key={r.purchase_key}>
+                <td className="mono">{r.occurred_on}</td>
+                <td>
+                  <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
+                </td>
+                <td>{r.merchant ?? ""}</td>
+                <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
+                <td className="mono">{r.candidate_count}</td>
+              </tr>
+            );
+          })
+        )}
+      </Table>
+      {linkedCount > 0 ? (
+        <p className="muted" style={{ marginTop: "0.35rem", fontSize: "0.85rem" }}>
+          {t("depositsReconciliation.assertedLinkedSummary", { count: linkedCount })}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -265,6 +338,8 @@ export function DepositsReconciliationPage() {
           />
         );
       })}
+
+      <ManualAssertionsSection rows={data.manual_assertions ?? []} />
 
       <section style={{ marginBottom: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
