@@ -4,6 +4,7 @@ import { db } from "./db.js";
 import { equityCloseEod, equityQuoteCurrency, equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
+import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
 export const RISKY_NORRIS_PROXY_BUCKET = "fintual_risky_norris_proxy";
 
@@ -335,14 +336,19 @@ export function compositeLiveStats(
   if (meta == null || holdings.length === 0) {
     return { value: null, as_of_date: null, day_pct: null };
   }
-  const today = chileCalendarTodayYmd();
-  const sessionYmd = today;
+  // Same session rules as plain NYSE tickers: before open the display session is the
+  // just-closed one (so 1D shows that session's move, not a flat 0% against itself),
+  // and live quotes only apply while the session is the current one.
+  const sessionYmd = nyseDisplaySessionYmd(now);
   const live = tryProxyClp(meta, holdings, sessionYmd, { preferLive: true, now });
   if (live == null) {
     return { value: null, as_of_date: null, day_pct: null };
   }
-  const priorDay = chileCalendarAddDays(sessionYmd, -1);
-  const prior = tryProxyClp(meta, holdings, priorDay, { preferLive: false, now });
+  const priorSession = priorNyseSessionYmd(sessionYmd);
+  const prior =
+    priorSession != null
+      ? tryProxyClp(meta, holdings, priorSession, { preferLive: false, now })
+      : null;
   const day_pct =
     prior != null && prior > 0 && Number.isFinite(prior)
       ? ((live - prior) / prior) * 100
