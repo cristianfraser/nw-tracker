@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "../src/valuationValue.js";
 /**
  * Writes month-end `valuations` for a credit-card account from the parsed PDF ledger
  * (`cc_installment_purchases` / `cc_installment_payments`), same series as historial de cuotas.
@@ -67,13 +68,13 @@ function main() {
   const to = toYm ?? "2026-05";
   const payload = ccInstallmentsDbApiPayload(accountId);
   const upsert = db.prepare(`
-    INSERT INTO valuations (account_id, as_of_date, value_clp)
-    VALUES (@account_id, @as_of_date, @value_clp)
-    ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp
+    INSERT INTO valuations (account_id, as_of_date, value, currency)
+    VALUES (@account_id, @as_of_date, @value_clp, 'clp')
+    ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value, currency = excluded.currency
   `);
 
   const valOne = db.prepare(
-    `SELECT as_of_date, value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`
+    `SELECT as_of_date, value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
   );
 
   console.log(
@@ -89,7 +90,10 @@ function main() {
     const asOf = ymToMonthEndIso(row.month);
     if (!asOf) continue;
     const ledger = row.ledger_remaining_installments_clp;
-    const ex = valOne.get(accountId, asOf) as { as_of_date: string; value_clp: number } | undefined;
+    const ex = valOne.get(accountId, asOf) as
+      | { as_of_date: string; value_clp: number; currency: string }
+      | undefined;
+    if (ex) assertValuationCurrencyClp(ex.currency, "backfill-cc-valuations");
     const curVal = ex != null ? Number(ex.value_clp) : null;
     const diff = curVal != null ? ledger - curVal : null;
     console.log(

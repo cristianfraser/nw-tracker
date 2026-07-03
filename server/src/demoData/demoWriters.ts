@@ -173,8 +173,8 @@ function movement(
 }
 
 const insValuation = db.prepare(
-  `INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, ?, ?)
-   ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp`
+  `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')
+   ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value, currency = excluded.currency`
 );
 
 function valuation(accountId: number, ymd: string, valueClp: number): void {

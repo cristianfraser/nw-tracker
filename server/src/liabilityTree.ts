@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
@@ -240,7 +241,7 @@ export function linkedCreditCardClpForCashCardAsOf(asOfYmd: string): number {
 }
 
 const stmtValuationsOnOrBefore = db.prepare(
-  `SELECT as_of_date, value_clp FROM valuations
+  `SELECT as_of_date, value AS value_clp, currency FROM valuations
    WHERE account_id = ? AND as_of_date <= ?
    ORDER BY as_of_date ASC`
 );
@@ -272,7 +273,9 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
     const rows = stmtValuationsOnOrBefore.all(master.account_id, maxDate) as {
       as_of_date: string;
       value_clp: number;
+      currency: string;
     }[];
+    for (const r of rows) assertValuationCurrencyClp(r.currency, "liabilityTree cc byDates");
     return { master, rows };
   });
 
@@ -295,7 +298,9 @@ export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditC
     const rows = stmtValuationsOnOrBefore.all(master.account_id, asOfYmd) as {
       as_of_date: string;
       value_clp: number;
+      currency: string;
     }[];
+    for (const r of rows) assertValuationCurrencyClp(r.currency, "liabilityTree cc links");
     const clp = linkedCreditCardBalanceTotalClpAsOf(master, rows, asOfYmd, today);
     if (clp == null || !Number.isFinite(clp)) continue;
     out.push({

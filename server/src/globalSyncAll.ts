@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "./valuationValue.js";
 /**
  * Orchestrates external syncs with Chile-time rules:
  * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
@@ -284,8 +285,9 @@ async function runUnoSpot(
   const px = parsed.unit_value_clp;
 
   const prevVal = db
-    .prepare(`SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`)
-    .get(row.id, asOf) as { value_clp: number } | undefined;
+    .prepare(`SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
+    .get(row.id, asOf) as { value_clp: number; currency: string } | undefined;
+  if (prevVal) assertValuationCurrencyClp(prevVal.currency, "globalSyncAll afp valuation");
 
   const anchorDay = state.afpLastUnitDay;
   const anchorPx = state.afpLastUnitClp;

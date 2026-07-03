@@ -32,7 +32,7 @@ describe("importExcelBootstrap", () => {
     try {
       const before = importExcelHasExistingBookData();
       db.prepare(
-        "INSERT INTO valuations (account_id, as_of_date, value_clp) VALUES (?, ?, ?)"
+        "INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, ?, ?)"
       ).run(accountId, "2099-01-31", 1);
       expect(importExcelHasExistingBookData()).toBe(true);
       db.prepare("DELETE FROM valuations WHERE account_id = ?").run(accountId);

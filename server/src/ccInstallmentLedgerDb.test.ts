@@ -141,7 +141,7 @@ describe("installment ledger cupo (synthetic)", () => {
 
     const today = chileCalendarTodayYmd();
     const row = db
-      .prepare(`SELECT value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`)
+      .prepare(`SELECT value AS value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`)
       .get(accountId, today) as { value_clp: number } | undefined;
     expect(row?.value_clp).toBe(expected);
   });

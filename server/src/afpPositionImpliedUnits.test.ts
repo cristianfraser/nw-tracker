@@ -36,9 +36,9 @@ describe("AFP position implied units", () => {
     ).run(accountId, 1, asOf, "import:excel|cumulative-depositado|Table1-3|AFP|vitest", 500);
 
     db.prepare(
-      `INSERT INTO valuations (account_id, as_of_date, value_clp, units_snapshot)
+      `INSERT INTO valuations (account_id, as_of_date, value, units_snapshot)
        VALUES (?, ?, ?, null)
-       ON CONFLICT(account_id, as_of_date) DO UPDATE SET value_clp = excluded.value_clp`
+       ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value`
     ).run(accountId, asOf, valueClp);
 
     const meta = getAccountPositionMeta(accountId, "afp", { afpCuotasAsOfYmd: asOf });

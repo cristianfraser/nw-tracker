@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "./valuationValue.js";
 import {
   liveAfpDisplayValueClp,
   liveFintualCertDisplayValueClp,
@@ -98,11 +99,12 @@ function historicalMarkClpAtYmd(
 
   const stored = db
     .prepare(
-      `SELECT as_of_date, value_clp FROM valuations
+      `SELECT as_of_date, value AS value_clp, currency FROM valuations
        WHERE account_id = ? AND as_of_date <= ?
        ORDER BY as_of_date DESC LIMIT 1`
     )
-    .get(accountId, asOfYmd) as { as_of_date: string; value_clp: number } | undefined;
+    .get(accountId, asOfYmd) as { as_of_date: string; value_clp: number; currency: string } | undefined;
+  if (stored) assertValuationCurrencyClp(stored.currency, "accountMarkClpAtYmd");
   if (stored?.value_clp != null && Number.isFinite(stored.value_clp)) {
     return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
   }

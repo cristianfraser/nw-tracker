@@ -1,3 +1,4 @@
+import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -102,13 +103,14 @@ export function afpCuotasForMarkToMarket(
   if (px != null && Number.isFinite(px) && px > 0) {
     const prior = db
       .prepare(
-        `SELECT value_clp, units_snapshot FROM valuations
+        `SELECT value AS value_clp, currency, units_snapshot FROM valuations
          WHERE account_id = ? AND as_of_date < ?
          ORDER BY as_of_date DESC LIMIT 1`
       )
       .get(accountId, asOfYmd) as
-      | { value_clp: number; units_snapshot: number | null }
+      | { value_clp: number; currency: string; units_snapshot: number | null }
       | undefined;
+    if (prior) assertValuationCurrencyClp(prior.currency, "afpUnoValuation prior");
     if (prior?.value_clp != null && Number.isFinite(prior.value_clp) && prior.value_clp > 0) {
       const implied =
         prior.units_snapshot != null &&
@@ -238,16 +240,18 @@ export function revalueAfpAccountFromCuotas(opts: {
 
   const vals = db
     .prepare(
-      `SELECT as_of_date, value_clp, units_snapshot FROM valuations
+      `SELECT as_of_date, value AS value_clp, currency, units_snapshot FROM valuations
        WHERE account_id = ? ORDER BY as_of_date ASC`
     )
-    .all(opts.accountId) as { as_of_date: string; value_clp: number; units_snapshot: number | null }[];
+    .all(opts.accountId) as { as_of_date: string; value_clp: number; currency: string; units_snapshot: number | null }[];
+  for (const v of vals) assertValuationCurrencyClp(v.currency, "afpUnoValuation rebuild");
 
   const upsert = db.prepare(`
-    INSERT INTO valuations (account_id, as_of_date, value_clp, units_snapshot)
-    VALUES (@account_id, @as_of_date, @value_clp, @units_snapshot)
+    INSERT INTO valuations (account_id, as_of_date, value, currency, units_snapshot)
+    VALUES (@account_id, @as_of_date, @value_clp, 'clp', @units_snapshot)
     ON CONFLICT(account_id, as_of_date) DO UPDATE SET
-      value_clp = excluded.value_clp,
+      value = excluded.value,
+      currency = excluded.currency,
       units_snapshot = excluded.units_snapshot
   `);
 
@@ -308,10 +312,11 @@ export function upsertAfpSpotValuation(opts: {
   const value_clp = Math.round(units * px * 100) / 100;
   if (!opts.dryRun) {
     db.prepare(
-      `INSERT INTO valuations (account_id, as_of_date, value_clp, units_snapshot)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO valuations (account_id, as_of_date, value, currency, units_snapshot)
+       VALUES (?, ?, ?, 'clp', ?)
        ON CONFLICT(account_id, as_of_date) DO UPDATE SET
-         value_clp = excluded.value_clp,
+         value = excluded.value,
+         currency = excluded.currency,
          units_snapshot = excluded.units_snapshot`
     ).run(opts.accountId, asOf, value_clp, units);
   }
@@ -353,10 +358,11 @@ export function upsertAfpSpotValuationWithExplicitPx(opts: {
   const value_clp = Math.round(units * px * 100) / 100;
   if (!opts.dryRun) {
     db.prepare(
-      `INSERT INTO valuations (account_id, as_of_date, value_clp, units_snapshot)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO valuations (account_id, as_of_date, value, currency, units_snapshot)
+       VALUES (?, ?, ?, 'clp', ?)
        ON CONFLICT(account_id, as_of_date) DO UPDATE SET
-         value_clp = excluded.value_clp,
+         value = excluded.value,
+         currency = excluded.currency,
          units_snapshot = excluded.units_snapshot`
     ).run(opts.accountId, asOf, value_clp, units);
   }
