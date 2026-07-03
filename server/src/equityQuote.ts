@@ -245,6 +245,19 @@ export function equitySessionYmdForTicker(ticker: string, now = new Date()): str
 }
 
 /**
+ * EOD display day per market kind. NYSE uses its display session (prior close before open,
+ * same-day close after close) — but that is New York's calendar: a Santiago ticker must use
+ * the Chile calendar day, otherwise just after midnight Chile (NY still on yesterday) the
+ * display day lags and same-day units/marks are missed.
+ */
+export function equityDisplaySessionYmd(ticker: string, now = new Date()): string {
+  const kind = equityMarketKind(ticker);
+  if (kind === "crypto24") return cryptoDisplaySessionYmd(ticker, now);
+  if (kind === "santiago") return chileWallClockAt(now).ymd;
+  return nyseDisplaySessionYmd(now);
+}
+
+/**
  * Quote-currency price for MTM / marquee: stored live quote during session when requested; otherwise last EOD.
  */
 export function resolveEquityQuote(

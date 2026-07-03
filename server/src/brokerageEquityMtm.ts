@@ -8,6 +8,7 @@ import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTick
 export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   equityCloseEod,
+  equityDisplaySessionYmd,
   equityQuoteCurrency,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
@@ -15,7 +16,6 @@ import {
 } from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
 import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
-import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
 /** Equity symbols loaded at `import:excel` into `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
@@ -136,7 +136,8 @@ export function computeEquityMtmClpCachedLive(
 
 /**
  * Synchronous display mark for acciones: live MTM in session, else last EOD for
- * {@link nyseDisplaySessionYmd} (prior close before open; same-day close after close).
+ * {@link equityDisplaySessionYmd} (prior close before open; same-day close after close —
+ * on the ticker's own exchange calendar, Chile day for `.SN`).
  */
 export function computeEquityMtmClpDisplaySync(
   accountId: number,
@@ -157,7 +158,7 @@ export function computeEquityMtmClpDisplaySync(
     }
   }
 
-  const displayYmd = nyseDisplaySessionYmd(now);
+  const displayYmd = equityDisplaySessionYmd(ticker, now);
   const fromDisplay = computeEquityMtmClp(accountId, displayYmd, null, now);
   if (fromDisplay != null && Number.isFinite(fromDisplay) && fromDisplay > 0) {
     return { value_clp: fromDisplay, as_of_date: displayYmd };
