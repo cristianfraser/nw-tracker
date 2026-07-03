@@ -18,6 +18,9 @@ export function ControlPanelLayout() {
         <NavLink to="import-sync" className={({ isActive }) => cn(isActive && "active")}>
           {t("panel.importSyncTitle")}
         </NavLink>
+        <NavLink to="settings" className={({ isActive }) => cn(isActive && "active")}>
+          {t("panel.settingsTitle")}
+        </NavLink>
       </nav>
       <Outlet />
     </main>

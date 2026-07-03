@@ -42,6 +42,7 @@ import {
 import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
 import { resolveCartolaFilePath } from "./importSyncDocumentFilePath.js";
 
@@ -275,7 +276,13 @@ export function importCheckingCartola(
   accountId: number,
   cartola: ParsedCheckingCartola,
   dbHandle: Database = db
-): { movementsInserted: number; movementsSkipped: number; partialsRemoved: number } {
+): {
+  movementsInserted: number;
+  movementsSkipped: number;
+  partialsRemoved: number;
+  inserted_flows: ImportFlowItem[];
+  skipped_flows: SkippedImportFlowItem[];
+} {
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) {
@@ -327,6 +334,13 @@ export function importCheckingCartola(
   let movementsSkipped = 0;
   let movementsSupersededByTransfer = 0;
   let partialsRemoved = 0;
+  const inserted_flows: ImportFlowItem[] = [];
+  const skipped_flows: SkippedImportFlowItem[] = [];
+  const flowOf = (mv: ParsedCheckingMovement): ImportFlowItem => ({
+    occurred_on: mv.occurred_on,
+    description: mv.description,
+    amount_clp: mv.amount_clp,
+  });
   const consumedTransferLegs = new Set<number>();
   const tx = dbHandle.transaction(() => {
     cartola.movements.forEach((mv, cartolaIndex) => {
@@ -337,6 +351,7 @@ export function importCheckingCartola(
       });
       if (noteExists.get(accountId, note)) {
         movementsSkipped += 1;
+        skipped_flows.push({ ...flowOf(mv), reason: "duplicate" });
         return;
       }
       const sameKeyIndex = cartola.movements
@@ -344,6 +359,7 @@ export function importCheckingCartola(
         .filter((prior) => cartolaMovementDedupeKey(prior) === cartolaMovementDedupeKey(mv)).length;
       if (countMatchingInDb(mv, cartola.period_month) >= sameKeyIndex + 1) {
         movementsSkipped += 1;
+        skipped_flows.push({ ...flowOf(mv), reason: "already_present" });
         return;
       }
       // Already represented by a manual internal transfer leg (from/to touching this account)?
@@ -359,10 +375,12 @@ export function importCheckingCartola(
         consumedTransferLegs.add(transferLegId);
         movementsSkipped += 1;
         movementsSupersededByTransfer += 1;
+        skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });
         return;
       }
       insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
       movementsInserted += 1;
+      inserted_flows.push(flowOf(mv));
     });
     if (cartola.movements.length > 0 && movementsInserted === 0 && movementsSupersededByTransfer === 0) {
       const existing = countExistingCartolaMovementsForMonth(
@@ -408,7 +426,7 @@ export function importCheckingCartola(
   });
   tx();
   clearCheckingBalanceCache(accountId);
-  return { movementsInserted, movementsSkipped, partialsRemoved };
+  return { movementsInserted, movementsSkipped, partialsRemoved, inserted_flows, skipped_flows };
 }
 
 export type ImportCheckingCartolasResult = {

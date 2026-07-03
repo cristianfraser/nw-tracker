@@ -176,10 +176,8 @@ export function importCheckingRecentXlsx(
   } else {
     const cartola = parseCheckingCartolaBuffer(buffer, filename);
     if (cartola.movements.length > 0 && cartola.period_month) {
-      const { movementsInserted, movementsSkipped } = importCheckingCartola(
-        effectiveId,
-        cartola
-      );
+      const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } =
+        importCheckingCartola(effectiveId, cartola);
       const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
         format: "cartola",
         movements_inserted: movementsInserted,
@@ -191,16 +189,16 @@ export function importCheckingRecentXlsx(
         format: "cartola" as const,
         inserted: movementsInserted,
         skipped_duplicate: movementsSkipped,
+        inserted_flows,
+        skipped_flows,
         errors: cartola.skipped.map((s) => s.reason),
       };
     }
     parsed = parseUltimosMovimientosRows(rows, filename);
   }
 
-  const { inserted, skipped_duplicate } = importCheckingPartialMovements(
-    effectiveId,
-    parsed.movements
-  );
+  const { inserted, skipped_duplicate, inserted_flows, skipped_flows } =
+    importCheckingPartialMovements(effectiveId, parsed.movements);
   const batch_id = createImportBatch("checking_recent_xlsx", filename, {
     format: "ultimos_movimientos",
     inserted,
@@ -212,6 +210,8 @@ export function importCheckingRecentXlsx(
     format: "ultimos_movimientos" as const,
     inserted,
     skipped_duplicate,
+    inserted_flows,
+    skipped_flows,
     parse_errors: parsed.errors,
   };
 }
@@ -240,10 +240,8 @@ export function importCheckingCartolaXlsx(
       `DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`
     ).run(effectiveId, cartola.period_month);
   } else if (isCheckingCartolaMonthImported(effectiveId, cartola.period_month)) {
-    const { movementsInserted, movementsSkipped } = importCheckingCartola(
-      effectiveId,
-      cartola
-    );
+    const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } =
+      importCheckingCartola(effectiveId, cartola);
     const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
       period_month: cartola.period_month,
       movements_inserted: movementsInserted,
@@ -255,11 +253,14 @@ export function importCheckingCartolaXlsx(
       period_month: cartola.period_month,
       inserted: movementsInserted,
       skipped_duplicate: movementsSkipped,
+      inserted_flows,
+      skipped_flows,
       already_imported_month: true,
     };
   }
 
-  const { movementsInserted, movementsSkipped } = importCheckingCartola(effectiveId, cartola);
+  const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } =
+    importCheckingCartola(effectiveId, cartola);
   const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
     period_month: cartola.period_month,
     movements_inserted: movementsInserted,
@@ -270,6 +271,8 @@ export function importCheckingCartolaXlsx(
     period_month: cartola.period_month,
     inserted: movementsInserted,
     skipped_duplicate: movementsSkipped,
+    inserted_flows,
+    skipped_flows,
     already_imported_month: false,
   };
 }

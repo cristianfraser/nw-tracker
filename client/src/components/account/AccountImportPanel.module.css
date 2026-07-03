@@ -47,3 +47,37 @@
   font-size: 0.85rem;
   margin: 0;
 }
+
+.resultList {
+  color: var(--positive, #6bcf7f);
+  font-size: 0.85rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.resultList ul {
+  margin: 0.15rem 0 0.4rem;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+
+.resultGroup {
+  font-weight: 600;
+}
+
+.resultFlow {
+  font-weight: 400;
+}
+
+.resultFlowNone {
+  font-weight: 400;
+  color: var(--text-muted, #9aa0a6);
+}
+
+.resultFlowReason {
+  color: var(--text-muted, #9aa0a6);
+}
+
+.resultFlowAmount {
+  font-variant-numeric: tabular-nums;
+}

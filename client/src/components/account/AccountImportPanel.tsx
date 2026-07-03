@@ -1,8 +1,36 @@
 import { useCallback, useState } from "react";
 import { api } from "../../api";
+import { formatClp } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
+
+type ImportFlowItem = { occurred_on: string; description: string; amount_clp: number };
+type SkippedImportFlowItem = ImportFlowItem & { reason: string };
+
+const SKIP_REASON_KEY: Record<string, string> = {
+  duplicate: "accountDetail.import.resultSkipReasonDuplicate",
+  fuzzy_duplicate: "accountDetail.import.resultSkipReasonDuplicateApprox",
+  installment_overlap: "accountDetail.import.resultSkipReasonInstallmentOverlap",
+  already_present: "accountDetail.import.resultSkipReasonAlreadyPresent",
+  superseded_by_cartola: "accountDetail.import.resultSkipReasonSupersededByCartola",
+  superseded_by_transfer: "accountDetail.import.resultSkipReasonSupersededByTransfer",
+};
+
+function isFlowItem(v: unknown): v is ImportFlowItem {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as ImportFlowItem).occurred_on === "string" &&
+    typeof (v as ImportFlowItem).amount_clp === "number"
+  );
+}
+
+function flowArray(data: Record<string, unknown>, key: string): ImportFlowItem[] | null {
+  const raw = data[key];
+  if (!Array.isArray(raw)) return null;
+  return raw.filter(isFlowItem) as ImportFlowItem[];
+}
 
 type TextSlot = {
   kind: "textarea";
@@ -83,6 +111,66 @@ function formatResult(data: Record<string, unknown>): string {
   return parts.join(" · ");
 }
 
+function FlowLine({ flow, reason }: { flow: ImportFlowItem; reason?: string }) {
+  const { t } = useTranslation();
+  const reasonKey = reason ? SKIP_REASON_KEY[reason] : undefined;
+  return (
+    <li className={styles.resultFlow}>
+      {flow.occurred_on} · {flow.description || "—"} ·{" "}
+      <span className={styles.resultFlowAmount}>{formatClp(flow.amount_clp)}</span>
+      {reasonKey && <span className={styles.resultFlowReason}> ({t(reasonKey)})</span>}
+    </li>
+  );
+}
+
+/**
+ * Renders the import result as a two-group bulleted list (inserted / skipped flows) when the
+ * response carries per-flow arrays (checking recent + cartola imports). Other import types (CC
+ * paste/PDF, cuenta vista, documents) return counts only, so those fall back to the count summary.
+ */
+function ImportResultView({ data }: { data: Record<string, unknown> }) {
+  const { t } = useTranslation();
+  const inserted = flowArray(data, "inserted_flows");
+  const skipped = flowArray(data, "skipped_flows") as SkippedImportFlowItem[] | null;
+  if (!inserted && !skipped) {
+    return <p className={styles.ok}>{formatResult(data)}</p>;
+  }
+  const insertedFlows = inserted ?? [];
+  const skippedFlows = skipped ?? [];
+  return (
+    <ul className={styles.resultList}>
+      <li className={styles.resultGroup}>
+        {t("accountDetail.import.resultInsertedFlows", { n: insertedFlows.length })}:
+        {insertedFlows.length === 0 ? (
+          <ul>
+            <li className={styles.resultFlowNone}>{t("accountDetail.import.resultFlowNone")}</li>
+          </ul>
+        ) : (
+          <ul>
+            {insertedFlows.map((flow, i) => (
+              <FlowLine key={i} flow={flow} />
+            ))}
+          </ul>
+        )}
+      </li>
+      <li className={styles.resultGroup}>
+        {t("accountDetail.import.resultSkippedFlows", { n: skippedFlows.length })}:
+        {skippedFlows.length === 0 ? (
+          <ul>
+            <li className={styles.resultFlowNone}>{t("accountDetail.import.resultFlowNone")}</li>
+          </ul>
+        ) : (
+          <ul>
+            {skippedFlows.map((flow, i) => (
+              <FlowLine key={i} flow={flow} reason={flow.reason} />
+            ))}
+          </ul>
+        )}
+      </li>
+    </ul>
+  );
+}
+
 export function AccountImportPanel({
   accountId,
   displayUnit,
@@ -93,7 +181,7 @@ export function AccountImportPanel({
   const importMutation = useAccountImportMutation({ accountId, displayUnit, extraCcOffsetsKey });
   const [open, setOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileMap, setFileMap] = useState<Record<string, File | undefined>>({});
   const [inputKey, setInputKey] = useState(0);
@@ -105,7 +193,7 @@ export function AccountImportPanel({
       setResult(null);
       importMutation.mutate(fn, {
         onSuccess: (data) => {
-          setResult(formatResult(data));
+          setResult(data);
           setPasteText("");
           setFileMap({});
           setInputKey((k) => k + 1);
@@ -201,7 +289,7 @@ export function AccountImportPanel({
               )}
             </div>
           ))}
-          {result && <p className={styles.ok}>{result}</p>}
+          {result && <ImportResultView data={result} />}
           {error && <p className="error">{error}</p>}
         </div>
       )}
