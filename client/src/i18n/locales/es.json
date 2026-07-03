@@ -76,6 +76,22 @@
     "santander": "Santander",
     "bci": "BCI"
   },
+  "creditCards": {
+    "navTitle": "Tarjetas de crédito",
+    "pageTitle": "Tarjetas de crédito",
+    "pageHint": "Administración operativa de las tarjetas — cupo, ciclo de facturación y compras — fuera de la vista de Pasivos.",
+    "colCard": "Tarjeta",
+    "colCupoClp": "Cupo CLP",
+    "colCupoUsd": "Cupo US$",
+    "colCycle": "Ciclo facturación",
+    "colBalance": "Saldo actual (CLP)",
+    "colActions": "Acciones",
+    "cycleDays": "día {{start}} → {{end}}",
+    "manageLink": "Administrar",
+    "manageHint": "«Administrar» abre la página de la tarjeta: ahí se editan cupo y ciclo, y se gestionan compras en cuotas e importaciones de estados.",
+    "empty": "No hay tarjetas de crédito operativas.",
+    "loadFailed": "No se pudieron cargar las tarjetas."
+  },
   "liabilities": {
     "mortgage": "hipoteca",
     "creditCard": "tarjeta de crédito",
