@@ -864,14 +864,10 @@ export function ledgerFacturadoClpForBillingMonth(
 }
 
 export function ccInstallmentLedgerRowCount(accountId: number): number {
-  try {
-    const r = db
-      .prepare(`SELECT COUNT(*) AS c FROM cc_installment_purchases WHERE account_id = ?`)
-      .get(accountId) as { c: number };
-    return Number(r?.c ?? 0);
-  } catch {
-    return 0;
-  }
+  const r = db
+    .prepare(`SELECT COUNT(*) AS c FROM cc_installment_purchases WHERE account_id = ?`)
+    .get(accountId) as { c: number };
+  return Number(r.c);
 }
 
 const PAY_BY_META =
