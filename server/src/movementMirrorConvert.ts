@@ -140,6 +140,12 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
      VALUES (NULL, ?, ?, ?, ?, ?, ?)`
   );
   const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
+  // Income include/exclude overrides describe the single-leg row as an income candidate; once
+  // converted to a transfer the row is internal by construction and the override is moot.
+  // (No ON DELETE CASCADE on this FK, so it must go explicitly before the leg.)
+  const delIncomeOverride = db.prepare(
+    `DELETE FROM checking_income_movement_overrides WHERE movement_id = ?`
+  );
 
   const run = db.transaction((requested: MirrorPairRef[]): ConvertedMirrorPair[] => {
     const candidates = new Map(
@@ -171,6 +177,8 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         note,
         transferUnits
       );
+      delIncomeOverride.run(out.id);
+      delIncomeOverride.run(inn.id);
       delLeg.run(out.id);
       delLeg.run(inn.id);
       converted.push({

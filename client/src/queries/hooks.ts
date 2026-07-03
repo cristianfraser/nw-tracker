@@ -668,3 +668,10 @@ export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilte
     ...displayUnitQueryBehavior,
   });
 }
+
+export function useMovementMirrorCandidates() {
+  return useQuery({
+    queryKey: queryKeys.movementMirrorCandidates(),
+    queryFn: () => api.movementMirrorCandidates(),
+  });
+}

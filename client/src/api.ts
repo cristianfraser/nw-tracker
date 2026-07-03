@@ -638,6 +638,23 @@ export const api = {
     ),
   deleteGenericUniqueMerchant: (id: number) =>
     j<void>(`/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" }),
+  movementMirrorCandidates: () =>
+    j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
+  convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>
+    j<{ converted: { transfer_movement_id: number }[] }>("/api/movement-mirrors/convert", {
+      method: "POST",
+      body: JSON.stringify({ pairs }),
+    }),
+  rejectMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>
+    j<{ rejected: number }>("/api/movement-mirrors/reject", {
+      method: "POST",
+      body: JSON.stringify({ pairs }),
+    }),
+  unrejectMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>
+    j<{ removed: number }>("/api/movement-mirrors/unreject", {
+      method: "POST",
+      body: JSON.stringify({ pairs }),
+    }),
 };
 
 export type AppMessageRow = {
