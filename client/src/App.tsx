@@ -1,27 +1,44 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
-import { AccountDetailPage } from "./pages/AccountDetailPage";
-import { CreditCardsPage } from "./pages/CreditCardsPage";
-import { GroupInfoPage } from "./pages/GroupInfoPage";
-import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { DepositsPage } from "./pages/DepositsPage";
-import { DepositsReconciliationPage } from "./pages/DepositsReconciliationPage";
-import { ExpensesPage } from "./pages/ExpensesPage";
-import { RealEstateExpensesPage } from "./pages/RealEstateExpensesPage";
-import { FlowsLayout } from "./pages/FlowsLayout";
-import { IncomePage } from "./pages/IncomePage";
-import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
-import { AccountsPanelPage } from "./pages/panel/AccountsPanelPage";
-import { ImportSyncPage } from "./pages/panel/ImportSyncPage";
-import { NotificationsPage } from "./pages/panel/NotificationsPage";
-import { SettingsPage } from "./pages/panel/SettingsPage";
-import { RatesPage } from "./pages/RatesPage";
-import { WatchlistPage } from "./pages/WatchlistPage";
+import { useTranslation } from "./i18n";
+
+// Route-level code splitting: each page (and its chart/table deps, notably recharts)
+// loads on first navigation instead of shipping in one bundle. Pages use named
+// exports, hence the `.then` remapping.
+const lazyPage = <T extends Record<string, unknown>, K extends keyof T>(
+  load: () => Promise<T>,
+  name: K
+) => lazy(async () => ({ default: (await load())[name] as React.ComponentType }));
+
+const AccountDetailPage = lazyPage(() => import("./pages/AccountDetailPage"), "AccountDetailPage");
+const CreditCardsPage = lazyPage(() => import("./pages/CreditCardsPage"), "CreditCardsPage");
+const GroupInfoPage = lazyPage(() => import("./pages/GroupInfoPage"), "GroupInfoPage");
+const LiabilitiesGroupPage = lazyPage(() => import("./pages/LiabilitiesGroupPage"), "LiabilitiesGroupPage");
+const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
+const DepositsPage = lazyPage(() => import("./pages/DepositsPage"), "DepositsPage");
+const DepositsReconciliationPage = lazyPage(
+  () => import("./pages/DepositsReconciliationPage"),
+  "DepositsReconciliationPage"
+);
+const ExpensesPage = lazyPage(() => import("./pages/ExpensesPage"), "ExpensesPage");
+const RealEstateExpensesPage = lazyPage(
+  () => import("./pages/RealEstateExpensesPage"),
+  "RealEstateExpensesPage"
+);
+const FlowsLayout = lazyPage(() => import("./pages/FlowsLayout"), "FlowsLayout");
+const IncomePage = lazyPage(() => import("./pages/IncomePage"), "IncomePage");
+const ControlPanelLayout = lazyPage(() => import("./pages/panel/ControlPanelLayout"), "ControlPanelLayout");
+const AccountsPanelPage = lazyPage(() => import("./pages/panel/AccountsPanelPage"), "AccountsPanelPage");
+const ImportSyncPage = lazyPage(() => import("./pages/panel/ImportSyncPage"), "ImportSyncPage");
+const NotificationsPage = lazyPage(() => import("./pages/panel/NotificationsPage"), "NotificationsPage");
+const SettingsPage = lazyPage(() => import("./pages/panel/SettingsPage"), "SettingsPage");
+const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
+const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
 
 export default function App() {
   return (
@@ -38,6 +55,7 @@ export default function App() {
  */
 function AppTree() {
   useDisplayPreferences();
+  const { t } = useTranslation();
   return (
     <div className="layout layout--with-sidebar">
         <MobileNavDrawer>
@@ -47,6 +65,7 @@ function AppTree() {
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
+          <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
@@ -84,6 +103,7 @@ function AppTree() {
             <Route path="/expenses" element={<Navigate to="/flows/expenses" replace />} />
             <Route path="/account/:id" element={<AccountDetailPage />} />
           </Routes>
+          </Suspense>
           </div>
         </div>
       </div>
