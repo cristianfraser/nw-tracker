@@ -355,6 +355,19 @@ export function seedNavTree(): void {
     const liabId = (groupIdBySlug.get("liabilities") as { id: number }).id;
     deleteGroupItems.run(liabId);
 
+    // Operational credit cards (cupo / purchases management) outside the Pasivos flow.
+    upsert({
+      slug: "credit_cards",
+      label: "Tarjetas de crédito",
+      label_i18n_key: "creditCards.navTitle",
+      sort_order: 25,
+      route_path: "/credit-cards",
+      active_prefix: "/credit-cards",
+      nav_end: true,
+      show_leaf_hyphen: false,
+      sidebar_section: "main",
+    });
+
     seedLiabilitiesReferenceChartGroups();
     seedCashReferenceChartGroups();
 
