@@ -33,6 +33,10 @@ export function usdCashUsdToClpAt(usd: number, asOfYmd: string, context: string)
 
 export function usdCashBalanceClpAt(accountId: number, asOfYmd: string): number {
   const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
+  // A zero balance needs no rate: consolidation baselines mark every account at every
+  // month-end, including dates before the account existed (and before fx_daily history
+  // starts at portfolioStartYmd). CLP cash returns 0 there; USD cash must match.
+  if (usd === 0) return 0;
   return usdCashUsdToClpAt(usd, asOfYmd, `usdCashBalanceClpAt:${accountId}`);
 }
 
