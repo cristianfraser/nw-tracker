@@ -58,7 +58,6 @@ export function computeOrphanUnoCertMonthMovements(opts: {
   const { rows: unoRows } = parseAfpCertificadoBody(opts.unoCertText, opts.unoCertSourceFileName);
   const unoBy = aggregateAfpCertCuotasByPeriodForTable1(unoRows);
   const modeloBy = aggregateModeloCuotasAndMontoByPeriod(opts.modeloRows);
-  const firstMk = opts.firstCumulativeMk ?? "9999-12";
   const out: OrphanCertMonthRow[] = [];
 
   for (const [periodYm, agg] of unoBy) {

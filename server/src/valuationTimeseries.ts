@@ -19,7 +19,6 @@ import {
   accountUsesCryptoMtm,
   computeCryptoMtmClp,
   computeCryptoMtmClpDisplaySync,
-  cryptoEquityTickerForAccount,
   expandSnapshotDatesForCryptoMtm,
 } from "./cryptoValuation.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
@@ -31,34 +30,29 @@ import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
-import { expandYearMonthsInclusive, monthEndUtcYmd, monthKeyFromYmd, monthEndsBetweenInclusive } from "./calendarMonth.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import {
+  expandYearMonthsInclusive,
+  monthEndUtcYmd,
+  monthKeyFromYmd,
+  monthEndsBetweenInclusive,
+} from "./calendarMonth.js";
 import {
   deptoMortgageBalanceClpBySnapshotDates,
   deptoMortgageCloseClpBySnapshotDates,
   deptoSueciaPropertyCloseClpBySnapshotDates,
-  firstDeptoPropertyOwnershipYmd,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
   ccLedgerStatementClosingPointsClp,
   ccLedgerStatementClosingPointsClpForAccounts,
   latestCreditCardBillingBalanceTotalClp,
-  latestCreditCardBillingBalanceTotalClpAndAsOfDate,
 } from "./ccCreditCardValuations.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import {
-  cacheKeyGroupClosingByDate,
-  getAggregationCached,
-} from "./aggregationCache.js";
+import { cacheKeyGroupClosingByDate, getAggregationCached } from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
-import {
-  ccInstallmentLedgerRowCount,
-  liveCreditCardOutstandingClp,
-} from "./ccInstallmentLedgerDb.js";
+import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import {
   colorRgbForSyntheticAccountLine,
   syntheticGroupColorRgbMapForValuationGroup,
@@ -69,18 +63,15 @@ import {
 } from "./portfolioGroups.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxMonthEndForBalanceUsd, fxRowOnOrBefore, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 import {
-  latestMortgageDisplayedBalance,
-  latestValuationRowOnOrBefore,
-  latestValuationRowOnOrBeforeChileToday,
-  latestLiabilityValuationRowForSnapshot,
-} from "./valuationLatest.js";
+  fxMonthEndForBalanceUsd,
+  ufClpBySnapshotDatesAsc,
+  ufRowOnOrBefore,
+} from "./fxRates.js";
 import {
   afpValuationRawClpForChart,
   fintualCertValuationRawClpForChart,
   liveAfpDisplayValueClp,
-  liveFintualCertDisplayValueClp,
 } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
@@ -224,11 +215,6 @@ function clpToUfAtPaymentRounded(clp: number, paymentDate: string): number | nul
   const uf = clp / u.clp_per_uf;
   const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
   return Math.round(uf * f) / f;
-}
-
-/** CLP → USD at payment date (buy rate with mid fallback). */
-function clpToUsdAtPaymentRounded(clp: number, paymentDate: string): number | null {
-  return depositInflowEventUsd({ occurred_on: paymentDate, amt: clp });
 }
 
 /** Flows through snapshot date `d` (month-end `YYYY-MM-DD`, or legacy `YYYY-MM-01` converted to month-end). */
@@ -1534,15 +1520,6 @@ const portfolioGroupLabelStmt = db.prepare(
 
 type BuiltGroupValuationTimeseries = ReturnType<typeof getGroupValuationTimeseries>;
 
-function buildDashboardPortfolioGroupTotals(unit: TsUnit): {
-  datesAsc: string[];
-  totalsBySlug: Map<string, Map<string, number>>;
-} {
-  const clp = buildDashboardPortfolioGroupTotalsClp();
-  if (unit === "clp") return clp;
-  return convertDashboardPortfolioGroupTotals(clp, unit);
-}
-
 /** Consolidated monthly perf only (no full {@link getGroupValuationTimeseries} per bucket). */
 function buildDashboardPortfolioGroupTotalsClp(): {
   datesAsc: string[];
@@ -1640,15 +1617,6 @@ function buildDashboardPrimaryFromTotals(
   });
 
   return { accounts, points };
-}
-
-/** @heavy Net-worth portfolio groups × {@link getGroupValuationTimeseries} (dominant cost on dashboard load). */
-function buildDashboardPrimaryFromPortfolioGroups(unit: TsUnit): {
-  accounts: AccountLine[];
-  points: Record<string, string | number | null>[];
-} {
-  const { datesAsc, totalsBySlug } = buildDashboardPortfolioGroupTotals(unit);
-  return buildDashboardPrimaryFromTotals(unit, datesAsc, totalsBySlug);
 }
 
 /** Carry each source group’s last valuation on or before each chart date (month-ends may differ). */

@@ -24,11 +24,10 @@
  * balances (so Liabilities / patrimonio charts read `valuations`, not a separate runtime series).
  */
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
-import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
+import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
 import {
   mergeCcAccountFromParsedRows,
@@ -37,19 +36,14 @@ import {
 } from "../src/ccInstallmentLedgerMerge.js";
 import { isInstallmentContractSummaryMerchant } from "../src/ccInstallmentLineDedupe.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import {
-  cardLast4FromParsedRow,
-  resolveImportAccountIds,
-} from "../src/ccParsedImportAccounts.js";
+import { cardLast4FromParsedRow, resolveImportAccountIds } from "../src/ccParsedImportAccounts.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import {
   buildCcStatementImportAccountLog,
   logCcStatementImportRun,
   type CcStatementImportAccountLog,
 } from "../src/ccStatementImportLog.js";
-import type { CcStatementCsvRecord } from "../src/ccStatementsImport.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function arg(name: string): string | undefined {
   const p = `--${name}=`;

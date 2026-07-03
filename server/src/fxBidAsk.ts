@@ -25,7 +25,6 @@ const stmtBuyOnOrBefore = db.prepare(
    FROM fx_daily_bid_ask WHERE date <= ? ORDER BY date DESC LIMIT 1`
 );
 
-const stmtSellOnOrBefore = stmtBuyOnOrBefore;
 
 const stmtMidRowOnOrBefore = db.prepare(
   `SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`

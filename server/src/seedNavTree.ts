@@ -167,14 +167,6 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
   });
 }
 
-function linkAccountsByNotes(parentSlug: string, notes: string[], sortStart = 0) {
-  const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
-  notes.forEach((n, i) => {
-    const row = db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(n) as { id: number } | undefined;
-    if (row) insertAccountChild.run(pid, row.id, sortStart + i * 10);
-  });
-}
-
 function linkExpenseAccounts(parentSlug: string, slugs: string[]) {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
   slugs.forEach((slug, i) => {

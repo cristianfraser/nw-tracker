@@ -6,10 +6,8 @@
 import { db } from "./db.js";
 import { AFP_UNO_CUOTA_SERIES_KEY, ymdFromDdMmYyyy } from "./afpQuetalmiApi.js";
 import { parseAfpCertificadoBody } from "./afpUnoCertMovimientosParse.js";
-import type { AfpCertMovementRow } from "./afpUnoCertParse.js";
 import { aggregateAfpCertCuotasByPeriodForTable1 } from "./afpUnoCertTable1Aggregation.js";
 
-type Agg = { monto: number; cuotas: number; rows: AfpCertMovementRow[] };
 
 function movementMonthKey(occurredOn: string): string | null {
   const d = /^(\d{4}-\d{2})-\d{2}$/.exec(occurredOn.trim());

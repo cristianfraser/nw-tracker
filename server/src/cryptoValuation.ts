@@ -1,4 +1,8 @@
-import { monthEndsBetweenInclusive, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import {
+  monthEndsBetweenInclusive,
+  monthEndUtcYmd,
+  monthKeyFromYmd,
+} from "./calendarMonth.js";
 import { cryptoSheetMovementDeltas, type CryptoSheetMonthMovement } from "./cryptoSheetUnits.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
@@ -130,7 +134,6 @@ export function computeCryptoMtmClp(
 ): number | null {
   const ticker = cryptoEquityTickerForAccount(accountId);
   if (!ticker) return null;
-  const asset = ticker === "BTC-USD" ? "BTC" : "ETH";
   const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd);
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
   const closeUsd = priceUsd ?? equityCloseEod(ticker, asOfYmd);

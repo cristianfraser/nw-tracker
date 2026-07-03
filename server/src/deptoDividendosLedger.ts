@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
   loadDeptoDividendosSheetRowsRawFromDb,
   replaceDeptoDividendosSheetRowsInDb,
@@ -300,31 +299,6 @@ function snapshotDepositCutoff(asOfLabel: string): string {
   const mo = Number(m[2]);
   if (!Number.isFinite(y) || mo < 1 || mo > 12) return asOfLabel;
   return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
-}
-
-function deptoNumericFieldBySnapshotDates(
-  dateStrsAsc: readonly string[],
-  ledger: readonly DeptoMortgageSheetRow[],
-  read: (row: DeptoMortgageSheetRow) => number | null
-): Map<string, number> {
-  const out = new Map<string, number>();
-  if (dateStrsAsc.length === 0 || ledger.length === 0) return out;
-  const sorted = [...ledger].sort((a, b) => {
-    const c = a.occurred_on.localeCompare(b.occurred_on);
-    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
-  });
-  let j = 0;
-  let last: number | null = null;
-  for (const d of dateStrsAsc) {
-    const cut = snapshotDepositCutoff(d);
-    while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
-      const v = read(sorted[j]!);
-      if (v != null && Number.isFinite(v)) last = v;
-      j++;
-    }
-    if (last != null) out.set(d, last);
-  }
-  return out;
 }
 
 /**
