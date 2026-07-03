@@ -48,6 +48,13 @@ export type FlowsFilters = {
   category?: string;
   q?: string;
   personal_only?: boolean;
+  /** Inclusive YYYY-MM-DD bounds. */
+  date_from?: string;
+  date_to?: string;
+  /** Compared against rounded |amount_clp|. `amount_exact` excludes min/max (validated at the route). */
+  amount_min?: number;
+  amount_max?: number;
+  amount_exact?: number;
 };
 
 function assembleFlowRows(
@@ -117,9 +124,19 @@ function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): FlowsApiR
     if (filters.account_id != null && r.account_id !== filters.account_id) return false;
     if (filters.category && r.category_slug !== filters.category) return false;
     if (filters.q) {
-      const note = r.note?.toLowerCase() ?? "";
-      if (!note.includes(filters.q.toLowerCase())) return false;
+      const q = filters.q.toLowerCase();
+      const haystack = [r.note, r.account_name, r.counterpart_account_name, r.flow_type_label]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
     }
+    if (filters.date_from && r.occurred_on < filters.date_from) return false;
+    if (filters.date_to && r.occurred_on > filters.date_to) return false;
+    const absAmount = Math.round(Math.abs(r.amount_clp));
+    if (filters.amount_exact != null && absAmount !== Math.round(filters.amount_exact)) return false;
+    if (filters.amount_min != null && absAmount < filters.amount_min) return false;
+    if (filters.amount_max != null && absAmount > filters.amount_max) return false;
     if (filters.personal_only) {
       if (!PERSONAL_FLOW_TYPES.has(r.flow_type)) return false;
       if (r.note?.includes("cripto-coin-only-wdw")) return false;
@@ -140,6 +157,33 @@ export function buildGroupFlows(
     name: r.name,
     category_slug: r.bucket_slug,
   }));
+  const movementsByAccount = listAccountMovementsForApiBulk(
+    accountEntries.map((e) => e.account_id)
+  );
+  const allRows = assembleFlowRows(accountEntries, movementsByAccount);
+  const filter_options = buildFilterOptions(allRows, true);
+  const filtered = applyFlowFilters(allRows, filters);
+  return { ...paginate(filtered, page, pageSize), filter_options };
+}
+
+/**
+ * Global movement search: every account's flows in one filterable list
+ * (/search). Same in-memory row assembly as group flows — a few thousand
+ * movements, same cost class as `/api/groups/:slug/flows`.
+ */
+export function buildAllFlows(
+  filters: FlowsFilters,
+  page: number,
+  pageSize: number
+): FlowsPageResponse {
+  const accountEntries = db
+    .prepare(
+      `SELECT a.id AS account_id, a.name, g.slug AS category_slug
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       ORDER BY a.id`
+    )
+    .all() as { account_id: number; name: string; category_slug: string }[];
   const movementsByAccount = listAccountMovementsForApiBulk(
     accountEntries.map((e) => e.account_id)
   );

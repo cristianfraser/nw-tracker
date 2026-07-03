@@ -1122,5 +1122,16 @@
     "confirmSingleMessage": "Convertir {{from}} → {{to}} por {{amount}} en una transferencia única.",
     "confirmConvert": "Convertir",
     "confirmCancel": "Cancelar"
+  },
+  "search": {
+    "title": "Buscador de movimientos",
+    "intro": "Busca en todos los movimientos de todas las cuentas: texto (nota, cuenta, contraparte), rango de fechas y monto.",
+    "dateFrom": "Desde",
+    "dateTo": "Hasta",
+    "amountExact": "Monto exacto",
+    "amountMin": "Monto mín.",
+    "amountMax": "Monto máx.",
+    "empty": "Sin movimientos.",
+    "emptyFiltered": "Sin resultados para los filtros."
   }
 }

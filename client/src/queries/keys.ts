@@ -58,4 +58,5 @@ export const queryKeys = {
   groupFlows: (slug: string, filtersKey: string) => ["groupFlows", slug, filtersKey] as const,
   accountFlows: (id: string, filtersKey: string) => ["accountFlows", id, filtersKey] as const,
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
+  flowsSearch: (filtersKey: string) => ["flowsSearch", filtersKey] as const,
 };
