@@ -13,6 +13,7 @@ import {
 import type { TsUnit } from "./valuationTimeseries.js";
 import { MONTH_ROW_EPS, pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -351,7 +352,10 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
         return perfDeptoPropertyPaymentsInUnit(ledger, today, null, unit);
       }
     }
-    return row?.net_capital_flow ?? 0;
+    if (bucketKind === "mortgage") return row?.net_capital_flow ?? 0;
+    // Live close is as-of-today, so the flow must be too: the base row sums the whole
+    // calendar month and a future-dated movement would read as phantom negative P/L.
+    return netDepositFlowCurrentMonthThroughToday(accountId, unit === "usd" ? "usd" : "clp");
   })();
   const nominal = live - priorClose - netFlow;
   const denom = priorClose + netFlow;

@@ -68,6 +68,11 @@ export function monthEndCloseFromPerfRows(
 /**
  * Calendar month-end close for one account: live/historical mark at `monthEndUtcYmd(monthKey)`
  * (same priority as dashboard cards), then perf rows.
+ *
+ * The current month is marked as of Chile-today, never the future month-end: ledger-based
+ * cash accounts sum movements through the mark date, so a future-dated movement inside the
+ * month (e.g. a stock_buy settling tomorrow) must not count until its date arrives — equity
+ * MTM only counts units through today, and mixing the two skews consolidated bucket totals.
  */
 export function monthEndCloseClpForAccount(
   accountId: number,
@@ -76,7 +81,9 @@ export function monthEndCloseClpForAccount(
   monthKey: string,
   opts?: MonthEndCloseForAccountOpts
 ): number | null {
-  const ymd = monthEndUtcYmd(monthKey);
+  const monthEnd = monthEndUtcYmd(monthKey);
+  const today = chileCalendarTodayYmd();
+  const ymd = monthEnd > today ? today : monthEnd;
   const mark = accountMarkClpAtYmd(accountId, ymd, bucketSlug, {
     notes: opts?.notes ?? null,
     name: opts?.name ?? null,
