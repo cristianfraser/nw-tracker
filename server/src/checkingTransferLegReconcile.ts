@@ -72,8 +72,10 @@ export function findMatchingInternalTransferLegId(
 type ImportedCheckingRow = { id: number; occurred_on: string };
 
 /** True when a bank movement dated `bankDate` could be a transfer effective on `transferDate`
- * (`priorChileBusinessDay(bankDate) <= transferDate <= bankDate`). */
-function bankDateMatchesTransferDate(bankDate: string, transferDate: string): boolean {
+ * (`priorChileBusinessDay(bankDate) <= transferDate <= bankDate`). Exported for the mirror-pair
+ * high-confidence tier (movementMirrorPairs.ts), which reuses this exact window so batch
+ * conversions stay inside the cartola re-import dedupe window by construction. */
+export function bankDateMatchesTransferDate(bankDate: string, transferDate: string): boolean {
   if (bankDate < transferDate) return false;
   if (bankDate === transferDate) return true;
   const prior = priorChileBusinessDayYmd(bankDate);
