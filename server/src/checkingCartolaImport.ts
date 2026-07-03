@@ -26,6 +26,7 @@ import {
   runParseCheckingCartolaPdfs,
 } from "./checkingCartolaPdfImport.js";
 import {
+  backfillCheckingImportSaldoInicial,
   clearCheckingAccountValuations,
   clearCheckingBalanceCache,
   ensureCheckingLedgerAnchor,
@@ -663,6 +664,7 @@ export function finishCartolaImportRun(
     if (pruned.length > 0) {
       console.log(`  pruned phantom boundary month(s): ${pruned.join(", ")}`);
     }
+    backfillCheckingImportSaldoInicial(accountId);
     const anchor = ensureCheckingLedgerAnchor(accountId);
     if (anchor.inserted) {
       console.log(
