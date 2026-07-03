@@ -37,6 +37,10 @@ const AccountsPanelPage = lazyPage(() => import("./pages/panel/AccountsPanelPage
 const ImportSyncPage = lazyPage(() => import("./pages/panel/ImportSyncPage"), "ImportSyncPage");
 const NotificationsPage = lazyPage(() => import("./pages/panel/NotificationsPage"), "NotificationsPage");
 const SettingsPage = lazyPage(() => import("./pages/panel/SettingsPage"), "SettingsPage");
+const MirrorPairsPanelPage = lazyPage(
+  () => import("./pages/panel/MirrorPairsPanelPage"),
+  "MirrorPairsPanelPage"
+);
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
 
@@ -96,6 +100,7 @@ function AppTree() {
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="accounts" element={<AccountsPanelPage />} />
               <Route path="import-sync" element={<ImportSyncPage />} />
+              <Route path="mirror-pairs" element={<MirrorPairsPanelPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="/messages" element={<Navigate to="/panel/notifications" replace />} />

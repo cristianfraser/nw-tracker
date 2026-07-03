@@ -145,6 +145,19 @@ describe("convertMirrorPairs", () => {
     expect(transferLegUnitsThroughDate(fundId, "2026-04-30")).toBe(unitsBefore - 7.5);
   });
 
+  it("drops the income override of a converted leg (no cascade on that FK)", () => {
+    const outId = insLeg(genericId, -1_110_003, "2026-04-15");
+    const inId = insLeg(checkingId, 1_110_003, "2026-04-15");
+    db.prepare(
+      `INSERT INTO checking_income_movement_overrides (movement_id, is_excluded) VALUES (?, 1)`
+    ).run(inId);
+    convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const left = db
+      .prepare(`SELECT COUNT(*) AS c FROM checking_income_movement_overrides WHERE movement_id = ?`)
+      .get(inId) as { c: number };
+    expect(left.c).toBe(0);
+  });
+
   it("is all-or-nothing: a stale pair in the batch converts nothing", () => {
     const out1 = insLeg(genericId, -2_020_201, "2026-04-16");
     const in1 = insLeg(generic2Id, 2_020_201, "2026-04-16");

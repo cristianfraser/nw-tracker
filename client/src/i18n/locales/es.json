@@ -188,7 +188,8 @@
     "notificationsTitle": "Notificaciones",
     "accountsTitle": "Accounts",
     "importSyncTitle": "Import sync",
-    "settingsTitle": "Ajustes"
+    "settingsTitle": "Ajustes",
+    "mirrorPairsTitle": "Mirrors históricos"
   },
   "settings": {
     "pageHint": "Preferencias de visualización guardadas en este navegador."
@@ -1087,5 +1088,39 @@
       "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
       "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import)."
     }
+  },
+  "mirrorPairs": {
+    "title": "Mirrors históricos",
+    "intro": "Pares de movimientos espejo (retiro en una cuenta + depósito igual en otra) anteriores al modelo de transferencias. Convertir un par lo reemplaza por una transferencia única fechada el día del retiro; las notas originales se conservan y la conversión es reversible. Los depósitos ya enlazados en la conciliación quedan fuera. Ojo: si un abono de cartola convertido contaba como ingreso, el total de ingresos baja (es una corrección).",
+    "highTitle": "Alta confianza ({{n}})",
+    "emptyHigh": "Sin candidatos de alta confianza.",
+    "ambiguousTitle": "Ambiguos ({{n}})",
+    "emptyAmbiguous": "Sin candidatos ambiguos.",
+    "blockedTitle": "Bloqueados ({{n}})",
+    "blockedIntro": "No convertibles: el abono en cuenta corriente/vista cruza el límite de mes y movería el saldo calibrado con la cartola.",
+    "blockedReasonCheckingStraddle": "abono en checking cruza el mes",
+    "rejectedTitle": "Rechazados ({{n}})",
+    "restore": "Restaurar",
+    "selectAll": "Seleccionar todos",
+    "selectPair": "Seleccionar par",
+    "convertSelected": "Convertir seleccionados ({{n}})",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "colDates": "Fechas",
+    "colFrom": "Origen",
+    "colTo": "Destino",
+    "colAmount": "Monto",
+    "colNotes": "Notas",
+    "colFlags": "Avisos",
+    "colActions": "Acciones",
+    "badgeMonthStraddle": "cruza mes",
+    "badgeWideGap": "fuera de ventana bancaria (reimportar la cartola puede duplicar)",
+    "badgeMultiCandidate": "{{n}} candidatos del mismo monto",
+    "confirmBatchTitle": "Convertir pares seleccionados",
+    "confirmBatchMessage": "Se convertirán {{n}} pares en transferencias únicas. Los saldos de fin de mes no cambian; la operación es reversible por par.",
+    "confirmSingleTitle": "Convertir par",
+    "confirmSingleMessage": "Convertir {{from}} → {{to}} por {{amount}} en una transferencia única.",
+    "confirmConvert": "Convertir",
+    "confirmCancel": "Cancelar"
   }
 }

@@ -81,8 +81,9 @@ type EligibleLegRow = {
 /**
  * Legs eligible for pairing: single-leg CLP rows, optionally carrying cuotas. Excludes
  * flow_kind / USD legs (brokerage and USD-cash semantics must not be rewritten), anchor/opening
- * calibration rows, rows already explained by a link (expense_deposit_links) or a synthetic
- * mirror (checking_gap_deposit_mirrors), and Buda buffer rows (own mirror system, budaWallet.ts).
+ * calibration rows, rows already explained by a link (expense_deposit_links), a synthetic
+ * mirror (checking_gap_deposit_mirrors), or a payroll liquidación (payroll_work_earnings —
+ * income by construction, never a transfer leg), and Buda buffer rows (budaWallet.ts).
  */
 function loadEligibleLegs(): EligibleLegRow[] {
   return db
@@ -104,6 +105,7 @@ function loadEligibleLegs(): EligibleLegRow[] {
            AND m.note NOT LIKE '%cripto-coin-only-wdw%'))
          AND NOT EXISTS (SELECT 1 FROM expense_deposit_links l WHERE l.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM checking_gap_deposit_mirrors g WHERE g.deposit_movement_id = m.id)
+         AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
        ORDER BY m.occurred_on, m.id`
     )
     .all() as EligibleLegRow[];

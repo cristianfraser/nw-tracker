@@ -199,6 +199,20 @@ describe("listMirrorPairCandidates", () => {
     expect(p!.confidence).toBe("high");
   });
 
+  it("a payroll-linked deposit (payroll_work_earnings) is not a candidate", () => {
+    const out = insLeg(ids.generic, -1_919_193, "2026-03-29");
+    const dep = insLeg(ids.checking, 1_919_193, "2026-03-29");
+    db.prepare(
+      `INSERT INTO payroll_work_earnings (period_month, employer_name, liquido, liquido_currency, source_pdf, movement_id)
+       VALUES ('2026-03', 'vitest-mirror-employer', 1919193, 'clp', 'vitest-mirror.pdf', ?)`
+    ).run(dep);
+    try {
+      expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
+    } finally {
+      db.prepare(`DELETE FROM payroll_work_earnings WHERE employer_name = 'vitest-mirror-employer'`).run();
+    }
+  });
+
   it("a deposit already in expense_deposit_links is not a candidate", () => {
     const out = insLeg(ids.generic, -AMT.linked, "2026-03-30");
     const dep = insLeg(ids.generic2, AMT.linked, "2026-03-30");
