@@ -16,6 +16,7 @@ import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSpl
 import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
+import { isMirrorMergeNote } from "./movementMirrorConvert.js";
 import {
   loadNetWorthCapitalReturnLedgerOutflows,
   netWorthCapitalLedgerOutflowPairKey,
@@ -248,26 +249,39 @@ export function resolveInternalNetWorthTransfers(
  * From-leg keys (netWorthCapitalLedgerOutflowPairKey format) of manual transfer rows whose two
  * endpoints are both net-worth accounts outside the checking bucket. The form's "in/out" moves
  * store one row (`account_id IS NULL`, from → to); its derived from-leg needs no heuristic match —
- * the row itself is the link. Transfers touching checking are NOT internal (they cross the boundary).
+ * the row itself is the link. Transfers touching checking are NOT internal (they cross the boundary)
+ * — except `mirror-merge|` conversions: those consumed the matching cartola inflow at conversion
+ * time (movementMirrorConvert.ts), so the "must reconcile against the cartola inflow" rule is
+ * satisfied structurally and the from-leg is internal by construction.
  */
-function loadInternalNetWorthTransferOutflowKeys(
+export function loadInternalNetWorthTransferOutflowKeys(
   netWorthAccountIds: ReadonlySet<number>,
   checkingBucketIds: ReadonlySet<number>
 ): Set<string> {
   const rows = db
     .prepare(
-      `SELECT from_account_id, to_account_id, occurred_on, amount_clp
+      `SELECT from_account_id, to_account_id, occurred_on, amount_clp, note
        FROM movements
        WHERE account_id IS NULL
          AND from_account_id IS NOT NULL
          AND to_account_id IS NOT NULL
          AND amount_clp != 0`
     )
-    .all() as { from_account_id: number; to_account_id: number; occurred_on: string; amount_clp: number }[];
+    .all() as {
+    from_account_id: number;
+    to_account_id: number;
+    occurred_on: string;
+    amount_clp: number;
+    note: string | null;
+  }[];
   const out = new Set<string>();
   for (const r of rows) {
-    if (!netWorthAccountIds.has(r.from_account_id) || !netWorthAccountIds.has(r.to_account_id)) continue;
-    if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
+    if (!netWorthAccountIds.has(r.from_account_id)) continue;
+    const selfResolves = isMirrorMergeNote(r.note);
+    if (!selfResolves) {
+      if (!netWorthAccountIds.has(r.to_account_id)) continue;
+      if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
+    }
     out.add(`${r.from_account_id}|${r.occurred_on}|${Math.round(Math.abs(r.amount_clp))}`);
   }
   return out;

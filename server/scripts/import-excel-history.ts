@@ -1135,6 +1135,23 @@ async function main() {
       DELETE FROM movements WHERE account_id IN (
         SELECT id FROM accounts WHERE notes LIKE 'import:fintual|cert|key=%'
       );
+      -- Mirror-merge transfers (account_id NULL) touching a wiped account: the re-import
+      -- re-inserts the original single leg, so keeping the transfer would double-count.
+      -- Converted pairs reappear as candidates in /panel/mirror-pairs after a full rebuild.
+      DELETE FROM movements WHERE note LIKE 'mirror-merge|%' AND (
+        from_account_id IN (
+          SELECT a.id FROM accounts a
+          JOIN asset_groups g ON g.id = a.asset_group_id
+          WHERE (a.notes LIKE 'import:excel%' OR a.notes LIKE 'import:cfraser%' OR a.notes LIKE 'import:fintual|cert|key=%')
+            AND g.slug != 'cuenta_corriente' AND g.slug NOT LIKE '%__cuenta_corriente'
+        )
+        OR to_account_id IN (
+          SELECT a.id FROM accounts a
+          JOIN asset_groups g ON g.id = a.asset_group_id
+          WHERE (a.notes LIKE 'import:excel%' OR a.notes LIKE 'import:cfraser%' OR a.notes LIKE 'import:fintual|cert|key=%')
+            AND g.slug != 'cuenta_corriente' AND g.slug NOT LIKE '%__cuenta_corriente'
+        )
+      );
       DELETE FROM accounts
       WHERE (notes LIKE 'import:excel%' OR notes LIKE 'import:cfraser%')
         AND NOT EXISTS (
