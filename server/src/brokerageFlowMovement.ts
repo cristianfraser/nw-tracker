@@ -74,6 +74,51 @@ export function accountHasBrokerageShareUnits(accountId: number): boolean {
   );
 }
 
+/**
+ * Intra-day causal rank for flows lists. Movements only carry a date, so the
+ * real order of a same-day funding chain (deposit → fx → stock buy) is lost;
+ * insertion id reflects manual entry order, not the cash sequence. Rank encodes
+ * that cash must arrive before it is converted, be converted before it is
+ * spent, and leave last. Ranks come from the movement's own `flow_kind` (not
+ * the per-account perspective), so both sides of a transfer sort together.
+ * Plain transfers (no flow_kind) rank just after inflows: in practice they
+ * fund same-day trades. Known limit: a plain transfer sweeping out same-day
+ * sell proceeds will render before the sell.
+ */
+export function intraDayFlowRank(flowKind: string | null | undefined): number {
+  switch (flowKind) {
+    case "deposit_clp":
+    case "dividend_usd":
+    case "dividend_payout":
+    case "savings_earnings":
+      return 0;
+    case "stock_sell":
+      return 2;
+    case "compra_usd_venta_clp":
+      return 3;
+    case "compra_usd":
+    case "stock_buy":
+      return 4;
+    case "withdrawal_clp":
+    case "withdrawal_usd":
+      return 5;
+    default:
+      return 1;
+  }
+}
+
+/** Newest-first comparator for flows lists: date, then intra-day causal rank, then id. */
+export function compareFlowRowsForDisplay(
+  a: { occurred_on: string; flow_kind: string | null; id: number },
+  b: { occurred_on: string; flow_kind: string | null; id: number }
+): number {
+  const byDate = b.occurred_on.localeCompare(a.occurred_on);
+  if (byDate !== 0) return byDate;
+  const byRank = intraDayFlowRank(b.flow_kind) - intraDayFlowRank(a.flow_kind);
+  if (byRank !== 0) return byRank;
+  return b.id - a.id;
+}
+
 /** Signed CLP for charts / deposit merge (`deposit_clp` +, `withdrawal_clp` −, trades often 0). */
 export function signedAmountClpForBrokerageFlow(
   flow_kind: string,
