@@ -140,6 +140,33 @@ export function liabilitiesBreakdownClpAsOf(
   return liabilityBreakdownForDate(accounts, asOfYmd, ctx);
 }
 
+export type LiabilitiesOnlyScope = "all" | "credit_card" | "mortgage";
+
+/**
+ * Explicit liabilities-only balance series for Pasivos views: mortgage (movement ledger)
+ * + CC debt (billing balances) summed on their own — independent of the per-account chart
+ * lines and of any net-worth/asset series.
+ */
+export function liabilitiesOnlyBalanceClpByDates(
+  datesAsc: readonly string[],
+  scope: LiabilitiesOnlyScope = "all"
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const breakdowns = liabilitiesBreakdownClpByDates(datesAsc);
+  for (const d of datesAsc) {
+    const b = breakdowns.get(d);
+    if (!b) continue;
+    const clp =
+      scope === "credit_card"
+        ? b.credit_card_clp
+        : scope === "mortgage"
+          ? b.mortgage_clp
+          : b.mortgage_clp + b.credit_card_clp;
+    if (Number.isFinite(clp)) out.set(d, clp);
+  }
+  return out;
+}
+
 /** Batch pasivos breakdown: one mortgage sheet load + UF map for all snapshot dates. */
 export function liabilitiesBreakdownClpByDates(
   datesAsc: readonly string[]

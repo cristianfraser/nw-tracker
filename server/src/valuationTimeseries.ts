@@ -1191,6 +1191,8 @@ function densifyMonthlyValuationPoints(
 import {
   liabilitiesBreakdownClpAsOf,
   liabilitiesBreakdownClpByDates,
+  liabilitiesOnlyBalanceClpByDates,
+  type LiabilitiesOnlyScope,
 } from "./liabilitiesValuation.js";
 
 export { liabilitiesBreakdownClpAsOf, liabilitiesBreakdownClpByDates };
@@ -1600,10 +1602,9 @@ function convertDashboardPortfolioGroupTotals(
 
 function liabilitiesBucketTotalByDates(datesAsc: string[], unit: TsUnit): Map<string, number> {
   const out = new Map<string, number>();
-  const breakdowns = liabilitiesBreakdownClpByDates(datesAsc);
+  const totalsClp = liabilitiesOnlyBalanceClpByDates(datesAsc, "all");
   for (const d of datesAsc) {
-    const breakdown = breakdowns.get(d) ?? { mortgage_clp: 0, credit_card_clp: 0 };
-    const totalClp = breakdown.mortgage_clp + breakdown.credit_card_clp;
+    const totalClp = totalsClp.get(d) ?? 0;
     const totalUnit = unit === "clp" ? totalClp : convertTs(totalClp, d, unit);
     if (Number.isFinite(totalUnit)) out.set(d, totalUnit);
   }
@@ -1766,6 +1767,63 @@ function appendChartHostReferenceOverlays(
     lines: [...priorLines, ...refLines],
     points,
   };
+}
+
+/** `ref:` prefix keeps the line in the client's reference-line pipeline (filter/aggregation). */
+export const LIABILITIES_ONLY_BALANCE_DATAKEY = "ref:liabilities_only_balance";
+
+const LIABILITIES_ONLY_BALANCE_NAME: Record<LiabilitiesOnlyScope, string> = {
+  all: "Saldo pasivos",
+  credit_card: "Saldo tarjetas de crédito",
+  mortgage: "Saldo hipoteca",
+};
+
+/** Liability view scope for the explicit liabilities-only balance line (null = not a Pasivos view). */
+export function liabilitiesOnlyScopeForGroupTab(
+  groupSlug: string,
+  tabSubgroup?: string
+): LiabilitiesOnlyScope | null {
+  if (groupSlug === "liabilities_credit_card") return "credit_card";
+  if (groupSlug === "liabilities_mortgage") return "mortgage";
+  if (groupSlug !== "liabilities") return null;
+  if (!tabSubgroup) return "all";
+  if (tabSubgroup === "credit_card" || tabSubgroup === "mortgage") return tabSubgroup;
+  return null;
+}
+
+/**
+ * Explicit liabilities-only balance projection for Pasivos views: mortgage + CC debt from
+ * their own balance builders (`liabilitiesOnlyBalanceClpByDates`), not from summing the
+ * plotted per-account lines or any net-worth/asset overlay.
+ */
+function appendLiabilitiesOnlyBalanceLine(
+  block: GroupTabValuationBlock,
+  scope: LiabilitiesOnlyScope,
+  unit: TsUnit
+): GroupTabValuationBlock {
+  if (!block.points.length) return block;
+  const datesAsc = block.points.map((p) => String(p.as_of_date));
+  const clpByDate = liabilitiesOnlyBalanceClpByDates(datesAsc, scope);
+
+  const dk = LIABILITIES_ONLY_BALANCE_DATAKEY;
+  const points = block.points.map((row) => {
+    const d = String(row.as_of_date);
+    const clp = clpByDate.get(d);
+    return {
+      ...row,
+      [dk]: clp != null && Number.isFinite(clp) ? convertTs(clp, d, unit) : null,
+    };
+  });
+
+  const color_rgb = portfolioGroupColorRgbBySlug("liabilities");
+  const line = {
+    dataKey: dk,
+    name: LIABILITIES_ONLY_BALANCE_NAME[scope],
+    valueSeriesType: "reference" as const,
+    ...(color_rgb ? { color_rgb } : {}),
+  };
+
+  return { ...block, lines: [...(block.lines ?? []), line], points };
 }
 
 /** @heavy Builds primary portfolio lines, overview, and USD milestone chart for the home page. */
@@ -2031,6 +2089,14 @@ function getGroupValuationTimeseriesInnerUncached(
   }
   if (groupSlug === "liabilities" && !tabSubgroup && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "liabilities", unit);
+  }
+  const liabilitiesOnlyScope = liabilitiesOnlyScopeForGroupTab(groupSlug, tabSubgroup);
+  if (liabilitiesOnlyScope != null && accounts_in_group.points.length > 0) {
+    accounts_in_group = appendLiabilitiesOnlyBalanceLine(
+      accounts_in_group,
+      liabilitiesOnlyScope,
+      unit
+    );
   }
   if (isCashEqsNwValuationGroupSlug(groupSlug) && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "cash_eqs", unit);
