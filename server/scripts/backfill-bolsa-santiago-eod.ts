@@ -1,7 +1,7 @@
 /**
  * Backfill `equity_daily` closes for `.SN` tickers from Bolsa de Santiago point history
- * (~14 months of exchange trading days). For instruments whose history Yahoo does not
- * carry (e.g. CFIETFIPSA.SN).
+ * (up to ~10 years, capped at the instrument's listing date). For instruments whose
+ * history Yahoo does not carry (e.g. CFIETFIPSA.SN).
  *
  * Usage:
  *   npm run backfill:bolsa-santiago-eod -w nw-tracker-server                      # CFIETFIPSA.SN

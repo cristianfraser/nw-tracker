@@ -3,8 +3,9 @@
  * instruments whose history Yahoo does not carry (e.g. CFIETFIPSA.SN — Yahoo bars
  * only accumulate from 2026-07-02 onward).
  *
- * `GET /api/RV_Instrumentos/getPointHistGAT?nemo=<NEMO>` returns ~14 months of daily
- * OHLC bars (exchange trading days, CLP) — enough for the watchlist YoY/YTD anchors.
+ * `GET /api/RV_Instrumentos/getPointHistGAT?nemo=<NEMO>` returns daily OHLC bars
+ * (exchange trading days, CLP) for up to ~10 years back, capped at the instrument's
+ * listing date (CFIETFIPSA started trading 2025-05-12 — inception Mayo 2025).
  * Works without cookies/auth; requires a normal browser User-Agent.
  */
 
