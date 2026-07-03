@@ -116,6 +116,12 @@ export function formatUsdFine(n: number): string {
   return formatCurrency(n, "usd-fine");
 }
 
+/** Percent (value already ×100) with fixed decimals in the active separator convention (e.g. `12,34%`). */
+export function formatPct(n: number | null | undefined, frac = 2): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${normalizeIntlNum(numFmt(frac, frac).format(n))}%`;
+}
+
 /** Props for {@link https://number-flow.barvian.me/ NumberFlow} currency (no `+`/`-` digit; negatives via parens). */
 export function accountingCurrencyNumberFlowParts(
   n: number,

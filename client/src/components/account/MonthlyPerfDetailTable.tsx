@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatClpUfDay, formatInstrumentUnits, formatUfBalance, formatUsdFine } from "../../format";
+import { formatClp, formatClpUfDay, formatInstrumentUnits, formatPct, formatUfBalance, formatUsdFine } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
@@ -27,8 +27,7 @@ export type MonthlyPerfServerPagination = {
 
 function cellPct(p: number | null | undefined) {
   if (p == null || !Number.isFinite(p)) return "—";
-  const s = (p * 100).toFixed(2).replace(".", ",");
-  return `${s}%`;
+  return formatPct(p * 100);
 }
 
 type PerfRow = AccountMonthlyPerformanceRow | ConsolidatedMonthlyPerfRow;

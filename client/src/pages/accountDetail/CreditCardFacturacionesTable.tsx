@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatOrDash } from "../../format";
+import { formatClp, formatOrDash, formatPct, formatUsdFine } from "../../format";
 import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
@@ -26,7 +26,7 @@ import linkStyles from "./CreditCardFacturacionesTable.module.css";
 
 function fmtUsd(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `US$ ${n.toFixed(2)}`;
+  return formatUsdFine(n);
 }
 
 function formatProxyCell(
@@ -37,7 +37,7 @@ function formatProxyCell(
   const t = proxy.by_ticker[inlineTicker];
   if (!t) return "—";
   const sign = t.total_gain_clp >= 0 ? "+" : "";
-  return `${sign}${formatClp(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${t.blended_return_pct.toFixed(1)}%)`;
+  return `${sign}${formatClp(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
 }
 
 function FacturacionMobileCard({
