@@ -7,7 +7,7 @@ import type {
   CcInstallmentPurchaseComputed,
   CcProxyLotResult,
 } from "../../types";
-import { formatClp } from "../../format";
+import { formatClp, formatGroupedDecimal, formatPct } from "../../format";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { formatYmEs, persistExtraCcOffsets } from "./shared";
@@ -140,7 +140,7 @@ function CreditCardInstallmentsSection({
     const cuota = r.cuotas.find((c) => c.pay_by_date === payByDate);
     if (!cuota) return null;
     const sign = cuota.accumulated_gain_clp >= 0 ? "+" : "";
-    return `ret. acum. ${inlineTicker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${cuota.accumulated_return_pct.toFixed(2)}%)`;
+    return `ret. acum. ${inlineTicker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${formatPct(cuota.accumulated_return_pct)})`;
   };
 
   const purchaseTableHeader = (dueColumn: "last" | "none") => (
@@ -196,7 +196,7 @@ function CreditCardInstallmentsSection({
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.remaining_installments}</td> : null}
             <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
             {!hasLedger ? (
-              <td className="mono desktop-only">{p.annual_interest_pct.toFixed(2).replace(".", ",")}</td>
+              <td className="mono desktop-only">{formatGroupedDecimal(p.annual_interest_pct, 2)}</td>
             ) : null}
             <td className="mono desktop-only">{p.purchase_month ?? "—"}</td>
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.first_due_month}</td> : null}
