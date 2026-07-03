@@ -1,5 +1,9 @@
 import { upsertEquityDailySeries, EQUITY_DAILY_IMPORT_TICKERS } from "./brokerageEquityMtm.js";
-import { listWatchlistCryptoTickersForEodSync, listWatchlistNyseTickersForEodSync } from "./watchlist.js";
+import {
+  listWatchlistCryptoTickersForEodSync,
+  listWatchlistNyseTickersForEodSync,
+  listWatchlistStockTickersForEodSync,
+} from "./watchlist.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
@@ -14,7 +18,7 @@ export const CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE = 23;
 export const CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE = 55;
 
 /** Stock EOD buckets by exchange calendar (extend when adding exchanges). */
-export const STOCK_EOD_EXCHANGES = ["nyse"] as const;
+export const STOCK_EOD_EXCHANGES = ["nyse", "santiago"] as const;
 export type StockEodExchange = (typeof STOCK_EOD_EXCHANGES)[number];
 
 const stmtLatestEodTradeDate = db.prepare(
@@ -220,7 +224,9 @@ export async function syncEquityEodFromYahoo(
 export function syncStocksNyseFromYahoo(
   opts?: { dryRun?: boolean; now?: Date; force?: boolean }
 ): Promise<EquityEodSyncResult[]> {
-  return syncEquityEodFromYahoo(listWatchlistNyseTickersForEodSync(), opts);
+  // NYSE + Santiago: `.SN` bars are final before NYSE close, so they piggyback this source.
+  // Stale/caught-up state stays keyed to NYSE-only tickers (see equityNyseEodCaughtUp).
+  return syncEquityEodFromYahoo(listWatchlistStockTickersForEodSync(), opts);
 }
 
 /** Upsert recent CoinGecko daily USD closes into `equity_daily` for BTC-USD / ETH-USD. */

@@ -1,9 +1,10 @@
-import type { BrokerageFlowKind } from "./brokerageFlowKinds";
+import type { BrokerageFlowKind, StockQuoteCurrency } from "./brokerageFlowKinds";
 import {
-  brokerageFlowKindNeedsClp,
-  brokerageFlowKindNeedsUsd,
+  brokerageFlowKindNeedsClpForQuote,
+  brokerageFlowKindNeedsUsdForQuote,
   brokerageFlowKindShowsUnits,
   counterpartRoleForBrokerageFlowKind,
+  stockQuoteCurrencyForTicker,
 } from "./brokerageFlowKinds";
 
 export type InitialMovementDraft = {
@@ -83,19 +84,21 @@ export function removeMovementRow(
 /** Body for `POST /api/accounts/:id/movements` (brokerage accounts). */
 export function buildBrokerageMovementPostBody(
   row: InitialMovementDraft,
-  ticker?: string | null
+  ticker?: string | null,
+  quoteCurrency?: StockQuoteCurrency
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
+  const quote = quoteCurrency ?? stockQuoteCurrencyForTicker(ticker);
   // Only submit the fields that the flow kind actually shows — a value left behind in a now-hidden
   // input (e.g. CLP typed before switching to "compra acciones") must not be sent.
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    ...(brokerageFlowKindNeedsClp(row.flowKind)
+    ...(brokerageFlowKindNeedsClpForQuote(row.flowKind, quote)
       ? { amount_clp: parseOptionalNumber(row.amountClp) }
       : {}),
-    ...(brokerageFlowKindNeedsUsd(row.flowKind)
+    ...(brokerageFlowKindNeedsUsdForQuote(row.flowKind, quote)
       ? { amount_usd: parseOptionalNumber(row.amountUsd) }
       : {}),
     ...(brokerageFlowKindShowsUnits(row.flowKind)

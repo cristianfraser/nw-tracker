@@ -30,7 +30,7 @@ export function installCryptoTickerFixture(): void {
      VALUES (?, 'Crypto EOD fixture', ?, ?)`
   ).run(group.id, FIXTURE_NOTE, FIXTURE_TICKER);
   db.prepare(
-    `INSERT INTO equity_daily (ticker, trade_date, close_usd) VALUES (?, ?, 1)
+    `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, 1, 'usd')
      ON CONFLICT(ticker, trade_date) DO NOTHING`
   ).run(FIXTURE_TICKER, FIXTURE_BAR_DATE);
 }

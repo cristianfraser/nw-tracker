@@ -4,7 +4,7 @@ import {
   formatSyncFxRate,
   formatSyncIndex,
   formatSyncLogBody,
-  formatSyncUsdClose,
+  formatSyncClose,
   formatSyncUfRate,
   equityEodSyncFieldChange,
   type SyncFieldChange,
@@ -24,9 +24,9 @@ describe("syncRunLog formatters", () => {
     expect(formatSyncUfRate(39123.456)).toBe("39.123,46");
   });
 
-  it("formatSyncUsdClose uses es-CL decimals", () => {
-    expect(formatSyncUsdClose(733.73)).toBe("733,73");
-    expect(formatSyncUsdClose(105420.5)).toBe("105.420,50");
+  it("formatSyncClose uses es-CL decimals", () => {
+    expect(formatSyncClose(733.73)).toBe("733,73");
+    expect(formatSyncClose(105420.5)).toBe("105.420,50");
   });
 
   it("formatSyncIndex trims trailing zeros", () => {
@@ -64,8 +64,8 @@ describe("formatSyncLogBody", () => {
       {
         group: "stocks_nyse",
         label: "SPY",
-        oldValue: formatSyncUsdClose(733.73),
-        newValue: formatSyncUsdClose(735.12),
+        oldValue: formatSyncClose(733.73),
+        newValue: formatSyncClose(735.12),
         oldDate: "2026-05-16",
         newDate: "2026-05-19",
       },
@@ -97,8 +97,8 @@ describe("equityEodSyncFieldChange", () => {
     const change = equityEodSyncFieldChange(
       "stocks_nyse",
       "SPY",
-      { trade_date: "2026-06-16", close_usd: close },
-      { trade_date: "2026-06-17", close_usd: close }
+      { trade_date: "2026-06-16", close: close },
+      { trade_date: "2026-06-17", close: close }
     );
     expect(change).not.toBeNull();
     expect(change?.oldDate).toBe("2026-06-16");
@@ -106,7 +106,7 @@ describe("equityEodSyncFieldChange", () => {
   });
 
   it("returns null when date and close are unchanged", () => {
-    const row = { trade_date: "2026-06-17", close_usd: 605.25 };
+    const row = { trade_date: "2026-06-17", close: 605.25 };
     expect(equityEodSyncFieldChange("stocks_nyse", "SPY", row, row)).toBeNull();
   });
 });

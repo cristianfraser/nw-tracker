@@ -10,25 +10,27 @@ export type LiveMarketQuoteRow = {
   symbol: string;
   kind: LiveMarketQuoteKind;
   value: number;
+  /** Quote currency for equity rows; NULL for fx-rate rows (enforced by table CHECK). */
+  currency: "usd" | "clp" | null;
   session_ymd: string;
   previous_value: number | null;
   fetched_at: string;
 };
 
 const insQuote = db.prepare(
-  `INSERT INTO live_market_quotes (symbol, kind, value, session_ymd, previous_value, fetched_at)
-   VALUES (?, ?, ?, ?, ?, ?)`
+  `INSERT INTO live_market_quotes (symbol, kind, value, currency, session_ymd, previous_value, fetched_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
 );
 
 const stmtLatestEquity = db.prepare(
-  `SELECT symbol, kind, value, session_ymd, previous_value, fetched_at
+  `SELECT symbol, kind, value, currency, session_ymd, previous_value, fetched_at
    FROM live_market_quotes
-   WHERE symbol = ? AND kind = 'equity_usd'
+   WHERE symbol = ? AND kind = 'equity'
    ORDER BY fetched_at DESC LIMIT 1`
 );
 
 const stmtLatestFx = db.prepare(
-  `SELECT symbol, kind, value, session_ymd, previous_value, fetched_at
+  `SELECT symbol, kind, value, currency, session_ymd, previous_value, fetched_at
    FROM live_market_quotes
    WHERE symbol = ? AND kind = 'fx_clp_per_usd'
    ORDER BY fetched_at DESC LIMIT 1`
@@ -42,6 +44,7 @@ export function insertLiveMarketQuote(row: LiveMarketQuoteRow): void {
     row.symbol,
     row.kind,
     row.value,
+    row.currency,
     row.session_ymd,
     row.previous_value,
     row.fetched_at

@@ -18,6 +18,8 @@ import {
 import { accountRowForId } from "./accountRowForMovement.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { equityQuoteCurrency } from "./equityQuote.js";
+import { isClpCashAccount } from "./clpCashAccounts.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
 import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
 export type AccountRow = {
@@ -148,18 +150,38 @@ export type MovementCreateValidation =
     }
   | { ok: false; status: number; error: string };
 
+/** Quote currency of the stock leg on a trade transfer (buy: to_account, sell/dividend: from_account). */
+function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" {
+  const stockAccountId =
+    input.flow_kind === "stock_buy" ? input.to_account_id : input.from_account_id;
+  const ticker = input.ticker?.trim() || equityTickerForAccount(stockAccountId);
+  if (!ticker) return "usd";
+  return equityQuoteCurrency(ticker);
+}
+
 function validateBrokerageTransferEndpoints(
   input: TransferCreateInput
 ): MovementCreateValidation | null {
   const fk = input.flow_kind;
+  const tradeQuoteCurrency =
+    fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout"
+      ? stockTradeQuoteCurrency(input)
+      : null;
   // Fail fast on stray fields that don't belong to the flow kind (e.g. a stale value left in a
-  // hidden input on the client): these are USD-denominated, so a CLP amount is never valid on them.
+  // hidden input on the client): the amount must be in the stock's quote currency, never both.
   if (fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout") {
-    if (input.amount_clp != null && input.amount_clp !== 0) {
+    if (tradeQuoteCurrency === "usd" && input.amount_clp != null && input.amount_clp !== 0) {
       return {
         ok: false,
         status: 400,
-        error: `amount_clp is not allowed on ${fk} (USD-denominated; a CLP wire is a separate compra_usd_venta_clp movement).`,
+        error: `amount_clp is not allowed on ${fk} for a USD-quoted stock (a CLP wire is a separate compra_usd_venta_clp movement).`,
+      };
+    }
+    if (tradeQuoteCurrency === "clp" && input.amount_usd != null && input.amount_usd !== 0) {
+      return {
+        ok: false,
+        status: 400,
+        error: `amount_usd is not allowed on ${fk} for a CLP-quoted stock (trade settles in CLP).`,
       };
     }
   }
@@ -196,7 +218,23 @@ function validateBrokerageTransferEndpoints(
     return null;
   }
   if (fk === "stock_buy") {
-    if (!isUsdCashAccount(input.from_account_id)) {
+    if (tradeQuoteCurrency === "clp") {
+      if (!isClpCashAccount(input.from_account_id)) {
+        return {
+          ok: false,
+          status: 400,
+          error:
+            "stock_buy for a CLP-quoted stock must transfer from CLP cash (from_account) to the stock account (to_account).",
+        };
+      }
+      if (input.amount_clp == null || input.amount_clp === 0) {
+        return {
+          ok: false,
+          status: 400,
+          error: "amount_clp (CLP spent) is required for a CLP-quoted stock_buy.",
+        };
+      }
+    } else if (!isUsdCashAccount(input.from_account_id)) {
       return {
         ok: false,
         status: 400,
@@ -213,7 +251,22 @@ function validateBrokerageTransferEndpoints(
     }
   }
   if (fk === "stock_sell") {
-    if (!isUsdCashAccount(input.to_account_id)) {
+    if (tradeQuoteCurrency === "clp") {
+      if (!isClpCashAccount(input.to_account_id)) {
+        return {
+          ok: false,
+          status: 400,
+          error: "stock_sell for a CLP-quoted stock must transfer proceeds to CLP cash (to_account).",
+        };
+      }
+      if (input.amount_clp == null || input.amount_clp === 0) {
+        return {
+          ok: false,
+          status: 400,
+          error: "amount_clp (CLP proceeds) is required for a CLP-quoted stock_sell.",
+        };
+      }
+    } else if (!isUsdCashAccount(input.to_account_id)) {
       return {
         ok: false,
         status: 400,
@@ -230,6 +283,14 @@ function validateBrokerageTransferEndpoints(
     }
   }
   if (fk === "dividend_payout") {
+    if (tradeQuoteCurrency === "clp") {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "dividend_payout is not supported for CLP-quoted stocks yet (USD dividends only).",
+      };
+    }
     if (!isUsdCashAccount(input.to_account_id)) {
       return {
         ok: false,

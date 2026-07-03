@@ -7,7 +7,8 @@ import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
-  equityCloseUsdEod,
+  equityCloseEod,
+  equityQuoteCurrency,
   equityMarketKind,
   equitySessionYmdForTicker,
   resolveEquityQuote,
@@ -139,8 +140,9 @@ function statsForEquity(row: MarketDisplaySeriesRow, today: string, now: Date): 
   const ticker = row.series_key!.trim().toUpperCase();
   const sessionYmd = equitySessionYmdForTicker(ticker, now);
   const q = resolveEquityQuote(ticker, sessionYmd, { preferLive: true, now });
-  if (q == null || !Number.isFinite(q.price_usd) || q.price_usd <= 0) {
-    return { value: null, value_currency: "usd", as_of_date: null, changes: null };
+  const valueCurrency = equityQuoteCurrency(ticker);
+  if (q == null || !Number.isFinite(q.price) || q.price <= 0) {
+    return { value: null, value_currency: valueCurrency, as_of_date: null, changes: null };
   }
 
   const asOf = q.trade_date;
@@ -155,18 +157,18 @@ function statsForEquity(row: MarketDisplaySeriesRow, today: string, now: Date): 
   const momAnchor = calendarMonthsPriorYmd(asOf, 1);
 
   const anchors = {
-    week: weekAnchorYmd != null ? equityCloseUsdEod(ticker, weekAnchorYmd) : null,
-    mtd: equityCloseUsdEod(ticker, mtdAnchor),
-    mom: equityCloseUsdEod(ticker, momAnchor),
-    ytd: equityCloseUsdEod(ticker, ytdAnchor),
-    yoy: equityCloseUsdEod(ticker, yoyAnchor),
+    week: weekAnchorYmd != null ? equityCloseEod(ticker, weekAnchorYmd) : null,
+    mtd: equityCloseEod(ticker, mtdAnchor),
+    mom: equityCloseEod(ticker, momAnchor),
+    ytd: equityCloseEod(ticker, ytdAnchor),
+    yoy: equityCloseEod(ticker, yoyAnchor),
   };
 
   return {
-    value: q.price_usd,
-    value_currency: "usd",
+    value: q.price,
+    value_currency: valueCurrency,
     as_of_date: asOf,
-    changes: changesFromAnchors(q.price_usd, anchors, q.delta_pct),
+    changes: changesFromAnchors(q.price, anchors, q.delta_pct),
   };
 }
 

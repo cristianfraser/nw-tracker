@@ -4,6 +4,9 @@ import { clearLiveMarketQuotesForTest, insertLiveMarketQuote } from "./liveMarke
 import {
   clearEquityLiveQuoteCache,
   cryptoDisplaySessionYmd,
+  equityMarketKind,
+  equityQuoteCurrency,
+  equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   resolveEquityQuote,
   shouldUseLiveEquityQuote,
@@ -11,16 +14,17 @@ import {
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
 const TEST_TICKER = "SPY_TEST_DELTA";
+const SN_TEST = "VITEST.SN";
 /** Real crypto ticker; use far-future dates so test rows do not collide with production EOD. */
 const BTC_TEST = "BTC-USD";
 const BTC_TEST_DATE_A = "2099-06-01";
 const BTC_TEST_DATE_B = "2099-05-31";
 
-function upsertEod(ticker: string, tradeDate: string, closeUsd: number): void {
+function upsertEod(ticker: string, tradeDate: string, close: number, currency: "usd" | "clp" = "usd"): void {
   db.prepare(
-    `INSERT INTO equity_daily (ticker, trade_date, close_usd) VALUES (?, ?, ?)
-     ON CONFLICT(ticker, trade_date) DO UPDATE SET close_usd = excluded.close_usd`
-  ).run(ticker, tradeDate, closeUsd);
+    `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, ?)
+     ON CONFLICT(ticker, trade_date) DO UPDATE SET close = excluded.close, currency = excluded.currency`
+  ).run(ticker, tradeDate, close, currency);
 }
 
 function deleteTestEod(ticker: string): void {
@@ -31,6 +35,7 @@ afterEach(() => {
   clearEquityLiveQuoteCache();
   clearLiveMarketQuotesForTest();
   deleteTestEod(TEST_TICKER);
+  deleteTestEod(SN_TEST);
   db.prepare(`DELETE FROM equity_daily WHERE ticker = ? AND trade_date IN (?, ?)`).run(
     BTC_TEST,
     BTC_TEST_DATE_A,
@@ -67,8 +72,8 @@ describe("resolveEquityQuote NYSE session pair", () => {
     });
     expect(q).not.toBeNull();
     expect(q!.trade_date).toBe("2026-05-22");
-    expect(q!.price_usd).toBe(500);
-    expect(q!.previous_close_usd).toBe(400);
+    expect(q!.price).toBe(500);
+    expect(q!.previous_close).toBe(400);
     expect(q!.delta_pct).toBeCloseTo(25, 5);
     expect(q!.delta_pct).not.toBe(0);
   });
@@ -94,8 +99,8 @@ describe("resolveEquityQuote NYSE session pair", () => {
       now: tuePreOpen,
     });
     expect(q!.trade_date).toBe("2026-05-18");
-    expect(q!.price_usd).toBe(510);
-    expect(q!.previous_close_usd).toBe(500);
+    expect(q!.price).toBe(510);
+    expect(q!.previous_close).toBe(500);
     expect(q!.delta_pct).toBeCloseTo(2, 5);
   });
 });
@@ -109,7 +114,7 @@ describe("resolveEquityQuote crypto session pair", () => {
     expect(display).toBe(BTC_TEST_DATE_A);
     const q = resolveEquityQuote(BTC_TEST, display, { preferLive: false, now });
     expect(q!.trade_date).toBe(BTC_TEST_DATE_A);
-    expect(q!.previous_close_usd).toBe(80);
+    expect(q!.previous_close).toBe(80);
     expect(q!.delta_pct).toBeCloseTo(25, 5);
     expect(q!.delta_pct).not.toBe(0);
   });
@@ -132,7 +137,8 @@ describe("getLiveEquityQuoteFromDb", () => {
   it("reads scheduler-persisted quote during live session", () => {
     insertLiveMarketQuote({
       symbol: TEST_TICKER,
-      kind: "equity_usd",
+      kind: "equity",
+      currency: "usd",
       value: 555,
       session_ymd: "2026-05-19",
       previous_value: 500,
@@ -141,7 +147,57 @@ describe("getLiveEquityQuoteFromDb", () => {
     const tueMid = new Date("2026-05-19T11:00:00-04:00");
     const q = resolveEquityQuote(TEST_TICKER, "2026-05-19", { preferLive: true, now: tueMid });
     expect(q?.source).toBe("live");
-    expect(q?.price_usd).toBe(555);
-    expect(getLiveEquityQuoteFromDb(TEST_TICKER)?.price_usd).toBe(555);
+    expect(q?.price).toBe(555);
+    expect(getLiveEquityQuoteFromDb(TEST_TICKER)?.price).toBe(555);
+  });
+});
+
+describe("santiago (.SN) market kind + CLP quote currency", () => {
+  it("classifies .SN as santiago / clp; others unchanged", () => {
+    expect(equityMarketKind(SN_TEST)).toBe("santiago");
+    expect(equityQuoteCurrency(SN_TEST)).toBe("clp");
+    expect(equityMarketKind("SPY")).toBe("nyse");
+    expect(equityQuoteCurrency("SPY")).toBe("usd");
+    expect(equityMarketKind("BTC-USD")).toBe("crypto24");
+    expect(equityQuoteCurrency("BTC-USD")).toBe("usd");
+  });
+
+  it("session date is the Chile calendar day", () => {
+    // 2026-05-19 23:30 UTC is still 2026-05-19 in Chile (-04) but would be 05-19 NYSE too;
+    // 2026-05-20 03:30 UTC is 2026-05-19 23:30 Chile → still 05-19 in Chile.
+    const lateUtc = new Date("2026-05-20T03:30:00Z");
+    expect(equitySessionYmdForTicker(SN_TEST, lateUtc)).toBe("2026-05-19");
+  });
+
+  it("live window: Chile weekday trading hours only", () => {
+    const monMid = new Date("2026-05-25T11:00:00-04:00"); // Monday 11:00 Chile (NYSE holiday, irrelevant)
+    expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-25", monMid)).toBe(true);
+    const monPreOpen = new Date("2026-05-25T08:00:00-04:00");
+    expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-25", monPreOpen)).toBe(false);
+    const monEvening = new Date("2026-05-25T19:00:00-04:00");
+    expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-25", monEvening)).toBe(false);
+    const saturday = new Date("2026-05-23T11:00:00-04:00");
+    expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-23", saturday)).toBe(false);
+  });
+
+  it("resolves EOD on-or-before Chile today with prior-row previous close (CLP)", () => {
+    upsertEod(SN_TEST, "2026-05-22", 1300, "clp");
+    upsertEod(SN_TEST, "2026-05-21", 1250, "clp");
+    const now = new Date("2026-05-25T12:00:00-04:00"); // Chile Monday; last bar Friday
+    const q = resolveEquityQuote(SN_TEST, "2026-05-25", { preferLive: false, now });
+    expect(q).not.toBeNull();
+    expect(q!.trade_date).toBe("2026-05-22");
+    expect(q!.price).toBe(1300);
+    expect(q!.currency).toBe("clp");
+    expect(q!.previous_close).toBe(1250);
+    expect(q!.delta_pct).toBeCloseTo(4, 5);
+  });
+
+  it("fails fast when stored currency mismatches the ticker quote currency", () => {
+    upsertEod(SN_TEST, "2026-05-22", 1300, "usd");
+    const now = new Date("2026-05-25T12:00:00-04:00");
+    expect(() => resolveEquityQuote(SN_TEST, "2026-05-25", { preferLive: false, now })).toThrow(
+      /currency mismatch/
+    );
   });
 });

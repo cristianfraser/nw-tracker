@@ -10,7 +10,7 @@ import {
 import { db } from "./db.js";
 
 const cachedLive = vi.hoisted(() => ({
-  quote: null as { price_usd: number; trade_date: string; source: "live" } | null,
+  quote: null as { price: number; trade_date: string; source: "live" } | null,
 }));
 
 vi.mock("./equityQuote.js", async (importOriginal) => {
@@ -21,10 +21,11 @@ vi.mock("./equityQuote.js", async (importOriginal) => {
       const q = cachedLive.quote;
       if (!q) return null;
       return {
-        price_usd: q.price_usd,
+        price: q.price,
+        currency: "usd" as const,
         trade_date: q.trade_date,
         source: q.source,
-        previous_close_usd: null,
+        previous_close: null,
         delta_pct: null,
       };
     },
@@ -67,7 +68,7 @@ describe("computeCryptoMtmClpCachedLive", () => {
     const session = equitySessionYmdForTicker(acct.ticker, now);
     expect(shouldUseLiveEquityQuote(acct.ticker, session, now)).toBe(true);
 
-    cachedLive.quote = { price_usd: 50_000, trade_date: session, source: "live" };
+    cachedLive.quote = { price: 50_000, trade_date: session, source: "live" };
     const clp = computeCryptoMtmClpCachedLive(acct.account_id, now);
     expect(clp).not.toBeNull();
     expect(clp!).toBeGreaterThan(0);
@@ -83,7 +84,7 @@ describe("computeCryptoMtmClpDisplaySync", () => {
     const session = equitySessionYmdForTicker(acct.ticker, now);
     if (!shouldUseLiveEquityQuote(acct.ticker, session, now)) return;
 
-    cachedLive.quote = { price_usd: 123_456, trade_date: utcTodayYmd(now), source: "live" };
+    cachedLive.quote = { price: 123_456, trade_date: utcTodayYmd(now), source: "live" };
     const sync = computeCryptoMtmClpDisplaySync(acct.account_id, now);
     expect(sync).not.toBeNull();
     expect(sync!.as_of_date).toBe(session);

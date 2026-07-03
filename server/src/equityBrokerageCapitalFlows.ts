@@ -1,6 +1,8 @@
 /**
- * Equity MTM stock accounts: capital flows from USD→stock `stock_buy` transfers
+ * Equity MTM stock accounts: capital flows from cash→stock `stock_buy` transfers
  * (post USD-cash migration). CLP equivalents at payment date feed chart aportes + P/L.
+ * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries amount_clp
+ * (no amount_usd) and counts as a `clp_wire` capital flow at face value.
  */
 
 import type { DepositInflowEvent } from "./accountDeposits.js";
@@ -27,7 +29,8 @@ type TransferCapitalRow = {
   account_id: number;
   from_account_id: number | null;
   occurred_on: string;
-  amount_usd: number;
+  amount_usd: number | null;
+  amount_clp: number | null;
   flow_kind: string;
 };
 
@@ -49,20 +52,18 @@ function loadStockBuyCapitalRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.to_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
+      `SELECT m.id AS id, m.to_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.to_account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND m.amount_usd IS NOT NULL
-         AND m.amount_usd != 0
+         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
        UNION ALL
-       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
+       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND m.amount_usd IS NOT NULL
-         AND m.amount_usd != 0
+         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -73,20 +74,18 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
+      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND m.amount_usd IS NOT NULL
-         AND m.amount_usd != 0
+         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
        UNION ALL
-       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
+       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND m.amount_usd IS NOT NULL
-         AND m.amount_usd != 0
+         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -101,7 +100,7 @@ function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.flow_kind
+      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
@@ -162,10 +161,24 @@ function findClpWireForStockBuy(
   return null;
 }
 
+/** CLP-quoted trade: capital = the CLP that actually moved (no fx reference). */
+function clpDirectFlow(row: TransferCapitalRow, sign: 1 | -1): EquityCapitalSortFlow | null {
+  const clpMag = Math.abs(row.amount_clp ?? 0);
+  if (clpMag === 0 || !Number.isFinite(clpMag)) return null;
+  return {
+    occurred_on: row.occurred_on,
+    amt: sign * clpMag,
+    amt_usd: null,
+    capital_kind: "clp_wire",
+    tie: `t:${row.id}`,
+  };
+}
+
 function usdReferenceFlow(
   row: TransferCapitalRow,
   sign: 1 | -1
 ): EquityCapitalSortFlow | null {
+  if (row.amount_usd == null || row.amount_usd === 0) return null;
   const usdMag = Math.abs(row.amount_usd);
   const refClp = usdToClpReferenceRounded(usdMag, row.occurred_on);
   if (refClp == null || !Number.isFinite(refClp) || refClp === 0) return null;
@@ -179,6 +192,7 @@ function usdReferenceFlow(
 }
 
 function stockBuyCapitalFlow(row: TransferCapitalRow): EquityCapitalSortFlow | null {
+  if (row.amount_usd == null || row.amount_usd === 0) return clpDirectFlow(row, 1);
   const wire = findClpWireForStockBuy(
     row.account_id,
     row.from_account_id,
@@ -259,7 +273,7 @@ export function loadEquityBrokerageCapitalSortFlows(
   const consumedDividends = new Map<number, Set<number>>();
 
   for (const row of buys) {
-    if (personalOnly && dividendsByAccount) {
+    if (personalOnly && dividendsByAccount && row.amount_usd != null && row.amount_usd !== 0) {
       const divs = dividendsByAccount.get(row.account_id);
       if (!consumedDividends.has(row.account_id)) consumedDividends.set(row.account_id, new Set());
       const dripUsd = dripUsdAttributedToBuy(
@@ -292,7 +306,10 @@ export function loadEquityBrokerageCapitalSortFlows(
   }
 
   for (const row of sells) {
-    const flow = usdReferenceFlow(row, -1);
+    const flow =
+      row.amount_usd != null && row.amount_usd !== 0
+        ? usdReferenceFlow(row, -1)
+        : clpDirectFlow(row, -1);
     if (!flow) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
     out.get(row.account_id)!.push(flow);

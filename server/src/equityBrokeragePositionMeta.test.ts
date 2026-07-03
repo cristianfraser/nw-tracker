@@ -32,7 +32,8 @@ describe("equityBrokeragePositionMeta", () => {
       const fetchedAt = new Date().toISOString();
       insertLiveMarketQuote({
         symbol: "SPY",
-        kind: "equity_usd",
+        kind: "equity",
+        currency: "usd",
         value: 600,
         session_ymd: "2026-05-19",
         previous_value: 590,
@@ -41,6 +42,7 @@ describe("equityBrokeragePositionMeta", () => {
       insertLiveMarketQuote({
         symbol: LIVE_FX_SYMBOL,
         kind: "fx_clp_per_usd",
+        currency: null,
         value: 900,
         session_ymd: "2026-05-19",
         previous_value: 895,

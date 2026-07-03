@@ -5,12 +5,14 @@ import {
   brokerageFlowKindCounterpartIsCash,
   brokerageFlowKindCounterpartIsEquity,
   brokerageFlowKindCounterpartIsUsdCash,
-  brokerageFlowKindNeedsClp,
+  brokerageFlowKindNeedsClpForQuote,
   brokerageFlowKindShowsCounterpart,
   brokerageFlowKindShowsUnits,
-  brokerageFlowKindNeedsUsd,
+  brokerageFlowKindNeedsUsdForQuote,
+  clpCashFlowKindAllowsCounterpart,
   isInterestFlowKind,
   type BrokerageFlowKind,
+  type StockQuoteCurrency,
 } from "../../panelAccounts/brokerageFlowKinds";
 
 /** Native currency of a ledger cash form; interest (savings_earnings) is entered in this currency. */
@@ -39,6 +41,7 @@ export function BrokerageMovementRowFields({
   currentAccountId,
   flowKinds = BROKERAGE_FLOW_KINDS,
   cashCurrency,
+  stockQuoteCurrency,
 }: {
   row: InitialMovementDraft;
   onChange: (next: InitialMovementDraft) => void;
@@ -47,13 +50,19 @@ export function BrokerageMovementRowFields({
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
   cashCurrency?: CashFormCurrency;
+  /** Quote currency of the stock account behind this form (clp = `.SN`); trades settle in it. */
+  stockQuoteCurrency?: StockQuoteCurrency;
 }) {
   const { t } = useTranslation();
   const interestInClp = isInterestFlowKind(row.flowKind) && cashCurrency === "clp";
   const interestInUsd = isInterestFlowKind(row.flowKind) && cashCurrency === "usd";
-  const showClp = brokerageFlowKindNeedsClp(row.flowKind) || interestInClp;
-  const showUsd = brokerageFlowKindNeedsUsd(row.flowKind) || interestInUsd;
+  const showClp = brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency) || interestInClp;
+  const showUsd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency) || interestInUsd;
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
+  const clpTransferCounterpart =
+    cashCurrency === "clp" && clpCashFlowKindAllowsCounterpart(row.flowKind);
+  const tradeSettlesInClp =
+    stockQuoteCurrency === "clp" && brokerageFlowKindCounterpartIsUsdCash(row.flowKind);
 
   return (
     <div
@@ -138,7 +147,7 @@ export function BrokerageMovementRowFields({
           />
         </label>
       ) : null}
-      {brokerageFlowKindShowsCounterpart(row.flowKind) ? (
+      {brokerageFlowKindShowsCounterpart(row.flowKind) || clpTransferCounterpart ? (
         <div style={{ gridColumn: "1 / -1" }}>
           <CounterpartAccountSelect
             label={
@@ -151,8 +160,11 @@ export function BrokerageMovementRowFields({
             value={row.counterpartAccountId}
             excludeAccountId={currentAccountId}
             equityBrokerageOnly={brokerageFlowKindCounterpartIsEquity(row.flowKind)}
-            cashAndCheckingOnly={brokerageFlowKindCounterpartIsCash(row.flowKind)}
-            usdCashOnly={brokerageFlowKindCounterpartIsUsdCash(row.flowKind)}
+            cashAndCheckingOnly={
+              brokerageFlowKindCounterpartIsCash(row.flowKind) || clpTransferCounterpart
+            }
+            usdCashOnly={brokerageFlowKindCounterpartIsUsdCash(row.flowKind) && !tradeSettlesInClp}
+            clpCashOnly={tradeSettlesInClp}
             onChange={(counterpartAccountId) => onChange({ ...row, counterpartAccountId })}
           />
         </div>
@@ -184,6 +196,7 @@ export function BrokerageMovementsSection({
   currentAccountId,
   flowKinds,
   cashCurrency,
+  stockQuoteCurrency,
 }: {
   movements: InitialMovementDraft[];
   onChange: (next: InitialMovementDraft[]) => void;
@@ -195,6 +208,7 @@ export function BrokerageMovementsSection({
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
   cashCurrency?: CashFormCurrency;
+  stockQuoteCurrency?: StockQuoteCurrency;
 }) {
   const { t } = useTranslation();
   const resolvedTitleKey =
@@ -236,6 +250,7 @@ export function BrokerageMovementsSection({
             currentAccountId={currentAccountId}
             flowKinds={flowKinds}
             cashCurrency={cashCurrency}
+            stockQuoteCurrency={stockQuoteCurrency}
           />
         ))
       )}

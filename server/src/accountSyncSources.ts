@@ -49,7 +49,7 @@ export function inferSyncSourcesForAccount(row: AccountSyncSourceRow): GlobalSyn
   const ticker = row.equity_ticker?.trim();
   if (ticker) {
     const kind = equityMarketKind(ticker);
-    if (kind === "nyse") out.push("stocks_nyse");
+    if (kind === "nyse" || kind === "santiago") out.push("stocks_nyse");
     else if (kind === "crypto24") out.push("crypto_eod");
   }
   return out;

@@ -126,9 +126,19 @@ export function listWatchlistEquitySeriesKeys(): string[] {
   return [...new Set([...fromRows, ...compositeTickers])];
 }
 
+/** NYSE-only tickers — drives the stocks_nyse caught-up/stale state (never include `.SN`). */
 export function listWatchlistNyseTickersForEodSync(): string[] {
   syncWatchlistFromApp();
   return listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) === "nyse");
+}
+
+/**
+ * All stock tickers synced by the stocks_nyse source: NYSE + Santiago (`.SN`).
+ * Santiago rides along opportunistically — a Chilean holiday must not mark the source stale.
+ */
+export function listWatchlistStockTickersForEodSync(): string[] {
+  syncWatchlistFromApp();
+  return listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) !== "crypto24");
 }
 
 export function listWatchlistCryptoTickersForEodSync(): string[] {

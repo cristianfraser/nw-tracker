@@ -1,7 +1,7 @@
 import { listWatchlistEquitySeriesKeys, syncWatchlistFromApp } from "./watchlist.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { equityMarketKind } from "./equityQuote.js";
+import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { fetchYahooLiveUsdClpPerUsd, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
@@ -16,10 +16,10 @@ import { maxFxDateOnOrBefore } from "./sbifSyncDb.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 
 const stmtEodPrior = db.prepare(
-  `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
+  `SELECT close FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
 );
 const stmtEodOnDate = db.prepare(
-  `SELECT close_usd FROM equity_daily WHERE ticker = ? AND trade_date = ?`
+  `SELECT close FROM equity_daily WHERE ticker = ? AND trade_date = ?`
 );
 
 export type LiveQuoteSyncTickerResult = {
@@ -39,7 +39,7 @@ function equityTickersForLiveSync(): string[] {
   return listWatchlistEquitySeriesKeys();
 }
 
-function priorCloseUsdForLiveNyse(
+function priorCloseForLiveNyse(
   ticker: string,
   sessionYmd: string,
   yahooPrior: number | null
@@ -49,12 +49,12 @@ function priorCloseUsdForLiveNyse(
   }
   const priorYmd = priorNyseSessionYmd(sessionYmd);
   if (priorYmd == null) return null;
-  const row = stmtEodOnDate.get(ticker, priorYmd) as { close_usd: number } | undefined;
-  if (row != null && Number.isFinite(row.close_usd)) return row.close_usd;
-  return (stmtEodPrior.get(ticker, sessionYmd) as { close_usd: number } | undefined)?.close_usd ?? null;
+  const row = stmtEodOnDate.get(ticker, priorYmd) as { close: number } | undefined;
+  if (row != null && Number.isFinite(row.close)) return row.close;
+  return (stmtEodPrior.get(ticker, sessionYmd) as { close: number } | undefined)?.close ?? null;
 }
 
-function priorCloseUsdForLiveCrypto(
+function priorCloseForLiveNonSession(
   ticker: string,
   sessionYmd: string,
   yahooPrior: number | null
@@ -62,7 +62,7 @@ function priorCloseUsdForLiveCrypto(
   if (yahooPrior != null && Number.isFinite(yahooPrior) && yahooPrior > 0) {
     return yahooPrior;
   }
-  return (stmtEodPrior.get(ticker, sessionYmd) as { close_usd: number } | undefined)?.close_usd ?? null;
+  return (stmtEodPrior.get(ticker, sessionYmd) as { close: number } | undefined)?.close ?? null;
 }
 
 async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promise<LiveQuoteSyncTickerResult> {
@@ -71,12 +71,13 @@ async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promis
     const kind = equityMarketKind(ticker);
     const prior =
       kind === "nyse"
-        ? priorCloseUsdForLiveNyse(ticker, live.session_ymd, live.previous_close_usd)
-        : priorCloseUsdForLiveCrypto(ticker, live.session_ymd, live.previous_close_usd);
+        ? priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close)
+        : priorCloseForLiveNonSession(ticker, live.session_ymd, live.previous_close);
     const row: LiveMarketQuoteRow = {
       symbol: ticker.toUpperCase(),
-      kind: "equity_usd",
-      value: live.price_usd,
+      kind: "equity",
+      value: live.price,
+      currency: equityQuoteCurrency(ticker),
       session_ymd: live.session_ymd,
       previous_value: prior,
       fetched_at: fetchedAt,
@@ -107,6 +108,7 @@ function mirrorFxDailyToLiveQuotes(fetchedAt: string): number {
     symbol: LIVE_FX_SYMBOL,
     kind: "fx_clp_per_usd",
     value: fx.clp_per_usd,
+    currency: null,
     session_ymd: fx.date,
     previous_value: prior,
     fetched_at: fetchedAt,
@@ -153,6 +155,7 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<{ rows: nu
         symbol: LIVE_FX_SYMBOL,
         kind: "fx_clp_per_usd",
         value: live.clp_per_usd,
+        currency: null,
         session_ymd: live.session_ymd,
         previous_value: prior,
         fetched_at: fetchedAt,

@@ -23,13 +23,13 @@ export async function fetchYahooLiveUsdClpPerUsd(now = new Date()): Promise<{
   previous_clp_per_usd: number | null;
 }> {
   const live = await fetchYahooLiveQuote(LIVE_FX_YAHOO_SYMBOL);
-  if (!Number.isFinite(live.price_usd) || live.price_usd <= 0) {
-    throw new Error(`Yahoo live CLP=X invalid: ${live.price_usd}`);
+  if (!Number.isFinite(live.price) || live.price <= 0) {
+    throw new Error(`Yahoo live CLP=X invalid: ${live.price}`);
   }
   return {
-    clp_per_usd: live.price_usd,
+    clp_per_usd: live.price,
     session_ymd: chileWallClockAt(now).ymd,
-    previous_clp_per_usd: live.previous_close_usd,
+    previous_clp_per_usd: live.previous_close,
   };
 }
 
