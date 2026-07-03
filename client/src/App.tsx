@@ -5,6 +5,7 @@ import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferen
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
+import { CreditCardsPage } from "./pages/CreditCardsPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -55,6 +56,7 @@ function AppTree() {
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
+            <Route path="/credit-cards" element={<CreditCardsPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />

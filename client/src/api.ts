@@ -183,6 +183,8 @@ export const api = {
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
     ),
+  creditCards: () =>
+    j<{ cards: import("./types").OperationalCreditCardRow[] }>("/api/credit-cards"),
   creditCardConfig: (id: string | number) =>
     j<{ config: import("./types").CreditCardAccountConfigDto }>(
       `/api/accounts/${id}/credit-card-config`
