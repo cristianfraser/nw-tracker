@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { CcInstallmentPurchaseComputed, CcProxyLotResult } from "../../types";
 import { formatClp, formatGroupedDecimal, formatPct } from "../../format";
 import { cn } from "../../cn";
+import { useTranslation } from "../../i18n";
 import {
   TableMobileCard,
   TableMobileCardRow,
@@ -39,6 +40,7 @@ export function CreditCardPurchaseMobileCard({
   purchaseProxy?: CcProxyLotResult;
   inlineTicker?: string;
 }) {
+  const { t } = useTranslation();
   const title = (
     <>
       <div>{purchase.label}</div>
@@ -64,24 +66,30 @@ export function CreditCardPurchaseMobileCard({
       </TableMobileCardSection>
 
       <TableMobileCardSection>
-        <TableMobileCardRow label="Cuotas" value={String(purchase.installment_count)} />
-        {dueColumn !== "last" ? <TableMobileCardRow label="Pagadas" value={String(purchase.installments_paid)} /> : null}
-        {dueColumn !== "last" ? <TableMobileCardRow label="Restan" value={String(purchase.remaining_installments)} /> : null}
-        <TableMobileCardRow label="Principal" value={formatClp(purchase.principal_clp)} />
+        <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
+        {dueColumn !== "last" ? (
+          <TableMobileCardRow label={t("account.creditCard.colPaid")} value={String(purchase.installments_paid)} />
+        ) : null}
+        {dueColumn !== "last" ? (
+          <TableMobileCardRow label={t("account.creditCard.colRemain")} value={String(purchase.remaining_installments)} />
+        ) : null}
+        <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
       </TableMobileCardSection>
 
       <TableMobileCardSection>
         {!hasLedger ? (
           <TableMobileCardRow
-            label="Tasa % anual"
+            label={t("account.creditCard.colAnnualRate")}
             value={formatGroupedDecimal(purchase.annual_interest_pct, 2)}
           />
         ) : null}
-        <TableMobileCardRow label="Mes compra" value={purchase.purchase_month ?? "—"} />
-        {dueColumn !== "last" ? <TableMobileCardRow label="1.ª cuota (MES)" value={purchase.first_due_month} /> : null}
+        <TableMobileCardRow label={t("account.creditCard.colPurchaseMonth")} value={purchase.purchase_month ?? "—"} />
+        {dueColumn !== "last" ? (
+          <TableMobileCardRow label={t("account.creditCard.colFirstDue")} value={purchase.first_due_month} />
+        ) : null}
         {dueColumn === "last" ? (
           <TableMobileCardRow
-            label="Mes último pago"
+            label={t("account.creditCard.colLastPaid")}
             value={purchase.last_paid_month ? formatYmEs(purchase.last_paid_month) : "—"}
           />
         ) : null}
@@ -89,9 +97,9 @@ export function CreditCardPurchaseMobileCard({
 
       {!hasLedger ? (
         <TableMobileCardSection>
-          <TableMobileCardRow label="Offset CSV (meses)" value={String(purchase.schedule_offset_months)} />
+          <TableMobileCardRow label={t("account.creditCard.colOffsetCsv")} value={String(purchase.schedule_offset_months)} />
           <TableMobileCardRow
-            label="Offset UI (meses)"
+            label={t("account.creditCard.colOffsetUi")}
             value={
               <input
                 type="number"
@@ -103,7 +111,7 @@ export function CreditCardPurchaseMobileCard({
                   const n = raw === "" || raw === "-" ? 0 : Math.trunc(Number(raw));
                   onExtraOffsetChange(purchase.purchase_id, Number.isFinite(n) ? n : 0);
                 }}
-                aria-label={`Meses de offset adicionales para ${purchase.label}`}
+                aria-label={t("account.creditCard.offsetAria", { label: purchase.label })}
               />
             }
           />
@@ -111,24 +119,28 @@ export function CreditCardPurchaseMobileCard({
       ) : null}
 
       <TableMobileCardSection>
-        <TableMobileCardRow label="Cuota CLP" value={formatClp(purchase.cuota_clp)} />
-        {dueColumn !== "last" ? <TableMobileCardRow label="Restante CLP" value={formatClp(purchase.remaining_principal_clp)} /> : null}
+        <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
+        {dueColumn !== "last" ? (
+          <TableMobileCardRow label={t("account.creditCard.colRemainingClp")} value={formatClp(purchase.remaining_principal_clp)} />
+        ) : null}
       </TableMobileCardSection>
 
       {dueColumn === "none" && purchase.payment_statements && purchase.payment_statements.length > 0 ? (
         <TableMobileCardSection>
-          <div className={cn("muted", styles.purchaseMeta)}>Estado(s) con cuota para esta compra:</div>
+          <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.statementsForPurchase")}</div>
           {purchase.merged_purchase_ids && purchase.merged_purchase_ids.length > 1 ? (
             <div className={cn("mono", "muted", styles.purchaseMeta)}>
-              duplicate purchase ids merged: {purchase.merged_purchase_ids.join(", ")}
+              {t("account.creditCard.mergedIds", { ids: purchase.merged_purchase_ids.join(", ") })}
             </div>
           ) : null}
           {purchase.merge_reason ? (
-            <div className={cn("mono", "muted", styles.purchaseMeta)}>merge reason: {purchase.merge_reason}</div>
+            <div className={cn("mono", "muted", styles.purchaseMeta)}>
+              {t("account.creditCard.mergeReason", { reason: purchase.merge_reason })}
+            </div>
           ) : null}
           {purchase.heuristic_hints && purchase.heuristic_hints.length > 0 ? (
             <div className={cn("mono", "muted", styles.purchaseMeta)}>
-              heuristics: {purchase.heuristic_hints.join(" | ")}
+              {t("account.creditCard.heuristics", { hints: purchase.heuristic_hints.join(" | ") })}
             </div>
           ) : null}
           {purchase.payment_statements.map((st) => {
@@ -142,7 +154,8 @@ export function CreditCardPurchaseMobileCard({
             }
             return (
               <div key={`${purchase.purchase_id}:st:${st.pay_by_date}`} className={cn("mono", "muted", styles.purchaseMeta)}>
-                {st.statement_date ?? "sin fecha estado"} · {st.source_pdf ?? "sin source_pdf"} · pay_by{" "}
+                {st.statement_date ?? t("account.creditCard.statementNoDate")} ·{" "}
+                {st.source_pdf ?? t("account.creditCard.statementNoSourcePdf")} · pay_by{" "}
                 {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
                 {proxyInline ? ` · ${proxyInline}` : null}
               </div>
