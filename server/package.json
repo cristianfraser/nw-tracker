@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "serve": "tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/index.js",
     "migrate": "tsx -e \"import './src/db.ts'\"",

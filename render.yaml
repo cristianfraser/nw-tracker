@@ -1,0 +1,37 @@
+# Render blueprint — hosted recruiter demo (synthetic data, shared-password Basic auth).
+#
+# Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
+# up) → set the AUTH_PASSWORD secret when prompted. Recruiters log in with ANY
+# syntactically-valid email + that password. See AGENTS.md "Hosted demo (Render)".
+#
+# Notes:
+# - PORT is injected by Render; the server reads process.env.PORT.
+# - The free-tier disk is ephemeral: DEMO_MODE regenerates the synthetic DB from current
+#   source on every cold start / deploy, so the demo always matches the deployed code.
+# - startCommand runs the server from source via tsx (same as local dev, minus watch):
+#   the compiled dist/ build would not ship server/migrations/*.sql. Build therefore
+#   installs devDependencies explicitly (Render sets NODE_ENV=production by default).
+# - DEMO_MODE defaults GLOBAL_SYNC_ENABLED / LIVE_QUOTES_SYNC_ENABLED / DB_BACKUP_ENABLED
+#   to 0 (server/src/demoMode.ts); the dashboard cache warmer stays on for first paint.
+# - Single-service same-origin (SERVE_CLIENT_DIST=1) — no CORS_ALLOWED_ORIGINS needed.
+services:
+  - type: web
+    name: nw-tracker-demo
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build -w nw-tracker-client
+    startCommand: npm run serve -w nw-tracker-server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.11.1
+      - key: HOST
+        value: 0.0.0.0
+      - key: DEMO_MODE
+        value: "1"
+      - key: SERVE_CLIENT_DIST
+        value: "1"
+      - key: NW_TRACKER_TEST_DB
+        value: nw-tracker.demo.db
+      - key: AUTH_PASSWORD
+        sync: false
