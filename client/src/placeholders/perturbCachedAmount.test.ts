@@ -14,7 +14,12 @@ import {
   resolveSnapshotFxRate,
   synthesizeMissingUsdOnNavSnapshot,
 } from "./perturbCachedAmount";
-import type { DashboardAccountRow, DashboardNavSnapshotResponse, NavTreeNodeDto } from "../types";
+import type {
+  CachedDashboardNavSnapshot,
+  DashboardAccountRow,
+  DashboardNavSnapshotResponse,
+  NavTreeNodeDto,
+} from "../types";
 
 function dashRow(partial: Partial<DashboardAccountRow> & Pick<DashboardAccountRow, "account_id" | "name">): DashboardAccountRow {
   return {
@@ -94,7 +99,7 @@ describe("perturbCachedAmountsPreservingSortOrder", () => {
 
 describe("perturbDashboardNavSnapshot", () => {
   it("perturbs account current_value_clp away from raw cache", () => {
-    const raw: DashboardNavSnapshotResponse = {
+    const raw: CachedDashboardNavSnapshot = {
       accounts: [
         dashRow({ account_id: 1, name: "A", current_value_clp: 5_000_000 }),
         dashRow({ account_id: 2, name: "B", current_value_clp: 2_000_000 }),
@@ -161,7 +166,7 @@ describe("perturbDashboardNavSnapshot", () => {
 
 describe("synthesizeMissingUsdOnNavSnapshot", () => {
   it("converts CLP fields to USD using row fx_clp_per_usd before perturb", () => {
-    const raw: DashboardNavSnapshotResponse = {
+    const raw: CachedDashboardNavSnapshot = {
       accounts: [
         dashRow({
           account_id: 1,
@@ -187,7 +192,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
   });
 
   it("uses cached bundle fx for aggregates when row fx is missing", () => {
-    const raw: DashboardNavSnapshotResponse = {
+    const raw: CachedDashboardNavSnapshot = {
       accounts: [
         dashRow({ account_id: 1, name: "A", current_value_clp: 950_000 }),
       ],
@@ -206,7 +211,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
   });
 
   it("leaves USD null when no fx rate is available", () => {
-    const raw: DashboardNavSnapshotResponse = {
+    const raw: CachedDashboardNavSnapshot = {
       accounts: [
         dashRow({ account_id: 1, name: "A", current_value_clp: 5_000_000 }),
       ],
@@ -217,7 +222,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
   });
 
   it("perturbs synthesized USD away from the converted value", () => {
-    const raw: DashboardNavSnapshotResponse = {
+    const raw: CachedDashboardNavSnapshot = {
       accounts: [
         dashRow({
           account_id: 1,
@@ -374,7 +379,7 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       dashRow({ account_id: 4, name: "Cash", current_value_clp: 80_000_000, group_slug: "cash_savings" }),
     ];
 
-    const snapshot: DashboardNavSnapshotResponse = {
+    const snapshot: CachedDashboardNavSnapshot = {
       accounts,
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 5_000_000 },
       dashboard_layout: [

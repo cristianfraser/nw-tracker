@@ -6,7 +6,8 @@ import type { DisplayUnit } from "./queries/keys";
 export type GroupInfoTableAccount = {
   id: number;
   name: string;
-  category_slug: string;
+  /** Optional: dashboard/page-bundle rows may omit category_slug. */
+  category_slug?: string;
 };
 
 export function useGroupInfoConsolidatedTables(

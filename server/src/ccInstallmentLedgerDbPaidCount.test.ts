@@ -4,6 +4,7 @@ import {
   assertNoDuplicateInstallmentPurchaseFingerprints,
   ccInstallmentsDbApiPayload,
   ledgerInstallmentsPaid,
+  type PaymentRow,
 } from "./ccInstallmentLedgerDb.js";
 
 function stmtMonthFromPayBy(payBy: string): string {
@@ -25,7 +26,7 @@ describe("ledgerInstallmentsPaid", () => {
       source: "pdf",
     };
 
-    const payList = Array.from({ length: 11 }, (_, idx) => ({
+    const payList: PaymentRow[] = Array.from({ length: 11 }, (_, idx) => ({
       id: idx + 1,
       purchase_id: 1,
       pay_by_date: `2025-${String(idx + 2).padStart(2, "0")}-25`,
@@ -35,6 +36,7 @@ describe("ledgerInstallmentsPaid", () => {
       source_pdf: null,
       amount_clp: 100_000,
       cuota_current: idx + 1,
+      cuota_total: null,
     }));
     payList.push({
       id: 12,
@@ -46,6 +48,7 @@ describe("ledgerInstallmentsPaid", () => {
       source_pdf: null,
       amount_clp: 100_000,
       cuota_current: null,
+      cuota_total: null,
     });
 
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-02")).toBe(12);

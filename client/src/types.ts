@@ -117,7 +117,8 @@ export interface DashboardAccountRow {
   bucket_label?: string;
   /** Top-level NW dashboard bucket from asset_groups ancestry (server-computed). */
   dashboard_bucket_slug?: string;
-  category_slug: string;
+  /** Optional on dashboard/page-bundle rows (server `DashboardAccountStats.category_slug?`). */
+  category_slug?: string;
   category_label: string;
   deposits_clp: number;
   deposits_usd?: number | null;
@@ -853,6 +854,16 @@ export interface DashboardNavSnapshotResponse {
   nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
   chart_shape?: DashboardChartShape;
 }
+
+/**
+ * Nav snapshot as read from a persisted cache: entries written by older app versions may
+ * predate `liabilities_breakdown` / `nw_bucket_totals` (placeholder paths guard for this).
+ */
+export type CachedDashboardNavSnapshot = Omit<
+  DashboardNavSnapshotResponse,
+  "liabilities_breakdown" | "nw_bucket_totals"
+> &
+  Partial<Pick<DashboardNavSnapshotResponse, "liabilities_breakdown" | "nw_bucket_totals">>;
 
 /** `GET /api/dashboard/nav-context` — nav strip + overview in one response. */
 export interface DashboardNavContextResponse {

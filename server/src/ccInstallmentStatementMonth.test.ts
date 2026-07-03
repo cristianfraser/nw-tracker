@@ -44,6 +44,7 @@ describe("ledgerInstallmentsPaid statement-month timing", () => {
         source_pdf: "apr.pdf",
         amount_clp: 9_763,
         cuota_current: null,
+        cuota_total: null,
       },
       {
         id: 2,
@@ -55,6 +56,7 @@ describe("ledgerInstallmentsPaid statement-month timing", () => {
         source_pdf: "may.pdf",
         amount_clp: 9_763,
         cuota_current: 1,
+        cuota_total: null,
       },
     ];
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-05")).toBe(1);
@@ -73,6 +75,7 @@ describe("ledgerInstallmentsPaid statement-month timing", () => {
         source_pdf: null,
         amount_clp: 9_763,
         cuota_current: 1,
+        cuota_total: null,
       },
     ];
     expect(paymentStatementMonthYm(payList[0]!)).toBe("2026-05");
@@ -151,6 +154,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
         source_pdf: "apr.pdf",
         amount_clp: 68_333,
         cuota_current: 1,
+        cuota_total: null,
       },
       {
         id: 3,
@@ -162,6 +166,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
         source_pdf: "may.pdf",
         amount_clp: 68_333,
         cuota_current: 2,
+        cuota_total: null,
       },
     ];
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-05")).toBe(2);
@@ -195,6 +200,7 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
         source_pdf: "june.pdf",
         amount_clp: 63_300,
         cuota_current: 0,
+        cuota_total: null,
       },
     ];
     expect(purchaseFirstDueYm(purchase, payList)).toBe("2026-08");
@@ -212,6 +218,7 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
         source_pdf: "june.pdf",
         amount_clp: 63_300,
         cuota_current: 0,
+        cuota_total: null,
       },
     ];
     const paymentsByPurchase = new Map([[1, payList]]);
