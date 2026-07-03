@@ -81,6 +81,11 @@ function main() {
   const tx = db.transaction(() => {
     // Scoped strictly to this one account — nothing else is touched.
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+    // Mirror-merge transfers touching this account: the rebuild re-inserts the original single
+    // leg, so keeping the transfer would double-count (re-convert via /panel/mirror-pairs).
+    db.prepare(
+      `DELETE FROM movements WHERE note LIKE 'mirror-merge|%' AND (from_account_id = ? OR to_account_id = ?)`
+    ).run(accountId, accountId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     movN = importCuentaAhorroViviendaMovements(cfraserDir, maxMonth, accountId, insMov, upsertVal);
   });
