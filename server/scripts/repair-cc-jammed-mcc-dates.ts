@@ -7,7 +7,6 @@
  *   npx tsx server/scripts/repair-cc-jammed-mcc-dates.ts [--dry-run] [--account-id=NN]
  */
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
@@ -16,7 +15,6 @@ import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { db } from "../src/db.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BAD_YEAR_RE = /\/(2511|2611)$/;
 

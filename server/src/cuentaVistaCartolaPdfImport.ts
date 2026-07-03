@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import type { CheckingCartolaPdfEntry } from "./checkingCartolaPdfImport.js";
 import { pdfEntryToParsedCartola } from "./checkingCartolaPdfImport.js";
-import { resolveCfraserCuentaVistaCartolaPdfsDir } from "./cfraserPaths.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");

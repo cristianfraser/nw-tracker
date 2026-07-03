@@ -1,5 +1,5 @@
 import { accountChartInactive } from "./accountChartInactive.js";
-import { accountIdsForNavMatch, resolveOperationalAccountId } from "./accountSource.js";
+import { resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
 import { db } from "./db.js";

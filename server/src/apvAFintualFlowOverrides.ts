@@ -1,5 +1,4 @@
 import {
-  DEPOSIT_FLOW_KIND_PERSONAL,
   DEPOSIT_FLOW_KIND_STATE,
   DEPOSIT_FLOW_KIND_TRASPASO,
   depositFlowKindFromFintualMedio,

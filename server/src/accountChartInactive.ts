@@ -4,7 +4,6 @@ import { getAccountSourceRow } from "./accountSource.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
   chartInactiveFromMonthlyClosingAsc,
-  accountInactiveByValuationTail,
 } from "./accountValuationTailInactive.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 

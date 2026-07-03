@@ -1,10 +1,15 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import {
+  describe,
+  expect,
+  it,
+  vi,
+  afterEach,
+} from "vitest";
 import {
   realizedCuotaGains,
   installmentPurchaseToLot,
   normalPurchaseToLot,
   aggregateProxyByFacturacion,
-  priceClpForTickerAt,
   type ProxyLot,
   type ProxyLotResult,
 } from "./ccInvestmentProxy.js";

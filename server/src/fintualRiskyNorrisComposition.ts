@@ -1,8 +1,4 @@
-import {
-  chileCalendarAddDays,
-  chileWallClockNow,
-  type ChileWallClock,
-} from "./chileDate.js";
+import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
 import { equityCloseEod } from "./equityQuote.js";
@@ -22,7 +18,6 @@ import {
 
 export const FINTUAL_RN_MANAGED_FUND_ID = 4;
 export const FINTUAL_INVERSIONES_API_BASE = "https://inversiones.fintual.com";
-const WEIGHT_SUM_MIN = 0.99;
 const WEIGHT_SUM_MAX = 1.01;
 /** Minimum raw ETF weight sum before normalization (excludes fund/bond sleeves). */
 const ETF_WEIGHT_SUM_MIN = 0.95;

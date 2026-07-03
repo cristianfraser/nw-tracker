@@ -17,10 +17,7 @@
  *   market series.
  */
 import { db } from "../db.js";
-import {
-  getCcExpenseCategoryBySlug,
-  normalizeCcExpenseMerchantKey,
-} from "../ccExpenseCategories.js";
+import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import {
   buildDeptoDividendosMovementNote,
   buildDeptoMortgageMovementNote,
@@ -36,7 +33,6 @@ import {
   type DemoChapter,
   type DemoMonth,
   type DemoNarrative,
-  type DemoTrade,
 } from "./demoNarrative.js";
 
 export type DemoAccounts = {

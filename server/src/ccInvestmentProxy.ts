@@ -6,7 +6,6 @@
  * Computed overlay only — not persisted, not part of net worth.
  */
 import { db } from "./db.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
 

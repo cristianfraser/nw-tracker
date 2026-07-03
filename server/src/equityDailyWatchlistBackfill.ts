@@ -2,7 +2,6 @@ import { upsertEquityDailySeries } from "./brokerageEquityMtm.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { equityMarketKind } from "./equityQuote.js";
 import { fetchYahooRecentDailyCloses } from "./equityYahooEod.js";
 
 /** Calendar lookback for watchlist YTD/YoY anchors (≈14 months). */

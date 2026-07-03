@@ -9,16 +9,13 @@ import {
 import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import {
-  billingMonthForStatementDate,
-  loadCreditCardBillingConfig,
-} from "./ccBillingMonth.js";
+import { billingMonthForStatementDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
   installmentRemainingClpByCalendarMonth,
   ledgerFacturadoClpForBillingMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
-import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";

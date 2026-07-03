@@ -1,8 +1,5 @@
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
-import {
-  dashboardBucketSlugForAccountId,
-  portfolioGroupBySlug,
-} from "./portfolioGroupTree.js";
+import { portfolioGroupBySlug } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
 
 const bucketSlugStmt = db.prepare(

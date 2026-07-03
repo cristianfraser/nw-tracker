@@ -139,7 +139,12 @@ import {
   describeEquityNyseEodSyncNote,
   type EquityEodSyncResult,
 } from "./equityEodSync.js";
-import { syncYahooFxUsdFromYahoo, yahooFxUsdCaughtUp, yahooFxUsdSyncDue, isYahooFxUsdStale } from "./fxYahooEodSync.js";
+import {
+  syncYahooFxUsdFromYahoo,
+  yahooFxUsdCaughtUp,
+  yahooFxUsdSyncDue,
+  isYahooFxUsdStale,
+} from "./fxYahooEodSync.js";
 import type { SyncChangeGroup } from "./syncRunLog.js";
 let syncDryRun = process.argv.includes("--dry-run");
 const FORCE_SBIF = process.argv.includes("--force-sbif");
@@ -176,10 +181,6 @@ function equityEodCloseOnDate(ticker: string, tradeDate: string): number | null 
     .get(ticker, tradeDate) as { close: number } | undefined;
   if (row?.close == null || !Number.isFinite(row.close)) return null;
   return row.close;
-}
-
-function latestEquityClose(ticker: string): number | null {
-  return latestEquityEodRow(ticker)?.close ?? null;
 }
 
 function fxBcentralClpPerUsdAt(date: string): number | null {
@@ -992,7 +993,6 @@ async function runSbifUtm(
   const n = upsertUtmRows(rows, syncDryRun);
   if (n > 0) {
     const newest = rows[rows.length - 1];
-    const oldLabel = `${anchor.y}-${String(anchor.m).padStart(2, "0")}`;
     changes.push({
       group: "sbif_utm",
       label: "BCentral UTM",
