@@ -251,6 +251,8 @@ import {
   sharedAuthPasswordFromEnv,
   sharedPasswordAuthMiddleware,
 } from "./httpSecurity.js";
+import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
+import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
@@ -266,6 +268,7 @@ import { registerSyncRoutes } from "./routes/sync.js";
 seedNavTree();
 
 loadRootDotenv();
+bootstrapDemoModeIfEnabled();
 ensureAccountSyncSourcesSeeded();
 
 const app = express();
@@ -300,6 +303,11 @@ registerDashboardRoutes(app);
 registerMarketRoutes(app);
 registerFlowsRoutes(app);
 registerSyncRoutes(app);
+
+if (serveClientDistEnabled()) {
+  registerClientDistStatic(app);
+  console.log("static: serving client/dist with SPA fallback (SERVE_CLIENT_DIST=1)");
+}
 
 app.use(
   (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
