@@ -59,8 +59,8 @@ type DbPayrollRow = {
   desc_apv_clp: number | null;
   desc_other_clp: number | null;
   total_descuentos_clp: number | null;
-  liquido_clp: number;
-  liquido_usd: number | null;
+  liquido: number;
+  liquido_currency: string;
   wire_received_on: string | null;
   uf_mes: number | null;
   utm_mes: number | null;
@@ -83,8 +83,8 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
          p.base_salary_clp, p.colacion_clp, p.movilizacion_clp, p.gratificacion_clp,
          p.total_imponible_clp, p.total_no_imponible_clp, p.total_haberes_clp,
          p.desc_afp_clp, p.desc_health_clp, p.desc_tax_clp, p.desc_cesantia_clp,
-         p.desc_apv_clp, p.desc_other_clp, p.total_descuentos_clp, p.liquido_clp,
-         p.liquido_usd, p.wire_received_on,
+         p.desc_apv_clp, p.desc_other_clp, p.total_descuentos_clp, p.liquido,
+         p.liquido_currency, p.wire_received_on,
          p.uf_mes, p.utm_mes, p.tope_previsional_uf, p.tope_cesantia_uf,
          p.source_pdf, p.movement_id, p.link_source,
          m.occurred_on AS linked_received_on,
@@ -97,13 +97,35 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
     )
     .all() as DbPayrollRow[];
 
-  return rows.map((row) => ({
-    ...row,
-    liquido_clp: Math.round(row.liquido_clp),
-    liquido_usd: row.liquido_usd == null ? null : row.liquido_usd,
-    linked_amount_clp:
-      row.linked_amount_clp == null ? null : Math.round(row.linked_amount_clp),
-  }));
+  return rows.map((row) => {
+    const { liquido, liquido_currency, ...rest } = row;
+    let liquido_clp: number;
+    let liquido_usd: number | null;
+    if (liquido_currency === "clp") {
+      liquido_clp = Math.round(liquido);
+      liquido_usd = null;
+    } else if (liquido_currency === "usd") {
+      // USD-native líquido (Deel): the CLP equivalent is the stored CLP breakdown
+      // (haberes/descuentos converted at the wire date when the row was written), so
+      // haberes − descuentos keeps the líquido identity exact — no fx call at read.
+      if (row.total_haberes_clp == null || row.total_descuentos_clp == null) {
+        throw new Error(
+          `work earning ${row.id}: usd líquido without CLP haberes/descuentos breakdown`
+        );
+      }
+      liquido_usd = liquido;
+      liquido_clp = Math.round(row.total_haberes_clp - row.total_descuentos_clp);
+    } else {
+      throw new Error(`work earning ${row.id}: unexpected liquido_currency ${liquido_currency}`);
+    }
+    return {
+      ...rest,
+      liquido_clp,
+      liquido_usd,
+      linked_amount_clp:
+        row.linked_amount_clp == null ? null : Math.round(row.linked_amount_clp),
+    };
+  });
 }
 
 export function incomeKindByMovementId(): Map<number, PayrollEarningType> {

@@ -14,7 +14,7 @@ INSERT INTO payroll_work_earnings (
   base_salary_clp, colacion_clp, movilizacion_clp, gratificacion_clp,
   total_imponible_clp, total_no_imponible_clp, total_haberes_clp,
   desc_afp_clp, desc_health_clp, desc_tax_clp, desc_cesantia_clp, desc_apv_clp, desc_other_clp,
-  total_descuentos_clp, liquido_clp,
+  total_descuentos_clp, liquido, liquido_currency,
   uf_mes, utm_mes, tope_previsional_uf, tope_cesantia_uf,
   source_pdf, parse_version, movement_id, link_source
 ) VALUES (
@@ -22,7 +22,7 @@ INSERT INTO payroll_work_earnings (
   ?, ?, ?, ?,
   ?, ?, ?,
   ?, ?, ?, ?, ?, ?,
-  ?, ?,
+  ?, ?, 'clp',
   ?, ?, ?, ?,
   ?, ?, ?, ?
 )
@@ -46,7 +46,8 @@ ON CONFLICT(source_pdf) DO UPDATE SET
   desc_apv_clp = excluded.desc_apv_clp,
   desc_other_clp = excluded.desc_other_clp,
   total_descuentos_clp = excluded.total_descuentos_clp,
-  liquido_clp = excluded.liquido_clp,
+  liquido = excluded.liquido,
+  liquido_currency = excluded.liquido_currency,
   uf_mes = excluded.uf_mes,
   utm_mes = excluded.utm_mes,
   tope_previsional_uf = excluded.tope_previsional_uf,

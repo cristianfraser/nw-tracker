@@ -30,8 +30,8 @@ export type SyntheticDeelUsdPayrollRow = {
   desc_apv_clp: null;
   desc_other_clp: number;
   total_descuentos_clp: number;
-  liquido_clp: number;
-  liquido_usd: number;
+  liquido: number;
+  liquido_currency: "usd";
   wire_received_on: string;
   uf_mes: null;
   utm_mes: null;
@@ -128,15 +128,18 @@ export function buildSyntheticDeelUsdRow(spec: {
     );
   }
 
-  // Payroll rows are whole pesos and readers assert haberes − descuentos === liquido
-  // exactly; the fx helper keeps cross-rate decimals, so round the components once and
-  // derive liquido (rounding only the difference broke the identity on scaled months).
+  // The CLP breakdown is converted once at the wire date and rounded per component; the
+  // DTO loader derives the CLP líquido as haberes − descuentos, so the identity holds
+  // exactly (rounding only the difference broke it on scaled months). The stored líquido
+  // itself is the native USD amount (liquido_currency='usd').
   const total_haberes_clp = Math.round(haberesRaw);
   const desc_other_clp = Math.round(descOtherRaw);
   const total_descuentos_clp = desc_other_clp;
-  const liquido_clp = total_haberes_clp - total_descuentos_clp;
-  if (liquido_clp <= 0) {
-    throw new Error(`${spec.period_month}: liquido_clp must be positive, got ${liquido_clp}`);
+  const liquidoClpEquiv = total_haberes_clp - total_descuentos_clp;
+  if (liquidoClpEquiv <= 0) {
+    throw new Error(
+      `${spec.period_month}: CLP líquido equivalent must be positive, got ${liquidoClpEquiv}`
+    );
   }
 
   return {
@@ -159,8 +162,8 @@ export function buildSyntheticDeelUsdRow(spec: {
     desc_apv_clp: null,
     desc_other_clp,
     total_descuentos_clp,
-    liquido_clp,
-    liquido_usd,
+    liquido: liquido_usd,
+    liquido_currency: "usd",
     wire_received_on: spec.wire_received_on,
     uf_mes: null,
     utm_mes: null,
