@@ -40,6 +40,16 @@
   gap: 0.35rem 1rem;
 }
 
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.field select {
+  font: inherit;
+}
+
 @media (min-width: 880px) {
   .dock {
     left: auto;

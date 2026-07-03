@@ -19,6 +19,7 @@ import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
 import { AccountsPanelPage } from "./pages/panel/AccountsPanelPage";
 import { ImportSyncPage } from "./pages/panel/ImportSyncPage";
 import { NotificationsPage } from "./pages/panel/NotificationsPage";
+import { SettingsPage } from "./pages/panel/SettingsPage";
 import { RatesPage } from "./pages/RatesPage";
 import { WatchlistPage } from "./pages/WatchlistPage";
 
@@ -76,6 +77,7 @@ function AppTree() {
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="accounts" element={<AccountsPanelPage />} />
               <Route path="import-sync" element={<ImportSyncPage />} />
+              <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="/messages" element={<Navigate to="/panel/notifications" replace />} />
             <Route path="/income" element={<Navigate to="/flows/income" replace />} />
