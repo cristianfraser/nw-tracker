@@ -107,6 +107,7 @@ function balanceOnlyMonthlyRowsAsc(
   let ytdYear = 0;
   let ytdRun = 0;
   let cumPl = 0;
+  const today = chileCalendarTodayYmd();
 
   // Deposited capital = balance − cumulative interest (interest = savings_earnings = the
   // account's only real P/L; every other balance change is a transfer/compra/deposit).
@@ -120,9 +121,13 @@ function balanceOnlyMonthlyRowsAsc(
   };
 
   for (const asOf of monthEndsAsc) {
-    const close = closeAt(asOf);
+    // Current month: evaluate the ledger at Chile-today, never the future month-end —
+    // a future-dated movement inside the month must not count until its date arrives
+    // (equity MTM only counts units through today; mixing skews consolidated totals).
+    const evalAt = asOf > today ? today : asOf;
+    const close = closeAt(evalAt);
     if (!Number.isFinite(close)) continue;
-    const deposited = depositedAt(asOf);
+    const deposited = depositedAt(evalAt);
     // First month: flow = cumulative aportes at this date (vs 0) — same convention as
     // the equity/AFP monthly perf builder.
     const netFlow = prevDeposited != null ? deposited - prevDeposited : deposited;

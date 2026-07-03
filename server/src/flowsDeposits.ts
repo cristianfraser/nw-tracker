@@ -176,6 +176,9 @@ function flowsDepositsNetTotalsByAccount(opts?: {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
       if (opts?.period === "month" && monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
       if (opts?.period === "year" && e.occurred_on.slice(0, 4) !== currentY) continue;
+      // Period windows end at Chile-today: a future-dated event inside the current
+      // month/year must not count until its date arrives (closings are as-of-today).
+      if (opts?.period != null && e.occurred_on > today) continue;
       const amount_clp = Math.round(e.amt);
       sumClp += amount_clp;
       const amount_usd = depositInflowEventUsd(e);
@@ -189,6 +192,45 @@ function flowsDepositsNetTotalsByAccount(opts?: {
     usd.set(acc.account_id, fxError ? null : sumUsd);
   }
   return { clp, usd };
+}
+
+/**
+ * Net capital flow for one account in the current calendar month, counting only events
+ * dated ≤ Chile-today (future-dated movements inside the month don't count yet). Same
+ * event source and capping as `flowsDepositsNetInPeriodByAccount("month")`, so live
+ * current-month P/L reconciles with the dashboard deposits column.
+ */
+export function netDepositFlowCurrentMonthThroughToday(
+  accountId: number,
+  unit: "clp" | "usd"
+): number {
+  const today = chileCalendarTodayYmd();
+  if (isUsdCashAccount(accountId)) {
+    const prior = priorPeriodEndYmd("mtd", today);
+    if (unit === "usd") {
+      const dep = (ymd: string) =>
+        usdCashBalanceUsdAt(accountId, ymd) - cashInterestUsdThroughDate(accountId, ymd);
+      return dep(today) - dep(prior);
+    }
+    const dep = (ymd: string) =>
+      usdCashBalanceClpAt(accountId, ymd) - cashInterestClpThroughDate(accountId, ymd);
+    return dep(today) - dep(prior);
+  }
+  const currentMk = monthKeyFromYmd(today);
+  const events = loadMergedDepositInflowEvents([accountId]).get(accountId) ?? [];
+  let sum = 0;
+  for (const e of events) {
+    if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+    if (monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
+    if (e.occurred_on > today) continue;
+    if (unit === "usd") {
+      const usd = depositInflowEventUsd(e);
+      if (usd != null && Number.isFinite(usd)) sum += usd;
+      continue;
+    }
+    sum += e.amt;
+  }
+  return sum;
 }
 
 /** Net deposits in the current calendar month or year (flows-page accounts only). */
