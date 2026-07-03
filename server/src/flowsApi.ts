@@ -3,6 +3,7 @@ import {
   DEPOSIT_FLOW_KIND_PERSONAL,
   DEPOSIT_FLOW_KIND_TRASPASO,
 } from "./depositFlowKind.js";
+import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import {
   listAccountMovementsForApi,
   listAccountMovementsForApiBulk,
@@ -66,12 +67,17 @@ function assembleFlowRows(
       });
     }
   }
-  // Sort newest-first; stable secondary key for deterministic order
-  rows.sort((a, b) => {
-    const d = b.occurred_on.localeCompare(a.occurred_on);
-    if (d !== 0) return d;
-    return b.key.localeCompare(a.key);
-  });
+  // Newest-first with intra-day causal rank. Both perspectives of a transfer
+  // share a movement id and land adjacent; the outflow leaves the origin
+  // before the deposit lands, so newest-first puts the target (in) row on top
+  // and the origin (out) row below it.
+  const directionOrder = (r: FlowsApiRow): number => (r.transfer_direction === "in" ? 0 : 1);
+  rows.sort(
+    (a, b) =>
+      compareFlowRowsForDisplay(a, b) ||
+      directionOrder(a) - directionOrder(b) ||
+      a.account_id - b.account_id
+  );
   return rows;
 }
 

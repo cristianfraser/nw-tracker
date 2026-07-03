@@ -1,4 +1,5 @@
 import { noteIsDeptoPiePayment } from "./deptoDividendosLedger.js";
+import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
@@ -35,7 +36,7 @@ const movementsForAccountStmt = db.prepare(
 );
 
 function mapMovementRows(accountId: number, rows: MovementTransferRow[]): AccountMovementApiRow[] {
-  return rows.map((r) => {
+  const mapped = rows.map((r) => {
     const counterpartId = counterpartAccountIdFor(r, accountId);
     const flow_type = movementFlowTypeFromRow({
       note: r.note,
@@ -62,6 +63,7 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
       transfer_direction: transferDirectionForAccount(r, accountId),
     };
   });
+  return mapped.sort(compareFlowRowsForDisplay);
 }
 
 /** All movements for many accounts (one query). */
