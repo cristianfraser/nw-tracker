@@ -36,6 +36,7 @@
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
     "reconcile:cartola-partials": "tsx scripts/reconcile-cartola-partials.ts",
     "propose:synthetic-deposit-mirrors": "tsx scripts/propose-synthetic-deposit-mirrors.ts",
+    "reroute:clp-buffer": "tsx scripts/reroute-split-redemption-via-clp-buffer.ts",
     "propose:cuenta-ahorro-splits": "tsx scripts/propose-cuenta-ahorro-splits.ts",
     "import:buda": "tsx scripts/import-buda-history.ts",
     "parse:cc-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cc-statement-pdfs.py",
