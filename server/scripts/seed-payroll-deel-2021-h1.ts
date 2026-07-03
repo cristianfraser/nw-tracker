@@ -17,7 +17,7 @@ function main(): void {
 
   for (const row of payroll_rows) {
     console.log(
-      `  ${row.period_month} liquido_usd=${row.liquido_usd} liquido_clp=${row.liquido_clp} ` +
+      `  ${row.period_month} liquido=${row.liquido} ${row.liquido_currency} ` +
         `wire=${row.wire_received_on}`
     );
     if (!dryRun) upsertSyntheticDeelUsdPayrollRow(row);
