@@ -605,6 +605,18 @@ export function seedNavTree(): void {
     }
 
     upsert({
+      slug: "search",
+      label: "Buscador",
+      label_i18n_key: "sidebar.search",
+      sort_order: 55,
+      route_path: "/search",
+      active_prefix: "/search",
+      nav_end: false,
+      show_leaf_hyphen: false,
+      sidebar_section: "link",
+    });
+
+    upsert({
       slug: "rates",
       label: "Tipos de cambio",
       label_i18n_key: "sidebar.rates",

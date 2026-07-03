@@ -638,6 +638,34 @@ export const api = {
     ),
   deleteGenericUniqueMerchant: (id: number) =>
     j<void>(`/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" }),
+  searchFlows: (opts: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    year?: string;
+    type?: string;
+    account_id?: number;
+    category?: string;
+    date_from?: string;
+    date_to?: string;
+    amount_min?: number;
+    amount_max?: number;
+    amount_exact?: number;
+  }) => {
+    const qu = new URLSearchParams();
+    if (opts.page) qu.set("page", String(opts.page));
+    if (opts.pageSize) qu.set("page_size", String(opts.pageSize));
+    for (const key of ["q", "year", "type", "category", "date_from", "date_to"] as const) {
+      const v = opts[key];
+      if (v) qu.set(key, v);
+    }
+    for (const key of ["account_id", "amount_min", "amount_max", "amount_exact"] as const) {
+      const v = opts[key];
+      if (v != null) qu.set(key, String(v));
+    }
+    const qs = qu.toString();
+    return j<import("./types").FlowsPageResponse>(`/api/flows/search${qs ? `?${qs}` : ""}`);
+  },
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
   convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>

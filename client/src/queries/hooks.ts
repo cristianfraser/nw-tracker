@@ -617,6 +617,11 @@ export type FlowsQueryFilters = {
   category?: string;
   q?: string;
   personal_only?: boolean;
+  date_from?: string;
+  date_to?: string;
+  amount_min?: number;
+  amount_max?: number;
+  amount_exact?: number;
 };
 
 function serializeFlowFilters(f: FlowsQueryFilters): string {
@@ -629,6 +634,11 @@ function serializeFlowFilters(f: FlowsQueryFilters): string {
     c: f.category ?? "",
     q: f.q ?? "",
     po: f.personal_only ?? false,
+    df: f.date_from ?? "",
+    dt: f.date_to ?? "",
+    mn: f.amount_min ?? "",
+    mx: f.amount_max ?? "",
+    ex: f.amount_exact ?? "",
   });
 }
 
@@ -673,5 +683,28 @@ export function useMovementMirrorCandidates() {
   return useQuery({
     queryKey: queryKeys.movementMirrorCandidates(),
     queryFn: () => api.movementMirrorCandidates(),
+  });
+}
+
+export function useFlowsSearch(filters: FlowsQueryFilters) {
+  const filtersKey = useMemo(() => serializeFlowFilters(filters), [filters]);
+  return useQuery({
+    queryKey: queryKeys.flowsSearch(filtersKey),
+    queryFn: () =>
+      api.searchFlows({
+        page: filters.page,
+        pageSize: filters.pageSize,
+        q: filters.q,
+        year: filters.year,
+        type: filters.type,
+        account_id: filters.account_id,
+        category: filters.category,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        amount_min: filters.amount_min,
+        amount_max: filters.amount_max,
+        amount_exact: filters.amount_exact,
+      }),
+    placeholderData: (prev) => prev,
   });
 }
