@@ -662,6 +662,25 @@ export interface AccountCcInstallmentsResponse {
   facturacion_proxy?: CcProxyFacturacionAggregate[];
 }
 
+export type CcCupoEntry = { currency: "clp" | "usd"; value: number | null };
+
+/** `GET /api/accounts/:id/credit-card-config` — editable `credit_card_account_config` row. */
+export type CreditCardAccountConfigDto = {
+  account_id: number;
+  card_last4: string | null;
+  billing_cycle_start_day: number;
+  /** Raw column value; billing math treats null as day 20. */
+  billing_cycle_end_day: number | null;
+  cupo: CcCupoEntry[];
+};
+
+export type CreditCardConfigPatchBody = {
+  billing_cycle_start_day?: number;
+  billing_cycle_end_day?: number | null;
+  cupo?: CcCupoEntry[];
+};
+
+
 /** `GET /api/portfolio-groups/:slug/cc-ledger` — aggregated CC masters for a pasivos group. */
 export type PortfolioGroupCcLedgerResponse = AccountCcInstallmentsResponse;
 
