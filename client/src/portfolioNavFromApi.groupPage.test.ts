@@ -25,7 +25,9 @@ function navNode(partial: Partial<NavTreeNodeDto> & Pick<NavTreeNodeDto, "slug">
     api_subgroup: partial.api_subgroup ?? null,
     color_rgb: null,
     color: null,
-    group_kind: partial.group_kind ?? "normal",
+    kind_slug: partial.kind_slug ?? null,
+    dashboard_bucket_slug: partial.dashboard_bucket_slug ?? null,
+    group_kind: partial.group_kind ?? "bucket",
     children: partial.children ?? [],
   };
 }

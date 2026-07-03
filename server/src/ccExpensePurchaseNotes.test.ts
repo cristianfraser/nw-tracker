@@ -72,6 +72,9 @@ describe("ccExpensePurchaseNotes", () => {
       nro_cuota_total: null,
       category_slug: "unclassified",
       category_unique: false,
+      amount_usd_at_expense: null,
+      origin_card_last4: null,
+      primary_card_last4: null,
     };
     const [enriched] = enrichFlowLinesWithPurchaseNotes([draft], notes);
     expect(enriched.purchase_key).toBe(purchaseKey);

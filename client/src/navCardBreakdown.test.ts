@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import { nestCardBreakdownLines } from "./dashboardCardBreakdown";
 import { buildNavCardBreakdown } from "./navCardBreakdown";
 import type { DashboardAccountRow, NavTreeNodeDto } from "./types";
+import { navNodeFixture } from "./test/navNodeFixture";
 
 function leafAccount(id: number, slug: string): NavTreeNodeDto {
-  return {
+  return navNodeFixture({
     slug,
     label: slug,
     route_path: `/account/${id}`,
     account_id: id,
     children: [],
-  };
+  });
 }
 
 function groupNode(
@@ -19,14 +20,14 @@ function groupNode(
   route = `/g/${slug}`,
   label = slug
 ): NavTreeNodeDto {
-  return {
+  return navNodeFixture({
     slug,
     label,
     route_path: route,
     portfolio_group_id: 1,
     api_group: "retirement",
     children,
-  };
+  });
 }
 
 function dashRow(
@@ -73,31 +74,31 @@ function visibleBreakdownLabels(lines: ReturnType<typeof buildNavCardBreakdown>)
 
 describe("buildNavCardBreakdown retirement", () => {
   it("lists flat AFP and AFC accounts under AFP+AFC bucket", () => {
-    const retirement: NavTreeNodeDto = {
+    const retirement: NavTreeNodeDto = navNodeFixture({
       slug: "retirement",
       label: "Retiro",
       route_path: "/inversiones/retiro",
       portfolio_group_id: 1,
       api_group: "retirement",
       children: [
-        {
+        navNodeFixture({
           slug: "retirement_afp_afc",
           label: "AFP + AFC",
           route_path: "/inversiones/retiro/afp-afc",
           portfolio_group_id: 2,
           api_group: "retirement",
           children: [leafAccount(1, "afp"), leafAccount(2, "afc")],
-        },
-        {
+        }),
+        navNodeFixture({
           slug: "retirement_apv",
           label: "APV",
           route_path: "/inversiones/retiro/apv",
           portfolio_group_id: 3,
           api_group: "retirement",
           children: [],
-        },
+        }),
       ],
-    };
+    });
 
     const lines = buildNavCardBreakdown(retirement, [
       dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"),

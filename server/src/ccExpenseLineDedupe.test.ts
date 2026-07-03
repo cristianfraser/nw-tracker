@@ -7,7 +7,9 @@ import {
 } from "./ccExpenseLineDedupe.js";
 import type { CcExpenseLineForDedupe } from "./ccExpenseLineDedupe.js";
 
-function line(partial: Partial<CcExpenseLineForDedupe>): CcExpenseLineForDedupe {
+type DedupeLine = CcExpenseLineForDedupe & { line_role?: string };
+
+function line(partial: Partial<DedupeLine>): DedupeLine {
   return {
     account_id: 32,
     merchant_key: "LOS BRAVOS SPA",

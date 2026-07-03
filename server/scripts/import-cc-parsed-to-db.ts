@@ -139,7 +139,9 @@ function partitionRecordsByAccount(
 
 function logAccountRouting(
   discovery: ReturnType<typeof resolveImportAccountIds>["discovery"],
-  accountIds: number[]
+  accountIds: number[],
+  records: Record<string, string>[],
+  dry: boolean
 ): void {
   const notes = accountIds.map((id) => {
     const row = db
@@ -232,7 +234,7 @@ function main() {
     console.log(
       `# import-cc-parsed mode: ${wipe ? "wipe (full account reload)" : replaceLedgerOnly ? "replace-ledger (installment ledger only)" : "merge (default)"}`
     );
-    logAccountRouting(discovery, accountIds);
+    logAccountRouting(discovery, accountIds, records, dry);
   }
 
   const byAccountRecords = partitionRecordsByAccount(records, accountIds);

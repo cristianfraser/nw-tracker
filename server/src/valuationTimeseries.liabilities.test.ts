@@ -20,11 +20,8 @@ import {
 } from "./valuationTimeseries.js";
 import { portfolioGroupApiForValuation } from "./portfolioGroupReference.js";
 
-function liabilitiesTotalClpAsOf(
-  asOfYmd: string,
-  opts?: { mortgageFromDeptoSheet?: boolean }
-): number {
-  const parts = liabilitiesBreakdownClpAsOf(asOfYmd, opts);
+function liabilitiesTotalClpAsOf(asOfYmd: string): number {
+  const parts = liabilitiesBreakdownClpAsOf(asOfYmd);
   return parts.mortgage_clp + parts.credit_card_clp;
 }
 
@@ -96,7 +93,7 @@ describe("listLiabilitiesTabAccountRows", () => {
       );
       if (snap?.value_clp != null && Number.isFinite(snap.value_clp)) tabSum += snap.value_clp;
     }
-    expect(liabilitiesTotalClpAsOf(row.as_of_date, { mortgageFromDeptoSheet: true })).toBeCloseTo(
+    expect(liabilitiesTotalClpAsOf(row.as_of_date)).toBeCloseTo(
       tabSum,
       0
     );
@@ -207,7 +204,7 @@ describe("listLiabilitiesTabAccountRows", () => {
 
     const lastOv = ovPoints[ovPoints.length - 1]!;
     const asOf = String(lastOv.as_of_date);
-    const breakdown = liabilitiesBreakdownClpAsOf(asOf, { mortgageFromDeptoSheet: true });
+    const breakdown = liabilitiesBreakdownClpAsOf(asOf);
     const breakdownTotal = breakdown.mortgage_clp + breakdown.credit_card_clp;
     const ovLiab = lastOv.liabilities;
     if (typeof ovLiab !== "number" || !Number.isFinite(ovLiab)) return;
@@ -224,7 +221,7 @@ describe("listLiabilitiesTabAccountRows", () => {
 
     const lastPt = points[points.length - 1]!;
     const asOf = String(lastPt.as_of_date);
-    const breakdown = liabilitiesBreakdownClpAsOf(asOf, { mortgageFromDeptoSheet: true });
+    const breakdown = liabilitiesBreakdownClpAsOf(asOf);
     if (breakdown.mortgage_clp <= 0) return;
 
     let chartSum = 0;
@@ -239,7 +236,7 @@ describe("listLiabilitiesTabAccountRows", () => {
 
   it("breakdown mortgage_clp at today matches sum of liability snapshots", () => {
     const today = chileCalendarTodayYmd();
-    const breakdown = liabilitiesBreakdownClpAsOf(today, { mortgageFromDeptoSheet: true });
+    const breakdown = liabilitiesBreakdownClpAsOf(today);
     if (breakdown.mortgage_clp <= 0) return;
 
     const mtgRows = listLiabilitiesTabAccountRows("mortgage");

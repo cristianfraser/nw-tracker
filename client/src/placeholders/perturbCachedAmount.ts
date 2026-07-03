@@ -1,6 +1,7 @@
 import type { GroupPageShell } from "../queries/groupPageShell";
 import { readSidebarNavCache } from "../queries/sidebarNavCache";
 import type {
+  CachedDashboardNavSnapshot,
   DashboardAccountRow,
   DashboardBucketCloseTotals,
   DashboardNavSnapshotResponse,
@@ -36,7 +37,7 @@ export function perturbCachedAmountsPreservingSortOrder(
 }
 
 type SnapshotSortContext = Pick<
-  DashboardNavSnapshotResponse,
+  CachedDashboardNavSnapshot,
   "dashboard_layout" | "liabilities_breakdown"
 >;
 
@@ -155,7 +156,15 @@ function synthesizeMissingUsdOnDashboardAccountRow(
 export function synthesizeMissingUsdOnNavSnapshot(
   snapshot: DashboardNavSnapshotResponse,
   cachedFx?: FxLatest
-): DashboardNavSnapshotResponse {
+): DashboardNavSnapshotResponse;
+export function synthesizeMissingUsdOnNavSnapshot(
+  snapshot: CachedDashboardNavSnapshot,
+  cachedFx?: FxLatest
+): CachedDashboardNavSnapshot;
+export function synthesizeMissingUsdOnNavSnapshot(
+  snapshot: CachedDashboardNavSnapshot,
+  cachedFx?: FxLatest
+): CachedDashboardNavSnapshot {
   const snapshotFxRate = resolveSnapshotFxRate(snapshot.accounts, cachedFx);
   const accounts = snapshot.accounts.map((row) =>
     synthesizeMissingUsdOnDashboardAccountRow(row, snapshotFxRate)
@@ -396,7 +405,13 @@ function perturbNwBucketTotals(buckets: NwBucketTotals, factor: number): NwBucke
 
 export function perturbDashboardNavSnapshot(
   snapshot: DashboardNavSnapshotResponse
-): DashboardNavSnapshotResponse {
+): DashboardNavSnapshotResponse;
+export function perturbDashboardNavSnapshot(
+  snapshot: CachedDashboardNavSnapshot
+): CachedDashboardNavSnapshot;
+export function perturbDashboardNavSnapshot(
+  snapshot: CachedDashboardNavSnapshot
+): CachedDashboardNavSnapshot {
   const factor = randomPerturbFactor();
   const liabilities = snapshot.liabilities_breakdown;
   const dashboard_layout = perturbDashboardLayout(snapshot.dashboard_layout, factor);

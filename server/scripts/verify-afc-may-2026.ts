@@ -9,12 +9,13 @@ if (latest?.value_clp !== 1_323_181) {
 }
 
 const perf = getAccountMonthlyPerformance(id, "clp");
+if (!perf) throw new Error("no perf payload for account 79");
 const may = perf.monthly.find((r) => String(r.as_of_date).startsWith("2026-05"));
 if (!may) throw new Error("no May 2026 perf row");
 if (Math.abs(may.closing_value - 1_323_181) > 1) {
   throw new Error(`May closing expected 1323181, got ${may.closing_value}`);
 }
-if (Math.abs(may.nominal_pl) > 1) {
+if (may.nominal_pl == null || Math.abs(may.nominal_pl) > 1) {
   throw new Error(`May nominal_pl expected ~0, got ${may.nominal_pl}`);
 }
 

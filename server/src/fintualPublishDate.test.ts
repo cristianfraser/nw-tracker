@@ -13,7 +13,15 @@ import { isChileHoliday } from "./marketHolidays.js";
 import type { ChileWallClock } from "./chileDate.js";
 
 function cl(ymd: string, hour = 19): ChileWallClock {
-  return { ymd, hour, minute: 0, monthKey: ymd.slice(0, 7), day: Number(ymd.slice(8, 10)) };
+  return {
+    ymd,
+    year: Number(ymd.slice(0, 4)),
+    month: Number(ymd.slice(5, 7)),
+    day: Number(ymd.slice(8, 10)),
+    hour,
+    minute: 0,
+    monthKey: ymd.slice(0, 7),
+  };
 }
 
 describe("fintualPublishDate", () => {

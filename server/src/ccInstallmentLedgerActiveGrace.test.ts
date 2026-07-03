@@ -20,6 +20,7 @@ describe("installmentPurchaseShowsActive", () => {
         source_pdf: "may.pdf",
         amount_clp: 10_000,
         cuota_current: 3,
+        cuota_total: null,
       },
     ];
     expect(lastInstallmentPaymentStatementMonthYm(payList)).toBe("2026-05");

@@ -4,7 +4,7 @@ import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { deptoAccountMarkClpAtYmd } from "./deptoDividendosLedger.js";
+import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
