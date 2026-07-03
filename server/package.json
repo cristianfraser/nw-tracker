@@ -68,6 +68,7 @@
     "backfill:yahoo-fx-usd": "tsx scripts/backfill-yahoo-fx-usd.ts",
     "backfill:fx-bid-ask-from-movements": "tsx scripts/backfill-fx-bid-ask-from-movements.ts",
     "backfill:crypto-coingecko-eod": "tsx scripts/backfill-crypto-coingecko-eod.ts",
+    "backfill:bolsa-santiago-eod": "tsx scripts/backfill-bolsa-santiago-eod.ts",
     "probe:bcentral-series": "tsx scripts/probe-bcentral-series.ts",
     "sync:equity-eod": "tsx scripts/sync-equity-eod.ts",
     "prune:future-month-end-valuations": "tsx scripts/prune-future-month-end-valuations.ts",
