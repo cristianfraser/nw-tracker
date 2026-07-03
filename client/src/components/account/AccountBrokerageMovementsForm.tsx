@@ -7,11 +7,14 @@ import {
   buildBrokerageMovementPostBody,
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
+import { type StockQuoteCurrency } from "../../panelAccounts/brokerageFlowKinds";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 
 type Props = {
   accountId: number;
   ticker?: string | null;
+  /** Stock's quote currency from the summary DTO (present even before the first movement). */
+  quoteCurrency?: StockQuoteCurrency | null;
   displayUnit: DisplayUnit;
   extraCcOffsetsKey: string;
 };
@@ -19,6 +22,7 @@ type Props = {
 export function AccountBrokerageMovementsForm({
   accountId,
   ticker,
+  quoteCurrency,
   displayUnit,
   extraCcOffsetsKey,
 }: Props) {
@@ -31,7 +35,7 @@ export function AccountBrokerageMovementsForm({
   const saveMutation = useMutation({
     mutationFn: async (rows: InitialMovementDraft[]) => {
       const bodies = rows
-        .map((row) => buildBrokerageMovementPostBody(row, ticker))
+        .map((row) => buildBrokerageMovementPostBody(row, ticker, quoteCurrency ?? undefined))
         .filter((b): b is Record<string, unknown> => b != null);
       if (bodies.length === 0) {
         throw new Error(t("panelAccounts.addAccount.previewInvalid"));
@@ -72,6 +76,7 @@ export function AccountBrokerageMovementsForm({
         legend="add"
         emptyTextKey="accountDetail.brokerageMovements.emptyDraft"
         currentAccountId={accountId}
+        stockQuoteCurrency={quoteCurrency ?? undefined}
       />
 
       {movements.length > 0 ? (

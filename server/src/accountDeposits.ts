@@ -146,11 +146,15 @@ function loadTransferLegSignedFlowEvents(
   for (const r of rows) {
     // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
     // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
-    // together (the USD `to` leg is dropped below via usdCashIds). Other non-cash brokerage flows
-    // (stock buys/sells, DRIP) are handled by the equity capital-flow path, so they stay skipped.
+    // together (the USD `to` leg is dropped below via usdCashIds). stock_buy/stock_sell also pass
+    // the row-level skip: the equity and USD-cash endpoints are dropped below (equityMtmIds /
+    // usdCashIds — the equity capital-flow path counts those), so only a CLP-cash funding leg
+    // contributes ±amount_clp here (CLP-quoted stocks; legacy USD trades carry amount_clp = 0).
     if (
       r.flow_kind != null &&
       r.flow_kind !== "compra_usd_venta_clp" &&
+      r.flow_kind !== "stock_buy" &&
+      r.flow_kind !== "stock_sell" &&
       BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)
     ) {
       continue;

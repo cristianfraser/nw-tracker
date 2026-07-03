@@ -46,7 +46,7 @@ describe("equity brokerage position meta", () => {
         .run(accountId).lastInsertRowid
     );
     db.prepare(
-      `INSERT OR IGNORE INTO equity_daily (ticker, trade_date, close_usd) VALUES (?, '2026-01-30', 120)`
+      `INSERT OR IGNORE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, '2026-01-30', 120, 'usd')`
     ).run(ticker);
 
     try {

@@ -2085,8 +2085,8 @@ function buildDailyEquityPointsForAccount(
   const ticker = equityTickerForAccount(accountId);
   if (!ticker) return null;
   const rows = db
-    .prepare(`SELECT trade_date, close_usd FROM equity_daily WHERE ticker = ? ORDER BY trade_date`)
-    .all(ticker) as { trade_date: string; close_usd: number }[];
+    .prepare(`SELECT trade_date, close FROM equity_daily WHERE ticker = ? ORDER BY trade_date`)
+    .all(ticker) as { trade_date: string; close: number }[];
   const dk = String(accountId);
   const top: AccountLine[] = [{ account_id: accountId, name, dataKey: dk, valueSeriesType: "data" }];
   const points: Record<string, string | number | null>[] = [];

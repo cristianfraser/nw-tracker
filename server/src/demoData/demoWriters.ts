@@ -390,7 +390,7 @@ export function buildDemoEquitySeries(
   return out;
 }
 
-/** Last close ≤ ymd from the built series (same rule as `equityCloseUsdEod`). */
+/** Last close ≤ ymd from the built series (same rule as `equityCloseEod`). */
 export function demoEquityCloseUsd(series: DemoEquitySeries, ticker: string, ymd: string): number {
   const rows = series.get(ticker);
   if (!rows?.length) throw new Error(`demo: no price series for ${ticker}`);
@@ -434,8 +434,8 @@ export function demoFondoCuotaAt(series: [string, number][], ymd: string): numbe
 /** Persist the built price series: equity_daily (weekly closes) + fund_unit_daily. */
 export function writeDemoPriceSeries(state: DemoRunState): void {
   const insEq = db.prepare(
-    `INSERT INTO equity_daily (ticker, trade_date, close_usd) VALUES (?, ?, ?)
-     ON CONFLICT(ticker, trade_date) DO UPDATE SET close_usd = excluded.close_usd`
+    `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'usd')
+     ON CONFLICT(ticker, trade_date) DO UPDATE SET close = excluded.close, currency = excluded.currency`
   );
   for (const [ticker, rows] of state.equitySeries) {
     for (const [d, p] of rows) insEq.run(ticker, d, p);

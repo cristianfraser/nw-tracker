@@ -66,7 +66,9 @@ function percentChange(live: number, prior: number | null | undefined): number |
 export type MarketTickerEquityRow = {
   ticker: string;
   trade_date: string;
-  value_usd: number;
+  value: number;
+  /** Exchange quote currency for `value` (CLP for Bolsa de Santiago tickers). */
+  currency: "usd" | "clp";
   delta_pct: number | null;
   source: "live" | "eod";
 };
@@ -189,11 +191,12 @@ export function getMarketTickerPayloadFromDb(): MarketTickerPayload {
   for (const ticker of equityTickersForMarqueeQuotes(marquee_series)) {
     const sessionYmd = equitySessionYmdForTicker(ticker, now);
     const q = resolveEquityQuote(ticker, sessionYmd, { preferLive: true, now });
-    if (q == null || !Number.isFinite(q.price_usd) || q.price_usd <= 0) continue;
+    if (q == null || !Number.isFinite(q.price) || q.price <= 0) continue;
     equities.push({
       ticker,
       trade_date: q.trade_date,
-      value_usd: q.price_usd,
+      value: q.price,
+      currency: q.currency,
       delta_pct: q.delta_pct,
       source: q.source,
     });

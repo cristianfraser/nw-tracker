@@ -742,6 +742,8 @@ export interface AccountSummaryResponse {
   group_slug: string | null;
   group_label: string | null;
   group_peer_count: number | null;
+  /** Quote currency of `accounts.equity_ticker` (clp for Bolsa de Santiago `.SN`); null for non-equity accounts. */
+  equity_quote_currency?: "usd" | "clp" | null;
   deposits_clp: number;
   deposits_full_clp?: number;
   dividends_reinvested_clp?: number;
@@ -1065,7 +1067,9 @@ export interface MarketTickerResponse {
   equities: {
     ticker: string;
     trade_date: string;
-    value_usd: number;
+    value: number;
+    /** Exchange quote currency for `value` (CLP for Bolsa de Santiago tickers). */
+    currency: "usd" | "clp";
     delta_pct: number | null;
     source?: "live" | "eod";
   }[];

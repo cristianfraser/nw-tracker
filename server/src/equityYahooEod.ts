@@ -3,14 +3,17 @@
  * Requires a normal browser User-Agent or Yahoo returns 401.
  */
 
+import { chileWallClockAt } from "./chileDate.js";
+import { equityMarketKind } from "./equityQuote.js";
 import { fetchOut } from "./httpOut.js";
 import { nyseYmdFromUnix } from "./nyseSession.js";
 
 export type EodCloseSeries = { dates: string[]; closes: number[] };
 
 export type YahooLiveQuote = {
-  price_usd: number;
-  previous_close_usd: number | null;
+  /** Price in the symbol's exchange quote currency (see `equityQuoteCurrency`). */
+  price: number;
+  previous_close: number | null;
   /** Exchange session date for the quote (America/New_York for US listings). */
   session_ymd: string;
 };
@@ -78,12 +81,14 @@ export async function fetchYahooLiveQuote(symbol: string): Promise<YahooLiveQuot
     throw new Error(`Yahoo live price missing for ${symbol}`);
   }
   const prevRaw = meta?.chartPreviousClose ?? meta?.previousClose;
-  const previous_close_usd =
+  const previous_close =
     prevRaw != null && Number.isFinite(prevRaw) && prevRaw > 0 ? prevRaw : null;
   const rt = meta?.regularMarketTime;
   const session_ymd =
-    rt != null && Number.isFinite(rt) ? nyseYmdFromUnix(rt) : nyseYmdFromUnix(Math.floor(Date.now() / 1000));
-  return { price_usd: price, previous_close_usd, session_ymd };
+    rt != null && Number.isFinite(rt)
+      ? barYmdFromUnix(symbol, rt)
+      : barYmdFromUnix(symbol, Math.floor(Date.now() / 1000));
+  return { price, previous_close, session_ymd };
 }
 
 /** Unix `period1` / `period2` for Yahoo chart (seconds), padded around [firstMk, lastMk]. */
@@ -94,6 +99,14 @@ export function yahooChartPeriodSeconds(firstMk: string, lastMk: string): { peri
   const lastEndUtc = Date.UTC(y2, m2, 0);
   const p2 = Math.floor((lastEndUtc + 5 * 864e5) / 1000);
   return { period1: p1, period2: p2 };
+}
+
+/** Bar timestamp → exchange calendar day, explicit per market kind (crypto: UTC, Santiago: Chile, NYSE: New York). */
+function barYmdFromUnix(symbol: string, sec: number): string {
+  const kind = equityMarketKind(symbol);
+  if (kind === "crypto24") return new Date(sec * 1000).toISOString().slice(0, 10);
+  if (kind === "santiago") return chileWallClockAt(new Date(sec * 1000)).ymd;
+  return nyseYmdFromUnix(sec);
 }
 
 /** Parse daily OHLC series from a Yahoo chart result (drops bars with null close). */
@@ -109,7 +122,7 @@ export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartRes
     const c = close[i];
     if (c == null || !Number.isFinite(c)) continue;
     const sec = ts[i]!;
-    dates.push(symbol.includes("-") ? new Date(sec * 1000).toISOString().slice(0, 10) : nyseYmdFromUnix(sec));
+    dates.push(barYmdFromUnix(symbol, sec));
     closes.push(c);
   }
   if (dates.length === 0) throw new Error(`Yahoo chart empty closes for ${symbol}`);

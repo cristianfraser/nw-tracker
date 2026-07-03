@@ -1,7 +1,7 @@
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { equityCloseUsdEod, equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
+import { equityCloseEod, equityQuoteCurrency, equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
 
@@ -130,14 +130,19 @@ function priceUsdForTickerOnYmd(
   ymd: string,
   opts: { preferLive: boolean; now: Date }
 ): number | null {
+  if (equityQuoteCurrency(ticker) !== "usd") {
+    throw new Error(
+      `watchlist composite: ticker ${ticker} is not USD-quoted — composites are USD baskets`
+    );
+  }
   if (opts.preferLive) {
     const sessionYmd = equitySessionYmdForTicker(ticker, opts.now);
     if (sessionYmd === ymd || ymd >= chileCalendarTodayYmd()) {
       const q = resolveEquityQuote(ticker, sessionYmd, { preferLive: true, now: opts.now });
-      if (q != null && Number.isFinite(q.price_usd) && q.price_usd > 0) return q.price_usd;
+      if (q != null && Number.isFinite(q.price) && q.price > 0) return q.price;
     }
   }
-  const close = equityCloseUsdEod(ticker, ymd);
+  const close = equityCloseEod(ticker, ymd);
   if (close != null && Number.isFinite(close) && close > 0) return close;
   return null;
 }

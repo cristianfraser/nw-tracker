@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { equityQuoteCurrency } from "./equityQuote.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { runFxConversionWarningScan } from "./fxConversionWarningScan.js";
@@ -74,7 +75,7 @@ export function getMarketSeriesPayload(): {
   type EurR = { date: string; clp_per_eur: number };
   type IpcR = { date: string; ipc_index: number };
   type UtmR = { date: string; utm_clp: number };
-  type EqR = { ticker: string; date: string; close_usd: number };
+  type EqR = { ticker: string; date: string; close: number };
   type FuR = { series_key: string; day: string; unit_value_clp: number };
 
   const fxRows = db.prepare(`SELECT date, clp_per_usd FROM fx_daily ORDER BY date ASC`).all() as FxR[];
@@ -106,7 +107,7 @@ export function getMarketSeriesPayload(): {
     utmRows = [];
   }
   const eqRows = db
-    .prepare(`SELECT ticker, trade_date AS date, close_usd FROM equity_daily ORDER BY ticker, trade_date ASC`)
+    .prepare(`SELECT ticker, trade_date AS date, close FROM equity_daily ORDER BY ticker, trade_date ASC`)
     .all() as EqR[];
   const fuRows = db
     .prepare(`SELECT series_key, day, unit_value_clp FROM fund_unit_daily ORDER BY series_key, day ASC`)
@@ -119,7 +120,7 @@ export function getMarketSeriesPayload(): {
   for (const t of equityTickers) eqBars.set(t, []);
   for (const r of eqRows) {
     const arr = eqBars.get(r.ticker);
-    if (arr) arr.push({ date: r.date, v: r.close_usd });
+    if (arr) arr.push({ date: r.date, v: r.close });
   }
 
   const fuBars = new Map<string, Bar[]>();
@@ -154,10 +155,10 @@ export function getMarketSeriesPayload(): {
   let lastUtm: number | null = null;
 
   const eqPtr = new Map<string, number>();
-  const lastEqUsd = new Map<string, number | null>();
+  const lastEqClose = new Map<string, number | null>();
   for (const t of equityTickers) {
     eqPtr.set(t, -1);
-    lastEqUsd.set(t, null);
+    lastEqClose.set(t, null);
   }
 
   const fuPtr = new Map<string, number>();
@@ -205,13 +206,13 @@ export function getMarketSeriesPayload(): {
     for (const t of equityTickers) {
       const bars = eqBars.get(t);
       if (!bars?.length) {
-        lastEqUsd.set(t, null);
+        lastEqClose.set(t, null);
         continue;
       }
       let i = eqPtr.get(t) ?? -1;
       while (i + 1 < bars.length && bars[i + 1]!.date <= d) i++;
       eqPtr.set(t, i);
-      lastEqUsd.set(t, i >= 0 ? bars[i]!.v : null);
+      lastEqClose.set(t, i >= 0 ? bars[i]!.v : null);
     }
 
     for (const k of fundKeys) {
@@ -238,10 +239,18 @@ export function getMarketSeriesPayload(): {
       const bars = eqBars.get(t);
       const i = eqPtr.get(t) ?? -1;
       const onD = bars != null && i >= 0 && bars[i]!.date === d;
-      const u = onD ? (lastEqUsd.get(t) ?? null) : null;
-      equity_usd[t] = u;
-      equity_clp[t] =
-        u != null && lastFx != null && Number.isFinite(u) && Number.isFinite(lastFx) ? u * lastFx : null;
+      const close = onD ? (lastEqClose.get(t) ?? null) : null;
+      if (equityQuoteCurrency(t) === "clp") {
+        equity_clp[t] = close;
+        equity_usd[t] =
+          close != null && lastFx != null && lastFx > 0 && Number.isFinite(close) ? close / lastFx : null;
+      } else {
+        equity_usd[t] = close;
+        equity_clp[t] =
+          close != null && lastFx != null && Number.isFinite(close) && Number.isFinite(lastFx)
+            ? close * lastFx
+            : null;
+      }
     }
 
     const fund_unit_clp: Record<string, number | null> = {};
