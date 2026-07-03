@@ -476,6 +476,25 @@ export function useCcFacturadoFinancingLinks() {
   });
 }
 
+export function useCreditCardConfig(accountId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.creditCardConfig(accountId ?? ""),
+    queryFn: () => api.creditCardConfig(accountId!),
+    enabled: enabled && Boolean(accountId),
+  });
+}
+
+export function usePatchCreditCardConfigMutation(accountId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: import("../types").CreditCardConfigPatchBody) =>
+      api.patchCreditCardConfig(accountId, body),
+    onSuccess: (result) => {
+      queryClient.setQueryData(queryKeys.creditCardConfig(accountId), result);
+    },
+  });
+}
+
 export {
   useAssignCcExpenseLineCategory,
   useMarkCcExpenseLineUniqueMutation,
