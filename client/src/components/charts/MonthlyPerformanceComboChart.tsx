@@ -17,6 +17,7 @@ import { useMemo } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { formatClp, formatUsd } from "../../format";
+import i18n from "../../i18n";
 import {
   buildNiceYAxis,
   computeRegularMonthXAxisTicks,
@@ -278,7 +279,7 @@ export function MonthlyPerformanceComboChart({
     return (
       <div className="chart-grid__col">
         <TitleTag className="chart-panel-title">{title}</TitleTag>
-        <p className="empty muted">Sin datos de P/L mensual para este período.</p>
+        <p className="empty muted">{i18n.t("charts.noMonthlyPl")}</p>
       </div>
     );
   }

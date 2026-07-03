@@ -14,7 +14,7 @@ import {
 import type { TooltipProps } from "recharts";
 import { useMemo } from "react";
 import { formatClp } from "../../format";
-import { expenseApartmentLabel } from "../../i18n";
+import i18n, { expenseApartmentLabel } from "../../i18n";
 import type { ExpenseApartmentSlug, FlowExpenseChartPoint } from "../../types";
 import {
   buildNiceYAxis,
@@ -97,7 +97,7 @@ export function ExpensesByApartmentChart({
     return (
       <div className="chart-grid__col">
         <h2 className="chart-panel-title">{title}</h2>
-        <p className="empty muted">Sin gastos en este período.</p>
+        <p className="empty muted">{i18n.t("charts.noExpensesInPeriod")}</p>
       </div>
     );
   }

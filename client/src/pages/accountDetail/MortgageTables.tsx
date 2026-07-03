@@ -14,6 +14,7 @@ import type {
 } from "../../types";
 import { formatClp, formatClpUfDay, formatUfUnits, formatUfUnitsFine } from "../../format";
 import { cn } from "../../cn";
+import i18n, { Trans } from "../../i18n";
 import styles from "../AccountDetailPage.module.css";
 
 function cellClp(n: number | null | undefined) {
@@ -145,19 +146,22 @@ export function MortgageDividendosTable({
   return (
     <>
       <h2 className={styles.sectionTitle}>
-        {isMortgageView ? "Dividendos hipoteca (hoja depto)" : "Hipoteca / dividendos (hoja depto)"}
+        {isMortgageView
+          ? i18n.t("accountDetail.mortgageSheet.titleMortgage")
+          : i18n.t("accountDetail.mortgageSheet.titleProperty")}
       </h2>
       <p className={cn("muted", styles.proseMuted)}>
-        Tabla leída desde el libro hipoteca en SQLite (<span className="mono">depto_dividendos_sheet_rows</span>): cada
-        fila con monto CLP es un pago (puede haber varios en un mes).
+        <Trans
+          i18nKey="accountDetail.mortgageSheet.intro"
+          components={{ 1: <span className="mono" /> }}
+        />
         {isMortgageView ? (
-          <> El <strong>pie</strong> está en la cuenta inmueble (suecia), no en el pasivo hipotecario.</>
+          <Trans i18nKey="accountDetail.mortgageSheet.pieNote" components={{ 1: <strong /> }} />
         ) : (
-          <>
-            {" "}
-            La tasa anual del crédito en el modelo es <strong>4,95%</strong>; la columna <strong>+ tasa</strong> del CSV
-            incluye inflación y el spread de la hoja.
-          </>
+          <Trans
+            i18nKey="accountDetail.mortgageSheet.tasaNote"
+            components={{ 1: <strong />, 3: <strong /> }}
+          />
         )}
       </p>
       {m && !isMortgageView && (
@@ -374,7 +378,9 @@ function DeptoPaymentScenarioMobileCard({ row }: { row: DeptoPaymentScenarioRow 
   const title = (
     <>
       {row.cuota}
-      {row.is_next_payment ? <span className={cn("muted", styles.cellSub)}> próx.</span> : null}
+      {row.is_next_payment ? (
+        <span className={cn("muted", styles.cellSub)}> {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}</span>
+      ) : null}
       {" · "}
       {row.occurred_on}
     </>
@@ -408,7 +414,7 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
 
   return (
     <>
-      <h3 className={styles.subsectionTitleMid}>Referencia: cuota mín / máx (UF)</h3>
+      <h3 className={styles.subsectionTitleMid}>{i18n.t("accountDetail.mortgageSheet.referenceMinMax")}</h3>
       <p className={cn("muted", styles.proseMutedXs)}>
         Escenarios de la hoja depto (no son movimientos), en fechas del calendario hipotecario (día 11 de cada mes).
         La primera fila es la próxima cuota proyectada. El pago mínimo (30 años) es editable en Numbers; el máximo
@@ -439,7 +445,9 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
                 <td className="mono desktop-only">
                   {row.cuota}
                   {row.is_next_payment ? (
-                    <span className={cn("muted", styles.cellSub)}>próx.</span>
+                    <span className={cn("muted", styles.cellSub)}>
+                      {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}
+                    </span>
                   ) : null}
                 </td>
                 <td className="mono desktop-only">{row.occurred_on}</td>

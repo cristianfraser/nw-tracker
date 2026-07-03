@@ -20,6 +20,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { formatClp, formatUsd, formatMoneyForPie } from "../../format";
+import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../../chartColors";
 import type { TimeseriesBlock } from "../../types";
@@ -898,7 +899,7 @@ export function LineChartPanel({
     return (
       <div className="chart-grid__col">
         <TitleTag className="chart-panel-title">{title}</TitleTag>
-        <p className="empty muted">Sin series de valorización para este período.</p>
+        <p className="empty muted">{i18n.t("charts.noValuationSeries")}</p>
       </div>
     );
   }
@@ -1080,7 +1081,7 @@ export function AllocationPiePanel({ title, slices, displayUnit, titleAs = "h2",
     return (
       <div className="chart-grid__col">
         <TitleTag className="chart-panel-title">{title}</TitleTag>
-        <p className="empty muted">Sin valorizaciones recientes para armar el gráfico.</p>
+        <p className="empty muted">{i18n.t("charts.noRecentValuations")}</p>
       </div>
     );
   }
