@@ -1,12 +1,19 @@
-# Render blueprint — hosted recruiter demo (synthetic data, shared-password Basic auth).
+# Render blueprint — hosted recruiter demo (synthetic data, shared-password Basic auth)
+# plus the crfrsr.io landing page (static site).
 #
 # Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
 # up) → set the AUTH_PASSWORD secret when prompted. Recruiters log in with ANY
 # syntactically-valid email + that password. See AGENTS.md "Hosted demo (Render)".
+# ⚠️ The connected GitHub repo must stay PRIVATE: migration
+# 002_import_cfraser_numbers_snapshot.sql embeds real balances in git history.
+#
+# Custom domains (Namecheap DNS, see AGENTS.md):
+# - nw-tracker.crfrsr.io → nw-tracker-demo (CNAME to the .onrender.com host)
+# - crfrsr.io / www.crfrsr.io → crfrsr-homepage (apex: ALIAS or A 216.24.57.1)
 #
 # Notes:
 # - PORT is injected by Render; the server reads process.env.PORT.
-# - The free-tier disk is ephemeral: DEMO_MODE regenerates the synthetic DB from current
+# - No persistent disk on purpose: DEMO_MODE regenerates the synthetic DB from current
 #   source on every cold start / deploy, so the demo always matches the deployed code.
 # - startCommand runs the server from source via tsx (same as local dev, minus watch):
 #   the compiled dist/ build would not ship server/migrations/*.sql. Build therefore
@@ -18,7 +25,9 @@ services:
   - type: web
     name: nw-tracker-demo
     runtime: node
-    plan: free
+    plan: starter
+    domains:
+      - nw-tracker.crfrsr.io
     buildCommand: npm install --include=dev && npm run build -w nw-tracker-client
     startCommand: npm run serve -w nw-tracker-server
     healthCheckPath: /api/health
@@ -35,3 +44,15 @@ services:
         value: nw-tracker.demo.db
       - key: AUTH_PASSWORD
         sync: false
+
+  # crfrsr.io landing page — static, free plan. Links to the deployed apps; also
+  # publishes the nw-tracker project-context page (about.html) at /about.html.
+  - type: web
+    name: crfrsr-homepage
+    runtime: static
+    plan: free
+    domains:
+      - crfrsr.io
+      - www.crfrsr.io
+    buildCommand: cp about.html homepage/about.html
+    staticPublishPath: homepage
