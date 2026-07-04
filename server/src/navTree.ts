@@ -334,6 +334,7 @@ export function getSidebarNavPayload(): {
   main: NavTreeNodeDto[];
   flows: NavTreeNodeDto | null;
   search: NavTreeNodeDto | null;
+  projections: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
 } {
   const linkRoots = buildNavForest("link");
@@ -348,6 +349,7 @@ export function getSidebarNavPayload(): {
     main: mainRoots,
     flows: flowRoots.find((n) => n.slug === "flows") ?? flowRoots[0] ?? null,
     search: linkRoots.find((n) => n.slug === "search") ?? null,
+    projections: linkRoots.find((n) => n.slug === "projections") ?? null,
     rates: linkRoots.find((n) => n.slug === "rates") ?? null,
   };
 }
