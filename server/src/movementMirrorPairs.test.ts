@@ -31,6 +31,7 @@ const ACCT = {
   afc: "vitest-mirror-afc",
   fund: "vitest-mirror-fund",
   fund2: "vitest-mirror-fund2",
+  ahorro: "vitest-mirror-ahorro",
 } as const;
 
 let ids: Record<keyof typeof ACCT, number>;
@@ -83,6 +84,9 @@ describe("listMirrorPairCandidates", () => {
       afc: Number(ins.run(afc, ACCT.afc).lastInsertRowid),
       fund: Number(ins.run(anyLeaf, ACCT.fund).lastInsertRowid),
       fund2: Number(ins.run(anyLeaf, ACCT.fund2).lastInsertRowid),
+      ahorro: Number(
+        ins.run(groupId("%__cuenta_ahorro_vivienda") ?? anyLeaf, ACCT.ahorro).lastInsertRowid
+      ),
     };
   });
 
@@ -221,6 +225,50 @@ describe("listMirrorPairCandidates", () => {
        VALUES (?, 'vitest-mirror-link', ?, ?, 0, 'auto')`
     ).run(ids.generic2, dep, AMT.linked);
     expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
+  });
+
+  describe("cuenta de ahorro month-precision", () => {
+    it("deposit dated month-end pairs with a checking outflow anywhere in that month (high)", () => {
+      const out = insLeg(ids.checking, -4_141_147, "2026-08-05");
+      insLeg(ids.ahorro, 4_141_147, "2026-08-31");
+      const p = pairFor(listMirrorPairCandidates(), out);
+      expect(p).toBeDefined();
+      expect(p!.month_precision).toBe(true);
+      expect(p!.month_straddle).toBe(false);
+      expect(p!.confidence).toBe("high");
+    });
+
+    it("also pairs with an outflow in the last week of the previous month (ambiguous, straddle)", () => {
+      const out = insLeg(ids.checking, -4_242_449, "2026-08-28");
+      insLeg(ids.ahorro, 4_242_449, "2026-09-30");
+      const p = pairFor(listMirrorPairCandidates(), out);
+      expect(p).toBeDefined();
+      expect(p!.month_precision).toBe(true);
+      expect(p!.month_straddle).toBe(true);
+      expect(p!.confidence).toBe("ambiguous");
+      expect(p!.blocked).toBe(false);
+    });
+
+    it("does not pair with a mid-previous-month or next-month outflow", () => {
+      const mid = insLeg(ids.checking, -4_343_441, "2026-09-15");
+      insLeg(ids.ahorro, 4_343_441, "2026-10-31");
+      const next = insLeg(ids.checking, -4_444_443, "2026-12-01");
+      insLeg(ids.ahorro, 4_444_443, "2026-11-30");
+      const pairs = listMirrorPairCandidates();
+      expect(pairFor(pairs, mid)).toBeUndefined();
+      expect(pairFor(pairs, next)).toBeUndefined();
+    });
+
+    it("an ahorro retiro (month-end out) pairs with a checking inflow earlier that month", () => {
+      const out = insLeg(ids.ahorro, -4_545_447, "2026-07-31");
+      insLeg(ids.checking, 4_545_447, "2026-07-10");
+      const p = pairFor(listMirrorPairCandidates(), out);
+      expect(p).toBeDefined();
+      expect(p!.month_precision).toBe(true);
+      expect(p!.confidence).toBe("high");
+      // transfer will keep the checking (real-day) date, so no checking-straddle block applies
+      expect(p!.blocked).toBe(false);
+    });
   });
 
   it("a rejection hides the pair permanently and frees the legs for other partners", () => {

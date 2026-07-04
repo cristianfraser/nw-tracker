@@ -1,9 +1,11 @@
 /**
  * Converts a confirmed mirror pair (movementMirrorPairs.ts) into one transfer row and back.
  *
- * The transfer takes the outflow leg's date (causal order: source before destination) and
- * carries the cuota leg's `units_delta` when one leg moves cuotas (cuota readers add
- * transferLegUnitsThroughDate on top of the account_id ledger, so fund balances stay exact).
+ * The transfer takes the outflow leg's date (causal order: source before destination) — except
+ * when the outflow leg is month-precision (cuenta de ahorro: conventional month-end dates); then
+ * it takes the inflow (real-day cartola) leg's date so the checking timeline and its re-import
+ * dedupe stay intact. It carries the cuota leg's `units_delta` when one leg moves cuotas (cuota
+ * readers add transferLegUnitsThroughDate on top of the account_id ledger, so balances stay exact).
  * Both legs are deleted; their exact content (ids, dates, amounts, units, notes) is preserved
  * in the transfer's `mirror-merge|…` note so the conversion is fully undoable.
  *
@@ -22,7 +24,8 @@
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
-import { listMirrorPairCandidates } from "./movementMirrorPairs.js";
+import { listMirrorPairCandidates, mirrorLegIsMonthPrecision } from "./movementMirrorPairs.js";
+import { accountKindSlugForAccountId } from "./accountBucket.js";
 
 export const MIRROR_MERGE_NOTE_PREFIX = "mirror-merge|";
 
@@ -113,6 +116,8 @@ export type ConvertedMirrorPair = {
   from_account_id: number;
   to_account_id: number;
   occurred_on: string;
+  /** Earliest date touched by the conversion (cache invalidation covers forward from here). */
+  earliest_affected_on: string;
 };
 
 type LegRow = {
@@ -169,11 +174,17 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         unitsSource != null && Number.isFinite(unitsSource) && unitsSource !== 0
           ? Math.abs(unitsSource)
           : null;
+      // Month-precision out leg (ahorro retiro dated a conventional month-end): the inflow is
+      // the real-day leg — using it keeps the checking timeline/cartola dedupe intact.
+      const outMonthPrecision = mirrorLegIsMonthPrecision(accountKindSlugForAccountId(out.account_id));
+      const inMonthPrecision = mirrorLegIsMonthPrecision(accountKindSlugForAccountId(inn.account_id));
+      const transferDate =
+        outMonthPrecision && !inMonthPrecision ? inn.occurred_on : out.occurred_on;
       const r = insTransfer.run(
         out.account_id,
         inn.account_id,
         Math.round(Math.abs(out.amount_clp)),
-        out.occurred_on,
+        transferDate,
         note,
         transferUnits
       );
@@ -187,7 +198,9 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         in_movement_id: inn.id,
         from_account_id: out.account_id,
         to_account_id: inn.account_id,
-        occurred_on: out.occurred_on,
+        occurred_on: transferDate,
+        earliest_affected_on:
+          out.occurred_on < inn.occurred_on ? out.occurred_on : inn.occurred_on,
       });
     }
     return converted;
@@ -195,12 +208,12 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
 
   const converted = run(pairs);
   for (const c of converted) {
-    // Outflow date ≤ inflow date and invalidation clears forward months, so this also covers
-    // the inflow leg's original month.
+    // Invalidation clears forward months from the earliest touched date, covering both legs'
+    // original months and the transfer date.
     clearCheckingBalanceCache(c.from_account_id);
     clearCheckingBalanceCache(c.to_account_id);
-    invalidateAggregationForAccountDate(c.from_account_id, c.occurred_on);
-    invalidateAggregationForAccountDate(c.to_account_id, c.occurred_on);
+    invalidateAggregationForAccountDate(c.from_account_id, c.earliest_affected_on);
+    invalidateAggregationForAccountDate(c.to_account_id, c.earliest_affected_on);
   }
   return { converted };
 }
@@ -249,10 +262,12 @@ export function undoMirrorConversion(transferMovementId: number): {
     return { restored_out_id: outId, restored_in_id: inId };
   });
   const restored = run();
+  const earliest =
+    data.out.occurred_on < data.in.occurred_on ? data.out.occurred_on : data.in.occurred_on;
   clearCheckingBalanceCache(fromId);
   clearCheckingBalanceCache(toId);
-  invalidateAggregationForAccountDate(fromId, data.out.occurred_on);
-  invalidateAggregationForAccountDate(toId, data.out.occurred_on);
+  invalidateAggregationForAccountDate(fromId, earliest);
+  invalidateAggregationForAccountDate(toId, earliest);
   return restored;
 }
 

@@ -34,8 +34,13 @@ function LegDates({ p }: { p: MirrorPairCandidate }) {
 function PairBadges({ p }: { p: MirrorPairCandidate }) {
   const { t } = useTranslation();
   const badges: string[] = [];
+  if (p.month_precision) badges.push(t("mirrorPairs.badgeMonthPrecision"));
   if (p.month_straddle) badges.push(t("mirrorPairs.badgeMonthStraddle"));
-  if (!p.within_business_day_window) badges.push(t("mirrorPairs.badgeWideGap"));
+  // Month-precision pairs convert on the real-day (cartola) leg's date, so the bank-window
+  // re-import caveat does not apply to them.
+  if (!p.within_business_day_window && !p.month_precision) {
+    badges.push(t("mirrorPairs.badgeWideGap"));
+  }
   if (p.out_candidate_count > 1 || p.in_candidate_count > 1) {
     badges.push(
       t("mirrorPairs.badgeMultiCandidate", {
