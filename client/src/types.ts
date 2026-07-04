@@ -1720,6 +1720,8 @@ export interface MirrorPairCandidate {
   in: MirrorLegDto;
   gap_days: number;
   within_business_day_window: boolean;
+  /** One leg is month-precision (cuenta de ahorro): dates are conventional month-ends. */
+  month_precision: boolean;
   month_straddle: boolean;
   out_candidate_count: number;
   in_candidate_count: number;

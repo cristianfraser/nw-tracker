@@ -23,6 +23,7 @@ import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { db } from "./db.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
+import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 
 export type MirrorLegDto = {
@@ -44,6 +45,13 @@ export type MirrorPairCandidate = {
   gap_days: number;
   /** Legs within `[priorChileBusinessDay(in date), in date]` — the cartola re-import dedupe window. */
   within_business_day_window: boolean;
+  /**
+   * One leg lives on a month-bucket account (cuenta_ahorro_vivienda): its `occurred_on` is a
+   * conventional month-end, so the pairing window is the whole month (± a week across the
+   * boundary) instead of the day-gap rule, and the converted transfer keeps the *real-day*
+   * (checking) leg's date.
+   */
+  month_precision: boolean;
   month_straddle: boolean;
   /** Eligible non-rejected inflows this outflow could claim (computed before greedy consumption). */
   out_candidate_count: number;
@@ -126,6 +134,58 @@ function monthKey(ymd: string): string {
   return ymd.slice(0, 7);
 }
 
+/** Days either side of the month boundary a month-precision leg may reach into. */
+export const MIRROR_MONTH_PRECISION_BOUNDARY_DAYS = 7;
+
+/** Month-bucket kinds whose movements carry a conventional month-end date, not a real day. */
+export function mirrorLegIsMonthPrecision(kindSlug: string | null): boolean {
+  return kindSlug != null && MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(kindSlug);
+}
+
+function prevMonthKey(mk: string): string {
+  const [y, m] = mk.split("-").map(Number);
+  const d = new Date(Date.UTC(y!, m! - 2, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+function nextMonthKey(mk: string): string {
+  const [y, m] = mk.split("-").map(Number);
+  const d = new Date(Date.UTC(y!, m!, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+function lastDayOfMonth(mk: string): number {
+  const [y, m] = mk.split("-").map(Number);
+  return new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+}
+
+/**
+ * Pairing window when at least one leg is month-precision (cuenta de ahorro: the sheet records
+ * only mm-yyyy; movements are dated the conventional month-end). A deposit recorded in month mm
+ * may have been funded during mm or at the very end of mm−1; a retiro recorded in mm may land on
+ * checking during mm or the first days of mm+1. Both-legs-month-precision requires the same month.
+ */
+function monthPrecisionPairAllowed(
+  out: { occurred_on: string },
+  inn: { occurred_on: string },
+  outMonthPrecision: boolean,
+  inMonthPrecision: boolean
+): boolean {
+  const outMk = monthKey(out.occurred_on);
+  const inMk = monthKey(inn.occurred_on);
+  if (outMonthPrecision && inMonthPrecision) return outMk === inMk;
+  if (inMonthPrecision) {
+    if (outMk === inMk) return true;
+    if (outMk !== prevMonthKey(inMk)) return false;
+    const outDay = Number(out.occurred_on.slice(8, 10));
+    return outDay > lastDayOfMonth(outMk) - MIRROR_MONTH_PRECISION_BOUNDARY_DAYS;
+  }
+  // outMonthPrecision
+  if (inMk === outMk) return true;
+  if (inMk !== nextMonthKey(outMk)) return false;
+  return Number(inn.occurred_on.slice(8, 10)) <= MIRROR_MONTH_PRECISION_BOUNDARY_DAYS;
+}
+
 function legHasUnits(leg: { units_delta: number | null }): boolean {
   return leg.units_delta != null && Number.isFinite(leg.units_delta) && leg.units_delta !== 0;
 }
@@ -187,23 +247,29 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
     }
   }
 
-  type RawPair = { out: EligibleLegRow; in: EligibleLegRow; gap: number };
+  type RawPair = { out: EligibleLegRow; in: EligibleLegRow; gap: number; monthPrecision: boolean };
   const pairs: RawPair[] = [];
   const outMatchCount = new Map<number, number>();
   const inMatchCount = new Map<number, number>();
   for (const out of outs) {
     const amount = Math.round(Math.abs(out.amount_clp));
+    const outMonthPrecision = mirrorLegIsMonthPrecision(kindSlugFor(out.account_id));
     for (const inn of ins) {
       if (inn.account_id === out.account_id) continue;
       if (Math.round(inn.amount_clp) !== amount) continue;
       // One transfer row carries one units_delta — a pair where both legs move cuotas
       // (fund → fund) cannot be represented; leave those as two rows.
       if (legHasUnits(out) && legHasUnits(inn)) continue;
-      if (inn.occurred_on < out.occurred_on) continue;
-      const gap = daysBetweenYmd(out.occurred_on, inn.occurred_on);
-      if (gap > MIRROR_PAIR_MAX_DAY_GAP) continue;
+      const inMonthPrecision = mirrorLegIsMonthPrecision(kindSlugFor(inn.account_id));
+      const monthPrecision = outMonthPrecision || inMonthPrecision;
+      if (monthPrecision) {
+        if (!monthPrecisionPairAllowed(out, inn, outMonthPrecision, inMonthPrecision)) continue;
+      } else {
+        if (inn.occurred_on < out.occurred_on) continue;
+        if (daysBetweenYmd(out.occurred_on, inn.occurred_on) > MIRROR_PAIR_MAX_DAY_GAP) continue;
+      }
       if (rejected.has(`${out.id}|${inn.id}`)) continue;
-      pairs.push({ out, in: inn, gap });
+      pairs.push({ out, in: inn, gap: daysBetweenYmd(out.occurred_on, inn.occurred_on), monthPrecision });
       outMatchCount.set(out.id, (outMatchCount.get(out.id) ?? 0) + 1);
       inMatchCount.set(inn.id, (inMatchCount.get(inn.id) ?? 0) + 1);
     }
@@ -228,19 +294,26 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
     const withinWindow = bankDateMatchesTransferDate(p.in.occurred_on, p.out.occurred_on);
     const monthStraddle = monthKey(p.in.occurred_on) !== monthKey(p.out.occurred_on);
     const inIsChecking = checkingIds.has(p.in.account_id);
+    const outMonthPrecision = mirrorLegIsMonthPrecision(kindSlugFor(p.out.account_id));
     // Converting moves the inflow to the outflow date; across a month boundary that shifts the
     // inflow account's month attribution. On checking that breaks cartola anchors/month summaries
-    // (import:cartola|anchor| saldo calibration) — hard-blocked, not just ambiguous.
-    const blocked = monthStraddle && inIsChecking;
+    // (import:cartola|anchor| saldo calibration) — hard-blocked, not just ambiguous. Exception:
+    // when the OUT leg is month-precision the transfer keeps the checking (in) leg's date, so
+    // the checking timeline is untouched.
+    const blocked = monthStraddle && inIsChecking && !outMonthPrecision;
     const outCount = outMatchCount.get(p.out.id) ?? 1;
     const inCount = inMatchCount.get(p.in.id) ?? 1;
-    const high = outCount === 1 && inCount === 1 && withinWindow && !monthStraddle;
+    // Month-precision pairs skip the bank-window requirement: the converted transfer carries the
+    // real-day (cartola) leg's date, so cartola re-import dedupe matches same-day regardless.
+    const high =
+      outCount === 1 && inCount === 1 && !monthStraddle && (p.monthPrecision || withinWindow);
 
     result.push({
       out: toLegDto(p.out, kindSlugFor(p.out.account_id)),
       in: toLegDto(p.in, kindSlugFor(p.in.account_id)),
       gap_days: p.gap,
       within_business_day_window: withinWindow,
+      month_precision: p.monthPrecision,
       month_straddle: monthStraddle,
       out_candidate_count: outCount,
       in_candidate_count: inCount,
