@@ -273,12 +273,3 @@ export function computeExpensesTotal(
     total_real: unit === "clp" ? Math.round(total_real) : total_real,
   };
 }
-
-/** @deprecated Use computeExpensesTotal */
-export function computeExpensesTotalClp(
-  lines: readonly FlowCcExpenseLineRow[],
-  mode: CcInstallmentGastosMode
-): { total_clp: number; total_real_clp: number } {
-  const { total, total_real } = computeExpensesTotal(lines, mode, "clp");
-  return { total_clp: total, total_real_clp: total_real };
-}

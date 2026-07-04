@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   applyCashSavingsNwAdjustment,
   cashSavingsShortfallDashboardRow,
-  creditCardShortfallClp,
   CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
   netLinkedCreditCardFromCashConsolidated,
   syntheticCashSavingsShortfallAccountId,
@@ -15,26 +14,6 @@ describe("applyCashSavingsNwAdjustment", () => {
 
   it("returns raw savings when CC balance is zero", () => {
     expect(applyCashSavingsNwAdjustment(1_000_000, 0)).toBe(1_000_000);
-  });
-});
-
-describe("creditCardShortfallClp", () => {
-  it("returns zero when checking covers the card", () => {
-    expect(creditCardShortfallClp(500_000, 400_000)).toBe(0);
-    expect(creditCardShortfallClp(400_000, 400_000)).toBe(0);
-  });
-
-  it("returns uncovered amount when checking is below card balance", () => {
-    expect(creditCardShortfallClp(100_000, 400_000)).toBe(300_000);
-  });
-
-  it("returns zero when card balance is zero or negative", () => {
-    expect(creditCardShortfallClp(0, 0)).toBe(0);
-    expect(creditCardShortfallClp(100_000, 0)).toBe(0);
-  });
-
-  it("treats negative checking as zero coverage (shortfall capped at CC balance)", () => {
-    expect(creditCardShortfallClp(-4_989_420, 10_780_904)).toBe(10_780_904);
   });
 });
 
