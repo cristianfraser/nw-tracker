@@ -413,9 +413,6 @@ const DAP_ABONADO_RE = /\bDAP\s+(\d+)\s+ABONADO\b/i;
 /** Cuenta vista return of a DAP placed via Mercado Capitales (vale vista collection). */
 const COBRO_VVISTA_DAP_RE = /\bCOBRO\s+VVISTA\s+(\d+)/i;
 
-/** @deprecated Use {@link DAP_ABONO_MAX_DAY_GAP} */
-export const ANNULLED_MONEY_ORDER_MAX_DAY_GAP = 14;
-
 /** Max days between MC cargo and matching DAP ABONADO credit (12 months). */
 export const DAP_ABONO_MAX_DAY_GAP = 365;
 
@@ -745,39 +742,6 @@ export function withdrawalIsReversedByDapAbono(
     const dayGap = signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on);
     if (dayGap < 0 || dayGap > maxDayGap) continue;
     if (!dapAbonoAmountMatchesCargo(withdrawal.amount_clp, credit.amount_clp, dayGap)) continue;
-    return true;
-  }
-  return false;
-}
-
-/** @deprecated Use {@link withdrawalIsReversedByDapAbono} */
-export function withdrawalIsAnnulledMoneyOrder(
-  withdrawal: { occurred_on: string; amount_clp?: number; note: string | null },
-  checkingCredits: readonly CheckingCartolaCredit[],
-  maxDayGap = ANNULLED_MONEY_ORDER_MAX_DAY_GAP
-): boolean {
-  const desc = cartolaDescriptionFromNote(withdrawal.note);
-  if (!isMercadoCapitalesCargoDescription(desc)) return false;
-  const doc = cartolaDocumentFromNote(withdrawal.note);
-  if (!doc) return false;
-  for (const credit of checkingCredits) {
-    const creditDesc = cartolaDescriptionFromNote(credit.note);
-    if (!isDapReturnCreditDescription(creditDesc)) continue;
-    const creditDoc = cartolaDocumentFromNote(credit.note);
-    const dapRef = dapReferenceFromDescription(creditDesc);
-    if (!cartolaDocsMatchForDapAbono(doc, creditDoc, dapRef)) continue;
-    if (daysBetweenYmd(credit.occurred_on, withdrawal.occurred_on) > maxDayGap) continue;
-    if (signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on) < 0) continue;
-    if (
-      withdrawal.amount_clp != null &&
-      !dapAbonoAmountMatchesCargo(
-        withdrawal.amount_clp,
-        credit.amount_clp,
-        signedDaysFromTo(withdrawal.occurred_on, credit.occurred_on)
-      )
-    ) {
-      continue;
-    }
     return true;
   }
   return false;
@@ -1256,26 +1220,6 @@ export function checkingCreditMatchesAfpRetiroReturn(
   return false;
 }
 
-/** @deprecated Use {@link loadNetWorthCapitalOutflowCandidates}. */
-export function loadInvestmentCapitalOutflowCandidates(): DepositMatchCandidate[] {
-  return loadNetWorthCapitalOutflowCandidates();
-}
-
-/** @deprecated Pass checking withdrawals; third arg ignored. */
-export function checkingCreditMatchesInvestmentCapitalReturn(
-  credit: { occurred_on: string; amount_clp: number },
-  _outflows: readonly DepositMatchCandidate[],
-  checkingWithdrawalsOrMaxDayGap?: readonly CheckingCartolaWithdrawalWithAccount[] | number,
-  maxDayGap = NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP
-): boolean {
-  if (typeof checkingWithdrawalsOrMaxDayGap === "number") {
-    return false;
-  }
-  return checkingCreditMatchesNetWorthCapitalReturn(credit, checkingWithdrawalsOrMaxDayGap ?? [], {
-    maxDayGap,
-  });
-}
-
 export function withdrawalMayUseSplittableReservaPool(description: string): boolean {
   const d = description.trim();
   if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
@@ -1650,15 +1594,6 @@ export function withdrawalMatchesInternalCashTransfer(
   if (splittablePool == null) return false;
   if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) return false;
   return tryAllocateSplittableInternalTransfer(withdrawal, deposits, splittablePool);
-}
-
-/** @deprecated Use {@link withdrawalMatchesInternalCashTransfer}. */
-export function withdrawalMatchesReservaDeposit(
-  withdrawal: { occurred_on: string; amount_clp: number },
-  deposits: readonly DepositMatchCandidate[],
-  maxDayGap = 3
-): boolean {
-  return withdrawalMatchesInternalCashTransfer(withdrawal, deposits, maxDayGap);
 }
 
 function loadCuentaVistaInternalTransferCredits(): DepositMatchCandidate[] {

@@ -35,14 +35,6 @@ export function lastPdfBillingMonthForAccount(accountId: number): string | null 
   return max;
 }
 
-/** @deprecated Prefer {@link lastPdfBillingMonthForAccount}; card_last4 is ignored (account-wide). */
-export function lastPdfBillingMonthForCard(
-  accountId: number,
-  _cardLast4: string
-): string | null {
-  return lastPdfBillingMonthForAccount(accountId);
-}
-
 /** Inclusive period end (ISO) for a billing month — PDF `period_to` when present, else config cycle. */
 export function periodToIsoForBillingMonth(
   accountId: number,

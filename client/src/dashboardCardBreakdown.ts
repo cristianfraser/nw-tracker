@@ -338,15 +338,6 @@ export function accountInDashboardGroupDisplayScope(
   return hasMaterialDashboardBalance(a);
 }
 
-/** @deprecated Alias for {@link accountInDashboardGroupScope}. */
-export function accountInDashboardGroupPlScope(
-  a: DashboardAccountRow,
-  groupSlug: DashboardGroupSlug,
-  filter?: (a: DashboardAccountRow) => boolean
-): boolean {
-  return accountInDashboardGroupScope(a, groupSlug, filter);
-}
-
 /** Card metrics from all in-scope accounts (sold-out balances count as 0). */
 export function cardGroupMetricsFromBalanceAndPlScopes(
   accounts: DashboardAccountRow[],
@@ -450,50 +441,6 @@ function valueRows(accounts: DashboardAccountRow[], groupSlug?: DashboardGroupSl
 function sortGroupsDesc<T extends { clp: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.clp - a.clp);
 }
-
-function overviewBalanceAt(
-  row: Record<string, string | number | null>,
-  dataKey: string
-): number | null {
-  const v = row[dataKey];
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
-
-function chileTodayYmd(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Santiago",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-/** Last month-end or prior calendar year-end row in the overview series (anchor = Chile today). */
-function priorOverviewClosePoint(
-  points: Record<string, string | number | null>[],
-  period: CardGroupMetricsPeriod
-): Record<string, string | number | null> | null {
-  if (!points.length) return null;
-  const sorted = [...points].sort((a, b) =>
-    String(a.as_of_date).localeCompare(String(b.as_of_date))
-  );
-  const today = chileTodayYmd();
-  if (period === "year") {
-    const y0 = today.slice(0, 4);
-    let best: Record<string, string | number | null> | null = null;
-    for (const row of sorted) {
-      if (String(row.as_of_date).slice(0, 4) < y0) best = row;
-    }
-    return best;
-  }
-  const mk0 = today.slice(0, 7);
-  let best: Record<string, string | number | null> | null = null;
-  for (const row of sorted) {
-    if (String(row.as_of_date).slice(0, 7) < mk0) best = row;
-  }
-  return best;
-}
-
 const DASHBOARD_GROUP_OVERVIEW_KEY = {
   net_worth: "total_nw",
   real_estate: "real_estate",
@@ -669,36 +616,6 @@ export function bucketPeriodBalanceDeltaFromTotals(
   if (current == null || !Number.isFinite(current)) return null;
   if (prior == null || !Number.isFinite(prior)) return null;
   return current - prior;
-}
-
-/** @deprecated Chart-only; dashboard cards use {@link bucketPeriodBalanceDeltaFromTotals}. */
-export function groupPeriodBalanceDelta(
-  totals: {
-    net_worth_clp: number;
-    real_estate_clp: number;
-    retirement_clp: number;
-    brokerage_clp: number;
-    cash_eqs_clp: number;
-    net_worth_usd?: number | null;
-    real_estate_usd?: number;
-    retirement_usd?: number;
-    brokerage_usd?: number;
-    cash_eqs_usd?: number;
-  },
-  overviewPoints: Record<string, string | number | null>[],
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd"
-): number | null {
-  const dataKey = DASHBOARD_GROUP_OVERVIEW_KEY[groupSlug];
-  const current =
-    unit === "usd" ? totals[`${groupSlug}_usd`] : totals[`${groupSlug}_clp` as const];
-  const prior = priorOverviewClosePoint(overviewPoints, period);
-  const prev = prior ? overviewBalanceAt(prior, dataKey) : null;
-  if (current == null || prev == null || !Number.isFinite(current) || !Number.isFinite(prev)) {
-    return null;
-  }
-  return current - prev;
 }
 
 export function resolveGroupPeriodBalanceDelta(
@@ -914,19 +831,6 @@ export function isCashSavingsBucketPeriodPlRow(row: {
   );
 }
 
-/** @deprecated Prefer {@link isCashSavingsAccountRow} for breakdown lines. */
-export function isCashSavingsPlacementRow(
-  row: {
-    bucket_slug?: string | null;
-    category_slug?: string | null;
-    group_slug?: string;
-    dashboard_bucket_slug?: string | null;
-  }
-): boolean {
-  if (isCashSavingsCcShortfallRow(row)) return true;
-  return isCashSavingsAccountRow(row);
-}
-
 function cashBreakdownLabel(row: DashboardAccountRow): string {
   if (isCashSavingsCcShortfallRow(row)) {
     return i18n.t("dashboard.cardBreakdown.creditCardShortfallFromSavings");
@@ -970,9 +874,6 @@ export function buildCashSavingsCardBreakdown(accounts: DashboardAccountRow[]): 
   const savings = valueRows(accounts.filter((a) => !isCashSavingsCcShortfallRow(a)));
   return sortGroupsDesc(savings.map((r) => mapCashBreakdownLine(r, false)));
 }
-
-/** @deprecated Prefer {@link buildCashEqsCardBreakdown} or {@link buildCashSavingsCardBreakdown}. */
-export const buildCashCardBreakdown = buildCashEqsCardBreakdown;
 
 const LIABILITY_KEYS = {
   mortgage: "liabilities.mortgage",
