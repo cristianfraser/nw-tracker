@@ -33,6 +33,8 @@ type LayoutProps = {
   /** Extra bare cards for the strip's second row (same `.cards` grid as the hero, like group pages). */
   stripDetailSlots?: ReactNode;
   children: ReactNode;
+  /** Rendered below the title row (e.g. Export button). */
+  toolbar?: ReactNode;
   loading?: boolean;
   /** Nav child dashboard cards (second strip row). Off for leaf pages that never show them (e.g. credit card). */
   showNavChildCards?: boolean;
@@ -56,6 +58,7 @@ export function AccountDetailSharedLayout({
   heroSubtitle,
   stripDetailSlots,
   children,
+  toolbar,
   loading = false,
   showNavChildCards = true,
 }: LayoutProps) {
@@ -83,6 +86,7 @@ export function AccountDetailSharedLayout({
   return (
     <main>
       <PageTitleRow title={title} colorRgb={accountColorRgb} colorTarget={pageColorTarget} />
+      {toolbar}
       <div className={cn(styles.contentShell, loading && styles.contentShellLoading)}>
         <PortfolioEntityCardsStrip
           compactSlot={
