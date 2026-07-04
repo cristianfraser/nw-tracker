@@ -5,6 +5,7 @@ import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
+import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { useTranslation } from "./i18n";
 
 // Route-level code splitting: each page (and its chart/table deps, notably recharts)
@@ -71,6 +72,7 @@ function AppTree() {
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
+          <RouteErrorBoundary>
           <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
@@ -113,6 +115,7 @@ function AppTree() {
             <Route path="/account/:id" element={<AccountDetailPage />} />
           </Routes>
           </Suspense>
+          </RouteErrorBoundary>
           </div>
         </div>
       </div>

@@ -54,11 +54,6 @@ function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
   return rows.filter((r) => !isSupersededSantanderCcMaster(r.account_id));
 }
 
-/** @deprecated CC liability_view rows removed; kept as no-op for callers. */
-export function ensureCreditCardLiabilityViews(): number {
-  return 0;
-}
-
 /** Idempotent: Pasivos hipoteca leaf for the Excel mortgage master (if present). */
 export function ensureMortgageLiabilityView(): number {
   const leaf = db

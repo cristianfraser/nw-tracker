@@ -1187,5 +1187,9 @@
       "neverDepletes": "nunca se agota; la renta varía con el saldo"
     },
     "footnote": "Niveles de referencia en USD (250k–2M) convertidos al tipo de cambio actual ({{fx}} CLP/USD) en la vista CLP. Todo el gráfico proyectado está en dinero de hoy salvo la línea nominal."
+  },
+  "routeError": {
+    "title": "Esta página falló al cargar.",
+    "retry": "Reintentar"
   }
 }

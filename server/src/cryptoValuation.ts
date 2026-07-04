@@ -18,8 +18,7 @@ import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 
-/** @deprecated Import/backfill only — runtime uses `equity_ticker` + `units_delta`. */
-export const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
+const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
 
 export type CryptoAsset = "BTC" | "ETH";
 

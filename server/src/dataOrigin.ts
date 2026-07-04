@@ -8,7 +8,6 @@ export function dataOriginFromCcPurchaseSource(
   return "import_document";
 }
 
-/** @deprecated Use `origin` on API DTOs. */
 export type CcPurchaseSourceLegacy = "pdf" | "manual";
 
 export function ccPurchaseSourceLegacyFromOrigin(origin: DataOrigin): CcPurchaseSourceLegacy {
