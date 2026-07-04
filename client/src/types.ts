@@ -1723,6 +1723,8 @@ export interface MirrorPairCandidate {
   /** One leg is month-precision (cuenta de ahorro): dates are conventional month-ends. */
   month_precision: boolean;
   month_straddle: boolean;
+  /** Pair comes from an existing expense_deposit_links row (gastos match), not the heuristic. */
+  linked: boolean;
   out_candidate_count: number;
   in_candidate_count: number;
   confidence: "high" | "ambiguous";

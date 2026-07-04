@@ -186,6 +186,30 @@ describe("convertMirrorPairs", () => {
     expect(movement(undone.restored_in_id)!.occurred_on).toBe("2026-07-10");
   });
 
+  it("converting a link-established pair cascades the expense_deposit_links row", () => {
+    const key = `checking-cartola:${checkingId}:2026-06:2026-06-15:-8181811:0`;
+    const outId = insLeg(
+      checkingId,
+      -8_181_811,
+      "2026-06-15",
+      null,
+      "import:cartola|2026-06|Ag|Transf|on:2026-06-15|amt:-8181811|idx:0"
+    );
+    const depId = insLeg(fundId, 8_181_811, "2026-06-16", 2.5, NOTE);
+    db.prepare(
+      `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
+       VALUES (?, ?, ?, 8181811, 0, 'auto')`
+    ).run(fundId, key, depId);
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: depId }]);
+    const t = movement(converted[0]!.transfer_movement_id)!;
+    expect(t.occurred_on).toBe("2026-06-15");
+    expect(t.units_delta).toBe(2.5);
+    const links = db
+      .prepare(`SELECT COUNT(*) AS c FROM expense_deposit_links WHERE purchase_key = ?`)
+      .get(key) as { c: number };
+    expect(links.c).toBe(0);
+  });
+
   it("is all-or-nothing: a stale pair in the batch converts nothing", () => {
     const out1 = insLeg(genericId, -2_020_201, "2026-04-16");
     const in1 = insLeg(generic2Id, 2_020_201, "2026-04-16");

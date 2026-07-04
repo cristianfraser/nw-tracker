@@ -271,6 +271,57 @@ describe("listMirrorPairCandidates", () => {
     });
   });
 
+  describe("link-established pairs (expense_deposit_links)", () => {
+    const key = () => `checking-cartola:${ids.checking}:2026-05:2026-05-12:-6161617:0`;
+    const cartolaNote = "import:cartola|2026-05|Ag|Transf a fondo|on:2026-05-12|amt:-6161617|idx:0";
+
+    function cleanupLinks() {
+      db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key LIKE ?`).run(
+        `checking-cartola:${ids.checking}:%`
+      );
+    }
+
+    it("a 1:1 auto link becomes a high-confidence linked candidate; conversion cascades the link", () => {
+      cleanupLinks();
+      const out = insLeg(ids.checking, -6_161_617, "2026-05-12", null, cartolaNote);
+      const dep = insLeg(ids.fund, 6_161_617, "2026-05-14", 3.21, NOTE);
+      db.prepare(
+        `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
+         VALUES (?, ?, ?, 6161617, 0, 'auto')`
+      ).run(ids.fund, key(), dep);
+      try {
+        const p = pairFor(listMirrorPairCandidates(), out);
+        expect(p).toBeDefined();
+        expect(p!.linked).toBe(true);
+        expect(p!.confidence).toBe("high");
+        expect(p!.in.movement_id).toBe(dep);
+      } finally {
+        cleanupLinks();
+      }
+    });
+
+    it("multi-deposit links and amount mismatches are not linked candidates", () => {
+      cleanupLinks();
+      const out = insLeg(ids.checking, -7_171_717, "2026-05-20", null,
+        "import:cartola|2026-05|Ag|Transf|on:2026-05-20|amt:-7171717|idx:0");
+      const multiKey = `checking-cartola:${ids.checking}:2026-05:2026-05-20:-7171717:0`;
+      const depA = insLeg(ids.fund, 4_000_000, "2026-05-21", null, NOTE);
+      const depB = insLeg(ids.fund2, 3_171_717, "2026-05-21", null, NOTE);
+      const ins = db.prepare(
+        `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
+         VALUES (?, ?, ?, ?, 0, 'auto')`
+      );
+      ins.run(ids.fund, multiKey, depA, 4_000_000);
+      ins.run(ids.fund2, multiKey, depB, 3_171_717);
+      try {
+        // Two deposits on one outflow: no 1:1 transfer representation.
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
+      } finally {
+        cleanupLinks();
+      }
+    });
+  });
+
   it("a rejection hides the pair permanently and frees the legs for other partners", () => {
     const out = insLeg(ids.generic, -AMT.rejected, "2026-04-02");
     const dep = insLeg(ids.generic2, AMT.rejected, "2026-04-02");

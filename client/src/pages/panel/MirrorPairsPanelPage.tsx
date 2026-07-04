@@ -34,11 +34,12 @@ function LegDates({ p }: { p: MirrorPairCandidate }) {
 function PairBadges({ p }: { p: MirrorPairCandidate }) {
   const { t } = useTranslation();
   const badges: string[] = [];
+  if (p.linked) badges.push(t("mirrorPairs.badgeLinked"));
   if (p.month_precision) badges.push(t("mirrorPairs.badgeMonthPrecision"));
   if (p.month_straddle) badges.push(t("mirrorPairs.badgeMonthStraddle"));
-  // Month-precision pairs convert on the real-day (cartola) leg's date, so the bank-window
-  // re-import caveat does not apply to them.
-  if (!p.within_business_day_window && !p.month_precision) {
+  // Month-precision and linked pairs convert on the real-day checking leg's date, so the
+  // bank-window re-import caveat does not apply to them.
+  if (!p.within_business_day_window && !p.month_precision && !p.linked) {
     badges.push(t("mirrorPairs.badgeWideGap"));
   }
   if (p.out_candidate_count > 1 || p.in_candidate_count > 1) {
@@ -178,6 +179,7 @@ export function MirrorPairsPanelPage() {
                 <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
                 <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
                 <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
                 <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
               </tr>
             }
@@ -208,6 +210,9 @@ export function MirrorPairsPanelPage() {
                     <AmountCell p={p} />
                   </td>
                   <td className="desktop-only">
+                    <PairBadges p={p} />
+                  </td>
+                  <td className="desktop-only">
                     <NotesCell p={p} />
                   </td>
                   <td className="mobile-only">
@@ -220,6 +225,7 @@ export function MirrorPairsPanelPage() {
                     >
                       <TableMobileCardRow label={t("mirrorPairs.colDates")} value={<LegDates p={p} />} />
                       <TableMobileCardRow label={t("mirrorPairs.colAmount")} value={<AmountCell p={p} />} />
+                      <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={<PairBadges p={p} />} />
                       <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={<NotesCell p={p} />} />
                     </TableMobileCard>
                   </td>
