@@ -708,3 +708,15 @@ export function useFlowsSearch(filters: FlowsQueryFilters) {
     placeholderData: (prev) => prev,
   });
 }
+
+export function useProjections(
+  unit: "clp" | "usd",
+  overrides: Partial<import("../types").ProjectionParams>
+) {
+  const overridesKey = useMemo(() => JSON.stringify(overrides), [overrides]);
+  return useQuery({
+    queryKey: queryKeys.projections(unit, overridesKey),
+    queryFn: () => api.projections(unit, overrides),
+    placeholderData: (prev) => prev,
+  });
+}

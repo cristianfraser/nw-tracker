@@ -666,6 +666,15 @@ export const api = {
     const qs = qu.toString();
     return j<import("./types").FlowsPageResponse>(`/api/flows/search${qs ? `?${qs}` : ""}`);
   },
+  projections: (unit: "clp" | "usd", overrides: Partial<import("./types").ProjectionParams>) => {
+    const qs = new URLSearchParams();
+    if (unit === "usd") qs.set("unit", "usd");
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v != null) qs.set(k, String(v));
+    }
+    const q = qs.toString();
+    return j<import("./types").ProjectionsResponse>(`/api/projections${q ? `?${q}` : ""}`);
+  },
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
   convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>

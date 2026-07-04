@@ -80,6 +80,7 @@ describe("buildSidebarNavFromApi", () => {
         navNode("depositos", "depositos"),
       ]),
       search: null,
+      projections: null,
       rates: navNode("rates", "rates"),
       net_worth: null,
     };
@@ -102,6 +103,7 @@ describe("buildSidebarNavFromApi", () => {
       ],
       flows: null,
       search: null,
+      projections: null,
       rates: null,
       net_worth: null,
     };
