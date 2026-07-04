@@ -23,6 +23,7 @@ import {
 } from "../../accountMovementCreate";
 import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
+import { ExportToolbarButton } from "../../components/export/ExportModal";
 import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
@@ -96,6 +97,7 @@ export function StandardAccountDetailPage({ data }: Props) {
 
   return (
     <AccountDetailSharedLayout
+      toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       title={ts.name}
       accountColorRgb={data.accountColorRgb}
       pageColorTarget={data.pageColorTarget}

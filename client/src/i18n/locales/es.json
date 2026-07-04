@@ -1135,5 +1135,28 @@
     "amountMax": "Monto máx.",
     "empty": "Sin movimientos.",
     "emptyFiltered": "Sin resultados para los filtros."
+  },
+  "export": {
+    "button": "Exportar",
+    "title": "Exportar a Excel",
+    "rangeLabel": "Rango",
+    "rangeAll": "Todo el historial",
+    "rangeLastMonth": "Último mes",
+    "rangeLast6m": "Últimos 6 meses",
+    "rangeLastYear": "Último año",
+    "rangeCustom": "Personalizado",
+    "customFrom": "Desde",
+    "customTo": "Hasta",
+    "sectionsLabel": "Información",
+    "unitLabel": "Moneda",
+    "download": "Descargar",
+    "downloading": "Descargando…",
+    "cancel": "Cancelar",
+    "sections": {
+      "closings": "Cierres de mes",
+      "aportes": "Aportes",
+      "pl": "P&L mensual",
+      "movements": "Movimientos"
+    }
   }
 }
