@@ -19,6 +19,7 @@ let genericId = 0;
 let generic2Id = 0;
 let checkingId = 0;
 let fundId = 0;
+let ahorroId = 0;
 
 function insLeg(accountId: number, amount: number, ymd: string, units: number | null = null, note: string | null = NOTE): number {
   return Number(
@@ -67,10 +68,15 @@ beforeAll(() => {
       .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%\\_\\_cuenta\\_corriente' ESCAPE '\\' LIMIT 1`)
       .get() as { id: number } | undefined)?.id ?? anyLeaf;
   const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`);
+  const ahorro =
+    (db
+      .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%\\_\\_cuenta\\_ahorro\\_vivienda' ESCAPE '\\' LIMIT 1`)
+      .get() as { id: number } | undefined)?.id ?? anyLeaf;
   genericId = Number(ins.run(anyLeaf, "vitest-mirrorconv-generic").lastInsertRowid);
   generic2Id = Number(ins.run(anyLeaf, "vitest-mirrorconv-generic2").lastInsertRowid);
   checkingId = Number(ins.run(cc, "vitest-mirrorconv-checking").lastInsertRowid);
   fundId = Number(ins.run(anyLeaf, "vitest-mirrorconv-fund").lastInsertRowid);
+  ahorroId = Number(ins.run(ahorro, "vitest-mirrorconv-ahorro").lastInsertRowid);
 });
 
 afterAll(cleanup);
@@ -156,6 +162,28 @@ describe("convertMirrorPairs", () => {
       .prepare(`SELECT COUNT(*) AS c FROM checking_income_movement_overrides WHERE movement_id = ?`)
       .get(inId) as { c: number };
     expect(left.c).toBe(0);
+  });
+
+  it("ahorro deposit (month-end in leg): transfer keeps the checking outflow's real date", () => {
+    const outId = insLeg(checkingId, -2_020_207, "2026-08-05");
+    const inId = insLeg(ahorroId, 2_020_207, "2026-08-31");
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const t = movement(converted[0]!.transfer_movement_id)!;
+    expect(t.occurred_on).toBe("2026-08-05");
+  });
+
+  it("ahorro retiro (month-end out leg): transfer takes the checking inflow's real date", () => {
+    const outId = insLeg(ahorroId, -3_030_307, "2026-07-31");
+    const inId = insLeg(checkingId, 3_030_307, "2026-07-10");
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const t = movement(converted[0]!.transfer_movement_id)!;
+    expect(t.occurred_on).toBe("2026-07-10");
+    expect(t.from_account_id).toBe(ahorroId);
+    expect(t.to_account_id).toBe(checkingId);
+    // undo restores each leg's own original date
+    const undone = undoMirrorConversion(t.id);
+    expect(movement(undone.restored_out_id)!.occurred_on).toBe("2026-07-31");
+    expect(movement(undone.restored_in_id)!.occurred_on).toBe("2026-07-10");
   });
 
   it("is all-or-nothing: a stale pair in the batch converts nothing", () => {

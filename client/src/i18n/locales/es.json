@@ -1113,6 +1113,7 @@
     "colNotes": "Notas",
     "colFlags": "Avisos",
     "colActions": "Acciones",
+    "badgeMonthPrecision": "cuenta de ahorro: fecha solo mes",
     "badgeMonthStraddle": "cruza mes",
     "badgeWideGap": "fuera de ventana bancaria (reimportar la cartola puede duplicar)",
     "badgeMultiCandidate": "{{n}} candidatos del mismo monto",
