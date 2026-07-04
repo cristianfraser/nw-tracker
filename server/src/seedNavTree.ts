@@ -617,6 +617,18 @@ export function seedNavTree(): void {
     });
 
     upsert({
+      slug: "projections",
+      label: "Proyecciones",
+      label_i18n_key: "sidebar.projections",
+      sort_order: 57,
+      route_path: "/projections",
+      active_prefix: "/projections",
+      nav_end: false,
+      show_leaf_hyphen: false,
+      sidebar_section: "link",
+    });
+
+    upsert({
       slug: "rates",
       label: "Tipos de cambio",
       label_i18n_key: "sidebar.rates",

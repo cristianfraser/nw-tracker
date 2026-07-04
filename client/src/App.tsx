@@ -43,6 +43,7 @@ const MirrorPairsPanelPage = lazyPage(
 );
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
 const SearchPage = lazyPage(() => import("./pages/SearchPage"), "SearchPage");
+const ProjectionsPage = lazyPage(() => import("./pages/ProjectionsPage"), "ProjectionsPage");
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
 
 export default function App() {
@@ -96,6 +97,7 @@ function AppTree() {
             </Route>
             <Route path="/rates" element={<RatesPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/projections" element={<ProjectionsPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />

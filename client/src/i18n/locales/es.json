@@ -1158,5 +1158,34 @@
       "pl": "P&L mensual",
       "movements": "Movimientos"
     }
+  },
+  "projections": {
+    "title": "Proyecciones",
+    "intro": "Una trayectoria en dinero de hoy: acumulación hasta los {{age}} años (retorno real + aporte mensual sobre lo invertido; inmuebles y caja mantienen su valor real) y luego tres estrategias de retiro comparables. La línea nominal usa la inflación de la moneda visible; ambas vistas (CLP/USD del toggle global) comparten la misma trayectoria real.",
+    "reset": "Restablecer",
+    "params": {
+      "real_return_pct": "Retorno real % (acum.)",
+      "monthly_aporte_clp": "Aporte mensual CLP",
+      "inflation_clp_pct": "Inflación CLP %",
+      "inflation_usd_pct": "Inflación USD %",
+      "retire_return_pct": "Retorno real % (retiro)",
+      "end_age": "Edad final",
+      "swr_pct": "SWR %",
+      "pct_balance_pct": "% del saldo",
+      "monthly_income_clp": "Renta mensual CLP (0 = SWR)"
+    },
+    "summary": {
+      "balanceAtRetire": "Saldo a los {{age}}",
+      "todaysMoney": "dinero de hoy",
+      "swr": "SWR {{pct}}%",
+      "pctBalance": "{{pct}}% del saldo",
+      "fixedIncome": "Renta fija",
+      "income": "{{amount}}/mes",
+      "initialIncome": "{{amount}}/mes inicial",
+      "depletes": "se agota a los {{age}} años",
+      "lasts": "dura hasta los {{age}}",
+      "neverDepletes": "nunca se agota; la renta varía con el saldo"
+    },
+    "footnote": "Niveles de referencia en USD (250k–2M) convertidos al tipo de cambio actual ({{fx}} CLP/USD) en la vista CLP. Todo el gráfico proyectado está en dinero de hoy salvo la línea nominal."
   }
 }
