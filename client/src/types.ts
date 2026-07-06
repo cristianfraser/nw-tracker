@@ -681,13 +681,6 @@ export type CreditCardConfigPatchBody = {
   cupo?: CcCupoEntry[];
 };
 
-/** `GET /api/credit-cards` row — operational CC master + config + current balance. */
-export type OperationalCreditCardRow = CreditCardAccountConfigDto & {
-  name: string;
-  has_installment_ledger: boolean;
-  balance_clp: number | null;
-};
-
 /** `GET /api/portfolio-groups/:slug/cc-ledger` — aggregated CC masters for a pasivos group. */
 export type PortfolioGroupCcLedgerResponse = AccountCcInstallmentsResponse;
 

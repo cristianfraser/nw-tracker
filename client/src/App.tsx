@@ -17,7 +17,6 @@ const lazyPage = <T extends Record<string, unknown>, K extends keyof T>(
 ) => lazy(async () => ({ default: (await load())[name] as React.ComponentType }));
 
 const AccountDetailPage = lazyPage(() => import("./pages/AccountDetailPage"), "AccountDetailPage");
-const CreditCardsPage = lazyPage(() => import("./pages/CreditCardsPage"), "CreditCardsPage");
 const GroupInfoPage = lazyPage(() => import("./pages/GroupInfoPage"), "GroupInfoPage");
 const LiabilitiesGroupPage = lazyPage(() => import("./pages/LiabilitiesGroupPage"), "LiabilitiesGroupPage");
 const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
@@ -84,7 +83,7 @@ function AppTree() {
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
-            <Route path="/credit-cards" element={<CreditCardsPage />} />
+            <Route path="/credit-cards" element={<Navigate to="/liabilities" replace />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />

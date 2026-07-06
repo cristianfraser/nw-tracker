@@ -7,14 +7,8 @@
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
-import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
-import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
-import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { patchCreditCardBillingConfig } from "./ccBillingBalances.js";
-import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
 export type CcCupoCurrency = "clp" | "usd";
 
@@ -194,32 +188,3 @@ export function applyCreditCardConfigPatch(
   return { config: getCreditCardAccountConfig(accountId), billingCycleChanged };
 }
 
-export type OperationalCreditCardRow = CreditCardAccountConfigDto & {
-  name: string;
-  has_installment_ledger: boolean;
-  /** Billing balance total (ledger cards) or latest liability valuation; null when no data yet. */
-  balance_clp: number | null;
-};
-
-const accountNameStmt = db.prepare(`SELECT name FROM accounts WHERE id = ?`);
-
-/** Operational CC masters (non-superseded, non-retired) with config for the Credit cards page. */
-export function listOperationalCreditCards(): OperationalCreditCardRow[] {
-  const today = chileCalendarTodayYmd();
-  return listCreditCardMasterAccountIds()
-    .filter((id) => !isNavRetiredCcMaster(id))
-    .map((id) => {
-      const name = (accountNameStmt.get(id) as { name: string } | undefined)?.name;
-      if (!name) throw new Error(`credit-card master account ${id} not found`);
-      const hasLedger = ccInstallmentLedgerRowCount(id) > 0;
-      const balanceClp = hasLedger
-        ? creditCardBillingBalanceTotalClpAsOf(id, today)?.value_clp ?? null
-        : latestLiabilityValuationRowForSnapshot(id, "credit_card", today)?.value_clp ?? null;
-      return {
-        ...getCreditCardAccountConfig(id),
-        name,
-        has_installment_ledger: hasLedger,
-        balance_clp: balanceClp,
-      };
-    });
-}
