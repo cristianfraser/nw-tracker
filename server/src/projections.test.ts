@@ -18,7 +18,8 @@ const BASE: ProjectionEngineInput = {
   swr_pct: 4,
   pct_balance_pct: 5,
   monthly_income: 0,
-  drawdown_base: "total",
+  liquidate_other_pct: 100,
+  monthly_rent: 0,
 };
 
 describe("runProjectionEngine", () => {
@@ -89,18 +90,45 @@ describe("runProjectionEngine", () => {
     expect(String(lastPoint.as_of_date).slice(0, 7)).toBe("2087-01");
   });
 
-  it("emits the invested projection line; drawdown base switches between invested and total", () => {
-    const total = runProjectionEngine(BASE);
+  it("emits the invested projection line; liquidation % scales the drawdown pot", () => {
+    const full = runProjectionEngine(BASE); // 100% of "other" liquidated
     // proj_invested = proj_nw − flat "other" (100M) at every accumulation point
-    const acc = total.points.filter((p) => p.proj_nw != null);
+    const acc = full.points.filter((p) => p.proj_nw != null);
     expect(acc.every((p) => Number(p.proj_nw) - Number(p.proj_invested) === 100_000_000)).toBe(true);
-    expect(total.balance_at_retire).toBe(total.total_at_retire);
+    expect(full.balance_at_retire).toBe(full.total_at_retire);
 
-    const investedBase = runProjectionEngine({ ...BASE, drawdown_base: "invested" });
-    expect(investedBase.balance_at_retire).toBe(investedBase.invested_at_retire);
-    expect(investedBase.invested_at_retire).toBe(investedBase.total_at_retire - 100_000_000);
-    // smaller base → smaller SWR income
-    expect(investedBase.swr_monthly_income).toBeLessThan(total.swr_monthly_income);
+    const none = runProjectionEngine({ ...BASE, liquidate_other_pct: 0 });
+    expect(none.balance_at_retire).toBe(none.invested_at_retire);
+    expect(none.invested_at_retire).toBe(none.total_at_retire - 100_000_000);
+    expect(none.swr_monthly_income).toBeLessThan(full.swr_monthly_income);
+
+    const half = runProjectionEngine({ ...BASE, liquidate_other_pct: 50 });
+    expect(half.balance_at_retire).toBe(Math.round(none.invested_at_retire + 50_000_000));
+  });
+
+  it("rent adds to strategy incomes and reduces the fixed-income pot withdrawal", () => {
+    const noRent = runProjectionEngine({ ...BASE, retire_return_pct: 0, monthly_income: 3_000_000 });
+    const withRent = runProjectionEngine({
+      ...BASE,
+      retire_return_pct: 0,
+      monthly_income: 3_000_000, // TOTAL target: pot only funds 3M − 1M rent
+      monthly_rent: 1_000_000,
+    });
+    // SWR income reported as pot withdrawal + rent
+    expect(withRent.swr_monthly_income).toBe(noRent.swr_monthly_income + 1_000_000);
+    // fixed target echoed as total; the pot depletes later (or not at all) with rent covering part
+    expect(withRent.fixed_monthly_income).toBe(3_000_000);
+    if (noRent.fixed_income_depletion_age != null && withRent.fixed_income_depletion_age != null) {
+      expect(withRent.fixed_income_depletion_age).toBeGreaterThan(noRent.fixed_income_depletion_age);
+    }
+    // rent covering the whole target → pot never withdraws → no depletion
+    const covered = runProjectionEngine({
+      ...BASE,
+      retire_return_pct: 0,
+      monthly_income: 900_000,
+      monthly_rent: 1_000_000,
+    });
+    expect(covered.fixed_income_depletion_age).toBeNull();
   });
 
   it("throws when the start month is past retirement", () => {

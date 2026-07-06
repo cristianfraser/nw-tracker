@@ -9,10 +9,9 @@ import {
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency } from "../format";
 import { useProjections } from "../queries/hooks";
-import type { ProjectionDrawdownBase, ProjectionParams } from "../types";
+import type { ProjectionParams } from "../types";
 
 const LS_KEY = "nw-tracker.projections.overrides";
-const LS_BASE_KEY = "nw-tracker.projections.drawdownBase";
 
 /** Mirrors the server's PROJECTION_PARAM_BOUNDS (projections.ts) — out-of-range overrides
  * never reach the request; the field shows an inline error instead of a blocking 400. */
@@ -26,6 +25,8 @@ const PARAM_BOUNDS: Record<keyof ProjectionParams, [number, number]> = {
   swr_pct: [0, 25],
   pct_balance_pct: [0, 25],
   monthly_income_clp: [0, 1_000_000_000],
+  liquidate_other_pct: [0, 100],
+  monthly_rent_clp: [0, 1_000_000_000],
 };
 
 function isInBounds(key: keyof ProjectionParams, v: number): boolean {
@@ -44,6 +45,8 @@ const PARAM_FIELDS: { key: keyof ProjectionParams; amount?: boolean; step?: numb
   { key: "swr_pct", step: 0.5 },
   { key: "pct_balance_pct", step: 0.5 },
   { key: "monthly_income_clp", amount: true },
+  { key: "liquidate_other_pct", step: 5 },
+  { key: "monthly_rent_clp", amount: true },
 ];
 
 const LINE_STYLE: Record<string, { stroke: string; width: number }> = {
@@ -75,9 +78,6 @@ export function ProjectionsPage() {
   /** Free-form text while a field is being edited (allows "" mid-edit); committed on change,
    * cleared on blur so the display snaps back to the effective value. */
   const [drafts, setDrafts] = useState<Partial<Record<keyof ProjectionParams, string>>>({});
-  const [drawdownBase, setDrawdownBase] = useState<ProjectionDrawdownBase>(() =>
-    localStorage.getItem(LS_BASE_KEY) === "total" ? "total" : "invested"
-  );
   // Only in-bounds overrides go to the server; invalid fields show inline errors while the
   // chart keeps rendering with the last valid parameters.
   const validOverrides = useMemo(() => {
@@ -87,11 +87,7 @@ export function ProjectionsPage() {
     }
     return out;
   }, [overrides]);
-  const { data, error, isPending } = useProjections(displayUnit, validOverrides, drawdownBase);
-
-  useEffect(() => {
-    localStorage.setItem(LS_BASE_KEY, drawdownBase);
-  }, [drawdownBase]);
+  const { data, error, isPending } = useProjections(displayUnit, validOverrides);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(overrides));
@@ -178,18 +174,6 @@ export function ProjectionsPage() {
             </label>
           );
         })}
-        <label style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
-          <span className="muted" style={{ fontSize: "0.8em" }}>
-            {t("projections.params.drawdown_base")}
-          </span>
-          <select
-            value={drawdownBase}
-            onChange={(e) => setDrawdownBase(e.target.value === "total" ? "total" : "invested")}
-          >
-            <option value="invested">{t("projections.baseInvested")}</option>
-            <option value="total">{t("projections.baseTotal")}</option>
-          </select>
-        </label>
         <button
           type="button"
           style={{ alignSelf: "flex-end" }}
@@ -210,12 +194,16 @@ export function ProjectionsPage() {
           {t("projections.summary.totalLabel")} {money(s.total_at_retire)}{" "}
           <span className="muted">
             ({t("projections.summary.todaysMoney")};{" "}
-            {t("projections.summary.strategiesRunOn", {
-              base: t(drawdownBase === "total" ? "projections.baseTotal" : "projections.baseInvested"),
+            {t("projections.summary.potDescription", {
+              pot: money(s.balance_at_retire),
+              pct: validOverrides.liquidate_other_pct ?? data.params.liquidate_other_pct,
             })}
             )
           </span>
         </p>
+        {s.monthly_rent > 0 ? (
+          <p className="muted">{t("projections.summary.rentIncluded", { amount: money(s.monthly_rent) })}</p>
+        ) : null}
         <p>
           <strong>{t("projections.summary.swr", { pct: validOverrides.swr_pct ?? data.params.swr_pct })}:</strong>{" "}
           {t("projections.summary.income", { amount: money(s.swr_monthly_income) })}{" "}
