@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
 import { totalDepositsClpForAccount } from "./accountDeposits.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -56,10 +57,15 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     usdRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
     clpRow = { bucket_slug: clpLeaf.slug, group_slug: clpLeaf.slug };
 
+    // Pin fx for every date the assertions resolve: the fixture month-ends, the 2026-12-31
+    // as-of valuation, and *today* (deposited-capital display converts at the latest on-or-
+    // before-today row). Without these the test drifts with every daily fx sync.
     restoreFx = overrideFxDaily([
       ["2026-05-31", 900],
       ["2026-06-30", 900],
       ["2026-07-31", 900],
+      ["2026-12-31", 900],
+      [chileCalendarTodayYmd(), 900],
     ]);
 
     // USD cash: buy 1000 USD of capital in May, earn 10 USD interest in June.
