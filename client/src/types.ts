@@ -1144,7 +1144,6 @@ export interface SidebarNavResponse {
   net_worth: NavTreeNodeDto | null;
   main: NavTreeNodeDto[];
   flows: NavTreeNodeDto | null;
-  search: NavTreeNodeDto | null;
   projections: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
 }

@@ -601,17 +601,15 @@ export function seedNavTree(): void {
       linkExpenseAccounts("flows_expenses_real_estate", [...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS]);
     }
 
-    upsert({
-      slug: "search",
-      label: "Buscador",
-      label_i18n_key: "sidebar.search",
-      sort_order: 55,
-      route_path: "/search",
-      active_prefix: "/search",
-      nav_end: false,
-      show_leaf_hyphen: false,
-      sidebar_section: "link",
-    });
+    // The global /search page was folded into the flows tables (dashboard = master view);
+    // drop its legacy sidebar link row.
+    const legacySearch = db
+      .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'search' AND sidebar_section = 'link'`)
+      .get() as { id: number } | undefined;
+    if (legacySearch) {
+      deleteGroupItems.run(legacySearch.id);
+      db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(legacySearch.id);
+    }
 
     upsert({
       slug: "projections",

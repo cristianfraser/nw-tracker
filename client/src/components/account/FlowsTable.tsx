@@ -134,6 +134,27 @@ export type FlowsFilterState = {
   category: string;
   q: string;
   personal_only: boolean;
+  /** Inclusive YYYY-MM-DD bounds (raw input values). */
+  date_from: string;
+  date_to: string;
+  /** Raw amount inputs; digits-only parse, exact suppresses min/max. */
+  amount_exact: string;
+  amount_min: string;
+  amount_max: string;
+};
+
+export const DEFAULT_FLOWS_FILTER_STATE: FlowsFilterState = {
+  year: "",
+  type: "",
+  account_id: "",
+  category: "",
+  q: "",
+  personal_only: false,
+  date_from: "",
+  date_to: "",
+  amount_exact: "",
+  amount_min: "",
+  amount_max: "",
 };
 
 export function FlowsTable({
@@ -194,7 +215,9 @@ export function FlowsTable({
   );
 
   const hasActiveFilter = filterState
-    ? filterState.year || filterState.type || filterState.account_id || filterState.category || filterState.q || filterState.personal_only
+    ? filterState.year || filterState.type || filterState.account_id || filterState.category ||
+      filterState.q || filterState.personal_only || filterState.date_from || filterState.date_to ||
+      filterState.amount_exact || filterState.amount_min || filterState.amount_max
     : false;
 
   const filterBar =
@@ -274,6 +297,45 @@ export function FlowsTable({
           onChange={(e) => onFilterChange({ q: e.target.value })}
           placeholder={t("flows.filters.notePlaceholder")}
           style={{ minWidth: "10rem", maxWidth: "16rem" }}
+        />
+
+        <input
+          type="date"
+          value={filterState.date_from}
+          onChange={(e) => onFilterChange({ date_from: e.target.value })}
+          aria-label={t("flows.filters.dateFrom")}
+        />
+        <input
+          type="date"
+          value={filterState.date_to}
+          onChange={(e) => onFilterChange({ date_to: e.target.value })}
+          aria-label={t("flows.filters.dateTo")}
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          value={filterState.amount_exact}
+          onChange={(e) => onFilterChange({ amount_exact: e.target.value })}
+          placeholder={t("flows.filters.amountExact")}
+          style={{ width: "7rem" }}
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          value={filterState.amount_min}
+          disabled={Boolean(filterState.amount_exact.trim())}
+          onChange={(e) => onFilterChange({ amount_min: e.target.value })}
+          placeholder={t("flows.filters.amountMin")}
+          style={{ width: "6.5rem" }}
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          value={filterState.amount_max}
+          disabled={Boolean(filterState.amount_exact.trim())}
+          onChange={(e) => onFilterChange({ amount_max: e.target.value })}
+          placeholder={t("flows.filters.amountMax")}
+          style={{ width: "6.5rem" }}
         />
 
         {filterState.personal_only !== undefined ? (

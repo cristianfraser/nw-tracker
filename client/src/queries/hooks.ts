@@ -647,6 +647,11 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         account_id: filters.account_id,
         category: filters.category,
         q: filters.q,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        amount_min: filters.amount_min,
+        amount_max: filters.amount_max,
+        amount_exact: filters.amount_exact,
       }),
     enabled: enabled && Boolean(slug),
     ...displayUnitQueryBehavior,
@@ -665,6 +670,11 @@ export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilte
         type: filters.type,
         q: filters.q,
         personal_only: filters.personal_only,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        amount_min: filters.amount_min,
+        amount_max: filters.amount_max,
+        amount_exact: filters.amount_exact,
       }),
     enabled: enabled && Boolean(id),
     ...displayUnitQueryBehavior,
@@ -678,28 +688,6 @@ export function useMovementMirrorCandidates() {
   });
 }
 
-export function useFlowsSearch(filters: FlowsQueryFilters) {
-  const filtersKey = useMemo(() => serializeFlowFilters(filters), [filters]);
-  return useQuery({
-    queryKey: queryKeys.flowsSearch(filtersKey),
-    queryFn: () =>
-      api.searchFlows({
-        page: filters.page,
-        pageSize: filters.pageSize,
-        q: filters.q,
-        year: filters.year,
-        type: filters.type,
-        account_id: filters.account_id,
-        category: filters.category,
-        date_from: filters.date_from,
-        date_to: filters.date_to,
-        amount_min: filters.amount_min,
-        amount_max: filters.amount_max,
-        amount_exact: filters.amount_exact,
-      }),
-    placeholderData: (prev) => prev,
-  });
-}
 
 export function useProjections(
   unit: "clp" | "usd",
