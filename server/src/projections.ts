@@ -37,8 +37,13 @@ export type ProjectionParams = {
   swr_pct: number;
   /** Strategy 2: Y% of the current balance per year. */
   pct_balance_pct: number;
-  /** Strategy 3: fixed real monthly income in CLP, today's money (0 = defaults to the SWR income). */
+  /** Strategy 3: desired TOTAL real monthly income in CLP, today's money (0 = SWR income + rent). */
   monthly_income_clp: number;
+  /** Share of the non-invested remainder (RE, cash) liquidated into the drawdown pot at retirement. */
+  liquidate_other_pct: number;
+  /** Passive real monthly income during retirement (e.g. rent), today's CLP. Adds to every
+   * strategy's income; the fixed-income pot only funds the target minus this. */
+  monthly_rent_clp: number;
 };
 
 export const PROJECTION_PARAM_BOUNDS: Record<keyof ProjectionParams, [number, number]> = {
@@ -51,6 +56,8 @@ export const PROJECTION_PARAM_BOUNDS: Record<keyof ProjectionParams, [number, nu
   swr_pct: [0, 25],
   pct_balance_pct: [0, 25],
   monthly_income_clp: [0, 1_000_000_000],
+  liquidate_other_pct: [0, 100],
+  monthly_rent_clp: [0, 1_000_000_000],
 };
 
 function monthAdd(mk: string, n: number): string {
@@ -93,20 +100,23 @@ export type ProjectionEngineInput = {
   end_age: number;
   swr_pct: number;
   pct_balance_pct: number;
-  /** Fixed real monthly income; 0 → replaced by the SWR income at retirement. */
+  /** Desired TOTAL real monthly income; 0 → SWR income + rent. */
   monthly_income: number;
-  /** What the drawdown strategies run on: the invested portfolio only (FIRE framing —
-   * RE/cash keep their real value on the side) or the total balance. */
-  drawdown_base: "invested" | "total";
+  /** Share (0–100) of the non-invested remainder liquidated into the pot at retirement. */
+  liquidate_other_pct: number;
+  /** Passive real monthly income during retirement (display unit). */
+  monthly_rent: number;
 };
 
 export type ProjectionEngineResult = {
   points: Record<string, string | number | null>[];
   retire_month: string;
-  /** The drawdown base at the retirement month (invested or total, per `drawdown_base`). */
+  /** The drawdown pot at retirement: invested + liquidate_other_pct% of the remainder. */
   balance_at_retire: number;
   invested_at_retire: number;
   total_at_retire: number;
+  /** Passive income echoed back (summary incomes below include it). */
+  monthly_rent: number;
   swr_monthly_income: number;
   pct_balance_initial_monthly_income: number;
   fixed_monthly_income: number;
@@ -145,9 +155,14 @@ export function runProjectionEngine(input: ProjectionEngineInput): ProjectionEng
 
   const investedAtRetire = invested;
   const totalAtRetire = invested + other;
-  const balanceAtRetire = input.drawdown_base === "total" ? totalAtRetire : investedAtRetire;
+  const balanceAtRetire =
+    investedAtRetire + (totalAtRetire - investedAtRetire) * (input.liquidate_other_pct / 100);
+  const rent = Math.max(0, input.monthly_rent);
+  // Pot withdrawals: SWR / %-of-balance are pot-defined (rent adds on top of the income);
+  // the fixed strategy targets TOTAL income, so the pot only funds the part rent doesn't cover.
   const swrMonthly = (balanceAtRetire * input.swr_pct) / 100 / 12;
-  const fixedMonthly = input.monthly_income > 0 ? input.monthly_income : swrMonthly;
+  const fixedTargetTotal = input.monthly_income > 0 ? input.monthly_income : swrMonthly + rent;
+  const fixedMonthly = Math.max(0, fixedTargetTotal - rent);
   const pctInitialMonthly = (balanceAtRetire * input.pct_balance_pct) / 100 / 12;
 
   // Decumulation: each strategy runs on its own copy of the total balance.
@@ -190,9 +205,10 @@ export function runProjectionEngine(input: ProjectionEngineInput): ProjectionEng
     balance_at_retire: Math.round(balanceAtRetire),
     invested_at_retire: Math.round(investedAtRetire),
     total_at_retire: Math.round(totalAtRetire),
-    swr_monthly_income: Math.round(swrMonthly),
-    pct_balance_initial_monthly_income: Math.round(pctInitialMonthly),
-    fixed_monthly_income: Math.round(fixedMonthly),
+    monthly_rent: Math.round(rent),
+    swr_monthly_income: Math.round(swrMonthly + rent),
+    pct_balance_initial_monthly_income: Math.round(pctInitialMonthly + rent),
+    fixed_monthly_income: Math.round(fixedTargetTotal),
     swr_depletion_age: swrDepletion,
     fixed_income_depletion_age: fixedDepletion,
   };
@@ -224,6 +240,8 @@ export const PROJECTION_DEFAULTS: Omit<ProjectionParams, "monthly_aporte_clp"> =
   swr_pct: 4,
   pct_balance_pct: 5,
   monthly_income_clp: 0,
+  liquidate_other_pct: 0,
+  monthly_rent_clp: 0,
 };
 
 const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "reference" }[] = [
@@ -237,13 +255,7 @@ const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "re
   { dataKey: "proj_fixed_income", name: "Retiro renta fija", valueSeriesType: "reference" },
 ];
 
-export type ProjectionDrawdownBase = "invested" | "total";
-
-export function buildProjectionsPayload(
-  unit: TsUnit,
-  params: ProjectionParams,
-  drawdownBase: ProjectionDrawdownBase = "invested"
-) {
+export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) {
   const fxRow = fxRowOnOrBefore(chileCalendarTodayYmd());
   if (!fxRow) throw new Error("no fx_daily row available (run backfill:yahoo-fx-usd)");
   const fx = fxRow.clp_per_usd;
@@ -272,7 +284,8 @@ export function buildProjectionsPayload(
     swr_pct: params.swr_pct,
     pct_balance_pct: params.pct_balance_pct,
     monthly_income: toUnit(params.monthly_income_clp),
-    drawdown_base: drawdownBase,
+    liquidate_other_pct: params.liquidate_other_pct,
+    monthly_rent: toUnit(params.monthly_rent_clp),
   });
 
   // Milestones as constant reference columns over the whole x-range (USD levels; CLP view
@@ -301,13 +314,13 @@ export function buildProjectionsPayload(
     unit,
     fx_clp_per_usd: fx,
     params,
-    drawdown_base: drawdownBase,
     retire_month: engine.retire_month,
     retire_age: PROJECTION_RETIRE_AGE,
     summary: {
       balance_at_retire: engine.balance_at_retire,
       invested_at_retire: engine.invested_at_retire,
       total_at_retire: engine.total_at_retire,
+      monthly_rent: engine.monthly_rent,
       swr_monthly_income: engine.swr_monthly_income,
       pct_balance_initial_monthly_income: engine.pct_balance_initial_monthly_income,
       fixed_monthly_income: engine.fixed_monthly_income,

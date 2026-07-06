@@ -666,14 +666,9 @@ export const api = {
     const qs = qu.toString();
     return j<import("./types").FlowsPageResponse>(`/api/flows/search${qs ? `?${qs}` : ""}`);
   },
-  projections: (
-    unit: "clp" | "usd",
-    overrides: Partial<import("./types").ProjectionParams>,
-    drawdownBase: import("./types").ProjectionDrawdownBase
-  ) => {
+  projections: (unit: "clp" | "usd", overrides: Partial<import("./types").ProjectionParams>) => {
     const qs = new URLSearchParams();
     if (unit === "usd") qs.set("unit", "usd");
-    if (drawdownBase === "total") qs.set("drawdown_base", "total");
     for (const [k, v] of Object.entries(overrides)) {
       if (v != null) qs.set(k, String(v));
     }
