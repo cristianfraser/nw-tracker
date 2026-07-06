@@ -3,7 +3,6 @@ import {
   applyCreditCardConfigPatch,
   getCreditCardAccountConfig,
   isCreditCardAccountId,
-  listOperationalCreditCards,
   parseCreditCardConfigPatch,
 } from "./ccAccountConfig.js";
 import { db } from "./db.js";
@@ -196,17 +195,5 @@ describe("credit-card account config get/patch (synthetic fixture)", () => {
       billing_cycle_start_day: 22,
     });
     expect(noop.billingCycleChanged).toBe(false);
-  });
-});
-
-describe("listOperationalCreditCards", () => {
-  it("includes the fixture master with its config", () => {
-    const cards = listOperationalCreditCards();
-    const fixture = cards.find((c) => c.account_id === accountId);
-    expect(fixture).toBeDefined();
-    expect(fixture!.name).toContain("Vitest");
-    expect(fixture!.card_last4).toBe("0000");
-    expect(fixture!.cupo.map((c) => c.currency)).toEqual(["clp", "usd"]);
-    expect(typeof fixture!.has_installment_ledger).toBe("boolean");
   });
 });

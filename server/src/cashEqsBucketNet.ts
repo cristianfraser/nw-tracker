@@ -12,21 +12,10 @@ import type { TsUnit } from "./groupMonthlyPerfConsolidation.js";
 /** Synthetic row category when CC shortfall is drawn from savings. */
 export const CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG = "credit_card_shortfall_from_savings";
 
-/** @deprecated Linked CC rows replaced by conditional shortfall on savings NW. */
-export const LINKED_CC_DASHBOARD_CATEGORY_SLUG = "linked_credit_card";
-
 const SYNTHETIC_SHORTFALL_ACCOUNT_ID = -950_000_001;
 
 export function syntheticCashSavingsShortfallAccountId(): number {
   return SYNTHETIC_SHORTFALL_ACCOUNT_ID;
-}
-
-/** @deprecated Ahorros card uses full linked CC balance total, not checking shortfall. */
-export function creditCardShortfallClp(checkingTotalClp: number, ccBalanceClp: number): number {
-  const checking = Math.max(0, Math.round(checkingTotalClp));
-  const cc = Math.round(ccBalanceClp);
-  if (cc <= 0) return 0;
-  return Math.max(0, cc - checking);
 }
 
 /** Ahorros y reservas NW: Σ savings − linked tarjeta balance total (same as card footer). */
@@ -93,15 +82,6 @@ export function cashSavingsShortfallDashboardRow(
     sync_stale: false,
     chart_inactive: false,
   };
-}
-
-/** @deprecated Use {@link applyCashSavingsShortfallToDashboardRows}. */
-export function appendLinkedCreditCardDashboardRows(
-  rows: DashboardAccountStats[],
-  asOfYmd: string,
-  includeUsd: boolean
-): DashboardAccountStats[] {
-  return applyCashSavingsShortfallToDashboardRows(rows, asOfYmd, includeUsd);
 }
 
 export type DashboardRowForCashSum = Pick<

@@ -59,6 +59,8 @@ export type GroupInfoBaseProps = {
   tableAccounts: readonly GroupInfoTableAccount[];
   /** Accounts tree at the bottom. */
   accountsTree: ReactNode;
+  /** Export button row rendered beside the accounts-in-view tree at the bottom. */
+  exportSlot?: ReactNode;
   monthlyDetailHint?: string;
   flowsHint?: string;
   /** Dims the whole page body (title, cards, charts, tables) while bundle data is loading. */
@@ -83,6 +85,7 @@ export function GroupInfoBase({
   charts,
   tableAccounts,
   accountsTree,
+  exportSlot,
   monthlyDetailHint,
   flowsHint,
   loading = false,
@@ -206,6 +209,11 @@ export function GroupInfoBase({
               />
             )}
           </>
+        ) : null}
+        {exportSlot ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1.25rem" }}>
+            {exportSlot}
+          </div>
         ) : null}
         {accountsTree}
       </div>

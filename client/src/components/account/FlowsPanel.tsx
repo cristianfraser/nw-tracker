@@ -1,18 +1,29 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { useGroupFlows, useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
-import { FlowsTable, type FlowsFilterState } from "./FlowsTable";
+import { DEFAULT_FLOWS_FILTER_STATE, FlowsTable, type FlowsFilterState } from "./FlowsTable";
 
 const PAGE_SIZE = 20;
 
-const DEFAULT_FILTER_STATE: FlowsFilterState = {
-  year: "",
-  type: "",
-  account_id: "",
-  category: "",
-  q: "",
-  personal_only: false,
-};
+/** CLP amounts are integers; grouping separators are ignored ("1.325.724" ≡ "1325724"). */
+function parseAmountFilter(raw: string): number | undefined {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return undefined;
+  const n = Number(digits);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Extended filters shared by both panel variants (exact wins over min/max, like the server). */
+function extraFiltersFromState(fs: FlowsFilterState): Partial<FlowsQueryFilters> {
+  const exact = parseAmountFilter(fs.amount_exact);
+  return {
+    date_from: fs.date_from || undefined,
+    date_to: fs.date_to || undefined,
+    amount_exact: exact,
+    amount_min: exact == null ? parseAmountFilter(fs.amount_min) : undefined,
+    amount_max: exact == null ? parseAmountFilter(fs.amount_max) : undefined,
+  };
+}
 
 type GroupFlowsPanelProps = {
   kind: "group";
@@ -38,7 +49,7 @@ function GroupFlowsPanel({
 }: GroupFlowsPanelProps & { enabled?: boolean }) {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
-  const [filterState, setFilterState] = useState<FlowsFilterState>(DEFAULT_FILTER_STATE);
+  const [filterState, setFilterState] = useState<FlowsFilterState>(DEFAULT_FLOWS_FILTER_STATE);
 
   const filters = useMemo(
     (): FlowsQueryFilters => ({
@@ -49,6 +60,7 @@ function GroupFlowsPanel({
       account_id: filterState.account_id ? Number(filterState.account_id) : undefined,
       category: filterState.category || undefined,
       q: filterState.q || undefined,
+      ...extraFiltersFromState(filterState),
     }),
     [page, filterState]
   );
@@ -89,7 +101,7 @@ function AccountFlowsPanel({
 }: AccountFlowsPanelProps & { enabled?: boolean }) {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
-  const [filterState, setFilterState] = useState<FlowsFilterState>(DEFAULT_FILTER_STATE);
+  const [filterState, setFilterState] = useState<FlowsFilterState>(DEFAULT_FLOWS_FILTER_STATE);
 
   const id = String(accountId);
 
@@ -101,6 +113,7 @@ function AccountFlowsPanel({
       type: filterState.type || undefined,
       q: filterState.q || undefined,
       personal_only: filterState.personal_only || undefined,
+      ...extraFiltersFromState(filterState),
     }),
     [page, filterState]
   );

@@ -209,14 +209,6 @@ export function getLiveEquityQuoteFromDb(
   };
 }
 
-/** @deprecated Use {@link getLiveEquityQuoteFromDb}. */
-export function getCachedLiveEquityQuote(
-  ticker: string,
-  maxAgeMs = liveQuotesMaxAgeMs()
-): ResolvedEquityQuote | null {
-  return getLiveEquityQuoteFromDb(ticker, maxAgeMs);
-}
-
 /** Whether `asOfYmd` is the active session and we should prefer stored live quotes over DB EOD. */
 export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = new Date()): boolean {
   const kind = equityMarketKind(ticker);

@@ -16,7 +16,6 @@ import {
   applyCreditCardConfigPatch,
   getCreditCardAccountConfig,
   isCreditCardAccountId,
-  listOperationalCreditCards,
   parseCreditCardConfigPatch,
 } from "../ccAccountConfig.js";
 import { loadCreditCardBillingConfig } from "../ccBillingMonth.js";
@@ -329,9 +328,5 @@ app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
   });
 });
 
-/** Operational credit cards (Tarjetas de crédito page): masters + config + current balance. */
-app.get("/api/credit-cards", (_req, res) => {
-  res.json({ cards: listOperationalCreditCards() });
-});
 
 }

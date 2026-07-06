@@ -6,6 +6,7 @@ import { AccountFlowsSection } from "../../components/account/AccountFlowsSectio
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
 import { cn } from "../../cn";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
+import { ExportToolbarButton } from "../../components/export/ExportModal";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { CreditCardConfigSection } from "../../components/account/CreditCardConfigSection";
 import { CreditCardDetailSections } from "./CreditCardSections";
@@ -54,6 +55,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
       stripDetailSlots={<CreditCardSummaryCards ccLedger={ccLedger} stripSlots />}
+      toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       loading={data.contentLoading}
       showNavChildCards={false}
     >

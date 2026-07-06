@@ -182,14 +182,6 @@ export function stripMetricsRowsForNavChild(
   return sourceRows.filter((a) => accountCountsTowardGroupTotals(a));
 }
 
-/** @deprecated Same as {@link stripMetricsRowsForNavChild}. */
-export function stripPlMetricsRowsForNavChild(
-  dash: Pick<DashboardResponse, "accounts">,
-  navChild: NavTreeNodeDto
-): DashboardAccountRow[] {
-  return stripMetricsRowsForNavChild(dash, navChild);
-}
-
 function usesFullDashboardBucketTotals(navChild: NavTreeNodeDto): DashboardGroupSlug | null {
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (!bucket || bucket === "net_worth") return null;

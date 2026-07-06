@@ -117,7 +117,7 @@ function buildFilterOptions(all: FlowsApiRow[], isMultiAccount: boolean): FlowsF
   };
 }
 
-function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): FlowsApiRow[] {
+export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): FlowsApiRow[] {
   return rows.filter((r) => {
     if (filters.year && !r.occurred_on.startsWith(filters.year)) return false;
     if (filters.type && r.flow_type !== filters.type) return false;
@@ -145,6 +145,37 @@ function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): FlowsApiR
   });
 }
 
+/**
+ * Parses the extended flow filters shared by the group/account flows endpoints (date range +
+ * amount filters, added when the flows tables absorbed the global-search controls).
+ */
+export function parseExtraFlowsFilterParams(
+  qp: Record<string, unknown>
+): { ok: true; filters: Partial<FlowsFilters> } | { ok: false; error: string } {
+  const filters: Partial<FlowsFilters> = {};
+  for (const key of ["date_from", "date_to"] as const) {
+    const v = qp[key];
+    if (v == null || v === "") continue;
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      return { ok: false, error: `${key} must be YYYY-MM-DD` };
+    }
+    filters[key] = v;
+  }
+  for (const key of ["amount_min", "amount_max", "amount_exact"] as const) {
+    const v = qp[key];
+    if (v == null || v === "") continue;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) {
+      return { ok: false, error: `${key} must be a non-negative number` };
+    }
+    filters[key] = n;
+  }
+  if (filters.amount_exact != null && (filters.amount_min != null || filters.amount_max != null)) {
+    return { ok: false, error: "amount_exact cannot be combined with amount_min/amount_max" };
+  }
+  return { ok: true, filters };
+}
+
 export function buildGroupFlows(
   groupSlug: string,
   filters: FlowsFilters,
@@ -157,33 +188,6 @@ export function buildGroupFlows(
     name: r.name,
     category_slug: r.bucket_slug,
   }));
-  const movementsByAccount = listAccountMovementsForApiBulk(
-    accountEntries.map((e) => e.account_id)
-  );
-  const allRows = assembleFlowRows(accountEntries, movementsByAccount);
-  const filter_options = buildFilterOptions(allRows, true);
-  const filtered = applyFlowFilters(allRows, filters);
-  return { ...paginate(filtered, page, pageSize), filter_options };
-}
-
-/**
- * Global movement search: every account's flows in one filterable list
- * (/search). Same in-memory row assembly as group flows — a few thousand
- * movements, same cost class as `/api/groups/:slug/flows`.
- */
-export function buildAllFlows(
-  filters: FlowsFilters,
-  page: number,
-  pageSize: number
-): FlowsPageResponse {
-  const accountEntries = db
-    .prepare(
-      `SELECT a.id AS account_id, a.name, g.slug AS category_slug
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       ORDER BY a.id`
-    )
-    .all() as { account_id: number; name: string; category_slug: string }[];
   const movementsByAccount = listAccountMovementsForApiBulk(
     accountEntries.map((e) => e.account_id)
   );
