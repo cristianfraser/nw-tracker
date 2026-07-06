@@ -1760,15 +1760,16 @@ export interface ProjectionParams {
   swr_pct: number;
   pct_balance_pct: number;
   monthly_income_clp: number;
+  /** % of the non-invested remainder (RE, cash) liquidated into the drawdown pot at 65. */
+  liquidate_other_pct: number;
+  /** Passive real monthly income during retirement (rent), today's CLP. */
+  monthly_rent_clp: number;
 }
-
-export type ProjectionDrawdownBase = "invested" | "total";
 
 export interface ProjectionsResponse {
   unit: "clp" | "usd";
   fx_clp_per_usd: number;
   params: ProjectionParams;
-  drawdown_base: ProjectionDrawdownBase;
   retire_month: string;
   retire_age: number;
   summary: {
@@ -1776,6 +1777,7 @@ export interface ProjectionsResponse {
     balance_at_retire: number;
     invested_at_retire: number;
     total_at_retire: number;
+    monthly_rent: number;
     swr_monthly_income: number;
     pct_balance_initial_monthly_income: number;
     fixed_monthly_income: number;
