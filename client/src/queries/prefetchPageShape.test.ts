@@ -8,7 +8,6 @@ const minimalPayload: SidebarNavResponse = {
   dashboard: null,
   net_worth: null,
   flows: null,
-  search: null,
   projections: null,
   rates: null,
   main: [
