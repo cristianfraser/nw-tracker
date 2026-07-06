@@ -347,18 +347,15 @@ export function seedNavTree(): void {
     const liabId = (groupIdBySlug.get("liabilities") as { id: number }).id;
     deleteGroupItems.run(liabId);
 
-    // Operational credit cards (cupo / purchases management) outside the Pasivos flow.
-    upsert({
-      slug: "credit_cards",
-      label: "Tarjetas de crédito",
-      label_i18n_key: "creditCards.navTitle",
-      sort_order: 25,
-      route_path: "/credit-cards",
-      active_prefix: "/credit-cards",
-      nav_end: true,
-      show_leaf_hyphen: false,
-      sidebar_section: "main",
-    });
+    // The operational Tarjetas de crédito top-level page was removed (2026-07): cards are
+    // managed from their account pages under Pasivos. Drop the legacy sidebar row.
+    const legacyCreditCards = db
+      .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'credit_cards' AND sidebar_section = 'main'`)
+      .get() as { id: number } | undefined;
+    if (legacyCreditCards) {
+      deleteGroupItems.run(legacyCreditCards.id);
+      db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(legacyCreditCards.id);
+    }
 
     seedLiabilitiesReferenceChartGroups();
     seedCashReferenceChartGroups();

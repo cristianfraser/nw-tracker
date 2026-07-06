@@ -83,31 +83,15 @@ describe("seedNavTree cash_eqs hub", () => {
 });
 
 describe("seedNavTree operational credit cards entry", () => {
-  it("seeds a top-level main-section link to /credit-cards (idempotent)", () => {
+  it("removes the legacy /credit-cards main-section row (page retired; cards live under Pasivos)", () => {
     seedNavTree();
     seedNavTree();
     const rows = db
       .prepare(
-        `SELECT id, parent_id, route_path, active_prefix, sidebar_section, group_kind, nav_end
-         FROM portfolio_groups WHERE slug = 'credit_cards'`
+        `SELECT id FROM portfolio_groups WHERE slug = 'credit_cards' AND sidebar_section = 'main'`
       )
-      .all() as {
-      id: number;
-      parent_id: number | null;
-      route_path: string | null;
-      active_prefix: string | null;
-      sidebar_section: string;
-      group_kind: string;
-      nav_end: number;
-    }[];
-    expect(rows).toHaveLength(1);
-    const node = rows[0]!;
-    expect(node.parent_id).toBeNull();
-    expect(node.route_path).toBe("/credit-cards");
-    expect(node.active_prefix).toBe("/credit-cards");
-    expect(node.sidebar_section).toBe("main");
-    expect(node.group_kind).toBe("bucket");
-    expect(node.nav_end).toBe(1);
+      .all();
+    expect(rows).toHaveLength(0);
   });
 });
 
