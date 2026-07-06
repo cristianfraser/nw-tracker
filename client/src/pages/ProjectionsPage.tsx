@@ -70,6 +70,9 @@ export function ProjectionsPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const [overrides, setOverrides] = useState<Partial<ProjectionParams>>(readStoredOverrides);
+  /** Free-form text while a field is being edited (allows "" mid-edit); committed on change,
+   * cleared on blur so the display snaps back to the effective value. */
+  const [drafts, setDrafts] = useState<Partial<Record<keyof ProjectionParams, string>>>({});
   // Only in-bounds overrides go to the server; invalid fields show inline errors while the
   // chart keeps rendering with the last valid parameters.
   const validOverrides = useMemo(() => {
@@ -86,6 +89,7 @@ export function ProjectionsPage() {
   }, [overrides]);
 
   const setParam = (key: keyof ProjectionParams, raw: string) => {
+    setDrafts((prev) => ({ ...prev, [key]: raw }));
     setOverrides((prev) => {
       const next = { ...prev };
       if (raw.trim() === "") delete next[key];
@@ -93,6 +97,14 @@ export function ProjectionsPage() {
         const n = Number(raw);
         if (Number.isFinite(n)) next[key] = n;
       }
+      return next;
+    });
+  };
+
+  const commitParam = (key: keyof ProjectionParams) => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[key];
       return next;
     });
   };
@@ -145,8 +157,9 @@ export function ProjectionsPage() {
                   width: amount ? "9rem" : "5rem",
                   ...(invalid ? { borderColor: "var(--negative, #ef4444)" } : {}),
                 }}
-                value={raw ?? data.params[key]}
+                value={drafts[key] ?? String(raw ?? data.params[key])}
                 onChange={(e) => setParam(key, e.target.value)}
+                onBlur={() => commitParam(key)}
               />
               {invalid ? (
                 <span className="error" style={{ fontSize: "0.75em" }}>
@@ -160,7 +173,10 @@ export function ProjectionsPage() {
           type="button"
           style={{ alignSelf: "flex-end" }}
           disabled={Object.keys(overrides).length === 0}
-          onClick={() => setOverrides({})}
+          onClick={() => {
+            setOverrides({});
+            setDrafts({});
+          }}
         >
           {t("projections.reset")}
         </button>
