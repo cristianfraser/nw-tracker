@@ -22,6 +22,7 @@ import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
 import { getGroupConsolidatedMonthlyPage, getGroupConsolidatedTables } from "../groupConsolidatedTables.js";
 import {
   buildGroupFlows,
+  parseExtraFlowsFilterParams,
   buildAccountFlows,
   type FlowsFilters,
 } from "../flowsApi.js";
@@ -182,6 +183,12 @@ app.get("/api/groups/:slug/flows", (req, res) => {
   }
   if (typeof req.query.category === "string" && req.query.category.trim()) filters.category = req.query.category.trim();
   if (typeof req.query.q === "string" && req.query.q.trim()) filters.q = req.query.q.trim();
+  const extra = parseExtraFlowsFilterParams(req.query as Record<string, unknown>);
+  if (!extra.ok) {
+    res.status(400).json({ error: extra.error });
+    return;
+  }
+  Object.assign(filters, extra.filters);
   res.json(buildGroupFlows(tabSlug, filters, page, pageSize));
 });
 
@@ -198,6 +205,12 @@ app.get("/api/accounts/:id/flows", (req, res) => {
   if (typeof req.query.type === "string" && req.query.type.trim()) filters.type = req.query.type.trim();
   if (typeof req.query.q === "string" && req.query.q.trim()) filters.q = req.query.q.trim();
   if (req.query.personal_only === "1" || req.query.personal_only === "true") filters.personal_only = true;
+  const extra = parseExtraFlowsFilterParams(req.query as Record<string, unknown>);
+  if (!extra.ok) {
+    res.status(400).json({ error: extra.error });
+    return;
+  }
+  Object.assign(filters, extra.filters);
   const result = buildAccountFlows(id, filters, page, pageSize);
   if (!result) {
     res.status(404).json({ error: "account not found" });
