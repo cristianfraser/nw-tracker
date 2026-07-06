@@ -36,7 +36,6 @@ export const queryKeys = {
   realEstateLinkCandidates: (expenseEntryId: number) =>
     ["realEstateLinkCandidates", expenseEntryId] as const,
   flowsCreditCardExpenses: () => ["flowsCreditCardExpenses"] as const,
-  creditCards: () => ["creditCards"] as const,
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
