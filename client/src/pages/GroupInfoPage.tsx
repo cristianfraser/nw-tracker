@@ -260,7 +260,6 @@ export function GroupInfoPage() {
       colorRgb={navMatchNode.color_rgb}
       colorTarget={pageColorTarget}
       loading={contentLoading}
-      toolbar={<ExportToolbarButton exportPath={`/api/groups/${portfolioGroup}/export.xlsx`} />}
       portfolio={
         dashForStrip
           ? {
@@ -326,6 +325,7 @@ export function GroupInfoPage() {
           <NavAccountsTree root={accountsTreeRoot} titleI18nKey="groupPage.accountsTreeTitle" />
         ) : null
       }
+      exportSlot={<ExportToolbarButton exportPath={`/api/groups/${portfolioGroup}/export.xlsx`} />}
     />
   );
 }
