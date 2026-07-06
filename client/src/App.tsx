@@ -44,6 +44,7 @@ const MirrorPairsPanelPage = lazyPage(
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
 const ProjectionsPage = lazyPage(() => import("./pages/ProjectionsPage"), "ProjectionsPage");
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
+const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"), "NotFoundPage");
 
 export default function App() {
   return (
@@ -95,7 +96,6 @@ function AppTree() {
               <Route path="deposits/reconciliation" element={<DepositsReconciliationPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />
-            <Route path="/search" element={<Navigate to="/" replace />} />
             <Route path="/projections" element={<ProjectionsPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
@@ -110,6 +110,7 @@ function AppTree() {
             <Route path="/income" element={<Navigate to="/flows/income" replace />} />
             <Route path="/expenses" element={<Navigate to="/flows/expenses" replace />} />
             <Route path="/account/:id" element={<AccountDetailPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </Suspense>
           </RouteErrorBoundary>

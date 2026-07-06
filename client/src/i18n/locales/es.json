@@ -1177,5 +1177,10 @@
   "routeError": {
     "title": "Esta página falló al cargar.",
     "retry": "Reintentar"
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "body": "No existe ninguna vista en {{path}}.",
+    "backHome": "Volver al inicio"
   }
 }
