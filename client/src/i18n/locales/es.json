@@ -1163,6 +1163,8 @@
     "title": "Proyecciones",
     "intro": "Una trayectoria en dinero de hoy: acumulación hasta los {{age}} años (retorno real + aporte mensual sobre lo invertido; inmuebles y caja mantienen su valor real) y luego tres estrategias de retiro comparables. La línea nominal usa la inflación de la moneda visible; ambas vistas (CLP/USD del toggle global) comparten la misma trayectoria real.",
     "invalidRange": "Debe estar entre {{min}} y {{max}}",
+    "baseInvested": "Invertido",
+    "baseTotal": "Patrimonio total",
     "reset": "Restablecer",
     "params": {
       "real_return_pct": "Retorno real % (acum.)",
@@ -1173,10 +1175,14 @@
       "end_age": "Edad final",
       "swr_pct": "SWR %",
       "pct_balance_pct": "% del saldo",
-      "monthly_income_clp": "Renta mensual CLP (0 = SWR)"
+      "monthly_income_clp": "Renta mensual CLP (0 = SWR)",
+      "drawdown_base": "Base del retiro"
     },
     "summary": {
       "balanceAtRetire": "Saldo a los {{age}}",
+      "investedLabel": "invertido",
+      "totalLabel": "patrimonio",
+      "strategiesRunOn": "estrategias sobre {{base}}",
       "todaysMoney": "dinero de hoy",
       "swr": "SWR {{pct}}%",
       "pctBalance": "{{pct}}% del saldo",

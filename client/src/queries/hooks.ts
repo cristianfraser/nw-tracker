@@ -711,12 +711,16 @@ export function useFlowsSearch(filters: FlowsQueryFilters) {
 
 export function useProjections(
   unit: "clp" | "usd",
-  overrides: Partial<import("../types").ProjectionParams>
+  overrides: Partial<import("../types").ProjectionParams>,
+  drawdownBase: import("../types").ProjectionDrawdownBase
 ) {
-  const overridesKey = useMemo(() => JSON.stringify(overrides), [overrides]);
+  const overridesKey = useMemo(
+    () => `${drawdownBase}|${JSON.stringify(overrides)}`,
+    [overrides, drawdownBase]
+  );
   return useQuery({
     queryKey: queryKeys.projections(unit, overridesKey),
-    queryFn: () => api.projections(unit, overrides),
+    queryFn: () => api.projections(unit, overrides, drawdownBase),
     placeholderData: (prev) => prev,
   });
 }

@@ -95,12 +95,18 @@ export type ProjectionEngineInput = {
   pct_balance_pct: number;
   /** Fixed real monthly income; 0 → replaced by the SWR income at retirement. */
   monthly_income: number;
+  /** What the drawdown strategies run on: the invested portfolio only (FIRE framing —
+   * RE/cash keep their real value on the side) or the total balance. */
+  drawdown_base: "invested" | "total";
 };
 
 export type ProjectionEngineResult = {
   points: Record<string, string | number | null>[];
   retire_month: string;
+  /** The drawdown base at the retirement month (invested or total, per `drawdown_base`). */
   balance_at_retire: number;
+  invested_at_retire: number;
+  total_at_retire: number;
   swr_monthly_income: number;
   pct_balance_initial_monthly_income: number;
   fixed_monthly_income: number;
@@ -132,11 +138,14 @@ export function runProjectionEngine(input: ProjectionEngineInput): ProjectionEng
     points.push({
       as_of_date: monthEndYmd(mk),
       proj_nw: Math.round(real),
+      proj_invested: Math.round(invested),
       proj_nw_nominal: Math.round(real * Math.pow(1 + inflM, monthsFromStart)),
     });
   }
 
-  const balanceAtRetire = invested + other;
+  const investedAtRetire = invested;
+  const totalAtRetire = invested + other;
+  const balanceAtRetire = input.drawdown_base === "total" ? totalAtRetire : investedAtRetire;
   const swrMonthly = (balanceAtRetire * input.swr_pct) / 100 / 12;
   const fixedMonthly = input.monthly_income > 0 ? input.monthly_income : swrMonthly;
   const pctInitialMonthly = (balanceAtRetire * input.pct_balance_pct) / 100 / 12;
@@ -179,6 +188,8 @@ export function runProjectionEngine(input: ProjectionEngineInput): ProjectionEng
     points,
     retire_month: retireMonth,
     balance_at_retire: Math.round(balanceAtRetire),
+    invested_at_retire: Math.round(investedAtRetire),
+    total_at_retire: Math.round(totalAtRetire),
     swr_monthly_income: Math.round(swrMonthly),
     pct_balance_initial_monthly_income: Math.round(pctInitialMonthly),
     fixed_monthly_income: Math.round(fixedMonthly),
@@ -219,13 +230,20 @@ const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "re
   { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
   { dataKey: "invested", name: "Invertido", valueSeriesType: "data" },
   { dataKey: "proj_nw", name: "Proyección (real)", valueSeriesType: "reference" },
+  { dataKey: "proj_invested", name: "Invertido (proyección)", valueSeriesType: "reference" },
   { dataKey: "proj_nw_nominal", name: "Proyección (nominal)", valueSeriesType: "reference" },
   { dataKey: "proj_swr", name: "Retiro SWR", valueSeriesType: "reference" },
   { dataKey: "proj_pct_balance", name: "Retiro % del saldo", valueSeriesType: "reference" },
   { dataKey: "proj_fixed_income", name: "Retiro renta fija", valueSeriesType: "reference" },
 ];
 
-export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) {
+export type ProjectionDrawdownBase = "invested" | "total";
+
+export function buildProjectionsPayload(
+  unit: TsUnit,
+  params: ProjectionParams,
+  drawdownBase: ProjectionDrawdownBase = "invested"
+) {
   const fxRow = fxRowOnOrBefore(chileCalendarTodayYmd());
   if (!fxRow) throw new Error("no fx_daily row available (run backfill:yahoo-fx-usd)");
   const fx = fxRow.clp_per_usd;
@@ -254,6 +272,7 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
     swr_pct: params.swr_pct,
     pct_balance_pct: params.pct_balance_pct,
     monthly_income: toUnit(params.monthly_income_clp),
+    drawdown_base: drawdownBase,
   });
 
   // Milestones as constant reference columns over the whole x-range (USD levels; CLP view
@@ -282,10 +301,13 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
     unit,
     fx_clp_per_usd: fx,
     params,
+    drawdown_base: drawdownBase,
     retire_month: engine.retire_month,
     retire_age: PROJECTION_RETIRE_AGE,
     summary: {
       balance_at_retire: engine.balance_at_retire,
+      invested_at_retire: engine.invested_at_retire,
+      total_at_retire: engine.total_at_retire,
       swr_monthly_income: engine.swr_monthly_income,
       pct_balance_initial_monthly_income: engine.pct_balance_initial_monthly_income,
       fixed_monthly_income: engine.fixed_monthly_income,
