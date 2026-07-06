@@ -5,6 +5,7 @@ import {
   defaultMonthlyAporteClp,
   PROJECTION_DEFAULTS,
   PROJECTION_PARAM_BOUNDS,
+  type ProjectionDrawdownBase,
   type ProjectionParams,
 } from "../projections.js";
 
@@ -26,6 +27,12 @@ export function registerProjectionsRoutes(app: express.Express): void {
       }
       params[key] = n;
     }
-    res.json(buildProjectionsPayload(unit, params));
+    const baseRaw = req.query.drawdown_base;
+    if (baseRaw != null && baseRaw !== "" && baseRaw !== "invested" && baseRaw !== "total") {
+      res.status(400).json({ error: "drawdown_base must be invested or total" });
+      return;
+    }
+    const drawdownBase: ProjectionDrawdownBase = baseRaw === "total" ? "total" : "invested";
+    res.json(buildProjectionsPayload(unit, params, drawdownBase));
   });
 }

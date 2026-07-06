@@ -9,9 +9,10 @@ import {
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency } from "../format";
 import { useProjections } from "../queries/hooks";
-import type { ProjectionParams } from "../types";
+import type { ProjectionDrawdownBase, ProjectionParams } from "../types";
 
 const LS_KEY = "nw-tracker.projections.overrides";
+const LS_BASE_KEY = "nw-tracker.projections.drawdownBase";
 
 /** Mirrors the server's PROJECTION_PARAM_BOUNDS (projections.ts) — out-of-range overrides
  * never reach the request; the field shows an inline error instead of a blocking 400. */
@@ -49,6 +50,7 @@ const LINE_STYLE: Record<string, { stroke: string; width: number }> = {
   total_nw: { stroke: "var(--accent)", width: 2 },
   invested: { stroke: "#8b5cf6", width: 1.5 },
   proj_nw: { stroke: "#22c55e", width: 2 },
+  proj_invested: { stroke: "#8b5cf6", width: 2 },
   proj_nw_nominal: { stroke: "#166534", width: 1 },
   proj_swr: { stroke: "#eab308", width: 1.5 },
   proj_pct_balance: { stroke: "#f97316", width: 1.5 },
@@ -73,6 +75,9 @@ export function ProjectionsPage() {
   /** Free-form text while a field is being edited (allows "" mid-edit); committed on change,
    * cleared on blur so the display snaps back to the effective value. */
   const [drafts, setDrafts] = useState<Partial<Record<keyof ProjectionParams, string>>>({});
+  const [drawdownBase, setDrawdownBase] = useState<ProjectionDrawdownBase>(() =>
+    localStorage.getItem(LS_BASE_KEY) === "total" ? "total" : "invested"
+  );
   // Only in-bounds overrides go to the server; invalid fields show inline errors while the
   // chart keeps rendering with the last valid parameters.
   const validOverrides = useMemo(() => {
@@ -82,7 +87,11 @@ export function ProjectionsPage() {
     }
     return out;
   }, [overrides]);
-  const { data, error, isPending } = useProjections(displayUnit, validOverrides);
+  const { data, error, isPending } = useProjections(displayUnit, validOverrides, drawdownBase);
+
+  useEffect(() => {
+    localStorage.setItem(LS_BASE_KEY, drawdownBase);
+  }, [drawdownBase]);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(overrides));
@@ -169,6 +178,18 @@ export function ProjectionsPage() {
             </label>
           );
         })}
+        <label style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+          <span className="muted" style={{ fontSize: "0.8em" }}>
+            {t("projections.params.drawdown_base")}
+          </span>
+          <select
+            value={drawdownBase}
+            onChange={(e) => setDrawdownBase(e.target.value === "total" ? "total" : "invested")}
+          >
+            <option value="invested">{t("projections.baseInvested")}</option>
+            <option value="total">{t("projections.baseTotal")}</option>
+          </select>
+        </label>
         <button
           type="button"
           style={{ alignSelf: "flex-end" }}
@@ -185,8 +206,15 @@ export function ProjectionsPage() {
       <section style={{ margin: "1rem 0" }}>
         <p>
           <strong>{t("projections.summary.balanceAtRetire", { age: data.retire_age })}:</strong>{" "}
-          {money(s.balance_at_retire)}{" "}
-          <span className="muted">({t("projections.summary.todaysMoney")})</span>
+          {t("projections.summary.investedLabel")} {money(s.invested_at_retire)} ·{" "}
+          {t("projections.summary.totalLabel")} {money(s.total_at_retire)}{" "}
+          <span className="muted">
+            ({t("projections.summary.todaysMoney")};{" "}
+            {t("projections.summary.strategiesRunOn", {
+              base: t(drawdownBase === "total" ? "projections.baseTotal" : "projections.baseInvested"),
+            })}
+            )
+          </span>
         </p>
         <p>
           <strong>{t("projections.summary.swr", { pct: validOverrides.swr_pct ?? data.params.swr_pct })}:</strong>{" "}

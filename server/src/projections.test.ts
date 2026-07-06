@@ -18,6 +18,7 @@ const BASE: ProjectionEngineInput = {
   swr_pct: 4,
   pct_balance_pct: 5,
   monthly_income: 0,
+  drawdown_base: "total",
 };
 
 describe("runProjectionEngine", () => {
@@ -86,6 +87,20 @@ describe("runProjectionEngine", () => {
     expect(String(firstSwr!.as_of_date).slice(0, 7)).toBe("2057-01");
     const lastPoint = r.points[r.points.length - 1]!;
     expect(String(lastPoint.as_of_date).slice(0, 7)).toBe("2087-01");
+  });
+
+  it("emits the invested projection line; drawdown base switches between invested and total", () => {
+    const total = runProjectionEngine(BASE);
+    // proj_invested = proj_nw − flat "other" (100M) at every accumulation point
+    const acc = total.points.filter((p) => p.proj_nw != null);
+    expect(acc.every((p) => Number(p.proj_nw) - Number(p.proj_invested) === 100_000_000)).toBe(true);
+    expect(total.balance_at_retire).toBe(total.total_at_retire);
+
+    const investedBase = runProjectionEngine({ ...BASE, drawdown_base: "invested" });
+    expect(investedBase.balance_at_retire).toBe(investedBase.invested_at_retire);
+    expect(investedBase.invested_at_retire).toBe(investedBase.total_at_retire - 100_000_000);
+    // smaller base → smaller SWR income
+    expect(investedBase.swr_monthly_income).toBeLessThan(total.swr_monthly_income);
   });
 
   it("throws when the start month is past retirement", () => {
