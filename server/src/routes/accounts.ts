@@ -10,6 +10,7 @@ import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
   getStateContributionInflowEventsForAccount,
+  pocketDepositsClpForAccount,
   totalDepositsClpForAccount,
   totalDisplayDepositsClpForAccount,
   totalStateContributionsClpForAccount,
@@ -24,10 +25,6 @@ import { getAccountPositionMeta } from "../accountPosition.js";
 import { accountUsesEquityMtm } from "../brokerageEquityMtm.js";
 import { equityTickerForAccount } from "../accountEquityTicker.js";
 import { equityQuoteCurrency } from "../equityQuote.js";
-import {
-  pocketDepositsClpForAccount,
-  totalDividendsReinvestedClpForAccount,
-} from "../equityDividendReinvested.js";
 import { syncEquityEodFromYahoo } from "../equityEodSync.js";
 import { createPanelAccount, type PanelAccountCreateBody } from "../createPanelAccount.js";
 import { NOTE_STOCKS_LEGACY } from "../brokerageAcciones.js";
@@ -464,7 +461,6 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
   ).c;
   const accountRow = accountRowForId(id);
   const deposits_clp = pocketDepositsClpForAccount(id);
-  const deposits_full_clp = totalDepositsClpForAccount(id);
   let latest = await latestValuationDisplayForAccount(id, bucketKind || null, {
     notes: metaRow?.account_notes ?? null,
     name: metaRow?.account_name ?? null,
@@ -511,10 +507,6 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
       ? equityQuoteCurrency(equityTickerForSummary)
       : null,
     deposits_clp,
-    deposits_full_clp: accountUsesEquityMtm(id) ? deposits_full_clp : undefined,
-    dividends_reinvested_clp: accountUsesEquityMtm(id)
-      ? totalDividendsReinvestedClpForAccount(id)
-      : undefined,
     withdrawals_clp,
     latest_valuation_clp,
     latest_valuation_date,

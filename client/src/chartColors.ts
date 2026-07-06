@@ -207,8 +207,6 @@ export type LineSeriesColorInput = {
   /** Server `portfolio_groups` color (`r,g,b`) when provided. */
   color_rgb?: string;
   isDeposit?: boolean;
-  /** Personal-only cumulative deposits (dashed in chart). */
-  isDisplayDeposit?: boolean;
   /** Dashed overlay (e.g. USD milestone lines on patrimonio chart). */
   isReferenceOverlay?: boolean;
 };
@@ -413,7 +411,7 @@ function isLiabilitiesCreditCardAccountName(name: string): boolean {
 /** Minimal series identity for color maps (perf bars, legends — not necessarily valuation lines). */
 export type ChartSeriesColorKey = Pick<
   TimeseriesAccountLine,
-  "account_id" | "name" | "dataKey" | "depositDataKey" | "displayDepositDataKey" | "color_rgb"
+  "account_id" | "name" | "dataKey" | "depositDataKey" | "color_rgb"
 >;
 
 /** Line chart (dataKey) + pie (account_id) use the same map on class tabs. */

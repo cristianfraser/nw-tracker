@@ -91,7 +91,7 @@ export function StandardAccountDetailPage({ data }: Props) {
     showMortgagePaymentForm;
   const showPositionBlock =
     !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
-  const showEquityReturnColumns = summary.position?.cost_basis_clp != null;
+  const showEquityReturnColumns = summary.position?.dividends_clp != null;
   const ccChartsFromParsedLedger =
     summary.category_slug === "credit_card" && data.ccLedger.has_installment_ledger;
 
@@ -169,10 +169,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                       : t("accountDetail.position.colDeposited")}
                   </th>
                   {showEquityReturnColumns ? (
-                    <>
-                      <th>{t("accountDetail.equityPosition.dividendsReinvested")}</th>
-                      <th>{t("accountDetail.equityPosition.costBasis")}</th>
-                    </>
+                    <th>{t("accountDetail.equityPosition.dividends")}</th>
                   ) : null}
                   <th>Valor hoy (CLP)</th>
                   <th>Fecha valor</th>
@@ -181,7 +178,6 @@ export function StandardAccountDetailPage({ data }: Props) {
                     <>
                       <th>{t("accountDetail.equityPosition.totalReturn")}</th>
                       <th>{t("accountDetail.equityPosition.returnOnDeposited")}</th>
-                      <th>{t("accountDetail.equityPosition.naiveGain")}</th>
                     </>
                   ) : null}
                 </tr>
@@ -202,12 +198,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               </td>
               <td className="mono">{formatClp(summary.position?.deposited_clp ?? summary.deposits_clp)}</td>
               {showEquityReturnColumns ? (
-                <>
-                  <td className="mono">
-                    {formatClp(summary.position?.dividends_reinvested_clp ?? 0)}
-                  </td>
-                  <td className="mono">{formatClp(summary.position?.cost_basis_clp ?? 0)}</td>
-                </>
+                <td className="mono">{formatClp(summary.position?.dividends_clp ?? 0)}</td>
               ) : null}
               <td className="mono">
                 {(() => {
@@ -233,11 +224,6 @@ export function StandardAccountDetailPage({ data }: Props) {
                   <td className="mono">
                     {summary.position?.return_on_deposited_pct != null
                       ? formatPct(summary.position.return_on_deposited_pct * 100)
-                      : "—"}
-                  </td>
-                  <td className="mono">
-                    {summary.position?.naive_gain_clp != null
-                      ? formatClp(summary.position.naive_gain_clp)
                       : "—"}
                   </td>
                 </>

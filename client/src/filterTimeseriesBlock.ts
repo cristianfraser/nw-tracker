@@ -3,11 +3,9 @@ import type { TimeseriesBlock } from "./types";
 function seriesKeysForAccount(line: {
   dataKey: string;
   depositDataKey?: string;
-  displayDepositDataKey?: string;
 }): string[] {
   const keys = [line.dataKey];
   if (line.depositDataKey) keys.push(line.depositDataKey);
-  if (line.displayDepositDataKey) keys.push(line.displayDepositDataKey);
   return keys;
 }
 

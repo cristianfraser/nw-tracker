@@ -3,6 +3,10 @@
  * (post USD-cash migration). CLP equivalents at payment date feed chart aportes + P/L.
  * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries amount_clp
  * (no amount_usd) and counts as a `clp_wire` capital flow at face value.
+ *
+ * Dividends reduce cost basis: `dividend_payout` is a negative capital flow on the stock;
+ * `dividend_usd` (DRIP — the row carries both the dividend and the reinvested units) nets
+ * to zero capital and emits nothing.
  */
 
 import type { DepositInflowEvent } from "./accountDeposits.js";
@@ -10,8 +14,6 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
 
-const DRIP_USD_TOLERANCE = 0.02;
-const DRIP_MAX_DAYS_AFTER_DIVIDEND = 45;
 const FX_WIRE_USD_TOLERANCE = 0.02;
 
 export type EquityCapitalKind = "clp_wire" | "usd_reference";
@@ -32,13 +34,6 @@ type TransferCapitalRow = {
   amount_usd: number | null;
   amount_clp: number | null;
   flow_kind: string;
-};
-
-type DividendRow = {
-  id: number;
-  account_id: number;
-  occurred_on: string;
-  amount_usd: number;
 };
 
 type ClpWireLeg = { clp: number; usd: number };
@@ -93,7 +88,8 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
 
 /**
  * Cash dividends paid out to USD cash (`dividend_payout` transfer, stock = `from_account_id`).
- * Treated as a return of capital: reduces the stock's deposited / cost-basis line (units unchanged).
+ * A negative deposit: steps the stock's aportes / cost-basis line down (units unchanged).
+ * If the cash is later re-invested, the `stock_buy` counts +X → −dividend +buy = net zero.
  */
 function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
   if (accountIds.length === 0) return [];
@@ -112,20 +108,27 @@ function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
     .all(...accountIds) as TransferCapitalRow[];
 }
 
-function loadDividendUsdRows(accountIds: number[]): DividendRow[] {
-  if (accountIds.length === 0) return [];
+/**
+ * `dividend_usd` must carry the reinvested units (DRIP) — that's what makes it capital-neutral.
+ * A unitless row would be dividend cash this model can't place; record those as `dividend_payout`.
+ */
+function assertNoUnitlessDividendUsd(accountIds: number[]): void {
+  if (accountIds.length === 0) return;
   const ph = accountIds.map(() => "?").join(",");
-  return db
+  const bad = db
     .prepare(
-      `SELECT id, account_id, occurred_on, amount_usd
-       FROM movements
+      `SELECT id FROM movements
        WHERE account_id IN (${ph})
          AND flow_kind = 'dividend_usd'
-         AND amount_usd IS NOT NULL
-         AND amount_usd != 0
-       ORDER BY occurred_on, id`
+         AND ABS(COALESCE(units_delta, 0)) < 1e-12
+       LIMIT 1`
     )
-    .all(...accountIds) as DividendRow[];
+    .get(...accountIds) as { id: number } | undefined;
+  if (bad) {
+    throw new Error(
+      `dividend_usd movement ${bad.id} has no units_delta — a DRIP row must carry the reinvested units; record cash dividends as dividend_payout`
+    );
+  }
 }
 
 function findClpWireForStockBuy(
@@ -211,94 +214,22 @@ function stockBuyCapitalFlow(row: TransferCapitalRow): EquityCapitalSortFlow | n
   return usdReferenceFlow(row, 1);
 }
 
-function daysBetweenYmd(fromYmd: string, toYmd: string): number {
-  const a = Date.parse(`${fromYmd}T12:00:00Z`);
-  const b = Date.parse(`${toYmd}T12:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.POSITIVE_INFINITY;
-  return Math.round((b - a) / 86_400_000);
-}
-
-function dripUsdAttributedToBuy(
-  buyUsd: number,
-  buyOccurredOn: string,
-  dividends: DividendRow[] | undefined,
-  consumed: Set<number>
-): number {
-  if (!dividends?.length) return 0;
-  const buyMag = Math.abs(buyUsd);
-  for (const d of dividends) {
-    if (consumed.has(d.id)) continue;
-    const divMag = Math.abs(d.amount_usd);
-    const days = daysBetweenYmd(d.occurred_on, buyOccurredOn);
-    if (days < 0 || days > DRIP_MAX_DAYS_AFTER_DIVIDEND) continue;
-    if (Math.abs(buyMag - divMag) <= DRIP_USD_TOLERANCE) {
-      consumed.add(d.id);
-      return buyMag;
-    }
-    if (buyMag > divMag + DRIP_USD_TOLERANCE) {
-      consumed.add(d.id);
-      return divMag;
-    }
-  }
-  return 0;
-}
-
 /**
- * Capital in/out from stock_buy / stock_sell transfers.
+ * Capital in/out from stock_buy / stock_sell transfers plus dividend_payout returns of capital.
  * CLP wire buys use actual `compra_usd*` CLP; USD-only rotation uses reference CLP at mid.
  */
 export function loadEquityBrokerageCapitalSortFlows(
-  accountIds: number[],
-  personalOnly: boolean
+  accountIds: number[]
 ): Map<number, EquityCapitalSortFlow[]> {
   const mtmIds = equityMtmAccountIds(accountIds);
   const out = new Map<number, EquityCapitalSortFlow[]>();
   if (mtmIds.length === 0) return out;
+  assertNoUnitlessDividendUsd(mtmIds);
 
   const buys = loadStockBuyCapitalRows(mtmIds);
   const sells = loadStockSellCapitalRows(mtmIds);
-  const dividendsByAccount = personalOnly
-    ? (() => {
-        const m = new Map<number, DividendRow[]>();
-        for (const d of loadDividendUsdRows(mtmIds)) {
-          if (!m.has(d.account_id)) m.set(d.account_id, []);
-          m.get(d.account_id)!.push(d);
-        }
-        for (const list of m.values()) {
-          list.sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
-        }
-        return m;
-      })()
-    : null;
-  const consumedDividends = new Map<number, Set<number>>();
 
   for (const row of buys) {
-    if (personalOnly && dividendsByAccount && row.amount_usd != null && row.amount_usd !== 0) {
-      const divs = dividendsByAccount.get(row.account_id);
-      if (!consumedDividends.has(row.account_id)) consumedDividends.set(row.account_id, new Set());
-      const dripUsd = dripUsdAttributedToBuy(
-        row.amount_usd,
-        row.occurred_on,
-        divs,
-        consumedDividends.get(row.account_id)!
-      );
-      if (dripUsd > 0) {
-        const pocketUsd = Math.abs(row.amount_usd) - dripUsd;
-        if (pocketUsd <= DRIP_USD_TOLERANCE) continue;
-        const refClp = usdToClpReferenceRounded(pocketUsd, row.occurred_on);
-        if (refClp == null || !Number.isFinite(refClp) || refClp === 0) continue;
-        if (!out.has(row.account_id)) out.set(row.account_id, []);
-        out.get(row.account_id)!.push({
-          occurred_on: row.occurred_on,
-          amt: refClp,
-          amt_usd: pocketUsd,
-          capital_kind: "usd_reference",
-          tie: `t:${row.id}`,
-        });
-        continue;
-      }
-    }
-
     const flow = stockBuyCapitalFlow(row);
     if (!flow || flow.amt === 0 || !Number.isFinite(flow.amt)) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
@@ -315,7 +246,7 @@ export function loadEquityBrokerageCapitalSortFlows(
     out.get(row.account_id)!.push(flow);
   }
 
-  // Cash dividends: return of capital → reduce deposited / cost basis at the USD reference rate.
+  // Cash dividends: negative deposit → reduce deposited / cost basis at the USD reference rate.
   for (const row of loadDividendPayoutRows(mtmIds)) {
     const flow = usdReferenceFlow(row, -1);
     if (!flow) continue;
@@ -327,10 +258,9 @@ export function loadEquityBrokerageCapitalSortFlows(
 }
 
 export function loadEquityBrokerageCapitalInflowEvents(
-  accountIds: number[],
-  personalOnly: boolean
+  accountIds: number[]
 ): Map<number, DepositInflowEvent[]> {
-  const map = loadEquityBrokerageCapitalSortFlows(accountIds, personalOnly);
+  const map = loadEquityBrokerageCapitalSortFlows(accountIds);
   const out = new Map<number, DepositInflowEvent[]>();
   for (const [id, flows] of map) {
     const sorted = [...flows].sort(
