@@ -5,6 +5,7 @@ import { LineChartPanel, ValuationLineCharts } from "../components/charts/Valuat
 import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { ExportToolbarButton } from "../components/export/ExportModal";
 import {
   prefetchAccountsByPortfolioGroup,
   prefetchDashboardBundle,
@@ -557,6 +558,7 @@ export function DashboardPage() {
           />
         ) : null
       }
+      exportSlot={<ExportToolbarButton exportPath="/api/groups/net_worth/export.xlsx" />}
     />
   );
 }
