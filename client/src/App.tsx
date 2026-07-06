@@ -76,12 +76,7 @@ function AppTree() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
-            <Route path="/retirement" element={<Navigate to="/inversiones/retiro" replace />} />
-            <Route path="/retirement/*" element={<Navigate to="/inversiones/retiro" replace />} />
-            <Route path="/brokerage" element={<Navigate to="/inversiones/brokerage" replace />} />
-            <Route path="/brokerage/*" element={<Navigate to="/inversiones/brokerage" replace />} />
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
-            <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
@@ -106,9 +101,6 @@ function AppTree() {
               <Route path="mirror-pairs" element={<MirrorPairsPanelPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
-            <Route path="/messages" element={<Navigate to="/panel/notifications" replace />} />
-            <Route path="/income" element={<Navigate to="/flows/income" replace />} />
-            <Route path="/expenses" element={<Navigate to="/flows/expenses" replace />} />
             <Route path="/account/:id" element={<AccountDetailPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
