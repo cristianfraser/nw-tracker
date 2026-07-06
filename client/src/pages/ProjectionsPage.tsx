@@ -13,6 +13,25 @@ import type { ProjectionParams } from "../types";
 
 const LS_KEY = "nw-tracker.projections.overrides";
 
+/** Mirrors the server's PROJECTION_PARAM_BOUNDS (projections.ts) — out-of-range overrides
+ * never reach the request; the field shows an inline error instead of a blocking 400. */
+const PARAM_BOUNDS: Record<keyof ProjectionParams, [number, number]> = {
+  real_return_pct: [-5, 20],
+  monthly_aporte_clp: [0, 1_000_000_000],
+  inflation_clp_pct: [0, 30],
+  inflation_usd_pct: [0, 30],
+  retire_return_pct: [-5, 20],
+  end_age: [66, 110],
+  swr_pct: [0, 25],
+  pct_balance_pct: [0, 25],
+  monthly_income_clp: [0, 1_000_000_000],
+};
+
+function isInBounds(key: keyof ProjectionParams, v: number): boolean {
+  const [min, max] = PARAM_BOUNDS[key];
+  return v >= min && v <= max;
+}
+
 /** Assumption fields in display order; CLP-amount fields get a wider input. */
 const PARAM_FIELDS: { key: keyof ProjectionParams; amount?: boolean; step?: number }[] = [
   { key: "real_return_pct", step: 0.5 },
@@ -51,7 +70,16 @@ export function ProjectionsPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const [overrides, setOverrides] = useState<Partial<ProjectionParams>>(readStoredOverrides);
-  const { data, error, isPending } = useProjections(displayUnit, overrides);
+  // Only in-bounds overrides go to the server; invalid fields show inline errors while the
+  // chart keeps rendering with the last valid parameters.
+  const validOverrides = useMemo(() => {
+    const out: Partial<ProjectionParams> = {};
+    for (const [k, v] of Object.entries(overrides) as [keyof ProjectionParams, number][]) {
+      if (typeof v === "number" && Number.isFinite(v) && isInBounds(k, v)) out[k] = v;
+    }
+    return out;
+  }, [overrides]);
+  const { data, error, isPending } = useProjections(displayUnit, validOverrides);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(overrides));
@@ -98,21 +126,36 @@ export function ProjectionsPage() {
       <p className="muted">{t("projections.intro", { age: data.retire_age })}</p>
 
       <div className="flows-filters" style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-        {PARAM_FIELDS.map(({ key, amount, step }) => (
-          <label key={key} style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
-            <span className="muted" style={{ fontSize: "0.8em" }}>
-              {t(`projections.params.${key}`)}
-            </span>
-            <input
-              type="number"
-              step={step ?? 1}
-              size={amount ? 12 : 6}
-              style={{ width: amount ? "9rem" : "5rem" }}
-              value={overrides[key] ?? data.params[key]}
-              onChange={(e) => setParam(key, e.target.value)}
-            />
-          </label>
-        ))}
+        {PARAM_FIELDS.map(({ key, amount, step }) => {
+          const raw = overrides[key];
+          const invalid = raw != null && !isInBounds(key, raw);
+          const [min, max] = PARAM_BOUNDS[key];
+          return (
+            <label key={key} style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+              <span className="muted" style={{ fontSize: "0.8em" }}>
+                {t(`projections.params.${key}`)}
+              </span>
+              <input
+                type="number"
+                step={step ?? 1}
+                min={min}
+                max={max}
+                size={amount ? 12 : 6}
+                style={{
+                  width: amount ? "9rem" : "5rem",
+                  ...(invalid ? { borderColor: "var(--negative, #ef4444)" } : {}),
+                }}
+                value={raw ?? data.params[key]}
+                onChange={(e) => setParam(key, e.target.value)}
+              />
+              {invalid ? (
+                <span className="error" style={{ fontSize: "0.75em" }}>
+                  {t("projections.invalidRange", { min, max })}
+                </span>
+              ) : null}
+            </label>
+          );
+        })}
         <button
           type="button"
           style={{ alignSelf: "flex-end" }}
@@ -130,17 +173,17 @@ export function ProjectionsPage() {
           <span className="muted">({t("projections.summary.todaysMoney")})</span>
         </p>
         <p>
-          <strong>{t("projections.summary.swr", { pct: overrides.swr_pct ?? data.params.swr_pct })}:</strong>{" "}
+          <strong>{t("projections.summary.swr", { pct: validOverrides.swr_pct ?? data.params.swr_pct })}:</strong>{" "}
           {t("projections.summary.income", { amount: money(s.swr_monthly_income) })}{" "}
           {s.swr_depletion_age != null ? (
             <span className="error">{t("projections.summary.depletes", { age: s.swr_depletion_age })}</span>
           ) : (
-            <span className="muted">{t("projections.summary.lasts", { age: overrides.end_age ?? data.params.end_age })}</span>
+            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data.params.end_age })}</span>
           )}
         </p>
         <p>
           <strong>
-            {t("projections.summary.pctBalance", { pct: overrides.pct_balance_pct ?? data.params.pct_balance_pct })}:
+            {t("projections.summary.pctBalance", { pct: validOverrides.pct_balance_pct ?? data.params.pct_balance_pct })}:
           </strong>{" "}
           {t("projections.summary.initialIncome", { amount: money(s.pct_balance_initial_monthly_income) })}{" "}
           <span className="muted">{t("projections.summary.neverDepletes")}</span>
@@ -153,7 +196,7 @@ export function ProjectionsPage() {
               {t("projections.summary.depletes", { age: s.fixed_income_depletion_age })}
             </span>
           ) : (
-            <span className="muted">{t("projections.summary.lasts", { age: overrides.end_age ?? data.params.end_age })}</span>
+            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data.params.end_age })}</span>
           )}
         </p>
       </section>
