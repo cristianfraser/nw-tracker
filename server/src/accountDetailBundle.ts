@@ -2,7 +2,7 @@ import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
   getStateContributionInflowEventsForAccount,
-  totalDepositsClpForAccount,
+  pocketDepositsClpForAccount,
   totalDisplayDepositsClpForAccount,
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
@@ -28,12 +28,7 @@ import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId } from "./portfolioGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
-import {
-  equityReturnSnapshot,
-  getDividendReinvestedInflowEventsForAccount,
-  pocketDepositsClpForAccount,
-  totalDividendsReinvestedClpForAccount,
-} from "./equityDividendReinvested.js";
+import { equityReturnSnapshot } from "./equityReturns.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -144,7 +139,6 @@ export async function buildAccountDetailBundle(
       : cat.bucket_label;
 
   const deposits_clp = pocketDepositsClpForAccount(accountId);
-  const deposits_full_clp = totalDepositsClpForAccount(accountId);
   let latest = await latestValuationDisplayForAccount(accountId, category_slug, {
     notes: cat.account_notes,
     name: cat.account_name,
@@ -188,10 +182,6 @@ export async function buildAccountDetailBundle(
     group_peer_count: cat.group_peer_count,
     equity_quote_currency: bundleEquityTicker ? equityQuoteCurrency(bundleEquityTicker) : null,
     deposits_clp,
-    deposits_full_clp: accountUsesEquityMtm(accountId) ? deposits_full_clp : undefined,
-    dividends_reinvested_clp: accountUsesEquityMtm(accountId)
-      ? totalDividendsReinvestedClpForAccount(accountId)
-      : undefined,
     withdrawals_clp,
     latest_valuation_clp,
     latest_valuation_date,
@@ -206,14 +196,9 @@ export async function buildAccountDetailBundle(
 
   const events = getMergedDepositInflowEventsForAccount(accountId);
   const displayEvents = getMergedDisplayDepositInflowEventsForAccount(accountId);
-  const dividendEvents = accountUsesEquityMtm(accountId)
-    ? getDividendReinvestedInflowEventsForAccount(accountId)
-    : [];
   const stateEvents = getStateContributionInflowEventsForAccount(accountId);
   const total_clp = deposits_clp;
   const display_total_clp = totalDisplayDepositsClpForAccount(accountId);
-  const dividends_reinvested_total_clp = dividendEvents.reduce((s, e) => s + e.amt, 0);
-  const cost_basis_total_clp = total_clp + dividends_reinvested_total_clp;
   let cumulative_clp = 0;
   const events_with_cumulative = events.map((e) => {
     cumulative_clp += e.amt;
@@ -233,17 +218,8 @@ export async function buildAccountDetailBundle(
     account_id: accountId,
     total_clp,
     display_total_clp,
-    dividends_reinvested_total_clp,
-    cost_basis_total_clp,
     events: events_with_cumulative,
     display_events,
-    dividend_events: (() => {
-      let cumulative = 0;
-      return dividendEvents.map((e) => {
-        cumulative += e.amt;
-        return { occurred_on: e.occurred_on, amt_clp: e.amt, cumulative_clp: cumulative };
-      });
-    })(),
     state_contribution_total_clp: totalStateContributionsClpForAccount(accountId),
     state_contribution_events,
   };

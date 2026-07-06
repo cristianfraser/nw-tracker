@@ -7,7 +7,6 @@ import {
 } from "./accountDeposits.js";
 import { depositInflowEventUsd } from "./flowsDeposits.js";
 import { deptoAccountMarkClpAtYmd, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { loadDividendReinvestedInflowEvents } from "./equityDividendReinvested.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
@@ -46,14 +45,13 @@ import {
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
-  ccLedgerStatementClosingPointsClp,
   ccLedgerStatementClosingPointsClpForAccounts,
   latestCreditCardBillingBalanceTotalClp,
 } from "./ccCreditCardValuations.js";
+import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
 import { cacheKeyGroupClosingByDate, getAggregationCached } from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
-import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import {
   colorRgbForSyntheticAccountLine,
   syntheticGroupColorRgbMapForValuationGroup,
@@ -116,9 +114,6 @@ type AccountLine = {
   depositDataKey?: string;
   /** Legend label for the cumulative deposit line (client default: "aportes acum."). */
   deposit_series_name?: string;
-  /** Cumulative personal deposits (excludes APV-A state bonus) when that bonus exists. */
-  displayDepositDataKey?: string;
-  display_deposit_series_name?: string;
   /** When true, omitted from class “Total” and dashboard bucket lines; still plotted as its own series. */
   exclude_from_group_totals?: boolean;
 };
@@ -809,7 +804,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const chartMetaById = accountChartMetaById(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
-  const dividendDepMovs = loadDividendReinvestedInflowEvents(allIds);
   if (dateStrs.length > 0) {
     const minD = dateStrs[0]!;
     // Manual `valuations` rows can lag the ledgers (e.g. last row on the 8th, deposit on the
@@ -822,7 +816,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       for (const ev of [
         ...(depMovs.get(id) ?? []),
         ...(displayDepMovs.get(id) ?? []),
-        ...(dividendDepMovs.get(id) ?? []),
       ]) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(ev.occurred_on)) continue;
         const me = monthEndUtcYmd(monthKeyFromYmd(ev.occurred_on));
@@ -930,11 +923,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const singleAccountDepSeen = new Map<number, boolean>();
   const trailingChartDate = dateStrs.length > 0 ? dateStrs[dateStrs.length - 1]! : "";
   const todayYmd = chileCalendarTodayYmd();
-  const ccCloseByAccAndDate = new Map<number, Map<string, number>>();
-  const ccIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "credit_card");
-  for (const [id, closes] of ccLedgerStatementClosingPointsClpForAccounts(ccIds)) {
-    ccCloseByAccAndDate.set(id, new Map(closes.map((p) => [p.as_of_date, p.value_clp])));
-  }
 
   const mtgCloseByAccAndDate = new Map<number, Map<string, number>>();
   const mortgageChartIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "mortgage");
@@ -959,8 +947,14 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
       const aidKind = bucketKindFromSlugMap(slugById, aid);
       if (aidKind === "credit_card") {
-        const ccClose = ccCloseByAccAndDate.get(aid)?.get(d);
-        if (ccClose != null && Number.isFinite(ccClose)) raw = ccClose;
+        // Historical points read stored `valuations` (owed on that date — same source as the
+        // Saldo pasivos line); only the live/trailing point uses the billing ledger. Billing-month
+        // "balance total" closings understate month-end debt (they subtract the next-month
+        // payment before it happens) — facturaciones keep their own views.
+        if (useLiveAfpOnDate) {
+          const cc = latestCreditCardValuationRowAsOf(aid, d > todayYmd ? d : todayYmd);
+          if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) raw = cc.value_clp;
+        }
       }
       if (aidKind === "mortgage") {
         const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
@@ -2195,35 +2189,14 @@ export function getAccountValuationTimeseries(
   }
 
   if (bucketKind === "credit_card" && accounts.points.length > 0) {
-    if (ccInstallmentLedgerRowCount(accountId) > 0) {
-      const ledgerCloses = ccLedgerStatementClosingPointsClp(accountId);
-      if (ledgerCloses?.length) {
-        const closeByDate = new Map(ledgerCloses.map((p) => [p.as_of_date, p.value_clp]));
-        const dk = String(row.account_id);
-        const pointDates = new Set(accounts.points.map((p) => String(p.as_of_date)));
-        const mergedPoints = accounts.points.map((pt) => {
-          const d = String(pt.as_of_date);
-          const clp = closeByDate.get(d);
-          if (clp == null || !Number.isFinite(clp)) return pt;
-          return { ...pt, [dk]: convertTs(clp, d, unit) };
-        });
-        for (const p of ledgerCloses) {
-          if (!pointDates.has(p.as_of_date)) {
-            mergedPoints.push({
-              as_of_date: p.as_of_date,
-              [dk]: convertTs(p.value_clp, p.as_of_date, unit),
-            });
-          }
-        }
-        mergedPoints.sort((a, b) =>
-          String(a.as_of_date).localeCompare(String(b.as_of_date))
-        );
-        accounts = {
-          ...accounts,
-          points: patchCreditCardLiveLastPoint(accountId, unit, mergedPoints),
-        };
-      }
-    }
+    // Points stay on stored `valuations` (owed on that date — Saldo pasivos convention);
+    // only the last point is patched to the live billing balance. Billing-month closings
+    // are NOT merged over history: they subtract the next-month payment before it happens,
+    // so they understate month-end debt (facturaciones have their own views).
+    accounts = {
+      ...accounts,
+      points: patchCreditCardLiveLastPoint(accountId, unit, accounts.points),
+    };
   }
 
   if (bucketKind === "property" && accounts.points.length > 0) {

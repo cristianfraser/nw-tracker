@@ -119,7 +119,6 @@ export function trimLeadingInactivePoints(
     for (const a of accounts) {
       valueKeys.add(a.dataKey);
       if (includeAccumulatedLines && a.depositDataKey) depositKeys.add(a.depositDataKey);
-      if (includeAccumulatedLines && a.displayDepositDataKey) depositKeys.add(a.displayDepositDataKey);
     }
   }
   if (lines?.length) {
@@ -681,15 +680,6 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
           isDeposit: true,
         });
       }
-      if (includeAccumulatedLines && a.displayDepositDataKey) {
-        raw.push({
-          dataKey: a.displayDepositDataKey,
-          name: a.display_deposit_series_name?.trim() || "aportes propios acum.",
-          colorIndex: i,
-          isDeposit: true,
-          isDisplayDeposit: true,
-        });
-      }
     });
   }
   const seenDataKeys = new Set(raw.map((r) => r.dataKey));
@@ -719,7 +709,7 @@ function InteractiveLegend({
   focusColorIndex: number | null;
   onHighlight: (dataKey: string | null) => void;
 }) {
-  const visible = series.filter((s) => !s.isDeposit || s.isDisplayDeposit);
+  const visible = series.filter((s) => !s.isDeposit);
   if (visible.length === 0) return null;
   const dim = focusColorIndex != null;
   return (
@@ -748,8 +738,7 @@ function InteractiveLegend({
           s.dataKey === "available" ||
           s.dataKey === "all_available" ||
           s.dataKey.startsWith("ref:");
-        const legBase = s.isDisplayDeposit ? 1.15 : isDerivedDash ? 1.5 : 2;
-        const legDash = s.isDisplayDeposit ? "6 4" : undefined;
+        const legBase = isDerivedDash ? 1.5 : 2;
         return (
           <button
             key={s.dataKey}
@@ -779,7 +768,6 @@ function InteractiveLegend({
                 y2={5}
                 stroke={color}
                 strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
-                strokeDasharray={legDash}
                 opacity={
                   faded
                     ? 0.5
@@ -993,7 +981,6 @@ export function LineChartPanel({
               const visLines = series.map((s) => {
                 const stroke = s.stroke;
                 const isDep = Boolean(s.isDeposit);
-                const isDisplayDep = Boolean(s.isDisplayDeposit);
                 const dimOthers = focusColorIndex != null && s.colorIndex !== focusColorIndex;
                 const isLiquidityRefLine =
                   colorPlan?.kind === "group-tab" &&
@@ -1006,9 +993,7 @@ export function LineChartPanel({
                   isLiquidityRefLine;
                 const isRefOverlay = Boolean(s.isReferenceOverlay);
                 const baseW = isDep
-                  ? isDisplayDep
-                    ? 1
-                    : 1.15
+                  ? 1.15
                   : isRefOverlay
                     ? 1.25
                     : isThinDerivedLine
@@ -1017,9 +1002,7 @@ export function LineChartPanel({
                         ? 3
                         : 2;
                 const baseOpacity = isDep
-                  ? isDisplayDep
-                    ? 0.65
-                    : 0.8
+                  ? 0.8
                   : isRefOverlay
                     ? 0.55
                     : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
@@ -1043,7 +1026,7 @@ export function LineChartPanel({
                     style={{ pointerEvents: "none" }}
                     connectNulls
                     legendType={isDep ? "none" : "plainline"}
-                    strokeDasharray={isDisplayDep || isRefOverlay ? "6 4" : undefined}
+                    strokeDasharray={isRefOverlay ? "6 4" : undefined}
                     isAnimationActive
                     animationDuration={CHART_ANIM_MS}
                     animationEasing="ease-out"

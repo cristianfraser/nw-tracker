@@ -4,7 +4,7 @@
  */
 import express from "express";
 import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
-import { equityReturnSnapshot } from "../equityDividendReinvested.js";
+import { equityReturnSnapshot } from "../equityReturns.js";
 import { type DashboardAccountStats } from "../brokerageAcciones.js";
 import { db } from "../db.js";
 import { resolveOperationalAccountId } from "../accountSource.js";

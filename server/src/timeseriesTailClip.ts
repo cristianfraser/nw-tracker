@@ -18,7 +18,6 @@ type ClipAccountLine = {
   dataKey: string;
   valueSeriesType: "data" | "reference";
   depositDataKey?: string;
-  displayDepositDataKey?: string;
   exclude_from_group_totals?: boolean;
 };
 
@@ -41,9 +40,6 @@ function collectSeries(block: TailClipableBlock): SeriesEntry[] {
   for (const a of block.accounts ?? []) {
     entries.push({ dataKey: a.dataKey, type: a.valueSeriesType });
     if (a.depositDataKey) entries.push({ dataKey: a.depositDataKey, type: a.valueSeriesType });
-    if (a.displayDepositDataKey) {
-      entries.push({ dataKey: a.displayDepositDataKey, type: a.valueSeriesType });
-    }
   }
   for (const ln of block.lines ?? []) {
     entries.push({ dataKey: ln.dataKey, type: ln.valueSeriesType });
@@ -136,10 +132,7 @@ export function applyTrailingZeroTailClipToBlock<T extends TailClipableBlock>(
   const depositKeysByValuationKey: Record<string, string[]> = {};
   for (const a of block.accounts ?? []) {
     if (a.account_id <= 0) continue;
-    const deps = [a.depositDataKey, a.displayDepositDataKey].filter((dk): dk is string =>
-      Boolean(dk)
-    );
-    if (deps.length > 0) depositKeysByValuationKey[a.dataKey] = deps;
+    if (a.depositDataKey) depositKeysByValuationKey[a.dataKey] = [a.depositDataKey];
   }
   const linkedDepositKeys = new Set(Object.values(depositKeysByValuationKey).flat());
 

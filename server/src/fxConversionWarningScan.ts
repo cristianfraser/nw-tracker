@@ -50,5 +50,5 @@ export function runFxConversionWarningScan(): void {
   }
 
   const mtmIds = listBrokerageEquityMtmAccountIds();
-  loadEquityBrokerageCapitalSortFlows(mtmIds, true);
+  loadEquityBrokerageCapitalSortFlows(mtmIds);
 }

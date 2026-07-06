@@ -20,7 +20,10 @@ import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
  * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit_clp`** / **`withdrawal_clp`**
  * on `account_id` when present.
  *
- * For charts that exclude DRIP reinvestment, use {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
+ * Dividends: `dividend_payout` counts as a negative capital flow on the stock; `dividend_usd`
+ * (DRIP — dividend + reinvested units on one row) nets to zero and emits nothing.
+ * For the personal-capital series (excludes APV-A state bonus), use
+ * {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
  */
 
 /** Dated CLP flow toward cumulative “aportes” (positive = in, negative = out). */
@@ -184,7 +187,7 @@ function buildMergedDepositMap(
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
   const transfers = loadTransferLegSignedFlowEvents(accountIds, personalOnly);
-  const equityCap = loadEquityBrokerageCapitalSortFlows(accountIds, personalOnly);
+  const equityCap = loadEquityBrokerageCapitalSortFlows(accountIds);
   const ids = new Set<number>([
     ...mov.keys(),
     ...transfers.keys(),
@@ -294,6 +297,14 @@ export function totalDisplayDepositsClpForAccount(accountId: number): number {
     return usdCashDepositedClpToday(accountId);
   }
   return getMergedDisplayDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
+}
+
+/** Summary “Depositado”: personal capital for equity MTM stocks, full external capital otherwise. */
+export function pocketDepositsClpForAccount(accountId: number): number {
+  if (accountUsesEquityMtm(accountId)) {
+    return totalDisplayDepositsClpForAccount(accountId);
+  }
+  return totalDepositsClpForAccount(accountId);
 }
 
 /** USD cash deposited (own capital) in CLP today = balance − interest (interest is P/L, not capital). */
