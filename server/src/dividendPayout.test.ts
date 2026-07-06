@@ -177,7 +177,7 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     expect(depositedBefore - depositedAfter).toBeCloseTo(refClp, 0);
 
     // The capital-flow event for the dividend is negative (return of capital).
-    const divEvent = (loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [])
+    const divEvent = (loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [])
       .filter((e) => e.occurred_on === DIV_DATE);
     expect(divEvent).toHaveLength(1);
     expect(divEvent[0]!.amt).toBeLessThan(0);

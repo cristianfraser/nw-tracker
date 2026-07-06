@@ -6,13 +6,10 @@ import { db } from "./db.js";
 import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
+  pocketDepositsClpForAccount,
 } from "./accountDeposits.js";
 import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapitalFlows.js";
-import {
-  equityReturnSnapshot,
-  pocketDepositsClpForAccount,
-  totalDividendsReinvestedClpForAccount,
-} from "./equityDividendReinvested.js";
+import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
 
@@ -91,7 +88,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     if (!usdId || !stockId || !transferId) return;
     expect(accountUsesEquityMtm(stockId)).toBe(true);
 
-    const full = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
+    const full = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
     expect(full).toHaveLength(1);
     expect(full[0]!.occurred_on).toBe("2026-05-28");
     expect(full[0]!.amt).toBeCloseTo(usdToClpReferenceRounded(100, "2026-05-28")!, 0);
@@ -115,7 +112,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     );
     expect(buyId).toBeGreaterThan(0);
 
-    const full = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
+    const full = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
     const june = full.filter((e) => e.occurred_on === "2026-06-16");
     expect(june).toHaveLength(1);
     expect(june[0]!.amt).toBeCloseTo(usdToClpReferenceRounded(50, "2026-06-16")!, 0);
@@ -123,65 +120,44 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(buyId);
   });
 
-  it("excludes DRIP stock_buy from personal series when dividend_usd matches", () => {
-    if (!usdId || !stockId) return;
+  it("DRIP dividend_usd (units on the row) contributes no capital flow", () => {
+    if (!stockId) return;
     db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}|drip%`);
 
     const divId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
-           VALUES (?, 0, '2026-02-05', ?, 'dividend_usd', 1.7)`
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd, units_delta)
+           VALUES (?, 0, '2026-02-05', ?, 'dividend_usd', 1.7, 0.01)`
         )
         .run(stockId, `${FIXTURE_NOTE}|drip-div`).lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO movements (
-         account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-         units_delta, flow_kind, amount_usd, ticker
-       ) VALUES (NULL, ?, ?, 0, '2026-02-05', ?, 0.01, 'stock_buy', 1.7, 'VITEST')`
-    ).run(usdId, stockId, `${FIXTURE_NOTE}|drip-buy`);
 
-    const full = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
-    const personal = loadEquityBrokerageCapitalInflowEvents([stockId], true).get(stockId) ?? [];
-    const fullFeb = full.filter((e) => monthKeyFromYmd(e.occurred_on) === "2026-02");
-    const personalFeb = personal.filter((e) => monthKeyFromYmd(e.occurred_on) === "2026-02");
-    expect(fullFeb.length).toBeGreaterThan(personalFeb.length);
-
-    db.prepare(`DELETE FROM movements WHERE id = ? OR note LIKE ?`).run(
-      divId,
-      `${FIXTURE_NOTE}|drip%`
-    );
-  });
-
-  it("attributes only the dividend USD from a larger manual-reinvest stock_buy", () => {
-    if (!usdId || !stockId) return;
-    db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}|partial%`);
-
-    db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
-       VALUES (?, 0, '2026-03-24', ?, 'dividend_usd', 0.54)`
-    ).run(stockId, `${FIXTURE_NOTE}|partial-div`);
-    db.prepare(
-      `INSERT INTO movements (
-         account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-         units_delta, flow_kind, amount_usd, ticker
-       ) VALUES (NULL, ?, ?, 0, '2026-03-26', ?, 0.865, 'stock_buy', 54.68, 'VITEST')`
-    ).run(usdId, stockId, `${FIXTURE_NOTE}|partial-buy`);
-
-    const full = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
-    const personal = loadEquityBrokerageCapitalInflowEvents([stockId], true).get(stockId) ?? [];
-    const fullMar26 = full.find((e) => e.occurred_on === "2026-03-26");
-    const pocketMar26 = personal.find((e) => e.occurred_on === "2026-03-26");
-    expect(fullMar26).toBeDefined();
-    expect(pocketMar26).toBeDefined();
-    expect(fullMar26!.amt).toBeGreaterThan(pocketMar26!.amt);
-    expect(pocketMar26!.amt).toBeCloseTo(
-      usdToClpReferenceRounded(54.68 - 0.54, "2026-03-26")!,
+    const events = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
+    expect(events.filter((e) => monthKeyFromYmd(e.occurred_on) === "2026-02")).toHaveLength(0);
+    // The dividend still counts as informational return income.
+    expect(totalDividendsClpForAccount(stockId)).toBeCloseTo(
+      usdToClpReferenceRounded(1.7, "2026-02-05")!,
       0
     );
 
-    db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}|partial%`);
+    db.prepare(`DELETE FROM movements WHERE id = ?`).run(divId);
+  });
+
+  it("throws on unitless dividend_usd (cash dividends must be dividend_payout)", () => {
+    if (!stockId) return;
+    const divId = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
+           VALUES (?, 0, '2026-03-24', ?, 'dividend_usd', 0.54)`
+        )
+        .run(stockId, `${FIXTURE_NOTE}|unitless-div`).lastInsertRowid
+    );
+
+    expect(() => loadEquityBrokerageCapitalInflowEvents([stockId])).toThrow(/units_delta/);
+
+    db.prepare(`DELETE FROM movements WHERE id = ?`).run(divId);
   });
 });
 
@@ -190,7 +166,7 @@ describe("equityBrokerageCapitalFlows dev data", () => {
     const oilkId = findEquityAccountByName("OILK");
     if (oilkId == null || !hasStockBuyTransfer(oilkId)) return;
 
-    const full = loadEquityBrokerageCapitalInflowEvents([oilkId], false).get(oilkId) ?? [];
+    const full = loadEquityBrokerageCapitalInflowEvents([oilkId]).get(oilkId) ?? [];
     expect(full.length).toBeGreaterThan(0);
 
     const mayBuy = db
@@ -217,19 +193,18 @@ describe("equityBrokerageCapitalFlows dev data", () => {
     expect(mayEvent!.amt).toBeGreaterThan(2_000_000);
   });
 
-  it("SPY pocket deposits are below cost basis when dividends were reinvested", () => {
+  it("SPY return snapshot: total return vs deposited, dividends informational", () => {
     const spyId = findEquityAccountByName("SPY");
     if (spyId == null || !hasStockBuyTransfer(spyId)) return;
 
     const pocket = pocketDepositsClpForAccount(spyId);
-    const dividends = totalDividendsReinvestedClpForAccount(spyId);
+    const dividends = totalDividendsClpForAccount(spyId);
     if (dividends <= 0) return;
 
-    const snap = equityReturnSnapshot(spyId, pocket, null);
+    const snap = equityReturnSnapshot(spyId, pocket, pocket + 1_000);
     expect(snap).not.toBeNull();
-    expect(snap!.dividends_reinvested_clp).toBeGreaterThan(0);
-    expect(snap!.cost_basis_clp).toBeGreaterThan(pocket);
-    expect(snap!.cost_basis_clp).toBeCloseTo(pocket + dividends, -2);
+    expect(snap!.dividends_clp).toBeCloseTo(dividends, -2);
+    expect(snap!.total_return_clp).toBeCloseTo(1_000, 0);
   });
 
   it("merged deposits include equity transfer capital for OILK", () => {

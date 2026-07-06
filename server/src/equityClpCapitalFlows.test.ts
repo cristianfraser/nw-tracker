@@ -53,7 +53,7 @@ describe("CLP-funded stock_buy capital flows", () => {
 
   it("counts the CLP buy as a clp_wire capital inflow on the equity account", () => {
     if (!clpId || !stockId) return;
-    const events = loadEquityBrokerageCapitalInflowEvents([stockId], false).get(stockId) ?? [];
+    const events = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
     expect(events).toHaveLength(1);
     expect(events[0]!.amt).toBeCloseTo(2_985_000, 6);
     expect(events[0]!.capital_kind).toBe("clp_wire");

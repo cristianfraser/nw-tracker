@@ -65,11 +65,10 @@ export interface AccountPositionSnapshot {
   value_clp: number | null;
   value_as_of: string | null;
   value_per_unit_clp: number | null;
-  dividends_reinvested_clp?: number;
-  cost_basis_clp?: number;
+  /** Total dividends received (DRIP + payouts), informational — already netted into total return. */
+  dividends_clp?: number;
   total_return_clp?: number | null;
   return_on_deposited_pct?: number | null;
-  naive_gain_clp?: number | null;
 }
 
 export interface FxCoverage {
@@ -284,9 +283,6 @@ export interface TimeseriesAccountLine {
   depositDataKey?: string;
   /** Legend label for the deposit line when not the default "aportes acum." */
   deposit_series_name?: string;
-  /** Personal deposits only (excludes APV-A state bonus) when present */
-  displayDepositDataKey?: string;
-  display_deposit_series_name?: string;
   /** Omitted from class “Total” / dashboard buckets; still shown as its own line. */
   exclude_from_group_totals?: boolean;
   /** Chart line color as `r,g,b` (0–255), from DB. */
@@ -764,8 +760,6 @@ export interface AccountSummaryResponse {
   /** Quote currency of `accounts.equity_ticker` (clp for Bolsa de Santiago `.SN`); null for non-equity accounts. */
   equity_quote_currency?: "usd" | "clp" | null;
   deposits_clp: number;
-  deposits_full_clp?: number;
-  dividends_reinvested_clp?: number;
   withdrawals_clp: number;
   latest_valuation_clp: number | null;
   latest_valuation_date: string | null;

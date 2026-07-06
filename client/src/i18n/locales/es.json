@@ -388,11 +388,9 @@
     "monthlyDeltaAndAccumTitle": "Δ mensual y ganancias acumuladas",
     "equityPosition": {
       "depositedPocket": "Depositado (bolsillo)",
-      "dividendsReinvested": "Dividendos reinvertidos",
-      "costBasis": "Costo total (base)",
+      "dividends": "Dividendos recibidos",
       "totalReturn": "Ganancia real",
-      "returnOnDeposited": "Rent. / depositado",
-      "naiveGain": "Ganancia sin base div."
+      "returnOnDeposited": "Rent. / depositado"
     },
     "brokerageMovements": {
       "title": "Añadir movimientos",
