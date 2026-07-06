@@ -56,6 +56,17 @@ function makeProjectedLine(
   }
 ): FlowCcExpenseLineRow {
   const occurredOn = `${overrides.month}-28`;
+  // USD allocates by CLP share of the base line (same FX date), so month slices sum back
+  // to the base USD; gap lines convert at the anchor's implied rate the same way.
+  let amountUsdAtExpense: number | null = null;
+  if (base.amount_usd_at_expense != null) {
+    if (base.amount_clp === 0) {
+      throw new Error(
+        `cannot project USD amounts from ${base.source}:${base.statement_line_id}: amount_clp is 0`
+      );
+    }
+    amountUsdAtExpense = base.amount_usd_at_expense * (overrides.amountClp / base.amount_clp);
+  }
   return {
     ...base,
     source: "cc",
@@ -69,7 +80,7 @@ function makeProjectedLine(
     statement_date: "",
     amount_clp: overrides.amountClp,
     amount_usd: null,
-    amount_usd_at_expense: null,
+    amount_usd_at_expense: amountUsdAtExpense,
     merchant: overrides.merchant,
     merchant_key: overrides.merchantKey,
     category_slug: overrides.categorySlug,
