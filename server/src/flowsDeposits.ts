@@ -51,6 +51,8 @@ export type FlowDepositRow = {
   category_label: string;
   account_id: number;
   account_name: string;
+  /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …) — see accountBucketKindSlug. */
+  kind_slug: string;
   amount_clp: number;
   /** CLP ÷ `fx_daily` on or before `occurred_on` (each event converted at its own date). */
   amount_usd: number | null;
@@ -274,6 +276,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
         category_label: CATEGORY_LABEL[category],
         account_id: acc.account_id,
         account_name: acc.name,
+        kind_slug: acc.category_slug,
         amount_clp,
         amount_usd: amount_usd != null && Number.isFinite(amount_usd) ? amount_usd : null,
       });
