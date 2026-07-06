@@ -1167,6 +1167,8 @@ export interface FlowDepositRow {
   category_label: string;
   account_id: number;
   account_name: string;
+  /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …). */
+  kind_slug: string;
   amount_clp: number;
   amount_usd: number | null;
 }

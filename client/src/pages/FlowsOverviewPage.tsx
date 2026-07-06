@@ -1,0 +1,151 @@
+import { useMemo } from "react";
+import { FlowsOverviewChart } from "../components/charts/FlowsOverviewChart";
+import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
+import { Table } from "../components/ui/Table";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import {
+  aggregateFlowsOverview,
+  flowsOverviewTotals,
+  rollupFlowsOverviewRowsByYear,
+} from "../flowsOverviewAggregate";
+import {
+  flowChartGranularityFromMetricsPeriod,
+  flowPeriodLabel,
+  formatFlowMoney,
+} from "../flowsDisplay";
+import { useTranslation } from "../i18n";
+import { useFlowsCreditCardExpenses, useFlowsDeposits, useIncome } from "../queries/hooks";
+import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
+
+const PAGE_SIZE = 12;
+
+/** Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. */
+export function FlowsOverviewPage() {
+  const { t } = useTranslation();
+  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const { installmentMode } = useCcInstallmentGastosMode();
+
+  const income = useIncome();
+  const expenses = useFlowsCreditCardExpenses();
+  const deposits = useFlowsDeposits();
+
+  const error = income.error ?? expenses.error ?? deposits.error;
+  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+
+  const monthRows = useMemo(() => {
+    if (!income.data || !expenses.data || !deposits.data) return null;
+    return aggregateFlowsOverview(
+      income.data,
+      expenses.data,
+      deposits.data,
+      installmentMode,
+      displayUnit
+    );
+  }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode]);
+
+  const rows = useMemo(() => {
+    if (!monthRows) return [];
+    return chartGranularity === "year" ? rollupFlowsOverviewRowsByYear(monthRows) : monthRows;
+  }, [chartGranularity, monthRows]);
+
+  const chartPoints = useMemo(
+    () =>
+      rows.map((r) => ({
+        as_of_date: r.as_of_date,
+        income: r.income,
+        expenses: r.expenses,
+        deposits: -r.deposits,
+      })),
+    [rows]
+  );
+
+  const totals = useMemo(() => flowsOverviewTotals(rows), [rows]);
+
+  const tableRows = useMemo(() => [...rows].reverse(), [rows]);
+  const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
+
+  if (err) {
+    return <p className="error">{err}</p>;
+  }
+
+  if (!monthRows) {
+    return <p className="muted">{t("common.loading")}</p>;
+  }
+
+  return (
+    <>
+      <h2 className="flow-section-title">{t("flows.overview.title")}</h2>
+      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "1rem" }}>
+        {t("flows.overview.intro")}
+      </p>
+
+      <div
+        className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
+        style={{ marginBottom: "1.5rem" }}
+      >
+        <FlowsOverviewChart
+          title={t("flows.overview.chartTitle")}
+          points={chartPoints}
+          xAxisGranularity={chartGranularity}
+          displayUnit={displayUnit}
+        />
+      </div>
+
+      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        {t("flows.overview.detailTitle")}
+      </h3>
+      <p className="muted" style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+        {t("flows.overview.totalsLabel")}{" "}
+        <span className="mono" style={{ color: "var(--text)" }}>
+          {t("flows.overview.income")} {formatFlowMoney(totals.income, displayUnit)}
+        </span>
+        {" · "}
+        <span className="mono" style={{ color: "var(--text)" }}>
+          {t("flows.overview.expenses")} {formatFlowMoney(totals.expenses, displayUnit)}
+        </span>
+        {" · "}
+        <span className="mono" style={{ color: "var(--text)" }}>
+          {t("flows.overview.deposits")} {formatFlowMoney(totals.deposits, displayUnit)}
+        </span>
+        {" · "}
+        <span className="mono" style={{ color: "var(--text)" }}>
+          {t("flows.overview.depositsPreTax")} {formatFlowMoney(totals.deposits_pre_tax, displayUnit)}
+        </span>
+        {" · "}
+        <span className="mono" style={{ color: "var(--text)" }}>
+          {t("flows.overview.net")} {formatFlowMoney(totals.net, displayUnit)}
+        </span>
+      </p>
+
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+        <Table
+          header={
+            <thead>
+              <tr>
+                <th>{t("flows.overview.colMonth")}</th>
+                <th>{t("flows.overview.income")}</th>
+                <th>{t("flows.overview.expenses")}</th>
+                <th>{t("flows.overview.deposits")}</th>
+                <th>{t("flows.overview.depositsPreTax")}</th>
+                <th>{t("flows.overview.net")}</th>
+              </tr>
+            </thead>
+          }
+          tableStyle={{ fontSize: "0.85rem" }}
+        >
+          {pageRows.map((row) => (
+            <tr key={row.period_month}>
+              <td className="mono">{flowPeriodLabel(row.period_month, chartGranularity)}</td>
+              <td className="mono">{formatFlowMoney(row.income, displayUnit)}</td>
+              <td className="mono">{formatFlowMoney(row.expenses, displayUnit)}</td>
+              <td className="mono">{formatFlowMoney(row.deposits, displayUnit)}</td>
+              <td className="mono muted">{formatFlowMoney(row.deposits_pre_tax, displayUnit)}</td>
+              <td className="mono">{formatFlowMoney(row.net, displayUnit)}</td>
+            </tr>
+          ))}
+        </Table>
+      </PaginatedTable>
+    </>
+  );
+}

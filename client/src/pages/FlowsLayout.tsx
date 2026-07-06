@@ -9,6 +9,9 @@ export function FlowsLayout() {
     <main>
       <h1>{t("flows.layoutTitle")}</h1>
       <nav className="flow-subnav" aria-label={t("flows.subnavAria")}>
+        <NavLink to="." end className={({ isActive }) => cn(isActive && "active")}>
+          {t("flows.overview.title")}
+        </NavLink>
         <NavLink to="income" className={({ isActive }) => cn(isActive && "active")}>
           {t("sidebar.flowsIncome")}
         </NavLink>
