@@ -40,56 +40,11 @@ import {
   isPositiveFiniteNumber,
   isYmdString,
 } from "../requestValidation.js";
-import { buildAllFlows, type FlowsFilters } from "../flowsApi.js";
-import { parsePageParams } from "../pagination.js";
 import { parseProxyTickersParam } from "./shared.js";
 
 export function registerFlowsRoutes(app: express.Express): void {
 app.get("/api/flows/deposits", (_req, res) => {
   res.json(buildFlowsDepositsPayload());
-});
-
-/** Global movement search across every account (/search). */
-app.get("/api/flows/search", (req, res) => {
-  const { page, pageSize } = parsePageParams(req.query as Record<string, unknown>, 50);
-  const filters: FlowsFilters = {};
-  const qp = req.query;
-  if (typeof qp.q === "string" && qp.q.trim()) filters.q = qp.q.trim();
-  if (typeof qp.year === "string" && qp.year.trim()) filters.year = qp.year.trim();
-  if (typeof qp.type === "string" && qp.type.trim()) filters.type = qp.type.trim();
-  if (typeof qp.category === "string" && qp.category.trim()) filters.category = qp.category.trim();
-  if (qp.account_id) {
-    const aid = Number(qp.account_id);
-    if (!Number.isFinite(aid) || aid <= 0) {
-      res.status(400).json({ error: "account_id must be a positive number" });
-      return;
-    }
-    filters.account_id = aid;
-  }
-  for (const key of ["date_from", "date_to"] as const) {
-    const v = qp[key];
-    if (v == null || v === "") continue;
-    if (!isYmdString(v)) {
-      res.status(400).json({ error: `${key} must be YYYY-MM-DD` });
-      return;
-    }
-    filters[key] = v;
-  }
-  for (const key of ["amount_min", "amount_max", "amount_exact"] as const) {
-    const v = qp[key];
-    if (v == null || v === "") continue;
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < 0) {
-      res.status(400).json({ error: `${key} must be a non-negative number` });
-      return;
-    }
-    filters[key] = n;
-  }
-  if (filters.amount_exact != null && (filters.amount_min != null || filters.amount_max != null)) {
-    res.status(400).json({ error: "amount_exact cannot be combined with amount_min/amount_max" });
-    return;
-  }
-  res.json(buildAllFlows(filters, page, pageSize));
 });
 
 app.get("/api/flows/deposits/reconciliation", (_req, res) => {

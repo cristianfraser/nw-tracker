@@ -57,7 +57,6 @@ export function buildSidebarNavFromApi(payload: SidebarNavResponse): SidebarNavN
   }
   for (const n of visibleNavChildren(payload.main)) out.push(mapNode(n));
   if (payload.flows) out.push(mapNode(payload.flows));
-  if (payload.search) out.push(mapNode(payload.search));
   if (payload.projections) out.push(mapNode(payload.projections));
   if (payload.rates) out.push(mapNode(payload.rates));
   return out;
