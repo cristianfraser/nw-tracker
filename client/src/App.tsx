@@ -82,7 +82,6 @@ function AppTree() {
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
-            <Route path="/credit-cards" element={<Navigate to="/liabilities" replace />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />
