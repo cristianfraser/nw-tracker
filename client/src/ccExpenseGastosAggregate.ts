@@ -47,6 +47,32 @@ export function expenseLineGastosAmount(line: FlowCcExpenseLineRow, unit: Displa
   return line.amount_clp;
 }
 
+/** Carrying (interés + seguros) share of a mortgage-linked payment, in the display unit. */
+export function mortgageLinkCarryingAmount(
+  line: FlowCcExpenseLineRow,
+  link: { payment_clp: number; carrying_clp: number },
+  unit: DisplayUnit
+): number {
+  if (unit === "usd") {
+    // Same FX date as the payment line: allocate the line's USD by the carrying CLP share.
+    return expenseLineGastosAmount(line, unit) * (link.carrying_clp / link.payment_clp);
+  }
+  return link.carrying_clp;
+}
+
+/** Amortización chart segment (negative, below axis) in the display unit. */
+function mortgageLinkAmortizationChartAmount(
+  line: FlowCcExpenseLineRow,
+  link: { payment_clp: number; amortization_clp: number },
+  unit: DisplayUnit
+): number {
+  if (unit === "usd") {
+    if (link.amortization_clp <= 0) return 0;
+    return -(expenseLineGastosAmount(line, unit) * (link.amortization_clp / link.payment_clp));
+  }
+  return expenseDepositAmortizationChartAmount(link.amortization_clp);
+}
+
 export function rollupExpenseMonthRowsByYear(
   rows: readonly FlowCcExpenseMonthRow[]
 ): FlowCcExpenseMonthRow[] {
@@ -151,22 +177,23 @@ export function aggregateGastosFromLines(
             (ln.line_role !== "installment_purchase_total" || mode === "total") &&
             (ln.line_role !== "installment_cuota" || mode === "split")
           ) {
-            sumBucket.gastos += link.carrying_clp;
+            const carrying = mortgageLinkCarryingAmount(ln, link, unit);
+            sumBucket.gastos += carrying;
             const skipChartCategory =
               ln.big_group_slug != null &&
               excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
             if (!skipChartCategory) {
               const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
-              if (link.carrying_clp > 0) {
+              if (carrying > 0) {
                 catBucket.set(
                   BILLS_CC_EXPENSE_SLUG,
-                  (catBucket.get(BILLS_CC_EXPENSE_SLUG) ?? 0) + link.carrying_clp
+                  (catBucket.get(BILLS_CC_EXPENSE_SLUG) ?? 0) + carrying
                 );
               }
               catBucket.set(
                 REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
                 (catBucket.get(REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG) ?? 0) +
-                  expenseDepositAmortizationChartAmount(link.amortization_clp)
+                  mortgageLinkAmortizationChartAmount(ln, link, unit)
               );
               byMonthCategory.set(sumMonth, catBucket);
             }
@@ -260,7 +287,7 @@ export function computeExpensesTotal(
           (r.line_role !== "installment_purchase_total" || mode === "total") &&
           (r.line_role !== "installment_cuota" || mode === "split")
         ) {
-          total += link.carrying_clp;
+          total += mortgageLinkCarryingAmount(r, link, unit);
         }
       } else if (countsTowardGastosMes(r, mode)) {
         total += amount;
