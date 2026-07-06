@@ -253,13 +253,6 @@ export async function syncCryptoEodFromCoinGecko(
   return out;
 }
 
-/** @deprecated Use {@link syncCryptoEodFromCoinGecko}. */
-export function syncCryptoEodFromYahoo(
-  opts?: { dryRun?: boolean; now?: Date; force?: boolean }
-): Promise<EquityEodSyncResult[]> {
-  return syncCryptoEodFromCoinGecko(opts);
-}
-
 /** NYSE session date to record in sync state after a successful NYSE EOD pull. */
 export function equityEodSyncSessionLabel(now = new Date()): {
   nyseSession: string | null;

@@ -645,11 +645,6 @@ export function loadDeptoDividendosSheetLedgerFromFile(cfraserDir: string): Dept
   return enrichDeptoRowsUfClpFromDb(mergeSupplementalPrepaymentsIntoLedger(out, cfraserDir));
 }
 
-/** @deprecated Import-only. Runtime uses `loadDeptoLedgerFromMovements`. */
-export function loadDeptoDividendosSheetLedger(cfraserDir: string): DeptoMortgageSheetRow[] {
-  return loadDeptoDividendosSheetLedgerFromFile(cfraserDir);
-}
-
 /**
  * @deprecated Import/manual WRITE paths and their tests only. Runtime reads use
  * `loadDeptoLedgerFromMovements()` (movements + uf_daily) — the sheet table is the

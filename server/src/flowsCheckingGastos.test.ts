@@ -13,6 +13,7 @@ import {
   computeMercadoCapitalesInternalTransferMonths,
   createSplittableInternalTransferPool,
   depositMatchesInternalTransferTiming,
+  ledgerCapitalReturnMatchesTiming,
   fondoReservaAccountId,
   loadDepositMatchCandidates,
   loadCheckingCartolaCredits,
@@ -26,7 +27,6 @@ import {
   matchWithdrawalToInvestmentDeposit,
   withdrawalIsReversedByDapAbono,
   withdrawalMatchesInternalCashTransfer,
-  withdrawalMatchesReservaDeposit,
   checkingOutflowIsAtmWithdrawal,
   stripCheckingBranchPrefix,
   type CheckingCartolaCredit,
@@ -551,7 +551,7 @@ describe("flowsCheckingGastos", () => {
       )
     ).toBe(true);
     expect(
-      withdrawalMatchesReservaDeposit(
+      withdrawalMatchesInternalCashTransfer(
         { occurred_on: "2024-03-16", amount_clp: -500_000 },
         deposits
       )
@@ -1228,19 +1228,27 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("uses stable purchase keys for checking gastos lines", () => {
-    // Movement without a cartola note → legacy id-based key.
+    // Movement without a cartola note → legacy id-based key. Synthetic account per the
+    // fixtures rule — hardcoding account_id 1 breaks on DBs where that id doesn't exist.
+    const anyLeaf = (db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number }).id;
+    const acctId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, 'vitest-stable-key-acct')`)
+        .run(anyLeaf).lastInsertRowid
+    );
     const legacyId = Number(
       db
         .prepare(
           `INSERT INTO movements (account_id, occurred_on, amount_clp, note)
-           VALUES (1, '2024-03-01', -1000, 'manual|stable-key-test')`
+           VALUES (?, '2024-03-01', -1000, 'manual|stable-key-test')`
         )
-        .run().lastInsertRowid
+        .run(acctId).lastInsertRowid
     );
     try {
       expect(checkingGastosMovementPurchaseKey(legacyId)).toBe(`checking-mv:${legacyId}`);
     } finally {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(legacyId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(acctId);
     }
     const row = db
       .prepare(`SELECT id FROM movements WHERE note LIKE 'import:cartola|%' LIMIT 1`)
@@ -1448,5 +1456,37 @@ describe("flowsCheckingGastos", () => {
         `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
       ).run(corrienteId, key);
     }
+  });
+});
+
+describe("internal-transfer timing helpers", () => {
+  it("day-precision deposits match within the day gap in either direction", () => {
+    const w = { occurred_on: "2026-05-10" };
+    const dep = (d: string) => ({ occurred_on: d, category_slug: "fondo_reserva" });
+    expect(depositMatchesInternalTransferTiming(w, dep("2026-05-12"))).toBe(true);
+    expect(depositMatchesInternalTransferTiming(w, dep("2026-05-08"))).toBe(true);
+    expect(depositMatchesInternalTransferTiming(w, dep("2026-05-14"))).toBe(false);
+    expect(depositMatchesInternalTransferTiming(w, dep("2026-05-14"), 5)).toBe(true);
+  });
+
+  it("month-bucket deposits (cuenta ahorro) match by calendar month only", () => {
+    const dep = (d: string) => ({ occurred_on: d, category_slug: "cuenta_ahorro_vivienda" });
+    expect(
+      depositMatchesInternalTransferTiming({ occurred_on: "2026-05-02" }, dep("2026-05-31"))
+    ).toBe(true);
+    expect(
+      depositMatchesInternalTransferTiming({ occurred_on: "2026-06-01" }, dep("2026-05-31"))
+    ).toBe(false);
+  });
+
+  it("ledger capital returns require the credit on/after the outflow (day precision)", () => {
+    expect(ledgerCapitalReturnMatchesTiming("2026-05-12", "2026-05-10", "fondo_reserva", 3)).toBe(true);
+    // credit BEFORE the outflow never matches, even inside the gap
+    expect(ledgerCapitalReturnMatchesTiming("2026-05-09", "2026-05-10", "fondo_reserva", 3)).toBe(false);
+    expect(ledgerCapitalReturnMatchesTiming("2026-05-20", "2026-05-10", "fondo_reserva", 3)).toBe(false);
+    // month-bucket outflow: same calendar month, direction-free
+    expect(
+      ledgerCapitalReturnMatchesTiming("2026-05-03", "2026-05-31", "cuenta_ahorro_vivienda", 3)
+    ).toBe(true);
   });
 });

@@ -926,11 +926,6 @@ export function listStatementLineIdsForPurchaseKey(
   return [statementLineId];
 }
 
-/** @deprecated Use listStatementLineIdsForPurchaseKey */
-export function listUniqueCategoryTargetStatementLineIds(statementLineId: number): number[] {
-  return listStatementLineIdsForPurchaseKey(statementLineId);
-}
-
 export function ccStatementLineBelongsToCreditCardGroup(statementLineId: number): {
   ok: boolean;
   account_id?: number;

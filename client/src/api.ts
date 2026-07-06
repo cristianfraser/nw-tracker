@@ -183,8 +183,6 @@ export const api = {
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
     ),
-  creditCards: () =>
-    j<{ cards: import("./types").OperationalCreditCardRow[] }>("/api/credit-cards"),
   creditCardConfig: (id: string | number) =>
     j<{ config: import("./types").CreditCardAccountConfigDto }>(
       `/api/accounts/${id}/credit-card-config`
@@ -355,6 +353,11 @@ export const api = {
       account_id?: number;
       category?: string;
       q?: string;
+      date_from?: string;
+      date_to?: string;
+      amount_min?: number;
+      amount_max?: number;
+      amount_exact?: number;
     }
   ) => {
     const qu = new URLSearchParams();
@@ -365,6 +368,12 @@ export const api = {
     if (opts.account_id != null) qu.set("account_id", String(opts.account_id));
     if (opts.category) qu.set("category", opts.category);
     if (opts.q) qu.set("q", opts.q);
+    for (const key of ["date_from", "date_to"] as const) {
+      if (opts[key]) qu.set(key, opts[key]!);
+    }
+    for (const key of ["amount_min", "amount_max", "amount_exact"] as const) {
+      if (opts[key] != null) qu.set(key, String(opts[key]));
+    }
     const qs = qu.toString();
     return j<import("./types").FlowsPageResponse>(
       `/api/groups/${encodeURIComponent(slug)}/flows${qs ? `?${qs}` : ""}`
@@ -379,6 +388,11 @@ export const api = {
       type?: string;
       q?: string;
       personal_only?: boolean;
+      date_from?: string;
+      date_to?: string;
+      amount_min?: number;
+      amount_max?: number;
+      amount_exact?: number;
     }
   ) => {
     const qu = new URLSearchParams();
@@ -388,6 +402,12 @@ export const api = {
     if (opts.type) qu.set("type", opts.type);
     if (opts.q) qu.set("q", opts.q);
     if (opts.personal_only) qu.set("personal_only", "1");
+    for (const key of ["date_from", "date_to"] as const) {
+      if (opts[key]) qu.set(key, opts[key]!);
+    }
+    for (const key of ["amount_min", "amount_max", "amount_exact"] as const) {
+      if (opts[key] != null) qu.set(key, String(opts[key]));
+    }
     const qs = qu.toString();
     return j<import("./types").FlowsPageResponse>(
       `/api/accounts/${id}/flows${qs ? `?${qs}` : ""}`
@@ -638,33 +658,14 @@ export const api = {
     ),
   deleteGenericUniqueMerchant: (id: number) =>
     j<void>(`/api/import-sync/generic-unique-merchants/${id}`, { method: "DELETE" }),
-  searchFlows: (opts: {
-    page?: number;
-    pageSize?: number;
-    q?: string;
-    year?: string;
-    type?: string;
-    account_id?: number;
-    category?: string;
-    date_from?: string;
-    date_to?: string;
-    amount_min?: number;
-    amount_max?: number;
-    amount_exact?: number;
-  }) => {
-    const qu = new URLSearchParams();
-    if (opts.page) qu.set("page", String(opts.page));
-    if (opts.pageSize) qu.set("page_size", String(opts.pageSize));
-    for (const key of ["q", "year", "type", "category", "date_from", "date_to"] as const) {
-      const v = opts[key];
-      if (v) qu.set(key, v);
+  projections: (unit: "clp" | "usd", overrides: Partial<import("./types").ProjectionParams>) => {
+    const qs = new URLSearchParams();
+    if (unit === "usd") qs.set("unit", "usd");
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v != null) qs.set(k, String(v));
     }
-    for (const key of ["account_id", "amount_min", "amount_max", "amount_exact"] as const) {
-      const v = opts[key];
-      if (v != null) qu.set(key, String(v));
-    }
-    const qs = qu.toString();
-    return j<import("./types").FlowsPageResponse>(`/api/flows/search${qs ? `?${qs}` : ""}`);
+    const q = qs.toString();
+    return j<import("./types").ProjectionsResponse>(`/api/projections${q ? `?${q}` : ""}`);
   },
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),

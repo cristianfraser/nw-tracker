@@ -6,7 +6,6 @@ import {
   billingMonthForLedgerPurchase,
   billingMonthForManualLedgerPurchase,
   lastPdfBillingMonthForAccount,
-  lastPdfBillingMonthForCard,
   targetBillingMonthForManualImports,
 } from "./ccManualBillingMonth.js";
 
@@ -18,8 +17,6 @@ describe("targetBillingMonthForManualImports", () => {
     if (!master) return;
     const lastPdf = lastPdfBillingMonthForAccount(master.id);
     if (!lastPdf) return;
-    const lastPdfLegacy = lastPdfBillingMonthForCard(master.id, "4242");
-    expect(lastPdfLegacy).toBe(lastPdf);
     const target = targetBillingMonthForManualImports(master.id, "4242");
     expect(ymCompare(target, addCalendarMonths(lastPdf!, 1))).toBeGreaterThanOrEqual(0);
   });

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { ExportToolbarButton } from "../components/export/ExportModal";
 import { GroupChartViewToggles } from "../components/group/GroupChartViewToggles";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -324,6 +325,7 @@ export function GroupInfoPage() {
           <NavAccountsTree root={accountsTreeRoot} titleI18nKey="groupPage.accountsTreeTitle" />
         ) : null
       }
+      exportSlot={<ExportToolbarButton exportPath={`/api/groups/${portfolioGroup}/export.xlsx`} />}
     />
   );
 }

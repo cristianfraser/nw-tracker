@@ -5,6 +5,7 @@ import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
+import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { useTranslation } from "./i18n";
 
 // Route-level code splitting: each page (and its chart/table deps, notably recharts)
@@ -16,7 +17,6 @@ const lazyPage = <T extends Record<string, unknown>, K extends keyof T>(
 ) => lazy(async () => ({ default: (await load())[name] as React.ComponentType }));
 
 const AccountDetailPage = lazyPage(() => import("./pages/AccountDetailPage"), "AccountDetailPage");
-const CreditCardsPage = lazyPage(() => import("./pages/CreditCardsPage"), "CreditCardsPage");
 const GroupInfoPage = lazyPage(() => import("./pages/GroupInfoPage"), "GroupInfoPage");
 const LiabilitiesGroupPage = lazyPage(() => import("./pages/LiabilitiesGroupPage"), "LiabilitiesGroupPage");
 const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
@@ -43,8 +43,9 @@ const MirrorPairsPanelPage = lazyPage(
   "MirrorPairsPanelPage"
 );
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
-const SearchPage = lazyPage(() => import("./pages/SearchPage"), "SearchPage");
+const ProjectionsPage = lazyPage(() => import("./pages/ProjectionsPage"), "ProjectionsPage");
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
+const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"), "NotFoundPage");
 
 export default function App() {
   return (
@@ -71,18 +72,13 @@ function AppTree() {
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
+          <RouteErrorBoundary>
           <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
-            <Route path="/retirement" element={<Navigate to="/inversiones/retiro" replace />} />
-            <Route path="/retirement/*" element={<Navigate to="/inversiones/retiro" replace />} />
-            <Route path="/brokerage" element={<Navigate to="/inversiones/brokerage" replace />} />
-            <Route path="/brokerage/*" element={<Navigate to="/inversiones/brokerage" replace />} />
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
-            <Route path="/crypto" element={<Navigate to="/inversiones/brokerage/crypto" replace />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
-            <Route path="/credit-cards" element={<CreditCardsPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />
@@ -96,7 +92,7 @@ function AppTree() {
               <Route path="deposits/reconciliation" element={<DepositsReconciliationPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />
-            <Route path="/search" element={<SearchPage />} />
+            <Route path="/projections" element={<ProjectionsPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />
@@ -106,12 +102,11 @@ function AppTree() {
               <Route path="mirror-pairs" element={<MirrorPairsPanelPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
-            <Route path="/messages" element={<Navigate to="/panel/notifications" replace />} />
-            <Route path="/income" element={<Navigate to="/flows/income" replace />} />
-            <Route path="/expenses" element={<Navigate to="/flows/expenses" replace />} />
             <Route path="/account/:id" element={<AccountDetailPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </Suspense>
+          </RouteErrorBoundary>
           </div>
         </div>
       </div>
