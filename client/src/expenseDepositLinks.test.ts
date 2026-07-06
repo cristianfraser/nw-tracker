@@ -107,6 +107,22 @@ describe("client expense deposit link aggregate", () => {
     ).toBe(3_212_395);
   });
 
+  it("converts mortgage carrying to USD by CLP share in USD display", () => {
+    // 1.000.000 CLP payment, amount_usd_at_expense 1.000 → implied 1000 CLP/USD.
+    const line = baseLine({ amount_usd_at_expense: 1_000 });
+    const { by_month, chart_monthly_by_category } = aggregateGastosFromLines(
+      [line],
+      [BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG],
+      "split",
+      undefined,
+      "usd"
+    );
+    // Carrying 400.000/1.000.000 of the payment → US$400; amortización → −US$600.
+    expect(by_month[0]?.gastos_mes_clp).toBe(400);
+    expect(chart_monthly_by_category[0]?.[BILLS_CC_EXPENSE_SLUG]).toBe(400);
+    expect(chart_monthly_by_category[0]?.[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-600);
+  });
+
   it("expenseCategoryChartPointTotal treats amortization as positive spend", () => {
     const pt = {
       as_of_date: "2024-03-31",

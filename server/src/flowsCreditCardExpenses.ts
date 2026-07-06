@@ -998,7 +998,7 @@ export function loadFinalizedCheckingGastosLinesReadOnly(): Omit<
   );
 }
 
-function expandLineSplitsInDrafts(
+export function expandLineSplitsInDrafts(
   drafts: readonly FlowCcExpenseLineRowDraft[]
 ): FlowCcExpenseLineRowDraft[] {
   const splitsMap = loadExcelGapLineSplits();
@@ -1010,11 +1010,22 @@ function expandLineSplitsInDrafts(
       const splits = splitsMap.get(`${draft.source}:${draft.statement_line_id}`);
       if (splits && splits.length > 0) {
         for (const split of splits) {
+          // USD amounts allocate by CLP share: split sums equal the parent amount (enforced
+          // at insert), so shares sum back to the parent USD at the parent's FX date.
+          const usdShare = (parentUsd: number | null | undefined): number | null => {
+            if (parentUsd == null) return null;
+            if (draft.amount_clp === 0) {
+              throw new Error(
+                `cannot split USD amounts for ${draft.source}:${draft.statement_line_id}: amount_clp is 0`
+              );
+            }
+            return parentUsd * (split.amount_clp / draft.amount_clp);
+          };
           result.push({
             ...draft,
             amount_clp: split.amount_clp,
-            amount_usd: null,
-            amount_usd_at_expense: null,
+            amount_usd: usdShare(draft.amount_usd),
+            amount_usd_at_expense: usdShare(draft.amount_usd_at_expense),
             category_slug: split.category_slug,
             category_unique: true,
             split_purchase_key_suffix: `#split:${split.seq}`,
