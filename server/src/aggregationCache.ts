@@ -90,6 +90,20 @@ export function cacheKeyCcBillingDetail(accountId: number): string {
   return `cc.billing_detail|${accountId}`;
 }
 
+export function cacheKeyDashboardPageBundle(unit: TsUnit): string {
+  return `dashboard.page_bundle|${unit}`;
+}
+
+/**
+ * The home page-bundle response bakes in every dashboard input (account rows with live marks,
+ * valuation TS, CC balances, group perf, fx), so every explicit invalidation below must drop
+ * it — a targeted key delete that leaves a stale bundle would serve pre-write data until the
+ * next day rollover. Also the eviction hook for a build that rejected mid-flight.
+ */
+export function invalidateDashboardPageBundle(): void {
+  deleteKeysMatchingPrefix("dashboard.page_bundle|");
+}
+
 /**
  * Drop the cached CC billing detail (ledger months + detalle por mes) for one account, or for
  * all accounts when omitted. Same-connection CC writes must call this (directly or via
@@ -105,6 +119,9 @@ export function invalidateCcBillingDetail(accountId?: number): void {
     const operationalId = resolveOperationalAccountId(accountId);
     if (operationalId !== accountId) cache.delete(cacheKeyCcBillingDetail(operationalId));
   }
+  // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
+  // invalidateLinkedCreditCardAggregationCache both call this) — the bundle goes with it.
+  invalidateDashboardPageBundle();
   invalidationListener?.();
 }
 
@@ -237,6 +254,7 @@ export function invalidateMarketDataAggregations(): void {
   deleteKeysMatchingPrefix("account.monthly_perf|");
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
+  invalidateDashboardPageBundle();
   invalidationListener?.();
 }
 
