@@ -349,9 +349,9 @@ export function AppSidebar() {
                 </ul>
                 <div className={styles.separator} role="separator" />
                 <ul className={styles.list}>
-                  {flowsNode ? (
+                  {projectionsNode ? (
                     <SidebarNavItem
-                      node={flowsNode}
+                      node={projectionsNode}
                       depth={0}
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
@@ -361,9 +361,9 @@ export function AppSidebar() {
                       onPrefetchShape={onPrefetchShape}
                     />
                   ) : null}
-                  {projectionsNode ? (
+                  {flowsNode ? (
                     <SidebarNavItem
-                      node={projectionsNode}
+                      node={flowsNode}
                       depth={0}
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}
