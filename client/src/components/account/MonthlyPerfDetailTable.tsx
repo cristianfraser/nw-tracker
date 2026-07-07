@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatClp, formatClpUfDay, formatInstrumentUnits, formatPct, formatUfBalance, formatUsdFine } from "../../format";
+import { formatClp, formatInstrumentUnits, formatPct, formatUfBalance, formatUsdFine } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
@@ -138,7 +138,6 @@ function MonthlyPerfDetailMobileCard({
   isYearly: boolean;
   labels: {
     closing: string;
-    ufDay: string;
     balanceUf: string;
     netDeposits: string;
     inflow: string;
@@ -156,24 +155,14 @@ function MonthlyPerfDetailMobileCard({
       <TableMobileCardSection>
         <TableMobileCardRow label={labels.closing} value={fmtPerf(row.closing_value)} />
         {isMortgageAccount ? (
-          <>
-            <TableMobileCardRow
-              label={labels.ufDay}
-              value={
-                mortgageRow?.uf_clp_day != null && Number.isFinite(mortgageRow.uf_clp_day)
-                  ? formatClpUfDay(mortgageRow.uf_clp_day)
-                  : "—"
-              }
-            />
-            <TableMobileCardRow
-              label={labels.balanceUf}
-              value={
-                mortgageRow?.closing_balance_uf != null && Number.isFinite(mortgageRow.closing_balance_uf)
-                  ? formatUfBalance(mortgageRow.closing_balance_uf)
-                  : "—"
-              }
-            />
-          </>
+          <TableMobileCardRow
+            label={labels.balanceUf}
+            value={
+              mortgageRow?.closing_balance_uf != null && Number.isFinite(mortgageRow.closing_balance_uf)
+                ? formatUfBalance(mortgageRow.closing_balance_uf)
+                : "—"
+            }
+          />
         ) : null}
       </TableMobileCardSection>
 
@@ -189,7 +178,9 @@ function MonthlyPerfDetailMobileCard({
 
       <TableMobileCardSection>
         <TableMobileCardRow label={labels.pl} value={fmtPerf(row.nominal_pl)} />
-        <TableMobileCardRow label={labels.pct} value={cellPct(row.pct_month)} />
+        {!isMortgageAccount ? (
+          <TableMobileCardRow label={labels.pct} value={cellPct(row.pct_month)} />
+        ) : null}
         <TableMobileCardRow label={labels.ytd} value={fmtPerf(row.ytd_nominal_pl)} />
         <TableMobileCardRow label={labels.cum} value={fmtPerf(row.cumulative_nominal_pl)} />
       </TableMobileCardSection>
@@ -228,10 +219,14 @@ export function MonthlyPerfDetailTable({
     return displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
   };
 
+  // Mortgage view: no stock units by definition, and the %/UF-día columns were dropped
+  // as redundant sheet helpers — only Saldo UF stays mortgage-specific.
+  const showStockInflows = showStockInflowsColumn && !isMortgageAccount;
+
   const plLabel = isMortgageAccount ? t("accountDetail.perf.plMortgage") : t("accountDetail.perf.plInvestment");
-  const pctLabel = isMortgageAccount
-    ? (isYearly ? t("accountDetail.perf.pctMortgageYearly") : t("accountDetail.perf.pctMortgageMonthly"))
-    : (isYearly ? t("accountDetail.perf.pctInvestmentYearly") : t("accountDetail.perf.pctInvestmentMonthly"));
+  const pctLabel = isYearly
+    ? t("accountDetail.perf.pctInvestmentYearly")
+    : t("accountDetail.perf.pctInvestmentMonthly");
   const ytdLabel = isMortgageAccount
     ? (isYearly ? t("accountDetail.perf.ytdMortgageYearly") : t("accountDetail.perf.ytdMortgageMonthly"))
     : (isYearly ? t("accountDetail.perf.ytdInvestmentYearly") : t("accountDetail.perf.ytdInvestmentMonthly"));
@@ -240,7 +235,6 @@ export function MonthlyPerfDetailTable({
 
   const mobileLabels = {
     closing: t("accountDetail.closingColumn"),
-    ufDay: t("accountDetail.ufDayColumn"),
     balanceUf: t("accountDetail.balanceUfColumn"),
     netDeposits: t("accountDetail.netDepositsColumn"),
     inflow: inflowLabel,
@@ -276,21 +270,16 @@ export function MonthlyPerfDetailTable({
         <th className="desktop-only">{periodColumnLabel}</th>
         <th className="desktop-only">{t("accountDetail.closingColumn")}</th>
         {isMortgageAccount ? (
-          <>
-            <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
-              {t("accountDetail.ufDayColumn")}
-            </th>
-            <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
-              {t("accountDetail.balanceUfColumn")}
-            </th>
-          </>
+          <th className="desktop-only" style={{ whiteSpace: "nowrap" }}>
+            {t("accountDetail.balanceUfColumn")}
+          </th>
         ) : null}
         <th className="desktop-only">{t("accountDetail.netDepositsColumn")}</th>
-        {showStockInflowsColumn ? (
+        {showStockInflows ? (
           <th className="desktop-only">{inflowLabel}</th>
         ) : null}
         <th className="desktop-only">{plLabel}</th>
-        <th className="desktop-only">{pctLabel}</th>
+        {!isMortgageAccount ? <th className="desktop-only">{pctLabel}</th> : null}
         <th className="desktop-only">{ytdLabel}</th>
         <th className="desktop-only">{cumLabel}</th>
         <th className="mobile-only" aria-hidden="true" />
@@ -319,27 +308,22 @@ export function MonthlyPerfDetailTable({
               <td className="mono desktop-only">{formatPerfPeriodLabel(row.as_of_date, isYearly)}</td>
               <td className="mono desktop-only">{fmtPerf(row.closing_value)}</td>
               {isMortgageAccount ? (
-                <>
-                  <td className="mono desktop-only" style={{ whiteSpace: "nowrap" }}>
-                    {mortgageRow?.uf_clp_day != null && Number.isFinite(mortgageRow.uf_clp_day)
-                      ? formatClpUfDay(mortgageRow.uf_clp_day)
-                      : "—"}
-                  </td>
-                  <td className="mono desktop-only" style={{ whiteSpace: "nowrap" }}>
-                    {mortgageRow?.closing_balance_uf != null && Number.isFinite(mortgageRow.closing_balance_uf)
-                      ? formatUfBalance(mortgageRow.closing_balance_uf)
-                      : "—"}
-                  </td>
-                </>
+                <td className="mono desktop-only" style={{ whiteSpace: "nowrap" }}>
+                  {mortgageRow?.closing_balance_uf != null && Number.isFinite(mortgageRow.closing_balance_uf)
+                    ? formatUfBalance(mortgageRow.closing_balance_uf)
+                    : "—"}
+                </td>
               ) : null}
               <td className="mono desktop-only">{fmtPerf(row.net_capital_flow)}</td>
-              {showStockInflowsColumn ? (
+              {showStockInflows ? (
                 <td className="mono desktop-only">
                   {formatStockInflow(row, isAfpAccount, movementUnitsKind)}
                 </td>
               ) : null}
               <td className="mono desktop-only">{fmtPerf(row.nominal_pl)}</td>
-              <td className="mono desktop-only">{cellPct(row.pct_month)}</td>
+              {!isMortgageAccount ? (
+                <td className="mono desktop-only">{cellPct(row.pct_month)}</td>
+              ) : null}
               <td className="mono desktop-only">{fmtPerf(row.ytd_nominal_pl)}</td>
               <td className="mono desktop-only">{fmtPerf(row.cumulative_nominal_pl)}</td>
               <td className="mobile-only">
@@ -348,7 +332,7 @@ export function MonthlyPerfDetailTable({
                   fmtPerf={fmtPerf}
                   isMortgageAccount={isMortgageAccount}
                   isAfpAccount={isAfpAccount}
-                  showStockInflowsColumn={showStockInflowsColumn}
+                  showStockInflowsColumn={showStockInflows}
                   movementUnitsKind={movementUnitsKind}
                   isYearly={isYearly}
                   labels={mobileLabels}

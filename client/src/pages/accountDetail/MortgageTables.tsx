@@ -12,56 +12,76 @@ import type {
   DeptoPaymentScenarioRow,
   DeptoPaymentScenarioTerm,
 } from "../../types";
-import { formatClp, formatClpUfDay, formatUfUnits, formatUfUnitsFine } from "../../format";
+import { formatClp, formatUfUnits, formatUfUnitsFine } from "../../format";
 import { cn } from "../../cn";
 import i18n, { Trans } from "../../i18n";
 import styles from "../AccountDetailPage.module.css";
 
-function cellClp(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return formatClp(n);
+/** UF amount with the CLP amount as a muted sub-line (shared desktop/mobile pair cell). */
+function cellUfClpPair(uf: number | null, clp: number | null) {
+  if (uf == null && clp == null) return "—";
+  return (
+    <>
+      {uf != null ? formatUfUnitsFine(uf) : "—"}
+      {clp != null ? (
+        <span className={cn("muted", styles.cellSub)}>{formatClp(clp)}</span>
+      ) : null}
+    </>
+  );
 }
 
-function cellTxt(s: string | null | undefined) {
-  if (s == null || !String(s).trim()) return "—";
-  return s;
+/** Min payment CLP is not stored on the sheet row; convert at the row's UF rate. */
+function minUfClp(row: DeptoMortgageSheetRow): number | null {
+  if (row.min_uf == null || row.uf_clp_day == null) return null;
+  return row.min_uf * row.uf_clp_day;
 }
 
-function tasaPlusLabel(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n}%`;
+/** Remaining credit: UF (coarse units) with the CLP amount as a muted sub-line. */
+function cellCreditoPair(row: DeptoMortgageSheetRow) {
+  if (row.credito_restante_uf == null && row.restante_clp == null) return "—";
+  return (
+    <>
+      {row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
+      {row.restante_clp != null ? (
+        <span className={cn("muted", styles.cellSub)}>{formatClp(row.restante_clp)}</span>
+      ) : null}
+    </>
+  );
 }
-
 
 function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
   return (
     <TableMobileCard title={`${row.cuota} · ${row.occurred_on}`}>
       <TableMobileCardSection>
-        <TableMobileCardRow label="Pago CLP" value={cellClp(row.pago_clp)} />
-        <TableMobileCardRow label="Pago UF" value={formatUfUnitsFine(row.pago_uf)} />
+        <TableMobileCardRow label="Pago" value={cellUfClpPair(row.pago_uf, row.pago_clp)} />
       </TableMobileCardSection>
       <TableMobileCardSection>
-        <TableMobileCardRow label="% div." value={cellTxt(row.pct_dividendo)} />
-        <TableMobileCardRow
-          label="UF día"
-          value={row.uf_clp_day != null ? formatClpUfDay(row.uf_clp_day) : "—"}
-        />
-        <TableMobileCardRow label="m/m" value={cellTxt(row.mm_pct)} />
-        <TableMobileCardRow label="y/y" value={cellTxt(row.yy_pct)} />
+        <TableMobileCardRow label="Crédito" value={cellCreditoPair(row)} />
+        <TableMobileCardRow label="Min UF" value={cellUfClpPair(row.min_uf, minUfClp(row))} />
       </TableMobileCardSection>
       <TableMobileCardSection>
-        <TableMobileCardRow label="+ tasa" value={tasaPlusLabel(row.tasa_plus)} />
         <TableMobileCardRow
-          label="Crédito UF"
-          value={row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
+          label="Incendio"
+          value={cellUfClpPair(row.incendio_uf, row.incendio_clp)}
         />
-        <TableMobileCardRow label="Restante CLP" value={cellClp(row.restante_clp)} />
-        <TableMobileCardRow label="Valor neto CLP" value={cellClp(row.valor_neto_clp)} />
         <TableMobileCardRow
-          label="Amortización CLP"
-          value={cellClp(row.amortizacion_clp)}
+          label="Desgravamen"
+          value={cellUfClpPair(row.desgravamen_uf, row.desgravamen_clp)}
         />
-        <TableMobileCardRow label="Interés CLP" value={cellClp(row.interes_clp)} />
+      </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow
+          label="Amortización"
+          value={cellUfClpPair(row.amortizacion_uf, row.amortizacion_clp)}
+        />
+        <TableMobileCardRow
+          label="Amort. ext"
+          value={cellUfClpPair(row.amortizacion_ext_uf, row.amortizacion_ext_clp)}
+        />
+        <TableMobileCardRow
+          label="Interés"
+          value={cellUfClpPair(row.interes_uf, row.interes_clp)}
+        />
       </TableMobileCardSection>
     </TableMobileCard>
   );
@@ -70,55 +90,20 @@ function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
 function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
   return (
     <>
-      <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.cuota}</td>
-      <td className="desktop-only">{row.occurred_on}</td>
-      <td className="mono desktop-only">{cellClp(row.pago_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.pago_uf)}</td>
-      <td className="mono muted desktop-only">{cellTxt(row.pct_dividendo)}</td>
-      <td className="mono desktop-only">
-        {row.uf_clp_day != null ? formatClpUfDay(row.uf_clp_day) : "—"}
+      <td className={cn("mono", "desktop-only", styles.nowrap)}>
+        {row.cuota}
+        <span className={cn("muted", styles.cellSub)}>{row.occurred_on}</span>
       </td>
-      <td className="mono muted desktop-only">{cellTxt(row.mm_pct)}</td>
-      <td className="mono muted desktop-only">{cellTxt(row.yy_pct)}</td>
-      <td className="mono muted desktop-only">{tasaPlusLabel(row.tasa_plus)}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.pago_uf, row.pago_clp)}</td>
+      <td className="mono desktop-only">{cellCreditoPair(row)}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.min_uf, minUfClp(row))}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.incendio_uf, row.incendio_clp)}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.desgravamen_uf, row.desgravamen_clp)}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.amortizacion_uf, row.amortizacion_clp)}</td>
       <td className="mono desktop-only">
-        {row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
+        {cellUfClpPair(row.amortizacion_ext_uf, row.amortizacion_ext_clp)}
       </td>
-      <td className="mono muted desktop-only">{cellTxt(row.pct_credito_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.restante_clp)}</td>
-      <td className="mono desktop-only">{cellClp(row.delta_credito_clp)}</td>
-      <td className="mono desktop-only">
-        {row.valor_neto_uf != null ? formatUfUnits(row.valor_neto_uf) : "—"}
-      </td>
-      <td className="mono desktop-only">{cellClp(row.valor_neto_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.pagado_neto_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.delta_valor_neto_clp)}</td>
-      <td className="mono desktop-only">
-        {row.valor_vivienda_uf != null ? formatUfUnits(row.valor_vivienda_uf) : "—"}
-      </td>
-      <td className="mono desktop-only">{cellClp(row.valor_vivienda_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.min_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.incendio_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.incendio_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.desgravamen_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.desgravamen_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.total_seguros_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.total_seguros_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.amortizacion_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.amortizacion_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.amortizacion_ext_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.amortizacion_ext_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.interes_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.interes_uf)}</td>
-      <td className="mono desktop-only">{cellClp(row.delta_credito_amort_clp)}</td>
-      <td className="mono desktop-only">{cellClp(row.interes_oculto_clp)}</td>
-      <td className="mono desktop-only">{cellClp(row.interes_oculto_b_clp)}</td>
-      <td className="mono desktop-only">{cellClp(row.interes_real_clp)}</td>
-      <td className="mono desktop-only">{formatUfUnitsFine(row.interes_calculado_uf)}</td>
-      <td className="mono muted desktop-only">{cellTxt(row.amort_interes_text)}</td>
-      <td className="mono muted desktop-only">{cellClp(row.pago_acumulado_clp)}</td>
-      <td className="mono muted desktop-only">{cellClp(row.amort_acum_clp)}</td>
-      <td className="mono muted desktop-only">{cellClp(row.interes_acum_clp)}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.interes_uf, row.interes_clp)}</td>
     </>
   );
 }
@@ -158,10 +143,7 @@ export function MortgageDividendosTable({
         {isMortgageView ? (
           <Trans i18nKey="accountDetail.mortgageSheet.pieNote" components={{ 1: <strong /> }} />
         ) : (
-          <Trans
-            i18nKey="accountDetail.mortgageSheet.tasaNote"
-            components={{ 1: <strong />, 3: <strong /> }}
-          />
+          <Trans i18nKey="accountDetail.mortgageSheet.tasaNote" components={{ 1: <strong /> }} />
         )}
       </p>
       {m && !isMortgageView && (
@@ -196,127 +178,15 @@ export function MortgageDividendosTable({
           header={
           <thead>
             <tr>
-              <th rowSpan={2} className="desktop-only">
-                Cuota
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Fecha
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pago CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pago UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                % div.
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                UF día
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                m/m
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                y/y
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                + tasa
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Crédito UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                % créd.
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Restante CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Δ crédito
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Valor neto UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Valor neto CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pagado neto UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Δ VN CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Vivienda UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Vivienda CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Min UF
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Incendio
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Desgravamen
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Total seguros
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Amortización
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Amort. ext
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Interés
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Δ créd. (amort)
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. oculto
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. oculto B
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. real
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. calc UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                amort/int
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pago acum.
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Amort acum
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int acum
-              </th>
-            </tr>
-            <tr>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-            </tr>
-            <tr>
+              <th className="desktop-only">Cuota</th>
+              <th className="desktop-only">Pago</th>
+              <th className="desktop-only">Crédito</th>
+              <th className="desktop-only">Min UF</th>
+              <th className="desktop-only">Incendio</th>
+              <th className="desktop-only">Desgravamen</th>
+              <th className="desktop-only">Amortización</th>
+              <th className="desktop-only">Amort. ext</th>
+              <th className="desktop-only">Interés</th>
               <th className="mobile-only" aria-hidden="true" />
             </tr>
           </thead>
