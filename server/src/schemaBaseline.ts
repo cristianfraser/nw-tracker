@@ -1,23 +1,23 @@
 /**
  * Full schema baseline generated from the live DB's `sqlite_master` (schema only, no data)
- * as of migration 150_apv_a_aporte_estatal_flow_kind.sql. `initSchema()` executes this on
+ * as of migration 155_movement_mirror_rejections.sql. `initSchema()` executes this on
  * every boot (all statements are IF NOT EXISTS); on a brand-new DB the migrations up to and
- * including the baseline are then marked pre-applied — legacy migrations (e.g. 002 inserting
- * into the pre-074 `accounts.category_id` schema) cannot run against the modern schema.
+ * including the baseline are then marked pre-applied — squashed migration files are deleted,
+ * except the reference-row seeds in `BASELINE_REFERENCE_DATA_MIGRATIONS` (db.ts).
  *
- * Regenerate when squashing again: scripts/regenerate-schema-baseline.py (see repo history).
+ * Regenerate when squashing again: npx tsx scripts/regenerate-schema-baseline.ts --last <file>
  */
-export const SCHEMA_BASELINE_LAST_MIGRATION = "150_apv_a_aporte_estatal_flow_kind.sql";
+export const SCHEMA_BASELINE_LAST_MIGRATION = "155_movement_mirror_rejections.sql";
 
 export const SCHEMA_BASELINE_STATEMENTS: readonly string[] = [
   "CREATE TABLE IF NOT EXISTS asset_groups (\n      id INTEGER PRIMARY KEY,\n      slug TEXT NOT NULL UNIQUE,\n      label TEXT NOT NULL,\n      sort_order INTEGER NOT NULL DEFAULT 0\n    , color_rgb TEXT, parent_id INTEGER REFERENCES asset_groups(id) ON DELETE RESTRICT)",
-  "CREATE TABLE IF NOT EXISTS valuations (\n      id INTEGER PRIMARY KEY,\n      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,\n      as_of_date TEXT NOT NULL,\n      value_clp REAL NOT NULL, units_snapshot REAL,\n      UNIQUE(account_id, as_of_date)\n    )",
+  "CREATE TABLE IF NOT EXISTS valuations (\n      id INTEGER PRIMARY KEY,\n      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,\n      as_of_date TEXT NOT NULL,\n      value REAL NOT NULL, units_snapshot REAL, currency TEXT NOT NULL DEFAULT 'clp' CHECK (currency IN ('clp', 'usd')),\n      UNIQUE(account_id, as_of_date)\n    )",
   "CREATE TABLE IF NOT EXISTS fx_daily (\n      date TEXT PRIMARY KEY,\n      clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)\n    )",
   "CREATE TABLE IF NOT EXISTS income_entries (\n      id INTEGER PRIMARY KEY,\n      amount_clp REAL NOT NULL,\n      received_on TEXT NOT NULL,\n      source TEXT,\n      note TEXT\n    )",
   "CREATE TABLE IF NOT EXISTS import_batches (\n      id INTEGER PRIMARY KEY,\n      kind TEXT NOT NULL DEFAULT 'bank_statement',\n      filename TEXT,\n      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),\n      status TEXT NOT NULL DEFAULT 'pending',\n      raw_text TEXT\n    )",
   "CREATE TABLE IF NOT EXISTS schema_migrations (\n      id TEXT PRIMARY KEY,\n      applied_at TEXT NOT NULL DEFAULT (datetime('now'))\n    )",
   "CREATE TABLE IF NOT EXISTS uf_daily (\n      date TEXT PRIMARY KEY,\n      clp_per_uf REAL NOT NULL CHECK (clp_per_uf > 0)\n    )",
-  "CREATE TABLE IF NOT EXISTS equity_daily (\r\n  ticker TEXT NOT NULL,\r\n  trade_date TEXT NOT NULL,\r\n  close_usd REAL NOT NULL,\r\n  PRIMARY KEY (ticker, trade_date)\r\n)",
+  "CREATE TABLE IF NOT EXISTS equity_daily (\r\n  ticker TEXT NOT NULL,\r\n  trade_date TEXT NOT NULL,\r\n  close REAL NOT NULL, currency TEXT NOT NULL DEFAULT 'usd' CHECK (currency IN ('usd', 'clp')),\r\n  PRIMARY KEY (ticker, trade_date)\r\n)",
   "CREATE INDEX IF NOT EXISTS idx_equity_daily_ticker_td ON equity_daily (ticker, trade_date)",
   "CREATE TABLE IF NOT EXISTS fund_unit_daily (\r\n  series_key TEXT NOT NULL,\r\n  day TEXT NOT NULL,\r\n  unit_value_clp REAL NOT NULL,\r\n  note TEXT,\r\n  PRIMARY KEY (series_key, day)\r\n)",
   "CREATE INDEX IF NOT EXISTS idx_fund_unit_day ON fund_unit_daily (series_key, day)",
@@ -76,8 +76,6 @@ export const SCHEMA_BASELINE_STATEMENTS: readonly string[] = [
   "CREATE TABLE IF NOT EXISTS depto_dividendos_sheet_rows (\r\n  sort_order INTEGER NOT NULL PRIMARY KEY,\r\n  cuota TEXT NOT NULL,\r\n  occurred_on TEXT NOT NULL,\r\n  row_json TEXT NOT NULL\r\n)",
   "CREATE INDEX IF NOT EXISTS idx_depto_sheet_rows_occurred\r\n  ON depto_dividendos_sheet_rows (occurred_on, cuota)",
   "CREATE TABLE IF NOT EXISTS categories (\n      id INTEGER PRIMARY KEY,\n      group_id INTEGER NOT NULL REFERENCES asset_groups(id),\n      slug TEXT NOT NULL,\n      label TEXT NOT NULL,\n      sort_order INTEGER NOT NULL DEFAULT 0,\n      UNIQUE(group_id, slug)\n    )",
-  "CREATE TABLE IF NOT EXISTS live_market_quotes (\r\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\r\n  symbol TEXT NOT NULL,\r\n  kind TEXT NOT NULL CHECK (kind IN ('equity_usd', 'fx_clp_per_usd')),\r\n  value REAL NOT NULL,\r\n  session_ymd TEXT NOT NULL,\r\n  previous_value REAL,\r\n  fetched_at TEXT NOT NULL\r\n)",
-  "CREATE INDEX IF NOT EXISTS idx_live_market_quotes_symbol_kind_fetched\r\n  ON live_market_quotes (symbol, kind, fetched_at DESC)",
   "CREATE TABLE IF NOT EXISTS fx_daily_bcentral (\n      date TEXT PRIMARY KEY,\n      clp_per_usd REAL NOT NULL CHECK (clp_per_usd > 0)\n    )",
   "CREATE TABLE IF NOT EXISTS fx_daily_yahoo_rejected (\n      date TEXT PRIMARY KEY,\n      raw_clp_per_usd REAL NOT NULL,\n      reason TEXT NOT NULL,\n      rejected_at TEXT NOT NULL DEFAULT (datetime('now'))\n    )",
   "CREATE TABLE IF NOT EXISTS cc_expense_big_groups (\r\n  slug TEXT PRIMARY KEY,\r\n  label TEXT NOT NULL,\r\n  sort_order INTEGER NOT NULL DEFAULT 0\r\n)",
@@ -89,9 +87,6 @@ export const SCHEMA_BASELINE_STATEMENTS: readonly string[] = [
   "CREATE INDEX IF NOT EXISTS idx_movements_account_occurred\r\n  ON movements(account_id, occurred_on)",
   "CREATE INDEX IF NOT EXISTS idx_movements_from_occurred\r\n  ON movements(from_account_id, occurred_on)",
   "CREATE INDEX IF NOT EXISTS idx_movements_to_occurred\r\n  ON movements(to_account_id, occurred_on)",
-  "CREATE TABLE IF NOT EXISTS payroll_work_earnings (\r\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\r\n  period_month TEXT NOT NULL,\r\n  employer_name TEXT NOT NULL,\r\n  employer_rut TEXT,\r\n  pay_period_label TEXT,\r\n  earning_type TEXT NOT NULL DEFAULT 'salary'\r\n    CHECK (earning_type IN ('salary', 'severance')),\r\n  base_salary_clp INTEGER,\r\n  colacion_clp INTEGER,\r\n  movilizacion_clp INTEGER,\r\n  gratificacion_clp INTEGER,\r\n  total_imponible_clp INTEGER,\r\n  total_no_imponible_clp INTEGER,\r\n  total_haberes_clp INTEGER,\r\n  desc_afp_clp INTEGER,\r\n  desc_health_clp INTEGER,\r\n  desc_tax_clp INTEGER,\r\n  desc_cesantia_clp INTEGER,\r\n  desc_apv_clp INTEGER,\r\n  desc_other_clp INTEGER,\r\n  total_descuentos_clp INTEGER,\r\n  liquido_clp INTEGER NOT NULL,\r\n  uf_mes REAL,\r\n  utm_mes REAL,\r\n  tope_previsional_uf REAL,\r\n  tope_cesantia_uf REAL,\r\n  source_pdf TEXT NOT NULL UNIQUE,\r\n  parse_version TEXT,\r\n  imported_at TEXT NOT NULL DEFAULT (datetime('now')),\r\n  movement_id INTEGER UNIQUE REFERENCES movements(id),\r\n  link_source TEXT CHECK (link_source IN ('auto', 'manual'))\r\n, liquido_usd REAL, wire_received_on TEXT)",
-  "CREATE INDEX IF NOT EXISTS idx_payroll_work_earnings_period_month\r\n  ON payroll_work_earnings(period_month)",
-  "CREATE INDEX IF NOT EXISTS idx_payroll_work_earnings_movement_id\r\n  ON payroll_work_earnings(movement_id)",
   "CREATE TABLE IF NOT EXISTS \"checking_income_movement_overrides\" (\r\n  movement_id INTEGER PRIMARY KEY REFERENCES movements(id),\r\n  is_excluded INTEGER NOT NULL DEFAULT 0 CHECK (is_excluded IN (0, 1)),\r\n  income_kind TEXT CHECK (income_kind IN ('salary', 'severance', 'other', 'parent_gift')),\r\n  note TEXT,\r\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\r\n, force_include INTEGER NOT NULL DEFAULT 0)",
   "CREATE INDEX IF NOT EXISTS idx_checking_income_movement_overrides_is_excluded\r\n  ON checking_income_movement_overrides(is_excluded)",
   "CREATE TABLE IF NOT EXISTS fx_daily_bid_ask (\r\n  date TEXT PRIMARY KEY,\r\n  buy_clp_per_usd REAL NOT NULL CHECK (buy_clp_per_usd > 0),\r\n  sell_clp_per_usd REAL NOT NULL CHECK (sell_clp_per_usd > 0),\r\n  source TEXT NOT NULL,\r\n  CHECK (buy_clp_per_usd >= sell_clp_per_usd)\r\n)",
@@ -111,5 +106,12 @@ export const SCHEMA_BASELINE_STATEMENTS: readonly string[] = [
   "CREATE TABLE IF NOT EXISTS cc_facturado_financing_link_purchases (\n  link_id INTEGER NOT NULL,\n  financing_account_id INTEGER NOT NULL,\n  financing_purchase_key TEXT NOT NULL,\n  PRIMARY KEY (link_id, financing_purchase_key)\n)",
   "CREATE INDEX IF NOT EXISTS idx_cc_fin_link_purchases_link\n  ON cc_facturado_financing_link_purchases (link_id)",
   "CREATE TABLE IF NOT EXISTS cuenta_ahorro_deposit_splits (\n  deposit_movement_id INTEGER PRIMARY KEY REFERENCES movements(id) ON DELETE CASCADE,\n  self_funded_clp INTEGER NOT NULL,\n  note TEXT,\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\n)",
+  "CREATE TABLE IF NOT EXISTS demo_auth_logins (\n  email TEXT NOT NULL,\n  day TEXT NOT NULL,\n  first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),\n  last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),\n  request_count INTEGER NOT NULL DEFAULT 0,\n  PRIMARY KEY (email, day)\n)",
+  "CREATE TABLE IF NOT EXISTS \"live_market_quotes\" (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  symbol TEXT NOT NULL,\n  kind TEXT NOT NULL CHECK (kind IN ('equity', 'fx_clp_per_usd')),\n  value REAL NOT NULL,\n  currency TEXT CHECK (currency IN ('usd', 'clp')),\n  session_ymd TEXT NOT NULL,\n  previous_value REAL,\n  fetched_at TEXT NOT NULL,\n  CHECK ((kind = 'equity' AND currency IS NOT NULL) OR (kind = 'fx_clp_per_usd' AND currency IS NULL))\n)",
+  "CREATE INDEX IF NOT EXISTS idx_live_market_quotes_symbol_kind_fetched ON live_market_quotes (symbol, kind, fetched_at DESC)",
+  "CREATE TABLE IF NOT EXISTS \"payroll_work_earnings\" (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  period_month TEXT NOT NULL,\n  employer_name TEXT NOT NULL,\n  employer_rut TEXT,\n  pay_period_label TEXT,\n  earning_type TEXT NOT NULL DEFAULT 'salary'\n    CHECK (earning_type IN ('salary', 'severance')),\n  base_salary_clp INTEGER,\n  colacion_clp INTEGER,\n  movilizacion_clp INTEGER,\n  gratificacion_clp INTEGER,\n  total_imponible_clp INTEGER,\n  total_no_imponible_clp INTEGER,\n  total_haberes_clp INTEGER,\n  desc_afp_clp INTEGER,\n  desc_health_clp INTEGER,\n  desc_tax_clp INTEGER,\n  desc_cesantia_clp INTEGER,\n  desc_apv_clp INTEGER,\n  desc_other_clp INTEGER,\n  total_descuentos_clp INTEGER,\n  liquido REAL NOT NULL,\n  liquido_currency TEXT NOT NULL DEFAULT 'clp'\n    CHECK (liquido_currency IN ('clp', 'usd')),\n  uf_mes REAL,\n  utm_mes REAL,\n  tope_previsional_uf REAL,\n  tope_cesantia_uf REAL,\n  source_pdf TEXT NOT NULL UNIQUE,\n  parse_version TEXT,\n  imported_at TEXT NOT NULL DEFAULT (datetime('now')),\n  movement_id INTEGER UNIQUE REFERENCES movements(id),\n  link_source TEXT CHECK (link_source IN ('auto', 'manual')),\n  wire_received_on TEXT\n)",
+  "CREATE INDEX IF NOT EXISTS idx_payroll_work_earnings_period_month\n  ON payroll_work_earnings(period_month)",
+  "CREATE INDEX IF NOT EXISTS idx_payroll_work_earnings_movement_id\n  ON payroll_work_earnings(movement_id)",
+  "CREATE TABLE IF NOT EXISTS movement_mirror_pair_rejections (\n  out_movement_id INTEGER NOT NULL REFERENCES movements(id) ON DELETE CASCADE,\n  in_movement_id INTEGER NOT NULL REFERENCES movements(id) ON DELETE CASCADE,\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\n  PRIMARY KEY (out_movement_id, in_movement_id)\n)",
+  "CREATE INDEX IF NOT EXISTS idx_movement_mirror_rejections_in\n  ON movement_mirror_pair_rejections(in_movement_id)",
 ];
-
