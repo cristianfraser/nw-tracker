@@ -19,7 +19,7 @@ import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
-import { useTranslation } from "../i18n";
+import { Trans, useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
 import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
@@ -276,15 +276,20 @@ export function GroupInfoPage() {
       notice={
         isRealEstate ? (
           <p className="muted" style={{ marginTop: "0.75rem", maxWidth: "52rem", lineHeight: 1.45 }}>
-            Hipoteca en UF: exporta la hoja <strong>dividendos</strong> de Numbers a{" "}
-            <span className="mono">cfraser/depto-dividendos.csv</span>. El import crea{" "}
-            <strong>un movimiento por cada pago real</strong> (misma fecha que en el banco), con CLP, UF del pago, UF/día,
-            crédito restante, amortización, interés, escenario <strong>min UF</strong> y totales <strong>valor neto</strong> /{" "}
-            <strong>pago acumulado</strong> en la nota. En la ficha de la cuenta inmobiliaria verás la tabla alineada a esa
-            hoja. En los gráficos, <strong>aportes acum. en CLP</strong> es la suma de los pesos pagados; en{" "}
-            <strong>USD</strong> (si usas esa vista) se suma el equivalente de cada pago al tipo del día del pago (5
-            decimales), sin reconvertir el acumulado CLP al tipo de cada mes. Lo mismo para <strong>UF</strong> en APIs que
-            pidan unidad UF. Valor vivienda y pasivo siguen desde el Excel a fin de mes.
+            <Trans
+              i18nKey="realEstate.mortgageImportNotice"
+              components={{
+                1: <strong />,
+                3: <span className="mono" />,
+                5: <strong />,
+                7: <strong />,
+                9: <strong />,
+                11: <strong />,
+                13: <strong />,
+                15: <strong />,
+                17: <strong />,
+              }}
+            />
           </p>
         ) : null
       }
