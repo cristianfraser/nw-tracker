@@ -4,7 +4,7 @@
 # Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
 # up) → set the AUTH_PASSWORD secret when prompted. Recruiters log in with ANY
 # syntactically-valid email + that password. See AGENTS.md "Hosted demo (Render)".
-# ⚠️ Keep the connected GitHub repo PRIVATE: AGENTS.md carries card last4s.
+# ⚠️ Keep the connected GitHub repo PRIVATE: parser code/tests hardcode card last4s.
 # (Personal balances/amounts/account numbers were purged from git history 2026-07-07.)
 #
 # Custom domains (Namecheap DNS, see AGENTS.md):

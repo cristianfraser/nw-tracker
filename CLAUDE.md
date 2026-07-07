@@ -7,6 +7,9 @@
 > throws under Vitest when `NW_TRACKER_TEST_DB` is unset — do not work around it. See the
 > "Server Vitest (SQLite)" section in AGENTS.md.
 
-Project guidance lives in AGENTS.md (single source of truth). It is imported below.
+Project guidance lives in AGENTS.md (single source of truth). It is imported below,
+together with PARSERS.md — the **untracked** personal data-pipeline notes (main
+checkout only; absent on clones/worktrees, restore from `~/Documents/backups/nw-tracker/`).
 
 @AGENTS.md
+@PARSERS.md

@@ -30,6 +30,8 @@ server/scripts/.pdf_deps/
 # Personal finance data (Numbers/Excel exports, certificates, local CSVs)
 cfraser/
 cfraser.xlsx
+# personal data-pipeline docs (imported by CLAUDE.md; backed up outside git)
+PARSERS.md
 
 # Claude Code local state (launch.json is shared)
 .claude/settings.local.json
