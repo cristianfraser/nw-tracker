@@ -1,34 +1,23 @@
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  DefaultTooltipContent,
-  Legend,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { TooltipProps } from "recharts";
+import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { allocationBucketColor } from "../../chartColors";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import { depositFlowCategoryLabel, useTranslation } from "../../i18n";
 import type { DepositFlowCategory, FlowDepositChartPoint } from "../../types";
+import { AppComposedChart } from "./AppComposedChart";
 import {
+  AXIS_LINE_STROKE,
   buildNiceYAxis,
+  CHART_TICK_STYLE,
   computeRegularMonthXAxisTicks,
   computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
   formatLineChartXTick,
+  minMaxForKeys,
   rechartsMoneyYAxisWidth,
-  RECHARTS_MONEY_CHART_MARGIN,
-} from "./ValuationLineCharts";
+} from "./chartLayout";
 
-const AXIS_LINE_STROKE = "#64748b";
 const CHART_ANIM_MS = 90;
 
 const DEPOSIT_CHART_CATEGORIES = ["real_estate", "cash", "brokerage", "inversiones"] as const;
@@ -45,25 +34,6 @@ const CATEGORY_BAR: { dataKey: DepositFlowCategory; name: string; color: string 
     name: depositFlowCategoryLabel(dataKey),
     color: allocationBucketColor(allocationKeyForDepositChart(dataKey)),
   }));
-
-function minMaxForKeys(
-  points: Record<string, string | number | null>[],
-  keys: string[]
-): { min: number; max: number } {
-  let minV = Infinity;
-  let maxV = -Infinity;
-  for (const row of points) {
-    for (const k of keys) {
-      const v = row[k];
-      if (typeof v === "number" && Number.isFinite(v)) {
-        minV = Math.min(minV, v);
-        maxV = Math.max(maxV, v);
-      }
-    }
-  }
-  if (!Number.isFinite(minV)) return { min: 0, max: 0 };
-  return { min: minV, max: maxV };
-}
 
 export function DepositsByCategoryChart({
   title,
@@ -115,11 +85,14 @@ export function DepositsByCategoryChart({
     <div className="chart-grid__col">
       <h2 className="chart-panel-title">{title}</h2>
       <div className="chart-box line-chart-focus-wrap">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={densePoints}
-            margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}
-          >
+        <AppComposedChart
+          data={densePoints}
+          tooltip={{
+            formatValue: (v) => formatFlowMoney(v, displayUnit),
+            formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
+            cursor: true,
+          }}
+        >
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
@@ -128,7 +101,7 @@ export function DepositsByCategoryChart({
               dataKey="as_of_date"
               type="category"
               {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
@@ -137,28 +110,10 @@ export function DepositsByCategoryChart({
               domain={yScale.domain}
               ticks={yScale.ticks}
               width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
-            />
-            <Tooltip
-              content={(props) => (
-                <DefaultTooltipContent
-                  {...(props as TooltipProps<number, string>)}
-                  formatter={(v) =>
-                    formatFlowMoney(typeof v === "number" ? v : Number(v), displayUnit)
-                  }
-                  labelFormatter={(d) => formatLineChartXTick(String(d), xAxisGranularity)}
-                  contentStyle={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
-                  }}
-                />
-              )}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
@@ -185,8 +140,7 @@ export function DepositsByCategoryChart({
               isAnimationActive
               animationDuration={CHART_ANIM_MS}
             />
-          </ComposedChart>
-        </ResponsiveContainer>
+        </AppComposedChart>
       </div>
     </div>
   );

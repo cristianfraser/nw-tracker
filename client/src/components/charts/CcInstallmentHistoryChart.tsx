@@ -1,23 +1,15 @@
 import { useMemo } from "react";
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { formatClp } from "../../format";
-import { buildNiceYAxis, RECHARTS_MONEY_CHART_MARGIN } from "./ValuationLineCharts";
-
-const AXIS_STROKE = "#64748b";
+import { AppComposedChart } from "./AppComposedChart";
+import {
+  buildNiceYAxis,
+  RECHARTS_MONEY_CHART_MARGIN,
+  AXIS_LINE_STROKE as AXIS_STROKE,
+} from "./chartLayout";
 
 function formatYmEs(ym: string): string {
   const [ys, ms] = ym.split("-");
@@ -74,45 +66,16 @@ export function CcInstallmentHistoryChart({
 
   return (
     <div className="chart-box line-chart-focus-wrap" style={{ height: 280, marginTop: "0.35rem" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
+        <AppComposedChart
           data={rows}
           margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 8, bottom: 4 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
-          <XAxis
-            dataKey="month"
-            type="category"
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
-            tickFormatter={(ym: string) => formatYmEs(String(ym))}
-            axisLine={{ stroke: AXIS_STROKE }}
-            tickLine={{ stroke: AXIS_STROKE }}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            domain={yScale.domain}
-            ticks={yScale.ticks}
-            width={56}
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
-            tickFormatter={(v: number) => formatClp(v)}
-            axisLine={{ stroke: AXIS_STROKE }}
-            tickLine={{ stroke: AXIS_STROKE }}
-          />
-          <Tooltip
-            content={({ active, payload, label }) => {
-              if (!active || !payload?.length) return null;
+          tooltip={{
+            formatValue: (v) => formatClp(v),
+            renderContent: ({ label, payload }) => {
               const d = payload[0]?.payload as CcHistorialChartRow | undefined;
               if (!d) return null;
               return (
-                <div
-                  style={{
-                    background: "#1e293b",
-                    border: "1px solid #334155",
-                    fontSize: 12,
-                    padding: "0.5rem 0.65rem",
-                    borderRadius: 6,
-                  }}
-                >
+                <div style={{ fontSize: 12 }}>
                   <div style={{ marginBottom: 6, fontWeight: 600 }}>{formatYmEs(String(label))}</div>
                   <div>
                     {t("accountDetail.creditCard.colCupoEnCuotas")}:{" "}
@@ -132,7 +95,28 @@ export function CcInstallmentHistoryChart({
                   ) : null}
                 </div>
               );
-            }}
+            },
+            cursor: true,
+          }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
+          <XAxis
+            dataKey="month"
+            type="category"
+            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tickFormatter={(ym: string) => formatYmEs(String(ym))}
+            axisLine={{ stroke: AXIS_STROKE }}
+            tickLine={{ stroke: AXIS_STROKE }}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            domain={yScale.domain}
+            ticks={yScale.ticks}
+            width={56}
+            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tickFormatter={(v: number) => formatClp(v)}
+            axisLine={{ stroke: AXIS_STROKE }}
+            tickLine={{ stroke: AXIS_STROKE }}
           />
           <Legend
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 6 }}
@@ -188,8 +172,7 @@ export function CcInstallmentHistoryChart({
             dot={{ r: 2.5, fill: BALANCE_TOTAL_STROKE }}
             connectNulls
           />
-        </ComposedChart>
-      </ResponsiveContainer>
+        </AppComposedChart>
     </div>
   );
 }

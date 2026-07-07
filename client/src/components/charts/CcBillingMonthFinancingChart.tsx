@@ -1,27 +1,17 @@
 import { useMemo } from "react";
-import {
-  Area,
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { TooltipProps } from "recharts";
+import { Area, Bar, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
 import type { CcBillingMonthChartPoint } from "../../types";
-import { formatClp, formatUsd } from "../../format";
+import { AppComposedChart } from "./AppComposedChart";
 import {
   buildNiceYAxis,
+  CHART_TICK_STYLE,
+  formatAxisValue,
   rechartsMoneyYAxisWidth,
-  RECHARTS_MONEY_CHART_MARGIN,
+  AXIS_LINE_STROKE as AXIS_STROKE,
   type ChartDisplayUnit,
-} from "./ValuationLineCharts";
+} from "./chartLayout";
 
-const AXIS_STROKE = "#64748b";
 const CHART_ANIM_MS = 90;
 const FACTURADO_CLP_FILL = "#d97706";
 const FACTURADO_USD_CLP_FILL = "#fbbf24";
@@ -37,10 +27,6 @@ function formatYmEs(ym: string): string {
   return `${label} ${ys?.slice(2) ?? ys}`;
 }
 
-function formatAxisValue(v: number, unit: ChartDisplayUnit) {
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
-}
-
 function minMaxForKeys(points: CcBillingMonthChartPoint[], keys: (keyof CcBillingMonthChartPoint)[]) {
   let minV = 0;
   let maxV = 0;
@@ -54,40 +40,6 @@ function minMaxForKeys(points: CcBillingMonthChartPoint[], keys: (keyof CcBillin
     }
   }
   return { min: minV, max: Math.max(maxV, 1) };
-}
-
-function FinancingTooltip({
-  active,
-  payload,
-  label,
-  displayUnit,
-}: TooltipProps<number, string> & { displayUnit: ChartDisplayUnit }) {
-  const { t } = useTranslation();
-  if (!active || !payload?.length) return null;
-  const rows = payload.filter((e) => typeof e.value === "number" && Number.isFinite(e.value as number));
-  return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "10px 12px",
-        boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
-        fontSize: 13,
-      }}
-    >
-      <div style={{ marginBottom: 6, color: "var(--muted, #94a3b8)" }}>{formatYmEs(String(label))}</div>
-      {rows.map((e) => (
-        <div key={String(e.dataKey)} style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
-          <span style={{ color: e.color }}>{e.name}</span>
-          <span className="mono">{formatAxisValue(e.value as number, displayUnit)}</span>
-        </div>
-      ))}
-      <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted, #94a3b8)" }}>
-        {t("accountDetail.creditCard.financingChartTooltipHint")}
-      </div>
-    </div>
-  );
 }
 
 export function CcBillingMonthFinancingChart({
@@ -139,13 +91,26 @@ export function CcBillingMonthFinancingChart({
     <div className="chart-grid__col">
       <TitleTag className="chart-panel-title">{title}</TitleTag>
       <div className="chart-box line-chart-focus-wrap">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={plotPoints} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
+        <AppComposedChart
+          data={plotPoints}
+          tooltip={{
+            formatValue: (v) => formatAxisValue(v, displayUnit),
+            formatLabel: (l) => formatYmEs(String(l)),
+            mapPayload: (payload) =>
+              payload.filter((e) => typeof e.value === "number" && Number.isFinite(e.value)),
+            footer: (
+              <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted, #94a3b8)" }}>
+                {t("accountDetail.creditCard.financingChartTooltipHint")}
+              </div>
+            ),
+            cursor: true,
+          }}
+        >
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             <XAxis
               dataKey="billing_month"
               type="category"
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_STROKE }}
               tickLine={{ stroke: AXIS_STROKE }}
               tickFormatter={(ym: string) => formatYmEs(String(ym))}
@@ -155,15 +120,10 @@ export function CcBillingMonthFinancingChart({
               domain={yScale.domain}
               ticks={yScale.ticks}
               width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_STROKE }}
               tickLine={{ stroke: AXIS_STROKE }}
               tickFormatter={(v: number) => formatAxisValue(v, displayUnit)}
-            />
-            <Tooltip
-              content={(props) => (
-                <FinancingTooltip {...(props as TooltipProps<number, string>)} displayUnit={displayUnit} />
-              )}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
@@ -208,8 +168,7 @@ export function CcBillingMonthFinancingChart({
               animationDuration={CHART_ANIM_MS}
               maxBarSize={28}
             />
-          </ComposedChart>
-        </ResponsiveContainer>
+        </AppComposedChart>
       </div>
     </div>
   );

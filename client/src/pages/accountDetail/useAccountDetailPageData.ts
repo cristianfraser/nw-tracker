@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import {
   filterPointsThroughAsOfDate,
   resolveMonthlyPerfClipEndDate,
-} from "../../components/charts/AppLineChart";
+} from "../../components/charts/chartData";
 import { useAccountDetailBundle, useDashboardNavContext, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
 import { hasDashboardNavSnapshotCache } from "../../queries/dashboardNavSnapshotCache";
 import { dashPickForNavStrip } from "../../queries/fetchers";
