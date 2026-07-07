@@ -12,8 +12,10 @@ import {
   invalidateCcBillingDetail,
   invalidateLinkedCreditCardAggregationCache,
   invalidateMarketDataAggregations,
+  rollupSlugsForAccountTest,
   setAggregationInvalidationListener,
 } from "./aggregationCache.js";
+import { db } from "./db.js";
 
 describe("aggregationCache", () => {
   beforeEach(() => clearAggregationCache());
@@ -53,6 +55,46 @@ describe("aggregationCache", () => {
       return { monthly: [] };
     });
     expect(rebuilt2).toBe(0);
+  });
+
+  it("invalidateAggregationForAccountDate drops rowsKey-suffixed consolidated-monthly keys, keeps sibling slugs", () => {
+    // Real consolidations are stored under `group.consolidated_monthly|{slug}|{unit}|{rowsKey}`
+    // (account fingerprint), not the bare `cacheKeyGroupConsolidatedMonthly(slug, unit)`. The
+    // invalidation must reach those suffixed keys via prefix match — without wiping a sibling
+    // slug that shares a leading substring (`{slug}_other`).
+    const row = db
+      .prepare(
+        "SELECT account_id FROM portfolio_group_items WHERE item_kind='account' AND account_id IS NOT NULL LIMIT 1"
+      )
+      .get() as { account_id: number } | undefined;
+    expect(row?.account_id, "test DB should have a portfolio-tree account").toBeTruthy();
+    const accountId = row!.account_id;
+
+    const slugs = rollupSlugsForAccountTest(accountId);
+    expect(slugs.length, "account should roll up to at least one group slug").toBeGreaterThan(0);
+    const slug = slugs[0];
+
+    const rowsKey = "999:demo_bucket";
+    const suffixedKey = `${cacheKeyGroupConsolidatedMonthly(slug, "clp")}|${rowsKey}`;
+    const siblingKey = `${cacheKeyGroupConsolidatedMonthly(`${slug}_other`, "clp")}|${rowsKey}`;
+    getAggregationCached(suffixedKey, () => ({ rows: [1] }));
+    getAggregationCached(siblingKey, () => ({ rows: [1] }));
+
+    invalidateAggregationForAccountDate(accountId, "2026-03-15");
+
+    let suffixedRebuilds = 0;
+    getAggregationCached(suffixedKey, () => {
+      suffixedRebuilds += 1;
+      return { rows: [2] };
+    });
+    let siblingRebuilds = 0;
+    getAggregationCached(siblingKey, () => {
+      siblingRebuilds += 1;
+      return { rows: [2] };
+    });
+
+    expect(suffixedRebuilds, "rowsKey-suffixed consolidated key should be dropped").toBe(1);
+    expect(siblingRebuilds, "sibling `{slug}_other` key should survive").toBe(0);
   });
 
   it("forward month invalidation includes later months in the same year", () => {
