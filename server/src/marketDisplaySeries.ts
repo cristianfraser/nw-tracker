@@ -54,9 +54,6 @@ const stmtFundUnitPriorTo = db.prepare(
 const stmtUfOnOrBefore = db.prepare(
   `SELECT date, clp_per_uf FROM uf_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
 );
-const stmtUfPriorTo = db.prepare(
-  `SELECT clp_per_uf FROM uf_daily WHERE date < ? ORDER BY date DESC LIMIT 1`
-);
 const stmtFxPriorTo = db.prepare(
   `SELECT clp_per_usd FROM fx_daily WHERE date < ? ORDER BY date DESC LIMIT 1`
 );
@@ -89,7 +86,7 @@ export function equityTickersForMarqueeQuotes(marqueeSeries: MarketDisplaySeries
 
 export type MarketTickerPayload = {
   chile_today: string;
-  uf: { date: string; clp_per_uf: number; delta_pct: number | null } | null;
+  uf: { date: string; clp_per_uf: number } | null;
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
   risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
@@ -121,13 +118,7 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
     if (row.kind === "uf") {
       const ufRow = stmtUfOnOrBefore.get(today) as { date: string; clp_per_uf: number } | undefined;
       if (ufRow != null && Number.isFinite(ufRow.clp_per_uf) && ufRow.clp_per_uf > 0) {
-        const prior = (stmtUfPriorTo.get(ufRow.date) as { clp_per_uf: number } | undefined)
-          ?.clp_per_uf;
-        uf = {
-          date: ufRow.date,
-          clp_per_uf: ufRow.clp_per_uf,
-          delta_pct: percentChange(ufRow.clp_per_uf, prior),
-        };
+        uf = { date: ufRow.date, clp_per_uf: ufRow.clp_per_uf };
       }
       continue;
     }
