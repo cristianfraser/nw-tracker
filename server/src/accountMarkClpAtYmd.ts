@@ -19,8 +19,10 @@ import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import { db } from "./db.js";
-import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
-import { latestMortgageDisplayedBalance } from "./valuationLatest.js";
+import {
+  latestCreditCardValuationRowAsOf,
+  latestMortgageDisplayedBalance,
+} from "./valuationLatest.js";
 
 export type AccountMarkAtYmd = { value_clp: number; as_of_date: string };
 
@@ -91,7 +93,10 @@ function historicalMarkClpAtYmd(
     }
   }
   if (accountBucketKindSlug(categorySlug) === "credit_card") {
-    const cc = creditCardBillingBalanceTotalClpAsOf(accountId, asOfYmd);
+    // Owed-on-date convention (Saldo pasivos / chart lines): stored `valuations` for
+    // historical dates, live billing balance for today+ — not the billing-month "balance
+    // total", which subtracts the next-month payment before it happens.
+    const cc = latestCreditCardValuationRowAsOf(accountId, asOfYmd);
     if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) {
       return { value_clp: cc.value_clp, as_of_date: cc.as_of_date };
     }
