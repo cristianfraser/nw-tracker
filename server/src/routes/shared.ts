@@ -4,6 +4,7 @@
  */
 import express from "express";
 import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
+import { parseExtraOffsetsJson } from "../creditCardInstallments.js";
 import { equityReturnSnapshot } from "../equityReturns.js";
 import { type DashboardAccountStats } from "../brokerageAcciones.js";
 import { db } from "../db.js";
@@ -14,6 +15,19 @@ export function operationalAccountIdFromReq(req: { params: { id?: string } }): n
   const raw = Number(req.params.id);
   if (!Number.isFinite(raw)) return NaN;
   return resolveOperationalAccountId(raw);
+}
+
+/** Parses `req.query.extraOffsets`; on malformed input sends the 400 and returns null. */
+export function extraOffsetsFromReq(
+  req: express.Request,
+  res: express.Response
+): Record<string, number> | null {
+  try {
+    return parseExtraOffsetsJson(req.query.extraOffsets);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "invalid extraOffsets" });
+    return null;
+  }
 }
 
 export function parseProxyTickersParam(raw: unknown): string[] | null {

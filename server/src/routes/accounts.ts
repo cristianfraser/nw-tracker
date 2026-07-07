@@ -48,12 +48,12 @@ import { buildAccountDetailBundle } from "../accountDetailBundle.js";
 import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "../movementBalanceCashAccounts.js";
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
-import { parseExtraOffsetsJson } from "../creditCardInstallments.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
 import {
   asyncHandler,
+  extraOffsetsFromReq,
   operationalAccountIdFromReq,
   positionSnapshotFromMeta,
 } from "./shared.js";
@@ -257,7 +257,8 @@ app.get("/api/portfolio-groups/:slug/cc-ledger", (req, res) => {
     res.status(404).json({ error: "portfolio group not found" });
     return;
   }
-  const extra = parseExtraOffsetsJson(req.query.extraOffsets);
+  const extra = extraOffsetsFromReq(req, res);
+  if (extra == null) return;
   res.json(creditCardGroupLedgerResponse(slug, extra));
 });
 
@@ -296,10 +297,8 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
-  let extraOffsets: Record<string, number> = {};
-  if (typeof req.query.extraOffsets === "string" && req.query.extraOffsets.trim()) {
-    extraOffsets = parseExtraOffsetsJson(req.query.extraOffsets);
-  }
+  const extraOffsets = extraOffsetsFromReq(req, res);
+  if (extraOffsets == null) return;
   const payload = await buildAccountDetailBundle(id, unit, granularity, extraOffsets);
   if (!payload) {
     res.status(404).json({ error: "account not found" });
