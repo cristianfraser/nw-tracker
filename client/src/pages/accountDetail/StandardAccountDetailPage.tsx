@@ -2,6 +2,7 @@ import { Trans, useTranslation } from "../../i18n";
 import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
+import { PeriodReturnsStrip } from "../../components/perf/PeriodReturnsStrip";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
@@ -53,6 +54,7 @@ export function StandardAccountDetailPage({ data }: Props) {
     xAxisGranularity,
     monthlyPerfErr,
     monthlyPerfRows,
+    periodReturns,
     ytdChartPoints,
     accChartPoints,
     valuationBlockForChart,
@@ -322,6 +324,13 @@ export function StandardAccountDetailPage({ data }: Props) {
               components={{ 1: <strong /> }}
             />
           </p>
+          {periodReturns != null ? (
+            <>
+              <h3 className={styles.subsectionTitleTight}>{t("periodReturns.title")}</h3>
+              <p className={cn("muted", styles.proseMutedXs)}>{t("periodReturns.hint")}</p>
+              <PeriodReturnsStrip data={periodReturns} displayUnit={displayUnit} />
+            </>
+          ) : null}
           {monthlyPerfErr ? (
             <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
           ) : monthlyPerfRows.length === 0 ? (

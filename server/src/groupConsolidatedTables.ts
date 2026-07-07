@@ -6,6 +6,8 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { paginate, type Paginated } from "./pagination.js";
+import { computePeriodReturns, type PeriodReturnsPayload } from "./periodReturns.js";
+import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -22,6 +24,8 @@ export type GroupConsolidatedTablesResponse = {
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
+  /** Chained flow-adjusted period returns; null for non-investment groups. */
+  period_returns: PeriodReturnsPayload | null;
 };
 
 type AccountMonthlyPayload = ReturnType<typeof getGroupConsolidationAccountMonthly>;
@@ -73,7 +77,11 @@ export function getGroupConsolidatedTables(
         ? buildInversionesConsolidatedMonthly(unit)
         : consolidateFromAccountMonthly(account_monthly, unit);
 
-  return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly };
+  const period_returns = isInvestmentPerformanceGroupSlug(groupSlug)
+    ? computePeriodReturns(consolidated_monthly, unit)
+    : null;
+
+  return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly, period_returns };
 }
 
 export type ConsolidatedMonthlyPeriod = "month" | "year";

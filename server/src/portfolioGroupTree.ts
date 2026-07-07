@@ -268,6 +268,30 @@ export function nwDashboardMetricGroupForAccount(accountId: number): string | nu
   return null;
 }
 
+/** Root NW buckets whose descendants get the Rentabilidad (period-returns) section. */
+export const INVESTMENT_PERF_ROOT_GROUP_SLUGS = ["brokerage", "retirement"] as const;
+
+/**
+ * True for the `inversiones` hub and every group under `brokerage`/`retirement`
+ * (the node itself counts) — covers brokerage_{acciones,mutual_funds,long_term,crypto,cash},
+ * retirement_afp_afc, retirement_apv{,_a,_b} and the routable parents. Walks `parent_id`; no slug parsing.
+ */
+export function isInvestmentPerformanceGroupSlug(slug: string): boolean {
+  if (slug === "inversiones") return true;
+  let pg = portfolioGroupBySlug(slug);
+  while (pg != null) {
+    if ((INVESTMENT_PERF_ROOT_GROUP_SLUGS as readonly string[]).includes(pg.slug)) return true;
+    pg = pg.parent_id != null ? portfolioGroupById(pg.parent_id) : null;
+  }
+  return false;
+}
+
+/** True when the account lives under the `brokerage` or `retirement` NW bucket. */
+export function isInvestmentPerformanceAccount(accountId: number): boolean {
+  const metricGroup = nwDashboardMetricGroupForAccount(accountId);
+  return metricGroup != null && (INVESTMENT_PERF_ROOT_GROUP_SLUGS as readonly string[]).includes(metricGroup);
+}
+
 /** Nearest `dashboard_bucket_slug` on this portfolio group or an ancestor (legacy / display). */
 export function dashboardBucketSlugForPortfolioGroupId(groupId: number): string | null {
   let currentId: number | null = groupId;

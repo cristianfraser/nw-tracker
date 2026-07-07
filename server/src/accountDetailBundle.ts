@@ -25,7 +25,8 @@ import { getAccountPositionMeta } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
-import { dashboardBucketSlugForAccountId } from "./portfolioGroupTree.js";
+import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
+import { computePeriodReturns } from "./periodReturns.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
@@ -294,6 +295,12 @@ export async function buildAccountDetailBundle(
     : null;
 
   const monthly_performance = getAccountMonthlyPerformance(accountId, unit);
+  const period_returns =
+    monthly_performance != null &&
+    monthly_performance.monthly.length > 0 &&
+    isInvestmentPerformanceAccount(accountId)
+      ? computePeriodReturns(monthly_performance.monthly, unit)
+      : null;
 
   const dashboard_account_row = await withPortfolioGroupIndex(async () => {
     const includeUsd = unit === "usd";
@@ -313,6 +320,7 @@ export async function buildAccountDetailBundle(
     invNavAccounts: { accounts: invNavAccounts },
     checkingCartolaMonths,
     monthly_performance,
+    period_returns,
     dashboard_account_row,
   };
 }
