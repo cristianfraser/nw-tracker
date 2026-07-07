@@ -1,4 +1,9 @@
 import { getGroupMonthlyPerformanceSeries } from "./accountPerformance.js";
+import {
+  cacheKeyDashboardPageBundle,
+  getAggregationCached,
+  invalidateDashboardPageBundle,
+} from "./aggregationCache.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
@@ -19,12 +24,23 @@ function fxLatestRow() {
     .get(chileCalendarTodayYmd()) as { date: string; clp_per_usd: number } | undefined;
 }
 
+export type DashboardPageBundle = Awaited<ReturnType<typeof buildDashboardPageBundleInner>>;
+
 /**
  * One server-side build for the home dashboard (replaces 5 parallel HTTP calls from the client).
- * @heavy Runs account rows, full valuation TS, group perf charts, and flows deposits.
+ * Served from the aggregation cache (`dashboard.page_bundle|<unit>`): the warmer repopulates
+ * both units after every invalidation, so interactive requests normally return the prebuilt
+ * object. The cached value is the in-flight promise — concurrent cold requests share one
+ * build; a rejected build evicts itself so the next request retries instead of replaying the
+ * cached error.
+ * @heavy Cold build runs account rows, full valuation TS, group perf charts, and flows deposits.
  */
-export async function buildDashboardPageBundle(unit: TsUnit) {
-  return withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit));
+export function buildDashboardPageBundle(unit: TsUnit): Promise<DashboardPageBundle> {
+  return getAggregationCached(cacheKeyDashboardPageBundle(unit), () => {
+    const built = withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit));
+    built.catch(() => invalidateDashboardPageBundle());
+    return built;
+  });
 }
 
 async function buildDashboardPageBundleInner(unit: TsUnit) {
