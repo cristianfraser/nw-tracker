@@ -97,7 +97,8 @@
     "import:payroll-liquidaciones": "tsx scripts/import-payroll-liquidaciones.ts",
     "seed:payroll-dealsy-2019-h2": "tsx scripts/seed-payroll-dealsy-2019-h2.ts",
     "seed:payroll-dealsy-2020-q1": "tsx scripts/seed-payroll-dealsy-2020-q1.ts",
-    "seed:payroll-deel-2021-h1": "tsx scripts/seed-payroll-deel-2021-h1.ts"
+    "seed:payroll-deel-2021-h1": "tsx scripts/seed-payroll-deel-2021-h1.ts",
+    "db:verify-backup": "tsx scripts/verify-db-backup.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",
