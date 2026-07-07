@@ -6,13 +6,7 @@ import { useMarketTicker } from "../queries/hooks";
 import type { MarketDisplaySeriesRow, MarketTickerResponse } from "../types";
 
 export type TickerMarqueeItem =
-  | {
-      kind: "uf";
-      label: string;
-      value: string;
-      delta: number | null;
-      fractionDigits: number;
-    }
+  | { kind: "uf"; label: string; value: string }
   | {
       kind: "usd_live";
       label: string;
@@ -84,8 +78,6 @@ function buildItemsFromSeriesConfig(
         kind: "uf",
         label: seriesLabel(row, labels),
         value: formatGroupedDecimalTrimmed(payload.uf.clp_per_uf),
-        delta: payload.uf.delta_pct,
-        fractionDigits: 2,
       });
       continue;
     }
