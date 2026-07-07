@@ -83,7 +83,7 @@ export interface WatchlistResponse {
 
 export interface MarketTickerResponse {
   chile_today: string;
-  uf: { date: string; clp_per_uf: number } | null;
+  uf: { date: string; clp_per_uf: number; delta_pct: number | null } | null;
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
   uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
   risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
