@@ -7,31 +7,9 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Line, LineChart } from "recharts";
-
-export function filterPointsThroughAsOfDate<T extends { as_of_date: string }>(
-  rows: readonly T[],
-  maxAsOfDate: string | null | undefined
-): T[] {
-  if (!maxAsOfDate) return [...rows];
-  return rows.filter((r) => r.as_of_date.localeCompare(maxAsOfDate) <= 0);
-}
-
-/** When perf rows include a live today row newer than chart tail-clip, keep it visible. */
-export function resolveMonthlyPerfClipEndDate(
-  valuationTailClipEndDate: string | null | undefined,
-  rowsNewestFirst: readonly { as_of_date: string }[]
-): string | null | undefined {
-  const latestPerfDate = rowsNewestFirst[0]?.as_of_date;
-  if (
-    valuationTailClipEndDate &&
-    latestPerfDate &&
-    latestPerfDate.localeCompare(valuationTailClipEndDate) > 0
-  ) {
-    return latestPerfDate;
-  }
-  return valuationTailClipEndDate;
-}
+import { Line, LineChart, ResponsiveContainer } from "recharts";
+import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
+import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 
 function tailClipKeySet(tailClippedKeys: ReadonlySet<string> | readonly string[] | null | undefined): Set<string> {
   if (tailClippedKeys == null) return new Set();
@@ -64,22 +42,27 @@ export type AppLineChartProps = Omit<ComponentProps<typeof LineChart>, "data"> &
   data: Record<string, string | number | null>[];
   /** Set `connectNulls={false}` on matching `<Line dataKey=…>` descendants so clipped tails don’t bridge. */
   tailClippedKeys?: ReadonlySet<string> | readonly string[] | null;
+  /** Docked collision-aware tooltip (see {@link AppTooltipSpec}). Omit for no tooltip. */
+  tooltip?: AppTooltipSpec | null;
   children: ReactNode;
 };
 
 /**
- * App wrapper around Recharts {@link LineChart}: forwards props and injects `connectNulls` on `<Line>` children
- * whose `dataKey` appears in `tailClippedKeys`.
+ * App wrapper around Recharts {@link LineChart}: owns the ResponsiveContainer, default margin, and the docked
+ * tooltip; injects `connectNulls` on `<Line>` children whose `dataKey` appears in `tailClippedKeys`.
  */
-export function AppLineChart({ data, tailClippedKeys, children, ...rest }: AppLineChartProps) {
+export function AppLineChart({ data, tailClippedKeys, tooltip, margin, children, ...rest }: AppLineChartProps) {
   const clipSet = useMemo(() => tailClipKeySet(tailClippedKeys), [tailClippedKeys]);
   const mappedChildren = useMemo(
     () => (clipSet.size === 0 ? children : injectLineConnectNullsForTailClip(children, clipSet)),
     [children, clipSet]
   );
   return (
-    <LineChart data={data} {...rest}>
-      {mappedChildren}
-    </LineChart>
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={margin ?? RECHARTS_MONEY_CHART_MARGIN} {...rest}>
+        {tooltip ? appTooltipElement(tooltip) : null}
+        {mappedChildren}
+      </LineChart>
+    </ResponsiveContainer>
   );
 }

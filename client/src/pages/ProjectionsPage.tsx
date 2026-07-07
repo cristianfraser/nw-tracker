@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { CartesianGrid, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
-import { AppLineChart } from "../components/charts/AppLineChart";
-import {
-  RECHARTS_MONEY_CHART_MARGIN,
-  rechartsMoneyYAxisWidth,
-} from "../components/charts/ValuationLineCharts";
+import { ProjectionsChart } from "../components/charts/ProjectionsChart";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency } from "../format";
 import { useProjections } from "../queries/hooks";
@@ -48,17 +43,6 @@ const PARAM_FIELDS: { key: keyof ProjectionParams; amount?: boolean; step?: numb
   { key: "liquidate_other_pct", step: 5 },
   { key: "monthly_rent_clp", amount: true },
 ];
-
-const LINE_STYLE: Record<string, { stroke: string; width: number }> = {
-  total_nw: { stroke: "var(--accent)", width: 2 },
-  invested: { stroke: "#8b5cf6", width: 1.5 },
-  proj_nw: { stroke: "#22c55e", width: 2 },
-  proj_invested: { stroke: "#8b5cf6", width: 2 },
-  proj_nw_nominal: { stroke: "#166534", width: 1 },
-  proj_swr: { stroke: "#eab308", width: 1.5 },
-  proj_pct_balance: { stroke: "#f97316", width: 1.5 },
-  proj_fixed_income: { stroke: "#ec4899", width: 1.5 },
-};
 
 function readStoredOverrides(): Partial<ProjectionParams> {
   try {
@@ -234,61 +218,12 @@ export function ProjectionsPage() {
       </section>
 
       <div style={{ width: "100%", height: 420 }}>
-        <ResponsiveContainer width="100%" height="100%">
-        <AppLineChart data={chartPoints} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis
-            dataKey="as_of_date"
-            tick={{ fill: "var(--muted)", fontSize: 10 }}
-            tickFormatter={(d) => String(d).slice(0, 4)}
-            minTickGap={40}
-          />
-          <YAxis
-            tick={{ fill: "var(--muted)", fontSize: 10 }}
-            tickFormatter={(v) => formatCurrency(Number(v), displayUnit)}
-            width={rechartsMoneyYAxisWidth(displayUnit)}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-            }}
-            labelStyle={{ color: "var(--muted)" }}
-            formatter={(v: number | string, name: string) => [money(Number(v)), name]}
-            labelFormatter={(l) => String(l).slice(0, 7)}
-          />
-          <Legend />
-          {namedLines.map((l) => {
-            const style = LINE_STYLE[l.dataKey] ?? { stroke: "var(--muted)", width: 1 };
-            return (
-              <Line
-                key={l.dataKey}
-                type="monotone"
-                dataKey={l.dataKey}
-                name={l.name}
-                stroke={style.stroke}
-                strokeWidth={style.width}
-                strokeDasharray={l.valueSeriesType === "reference" ? "6 4" : undefined}
-                dot={false}
-              />
-            );
-          })}
-          {milestoneLines.map((l) => (
-            <Line
-              key={l.dataKey}
-              type="monotone"
-              dataKey={l.dataKey}
-              name={l.name}
-              stroke="#64748b"
-              strokeWidth={0.75}
-              strokeDasharray="2 6"
-              dot={false}
-              legendType="none"
-            />
-          ))}
-        </AppLineChart>
-        </ResponsiveContainer>
+        <ProjectionsChart
+          points={chartPoints}
+          namedLines={namedLines}
+          milestoneLines={milestoneLines}
+          displayUnit={displayUnit}
+        />
       </div>
       <p className="muted" style={{ fontSize: "0.85em" }}>
         {t("projections.footnote", { fx: Math.round(data.fx_clp_per_usd) })}

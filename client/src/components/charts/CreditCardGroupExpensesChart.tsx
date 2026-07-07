@@ -1,17 +1,4 @@
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  DefaultTooltipContent,
-  Legend,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { TooltipProps } from "recharts";
+import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useCallback, useMemo, useState } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
@@ -24,17 +11,18 @@ import {
   EXPENSE_CHART_TOTAL_KEY,
   expenseCategoryChartPointTotal,
 } from "../../expenseDepositLinks";
+import { AppComposedChart } from "./AppComposedChart";
 import {
+  AXIS_LINE_STROKE,
   buildNiceYAxis,
+  CHART_TICK_STYLE,
   computeRegularMonthXAxisTicks,
   computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
   formatLineChartXTick,
   rechartsMoneyYAxisWidth,
-  RECHARTS_MONEY_CHART_MARGIN,
-} from "./ValuationLineCharts";
+} from "./chartLayout";
 
-const AXIS_LINE_STROKE = "#64748b";
 const CHART_ANIM_MS = 90;
 
 type ExpenseChartStyle = "stacked_bar" | "line";
@@ -189,18 +177,35 @@ export function CreditCardGroupExpensesChart({
         </div>
       </div>
       <div className="chart-box line-chart-focus-wrap" style={{ height: 280 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={densePoints}
-            margin={RECHARTS_MONEY_CHART_MARGIN}
-            stackOffset={chartStyle === "stacked_bar" ? "sign" : undefined}
-          >
+        <AppComposedChart
+          data={densePoints}
+          stackOffset={chartStyle === "stacked_bar" ? "sign" : undefined}
+          tooltip={{
+            formatValue: (v) => formatFlowMoney(v, displayUnit),
+            formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
+            formatName: (entry) => {
+              const slug = String(entry.name ?? entry.dataKey ?? "");
+              return slug === EXPENSE_CHART_TOTAL_KEY
+                ? t("expenses.creditCard.chartTotal")
+                : ccExpenseCategoryLabel(slug);
+            },
+            mapPayload: (payload) =>
+              payload.filter((item) => {
+                const slug = String(item.dataKey ?? "");
+                if (slug === EXPENSE_CHART_TOTAL_KEY) return true;
+                if (hiddenSlugs.has(slug)) return false;
+                const v = item.value;
+                return typeof v === "number" && Number.isFinite(v) && v !== 0;
+              }),
+            cursor: true,
+          }}
+        >
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             <XAxis
               dataKey="as_of_date"
               type="category"
               ticks={xTicks}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
@@ -209,44 +214,12 @@ export function CreditCardGroupExpensesChart({
               domain={yScale.domain}
               ticks={yScale.ticks}
               width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
             />
             <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
-            <Tooltip
-              content={(props) => {
-                const p = props as TooltipProps<number, string>;
-                const payload = (p.payload ?? []).filter((item) => {
-                  const slug = String(item.dataKey ?? "");
-                  if (slug === EXPENSE_CHART_TOTAL_KEY) return true;
-                  if (hiddenSlugs.has(slug)) return false;
-                  const v = item.value;
-                  return typeof v === "number" && Number.isFinite(v) && v !== 0;
-                });
-                return (
-                  <DefaultTooltipContent
-                    {...p}
-                    payload={payload}
-                    formatter={(v, name) => [
-                      formatFlowMoney(typeof v === "number" ? v : Number(v), displayUnit),
-                      String(name) === EXPENSE_CHART_TOTAL_KEY
-                        ? t("expenses.creditCard.chartTotal")
-                        : ccExpenseCategoryLabel(String(name)),
-                    ]}
-                    labelFormatter={(d) => formatLineChartXTick(String(d), xAxisGranularity)}
-                    contentStyle={{
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                      boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
-                    }}
-                  />
-                );
-              }}
-            />
             <Legend
               wrapperStyle={{
                 fontSize: 12,
@@ -318,8 +291,7 @@ export function CreditCardGroupExpensesChart({
               isAnimationActive
               animationDuration={CHART_ANIM_MS}
             />
-          </ComposedChart>
-        </ResponsiveContainer>
+        </AppComposedChart>
       </div>
     </section>
   );

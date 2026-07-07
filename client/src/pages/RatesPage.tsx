@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  CartesianGrid,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { FxCoverageBanner } from "../components/layout/FxCoverageBanner";
 import { FxBidAskGapsTable } from "../components/rates/FxBidAskGapsTable";
 import { useMarketSeries, useRatesInstruments, useSyncStatus } from "../queries/hooks";
@@ -15,7 +7,7 @@ import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
-import { AppLineChart } from "../components/charts/AppLineChart";
+import { RatesLineChart, type RatesLineSeries } from "../components/charts/RatesLineChart";
 import { useDailyRateTailClip } from "./ratesDailyTailClip";
 
 const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
@@ -23,7 +15,7 @@ const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
 import { Table } from "../components/ui/Table";
 import { formatClp, formatGroupedDecimal, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
-import { RECHARTS_MONEY_CHART_MARGIN, buildNiceYAxisPositiveBand } from "../components/charts/ValuationLineCharts";
+import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
 import { cn } from "../cn";
 import { useTranslation } from "../i18n";
 
@@ -187,24 +179,6 @@ function mergeFxUsdDualSeries(
     }));
 }
 
-function fxUsdSeriesLabel(
-  name: string,
-  labels: { yahoo: string; bcentral: string; buy: string; sell: string }
-): string {
-  switch (name) {
-    case "yahoo":
-      return labels.yahoo;
-    case "bcentral":
-      return labels.bcentral;
-    case "buy":
-      return labels.buy;
-    case "sell":
-      return labels.sell;
-    default:
-      return name;
-  }
-}
-
 function FxUsdClpDualChart({
   yahooData,
   bcentralData,
@@ -230,7 +204,6 @@ function FxUsdClpDualChart({
   recentColValue: string;
   recentEmptyLabel: string;
 }) {
-  const seriesLabels = { yahoo: yahooLabel, bcentral: bcentralLabel, buy: buyLabel, sell: sellLabel };
   const merged = useMemo(
     () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
     [yahooData, bcentralData, buyData, sellData]
@@ -297,62 +270,29 @@ function FxUsdClpDualChart({
       <h3 className="rates-chart-card__title">USD / CLP</h3>
       <p className="muted rates-chart-card__note">CLP per US$1</p>
       <div className="rates-chart-card__plot">
-        <ResponsiveContainer width="100%" height="100%">
-          <AppLineChart data={chartData} tailClippedKeys={tailClippedKeys} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} tickMargin={4} minTickGap={32} />
-            <YAxis
-              tick={{ fill: "var(--muted)", fontSize: 10 }}
-              tickFormatter={(v) => formatClp(Number(v))}
-              width={104}
-              domain={yBand ? yBand.domain : ["auto", "auto"]}
-              ticks={yBand ? yBand.ticks : undefined}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-              }}
-              labelStyle={{ color: "var(--muted)" }}
-              formatter={(v: number | string, name: string) => [
-                formatClp(Number(v)),
-                fxUsdSeriesLabel(name, seriesLabels),
-              ]}
-              labelFormatter={(l) => String(l)}
-            />
-            <Line type="monotone" dataKey="yahoo" name="yahoo" stroke="var(--accent)" dot={false} strokeWidth={2} />
-            <Line
-              type="monotone"
-              dataKey="bcentral"
-              name="bcentral"
-              stroke="var(--muted)"
-              dot={false}
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-            />
-            {buyData.length > 0 ? (
-              <Line
-                type="monotone"
-                dataKey="buy"
-                name="buy"
-                stroke="#22c55e"
-                dot={{ r: 3 }}
-                strokeWidth={1.5}
-              />
-            ) : null}
-            {sellData.length > 0 ? (
-              <Line
-                type="monotone"
-                dataKey="sell"
-                name="sell"
-                stroke="#f97316"
-                dot={{ r: 3 }}
-                strokeWidth={1.5}
-              />
-            ) : null}
-          </AppLineChart>
-        </ResponsiveContainer>
+        <RatesLineChart
+          data={chartData}
+          tailClippedKeys={tailClippedKeys}
+          yAxisWidth={104}
+          yBand={yBand}
+          formatValue={formatClp}
+          series={[
+            { dataKey: "yahoo", name: yahooLabel, stroke: "var(--accent)" },
+            {
+              dataKey: "bcentral",
+              name: bcentralLabel,
+              stroke: "var(--muted)",
+              strokeWidth: 1.5,
+              strokeDasharray: "4 3",
+            },
+            ...(buyData.length > 0
+              ? [{ dataKey: "buy", name: buyLabel, stroke: "#22c55e", strokeWidth: 1.5, dot: { r: 3 } } satisfies RatesLineSeries]
+              : []),
+            ...(sellData.length > 0
+              ? [{ dataKey: "sell", name: sellLabel, stroke: "#f97316", strokeWidth: 1.5, dot: { r: 3 } } satisfies RatesLineSeries]
+              : []),
+          ]}
+        />
       </div>
       {recentTable}
     </section>
@@ -426,30 +366,14 @@ function MiniLineChart({
       <h3 className="rates-chart-card__title">{title}</h3>
       {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
       <div className="rates-chart-card__plot">
-        <ResponsiveContainer width="100%" height="100%">
-          <AppLineChart data={chartData} tailClippedKeys={tailClippedKeys} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} tickMargin={4} minTickGap={32} />
-            <YAxis
-              tick={{ fill: "var(--muted)", fontSize: 10 }}
-              tickFormatter={(v) => valueFormatter(Number(v))}
-              width={axisW}
-              domain={yBand ? yBand.domain : ["auto", "auto"]}
-              ticks={yBand ? yBand.ticks : undefined}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "var(--surface2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-              }}
-              labelStyle={{ color: "var(--muted)" }}
-              formatter={(v: number | string) => [valueFormatter(Number(v)), title]}
-              labelFormatter={(l) => String(l)}
-            />
-            <Line type="monotone" dataKey="value" stroke="var(--accent)" dot={false} strokeWidth={2} />
-          </AppLineChart>
-        </ResponsiveContainer>
+        <RatesLineChart
+          data={chartData}
+          tailClippedKeys={tailClippedKeys}
+          yAxisWidth={axisW}
+          yBand={yBand}
+          formatValue={valueFormatter}
+          series={[{ dataKey: "value", name: title, stroke: "var(--accent)" }]}
+        />
       </div>
       {recentTable}
     </section>

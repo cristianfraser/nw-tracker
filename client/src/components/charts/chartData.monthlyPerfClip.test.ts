@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterPointsThroughAsOfDate,
   resolveMonthlyPerfClipEndDate,
-} from "./AppLineChart";
+} from "./chartData";
 
 describe("resolveMonthlyPerfClipEndDate", () => {
   it("extends clip end when newest perf row is after chart tail-clip", () => {

@@ -1,35 +1,24 @@
-import {
-  Area,
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  DefaultTooltipContent,
-  Legend,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { TooltipProps } from "recharts";
+import { Area, Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
-import { formatClp, formatUsd } from "../../format";
 import i18n from "../../i18n";
+import { AppComposedChart } from "./AppComposedChart";
 import {
+  AXIS_LINE_STROKE,
   buildNiceYAxis,
+  CHART_TICK_STYLE,
   computeRegularMonthXAxisTicks,
   computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
+  formatAxisValue,
   formatLineChartXTick,
+  formatTooltipValue,
+  minMaxForKeys,
   rechartsMoneyYAxisWidth,
-  RECHARTS_MONEY_CHART_MARGIN,
   type ChartDisplayUnit,
-} from "./ValuationLineCharts";
+} from "./chartLayout";
 
-const AXIS_LINE_STROKE = "#64748b";
 const CHART_ANIM_MS = 90;
 
 /** Split YTD / cumulative area by calendar year parity for alternating fills. */
@@ -90,83 +79,6 @@ export type MonthlyPlLineSeries = {
   strokeDasharray?: string;
   showDot?: boolean;
 };
-
-function formatAxisValue(v: number, unit: ChartDisplayUnit) {
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
-}
-
-function formatTooltipValue(v: number, unit: ChartDisplayUnit) {
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
-}
-
-function minMaxForKeys(
-  points: Record<string, string | number | null>[],
-  keys: string[]
-): { min: number; max: number } {
-  let minV = Infinity;
-  let maxV = -Infinity;
-  for (const row of points) {
-    for (const k of keys) {
-      const v = row[k];
-      if (typeof v === "number" && Number.isFinite(v)) {
-        minV = Math.min(minV, v);
-        maxV = Math.max(maxV, v);
-      }
-    }
-  }
-  if (!Number.isFinite(minV)) return { min: 0, max: 0 };
-  return { min: minV, max: maxV };
-}
-
-function ComboTooltip({
-  active,
-  payload,
-  label,
-  displayUnit,
-  areaKey,
-  areaName,
-  areaStroke,
-  xAxisGranularity = "month",
-}: TooltipProps<number, string> & {
-  displayUnit: ChartDisplayUnit;
-  areaKey: string;
-  areaName: string;
-  areaStroke: string;
-  xAxisGranularity?: "month" | "year";
-}) {
-  if (!active || !payload?.length) return null;
-  const stripeHit = payload.find(
-    (e) => isAreaStripeDataKey(e.dataKey) && typeof e.value === "number" && Number.isFinite(e.value as number)
-  );
-  const rest = payload.filter((e) => !isAreaStripeDataKey(e.dataKey));
-  const mergedPayload =
-    stripeHit != null
-      ? [
-        ...rest,
-        {
-          ...stripeHit,
-          dataKey: areaKey,
-          name: areaName,
-          color: areaStroke,
-        },
-      ]
-      : rest;
-  return (
-    <DefaultTooltipContent<number, string>
-      payload={mergedPayload}
-      label={label}
-      formatter={(v) => formatTooltipValue(typeof v === "number" ? v : Number(v), displayUnit)}
-      labelFormatter={(d) => formatLineChartXTick(String(d), xAxisGranularity)}
-      contentStyle={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "10px 12px",
-        boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
-      }}
-    />
-  );
-}
 
 function diamondDotFill(stroke: string): string {
   const lightened = lightenStrokeForAccumulated(stroke);
@@ -288,8 +200,36 @@ export function MonthlyPerformanceComboChart({
     <div className="chart-grid__col">
       <TitleTag className="chart-panel-title">{title}</TitleTag>
       <div className="chart-box line-chart-focus-wrap">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={plotPoints} margin={{ ...RECHARTS_MONEY_CHART_MARGIN }}>
+        <AppComposedChart
+          data={plotPoints}
+          tooltip={{
+            formatValue: (v) => formatTooltipValue(v, displayUnit),
+            formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
+            // The YTD area renders as two year-parity stripe series; merge whichever stripe is
+            // hit back into a single row labeled as the area.
+            mapPayload: (payload) => {
+              const stripeHit = payload.find(
+                (e) =>
+                  isAreaStripeDataKey(e.dataKey) &&
+                  typeof e.value === "number" &&
+                  Number.isFinite(e.value)
+              );
+              const rest = payload.filter((e) => !isAreaStripeDataKey(e.dataKey));
+              return stripeHit != null
+                ? [
+                    ...rest,
+                    {
+                      ...stripeHit,
+                      dataKey: areaKey ?? "",
+                      name: areaName ?? "",
+                      color: areaStroke ?? "#64748b",
+                    },
+                  ]
+                : rest;
+            },
+            cursor: true,
+          }}
+        >
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
@@ -298,7 +238,7 @@ export function MonthlyPerformanceComboChart({
               dataKey="as_of_date"
               type="category"
               {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
@@ -307,22 +247,10 @@ export function MonthlyPerformanceComboChart({
               domain={yScale.domain}
               ticks={yScale.ticks}
               width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(v: number) => formatAxisValue(v, displayUnit)}
-            />
-            <Tooltip
-              content={(props) => (
-                <ComboTooltip
-                  {...(props as TooltipProps<number, string>)}
-                  displayUnit={displayUnit}
-                  areaKey={areaKey ?? ""}
-                  areaName={areaName ?? ""}
-                  areaStroke={areaStroke ?? "#64748b"}
-                  xAxisGranularity={xAxisGranularity}
-                />
-              )}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
@@ -406,8 +334,7 @@ export function MonthlyPerformanceComboChart({
                 animationDuration={CHART_ANIM_MS}
               />
             ))}
-          </ComposedChart>
-        </ResponsiveContainer>
+        </AppComposedChart>
       </div>
     </div>
   );
