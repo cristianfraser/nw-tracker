@@ -209,7 +209,10 @@ export function invalidateAggregationForAccountDate(
 
   for (const slug of rollupSlugsForAccount(accountId)) {
     for (const unit of ["clp", "usd", "uf"] as const) {
-      cache.delete(cacheKeyGroupConsolidatedMonthly(slug, unit));
+      // Stored keys carry a `|{rowsKey}` account-fingerprint suffix, so an exact-key delete
+      // never matches. The exact key ends with `|{unit}`, so the prefix can't bleed into a
+      // sibling slug (e.g. `bci` won't wipe `bci_other|clp`).
+      deleteKeysMatchingPrefix(cacheKeyGroupConsolidatedMonthly(slug, unit));
       cache.delete(cacheKeyGroupClosingByDate(slug, unit));
     }
   }
@@ -241,6 +244,11 @@ function forwardMonthKeysFrom(startYmd: string): string[] {
 /** @internal Test hook: month keys invalidated from a change date (includes YTD-forward months). */
 export function forwardMonthKeysForInvalidationTest(startYmd: string): string[] {
   return forwardMonthKeysFrom(startYmd);
+}
+
+/** @internal Test hook: portfolio-group rollup slugs an account belongs to. */
+export function rollupSlugsForAccountTest(accountId: number): string[] {
+  return [...rollupSlugsForAccount(accountId)];
 }
 
 /**
@@ -276,7 +284,9 @@ export function invalidateLinkedCreditCardAggregationCache(): void {
   invalidateCcBillingDetail(); // also notifies the invalidation listener
   for (const unit of ["clp", "usd", "uf"] as const) {
     for (const slug of LINKED_CC_AGGREGATION_GROUP_SLUGS) {
-      cache.delete(cacheKeyGroupConsolidatedMonthly(slug, unit));
+      // Consolidated-monthly keys carry a `|{rowsKey}` suffix; use a prefix delete (the exact
+      // key ends with `|{unit}`, so it stays within the slug boundary).
+      deleteKeysMatchingPrefix(cacheKeyGroupConsolidatedMonthly(slug, unit));
       cache.delete(cacheKeyGroupClosingByDate(slug, unit));
     }
     cache.delete(`dashboard.portfolio_totals|${unit}`);
