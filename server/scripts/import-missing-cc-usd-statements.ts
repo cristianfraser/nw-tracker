@@ -154,7 +154,7 @@ function main(): void {
   );
   if (skippedNoAccount.length > 0) {
     console.warn(
-      `# Skipped (no account / last4): ${skippedNoAccount.length} — use --fallback-last4=4242 for legacy PDFs`
+      `# Skipped (no account / last4): ${skippedNoAccount.length} — use --fallback-last4=<master last4> for legacy PDFs`
     );
     for (const s of skippedNoAccount.slice(0, 8)) {
       console.warn(`  ${s}`);

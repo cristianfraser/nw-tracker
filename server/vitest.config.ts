@@ -1,4 +1,8 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
@@ -27,6 +31,9 @@ export default defineConfig({
      */
     env: {
       NW_TRACKER_TEST_DB: process.env.NW_TRACKER_TEST_DB?.trim() || "nw-tracker.test.db",
+      // Synthetic card registry — tests must never read the personal cfraser/cc-cards.json
+      // (ccCardRegistry is read at module eval by ccConsolidatedCards, so set it here).
+      NW_TRACKER_CC_CARDS: path.join(configDir, "src", "test", "ccCardsFixture.json"),
     },
     globalSetup: ["src/vitest.globalSetup.ts"],
     setupFiles: ["src/vitest.setup.ts"],

@@ -82,6 +82,7 @@ from cc_pdf_ocr import (  # noqa: E402
     parse_international_usd_ocr_flat,
     parse_santander_clp_ocr_flat,
 )
+import cc_cards  # noqa: E402
 from cc_statement_pdf_paths import pdf_already_in_card_slot  # noqa: E402
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
@@ -3282,13 +3283,15 @@ RE_ORGANIZED_CC = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 
 
 def card_group_for_pdf_name(name: str) -> str:
-    """Heuristic card group for legacy parsers (A/B/INTL/BCI)."""
+    """Heuristic card group for legacy parsers (A/B/INTL/BCI); tokens from cc_cards.py."""
     lower = name.lower()
     if "usd" in lower or "internacional" in lower:
         return "INTL"
-    if "eecc" in lower or re.search(r"\b4343\b", lower):
+    if "eecc" in lower or any(
+        re.search(rf"\b{re.escape(l4)}\b", lower) for l4 in cc_cards.LIDER_FILENAME_LAST4S
+    ):
         return "BCI"
-    for token in ("4901", "4902", "4141"):
+    for token in cc_cards.LEGACY_GROUP_B_TOKENS:
         if token in lower:
             return "B"
     return "A"
