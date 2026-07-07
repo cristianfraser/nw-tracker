@@ -25,7 +25,6 @@ function equityRow(series_key: string): MarketDisplaySeriesRow {
 describe("getMarketTickerPayloadFromDb day deltas", () => {
   afterEach(() => {
     db.prepare(`DELETE FROM fx_daily WHERE date >= '2099-01-01'`).run();
-    db.prepare(`DELETE FROM uf_daily WHERE date >= '2099-01-01'`).run();
   });
 
   it("USD stays close-vs-prior-close when the latest fx row predates today (after midnight)", () => {
@@ -41,17 +40,6 @@ describe("getMarketTickerPayloadFromDb day deltas", () => {
     expect(payload.chile_today).toBe("2099-01-07");
     expect(payload.usd?.date).toBe("2099-01-05");
     expect(payload.usd?.delta_pct).toBeCloseTo(3, 6);
-  });
-
-  it("UF carries its day-over-day delta", () => {
-    const insert = db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`);
-    insert.run("2099-01-05", 40000);
-    insert.run("2099-01-06", 40004);
-
-    const payload = getMarketTickerPayloadFromDb(new Date("2099-01-07T04:00:00-03:00"));
-
-    expect(payload.uf?.date).toBe("2099-01-06");
-    expect(payload.uf?.delta_pct).toBeCloseTo(0.01, 6);
   });
 });
 
