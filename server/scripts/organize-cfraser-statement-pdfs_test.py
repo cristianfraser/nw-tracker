@@ -3,11 +3,31 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+# Synthetic identifiers (never real account/contract numbers — see AGENTS.md fixtures
+# convention). Written to a temp JSON and injected via NW_TRACKER_ORGANIZE_IDENTIFIERS
+# before the module loads, so tests never depend on cfraser/organize-identifiers.json.
+SYNTHETIC_IDENTIFIERS = {
+    "santander_80_account_to_card_last4": {
+        "0350300000000011617": "4141",
+        "800000011617": "4141",
+        "0350300000000019011": "4242",
+        "800000019011": "4242",
+    },
+    "santander_checking_cartola_account": "000000012345",
+    "santander_linea_credito_account": "001000012345",
+}
+_ids_file = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+json.dump(SYNTHETIC_IDENTIFIERS, _ids_file)
+_ids_file.close()
+os.environ["NW_TRACKER_ORGANIZE_IDENTIFIERS"] = _ids_file.name
 
 SCRIPT = Path(__file__).resolve().parent / "organize-cfraser-statement-pdfs.py"
 spec = importlib.util.spec_from_file_location("organize_pdfs", SCRIPT)
@@ -21,13 +41,13 @@ class Santander80FilenameTest(unittest.TestCase):
     def test_iso_from_filename(self) -> None:
         self.assertEqual(
             mod.iso_from_santander_80_filename(
-                "80_356524_REDACTED_20201124.pdf"
+                "80_356524_0350300000000011617_20201124.pdf"
             ),
             "2020-11-24",
         )
         self.assertEqual(
             mod.iso_from_santander_80_filename(
-                "80_377457_REDACTED_20210222.pdf"
+                "80_377457_0350300000000011617_20210222.pdf"
             ),
             "2021-02-22",
         )
@@ -41,7 +61,7 @@ class Santander80FilenameTest(unittest.TestCase):
     def test_cc_suffix_maps_account_to_4141(self) -> None:
         self.assertEqual(
             mod.cc_suffix(
-                "80_356524_REDACTED_20201124.pdf",
+                "80_356524_0350300000000011617_20201124.pdf",
                 None,
                 None,
             ),
@@ -49,7 +69,7 @@ class Santander80FilenameTest(unittest.TestCase):
         )
 
     def test_checking_cartola_inbox_not_credit_card(self) -> None:
-        name = "1_1054_REDACTED_30042019_CC.pdf"
+        name = "1_1054_000000012345_30042019_CC.pdf"
         self.assertTrue(mod.is_checking_cartola_inbox_name(name))
         with tempfile.TemporaryDirectory() as tmp:
             inbox = Path(tmp) / "inbox"
@@ -78,7 +98,7 @@ class Santander80FilenameTest(unittest.TestCase):
             self.assertEqual(moved_cc, 0)
 
     def test_linea_credito_inbox_not_credit_card(self) -> None:
-        name = "1_15149_REDACTED_24122021_LC.pdf"
+        name = "1_15149_001000012345_24122021_LC.pdf"
         self.assertTrue(mod.is_linea_credito_cartola_inbox_name(name))
         with tempfile.TemporaryDirectory() as tmp:
             inbox = Path(tmp) / "inbox"
@@ -127,7 +147,7 @@ class Santander80FilenameTest(unittest.TestCase):
             clp_name = f"{iso} estado de cuenta tarjeta 4141.pdf"
             clp_path = clp_dir / clp_name
             clp_path.write_bytes(b"clp-statement")
-            inbox_pdf = inbox / "80_2295_REDACTED_20210922.pdf"
+            inbox_pdf = inbox / "80_2295_0350300000000011617_20210922.pdf"
             inbox_pdf.write_bytes(b"inbox-pdf")
             old_cc = mod.CC_DIR
             old_resolve = mod.resolve_inbox_dir
@@ -161,7 +181,7 @@ class Santander80FilenameTest(unittest.TestCase):
             usd_dir.mkdir(parents=True)
             inbox.mkdir()
             iso = "2021-09-22"
-            inbox_pdf = inbox / "80_2295_REDACTED_20210922.pdf"
+            inbox_pdf = inbox / "80_2295_0350300000000011617_20210922.pdf"
             inbox_pdf.write_bytes(b"usd-statement")
             old_cc = mod.CC_DIR
             old_resolve = mod.resolve_inbox_dir

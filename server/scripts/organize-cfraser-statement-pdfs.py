@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -65,7 +66,6 @@ from cc_pdf_qpdf import (  # noqa: E402
 
 CFRASER = REPO_ROOT / "cfraser"
 INBOX_DIR = CFRASER / "inbox"
-INBOX_DUPLICATES_DIR = INBOX_DIR / "duplicates"
 LEGACY_INBOX_DIR = CFRASER / "pdfs"
 
 
@@ -116,22 +116,55 @@ RE_ORGANIZED = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 RE_SANTANDER_80_DATE = re.compile(r"^80_\d+_\d+_(\d{8})\.pdf$", re.I)
 # Older Santander download: 157_<seq>_<account>_YYYYMMDD.pdf (image/legacy layout)
 RE_SANTANDER_157_DATE = re.compile(r"^157_\d+_\d+_(\d{8})\.pdf$", re.I)
+# Personal Santander identifiers (contract/account numbers) live OUTSIDE git in
+# cfraser/organize-identifiers.json (cfraser/ is gitignored). Shape:
+#   {
+#     "santander_80_account_to_card_last4": {"<80_* account id>": "<card last4>", ...},
+#     "santander_checking_cartola_account": "<cuenta corriente account id>",
+#     "santander_linea_credito_account": "<línea de crédito account id>"
+#   }
+# Tests point NW_TRACKER_ORGANIZE_IDENTIFIERS at a synthetic copy.
+ORGANIZE_IDENTIFIERS_PATH = Path(
+    os.environ.get("NW_TRACKER_ORGANIZE_IDENTIFIERS", str(CFRASER / "organize-identifiers.json"))
+)
+
+
+def _load_organize_identifiers() -> dict:
+    if not ORGANIZE_IDENTIFIERS_PATH.is_file():
+        raise SystemExit(
+            f"missing {ORGANIZE_IDENTIFIERS_PATH}: personal Santander identifiers are kept out of git — "
+            "create the JSON (shape documented above ORGANIZE_IDENTIFIERS_PATH in this script) "
+            "or restore it from the backups folder"
+        )
+    data = json.loads(ORGANIZE_IDENTIFIERS_PATH.read_text(encoding="utf-8"))
+    missing = [
+        k
+        for k in (
+            "santander_80_account_to_card_last4",
+            "santander_checking_cartola_account",
+            "santander_linea_credito_account",
+        )
+        if k not in data
+    ]
+    if missing:
+        raise SystemExit(f"{ORGANIZE_IDENTIFIERS_PATH}: missing keys: {', '.join(missing)}")
+    return data
+
+
+_ORGANIZE_IDENTIFIERS = _load_organize_identifiers()
 # Full account id in 80_* downloads → card last-4 (not the last 4 digits of the account string).
-SANTANDER_80_ACCOUNT_TO_CARD_LAST4: dict[str, str] = {
-    "REDACTED": "4141",
-    "REDACTED": "4141",
-    "REDACTED": "4242",
-    "REDACTED": "4242",
-}
+SANTANDER_80_ACCOUNT_TO_CARD_LAST4: dict[str, str] = _ORGANIZE_IDENTIFIERS[
+    "santander_80_account_to_card_last4"
+]
 # Santander email attachment: `1_<seq>_<account>_<date>_CC.pdf` = cuenta corriente cartola (not tarjeta).
-SANTANDER_CHECKING_CARTOLA_ACCOUNT = "REDACTED"
+SANTANDER_CHECKING_CARTOLA_ACCOUNT: str = _ORGANIZE_IDENTIFIERS["santander_checking_cartola_account"]
 RE_INBOX_CHECKING_CARTOLA = re.compile(
     rf"^1_(\d+)_{SANTANDER_CHECKING_CARTOLA_ACCOUNT}_(\d{{8}})(?:_CC)?\.pdf$",
     re.I,
 )
 RE_INBOX_VISTA_CM = re.compile(r"^1_(\d+)_(\d+)_(\d{8})_CM\.pdf$", re.I)
-# Santander email attachment: `1_<seq>_REDACTED_<date>_LC.pdf` = línea de crédito cartola.
-SANTANDER_LINEA_CREDITO_ACCOUNT = "REDACTED"
+# Santander email attachment: `1_<seq>_<lc account>_<date>_LC.pdf` = línea de crédito cartola.
+SANTANDER_LINEA_CREDITO_ACCOUNT: str = _ORGANIZE_IDENTIFIERS["santander_linea_credito_account"]
 RE_INBOX_LINEA_CREDITO = re.compile(
     rf"^1_(\d+)_{SANTANDER_LINEA_CREDITO_ACCOUNT}_(\d{{8}})_LC\.pdf$",
     re.I,
@@ -516,7 +549,7 @@ def move_inbox_duplicate(p: Path, *, dry_run: bool, reason: str = "") -> Path:
     inbox = resolve_inbox_dir()
     if p.parent.resolve() != inbox.resolve():
         return p
-    dup_dir = INBOX_DUPLICATES_DIR
+    dup_dir = inbox / "duplicates"
     dest = unique_dest(dup_dir, p.stem)
     rel = dest.relative_to(CFRASER)
     detail = f" — {reason}" if reason else ""
@@ -619,7 +652,7 @@ def relocate_misfiled_checking_from_vista(dry_run: bool) -> int:
 
 
 def organize_linea_credito_cartolas_inbox(dry_run: bool) -> int:
-    """File Santander `1_*_REDACTED_*_LC.pdf` inbox downloads as línea de crédito cartolas."""
+    """File Santander `1_*_<lc account>_*_LC.pdf` inbox downloads as línea de crédito cartolas."""
     LINEA_DIR.mkdir(parents=True, exist_ok=True)
     inbox = resolve_inbox_dir()
     if not inbox.is_dir():
