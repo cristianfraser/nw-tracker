@@ -1036,7 +1036,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   // sorted ascending, so its first entry with a positive total is the next month a cuota is owed
   // (the pay-by month of the latest facturación). Deriving this from per-purchase next_due_month
   // instead let a stale/behind purchase whose next_due_month lags today drag "próximo pago" into
-  // the past (e.g. Santander ·4242 showing "mar 2025" instead of the June facturación pay-by).
+  // the past (e.g. a Santander card showing "mar 2025" instead of the June facturación pay-by).
   let next_calendar_month: string | null = null;
   let next_calendar_month_total_clp: number | null = null;
   const nextPaymentMonth = months.find((m) => m.total_clp > 0);

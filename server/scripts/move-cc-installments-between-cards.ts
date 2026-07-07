@@ -1,8 +1,8 @@
 /**
  * Reassign installment ledger + PDF statements from one Santander card master to another.
  *
- *   npx tsx server/scripts/move-cc-installments-between-cards.ts --from=4111 --to=4242
- *   npx tsx server/scripts/move-cc-installments-between-cards.ts --from=4111 --to=4242 --apply
+ *   npx tsx server/scripts/move-cc-installments-between-cards.ts --from=<last4> --to=<last4>
+ *   npx tsx server/scripts/move-cc-installments-between-cards.ts --from=<last4> --to=<last4> --apply
  */
 import { db } from "../src/db.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";

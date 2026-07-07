@@ -6,16 +6,14 @@ import subprocess
 from pathlib import Path
 from typing import Iterator
 
+from cc_cards import IMPORT_REDIRECT_LAST4
+
 CLP_SLOT = "clp"
 USD_SLOT = "usd"
 UNREADABLE_DIR = "unreadable"
-# Folder under credit-card-statements/ (successor master); PDF stem may keep predecessor last4.
-SANTANDER_CC_SLOT_REDIRECT = {
-    "4113": "4141",
-    "4114": "4141",
-    "4111": "4242",
-    "4112": "4242",
-}
+# Folder under credit-card-statements/ (successor master); PDF stem may keep predecessor
+# last4. Real card last4s live in gitignored cfraser/cc-cards.json (see cc_cards.py).
+SANTANDER_CC_SLOT_REDIRECT = IMPORT_REDIRECT_LAST4
 RE_ORGANIZED_CC = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 RE_NUMBERED_COPY = re.compile(r"\s*\(\d+\)\.pdf$", re.I)
 RE_CC_STEM = re.compile(

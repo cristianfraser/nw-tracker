@@ -1,0 +1,17 @@
+{
+  "import_redirect_last4": {
+    "4113": "4141",
+    "4114": "4141",
+    "4111": "4242",
+    "4112": "4242"
+  },
+  "superseded_master_notes": [
+    "credit_card_master|santander|4111",
+    "credit_card_master|santander|4112"
+  ],
+  "multicard_marker_tokens": ["XXXX-4141"],
+  "legacy_group_b_tokens": ["4901", "4902", "4141"],
+  "lider_filename_last4s": ["4343"],
+  "reconcile_skip_last4s": ["4111", "4112"],
+  "reconcile_primary_last4s": ["4141"]
+}

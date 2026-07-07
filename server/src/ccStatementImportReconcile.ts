@@ -1,3 +1,4 @@
+import { ccCardRegistry } from "./ccCardRegistry.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
 import { canonicalCcLineDedupeKeys } from "./ccExpenseLineDedupe.js";
@@ -184,8 +185,8 @@ function isGarbledIntlPurchaseRow(row: CcReconcileRow): boolean {
   if (row.currency !== "usd") return false;
   const m = String(row.merchant ?? "").toUpperCase();
   if (/\bDE\s+\d+\b/.test(m)) return true;
-  if (m.includes("MOVIMIENTOS TARJETA") || m.includes("XXXX-4141")) return true;
-  return false;
+  if (m.includes("MOVIMIENTOS TARJETA")) return true;
+  return ccCardRegistry().multicard_marker_tokens.some((t) => m.includes(t.toUpperCase()));
 }
 
 /** Sum movements for international USD statements (aligned with `cc_statement_reconcile.py`). */

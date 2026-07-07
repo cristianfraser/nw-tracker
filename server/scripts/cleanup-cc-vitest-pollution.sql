@@ -1,6 +1,6 @@
 -- One-off cleanup: Vitest / merge-test rows that may have landed in nw-tracker.db.
 -- Usage from repo root: sqlite3 server/data/nw-tracker.db < server/scripts/cleanup-cc-vitest-pollution.sql
--- After manual-installment deletes, recompute 4242 ledger/billing (see comment at end).
+-- After manual-installment deletes, recompute the CC masters' ledger/billing (see comment at end).
 
 BEGIN IMMEDIATE;
 
@@ -69,7 +69,7 @@ WHERE id IN (
   FROM cc_statement_lines l
   JOIN cc_statements s ON s.id = l.statement_id
   JOIN accounts a ON a.id = s.account_id
-  WHERE a.notes = 'credit_card_master|santander|4242'
+  WHERE a.notes LIKE 'credit_card_master|santander|%'
     AND l.amount_clp = 12345
     AND (l.merchant = 'TEST MERGE DEDUPE' OR l.merchant = 'Merge dedupe fixture row')
 );
@@ -91,11 +91,11 @@ WHERE account_id IN (SELECT id FROM accounts WHERE notes = 'credit_card_master|s
 
 COMMIT;
 
--- Optional after this file (4242 master):
+-- Optional after this file (recompute every santander CC master):
 --   cd server && npx tsx -e "
 --     import { db } from './src/db.js';
 --     import { upsertCreditCardValuationsFromLedger } from './src/ccInstallmentLedgerDb.js';
 --     import { recomputeCcBillingMonthBalances } from './src/ccBillingBalances.js';
---     const r = db.prepare(\"SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'\").get() as { id: number } | undefined;
---     if (r) { upsertCreditCardValuationsFromLedger(r.id); recomputeCcBillingMonthBalances(r.id); }
+--     const rows = db.prepare(\"SELECT id FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' AND notes != 'credit_card_master|santander|vitest-fixture'\").all() as { id: number }[];
+--     for (const r of rows) { upsertCreditCardValuationsFromLedger(r.id); recomputeCcBillingMonthBalances(r.id); }
 --   "

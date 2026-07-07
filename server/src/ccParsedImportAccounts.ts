@@ -1,7 +1,7 @@
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 
-/** Last4 from CSV `card_last4` or `source_pdf` filename (e.g. `… tarjeta 4141.pdf`). */
+/** Last4 from CSV `card_last4` or `source_pdf` filename (e.g. `… tarjeta <last4>.pdf`). */
 export function cardLast4FromParsedRow(row: Record<string, string>): string {
   const l4 = String(row.card_last4 ?? "").trim();
   if (l4) return l4;
@@ -20,7 +20,7 @@ export type DiscoverImportAccountsResult = {
 
 /**
  * Map parsed statement CSV rows to master account ids (one per physical card).
- * Applies consolidation redirects (4111/4112 → 4242).
+ * Applies consolidation redirects (predecessor → successor master, from cc-cards.json).
  */
 export function discoverMasterAccountIdsFromParsedRows(
   records: Record<string, string>[]

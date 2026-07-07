@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+
+import cc_cards
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -65,7 +67,9 @@ def _is_garbled_intl_purchase_row(row: Dict[str, Any]) -> bool:
     m = str(row.get("merchant") or "").upper()
     if re.match(r"^DE\s+\d", m):
         return True
-    if "MOVIMIENTOS TARJETA" in m or "XXXX-4141" in m:
+    if "MOVIMIENTOS TARJETA" in m:
+        return True
+    if any(t.upper() in m for t in cc_cards.MULTICARD_MARKER_TOKENS):
         return True
     return False
 
@@ -850,13 +854,15 @@ def reconcile_statement_required(source_pdf: str, full: str = "") -> bool:
     lower = source_pdf.lower()
     if "legacy.pdf" in lower or "-corrupt" in lower or re.search(r"\(\d+\)\.pdf$", lower):
         return False
-    if re.search(r"\b4111\b|\b4112\b", source_pdf):
+    if any(re.search(rf"\b{re.escape(l4)}\b", source_pdf) for l4 in cc_cards.RECONCILE_SKIP_LAST4S):
         return False
-    if re.search(r"\b4343\b", source_pdf) or "eecc" in lower:
+    if "eecc" in lower or any(
+        re.search(rf"\b{re.escape(l4)}\b", source_pdf) for l4 in cc_cards.LIDER_FILENAME_LAST4S
+    ):
         return True
     if full.strip() and is_bci_lider_statement(full):
         return True
-    return "4141" in source_pdf
+    return any(l4 in source_pdf for l4 in cc_cards.RECONCILE_PRIMARY_LAST4S)
 
 
 def reconcile_statement(

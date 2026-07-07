@@ -121,7 +121,7 @@ type PaymentRow = {
 
 /**
  * Installment cuota lines from `cc_installment_payments` when statement PDF lines are missing
- * or sparse (e.g. Santander 4242 ledger without full reimport).
+ * or sparse (e.g. a Santander ledger without full reimport).
  */
 export function buildInstallmentPaymentGastosLines(
   accountIds: number[],
