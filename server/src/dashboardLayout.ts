@@ -50,38 +50,12 @@ const netWorthBucketCardsQuery = `
   ORDER BY pg.dashboard_sort_order ASC, pg.id ASC
 `;
 
-const legacyBucketCardsQuery = `
-  SELECT slug, label, label_i18n_key,
-         dashboard_sort_order AS sort_order,
-         dashboard_bucket_slug AS bucket_slug,
-         dashboard_card_css AS card_css,
-         route_path
-  FROM portfolio_groups
-  WHERE dashboard_sort_order IS NOT NULL
-    AND dashboard_card_kind = 'bucket'
-    AND dashboard_bucket_slug IS NOT NULL
-  ORDER BY dashboard_sort_order ASC, id ASC
-`;
-
 /**
  * Ordered bucket cards for the dashboard (Patrimonio neto hero stays client-first).
  * Prefers first-level children of the `net_worth` portfolio group; otherwise rows with `dashboard_sort_order`.
  */
 export function getDashboardLayoutCards(): DashboardLayoutCardRow[] {
-  try {
-    const fromNetWorth = db.prepare(netWorthBucketCardsQuery).all() as DashboardLayoutCardRow[];
-    if (fromNetWorth.length > 0) return fromNetWorth;
-  } catch (e) {
-    console.warn("dashboard_layout: net_worth children query failed.", e);
-  }
-  try {
-    return db.prepare(fallbackBucketCardsQuery).all() as DashboardLayoutCardRow[];
-  } catch {
-    try {
-      return db.prepare(legacyBucketCardsQuery).all() as DashboardLayoutCardRow[];
-    } catch (e2) {
-      console.warn("dashboard_layout: portfolio_groups dashboard columns missing; run migrations.", e2);
-      return [];
-    }
-  }
+  const fromNetWorth = db.prepare(netWorthBucketCardsQuery).all() as DashboardLayoutCardRow[];
+  if (fromNetWorth.length > 0) return fromNetWorth;
+  return db.prepare(fallbackBucketCardsQuery).all() as DashboardLayoutCardRow[];
 }

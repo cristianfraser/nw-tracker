@@ -75,19 +75,18 @@ export function fintualCertV2GoalMapPath(): string {
 export function loadFintualCertV2GoalIdOverrides(): Record<string, string> {
   const p = fintualCertV2GoalMapPath();
   if (!fs.existsSync(p)) return {};
-  try {
-    const j = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
-    if (!j || typeof j !== "object") return {};
-    const by = (j as { byGoalId?: unknown }).byGoalId;
-    if (!by || typeof by !== "object") return {};
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(by as Record<string, unknown>)) {
-      if (typeof v === "string" && v.trim()) out[String(k)] = v.trim();
+  const j = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
+  if (!j || typeof j !== "object") throw new Error(`fintual goal map is not a JSON object: ${p}`);
+  const by = (j as { byGoalId?: unknown }).byGoalId;
+  if (!by || typeof by !== "object") throw new Error(`fintual goal map missing byGoalId object: ${p}`);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(by as Record<string, unknown>)) {
+    if (typeof v !== "string" || !v.trim()) {
+      throw new Error(`fintual goal map byGoalId["${k}"] must be a non-empty string: ${p}`);
     }
-    return out;
-  } catch {
-    return {};
+    out[String(k)] = v.trim();
   }
+  return out;
 }
 
 /** Infer Fintual goal id from certificado investment name (CSV). */

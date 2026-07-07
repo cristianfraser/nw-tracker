@@ -79,33 +79,18 @@ export function getMarketSeriesPayload(): {
   type FuR = { series_key: string; day: string; unit_value_clp: number };
 
   const fxRows = db.prepare(`SELECT date, clp_per_usd FROM fx_daily ORDER BY date ASC`).all() as FxR[];
-  let fxBcentralRows: FxR[] = [];
-  try {
-    fxBcentralRows = db
-      .prepare(`SELECT date, clp_per_usd FROM fx_daily_bcentral ORDER BY date ASC`)
-      .all() as FxR[];
-  } catch {
-    fxBcentralRows = [];
-  }
-  let fxBidAskRows: { date: string; buy_clp_per_usd: number; sell_clp_per_usd: number }[] = [];
-  try {
-    fxBidAskRows = db
-      .prepare(
-        `SELECT date, buy_clp_per_usd, sell_clp_per_usd FROM fx_daily_bid_ask ORDER BY date ASC`
-      )
-      .all() as { date: string; buy_clp_per_usd: number; sell_clp_per_usd: number }[];
-  } catch {
-    fxBidAskRows = [];
-  }
+  const fxBcentralRows = db
+    .prepare(`SELECT date, clp_per_usd FROM fx_daily_bcentral ORDER BY date ASC`)
+    .all() as FxR[];
+  const fxBidAskRows = db
+    .prepare(
+      `SELECT date, buy_clp_per_usd, sell_clp_per_usd FROM fx_daily_bid_ask ORDER BY date ASC`
+    )
+    .all() as { date: string; buy_clp_per_usd: number; sell_clp_per_usd: number }[];
   const ufRows = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date ASC`).all() as UfR[];
   const eurRows = db.prepare(`SELECT date, clp_per_eur FROM eur_daily ORDER BY date ASC`).all() as EurR[];
   const ipcRows = db.prepare(`SELECT date, ipc_index FROM ipc_daily ORDER BY date ASC`).all() as IpcR[];
-  let utmRows: UtmR[] = [];
-  try {
-    utmRows = db.prepare(`SELECT date, utm_clp FROM utm_daily ORDER BY date ASC`).all() as UtmR[];
-  } catch {
-    utmRows = [];
-  }
+  const utmRows = db.prepare(`SELECT date, utm_clp FROM utm_daily ORDER BY date ASC`).all() as UtmR[];
   const eqRows = db
     .prepare(`SELECT ticker, trade_date AS date, close FROM equity_daily ORDER BY ticker, trade_date ASC`)
     .all() as EqR[];
