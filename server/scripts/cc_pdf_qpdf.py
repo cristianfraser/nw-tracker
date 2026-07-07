@@ -27,6 +27,7 @@ PDF_DEPS = SCRIPT_DIR / ".pdf_deps"
 if PDF_DEPS.is_dir() and str(PDF_DEPS) not in sys.path:
     sys.path.insert(0, str(PDF_DEPS))
 
+import cc_cards
 from cc_pdf_ocr import extract_cc_pdf_ocr_flat, peek_pdf_text_pdftotext
 
 REPO_ROOT = SCRIPT_DIR.parent.parent
@@ -183,7 +184,7 @@ def is_likely_lider_cc_pdf(path: Path, text: str = "") -> bool:
     name = path.name.lower()
     if is_inbox_attachment_style_pdf(path):
         return True
-    if "lider" in name or "bci" in name or "4343" in name:
+    if "lider" in name or "bci" in name or any(l4 in name for l4 in cc_cards.LIDER_FILENAME_LAST4S):
         return True
     if text.strip() and is_readable_bci_lider_statement_text(text):
         return True

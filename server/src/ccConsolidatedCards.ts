@@ -1,21 +1,16 @@
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { ccCardRegistry } from "./ccCardRegistry.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
 
 /**
- * Santander cards whose statements/installments are tracked on the successor card.
+ * Cards whose statements/installments are tracked on the successor card.
  * PDF filenames may still contain the old last4; imports route to the target account.
- *
- * Note: 4141 and 4242 are sequential cards (minimal overlap at switchover), not consolidation.
+ * Real card last4s live in gitignored `cfraser/cc-cards.json` (see ccCardRegistry).
  */
-export const SANTANDER_CC_IMPORT_REDIRECT_LAST4: Readonly<Record<string, string>> = {
-  /** Predecessor cards; statements import onto the 4141 master. */
-  "4113": "4141",
-  "4114": "4141",
-  "4111": "4242",
-  "4112": "4242",
-};
+export const SANTANDER_CC_IMPORT_REDIRECT_LAST4: Readonly<Record<string, string>> =
+  ccCardRegistry().import_redirect_last4;
 
 export function normalizeCcImportCardLast4(last4: string): string {
   const l4 = String(last4 ?? "").trim();
@@ -37,10 +32,7 @@ export function supersededCcTargetLast4(accountId: number): string | null {
   return m?.[1] ?? null;
 }
 
-const SUPERSEDED_SANTANDER_MASTER_NOTES = new Set([
-  "credit_card_master|santander|4111",
-  "credit_card_master|santander|4112",
-]);
+const SUPERSEDED_SANTANDER_MASTER_NOTES = new Set(ccCardRegistry().superseded_master_notes);
 
 export function isSupersededSantanderCcMaster(accountId: number): boolean {
   if (supersededCcTargetLast4(accountId) != null) return true;
@@ -155,95 +147,4 @@ export function unmarkSantanderCcSuperseded(last4: string): void {
   for (const { id } of views) {
     db.prepare(`UPDATE accounts SET exclude_from_group_totals = 0 WHERE id = ?`).run(id);
   }
-}
-
-function is4141CardRow(row: { card_last4: string | null; source_pdf: string | null }): boolean {
-  const l4 = String(row.card_last4 ?? "").trim();
-  if (l4 === "4141") return true;
-  return /(?:tarjeta|cuenta)\s*(?:usd\s*)?4141/i.test(String(row.source_pdf ?? ""));
-}
-
-/** Move 4141 PDF data off the 4242 master back onto the 4141 master (sequential cards, not duplicates). */
-export function repairCc4141And4242Split(): {
-  statements_moved: number;
-  purchases_moved: number;
-  purchases_deduped: number;
-  valuations_rebuilt: { account_4141: number; account_4242: number };
-} {
-  const id4141 = resolveMasterAccountIdForCardLast4("4141");
-  const id4242 = resolveMasterAccountIdForCardLast4("4242");
-  if (id4141 == null || id4242 == null) {
-    throw new Error("4141 and 4242 master accounts must exist");
-  }
-
-  let statements_moved = 0;
-  let purchases_moved = 0;
-  let purchases_deduped = 0;
-
-  const tx = db.transaction(() => {
-    unmarkSantanderCcSuperseded("4141");
-
-    const stmtRows = db
-      .prepare(
-        `SELECT id, card_last4, source_pdf FROM cc_statements WHERE account_id = ?`
-      )
-      .all(id4242) as { id: number; card_last4: string | null; source_pdf: string | null }[];
-
-    for (const row of stmtRows) {
-      if (!is4141CardRow(row)) continue;
-      statements_moved += db
-        .prepare(`UPDATE cc_statements SET account_id = ? WHERE id = ?`)
-        .run(id4141, row.id).changes;
-    }
-
-    const purchaseRows = db
-      .prepare(
-        `SELECT id, card_group, canonical_row_id, source_pdf_sample
-         FROM cc_installment_purchases WHERE account_id = ?`
-      )
-      .all(id4242) as {
-      id: number;
-      card_group: string;
-      canonical_row_id: string;
-      source_pdf_sample: string | null;
-    }[];
-
-    for (const row of purchaseRows) {
-      if (!is4141CardRow({ card_last4: null, source_pdf: row.source_pdf_sample })) continue;
-      const existing = db
-        .prepare(
-          `SELECT id FROM cc_installment_purchases
-           WHERE account_id = ? AND card_group = ? AND canonical_row_id = ?`
-        )
-        .get(id4141, row.card_group, row.canonical_row_id) as { id: number } | undefined;
-      if (existing) {
-        db.prepare(`DELETE FROM cc_installment_payments WHERE purchase_id = ?`).run(row.id);
-        purchases_deduped += db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(row.id).changes;
-        continue;
-      }
-      purchases_moved += db
-        .prepare(`UPDATE cc_installment_purchases SET account_id = ? WHERE id = ?`)
-        .run(id4141, row.id).changes;
-    }
-
-    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id4141);
-    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id4242);
-    for (const { id } of db
-      .prepare(
-        `SELECT id FROM accounts WHERE source_account_id IN (?, ?) AND account_kind = 'liability_view'`
-      )
-      .all(id4141, id4242) as { id: number }[]) {
-      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
-    }
-  });
-  tx();
-
-  const valuations_rebuilt = {
-    account_4141: upsertCreditCardValuationsFromLedger(id4141),
-    account_4242: upsertCreditCardValuationsFromLedger(id4242),
-  };
-  recomputeCcBillingMonthBalances(id4141);
-  recomputeCcBillingMonthBalances(id4242);
-
-  return { statements_moved, purchases_moved, purchases_deduped, valuations_rebuilt };
 }

@@ -7,7 +7,7 @@
  *   npx tsx server/scripts/import-cc-parsed-to-db.ts --account-id=NN [--csv=...] [--dry-run]
  *
  * By default, master accounts are inferred from each row's `card_last4` or `source_pdf`
- * (e.g. `… tarjeta 4141.pdf`). No account id is required when the CSV only contains known cards.
+ * (e.g. `… tarjeta <last4>.pdf`). No account id is required when the CSV only contains known cards.
  *
  * Default: **merge** — upsert statements/lines and installment ledger without wiping existing months.
  * Pass `--wipe` to delete all statements and reload the installment ledger for the account(s).

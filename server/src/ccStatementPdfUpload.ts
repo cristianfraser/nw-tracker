@@ -161,7 +161,7 @@ export function importCcStatementPdfsForAccount(
     for (const row of allRecords) {
       const src = String(row.source_pdf ?? "").trim();
       // The parser renames PDFs to canonical names (e.g. `155028273.pdf` →
-      // `2026-06-26 estado de cuenta tarjeta 4343.pdf`) so source_pdf never
+      // `2026-06-26 estado de cuenta tarjeta <last4>.pdf`) so source_pdf never
       // matches the original upload filename. The tmp dir is isolated to the
       // uploaded files, so all rows here come from them — no allowedNames guard needed.
       // Match parity with the CLI/inbox import: prefer the parser's card_last4,

@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import unittest
 from pathlib import Path
+
+# Synthetic card registry (see ccCardsFixture.json) — never the personal cfraser/cc-cards.json.
+os.environ["NW_TRACKER_CC_CARDS"] = str(
+    Path(__file__).resolve().parents[1] / "src" / "test" / "ccCardsFixture.json"
+)
 
 SCRIPT = Path(__file__).resolve().parent / "cc_statement_pdf_paths.py"
 spec = importlib.util.spec_from_file_location("cc_paths", SCRIPT)
