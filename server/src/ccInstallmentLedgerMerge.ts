@@ -392,6 +392,12 @@ export function mergeCcAccountFromParsedRows(
   // Recompute billing balances once after the transaction commits so it reads
   // the fully-consistent post-merge state.
   recomputeCcBillingMonthBalances(accountId);
+  // Re-sync valuation month points too: the ledger merge's internal upsert runs BEFORE the
+  // web-paste repairs/reconciles above delete or move statement lines (skipRecompute: true),
+  // so its points can bake a pre-repair balance — e.g. a post-cierre PAGO pasted for the open
+  // month must land in the closed month's month-end point (owed-on-date), not wait for the
+  // next unrelated CC write.
+  upsertCreditCardValuationsFromLedger(accountId);
 
   return result;
 }

@@ -124,9 +124,14 @@ function liabilityBreakdownForDate(
   const out = { mortgage_clp: 0, credit_card_clp: 0 };
   for (const r of accounts) {
     const clp = liabilityValuationClpAt(r, asOfYmd, ctx);
-    if (clp == null || clp <= 0) continue;
-    if (r.category_slug === "mortgage") out.mortgage_clp += clp;
-    else if (r.category_slug === "credit_card") out.credit_card_clp += clp;
+    if (clp == null) continue;
+    if (r.category_slug === "mortgage") {
+      if (clp > 0) out.mortgage_clp += clp;
+    } else if (r.category_slug === "credit_card") {
+      // Negative = a-favor credit balance — real negative debt; must sum so the Saldo
+      // pasivos line equals Σ per-card chart lines at every date.
+      if (clp !== 0) out.credit_card_clp += clp;
+    }
   }
   return out;
 }
