@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
@@ -8,8 +7,6 @@ import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
 } from "./schemaBaseline.js";
-
-const require = createRequire(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, "..", "data");
@@ -76,11 +73,14 @@ export function initSchema() {
 /**
  * Pre-baseline migrations that seed REFERENCE ROWS (not schema): the schema-only baseline
  * skips their data, so fresh DBs must still run them. All are idempotent
- * (WHERE NOT EXISTS guards) and their tables exist in the baseline.
+ * (WHERE NOT EXISTS guards) and their tables exist in the baseline. These are the ONLY
+ * pre-baseline migration files kept on disk — the rest were squashed into the baseline
+ * and deleted (2026-07; personal-data ones also purged from git history).
  */
 const BASELINE_REFERENCE_DATA_MIGRATIONS = new Set([
-  // NOT 031_expense_groups_accounts: those rows are personal (rental expense accounts),
-  // and its note literals contain ';' — unsplittable by the naive migration splitter.
+  // The legacy 031_expense_groups_accounts seed was NOT kept: its rows are personal
+  // (rental expense accounts, live-DB only) and its note literals contain ';' —
+  // unsplittable by the naive migration splitter.
   "054_cc_expense_categories.sql",
   "055_cc_expense_category_no_cuenta.sql",
   "056_cc_expense_merge_food_category.sql",
@@ -188,28 +188,14 @@ function seedReferenceData() {
 }
 
 const migrationsDir = path.join(__dirname, "..", "migrations");
-const GENERIC_TRANSFER_UNIQUE_MIGRATION = "075_generic_transfer_unique_purchases.sql";
-const GENERIC_UNIQUE_MERCHANTS_MIGRATION = "076_cc_expense_generic_unique_merchants.sql";
-const CARGO_MERCADO_UNIQUE_MIGRATION = "077_cargo_mercado_capitales_unique.sql";
-const ACCOUNT_SYNC_SOURCES_MIGRATION = "109_account_sync_sources.sql";
-
-/**
- * Post-migration hooks live in modules that import `db` back from this file, so they are
- * loaded lazily (a static import would form a cycle resolved before `db` exists). Source
- * runs under tsx (`.ts` on disk); the compiled build has only `.js` under `dist/` — pick
- * whichever exists. Node ≥22.12 supports `require()` of these ESM `.js` files.
- */
-function requireMigrationHookModule<T>(baseName: string): T {
-  const tsPath = path.join(__dirname, `${baseName}.ts`);
-  const jsPath = path.join(__dirname, `${baseName}.js`);
-  return require(fs.existsSync(tsPath) ? tsPath : jsPath) as T;
-}
 
 /**
  * NOTE: naive SQL splitting — statements are split on every `;` and `--` comments are
  * stripped without lexing string literals. Migrations must not contain triggers,
  * multi-statement bodies, or `;` / `--` inside string literals; put such data changes in
- * a post-migration hook (see `runMigrations`) instead.
+ * a post-migration TS hook keyed on the migration filename in `runMigrations` instead
+ * (lazy-require the hook module — a static import would form a cycle resolved before
+ * `db` exists; see repo history for examples, e.g. 109_account_sync_sources).
  */
 function splitMigrationStatements(sql: string): string[] {
   const withoutComments = sql.replace(/--[^\n]*/g, "");
@@ -256,40 +242,6 @@ export function runMigrations() {
       execMigrationSql(sql);
       dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     })();
-    if (file === GENERIC_TRANSFER_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
-      const { backfillGenericTransferUniquePurchases } = requireMigrationHookModule<
-        typeof import("./ccExpenseGenericTransferBackfill.js")
-      >("ccExpenseGenericTransferBackfill");
-      const r = backfillGenericTransferUniquePurchases();
-      console.log(
-        `generic-transfer unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
-      );
-    }
-    if (file === GENERIC_UNIQUE_MERCHANTS_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
-      const { backfillGenericTransferUniquePurchases } = requireMigrationHookModule<
-        typeof import("./ccExpenseGenericTransferBackfill.js")
-      >("ccExpenseGenericTransferBackfill");
-      const r = backfillGenericTransferUniquePurchases();
-      console.log(
-        `generic-unique merchants backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
-      );
-    }
-    if (file === CARGO_MERCADO_UNIQUE_MIGRATION && !process.env.NW_TRACKER_TEST_DB) {
-      const { backfillGenericTransferUniquePurchases } = requireMigrationHookModule<
-        typeof import("./ccExpenseGenericTransferBackfill.js")
-      >("ccExpenseGenericTransferBackfill");
-      const r = backfillGenericTransferUniquePurchases();
-      console.log(
-        `cargo mercado capitales unique backfill: inserted=${r.inserted} merchant_rules_removed=${r.merchant_rules_removed}`
-      );
-    }
-    if (file === ACCOUNT_SYNC_SOURCES_MIGRATION) {
-      const { reseedAllAccountSyncSources } = requireMigrationHookModule<
-        typeof import("./accountSyncSources.js")
-      >("accountSyncSources");
-      const r = reseedAllAccountSyncSources();
-      console.log(`account_sync_sources backfill: accounts=${r.accounts} links=${r.links}`);
-    }
     appliedCount += 1;
     console.log(`migration applied: ${file}`);
   }
@@ -299,61 +251,8 @@ export function runMigrations() {
   } else {
     console.log(`migrations: applied ${appliedCount} new file(s); total recorded ${done.size + appliedCount}`);
   }
-
-  migrateMovementsSignedIfNeeded();
 }
 
-const MOVEMENTS_SIGNED_MIGRATION_ID = "008_movements_signed_amount.sql";
-
-/** Legacy rows used kind + strictly positive amount; new model is signed amount_clp (withdrawal = negative). */
-function migrateMovementsSignedIfNeeded() {
-  const already = dbInternal.prepare("SELECT 1 FROM schema_migrations WHERE id = ?").get(MOVEMENTS_SIGNED_MIGRATION_ID) as
-    | { 1: number }
-    | undefined;
-  if (already) return;
-
-  const cols = dbInternal.prepare("PRAGMA table_info(movements)").all() as { name: string }[];
-  const hasKind = cols.some((c) => c.name === "kind");
-
-  if (!hasKind) {
-    dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
-    return;
-  }
-
-  const tx = dbInternal.transaction(() => {
-    dbInternal.exec(`
-      CREATE TABLE movements__signed (
-        id INTEGER PRIMARY KEY,
-        account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-        amount_clp REAL NOT NULL CHECK (amount_clp != 0),
-        occurred_on TEXT NOT NULL,
-        note TEXT
-      );
-      INSERT INTO movements__signed (id, account_id, amount_clp, occurred_on, note)
-      SELECT
-        id,
-        account_id,
-        CASE
-          WHEN kind = 'withdrawal' THEN -ABS(amount_clp)
-          ELSE ABS(amount_clp)
-        END,
-        occurred_on,
-        note
-      FROM movements;
-      DROP TABLE movements;
-      ALTER TABLE movements__signed RENAME TO movements;
-    `);
-    dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(MOVEMENTS_SIGNED_MIGRATION_ID);
-  });
-  tx();
-  console.log(`migration applied: ${MOVEMENTS_SIGNED_MIGRATION_ID} (movements → signed amount_clp)`);
-}
-
-/**
- * `db` is initialized BEFORE migrations run: post-migration hook modules import `db`
- * back from this file mid-evaluation (require cycle), so the binding must already exist
- * when they load. Their statements are only prepared inside functions, after migrations.
- */
 const db = wrapDatabaseForVerboseLog(dbInternal);
 
 export { db };
