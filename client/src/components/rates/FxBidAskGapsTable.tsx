@@ -135,75 +135,73 @@ export function FxBidAskGapsTable() {
           </thead>
         }
       >
-        <tbody>
-          {gaps.map((gap) => {
-            const draft = drafts[gap.date] ?? emptyDraft();
-            return (
-              <tr key={gap.date}>
-                <td className="mono">{gap.date}</td>
-                <td className="mono" style={{ textAlign: "right" }}>
-                  {gap.mid_clp_per_usd != null ? formatClp(gap.mid_clp_per_usd) : "—"}
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <input
-                    className="mono"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={draft.buy}
-                    placeholder={
-                      gap.suggested_buy != null ? String(Math.round(gap.suggested_buy * 100) / 100) : ""
-                    }
-                    onChange={(e) =>
-                      setDrafts((prev) => ({
-                        ...prev,
-                        [gap.date]: { ...draft, buy: e.target.value, error: null },
-                      }))
-                    }
-                    style={{ width: "6.5rem", textAlign: "right" }}
-                  />
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <input
-                    className="mono"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={draft.sell}
-                    placeholder={
-                      gap.suggested_sell != null ? String(Math.round(gap.suggested_sell * 100) / 100) : ""
-                    }
-                    onChange={(e) =>
-                      setDrafts((prev) => ({
-                        ...prev,
-                        [gap.date]: { ...draft, sell: e.target.value, error: null },
-                      }))
-                    }
-                    style={{ width: "6.5rem", textAlign: "right" }}
-                  />
-                </td>
-                <td className="muted" style={{ fontSize: "0.85rem" }}>
-                  {gap.source ?? "—"}
-                  {gap.buy_clp_per_usd != null && gap.sell_clp_per_usd != null ? (
-                    <div className="mono muted" style={{ fontSize: "0.8rem", marginTop: "0.15rem" }}>
-                      {formatClp(gap.buy_clp_per_usd)} / {formatClp(gap.sell_clp_per_usd)}
-                    </div>
-                  ) : null}
-                </td>
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button type="button" disabled={draft.saving} onClick={() => void saveRow(gap)}>
-                    {draft.saving ? t("common.saving") : t("common.save")}
-                  </button>
-                  {draft.error ? (
-                    <div className="error" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
-                      {draft.error}
-                    </div>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
+        {gaps.map((gap) => {
+          const draft = drafts[gap.date] ?? emptyDraft();
+          return (
+            <tr key={gap.date}>
+              <td className="mono">{gap.date}</td>
+              <td className="mono" style={{ textAlign: "right" }}>
+                {gap.mid_clp_per_usd != null ? formatClp(gap.mid_clp_per_usd) : "—"}
+              </td>
+              <td style={{ textAlign: "right" }}>
+                <input
+                  className="mono"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={draft.buy}
+                  placeholder={
+                    gap.suggested_buy != null ? String(Math.round(gap.suggested_buy * 100) / 100) : ""
+                  }
+                  onChange={(e) =>
+                    setDrafts((prev) => ({
+                      ...prev,
+                      [gap.date]: { ...draft, buy: e.target.value, error: null },
+                    }))
+                  }
+                  style={{ width: "6.5rem", textAlign: "right" }}
+                />
+              </td>
+              <td style={{ textAlign: "right" }}>
+                <input
+                  className="mono"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={draft.sell}
+                  placeholder={
+                    gap.suggested_sell != null ? String(Math.round(gap.suggested_sell * 100) / 100) : ""
+                  }
+                  onChange={(e) =>
+                    setDrafts((prev) => ({
+                      ...prev,
+                      [gap.date]: { ...draft, sell: e.target.value, error: null },
+                    }))
+                  }
+                  style={{ width: "6.5rem", textAlign: "right" }}
+                />
+              </td>
+              <td className="muted" style={{ fontSize: "0.85rem" }}>
+                {gap.source ?? "—"}
+                {gap.buy_clp_per_usd != null && gap.sell_clp_per_usd != null ? (
+                  <div className="mono muted" style={{ fontSize: "0.8rem", marginTop: "0.15rem" }}>
+                    {formatClp(gap.buy_clp_per_usd)} / {formatClp(gap.sell_clp_per_usd)}
+                  </div>
+                ) : null}
+              </td>
+              <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                <button type="button" disabled={draft.saving} onClick={() => void saveRow(gap)}>
+                  {draft.saving ? t("common.saving") : t("common.save")}
+                </button>
+                {draft.error ? (
+                  <div className="error" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                    {draft.error}
+                  </div>
+                ) : null}
+              </td>
+            </tr>
+          );
+        })}
       </Table>
     </section>
   );
