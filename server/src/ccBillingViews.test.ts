@@ -1,7 +1,6 @@
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  applyOpenBillingMonthSaldoToNextMonth,
   billingDetailBalanceClp,
   buildBillingDetailByMonth,
   buildFacturaciones,
@@ -16,8 +15,15 @@ import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   ccInstallmentsDbApiPayload,
   ccLedgerMonthEndIso,
+  cupoEnCuotasClpForCalendarMonth,
   ledgerFacturadoClpForBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
+import { latestCreditCardBillingBalanceTotalClp } from "./ccCreditCardValuations.js";
+import {
+  ensureVitestCreditCardFixtures,
+  getVitestSantanderCcMasterAccountId,
+  wipeVitestCcFixtureData,
+} from "./test/vitestDbSeed.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
@@ -51,42 +57,56 @@ describe("billingDetailBalanceClp", () => {
   });
 });
 
-describe("applyOpenBillingMonthSaldoToNextMonth", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+describe("projected future billing months", () => {
+  it("months after the open facturación carry no facturado and saldo = remaining cuotas", () => {
+    ensureVitestCreditCardFixtures();
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (!accountId) return;
 
-  it("copies open month saldo and facturado to the next billing month without PDF cierre", () => {
-    vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-06-24");
-    const rows = [
-      {
-        billing_month: "2026-06",
-        as_of_date: "2026-06-23",
-        as_of_kind: "manual" as const,
-        total_facturado_actual_clp: 2_200_000,
-        total_facturado_clp: 2_200_000,
-        cupo_en_cuotas_clp: 3_800_000,
-        cuota_a_pagar_next_mes_clp: 500_000,
-        balance_total_clp: 6_000_000,
-      },
-      {
-        billing_month: "2026-07",
-        as_of_date: "2026-07-01",
-        as_of_kind: "manual" as const,
-        total_facturado_actual_clp: null,
-        total_facturado_clp: 500_000,
-        cupo_en_cuotas_clp: 3_200_000,
-        cuota_a_pagar_next_mes_clp: 180_000,
-        balance_total_clp: 3_700_000,
-      },
-    ];
-    applyOpenBillingMonthSaldoToNextMonth(rows, 0, new Map());
-    expect(rows[1]?.balance_total_clp).toBe(6_000_000);
-    expect(rows[1]?.total_facturado_clp).toBe(2_200_000);
-    expect(rows[1]?.cupo_en_cuotas_clp).toBe(3_200_000);
+    createManualCcInstallmentPurchase(accountId, {
+      purchase_date: chileDate.chileCalendarTodayYmd(),
+      total_amount_clp: 600_000,
+      cuotas_totales: 6,
+      merchant: "Vitest projected billing months",
+    });
+    try {
+      recomputeCcBillingMonthBalances(accountId);
+      const payload = ccInstallmentsDbApiPayload(accountId);
+      const allScheduleMonths = payload.installment_history_months.map((h) => ({
+        month: h.month,
+        total_clp: h.installment_payments_clp,
+        breakdown: [],
+      }));
+      const det = buildBillingDetailByMonth(accountId, allScheduleMonths);
+      const openBm = billingMonthForManualLedgerPurchase(accountId);
+      expect(openBm).toBeTruthy();
+      const openRow = det.find((d) => d.billing_month === openBm);
+      expect(openRow).toBeDefined();
+      expect(openRow!.projected).toBeUndefined();
+
+      // Plan extends past the open month → projected rows exist. None of them mirrors the
+      // open row: facturado is null (nothing billed yet) and saldo is the remaining-cuotas
+      // projection ("owed on that date" once each cycle's bill is paid on time).
+      const projectedRows = det.filter((d) => ymCompare(d.billing_month, openBm!) > 0);
+      expect(projectedRows.length).toBeGreaterThan(0);
+      for (const row of projectedRows) {
+        expect(row.projected).toBe(true);
+        expect(row.total_facturado_clp).toBeNull();
+        expect(row.balance_total_clp).toBe(
+          cupoEnCuotasClpForCalendarMonth(accountId, row.billing_month)
+        );
+      }
+
+      // Live «Balance total» must read the open row, never a projected month.
+      expect(latestCreditCardBillingBalanceTotalClp(accountId)).toBe(
+        Math.round(openRow!.balance_total_clp)
+      );
+    } finally {
+      wipeVitestCcFixtureData();
+      recomputeCcBillingMonthBalances(accountId);
+    }
   });
 });
-
 
 type BillingDetailRowLike = {
   billing_month: string;

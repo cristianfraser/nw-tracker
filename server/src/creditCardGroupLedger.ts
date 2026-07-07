@@ -83,6 +83,7 @@ function mergeBillingDetail(ledgers: CcLedgerResponse[]): CcBillingDetailMonthRo
         cuota_a_pagar_next_mes_clp:
           prev.cuota_a_pagar_next_mes_clp + row.cuota_a_pagar_next_mes_clp,
         balance_total_clp: prev.balance_total_clp + row.balance_total_clp,
+        ...(prev.projected === true && row.projected === true ? { projected: true } : {}),
       });
     }
   }
