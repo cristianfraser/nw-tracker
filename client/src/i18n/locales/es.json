@@ -595,7 +595,7 @@
       "deudaEnCuotas": "Deuda en cuotas",
       "saldoTotal": "Saldo total",
       "historialTitle": "Historial",
-      "historialHint": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros con cuotas proyectadas usan cupo del plan; sin facturado cerrado el saldo sigue la regla abierta (cupo + facturado estimado).",
+      "historialHint": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas restantes del plan, asumiendo pagos al día.",
       "historialCurrentMonth": "Mes actual",
       "historialOpenMonth": "Facturación abierta",
       "valuationTitle": "Valorización y aportes",
