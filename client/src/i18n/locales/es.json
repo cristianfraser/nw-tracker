@@ -712,6 +712,20 @@
       "colAccumulated": "Acumulado CLP"
     }
   },
+  "periodReturns": {
+    "title": "Rentabilidad",
+    "hint": "Rentabilidad encadenada ajustada por flujos: los aportes y retiros no cuentan como ganancia. Cada período compone los retornos mensuales; el monto es la ganancia o pérdida nominal del período en la unidad activa.",
+    "mtd": "MTD",
+    "ytd": "YTD",
+    "y1": "1A",
+    "y3": "3A",
+    "y5": "5A",
+    "total": "Total",
+    "annualized": "anualizado",
+    "liveSuffix": "en curso",
+    "insufficientHistory": "Historial insuficiente para este período",
+    "windowTitle": "Desde {{start}} · {{months}} meses"
+  },
   "groupPage": {
     "notFound": "No se encontró la vista de grupo para esta ruta.",
     "monthlyDetailTitle": "Detalle por mes",

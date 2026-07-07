@@ -30,6 +30,8 @@ export function useGroupInfoConsolidatedTables(
     [data?.consolidated_monthly]
   );
 
+  const periodReturns = data?.period_returns ?? null;
+
   const tableFlags = useMemo(() => {
     const slugs = _accounts.map((a) => a.category_slug);
     return {
@@ -39,6 +41,7 @@ export function useGroupInfoConsolidatedTables(
 
   return {
     consolidatedMonthlyPerf,
+    periodReturns,
     tableFlags,
     tablesLoading,
     tablesError: isError

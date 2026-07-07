@@ -1,4 +1,5 @@
 import type { AccountMonthlyPerformanceRow } from "./accounts";
+import type { PeriodReturnsPayload } from "./performance";
 import type { FxCoverage } from "./core";
 import type { DashboardAccountRow, DashboardResponse, FxLatest, ValuationTimeseriesResponse, ValueSeriesType } from "./dashboard";
 
@@ -133,6 +134,8 @@ export interface GroupConsolidatedTablesResponse {
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
+  /** Chained flow-adjusted period returns; null for non-investment groups. */
+  period_returns: PeriodReturnsPayload | null;
 }
 
 /** Server-side paginated response shape. */

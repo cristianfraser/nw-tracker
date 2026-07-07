@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { buildAccountDetailBundle } from "./accountDetailBundle.js";
+import { computePeriodReturns, PERIOD_RETURN_ORDER } from "./periodReturns.js";
+import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
+import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { db } from "./db.js";
+
+/** First investment account (brokerage/retirement) that has monthly perf rows. */
+function findInvestmentAccountId(): number | null {
+  const rows = db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[];
+  for (const { id } of rows) {
+    if (!isInvestmentPerformanceAccount(id)) continue;
+    const perf = getAccountMonthlyPerformance(id, "clp");
+    if (perf && perf.monthly.length > 0) return id;
+  }
+  return null;
+}
+
+describe("accountDetailBundle period_returns", () => {
+  it("attaches period returns wired from the same monthly rows for an investment account", async () => {
+    const accountId = findInvestmentAccountId();
+    if (accountId == null) return; // synthetic DB may lack a populated investment account
+
+    const bundle = await buildAccountDetailBundle(accountId, "clp", "monthly", {});
+    expect(bundle?.period_returns).not.toBeNull();
+    expect(bundle!.period_returns!.periods.map((c) => c.period)).toEqual([...PERIOD_RETURN_ORDER]);
+
+    const expected = computePeriodReturns(bundle!.monthly_performance!.monthly, "clp");
+    expect(bundle!.period_returns).toEqual(expected);
+  });
+
+  it("returns null period_returns for a non-investment account", async () => {
+    const rows = db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[];
+    const nonInvestmentId = rows.map((r) => r.id).find((id) => !isInvestmentPerformanceAccount(id));
+    if (nonInvestmentId == null) return;
+
+    const bundle = await buildAccountDetailBundle(nonInvestmentId, "clp", "monthly", {});
+    expect(bundle?.period_returns ?? null).toBeNull();
+  });
+});

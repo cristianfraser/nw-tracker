@@ -6,6 +6,7 @@ import {
   MonthlyPerfDetailTable,
 } from "../account/MonthlyPerfDetailTable";
 import { PageTitleRow } from "../layout/PageTitleRow";
+import { PeriodReturnsStrip } from "../perf/PeriodReturnsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { EntityColorTarget } from "../../entityColor";
@@ -100,7 +101,7 @@ export function GroupInfoBase({
   // Table queries start in parallel with the page bundle (not gated on `loading`);
   // placeholder rows hold the layout until the first page of data resolves.
   const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug);
-  const { consolidatedMonthlyPerf, tableFlags, tablesLoading, tablesError } =
+  const { consolidatedMonthlyPerf, periodReturns, tableFlags, tablesLoading, tablesError } =
     useGroupInfoConsolidatedTables(
       portfolio?.groupSlug ?? "",
       tableAccounts,
@@ -167,6 +168,15 @@ export function GroupInfoBase({
         {charts}
         {tablesEnabled ? (
           <>
+            {!serverPaginatedMonthlyDetail && periodReturns != null ? (
+              <>
+                <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("periodReturns.title")}</h2>
+                <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
+                  {t("periodReturns.hint")}
+                </p>
+                <PeriodReturnsStrip data={periodReturns} displayUnit={displayUnit} />
+              </>
+            ) : null}
             <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.monthlyDetailTitle")}</h2>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
               {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}

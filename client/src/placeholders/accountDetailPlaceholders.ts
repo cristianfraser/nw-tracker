@@ -77,6 +77,7 @@ export function buildPlaceholderAccountDetailBundle(
       category_slug: "mutual_fund",
       monthly: emptyAccountMonthlyPerfRows(accountId, unitTs),
     },
+    period_returns: null,
     dashboard_account_row: null,
   };
 }
