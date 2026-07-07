@@ -441,15 +441,8 @@ function valueRows(accounts: DashboardAccountRow[], groupSlug?: DashboardGroupSl
 function sortGroupsDesc<T extends { clp: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.clp - a.clp);
 }
-const DASHBOARD_GROUP_OVERVIEW_KEY = {
-  net_worth: "total_nw",
-  real_estate: "real_estate",
-  retirement: "retirement",
-  brokerage: "brokerage",
-  cash_eqs: "cash",
-} as const;
 
-export type DashboardGroupSlug = keyof typeof DASHBOARD_GROUP_OVERVIEW_KEY;
+export type DashboardGroupSlug = "net_worth" | "real_estate" | "retirement" | "brokerage" | "cash_eqs";
 
 /** Balance Δ for an arbitrary account subset: Σ current − Σ prior close (same rules as bucket cards). */
 export function subsetPeriodBalanceDeltaFromAccounts(

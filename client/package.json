@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.build.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && vitest run"
+    "test": "npm run typecheck && vitest run",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@number-flow/react": "^0.6.0",
@@ -23,11 +24,17 @@
     "recharts": "^2.15.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tanstack/eslint-plugin-query": "^5.100.10",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.62.1",
     "vite": "^5.4.11",
     "vitest": "^3.0.5"
   }

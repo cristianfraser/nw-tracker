@@ -15,7 +15,7 @@ async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<
     res = await fetch(url, { method, body: form });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`${API_HINT} (${msg})`);
+    throw new Error(`${API_HINT} (${msg})`, { cause: e });
   }
   const text = await res.text();
   const trimmed = text.trim();
@@ -40,7 +40,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`${API_HINT} (${msg})`);
+    throw new Error(`${API_HINT} (${msg})`, { cause: e });
   }
 
   const text = await res.text();
