@@ -124,42 +124,40 @@ export function PortfolioGroupChartsSection({
       groupPerfForChart.points.length > 0 &&
       groupPerfBarSeries.length > 0 ? (
         <>
-          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>P/L mensual — YTD (grupo)</h2>
+          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>{i18n.t("charts.groupPerfTitle")}</h2>
           <p
             className="muted"
             style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}
           >
-            Barras por cuenta o subgrupo, área YTD (suma de Δ del mes en el año calendario), rombo =
-            Δ total del mes. Derivado.
+            {i18n.t("charts.groupPerfHint")}
           </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
-              title="Δ por cuenta / subgrupo, YTD combinado y Δ total"
+              title={i18n.t("charts.groupPerfComboTitle")}
               points={groupPerfForChart.points}
               displayUnit={displayUnit}
               xAxisGranularity={xAxisGranularity}
               barSeries={groupPerfBarSeries}
               areaKey="ytd_group"
-              areaName="YTD (grupo)"
+              areaName={i18n.t("charts.ytdGroupSeries")}
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               lineSeries={[
                 {
                   dataKey: "delta_total",
-                  name: "Δ total",
+                  name: i18n.t("charts.deltaTotalSeries"),
                   stroke: groupTotalStroke,
                   showDot: true,
                 },
               ]}
             />
           </div>
-          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>Accumulated earnings (grupo)</h2>
+          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>{i18n.t("charts.groupAccumTitle")}</h2>
           <p
             className="muted"
             style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}
           >
-            Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el
-            primer mes con datos.
+            {i18n.t("charts.groupAccumHint")}
           </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart

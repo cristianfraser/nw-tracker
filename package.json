@@ -9,7 +9,8 @@
     "tsx": "^4.19.2"
   },
   "scripts": {
-    "typecheck": "npm run typecheck -w nw-tracker-server && npm run typecheck -w nw-tracker-client",
+    "typecheck": "npm run typecheck -w nw-tracker-server && npm run typecheck -w nw-tracker-client && npm run check:conventions",
+    "check:conventions": "node scripts/check-conventions.mjs",
     "dev:server": "npm run dev -w nw-tracker-server",
     "dev:client": "npm run dev -w nw-tracker-client",
     "migrate": "npm run migrate -w nw-tracker-server",

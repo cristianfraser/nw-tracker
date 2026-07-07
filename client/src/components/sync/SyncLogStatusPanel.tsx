@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "../../i18n";
 import type { SyncSourceDisplayStatus, SyncStatusResponse } from "../../types";
 import { cn } from "../../cn";
 import { useSyncForceStaleMutation } from "../../queries/hooks";
@@ -30,16 +31,20 @@ function formatRemainingEs(ms: number): string {
 }
 
 function formatAgoEs(msAgo: number): string {
-  if (msAgo < 0) return "ahora";
+  if (msAgo < 0) return i18n.t("importSync.sync.agoNow");
   const totalSec = Math.max(1, Math.floor(msAgo / 1000));
-  if (totalSec < 60) return `hace ${totalSec} s`;
+  if (totalSec < 60) return i18n.t("importSync.sync.agoSeconds", { n: totalSec });
   const min = Math.floor(totalSec / 60);
-  if (min < 60) return `hace ${min} min`;
+  if (min < 60) return i18n.t("importSync.sync.agoMinutes", { n: min });
   const h = Math.floor(min / 60);
   const remMin = min % 60;
   const day = Math.floor(h / 24);
-  if (day >= 1) return day === 1 ? "hace 1 día" : `hace ${day} días`;
-  return remMin > 0 ? `hace ${h} h ${remMin} min` : `hace ${h} h`;
+  if (day >= 1) {
+    return day === 1 ? i18n.t("importSync.sync.agoDay") : i18n.t("importSync.sync.agoDays", { n: day });
+  }
+  return remMin > 0
+    ? i18n.t("importSync.sync.agoHoursMinutes", { h, m: remMin })
+    : i18n.t("importSync.sync.agoHours", { n: h });
 }
 
 function statusLabel(
