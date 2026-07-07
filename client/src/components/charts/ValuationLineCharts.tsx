@@ -1,31 +1,13 @@
-import {
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  Pie,
-  PieChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { TooltipProps } from "recharts";
-import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
-import { formatClp, formatUsd, formatMoneyForPie } from "../../format";
+import { CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { formatMoneyForPie } from "../../format";
 import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../../chartColors";
 import type { TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
+import { AllocationPie } from "./AllocationPie";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import {
@@ -33,62 +15,30 @@ import {
   prependInitialZeroAnchorsOnBlock,
   valuationDataKeysForInitialZeroAnchors,
 } from "../../chartSeriesInitialZeroAnchors";
-
-export type ChartDisplayUnit = "clp" | "usd";
-
-/**
- * Recharts cartesian margins. Keep `left` small: Y-axis label room comes mainly from `rechartsMoneyYAxisWidth`
- * on `<YAxis width={…} />`; a large `left` here stacks with that and looks like an empty gutter.
- */
-export const RECHARTS_MONEY_CHART_MARGIN = { top: 8, right: 8, left: 2, bottom: 0 } as const;
-
-/** Width reserved for Y-axis ticks (CLP `$·` + es-CL grouping is wider than Recharts’ default ~60px). */
-export function rechartsMoneyYAxisWidth(unit: ChartDisplayUnit): number {
-  return unit === "usd" ? 78 : 104;
-}
-
-function formatAxisValue(v: number, unit: ChartDisplayUnit) {
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
-}
-
-function formatTooltipValue(v: number, unit: ChartDisplayUnit) {
-  return unit === "usd" ? formatUsd(v) : formatClp(v);
-}
-
-/** Recharts tooltip color comes from `stroke`; hit underlays use `transparent`, which would make label text invisible. */
-function tooltipColorIsVisible(color: unknown): boolean {
-  if (color == null || color === "") return false;
-  const s = String(color).trim().toLowerCase();
-  if (s === "transparent") return false;
-  if (s === "rgba(0, 0, 0, 0)" || s === "rgba(0,0,0,0)") return false;
-  if (s === "#0000" || s === "#00000000") return false;
-  return true;
-}
-
-/**
- * Two `<Line>`s share each `dataKey` (hit + visible). Recharts `payloadUniqBy={true}` keeps the first and drops the
- * visible line — leaving `color: transparent` on every row. Prefer the entry with a real stroke color per `dataKey`.
- */
-function dedupeTooltipPayloadPreferVisibleStroke(
-  payload: NonNullable<TooltipProps<number, string>["payload"]>
-): NonNullable<TooltipProps<number, string>["payload"]> {
-  const out: NonNullable<TooltipProps<number, string>["payload"]> = [];
-  const indexByDataKey = new Map<string, number>();
-  for (const entry of payload) {
-    const key = String(entry.dataKey ?? "");
-    const i = indexByDataKey.get(key);
-    if (i === undefined) {
-      indexByDataKey.set(key, out.length);
-      out.push(entry);
-      continue;
-    }
-    const cur = out[i]!;
-    if (tooltipColorIsVisible(entry.color) && !tooltipColorIsVisible(cur.color)) {
-      out[i] = entry;
-    }
-  }
-  return out;
-}
+import {
+  AXIS_LINE_STROKE,
+  buildNiceYAxis,
+  buildNiceYAxisPositiveBand,
+  CHART_ANIM_MS,
+  CHART_TICK_STYLE,
+  computeRegularMonthXAxisTicks,
+  computeRegularYearXAxisTicks,
+  extractSortedAsOfDates,
+  formatAxisValue,
+  formatLineChartXTick,
+  formatTooltipValue,
+  minMaxForKeys,
+  RECHARTS_MONEY_CHART_MARGIN,
+  rechartsMoneyYAxisWidth,
+  DIM_LEGEND_OPACITY,
+  type ChartDisplayUnit,
+} from "./chartLayout";
+import {
+  ChartTooltipRows,
+  dedupeTooltipPayloadPreferVisibleStroke,
+  tooltipColorIsVisible,
+  type AppTooltipSpec,
+} from "./ChartTooltip";
 
 function numericCell(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -159,465 +109,6 @@ export function trimLeadingInactivePoints(
   return { ...block, points: points.slice(start) };
 }
 
-/** Min and max Y across all plotted series (finite numbers only). */
-function minMaxAcrossSeries(
-  points: Record<string, string | number | null>[],
-  series: Pick<ResolvedLineSeriesItem, "dataKey">[]
-): { min: number; max: number } {
-  const keys = series.map((s) => s.dataKey);
-  let minV = Infinity;
-  let maxV = -Infinity;
-  for (const row of points) {
-    for (const k of keys) {
-      const v = row[k];
-      if (typeof v === "number" && Number.isFinite(v)) {
-        minV = Math.min(minV, v);
-        maxV = Math.max(maxV, v);
-      }
-    }
-  }
-  if (!Number.isFinite(minV)) return { min: 0, max: 0 };
-  return { min: minV, max: maxV };
-}
-
-/**
- * "Pretty" tick step: 1, 2, 5, or 10 × 10^k (same family as 5×10^n style scales).
- */
-function niceYStep(roughStep: number): number {
-  if (!Number.isFinite(roughStep) || roughStep <= 0) return 1;
-  const exp = Math.floor(Math.log10(roughStep));
-  const f = roughStep / 10 ** exp;
-  const m = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
-  return m * 10 ** exp;
-}
-
-function buildTickList(y0: number, y1: number, step: number): number[] {
-  const out: number[] = [];
-  let t = Math.floor(y0 / step) * step;
-  if (t < y0 - step * 1e-9) t += step;
-  let guard = 0;
-  while (t <= y1 + step * 1e-9 && guard++ < 400) {
-    out.push(t);
-    t += step;
-  }
-  return out.length > 0 ? out : [y0, y1];
-}
-
-/**
- * Y domain and explicit ticks with round steps; non-negative data uses domain `[0, y1]`.
- * Renders a horizontal reference at **y = 0** when that value lies on the scale: always for the `[0, y1]`
- * branch, and when the scale crosses zero for mixed-sign data (same stroke as axes; see `LineChartPanel`).
- */
-export function buildNiceYAxis(minData: number, maxData: number): {
-  domain: [number, number];
-  ticks: number[];
-  showZeroReference: boolean;
-} {
-  const lo = Math.min(minData, maxData);
-  const hi = Math.max(minData, maxData);
-
-  if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
-    return { domain: [0, 1], ticks: [0, 0.5, 1], showZeroReference: false };
-  }
-  if (lo === hi && hi === 0) {
-    return { domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], showZeroReference: false };
-  }
-  if (lo === hi) {
-    const pad = Math.abs(hi) * 0.08 || 1;
-    if (hi > 0) return buildNiceYAxis(0, hi + pad);
-    if (hi < 0) return buildNiceYAxis(hi - pad, 0);
-    return { domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], showZeroReference: false };
-  }
-
-  const targetDivisions = 6;
-
-  if (lo >= 0) {
-    const step = niceYStep(hi / targetDivisions || 1);
-    const y1 = Math.max(step, Math.ceil(hi / step) * step);
-    const ticks = buildTickList(0, y1, step);
-    /** Domain is anchored at 0; draw a baseline at y=0 (with X-axis) so the floor is visible on all-positive series. */
-    return { domain: [0, y1], ticks, showZeroReference: true };
-  }
-
-  const span = hi - lo;
-  const step = niceYStep(span / targetDivisions);
-  const y0 = Math.floor(lo / step) * step;
-  const y1 = Math.ceil(hi / step) * step;
-  const ticks = buildTickList(y0, y1, step);
-  const showZeroReference = y0 < 0 && y1 > 0;
-  return { domain: [y0, y1], ticks, showZeroReference };
-}
-
-/**
- * Y-axis for series with a padded band around the data range (e.g. valuations, FX).
- * When `minData >= 0`, the domain never extends below 0 (padding only shrinks toward zero).
- */
-export function buildNiceYAxisPositiveBand(
-  minData: number,
-  maxData: number,
-  options?: { targetDivisions?: number; padRatio?: number }
-): { domain: [number, number]; ticks: number[] } {
-  const targetDivisions = Math.max(4, Math.min(8, options?.targetDivisions ?? 6));
-  const padRatio = options?.padRatio ?? 0.045;
-  const dataLo = Math.min(minData, maxData);
-  const dataHi = Math.max(minData, maxData);
-  const nonNegative = dataLo >= 0;
-  let lo = dataLo;
-  let hi = dataHi;
-  if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
-    return { domain: [0, 1], ticks: [0, 0.5, 1] };
-  }
-  if (lo === hi) {
-    const w = Math.max(Math.abs(hi) * 0.02, Number.EPSILON * 1e6);
-    lo = nonNegative ? Math.max(0, lo - w) : lo - w;
-    hi += w;
-  }
-  const span = hi - lo;
-  const pad = Math.max(span * padRatio, 1e-9);
-  const yLo = nonNegative ? Math.max(0, lo - pad) : lo - pad;
-  const yHi = hi + pad;
-  const spanP = yHi - yLo;
-  const roughStep = spanP / Math.max(2, targetDivisions - 1);
-  let step = niceYStep(roughStep);
-  let y0 = Math.floor(yLo / step) * step;
-  let y1 = Math.ceil(yHi / step) * step;
-  let ticks = buildTickList(y0, y1, step);
-  let guard = 0;
-  while (ticks.length > 9 && guard++ < 12) {
-    step = niceYStep(step * 2);
-    y0 = Math.floor(yLo / step) * step;
-    y1 = Math.ceil(yHi / step) * step;
-    ticks = buildTickList(y0, y1, step);
-  }
-  if (nonNegative) {
-    y0 = Math.max(0, y0);
-    ticks = ticks.filter((t) => t >= 0);
-    if (y0 === 0 && ticks.length > 0 && ticks[0]! > 0) ticks = [0, ...ticks];
-  }
-  return { domain: [y0, y1], ticks };
-}
-
-export function formatLineChartXTick(d: string, granularity: "month" | "year"): string {
-  if (granularity === "year") {
-    const y = d.slice(0, 4);
-    return /^\d{4}$/.test(y) ? y : d;
-  }
-  const x = new Date(`${d}T12:00:00Z`);
-  return Number.isNaN(x.getTime()) ? d : x.toLocaleDateString("es-CL", { month: "short", year: "2-digit" });
-}
-
-/** Month index 0 = Jan 0000 in UTC month arithmetic (y*12 + (m-1)). */
-function ymdToMonthIndex(ymd: string): number | null {
-  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(ymd.trim());
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  if (!Number.isFinite(y) || mo < 1 || mo > 12) return null;
-  return y * 12 + (mo - 1);
-}
-
-function yearFromYmd(ymd: string): number | null {
-  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(ymd.trim());
-  if (!m) return null;
-  const y = Number(m[1]);
-  return Number.isFinite(y) ? y : null;
-}
-
-/** Prefer December; January only for interior years with no December. Tail years need December. */
-function findYearBoundaryDate(
-  datesAsc: string[],
-  year: number,
-  lastYear: number
-): string | undefined {
-  const decRows = datesAsc.filter((d) => d.startsWith(`${year}-12`));
-  if (decRows.length > 0) return decRows[decRows.length - 1]!;
-  if (year === lastYear) return undefined;
-  const jan = datesAsc.find((d) => d.startsWith(`${year}-01`));
-  if (jan) return jan;
-  const inYear = datesAsc.filter((d) => d.startsWith(`${year}-`));
-  return inYear.length > 0 ? inYear[inYear.length - 1] : undefined;
-}
-
-type XAxisTickOpts = { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean };
-
-/**
- * Multi-year X-axis ticks at **January or December** (one marker per calendar year when possible),
- * then the first/last series dates only when there is room under `maxTickCount`.
- */
-function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts): string[] | undefined {
-  const minT = Math.max(2, opts?.minTickCount ?? 4);
-  const maxT = Math.max(minT, opts?.maxTickCount ?? 12);
-  if (datesAsc.length === 0) return undefined;
-  if (datesAsc.length === 1) return [datesAsc[0]!];
-
-  const y0 = yearFromYmd(datesAsc[0]!);
-  const y1 = yearFromYmd(datesAsc[datesAsc.length - 1]!);
-  if (y0 == null || y1 == null) return undefined;
-  const span = y1 - y0;
-  if (span <= 0) return [datesAsc[0]!];
-
-  let yearStep = 1;
-  let found = false;
-  for (const s of [12, 10, 8, 6, 5, 4, 3, 2, 1]) {
-    const n = 1 + Math.floor(span / s);
-    if (n >= minT && n <= maxT) {
-      yearStep = s;
-      found = true;
-      break;
-    }
-  }
-  if (!found && 1 + Math.floor(span / 1) > maxT) {
-    yearStep = Math.max(1, Math.ceil(span / (maxT - 1)));
-  }
-
-  const ticks: string[] = [];
-  const push = (d: string | undefined) => {
-    if (d && !ticks.includes(d)) ticks.push(d);
-  };
-  for (let y = y0; y <= y1; y += yearStep) {
-    push(findYearBoundaryDate(datesAsc, y, y1));
-  }
-
-  const firstD = datesAsc[0]!;
-  const lastD = datesAsc[datesAsc.length - 1]!;
-  if (ticks.length < maxT) push(firstD);
-  if (opts?.includeLastDataPoint !== false && ticks.length < maxT) push(lastD);
-
-  ticks.sort((a, b) => a.localeCompare(b));
-  return ticks.length ? ticks : undefined;
-}
-
-/** Unique `as_of_date` values, sorted ascending (YYYY-MM-DD). */
-export function extractSortedAsOfDates(points: { as_of_date?: string | null }[]): string[] {
-  const seen = new Set<string>();
-  for (const p of points) {
-    const d = String(p.as_of_date ?? "").trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) seen.add(d);
-  }
-  return [...seen].sort((a, b) => a.localeCompare(b));
-}
-
-/**
- * X-axis tick values at **even calendar month strides** (e.g. every 4 months from the first point),
- * so labels are evenly spaced in time instead of Recharts’ uneven category sampling.
- *
- * @param opts.includeLastDataPoint When true (default), append the final series date if absent so the
- *   last month is labeled (e.g. P/L combo). When false (valuation lines), omit it so the last tick stays
- *   stride-aligned (e.g. Jun 2025 every 12 months) instead of a short tail month (May 2026).
- */
-export function computeRegularMonthXAxisTicks(
-  datesAsc: string[],
-  opts?: { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean }
-): string[] | undefined {
-  const minT = Math.max(2, opts?.minTickCount ?? 8);
-  const maxT = Math.max(minT, opts?.maxTickCount ?? 14);
-  if (datesAsc.length === 0) return undefined;
-  if (datesAsc.length === 1) return [datesAsc[0]!];
-
-  const i0 = ymdToMonthIndex(datesAsc[0]!);
-  const i1 = ymdToMonthIndex(datesAsc[datesAsc.length - 1]!);
-  if (i0 == null || i1 == null) return undefined;
-  const span = i1 - i0;
-  if (span <= 0) return [datesAsc[0]!];
-
-  let step = 1;
-  let found = false;
-  for (const s of [48, 36, 24, 18, 12, 9, 6, 4, 3, 2, 1]) {
-    const n = 1 + Math.floor(span / s);
-    if (n >= minT && n <= maxT) {
-      step = s;
-      found = true;
-      break;
-    }
-  }
-  if (!found && 1 + Math.floor(span / 1) > maxT) {
-    step = Math.max(1, Math.ceil(span / (maxT - 1)));
-  }
-
-  if (step >= 12) {
-    return computeYearBoundaryXAxisTicks(datesAsc, {
-      minTickCount: minT,
-      maxTickCount: maxT,
-      includeLastDataPoint: opts?.includeLastDataPoint,
-    });
-  }
-
-  const ticks: string[] = [];
-  for (let t = i0; t <= i1; t += step) {
-    const y = Math.floor(t / 12);
-    const m0 = t % 12;
-    const prefix = `${y}-${String(m0 + 1).padStart(2, "0")}`;
-    const row = datesAsc.find((d) => d.startsWith(prefix));
-    if (row) {
-      if (ticks.length === 0 || ticks[ticks.length - 1] !== row) ticks.push(row);
-    } else {
-      const boundary = `${prefix}-01`;
-      const row2 = datesAsc.find((d) => d >= boundary);
-      if (row2 && (ticks.length === 0 || ticks[ticks.length - 1] !== row2)) ticks.push(row2);
-    }
-  }
-  if (opts?.includeLastDataPoint !== false) {
-    const lastD = datesAsc[datesAsc.length - 1]!;
-    if (!ticks.includes(lastD)) ticks.push(lastD);
-  }
-  return ticks.length ? ticks : undefined;
-}
-
-/** Year-end rows (`YYYY-12-31`): ticks every N calendar years for readable density. */
-export function computeRegularYearXAxisTicks(
-  datesAsc: string[],
-  opts?: { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean }
-): string[] | undefined {
-  return computeYearBoundaryXAxisTicks(datesAsc, opts);
-}
-
-const TOOLTIP_VIEWPORT_INSET_PX = 10;
-
-/** Shift tooltip horizontally so it stays inside the chart panel and viewport. */
-function horizontalNudgeToStayInViewport(el: HTMLElement): number {
-  const rect = el.getBoundingClientRect();
-  const chartBox = el.closest(".chart-box");
-  const bounds = chartBox?.getBoundingClientRect();
-  const minLeft = Math.max(
-    TOOLTIP_VIEWPORT_INSET_PX,
-    (bounds?.left ?? 0) + TOOLTIP_VIEWPORT_INSET_PX
-  );
-  const maxRight = Math.min(
-    window.innerWidth - TOOLTIP_VIEWPORT_INSET_PX,
-    (bounds?.right ?? window.innerWidth) - TOOLTIP_VIEWPORT_INSET_PX
-  );
-  if (rect.left < minLeft) return minLeft - rect.left;
-  if (rect.right > maxRight) return maxRight - rect.right;
-  return 0;
-}
-
-/** Tooltip fixed just under the plot so it does not cover the lines (Recharts default follows the cursor). */
-function LineTooltipBelowPlot({
-  active,
-  payload,
-  label,
-  coordinate,
-  viewBox,
-  displayUnit,
-  xAxisGranularity = "month",
-  focusColorIndex,
-  seriesByDataKey,
-}: TooltipProps<number, string> & {
-  displayUnit: ChartDisplayUnit;
-  xAxisGranularity?: "month" | "year";
-  focusColorIndex: number | null;
-  seriesByDataKey: ReadonlyMap<string, ResolvedLineSeriesItem>;
-}) {
-  const dockRef = useRef<HTMLDivElement>(null);
-  const [nudgeByAnchor, setNudgeByAnchor] = useState({ anchor: "", x: 0 });
-
-  const tooltipPayload = useMemo(
-    () => (payload?.length ? dedupeTooltipPayloadPreferVisibleStroke(payload) : []),
-    [payload]
-  );
-  const cx = coordinate?.x;
-  const vy = viewBox?.y ?? 0;
-  const vw = viewBox?.width ?? 0;
-  const vh = viewBox?.height ?? 0;
-  const top = vy + vh + 4;
-  const canShow = Boolean(active && viewBox && cx != null && tooltipPayload.length > 0);
-  const anchorKey = canShow ? `${cx}|${top}|${String(label)}` : "";
-  const nudgeX = nudgeByAnchor.anchor === anchorKey ? nudgeByAnchor.x : 0;
-
-  useLayoutEffect(() => {
-    if (!canShow || cx == null) {
-      setNudgeByAnchor({ anchor: "", x: 0 });
-      return;
-    }
-    const el = dockRef.current;
-    if (!el) return;
-    const dx = horizontalNudgeToStayInViewport(el);
-    setNudgeByAnchor({ anchor: anchorKey, x: dx });
-  }, [canShow, cx, top, label, anchorKey, focusColorIndex, tooltipPayload.length, displayUnit]);
-
-  if (!canShow || cx == null) return null;
-
-  const dim = focusColorIndex != null;
-  return (
-    <div
-      ref={dockRef}
-      className="line-chart-tooltip-dock"
-      style={{
-        position: "absolute",
-        left: 0,
-        top: 0,
-        transform:
-          nudgeX === 0
-            ? `translate(${cx}px, ${top}px) translateX(-50%)`
-            : `translate(${cx}px, ${top}px) translateX(-50%) translateX(${nudgeX}px)`,
-        pointerEvents: "none",
-        zIndex: 20,
-        maxWidth: Math.min(360, vw),
-      }}
-    >
-      <div
-        className="line-chart-tooltip-content"
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "10px 12px",
-          boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
-        }}
-      >
-        <p style={{ margin: "0 0 6px", color: "#f1f5f9", fontSize: 13, fontWeight: 600 }}>
-          {formatLineChartXTick(String(label), xAxisGranularity)}
-        </p>
-        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-          {tooltipPayload.map((entry) => {
-            const dataKey = String(entry.dataKey ?? "");
-            const meta = seriesByDataKey.get(dataKey);
-            const isHi = focusColorIndex != null && meta?.colorIndex === focusColorIndex;
-            const faded = dim && !isHi;
-            const swatchColor =
-              tooltipColorIsVisible(entry.color) ? String(entry.color) : (meta?.stroke ?? "#94a3b8");
-            const name = String(entry.name ?? meta?.name ?? dataKey);
-            const raw = entry.value;
-            const value =
-              typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
-            return (
-              <li
-                key={dataKey}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginTop: 4,
-                  fontSize: 13,
-                  opacity: faded ? DIM_LEGEND_OPACITY : 1,
-                  transition: "opacity 0.12s ease-out",
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
-                    background: swatchColor,
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ color: isHi ? "#f1f5f9" : "#94a3b8" }}>{name}</span>
-                <span style={{ color: isHi ? "#f1f5f9" : "#94a3b8" }}>:</span>
-                <span style={{ color: isHi ? "#f1f5f9" : "#e2e8f0", fontWeight: isHi ? 600 : 400 }}>
-                  {Number.isFinite(value)
-                    ? formatTooltipValue(value, displayUnit)
-                    : "—"}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </div>
-  );
-}
 
 /** Clear line focus when the pointer leaves a hit target, unless it moves to another hit line. */
 function clearLineHighlightUnlessMovingToHitLine(e: ReactMouseEvent, clear: () => void) {
@@ -650,17 +141,46 @@ interface BlockProps {
   yScaleDataKeys?: readonly string[];
 }
 
-const CHART_ANIM_MS = 300;
-
-/** Match default axis / tick stroke on dark charts (see YAxis/XAxis axisLine below). */
-const AXIS_LINE_STROKE = "#64748b";
-
 /** Invisible underlay stroke width — wide hit target (`pointer-events: stroke`). */
 const LINE_HIT_STROKE_WIDTH = 24;
 
-/** When a series is focused (line or legend), others fade to this opacity. */
+/** When a series is focused (line or legend), other lines fade to this opacity. */
 const DIM_LINE_OPACITY = 0.16;
-const DIM_LEGEND_OPACITY = 0.32;
+
+/** Docked-tooltip rows with legend focus dim (value + aportes of the focused account stay bright). */
+function lineSeriesTooltipRenderContent({
+  displayUnit,
+  xAxisGranularity,
+  focusColorIndex,
+  seriesByDataKey,
+}: {
+  displayUnit: ChartDisplayUnit;
+  xAxisGranularity: "month" | "year";
+  focusColorIndex: number | null;
+  seriesByDataKey: ReadonlyMap<string, ResolvedLineSeriesItem>;
+}): NonNullable<AppTooltipSpec["renderContent"]> {
+  return ({ label, payload }) => {
+    const dim = focusColorIndex != null;
+    const rows = payload.map((entry) => {
+      const dataKey = String(entry.dataKey ?? "");
+      const meta = seriesByDataKey.get(dataKey);
+      const isHi = focusColorIndex != null && meta?.colorIndex === focusColorIndex;
+      const raw = entry.value;
+      const v = typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
+      return {
+        key: dataKey,
+        name: String(entry.name ?? meta?.name ?? dataKey),
+        value: Number.isFinite(v) ? formatTooltipValue(v, displayUnit) : "—",
+        swatchColor: tooltipColorIsVisible(entry.color) ? String(entry.color) : (meta?.stroke ?? "#94a3b8"),
+        dim: dim && !isHi,
+        emphasized: isHi,
+      };
+    });
+    return (
+      <ChartTooltipRows title={formatLineChartXTick(String(label), xAxisGranularity)} rows={rows} />
+    );
+  };
+}
 
 function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boolean): LineSeriesColorInput[] {
   const raw: LineSeriesColorInput[] = [];
@@ -849,7 +369,7 @@ export function LineChartPanel({
       yScaleDataKeys?.length && yScaleDataKeys.length > 0
         ? series.filter((s) => yScaleDataKeys.includes(s.dataKey))
         : series;
-    const { min, max } = minMaxAcrossSeries(chartData, scaleSeries);
+    const { min, max } = minMaxForKeys(chartData, scaleSeries.map((s) => s.dataKey));
     if (yAxisMinZero) {
       return buildNiceYAxis(0, Math.max(max, 0));
     }
@@ -904,8 +424,21 @@ export function LineChartPanel({
         className="chart-box line-chart-focus-wrap"
         onPointerLeave={() => setHighlightedKey(null)}
       >
-        <ResponsiveContainer width="100%" height="100%">
-          <AppLineChart data={plotChartData} tailClippedKeys={tailClippedKeys} margin={chartMargin}>
+        <AppLineChart
+          data={plotChartData}
+          tailClippedKeys={tailClippedKeys}
+          margin={chartMargin}
+          tooltip={{
+            formatValue: (v) => formatTooltipValue(v, displayUnit),
+            mapPayload: dedupeTooltipPayloadPreferVisibleStroke,
+            renderContent: lineSeriesTooltipRenderContent({
+              displayUnit,
+              xAxisGranularity,
+              focusColorIndex,
+              seriesByDataKey,
+            }),
+          }}
+        >
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
@@ -914,7 +447,7 @@ export function LineChartPanel({
               dataKey="as_of_date"
               type="category"
               {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
@@ -923,24 +456,11 @@ export function LineChartPanel({
               domain={yScale.domain}
               ticks={yScale.ticks}
               allowDataOverflow={!clipPlotToYDomain}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(v) => formatAxisValue(typeof v === "number" ? v : Number(v), displayUnit)}
               width={rechartsMoneyYAxisWidth(displayUnit)}
-            />
-            <Tooltip
-              wrapperStyle={{ transform: "none", width: "100%", height: "100%" }}
-              cursor={{ stroke: "rgba(148, 163, 184, 0.45)", strokeWidth: 1 }}
-              content={(props) => (
-                <LineTooltipBelowPlot
-                  {...(props as TooltipProps<number, string>)}
-                  displayUnit={displayUnit}
-                  xAxisGranularity={xAxisGranularity}
-                  focusColorIndex={focusColorIndex}
-                  seriesByDataKey={seriesByDataKey}
-                />
-              )}
             />
             <Legend
               content={() => (
@@ -1035,8 +555,7 @@ export function LineChartPanel({
               });
               return [...hitLines, ...visLines];
             })()}
-          </AppLineChart>
-        </ResponsiveContainer>
+        </AppLineChart>
       </div>
     </div>
   );
@@ -1072,36 +591,13 @@ export function AllocationPiePanel({ title, slices, displayUnit, titleAs = "h2",
     <div className="chart-grid__col">
       <TitleTag className="chart-panel-title">{title}</TitleTag>
       <div className="chart-box">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart margin={{ top: 32, right: 4, left: 4, bottom: 0 }}>
-            {/* Recharts Pie default animationBegin is 400ms; Line uses 0 — set begin 0 so pie and lines start together. */}
-            <Pie
-              data={pieData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label={(p: { value?: unknown }) => {
-                const v = typeof p.value === "number" ? p.value : Number(p.value);
-                return formatMoneyForPie(Number.isFinite(v) ? v : 0, displayUnit);
-              }}
-              isAnimationActive
-              animationBegin={0}
-              animationDuration={CHART_ANIM_MS}
-              animationEasing="ease-out"
-            >
-              {pieData.map((slice, i) => (
-                <Cell
-                  key={i}
-                  fill={sliceFill ? sliceFill(slice, i) : DEFAULT_LINE_COLORS[i % DEFAULT_LINE_COLORS.length]}
-                />
-              ))}
-            </Pie>
-            <Tooltip formatter={(v: number) => formatMoneyForPie(v, displayUnit)} />
-            <Legend formatter={(value) => String(value ?? "")} />
-          </PieChart>
-        </ResponsiveContainer>
+        <AllocationPie
+          slices={pieData}
+          fill={(slice, i) =>
+            sliceFill ? sliceFill(slice, i) : DEFAULT_LINE_COLORS[i % DEFAULT_LINE_COLORS.length]!
+          }
+          formatValue={(v) => formatMoneyForPie(v, displayUnit)}
+        />
       </div>
     </div>
   );

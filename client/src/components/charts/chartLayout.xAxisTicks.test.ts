@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeRegularMonthXAxisTicks,
   computeRegularYearXAxisTicks,
-} from "./ValuationLineCharts";
+} from "./chartLayout";
 
 function monthEndSeries(fromYm: string, toYm: string): string[] {
   const out: string[] = [];

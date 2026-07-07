@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  AllocationPiePanel,
-  LineChartPanel,
-  type ChartDisplayUnit,
-} from "./ValuationLineCharts";
+import { AllocationPiePanel, LineChartPanel } from "./ValuationLineCharts";
+import type { ChartDisplayUnit } from "./chartLayout";
 import { MonthlyPerformanceComboChart } from "./MonthlyPerformanceComboChart";
 import { groupTabPieSliceFill } from "../../chartColors";
 import { cn } from "../../cn";

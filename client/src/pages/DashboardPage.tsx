@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { LineChartPanel, ValuationLineCharts } from "../components/charts/ValuationLineCharts";
+import { AllocationPie } from "../components/charts/AllocationPie";
 import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
@@ -486,39 +486,13 @@ export function DashboardPage() {
         <p className="empty">{t("dashboard.allocation.empty")}</p>
       ) : (
         <div className="chart-box">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 32, right: 4, left: 4, bottom: 0 }}>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label={(p: { value?: unknown }) => {
-                  const v = typeof p.value === "number" ? p.value : Number(p.value);
-                  return formatMoneyForPie(Number.isFinite(v) ? v : 0, useUsdPie ? "usd" : "clp");
-                }}
-                isAnimationActive={!contentLoading}
-                animationBegin={0}
-                animationDuration={90}
-                animationEasing="ease-out"
-              >
-                {pieData.map((row, i) => (
-                  <Cell
-                    key={i}
-                    fill={
-                      bucketColorBySlug.get(row.group_slug) ?? allocationBucketColor(row.group_slug)
-                    }
-                  />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(v: number) => formatMoneyForPie(v, useUsdPie ? "usd" : "clp")}
-              />
-              <Legend formatter={(value) => String(value ?? "")} />
-            </PieChart>
-          </ResponsiveContainer>
+          <AllocationPie
+            slices={pieData}
+            fill={(row) => bucketColorBySlug.get(row.group_slug) ?? allocationBucketColor(row.group_slug)}
+            formatValue={(v) => formatMoneyForPie(v, useUsdPie ? "usd" : "clp")}
+            animationActive={!contentLoading}
+            animationDuration={90}
+          />
         </div>
       )}
     </>
