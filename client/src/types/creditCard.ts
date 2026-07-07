@@ -58,6 +58,8 @@ export interface CcBillingDetailMonthDto {
   cupo_en_cuotas_clp: number;
   cuota_a_pagar_next_mes_clp: number;
   balance_total_clp: number;
+  /** Plan-only future month (no statement or balance evidence yet). */
+  projected?: boolean;
 }
 
 export interface CcFacturacionDto {

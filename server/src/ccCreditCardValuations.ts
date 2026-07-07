@@ -23,15 +23,16 @@ const upsertValuationMonth = db.prepare(`
 
 /**
  * Latest billing-detail balance total (open month rolled balance), same as account «Balance total».
- * detail is sorted descending and includes far-future projected rows — find the open/current month,
- * not detail[0] which may be a near-zero projection.
+ * detail is sorted descending and includes plan-only projected future rows — skip those (their
+ * saldo is the remaining-cuotas projection, not the live rolled balance). The +1 cutoff covers
+ * the gap right after a cierre when the open month is the next calendar month.
  */
 function latestBillingDetailRow(
   detail: ReturnType<typeof billingDetailCacheForAccount>["detail"]
 ): (typeof detail)[0] | undefined {
   const todayYm = chileCalendarTodayYmd().slice(0, 7);
   const cutoff = addCalendarMonths(todayYm, 1);
-  return detail.find((r) => r.billing_month <= cutoff);
+  return detail.find((r) => !r.projected && r.billing_month <= cutoff);
 }
 
 export function latestCreditCardBillingBalanceTotalClp(accountId: number): number | null {
