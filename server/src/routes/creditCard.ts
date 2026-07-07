@@ -19,7 +19,7 @@ import {
   parseCreditCardConfigPatch,
 } from "../ccAccountConfig.js";
 import { loadCreditCardBillingConfig } from "../ccBillingMonth.js";
-import { creditCardInstallmentsResponse, parseExtraOffsetsJson } from "../creditCardInstallments.js";
+import { creditCardInstallmentsResponse } from "../creditCardInstallments.js";
 import { getCcProxyTickers, setCcProxyTickers } from "../ccInvestmentProxy.js";
 import { documentImportSpecsForAccount } from "../accountDocumentRegistry.js";
 import {
@@ -31,7 +31,7 @@ import {
   importCheckingRecentXlsx,
 } from "../accountImports.js";
 import { uploadFields, uploadSingle } from "../uploadMiddleware.js";
-import { operationalAccountIdFromReq, parseProxyTickersParam } from "./shared.js";
+import { extraOffsetsFromReq, operationalAccountIdFromReq, parseProxyTickersParam } from "./shared.js";
 
 export function registerCreditCardRoutes(app: express.Express): void {
 app.get("/api/accounts/:id/cc-installments", (req, res) => {
@@ -62,7 +62,8 @@ app.get("/api/accounts/:id/cc-installments", (req, res) => {
     });
     return;
   }
-  const extra = parseExtraOffsetsJson(req.query.extraOffsets);
+  const extra = extraOffsetsFromReq(req, res);
+  if (extra == null) return;
   const proxyTickers = parseProxyTickersParam(req.query.proxy_tickers);
   res.json(creditCardInstallmentsResponse(id, extra, proxyTickers ?? undefined));
 });

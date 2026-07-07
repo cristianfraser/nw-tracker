@@ -193,23 +193,28 @@ function parseIntCell(v: unknown, fallback: number): number {
   return Math.trunc(n);
 }
 
+/** Parses the `extraOffsets` query param. Throws on malformed input — callers 400. */
 export function parseExtraOffsetsJson(raw: unknown): Record<string, number> {
   if (raw == null || raw === "") return {};
+  let o: unknown;
   try {
-    const o = JSON.parse(String(raw)) as Record<string, unknown>;
-    if (!o || typeof o !== "object") return {};
-    const out: Record<string, number> = {};
-    for (const [k, v] of Object.entries(o)) {
-      const key = String(k).trim();
-      if (!key) continue;
-      const n = typeof v === "number" ? v : Number(String(v));
-      if (!Number.isFinite(n) || n === 0) continue;
-      out[key] = Math.trunc(n);
-    }
-    return out;
+    o = JSON.parse(String(raw));
   } catch {
-    return {};
+    throw new Error("extraOffsets is not valid JSON");
   }
+  if (!o || typeof o !== "object" || Array.isArray(o)) {
+    throw new Error("extraOffsets must be a JSON object of purchase id → month offset");
+  }
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+    const key = String(k).trim();
+    if (!key) continue;
+    const n = typeof v === "number" ? v : Number(String(v));
+    if (!Number.isFinite(n)) throw new Error(`extraOffsets["${key}"] must be a number`);
+    if (n === 0) continue;
+    out[key] = Math.trunc(n);
+  }
+  return out;
 }
 
 export function resolveCreditCardInstallmentsCsvPath(): string {
@@ -236,8 +241,18 @@ export function loadCreditCardInstallmentPurchases(csvDir?: string): CcInstallme
   const iPurchaseMonth = idx("purchase_month");
   const iNote = idx("note");
 
-  if (iId < 0 || iLabel < 0 || iPrincipal < 0 || iN < 0 || iPaid < 0 || iCuota < 0 || iFirst < 0) {
-    return [];
+  const required: [string, number][] = [
+    ["purchase_id", iId],
+    ["label", iLabel],
+    ["principal_clp", iPrincipal],
+    ["installment_count", iN],
+    ["installments_paid", iPaid],
+    ["cuota_clp", iCuota],
+    ["first_due_month", iFirst],
+  ];
+  const missing = required.filter(([, i]) => i < 0).map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(`${CREDIT_CARD_INSTALLMENTS_CSV}: missing required columns: ${missing.join(", ")}`);
   }
 
   const out: CcInstallmentPurchaseRow[] = [];

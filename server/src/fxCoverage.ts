@@ -118,15 +118,11 @@ export function buildFxCoverageWithConversionWarnings(): FxCoverage {
 }
 
 function listYahooFxRejectedForCoverage(): { date: string; raw_clp_per_usd: number; reason: string }[] {
-  try {
-    return listYahooFxRejectedAsc().map((r) => ({
-      date: r.date,
-      raw_clp_per_usd: r.raw_clp_per_usd,
-      reason: r.reason,
-    }));
-  } catch {
-    return [];
-  }
+  return listYahooFxRejectedAsc().map((r) => ({
+    date: r.date,
+    raw_clp_per_usd: r.raw_clp_per_usd,
+    reason: r.reason,
+  }));
 }
 
 /** True when any non-zero deposit event lacks FX on or before its date. */
