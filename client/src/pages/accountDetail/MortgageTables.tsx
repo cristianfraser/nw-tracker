@@ -32,36 +32,96 @@ function tasaPlusLabel(n: number | null | undefined) {
   return `${n}%`;
 }
 
+function cellUf(n: number | null | undefined) {
+  return n != null ? formatUfUnits(n) : "—";
+}
+
+/** Combined CLP · UF cell for the mobile card's paired columns. */
+function cellClpUf(clp: number | null, uf: number | null) {
+  return `${cellClp(clp)} · ${formatUfUnitsFine(uf)}`;
+}
+
+function colLabel(key: string): string {
+  return i18n.t(`accountDetail.mortgageSheet.cols.${key}`);
+}
 
 function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
   return (
     <TableMobileCard title={`${row.cuota} · ${row.occurred_on}`}>
       <TableMobileCardSection>
-        <TableMobileCardRow label="Pago CLP" value={cellClp(row.pago_clp)} />
-        <TableMobileCardRow label="Pago UF" value={formatUfUnitsFine(row.pago_uf)} />
-      </TableMobileCardSection>
-      <TableMobileCardSection>
-        <TableMobileCardRow label="% div." value={cellTxt(row.pct_dividendo)} />
+        <TableMobileCardRow label={colLabel("pagoClp")} value={cellClp(row.pago_clp)} />
+        <TableMobileCardRow label={colLabel("pagoUf")} value={formatUfUnitsFine(row.pago_uf)} />
+        <TableMobileCardRow label={colLabel("pctDiv")} value={cellTxt(row.pct_dividendo)} />
         <TableMobileCardRow
-          label="UF día"
+          label={colLabel("ufDia")}
           value={row.uf_clp_day != null ? formatClpUfDay(row.uf_clp_day) : "—"}
         />
-        <TableMobileCardRow label="m/m" value={cellTxt(row.mm_pct)} />
-        <TableMobileCardRow label="y/y" value={cellTxt(row.yy_pct)} />
+        <TableMobileCardRow label={colLabel("mm")} value={cellTxt(row.mm_pct)} />
+        <TableMobileCardRow label={colLabel("yy")} value={cellTxt(row.yy_pct)} />
+        <TableMobileCardRow label={colLabel("tasaPlus")} value={tasaPlusLabel(row.tasa_plus)} />
       </TableMobileCardSection>
       <TableMobileCardSection>
-        <TableMobileCardRow label="+ tasa" value={tasaPlusLabel(row.tasa_plus)} />
+        <TableMobileCardRow label={colLabel("creditoUf")} value={cellUf(row.credito_restante_uf)} />
+        <TableMobileCardRow label={colLabel("pctCred")} value={cellTxt(row.pct_credito_uf)} />
+        <TableMobileCardRow label={colLabel("restanteClp")} value={cellClp(row.restante_clp)} />
+        <TableMobileCardRow label={colLabel("deltaCredito")} value={cellClp(row.delta_credito_clp)} />
         <TableMobileCardRow
-          label="Crédito UF"
-          value={row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
+          label={colLabel("deltaCredAmort")}
+          value={cellClp(row.delta_credito_amort_clp)}
         />
-        <TableMobileCardRow label="Restante CLP" value={cellClp(row.restante_clp)} />
-        <TableMobileCardRow label="Valor neto CLP" value={cellClp(row.valor_neto_clp)} />
+      </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow label={colLabel("valorNetoUf")} value={cellUf(row.valor_neto_uf)} />
+        <TableMobileCardRow label={colLabel("valorNetoClp")} value={cellClp(row.valor_neto_clp)} />
         <TableMobileCardRow
-          label="Amortización CLP"
-          value={cellClp(row.amortizacion_clp)}
+          label={colLabel("pagadoNetoUf")}
+          value={formatUfUnitsFine(row.pagado_neto_uf)}
         />
-        <TableMobileCardRow label="Interés CLP" value={cellClp(row.interes_clp)} />
+        <TableMobileCardRow label={colLabel("deltaVnClp")} value={cellClp(row.delta_valor_neto_clp)} />
+        <TableMobileCardRow label={colLabel("viviendaUf")} value={cellUf(row.valor_vivienda_uf)} />
+        <TableMobileCardRow label={colLabel("viviendaClp")} value={cellClp(row.valor_vivienda_clp)} />
+        <TableMobileCardRow label={colLabel("minUf")} value={formatUfUnitsFine(row.min_uf)} />
+      </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow
+          label={colLabel("incendio")}
+          value={cellClpUf(row.incendio_clp, row.incendio_uf)}
+        />
+        <TableMobileCardRow
+          label={colLabel("desgravamen")}
+          value={cellClpUf(row.desgravamen_clp, row.desgravamen_uf)}
+        />
+        <TableMobileCardRow
+          label={colLabel("totalSeguros")}
+          value={cellClpUf(row.total_seguros_clp, row.total_seguros_uf)}
+        />
+      </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow
+          label={colLabel("amortizacion")}
+          value={cellClpUf(row.amortizacion_clp, row.amortizacion_uf)}
+        />
+        <TableMobileCardRow
+          label={colLabel("amortExt")}
+          value={cellClpUf(row.amortizacion_ext_clp, row.amortizacion_ext_uf)}
+        />
+        <TableMobileCardRow
+          label={colLabel("interes")}
+          value={cellClpUf(row.interes_clp, row.interes_uf)}
+        />
+        <TableMobileCardRow label={colLabel("intOculto")} value={cellClp(row.interes_oculto_clp)} />
+        <TableMobileCardRow label={colLabel("intOcultoB")} value={cellClp(row.interes_oculto_b_clp)} />
+        <TableMobileCardRow label={colLabel("intReal")} value={cellClp(row.interes_real_clp)} />
+        <TableMobileCardRow
+          label={colLabel("intCalcUf")}
+          value={formatUfUnitsFine(row.interes_calculado_uf)}
+        />
+        <TableMobileCardRow label={colLabel("amortInt")} value={cellTxt(row.amort_interes_text)} />
+      </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow label={colLabel("pagoAcum")} value={cellClp(row.pago_acumulado_clp)} />
+        <TableMobileCardRow label={colLabel("amortAcum")} value={cellClp(row.amort_acum_clp)} />
+        <TableMobileCardRow label={colLabel("intAcum")} value={cellClp(row.interes_acum_clp)} />
       </TableMobileCardSection>
     </TableMobileCard>
   );
@@ -81,21 +141,15 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
       <td className="mono muted desktop-only">{cellTxt(row.mm_pct)}</td>
       <td className="mono muted desktop-only">{cellTxt(row.yy_pct)}</td>
       <td className="mono muted desktop-only">{tasaPlusLabel(row.tasa_plus)}</td>
-      <td className="mono desktop-only">
-        {row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
-      </td>
+      <td className="mono desktop-only">{cellUf(row.credito_restante_uf)}</td>
       <td className="mono muted desktop-only">{cellTxt(row.pct_credito_uf)}</td>
       <td className="mono desktop-only">{cellClp(row.restante_clp)}</td>
       <td className="mono desktop-only">{cellClp(row.delta_credito_clp)}</td>
-      <td className="mono desktop-only">
-        {row.valor_neto_uf != null ? formatUfUnits(row.valor_neto_uf) : "—"}
-      </td>
+      <td className="mono desktop-only">{cellUf(row.valor_neto_uf)}</td>
       <td className="mono desktop-only">{cellClp(row.valor_neto_clp)}</td>
       <td className="mono desktop-only">{formatUfUnitsFine(row.pagado_neto_uf)}</td>
       <td className="mono desktop-only">{cellClp(row.delta_valor_neto_clp)}</td>
-      <td className="mono desktop-only">
-        {row.valor_vivienda_uf != null ? formatUfUnits(row.valor_vivienda_uf) : "—"}
-      </td>
+      <td className="mono desktop-only">{cellUf(row.valor_vivienda_uf)}</td>
       <td className="mono desktop-only">{cellClp(row.valor_vivienda_clp)}</td>
       <td className="mono desktop-only">{formatUfUnitsFine(row.min_uf)}</td>
       <td className="mono desktop-only">{cellClp(row.incendio_clp)}</td>
@@ -122,6 +176,56 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
     </>
   );
 }
+
+/**
+ * Desktop header layout: simple columns span both header rows; the CLP/UF pairs
+ * (Incendio … Interés) take colSpan 2 with a CLP/UF sub-row. Desktop cell order in
+ * `MortgageDividendosDesktopRow` follows SIMPLE_BEFORE + pairs + SIMPLE_AFTER, except the
+ * paired group renders between `minUf` and `deltaCredAmort` (matching the sheet).
+ */
+const HEADER_SIMPLE_BEFORE_PAIRS = [
+  "cuota",
+  "fecha",
+  "pagoClp",
+  "pagoUf",
+  "pctDiv",
+  "ufDia",
+  "mm",
+  "yy",
+  "tasaPlus",
+  "creditoUf",
+  "pctCred",
+  "restanteClp",
+  "deltaCredito",
+  "valorNetoUf",
+  "valorNetoClp",
+  "pagadoNetoUf",
+  "deltaVnClp",
+  "viviendaUf",
+  "viviendaClp",
+  "minUf",
+] as const;
+
+const HEADER_PAIRED_COLS = [
+  "incendio",
+  "desgravamen",
+  "totalSeguros",
+  "amortizacion",
+  "amortExt",
+  "interes",
+] as const;
+
+const HEADER_SIMPLE_AFTER_PAIRS = [
+  "deltaCredAmort",
+  "intOculto",
+  "intOcultoB",
+  "intReal",
+  "intCalcUf",
+  "amortInt",
+  "pagoAcum",
+  "amortAcum",
+  "intAcum",
+] as const;
 
 export function MortgageDividendosTable({
   ledger,
@@ -167,25 +271,21 @@ export function MortgageDividendosTable({
       {m && !isMortgageView && (
         <div className={cn("cards", styles.cardsBelow)}>
           <div className="card">
-            <div className="label">Vivienda (hoja)</div>
-            <div className="value mono">
-              {m.valor_vivienda_uf != null ? formatUfUnits(m.valor_vivienda_uf) : "—"}
-            </div>
+            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.viviendaHoja")}</div>
+            <div className="value mono">{cellUf(m.valor_vivienda_uf)}</div>
           </div>
           <div className="card">
-            <div className="label">Hipoteca tras pie</div>
-            <div className="value mono">
-              {m.hipoteca_tras_pie_uf != null ? formatUfUnits(m.hipoteca_tras_pie_uf) : "—"}
-            </div>
+            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.hipotecaTrasPie")}</div>
+            <div className="value mono">{cellUf(m.hipoteca_tras_pie_uf)}</div>
           </div>
           <div className="card">
-            <div className="label">Pie (CLP / UF)</div>
+            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
             <div className={cn("value", "mono", styles.cardValueSecondary)}>
               {m.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {formatUfUnitsFine(m.pie_uf)}
             </div>
           </div>
           <div className="card">
-            <div className="label">Filas de pago</div>
+            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.filasDePago")}</div>
             <div className="value mono">{m.row_count}</div>
           </div>
         </div>
@@ -196,125 +296,26 @@ export function MortgageDividendosTable({
           header={
           <thead>
             <tr>
-              <th rowSpan={2} className="desktop-only">
-                Cuota
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Fecha
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pago CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pago UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                % div.
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                UF día
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                m/m
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                y/y
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                + tasa
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Crédito UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                % créd.
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Restante CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Δ crédito
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Valor neto UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Valor neto CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pagado neto UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Δ VN CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Vivienda UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Vivienda CLP
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Min UF
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Incendio
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Desgravamen
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Total seguros
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Amortización
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Amort. ext
-              </th>
-              <th colSpan={2} className="desktop-only">
-                Interés
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Δ créd. (amort)
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. oculto
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. oculto B
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. real
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int. calc UF
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                amort/int
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Pago acum.
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Amort acum
-              </th>
-              <th rowSpan={2} className="desktop-only">
-                Int acum
-              </th>
+              {HEADER_SIMPLE_BEFORE_PAIRS.map((key) => (
+                <th key={key} rowSpan={2} className="desktop-only">
+                  {colLabel(key)}
+                </th>
+              ))}
+              {HEADER_PAIRED_COLS.map((key) => (
+                <th key={key} colSpan={2} className="desktop-only">
+                  {colLabel(key)}
+                </th>
+              ))}
+              {HEADER_SIMPLE_AFTER_PAIRS.map((key) => (
+                <th key={key} rowSpan={2} className="desktop-only">
+                  {colLabel(key)}
+                </th>
+              ))}
             </tr>
             <tr>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
-              <th className="desktop-only">CLP</th>
-              <th className="desktop-only">UF</th>
+              {HEADER_PAIRED_COLS.map((key) => (
+                <PairedClpUfSubHeaders key={key} />
+              ))}
             </tr>
             <tr>
               <th className="mobile-only" aria-hidden="true" />
@@ -336,18 +337,22 @@ export function MortgageDividendosTable({
   );
 }
 
-const SCENARIO_TERM_LABELS: Record<DeptoPaymentScenarioTerm, string> = {
-  30: "30 años (mín.)",
-  25: "25 años",
-  20: "20 años",
-  15: "15 años",
-  12: "12 años",
-  10: "10 años",
-  5: "5 años",
-  max: "Máx. (~80 UF)",
-};
+function PairedClpUfSubHeaders() {
+  return (
+    <>
+      <th className="desktop-only">{colLabel("clp")}</th>
+      <th className="desktop-only">{colLabel("uf")}</th>
+    </>
+  );
+}
 
 const SCENARIO_TERMS: DeptoPaymentScenarioTerm[] = [30, 25, 20, 15, 12, 10, 5, "max"];
+
+function scenarioTermLabel(term: DeptoPaymentScenarioTerm): string {
+  if (term === 30) return i18n.t("accountDetail.mortgageSheet.terms.years30Min");
+  if (term === "max") return i18n.t("accountDetail.mortgageSheet.terms.max");
+  return i18n.t("accountDetail.mortgageSheet.terms.years", { n: term });
+}
 
 function scenarioPaymentForTerm(
   row: DeptoPaymentScenarioRow,
@@ -394,7 +399,7 @@ function DeptoPaymentScenarioMobileCard({ row }: { row: DeptoPaymentScenarioRow 
           return (
             <TableMobileCardRow
               key={String(term)}
-              label={SCENARIO_TERM_LABELS[term]}
+              label={scenarioTermLabel(term)}
               value={formatScenarioPayment(cell.uf, cell.clp)}
             />
           );
@@ -416,9 +421,7 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
     <>
       <h3 className={styles.subsectionTitleMid}>{i18n.t("accountDetail.mortgageSheet.referenceMinMax")}</h3>
       <p className={cn("muted", styles.proseMutedXs)}>
-        Escenarios de la hoja depto (no son movimientos), en fechas del calendario hipotecario (día 11 de cada mes).
-        La primera fila es la próxima cuota proyectada. El pago mínimo (30 años) es editable en Numbers; el máximo
-        (~80 UF) aproxima amortizar en 5 años al inicio del crédito.
+        {i18n.t("accountDetail.mortgageSheet.scenarioIntro")}
       </p>
       <PaginatedTable page={scenarioPage} pageSize={12} total={scenarioTotal} onPageChange={setScenarioPage}>
         <Table
@@ -426,11 +429,11 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
           header={
             <thead>
               <tr>
-                <th className="desktop-only">Cuota</th>
-                <th className="desktop-only">Fecha</th>
+                <th className="desktop-only">{colLabel("cuota")}</th>
+                <th className="desktop-only">{colLabel("fecha")}</th>
                 {SCENARIO_TERMS.map((term) => (
                   <th key={String(term)} className={cn("desktop-only", styles.nowrap)}>
-                    {SCENARIO_TERM_LABELS[term]}
+                    {scenarioTermLabel(term)}
                   </th>
                 ))}
                 <th className="mobile-only" aria-hidden="true" />

@@ -171,9 +171,9 @@ export function StandardAccountDetailPage({ data }: Props) {
                   {showEquityReturnColumns ? (
                     <th>{t("accountDetail.equityPosition.dividends")}</th>
                   ) : null}
-                  <th>Valor hoy (CLP)</th>
-                  <th>Fecha valor</th>
-                  <th>Valor / unidad (CLP)</th>
+                  <th>{t("accountDetail.position.colValueToday")}</th>
+                  <th>{t("accountDetail.position.colValueDate")}</th>
+                  <th>{t("accountDetail.position.colValuePerUnit")}</th>
                   {showEquityReturnColumns ? (
                     <>
                       <th>{t("accountDetail.equityPosition.totalReturn")}</th>
@@ -301,34 +301,31 @@ export function StandardAccountDetailPage({ data }: Props) {
         <>
           <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
           <p className={cn("muted", styles.proseMutedXs)}>
-            Dos gráficos: (1) P/L mensual vs <strong>YTD</strong> (área reinicia cada enero). (2) mismo Δ mensual con
-            área <strong>Accumulated earnings</strong> (continua desde el primer mes, sin franjas por año). La tabla
-            conserva el detalle.
+            <Trans
+              i18nKey="accountDetail.monthlyPerfIntro"
+              components={{ 1: <strong />, 3: <strong /> }}
+            />
             {isMortgageAccount ? (
-              <>
-                {" "}
-                En hipoteca, <strong>P/L mes</strong> = aportes netos − baja de saldo en CLP (coste UF + intereses vs
-                amortización visible), no la fórmula de inversión.
-              </>
+              <Trans
+                i18nKey="accountDetail.monthlyPerfMortgageNote"
+                components={{ 1: <strong /> }}
+              />
             ) : null}
             {ccChartsFromParsedLedger ? (
-              <>
-                {" "}
-                Las valorizaciones mensuales de esta cuenta se escriben en la base al importar el CSV del PDF; las
-                pestañas de clase (p. ej. Liabilities) leen la misma tabla.
-              </>
+              <>{t("accountDetail.monthlyPerfCcLedgerNote")}</>
             ) : (
               <> {t("accountDetail.sameBaseAsValuation")}</>
-            )}{" "}
-            Unidad: <strong>{displayUnit === "usd" ? "USD" : "CLP"}</strong>
+            )}
+            <Trans
+              i18nKey="accountDetail.monthlyPerfUnit"
+              values={{ unit: displayUnit === "usd" ? "USD" : "CLP" }}
+              components={{ 1: <strong /> }}
+            />
           </p>
           {monthlyPerfErr ? (
             <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
           ) : monthlyPerfRows.length === 0 ? (
-            <p className="muted">
-              Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un
-              punto).
-            </p>
+            <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
           ) : (
             <>
               <h3 className={styles.subsectionTitleTight}>{t("accountDetail.ytdCalendarTitle")}</h3>
@@ -420,18 +417,21 @@ export function StandardAccountDetailPage({ data }: Props) {
 
       {depositInflows != null && depositInflows.state_contribution_events.length > 0 ? (
         <>
-          <h2 className={styles.sectionTitle}>Aporte estatal APV-A</h2>
+          <h2 className={styles.sectionTitle}>{t("accountDetail.stateContribution.title")}</h2>
           <p className={cn("muted", styles.proseMutedXs)}>
-            Bonificación del Estado (~15% de tus depósitos del año anterior, con tope). Total acumulado:{" "}
-            <span className="mono">{formatClp(depositInflows.state_contribution_total_clp)}</span>
+            <Trans
+              i18nKey="accountDetail.stateContribution.intro"
+              values={{ total: formatClp(depositInflows.state_contribution_total_clp) }}
+              components={{ 1: <span className="mono" /> }}
+            />
           </p>
           <Table
             header={
               <thead>
                 <tr>
-                  <th>Fecha</th>
-                  <th>Monto CLP</th>
-                  <th>Acumulado CLP</th>
+                  <th>{t("accountDetail.stateContribution.colDate")}</th>
+                  <th>{t("accountDetail.stateContribution.colAmount")}</th>
+                  <th>{t("accountDetail.stateContribution.colAccumulated")}</th>
                 </tr>
               </thead>
             }

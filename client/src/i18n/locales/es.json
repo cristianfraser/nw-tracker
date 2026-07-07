@@ -165,7 +165,8 @@
     "controlPanel": "Panel de control",
     "notifications": "Notificaciones",
     "accounts": "Accounts",
-    "importSync": "Import sync"
+    "importSync": "Import sync",
+    "mainNavAria": "Navegación principal"
   },
   "panel": {
     "layoutTitle": "Panel de control",
@@ -376,7 +377,10 @@
       "title": "Posición (ticker y cuotas)",
       "colTicker": "Ticker",
       "colUnits": "Cuotas / unidades",
-      "colDeposited": "Depositado (CLP)"
+      "colDeposited": "Depositado (CLP)",
+      "colValueToday": "Valor hoy (CLP)",
+      "colValueDate": "Fecha valor",
+      "colValuePerUnit": "Valor / unidad (CLP)"
     },
     "monthlyPerfComputedTitle": "Rendimiento mensual (calculado)",
     "sameBaseAsValuation": "Misma base que valorización y aportes.",
@@ -534,7 +538,58 @@
       "pieNote": " El <1>pie</1> está en la cuenta inmueble (suecia), no en el pasivo hipotecario.",
       "tasaNote": " La tasa anual del crédito en el modelo es <1>4,95%</1>; la columna <3>+ tasa</3> del CSV incluye inflación y el spread de la hoja.",
       "proxAbbrev": "próx.",
-      "referenceMinMax": "Referencia: cuota mín / máx (UF)"
+      "referenceMinMax": "Referencia: cuota mín / máx (UF)",
+      "scenarioIntro": "Escenarios de la hoja depto (no son movimientos), en fechas del calendario hipotecario (día 11 de cada mes). La primera fila es la próxima cuota proyectada. El pago mínimo (30 años) es editable en Numbers; el máximo (~80 UF) aproxima amortizar en 5 años al inicio del crédito.",
+      "cards": {
+        "viviendaHoja": "Vivienda (hoja)",
+        "hipotecaTrasPie": "Hipoteca tras pie",
+        "pieClpUf": "Pie (CLP / UF)",
+        "filasDePago": "Filas de pago"
+      },
+      "terms": {
+        "years": "{{n}} años",
+        "years30Min": "30 años (mín.)",
+        "max": "Máx. (~80 UF)"
+      },
+      "cols": {
+        "cuota": "Cuota",
+        "fecha": "Fecha",
+        "pagoClp": "Pago CLP",
+        "pagoUf": "Pago UF",
+        "pctDiv": "% div.",
+        "ufDia": "UF día",
+        "mm": "m/m",
+        "yy": "y/y",
+        "tasaPlus": "+ tasa",
+        "creditoUf": "Crédito UF",
+        "pctCred": "% créd.",
+        "restanteClp": "Restante CLP",
+        "deltaCredito": "Δ crédito",
+        "valorNetoUf": "Valor neto UF",
+        "valorNetoClp": "Valor neto CLP",
+        "pagadoNetoUf": "Pagado neto UF",
+        "deltaVnClp": "Δ VN CLP",
+        "viviendaUf": "Vivienda UF",
+        "viviendaClp": "Vivienda CLP",
+        "minUf": "Min UF",
+        "incendio": "Incendio",
+        "desgravamen": "Desgravamen",
+        "totalSeguros": "Total seguros",
+        "amortizacion": "Amortización",
+        "amortExt": "Amort. ext",
+        "interes": "Interés",
+        "clp": "CLP",
+        "uf": "UF",
+        "deltaCredAmort": "Δ créd. (amort)",
+        "intOculto": "Int. oculto",
+        "intOcultoB": "Int. oculto B",
+        "intReal": "Int. real",
+        "intCalcUf": "Int. calc UF",
+        "amortInt": "amort/int",
+        "pagoAcum": "Pago acum.",
+        "amortAcum": "Amort acum",
+        "intAcum": "Int acum"
+      }
     },
     "import": {
       "sectionTitle": "Importar movimientos y documentos",
@@ -658,6 +713,18 @@
       "lineColActions": "Acciones",
       "associatedCardsTitle": "Tarjetas asociadas",
       "associatedCardsHint": "Números de tarjeta física con estados importados en esta cuenta."
+    },
+    "monthlyPerfIntro": "Dos gráficos: (1) P/L mensual vs <1>YTD</1> (área reinicia cada enero). (2) mismo Δ mensual con área <3>Accumulated earnings</3> (continua desde el primer mes, sin franjas por año). La tabla conserva el detalle.",
+    "monthlyPerfMortgageNote": " En hipoteca, <1>P/L mes</1> = aportes netos − baja de saldo en CLP (coste UF + intereses vs amortización visible), no la fórmula de inversión.",
+    "monthlyPerfCcLedgerNote": " Las valorizaciones mensuales de esta cuenta se escriben en la base al importar el CSV del PDF; las pestañas de clase (p. ej. Liabilities) leen la misma tabla.",
+    "monthlyPerfUnit": " Unidad: <1>{{unit}}</1>",
+    "monthlyPerfNotEnough": "Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un punto).",
+    "stateContribution": {
+      "title": "Aporte estatal APV-A",
+      "intro": "Bonificación del Estado (~15% de tus depósitos del año anterior, con tope). Total acumulado: <1>{{total}}</1>",
+      "colDate": "Fecha",
+      "colAmount": "Monto CLP",
+      "colAccumulated": "Acumulado CLP"
     }
   },
   "groupPage": {
