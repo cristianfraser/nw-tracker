@@ -6,7 +6,10 @@ import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { fetchYahooLiveUsdClpPerUsd, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
+import { invalidateMarketDataAggregations } from "./aggregationCache.js";
 import {
+  getLatestLiveEquityQuoteRow,
+  getLatestLiveFxQuoteRow,
   insertLiveMarketQuote,
   pruneLiveMarketQuotes,
   type LiveMarketQuoteRow,
@@ -25,14 +28,23 @@ const stmtEodOnDate = db.prepare(
 export type LiveQuoteSyncTickerResult = {
   ticker: string;
   ok: boolean;
+  /** True when this poll changed the effective quote (new value, or no fresh row existed). */
+  changed?: boolean;
   error?: string;
 };
 
 export type LiveMarketQuotesSyncResult = {
   equities: LiveQuoteSyncTickerResult[];
-  fx: { ok: boolean; rows: number; error?: string };
+  fx: { ok: boolean; rows: number; changed: boolean; error?: string };
   pruned: number;
+  /** True when any quote/fx value changed — dashboard aggregation caches were invalidated. */
+  values_changed: boolean;
 };
+
+/** Effective-quote change: no fresh prior row (readers were on EOD fallback) or a new value. */
+function quoteValueChanged(prev: { value: number } | null, nextValue: number): boolean {
+  return prev == null || prev.value !== nextValue;
+}
 
 function equityTickersForLiveSync(): string[] {
   syncWatchlistFromApp();
@@ -73,6 +85,7 @@ async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promis
       kind === "nyse"
         ? priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close)
         : priorCloseForLiveNonSession(ticker, live.session_ymd, live.previous_close);
+    const changed = quoteValueChanged(getLatestLiveEquityQuoteRow(ticker), live.price);
     const row: LiveMarketQuoteRow = {
       symbol: ticker.toUpperCase(),
       kind: "equity",
@@ -83,7 +96,7 @@ async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promis
       fetched_at: fetchedAt,
     };
     insertLiveMarketQuote(row);
-    return { ticker, ok: true };
+    return { ticker, ok: true, changed };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ticker, ok: false, error: msg.slice(0, 200) };
@@ -99,11 +112,14 @@ function priorFxDailyClpPerUsd(beforeDate: string): number | null {
 }
 
 /** Yahoo CLP=X EOD from `fx_daily` (after NYSE close / when live FX is off). */
-function mirrorFxDailyToLiveQuotes(fetchedAt: string): number {
+function mirrorFxDailyToLiveQuotes(fetchedAt: string): { rows: number; changed: boolean } {
   const today = chileCalendarTodayYmd();
   const fx = fxRowOnOrBefore(today);
-  if (fx == null || !Number.isFinite(fx.clp_per_usd) || fx.clp_per_usd <= 0) return 0;
+  if (fx == null || !Number.isFinite(fx.clp_per_usd) || fx.clp_per_usd <= 0) {
+    return { rows: 0, changed: false };
+  }
   const prior = priorFxDailyClpPerUsd(fx.date);
+  const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), fx.clp_per_usd);
   insertLiveMarketQuote({
     symbol: LIVE_FX_SYMBOL,
     kind: "fx_clp_per_usd",
@@ -113,7 +129,7 @@ function mirrorFxDailyToLiveQuotes(fetchedAt: string): number {
     previous_value: prior,
     fetched_at: fetchedAt,
   });
-  return 1;
+  return { rows: 1, changed };
 }
 
 async function catchUpFxDailyIfMissingDueSession(now: Date): Promise<{ rows: number; error?: string }> {
@@ -131,18 +147,26 @@ async function catchUpFxDailyIfMissingDueSession(now: Date): Promise<{ rows: num
   }
 }
 
-async function mirrorFxDailyWithCatchUp(now: Date, fetchedAt: string): Promise<{ rows: number; error?: string }> {
+async function mirrorFxDailyWithCatchUp(
+  now: Date,
+  fetchedAt: string
+): Promise<{ rows: number; changed: boolean; error?: string }> {
   const catchUp = await catchUpFxDailyIfMissingDueSession(now);
+  // New fx_daily rows shift EOD conversions even when the mirrored live value is unchanged.
+  const catchUpChanged = catchUp.rows > 0;
   try {
-    const rows = mirrorFxDailyToLiveQuotes(fetchedAt);
-    return { rows, error: catchUp.error };
+    const mirror = mirrorFxDailyToLiveQuotes(fetchedAt);
+    return { rows: mirror.rows, changed: mirror.changed || catchUpChanged, error: catchUp.error };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { rows: catchUp.rows, error: msg.slice(0, 200) };
+    return { rows: catchUp.rows, changed: catchUpChanged, error: msg.slice(0, 200) };
   }
 }
 
-async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<{ rows: number; error?: string }> {
+async function syncLiveFxQuote(
+  now: Date,
+  fetchedAt: string
+): Promise<{ rows: number; changed: boolean; error?: string }> {
   if (shouldUseLiveFxQuote(now)) {
     try {
       const live = await fetchYahooLiveUsdClpPerUsd(now);
@@ -151,6 +175,7 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<{ rows: nu
         priorFxDailyClpPerUsd(live.session_ymd) ??
         fxRowOnOrBefore(live.session_ymd)?.clp_per_usd ??
         null;
+      const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), live.clp_per_usd);
       insertLiveMarketQuote({
         symbol: LIVE_FX_SYMBOL,
         kind: "fx_clp_per_usd",
@@ -160,12 +185,12 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<{ rows: nu
         previous_value: prior,
         fetched_at: fetchedAt,
       });
-      return { rows: 1 };
+      return { rows: 1, changed };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`live-quotes:sync — Yahoo CLP=X failed (${msg}); falling back to fx_daily EOD`);
       const fallback = await mirrorFxDailyWithCatchUp(now, fetchedAt);
-      return { rows: fallback.rows, error: msg.slice(0, 200) };
+      return { rows: fallback.rows, changed: fallback.changed, error: msg.slice(0, 200) };
     }
   }
 
@@ -196,13 +221,22 @@ export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMar
     );
   }
   const okCount = equities.filter((r) => r.ok).length;
+
+  // Same-connection quote writes don't bump `data_version`, so cached aggregations that
+  // baked today's live marks (bucket totals, overview live point, current-month perf rows)
+  // would keep serving the old price. Invalidate only when a value actually changed —
+  // closed-market no-op polls must not churn the cache.
+  const valuesChanged = equities.some((r) => r.changed === true) || fxSync.changed;
+  if (valuesChanged) invalidateMarketDataAggregations();
+
   console.log(
-    `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (Yahoo EOD fx_daily)"}, pruned ${pruned}`
+    `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (Yahoo EOD fx_daily)"}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`
   );
 
   return {
     equities,
-    fx: { ok: !fxError, rows: fxRows, error: fxError },
+    fx: { ok: !fxError, rows: fxRows, changed: fxSync.changed, error: fxError },
     pruned,
+    values_changed: valuesChanged,
   };
 }

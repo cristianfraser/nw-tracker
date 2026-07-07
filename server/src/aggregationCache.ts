@@ -226,6 +226,20 @@ export function forwardMonthKeysForInvalidationTest(startYmd: string): string[] 
   return forwardMonthKeysFrom(startYmd);
 }
 
+/**
+ * Market-data writes from this process (live-quote poll, global sync applying EOD closes,
+ * fund units, fx/UF rows) don't bump `data_version` and carry no account/date, but they move
+ * the live "today" marks baked into monthly-perf and consolidated aggregations. Drop those
+ * namespaces — `cc.billing_detail|` stays, CC ledgers don't read market quotes — and notify
+ * the warmer so the bucket totals track intraday marks instead of the price at cache-build time.
+ */
+export function invalidateMarketDataAggregations(): void {
+  deleteKeysMatchingPrefix("account.monthly_perf|");
+  deleteKeysMatchingPrefix("group.consolidated_monthly|");
+  deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
+  invalidationListener?.();
+}
+
 const LINKED_CC_AGGREGATION_GROUP_SLUGS = [
   "cash_eqs",
   "net_worth",

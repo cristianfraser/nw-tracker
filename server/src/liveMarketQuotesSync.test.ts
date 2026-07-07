@@ -100,4 +100,22 @@ describe("syncAllLiveMarketQuotes", () => {
     expect(row.value).toBe(600);
     expect(row.session_ymd).toBe("2026-06-01");
   });
+
+  it("flags changed values on first poll, not on an identical re-poll", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
+    try {
+      const first = await syncAllLiveMarketQuotes(new Date("2026-05-19T15:00:00.000Z"));
+      expect(first.values_changed).toBe(true);
+
+      // Mocked Yahoo returns the same prices; nothing effective changed → no invalidation.
+      vi.setSystemTime(new Date("2026-05-19T15:05:00.000Z"));
+      const second = await syncAllLiveMarketQuotes(new Date("2026-05-19T15:05:00.000Z"));
+      expect(second.values_changed).toBe(false);
+      expect(second.equities.filter((r) => r.ok).every((r) => r.changed === false)).toBe(true);
+      expect(second.fx.changed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

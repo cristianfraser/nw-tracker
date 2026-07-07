@@ -1,12 +1,16 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   cacheKeyAccountMonthlyPerf,
+  cacheKeyCcBillingDetail,
+  cacheKeyGroupClosingByDate,
   cacheKeyGroupConsolidatedMonthly,
   clearAggregationCache,
   forwardMonthKeysForInvalidationTest,
   getAggregationCached,
   invalidateAggregationForAccountDate,
   invalidateLinkedCreditCardAggregationCache,
+  invalidateMarketDataAggregations,
+  setAggregationInvalidationListener,
 } from "./aggregationCache.js";
 
 describe("aggregationCache", () => {
@@ -74,6 +78,50 @@ describe("aggregationCache", () => {
       return [];
     });
     expect(brokerageRebuilds).toBe(0);
+  });
+
+  it("invalidateMarketDataAggregations drops live-mark namespaces, keeps CC billing detail, notifies listener", () => {
+    getAggregationCached(cacheKeyAccountMonthlyPerf(1, "clp"), () => ({ monthly: [] }));
+    getAggregationCached(cacheKeyGroupConsolidatedMonthly("retirement", "clp"), () => []);
+    getAggregationCached(cacheKeyGroupClosingByDate("retirement", "clp"), () => new Map());
+    getAggregationCached(cacheKeyCcBillingDetail(9), () => ({ months: [] }));
+
+    let notified = 0;
+    setAggregationInvalidationListener(() => {
+      notified += 1;
+    });
+    try {
+      invalidateMarketDataAggregations();
+    } finally {
+      setAggregationInvalidationListener(null);
+    }
+    expect(notified).toBe(1);
+
+    let perfRebuilds = 0;
+    getAggregationCached(cacheKeyAccountMonthlyPerf(1, "clp"), () => {
+      perfRebuilds += 1;
+      return { monthly: [] };
+    });
+    let consolidatedRebuilds = 0;
+    getAggregationCached(cacheKeyGroupConsolidatedMonthly("retirement", "clp"), () => {
+      consolidatedRebuilds += 1;
+      return [];
+    });
+    let closingRebuilds = 0;
+    getAggregationCached(cacheKeyGroupClosingByDate("retirement", "clp"), () => {
+      closingRebuilds += 1;
+      return new Map();
+    });
+    let ccRebuilds = 0;
+    getAggregationCached(cacheKeyCcBillingDetail(9), () => {
+      ccRebuilds += 1;
+      return { months: [] };
+    });
+
+    expect(perfRebuilds).toBe(1);
+    expect(consolidatedRebuilds).toBe(1);
+    expect(closingRebuilds).toBe(1);
+    expect(ccRebuilds).toBe(0);
   });
 
   describe("Chile calendar day rollover", () => {
