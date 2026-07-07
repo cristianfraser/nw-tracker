@@ -29,15 +29,13 @@ import { fetchSiiUfAfterDate } from "./ufSiiSync.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
-  clearUserForcedStale,
   isCryptoEodStale,
-  isFintualSyncStale,
-  isStocksNyseStale,
   isSbifMonthlyStale,
-  shouldRunSyncSource,
+  isStocksNyseStale,
   staleSyncSources,
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
+import { runSyncStepIfStale, syncErrorMessage } from "./globalSyncStep.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
 import {
@@ -757,49 +755,6 @@ async function runSbifEur(
   console.log(`sync: BCentral EUR — ${eurN} row(s) after ${lastEur} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
-function syncErrorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-async function runSyncStep(
-  step: string,
-  errors: SyncStepError[],
-  fn: () => Promise<void>
-): Promise<void> {
-  try {
-    await fn();
-  } catch (e) {
-    const message = syncErrorMessage(e);
-    console.error(`sync: ${step} — error: ${message}`);
-    errors.push({ step, message });
-  }
-}
-
-async function runSyncStepIfStale(
-  source: GlobalSyncSource,
-  stale: readonly GlobalSyncSource[],
-  step: string,
-  errors: SyncStepError[],
-  state: GlobalSyncStateFile,
-  cl: ReturnType<typeof chileWallClockNow>,
-  fn: () => Promise<void>
-): Promise<void> {
-  if (!shouldRunSyncSource(source, stale)) {
-    console.log(`sync: ${step} — skip (not stale).`);
-    return;
-  }
-  const errorsBefore = errors.length;
-  await runSyncStep(step, errors, fn);
-  if (errors.length === errorsBefore) {
-    const now = new Date();
-    const keepForcedStale =
-      (source === "fintual" && isFintualSyncStale(cl, state)) ||
-      (source === "stocks_nyse" && isStocksNyseStale(state, { now })) ||
-      (source === "yahoo_fx_usd" && isYahooFxUsdStale({ now })) ||
-      (source === "crypto_eod" && isCryptoEodStale(cl, state, { now }));
-    if (!keepForcedStale) clearUserForcedStale(state, source);
-  }
-}
 
 function applyEquityEodResultsToChanges(
   results: EquityEodSyncResult[],
