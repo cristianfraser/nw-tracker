@@ -298,7 +298,7 @@ export function AppSidebar() {
   }, [pathname, panelNode]);
 
   return (
-    <aside className="app-sidebar" aria-label="Main navigation">
+    <aside className="app-sidebar" aria-label={t("sidebar.mainNavAria")}>
       <div className={styles.brand}>
         <NavLink
           to="/"
