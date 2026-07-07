@@ -41,6 +41,8 @@ export type CcBillingDetailMonthRow = {
   /** Ledger cuota due in the pay-by month (~10th of month after close). */
   cuota_a_pagar_next_mes_clp: number;
   balance_total_clp: number;
+  /** Plan-only future month (no statement or balance evidence yet). */
+  projected?: boolean;
 };
 
 export type CcFacturacionRow = {
@@ -242,33 +244,6 @@ export function billingDetailBalanceClp(
     : (facturadoClp ?? 0) + cupoEnCuotasClp;
 }
 
-/**
- * Billing month right after the open month inherits saldo/facturado from the open row
- * until PAGO or PDF cierre (e.g. Jun open → Jul placeholder matches Jun).
- */
-export function applyOpenBillingMonthSaldoToNextMonth(
-  rows: CcBillingDetailMonthRow[],
-  accountId: number,
-  slots: Map<string, CcStatementSlotByCurrency>
-): void {
-  const openBm =
-    billingMonthForStatementDate(chileCalendarTodayYmd()) ??
-    billingMonthForManualLedgerPurchase(accountId);
-  if (!openBm) return;
-  // billingMonthForStatementDate returns the calendar month, which lags the real open
-  // month in the gap after an early statement close (e.g. card closes the 26th, today is
-  // the 28th → calendar says June but June already has a PDF cierre). Don't propagate a
-  // closed month's saldo onto the next month — it isn't the open month.
-  if (hasPdfStatementCloseForBillingMonth(slots.get(openBm))) return;
-  const nextBm = addCalendarMonths(openBm, 1);
-  const openRow = rows.find((r) => r.billing_month === openBm);
-  const nextRow = rows.find((r) => r.billing_month === nextBm);
-  if (!openRow || !nextRow) return;
-  if (hasPdfStatementCloseForBillingMonth(slots.get(nextBm))) return;
-  nextRow.total_facturado_clp = openRow.total_facturado_clp;
-  nextRow.balance_total_clp = openRow.balance_total_clp;
-}
-
 function cuotaAPagarNextMesClp(
   billingMonth: string,
   ledgerMonths: CcInstallmentMonthRow[],
@@ -399,8 +374,6 @@ function buildBillingDetailByMonthInner(
     }
   }
 
-  applyOpenBillingMonthSaldoToNextMonth(out, accountId, slots);
-
   const withProjected = appendProjectedBillingDetailRows(
     accountId,
     ledgerMonths,
@@ -442,7 +415,11 @@ function planMonthHasProjectedInstallmentData(
   return pay > 0 || cupo > 0;
 }
 
-/** Future billing months: plan cupo + cuota schedule; saldo = cupo when no closed facturado. */
+/**
+ * Future billing months: plan cupo + cuota schedule. Months after the open facturación have
+ * no facturado (null — nothing billed yet) and saldo = remaining installment principal: the
+ * projected "owed on that date" once each cycle's bill is paid on time.
+ */
 function appendProjectedBillingDetailRows(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[],
@@ -457,12 +434,6 @@ function appendProjectedBillingDetailRows(
   const lastDetalleYm = [...existingMonths].sort((a, b) => b.localeCompare(a))[0]!;
   const payByMonth = creditCardInstallmentPaymentsByBillingMonth(accountId);
   const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
-
-  const openBm =
-    billingMonthForStatementDate(chileCalendarTodayYmd()) ??
-    billingMonthForManualLedgerPurchase(accountId);
-  const openRow = openBm ? existing.find((r) => r.billing_month === openBm) : undefined;
-  const nextAfterOpenBm = openBm ? addCalendarMonths(openBm, 1) : null;
 
   const candidateMonths = new Set<string>([...payByMonth.keys(), ...remainingByMonth.keys()]);
   let maxProjectedYm: string | null = null;
@@ -484,26 +455,16 @@ function appendProjectedBillingDetailRows(
 
     const cupo = cupoEnCuotasClpForCalendarMonth(accountId, ym);
     const cuotaNext = cuotaAPagarNextMesClp(ym, ledgerMonths, slots);
-    let totalFacturado: number | null = null;
-    let balanceTotal = billingDetailBalanceClp(null, cupo, cuotaNext, false);
-    if (
-      nextAfterOpenBm &&
-      ym === nextAfterOpenBm &&
-      openRow &&
-      !existingMonths.has(nextAfterOpenBm)
-    ) {
-      totalFacturado = openRow.total_facturado_clp;
-      balanceTotal = openRow.balance_total_clp;
-    }
     projected.push({
       billing_month: ym,
       as_of_date: `${ym}-01`,
       as_of_kind: "manual",
       total_facturado_actual_clp: null,
-      total_facturado_clp: totalFacturado,
+      total_facturado_clp: null,
       cupo_en_cuotas_clp: cupo,
       cuota_a_pagar_next_mes_clp: cuotaNext,
-      balance_total_clp: balanceTotal,
+      balance_total_clp: billingDetailBalanceClp(null, cupo, cuotaNext, false),
+      projected: true,
     });
   }
 
