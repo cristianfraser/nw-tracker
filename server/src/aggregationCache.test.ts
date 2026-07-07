@@ -2,12 +2,14 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   cacheKeyAccountMonthlyPerf,
   cacheKeyCcBillingDetail,
+  cacheKeyDashboardPageBundle,
   cacheKeyGroupClosingByDate,
   cacheKeyGroupConsolidatedMonthly,
   clearAggregationCache,
   forwardMonthKeysForInvalidationTest,
   getAggregationCached,
   invalidateAggregationForAccountDate,
+  invalidateCcBillingDetail,
   invalidateLinkedCreditCardAggregationCache,
   invalidateMarketDataAggregations,
   setAggregationInvalidationListener,
@@ -122,6 +124,29 @@ describe("aggregationCache", () => {
     expect(consolidatedRebuilds).toBe(1);
     expect(closingRebuilds).toBe(1);
     expect(ccRebuilds).toBe(0);
+  });
+
+  it("every explicit invalidation drops the cached page bundle", () => {
+    const invalidations: Array<[string, () => void]> = [
+      ["invalidateAggregationForAccountDate", () => invalidateAggregationForAccountDate(1, "2026-03-15")],
+      ["invalidateMarketDataAggregations", () => invalidateMarketDataAggregations()],
+      ["invalidateCcBillingDetail(one account)", () => invalidateCcBillingDetail(9)],
+      ["invalidateLinkedCreditCardAggregationCache", () => invalidateLinkedCreditCardAggregationCache()],
+    ];
+    for (const [name, invalidate] of invalidations) {
+      for (const unit of ["clp", "usd"] as const) {
+        getAggregationCached(cacheKeyDashboardPageBundle(unit), () => ({ unit }));
+      }
+      invalidate();
+      for (const unit of ["clp", "usd"] as const) {
+        let rebuilds = 0;
+        getAggregationCached(cacheKeyDashboardPageBundle(unit), () => {
+          rebuilds += 1;
+          return { unit };
+        });
+        expect(rebuilds, `${name} should drop dashboard.page_bundle|${unit}`).toBe(1);
+      }
+    }
   });
 
   describe("Chile calendar day rollover", () => {
