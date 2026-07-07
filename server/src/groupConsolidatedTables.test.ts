@@ -5,6 +5,8 @@ import {
   rollupConsolidatedMonthlyYearly,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupConsolidatedTables.js";
+import { PERIOD_RETURN_ORDER } from "./periodReturns.js";
+import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
 
 function monthRow(overrides: Partial<ConsolidatedMonthlyPerfRow> & { as_of_date: string }): ConsolidatedMonthlyPerfRow {
   return {
@@ -121,5 +123,39 @@ describe("getGroupConsolidatedMonthlyPage", () => {
     const page = getGroupConsolidatedMonthlyPage("net_worth", "clp", "month", 9999, 12);
     const totalPages = Math.max(1, Math.ceil(page.total / 12));
     expect(page.page).toBe(totalPages);
+  });
+});
+
+describe("isInvestmentPerformanceGroupSlug", () => {
+  it("is true for the inversiones hub, brokerage/retirement, and their descendants", () => {
+    for (const slug of [
+      "inversiones",
+      "brokerage",
+      "retirement",
+      "brokerage_acciones",
+      "brokerage_crypto",
+      "retirement_afp_afc",
+      "retirement_apv_b",
+    ]) {
+      expect(isInvestmentPerformanceGroupSlug(slug)).toBe(true);
+    }
+  });
+
+  it("is false for cash/liability/net-worth groups", () => {
+    for (const slug of ["net_worth", "cash_eqs", "real_estate", "liabilities"]) {
+      expect(isInvestmentPerformanceGroupSlug(slug)).toBe(false);
+    }
+  });
+});
+
+describe("getGroupConsolidatedTables period_returns", () => {
+  it("attaches ordered period returns for an investment group and null for a non-investment group", () => {
+    const brokerage = getGroupConsolidatedTables("brokerage", "clp");
+    if (brokerage.consolidated_monthly.length > 0) {
+      expect(brokerage.period_returns).not.toBeNull();
+      expect(brokerage.period_returns!.periods.map((c) => c.period)).toEqual([...PERIOD_RETURN_ORDER]);
+    }
+    expect(getGroupConsolidatedTables("real_estate", "clp").period_returns).toBeNull();
+    expect(getGroupConsolidatedTables("net_worth", "clp").period_returns).toBeNull();
   });
 });

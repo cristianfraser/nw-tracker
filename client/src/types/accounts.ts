@@ -2,6 +2,7 @@ import type { AccountListRow, AccountPositionSnapshot } from "./core";
 import type { AccountCcInstallmentsResponse } from "./creditCard";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage";
+import type { PeriodReturnsPayload } from "./performance";
 
 import type { BookLedgerEditSchema } from "../accountBookLedgerEdit";
 import type { MovementCreateSchema } from "../accountMovementCreate";
@@ -102,6 +103,8 @@ export interface AccountDetailBundleResponse {
   invNavAccounts: { accounts: AccountListRow[] };
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   monthly_performance: AccountMonthlyPerformanceResponse | null;
+  /** Chained flow-adjusted period returns; null for non-investment accounts. */
+  period_returns: PeriodReturnsPayload | null;
   /** Fresh dashboard card row (live MTM + perf deltas); do not use cached nav snapshot on detail. */
   dashboard_account_row: DashboardAccountRow | null;
 }

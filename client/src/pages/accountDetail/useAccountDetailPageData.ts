@@ -23,6 +23,7 @@ import type {
   AccountMonthlyPerformanceResponse,
   CheckingCartolaMonthsResponse,
   DashboardAccountRow,
+  PeriodReturnsPayload,
 } from "../../types";
 import { CC_EXTRA_OFFSET_LS } from "./shared";
 
@@ -43,6 +44,7 @@ export type AccountDetailPageData = {
   dash: ReturnType<typeof dashPickForNavStrip> | null;
   overviewPoints: Record<string, string | number | null>[];
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
+  periodReturns: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
   metricsPeriod: "month" | "year";
   isYearly: boolean;
@@ -113,6 +115,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const ccLedger = (detail?.ccLedger ?? placeholder.ccLedger) as AccountCcInstallmentsResponse;
   const invNavAccounts = detail?.invNavAccounts?.accounts ?? placeholder.invNavAccounts.accounts;
   const monthlyPerf = detail?.monthly_performance ?? placeholder.monthly_performance;
+  const periodReturns = detail?.period_returns ?? null;
   const checkingCartolaMonths = detail?.checkingCartolaMonths ?? null;
 
   const accountIdForNav = accountIdNum > 0 ? accountIdNum : summary.account_id;
@@ -247,6 +250,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     dash,
     overviewPoints,
     monthlyPerf,
+    periodReturns,
     displayUnit,
     metricsPeriod,
     isYearly,

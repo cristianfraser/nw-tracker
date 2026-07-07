@@ -3,6 +3,7 @@ export * from "./types/core";
 export * from "./types/dashboard";
 export * from "./types/mortgage";
 export * from "./types/creditCard";
+export * from "./types/performance";
 export * from "./types/accounts";
 export * from "./types/groups";
 export * from "./types/market";
