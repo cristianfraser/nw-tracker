@@ -1,4 +1,5 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { invalidateMarketDataAggregations } from "./aggregationCache.js";
 /**
  * Orchestrates external syncs with Chile-time rules:
  * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
@@ -1164,6 +1165,9 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     console.error(`sync:all — fatal: ${message}`);
     stepErrors.push({ step: "sync:all", message });
   } finally {
+    // Same-connection sync writes (fund units, EOD closes, fx/UF rows) bypass `data_version`,
+    // so cached aggregations would keep serving pre-sync marks until day rollover.
+    if (!syncDryRun && syncChanges.length > 0) invalidateMarketDataAggregations();
     insertSyncRunLog(staleAtStart, syncChanges, syncDryRun, {
       ...logOpts,
       notes: stepNotes,
