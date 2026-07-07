@@ -57,7 +57,8 @@
   },
   "realEstate": {
     "propertyValue": "valor",
-    "mortgage": "hipoteca"
+    "mortgage": "hipoteca",
+    "mortgageImportNotice": "Hipoteca en UF: exporta la hoja <1>dividendos</1> de Numbers a <3>cfraser/depto-dividendos.csv</3>. El import crea <5>un movimiento por cada pago real</5> (misma fecha que en el banco), con CLP, UF del pago, UF/día, crédito restante, amortización, interés, escenario <7>min UF</7> y totales <9>valor neto</9> / <11>pago acumulado</11> en la nota. En la ficha de la cuenta inmobiliaria verás la tabla alineada a esa hoja. En los gráficos, <13>aportes acum. en CLP</13> es la suma de los pesos pagados; en <15>USD</15> (si usas esa vista) se suma el equivalente de cada pago al tipo del día del pago (5 decimales), sin reconvertir el acumulado CLP al tipo de cada mes. Lo mismo para <17>UF</17> en APIs que pidan unidad UF. Valor vivienda y pasivo siguen desde el Excel a fin de mes."
   },
   "cash": {
     "reserva": "reserva",
@@ -81,7 +82,14 @@
     "noMonthlyPl": "Sin datos de P/L mensual para este período.",
     "noExpensesInPeriod": "Sin gastos en este período.",
     "noValuationSeries": "Sin series de valorización para este período.",
-    "noRecentValuations": "Sin valorizaciones recientes para armar el gráfico."
+    "noRecentValuations": "Sin valorizaciones recientes para armar el gráfico.",
+    "groupPerfTitle": "P/L mensual — YTD (grupo)",
+    "groupPerfHint": "Barras por cuenta o subgrupo, área YTD (suma de Δ del mes en el año calendario), rombo = Δ total del mes. Derivado.",
+    "groupPerfComboTitle": "Δ por cuenta / subgrupo, YTD combinado y Δ total",
+    "ytdGroupSeries": "YTD (grupo)",
+    "deltaTotalSeries": "Δ total",
+    "groupAccumTitle": "Accumulated earnings (grupo)",
+    "groupAccumHint": "Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el primer mes con datos."
   },
   "dashboard": {
     "chartGranularityLabel": "Período:",
@@ -358,7 +366,14 @@
         "stocks_nyse": "Acciones — NYSE",
         "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
         "crypto_eod": "Cripto"
-      }
+      },
+      "agoNow": "ahora",
+      "agoSeconds": "hace {{n}} s",
+      "agoMinutes": "hace {{n}} min",
+      "agoHours": "hace {{n}} h",
+      "agoHoursMinutes": "hace {{h}} h {{m}} min",
+      "agoDay": "hace 1 día",
+      "agoDays": "hace {{n}} días"
     }
   },
   "detail": {
