@@ -8,7 +8,7 @@ import {
   resolveEquityQuote,
 } from "./equityQuote.js";
 import { fxForLiveMtm } from "./fxRates.js";
-import { priorNyseSessionYmd } from "./marketHolidays.js";
+import { nyseSessionsBack, priorNyseSessionYmd } from "./marketHolidays.js";
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
 export const RISKY_NORRIS_PROXY_BUCKET = "fintual_risky_norris_proxy";
@@ -204,16 +204,6 @@ export function proxyClpFromMeta(
     (basketUsd / meta.anchor_basket_usd) *
     (fx / meta.anchor_fx_clp)
   );
-}
-
-function nyseSessionsBack(fromYmd: string, sessions: number): string | null {
-  let cur = fromYmd;
-  for (let i = 0; i < sessions; i++) {
-    const prior = priorNyseSessionYmd(cur);
-    if (prior == null) return null;
-    cur = prior;
-  }
-  return cur;
 }
 
 function calendarMonthsPriorYmd(ymd: string, months: number): string {

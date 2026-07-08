@@ -14,7 +14,7 @@ import {
   resolveEquityQuote,
 } from "./equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
-import { priorNyseSessionYmd } from "./marketHolidays.js";
+import { nyseSessionsBack } from "./marketHolidays.js";
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
 import {
   compositeLiveStats,
@@ -67,16 +67,6 @@ function calendarMonthsPriorYmd(ymd: string, months: number): string {
   }
   const dt = new Date(Date.UTC(y, m - 1 - months, d));
   return dt.toISOString().slice(0, 10);
-}
-
-function nyseSessionsBack(fromYmd: string, sessions: number): string | null {
-  let cur = fromYmd;
-  for (let i = 0; i < sessions; i++) {
-    const prior = priorNyseSessionYmd(cur);
-    if (prior == null) return null;
-    cur = prior;
-  }
-  return cur;
 }
 
 const stmtUfOnOrBefore = db.prepare(

@@ -5,6 +5,8 @@ import type { PeriodReturnCell, PeriodReturnKey, PeriodReturnsPayload } from "..
 import styles from "./PeriodReturnsStrip.module.css";
 
 const PERIOD_LABEL_KEY: Record<PeriodReturnKey, string> = {
+  d1: "periodReturns.d1",
+  w1: "periodReturns.w1",
   mtd: "periodReturns.mtd",
   ytd: "periodReturns.ytd",
   y1: "periodReturns.y1",
@@ -35,20 +37,25 @@ export function PeriodReturnsStrip({
 
   const renderCell = (cell: PeriodReturnCell) => {
     const label = t(PERIOD_LABEL_KEY[cell.period]);
-    const isLiveMtd = cell.period === "mtd" && data.mtd_is_live;
+    const isLive =
+      (cell.period === "mtd" && data.mtd_is_live) || (cell.period === "d1" && data.d1_is_live);
     const cellTitle =
-      cell.months > 0 && cell.window_start_month
-        ? t("periodReturns.windowTitle", {
-            start: cell.window_start_month,
-            months: cell.months,
-          })
-        : t("periodReturns.insufficientHistory");
+      cell.pct == null
+        ? t("periodReturns.insufficientHistory")
+        : cell.window_start_date
+          ? t("periodReturns.windowTitleDate", { start: cell.window_start_date })
+          : cell.window_start_month
+            ? t("periodReturns.windowTitle", {
+                start: cell.window_start_month,
+                months: cell.months,
+              })
+            : t("periodReturns.insufficientHistory");
 
     return (
       <div key={cell.period} className={styles.cell} title={cellTitle}>
         <div className={styles.label}>
           {label}
-          {isLiveMtd ? <span className={styles.live}> · {t("periodReturns.liveSuffix")}</span> : null}
+          {isLive ? <span className={styles.live}> · {t("periodReturns.liveSuffix")}</span> : null}
         </div>
         <div className={cn(styles.pct, toneClass(cell.pct))}>
           {cell.pct == null ? "—" : formatPct(cell.pct * 100)}
