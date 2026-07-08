@@ -58,6 +58,19 @@ export function fintualGoalsApiNavClpForImportNotes(
   return nav != null && Number.isFinite(nav) ? nav : null;
 }
 
+/**
+ * Chile day the goals NAV read by {@link fintualGoalsApiNavClpForImportNotes} was last polled —
+ * mirrors that function's `fintualLastCheckSig ?? fintualLastAppliedSig` selection so the day
+ * matches the signature the NAV came from. Null when never polled.
+ */
+export function fintualGoalsApiPollYmdForState(
+  state: GlobalSyncStateFile = loadGlobalSyncState()
+): string | null {
+  return state.fintualLastCheckSig != null
+    ? state.fintualLastCheckYmd ?? null
+    : state.fintualLastAppliedYmd ?? null;
+}
+
 export function fintualCertV2PositionFromCuotaClp(
   accountId: number,
   importNotes: string,
@@ -92,9 +105,24 @@ export function fintualCertV2PreferGoalsNavDisplay(opts: {
   cuotaPositionClp: number | null;
   asOfYmd: string;
   todayYmd: string;
+  /** Chile day the goals NAV was last polled (see {@link fintualGoalsApiPollYmdForState}). */
+  lastGoalsPollYmd?: string | null;
+  /** Newest `occurred_on` of a cuota-changing movement on the account (null when none). */
+  newestLocalCuotaFlowYmd?: string | null;
 }): boolean {
   if (opts.asOfYmd !== opts.todayYmd) return false;
   if (opts.goalsNavClp == null || opts.cuotaPositionClp == null) return false;
+  // A local cuota-changing flow dated strictly after the last goals poll cannot be reflected in
+  // that NAV yet, so the divergence is our own unsynced edit — trust the local cuota position
+  // until the next Fintual sync re-polls. Same-day flows stay NAV-preferred (the evening poll
+  // reflects Fintual's real same-day balance).
+  if (
+    opts.newestLocalCuotaFlowYmd != null &&
+    opts.lastGoalsPollYmd != null &&
+    opts.newestLocalCuotaFlowYmd > opts.lastGoalsPollYmd
+  ) {
+    return false;
+  }
   return !fintualCertV2GoalsCuotaReconciled({
     goalsNavClp: opts.goalsNavClp,
     cuotaPositionClp: opts.cuotaPositionClp,
