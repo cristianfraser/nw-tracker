@@ -3,6 +3,7 @@ import {
   cleanupUnreconciledFintualCertFundUnits,
   fintualCertV2GoalsCuotaReconciled,
   fintualCertV2PreferGoalsNavDisplay,
+  fintualGoalsApiPollYmdForState,
   parseFintualMappedNavSignature,
 } from "./fintualCertV2Reconcile.js";
 import { db } from "./db.js";
@@ -41,6 +42,64 @@ describe("fintualCertV2Reconcile", () => {
         todayYmd: "2026-06-24",
       })
     ).toBe(false);
+  });
+
+  it("trusts local cuotas when a flow post-dates the last goals poll", () => {
+    const diverged = {
+      goalsNavClp: 18_476_613,
+      cuotaPositionClp: 16_476_613,
+      asOfYmd: "2026-07-08",
+      todayYmd: "2026-07-08",
+    } as const;
+    // Manual flow dated after the last poll → NAV is stale → do not prefer it.
+    expect(
+      fintualCertV2PreferGoalsNavDisplay({
+        ...diverged,
+        lastGoalsPollYmd: "2026-07-07",
+        newestLocalCuotaFlowYmd: "2026-07-08",
+      })
+    ).toBe(false);
+    // Same-day flow (poll = flow day) → evening poll reflects real balance → still prefer NAV.
+    expect(
+      fintualCertV2PreferGoalsNavDisplay({
+        ...diverged,
+        lastGoalsPollYmd: "2026-07-08",
+        newestLocalCuotaFlowYmd: "2026-07-08",
+      })
+    ).toBe(true);
+    // Flow predates the poll → NAV already saw it → unchanged (prefer NAV on divergence).
+    expect(
+      fintualCertV2PreferGoalsNavDisplay({
+        ...diverged,
+        lastGoalsPollYmd: "2026-07-07",
+        newestLocalCuotaFlowYmd: "2026-07-05",
+      })
+    ).toBe(true);
+    // Missing either date → no gate → unchanged behavior.
+    expect(
+      fintualCertV2PreferGoalsNavDisplay({ ...diverged, newestLocalCuotaFlowYmd: "2026-07-08" })
+    ).toBe(true);
+    expect(
+      fintualCertV2PreferGoalsNavDisplay({ ...diverged, lastGoalsPollYmd: "2026-07-07" })
+    ).toBe(true);
+  });
+
+  it("resolves goals poll ymd from sync state (check sig wins over applied)", () => {
+    expect(
+      fintualGoalsApiPollYmdForState({
+        fintualLastCheckSig: "2859:1",
+        fintualLastCheckYmd: "2026-07-08",
+        fintualLastAppliedSig: "2859:1",
+        fintualLastAppliedYmd: "2026-07-07",
+      })
+    ).toBe("2026-07-08");
+    expect(
+      fintualGoalsApiPollYmdForState({
+        fintualLastAppliedSig: "2859:1",
+        fintualLastAppliedYmd: "2026-07-07",
+      })
+    ).toBe("2026-07-07");
+    expect(fintualGoalsApiPollYmdForState({})).toBeNull();
   });
 
   it("removes inferred fund_unit row when unreconciled", () => {
