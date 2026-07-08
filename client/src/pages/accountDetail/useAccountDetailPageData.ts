@@ -13,6 +13,11 @@ import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
 import i18n from "../../i18n";
 import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
+import {
+  convertAccountDetailBundleUnit,
+  resolveClpPerUsdForKeepPrev,
+} from "../../placeholders/keepPrevBundleUnit";
+import { readFxLatestCache } from "../../queries/fxLatestCache";
 import type { EntityColorTarget } from "../../entityColor";
 import {
   accountCardTitleBalanceDelta,
@@ -77,12 +82,23 @@ export function useAccountDetailPageData(): AccountDetailPageData {
 
   const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
 
-  const { data: detail, error: detailError, isPending: detailPending } = useAccountDetailBundle(
-    id,
-    displayUnit,
-    "monthly",
-    deferredCcOffsets
-  );
+  const {
+    data: rawDetail,
+    error: detailError,
+    isPending: detailPending,
+    isPlaceholderData: detailIsPlaceholder,
+  } = useAccountDetailBundle(id, displayUnit, "monthly", deferredCcOffsets);
+
+  // During a CLP↔USD switch keepPreviousData holds the prior-unit bundle; convert its
+  // toggle-responsive surfaces (chart, monthly perf, header card) to the target unit so the
+  // page stays consistent instead of briefly showing prior-unit magnitudes under the new symbol.
+  const detail = useMemo(() => {
+    if (!detailIsPlaceholder || !rawDetail) return rawDetail;
+    if (rawDetail.ts && rawDetail.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return rawDetail;
+    const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
+    if (rate == null) return rawDetail;
+    return convertAccountDetailBundleUnit(rawDetail, displayUnit, rate);
+  }, [detailIsPlaceholder, rawDetail, displayUnit]);
   const { data: sidebarNav } = useSidebarNav();
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
 

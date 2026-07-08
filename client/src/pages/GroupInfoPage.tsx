@@ -23,6 +23,11 @@ import { Trans, useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
 import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
+import {
+  convertPortfolioGroupBundleUnit,
+  resolveClpPerUsdForKeepPrev,
+} from "../placeholders/keepPrevBundleUnit";
+import { readFxLatestCache } from "../queries/fxLatestCache";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
@@ -169,7 +174,17 @@ export function GroupInfoPage() {
     );
   }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, sidebarNav?.net_worth]);
 
-  const resolved = useRealBundle && data ? data : placeholderBundle;
+  // Keep the previous unit's charts on screen (FX-converted) during a CLP↔USD switch instead of
+  // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves.
+  const keepPrevBundle = useMemo(() => {
+    if (!isPlaceholderData || !bundleReady || !data) return null;
+    if (data.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return data;
+    const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
+    if (rate == null) return null;
+    return convertPortfolioGroupBundleUnit(data, displayUnit, rate);
+  }, [isPlaceholderData, bundleReady, data, displayUnit]);
+
+  const resolved = useRealBundle && data ? data : (keepPrevBundle ?? placeholderBundle);
 
   const tableAccounts = useMemo(
     () => accounts,
