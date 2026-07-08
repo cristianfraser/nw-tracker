@@ -26,8 +26,7 @@ import {
   type CcBillingMonthChartPoint,
 } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
-import { ccPurchaseSourceLegacyFromOrigin } from "./dataOrigin.js";
-import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import { parseYearMonth } from "./ccYearMonth.js";
 import { numCsv, readSemicolonCsv } from "./deptoDividendosLedger.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -130,11 +129,6 @@ function normHeader(s: string): string {
     .replace(/\s+/g, "_");
 }
 
-function ymCompare(a: string, b: string): number {
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
-}
-
 /** Nominal APR, monthly compounding: fixed payment for fully amortizing loan. */
 function amortizedCuotaClp(principal: number, annualPct: number, n: number): number {
   if (n <= 0 || principal <= 0) return 0;
@@ -143,26 +137,6 @@ function amortizedCuotaClp(principal: number, annualPct: number, n: number): num
   const factor = 1 - Math.pow(1 + r, -n);
   if (factor <= 0) return principal / n;
   return (principal * r) / factor;
-}
-
-/** Balance after `paid` full payments (same fixed cuota each month). */
-function balanceAfterPayments(
-  principal: number,
-  annualPct: number,
-  n: number,
-  paid: number,
-  cuota: number
-): number {
-  let bal = principal;
-  const r = annualPct / 100 / 12;
-  const steps = Math.min(Math.max(0, paid), n);
-  for (let i = 0; i < steps; i++) {
-    if (bal <= 0) break;
-    const interest = r > 0 ? bal * r : 0;
-    const princPart = cuota - interest;
-    bal = Math.max(0, bal - princPart);
-  }
-  return bal;
 }
 
 /** Interest portion of cuota at 0-based installment index (0% APR → 0). */
@@ -310,115 +284,6 @@ export function loadCreditCardInstallmentPurchases(csvDir?: string): CcInstallme
     });
   }
   return out;
-}
-
-function computePurchase(
-  p: CcInstallmentPurchaseRow,
-  extraOffsetMonths: number
-): CcInstallmentPurchaseComputed {
-  const paid = Math.min(Math.max(0, p.installments_paid), p.installment_count);
-  const remaining_installments = Math.max(0, p.installment_count - paid);
-  const off = p.schedule_offset_months + extraOffsetMonths;
-
-  let remaining_principal_clp = 0;
-  if (p.annual_interest_pct <= 0) {
-    remaining_principal_clp = remaining_installments * p.cuota_clp;
-  } else {
-    remaining_principal_clp = balanceAfterPayments(
-      p.principal_clp,
-      p.annual_interest_pct,
-      p.installment_count,
-      paid,
-      p.cuota_clp
-    );
-  }
-
-  let next_due_month: string | null = null;
-  let next_installment_index: number | null = null;
-  if (remaining_installments > 0 && paid < p.installment_count) {
-    next_installment_index = paid;
-    next_due_month = addCalendarMonths(p.first_due_month, paid + off);
-  }
-
-  const last_paid_month =
-    paid >= 1 ? addCalendarMonths(p.first_due_month, paid - 1 + off) : null;
-
-  const origin: DataOrigin = "import_document";
-  return {
-    ...p,
-    origin,
-    purchase_source: ccPurchaseSourceLegacyFromOrigin(origin),
-    remaining_installments,
-    remaining_principal_clp,
-    next_due_month,
-    next_installment_index,
-    last_paid_month,
-    upcoming_cuota_clp: p.cuota_clp,
-  };
-}
-
-export function buildCreditCardInstallmentSchedule(
-  purchases: CcInstallmentPurchaseRow[],
-  extraOffsetsByPurchaseId: Record<string, number>
-): {
-  purchases: CcInstallmentPurchaseComputed[];
-  months: CcInstallmentMonthRow[];
-  totals: CcInstallmentsTotals;
-} {
-  const computed = purchases.map((p) =>
-    computePurchase(p, extraOffsetsByPurchaseId[p.purchase_id] ?? 0)
-  );
-
-  const byMonth = new Map<string, CcInstallmentMonthBreakdown[]>();
-
-  for (const p of computed) {
-    const paid = Math.min(Math.max(0, p.installments_paid), p.installment_count);
-    const off = p.schedule_offset_months + (extraOffsetsByPurchaseId[p.purchase_id] ?? 0);
-    for (let i = paid; i < p.installment_count; i++) {
-      const month = addCalendarMonths(p.first_due_month, i + off);
-      const amt = p.upcoming_cuota_clp;
-      const list = byMonth.get(month) ?? [];
-      list.push({
-        purchase_id: p.purchase_id,
-        label: p.label,
-        installment_index: i,
-        installment_count: p.installment_count,
-        amount_clp: amt,
-      });
-      byMonth.set(month, list);
-    }
-  }
-
-  const months = [...byMonth.keys()].sort(ymCompare).map((month) => {
-    const breakdown = byMonth.get(month) ?? [];
-    const total_clp = breakdown.reduce((s, b) => s + b.amount_clp, 0);
-    return { month, total_clp, breakdown };
-  });
-
-  let total_remaining_principal_clp = 0;
-  for (const p of computed) {
-    total_remaining_principal_clp += p.remaining_principal_clp;
-  }
-
-  let next_calendar_month: string | null = null;
-  let next_calendar_month_total_clp: number | null = null;
-  for (const m of months) {
-    if (m.total_clp > 0) {
-      next_calendar_month = m.month;
-      next_calendar_month_total_clp = m.total_clp;
-      break;
-    }
-  }
-
-  return {
-    purchases: computed,
-    months,
-    totals: {
-      total_remaining_principal_clp,
-      next_calendar_month_total_clp,
-      next_calendar_month,
-    },
-  };
 }
 
 export type CcInstallmentsResponseBase = {
