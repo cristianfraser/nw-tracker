@@ -197,6 +197,45 @@ function flowsDepositsNetTotalsByAccount(opts?: {
 }
 
 /**
+ * Net capital flow for one account over the half-open window `(startYmd, endYmd]`, in `unit`.
+ * USD-cash accounts have no deposit events, so their window flow is the balance−interest delta
+ * across the two dates; every other account sums merged deposit-inflow events in the window
+ * (same event source as the monthly builder, so short-horizon returns flow-adjust identically
+ * to MTD). Callers pass the window's prior anchor as `startYmd` (exclusive) and the reference
+ * date as `endYmd` (inclusive).
+ */
+export function netDepositFlowBetween(
+  accountId: number,
+  startYmd: string,
+  endYmd: string,
+  unit: "clp" | "usd"
+): number {
+  if (isUsdCashAccount(accountId)) {
+    if (unit === "usd") {
+      const dep = (ymd: string) =>
+        usdCashBalanceUsdAt(accountId, ymd) - cashInterestUsdThroughDate(accountId, ymd);
+      return dep(endYmd) - dep(startYmd);
+    }
+    const dep = (ymd: string) =>
+      usdCashBalanceClpAt(accountId, ymd) - cashInterestClpThroughDate(accountId, ymd);
+    return dep(endYmd) - dep(startYmd);
+  }
+  const events = loadMergedDepositInflowEvents([accountId]).get(accountId) ?? [];
+  let sum = 0;
+  for (const e of events) {
+    if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+    if (e.occurred_on <= startYmd || e.occurred_on > endYmd) continue;
+    if (unit === "usd") {
+      const usd = depositInflowEventUsd(e);
+      if (usd != null && Number.isFinite(usd)) sum += usd;
+      continue;
+    }
+    sum += e.amt;
+  }
+  return sum;
+}
+
+/**
  * Net capital flow for one account in the current calendar month, counting only events
  * dated ≤ Chile-today (future-dated movements inside the month don't count yet). Same
  * event source and capping as `flowsDepositsNetInPeriodByAccount("month")`, so live
@@ -207,32 +246,7 @@ export function netDepositFlowCurrentMonthThroughToday(
   unit: "clp" | "usd"
 ): number {
   const today = chileCalendarTodayYmd();
-  if (isUsdCashAccount(accountId)) {
-    const prior = priorPeriodEndYmd("mtd", today);
-    if (unit === "usd") {
-      const dep = (ymd: string) =>
-        usdCashBalanceUsdAt(accountId, ymd) - cashInterestUsdThroughDate(accountId, ymd);
-      return dep(today) - dep(prior);
-    }
-    const dep = (ymd: string) =>
-      usdCashBalanceClpAt(accountId, ymd) - cashInterestClpThroughDate(accountId, ymd);
-    return dep(today) - dep(prior);
-  }
-  const currentMk = monthKeyFromYmd(today);
-  const events = loadMergedDepositInflowEvents([accountId]).get(accountId) ?? [];
-  let sum = 0;
-  for (const e of events) {
-    if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
-    if (monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
-    if (e.occurred_on > today) continue;
-    if (unit === "usd") {
-      const usd = depositInflowEventUsd(e);
-      if (usd != null && Number.isFinite(usd)) sum += usd;
-      continue;
-    }
-    sum += e.amt;
-  }
-  return sum;
+  return netDepositFlowBetween(accountId, priorPeriodEndYmd("mtd", today), today, unit);
 }
 
 /** Net deposits in the current calendar month or year (flows-page accounts only). */

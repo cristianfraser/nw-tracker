@@ -7,6 +7,7 @@ import {
 import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { paginate, type Paginated } from "./pagination.js";
 import { computePeriodReturns, type PeriodReturnsPayload } from "./periodReturns.js";
+import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
@@ -78,7 +79,7 @@ export function getGroupConsolidatedTables(
         : consolidateFromAccountMonthly(account_monthly, unit);
 
   const period_returns = isInvestmentPerformanceGroupSlug(groupSlug)
-    ? computePeriodReturns(consolidated_monthly, unit)
+    ? withShortHorizonCells(computePeriodReturns(consolidated_monthly, unit), rows, unit)
     : null;
 
   return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly, period_returns };

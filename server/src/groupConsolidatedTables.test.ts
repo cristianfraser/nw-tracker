@@ -153,7 +153,12 @@ describe("getGroupConsolidatedTables period_returns", () => {
     const brokerage = getGroupConsolidatedTables("brokerage", "clp");
     if (brokerage.consolidated_monthly.length > 0) {
       expect(brokerage.period_returns).not.toBeNull();
-      expect(brokerage.period_returns!.periods.map((c) => c.period)).toEqual([...PERIOD_RETURN_ORDER]);
+      // Short-horizon d1/w1 lead, then the monthly windows.
+      expect(brokerage.period_returns!.periods.map((c) => c.period)).toEqual([
+        "d1",
+        "w1",
+        ...PERIOD_RETURN_ORDER,
+      ]);
     }
     expect(getGroupConsolidatedTables("real_estate", "clp").period_returns).toBeNull();
     expect(getGroupConsolidatedTables("net_worth", "clp").period_returns).toBeNull();

@@ -136,3 +136,14 @@ export function priorNyseSessionYmd(ymd: string, maxSteps = 14): string | null {
   }
   return null;
 }
+
+/** NYSE session `sessions` trading days strictly before `fromYmd` (e.g. 5 ≈ one week). */
+export function nyseSessionsBack(fromYmd: string, sessions: number): string | null {
+  let cur = fromYmd;
+  for (let i = 0; i < sessions; i++) {
+    const prior = priorNyseSessionYmd(cur);
+    if (prior == null) return null;
+    cur = prior;
+  }
+  return cur;
+}
