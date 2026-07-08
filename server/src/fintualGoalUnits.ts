@@ -36,3 +36,20 @@ export function fintualGoalUnitsFromMovementsThroughDate(
   if (!Number.isFinite(u) || u <= 0) return null;
   return Math.round(u * 1e4) / 1e4;
 }
+
+/**
+ * Newest `occurred_on` (`YYYY-MM-DD`) of a cuota-changing movement touching `accountId`
+ * (certificate/flow rows on the account plus manual transfer legs), or null if none. Used to
+ * detect a local cuota edit not yet reflected in Fintual's last-polled goals NAV.
+ */
+export function newestCuotaMovementYmdForAccount(accountId: number): string | null {
+  if (!Number.isFinite(accountId) || accountId <= 0) return null;
+  const row = db
+    .prepare(
+      `SELECT MAX(occurred_on) AS d FROM movements
+       WHERE units_delta IS NOT NULL
+         AND (account_id = ? OR from_account_id = ? OR to_account_id = ?)`
+    )
+    .get(accountId, accountId, accountId) as { d: string | null } | undefined;
+  return row?.d ?? null;
+}

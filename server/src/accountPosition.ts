@@ -27,11 +27,16 @@ import {
 } from "./equityQuote.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
-import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
+import {
+  fintualGoalUnitsFromMovementsThroughDate,
+  newestCuotaMovementYmdForAccount,
+} from "./fintualGoalUnits.js";
 import {
   fintualCertV2PreferGoalsNavDisplay,
   fintualGoalsApiNavClpForImportNotes,
+  fintualGoalsApiPollYmdForState,
 } from "./fintualCertV2Reconcile.js";
+import { loadGlobalSyncState } from "./globalSyncState.js";
 import {
   isRiskyNorrisProxyMtmSeries,
   riskyNorrisProxyCuotaForMtm,
@@ -75,7 +80,8 @@ function fintualCertPositionMeta(
   let px = fu?.unit_value_clp;
   let pxDay = fu?.day;
   const today = chileCalendarTodayYmd();
-  const goalsNavClp = fintualGoalsApiNavClpForImportNotes(importNotes);
+  const goalsSyncState = loadGlobalSyncState();
+  const goalsNavClp = fintualGoalsApiNavClpForImportNotes(importNotes, goalsSyncState);
   const cuotaPositionClp =
     cuotas != null && cuotas > 1e-9 && px != null && px > 0
       ? Math.round(cuotas * px * 100) / 100
@@ -85,6 +91,8 @@ function fintualCertPositionMeta(
     cuotaPositionClp,
     asOfYmd,
     todayYmd: today,
+    lastGoalsPollYmd: fintualGoalsApiPollYmdForState(goalsSyncState),
+    newestLocalCuotaFlowYmd: newestCuotaMovementYmdForAccount(accountId),
   });
 
   if (
