@@ -371,9 +371,9 @@ export function CreditCardExpenseLinesTable({
             <td className="mono" style={{ whiteSpace: "nowrap" }}>
               <span>
                 {formatCcExpenseLineAmount(ln.amount_clp, ln.amount_usd)}
-                {ln.line_role === "installment_cuota" && ln.nro_cuota_total != null ? (
+                {ln.line_role === "installment_cuota" && ln.installment_total_clp != null ? (
                   <sup style={{ marginLeft: "0.15em", opacity: 0.6, fontSize: "0.75em", verticalAlign: "top" }}>
-                    /{formatClp(ln.amount_clp * ln.nro_cuota_total)}
+                    /{formatClp(ln.installment_total_clp)}
                   </sup>
                 ) : null}
               </span>
