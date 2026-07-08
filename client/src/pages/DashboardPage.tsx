@@ -17,7 +17,11 @@ import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
 } from "../queries/dashboardNavSnapshotCache";
-import { writeFxLatestCache } from "../queries/fxLatestCache";
+import { readFxLatestCache, writeFxLatestCache } from "../queries/fxLatestCache";
+import {
+  convertDashboardBundleUnit,
+  resolveClpPerUsdForKeepPrev,
+} from "../placeholders/keepPrevBundleUnit";
 import {
   useAccountsByPortfolioGroup,
   useDashboardBundle,
@@ -98,7 +102,18 @@ export function DashboardPage() {
     bundleReady,
   });
 
-  const resolved = useRealBundle && data ? data : placeholderBundle;
+  // During a CLP↔USD switch, keep the previous unit's charts on screen (FX-converted to the
+  // target unit) instead of blinking to the flat-zero placeholder; snaps to exact when the real
+  // bundle resolves. `isPlaceholderData` here means the query key (unit) changed with prior data held.
+  const keepPrevBundle = useMemo(() => {
+    if (!isPlaceholderData || !bundleReady || !data) return null;
+    if (data.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return data;
+    const rate = resolveClpPerUsdForKeepPrev(data.fx, readFxLatestCache());
+    if (rate == null) return null;
+    return convertDashboardBundleUnit(data, displayUnit, rate);
+  }, [isPlaceholderData, bundleReady, data, displayUnit]);
+
+  const resolved = useRealBundle && data ? data : (keepPrevBundle ?? placeholderBundle);
   const dash = resolved.dash;
   const ts = resolved.ts;
   const retirementPerf = resolved.retirementPerf;
