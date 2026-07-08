@@ -23,10 +23,17 @@ describe("accountDetailBundle period_returns", () => {
 
     const bundle = await buildAccountDetailBundle(accountId, "clp", "monthly", {});
     expect(bundle?.period_returns).not.toBeNull();
-    expect(bundle!.period_returns!.periods.map((c) => c.period)).toEqual([...PERIOD_RETURN_ORDER]);
+    // d1/w1 lead, then the monthly windows.
+    expect(bundle!.period_returns!.periods.map((c) => c.period)).toEqual([
+      "d1",
+      "w1",
+      ...PERIOD_RETURN_ORDER,
+    ]);
 
-    const expected = computePeriodReturns(bundle!.monthly_performance!.monthly, "clp");
-    expect(bundle!.period_returns).toEqual(expected);
+    // The monthly tail is exactly the pure chained builder over the same monthly rows.
+    const expected = computePeriodReturns(bundle!.monthly_performance!.monthly, "clp")!;
+    expect(bundle!.period_returns!.periods.slice(2)).toEqual(expected.periods);
+    expect(bundle!.period_returns!.mtd_is_live).toBe(expected.mtd_is_live);
   });
 
   it("returns null period_returns for a non-investment account", async () => {

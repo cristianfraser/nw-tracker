@@ -27,6 +27,7 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { computePeriodReturns } from "./periodReturns.js";
+import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
@@ -299,7 +300,15 @@ export async function buildAccountDetailBundle(
     monthly_performance != null &&
     monthly_performance.monthly.length > 0 &&
     isInvestmentPerformanceAccount(accountId)
-      ? computePeriodReturns(monthly_performance.monthly, unit)
+      ? withShortHorizonCells(computePeriodReturns(monthly_performance.monthly, unit), [
+          {
+            account_id: accountId,
+            name: cat.account_name,
+            bucket_slug: cat.bucket_slug,
+            notes: cat.account_notes,
+            exclude_from_group_totals: 0,
+          },
+        ], unit)
       : null;
 
   const dashboard_account_row = await withPortfolioGroupIndex(async () => {

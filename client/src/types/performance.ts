@@ -1,6 +1,6 @@
 /** Rentabilidad (chained period returns) DTOs — mirrors server/src/periodReturns.ts. */
 
-export type PeriodReturnKey = "mtd" | "ytd" | "y1" | "y3" | "y5" | "total";
+export type PeriodReturnKey = "d1" | "w1" | "mtd" | "ytd" | "y1" | "y3" | "y5" | "total";
 
 export interface PeriodReturnCell {
   period: PeriodReturnKey;
@@ -14,6 +14,8 @@ export interface PeriodReturnCell {
   months: number;
   /** Earliest contributing month key (YYYY-MM), or null for an empty/insufficient window. */
   window_start_month: string | null;
+  /** Prior-anchor date (YYYY-MM-DD) for sub-monthly windows (d1/w1); null/absent for monthly windows. */
+  window_start_date?: string | null;
 }
 
 export interface PeriodReturnsPayload {
@@ -21,7 +23,9 @@ export interface PeriodReturnsPayload {
   as_of_date: string;
   /** A row exists for the current Chile calendar month (MTD is an in-progress month). */
   mtd_is_live: boolean;
+  /** The 1D end leg is the live NYSE session (1D is an in-progress session). */
+  d1_is_live: boolean;
   first_month: string;
-  /** Fixed order: mtd, ytd, y1, y3, y5, total. */
+  /** Fixed order: d1, w1, mtd, ytd, y1, y3, y5, total. */
   periods: PeriodReturnCell[];
 }
