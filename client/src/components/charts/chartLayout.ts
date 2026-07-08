@@ -54,12 +54,19 @@ export function minMaxForKeys(
 
 /**
  * "Pretty" tick step: 1, 2, 5, or 10 × 10^k (same family as 5×10^n style scales).
+ *
+ * The mantissa rounds **up** to the next nice value so tick counts stay ≤ target — except the wide 5→10 gap,
+ * which is split at its geometric mean √50 ≈ 7.07 instead of at 5. A rough mantissa just above 5 (e.g. 5.07
+ * for a US$304k max at 6 divisions) would otherwise jump to a ·10 step and overshoot the axis top by nearly
+ * 2× (US$400k for a US$304k series); with the split it keeps the tighter ·5 step (50k → top 350k). This is
+ * magnitude-based, not currency-gated: it only bites where the mantissa lands in (5, 7.07], so large-CLP
+ * charts (whose mantissas sit elsewhere) are unaffected while the smaller US$ scale gets the finer step.
  */
 function niceYStep(roughStep: number): number {
   if (!Number.isFinite(roughStep) || roughStep <= 0) return 1;
   const exp = Math.floor(Math.log10(roughStep));
   const f = roughStep / 10 ** exp;
-  const m = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+  const m = f <= 1 ? 1 : f <= 2 ? 2 : f <= Math.SQRT2 * 5 ? 5 : 10; // √50 = 5·√2 ≈ 7.07
   return m * 10 ** exp;
 }
 
@@ -113,8 +120,14 @@ export function buildNiceYAxis(minData: number, maxData: number): {
 
   const span = hi - lo;
   const step = niceYStep(span / targetDivisions);
-  const y0 = Math.floor(lo / step) * step;
   const y1 = Math.ceil(hi / step) * step;
+  // Bottom: hug the data floor instead of always snapping down to a full −step multiple. A shallow dip
+  // below zero (e.g. −2.5M under a 50M step) would otherwise open a −50M gap. We clear the min by a small
+  // pad scaled to the negative extent, but never rise above the nice −step floor — so a *deep* dip still
+  // lands its bottom tick on a round value (no regression on symmetric charts). `buildTickList` places
+  // ticks on nice multiples ≥ y0, so below-zero ticks appear only where the data actually reaches them.
+  const niceFloor = Math.floor(lo / step) * step;
+  const y0 = Math.max(niceFloor, lo - Math.abs(lo) * 0.08);
   const ticks = buildTickList(y0, y1, step);
   const showZeroReference = y0 < 0 && y1 > 0;
   return { domain: [y0, y1], ticks, showZeroReference };
