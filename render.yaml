@@ -46,8 +46,8 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
-      - key: NODE_VERSION
-        value: 24.18.0
+      # Node version intentionally not set here: Render falls back to .nvmrc,
+      # so the version is pinned in one place (paired with package.json engines).
       - key: HOST
         value: 0.0.0.0
       - key: DEMO_MODE
