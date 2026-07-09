@@ -31,6 +31,14 @@ services:
     buildCommand: npm install --include=dev && npm run build -w nw-tracker-client
     startCommand: npm run serve -w nw-tracker-server
     healthCheckPath: /api/health
+    # Persistent disk for the recruiter-login log only. The synthetic demo DB
+    # (NW_TRACKER_TEST_DB, a relative path → server/data/, ephemeral) still regenerates
+    # every deploy so it always matches deployed code; DEMO_AUTH_LOG_DB lives on this disk
+    # so demo_auth_logins survives regeneration. See server/src/demoAuthLog.ts.
+    disk:
+      name: nw-tracker-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 24.11.1
@@ -42,6 +50,8 @@ services:
         value: "1"
       - key: NW_TRACKER_TEST_DB
         value: nw-tracker.demo.db
+      - key: DEMO_AUTH_LOG_DB
+        value: /var/data/demo-auth-logins.db
       - key: AUTH_PASSWORD
         sync: false
 
