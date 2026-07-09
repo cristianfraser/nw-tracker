@@ -50,7 +50,6 @@
   --content-max-width: 58rem;
   --card-radius: 5px;
   font-family: "DM Sans", system-ui, sans-serif;
-  line-height: 1.5;
   font-weight: 400;
   background-color: var(--bg);
   color: var(--text);
