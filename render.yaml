@@ -4,8 +4,10 @@
 # Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
 # up) → set the AUTH_PASSWORD secret when prompted. Recruiters log in with ANY
 # syntactically-valid email + that password. See AGENTS.md "Hosted demo (Render)".
-# ⚠️ Keep the connected GitHub repo PRIVATE until history is squashed: the current
-# tree is free of personal data, but pre-2026-07-07 git blobs still carry card last4s.
+# The repo is safe to make public: tree and full git history are free of personal data
+# (balances/amounts/account numbers purged; card last4s scrubbed from all history
+# 2026-07-08; per-card config is gitignored; tests use synthetic cards). Author
+# name/email appear as intentional attribution + the homepage contact link.
 #
 # Custom domains (Namecheap DNS, see AGENTS.md):
 # - nw-tracker.crfrsr.io → nw-tracker-demo (CNAME to the .onrender.com host)
