@@ -3,9 +3,9 @@
 # neither a Render service nor a Render custom-domain slot.)
 #
 # Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
-# up) → set the AUTH_PASSWORD secret when prompted (and DEMO_PASSWORD_HINT to the same
-# value so the /login page shows it). Recruiters log in on the in-app /login page with
-# ANY syntactically-valid email + that password. See AGENTS.md "Hosted demo (Render)".
+# up) → set the AUTH_PASSWORD secret when prompted. In DEMO_MODE the /login page shows
+# and prefills that password automatically. Recruiters log in on the in-app /login page
+# with ANY syntactically-valid email + that password. See AGENTS.md "Hosted demo (Render)".
 # The repo is safe to make public: tree and full git history are free of personal data
 # (balances/amounts/account numbers purged; card last4s scrubbed from all history
 # 2026-07-08; per-card config is gitignored; tests use synthetic cards). Author
@@ -58,12 +58,9 @@ services:
         value: nw-tracker.demo.db
       - key: DEMO_AUTH_LOG_DB
         value: /var/data/demo-auth-logins.db
+      # The shared demo password. It is intentionally public (recruiter self-serve): in
+      # DEMO_MODE the /login page shows/prefills it, so no separate hint env is needed.
       - key: AUTH_PASSWORD
-        sync: false
-      # Shown/prefilled on the /login page so recruiters can sign in in one click. The
-      # password is already published on the public homepage card, so this leaks nothing;
-      # set it to the same value as AUTH_PASSWORD. Unset → login page shows no hint.
-      - key: DEMO_PASSWORD_HINT
         sync: false
       # Optional: explicit HMAC secret for session cookies. Unset → derived from
       # AUTH_PASSWORD (rotating the password then invalidates existing sessions).
