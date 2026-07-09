@@ -14,8 +14,9 @@ export function serveClientDistEnabled(): boolean {
 
 /**
  * Static client + SPA fallback. Register AFTER the API routes so `/api/*` is never
- * shadowed; the shared-password auth middleware (registered earlier) also covers these
- * responses, which is what makes the browser show its Basic-auth prompt on first visit.
+ * shadowed. The shared-password auth middleware lets non-`/api` paths through, so the SPA
+ * shell + `/assets` load unauthenticated (they ship no personal data) and the client can
+ * render the in-app `/login` page; data requests to `/api/*` stay gated by the session cookie.
  */
 export function registerClientDistStatic(app: express.Express): void {
   const distDir = path.join(repoRootFromSrc(), "client", "dist");
