@@ -57,12 +57,12 @@ services:
       - key: AUTH_PASSWORD
         sync: false
 
-  # crfrsr.io landing page — static, free plan. Links to the deployed apps; also
-  # publishes the nw-tracker project-context page (about.html) at /about.html.
+  # crfrsr.io landing page — static site (always free; no `plan` field — Render rejects
+  # `plan: free` on a web service). Links to the deployed apps; also publishes the
+  # nw-tracker project-context page (about.html) at /about.html.
   - type: web
     name: crfrsr-homepage
     runtime: static
-    plan: free
     domains:
       - crfrsr.io
       - www.crfrsr.io
