@@ -32,6 +32,7 @@
     "repair:checking-cartola-missing-movements": "tsx scripts/repair-checking-cartola-missing-movements.ts",
     "repair:checking-gastos-categories": "tsx scripts/repair-checking-gastos-categories.ts",
     "db:snapshot": "tsx scripts/db-snapshot.ts",
+    "demo:logins": "tsx scripts/print-demo-auth-logins.ts",
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",
     "import:depto-expenses": "tsx scripts/import-depto-apartment-expenses.ts",
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
