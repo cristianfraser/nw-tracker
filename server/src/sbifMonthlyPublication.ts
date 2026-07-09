@@ -44,6 +44,16 @@ export function isSbifUtmCoverageComplete(
   return compareYearMonth(maxUtm, sbifMonthlyPublicationTargetMonth(cl)) >= 0;
 }
 
+/**
+ * Actual UF forward horizon after the day-9 publication: daily UF is IPC-indexed
+ * through the **9th of the next month**, so that is what BCentral has on day 9.
+ * `sbifMonthlyPublicationEndYmd` (end of next month) is only a fetch upper bound.
+ */
+export function sbifUfDay9PublicationHorizonYmd(cl: ChileWallClock): string {
+  const next = nextCalendarMonthParts(cl.year, cl.month);
+  return `${next.y}-${String(next.m).padStart(2, "0")}-09`;
+}
+
 export function isSbifUfStale(
   cl: ChileWallClock,
   opts?: { forceSbif?: boolean; maxUfDate?: string | null; lastSyncYmd?: string }
@@ -56,8 +66,10 @@ export function isSbifUfStale(
   const currentMonthEnd = monthEndUtcYmd(cl.monthKey);
   if (max < currentMonthEnd) return true;
   if (isSbifUfCoverageComplete(max, cl)) return false;
-  // Day-9 publication only — partial forward horizon after the 9th is not a daily stale signal.
-  return cl.day === 9;
+  // Day-9 publication only — retry through day 9 until the newly published horizon
+  // (UF through the 9th of next month) is ingested, then go fresh immediately;
+  // a partial forward horizon on days 10+ is not a daily stale signal.
+  return cl.day === 9 && max < sbifUfDay9PublicationHorizonYmd(cl);
 }
 
 export function isSbifUtmStale(
@@ -68,14 +80,10 @@ export function isSbifUtmStale(
   if (cl.day < 9) return false;
   const max = opts?.maxUtm ?? null;
   if (!max) return true;
-  // Missing even the current month's UTM → stale.
-  if (compareYearMonth(max, { y: cl.year, m: cl.month }) < 0) return true;
-  // Next calendar month already published → fresh.
-  if (isSbifUtmCoverageComplete(max, cl)) return false;
-  // Unlike daily UF, next-month UTM is not published a month ahead (SII announces
-  // it near the end of the current month), so it is unfetchable on the 9th. Once
-  // the current month is present, only signal stale on day 9 to trigger the grab —
-  // otherwise UTM would stay perpetually stale (and keep waking the scheduler)
-  // every day until BCentral eventually publishes the next month.
-  return cl.day === 9;
+  // Stale only while the current month's UTM is missing — that is all the day-9
+  // grab can fetch: unlike daily UF, next-month UTM is not queryable until
+  // BCentral publishes it near the end of the current month, so requiring it here
+  // kept the source perpetually stale. The next month's value arrives with next
+  // month's grab; once the current month is in the DB the source is fresh.
+  return compareYearMonth(max, { y: cl.year, m: cl.month }) < 0;
 }
