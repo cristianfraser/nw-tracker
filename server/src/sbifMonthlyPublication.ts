@@ -66,5 +66,16 @@ export function isSbifUtmStale(
 ): boolean {
   if (opts?.forceSbif) return true;
   if (cl.day < 9) return false;
-  return !isSbifUtmCoverageComplete(opts?.maxUtm ?? null, cl);
+  const max = opts?.maxUtm ?? null;
+  if (!max) return true;
+  // Missing even the current month's UTM → stale.
+  if (compareYearMonth(max, { y: cl.year, m: cl.month }) < 0) return true;
+  // Next calendar month already published → fresh.
+  if (isSbifUtmCoverageComplete(max, cl)) return false;
+  // Unlike daily UF, next-month UTM is not published a month ahead (SII announces
+  // it near the end of the current month), so it is unfetchable on the 9th. Once
+  // the current month is present, only signal stale on day 9 to trigger the grab —
+  // otherwise UTM would stay perpetually stale (and keep waking the scheduler)
+  // every day until BCentral eventually publishes the next month.
+  return cl.day === 9;
 }
