@@ -18,14 +18,20 @@ import {
   verifyDemoPassword,
   verifySessionToken,
 } from "../httpSecurity.js";
+import { demoModeEnabled } from "../demoMode.js";
 
 function authRequired(): boolean {
   return sharedAuthPasswordFromEnv() != null;
 }
 
-/** Public demo-password hint shown/prefilled on the login page (operator opt-in via env). */
+/**
+ * Public demo-password shown/prefilled on the login page. The shared password is
+ * intentionally public in demo mode (recruiter self-serve), so we surface it directly.
+ * Gated on `DEMO_MODE` so a non-demo deployment that happens to set `AUTH_PASSWORD`
+ * (real data behind a shared password) never leaks it on the unauthenticated status route.
+ */
 function passwordHint(): string | null {
-  return process.env.DEMO_PASSWORD_HINT?.trim() || null;
+  return demoModeEnabled() ? sharedAuthPasswordFromEnv() : null;
 }
 
 function sessionCookieOptions(): express.CookieOptions {
