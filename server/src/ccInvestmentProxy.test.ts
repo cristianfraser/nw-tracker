@@ -153,15 +153,15 @@ describe("realizedCuotaGains", () => {
   it("future cuota uses today's price and marks projected=true", () => {
     const prices: PriceMap = {
       "2025-08-08": 1010,
-      "2025-09-01": 4343, // "today"
+      "2025-09-01": 1050, // "today"
     };
     // cuota[0] is past (2025-08-08 ≤ today), cuota[1] and [2] are future
     const cuotas = realizedCuotaGains(1000, false, withdrawals, makePriceLookup(prices), "2025-09-01");
 
     expect(cuotas[0]!.projected).toBe(false);
-    // cuota[1] date 2025-09-08 > today 2025-09-01 → uses today price 4343
+    // cuota[1] date 2025-09-08 > today 2025-09-01 → uses today price 1050
     expect(cuotas[1]!.projected).toBe(true);
-    expect(cuotas[1]!.realized_gain_clp).toBeCloseTo(30_000 * (4343 / 1000 - 1), 2);
+    expect(cuotas[1]!.realized_gain_clp).toBeCloseTo(30_000 * (1050 / 1000 - 1), 2);
     // cuota[2] also future
     expect(cuotas[2]!.projected).toBe(true);
   });
