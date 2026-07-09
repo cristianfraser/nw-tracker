@@ -3,6 +3,19 @@ const base = () => import.meta.env.VITE_API_URL ?? "";
 const API_HINT =
   "Start the API in another terminal: cd server && npm run dev (port 3001).";
 
+/**
+ * Fired when a gated `/api` request comes back 401 (session missing/expired). The auth
+ * provider listens for this and flips to anonymous so the route guard redirects to /login.
+ * Not fired for the auth endpoints themselves (a login 401 = bad credentials, handled inline).
+ */
+export const AUTH_EXPIRED_EVENT = "nw-auth-expired";
+
+function notifyAuthExpiredIfNeeded(path: string, status: number) {
+  if (status === 401 && !path.startsWith("/api/auth/")) {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
+}
+
 function isProbablyHtml(body: string) {
   const t = body.trimStart();
   return t.startsWith("<!") || t.startsWith("<html") || t.startsWith("<");
@@ -12,7 +25,7 @@ async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<
   const url = `${base()}${path}`;
   let res: Response;
   try {
-    res = await fetch(url, { method, body: form });
+    res = await fetch(url, { method, body: form, credentials: "same-origin" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`${API_HINT} (${msg})`, { cause: e });
@@ -20,6 +33,7 @@ async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<
   const text = await res.text();
   const trimmed = text.trim();
   if (!res.ok) {
+    notifyAuthExpiredIfNeeded(path, res.status);
     if (isProbablyHtml(text)) throw new Error(`${API_HINT} (HTTP ${res.status})`);
     throw new Error(trimmed || res.statusText);
   }
@@ -32,6 +46,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(url, {
+      credentials: "same-origin",
       ...init,
       headers: {
         "Content-Type": "application/json",
@@ -47,6 +62,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   const trimmed = text.trim();
 
   if (!res.ok) {
+    notifyAuthExpiredIfNeeded(path, res.status);
     if (isProbablyHtml(text)) {
       throw new Error(`${API_HINT} (HTTP ${res.status})`);
     }
@@ -72,6 +88,13 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  authStatus: () => j<AuthStatusResponse>("/api/auth/status"),
+  authLogin: (email: string, password: string) =>
+    j<{ ok: true; email: string }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  authLogout: () => j<{ ok: true }>("/api/auth/logout", { method: "POST" }),
   sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
   panelNetWorthTree: () =>
     j<{ net_worth: import("./types").NavTreeNodeDto | null }>("/api/meta/panel-net-worth-tree"),
@@ -684,6 +707,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pairs }),
     }),
+};
+
+export type AuthStatusResponse = {
+  auth_required: boolean;
+  authenticated: boolean;
+  email: string | null;
+  password_hint: string | null;
 };
 
 export type AppMessageRow = {
