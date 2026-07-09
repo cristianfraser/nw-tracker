@@ -16,6 +16,7 @@ import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
 import { registerMortgageRoutes } from "./routes/mortgage.js";
@@ -58,6 +59,7 @@ if (authPassword) {
 app.use(express.json({ limit: "2mb" }));
 
 /** Route registration order preserves the original monolithic file's order. */
+registerAuthRoutes(app);
 registerMetaRoutes(app);
 registerAccountsRoutes(app);
 registerMortgageRoutes(app);

@@ -1,11 +1,13 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
+import { LoginPage, safeNextPath } from "./pages/LoginPage";
 import { useTranslation } from "./i18n";
 
 // Route-level code splitting: each page (and its chart/table deps, notably recharts)
@@ -49,20 +51,71 @@ const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"), "NotFoundPag
 
 export default function App() {
   return (
-    <DisplayPreferencesProvider>
-      <AppTree />
-    </DisplayPreferencesProvider>
+    <AuthProvider>
+      <DisplayPreferencesProvider>
+        <AppTree />
+      </DisplayPreferencesProvider>
+    </AuthProvider>
   );
+}
+
+/** Full-viewport centered message (auth check in flight). */
+function FullScreenMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        minHeight: "100dvh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "var(--space-2xl)",
+      }}
+    >
+      <p className="muted">{children}</p>
+    </div>
+  );
+}
+
+/** Anonymous + on a gated route → bounce to /login, remembering where we were headed. */
+function RedirectToLogin() {
+  const loc = useLocation();
+  const next = encodeURIComponent(`${loc.pathname}${loc.search}`);
+  return <Navigate to={`/login?next=${next}`} replace />;
+}
+
+/** Authenticated user landing on /login → forward to the remembered `next` (or home). */
+function LoginRedirect() {
+  const [searchParams] = useSearchParams();
+  return <Navigate to={safeNextPath(searchParams.get("next"))} replace />;
 }
 
 /**
  * The whole tree lives inside a context consumer: a display-preference change
  * (e.g. decimal separator) re-renders it top-down, so plain format helpers
  * re-run everywhere without remounting anything (no loading flash, state kept).
+ *
+ * It also carries the demo auth gate: while the session status is unknown we show a
+ * spinner; when auth is required but absent, only the bare `/login` page renders (no app
+ * chrome, routes never mount); otherwise the normal app renders.
  */
 function AppTree() {
   useDisplayPreferences();
+  const { status, authRequired } = useAuth();
   const { t } = useTranslation();
+
+  if (status === "loading") {
+    return <FullScreenMessage>{t("common.loading")}</FullScreenMessage>;
+  }
+
+  if (authRequired && status === "anonymous") {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<RedirectToLogin />} />
+      </Routes>
+    );
+  }
+
   return (
     <div className="layout layout--with-sidebar">
         <MobileNavDrawer>
@@ -75,6 +128,7 @@ function AppTree() {
           <RouteErrorBoundary>
           <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
           <Routes>
+            <Route path="/login" element={<LoginRedirect />} />
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />

@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { demoAuthLogDb } from "./demoAuthLog.js";
@@ -7,7 +7,8 @@ import { demoAuthLogDb } from "./demoAuthLog.js";
  * Deployment modes share one binary and differ only by env:
  * - Local personal mode (default): bind 127.0.0.1, dev-origin CORS, no auth.
  * - Hosted demo mode (e.g. Render): HOST=0.0.0.0, CORS_ALLOWED_ORIGINS set to the
- *   public origin, AUTH_PASSWORD set → every /api request requires the shared password.
+ *   public origin, AUTH_PASSWORD set → every /api request requires a valid session cookie
+ *   (issued by the in-app /login page — see routes/auth.ts).
  */
 
 const DEFAULT_DEV_ORIGINS = [
@@ -44,6 +45,13 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
+/** Constant-time check of a login candidate against the configured shared password. */
+export function verifyDemoPassword(candidate: string): boolean {
+  const password = sharedAuthPasswordFromEnv();
+  if (!password) return false;
+  return constantTimeEquals(candidate, password);
+}
+
 /**
  * Format check only — any syntactically plausible email is accepted (the email is an
  * identity label for the login log, not a verified address).
@@ -65,37 +73,106 @@ export function recordDemoAuthLogin(email: string, day = chileCalendarTodayYmd()
     .run(email.trim().toLowerCase(), day);
 }
 
+// --- Stateless signed session (HttpOnly cookie) -------------------------------------
+//
+// The hosted demo regenerates its synthetic DB on every deploy / cold start, so we avoid a
+// server-side session store: the cookie itself is a self-verifying, HMAC-signed token that
+// encodes the authenticated email + an issue timestamp. Rotating the password (the default
+// signing secret) invalidates every outstanding session, which is acceptable for a demo.
+
+/** Cookie name for the signed demo session token. */
+export const SESSION_COOKIE = "nw_session";
+
+/** Max session age before re-login is required (default 7 days). */
+function sessionMaxAgeMs(): number {
+  const v = Number(process.env.SESSION_MAX_AGE_MS);
+  return Number.isFinite(v) && v > 0 ? v : 7 * 24 * 60 * 60 * 1000;
+}
+
+/** HMAC signing secret: explicit `SESSION_SECRET`, else derived from `AUTH_PASSWORD`. */
+function sessionSecret(): string {
+  const explicit = process.env.SESSION_SECRET?.trim();
+  if (explicit) return explicit;
+  return `nw-session|${sharedAuthPasswordFromEnv() ?? ""}`;
+}
+
+function signSessionPayload(payload: string): string {
+  return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+}
+
+/** Issue a signed session token for `email` (base64url(email).issuedAtMs.sig). */
+export function issueSessionToken(email: string, issuedAtMs = Date.now()): string {
+  const emailPart = Buffer.from(email.trim().toLowerCase(), "utf8").toString("base64url");
+  const payload = `${emailPart}.${issuedAtMs}`;
+  return `${payload}.${signSessionPayload(payload)}`;
+}
+
 /**
- * HTTP Basic auth with a shared password: any *valid email* as username + the shared
- * password (recruiter demo model — wildcard identity, one password). Authenticated
- * emails are recorded in `demo_auth_logins`. `/api/health` stays open for the hosting
- * platform's health checks.
+ * Verify a session token: constant-time HMAC check + max-age. Returns the authenticated
+ * email or null (tampered, wrong secret, malformed, or expired → re-login).
  */
-export function sharedPasswordAuthMiddleware(password: string): RequestHandler {
+export function verifySessionToken(token: string | undefined | null): { email: string } | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [emailPart, issuedAtRaw, sig] = parts as [string, string, string];
+  const payload = `${emailPart}.${issuedAtRaw}`;
+  if (!constantTimeEquals(sig, signSessionPayload(payload))) return null;
+  const issuedAtMs = Number(issuedAtRaw);
+  if (!Number.isFinite(issuedAtMs)) return null;
+  if (Date.now() - issuedAtMs > sessionMaxAgeMs()) return null;
+  const email = Buffer.from(emailPart, "base64url").toString("utf8");
+  if (!isValidDemoAuthEmail(email)) return null;
+  return { email };
+}
+
+/** Read a single cookie value from the raw `Cookie` header (avoids a cookie-parser dep). */
+export function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) {
+      return decodeURIComponent(part.slice(eq + 1).trim());
+    }
+  }
+  return null;
+}
+
+/** Paths reachable without a session (login flow + health check). */
+function isAuthExemptPath(path: string): boolean {
+  return (
+    path === "/api/health" ||
+    path === "/api/auth/status" ||
+    path === "/api/auth/login" ||
+    path === "/api/auth/logout"
+  );
+}
+
+/**
+ * Shared-password session gate (recruiter demo model — wildcard email identity, one
+ * password). Non-`/api` paths pass through so the static SPA shell can load and render the
+ * in-app `/login` page; `/api/*` requires a valid `nw_session` cookie (issued by
+ * POST /api/auth/login). No `WWW-Authenticate` header, so the browser never shows its
+ * native Basic-auth prompt. Authenticated emails are recorded in `demo_auth_logins`.
+ */
+export function sharedPasswordAuthMiddleware(_password: string): RequestHandler {
   return (req, res, next) => {
-    if (req.path === "/api/health") {
+    // Only API routes are gated; the SPA shell + /assets load unauthenticated.
+    if (req.path !== "/api" && !req.path.startsWith("/api/")) {
       next();
       return;
     }
-    const header = req.headers.authorization ?? "";
-    const m = /^Basic (.+)$/.exec(header);
-    if (m) {
-      const decoded = Buffer.from(m[1]!, "base64").toString("utf8");
-      const sep = decoded.indexOf(":");
-      const email = sep >= 0 ? decoded.slice(0, sep) : decoded;
-      const candidate = sep >= 0 ? decoded.slice(sep + 1) : "";
-      if (!isValidDemoAuthEmail(email)) {
-        res.set("WWW-Authenticate", 'Basic realm="nw-tracker"');
-        res.status(401).json({ error: "username must be a valid email" });
-        return;
-      }
-      if (constantTimeEquals(candidate, password)) {
-        recordDemoAuthLogin(email);
-        next();
-        return;
-      }
+    if (isAuthExemptPath(req.path)) {
+      next();
+      return;
     }
-    res.set("WWW-Authenticate", 'Basic realm="nw-tracker"');
+    const session = verifySessionToken(readCookie(req.headers.cookie, SESSION_COOKIE));
+    if (session) {
+      recordDemoAuthLogin(session.email);
+      next();
+      return;
+    }
     res.status(401).json({ error: "authentication required" });
   };
 }

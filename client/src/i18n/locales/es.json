@@ -12,6 +12,22 @@
       "reload": "Recargar la aplicación"
     }
   },
+  "auth": {
+    "title": "Iniciar sesión",
+    "subtitle": "Demo con datos sintéticos. Ingresa con cualquier correo y la contraseña compartida.",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "tu@correo.com",
+    "passwordLabel": "Contraseña",
+    "passwordHint": "Contraseña de la demo: {{hint}}",
+    "submit": "Entrar",
+    "submitting": "Entrando…",
+    "logout": "Cerrar sesión",
+    "errors": {
+      "invalidEmail": "Ingresa un correo electrónico válido.",
+      "invalidCredentials": "Correo o contraseña incorrectos.",
+      "unknown": "No se pudo iniciar sesión. Inténtalo de nuevo."
+    }
+  },
   "fxCoverage": {
     "title": "Tipo de cambio USD/CLP incompleto",
     "missingFromDate": "Sin tipo de cambio desde {{date}} para convertir saldos y gráficos en US$.",

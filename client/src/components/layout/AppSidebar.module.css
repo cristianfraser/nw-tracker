@@ -41,6 +41,45 @@
   flex-shrink: 0;
 }
 
+.logout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.15rem 0.65rem 0.35rem;
+}
+
+.logoutEmail {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logoutButton {
+  appearance: none;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.logoutButton:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface2) 65%, transparent);
+  border-color: var(--muted);
+}
+
+.logoutButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
 .loading {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
