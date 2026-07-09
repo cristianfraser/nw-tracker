@@ -1,5 +1,6 @@
-# Render blueprint — hosted recruiter demo (synthetic data, shared-password Basic auth)
-# plus the crfrsr.io landing page (static site).
+# Render blueprint — hosted recruiter demo (synthetic data, shared-password Basic auth).
+# (The crfrsr.io landing page moved to Cloudflare Pages — it's a static site and needs
+# neither a Render service nor a Render custom-domain slot.)
 #
 # Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
 # up) → set the AUTH_PASSWORD secret when prompted. Recruiters log in with ANY
@@ -10,8 +11,10 @@
 # name/email appear as intentional attribution + the homepage contact link.
 #
 # Custom domains (Namecheap DNS, see AGENTS.md):
-# - nw-tracker.crfrsr.io → nw-tracker-demo (CNAME to the .onrender.com host)
-# - crfrsr.io / www.crfrsr.io → crfrsr-homepage (apex: ALIAS or A 216.24.57.1)
+# - nw-tracker.crfrsr.io → nw-tracker-demo — only attaches when the workspace has a free
+#   custom-domain slot (Hobby caps at 2/workspace, both used by pokedex). Until then the
+#   demo is reached at its .onrender.com URL, which the homepage links to.
+# - crfrsr.io / www.crfrsr.io → the homepage on Cloudflare Pages (not Render).
 #
 # Notes:
 # - PORT is injected by Render; the server reads process.env.PORT.
@@ -56,15 +59,3 @@ services:
         value: /var/data/demo-auth-logins.db
       - key: AUTH_PASSWORD
         sync: false
-
-  # crfrsr.io landing page — static site (always free; no `plan` field — Render rejects
-  # `plan: free` on a web service). Links to the deployed apps; also publishes the
-  # nw-tracker project-context page (about.html) at /about.html.
-  - type: web
-    name: crfrsr-homepage
-    runtime: static
-    domains:
-      - crfrsr.io
-      - www.crfrsr.io
-    buildCommand: cp about.html homepage/about.html
-    staticPublishPath: homepage
