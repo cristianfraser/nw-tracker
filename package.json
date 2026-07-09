@@ -13,6 +13,7 @@
     "check:conventions": "node scripts/check-conventions.mjs",
     "dev:server": "npm run dev -w nw-tracker-server",
     "dev:client": "npm run dev -w nw-tracker-client",
+    "demo:logins": "npm run demo:logins -w nw-tracker-server",
     "migrate": "npm run migrate -w nw-tracker-server",
     "import:excel": "npm run import:excel -w nw-tracker-server",
     "import:cfraser-inbox": "npm run import:cfraser-inbox -w nw-tracker-server",
