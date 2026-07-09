@@ -24,6 +24,7 @@ import {
   sbifMonthlyPublicationEndYmd,
   isSbifUfCoverageComplete,
   isSbifUtmCoverageComplete,
+  compareYearMonth,
 } from "./sbifMonthlyPublication.js";
 import { fetchSiiUfAfterDate } from "./ufSiiSync.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
@@ -949,15 +950,24 @@ async function runSbifUtm(
     } else throw e;
   }
   const n = upsertUtmRows(rows, syncDryRun);
-  if (n > 0) {
-    const newest = rows[rows.length - 1];
+  const newest = rows.length > 0 ? rows[rows.length - 1] : undefined;
+  // BCentral returns the anchor month's observation again on every fetch (the
+  // monthly obs intersects any window inside that month), so `n > 0` alone would
+  // log a phantom change each run — only report when a genuinely newer month landed.
+  const newestParts = newest ? parseYmdParts(newest.date.slice(0, 10)) : null;
+  if (
+    n > 0 &&
+    newest &&
+    newestParts &&
+    (!maxUtmBefore || compareYearMonth({ y: newestParts.y, m: newestParts.m }, maxUtmBefore) > 0)
+  ) {
     changes.push({
       group: "sbif_utm",
       label: "BCentral UTM",
       oldValue: "—",
-      newValue: newest ? formatSyncClp(Math.round(newest.utmClp)) : `+${n}`,
+      newValue: formatSyncClp(Math.round(newest.utmClp)),
       oldDate: null,
-      newDate: newest?.date?.slice(0, 10) ?? null,
+      newDate: newest.date.slice(0, 10),
     });
   }
   if (!syncDryRun && isSbifUtmCoverageComplete(safeMaxUtmMonthParts(), cl)) {
