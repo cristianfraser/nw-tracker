@@ -8,7 +8,8 @@ historical valuations, monthly P&L, aportes (contributions), and long-range proj
 
 > Log in with your email and password: `frasertest26`
 >
-> The demo runs on synthetic data — nothing here is real financial information.
+> This is a personal-use app. The demo runs on incomplete, simulated data — nothing here
+> is real financial information, and some views may be sparse or unpopulated.
 
 ## What it does
 
