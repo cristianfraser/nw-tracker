@@ -41,7 +41,7 @@ describe("effectiveCcExpenseLineAmountClp", () => {
     const amount = effectiveCcExpenseLineAmountClp(
       {
         installment_flag: 0,
-        amount_clp: 4112,
+        amount_clp: 5555,
         amount_usd: 4.53,
         valor_cuota_mensual_clp: null,
         valor_cuota_mensual_usd: null,
@@ -104,7 +104,7 @@ describe("effectiveCcExpenseLineAmountUsd", () => {
     expect(
       effectiveCcExpenseLineAmountUsd({
         installment_flag: 0,
-        amount_clp: 4112,
+        amount_clp: 5555,
         amount_usd: 4.53,
         valor_cuota_mensual_clp: null,
         valor_cuota_mensual_usd: null,
