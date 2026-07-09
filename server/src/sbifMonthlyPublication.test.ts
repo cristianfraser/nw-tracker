@@ -67,20 +67,30 @@ describe("isSbifUfStale / isSbifUtmStale", () => {
     expect(isSbifUfStale(june11, { maxUfDate: "2026-06-30", lastSyncYmd: "2026-06-11" })).toBe(false);
     expect(isSbifUfStale(june22, { maxUfDate: "2026-07-09", lastSyncYmd: "2026-06-21" })).toBe(false);
     expect(isSbifUfStale(june11, { maxUfDate: "2026-07-31" })).toBe(false);
-    // UTM: next-month value is not published a month ahead, so once the current
-    // month is present it is only flagged stale on day 9 (the grab), not day 10+.
+    // UTM: stale only while the current month's value is missing — next-month UTM
+    // is not queryable on day 9, and a completed grab goes fresh immediately.
     expect(isSbifUtmStale(june9, { maxUtm: { y: 2026, m: 5 } })).toBe(true); // missing current month
-    expect(isSbifUtmStale(june9, { maxUtm: { y: 2026, m: 6 } })).toBe(true); // day-9 grab
+    expect(isSbifUtmStale(june9, { maxUtm: { y: 2026, m: 6 } })).toBe(false); // grab done → fresh even on day 9
     expect(isSbifUtmStale(june11, { maxUtm: { y: 2026, m: 5 } })).toBe(true); // still missing current month
-    expect(isSbifUtmStale(june11, { maxUtm: { y: 2026, m: 6 } })).toBe(false); // current month present → fresh day 10+
+    expect(isSbifUtmStale(june11, { maxUtm: { y: 2026, m: 6 } })).toBe(false); // current month present → fresh
     expect(isSbifUtmStale(june11, { maxUtm: { y: 2026, m: 7 } })).toBe(false); // next month present → fresh
   });
 
-  it("stays fresh after day 9 once the current-month UTM is in the DB (next month unpublished)", () => {
-    // Regression: July 9 with only July UTM present must not loop stale forever
-    // waiting for the not-yet-published August value.
-    expect(isSbifUtmStale(cl("2026-07-09"), { maxUtm: { y: 2026, m: 7 } })).toBe(true); // day-9 grab
-    expect(isSbifUtmStale(cl("2026-07-10"), { maxUtm: { y: 2026, m: 7 } })).toBe(false); // fresh from day 10
+  it("UF goes fresh on day 9 once the published horizon (9th of next month) is ingested", () => {
+    // Regression: the July 9 08:45 grab reached 2026-08-09 but the source kept
+    // polling stale all day because day 9 was unconditionally stale.
+    const july9 = cl("2026-07-09");
+    expect(isSbifUfStale(july9, { maxUfDate: "2026-07-09" })).toBe(true); // pre-grab
+    expect(isSbifUfStale(july9, { maxUfDate: "2026-07-31" })).toBe(true); // partial — horizon not ingested
+    expect(isSbifUfStale(july9, { maxUfDate: "2026-08-09" })).toBe(false); // grab done → fresh same day
+  });
+
+  it("UTM goes fresh once the current-month value is in the DB (next month unpublished)", () => {
+    // Regression: July 9 with July UTM present must not loop stale — neither all
+    // of day 9 nor the weeks until BCentral publishes the August value.
+    expect(isSbifUtmStale(cl("2026-07-09"), { maxUtm: { y: 2026, m: 6 } })).toBe(true); // pre-grab
+    expect(isSbifUtmStale(cl("2026-07-09"), { maxUtm: { y: 2026, m: 7 } })).toBe(false); // grab done → fresh
+    expect(isSbifUtmStale(cl("2026-07-10"), { maxUtm: { y: 2026, m: 7 } })).toBe(false);
     expect(isSbifUtmStale(cl("2026-07-25"), { maxUtm: { y: 2026, m: 7 } })).toBe(false);
   });
 
