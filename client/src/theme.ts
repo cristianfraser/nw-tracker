@@ -16,10 +16,13 @@ const palette = {
   surfaceHover: "#1c2430", // --surface2
   text: "#e8edf4", // --text
   textSecondary: "#8b98a8", // --muted
+  textDisabled: "#5b6675", // dimmed --muted (placeholders, disabled text)
   border: "#2a3544", // --border
+  divider: "#2a3544", // --border (also secondary-button hover)
   focusRing: "#3d9cf9", // --accent
   success: "#34d399", // --positive
   error: "#f87171", // --negative
+  overlay: "rgb(0 0 0 / 0.7)",
 } as const;
 
 export const nwTrackerTheme: ThemeOverrides = {

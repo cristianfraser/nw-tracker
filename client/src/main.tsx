@@ -5,13 +5,13 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "./i18n";
 import App from "./App";
-import "./index.css";
-// @crfrsr/ui: token defaults + component styles. The library reset is
-// intentionally NOT imported (this app has its own reset); crfrsr-baseline.css
-// supplies the small bit the components need on top of it.
+// @crfrsr/ui: shared reset + token defaults + component styles, before the
+// app's own CSS so app rules win. The library reset is the single reset for
+// all crfrsr apps (the app's former Meyer reset was removed in its favor).
+import "@crfrsr/ui/reset.css";
 import "@crfrsr/ui/tokens.css";
 import "@crfrsr/ui/styles.css";
-import "./styles/crfrsr-baseline.css";
+import "./index.css";
 import { AppErrorBoundary } from "./components/ui/AppErrorBoundary";
 import { queryClient } from "./queryClient";
 import { nwTrackerTheme } from "./theme";
