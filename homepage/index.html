@@ -76,6 +76,18 @@
         color: var(--muted);
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
+      .card .login {
+        display: block;
+        margin-top: 0.7rem;
+        font-size: 0.83rem;
+        color: var(--fg);
+      }
+      .card .login code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--border);
+        padding: 0.08rem 0.4rem;
+        border-radius: 0.3rem;
+      }
       footer {
         margin-top: 3rem;
         font-size: 0.85rem;
@@ -97,8 +109,9 @@
         <p>
           Personal net-worth &amp; cash-flow tracker: multi-currency portfolio (CLP/USD/UF),
           market-data sync, credit-card statement PDF parsing, and flow reconciliation.
-          Live demo with synthetic data — log in with any email plus the shared password.
+          Live demo with synthetic data.
         </p>
+        <span class="login">Log in with any email + password <code>frasertest26</code></span>
         <span class="domain">nw-tracker-demo.onrender.com</span>
       </a>
 
