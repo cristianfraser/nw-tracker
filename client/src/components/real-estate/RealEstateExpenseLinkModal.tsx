@@ -26,7 +26,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
       : null;
 
   const handleLink = async (purchaseKey: string) => {
-    if (!slot) return;
+    if (!slot || slot.expense_entry_id == null) return;
     setPendingKey(purchaseKey);
     try {
       await linkMutation.mutateAsync({

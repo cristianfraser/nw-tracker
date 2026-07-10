@@ -54,6 +54,8 @@ function expectation(
     spent_on: "2024-05-31",
     category: "electricidad",
     note: null,
+    kwh: null,
+    m3: null,
     expense_account_id: 2,
     account_slug: "suecia",
     ...overrides,

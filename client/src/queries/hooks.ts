@@ -480,6 +480,14 @@ export function useRealEstateLinkCandidates(expenseEntryId: number | null, enabl
   });
 }
 
+export function useRealEstateUnlinkedPurchases(q: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.realEstateUnlinkedPurchases(q),
+    queryFn: () => api.realEstateUnlinkedPurchases(q),
+    enabled,
+  });
+}
+
 export function useFlowsCreditCardExpenses() {
   return useQuery({
     queryKey: queryKeys.flowsCreditCardExpenses(),

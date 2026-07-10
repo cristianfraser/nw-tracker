@@ -1,11 +1,16 @@
 /**
- * One-time note→table backfills for migration 157 (run as a post-migration hook from
- * `db.ts`, inside the migration transaction; idempotent and a no-op on fresh DBs).
+ * One-time note→table/column backfills run as post-migration hooks from `db.ts`
+ * (inside the migration transaction; idempotent and a no-op on fresh DBs).
  *
- * The parsers below are FROZEN copies of the legacy note codecs (deptoDividendosLedger /
- * movementMirrorConvert) as of their deletion from runtime. Machine payloads move into
- * `depto_payments` and `movement_mirror_merges`; the movement notes are rewritten to human
- * summaries. This module must stay pure (no imports from modules that import `db`).
+ * 157: the parsers below are FROZEN copies of the legacy note codecs
+ * (deptoDividendosLedger / movementMirrorConvert) as of their deletion from runtime.
+ * Machine payloads move into `depto_payments` and `movement_mirror_merges`; the movement
+ * notes are rewritten to human summaries.
+ * 161: `kwh=` / `m3=` tags on real-estate `expense_entries` notes move into the new
+ * `kwh` / `m3` columns; the tag segments are stripped, the rest of the note stays as
+ * human provenance.
+ *
+ * This module must stay pure (no imports from modules that import `db`).
  */
 import type { Database } from "better-sqlite3";
 
@@ -253,5 +258,40 @@ export function runLegacyNoteBackfill157(dbi: Database): void {
     console.log(
       `migration 157 backfill: ${deptoDone} depto payment(s), ${mirrorDone} mirror merge(s) promoted from notes`
     );
+  }
+}
+
+/** Post-migration hook for 161: promote `kwh=` / `m3=` expense-note tags into columns. */
+export function runExpenseConsumptionBackfill161(dbi: Database): void {
+  const rows = dbi
+    .prepare(
+      `SELECT id, note FROM expense_entries WHERE note LIKE '%kwh=%' OR note LIKE '%m3=%'`
+    )
+    .all() as { id: number; note: string }[];
+
+  const upd = dbi.prepare(`UPDATE expense_entries SET kwh = ?, m3 = ?, note = ? WHERE id = ?`);
+  let done = 0;
+  for (const row of rows) {
+    let kwh: number | null = null;
+    let m3: number | null = null;
+    const kept: string[] = [];
+    for (const seg of row.note.split("|")) {
+      if (seg.startsWith("kwh=") || seg.startsWith("m3=")) {
+        const val = Number(seg.slice(seg.indexOf("=") + 1));
+        if (!Number.isFinite(val)) {
+          throw new Error(`expense consumption backfill: entry ${row.id} has invalid tag "${seg}"`);
+        }
+        if (seg.startsWith("kwh=")) kwh = val;
+        else m3 = val;
+      } else {
+        kept.push(seg);
+      }
+    }
+    upd.run(kwh, m3, kept.join("|"), row.id);
+    done += 1;
+  }
+
+  if (done > 0) {
+    console.log(`migration 161 backfill: kwh/m3 promoted from notes on ${done} expense entr(ies)`);
   }
 }

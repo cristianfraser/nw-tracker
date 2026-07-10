@@ -983,7 +983,7 @@
     "redemptionEmptyNeedsAttention": "Every redemption is linked or has no bank statement."
   },
   "expenses": {
-    "realEstateIntro": "Per-apartment utility accounts linked to real expenses (card or checking). The CSV rows define the bill's month and type; the charge can match that month or show up one or two months later. Chart amounts use the linked expense or, if missing, the CSV's expected value.",
+    "realEstateIntro": "Per-place bills linked to the real purchases that paid them (card or checking). A bill's charge can land the same month or one or two months later; amounts use the linked purchase or, if missing, the expected value. Use “Assign purchase…” to link history purchase-first.",
     "realEstate": {
       "colLinkedPurchase": "Linked expense",
       "colLinkedMerchant": "Merchant",
@@ -1001,7 +1001,17 @@
       "merchantMatchHint": "likely merchant",
       "linkSourceAuto": "Linked automatically",
       "linkSourceManual": "Linked manually",
-      "expectedHint": "CSV expected: {{amount}}"
+      "expectedHint": "CSV expected: {{amount}}",
+      "assignAction": "Assign purchase…",
+      "assignModalTitle": "Assign a purchase",
+      "assignKindLabel": "Kind",
+      "assignSearchPlaceholder": "Search merchant…",
+      "assignConfirm": "Assign",
+      "noUnlinkedPurchases": "No unlinked purchases found",
+      "deleteEntryAction": "Delete row",
+      "deleteEntryConfirm": "Delete this bill row? Its link is removed too.",
+      "consumptionEditAction": "kWh/m³…",
+      "fromLedgerHint": "mortgage ledger"
     },
     "chartGranularityLabel": "Chart",
     "colDate": "Date",
@@ -1133,7 +1143,10 @@
       "internet": "Internet",
       "gastos_comunes": "HOA fees",
       "contribuciones": "Property tax",
-      "kwh": "kWh (reading)"
+      "kwh": "kWh (reading)",
+      "water": "Water",
+      "rent": "Rent",
+      "mortgage": "Mortgage"
     },
     "emptyAccount": "No expenses imported.",
     "chartTitle": "Expenses by apartment"

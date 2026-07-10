@@ -1,4 +1,5 @@
 import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { db } from "./db.js";
 import type {
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
@@ -35,7 +36,8 @@ export type RealEstateExpenseLinkDto = {
 };
 
 export type RealEstateBillSlot = {
-  expense_entry_id: number;
+  /** Null for read-only rows derived from the depto ledger (mortgage). */
+  expense_entry_id: number | null;
   account_slug: RealEstateApartmentSlug;
   bill_month: string;
   spent_on: string;
@@ -44,6 +46,8 @@ export type RealEstateBillSlot = {
   link: RealEstateExpenseLinkDto | null;
   display_amount_clp: number;
   note: string | null;
+  kwh: number | null;
+  m3: number | null;
   can_link: boolean;
 };
 
@@ -163,8 +167,49 @@ function expectationToSlot(
     link: link && linkedLine ? linkToDto(link, linkedLine) : null,
     display_amount_clp: displayAmountClp(exp.amount_clp, linkedLine),
     note: exp.note,
+    kwh: exp.kwh,
+    m3: exp.m3,
     can_link: exp.amount_clp > 0,
   };
+}
+
+/**
+ * Suecia's monthly dividendo as read-only slots sourced from the depto ledger (regular
+ * cuotas only — pie and prepagos are capital events, not monthly expenses). The cash
+ * cost is the component sum (amortización + interés + seguros); the movement's
+ * `amount_clp` is an equity mark, not the payment.
+ */
+function mortgageLedgerSlots(): RealEstateBillSlot[] {
+  const rows = db
+    .prepare(
+      `SELECT m.occurred_on,
+              COALESCE(p.amortizacion_clp, 0) + COALESCE(p.interes_clp, 0)
+                + COALESCE(p.incendio_clp, 0) + COALESCE(p.desgravamen_clp, 0) AS pago_clp
+       FROM movements m
+       JOIN depto_payments p ON p.movement_id = m.id
+       WHERE p.kind = 'dividendos'
+         AND LOWER(TRIM(p.cuota)) != 'pie'
+         AND p.cuota NOT LIKE 'prepago%'
+       ORDER BY m.occurred_on DESC`
+    )
+    .all() as { occurred_on: string; pago_clp: number }[];
+
+  return rows
+    .filter((r) => r.pago_clp > 0)
+    .map((r) => ({
+      expense_entry_id: null,
+      account_slug: "suecia" as const,
+      bill_month: monthKeyFromYmd(r.occurred_on),
+      spent_on: r.occurred_on,
+      kind: "mortgage",
+      expected_amount_clp: Math.round(r.pago_clp),
+      link: null,
+      display_amount_clp: Math.round(r.pago_clp),
+      note: null,
+      kwh: null,
+      m3: null,
+      can_link: false,
+    }));
 }
 
 function ensureAutoLinks(): Map<number, RealEstateLinkRow> {
@@ -185,9 +230,10 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
   const expectations = listRealEstateExpectations();
   const gastosLines = loadGastosLinesForRealEstateMatching();
 
-  const slots = expectations.map((exp) =>
-    expectationToSlot(exp, linksByEntry.get(exp.id), gastosLines)
-  );
+  const slots = expectations
+    .map((exp) => expectationToSlot(exp, linksByEntry.get(exp.id), gastosLines))
+    .concat(mortgageLedgerSlots())
+    .sort((a, b) => b.spent_on.localeCompare(a.spent_on));
 
   const by_account = {} as Record<RealEstateApartmentSlug, RealEstateExpenseAccountBlock>;
   for (const slug of ACCOUNT_ORDER) {
@@ -211,6 +257,55 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
     chart_yearly,
     total_clp,
   };
+}
+
+export type RealEstateUnlinkedPurchaseDto = {
+  purchase_key: string;
+  merchant: string | null;
+  purchase_on: string | null;
+  purchase_month: string;
+  amount_clp: number;
+  origin_label: string;
+  source: FlowCcExpenseLineSource;
+};
+
+const UNLINKED_PURCHASES_DEFAULT_LIMIT = 200;
+
+/**
+ * Eligible gastos lines with no real-estate link yet, newest first — the candidate pool
+ * for purchase-first assignment. `q` filters on merchant + origin label (case-insensitive
+ * substring); `month` restricts to a purchase month (YYYY-MM).
+ */
+export function listRealEstateUnlinkedPurchases(opts?: {
+  q?: string;
+  month?: string;
+  limit?: number;
+}): RealEstateUnlinkedPurchaseDto[] {
+  const gastosLines = loadGastosLinesForRealEstateMatching();
+  const linkedKeys = new Set([...loadExistingLinks().values()].map((l) => l.purchase_key));
+  const q = (opts?.q ?? "").trim().toLowerCase();
+  const month = (opts?.month ?? "").trim();
+  const limit = Math.max(1, Math.min(opts?.limit ?? UNLINKED_PURCHASES_DEFAULT_LIMIT, 1000));
+
+  return gastosLines
+    .filter((ln) => !linkedKeys.has(ln.purchase_key))
+    .filter((ln) => (month ? purchaseMonthForLine(ln) === month : true))
+    .filter((ln) =>
+      q
+        ? `${ln.merchant ?? ""} ${ln.origin_label ?? ""}`.toLowerCase().includes(q)
+        : true
+    )
+    .sort((a, b) => (b.purchase_on ?? "").localeCompare(a.purchase_on ?? ""))
+    .slice(0, limit)
+    .map((ln) => ({
+      purchase_key: ln.purchase_key,
+      merchant: ln.merchant,
+      purchase_on: ln.purchase_on,
+      purchase_month: purchaseMonthForLine(ln),
+      amount_clp: ln.amount_clp,
+      origin_label: ln.origin_label ?? "",
+      source: ln.source,
+    }));
 }
 
 export function listRealEstateLinkCandidates(expenseEntryId: number): RealEstateLinkCandidateDto[] {

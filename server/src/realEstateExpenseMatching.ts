@@ -8,8 +8,10 @@ import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import {
   merchantMatchesExpectation,
+  REAL_ESTATE_LINKABLE_KINDS,
   type RealEstateApartmentSlug,
 } from "./realEstateExpenseMerchants.js";
+import { monthEndUtcYmd } from "./calendarMonth.js";
 
 const GASTOS_INSTALLMENT_MODE = "split" as const;
 
@@ -23,6 +25,8 @@ export type ExpenseExpectationRow = {
   spent_on: string;
   category: string | null;
   note: string | null;
+  kwh: number | null;
+  m3: number | null;
   expense_account_id: number;
   account_slug: RealEstateApartmentSlug;
 };
@@ -363,6 +367,112 @@ export function manualLinkRealEstateExpense(
   return { expense_entry_id: expenseEntryId, purchase_key: purchaseKey, link_source: "manual" };
 }
 
+/** Set the consumption metadata (kWh / m³) on a real-estate bill entry. */
+export function updateRealEstateExpenseConsumption(
+  expenseEntryId: number,
+  values: { kwh: number | null; m3: number | null }
+): void {
+  const exp = loadExpectationById(expenseEntryId);
+  if (!exp) throw new Error("expense entry not found");
+  for (const v of [values.kwh, values.m3]) {
+    if (v != null && (!Number.isFinite(v) || v < 0)) {
+      throw new Error("kwh/m3 must be non-negative numbers");
+    }
+  }
+  db.prepare(`UPDATE expense_entries SET kwh = ?, m3 = ? WHERE id = ?`).run(
+    values.kwh,
+    values.m3,
+    expenseEntryId
+  );
+}
+
+export type AssignPurchaseToRealEstateOpts = {
+  purchaseKey: string;
+  accountSlug: RealEstateApartmentSlug;
+  kind: string;
+  /** Bill month YYYY-MM; defaults to the purchase month (offset 0). */
+  billMonth?: string;
+  kwh?: number | null;
+  m3?: number | null;
+};
+
+/**
+ * Purchase-first linking: create the bill expectation FROM an unlinked purchase (amount
+ * and default month taken from the purchase) plus the manual link, in one transaction.
+ * This is how history with no imported bills (el vergel, rents) gets covered — no
+ * amounts are invented, the purchase itself is the record.
+ */
+export function assignPurchaseToRealEstateExpense(
+  opts: AssignPurchaseToRealEstateOpts
+): { expense_entry_id: number; link: RealEstateLinkRow } {
+  if (!REAL_ESTATE_LINKABLE_KINDS.includes(opts.kind as (typeof REAL_ESTATE_LINKABLE_KINDS)[number])) {
+    throw new Error(`kind must be one of: ${REAL_ESTATE_LINKABLE_KINDS.join(", ")}`);
+  }
+  const account = db
+    .prepare(
+      `SELECT a.id FROM expense_accounts a JOIN expense_groups g ON g.id = a.group_id
+       WHERE g.slug = 'real_estate' AND a.slug = ?`
+    )
+    .get(opts.accountSlug) as { id: number } | undefined;
+  if (!account) throw new Error(`unknown real-estate expense account: ${opts.accountSlug}`);
+
+  const gastosLines = loadGastosLinesForRealEstateMatching();
+  const line = gastosLines.find((ln) => ln.purchase_key === opts.purchaseKey);
+  if (!line) throw new Error("purchase not found or not eligible");
+  if (loadLinkedPurchaseKeys().has(opts.purchaseKey)) throw new Error("purchase already linked");
+
+  const purchaseMonth = purchaseMonthForLine(line);
+  const billMonth = opts.billMonth ?? purchaseMonth;
+  if (!/^\d{4}-\d{2}$/.test(billMonth)) throw new Error("bill_month must be YYYY-MM");
+  if (!purchaseMonthMatchesBillSlot(billMonth, purchaseMonth)) {
+    throw new Error("purchase month does not match bill slot window");
+  }
+  for (const v of [opts.kwh, opts.m3]) {
+    if (v != null && (!Number.isFinite(v) || v < 0)) {
+      throw new Error("kwh/m3 must be non-negative numbers");
+    }
+  }
+
+  const noteParts = [line.merchant ?? opts.purchaseKey, line.purchase_on ?? purchaseMonth];
+  const note = `Asignado desde compra — ${noteParts.join(" · ")}`;
+
+  let entryId = 0;
+  const tx = db.transaction(() => {
+    const r = db
+      .prepare(
+        `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id, kwh, m3)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        line.amount_clp,
+        monthEndUtcYmd(billMonth),
+        opts.kind,
+        note,
+        account.id,
+        opts.kwh ?? null,
+        opts.m3 ?? null
+      );
+    entryId = Number(r.lastInsertRowid);
+    db.prepare(
+      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
+       VALUES (?, ?, 'manual')`
+    ).run(entryId, opts.purchaseKey);
+  });
+  tx();
+
+  return {
+    expense_entry_id: entryId,
+    link: { expense_entry_id: entryId, purchase_key: opts.purchaseKey, link_source: "manual" },
+  };
+}
+
+/** Delete a bill entry outright (link + rejections cascade). For rows created by assign. */
+export function deleteRealEstateExpenseEntry(expenseEntryId: number): void {
+  const exp = loadExpectationById(expenseEntryId);
+  if (!exp) throw new Error("expense entry not found");
+  db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(expenseEntryId);
+}
+
 export function unmatchRealEstateExpense(expenseEntryId: number): void {
   const row = db
     .prepare(
@@ -386,7 +496,7 @@ export function unmatchRealEstateExpense(expenseEntryId: number): void {
 export function loadExpectationById(expenseEntryId: number): ExpenseExpectationRow | null {
   const row = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.expense_account_id, a.slug AS account_slug
+      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id
@@ -406,7 +516,7 @@ export function loadExpectationById(expenseEntryId: number): ExpenseExpectationR
 export function listRealEstateExpectations(): ExpenseExpectationRow[] {
   const rows = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.expense_account_id, a.slug AS account_slug
+      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id

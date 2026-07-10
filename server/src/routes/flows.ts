@@ -33,8 +33,19 @@ import {
   listPayrollLinkCandidates,
 } from "../payrollWorkEarningsLinking.js";
 import { normalizeManualExpenseNote, validateManualExpenseCategorySlug } from "../flowsManualExpenses.js";
-import { buildRealEstateExpensesPayload, listRealEstateLinkCandidates } from "../flowsRealEstateExpenses.js";
-import { manualLinkRealEstateExpense, unmatchRealEstateExpense } from "../realEstateExpenseMatching.js";
+import {
+  buildRealEstateExpensesPayload,
+  listRealEstateLinkCandidates,
+  listRealEstateUnlinkedPurchases,
+} from "../flowsRealEstateExpenses.js";
+import {
+  assignPurchaseToRealEstateExpense,
+  deleteRealEstateExpenseEntry,
+  manualLinkRealEstateExpense,
+  unmatchRealEstateExpense,
+  updateRealEstateExpenseConsumption,
+} from "../realEstateExpenseMatching.js";
+import type { RealEstateApartmentSlug } from "../realEstateExpenseMerchants.js";
 import {
   isFiniteNumber,
   isPositiveFiniteNumber,
@@ -325,6 +336,79 @@ app.delete("/api/flows/expenses/real-estate/links/:expenseEntryId", (req, res) =
     res.status(204).send();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "unmatch failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.get("/api/flows/expenses/real-estate/unlinked-purchases", (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q : undefined;
+  const month = typeof req.query.month === "string" ? req.query.month : undefined;
+  const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
+  res.json({ purchases: listRealEstateUnlinkedPurchases({ q, month, limit }) });
+});
+
+app.post("/api/flows/expenses/real-estate/assign", (req, res) => {
+  const body = req.body as {
+    purchase_key?: string;
+    account_slug?: string;
+    kind?: string;
+    bill_month?: string;
+    kwh?: number | null;
+    m3?: number | null;
+  };
+  const purchaseKey = String(body.purchase_key ?? "").trim();
+  const accountSlug = String(body.account_slug ?? "").trim();
+  const kind = String(body.kind ?? "").trim();
+  if (!purchaseKey || !accountSlug || !kind) {
+    res.status(400).json({ error: "purchase_key, account_slug and kind required" });
+    return;
+  }
+  try {
+    const result = assignPurchaseToRealEstateExpense({
+      purchaseKey,
+      accountSlug: accountSlug as RealEstateApartmentSlug,
+      kind,
+      billMonth: typeof body.bill_month === "string" ? body.bill_month : undefined,
+      kwh: body.kwh ?? null,
+      m3: body.m3 ?? null,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "assign failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/consumption", (req, res) => {
+  const expenseEntryId = Number(req.params.expenseEntryId);
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
+    res.status(400).json({ error: "invalid expense entry id" });
+    return;
+  }
+  const body = req.body as { kwh?: number | null; m3?: number | null };
+  try {
+    updateRealEstateExpenseConsumption(expenseEntryId, {
+      kwh: body.kwh ?? null,
+      m3: body.m3 ?? null,
+    });
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "update failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.delete("/api/flows/expenses/real-estate/entries/:expenseEntryId", (req, res) => {
+  const expenseEntryId = Number(req.params.expenseEntryId);
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
+    res.status(400).json({ error: "invalid expense entry id" });
+    return;
+  }
+  try {
+    deleteRealEstateExpenseEntry(expenseEntryId);
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "delete failed";
     res.status(400).json({ error: msg });
   }
 });

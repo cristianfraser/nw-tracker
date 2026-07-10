@@ -1,25 +1,44 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ExpensesByApartmentChart } from "../components/charts/ExpensesByApartmentChart";
+import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
-import { formatClp } from "../format";
+import { formatClp, formatGroupedDecimalTrimmed } from "../format";
 import { expenseApartmentLabel, expenseKindLabel, useTranslation } from "../i18n";
 import { useRealEstateExpenses } from "../queries/hooks";
-import { useUnmatchRealEstateExpenseMutation } from "../queries/mutations";
+import {
+  useDeleteRealEstateExpenseEntryMutation,
+  useUnmatchRealEstateExpenseMutation,
+  useUpdateRealEstateConsumptionMutation,
+} from "../queries/mutations";
 import type { ExpenseApartmentSlug, RealEstateBillSlot } from "../types";
 
 const ACCOUNT_ORDER: ExpenseApartmentSlug[] = ["el_vergel", "lastarria", "suecia"];
 
+/** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
+const CONSUMPTION_KINDS = new Set(["electricidad", "gas", "kwh"]);
+
 function formatAmountCell(slot: RealEstateBillSlot): string {
-  if (slot.kind === "kwh") return slot.note?.includes("kwh=") ? slot.note.split("kwh=")[1]?.split("|")[0] ?? "—" : "—";
+  if (slot.kind === "kwh") {
+    return slot.kwh != null ? formatGroupedDecimalTrimmed(slot.kwh) : "—";
+  }
   if (slot.display_amount_clp <= 0 && slot.expected_amount_clp <= 0) return "—";
   if (slot.link) return formatClp(slot.link.amount_clp);
   return formatClp(slot.expected_amount_clp);
 }
 
+function consumptionLabel(slot: RealEstateBillSlot): string | null {
+  if (slot.kind === "kwh") return null; // the reading IS the amount cell
+  const parts: string[] = [];
+  if (slot.kwh != null) parts.push(`${formatGroupedDecimalTrimmed(slot.kwh)} kWh`);
+  if (slot.m3 != null) parts.push(`${formatGroupedDecimalTrimmed(slot.m3)} m³`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => string): string {
+  if (slot.expense_entry_id == null) return t("expenses.realEstate.fromLedgerHint");
   if (!slot.link) return t("expenses.realEstate.unlinked");
   const parts = [
     slot.link.merchant ?? "—",
@@ -38,9 +57,29 @@ export function RealEstateExpensesPage() {
   const { accountSlug } = useParams<{ accountSlug?: string }>();
   const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
+  const [assignSlug, setAssignSlug] = useState<ExpenseApartmentSlug | null>(null);
+  const [editing, setEditing] = useState<{ id: number; kwh: string; m3: string } | null>(null);
   const { data, error } = useRealEstateExpenses();
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
+  const consumptionMutation = useUpdateRealEstateConsumptionMutation();
+  const deleteEntryMutation = useDeleteRealEstateExpenseEntryMutation();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+
+  const saveConsumption = async () => {
+    if (!editing) return;
+    const parse = (s: string): number | null => {
+      const trimmed = s.trim();
+      if (!trimmed) return null;
+      const n = Number(trimmed.replace(",", "."));
+      return Number.isFinite(n) ? n : null;
+    };
+    await consumptionMutation.mutateAsync({
+      expense_entry_id: editing.id,
+      kwh: parse(editing.kwh),
+      m3: parse(editing.m3),
+    });
+    setEditing(null);
+  };
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -141,6 +180,14 @@ export function RealEstateExpensesPage() {
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatClp(acc.total_clp)}
               </span>
+              <button
+                type="button"
+                className="btn"
+                style={{ marginLeft: "0.75rem", fontSize: "0.8rem" }}
+                onClick={() => setAssignSlug(acc.account_slug)}
+              >
+                {t("expenses.realEstate.assignAction")}
+              </button>
             </h4>
             <Table
               tableStyle={{ fontSize: "0.85rem" }}
@@ -164,7 +211,7 @@ export function RealEstateExpensesPage() {
                 </tr>
               ) : (
                 acc.slots.map((slot) => (
-                  <tr key={slot.expense_entry_id}>
+                  <tr key={slot.expense_entry_id ?? `${slot.kind}|${slot.spent_on}`}>
                     <td className="mono">{slot.bill_month}</td>
                     <td>{expenseKindLabel(slot.kind)}</td>
                     <td className="mono">
@@ -178,6 +225,50 @@ export function RealEstateExpensesPage() {
                           })}
                         </span>
                       ) : null}
+                      {editing != null && editing.id === slot.expense_entry_id ? (
+                        <span
+                          style={{
+                            display: "flex",
+                            gap: "0.35rem",
+                            alignItems: "center",
+                            marginTop: "0.25rem",
+                          }}
+                        >
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={editing.kwh}
+                            placeholder="kWh"
+                            style={{ width: "5rem" }}
+                            onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
+                          />
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={editing.m3}
+                            placeholder="m³"
+                            style={{ width: "5rem" }}
+                            onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
+                          />
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={consumptionMutation.isPending}
+                            onClick={() => void saveConsumption()}
+                          >
+                            {t("common.save")}
+                          </button>
+                          <button type="button" className="btn" onClick={() => setEditing(null)}>
+                            {t("common.cancel")}
+                          </button>
+                        </span>
+                      ) : (
+                        consumptionLabel(slot) && (
+                          <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                            {consumptionLabel(slot)}
+                          </span>
+                        )
+                      )}
                     </td>
                     <td
                       className={slot.link ? undefined : "muted"}
@@ -193,29 +284,60 @@ export function RealEstateExpensesPage() {
                       ) : null}
                     </td>
                     <td>
-                      {slot.can_link ? (
-                        slot.link ? (
-                          <button
-                            type="button"
-                            className="btn"
-                            disabled={unmatchMutation.isPending}
-                            onClick={() =>
-                              void unmatchMutation.mutateAsync(slot.expense_entry_id)
-                            }
-                          >
-                            {t("expenses.realEstate.unlinkAction")}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => setLinkSlot(slot)}
-                          >
-                            {t("expenses.realEstate.linkAction")}
-                          </button>
-                        )
-                      ) : (
+                      {slot.expense_entry_id == null ? (
                         "—"
+                      ) : (
+                        <span style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                          {slot.can_link ? (
+                            slot.link ? (
+                              <button
+                                type="button"
+                                className="btn"
+                                disabled={unmatchMutation.isPending}
+                                onClick={() =>
+                                  void unmatchMutation.mutateAsync(slot.expense_entry_id!)
+                                }
+                              >
+                                {t("expenses.realEstate.unlinkAction")}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => setLinkSlot(slot)}
+                              >
+                                {t("expenses.realEstate.linkAction")}
+                              </button>
+                            )
+                          ) : null}
+                          {CONSUMPTION_KINDS.has(slot.kind) ? (
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() =>
+                                setEditing({
+                                  id: slot.expense_entry_id!,
+                                  kwh: slot.kwh != null ? String(slot.kwh) : "",
+                                  m3: slot.m3 != null ? String(slot.m3) : "",
+                                })
+                              }
+                            >
+                              {t("expenses.realEstate.consumptionEditAction")}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={deleteEntryMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm(t("expenses.realEstate.deleteEntryConfirm"))) {
+                                void deleteEntryMutation.mutateAsync(slot.expense_entry_id!);
+                              }
+                            }}
+                          >
+                            {t("expenses.realEstate.deleteEntryAction")}
+                          </button>
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -233,6 +355,11 @@ export function RealEstateExpensesPage() {
         slot={linkSlot}
         open={linkSlot != null}
         onClose={() => setLinkSlot(null)}
+      />
+      <RealEstateAssignPurchaseModal
+        accountSlug={assignSlug}
+        open={assignSlug != null}
+        onClose={() => setAssignSlug(null)}
       />
     </>
   );

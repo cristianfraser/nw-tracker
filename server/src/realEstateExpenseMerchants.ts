@@ -9,7 +9,22 @@ export type RealEstateBillKind =
   | "gastos_comunes"
   | "contribuciones"
   | "kwh"
-  | "water";
+  | "water"
+  | "rent";
+
+/**
+ * Kinds a purchase can be assigned/linked to. Excludes `kwh` (meter readings, no bill
+ * amount) and the read-only `mortgage` slots the payload derives from the depto ledger.
+ */
+export const REAL_ESTATE_LINKABLE_KINDS: readonly RealEstateBillKind[] = [
+  "gas",
+  "electricidad",
+  "internet",
+  "gastos_comunes",
+  "contribuciones",
+  "water",
+  "rent",
+];
 
 const GLOBAL_KIND_PATTERNS: Partial<Record<RealEstateBillKind, readonly string[]>> = {
   electricidad: ["ENEL"],
