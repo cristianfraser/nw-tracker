@@ -21,6 +21,7 @@ import {
   sidebarNodeMatchesPath,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
+import { PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
 
@@ -252,39 +253,24 @@ export function AppSidebar() {
   const unreadPill = unreadBadgeLabel(unreadCount);
 
   const panelNode = useMemo((): SidebarNavNode => {
-    const notifications: SidebarNavNode = {
-      id: "panel.notifications",
-      label: t("sidebar.notifications"),
-      to: "/panel/notifications",
-      end: true,
-      ...(unreadPill
-        ? {
-          badge: unreadPill,
-          badgeAriaLabel: t("notifications.unreadBadge", { count: unreadCount }),
-        }
-        : {}),
-    };
     return {
       id: "panel",
       label: t("sidebar.controlPanel"),
       to: "/panel",
       activePrefix: "/panel",
       showLeafHyphen: false,
-      children: [
-        notifications,
-        {
-          id: "panel.accounts",
-          label: t("sidebar.accounts"),
-          to: "/panel/accounts",
-          end: true,
-        },
-        {
-          id: "panel.import-sync",
-          label: t("sidebar.importSync"),
-          to: "/panel/import-sync",
-          end: true,
-        },
-      ],
+      children: PANEL_SUBROUTES.map((route) => ({
+        id: `panel.${route.slug}`,
+        label: t(route.labelKey),
+        to: `/panel/${route.slug}`,
+        end: true,
+        ...(route.slug === "notifications" && unreadPill
+          ? {
+            badge: unreadPill,
+            badgeAriaLabel: t("notifications.unreadBadge", { count: unreadCount }),
+          }
+          : {}),
+      })),
     };
   }, [t, unreadCount, unreadPill]);
 
