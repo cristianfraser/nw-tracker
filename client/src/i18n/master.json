@@ -880,6 +880,20 @@
       "en": "Delete account #{{id}} ({{name}})? This cannot be undone.",
       "es": "¿Eliminar la cuenta #{{id}} ({{name}})? Esta acción no se puede deshacer."
     },
+    "editBtn": {
+      "en": "Edit",
+      "es": "Editar"
+    },
+    "editModal": {
+      "title": {
+        "en": "Edit account #{{id}}",
+        "es": "Editar cuenta #{{id}}"
+      },
+      "keepBucket": {
+        "en": "(keep current group)",
+        "es": "(mantener grupo actual)"
+      }
+    },
     "emptyAccounts": {
       "en": "No accounts.",
       "es": "No hay cuentas."
@@ -2813,6 +2827,10 @@
     "saving": {
       "en": "Saving…",
       "es": "Guardando…"
+    },
+    "cancel": {
+      "en": "Cancel",
+      "es": "Cancelar"
     },
     "close": {
       "en": "Close",

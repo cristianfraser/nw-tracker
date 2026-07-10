@@ -26,7 +26,12 @@ import { accountUsesEquityMtm } from "../brokerageEquityMtm.js";
 import { equityTickerForAccount } from "../accountEquityTicker.js";
 import { equityQuoteCurrency } from "../equityQuote.js";
 import { syncEquityEodFromYahoo } from "../equityEodSync.js";
-import { createPanelAccount, type PanelAccountCreateBody } from "../createPanelAccount.js";
+import {
+  createPanelAccount,
+  updatePanelAccount,
+  type PanelAccountCreateBody,
+  type PanelAccountUpdateBody,
+} from "../createPanelAccount.js";
 import { NOTE_STOCKS_LEGACY } from "../brokerageAcciones.js";
 import { attachColorsToValuationPayload, prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
@@ -184,6 +189,22 @@ app.delete("/api/accounts/:id", (req, res) => {
       return;
     }
     res.status(500).json({ error: msg });
+  }
+});
+
+app.patch("/api/accounts/:id", (req, res) => {
+  const id = operationalAccountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  try {
+    const result = updatePanelAccount(id, (req.body ?? {}) as PanelAccountUpdateBody);
+    res.json(result);
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+    res.status(status).json({ error: err.message || "update account failed" });
   }
 });
 

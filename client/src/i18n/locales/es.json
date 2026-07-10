@@ -259,6 +259,11 @@
     "colAccounts": "N cuentas",
     "deleteBtn": "Eliminar",
     "deleteConfirm": "¿Eliminar la cuenta #{{id}} ({{name}})? Esta acción no se puede deshacer.",
+    "editBtn": "Editar",
+    "editModal": {
+      "title": "Editar cuenta #{{id}}",
+      "keepBucket": "(mantener grupo actual)"
+    },
     "emptyAccounts": "No hay cuentas.",
     "emptyTree": "No se encontró el bucket maestro de patrimonio neto en el árbol de navegación.",
     "flowKinds": {
@@ -804,6 +809,7 @@
     "backToDashboard": "← Panel",
     "save": "Guardar",
     "saving": "Guardando…",
+    "cancel": "Cancelar",
     "close": "Cerrar"
   },
   "flows": {

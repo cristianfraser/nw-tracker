@@ -55,6 +55,20 @@ function fail(status: number, error: string): never {
   throw err;
 }
 
+/** Bucket (portfolio nav leaf) → backing asset-group parent slug; throws 400 on liability/unknown. */
+function resolveBucketParentAssetSlug(bucketSlug: string, verb: "create" | "move"): string {
+  const pg = portfolioGroupBySlug(bucketSlug);
+  if (!pg) fail(400, `unknown bucket ${bucketSlug}`);
+  if (pg.group_kind === "liability_group") {
+    fail(400, `cannot ${verb} accounts under a liability bucket`);
+  }
+  const parentAssetSlug = (pg.asset_group_slug ?? "").trim() || bucketSlug;
+  if (!assetGroupBySlug(parentAssetSlug)) {
+    fail(400, `bucket ${bucketSlug} has no backing asset group`);
+  }
+  return parentAssetSlug;
+}
+
 function slugify(raw: string): string {
   return raw
     .trim()
@@ -74,15 +88,7 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
   // Resolve the chosen bucket (portfolio nav slug) to its asset-group parent.
   const bucketSlug = (acc.bucket_slug ?? "").trim();
   if (!bucketSlug) fail(400, "account.bucket_slug is required");
-  const pg = portfolioGroupBySlug(bucketSlug);
-  if (!pg) fail(400, `unknown bucket ${bucketSlug}`);
-  if (pg.group_kind === "liability_group") {
-    fail(400, "cannot create accounts under a liability bucket");
-  }
-  const parentAssetSlug = (pg.asset_group_slug ?? "").trim() || bucketSlug;
-  if (!assetGroupBySlug(parentAssetSlug)) {
-    fail(400, `bucket ${bucketSlug} has no backing asset group`);
-  }
+  const parentAssetSlug = resolveBucketParentAssetSlug(bucketSlug, "create");
 
   const isEquity = type === "equity" || type === "crypto";
 
@@ -187,5 +193,137 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     asset_group_id: assetGroupId,
     created_leaf_bucket: createdLeafBucket,
     ticker,
+  };
+}
+
+export type PanelAccountUpdateBody = {
+  name?: unknown;
+  bucket_slug?: unknown;
+};
+
+export type PanelAccountUpdateResult = {
+  account_id: number;
+  name: string;
+  asset_group_id: number;
+  /** Leaf `asset_groups.slug` after the update. */
+  bucket_slug: string;
+  created_leaf_bucket: boolean;
+};
+
+const assetGroupByIdStmt = db.prepare(
+  `SELECT id, slug, parent_id FROM asset_groups WHERE id = ?`
+);
+
+/**
+ * Category key the leaf bucket was created with: leaf slug minus the nearest ancestor-slug
+ * prefix (handles reparented sub-buckets, e.g. `cash_eqs__cuenta_corriente` under
+ * `cash_eqs__checking_accounts` → `cuenta_corriente`). Falls back to the full leaf slug.
+ */
+function leafCategoryKey(leafSlug: string, leafParentId: number | null): string {
+  let parentId = leafParentId;
+  while (parentId != null) {
+    const parent = assetGroupByIdStmt.get(parentId) as
+      | { id: number; slug: string; parent_id: number | null }
+      | undefined;
+    if (!parent) break;
+    if (leafSlug.startsWith(`${parent.slug}__`)) return leafSlug.slice(parent.slug.length + 2);
+    parentId = parent.parent_id;
+  }
+  return leafSlug;
+}
+
+/**
+ * Panel → Accounts edit: rename and/or move to another non-liability leaf bucket. A move
+ * re-files the account on a leaf under the new bucket's asset group (same category key, so
+ * `accountBucketKindSlug` behavior is preserved — enforced, not assumed) and reseeds the nav tree.
+ */
+export function updatePanelAccount(
+  accountId: number,
+  body: PanelAccountUpdateBody
+): PanelAccountUpdateResult {
+  const acc = db
+    .prepare(
+      `SELECT a.id, a.name, a.account_kind, a.asset_group_id,
+              g.slug AS leaf_slug, g.parent_id AS leaf_parent_id
+       FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id = ?`
+    )
+    .get(accountId) as
+    | {
+        id: number;
+        name: string;
+        account_kind: string;
+        asset_group_id: number;
+        leaf_slug: string;
+        leaf_parent_id: number | null;
+      }
+    | undefined;
+  if (!acc) fail(404, "account not found");
+  if (acc.account_kind === "liability_view") {
+    fail(400, "liability-view accounts are edited via their master account");
+  }
+
+  const hasName = body.name !== undefined;
+  const hasBucket = body.bucket_slug !== undefined;
+  if (!hasName && !hasBucket) fail(400, "nothing to update: pass name and/or bucket_slug");
+
+  let name = acc.name;
+  if (hasName) {
+    if (typeof body.name !== "string" || !body.name.trim()) {
+      fail(400, "name must be a non-empty string");
+    }
+    name = body.name.trim();
+  }
+
+  let assetGroupId = acc.asset_group_id;
+  let leafSlug = acc.leaf_slug;
+  let createdLeafBucket = false;
+  let movedBucket = false;
+
+  if (hasBucket) {
+    if (typeof body.bucket_slug !== "string" || !body.bucket_slug.trim()) {
+      fail(400, "bucket_slug must be a non-empty string");
+    }
+    const bucketSlug = body.bucket_slug.trim();
+    const parentAssetSlug = resolveBucketParentAssetSlug(bucketSlug, "move");
+
+    const currentKind = accountBucketKindSlug(acc.leaf_slug);
+    if (currentKind === "credit_card") {
+      fail(400, "credit-card accounts cannot move between buckets");
+    }
+
+    const categoryKey = leafCategoryKey(acc.leaf_slug, acc.leaf_parent_id);
+    const newLeafSlug =
+      parentAssetSlug === categoryKey ? categoryKey : `${parentAssetSlug}__${categoryKey}`;
+    if (newLeafSlug !== acc.leaf_slug) {
+      // Fail fast: the move must not change the account's behavior kind (afp, clp, ticker, …).
+      const newKind = accountBucketKindSlug(newLeafSlug);
+      if (newKind !== currentKind) {
+        fail(400, `moving to ${bucketSlug} would change the account kind (${currentKind} → ${newKind})`);
+      }
+      const ensured = ensureChildAssetGroupId(parentAssetSlug, categoryKey, name);
+      assetGroupId = ensured.id;
+      createdLeafBucket = ensured.created;
+      leafSlug = newLeafSlug;
+      movedBucket = true;
+    }
+  }
+
+  db.prepare(`UPDATE accounts SET name = ?, asset_group_id = ? WHERE id = ?`).run(
+    name,
+    assetGroupId,
+    accountId
+  );
+
+  clearAggregationCache();
+  if (movedBucket) seedNavTree();
+
+  return {
+    account_id: accountId,
+    name,
+    asset_group_id: assetGroupId,
+    bucket_slug: leafSlug,
+    created_leaf_bucket: createdLeafBucket,
   };
 }

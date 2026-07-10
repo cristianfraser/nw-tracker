@@ -3,13 +3,14 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AddAccountForm } from "../../components/panel/AddAccountForm";
 import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountExcludeFromTotalsToggle";
+import { EditAccountModal } from "../../components/panel/EditAccountModal";
 import { Table } from "../../components/ui/Table";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
 import { useAccountsAll, usePanelNetWorthTree } from "../../queries/hooks";
 import { countAccountsInNavSubtree } from "../../panelAccounts/portfolioNavBuckets";
 import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
-import type { NavTreeNodeDto } from "../../types";
+import type { AccountListRow, NavTreeNodeDto } from "../../types";
 
 function PortfolioGroupTableRows({
   node,
@@ -53,6 +54,7 @@ export function AccountsPanelPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [editingAccount, setEditingAccount] = useState<AccountListRow | null>(null);
   const { data: accountsData, error: accountsError, isPending: accountsPending } = useAccountsAll();
   const {
     data: panelTreeData,
@@ -145,6 +147,9 @@ export function AccountsPanelPage() {
                 />
               </td>
               <td>
+                <button type="button" onClick={() => setEditingAccount(a)}>
+                  {t("panelAccounts.editBtn")}
+                </button>{" "}
                 <button
                   type="button"
                   onClick={() => void onDeleteAccount(a.id, a.name)}
@@ -193,6 +198,15 @@ export function AccountsPanelPage() {
       ) : (
         <p className="muted">{t("panelAccounts.emptyTree")}</p>
       )}
+
+      {editingAccount ? (
+        <EditAccountModal
+          key={editingAccount.id}
+          account={editingAccount}
+          netWorthRoot={netWorthNode}
+          onClose={() => setEditingAccount(null)}
+        />
+      ) : null}
     </>
   );
 }
