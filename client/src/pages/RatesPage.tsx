@@ -76,12 +76,6 @@ function instrumentValue(
 
 const RATES_RECENT_ROWS = 5;
 
-function formatSeriesDateYmd(ymd: string): string {
-  const d = new Date(`${ymd}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return ymd;
-  return d.toLocaleDateString("es-CL", { dateStyle: "short" });
-}
-
 function lastSeriesEntries(
   data: readonly { date: string; value: number }[],
   limit = RATES_RECENT_ROWS
@@ -129,7 +123,7 @@ function RatesRecentEntriesTable({
         ) : (
           rows.map((r) => (
             <tr key={r.date}>
-              <td className="mono">{formatSeriesDateYmd(r.date)}</td>
+              <td className="mono">{r.date}</td>
               <td className="mono" style={{ textAlign: "right" }}>
                 {valueFormatter(r.value)}
               </td>

@@ -4,14 +4,15 @@ import i18n from "../../i18n";
 import type { SyncSourceDisplayStatus, SyncStatusResponse } from "../../types";
 import { cn } from "../../cn";
 import { useSyncForceStaleMutation } from "../../queries/hooks";
+import { formatDateTimeLabel } from "../../formatDateLabel";
 import { Table } from "../ui/Table";
 import { formatDayKindLabel, formatNextSyncLabel } from "./formatSyncSchedule";
 import styles from "./SyncLogStatusPanel.module.css";
 
-function formatWhenEs(iso: string): string {
+function formatWhen(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  return formatDateTimeLabel(d);
 }
 
 function parseCreatedAtMs(iso: string): number {
@@ -19,8 +20,8 @@ function parseCreatedAtMs(iso: string): number {
   return d.getTime();
 }
 
-function formatRemainingEs(ms: number): string {
-  if (ms <= 0) return "ahora";
+function formatRemaining(ms: number): string {
+  if (ms <= 0) return i18n.t("importSync.sync.agoNow");
   const totalSec = Math.ceil(ms / 1000);
   if (totalSec < 60) return `${totalSec} s`;
   const min = Math.floor(totalSec / 60);
@@ -71,7 +72,7 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
     const atMs = parseCreatedAtMs(status.last_sync_at);
     if (Number.isNaN(atMs)) return t("importSync.sync.lastSyncNever");
     return t("importSync.sync.lastSync", {
-      time: formatWhenEs(status.last_sync_at),
+      time: formatWhen(status.last_sync_at),
       ago: formatAgoEs(nowMs - atMs),
     });
   }, [status.last_sync_at, nowMs, t]);
@@ -82,9 +83,9 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
     if (sched.in_flight) return t("importSync.sync.inFlight");
     if (!sched.next_check_at) return t("importSync.sync.nextCheckUnknown");
     const at = parseCreatedAtMs(sched.next_check_at);
-    const remaining = formatRemainingEs(at - nowMs);
+    const remaining = formatRemaining(at - nowMs);
     return t("importSync.sync.nextCheck", {
-      time: formatWhenEs(sched.next_check_at),
+      time: formatWhen(sched.next_check_at),
       remaining,
     });
   }, [status.scheduler, nowMs, t]);
