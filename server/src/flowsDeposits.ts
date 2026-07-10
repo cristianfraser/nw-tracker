@@ -100,7 +100,7 @@ export function listDepositFlowAccounts(includeExcludedFromGroupTotals = false):
       `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.notes IS NULL OR a.notes != ?)
+       WHERE (a.import_key IS NULL OR a.import_key != ?)
         ${excludedClause}
          AND g.slug != 'individual_stocks'
        ORDER BY g.sort_order, a.name`

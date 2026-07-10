@@ -13,10 +13,8 @@ import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSplits.js";
-import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
-import { isMirrorMergeNote } from "./movementMirrorConvert.js";
 import {
   loadNetWorthCapitalReturnLedgerOutflows,
   netWorthCapitalLedgerOutflowPairKey,
@@ -260,24 +258,26 @@ export function loadInternalNetWorthTransferOutflowKeys(
 ): Set<string> {
   const rows = db
     .prepare(
-      `SELECT from_account_id, to_account_id, occurred_on, amount_clp, note
-       FROM movements
-       WHERE account_id IS NULL
-         AND from_account_id IS NOT NULL
-         AND to_account_id IS NOT NULL
-         AND amount_clp != 0`
+      `SELECT m.id, m.from_account_id, m.to_account_id, m.occurred_on, m.amount_clp,
+              EXISTS (SELECT 1 FROM movement_mirror_merges mm WHERE mm.transfer_movement_id = m.id) AS is_mirror_merge
+       FROM movements m
+       WHERE m.account_id IS NULL
+         AND m.from_account_id IS NOT NULL
+         AND m.to_account_id IS NOT NULL
+         AND m.amount_clp != 0`
     )
     .all() as {
+    id: number;
     from_account_id: number;
     to_account_id: number;
     occurred_on: string;
     amount_clp: number;
-    note: string | null;
+    is_mirror_merge: number;
   }[];
   const out = new Set<string>();
   for (const r of rows) {
     if (!netWorthAccountIds.has(r.from_account_id)) continue;
-    const selfResolves = isMirrorMergeNote(r.note);
+    const selfResolves = r.is_mirror_merge === 1;
     if (!selfResolves) {
       if (!netWorthAccountIds.has(r.to_account_id)) continue;
       if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
@@ -325,7 +325,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     if (m.flow_kind != null && NON_CAPITAL_FLOW_KINDS.has(m.flow_kind)) continue;
     // APV-A "aporte estatal" — the yearly state match, not the user's own money — never has a
     // checking outflow behind it. Excluded so it isn't a false-positive unmatched inflow.
-    if (movementIsStateContribution(m.note)) continue;
+    if (movementIsStateContribution(m.flow_kind)) continue;
 
     const acc = accountMap.get(m.account_id);
     if (!acc) continue;
@@ -343,10 +343,10 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     let status: DepositReconciliationStatus;
     if (linkSource === "auto" || linkSource === "manual") {
       status = "linked";
-    } else if (pureFamilyAhorroMovementIds.has(m.id) || ahorroDepositNoteIsForensicFamily(m.note)) {
-      // cuenta_ahorro deposit that is a family gift — either the split marks self = 0, or the forensic
-      // per-deposit history tags it funding=family. Checked BEFORE synthetic: the forensic record is
-      // authoritative, so a stale self-funded mirror must not present a family gift as linked_synthetic.
+    } else if (pureFamilyAhorroMovementIds.has(m.id)) {
+      // cuenta_ahorro deposit that is a family gift — the split marks self = 0
+      // (`cuenta_ahorro_deposit_splits` is the single source of funding truth). Checked BEFORE
+      // synthetic: a stale self-funded mirror must not present a family gift as linked_synthetic.
       status = "resolved_family_funded";
     } else if (linkSource === "synthetic") {
       // Includes cuenta_ahorro splits with a self-funded portion (partial synthetic mirror).

@@ -6,9 +6,12 @@
  * 3. Organize checking cartola `.xlsx` from inbox → `excels/cuenta corriente/`
  * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV
  * 5. Merge-import CC rows into SQLite
- * 6. Optionally import checking / cuenta vista / sync / excel (see flags below)
+ * 6. Optionally import checking / cuenta vista / sync (see flags below)
  *
- * Default (credit-card inbox only): steps 1–5; skips checking, cuenta vista, sync, excel.
+ * A Fintual certificado dropped in the inbox is installed (step 0) and imported into its
+ * cert accounts via `import:fintual-cert` at the end of the run.
+ *
+ * Default (credit-card inbox only): steps 1–5; skips checking, cuenta vista, sync.
  * Checking / cuenta vista run only when inbox filed PDFs or xlsx this run, unless forced.
  *
  * Usage (repo root):
@@ -17,7 +20,6 @@
  *   npm run import:cfraser-inbox -- --checking          # full checking cartola import
  *   npm run import:cfraser-inbox -- --cuenta-vista      # full cuenta vista import
  *   npm run import:cfraser-inbox -- --sync              # run global sync after import
- *   npm run import:cfraser-inbox -- --excel             # reload cfraser.xlsx + companion CSVs
  *   npm run import:cfraser-inbox -- --skip-organize
  *   npm run import:cfraser-inbox -- --skip-checking-pdf
  *
@@ -81,8 +83,6 @@ function main(): void {
   const skipQpdfRepair = hasFlag("skip-qpdf-repair");
   const skipCcImport = hasFlag("skip-cc-import");
   const skipCheckingPdf = hasFlag("skip-checking-pdf");
-  const skipExcel = hasFlag("skip-excel");
-  const runExcel = hasFlag("excel");
   const accountId = argValue("account-id");
   const skipFintualCert = hasFlag("skip-fintual-cert");
 
@@ -90,6 +90,7 @@ function main(): void {
   const forceCuentaVista = hasFlag("cuenta-vista");
   const forceSync = hasFlag("sync");
 
+  let fintualCertInstalled = false;
   if (!skipFintualCert) {
     console.log("\n=== Fintual certificado de transacciones (CSV install) ===");
     try {
@@ -98,6 +99,7 @@ function main(): void {
         console.log(
           `  ${r.rows} row(s) → ${r.csvPath}${r.archivedTo ? `; archived ${r.archivedTo}` : ""}`
         );
+        fintualCertInstalled = true;
       } else {
         console.log("  (no certificado CSV in cfraser/inbox/)");
       }
@@ -294,17 +296,15 @@ function main(): void {
     console.log("\n=== Global sync (skipped; pass --sync to run sync:all) ===");
   }
 
-  if (runExcel && !skipExcel) {
+  if (fintualCertInstalled && !dryRun) {
+    // Report-only: surface certificado rows missing from the DB without changing curated data.
+    // Run `npm run import:fintual-cert -- --apply` to add them.
     const code = runStep(
-      "Import net-worth excel + companion CSVs (full wipe of import:excel scope)",
+      "Reconcile Fintual certificado vs cert accounts (report only)",
       "npm",
-      ["run", "import:excel", "-w", "nw-tracker-server"]
+      ["run", "import:fintual-cert", "-w", "nw-tracker-server"]
     );
     if (code !== 0) process.exit(code);
-  } else if (!skipExcel && !runExcel) {
-    console.log(
-      "\n=== import:excel (skipped; pass --excel to reload cfraser.xlsx + companion CSVs) ==="
-    );
   }
 
   console.log("\n=== import:cfraser-inbox done ===");

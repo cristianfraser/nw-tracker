@@ -61,7 +61,7 @@ export function seedCreditCardTree(): void {
       deleteGroupItems.run(groupId);
 
       const masters = db
-        .prepare(`SELECT id FROM accounts WHERE notes LIKE ? ORDER BY notes`)
+        .prepare(`SELECT id FROM accounts WHERE import_key LIKE ? ORDER BY import_key`)
         .all(g.notesLike) as { id: number }[];
 
       let sort = 0;

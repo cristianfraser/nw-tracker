@@ -89,6 +89,7 @@ export function listDashboardSourceAccounts(): {
   id: number;
   name: string;
   notes: string | null;
+  import_key: string | null;
   exclude_from_group_totals: number;
   bucket_slug: string;
   bucket_label: string;
@@ -98,12 +99,12 @@ export function listDashboardSourceAccounts(): {
   return db
     .prepare(
       `
-      SELECT a.id, a.name, a.notes, a.exclude_from_group_totals,
+      SELECT a.id, a.name, a.notes, a.import_key, a.exclude_from_group_totals,
              g.slug AS bucket_slug, g.label AS bucket_label,
              a.account_kind, a.source_account_id
       FROM accounts a
       INNER JOIN asset_groups g ON g.id = a.asset_group_id
-      WHERE (a.notes IS NULL OR a.notes != ?)
+      WHERE (a.import_key IS NULL OR a.import_key != ?)
         AND g.slug != 'individual_stocks'
         AND NOT (
           g.slug IN ('liabilities', 'credit_cards')
@@ -120,6 +121,7 @@ export function listDashboardSourceAccounts(): {
     id: number;
     name: string;
     notes: string | null;
+    import_key: string | null;
     exclude_from_group_totals: number;
     bucket_slug: string;
     bucket_label: string;
@@ -177,10 +179,10 @@ function positionSnapshotFromMeta(
 export async function latestValuationDisplayForAccount(
   accountId: number,
   categorySlug?: string | null,
-  opts?: { notes?: string | null; name?: string | null }
+  opts?: { import_key?: string | null; name?: string | null }
 ): Promise<{ value_clp: number; as_of_date: string } | null> {
-  if (opts?.notes && isFintualCertV2ValuationNotes(opts.notes)) {
-    const live = liveFintualCertDisplayValueClp(accountId, opts.notes, opts.name ?? null);
+  if (opts?.import_key && isFintualCertV2ValuationNotes(opts.import_key)) {
+    const live = liveFintualCertDisplayValueClp(accountId, opts.import_key, opts.name ?? null);
     if (live) return live;
   }
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
@@ -244,7 +246,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const perfClp = derivedClp.metrics;
       const perfUsd = derivedUsd?.metrics ?? null;
       const perfSeriesClp = trackAssetMetrics ? getAccountMonthlyPerformance(a.id, "clp") : null;
-      const markOpts = { notes: a.notes, name: a.name };
+      const markOpts = { import_key: a.import_key, name: a.name };
 
       /** Asset-group leaf slug (`real_estate__property`), not nav bucket (`real_estate`) — required for depto UF marks. */
       const markCategorySlug = leafSlug;
@@ -277,7 +279,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
       const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
         afpCuotasAsOfYmd: kindSlug === "afp" ? asOfCuotas : undefined,
-        accountNotes: a.notes,
+        accountImportKey: a.import_key,
         accountName: a.name,
       });
       const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v ?? undefined);
@@ -287,7 +289,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         equityTickerForAccount(a.id) != null && accountUsesEquityMtm(a.id);
       if (
         (kindSlug === "afp" ||
-          isFintualCertV2ValuationNotes(a.notes) ||
+          isFintualCertV2ValuationNotes(a.import_key) ||
           ((kindSlug === "bitcoin" || kindSlug === "eth") && accountUsesCryptoMtm(a.id))) &&
         position?.value_clp != null &&
         !equityMtm

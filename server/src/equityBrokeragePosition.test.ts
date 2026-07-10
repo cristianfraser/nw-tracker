@@ -53,7 +53,7 @@ describe("equity brokerage position meta", () => {
       expect(equityTickerForAccount(accountId)).toBe(ticker);
 
       const meta = getAccountPositionMeta(accountId, accountBucketKindSlug(leaf.slug), {
-        accountNotes: "import:panel|ticker=VTEST|key=vitest-equity",
+        accountImportKey: "import:panel|ticker=VTEST|key=vitest-equity",
         accountName: "Vitest · panel equity fixture",
       });
 
@@ -93,7 +93,7 @@ describe("equity brokerage position meta", () => {
 
     const slug = accountBucketKindSlug(row.slug);
     const meta = getAccountPositionMeta(row.id, slug, {
-      accountNotes: row.notes,
+      accountImportKey: row.notes,
       accountName: row.name,
     });
 

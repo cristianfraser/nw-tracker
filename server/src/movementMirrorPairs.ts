@@ -21,9 +21,7 @@
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
-import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { db } from "./db.js";
-import { movementIsStateContribution } from "./depositFlowKind.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 
@@ -113,7 +111,6 @@ function loadEligibleLegs(): EligibleLegRow[] {
          AND (m.note IS NULL OR (
                m.note NOT LIKE 'import:cartola|anchor|%'
            AND m.note NOT LIKE 'import:cartola|opening|%'
-           AND m.note NOT LIKE 'mirror-merge|%'
            AND m.note NOT LIKE 'import:buda|%'
            AND m.note NOT LIKE 'buda-abono|%'
            AND m.note NOT LIKE 'ahorro-split|%'
@@ -213,14 +210,14 @@ function toLegDto(row: EligibleLegRow, kindSlug: string | null): MirrorLegDto {
 /** Whether an eligible leg may participate as outflow / inflow (shared with conversion validation). */
 export function mirrorLegDirectionAllowed(
   kindSlug: string | null,
-  note: string | null,
+  _note: string | null,
   direction: "out" | "in"
 ): boolean {
   if (kindSlug != null && MIRROR_EXCLUDED_KIND_SLUGS.has(kindSlug)) return false;
-  if (movementIsStateContribution(note)) return false;
+  // State-bonus rows carry a non-null flow_kind and so are already excluded by loadEligibleLegs
+  // (`flow_kind IS NULL`); no note check is needed here.
   if (direction === "in") {
     if (kindSlug != null && MIRROR_INFLOW_EXCLUDED_KIND_SLUGS.has(kindSlug)) return false;
-    if (ahorroDepositNoteIsForensicFamily(note)) return false;
   }
   return true;
 }
@@ -256,8 +253,7 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
      WHERE m.id = ? AND m.account_id IS NOT NULL
        AND m.flow_kind IS NULL AND m.amount_usd IS NULL AND m.amount_clp > 0
        AND (m.note IS NULL OR (
-             m.note NOT LIKE 'mirror-merge|%'
-         AND m.note NOT LIKE 'import:buda|%'
+             m.note NOT LIKE 'import:buda|%'
          AND m.note NOT LIKE 'buda-abono|%'
          AND m.note NOT LIKE 'ahorro-split|%'))
        AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)`

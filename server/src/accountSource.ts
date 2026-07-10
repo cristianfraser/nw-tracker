@@ -7,6 +7,7 @@ export type AccountSourceRow = {
   source_account_id: number | null;
   account_kind: AccountKind;
   notes: string | null;
+  import_key: string | null;
 };
 
 /** Operational account that holds movements, valuations, CC ledger, etc. */
@@ -19,7 +20,7 @@ export function resolveOperationalAccountId(accountId: number): number {
 
 export function getAccountSourceRow(accountId: number): AccountSourceRow | null {
   const row = db
-    .prepare(`SELECT id, source_account_id, account_kind, notes FROM accounts WHERE id = ?`)
+    .prepare(`SELECT id, source_account_id, account_kind, notes, import_key FROM accounts WHERE id = ?`)
     .get(accountId) as AccountSourceRow | undefined;
   return row ?? null;
 }

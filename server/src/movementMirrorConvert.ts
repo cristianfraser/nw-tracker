@@ -6,18 +6,11 @@
  * it takes the inflow (real-day cartola) leg's date so the checking timeline and its re-import
  * dedupe stay intact. It carries the cuota leg's `units_delta` when one leg moves cuotas (cuota
  * readers add transferLegUnitsThroughDate on top of the account_id ledger, so balances stay exact).
- * Both legs are deleted; their exact content (ids, dates, amounts, units, notes) is preserved
- * in the transfer's `mirror-merge|…` note so the conversion is fully undoable.
- *
- * Embedded original notes have `|` encoded as `¦` (U+00A6): note-scanning readers match on
- * `|tag=`/prefix patterns and must never false-match tags inside a merged note (e.g. the
- * `|flow_kind=` regex in depositFlowKind.ts, `%cripto-coin-only-wdw%` contains-checks).
+ * Both legs are deleted; their exact content (ids, dates, amounts, units, notes) is preserved in
+ * `movement_mirror_merges` (keyed by the transfer movement, ON DELETE CASCADE) so the conversion
+ * is fully undoable. The transfer's note is a human summary only.
  *
  * Caveats (also surfaced in the panel copy):
- * - `import:excel --force-wipe` deletes single-leg rows per account and re-inserts from the
- *   sheet/certificado; the wipe also deletes `mirror-merge|` transfers touching wiped accounts
- *   (see import-excel-history.ts), so converted pairs reappear as candidates — re-convert via
- *   the panel (rejections cascade away with the legs).
  * - Ambiguous-tier pairs outside the business-day window: re-importing that cartola month can
  *   re-insert the bank leg (import dedupe window is 1 business day).
  */
@@ -27,34 +20,6 @@ import { db } from "./db.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 
-export const MIRROR_MERGE_NOTE_PREFIX = "mirror-merge|";
-
-export function isMirrorMergeNote(note: string | null | undefined): boolean {
-  return note != null && note.startsWith(MIRROR_MERGE_NOTE_PREFIX);
-}
-
-/** `|` cannot survive inside an embedded note (structural separator + tag-scanning readers). */
-function encodeEmbeddedNote(note: string | null): string {
-  if (note == null) return "-";
-  return note.replace(/\|/g, "¦");
-}
-
-function decodeEmbeddedNote(encoded: string): string | null {
-  if (encoded === "-") return null;
-  return encoded.replace(/¦/g, "|");
-}
-
-function encodeNum(n: number | null): string {
-  return n == null ? "-" : String(n);
-}
-
-function decodeNum(s: string): number | null {
-  if (s === "-") return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) throw new Error(`mirror-merge note: invalid number "${s}"`);
-  return n;
-}
-
 export type MirrorMergeLegSnapshot = {
   movement_id: number;
   occurred_on: string;
@@ -63,40 +28,8 @@ export type MirrorMergeLegSnapshot = {
   note: string | null;
 };
 
-export type MirrorMergeNoteData = {
-  out: MirrorMergeLegSnapshot;
-  in: MirrorMergeLegSnapshot;
-};
-
-export function buildMirrorMergeNote(out: MirrorMergeLegSnapshot, inn: MirrorMergeLegSnapshot): string {
-  const leg = (l: MirrorMergeLegSnapshot) =>
-    `(${l.movement_id}@${l.occurred_on}@${encodeNum(l.amount_clp)}@${encodeNum(l.units_delta)}):${encodeEmbeddedNote(l.note)}`;
-  return `${MIRROR_MERGE_NOTE_PREFIX}out${leg(out)}|in${leg(inn)}`;
-}
-
-const MIRROR_MERGE_NOTE_RE =
-  /^mirror-merge\|out\((\d+)@(\d{4}-\d{2}-\d{2})@(-?[\d.]+)@(-?[\d.]+|-)\):([^|]*)\|in\((\d+)@(\d{4}-\d{2}-\d{2})@(-?[\d.]+)@(-?[\d.]+|-)\):([^|]*)$/;
-
-/** Parses a `mirror-merge|…` note; throws on anything malformed (fail fast — never guess). */
-export function parseMirrorMergeNote(note: string): MirrorMergeNoteData {
-  const m = MIRROR_MERGE_NOTE_RE.exec(note);
-  if (!m) throw new Error(`not a mirror-merge note: ${note}`);
-  return {
-    out: {
-      movement_id: Number(m[1]),
-      occurred_on: m[2]!,
-      amount_clp: decodeNum(m[3]!)!,
-      units_delta: decodeNum(m[4]!),
-      note: decodeEmbeddedNote(m[5]!),
-    },
-    in: {
-      movement_id: Number(m[6]),
-      occurred_on: m[7]!,
-      amount_clp: decodeNum(m[8]!)!,
-      units_delta: decodeNum(m[9]!),
-      note: decodeEmbeddedNote(m[10]!),
-    },
-  };
+function mirrorMergeHumanNote(outYmd: string, inYmd: string): string {
+  return `Traspaso espejo (retiro ${outYmd} → depósito ${inYmd})`;
 }
 
 export type MirrorPairRef = { out_movement_id: number; in_movement_id: number };
@@ -145,6 +78,13 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
      VALUES (NULL, ?, ?, ?, ?, ?, ?)`
   );
   const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
+  const insMirrorMerge = db.prepare(
+    `INSERT INTO movement_mirror_merges (
+       transfer_movement_id,
+       out_movement_id, out_occurred_on, out_amount_clp, out_units_delta, out_note,
+       in_movement_id, in_occurred_on, in_amount_clp, in_units_delta, in_note
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
   // Income include/exclude overrides describe the single-leg row as an income candidate; once
   // converted to a transfer the row is internal by construction and the override is moot.
   // (No ON DELETE CASCADE on this FK, so it must go explicitly before the leg.)
@@ -165,10 +105,7 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const inn = legStmt.get(ref.in_movement_id) as LegRow | undefined;
       if (!out || !inn) throw new MirrorConvertStaleError(ref, "leg no longer exists");
 
-      const note = buildMirrorMergeNote(
-        { movement_id: out.id, occurred_on: out.occurred_on, amount_clp: out.amount_clp, units_delta: out.units_delta, note: out.note },
-        { movement_id: inn.id, occurred_on: inn.occurred_on, amount_clp: inn.amount_clp, units_delta: inn.units_delta, note: inn.note }
-      );
+      const note = mirrorMergeHumanNote(out.occurred_on, inn.occurred_on);
       const unitsSource = out.units_delta ?? inn.units_delta;
       const transferUnits =
         unitsSource != null && Number.isFinite(unitsSource) && unitsSource !== 0
@@ -187,6 +124,19 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         transferDate,
         note,
         transferUnits
+      );
+      insMirrorMerge.run(
+        Number(r.lastInsertRowid),
+        out.id,
+        out.occurred_on,
+        out.amount_clp,
+        out.units_delta,
+        out.note,
+        inn.id,
+        inn.occurred_on,
+        inn.amount_clp,
+        inn.units_delta,
+        inn.note
       );
       delIncomeOverride.run(out.id);
       delIncomeOverride.run(inn.id);
@@ -229,20 +179,51 @@ export function undoMirrorConversion(transferMovementId: number): {
 } {
   const row = db
     .prepare(
-      `SELECT id, account_id, from_account_id, to_account_id, note
+      `SELECT id, account_id, from_account_id, to_account_id
        FROM movements WHERE id = ?`
     )
     .get(transferMovementId) as
-    | { id: number; account_id: number | null; from_account_id: number | null; to_account_id: number | null; note: string | null }
+    | { id: number; account_id: number | null; from_account_id: number | null; to_account_id: number | null }
     | undefined;
   if (!row) throw new Error(`movement ${transferMovementId} not found`);
   if (row.account_id != null || row.from_account_id == null || row.to_account_id == null) {
     throw new Error(`movement ${transferMovementId} is not a transfer row`);
   }
-  if (row.note == null || !isMirrorMergeNote(row.note)) {
+  const merge = db
+    .prepare(`SELECT * FROM movement_mirror_merges WHERE transfer_movement_id = ?`)
+    .get(transferMovementId) as
+    | {
+        out_movement_id: number;
+        out_occurred_on: string;
+        out_amount_clp: number;
+        out_units_delta: number | null;
+        out_note: string | null;
+        in_movement_id: number;
+        in_occurred_on: string;
+        in_amount_clp: number;
+        in_units_delta: number | null;
+        in_note: string | null;
+      }
+    | undefined;
+  if (!merge) {
     throw new Error(`movement ${transferMovementId} is not a mirror-merge conversion`);
   }
-  const data = parseMirrorMergeNote(row.note);
+  const data = {
+    out: {
+      movement_id: merge.out_movement_id,
+      occurred_on: merge.out_occurred_on,
+      amount_clp: merge.out_amount_clp,
+      units_delta: merge.out_units_delta,
+      note: merge.out_note,
+    },
+    in: {
+      movement_id: merge.in_movement_id,
+      occurred_on: merge.in_occurred_on,
+      amount_clp: merge.in_amount_clp,
+      units_delta: merge.in_units_delta,
+      note: merge.in_note,
+    },
+  };
   const fromId = row.from_account_id;
   const toId = row.to_account_id;
 

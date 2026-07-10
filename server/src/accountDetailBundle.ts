@@ -106,12 +106,12 @@ export async function buildAccountDetailBundle(
   const withdrawals_clp = totalWithdrawalsClpForAccount(accountId);
   const cat = db
     .prepare(
-      `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes,
+      `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes, a.import_key AS account_import_key,
         (
           SELECT COUNT(*) FROM accounts a2
           JOIN asset_groups g2 ON g2.id = a2.asset_group_id
           WHERE g2.slug = g.slug
-            AND (a2.notes IS NULL OR a2.notes != ?)
+            AND (a2.import_key IS NULL OR a2.import_key != ?)
             AND g2.slug != 'individual_stocks'
             AND COALESCE(a2.exclude_from_group_totals, 0) = 0
         ) AS group_peer_count
@@ -126,6 +126,7 @@ export async function buildAccountDetailBundle(
         group_peer_count: number;
         account_name: string;
         account_notes: string | null;
+        account_import_key: string | null;
       }
     | undefined;
 
@@ -142,7 +143,7 @@ export async function buildAccountDetailBundle(
 
   const deposits_clp = pocketDepositsClpForAccount(accountId);
   let latest = await latestValuationDisplayForAccount(accountId, category_slug, {
-    notes: cat.account_notes,
+    import_key: cat.account_import_key,
     name: cat.account_name,
   });
   if (latest == null && !isMovementBalanceCashCategory(category_slug)) {
@@ -152,7 +153,7 @@ export async function buildAccountDetailBundle(
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
   const positionMeta = getAccountPositionMeta(accountId, category_slug, {
     afpCuotasAsOfYmd: category_slug === "afp" ? asOfCuotas : undefined,
-    accountNotes: cat.account_notes,
+    accountImportKey: cat.account_import_key,
     accountName: cat.account_name,
   });
   const position = positionSnapshotFromMeta(
@@ -166,7 +167,7 @@ export async function buildAccountDetailBundle(
   let latest_valuation_date = latest?.as_of_date ?? null;
   if (
     (category_slug === "afp" ||
-      isFintualCertV2ValuationNotes(cat.account_notes) ||
+      isFintualCertV2ValuationNotes(cat.account_import_key) ||
       (accountUsesEquityMtm(accountId) && position?.value_clp != null)) &&
     position?.value_clp != null
   ) {
@@ -286,7 +287,7 @@ export async function buildAccountDetailBundle(
              FROM accounts a
              JOIN asset_groups g ON g.id = a.asset_group_id
              WHERE a.asset_group_id IN (${retPh})
-               AND (a.notes IS NULL OR a.notes != ?)
+               AND (a.import_key IS NULL OR a.import_key != ?)
              ORDER BY g.sort_order, a.name`
           )
           .all(...retirementBucketIds, NOTE_STOCKS_LEGACY);
@@ -305,7 +306,7 @@ export async function buildAccountDetailBundle(
             account_id: accountId,
             name: cat.account_name,
             bucket_slug: cat.bucket_slug,
-            notes: cat.account_notes,
+            import_key: cat.account_import_key,
             exclude_from_group_totals: 0,
           },
         ], unit)

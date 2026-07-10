@@ -205,7 +205,7 @@ describe("getAccountMonthlyPerformance", () => {
       acc.bucket_slug,
       asc,
       priorMk,
-      { notes: acc.notes, name: acc.name }
+      { import_key: acc.notes, name: acc.name }
     );
     expect(expectedPrior).not.toBeNull();
     expect(cur.prior_closing).toBe(expectedPrior);

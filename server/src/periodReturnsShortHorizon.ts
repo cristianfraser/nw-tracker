@@ -26,7 +26,7 @@ export type ShortHorizonAccountRef = {
   account_id: number;
   name?: string | null;
   bucket_slug: string;
-  notes?: string | null;
+  import_key?: string | null;
   exclude_from_group_totals?: number;
 };
 
@@ -62,7 +62,7 @@ function bucketValueInUnitAt(
   for (const a of accounts) {
     if (!includeAccount(a)) continue;
     const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
-      notes: a.notes ?? null,
+      import_key: a.import_key ?? null,
       name: a.name ?? null,
     });
     if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) {

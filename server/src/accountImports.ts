@@ -1,8 +1,5 @@
-import { execFileSync } from "node:child_process";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
-import { parseAfpCertificadoBody } from "./afpUnoCertMovimientosParse.js";
-import { applyAfpUnoCertificadoCuotasToMovements } from "./afpUnoCertMovementSync.js";
 import { importCcStatementPdfsForAccount, type CcPdfUploadFile } from "./ccStatementPdfUpload.js";
 import {
   ccWebPasteToCsvRecords,
@@ -267,62 +264,18 @@ export function importCheckingCartolaXlsx(
   };
 }
 
-function readCertBodyFromUpload(
-  buffer: Buffer,
-  filename: string,
-  mimetype: string
-): string {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".csv") || lower.endsWith(".txt") || mimetype.includes("text")) {
-    return buffer.toString("utf8");
-  }
-  if (lower.endsWith(".pdf") || mimetype === "application/pdf") {
-    try {
-      return execFileSync("pdftotext", ["-layout", "-", "-"], {
-        input: buffer,
-        encoding: "utf8",
-        maxBuffer: 32 * 1024 * 1024,
-      });
-    } catch {
-      throw new Error(
-        "Could not run pdftotext on PDF. Install Poppler or upload CSV/TXT export."
-      );
-    }
-  }
-  throw new Error("Unsupported file type (use PDF, CSV, or TXT)");
-}
-
+/**
+ * Per-account document uploads. The AFP UNO cert upload was retired 2026-07 (the cuota
+ * ledger is certificate-rebuilt and maintained manually); the spec registry is empty, so
+ * the client renders no upload buttons and any request lands here as unknown.
+ */
 export function importAccountDocument(
-  accountId: number,
+  _accountId: number,
   type: DocumentImportType,
-  buffer: Buffer,
-  filename: string,
-  mimetype: string
-) {
-  if (type === "afp_uno_cert") {
-    const slug = db
-      .prepare(
-        `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
-      )
-      .get(accountId) as { bucket_slug: string } | undefined;
-    if (!slug || accountBucketKindSlug(slug.bucket_slug) !== "afp") throw new Error("Account is not AFP");
-
-    const body = readCertBodyFromUpload(buffer, filename, mimetype);
-    const parsed = parseAfpCertificadoBody(body, filename);
-    const result = applyAfpUnoCertificadoCuotasToMovements({
-      accountId,
-      certText: body,
-      certSourceFileName: filename,
-      dryRun: false,
-      seedFundUnitDaily: true,
-    });
-    const batch_id = createImportBatch("afp_uno_cert", filename, {
-      rows_parsed: parsed.rows.length,
-      ...result,
-    });
-    return { batch_id, type, ...result, rows_parsed: parsed.rows.length };
-  }
-
+  _buffer: Buffer,
+  _filename: string,
+  _mimetype: string
+): never {
   throw new Error(`Unknown document import type: ${type}`);
 }
 
