@@ -1,5 +1,6 @@
 /** Health check + nav/meta trees (sidebar, portfolio, market display series). Split verbatim from index.ts; paths unchanged. */
 import express from "express";
+import { getAppVersion } from "../appVersion.js";
 import { listRatesInstrumentSeries, listMarketDisplaySeries } from "../marketDisplaySeries.js";
 import {
   getNetWorthNavGroupNode,
@@ -9,7 +10,7 @@ import {
 
 export function registerMetaRoutes(app: express.Express): void {
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, version: getAppVersion() });
 });
 
 /** Recursive portfolio groups (accounts + nested groups) with resolved colors. */
