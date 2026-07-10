@@ -92,7 +92,25 @@ export function monthEndCloseClpForAccount(
   return monthEndCloseFromPerfRows(monthlyRows, monthKey);
 }
 
-/** Latest perf close on or before the prior period-end for MTD / YTD / DTD. */
+/** True when the perf series' earliest row is after `boundaryYmd` — the account had no value then. */
+function perfSeriesStartsAfter(
+  monthly: readonly AccountMonthlyPerformanceRow[],
+  boundaryYmd: string
+): boolean {
+  let earliest: string | null = null;
+  for (const row of monthly) {
+    if (earliest == null || row.as_of_date < earliest) earliest = row.as_of_date;
+  }
+  return earliest != null && earliest > boundaryYmd;
+}
+
+/**
+ * Latest perf close on or before the prior period-end for MTD / YTD / DTD.
+ * A series that starts after the prior period-end (position opened this period)
+ * closes at **0** — the account verifiably held nothing then, so the period
+ * balance Δ is the whole current value. `null` stays reserved for genuine gaps
+ * (older rows exist but no valid close inside the prior-period window).
+ */
 export function priorCloseFromPerfRows(
   monthly: readonly AccountMonthlyPerformanceRow[],
   anchor: PeriodAnchor,
@@ -100,12 +118,11 @@ export function priorCloseFromPerfRows(
 ): number | null {
   if (!monthly.length) return null;
 
+  let close: number | null = null;
   if (anchor === "mtd") {
     const priorMk = priorCalendarMonthKeyFromToday(todayYmd);
-    return monthEndCloseFromPerfRows(monthly, priorMk);
-  }
-
-  if (anchor === "ytd") {
+    close = monthEndCloseFromPerfRows(monthly, priorMk);
+  } else if (anchor === "ytd") {
     const priorYear = String(Number(todayYmd.slice(0, 4)) - 1);
     const yearEnd = `${priorYear}-12-31`;
     let best: AccountMonthlyPerformanceRow | null = null;
@@ -116,16 +133,19 @@ export function priorCloseFromPerfRows(
       if (!best || row.as_of_date >= best.as_of_date) best = row;
     }
     const v = best?.closing_value;
-    return v != null && Number.isFinite(v) ? v : null;
+    close = v != null && Number.isFinite(v) ? v : null;
+  } else {
+    const priorDay = chileCalendarAddDays(todayYmd, -1);
+    let best: AccountMonthlyPerformanceRow | null = null;
+    for (const row of monthly) {
+      if (row.as_of_date > priorDay) continue;
+      if (row.closing_value == null || !Number.isFinite(row.closing_value)) continue;
+      if (!best || row.as_of_date >= best.as_of_date) best = row;
+    }
+    const v = best?.closing_value;
+    close = v != null && Number.isFinite(v) ? v : null;
   }
+  if (close != null) return close;
 
-  const priorDay = chileCalendarAddDays(todayYmd, -1);
-  let best: AccountMonthlyPerformanceRow | null = null;
-  for (const row of monthly) {
-    if (row.as_of_date > priorDay) continue;
-    if (row.closing_value == null || !Number.isFinite(row.closing_value)) continue;
-    if (!best || row.as_of_date >= best.as_of_date) best = row;
-  }
-  const v = best?.closing_value;
-  return v != null && Number.isFinite(v) ? v : null;
+  return perfSeriesStartsAfter(monthly, priorPeriodEndYmd(anchor, todayYmd)) ? 0 : null;
 }

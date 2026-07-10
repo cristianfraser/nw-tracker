@@ -36,12 +36,12 @@ export function TitleBalanceDeltaFlow({
     placeholderPhase
   );
 
+  // Genuinely unknown Δ only (e.g. missing fx) — opened-this-period accounts get a
+  // real 0-based Δ from the server (`priorCloseFromPerfRows`), and Δ = 0 renders `$0`
+  // through the flow below. Same wrapper classes as the value branch so a residual
+  // dash swap never shifts the title row.
   if (delta == null) {
-    return (
-      <span className={cn("mono", className)} style={{ fontSize: "var(--font-size-card-meta)" }}>
-        —
-      </span>
-    );
+    return <span className={cn("mono", className)}>—</span>;
   }
 
   const unit = showUsd ? "usd" : "clp";
