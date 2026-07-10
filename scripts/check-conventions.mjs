@@ -6,9 +6,9 @@
  *    Comments are stripped before scanning (Spanish domain terms in comments are fine).
  * 2. No `Intl.NumberFormat` outside client/src/format.ts — all number formatting goes
  *    through the format.ts helpers so the decimal-separator preference applies.
- * 3. No `toLocaleString("<locale>")` for numbers. Date formatting with an explicit
- *    es-CL locale is allowed (AGENTS.md: "dates stay es-CL") — detected by date options
- *    (dateStyle/timeStyle/weekday/…) near the call.
+ * 3. No `toLocaleString("<locale>")` for numbers. Calls with date options
+ *    (dateStyle/timeStyle/weekday/…) near the call are exempt — but prefer the
+ *    date conventions in AGENTS.md: ISO numerics + formatDateLabel.ts month names.
  *
  * Escape hatch: append `// convention-ok: <reason>` to a line to exempt it.
  * Run: `npm run check:conventions` (root) — part of `npm run typecheck`.

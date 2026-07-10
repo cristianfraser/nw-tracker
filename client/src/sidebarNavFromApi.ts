@@ -3,6 +3,43 @@ import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
 import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
 import type { EntityColorTarget } from "./entityColor";
 
+/**
+ * Label keys the SERVER emits via `label_i18n_key` (seedNavTree.ts and friends),
+ * resolved dynamically by resolveNavTreeLabel below. Listed as literals so the
+ * key-integrity test (i18n/keyIntegrity.test.ts) sees the locale keys reachable.
+ * Keep in sync with `grep -rh 'label_i18n_key: "' server/src`.
+ */
+export const SERVER_NAV_LABEL_I18N_KEYS = [
+  "creditCardGroup.bci",
+  "creditCardGroup.santander",
+  "dashboard.buckets.cash_eqs",
+  "dashboard.buckets.cash_savings",
+  "dashboard.buckets.real_estate",
+  "dashboard.cards.brokerage",
+  "dashboard.cards.liabilities",
+  "dashboard.cards.netWorth",
+  "dashboard.cards.retirement",
+  "liabilities.creditCard",
+  "liabilities.mortgage",
+  "liabilities.ref.disponible",
+  "liabilities.ref.disponibleTotal",
+  "marketTicker.uf",
+  "marketTicker.usdLive",
+  "retirement.afpAfc",
+  "retirement.apv",
+  "sidebar.checking_accounts",
+  "sidebar.flows",
+  "sidebar.flowsDeposits",
+  "sidebar.flowsExpenses",
+  "sidebar.flowsExpensesRealEstate",
+  "sidebar.flowsIncome",
+  "sidebar.inversiones",
+  "sidebar.projections",
+  "sidebar.rates",
+  "sidebar.watchlist",
+  "watchlist.riskyNorrisProxy",
+] as const;
+
 export function resolveNavTreeLabel(dto: NavTreeNodeDto): string {
   if (dto.label_i18n_key) {
     const translated = i18n.t(dto.label_i18n_key);
@@ -20,8 +57,8 @@ export function navColorTargetFromDto(dto: NavTreeNodeDto): EntityColorTarget | 
   return { kind: "portfolio_group", slug: dto.slug };
 }
 
-/** Inactive buckets stay in the payload for group pages; the sidebar hides them. */
-function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
+/** Inactive buckets stay in the payload for group pages; the sidebar and subnav tabs hide them. */
+export function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
   return dtos.filter((c) => c.chart_inactive !== true);
 }
 

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { formatMonthLabelFromYm } from "../../formatMonthLabel";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { useTranslation } from "../../i18n";
 import { absolutePathToFileUrl } from "../../localFileUrl";
 import type {
@@ -233,7 +233,7 @@ export function AvailableDocumentsTable({
     >
       {months.map((ym, monthIdx) => (
         <tr key={ym}>
-          <td className={`mono ${styles.monthCol}`}>{formatMonthLabelFromYm(ym)}</td>
+          <td className={`mono ${styles.monthCol}`}>{formatYearMonthLabel(ym)}</td>
           {columns.map((col) => {
             if (col.type === "single") {
               const acc = col.account;

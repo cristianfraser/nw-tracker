@@ -1,4 +1,5 @@
 import { formatClp, formatUsd } from "../../format";
+import { formatMonthYearShortLabel } from "../../formatDateLabel";
 
 export type ChartDisplayUnit = "clp" | "usd";
 
@@ -187,8 +188,7 @@ export function formatLineChartXTick(d: string, granularity: "month" | "year"): 
     const y = d.slice(0, 4);
     return /^\d{4}$/.test(y) ? y : d;
   }
-  const x = new Date(`${d}T12:00:00Z`);
-  return Number.isNaN(x.getTime()) ? d : x.toLocaleDateString("es-CL", { month: "short", year: "2-digit" });
+  return formatMonthYearShortLabel(d);
 }
 
 /** Month index 0 = Jan 0000 in UTC month arithmetic (y*12 + (m-1)). */
