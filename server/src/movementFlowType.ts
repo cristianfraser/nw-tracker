@@ -1,10 +1,9 @@
-import { isApvAAccountNote, depositFlowKindForApvAFintualRow } from "./apvAFintualFlowOverrides.js";
 import {
   DEPOSIT_FLOW_KIND_PERSONAL,
   DEPOSIT_FLOW_KIND_STATE,
   DEPOSIT_FLOW_KIND_TRASPASO,
-  depositFlowKindFromMovementNote,
   depositFlowKindLabel,
+  isDepositFlowKind,
   type DepositFlowKind,
 } from "./depositFlowKind.js";
 import {
@@ -12,7 +11,6 @@ import {
   isBrokerageFlowKind,
   type BrokerageFlowKind,
 } from "./brokerageFlowMovement.js";
-import { db } from "./db.js";
 
 export const FLOW_KIND_PAGO_CUOTA_HIPOTECARIO = "pago_cuota_hipotecario" as const;
 export const FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO = "prepago_parcial_hipotecario" as const;
@@ -43,10 +41,6 @@ function mortgageFlowKindFromNote(note: string): MortgageFlowKind | null {
   return FLOW_KIND_PAGO_CUOTA_HIPOTECARIO;
 }
 
-function depositFlowKindToMovementFlowType(kind: DepositFlowKind): MovementFlowType {
-  return kind;
-}
-
 function isDepositMovementFlowType(flowType: MovementFlowType): flowType is DepositFlowKind {
   return (
     flowType === DEPOSIT_FLOW_KIND_PERSONAL ||
@@ -55,29 +49,10 @@ function isDepositMovementFlowType(flowType: MovementFlowType): flowType is Depo
   );
 }
 
-function resolveMovementDepositFlowKind(
-  accountId: number,
-  occurred_on: string,
-  amount_clp: number,
-  note: string | null
-): DepositFlowKind {
-  const acct = db.prepare(`SELECT notes FROM accounts WHERE id = ?`).get(accountId) as
-    | { notes: string | null }
-    | undefined;
-  if (isApvAAccountNote(acct?.notes)) {
-    const medio = note?.match(/\|medio=([^|]+)/)?.[1] ?? "";
-    return depositFlowKindForApvAFintualRow(occurred_on, amount_clp, medio, note);
-  }
-  return depositFlowKindFromMovementNote(note);
-}
-
 export function movementFlowTypeFromRow(row: {
   note: string | null | undefined;
   amount_clp: number;
   flow_kind?: string | null;
-  accountId?: number;
-  movementId?: number;
-  occurred_on?: string;
   transfer_direction?: "out" | "in" | null;
 }): MovementFlowType {
   if (row.transfer_direction === "out" || row.transfer_direction === "in") {
@@ -85,36 +60,26 @@ export function movementFlowTypeFromRow(row: {
     return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
   }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
-  return movementFlowTypeFromSignedClp(
-    row.note,
-    row.amount_clp,
-    row.accountId,
-    row.movementId,
-    row.occurred_on
-  );
+  // Deposit flow kind is resolved at import time and stored in the column (never parsed from the note).
+  if (isDepositFlowKind(row.flow_kind)) return row.flow_kind;
+  return movementFlowTypeFromSignedClp(row.note, row.amount_clp);
 }
 
+/**
+ * Fallback classifier for movements whose `flow_kind` column is unset: mortgage kinds still come
+ * from the depto note (until that ledger moves to its own table), otherwise the sign decides
+ * withdrawal vs plain personal deposit.
+ */
 export function movementFlowTypeFromSignedClp(
   note: string | null | undefined,
-  amount_clp: number,
-  accountId?: number,
-  movementId?: number,
-  occurred_on?: string
+  amount_clp: number
 ): MovementFlowType {
   if (note?.includes("cripto-coin-only-wdw")) return "other";
   const mortgageKind = note ? mortgageFlowKindFromNote(note) : null;
   if (mortgageKind) return mortgageKind;
   if (amount_clp < 0) return "withdrawal_clp";
   if (amount_clp === 0 || !Number.isFinite(amount_clp)) return "other";
-
-  if (accountId != null && occurred_on) {
-    return depositFlowKindToMovementFlowType(
-      resolveMovementDepositFlowKind(accountId, occurred_on, amount_clp, note ?? null)
-    );
-  }
-
-  const kind = depositFlowKindFromMovementNote(note);
-  return depositFlowKindToMovementFlowType(kind);
+  return DEPOSIT_FLOW_KIND_PERSONAL;
 }
 
 export function movementFlowTypeLabel(flowType: MovementFlowType): string {

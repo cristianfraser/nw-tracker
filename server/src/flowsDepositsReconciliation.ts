@@ -325,7 +325,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     if (m.flow_kind != null && NON_CAPITAL_FLOW_KINDS.has(m.flow_kind)) continue;
     // APV-A "aporte estatal" — the yearly state match, not the user's own money — never has a
     // checking outflow behind it. Excluded so it isn't a false-positive unmatched inflow.
-    if (movementIsStateContribution(m.note)) continue;
+    if (movementIsStateContribution(m.flow_kind)) continue;
 
     const acc = accountMap.get(m.account_id);
     if (!acc) continue;

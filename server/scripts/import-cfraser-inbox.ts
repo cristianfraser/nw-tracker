@@ -90,6 +90,7 @@ function main(): void {
   const forceCuentaVista = hasFlag("cuenta-vista");
   const forceSync = hasFlag("sync");
 
+  let fintualCertInstalled = false;
   if (!skipFintualCert) {
     console.log("\n=== Fintual certificado de transacciones (CSV install) ===");
     try {
@@ -98,6 +99,7 @@ function main(): void {
         console.log(
           `  ${r.rows} row(s) → ${r.csvPath}${r.archivedTo ? `; archived ${r.archivedTo}` : ""}`
         );
+        fintualCertInstalled = true;
       } else {
         console.log("  (no certificado CSV in cfraser/inbox/)");
       }
@@ -292,6 +294,15 @@ function main(): void {
     if (code !== 0) process.exit(code);
   } else if (hasFlag("skip-sync") || !forceSync) {
     console.log("\n=== Global sync (skipped; pass --sync to run sync:all) ===");
+  }
+
+  if (fintualCertInstalled && !dryRun) {
+    const code = runStep(
+      "Import Fintual certificado → cert account movements",
+      "npm",
+      ["run", "import:fintual-cert", "-w", "nw-tracker-server"]
+    );
+    if (code !== 0) process.exit(code);
   }
 
   if (runExcel && !skipExcel) {

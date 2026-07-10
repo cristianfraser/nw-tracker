@@ -1,4 +1,3 @@
-import { movementIsApvAStateBonus } from "./apvAStateBonusInference.js";
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -101,14 +100,9 @@ function loadMovementSignedFlowEvents(
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND) continue;
     if (personalOnly) {
-      if (
-        movementIsStateContribution(r.note) ||
-        movementIsApvAStateBonus(r.account_id, r.id, r.note)
-      ) {
-        continue;
-      }
+      if (movementIsStateContribution(r.flow_kind)) continue;
       const brokerageDeposit = r.flow_kind === "deposit_clp";
-      if (!brokerageDeposit && !movementCountsAsPersonalDeposit(r.note)) continue;
+      if (!brokerageDeposit && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
     }
     if (r.note?.includes("cripto-coin-only-wdw")) continue;
     const amt = r.amount_clp;
@@ -165,12 +159,7 @@ function loadTransferLegSignedFlowEvents(
     for (const endpoint of [r.from_account_id, r.to_account_id]) {
       if (endpoint == null || !requested.has(endpoint)) continue;
       if (equityMtmIds.has(endpoint) || usdCashIds.has(endpoint)) continue;
-      if (
-        personalOnly &&
-        (movementIsStateContribution(r.note) || movementIsApvAStateBonus(endpoint, r.id, r.note))
-      ) {
-        continue;
-      }
+      if (personalOnly && movementIsStateContribution(r.flow_kind)) continue;
       const amt = signedClpDeltaForAccountMovement(r, endpoint);
       if (amt === 0 || !Number.isFinite(amt)) continue;
       if (!map.has(endpoint)) map.set(endpoint, []);
@@ -250,7 +239,7 @@ function loadStateContributionMovementEvents(accountIds: number[]): Map<number, 
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id, note
+      `SELECT account_id, occurred_on, amount_clp, id, note, flow_kind
        FROM movements
        WHERE account_id IN (${ph})
          AND amount_clp > 0
@@ -262,10 +251,11 @@ function loadStateContributionMovementEvents(accountIds: number[]): Map<number, 
     amount_clp: number;
     id: number;
     note: string | null;
+    flow_kind: string | null;
   }[];
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
-    if (!movementIsStateContribution(r.note) && !movementIsApvAStateBonus(r.account_id, r.id, r.note)) continue;
+    if (!movementIsStateContribution(r.flow_kind)) continue;
     if (!map.has(r.account_id)) map.set(r.account_id, []);
     map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt: r.amount_clp, tie: `m:${r.id}` });
   }
