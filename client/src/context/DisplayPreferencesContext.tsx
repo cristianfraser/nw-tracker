@@ -8,6 +8,12 @@ import {
 } from "react";
 import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
 import { setDecimalSeparatorForFormatting } from "../format";
+import i18n from "../i18n";
+import {
+  persistLanguage,
+  readInitialLanguage,
+  type AppLanguage,
+} from "../languagePreference";
 import {
   persistDecimalSeparator,
   readInitialDecimalSeparator,
@@ -52,6 +58,9 @@ type DisplayPreferencesContextValue = {
   /** Separator convention shared by every number, whatever the display currency. */
   decimalSeparator: DecimalSeparator;
   setDecimalSeparator: (s: DecimalSeparator) => void;
+  /** UI language (es | en); dates and the decimal separator are independent of it. */
+  language: AppLanguage;
+  setLanguage: (l: AppLanguage) => void;
 };
 
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
@@ -62,6 +71,7 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   const [decimalSeparator, setDecimalSeparatorState] = useState<DecimalSeparator>(
     readInitialDecimalSeparator
   );
+  const [language, setLanguageState] = useState<AppLanguage>(readInitialLanguage);
 
   const setDisplayUnit = useCallback((u: DisplayUnit) => {
     setDisplayUnitState(u);
@@ -88,6 +98,14 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     setDecimalSeparatorState(s);
   }, []);
 
+  const setLanguage = useCallback((l: AppLanguage) => {
+    // changeLanguage notifies react-i18next subscribers; the context state change
+    // re-renders AppTree top-down so module-level i18n.t helpers re-run too.
+    void i18n.changeLanguage(l);
+    persistLanguage(l);
+    setLanguageState(l);
+  }, []);
+
   const value = useMemo(
     (): DisplayPreferencesContextValue => ({
       displayUnit,
@@ -96,8 +114,19 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
       setMetricsPeriod,
       decimalSeparator,
       setDecimalSeparator,
+      language,
+      setLanguage,
     }),
-    [displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod, decimalSeparator, setDecimalSeparator]
+    [
+      displayUnit,
+      setDisplayUnit,
+      metricsPeriod,
+      setMetricsPeriod,
+      decimalSeparator,
+      setDecimalSeparator,
+      language,
+      setLanguage,
+    ]
   );
 
   return (

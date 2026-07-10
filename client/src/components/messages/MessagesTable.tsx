@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppMessageRow } from "../../api";
+import { formatDateTimeLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 
@@ -29,10 +30,7 @@ function logTitleForDisplay(title: string): string {
 function formatWhen(iso: string): string {
   const d = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("es-CL", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
+  return formatDateTimeLabel(d);
 }
 
 function detailLineCount(body: string): number {

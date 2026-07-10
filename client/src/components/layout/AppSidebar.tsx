@@ -177,7 +177,7 @@ export function AppSidebar() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
-  const { displayUnit } = useDisplayPreferences();
+  const { displayUnit, language } = useDisplayPreferences();
   const { authRequired, email, logout } = useAuth();
   const { data: unread } = useMessagesUnreadCount();
   const { data: navPayload } = useSidebarNav();
@@ -200,10 +200,13 @@ export function AppSidebar() {
     return () => window.removeEventListener("nw-messages-read", onRead);
   }, [queryClient]);
 
+  // `language` is a dep because buildSidebarNavFromApi resolves node labels via
+  // module-level i18n.t — without it a language switch keeps the stale tree.
   const tree = useMemo(() => {
     if (!navPayload) return null;
     return buildSidebarNavFromApi(navPayload);
-  }, [navPayload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navPayload, language]);
 
   useEffect(() => {
     if (!tree) return;

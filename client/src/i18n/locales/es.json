@@ -87,7 +87,11 @@
   },
   "liabilities": {
     "mortgage": "hipoteca",
-    "creditCard": "tarjeta de crédito"
+    "creditCard": "tarjeta de crédito",
+    "ref": {
+      "disponible": "Disponible",
+      "disponibleTotal": "Disponible total"
+    }
   },
   "charts": {
     "groupAccumulatedDeposits": "Total aportes acum.",
@@ -112,7 +116,10 @@
     "monthly": "Mensual",
     "yearly": "Anual",
     "cards": {
-      "netWorth": "Patrimonio neto"
+      "netWorth": "Patrimonio neto",
+      "brokerage": "Brokerage",
+      "liabilities": "Liabilities",
+      "retirement": "Retiro"
     },
     "buckets": {
       "real_estate": "Inmuebles",
@@ -190,7 +197,12 @@
     "notifications": "Notificaciones",
     "accounts": "Accounts",
     "importSync": "Import sync",
-    "mainNavAria": "Navegación principal"
+    "mainNavAria": "Navegación principal",
+    "checking_accounts": "Checking accounts",
+    "flows": "Flujos",
+    "projections": "Proyecciones",
+    "rates": "Tipos de cambio",
+    "watchlist": "Watchlist"
   },
   "panel": {
     "layoutTitle": "Panel de control",
@@ -202,7 +214,10 @@
     "mirrorPairsTitle": "Mirrors históricos"
   },
   "settings": {
-    "pageHint": "Preferencias de visualización guardadas en este navegador."
+    "pageHint": "Preferencias de visualización guardadas en este navegador.",
+    "language": "Idioma: ",
+    "languageEs": "Español",
+    "languageEn": "English"
   },
   "watchlist": {
     "pageTitle": "Watchlist",
@@ -1279,5 +1294,9 @@
     "title": "Página no encontrada",
     "body": "No existe ninguna vista en {{path}}.",
     "backHome": "Volver al inicio"
+  },
+  "retirement": {
+    "afpAfc": "AFP + AFC",
+    "apv": "APV"
   }
 }

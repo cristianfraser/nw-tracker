@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import type { FlowCcExpenseLineRow } from "../../types";
 import { formatClp } from "../../format";
-import { formatYearMonthLabelEs } from "../../format";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import {
   useCcFacturadoFinancingLinks,
@@ -144,7 +144,7 @@ export function CreditCardFacturadoFinancingManager({
               >
                 <span>
                   <strong>{accountLabel(link.financed_account_id)}</strong>{" "}
-                  {formatYearMonthLabelEs(link.financed_billing_month)}
+                  {formatYearMonthLabel(link.financed_billing_month)}
                   <span className="muted mono" style={{ marginLeft: "0.5rem", fontSize: "0.85em" }}>
                     {link.financing.length}× {t("expenses.creditCard.financing.financingShort")}
                   </span>
@@ -197,7 +197,7 @@ export function CreditCardFacturadoFinancingManager({
               <option value="">{t("expenses.creditCard.financing.selectMonth")}</option>
               {monthsForAccount.map((m) => (
                 <option key={m} value={m}>
-                  {formatYearMonthLabelEs(m)}
+                  {formatYearMonthLabel(m)}
                 </option>
               ))}
             </select>
@@ -221,7 +221,7 @@ export function CreditCardFacturadoFinancingManager({
               <span style={{ flex: 1 }}>
                 {c.merchant || "—"}
                 <span className="muted" style={{ marginLeft: "0.4rem", fontSize: "0.85em" }}>
-                  {formatYearMonthLabelEs(c.purchase_month)} · {c.origin_label}
+                  {formatYearMonthLabel(c.purchase_month)} · {c.origin_label}
                 </span>
               </span>
               <span className="mono">{formatClp(c.amount_clp)}</span>
