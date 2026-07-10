@@ -25,11 +25,10 @@ export function resolveMasterAccountIdForImportCardLast4(last4: string): number 
 
 export function supersededCcTargetLast4(accountId: number): string | null {
   const row = db
-    .prepare(`SELECT notes FROM credit_card_account_config WHERE account_id = ?`)
-    .get(accountId) as { notes: string | null } | undefined;
-  const notes = String(row?.notes ?? "").trim();
-  const m = /^superseded:(\d{4})$/.exec(notes);
-  return m?.[1] ?? null;
+    .prepare(`SELECT superseded_target_last4 FROM credit_card_account_config WHERE account_id = ?`)
+    .get(accountId) as { superseded_target_last4: string | null } | undefined;
+  const target = String(row?.superseded_target_last4 ?? "").trim();
+  return target || null;
 }
 
 const SUPERSEDED_SANTANDER_MASTER_NOTES = new Set(ccCardRegistry().superseded_master_notes);
@@ -123,10 +122,9 @@ export function purgeCcImportedDataForAccount(accountId: number): {
 export function markSantanderCcSuperseded(last4: string, targetLast4: string): void {
   const master = resolveMasterAccountIdForCardLast4(last4);
   if (master == null) return;
-  db.prepare(`UPDATE credit_card_account_config SET notes = ? WHERE account_id = ?`).run(
-    `superseded:${targetLast4}`,
-    master
-  );
+  db.prepare(
+    `UPDATE credit_card_account_config SET superseded_target_last4 = ? WHERE account_id = ?`
+  ).run(targetLast4, master);
   db.prepare(`UPDATE accounts SET exclude_from_group_totals = 1 WHERE id = ?`).run(master);
   const views = db
     .prepare(`SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`)
@@ -139,7 +137,7 @@ export function markSantanderCcSuperseded(last4: string, targetLast4: string): v
 export function unmarkSantanderCcSuperseded(last4: string): void {
   const master = resolveMasterAccountIdForCardLast4(last4);
   if (master == null) return;
-  db.prepare(`UPDATE credit_card_account_config SET notes = NULL WHERE account_id = ?`).run(master);
+  db.prepare(`UPDATE credit_card_account_config SET superseded_target_last4 = NULL WHERE account_id = ?`).run(master);
   db.prepare(`UPDATE accounts SET exclude_from_group_totals = 0 WHERE id = ?`).run(master);
   const views = db
     .prepare(`SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`)
