@@ -336,11 +336,11 @@ describe("accountMarkClpAtYmd property", () => {
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
     const current = accountMarkClpAtYmd(row.id, today, row.bucket_slug, {
-      notes: row.notes,
+      import_key: row.notes,
       name: row.name,
     });
     const prior = accountMarkClpAtYmd(row.id, priorEnd, row.bucket_slug, {
-      notes: row.notes,
+      import_key: row.notes,
       name: row.name,
     });
     if (!current || !prior || current.value_clp === prior.value_clp) return;

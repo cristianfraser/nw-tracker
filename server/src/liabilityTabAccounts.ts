@@ -21,7 +21,7 @@ function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
   const rows = db
     .prepare(
       `SELECT DISTINCT m.id AS account_id, m.name, g.slug AS bucket_slug,
-              m.notes AS notes, m.exclude_from_group_totals AS exclude_from_group_totals
+              m.notes AS notes, m.import_key, m.exclude_from_group_totals AS exclude_from_group_totals
        FROM accounts m
        JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
        JOIN asset_groups g ON g.id = m.asset_group_id
@@ -75,7 +75,7 @@ export function listCreditCardIssuerTabAccountRows(issuerSlug: string): GroupTab
   return db
     .prepare(
       `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug,
-              a.notes AS notes, a.exclude_from_group_totals AS exclude_from_group_totals
+              a.notes AS notes, a.import_key, a.exclude_from_group_totals AS exclude_from_group_totals
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})
@@ -94,7 +94,7 @@ export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAcc
   const mortgageRows = db
     .prepare(
       `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug,
-              a.notes AS notes, a.exclude_from_group_totals AS exclude_from_group_totals,
+              a.notes AS notes, a.import_key, a.exclude_from_group_totals AS exclude_from_group_totals,
               a.source_account_id AS source_account_id
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
@@ -128,6 +128,7 @@ export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAcc
       name: r.name,
       bucket_slug: r.bucket_slug,
       notes: r.notes,
+      import_key: r.import_key ?? null,
       exclude_from_group_totals: r.exclude_from_group_totals,
     });
   }

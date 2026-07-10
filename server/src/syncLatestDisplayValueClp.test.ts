@@ -19,7 +19,7 @@ describe("syncLatestDisplayValueClp", () => {
       .get() as { account_id: number; bucket_slug: string; notes: string | null; name: string } | undefined;
     if (!row) return;
     const v = syncLatestDisplayValueClp(row.account_id, row.bucket_slug, {
-      notes: row.notes,
+      import_key: row.notes,
       name: row.name,
     });
     expect(v).not.toBeNull();
@@ -37,7 +37,7 @@ describe("syncLatestDisplayValueClp", () => {
 
     const withValue = mtmRows.filter((r) => {
       const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
-        notes: r.notes,
+        import_key: r.notes,
         name: r.name,
       });
       return v != null && v.value_clp > 0;
@@ -57,7 +57,7 @@ describe("getGroupValuationTimeseries acciones pie", () => {
     let matched = 0;
     for (const r of mtmRows) {
       const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
-        notes: r.notes,
+        import_key: r.notes,
         name: r.name,
       });
       if (v != null && v.value_clp > 0) {

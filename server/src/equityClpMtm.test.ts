@@ -50,7 +50,7 @@ describe("CLP-quoted equity MTM (.SN)", () => {
       expect(mtm!).toBeCloseTo(2282 * 1300, 6);
 
       const meta = getAccountPositionMeta(accountId, accountBucketKindSlug(leaf.slug), {
-        accountNotes: "import:panel|ticker=VITEST.SN|key=vitest-clp-equity",
+        accountImportKey: "import:panel|ticker=VITEST.SN|key=vitest-clp-equity",
         accountName: "Vitest · clp equity fixture",
         afpCuotasAsOfYmd: "2026-01-30",
       });
