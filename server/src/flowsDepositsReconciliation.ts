@@ -13,7 +13,6 @@ import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSplits.js";
-import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
 import { isMirrorMergeNote } from "./movementMirrorConvert.js";
@@ -343,10 +342,10 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     let status: DepositReconciliationStatus;
     if (linkSource === "auto" || linkSource === "manual") {
       status = "linked";
-    } else if (pureFamilyAhorroMovementIds.has(m.id) || ahorroDepositNoteIsForensicFamily(m.note)) {
-      // cuenta_ahorro deposit that is a family gift — either the split marks self = 0, or the forensic
-      // per-deposit history tags it funding=family. Checked BEFORE synthetic: the forensic record is
-      // authoritative, so a stale self-funded mirror must not present a family gift as linked_synthetic.
+    } else if (pureFamilyAhorroMovementIds.has(m.id)) {
+      // cuenta_ahorro deposit that is a family gift — the split marks self = 0
+      // (`cuenta_ahorro_deposit_splits` is the single source of funding truth). Checked BEFORE
+      // synthetic: a stale self-funded mirror must not present a family gift as linked_synthetic.
       status = "resolved_family_funded";
     } else if (linkSource === "synthetic") {
       // Includes cuenta_ahorro splits with a self-funded portion (partial synthetic mirror).

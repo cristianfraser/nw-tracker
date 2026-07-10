@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
 import {
-  afpCuotasForMarkToMarket,
+  afpCuotasCumulativeThroughDate,
   latestAfpUnoFundUnitRowOnOrBeforeForDisplay,
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
@@ -275,7 +275,7 @@ export function getAccountPositionMeta(
       .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
     if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition afp stored");
 
-    const cuotasFromMovements = afpCuotasForMarkToMarket(accountId, asOfCuotas, px ?? undefined);
+    const cuotasFromMovements = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
     let cuotas = cuotasFromMovements;
     if (
       stored?.value_clp != null &&
