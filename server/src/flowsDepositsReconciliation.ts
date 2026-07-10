@@ -15,7 +15,6 @@ import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts
 import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSplits.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
-import { isMirrorMergeNote } from "./movementMirrorConvert.js";
 import {
   loadNetWorthCapitalReturnLedgerOutflows,
   netWorthCapitalLedgerOutflowPairKey,
@@ -259,24 +258,26 @@ export function loadInternalNetWorthTransferOutflowKeys(
 ): Set<string> {
   const rows = db
     .prepare(
-      `SELECT from_account_id, to_account_id, occurred_on, amount_clp, note
-       FROM movements
-       WHERE account_id IS NULL
-         AND from_account_id IS NOT NULL
-         AND to_account_id IS NOT NULL
-         AND amount_clp != 0`
+      `SELECT m.id, m.from_account_id, m.to_account_id, m.occurred_on, m.amount_clp,
+              EXISTS (SELECT 1 FROM movement_mirror_merges mm WHERE mm.transfer_movement_id = m.id) AS is_mirror_merge
+       FROM movements m
+       WHERE m.account_id IS NULL
+         AND m.from_account_id IS NOT NULL
+         AND m.to_account_id IS NOT NULL
+         AND m.amount_clp != 0`
     )
     .all() as {
+    id: number;
     from_account_id: number;
     to_account_id: number;
     occurred_on: string;
     amount_clp: number;
-    note: string | null;
+    is_mirror_merge: number;
   }[];
   const out = new Set<string>();
   for (const r of rows) {
     if (!netWorthAccountIds.has(r.from_account_id)) continue;
-    const selfResolves = isMirrorMergeNote(r.note);
+    const selfResolves = r.is_mirror_merge === 1;
     if (!selfResolves) {
       if (!netWorthAccountIds.has(r.to_account_id)) continue;
       if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
