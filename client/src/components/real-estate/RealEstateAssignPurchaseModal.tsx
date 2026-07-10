@@ -2,10 +2,9 @@ import { useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 import { formatClp } from "../../format";
-import { expenseApartmentLabel, expenseKindLabel, useTranslation } from "../../i18n";
+import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateUnlinkedPurchases } from "../../queries/hooks";
 import { useAssignRealEstatePurchaseMutation } from "../../queries/mutations";
-import type { ExpenseApartmentSlug } from "../../types";
 
 /** Kinds a purchase can be assigned to (mirrors REAL_ESTATE_LINKABLE_KINDS server-side). */
 const ASSIGNABLE_KINDS = [
@@ -18,23 +17,37 @@ const ASSIGNABLE_KINDS = [
   "contribuciones",
 ] as const;
 
+/** Gastos category slug for utility bills («Cuentas y servicios»). */
+const BILLS_CATEGORY = "bills";
+
 type Props = {
-  accountSlug: ExpenseApartmentSlug | null;
+  place: { slug: string; label: string } | null;
   open: boolean;
   onClose: () => void;
 };
 
 /**
- * Purchase-first linking: pick an unlinked gastos purchase and assign it to this place
- * as a bill of the chosen kind — the bill row is created from the purchase itself.
- * Stays open after each assign so runs of months (e.g. rents) can be linked in one go.
+ * Purchase-first linking: pick unlinked gastos purchases and assign them to this place
+ * as bills of the chosen kind — each bill row is created from the purchase itself.
+ * Defaults scope the pool to the place's occupancy period and the «Cuentas y servicios»
+ * category; multi-select assigns a whole run of months in one click.
  */
-export function RealEstateAssignPurchaseModal({ accountSlug, open, onClose }: Props) {
+export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<string>("rent");
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const { data, isLoading, error } = useRealEstateUnlinkedPurchases(q.trim(), open);
+  const [onlyBills, setOnlyBills] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const { data, isLoading, error } = useRealEstateUnlinkedPurchases(
+    {
+      q: q.trim(),
+      place: place?.slug,
+      kind,
+      category: onlyBills ? BILLS_CATEGORY : undefined,
+    },
+    open && place != null
+  );
   const assignMutation = useAssignRealEstatePurchaseMutation();
 
   const err =
@@ -44,32 +57,50 @@ export function RealEstateAssignPurchaseModal({ accountSlug, open, onClose }: Pr
         ? assignMutation.error.message
         : null;
 
-  const handleAssign = async (purchaseKey: string) => {
-    if (!accountSlug) return;
-    setPendingKey(purchaseKey);
-    try {
-      await assignMutation.mutateAsync({
-        purchase_key: purchaseKey,
-        account_slug: accountSlug,
-        kind,
-      });
-    } finally {
-      setPendingKey(null);
-    }
+  const purchases = data?.purchases ?? [];
+
+  const toggle = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
-  const purchases = data?.purchases ?? [];
+  const assignKeys = async (keys: string[]) => {
+    if (!place || keys.length === 0) return;
+    setBusy(true);
+    try {
+      for (const key of keys) {
+        await assignMutation.mutateAsync({
+          purchase_key: key,
+          account_slug: place.slug,
+          kind,
+        });
+      }
+      setSelected(new Set());
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={t("expenses.realEstate.assignModalTitle")}
-      subtitle={accountSlug ? expenseApartmentLabel(accountSlug) : null}
+      subtitle={place?.label ?? null}
       closeAriaLabel={t("expenses.realEstate.linkModalClose")}
     >
       <div
-        style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginBottom: "0.75rem" }}
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: "0.75rem",
+        }}
       >
         <label style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
           <span className="label-inline">{t("expenses.realEstate.assignKindLabel")}</span>
@@ -81,13 +112,31 @@ export function RealEstateAssignPurchaseModal({ accountSlug, open, onClose }: Pr
             ))}
           </select>
         </label>
+        <label className="radio-pill" style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={onlyBills}
+            onChange={(e) => setOnlyBills(e.target.checked)}
+          />
+          {t("expenses.realEstate.onlyBillsToggle")}
+        </label>
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("expenses.realEstate.assignSearchPlaceholder")}
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: "10rem" }}
         />
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || selected.size === 0}
+          onClick={() => void assignKeys([...selected])}
+        >
+          {busy
+            ? t("common.loading")
+            : t("expenses.realEstate.assignSelected", { count: selected.size })}
+        </button>
       </div>
 
       {isLoading ? (
@@ -102,6 +151,7 @@ export function RealEstateAssignPurchaseModal({ accountSlug, open, onClose }: Pr
           header={
             <thead>
               <tr>
+                <th />
                 <th>{t("expenses.realEstate.colLinkedMerchant")}</th>
                 <th>{t("expenses.realEstate.colLinkedDate")}</th>
                 <th>{t("expenses.realEstate.colLinkedOrigin")}</th>
@@ -113,7 +163,21 @@ export function RealEstateAssignPurchaseModal({ accountSlug, open, onClose }: Pr
         >
           {purchases.map((p) => (
             <tr key={p.purchase_key}>
-              <td>{p.merchant ?? "—"}</td>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={selected.has(p.purchase_key)}
+                  onChange={() => toggle(p.purchase_key)}
+                />
+              </td>
+              <td>
+                {p.merchant ?? "—"}
+                {p.merchant_matches ? (
+                  <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.75rem" }}>
+                    ({t("expenses.realEstate.merchantMatchHintKind")})
+                  </span>
+                ) : null}
+              </td>
               <td className="mono">{p.purchase_on ?? p.purchase_month}</td>
               <td className="muted" style={{ fontSize: "0.8rem" }}>
                 {p.origin_label}
@@ -126,12 +190,10 @@ export function RealEstateAssignPurchaseModal({ accountSlug, open, onClose }: Pr
                 <button
                   type="button"
                   className="btn"
-                  disabled={pendingKey != null}
-                  onClick={() => void handleAssign(p.purchase_key)}
+                  disabled={busy}
+                  onClick={() => void assignKeys([p.purchase_key])}
                 >
-                  {pendingKey === p.purchase_key
-                    ? t("common.loading")
-                    : t("expenses.realEstate.assignConfirm")}
+                  {t("expenses.realEstate.assignConfirm")}
                 </button>
               </td>
             </tr>

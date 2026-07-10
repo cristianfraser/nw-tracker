@@ -505,6 +505,23 @@ export function useAssignRealEstatePurchaseMutation() {
   });
 }
 
+export function useCreateRealEstatePlaceMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      slug: string;
+      label: string;
+      active_from?: string | null;
+      active_to?: string | null;
+      property_account_id?: number | null;
+    }) => api.createRealEstatePlace(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() });
+    },
+  });
+}
+
 export function useUpdateRealEstateConsumptionMutation() {
   const queryClient = useQueryClient();
   return useMutation({

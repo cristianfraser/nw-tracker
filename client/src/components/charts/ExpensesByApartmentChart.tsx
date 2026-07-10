@@ -1,7 +1,7 @@
 import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { formatClp } from "../../format";
-import i18n, { expenseApartmentLabel } from "../../i18n";
+import i18n from "../../i18n";
 import type { ExpenseApartmentSlug, FlowExpenseChartPoint } from "../../types";
 import { AppComposedChart } from "./AppComposedChart";
 import {
@@ -18,29 +18,34 @@ import {
 
 const CHART_ANIM_MS = 90;
 
-const APARTMENT_BAR: { dataKey: ExpenseApartmentSlug; color: string }[] = [
-  { dataKey: "el_vergel", color: "#f472b6" },
-  { dataKey: "lastarria", color: "#db2777" },
-  { dataKey: "suecia", color: "#be185d" },
-];
+/** Stacked-bar colors assigned to places by their payload order. */
+const PLACE_BAR_PALETTE = ["#f472b6", "#db2777", "#be185d", "#9d174d", "#831843", "#fbcfe8"];
 
 export function ExpensesByApartmentChart({
   title,
   points,
+  places,
   xAxisGranularity = "month",
   accountFilter,
 }: {
   title: string;
   points: FlowExpenseChartPoint[];
+  /** Tracked places in display order (from the payload — data, not code). */
+  places: readonly { slug: ExpenseApartmentSlug; label: string }[];
   xAxisGranularity?: "month" | "year";
-  /** When set, only these apartments contribute to stacked bars (total line still full). */
+  /** When set, only these places contribute to stacked bars (total line still full). */
   accountFilter?: readonly ExpenseApartmentSlug[];
 }) {
   const bars = useMemo(() => {
-    if (!accountFilter?.length) return APARTMENT_BAR;
+    const all = places.map((p, i) => ({
+      dataKey: p.slug,
+      label: p.label,
+      color: PLACE_BAR_PALETTE[i % PLACE_BAR_PALETTE.length]!,
+    }));
+    if (!accountFilter?.length) return all;
     const set = new Set(accountFilter);
-    return APARTMENT_BAR.filter((b) => set.has(b.dataKey));
-  }, [accountFilter]);
+    return all.filter((b) => set.has(b.dataKey));
+  }, [places, accountFilter]);
 
   const densePoints = points;
 
@@ -113,7 +118,7 @@ export function ExpensesByApartmentChart({
               <Bar
                 key={b.dataKey}
                 dataKey={b.dataKey}
-                name={expenseApartmentLabel(b.dataKey)}
+                name={b.label}
                 fill={b.color}
                 stackId="expenses"
                 isAnimationActive

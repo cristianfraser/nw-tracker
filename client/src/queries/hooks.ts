@@ -480,10 +480,25 @@ export function useRealEstateLinkCandidates(expenseEntryId: number | null, enabl
   });
 }
 
-export function useRealEstateUnlinkedPurchases(q: string, enabled: boolean) {
+export function useRealEstateUnlinkedPurchases(
+  params: { q?: string; place?: string; kind?: string; category?: string },
+  enabled: boolean
+) {
+  const normalized: Record<string, string> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v) normalized[k] = v;
+  }
   return useQuery({
-    queryKey: queryKeys.realEstateUnlinkedPurchases(q),
-    queryFn: () => api.realEstateUnlinkedPurchases(q),
+    queryKey: queryKeys.realEstateUnlinkedPurchases(normalized),
+    queryFn: () => api.realEstateUnlinkedPurchases(normalized),
+    enabled,
+  });
+}
+
+export function useRealEstatePropertyAccounts(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.realEstatePropertyAccounts(),
+    queryFn: () => api.realEstatePropertyAccounts(),
     enabled,
   });
 }

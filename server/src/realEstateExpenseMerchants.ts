@@ -1,7 +1,5 @@
 import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
 
-export type RealEstateApartmentSlug = "el_vergel" | "lastarria" | "suecia";
-
 export type RealEstateBillKind =
   | "gas"
   | "electricidad"
@@ -26,18 +24,17 @@ export const REAL_ESTATE_LINKABLE_KINDS: readonly RealEstateBillKind[] = [
   "rent",
 ];
 
+/**
+ * Generic Chilean utility merchants per kind. Place-specific patterns (the comunidad /
+ * edificio names) live on `expense_accounts.comunidad_merchant_patterns` — data, not code.
+ */
 const GLOBAL_KIND_PATTERNS: Partial<Record<RealEstateBillKind, readonly string[]>> = {
   electricidad: ["ENEL"],
-  internet: ["VTR", "ENTEL"],
+  internet: ["VTR", "ENTEL", "GTD"],
   gas: ["METROGAS"],
   water: ["AGUAS ANDINAS"],
   gastos_comunes: ["GASTOS COMUNES"],
-};
-
-const APARTMENT_COMUNIDAD_PATTERNS: Record<RealEstateApartmentSlug, readonly string[]> = {
-  el_vergel: ["COMUNIDAD EL VERGEL"],
-  lastarria: ["COMUNIDAD VICTORIA SUBERCASEAUX"],
-  suecia: ["COMUNIDAD SUECIA"],
+  contribuciones: ["TGR", "T.G.R."],
 };
 
 function merchantKeyContainsPattern(merchantKey: string, pattern: string): boolean {
@@ -46,8 +43,16 @@ function merchantKeyContainsPattern(merchantKey: string, pattern: string): boole
   return merchantKey === p || merchantKey.includes(p) || p.includes(merchantKey);
 }
 
+/** Comma-separated patterns from `expense_accounts.comunidad_merchant_patterns`. */
+export function parseComunidadPatterns(raw: string | null | undefined): string[] {
+  return String(raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function merchantPatternsForExpectation(
-  accountSlug: RealEstateApartmentSlug,
+  comunidadPatterns: string | null | undefined,
   kind: string
 ): string[] {
   const billKind = kind as RealEstateBillKind;
@@ -55,18 +60,18 @@ export function merchantPatternsForExpectation(
   const global = GLOBAL_KIND_PATTERNS[billKind];
   if (global) patterns.push(...global);
   if (billKind === "gastos_comunes") {
-    patterns.push(...APARTMENT_COMUNIDAD_PATTERNS[accountSlug]);
+    patterns.push(...parseComunidadPatterns(comunidadPatterns));
   }
   return patterns;
 }
 
 export function merchantMatchesExpectation(
-  accountSlug: RealEstateApartmentSlug,
+  comunidadPatterns: string | null | undefined,
   kind: string,
   merchantKey: string
 ): boolean {
   const normalized = normalizeCcExpenseMerchantKey(merchantKey);
   if (!normalized) return false;
-  const patterns = merchantPatternsForExpectation(accountSlug, kind);
+  const patterns = merchantPatternsForExpectation(comunidadPatterns, kind);
   return patterns.some((p) => merchantKeyContainsPattern(normalized, p));
 }

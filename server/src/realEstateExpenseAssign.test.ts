@@ -7,7 +7,6 @@ import {
   updateRealEstateExpenseConsumption,
 } from "./realEstateExpenseMatching.js";
 import { buildRealEstateExpensesPayload, listRealEstateUnlinkedPurchases } from "./flowsRealEstateExpenses.js";
-import type { RealEstateApartmentSlug } from "./realEstateExpenseMerchants.js";
 
 const FIXTURE_ACCOUNT_SLUG = "vitest_apartment";
 
@@ -136,7 +135,7 @@ describe("assignPurchaseToRealEstateExpense validation", () => {
     expect(() =>
       assignPurchaseToRealEstateExpense({
         purchaseKey: "vitest:whatever",
-        accountSlug: FIXTURE_ACCOUNT_SLUG as RealEstateApartmentSlug,
+        accountSlug: FIXTURE_ACCOUNT_SLUG,
         kind: "mortgage",
       })
     ).toThrow(/kind must be one of/);
@@ -146,7 +145,7 @@ describe("assignPurchaseToRealEstateExpense validation", () => {
     expect(() =>
       assignPurchaseToRealEstateExpense({
         purchaseKey: "vitest:whatever",
-        accountSlug: "vitest_no_such_account" as RealEstateApartmentSlug,
+        accountSlug: "vitest_no_such_account",
         kind: "rent",
       })
     ).toThrow(/unknown real-estate expense account/);
@@ -156,9 +155,12 @@ describe("assignPurchaseToRealEstateExpense validation", () => {
 describe("read-only mortgage slots", () => {
   it("null-entry slots are mortgage ledger rows and never linkable", () => {
     const payload = buildRealEstateExpensesPayload();
+    const placesWithProperty = new Set(
+      payload.places.filter((p) => p.property_account_id != null).map((p) => p.slug)
+    );
     for (const slot of payload.slots.filter((s) => s.expense_entry_id == null)) {
       expect(slot.kind).toBe("mortgage");
-      expect(slot.account_slug).toBe("suecia");
+      expect(placesWithProperty.has(slot.account_slug)).toBe(true);
       expect(slot.can_link).toBe(false);
       expect(slot.link).toBeNull();
       expect(slot.display_amount_clp).toBeGreaterThan(0);

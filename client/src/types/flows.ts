@@ -24,15 +24,14 @@ export interface FlowDepositChartPoint {
   total: number;
 }
 
-export type ExpenseApartmentSlug = "el_vergel" | "lastarria" | "suecia";
+/** Slug of a tracked place (`expense_accounts` row) — data-driven, not a fixed union. */
+export type ExpenseApartmentSlug = string;
 
+/** Per-place stacked chart point; place slugs are dynamic keys. */
 export interface FlowExpenseChartPoint {
   as_of_date: string;
-  real_estate: number;
-  lastarria: number;
-  suecia: number;
-  el_vergel: number;
   total: number;
+  [placeSlug: string]: number | string;
 }
 
 export interface FlowCcExpenseMonthRow {
@@ -416,6 +415,18 @@ export interface RealEstateUnlinkedPurchaseDto {
   amount_clp: number;
   origin_label: string;
   source: FlowCcExpenseLineSource;
+  category_slug: string;
+  merchant_matches: boolean;
+}
+
+/** One tracked place (`expense_accounts` row under the real_estate group). */
+export interface RealEstatePlaceDto {
+  slug: string;
+  label: string;
+  sort_order: number;
+  active_from: string | null;
+  active_to: string | null;
+  property_account_id: number | null;
 }
 
 export interface RealEstateExpenseAccountBlock {
@@ -427,8 +438,9 @@ export interface RealEstateExpenseAccountBlock {
 
 /** `GET /api/flows/expenses/real-estate` — bill slots linked to gastos purchases. */
 export interface RealEstateExpensesResponse {
+  places: RealEstatePlaceDto[];
   slots: RealEstateBillSlot[];
-  by_account: Record<ExpenseApartmentSlug, RealEstateExpenseAccountBlock>;
+  by_account: Record<string, RealEstateExpenseAccountBlock>;
   chart_monthly: FlowExpenseChartPoint[];
   chart_yearly: FlowExpenseChartPoint[];
   total_clp: number;

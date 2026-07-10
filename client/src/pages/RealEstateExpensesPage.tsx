@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ExpensesByApartmentChart } from "../components/charts/ExpensesByApartmentChart";
+import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAddPlaceModal";
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
 import { formatClp, formatGroupedDecimalTrimmed } from "../format";
-import { expenseApartmentLabel, expenseKindLabel, useTranslation } from "../i18n";
+import { expenseKindLabel, useTranslation } from "../i18n";
 import { useRealEstateExpenses } from "../queries/hooks";
 import {
   useDeleteRealEstateExpenseEntryMutation,
@@ -14,8 +15,6 @@ import {
   useUpdateRealEstateConsumptionMutation,
 } from "../queries/mutations";
 import type { ExpenseApartmentSlug, RealEstateBillSlot } from "../types";
-
-const ACCOUNT_ORDER: ExpenseApartmentSlug[] = ["el_vergel", "lastarria", "suecia"];
 
 /** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
 const CONSUMPTION_KINDS = new Set(["electricidad", "gas", "kwh"]);
@@ -57,7 +56,8 @@ export function RealEstateExpensesPage() {
   const { accountSlug } = useParams<{ accountSlug?: string }>();
   const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
-  const [assignSlug, setAssignSlug] = useState<ExpenseApartmentSlug | null>(null);
+  const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);
+  const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: number; kwh: string; m3: string } | null>(null);
   const { data, error } = useRealEstateExpenses();
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
@@ -86,26 +86,28 @@ export function RealEstateExpensesPage() {
     return granularity === "yearly" ? data.chart_yearly : data.chart_monthly;
   }, [data, granularity]);
 
+  const places = useMemo(() => data?.places ?? [], [data]);
+
   const accountFilter = useMemo((): ExpenseApartmentSlug[] | undefined => {
-    if (accountSlug && ACCOUNT_ORDER.includes(accountSlug as ExpenseApartmentSlug)) {
-      return [accountSlug as ExpenseApartmentSlug];
+    if (accountSlug && places.some((p) => p.slug === accountSlug)) {
+      return [accountSlug];
     }
     return undefined; // index view: all places
-  }, [accountSlug]);
+  }, [accountSlug, places]);
 
   const sections = useMemo(() => {
     if (!data) return [];
-    const accounts = ACCOUNT_ORDER.map((slug) => data.by_account[slug]).filter(
-      (a) => a != null && a.slots.length > 0
-    );
+    const accounts = places
+      .map((p) => data.by_account[p.slug])
+      .filter((a) => a != null && a.slots.length > 0);
     const filtered = accountSlug
       ? accounts.filter((a) => a.account_slug === accountSlug)
       : accounts;
-    if (accountSlug && filtered.length === 0 && data.by_account[accountSlug as ExpenseApartmentSlug]) {
-      return [data.by_account[accountSlug as ExpenseApartmentSlug]!];
+    if (accountSlug && filtered.length === 0 && data.by_account[accountSlug]) {
+      return [data.by_account[accountSlug]!];
     }
     return filtered;
-  }, [data, accountSlug]);
+  }, [data, accountSlug, places]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -116,10 +118,10 @@ export function RealEstateExpensesPage() {
   }
 
   const titleSuffix =
-    accountSlug != null ? expenseApartmentLabel(accountSlug as ExpenseApartmentSlug) : null;
+    accountSlug != null ? (data.by_account[accountSlug]?.label ?? accountSlug) : null;
 
   const groupTotal = accountSlug
-    ? (data.by_account[accountSlug as ExpenseApartmentSlug]?.total_clp ?? 0)
+    ? (data.by_account[accountSlug]?.total_clp ?? 0)
     : data.total_clp;
 
   return (
@@ -161,6 +163,7 @@ export function RealEstateExpensesPage() {
         <ExpensesByApartmentChart
           title={t("expenses.chartTitle")}
           points={chartPoints}
+          places={places}
           xAxisGranularity={granularity === "yearly" ? "year" : "month"}
           accountFilter={accountFilter}
         />
@@ -172,11 +175,21 @@ export function RealEstateExpensesPage() {
           <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {formatClp(groupTotal)}
           </span>
+          {!accountSlug ? (
+            <button
+              type="button"
+              className="btn"
+              style={{ marginLeft: "0.75rem", fontSize: "0.8rem" }}
+              onClick={() => setAddPlaceOpen(true)}
+            >
+              {t("expenses.realEstate.addPlaceAction")}
+            </button>
+          ) : null}
         </h3>
         {sections.map((acc) => (
           <div key={acc.account_slug} style={{ marginBottom: "1.25rem" }}>
             <h4 style={{ fontSize: "1rem", marginBottom: "0.35rem" }}>
-              {expenseApartmentLabel(acc.account_slug)}
+              {acc.label}
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatClp(acc.total_clp)}
               </span>
@@ -184,7 +197,7 @@ export function RealEstateExpensesPage() {
                 type="button"
                 className="btn"
                 style={{ marginLeft: "0.75rem", fontSize: "0.8rem" }}
-                onClick={() => setAssignSlug(acc.account_slug)}
+                onClick={() => setAssignPlace({ slug: acc.account_slug, label: acc.label })}
               >
                 {t("expenses.realEstate.assignAction")}
               </button>
@@ -357,10 +370,11 @@ export function RealEstateExpensesPage() {
         onClose={() => setLinkSlot(null)}
       />
       <RealEstateAssignPurchaseModal
-        accountSlug={assignSlug}
-        open={assignSlug != null}
-        onClose={() => setAssignSlug(null)}
+        place={assignPlace}
+        open={assignPlace != null}
+        onClose={() => setAssignPlace(null)}
       />
+      <RealEstateAddPlaceModal open={addPlaceOpen} onClose={() => setAddPlaceOpen(false)} />
     </>
   );
 }
