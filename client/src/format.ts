@@ -101,6 +101,43 @@ export function formatUsd(n: number): string {
   return formatCurrency(n, "usd");
 }
 
+/**
+ * Adaptive USD decimals for summary-card values: keep ≥4 significant digits capped
+ * at cents — |n| < 100 → 2, < 1.000 → 1, ≥ 1.000 → 0. The big main balance adapts
+ * per value (trailing zeros trimmed: 55,00 → 55; 42,40 → 42,4); a card's sub-balance
+ * list and its red/green delta pair each share the LEAST adaptive decimals of their
+ * group ({@link minAdaptiveUsdFractionDigits} — the largest amount's precision wins).
+ * Everything else (flows, tables, charts, title deltas) keeps fixed 0/2-decimal USD.
+ */
+export function adaptiveUsdFractionDigits(abs: number): 0 | 1 | 2 {
+  if (abs < 100) return 2;
+  if (abs < 1000) return 1;
+  return 0;
+}
+
+/** Round to the adaptive USD precision (see {@link adaptiveUsdFractionDigits}). */
+export function roundUsdAdaptive(n: number): number {
+  const factor = 10 ** adaptiveUsdFractionDigits(Math.abs(n));
+  return Math.round(n * factor) / factor;
+}
+
+/**
+ * Least adaptive decimals across a card's USD values (sub-balances, or the two
+ * red/green deltas) — the largest amount's precision caps the whole group so big
+ * numbers stay clean and small siblings follow.
+ */
+export function minAdaptiveUsdFractionDigits(values: Array<number | null | undefined>): 0 | 1 | 2 {
+  let fd: 0 | 1 | 2 = 2;
+  let any = false;
+  for (const v of values) {
+    if (v == null || !Number.isFinite(v)) continue;
+    any = true;
+    const band = adaptiveUsdFractionDigits(Math.abs(v));
+    if (band < fd) fd = band;
+  }
+  return any ? fd : 0;
+}
+
 /** CC expense line: CLP with optional original USD in parentheses. */
 export function formatCcExpenseLineAmount(
   amountClp: number,
@@ -154,6 +191,45 @@ export function accountingCurrencyNumberFlowParts(
     locales: numberLocale,
     format: NUMBER_FLOW_INT_FORMAT,
   };
+}
+
+/**
+ * {@link accountingCurrencyNumberFlowParts} with adaptive USD decimals — summary-card
+ * balances only (see {@link adaptiveUsdFractionDigits}). CLP and every non-card USD
+ * surface keep the fixed-decimal parts above.
+ *
+ * `fixedFractionDigits` pins the decimals instead (no trimming) — card sub-balance
+ * lists align every sibling to the group's least adaptive decimals so the column
+ * reads uniformly.
+ */
+export function adaptiveUsdAccountingNumberFlowParts(
+  n: number,
+  /** Dashboard card values use `$` for both CLP and USD. */
+  symbolOverride?: string,
+  fixedFractionDigits?: 0 | 1 | 2
+): {
+  value: number;
+  prefix: string;
+  suffix: string;
+  locales: string;
+  format: { minimumFractionDigits: number; maximumFractionDigits: number; signDisplay: "never" };
+} {
+  const fd = fixedFractionDigits ?? adaptiveUsdFractionDigits(Math.abs(n));
+  const factor = 10 ** fd;
+  const rounded = Math.round(n * factor) / factor;
+  const abs = Math.abs(rounded);
+  const symbol = symbolOverride ?? CURRENCY_SYMBOL.usd;
+  // Adaptive (min 0) trims trailing decimal zeros (55,00 → 55; 42,40 → 42,4);
+  // fixed keeps them so sibling rows align.
+  const format = {
+    minimumFractionDigits: fixedFractionDigits ?? 0,
+    maximumFractionDigits: fd,
+    signDisplay: "never",
+  } as const;
+  if (rounded < 0) {
+    return { value: abs, prefix: `(${symbol}`, suffix: ")", locales: numberLocale, format };
+  }
+  return { value: abs, prefix: symbol, suffix: "", locales: numberLocale, format };
 }
 
 /** Card title balance Δ: `+$…` / `($…)` / `$0` (muted row; no ▲/▼ or green/red). */
