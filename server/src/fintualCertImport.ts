@@ -74,20 +74,22 @@ function ensureAllFintualCertV2Accounts(): Record<string, number> {
   return byNote;
 }
 
-function insertCertMovements(
-  scan: FintualCertificadoAggregateScan,
-  accountIdByNote: Record<string, number>
-): number {
-  const insMov = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  );
-  let inserted = 0;
+type CertPlanRow = {
+  importNote: string;
+  ymd: string;
+  amountClp: number;
+  cuotasNet: number;
+  /** Non-default deposit classification (state bonus / traspaso); NULL for a plain personal deposit. */
+  flowKind: string | null;
+  note: string;
+};
+
+/** Movements the certificado would produce, one per CSV flow row (no DB access). */
+function certPlanRows(scan: FintualCertificadoAggregateScan): CertPlanRow[] {
+  const out: CertPlanRow[] = [];
   for (const a of scan.sortedAggregates) {
     const importNote = matchFintualCertGoalV2(a.goalId, a.name);
     if (!importNote) continue;
-    const accountId = accountIdByNote[importNote];
-    if (accountId == null) continue;
 
     let impliedClp = a.clpNet;
     if (impliedClp === 0 && a.cuotasNet !== 0 && a.valorCuotaHint != null) {
@@ -96,39 +98,44 @@ function insertCertMovements(
     if (impliedClp === 0) continue;
 
     const medio = [...a.medios].sort().join("; ");
-    // Deposit classification lives in the flow_kind column, but only for the non-default kinds
-    // (state bonus / traspaso). A plain personal deposit stays NULL — the sign of amount_clp
-    // distinguishes deposit vs withdrawal, matching every other cash movement. The note is human
-    // provenance only (goal / day / medio).
+    // A plain personal deposit stays NULL in flow_kind — the sign of amount distinguishes deposit
+    // vs withdrawal. Only the non-default kinds (state bonus / traspaso) are stored. The note is
+    // human provenance only (goal / day / medio).
     const flowKind = a.flowKind === DEPOSIT_FLOW_KIND_PERSONAL ? null : a.flowKind;
     const note = `${FINTUAL_CERT_MOVEMENT_NOTE_PREFIX}|goal=${a.goalId}|day=${a.ymd}${medio ? `|medio=${medio}` : ""}`;
-    const ud = a.cuotasNet !== 0 ? a.cuotasNet : null;
-    insMov.run(accountId, impliedClp, a.ymd, note, ud, flowKind);
-    inserted += 1;
+    out.push({ importNote, ymd: a.ymd, amountClp: impliedClp, cuotasNet: a.cuotasNet, flowKind, note });
   }
-  return inserted;
+  return out;
 }
 
 export type FintualCertImportResult = {
   csvPath: string;
-  accounts: number;
-  movementsDeleted: number;
-  movementsInserted: number;
+  applied: boolean;
+  accountsEnsured: number;
+  /** Certificado rows already present in the DB (matched on account + date + amount) — left untouched. */
+  matched: number;
+  /** Certificado rows missing from the DB — added when applied, listed for review when not. */
+  missing: { importNote: string; ymd: string; amountClp: number }[];
+  /** DB cert-movement rows that no certificado row matches (manual / divergent) — never modified. */
+  divergent: { importNote: string; ymd: string; amountClp: number }[];
   fundUnitRows: number;
-  /** Rows whose external state-bonus/traspaso classification was carried over the rebuild. */
-  classificationsPreserved: number;
-  dryRun: boolean;
 };
 
 /**
- * Rebuild the v2 Fintual cert accounts' movements from the installed certificado CSV.
+ * Reconcile the v2 Fintual cert accounts against the installed certificado CSV.
+ *
+ * Non-destructive by design: existing curated movements are the source of truth and are never
+ * deleted or modified. Certificado rows already present (matched on account + date + amount) are
+ * left untouched; only rows missing from the DB are reported and — when `apply` is set — added.
+ * DB cert-movement rows that no certificado row matches are reported as divergent for manual review.
+ *
  * Throws if the CSV is absent (fail fast — run `npm run import:cfraser-inbox` to install it).
  */
 export function importFintualCertificado(opts?: {
   maxMonth?: string;
-  dryRun?: boolean;
+  apply?: boolean;
 }): FintualCertImportResult {
-  const dryRun = opts?.dryRun ?? false;
+  const apply = opts?.apply ?? false;
   const cfraserDir = resolveCfraserCsvDir();
   const csvPath = resolveFintualCertificadoCsvPath(cfraserDir);
   if (!csvPath) {
@@ -143,76 +150,87 @@ export function importFintualCertificado(opts?: {
   if (!scan) {
     throw new Error(`Fintual certificado CSV could not be parsed: ${csvPath}`);
   }
+  const plan = certPlanRows(scan);
 
-  const run = db.transaction(() => {
+  const reconcile = db.transaction(() => {
     const accountIdByNote = ensureAllFintualCertV2Accounts();
     const ids = Object.values(accountIdByNote);
     const ph = ids.map(() => "?").join(",");
 
-    // The APV-A "aporte estatal" state match is indistinguishable from a personal deposit in the
-    // certificate (both arrive as medio "Transferencia electronica") — its flow_kind is external
-    // knowledge set once (historically from a net-worth CSV, going forward manually). Preserve any
-    // non-default deposit classification across the delete+rebuild so it is not silently lost.
-    const preserved = new Map<string, string>();
-    const priorClassified = db
+    // Existing curated cert movements — the source of truth. Key on (account, date, amount).
+    const existing = db
       .prepare(
-        `SELECT account_id, occurred_on, amount_clp, flow_kind FROM movements
-         WHERE account_id IN (${ph}) AND note LIKE '${FINTUAL_CERT_MOVEMENT_NOTE_PREFIX}%'
-           AND flow_kind IS NOT NULL`
+        `SELECT id, account_id, occurred_on, amount_clp FROM movements
+         WHERE account_id IN (${ph}) AND note LIKE '${FINTUAL_CERT_MOVEMENT_NOTE_PREFIX}%'`
       )
-      .all(...ids) as { account_id: number; occurred_on: string; amount_clp: number; flow_kind: string }[];
-    for (const r of priorClassified) {
-      preserved.set(`${r.account_id}\t${r.occurred_on}\t${r.amount_clp}`, r.flow_kind);
-    }
+      .all(...ids) as { id: number; account_id: number; occurred_on: string; amount_clp: number }[];
+    const key = (accountId: number, ymd: string, amount: number) => `${accountId}\t${ymd}\t${amount}`;
+    const existingKeys = new Map<string, number>();
+    for (const r of existing) existingKeys.set(key(r.account_id, r.occurred_on, r.amount_clp), r.id);
 
-    const del = db
-      .prepare(
-        `DELETE FROM movements WHERE account_id IN (${ph}) AND note LIKE '${FINTUAL_CERT_MOVEMENT_NOTE_PREFIX}%'`
-      )
-      .run(...ids);
-    const movementsInserted = insertCertMovements(scan, accountIdByNote);
+    const insMov = db.prepare(
+      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
 
-    let classificationsPreserved = 0;
-    if (preserved.size > 0) {
-      const rebuilt = db
-        .prepare(
-          `SELECT id, account_id, occurred_on, amount_clp FROM movements
-           WHERE account_id IN (${ph}) AND note LIKE '${FINTUAL_CERT_MOVEMENT_NOTE_PREFIX}%'
-             AND flow_kind IS NULL`
-        )
-        .all(...ids) as { id: number; account_id: number; occurred_on: string; amount_clp: number }[];
-      const upd = db.prepare(`UPDATE movements SET flow_kind = ? WHERE id = ?`);
-      for (const r of rebuilt) {
-        const fk = preserved.get(`${r.account_id}\t${r.occurred_on}\t${r.amount_clp}`);
-        if (fk) {
-          upd.run(fk, r.id);
-          classificationsPreserved += 1;
-        }
+    const matchedKeys = new Set<string>();
+    const missing: FintualCertImportResult["missing"] = [];
+    for (const p of plan) {
+      const accountId = accountIdByNote[p.importNote];
+      if (accountId == null) continue;
+      const k = key(accountId, p.ymd, p.amountClp);
+      if (existingKeys.has(k)) {
+        matchedKeys.add(k);
+        continue;
+      }
+      missing.push({ importNote: p.importNote, ymd: p.ymd, amountClp: p.amountClp });
+      if (apply) {
+        const ud = p.cuotasNet !== 0 ? p.cuotasNet : null;
+        insMov.run(accountId, p.amountClp, p.ymd, p.note, ud, p.flowKind);
       }
     }
 
-    const fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertGoalV2, false);
-    seedNavTree();
-    reseedAllAccountSyncSources();
+    const divergent: FintualCertImportResult["divergent"] = [];
+    const noteByAccount = new Map<number, string>();
+    for (const [note, id] of Object.entries(accountIdByNote)) noteByAccount.set(id, note);
+    for (const r of existing) {
+      if (!matchedKeys.has(key(r.account_id, r.occurred_on, r.amount_clp))) {
+        divergent.push({
+          importNote: noteByAccount.get(r.account_id) ?? String(r.account_id),
+          ymd: r.occurred_on,
+          amountClp: r.amount_clp,
+        });
+      }
+    }
+
+    // Valor-cuota hints and nav/sync reseed are additive/idempotent — only on apply.
+    let fundUnitRows = 0;
+    if (apply) {
+      fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertGoalV2, false);
+      seedNavTree();
+      reseedAllAccountSyncSources();
+    }
+
     return {
-      accounts: ids.length,
-      movementsDeleted: del.changes,
-      movementsInserted,
+      accountsEnsured: ids.length,
+      matched: matchedKeys.size,
+      missing,
+      divergent,
       fundUnitRows,
-      classificationsPreserved,
     };
   });
 
-  if (dryRun) {
-    let preview: Omit<FintualCertImportResult, "csvPath" | "dryRun"> = {
-      accounts: 0,
-      movementsDeleted: 0,
-      movementsInserted: 0,
+  if (!apply) {
+    // Report-only: roll back the ensureAccounts side effect so a report never writes.
+    let preview: Omit<FintualCertImportResult, "csvPath" | "applied"> = {
+      accountsEnsured: 0,
+      matched: 0,
+      missing: [],
+      divergent: [],
       fundUnitRows: 0,
-      classificationsPreserved: 0,
     };
     const rollback = db.transaction(() => {
-      preview = run();
+      preview = reconcile();
       throw new ROLLBACK_SENTINEL();
     });
     try {
@@ -220,11 +238,11 @@ export function importFintualCertificado(opts?: {
     } catch (e) {
       if (!(e instanceof ROLLBACK_SENTINEL)) throw e;
     }
-    return { csvPath, dryRun: true, ...preview };
+    return { csvPath, applied: false, ...preview };
   }
 
-  const res = run();
-  return { csvPath, dryRun: false, ...res };
+  const res = reconcile();
+  return { csvPath, applied: true, ...res };
 }
 
 /** Internal marker to roll back the dry-run transaction without surfacing an error. */

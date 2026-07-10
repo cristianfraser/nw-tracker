@@ -297,8 +297,10 @@ function main(): void {
   }
 
   if (fintualCertInstalled && !dryRun) {
+    // Report-only: surface certificado rows missing from the DB without changing curated data.
+    // Run `npm run import:fintual-cert -- --apply` to add them.
     const code = runStep(
-      "Import Fintual certificado → cert account movements",
+      "Reconcile Fintual certificado vs cert accounts (report only)",
       "npm",
       ["run", "import:fintual-cert", "-w", "nw-tracker-server"]
     );
