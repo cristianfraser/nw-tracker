@@ -24,6 +24,7 @@ export const queryKeys = {
   watchlist: () => ["watchlist"] as const,
   marketSeries: () => ["marketSeries"] as const,
   fxCoverage: () => ["fxCoverage"] as const,
+  fxLatest: () => ["fxLatest"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,
   messages: (kind: "notification" | "log") => ["messages", kind] as const,
   syncStatus: () => ["syncStatus"] as const,

@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardBundle, PortfolioGroupBundle } from "../queries/fetchers";
-import type { AccountDetailBundleResponse } from "../types";
+import type {
+  AccountDetailBundleResponse,
+  ConsolidatedMonthlyPerfRow,
+  PeriodReturnsPayload,
+} from "../types";
 import {
   convertAccountDetailBundleUnit,
+  convertConsolidatedMonthlyRowsUnit,
   convertDashboardBundleUnit,
+  convertPeriodReturnsUnit,
   convertPortfolioGroupBundleUnit,
   resolveClpPerUsdForKeepPrev,
 } from "./keepPrevBundleUnit";
@@ -207,6 +213,103 @@ describe("convertAccountDetailBundleUnit (CLP → USD)", () => {
   it("leaves the header row untouched for a CLP target (CLP fields already present)", () => {
     const clp = convertAccountDetailBundleUnit(clpDetail(), "clp", RATE);
     expect(clp.dashboard_account_row!.current_value_clp).toBe(950_000);
+  });
+});
+
+describe("convertConsolidatedMonthlyRowsUnit", () => {
+  const clpRows = (): ConsolidatedMonthlyPerfRow[] => [
+    {
+      as_of_date: "2025-01-31",
+      closing_value: 950_000,
+      prior_closing: 855_000,
+      net_capital_flow: 95_000,
+      stock_units_inflow: 3, // units — must NOT scale
+      nominal_pl: 9_500,
+      pct_month: 0.01, // percent — must NOT scale
+      ytd_nominal_pl: 9_500,
+      cumulative_nominal_pl: -19_000,
+    },
+    {
+      as_of_date: "2025-02-28",
+      closing_value: 1_900_000,
+      prior_closing: null,
+      net_capital_flow: 0,
+      stock_units_inflow: 0,
+      nominal_pl: null,
+      pct_month: null,
+      ytd_nominal_pl: null,
+      cumulative_nominal_pl: null,
+    },
+  ];
+
+  it("CLP → USD divides money columns; percent/units/date untouched; nulls kept", () => {
+    const usd = convertConsolidatedMonthlyRowsUnit(clpRows(), "clp", "usd", RATE);
+    expect(usd[0]!.closing_value).toBeCloseTo(1_000, 6);
+    expect(usd[0]!.prior_closing).toBeCloseTo(900, 6);
+    expect(usd[0]!.net_capital_flow).toBeCloseTo(100, 6);
+    expect(usd[0]!.nominal_pl).toBeCloseTo(10, 6);
+    expect(usd[0]!.cumulative_nominal_pl).toBeCloseTo(-20, 6);
+    expect(usd[0]!.stock_units_inflow).toBe(3);
+    expect(usd[0]!.pct_month).toBe(0.01);
+    expect(usd[0]!.as_of_date).toBe("2025-01-31");
+    expect(usd[1]!.prior_closing).toBeNull();
+    expect(usd[1]!.nominal_pl).toBeNull();
+  });
+
+  it("USD → CLP multiplies money columns", () => {
+    const usd = convertConsolidatedMonthlyRowsUnit(clpRows(), "clp", "usd", RATE);
+    const back = convertConsolidatedMonthlyRowsUnit(usd, "usd", "clp", RATE);
+    expect(back[0]!.closing_value).toBeCloseTo(950_000, 3);
+  });
+
+  it("uf and same-unit payloads pass through by reference", () => {
+    const rows = clpRows();
+    expect(convertConsolidatedMonthlyRowsUnit(rows, "uf", "usd", RATE)).toBe(rows);
+    expect(convertConsolidatedMonthlyRowsUnit(rows, "clp", "clp", RATE)).toBe(rows);
+    expect(convertConsolidatedMonthlyRowsUnit(rows, "usd", "usd", RATE)).toBe(rows);
+  });
+});
+
+describe("convertPeriodReturnsUnit", () => {
+  const clpPayload = (): PeriodReturnsPayload => ({
+    unit: "clp",
+    as_of_date: "2025-01-31",
+    mtd_is_live: false,
+    d1_is_live: false,
+    first_month: "2020-01",
+    periods: [
+      {
+        period: "ytd",
+        pct: 0.05,
+        nominal_pl: 9_500,
+        annualized_pct: null,
+        months: 1,
+        window_start_month: "2025-01",
+      },
+      {
+        period: "y1",
+        pct: null,
+        nominal_pl: null,
+        annualized_pct: null,
+        months: 0,
+        window_start_month: null,
+      },
+    ],
+  });
+
+  it("scales nominal_pl only and stamps the target unit", () => {
+    const usd = convertPeriodReturnsUnit(clpPayload(), "usd", RATE);
+    expect(usd.unit).toBe("usd");
+    expect(usd.periods[0]!.nominal_pl).toBeCloseTo(10, 6);
+    expect(usd.periods[0]!.pct).toBe(0.05);
+    expect(usd.periods[1]!.nominal_pl).toBeNull();
+  });
+
+  it("uf and same-unit payloads pass through by reference", () => {
+    const payload = clpPayload();
+    expect(convertPeriodReturnsUnit(payload, "clp", RATE)).toBe(payload);
+    const uf = { ...payload, unit: "uf" as const };
+    expect(convertPeriodReturnsUnit(uf, "usd", RATE)).toBe(uf);
   });
 });
 

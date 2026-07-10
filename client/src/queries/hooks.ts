@@ -7,6 +7,7 @@ import {
   fetchDashboardNavContext,
   fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
+  type DashboardNavContext,
 } from "./fetchers";
 import {
   hasDashboardNavSnapshotCache,
@@ -20,6 +21,7 @@ import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNa
 import {
   perturbDashboardNavSnapshot,
   perturbGroupPageShell,
+  synthesizeMissingUsdOnDashboardNavContext,
   synthesizeMissingUsdOnGroupPageShell,
   synthesizeMissingUsdOnNavSnapshot,
 } from "../placeholders/perturbCachedAmount";
@@ -69,6 +71,13 @@ export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
   });
 }
 
+/**
+ * Held prior-unit data during a CLP→USD switch gets its USD fields synthesized (FX approximation),
+ * memoized per source object so downstream `useMemo`s keep a stable identity across renders —
+ * the placeholderData fn runs on every render while the new-unit fetch is in flight.
+ */
+const synthesizedNavCtxByPrev = new WeakMap<DashboardNavContext, DashboardNavContext>();
+
 export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboardNav(unit),
@@ -78,6 +87,15 @@ export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
     },
     enabled,
     ...displayUnitQueryBehavior,
+    placeholderData: (prev: DashboardNavContext | undefined) => {
+      if (!prev || unit !== "usd") return prev;
+      let synthesized = synthesizedNavCtxByPrev.get(prev);
+      if (!synthesized) {
+        synthesized = synthesizeMissingUsdOnDashboardNavContext(prev, readFxLatestCache());
+        synthesizedNavCtxByPrev.set(prev, synthesized);
+      }
+      return synthesized;
+    },
   });
 }
 

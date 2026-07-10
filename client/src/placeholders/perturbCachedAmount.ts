@@ -1,3 +1,4 @@
+import type { DashboardNavContext } from "../queries/fetchers";
 import type { GroupPageShell } from "../queries/groupPageShell";
 import { readSidebarNavCache } from "../queries/sidebarNavCache";
 import type {
@@ -152,6 +153,45 @@ function synthesizeMissingUsdOnDashboardAccountRow(
   };
 }
 
+/** Shared USD synthesis for card-strip inputs: account rows + liabilities + layout linked balances. */
+function synthesizeMissingUsdOnStripParts(
+  accounts: DashboardAccountRow[],
+  liabilities: DashboardResponse["liabilities_breakdown"],
+  layout: DashboardResponse["dashboard_layout"],
+  cachedFx?: FxLatest
+): {
+  accounts: DashboardAccountRow[];
+  liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
+  dashboard_layout: DashboardResponse["dashboard_layout"];
+} {
+  const snapshotFxRate = resolveSnapshotFxRate(accounts, cachedFx);
+  return {
+    accounts: accounts.map((row) => synthesizeMissingUsdOnDashboardAccountRow(row, snapshotFxRate)),
+    liabilities_breakdown: liabilities
+      ? {
+          ...liabilities,
+          mortgage_usd: synthesizeUsdField(
+            liabilities.mortgage_clp,
+            liabilities.mortgage_usd,
+            snapshotFxRate
+          ),
+          credit_card_usd: synthesizeUsdField(
+            liabilities.credit_card_clp,
+            liabilities.credit_card_usd,
+            snapshotFxRate
+          ),
+        }
+      : liabilities,
+    dashboard_layout: layout?.map((card) => ({
+      ...card,
+      linked_balances: card.linked_balances?.map((lb) => ({
+        ...lb,
+        usd: synthesizeUsdField(lb.clp, lb.usd, snapshotFxRate),
+      })),
+    })),
+  };
+}
+
 /** Fill missing USD fields on CLP-only cached snapshot before perturb (USD unit switch / first USD visit). */
 export function synthesizeMissingUsdOnNavSnapshot(
   snapshot: DashboardNavSnapshotResponse,
@@ -165,42 +205,35 @@ export function synthesizeMissingUsdOnNavSnapshot(
   snapshot: CachedDashboardNavSnapshot,
   cachedFx?: FxLatest
 ): CachedDashboardNavSnapshot {
-  const snapshotFxRate = resolveSnapshotFxRate(snapshot.accounts, cachedFx);
-  const accounts = snapshot.accounts.map((row) =>
-    synthesizeMissingUsdOnDashboardAccountRow(row, snapshotFxRate)
-  );
-
-  const liabilities = snapshot.liabilities_breakdown;
-  const liabilities_breakdown = liabilities
-    ? {
-        ...liabilities,
-        mortgage_usd: synthesizeUsdField(
-          liabilities.mortgage_clp,
-          liabilities.mortgage_usd,
-          snapshotFxRate
-        ),
-        credit_card_usd: synthesizeUsdField(
-          liabilities.credit_card_clp,
-          liabilities.credit_card_usd,
-          snapshotFxRate
-        ),
-      }
-    : liabilities;
-
-
-  const dashboard_layout = snapshot.dashboard_layout?.map((card) => ({
-    ...card,
-    linked_balances: card.linked_balances?.map((lb) => ({
-      ...lb,
-      usd: synthesizeUsdField(lb.clp, lb.usd, snapshotFxRate),
-    })),
-  }));
-
   return {
     ...snapshot,
-    accounts,
-    liabilities_breakdown,
-    dashboard_layout,
+    ...synthesizeMissingUsdOnStripParts(
+      snapshot.accounts,
+      snapshot.liabilities_breakdown,
+      snapshot.dashboard_layout,
+      cachedFx
+    ),
+  };
+}
+
+/**
+ * Fill missing USD fields on a held prior-unit nav-context during a CLP→USD switch (the
+ * keepPreviousData placeholder in `useDashboardNavContext`). `nw_bucket_totals`, `overviewPoints`
+ * and `inversiones_period_metrics` stay untouched — `dashPickForNavStrip` derives bucket USD by
+ * summing the synthesized account rows, and delta paths fall back to per-account prior closes.
+ */
+export function synthesizeMissingUsdOnDashboardNavContext(
+  ctx: DashboardNavContext,
+  cachedFx?: FxLatest
+): DashboardNavContext {
+  return {
+    ...ctx,
+    ...synthesizeMissingUsdOnStripParts(
+      ctx.accounts,
+      ctx.liabilities_breakdown,
+      ctx.dashboard_layout,
+      cachedFx
+    ),
   };
 }
 
