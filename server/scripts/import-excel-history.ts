@@ -117,6 +117,7 @@ import { assetGroupIdForImportKind } from "../src/portfolioGroupTree.js";
 import { db } from "../src/db.js";
 import { ccInstallmentLedgerRowCount } from "../src/ccInstallmentLedgerDb.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
+import { santanderPerCardCreditCardMastersExist } from "../src/liabilityTabAccounts.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import {
   importCuentaAhorroViviendaMovements,
@@ -1327,7 +1328,12 @@ async function main() {
     mortgage: ensureAccount("mortgage", DEPTO_SUECIA_ACCOUNT_DISPLAY_NAME, "mortgage"),
     spy: ensureAccount("spy", "SPY", "spy"),
     vea: ensureAccount("vea", "VEA", "vea"),
-    credit_card: ensureAccount("credit_card", "santander - worldmember", "credit_card"),
+    // Legacy combined sheet CC account — superseded by the per-card masters
+    // (`credit_card_master|santander|…`, import:cc-parsed). Once those exist it is
+    // never recreated and the sheet's Saldo tc / cuota TC rows are not written.
+    credit_card: santanderPerCardCreditCardMastersExist()
+      ? null
+      : ensureAccount("credit_card", "santander - worldmember", "credit_card"),
   };
 
   console.log(
@@ -1517,10 +1523,10 @@ async function main() {
         const nd = upsertEquityDailySeries(sym, ser);
         if (nd > 0) console.log(`import:excel: equity_daily ${sym} ${nd} rows`);
       }
-      const ccFromPdf = ccInstallmentLedgerRowCount(accounts.credit_card) > 0;
+      const legacyCcAccountId = accounts.credit_card;
       let tcPdfSyncN = 0;
-      if (ccFromPdf) {
-        tcPdfSyncN = upsertCreditCardValuationsFromLedger(accounts.credit_card);
+      if (legacyCcAccountId != null && ccInstallmentLedgerRowCount(legacyCcAccountId) > 0) {
+        tcPdfSyncN = upsertCreditCardValuationsFromLedger(legacyCcAccountId);
       }
       const cryptoVal = applyCryptoValuationsFromCoinHoldings({
         btcAccountId: accounts.bitcoin,
@@ -1537,7 +1543,9 @@ async function main() {
 
     let valCount = 0;
     let movCount = 0;
-    const ccFromPdf = ccInstallmentLedgerRowCount(accounts.credit_card) > 0;
+    const legacyCcAccountId = accounts.credit_card;
+    const ccFromPdf =
+      legacyCcAccountId != null && ccInstallmentLedgerRowCount(legacyCcAccountId) > 0;
 
     const stocksLotsPath = path.join(cfraserDir, "stocks-lots.csv");
     const clearedBrokerageMov = deleteSpyVeaBrokerageMovements(accounts.spy, accounts.vea);
@@ -2033,9 +2041,9 @@ async function main() {
       }
 
       const saldoTc = num(row[8]);
-      if (saldoTc != null && Number.isFinite(saldoTc) && !ccFromPdf) {
+      if (legacyCcAccountId != null && saldoTc != null && Number.isFinite(saldoTc) && !ccFromPdf) {
         upsertVal.run({
-          account_id: accounts.credit_card,
+          account_id: legacyCcAccountId,
           as_of_date: day,
           value_clp: saldoTc,
         });
@@ -2044,9 +2052,9 @@ async function main() {
       }
 
       const cuota = creditCardInstallmentClp(row);
-      if (cuota != null) {
+      if (legacyCcAccountId != null && cuota != null) {
         insMov.run(
-          accounts.credit_card,
+          legacyCcAccountId,
           -Math.abs(cuota),
           day,
           "import:excel|flujos|Gasto mensual|Crédito (cuota TC)",
@@ -2057,8 +2065,8 @@ async function main() {
     }
 
     let tcPdfSyncN = 0;
-    if (ccFromPdf) {
-      tcPdfSyncN = upsertCreditCardValuationsFromLedger(accounts.credit_card);
+    if (legacyCcAccountId != null && ccFromPdf) {
+      tcPdfSyncN = upsertCreditCardValuationsFromLedger(legacyCcAccountId);
       valCount += tcPdfSyncN;
     }
 
