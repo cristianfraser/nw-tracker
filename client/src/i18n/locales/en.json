@@ -259,6 +259,11 @@
     "colAccounts": "N accounts",
     "deleteBtn": "Delete",
     "deleteConfirm": "Delete account #{{id}} ({{name}})? This cannot be undone.",
+    "editBtn": "Edit",
+    "editModal": {
+      "title": "Edit account #{{id}}",
+      "keepBucket": "(keep current group)"
+    },
     "emptyAccounts": "No accounts.",
     "emptyTree": "The net-worth master bucket was not found in the navigation tree.",
     "flowKinds": {
@@ -804,6 +809,7 @@
     "backToDashboard": "← Dashboard",
     "save": "Save",
     "saving": "Saving…",
+    "cancel": "Cancel",
     "close": "Close"
   },
   "flows": {
