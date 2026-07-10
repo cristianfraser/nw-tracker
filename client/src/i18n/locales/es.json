@@ -983,7 +983,7 @@
     "redemptionEmptyNeedsAttention": "Todos los rescates están vinculados o sin cartola."
   },
   "expenses": {
-    "realEstateIntro": "Cuentas de servicios por departamento vinculadas a gastos reales (tarjeta o cuenta corriente). Las filas del CSV definen mes y tipo de boleta; el cargo puede coincidir con ese mes o aparecer uno o dos meses después. El monto en gráficos usa el gasto vinculado o, si falta, el valor esperado del CSV.",
+    "realEstateIntro": "Cuentas por lugar vinculadas a las compras reales que las pagaron (tarjeta o cuenta corriente). El cargo puede caer el mismo mes o uno o dos meses después; los montos usan la compra vinculada o, si falta, el valor esperado. Usa “Asignar compra…” para vincular historia partiendo de la compra.",
     "realEstate": {
       "colLinkedPurchase": "Gasto vinculado",
       "colLinkedMerchant": "Comercio",
@@ -1001,7 +1001,17 @@
       "merchantMatchHint": "comercio probable",
       "linkSourceAuto": "Vinculado automáticamente",
       "linkSourceManual": "Vinculado manualmente",
-      "expectedHint": "Esperado CSV: {{amount}}"
+      "expectedHint": "Esperado CSV: {{amount}}",
+      "assignAction": "Asignar compra…",
+      "assignModalTitle": "Asignar una compra",
+      "assignKindLabel": "Tipo",
+      "assignSearchPlaceholder": "Buscar comercio…",
+      "assignConfirm": "Asignar",
+      "noUnlinkedPurchases": "No hay compras sin vincular",
+      "deleteEntryAction": "Eliminar fila",
+      "deleteEntryConfirm": "¿Eliminar esta fila? Su vínculo también se elimina.",
+      "consumptionEditAction": "kWh/m³…",
+      "fromLedgerHint": "ledger hipotecario"
     },
     "chartGranularityLabel": "Gráfico",
     "colDate": "Fecha",
@@ -1133,7 +1143,10 @@
       "internet": "Internet",
       "gastos_comunes": "Gastos comunes",
       "contribuciones": "Contribuciones",
-      "kwh": "kWh (lectura)"
+      "kwh": "kWh (lectura)",
+      "water": "Agua",
+      "rent": "Arriendo",
+      "mortgage": "Dividendo hipotecario"
     },
     "emptyAccount": "Sin gastos importados.",
     "chartTitle": "Gastos por departamento"

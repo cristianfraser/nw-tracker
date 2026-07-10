@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
-import { runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
+import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -229,6 +229,7 @@ function execMigrationSql(sql: string): void {
  */
 const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "157_depto_payments_and_mirror_merges.sql": runLegacyNoteBackfill157,
+  "161_expense_consumption_columns.sql": runExpenseConsumptionBackfill161,
 };
 
 export function runMigrations() {

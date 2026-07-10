@@ -392,7 +392,8 @@ export interface RealEstateExpenseLinkDto {
 }
 
 export interface RealEstateBillSlot {
-  expense_entry_id: number;
+  /** Null for read-only rows derived from the depto ledger (mortgage). */
+  expense_entry_id: number | null;
   account_slug: ExpenseApartmentSlug;
   bill_month: string;
   spent_on: string;
@@ -401,7 +402,20 @@ export interface RealEstateBillSlot {
   link: RealEstateExpenseLinkDto | null;
   display_amount_clp: number;
   note: string | null;
+  kwh: number | null;
+  m3: number | null;
   can_link: boolean;
+}
+
+/** `GET /api/flows/expenses/real-estate/unlinked-purchases` rows (purchase-first assign pool). */
+export interface RealEstateUnlinkedPurchaseDto {
+  purchase_key: string;
+  merchant: string | null;
+  purchase_on: string | null;
+  purchase_month: string;
+  amount_clp: number;
+  origin_label: string;
+  source: FlowCcExpenseLineSource;
 }
 
 export interface RealEstateExpenseAccountBlock {

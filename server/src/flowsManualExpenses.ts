@@ -35,19 +35,20 @@ export function normalizeManualExpenseNote(note: string | null | undefined): str
 }
 
 function isFlowsManualExpenseEntryRow(row: ManualExpenseEntryRow): boolean {
-  if (row.category === EXCEL_TOTAL_CATEGORY) return false;
-  const note = row.note ?? "";
-  if (note.startsWith("import:excel")) return false;
-  if (note.startsWith("import:depto")) return false;
-  return true;
+  return row.category !== EXCEL_TOTAL_CATEGORY;
 }
 
+/**
+ * Generic manual expenses only: rows tied to a place (`expense_account_id`) are
+ * real-estate bill expectations — their money already flows through the linked
+ * CC/checking purchase, so counting the bill here would double it.
+ */
 function loadManualExpenseEntryRows(): ManualExpenseEntryRow[] {
   return db
     .prepare(
       `SELECT id, amount_clp, spent_on, category, note
        FROM expense_entries
-       WHERE category IS NOT NULL
+       WHERE category IS NOT NULL AND expense_account_id IS NULL
        ORDER BY spent_on, id`
     )
     .all() as ManualExpenseEntryRow[];
