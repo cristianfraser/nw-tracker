@@ -644,18 +644,6 @@
       "en": "Control panel",
       "es": "Panel de control"
     },
-    "notifications": {
-      "en": "Notifications",
-      "es": "Notificaciones"
-    },
-    "accounts": {
-      "en": "Accounts",
-      "es": "Accounts"
-    },
-    "importSync": {
-      "en": "Import sync",
-      "es": "Import sync"
-    },
     "mainNavAria": {
       "en": "Main navigation",
       "es": "Navegación principal"

@@ -98,7 +98,7 @@ export function FxCoverageBanner({
       ) : null}
       <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
         {t("fxCoverage.hint")}{" "}
-        <Link to="/panel/import-sync">{t("sidebar.importSync")}</Link>
+        <Link to="/panel/import-sync">{t("panel.importSyncTitle")}</Link>
         {" · "}
         <code className="mono">npm run backfill:yahoo-fx-usd -w nw-tracker-server</code>
         {" · "}

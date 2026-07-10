@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { LoginPage, safeNextPath } from "./pages/LoginPage";
 import { useTranslation } from "./i18n";
+import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
 
 // Route-level code splitting: each page (and its chart/table deps, notably recharts)
 // loads on first navigation instead of shipping in one bundle. Pages use named
@@ -44,6 +45,15 @@ const MirrorPairsPanelPage = lazyPage(
   () => import("./pages/panel/MirrorPairsPanelPage"),
   "MirrorPairsPanelPage"
 );
+/** One element per master panel subroute — TS errors here when panelSubroutes.ts grows. */
+const PANEL_SUBROUTE_ELEMENTS: Record<PanelSubrouteSlug, ReactElement> = {
+  notifications: <NotificationsPage />,
+  accounts: <AccountsPanelPage />,
+  "import-sync": <ImportSyncPage />,
+  "mirror-pairs": <MirrorPairsPanelPage />,
+  settings: <SettingsPage />,
+};
+
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
 const ProjectionsPage = lazyPage(() => import("./pages/ProjectionsPage"), "ProjectionsPage");
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
@@ -150,11 +160,13 @@ function AppTree() {
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />
-              <Route path="notifications" element={<NotificationsPage />} />
-              <Route path="accounts" element={<AccountsPanelPage />} />
-              <Route path="import-sync" element={<ImportSyncPage />} />
-              <Route path="mirror-pairs" element={<MirrorPairsPanelPage />} />
-              <Route path="settings" element={<SettingsPage />} />
+              {PANEL_SUBROUTES.map((route) => (
+                <Route
+                  key={route.slug}
+                  path={route.slug}
+                  element={PANEL_SUBROUTE_ELEMENTS[route.slug]}
+                />
+              ))}
             </Route>
             <Route path="/account/:id" element={<AccountDetailPage />} />
             <Route path="*" element={<NotFoundPage />} />
