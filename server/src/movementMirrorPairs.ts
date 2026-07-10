@@ -23,7 +23,6 @@ import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCateg
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { ahorroDepositNoteIsForensicFamily } from "./cuentaAhorroForensicDeposits.js";
 import { db } from "./db.js";
-import { movementIsStateContribution } from "./depositFlowKind.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 
@@ -217,7 +216,8 @@ export function mirrorLegDirectionAllowed(
   direction: "out" | "in"
 ): boolean {
   if (kindSlug != null && MIRROR_EXCLUDED_KIND_SLUGS.has(kindSlug)) return false;
-  if (movementIsStateContribution(note)) return false;
+  // State-bonus rows carry a non-null flow_kind and so are already excluded by loadEligibleLegs
+  // (`flow_kind IS NULL`); no note check is needed here.
   if (direction === "in") {
     if (kindSlug != null && MIRROR_INFLOW_EXCLUDED_KIND_SLUGS.has(kindSlug)) return false;
     if (ahorroDepositNoteIsForensicFamily(note)) return false;
