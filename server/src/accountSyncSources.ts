@@ -56,7 +56,7 @@ export function inferSyncSourcesForAccount(row: AccountSyncSourceRow): GlobalSyn
 }
 
 const stmtSelectAccount = db.prepare(
-  `SELECT id, notes, equity_ticker, fund_series_key FROM accounts WHERE id = ?`
+  `SELECT id, import_key AS notes, equity_ticker, fund_series_key FROM accounts WHERE id = ?`
 );
 
 const stmtDeleteForAccount = db.prepare(`DELETE FROM account_sync_sources WHERE account_id = ?`);

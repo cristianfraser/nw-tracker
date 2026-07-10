@@ -19,7 +19,7 @@ function arg(name: string): string | undefined {
 function masterAccountId(last4: string): number {
   const row = db
     .prepare(
-      `SELECT id FROM accounts WHERE notes = ? LIMIT 1`
+      `SELECT id FROM accounts WHERE import_key = ? LIMIT 1`
     )
     .get(`credit_card_master|santander|${last4}`) as { id: number } | undefined;
   if (!row) throw new Error(`No master account for santander ${last4}`);

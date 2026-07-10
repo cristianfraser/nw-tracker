@@ -8,11 +8,11 @@ import {
   type DepositMatchCandidate,
 } from "./flowsCheckingGastos.js";
 
-const BUDA_ACCOUNT_NOTES = "import:buda|key=buda_clp";
+const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 
 /** The Buda CLP buffer account (crypto bucket cash hub), or null if the Buda ledger isn't imported. */
 export function loadBudaBufferAccountId(): number | null {
-  const r = db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(BUDA_ACCOUNT_NOTES) as
+  const r = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(BUDA_ACCOUNT_IMPORT_KEY) as
     | { id: number }
     | undefined;
   return r?.id ?? null;

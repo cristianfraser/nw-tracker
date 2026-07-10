@@ -161,7 +161,7 @@ function mergeUserForcedIntoStaleList(
 
 function afpUnoAccountId(): number | null {
   const row = db
-    .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=afp'`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=afp'`)
     .get() as { id: number } | undefined;
   return row?.id ?? null;
 }

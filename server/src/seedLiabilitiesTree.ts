@@ -65,7 +65,7 @@ export function seedLiabilitiesTree(): void {
     }
 
     const mtgMaster = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)
       .get() as { id: number } | undefined;
     ensureMortgageLiabilityView();
     if (mtgMaster) {

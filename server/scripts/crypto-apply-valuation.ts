@@ -10,7 +10,7 @@ import { applyCryptoValuationsFromCoinHoldings } from "../src/cryptoValuation.js
 
 function accountIdForKey(key: string): number | undefined {
   const r = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
     .get(`import:excel|key=${key}`) as { id: number } | undefined;
   return r?.id;
 }

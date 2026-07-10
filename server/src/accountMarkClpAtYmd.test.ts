@@ -9,7 +9,7 @@ import {
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import {
-  DEPTO_PROPERTY_ACCOUNT_NOTES,
+  DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
   deptoAccountMarkClpAtYmd,
   loadDeptoLedgerFromMovements,
 } from "./deptoLedgerFromMovements.js";
@@ -87,8 +87,8 @@ let fixtureMortgageId: number | null = null;
 
 beforeAll(() => {
   const existing = db
-    .prepare(`SELECT 1 FROM accounts WHERE notes = ? AND account_kind = 'master'`)
-    .get(DEPTO_PROPERTY_ACCOUNT_NOTES);
+    .prepare(`SELECT 1 FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
+    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY);
   if (existing) return; // real depto tracked — tests run against it
 
   const propGroup = db
@@ -102,23 +102,23 @@ beforeAll(() => {
   fixturePropertyId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-         VALUES (?, 'suecia fixture', ?, 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
+         VALUES (?, 'suecia fixture', ?, ?, 'master')`
       )
-      .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_NOTES).lastInsertRowid
+      .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY).lastInsertRowid
   );
   const hadMortgage = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master'`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
     .get(MORTGAGE_ACCOUNT_NOTES) as { id: number } | undefined;
   fixtureMortgageId = hadMortgage
     ? null
     : Number(
         db
           .prepare(
-            `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-             VALUES (?, 'suecia fixture', ?, 'master')`
+            `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
+             VALUES (?, 'suecia fixture', ?, ?, 'master')`
           )
-          .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
+          .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
       );
   const mortgageId = fixtureMortgageId ?? hadMortgage!.id;
 
@@ -229,8 +229,8 @@ afterAll(() => {
 
 function propertyAccountRow(): { id: number } | undefined {
   return db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master' LIMIT 1`)
-    .get(DEPTO_PROPERTY_ACCOUNT_NOTES) as { id: number } | undefined;
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' LIMIT 1`)
+    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
 }
 
 describe("deptoAccountMarkClpAtYmd", () => {

@@ -9,12 +9,13 @@ export function accountRowForId(accountId: number): AccountRow | null {
   const bucket_slug = bucketSlugForAccountId(accountId);
   if (!bucket_slug) return null;
   const row = db
-    .prepare(`SELECT notes, equity_ticker FROM accounts WHERE id = ?`)
-    .get(accountId) as { notes: string | null; equity_ticker: string | null } | undefined;
+    .prepare(`SELECT notes, import_key, equity_ticker FROM accounts WHERE id = ?`)
+    .get(accountId) as { notes: string | null; import_key: string | null; equity_ticker: string | null } | undefined;
   return {
     bucket_slug,
     group_slug: dashboardBucketForAssetGroupSlug(bucket_slug) ?? bucket_slug,
     notes: row?.notes ?? null,
+    import_key: row?.import_key ?? null,
     equity_ticker: row?.equity_ticker ?? null,
   };
 }

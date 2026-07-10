@@ -29,8 +29,8 @@ export type MortgagePaymentPreviewResponse = MortgagePaymentComputeResult & {
   mortgage_balance_clp: number;
 };
 
-const PROPERTY_ACCOUNT_NOTES = "import:excel|key=property";
-const MORTGAGE_ACCOUNT_NOTES = "import:excel|key=mortgage";
+const PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
+const MORTGAGE_ACCOUNT_IMPORT_KEY = "import:excel|key=mortgage";
 
 export function mortgagePaymentCreateSchemaForAccount(
   accountId: number
@@ -39,11 +39,11 @@ export function mortgagePaymentCreateSchemaForAccount(
   const account = accountRowForId(accountId);
   if (!account) return null;
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") return null;
-  if (account.notes !== MORTGAGE_ACCOUNT_NOTES && account.notes !== "liability_view|mortgage") {
+  if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY && account.import_key !== "liability_view|mortgage") {
     const master = db
-      .prepare(`SELECT notes FROM accounts WHERE id = ?`)
-      .get(accountId) as { notes: string | null } | undefined;
-    if (master?.notes !== MORTGAGE_ACCOUNT_NOTES) return null;
+      .prepare(`SELECT import_key FROM accounts WHERE id = ?`)
+      .get(accountId) as { import_key: string | null } | undefined;
+    if (master?.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) return null;
   }
   const ledger = loadDeptoLedgerFromMovements();
   if (ledger.length === 0) return null;
@@ -59,24 +59,24 @@ function requireSueciaMortgageAccount(accountId: number): void {
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") {
     throw new Error("Mortgage payments can only be logged on the Suecia hipoteca account");
   }
-  if (account.notes !== MORTGAGE_ACCOUNT_NOTES) {
+  if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) {
     throw new Error("Mortgage payment entry is only enabled for the Suecia mortgage master account");
   }
 }
 
 function propertyAccountId(): number {
   const row = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? ORDER BY id LIMIT 1`)
-    .get(PROPERTY_ACCOUNT_NOTES) as { id: number } | undefined;
-  if (!row) throw new Error(`Property account not found (${PROPERTY_ACCOUNT_NOTES})`);
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`)
+    .get(PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
+  if (!row) throw new Error(`Property account not found (${PROPERTY_ACCOUNT_IMPORT_KEY})`);
   return row.id;
 }
 
 function mortgageAccountId(): number {
   const row = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master' ORDER BY id LIMIT 1`)
-    .get(MORTGAGE_ACCOUNT_NOTES) as { id: number } | undefined;
-  if (!row) throw new Error(`Mortgage account not found (${MORTGAGE_ACCOUNT_NOTES})`);
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' ORDER BY id LIMIT 1`)
+    .get(MORTGAGE_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
+  if (!row) throw new Error(`Mortgage account not found (${MORTGAGE_ACCOUNT_IMPORT_KEY})`);
   return row.id;
 }
 

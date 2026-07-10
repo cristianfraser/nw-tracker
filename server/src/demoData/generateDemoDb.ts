@@ -149,7 +149,7 @@ function applyDemoColors(accounts: DemoAccounts): void {
   if (ccj != null) updAccount.run("80,184,176", ccj);
   // Card colors by group (santander blue-gray / bci amber, like the real masters).
   const updByNotes = db.prepare(
-    `UPDATE accounts SET color_rgb = ? WHERE notes LIKE ? AND account_kind = 'master'`
+    `UPDATE accounts SET color_rgb = ? WHERE import_key LIKE ? AND account_kind = 'master'`
   );
   updByNotes.run("75,153,189", "credit_card_master|santander|%");
   updByNotes.run("180,120,60", "credit_card_master|bci|%");
@@ -251,6 +251,11 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
           )
         : null,
   };
+  // Identity strings live in accounts.import_key (notes is human provenance); the demo
+  // creators write notes, so mirror them into import_key before any lookups run.
+  db.exec(
+    `UPDATE accounts SET import_key = notes WHERE import_key IS NULL AND (notes LIKE 'import:%' OR notes LIKE 'credit_card_master|%')`
+  );
   seedCreditCardTree();
   seedNavTree();
 
