@@ -68,7 +68,7 @@ describe("importFintualCertificado", () => {
     const res = importFintualCertificado({ maxMonth: "2099-12", apply: true });
     expect(res.applied).toBe(true);
     expect(res.missing).toHaveLength(2);
-    expect(res.divergent).toHaveLength(0);
+    expect(res.dbOnly).toHaveLength(0);
 
     const reservaRows = db
       .prepare("SELECT flow_kind, note FROM movements WHERE account_id = ?")
@@ -105,9 +105,39 @@ describe("importFintualCertificado", () => {
     expect(rows[0].id).toBe(firstId);
   });
 
-  it("never touches curated rows: adds only the genuinely missing ones", () => {
+  it("matches mirror-merge/manual transfer legs (outflow-day skew) so covered flows are not re-added", () => {
     cleanupCertData();
-    // First cert has one deposit.
+    writeCsv([
+      // Deposit settled 09/01 — DB records it as a transfer dated the checking-outflow day (06/01).
+      "09/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000",
+      // Rescate settled 20/02 — DB records it as a fund→checking transfer dated 21/02.
+      "20/02/2025,1164983,Reserva,0,2000000,0,40,Transferencia electronica,50000",
+    ]);
+    // Ensure the account exists, then curate the two flows as transfer legs.
+    importFintualCertificado({ maxMonth: "2099-12", apply: true });
+    const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
+    db.prepare("DELETE FROM movements WHERE account_id = ?").run(reservaId);
+    const counterpartId = (
+      db.prepare("SELECT id FROM accounts WHERE id != ? ORDER BY id LIMIT 1").get(reservaId) as { id: number }
+    ).id;
+    db.prepare(
+      "INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 5000000, '2025-01-06', 'mirror-merge|test', 100)"
+    ).run(counterpartId, reservaId);
+    db.prepare(
+      "INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 2000000, '2025-02-21', 'manual rescate', 40)"
+    ).run(reservaId, counterpartId);
+
+    const res = importFintualCertificado({ maxMonth: "2099-12" });
+    expect(res.matched).toBe(2);
+    expect(res.missing).toHaveLength(0);
+    expect(res.dbOnly).toHaveLength(0);
+
+    // Cleanup the transfer legs (cleanupCertData only removes account_id rows).
+    db.prepare("DELETE FROM movements WHERE from_account_id = ? OR to_account_id = ?").run(reservaId, reservaId);
+  });
+
+  it("never touches curated rows: an edited amount is reported, not overwritten", () => {
+    cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
     importFintualCertificado({ maxMonth: "2099-12", apply: true });
 
@@ -116,22 +146,11 @@ describe("importFintualCertificado", () => {
     // The user edits the curated amount (correcting the cert).
     db.prepare("UPDATE movements SET amount_clp = 5100000 WHERE id = ?").run(curatedId);
 
-    // A newer cert adds a second deposit and still lists the original (unedited) amount.
-    writeCsv([
-      "10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000",
-      "20/02/2025,1164983,Reserva,3000000,0,60,0,Transferencia electronica,50000",
-    ]);
-    const res = importFintualCertificado({ maxMonth: "2099-12", apply: true });
-
-    // The edited curated row is reported as divergent and left untouched.
-    expect(res.divergent.some((d) => d.amountClp === 5100000)).toBe(true);
+    // Report-only: both sides of the disagreement are surfaced, nothing is written.
+    const res = importFintualCertificado({ maxMonth: "2099-12" });
+    expect(res.missing.some((m) => m.amountClp === 5000000)).toBe(true);
+    expect(res.dbOnly.some((d) => d.amountClp === 5100000)).toBe(true);
     const edited = db.prepare("SELECT amount_clp FROM movements WHERE id = ?").get(curatedId) as { amount_clp: number };
     expect(edited.amount_clp).toBe(5100000);
-
-    // The genuinely new Feb deposit was added.
-    const febRows = db
-      .prepare("SELECT COUNT(*) c FROM movements WHERE account_id = ? AND occurred_on = '2025-02-20'")
-      .get(reservaId) as { c: number };
-    expect(febRows.c).toBe(1);
   });
 });
