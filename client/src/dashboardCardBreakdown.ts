@@ -928,7 +928,11 @@ export function roundedMetricDeposits(
   return Math.round(metrics.deposits_period_clp);
 }
 
-/** Rounded Δ for card metrics (matches `DashboardCardGroupMetrics`). */
+/**
+ * Rounded Δ for card metrics (matches `DashboardCardGroupMetrics`). USD keeps
+ * cents (2 decimals) — the red/green delta pair then renders at the card's least
+ * adaptive decimals (`minAdaptiveUsdFractionDigits`); CLP stays whole pesos.
+ */
 export function roundedMetricDelta(
   metrics: CardGroupMetrics,
   showUsd: boolean,
@@ -937,7 +941,7 @@ export function roundedMetricDelta(
   const clp = kind === "total" ? metrics.delta_total_clp : metrics.delta_period_clp;
   if (showUsd) {
     const usd = kind === "total" ? metrics.delta_total_usd : metrics.delta_period_usd;
-    if (usd != null && Number.isFinite(usd)) return Math.round(usd);
+    if (usd != null && Number.isFinite(usd)) return Math.round(usd * 100) / 100;
     return null;
   }
   return clp != null && Number.isFinite(clp) ? Math.round(clp) : null;

@@ -5,6 +5,7 @@ import {
   type CardBreakdownNode,
 } from "../../dashboardCardBreakdown";
 import { DashboardCardValue } from "./DashboardCardValue";
+import { minAdaptiveUsdFractionDigits } from "../../format";
 import { cn } from "../../cn";
 import styles from "./DashboardCardBreakdown.module.css";
 
@@ -26,6 +27,7 @@ function BreakdownAmount({
   placeholderPhase,
   mountSeedKey,
   muted,
+  usdFractionDigits,
 }: {
   node: CardBreakdownNode;
   showUsd: boolean;
@@ -33,6 +35,7 @@ function BreakdownAmount({
   placeholderPhase: boolean;
   mountSeedKey: string;
   muted: boolean;
+  usdFractionDigits: 0 | 1 | 2;
 }) {
   const amount = (
     <span className={cn("card-breakdown__amount", "mono", muted && "card-breakdown__amount--muted")}>
@@ -44,6 +47,7 @@ function BreakdownAmount({
         placeholderPhase={placeholderPhase}
         variant="breakdown"
         mountSeedKey={mountSeedKey}
+        usdFractionDigits={usdFractionDigits}
       />
     </span>
   );
@@ -64,6 +68,7 @@ function BreakdownNodeRow({
   depth,
   index,
   rowKeyPrefix,
+  usdFractionDigits,
 }: {
   node: CardBreakdownNode;
   showUsd: boolean;
@@ -73,6 +78,7 @@ function BreakdownNodeRow({
   depth: number;
   index: number;
   rowKeyPrefix: string;
+  usdFractionDigits: 0 | 1 | 2;
 }) {
   const isGroup = depth === 0;
   /** One account leaf under a group: show the group total only (same as brokerage “Fondos mutuos”). */
@@ -103,6 +109,7 @@ function BreakdownNodeRow({
           placeholderPhase={placeholderPhase}
           mountSeedKey={mountSeedKey}
           muted={!isGroup}
+          usdFractionDigits={usdFractionDigits}
         />
       </div>
       {node.children.length > 0 && !hideOnlyChild ? (
@@ -118,6 +125,7 @@ function BreakdownNodeRow({
               depth={depth + 1}
               index={j}
               rowKeyPrefix={rowKeyPrefix}
+              usdFractionDigits={usdFractionDigits}
             />
           ))}
         </ul>
@@ -134,6 +142,7 @@ function BreakdownList({
   placeholderPhase,
   className,
   rowKeyPrefix,
+  usdFractionDigits,
 }: {
   lines: CardBreakdownLine[];
   showUsd: boolean;
@@ -142,6 +151,7 @@ function BreakdownList({
   placeholderPhase: boolean;
   className?: string;
   rowKeyPrefix: string;
+  usdFractionDigits: 0 | 1 | 2;
 }) {
   const items = nestCardBreakdownLines(lines);
   if (items.length === 0) return null;
@@ -158,6 +168,7 @@ function BreakdownList({
           depth={0}
           index={i}
           rowKeyPrefix={rowKeyPrefix}
+          usdFractionDigits={usdFractionDigits}
         />
       ))}
     </ul>
@@ -176,6 +187,13 @@ export function DashboardCardBreakdown({
   const hasMain = lines.length > 0;
   const hasBottom = (bottomLines?.length ?? 0) > 0;
   if (!hasMain && !hasBottom) return null;
+  // One decimal count for the whole card (main + bottom rows): the least adaptive
+  // decimals across rows, so the largest sub-balance keeps every sibling clean.
+  const usdFractionDigits = showUsd
+    ? minAdaptiveUsdFractionDigits(
+        (hasBottom ? [...lines, ...bottomLines!] : lines).map((l) => l.usd)
+      )
+    : 0;
 
   if (!hasBottom) {
     return (
@@ -186,6 +204,7 @@ export function DashboardCardBreakdown({
         animated={animated}
         placeholderPhase={placeholderPhase}
         rowKeyPrefix="row"
+        usdFractionDigits={usdFractionDigits}
       />
     );
   }
@@ -201,6 +220,7 @@ export function DashboardCardBreakdown({
             animated={animated}
             placeholderPhase={placeholderPhase}
             rowKeyPrefix="main"
+            usdFractionDigits={usdFractionDigits}
           />
         ) : null}
         <div className="card-breakdown-spacer" aria-hidden />
@@ -212,6 +232,7 @@ export function DashboardCardBreakdown({
           placeholderPhase={placeholderPhase}
           className="card-breakdown-bottom"
           rowKeyPrefix="bottom"
+          usdFractionDigits={usdFractionDigits}
         />
       </>
     );
@@ -226,6 +247,7 @@ export function DashboardCardBreakdown({
         animated={animated}
         placeholderPhase={placeholderPhase}
         rowKeyPrefix="main"
+        usdFractionDigits={usdFractionDigits}
       />
       <BreakdownList
         lines={bottomLines!}
@@ -235,6 +257,7 @@ export function DashboardCardBreakdown({
         placeholderPhase={placeholderPhase}
         className={styles.bottom}
         rowKeyPrefix="bottom"
+        usdFractionDigits={usdFractionDigits}
       />
     </div>
   );
