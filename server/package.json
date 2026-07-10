@@ -17,8 +17,6 @@
     "backfill:checking-auto-match-categories": "tsx -e \"import { backfillCheckingAutoMatchCategories } from './src/backfillCheckingAutoMatchCategories.ts'; console.log(backfillCheckingAutoMatchCategories())\"",
     "backfill:additional-card-no-cuenta": "tsx -e \"import { backfillAdditionalCardNoCuenta } from './src/backfillAdditionalCardNoCuenta.ts'; console.log(backfillAdditionalCardNoCuenta())\"",
     "backfill:web-paste-usd": "tsx -e \"import { backfillWebPasteUsdLines } from './src/ccWebPasteUsdBackfill.ts'; console.log(backfillWebPasteUsdLines())\"",
-    "backfill:apv-aporte-estatal": "tsx -e \"import { backfillApvAporteEstatal } from './src/apvAporteEstatalBackfill.ts'; import { resolveCfraserCsvDir } from './src/cfraserPaths.ts'; console.log('tagged', backfillApvAporteEstatal(resolveCfraserCsvDir()), 'aporte estatal deposits')\"",
-    "import:excel": "tsx scripts/import-excel-history.ts",
     "import:fintual-cert": "tsx scripts/import-fintual-cert.ts",
     "rebuild:cuenta-ahorro": "tsx scripts/rebuild-cuenta-ahorro.ts",
     "import:dap": "tsx scripts/import-dap-history.ts",

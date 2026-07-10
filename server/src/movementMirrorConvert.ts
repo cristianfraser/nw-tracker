@@ -11,13 +11,9 @@
  *
  * Embedded original notes have `|` encoded as `¦` (U+00A6): note-scanning readers match on
  * `|tag=`/prefix patterns and must never false-match tags inside a merged note (e.g. the
- * `|flow_kind=` regex in depositFlowKind.ts, `%cripto-coin-only-wdw%` contains-checks).
+ * `|flow_kind=` mortgage regex in movementFlowType.ts, `%cripto-coin-only-wdw%` contains-checks).
  *
  * Caveats (also surfaced in the panel copy):
- * - `import:excel --force-wipe` deletes single-leg rows per account and re-inserts from the
- *   sheet/certificado; the wipe also deletes `mirror-merge|` transfers touching wiped accounts
- *   (see import-excel-history.ts), so converted pairs reappear as candidates — re-convert via
- *   the panel (rejections cascade away with the legs).
  * - Ambiguous-tier pairs outside the business-day window: re-importing that cartola month can
  *   re-insert the bank leg (import dedupe window is 1 business day).
  */
