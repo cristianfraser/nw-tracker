@@ -48,14 +48,14 @@ function historicalMarkClpAtYmd(
   accountId: number,
   asOfYmd: string,
   categorySlug: string,
-  opts?: { notes?: string | null; name?: string | null }
+  opts?: { import_key?: string | null; name?: string | null }
 ): AccountMarkAtYmd | null {
   if (accountBucketKindSlug(categorySlug) === "afp") {
     const live = liveAfpDisplayValueClp(accountId, asOfYmd);
     if (live) return live;
   }
-  if (opts?.notes && isFintualCertV2ValuationNotes(opts.notes)) {
-    const live = liveFintualCertDisplayValueClp(accountId, opts.notes, opts.name ?? null, asOfYmd);
+  if (opts?.import_key && isFintualCertV2ValuationNotes(opts.import_key)) {
+    const live = liveFintualCertDisplayValueClp(accountId, opts.import_key, opts.name ?? null, asOfYmd);
     if (live) return live;
   }
   if (isMovementBalanceCashCategory(categorySlug)) {
@@ -125,7 +125,7 @@ export function accountMarkClpAtYmd(
   accountId: number,
   asOfYmd: string,
   categorySlug?: string | null,
-  opts?: { notes?: string | null; name?: string | null }
+  opts?: { import_key?: string | null; name?: string | null }
 ): AccountMarkAtYmd | null {
   const slug = categorySlug ?? bucketSlugForAccount(accountId) ?? "";
   const today = chileCalendarTodayYmd();

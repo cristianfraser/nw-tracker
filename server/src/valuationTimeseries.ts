@@ -311,20 +311,20 @@ function bucketKindFromSlugMap(slugById: Map<number, string>, accountId: number)
 
 function accountChartMetaById(
   accountIds: number[]
-): Map<number, { slug: string; notes: string | null; name: string }> {
+): Map<number, { slug: string; import_key: string | null; name: string }> {
   const uniq = [...new Set(accountIds.filter((id) => id > 0))];
-  const m = new Map<number, { slug: string; notes: string | null; name: string }>();
+  const m = new Map<number, { slug: string; import_key: string | null; name: string }>();
   if (uniq.length === 0) return m;
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT a.id AS id, g.slug AS slug, a.notes AS notes, a.name AS name
+      `SELECT a.id AS id, g.slug AS slug, a.import_key AS import_key, a.name AS name
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})`
     )
-    .all(...uniq) as { id: number; slug: string; notes: string | null; name: string }[];
-  for (const r of rows) m.set(r.id, { slug: r.slug, notes: r.notes, name: r.name });
+    .all(...uniq) as { id: number; slug: string; import_key: string | null; name: string }[];
+  for (const r of rows) m.set(r.id, { slug: r.slug, import_key: r.import_key, name: r.name });
   return m;
 }
 
@@ -964,10 +964,10 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
       }
       const chartMeta = chartMetaById.get(aid);
-      if (chartMeta?.notes && isFintualCertV2ValuationNotes(chartMeta.notes)) {
+      if (chartMeta?.import_key && isFintualCertV2ValuationNotes(chartMeta.import_key)) {
         raw = fintualCertValuationRawClpForChart(
           aid,
-          chartMeta.notes,
+          chartMeta.import_key,
           chartMeta.name,
           d,
           raw,
@@ -1448,7 +1448,7 @@ function latestAllocationPieForAccounts(
     const meta = pieMetaById.get(a.account_id);
     const categorySlug = slugById.get(a.account_id) ?? meta?.slug ?? "";
     const live = syncLatestDisplayValueClp(a.account_id, categorySlug, {
-      notes: meta?.notes ?? null,
+      import_key: meta?.import_key ?? null,
       name: meta?.name ?? a.name,
     });
     if (live && live.value_clp > 0) {
@@ -1867,7 +1867,7 @@ function listAccountsForPortfolioGroupSlug(portfolioGroupSlug: string): GroupTab
   const ph = ids.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug, a.notes, a.exclude_from_group_totals
+      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug, a.notes, a.import_key, a.exclude_from_group_totals
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})

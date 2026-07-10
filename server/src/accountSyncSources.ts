@@ -8,7 +8,7 @@ import type { GlobalSyncSource } from "./globalSyncStale.js";
 
 export type AccountSyncSourceRow = {
   id: number;
-  notes: string | null;
+  import_key: string | null;
   equity_ticker: string | null;
   fund_series_key: string | null;
 };
@@ -28,24 +28,24 @@ function fundSeriesKeyFromImportNotes(importNotes: string): string | null {
   }
 }
 
-function resolvedFundSeriesKey(notes: string | null, fundSeriesKey: string | null): string | null {
+function resolvedFundSeriesKey(importKey: string | null, fundSeriesKey: string | null): string | null {
   const col = fundSeriesKey?.trim();
   if (col) return col;
-  if (notes) return fundSeriesKeyFromImportNotes(notes);
+  if (importKey) return fundSeriesKeyFromImportNotes(importKey);
   return null;
 }
 
-function isFintualFundAccount(notes: string | null, fundSeriesKey: string | null): boolean {
-  if (isFintualCertV2AccountNotes(notes)) return true;
-  const key = resolvedFundSeriesKey(notes, fundSeriesKey);
+function isFintualFundAccount(importKey: string | null, fundSeriesKey: string | null): boolean {
+  if (isFintualCertV2AccountNotes(importKey)) return true;
+  const key = resolvedFundSeriesKey(importKey, fundSeriesKey);
   return key != null && key.startsWith("fintual");
 }
 
 /** Deterministic inference used only when (re)seeding `account_sync_sources`. */
 export function inferSyncSourcesForAccount(row: AccountSyncSourceRow): GlobalSyncSource[] {
   const out: GlobalSyncSource[] = [];
-  if (isFintualFundAccount(row.notes, row.fund_series_key)) out.push("fintual");
-  if (row.notes === "import:excel|key=afp") out.push("afp_uno");
+  if (isFintualFundAccount(row.import_key, row.fund_series_key)) out.push("fintual");
+  if (row.import_key === "import:excel|key=afp") out.push("afp_uno");
   const ticker = row.equity_ticker?.trim();
   if (ticker) {
     const kind = equityMarketKind(ticker);
@@ -56,7 +56,7 @@ export function inferSyncSourcesForAccount(row: AccountSyncSourceRow): GlobalSyn
 }
 
 const stmtSelectAccount = db.prepare(
-  `SELECT id, import_key AS notes, equity_ticker, fund_series_key FROM accounts WHERE id = ?`
+  `SELECT id, import_key, equity_ticker, fund_series_key FROM accounts WHERE id = ?`
 );
 
 const stmtDeleteForAccount = db.prepare(`DELETE FROM account_sync_sources WHERE account_id = ?`);
