@@ -12,7 +12,7 @@ describe("accountSyncSources", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 1,
-        notes: "import:fintual|cert|key=apv_a",
+        import_key: "import:fintual|cert|key=apv_a",
         equity_ticker: null,
         fund_series_key: null,
       })
@@ -23,7 +23,7 @@ describe("accountSyncSources", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 1,
-        notes: "import:excel|key=fintual_rn",
+        import_key: "import:excel|key=fintual_rn",
         equity_ticker: null,
         fund_series_key: null,
       })
@@ -34,7 +34,7 @@ describe("accountSyncSources", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 1,
-        notes: "import:excel|key=afp",
+        import_key: "import:excel|key=afp",
         equity_ticker: null,
         fund_series_key: null,
       })
@@ -45,7 +45,7 @@ describe("accountSyncSources", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 1,
-        notes: "import:panel|ticker=SPY|key=x",
+        import_key: "import:panel|ticker=SPY|key=x",
         equity_ticker: "SPY",
         fund_series_key: null,
       })
@@ -53,7 +53,7 @@ describe("accountSyncSources", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 2,
-        notes: "import:panel|ticker=BTC-USD|key=y",
+        import_key: "import:panel|ticker=BTC-USD|key=y",
         equity_ticker: "BTC-USD",
         fund_series_key: null,
       })
@@ -64,7 +64,7 @@ describe("accountSyncSources", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 1,
-        notes: "import:excel|key=checking",
+        import_key: "import:excel|key=checking",
         equity_ticker: null,
         fund_series_key: null,
       })

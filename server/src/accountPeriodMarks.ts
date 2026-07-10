@@ -4,7 +4,7 @@ import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 
 export type MonthEndCloseForAccountOpts = {
-  notes?: string | null;
+  import_key?: string | null;
   name?: string | null;
 };
 
@@ -85,7 +85,7 @@ export function monthEndCloseClpForAccount(
   const today = chileCalendarTodayYmd();
   const ymd = monthEnd > today ? today : monthEnd;
   const mark = accountMarkClpAtYmd(accountId, ymd, bucketSlug, {
-    notes: opts?.notes ?? null,
+    import_key: opts?.import_key ?? null,
     name: opts?.name ?? null,
   });
   if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) return mark.value_clp;

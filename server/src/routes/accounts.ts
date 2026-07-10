@@ -451,7 +451,7 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
   const withdrawals_clp = totalWithdrawalsClpForAccount(id);
   const metaRow = db
     .prepare(
-      `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes
+      `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes, a.import_key AS account_import_key
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id = ?`
@@ -462,6 +462,7 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
         bucket_label: string;
         account_name: string;
         account_notes: string | null;
+        account_import_key: string | null;
       }
     | undefined;
   const bucketSlug = metaRow?.bucket_slug ?? "";
@@ -482,7 +483,7 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
   const accountRow = accountRowForId(id);
   const deposits_clp = pocketDepositsClpForAccount(id);
   let latest = await latestValuationDisplayForAccount(id, bucketKind || null, {
-    notes: metaRow?.account_notes ?? null,
+    import_key: metaRow?.account_import_key ?? null,
     name: metaRow?.account_name ?? null,
   });
   if (latest == null && bucketKind && !isMovementBalanceCashCategory(bucketKind)) {
@@ -493,7 +494,7 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
   const positionMeta = metaRow
     ? getAccountPositionMeta(id, bucketKind, {
         afpCuotasAsOfYmd: bucketKind === "afp" ? asOfCuotas : undefined,
-        accountNotes: metaRow.account_notes,
+        accountImportKey: metaRow.account_import_key,
         accountName: metaRow.account_name,
       })
     : null;

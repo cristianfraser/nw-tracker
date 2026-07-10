@@ -34,7 +34,7 @@ export function portfolioGroupSlugForDashboardBucket(bucket: NwDashboardBucketSl
 type BucketAccountMeta = {
   account_id: number;
   bucket_slug: string;
-  notes: string | null;
+  import_key: string | null;
   name: string;
   exclude_from_group_totals: number;
 };
@@ -46,7 +46,7 @@ function listAccountsForDashboardBucket(bucket: NwDashboardBucketSlug): BucketAc
   const ph = ids.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT a.id AS account_id, g.slug AS bucket_slug, a.notes, a.name,
+      `SELECT a.id AS account_id, g.slug AS bucket_slug, a.import_key, a.name,
               COALESCE(a.exclude_from_group_totals, 0) AS exclude_from_group_totals
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
@@ -63,7 +63,7 @@ function rawPortfolioGroupAccountsClpAt(
   for (const a of listAccountsForDashboardBucket(bucket)) {
     if (a.exclude_from_group_totals === 1) continue;
     const mark = accountMarkClpAtYmd(a.account_id, asOfYmd, a.bucket_slug, {
-      notes: a.notes,
+      import_key: a.import_key,
       name: a.name,
     });
     if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) {

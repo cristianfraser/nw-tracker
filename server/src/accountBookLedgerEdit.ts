@@ -28,7 +28,7 @@ export function bookLedgerEditSchemaForAccount(accountId: number): BookLedgerEdi
   if (accountUsesUsdCashFlowKinds({ bucket_slug: account.bucket_slug, group_slug: account.bucket_slug })) return null;
   if (kind === "credit_card") return null;
   if (kind === "property" || kind === "mortgage") return null;
-  if (account.notes && isFintualCertV2ValuationNotes(account.notes)) return null;
+  if (account.import_key && isFintualCertV2ValuationNotes(account.import_key)) return null;
   if (accountUsesEquityMtm(accountId)) return null;
   if (accountUsesCryptoMtm(accountId)) return null;
 
