@@ -90,7 +90,7 @@ export function RealEstateExpensesPage() {
     if (accountSlug && ACCOUNT_ORDER.includes(accountSlug as ExpenseApartmentSlug)) {
       return [accountSlug as ExpenseApartmentSlug];
     }
-    return ["lastarria", "suecia"];
+    return undefined; // index view: all places
   }, [accountSlug]);
 
   const sections = useMemo(() => {

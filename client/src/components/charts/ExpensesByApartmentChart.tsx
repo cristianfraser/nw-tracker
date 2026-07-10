@@ -19,6 +19,7 @@ import {
 const CHART_ANIM_MS = 90;
 
 const APARTMENT_BAR: { dataKey: ExpenseApartmentSlug; color: string }[] = [
+  { dataKey: "el_vergel", color: "#f472b6" },
   { dataKey: "lastarria", color: "#db2777" },
   { dataKey: "suecia", color: "#be185d" },
 ];
