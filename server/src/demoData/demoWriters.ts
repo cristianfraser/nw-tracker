@@ -19,8 +19,10 @@
 import { db } from "../db.js";
 import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import {
-  buildDeptoDividendosMovementNote,
-  buildDeptoMortgageMovementNote,
+  deptoPaymentColumnsFromPaymentRow,
+  deptoPaymentHumanNote,
+  insertDeptoPaymentRow,
+  mortgageFlowKindFromCuota,
   type DeptoDividendosPaymentRow,
 } from "../deptoDividendosLedger.js";
 import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
@@ -170,6 +172,11 @@ function movement(
   flowKind: string | null = null
 ): void {
   insMovement.run(accountId, Math.round(amountClp), ymd, note, flowKind);
+}
+
+function lastInsertedMovementId(): number {
+  const r = db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number };
+  return Number(r.id);
 }
 
 const insValuation = db.prepare(
@@ -1307,9 +1314,9 @@ export function writeInvestmentMonth(
     const grossClp = house.valueClp * Math.pow(1.003, monthsOwned);
 
     if (accounts.mortgageId != null) {
-      // Depto ledger movements — the SAME note format import/manual payments write on the
-      // real DB, so the movements loader, mortgage pages, payment scenarios, and the
-      // dashboard card all run the identical code path on the demo.
+      // Depto ledger movements + depto_payments rows — the SAME write shape import/manual
+      // payments use on the real DB, so the movements loader, mortgage pages, payment
+      // scenarios, and the dashboard card all run the identical code path on the demo.
       const payYmd = dayInMonth(month, 10);
       const ufDay = ufRowOnOrBefore(payYmd)?.clp_per_uf ?? null;
       if (ufDay == null || ufDay <= 0) {
@@ -1318,9 +1325,28 @@ export function writeInvestmentMonth(
       const uf4 = (v: number) => Math.round((v / ufDay) * 1e4) / 1e4;
       const uf5 = (v: number) => Math.round((v / ufDay) * 1e5) / 1e5;
       const emitDeptoMovements = (r: DeptoDividendosPaymentRow, ymd: string) => {
-        movement(accounts.propertyId!, r.amount_clp, ymd, buildDeptoDividendosMovementNote(r));
+        const cols = deptoPaymentColumnsFromPaymentRow(r);
+        movement(accounts.propertyId!, r.amount_clp, ymd, deptoPaymentHumanNote("dividendos", r.cuota, false));
+        insertDeptoPaymentRow({
+          movement_id: lastInsertedMovementId(),
+          kind: "dividendos",
+          origin: "import",
+          ...cols,
+        });
         if (r.cuota !== "pie") {
-          movement(accounts.mortgageId!, Math.abs(r.amount_clp), ymd, buildDeptoMortgageMovementNote(r));
+          movement(
+            accounts.mortgageId!,
+            Math.abs(r.amount_clp),
+            ymd,
+            deptoPaymentHumanNote("mortgage", r.cuota, false),
+            mortgageFlowKindFromCuota(r.cuota)
+          );
+          insertDeptoPaymentRow({
+            movement_id: lastInsertedMovementId(),
+            kind: "mortgage",
+            origin: "import",
+            ...cols,
+          });
         }
       };
       const baseRow = (over: Partial<DeptoDividendosPaymentRow>): DeptoDividendosPaymentRow => ({

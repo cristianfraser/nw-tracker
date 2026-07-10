@@ -64,7 +64,7 @@ export function resolveFintualGoalApplyAccount(goal: {
   name: string;
   matchedNotes: string | null;
 }): FintualGoalApplyTarget | null {
-  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE import_key = ?");
   const v2Notes = matchFintualCertGoalV2(String(goal.id), goal.name);
   if (v2Notes) {
     const v2Acc = accStmt.get(v2Notes) as { id: number } | undefined;
@@ -299,7 +299,7 @@ export function syncFintualFundUnitsFromResolutions(
   asOfYmd: string,
   dryRun: boolean
 ): number {
-  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE import_key = ?");
   let recorded = 0;
   for (const r of resolutions) {
     const notesTargets: { importNotes: string; accountId: number }[] = [];
@@ -358,7 +358,7 @@ export function applyFintualGoalsSnapshotToDb(
   dryRun: boolean,
   opts?: { logChanges?: ValuationChange[] }
 ): { applied: number; skipped: number; changes: ValuationChange[] } {
-  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE import_key = ?");
   const upsert = db.prepare(`
     INSERT INTO valuations (account_id, as_of_date, value, currency)
     VALUES (@account_id, @as_of_date, @value_clp, 'clp')
@@ -464,7 +464,7 @@ export function fintualSnapshotMatchesDb(
 
 /** Remove valuations dated after `snap.asOfDate` that duplicate the API NAV (legacy poll-day stamps). */
 export function cleanupMistakenPollDayFintualValuations(snap: FintualGoalSnapshot, dryRun: boolean): number {
-  const accStmt = db.prepare("SELECT id FROM accounts WHERE notes = ?");
+  const accStmt = db.prepare("SELECT id FROM accounts WHERE import_key = ?");
   const deleteMistakenFutureDup = db.prepare(
     `DELETE FROM valuations
      WHERE account_id = @account_id AND as_of_date > @as_of_date

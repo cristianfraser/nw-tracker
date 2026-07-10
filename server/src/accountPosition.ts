@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
 import {
-  afpCuotasForMarkToMarket,
+  afpCuotasCumulativeThroughDate,
   latestAfpUnoFundUnitRowOnOrBeforeForDisplay,
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
@@ -202,7 +202,7 @@ export function getAccountPositionMeta(
   categorySlug: string,
   opts?: {
     afpCuotasAsOfYmd?: string;
-    accountNotes?: string | null;
+    accountImportKey?: string | null;
     accountName?: string | null;
     now?: Date;
   }
@@ -212,9 +212,9 @@ export function getAccountPositionMeta(
     opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
       ? opts.afpCuotasAsOfYmd.trim()
       : chileCalendarTodayYmd();
-  if (opts?.accountNotes && isFintualCertV2ValuationNotes(opts.accountNotes)) {
+  if (opts?.accountImportKey && isFintualCertV2ValuationNotes(opts.accountImportKey)) {
     const ticker = (opts.accountName ?? "Fintual").trim() || "Fintual";
-    return fintualCertPositionMeta(accountId, opts.accountNotes, ticker, asOf, now);
+    return fintualCertPositionMeta(accountId, opts.accountImportKey, ticker, asOf, now);
   }
 
   const equityTicker = equityTickerForAccount(accountId);
@@ -275,23 +275,9 @@ export function getAccountPositionMeta(
       .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
     if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition afp stored");
 
-    const cuotasFromMovements = afpCuotasForMarkToMarket(accountId, asOfCuotas, px ?? undefined);
-    let cuotas = cuotasFromMovements;
-    if (
-      stored?.value_clp != null &&
-      Number.isFinite(stored.value_clp) &&
-      px != null &&
-      Number.isFinite(px) &&
-      px > 0 &&
-      Number.isFinite(cuotasFromMovements) &&
-      cuotasFromMovements > 0
-    ) {
-      const derivedValue = Math.round(cuotasFromMovements * px * 100) / 100;
-      const relDiff = Math.abs(derivedValue - stored.value_clp) / stored.value_clp;
-      if (relDiff > 0.05) {
-        cuotas = Math.round((stored.value_clp / px) * 1e4) / 1e4;
-      }
-    }
+    // The cuota ledger is certificate-backed (rebuilt 2026-07 from the official UNO
+    // movement certs); it IS the truth — no stored-valuation drift substitution.
+    const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
 
     const out: AccountPositionMeta = {
       ticker: "UNO-A",
@@ -376,7 +362,7 @@ export function afpValuationRawClpForChart(
 
 export function applyLiveAfpToAccountValueMap(
   lastVal: Map<number, number>,
-  accountMeta: Map<number, { category_slug: string; notes?: string | null; name?: string | null }>
+  accountMeta: Map<number, { category_slug: string; import_key?: string | null; name?: string | null }>
 ): void {
   for (const [id, m] of accountMeta) {
     if (m.category_slug === "afp") {
@@ -384,8 +370,8 @@ export function applyLiveAfpToAccountValueMap(
       if (live) lastVal.set(id, live.value_clp);
       continue;
     }
-    if (m.notes && isFintualCertV2ValuationNotes(m.notes)) {
-      const live = liveFintualCertDisplayValueClp(id, m.notes, m.name ?? null);
+    if (m.import_key && isFintualCertV2ValuationNotes(m.import_key)) {
+      const live = liveFintualCertDisplayValueClp(id, m.import_key, m.name ?? null);
       if (live) lastVal.set(id, live.value_clp);
     }
   }

@@ -44,6 +44,7 @@ export type GroupTabAccountRow = {
   name: string;
   bucket_slug: string;
   notes?: string | null;
+  import_key?: string | null;
   exclude_from_group_totals: number;
   /** Long trailing-zero tail; omit from nav child cards only (charts/tables keep the series). */
   chart_inactive?: boolean;
@@ -240,7 +241,7 @@ function bookValuationMonthlyPerfRows(
   });
 
   const patched = patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, asc, unit, () => {
-    const liveMark = syncLatestDisplayValueClp(accountId, categorySlug, { notes: null, name: "" });
+    const liveMark = syncLatestDisplayValueClp(accountId, categorySlug, { import_key: null, name: "" });
     const liveClp = liveMark?.value_clp ?? bookAsc[bookAsc.length - 1]!.value_clp;
     return liveClp;
   });
@@ -292,6 +293,7 @@ function monthEndCloseForConsolidation(
     bucket_slug: string;
     monthly: readonly AccountMonthlyPerformanceRow[];
     notes?: string | null;
+    import_key?: string | null;
     name?: string | null;
   },
   priorMk: string,
@@ -302,7 +304,7 @@ function monthEndCloseForConsolidation(
     acct.bucket_slug,
     acct.monthly,
     priorMk,
-    { notes: acct.notes, name: acct.name }
+    { import_key: acct.import_key ?? null, name: acct.name }
   );
   if (clp == null || !Number.isFinite(clp)) return null;
   if (unit === "clp") return clp;
@@ -319,6 +321,7 @@ export function consolidateGroupMonthlyPerf(
     bucket_slug: string;
     monthly: readonly AccountMonthlyPerformanceRow[];
     notes?: string | null;
+    import_key?: string | null;
     name?: string | null;
   }[],
   unit: TsUnit = "clp"
@@ -443,6 +446,7 @@ function buildConsolidationPayloads(
     name: string;
     bucket_slug: string;
     notes: string | null;
+    import_key: string | null;
     monthly: AccountMonthlyPerformanceRow[];
   }[] = [];
 
@@ -457,6 +461,7 @@ function buildConsolidationPayloads(
       name: r.name,
       bucket_slug: r.bucket_slug,
       notes: r.notes ?? null,
+      import_key: r.import_key ?? null,
       monthly,
     });
   }

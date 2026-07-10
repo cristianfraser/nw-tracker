@@ -1245,7 +1245,7 @@ function listDepositFlowAccounts(): { account_id: number; category_slug: string;
       `SELECT a.id AS account_id, g.slug AS bucket_slug
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.notes IS NULL OR a.notes != ?)
+       WHERE (a.import_key IS NULL OR a.import_key != ?)
          AND COALESCE(a.exclude_from_group_totals, 0) = 0
          AND g.slug != 'individual_stocks'`
     )

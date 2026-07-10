@@ -37,7 +37,7 @@ function isCreditCardChartAccount(accountId: number): boolean {
   const slug = bucketSlugForAccountId(effectiveId);
   if (slug != null && accountBucketKindSlug(slug) === "credit_card") return true;
   const row = getAccountSourceRow(effectiveId);
-  return String(row?.notes ?? "").startsWith("credit_card_master|");
+  return String(row?.import_key ?? "").startsWith("credit_card_master|");
 }
 
 /**

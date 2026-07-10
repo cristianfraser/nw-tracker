@@ -38,13 +38,13 @@ export function isSupersededSantanderCcMaster(accountId: number): boolean {
   if (supersededCcTargetLast4(accountId) != null) return true;
 
   const row = db
-    .prepare(`SELECT notes, exclude_from_group_totals FROM accounts WHERE id = ?`)
-    .get(accountId) as { notes: string | null; exclude_from_group_totals: number } | undefined;
+    .prepare(`SELECT import_key, exclude_from_group_totals FROM accounts WHERE id = ?`)
+    .get(accountId) as { import_key: string | null; exclude_from_group_totals: number } | undefined;
   if (!row) return false;
-  const notes = String(row.notes ?? "").trim();
-  if (!SUPERSEDED_SANTANDER_MASTER_NOTES.has(notes)) return false;
+  const importKey = String(row.import_key ?? "").trim();
+  if (!SUPERSEDED_SANTANDER_MASTER_NOTES.has(importKey)) return false;
   if (row.exclude_from_group_totals !== 1) return false;
-  const last4 = notes.slice(notes.lastIndexOf("|") + 1);
+  const last4 = importKey.slice(importKey.lastIndexOf("|") + 1);
   const targetLast4 = SANTANDER_CC_IMPORT_REDIRECT_LAST4[last4];
   return targetLast4 != null && resolveMasterAccountIdForCardLast4(targetLast4) != null;
 }

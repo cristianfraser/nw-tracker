@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import type { Database as DatabaseType } from "better-sqlite3";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
+import { runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -220,6 +222,15 @@ function execMigrationSql(sql: string): void {
   }
 }
 
+/**
+ * Data transforms too complex for the naive SQL splitter, keyed by migration filename and
+ * run inside that migration's transaction. Hook modules must be pure (no imports from
+ * modules that import `db` — the module graph here is still initializing).
+ */
+const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
+  "157_depto_payments_and_mirror_merges.sql": runLegacyNoteBackfill157,
+};
+
 export function runMigrations() {
   if (!fs.existsSync(migrationsDir)) {
     return;
@@ -240,6 +251,7 @@ export function runMigrations() {
     const sql = fs.readFileSync(full, "utf8");
     dbInternal.transaction(() => {
       execMigrationSql(sql);
+      POST_MIGRATION_HOOKS[file]?.(dbInternal);
       dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     })();
     appliedCount += 1;

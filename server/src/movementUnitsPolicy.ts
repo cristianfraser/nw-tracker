@@ -26,6 +26,7 @@ export type AccountRow = {
   bucket_slug: string;
   group_slug: string;
   notes?: string | null;
+  import_key?: string | null;
   equity_ticker?: string | null;
 };
 
