@@ -77,4 +77,34 @@ describe("priorCloseFromPerfRows", () => {
     ];
     expect(priorCloseFromPerfRows(monthly, "ytd")).toBe(250);
   });
+
+  it("MTD closes at 0 when the series starts this month (position opened this month)", () => {
+    chileToday.ymd = "2026-07-09";
+    const monthly = [perfRow({ as_of_date: "2026-07-02", closing_value: 3_000_000 })];
+    expect(priorCloseFromPerfRows(monthly, "mtd")).toBe(0);
+  });
+
+  it("YTD closes at 0 when the series starts this year", () => {
+    chileToday.ymd = "2026-07-09";
+    const monthly = [
+      perfRow({ as_of_date: "2026-05-31", closing_value: 2_800_000 }),
+      perfRow({ as_of_date: "2026-06-30", closing_value: 2_900_000 }),
+    ];
+    expect(priorCloseFromPerfRows(monthly, "ytd")).toBe(0);
+  });
+
+  it("MTD stays null on a genuine gap (older rows exist, prior month close missing)", () => {
+    chileToday.ymd = "2026-07-09";
+    const monthly = [
+      perfRow({ as_of_date: "2026-04-30", closing_value: 1_000_000 }),
+      perfRow({ as_of_date: "2026-07-02", closing_value: 1_100_000 }),
+    ];
+    expect(priorCloseFromPerfRows(monthly, "mtd")).toBeNull();
+  });
+
+  it("DTD closes at 0 when the series starts today", () => {
+    chileToday.ymd = "2026-07-09";
+    const monthly = [perfRow({ as_of_date: "2026-07-09", closing_value: 500_000 })];
+    expect(priorCloseFromPerfRows(monthly, "dtd")).toBe(0);
+  });
 });
