@@ -16,7 +16,7 @@ export const SQL_LIABILITY_LEAF_BUCKET = `(
   OR g.slug LIKE '%__other_debt'
 )`;
 
-function santanderPerCardCreditCardMastersExist(): boolean {
+export function santanderPerCardCreditCardMastersExist(): boolean {
   const row = db
     .prepare(
       `SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`
