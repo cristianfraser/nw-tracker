@@ -3,7 +3,6 @@ import path from "node:path";
 import type { Statement } from "better-sqlite3";
 import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
 import { type DepositFlowKind, depositFlowKindFromFintualMedio } from "./depositFlowKind.js";
-import { depositFlowKindForApvAFintualRow } from "./apvAFintualFlowOverrides.js";
 
 /** Chilean Numbers / Fintual CSV: thousands `.`, decimals `,`, optional `$`. */
 export function parseFintualCertMoneyCell(raw: string | undefined): number | null {
@@ -164,10 +163,7 @@ export function aggregateFintualCertificado(
     if (clpNet === 0 && cuotasNet === 0) continue;
 
     const medio = String(r.medio ?? "").trim();
-    const flowKind: DepositFlowKind =
-      importNote === "import:excel|key=apv_a"
-        ? depositFlowKindForApvAFintualRow(ymd, clpNet, medio, null)
-        : depositFlowKindFromFintualMedio(medio);
+    const flowKind: DepositFlowKind = depositFlowKindFromFintualMedio(medio);
     const medios = new Set<string>();
     if (medio) medios.add(medio);
     const vqRow = parseFintualCertMoneyCell(r.valor_cuota);

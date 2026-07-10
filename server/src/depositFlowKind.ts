@@ -10,12 +10,18 @@ export type DepositFlowKind =
   | typeof DEPOSIT_FLOW_KIND_STATE
   | typeof DEPOSIT_FLOW_KIND_TRASPASO;
 
-const FLOW_KIND_RE =
-  /\|flow_kind=(deposit_clp|aporte_estatal_clp|traspaso_bonificacion_clp)(?:\||$)/;
-
 /** Flow kinds that count as capital you contributed (full + display deposit series). */
 export function isPersonalCapitalFlowKind(kind: DepositFlowKind): boolean {
   return kind === DEPOSIT_FLOW_KIND_PERSONAL || kind === DEPOSIT_FLOW_KIND_TRASPASO;
+}
+
+/** True when a `movements.flow_kind` column value is one of the deposit flow kinds. */
+export function isDepositFlowKind(flowKind: string | null | undefined): flowKind is DepositFlowKind {
+  return (
+    flowKind === DEPOSIT_FLOW_KIND_PERSONAL ||
+    flowKind === DEPOSIT_FLOW_KIND_STATE ||
+    flowKind === DEPOSIT_FLOW_KIND_TRASPASO
+  );
 }
 
 export function depositFlowKindLabel(kind: DepositFlowKind): string {
@@ -77,35 +83,21 @@ export function depositFlowKindFromFintualMedio(medio: string): DepositFlowKind 
   return DEPOSIT_FLOW_KIND_PERSONAL;
 }
 
-/** Classify an existing movement `note` (explicit `flow_kind` or `medio=` on cert rows). */
-export function depositFlowKindFromMovementNote(note: string | null | undefined): DepositFlowKind {
-  if (!note) return DEPOSIT_FLOW_KIND_PERSONAL;
-  const explicit = note.match(FLOW_KIND_RE);
-  if (explicit) return explicit[1] as DepositFlowKind;
-
-  if (isFintualTraspasoBonificacionOtraInstitucion(note)) return DEPOSIT_FLOW_KIND_TRASPASO;
-
-  if (!note.includes("fintual-certificado")) return DEPOSIT_FLOW_KIND_PERSONAL;
-
-  const medioPart = note.match(/\|medio=([^|]+)/)?.[1];
-  if (!medioPart) return DEPOSIT_FLOW_KIND_PERSONAL;
-
-  const medios = medioPart
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (medios.length === 0) return DEPOSIT_FLOW_KIND_PERSONAL;
-
-  const kinds = medios.map(depositFlowKindFromFintualMedio);
-  if (kinds.every((k) => k === DEPOSIT_FLOW_KIND_STATE)) return DEPOSIT_FLOW_KIND_STATE;
-  if (kinds.some((k) => k === DEPOSIT_FLOW_KIND_TRASPASO)) return DEPOSIT_FLOW_KIND_TRASPASO;
+/**
+ * Deposit flow kind from the `movements.flow_kind` column. Deposit classification is resolved at
+ * import time (see `fintualCertImport.ts`) and stored in the column — never parsed from the note.
+ * A null/unknown value is a plain personal deposit.
+ */
+export function depositFlowKindFromColumn(flowKind: string | null | undefined): DepositFlowKind {
+  if (flowKind === DEPOSIT_FLOW_KIND_STATE) return DEPOSIT_FLOW_KIND_STATE;
+  if (flowKind === DEPOSIT_FLOW_KIND_TRASPASO) return DEPOSIT_FLOW_KIND_TRASPASO;
   return DEPOSIT_FLOW_KIND_PERSONAL;
 }
 
-export function movementCountsAsPersonalDeposit(note: string | null | undefined): boolean {
-  return isPersonalCapitalFlowKind(depositFlowKindFromMovementNote(note));
+export function movementCountsAsPersonalDeposit(flowKind: string | null | undefined): boolean {
+  return isPersonalCapitalFlowKind(depositFlowKindFromColumn(flowKind));
 }
 
-export function movementIsStateContribution(note: string | null | undefined): boolean {
-  return depositFlowKindFromMovementNote(note) === DEPOSIT_FLOW_KIND_STATE;
+export function movementIsStateContribution(flowKind: string | null | undefined): boolean {
+  return depositFlowKindFromColumn(flowKind) === DEPOSIT_FLOW_KIND_STATE;
 }
