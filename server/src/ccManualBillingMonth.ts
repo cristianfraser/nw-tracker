@@ -68,18 +68,14 @@ export function targetBillingMonthForManualImports(
   return ymCompare(currentBm, nextAfterPdf) >= 0 ? currentBm : nextAfterPdf;
 }
 
-/** Card last4 for a credit-card master account (config column, then notes slug). */
+/** Card last4 for a credit-card master account (`credit_card_account_config.card_last4` —
+ * the card identity; a master without a config row is a data problem). */
 export function cardLast4ForCreditCardAccount(accountId: number): string | null {
   const row = db
     .prepare(`SELECT card_last4 FROM credit_card_account_config WHERE account_id = ?`)
     .get(accountId) as { card_last4: string | null } | undefined;
   const fromConfig = String(row?.card_last4 ?? "").trim();
-  if (fromConfig) return fromConfig;
-  const notesRow = db
-    .prepare(`SELECT notes FROM accounts WHERE id = ?`)
-    .get(accountId) as { notes: string | null } | undefined;
-  const m = /credit_card_master\|[^|]+\|(\d{4})/.exec(String(notesRow?.notes ?? ""));
-  return m?.[1] ?? null;
+  return fromConfig || null;
 }
 
 /** Open facturación month for manually entered ledger purchases (ignores purchase date). */
