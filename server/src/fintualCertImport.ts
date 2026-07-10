@@ -108,16 +108,78 @@ function certPlanRows(scan: FintualCertificadoAggregateScan): CertPlanRow[] {
   return out;
 }
 
+/** Days of skew tolerated between a DB flow date and the cert settlement date. Manual entries and
+ * mirror-merge transfers are dated the checking-outflow day (or when the user recorded them), while
+ * the certificado uses the fund settlement day — typically 0–3 business days apart, either way. */
+const CERT_MATCH_WINDOW_DAYS = 5;
+
+type ExistingFlow = {
+  movementId: number;
+  accountId: number;
+  ymd: string;
+  /** Signed from the fund account's perspective: deposits +, withdrawals −. */
+  signedClp: number;
+  kind: "cert" | "single" | "transfer";
+};
+
+function dayDistance(a: string, b: string): number {
+  return Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / 86_400_000));
+}
+
+/** All curated flows touching the account: single-leg rows plus signed transfer legs. */
+function loadExistingFlows(accountIds: number[]): ExistingFlow[] {
+  if (accountIds.length === 0) return [];
+  const ph = accountIds.map(() => "?").join(",");
+  const out: ExistingFlow[] = [];
+  const singles = db
+    .prepare(
+      `SELECT id, account_id, occurred_on, amount_clp, note FROM movements
+       WHERE account_id IN (${ph})`
+    )
+    .all(...accountIds) as { id: number; account_id: number; occurred_on: string; amount_clp: number; note: string | null }[];
+  for (const r of singles) {
+    out.push({
+      movementId: r.id,
+      accountId: r.account_id,
+      ymd: r.occurred_on,
+      signedClp: r.amount_clp,
+      kind: r.note?.startsWith(FINTUAL_CERT_MOVEMENT_NOTE_PREFIX) ? "cert" : "single",
+    });
+  }
+  const transfers = db
+    .prepare(
+      `SELECT id, from_account_id, to_account_id, occurred_on, amount_clp FROM movements
+       WHERE account_id IS NULL AND (from_account_id IN (${ph}) OR to_account_id IN (${ph}))`
+    )
+    .all(...accountIds, ...accountIds) as {
+    id: number;
+    from_account_id: number | null;
+    to_account_id: number | null;
+    occurred_on: string;
+    amount_clp: number;
+  }[];
+  const idSet = new Set(accountIds);
+  for (const r of transfers) {
+    if (r.to_account_id != null && idSet.has(r.to_account_id)) {
+      out.push({ movementId: r.id, accountId: r.to_account_id, ymd: r.occurred_on, signedClp: Math.abs(r.amount_clp), kind: "transfer" });
+    }
+    if (r.from_account_id != null && idSet.has(r.from_account_id)) {
+      out.push({ movementId: r.id, accountId: r.from_account_id, ymd: r.occurred_on, signedClp: -Math.abs(r.amount_clp), kind: "transfer" });
+    }
+  }
+  return out;
+}
+
 export type FintualCertImportResult = {
   csvPath: string;
   applied: boolean;
   accountsEnsured: number;
-  /** Certificado rows already present in the DB (matched on account + date + amount) — left untouched. */
+  /** Certificado rows covered by an existing flow (single-leg, transfer leg, or cert row). */
   matched: number;
-  /** Certificado rows missing from the DB — added when applied, listed for review when not. */
+  /** Certificado rows with no matching flow in the DB — added when applied, listed otherwise. */
   missing: { importNote: string; ymd: string; amountClp: number }[];
-  /** DB cert-movement rows that no certificado row matches (manual / divergent) — never modified. */
-  divergent: { importNote: string; ymd: string; amountClp: number }[];
+  /** DB flows on the cert accounts that no certificado row matches (manual edits, older certs) — never modified. */
+  dbOnly: { importNote: string; ymd: string; amountClp: number; kind: string }[];
   fundUnitRows: number;
 };
 
@@ -125,9 +187,13 @@ export type FintualCertImportResult = {
  * Reconcile the v2 Fintual cert accounts against the installed certificado CSV.
  *
  * Non-destructive by design: existing curated movements are the source of truth and are never
- * deleted or modified. Certificado rows already present (matched on account + date + amount) are
- * left untouched; only rows missing from the DB are reported and — when `apply` is set — added.
- * DB cert-movement rows that no certificado row matches are reported as divergent for manual review.
+ * deleted or modified. A certificado row counts as present when ANY existing flow on the account
+ * matches it — a cert-note row, a plain single-leg row, or a transfer leg (mirror-merge / manual
+ * entry; signed by direction) — with the exact amount within a ±CERT_MATCH_WINDOW_DAYS window
+ * (transfer legs are dated the checking-outflow day, the cert the settlement day). Multiplicity
+ * aware: each existing flow covers at most one cert row, nearest date first. Only cert rows no
+ * flow covers are reported and — when `apply` is set — added. DB flows the certificado does not
+ * cover are reported for manual review.
  *
  * Throws if the CSV is absent (fail fast — run `npm run import:cfraser-inbox` to install it).
  */
@@ -155,32 +221,47 @@ export function importFintualCertificado(opts?: {
   const reconcile = db.transaction(() => {
     const accountIdByNote = ensureAllFintualCertV2Accounts();
     const ids = Object.values(accountIdByNote);
-    const ph = ids.map(() => "?").join(",");
+    const noteByAccount = new Map<number, string>();
+    for (const [note, id] of Object.entries(accountIdByNote)) noteByAccount.set(id, note);
 
-    // Existing curated cert movements — the source of truth. Key on (account, date, amount).
-    const existing = db
-      .prepare(
-        `SELECT id, account_id, occurred_on, amount_clp FROM movements
-         WHERE account_id IN (${ph}) AND note LIKE '${FINTUAL_CERT_MOVEMENT_NOTE_PREFIX}%'`
-      )
-      .all(...ids) as { id: number; account_id: number; occurred_on: string; amount_clp: number }[];
-    const key = (accountId: number, ymd: string, amount: number) => `${accountId}\t${ymd}\t${amount}`;
-    const existingKeys = new Map<string, number>();
-    for (const r of existing) existingKeys.set(key(r.account_id, r.occurred_on, r.amount_clp), r.id);
+    const flows = loadExistingFlows(ids);
+    const usedFlow = new Set<number>(); // index into flows
+
+    // Greedy nearest-date matching, exact signed amount, multiplicity aware.
+    const matchFlowFor = (accountId: number, ymd: string, signedClp: number): number | null => {
+      let best: number | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < flows.length; i++) {
+        if (usedFlow.has(i)) continue;
+        const f = flows[i];
+        if (f.accountId !== accountId || f.signedClp !== signedClp) continue;
+        const d = dayDistance(f.ymd, ymd);
+        if (d > CERT_MATCH_WINDOW_DAYS) continue;
+        if (d < bestDist) {
+          best = i;
+          bestDist = d;
+          if (d === 0) break;
+        }
+      }
+      return best;
+    };
 
     const insMov = db.prepare(
       `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind)
        VALUES (?, ?, ?, ?, ?, ?)`
     );
 
-    const matchedKeys = new Set<string>();
+    let matched = 0;
     const missing: FintualCertImportResult["missing"] = [];
-    for (const p of plan) {
+    // Sort plan by date so greedy matching consumes flows chronologically.
+    const sortedPlan = [...plan].sort((a, b) => a.ymd.localeCompare(b.ymd));
+    for (const p of sortedPlan) {
       const accountId = accountIdByNote[p.importNote];
       if (accountId == null) continue;
-      const k = key(accountId, p.ymd, p.amountClp);
-      if (existingKeys.has(k)) {
-        matchedKeys.add(k);
+      const hit = matchFlowFor(accountId, p.ymd, p.amountClp);
+      if (hit != null) {
+        usedFlow.add(hit);
+        matched += 1;
         continue;
       }
       missing.push({ importNote: p.importNote, ymd: p.ymd, amountClp: p.amountClp });
@@ -190,17 +271,16 @@ export function importFintualCertificado(opts?: {
       }
     }
 
-    const divergent: FintualCertImportResult["divergent"] = [];
-    const noteByAccount = new Map<number, string>();
-    for (const [note, id] of Object.entries(accountIdByNote)) noteByAccount.set(id, note);
-    for (const r of existing) {
-      if (!matchedKeys.has(key(r.account_id, r.occurred_on, r.amount_clp))) {
-        divergent.push({
-          importNote: noteByAccount.get(r.account_id) ?? String(r.account_id),
-          ymd: r.occurred_on,
-          amountClp: r.amount_clp,
-        });
-      }
+    const dbOnly: FintualCertImportResult["dbOnly"] = [];
+    for (let i = 0; i < flows.length; i++) {
+      if (usedFlow.has(i)) continue;
+      const f = flows[i];
+      dbOnly.push({
+        importNote: noteByAccount.get(f.accountId) ?? String(f.accountId),
+        ymd: f.ymd,
+        amountClp: f.signedClp,
+        kind: f.kind,
+      });
     }
 
     // Valor-cuota hints and nav/sync reseed are additive/idempotent — only on apply.
@@ -213,9 +293,9 @@ export function importFintualCertificado(opts?: {
 
     return {
       accountsEnsured: ids.length,
-      matched: matchedKeys.size,
+      matched,
       missing,
-      divergent,
+      dbOnly,
       fundUnitRows,
     };
   });
@@ -226,7 +306,7 @@ export function importFintualCertificado(opts?: {
       accountsEnsured: 0,
       matched: 0,
       missing: [],
-      divergent: [],
+      dbOnly: [],
       fundUnitRows: 0,
     };
     const rollback = db.transaction(() => {

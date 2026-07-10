@@ -23,8 +23,8 @@ const res = importFintualCertificado({ apply, maxMonth });
 
 console.log(
   `import:fintual-cert (${apply ? "APPLY" : "report only"}): ` +
-    `${res.matched} already present, ${res.missing.length} missing from DB, ` +
-    `${res.divergent.length} DB rows not in certificado. Source: ${res.csvPath}`
+    `${res.matched} covered by existing flows, ${res.missing.length} missing from DB, ` +
+    `${res.dbOnly.length} DB flows not in certificado. Source: ${res.csvPath}`
 );
 
 if (res.missing.length > 0) {
@@ -34,13 +34,13 @@ if (res.missing.length > 0) {
   }
 }
 
-if (res.divergent.length > 0) {
+if (res.dbOnly.length > 0) {
   console.log(
-    `\n${res.divergent.length} DB cert row(s) the certificado does not cover ` +
-      `(manual / older cert — left untouched):`
+    `\n${res.dbOnly.length} DB flow(s) the certificado does not cover ` +
+      `(manual entries / older certs — left untouched):`
   );
-  for (const d of res.divergent) {
-    console.log(`  ${d.ymd}  ${d.importNote.replace("import:fintual|cert|key=", "")}  ${d.amountClp}`);
+  for (const d of res.dbOnly) {
+    console.log(`  ${d.ymd}  ${d.importNote.replace("import:fintual|cert|key=", "")}  ${d.amountClp}  [${d.kind}]`);
   }
 }
 
