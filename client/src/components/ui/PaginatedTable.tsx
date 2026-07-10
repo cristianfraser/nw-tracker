@@ -74,7 +74,7 @@ export function PaginatedTable({
             {t("table.paginationPrev")}
           </button>
 
-          <label className="muted" style={{ fontSize: "0.9rem" }}>
+          <label className="muted" style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}>
             {t("table.paginationPageAria")}
             <select
               value={safePage}

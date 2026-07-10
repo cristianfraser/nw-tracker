@@ -1,4 +1,3 @@
-import { useIsFetching } from "@tanstack/react-query";
 import { useTranslation } from "../../i18n";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { cn } from "../../cn";
@@ -15,10 +14,6 @@ import styles from "./AppDisplayPreferencesBar.module.css";
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();
   const { displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod } = useDisplayPreferences();
-  const dashboardFetching = useIsFetching({
-    predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "dashboard",
-  });
-  const unitBusy = dashboardFetching > 0;
 
   return (
     <div className={styles.host} data-app-display-prefs-host>
@@ -34,7 +29,6 @@ export function AppDisplayPreferencesBar() {
               <select
                 name="nw-global-du"
                 value={displayUnit}
-                disabled={unitBusy}
                 onChange={(e) => setDisplayUnit(e.target.value as DisplayUnit)}
               >
                 <option value="clp">CLP</option>
