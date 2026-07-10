@@ -58,6 +58,7 @@ function expectation(
     m3: null,
     expense_account_id: 2,
     account_slug: "depto",
+    comunidad_patterns: "COMUNIDAD DEPTO",
     ...overrides,
   };
 }
@@ -79,14 +80,19 @@ describe("bill month vs purchase month window", () => {
 });
 
 describe("merchantMatchesExpectation", () => {
-  it("matches ENEL for electricidad", () => {
-    expect(merchantMatchesExpectation("depto", "electricidad", "ENEL DISTRIB")).toBe(true);
+  it("matches ENEL for electricidad regardless of place patterns", () => {
+    expect(merchantMatchesExpectation(null, "electricidad", "ENEL DISTRIB")).toBe(true);
   });
 
-  it("matches apartment comunidad for gastos_comunes", () => {
+  it("matches the place's comunidad patterns for gastos_comunes", () => {
     expect(
-      merchantMatchesExpectation("arriendo_b", "gastos_comunes", "COMUNIDAD VICTORIA SUBERCASEAUX")
+      merchantMatchesExpectation(
+        "COMUNIDAD VICTORIA SUBERCASEAUX,COMUNIDAD VICT",
+        "gastos_comunes",
+        "FLOW COMUNIDAD VICT"
+      )
     ).toBe(true);
+    expect(merchantMatchesExpectation(null, "gastos_comunes", "FLOW COMUNIDAD VICT")).toBe(false);
   });
 });
 

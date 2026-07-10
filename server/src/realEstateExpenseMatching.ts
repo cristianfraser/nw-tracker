@@ -9,7 +9,6 @@ import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.j
 import {
   merchantMatchesExpectation,
   REAL_ESTATE_LINKABLE_KINDS,
-  type RealEstateApartmentSlug,
 } from "./realEstateExpenseMerchants.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 
@@ -28,7 +27,8 @@ export type ExpenseExpectationRow = {
   kwh: number | null;
   m3: number | null;
   expense_account_id: number;
-  account_slug: RealEstateApartmentSlug;
+  account_slug: string;
+  comunidad_patterns: string | null;
 };
 
 export type RealEstateLinkRow = {
@@ -154,12 +154,12 @@ function rankAutoLinkCandidates(
 ): FlowCcExpenseLineRow[] {
   return [...candidates].sort((a, b) => {
     const aMerchant = merchantMatchesExpectation(
-      expectation.account_slug,
+      expectation.comunidad_patterns,
       expectation.category ?? "",
       a.merchant_key
     );
     const bMerchant = merchantMatchesExpectation(
-      expectation.account_slug,
+      expectation.comunidad_patterns,
       expectation.category ?? "",
       b.merchant_key
     );
@@ -184,7 +184,7 @@ export function pickAutoLinkCandidate(
 
   const merchantMatches = candidates.filter((ln) =>
     merchantMatchesExpectation(
-      expectation.account_slug,
+      expectation.comunidad_patterns,
       expectation.category ?? "",
       ln.merchant_key
     )
@@ -388,7 +388,7 @@ export function updateRealEstateExpenseConsumption(
 
 export type AssignPurchaseToRealEstateOpts = {
   purchaseKey: string;
-  accountSlug: RealEstateApartmentSlug;
+  accountSlug: string;
   kind: string;
   /** Bill month YYYY-MM; defaults to the purchase month (offset 0). */
   billMonth?: string;
@@ -496,40 +496,30 @@ export function unmatchRealEstateExpense(expenseEntryId: number): void {
 export function loadExpectationById(expenseEntryId: number): ExpenseExpectationRow | null {
   const row = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug
+      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id
        WHERE e.id = ? AND g.slug = 'real_estate'`
     )
-    .get(expenseEntryId) as
-    | (Omit<ExpenseExpectationRow, "account_slug"> & { account_slug: string })
-    | undefined;
+    .get(expenseEntryId) as ExpenseExpectationRow | undefined;
   if (!row) return null;
-  return {
-    ...row,
-    amount_clp: Math.round(row.amount_clp),
-    account_slug: row.account_slug as RealEstateApartmentSlug,
-  };
+  return { ...row, amount_clp: Math.round(row.amount_clp) };
 }
 
 export function listRealEstateExpectations(): ExpenseExpectationRow[] {
   const rows = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug
+      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id
        WHERE g.slug = 'real_estate' AND e.expense_account_id IS NOT NULL
        ORDER BY e.spent_on DESC, e.id DESC`
     )
-    .all() as (Omit<ExpenseExpectationRow, "account_slug"> & { account_slug: string })[];
+    .all() as ExpenseExpectationRow[];
 
-  return rows.map((r) => ({
-    ...r,
-    amount_clp: Math.round(r.amount_clp),
-    account_slug: r.account_slug as RealEstateApartmentSlug,
-  }));
+  return rows.map((r) => ({ ...r, amount_clp: Math.round(r.amount_clp) }));
 }
 
 export function gastosLineByPurchaseKey(

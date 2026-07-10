@@ -572,9 +572,34 @@ export const api = {
     }),
   unmatchRealEstateExpense: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/links/${expenseEntryId}`, { method: "DELETE" }),
-  realEstateUnlinkedPurchases: (q: string) =>
-    j<{ purchases: import("./types").RealEstateUnlinkedPurchaseDto[] }>(
-      `/api/flows/expenses/real-estate/unlinked-purchases?q=${encodeURIComponent(q)}`
+  realEstateUnlinkedPurchases: (params: {
+    q?: string;
+    place?: string;
+    kind?: string;
+    category?: string;
+  }) => {
+    const usp = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v) usp.set(k, v);
+    }
+    return j<{ purchases: import("./types").RealEstateUnlinkedPurchaseDto[] }>(
+      `/api/flows/expenses/real-estate/unlinked-purchases?${usp.toString()}`
+    );
+  },
+  createRealEstatePlace: (body: {
+    slug: string;
+    label: string;
+    active_from?: string | null;
+    active_to?: string | null;
+    property_account_id?: number | null;
+  }) =>
+    j<import("./types").RealEstatePlaceDto>("/api/flows/expenses/real-estate/places", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  realEstatePropertyAccounts: () =>
+    j<{ accounts: { id: number; name: string }[] }>(
+      "/api/flows/expenses/real-estate/property-accounts"
     ),
   assignRealEstatePurchase: (body: {
     purchase_key: string;
