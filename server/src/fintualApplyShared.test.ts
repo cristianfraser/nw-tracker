@@ -31,9 +31,9 @@ describe("shouldRecordFintualCertFundUnit", () => {
     expect(bucket).toBeTruthy();
     const notes = "import:fintual|cert|key=risky_norris";
     const ins = db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'reconcile test', ?)`
+      `INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'reconcile test', ?, ?)`
     );
-    const r = ins.run(bucket!.id, notes);
+    const r = ins.run(bucket!.id, notes, notes);
     const accountId = Number(r.lastInsertRowid);
     db.prepare(
       `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
@@ -95,8 +95,8 @@ describe("collectFintualGoalValuationChanges v2", () => {
     };
     const accountId = Number(
       db
-        .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'caca daca', ?)`)
-        .run(group.id, "import:fintual|cert|key=risky_norris").lastInsertRowid
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'caca daca', ?, ?)`)
+        .run(group.id, "import:fintual|cert|key=risky_norris", "import:fintual|cert|key=risky_norris").lastInsertRowid
     );
     db.prepare(
       `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)

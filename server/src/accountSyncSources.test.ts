@@ -80,13 +80,13 @@ describe("accountSyncSources", () => {
       Number(
         db
           .prepare(
-            `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker) VALUES (?, ?, ?, ?)`
+            `INSERT INTO accounts (asset_group_id, name, notes, import_key, equity_ticker) VALUES (?, ?, ?, ?, ?)`
           )
-          .run(group.id, name, notes, ticker).lastInsertRowid
+          .run(group.id, name, notes, notes, ticker).lastInsertRowid
       );
     const fintualId = mk("Sync fixture fintual", "import:fintual|cert|key=apv_b", null);
     const hadAfp =
-      db.prepare(`SELECT 1 FROM accounts WHERE notes = 'import:excel|key=afp'`).get() != null;
+      db.prepare(`SELECT 1 FROM accounts WHERE import_key = 'import:excel|key=afp'`).get() != null;
     const afpId = hadAfp ? null : mk("Sync fixture AFP", "import:excel|key=afp", null);
     const equityId = mk("Sync fixture SPY", "test:sync-fixture-spy", "SPY");
 

@@ -124,7 +124,7 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     notes = buildPanelCashAccountNotes(kind, categoryKey);
   }
 
-  const dup = db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(notes) as
+  const dup = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(notes) as
     | { id: number }
     | undefined;
   if (dup) fail(409, `account already exists for ${notes} (id ${dup.id})`);
@@ -140,10 +140,10 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     const exclude = acc.exclude_from_group_totals ? 1 : 0;
     const insAcc = db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals, equity_ticker)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key, exclude_from_group_totals, equity_ticker)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(assetGroupId, name, notes, exclude, ticker);
+      .run(assetGroupId, name, notes, notes, exclude, ticker);
     accountId = Number(insAcc.lastInsertRowid);
     db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(
       prettyRgbTripletForAccountId(accountId),

@@ -7,7 +7,7 @@ import {
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import {
-  DEPTO_PROPERTY_ACCOUNT_NOTES,
+  DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
   deptoAccountMarkClpAtYmd,
   loadDeptoLedgerFromMovements,
 } from "./deptoLedgerFromMovements.js";
@@ -61,8 +61,8 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     // synthetic block only runs on DBs without one (the generated lean test DB).
     preexistingProperty =
       db
-        .prepare(`SELECT 1 FROM accounts WHERE notes = ? AND account_kind = 'master'`)
-        .get(DEPTO_PROPERTY_ACCOUNT_NOTES) != null;
+        .prepare(`SELECT 1 FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
+        .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) != null;
     if (preexistingProperty) return;
 
     for (const [date, clp] of FIXTURE_UF) {
@@ -79,10 +79,10 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     accountId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-           VALUES (?, 'Depto fixture', ?, 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
+           VALUES (?, 'Depto fixture', ?, ?, 'master')`
         )
-        .run(group.id, DEPTO_PROPERTY_ACCOUNT_NOTES).lastInsertRowid
+        .run(group.id, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY).lastInsertRowid
     );
 
     // pie: 1450 UF down on a 5400 UF property (3950 UF mortgage after).
@@ -229,12 +229,12 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
   it("returns [] with no depto data and throws on stray depto payments", () => {
     if (preexistingProperty) return;
     // temporarily orphan the fixture account's notes
-    db.prepare(`UPDATE accounts SET notes = 'depto-fixture-parked' WHERE id = ?`).run(accountId);
+    db.prepare(`UPDATE accounts SET import_key = 'depto-fixture-parked' WHERE id = ?`).run(accountId);
     try {
       expect(() => loadDeptoLedgerFromMovements()).toThrow(/depto_payments rows exist/);
     } finally {
-      db.prepare(`UPDATE accounts SET notes = ? WHERE id = ?`).run(
-        DEPTO_PROPERTY_ACCOUNT_NOTES,
+      db.prepare(`UPDATE accounts SET import_key = ? WHERE id = ?`).run(
+        DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
         accountId
       );
     }

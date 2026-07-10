@@ -86,7 +86,7 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
                 g.slug AS bucket_slug, g.label AS bucket_label
          FROM accounts a
          INNER JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE (a.notes IS NULL OR a.notes != ?)
+         WHERE (a.import_key IS NULL OR a.import_key != ?)
            AND g.slug != 'individual_stocks'
            AND a.notes != 'liability_view|credit_card'
          ORDER BY g.sort_order, a.id, a.name`
@@ -473,7 +473,7 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
         `SELECT COUNT(*) AS c FROM accounts a
          JOIN asset_groups g ON g.id = a.asset_group_id
          WHERE g.slug = ?
-           AND (a.notes IS NULL OR a.notes != ?)
+           AND (a.import_key IS NULL OR a.import_key != ?)
            AND g.slug != 'individual_stocks'
            AND COALESCE(a.exclude_from_group_totals, 0) = 0`
       )

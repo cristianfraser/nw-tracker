@@ -45,7 +45,7 @@ export function ensureFintualCertV2Account(importNotes: string): number {
   const exclude = excludeFromGroupTotalsForCategory(categorySlug);
   const fundSeriesKey = fintualCertV2SeriesKeyFromImportNotes(importNotes);
   const bucketId = assetGroupIdForFintualCertV2Notes(importNotes);
-  const row = db.prepare("SELECT id FROM accounts WHERE notes = ?").get(importNotes) as
+  const row = db.prepare("SELECT id FROM accounts WHERE import_key = ?").get(importNotes) as
     | { id: number }
     | undefined;
   if (row) {
@@ -60,9 +60,9 @@ export function ensureFintualCertV2Account(importNotes: string): number {
   }
   const r = db
     .prepare(
-      "INSERT INTO accounts (asset_group_id, name, notes, exclude_from_group_totals, equity_ticker, fund_series_key) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO accounts (asset_group_id, name, notes, import_key, exclude_from_group_totals, equity_ticker, fund_series_key) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
-    .run(bucketId, displayName, importNotes, exclude, null, fundSeriesKey);
+    .run(bucketId, displayName, importNotes, importNotes, exclude, null, fundSeriesKey);
   return Number(r.lastInsertRowid);
 }
 

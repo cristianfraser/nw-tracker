@@ -70,7 +70,7 @@ async function bestAssetHistoryByDate(
 async function main(): Promise<void> {
   const { email, token } = await getValidFintualSession();
   const goals = parseGoalsFromResponse(await fetchFintualGoalsRaw(email, token));
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE notes = ?`);
+  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
 
   let seriesDays = 0;
   for (let gi = 0; gi < goals.length; gi++) {
