@@ -15,6 +15,9 @@ import "./index.css";
 import { AppErrorBoundary } from "./components/ui/AppErrorBoundary";
 import { queryClient } from "./queryClient";
 import { nwTrackerTheme } from "./theme";
+import { installVersionConsoleHelper } from "./version";
+
+installVersionConsoleHelper();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
