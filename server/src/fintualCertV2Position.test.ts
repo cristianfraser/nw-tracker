@@ -30,7 +30,7 @@ describe("fintual cert v2 position", () => {
       dryRun: false,
     });
     const meta = getAccountPositionMeta(accountId, "fintual_risky_norris", {
-      accountNotes: notes,
+      accountImportKey: notes,
       accountName: "caca daca test",
       afpCuotasAsOfYmd: "2025-01-10",
     });
@@ -71,7 +71,7 @@ describe("fintual cert v2 position", () => {
       `INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, '2025-01-10', ?)`
     ).run(accountId, 1005);
     const meta = getAccountPositionMeta(accountId, "fintual_risky_norris", {
-      accountNotes: notes,
+      accountImportKey: notes,
       accountName: "caca daca test",
       afpCuotasAsOfYmd: "2025-01-10",
     });

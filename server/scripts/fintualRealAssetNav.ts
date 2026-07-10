@@ -225,7 +225,7 @@ function primaryInvestment(inv: GoalInvestment[] | undefined): GoalInvestment | 
 }
 
 function accountIdForNotes(notes: string): number | null {
-  const row = db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(notes) as { id: number } | undefined;
+  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(notes) as { id: number } | undefined;
   return row?.id ?? null;
 }
 

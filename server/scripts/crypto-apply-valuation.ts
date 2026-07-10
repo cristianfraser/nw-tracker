@@ -10,7 +10,7 @@ import { applyCryptoValuationsFromCoinHoldings } from "../src/cryptoValuation.js
 
 function accountIdForKey(key: string): number | undefined {
   const r = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
     .get(`import:excel|key=${key}`) as { id: number } | undefined;
   return r?.id;
 }
@@ -21,7 +21,7 @@ const btcId = accountIdForKey("bitcoin");
 const ethId = accountIdForKey("eth");
 
 if (btcId == null && ethId == null) {
-  console.error("No bitcoin/eth accounts found (run import:excel first).");
+  console.error("No bitcoin/eth accounts found.");
   process.exit(1);
 }
 
@@ -33,5 +33,5 @@ const result = applyCryptoValuationsFromCoinHoldings({
 
 console.log(
   dryRun ? "[dry-run] " : "",
-  `crypto:apply-valuation → BTC ${result.btcRows} valuation rows (units recalc ${result.btcUnitsBackfill}), ETH ${result.ethRows} rows (units recalc ${result.ethUnitsBackfill})`
+  `crypto:apply-valuation → BTC ${result.btcRows} valuation rows, ETH ${result.ethRows} rows`
 );

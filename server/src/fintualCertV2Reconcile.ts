@@ -151,7 +151,7 @@ export function fintualCertV2PollReconciled(
   );
   if (goalsById.size === 0) return true;
 
-  const accStmt = db.prepare(`SELECT id, notes FROM accounts WHERE notes = ?`);
+  const accStmt = db.prepare(`SELECT id, notes FROM accounts WHERE import_key = ?`);
   let checked = 0;
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     const goalsNav = goalsById.get(goalId);
@@ -184,7 +184,7 @@ export function listFintualCertV2ReconcileRows(
   const goalsById = parseFintualMappedNavSignature(
     state.fintualLastCheckSig ?? state.fintualLastAppliedSig
   );
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE notes = ?`);
+  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
   const out: FintualCertV2ReconcileRow[] = [];
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     const goalsNav = goalsById.get(goalId);
@@ -221,7 +221,7 @@ export function cleanupUnreconciledFintualCertFundUnits(
   goalsNavByGoalId: Map<string, number>,
   dryRun: boolean
 ): number {
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE notes = ?`);
+  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
   let removed = 0;
   for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
     const goalsNav = goalsNavByGoalId.get(goalId);

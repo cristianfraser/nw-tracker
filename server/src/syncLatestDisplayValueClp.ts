@@ -27,10 +27,10 @@ import {
 export function syncLatestDisplayValueClp(
   accountId: number,
   categorySlug?: string | null,
-  opts?: { notes?: string | null; name?: string | null }
+  opts?: { import_key?: string | null; name?: string | null }
 ): { value_clp: number; as_of_date: string } | null {
-  if (opts?.notes && isFintualCertV2ValuationNotes(opts.notes)) {
-    const live = liveFintualCertDisplayValueClp(accountId, opts.notes, opts.name ?? null);
+  if (opts?.import_key && isFintualCertV2ValuationNotes(opts.import_key)) {
+    const live = liveFintualCertDisplayValueClp(accountId, opts.import_key, opts.name ?? null);
     if (live) return live;
   }
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {

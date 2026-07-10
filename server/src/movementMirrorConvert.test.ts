@@ -1,10 +1,8 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import {
-  buildMirrorMergeNote,
   convertMirrorPairs,
   MirrorConvertStaleError,
-  parseMirrorMergeNote,
   rejectMirrorPairs,
   undoMirrorConversion,
   unrejectMirrorPairs,
@@ -53,9 +51,14 @@ function movement(id: number) {
 
 function cleanup() {
   db.prepare(`DELETE FROM movement_mirror_pair_rejections WHERE out_movement_id IN (
-    SELECT id FROM movements WHERE note LIKE 'vitest-mirrorconv%' OR note LIKE 'mirror-merge|%vitest-mirrorconv%')`).run();
+    SELECT id FROM movements WHERE note LIKE 'vitest-mirrorconv%')`).run();
+  db.prepare(`DELETE FROM movements WHERE note LIKE 'vitest-mirrorconv%'`).run();
+  // Converted transfers carry a human note; delete them via their vitest endpoints
+  // (movement_mirror_merges rows cascade with the transfer).
   db.prepare(
-    `DELETE FROM movements WHERE note LIKE 'vitest-mirrorconv%' OR note LIKE 'mirror-merge|%vitest-mirrorconv%'`
+    `DELETE FROM movements WHERE account_id IS NULL AND (
+       from_account_id IN (SELECT id FROM accounts WHERE name LIKE 'vitest-mirrorconv-%')
+       OR to_account_id IN (SELECT id FROM accounts WHERE name LIKE 'vitest-mirrorconv-%'))`
   ).run();
   db.prepare(`DELETE FROM accounts WHERE name LIKE 'vitest-mirrorconv-%'`).run();
 }
@@ -81,36 +84,6 @@ beforeAll(() => {
 
 afterAll(cleanup);
 
-describe("mirror-merge note", () => {
-  it("round-trips pipes, nulls, and units through encode/parse", () => {
-    const out = {
-      movement_id: 123,
-      occurred_on: "2026-06-10",
-      amount_clp: -1_325_724,
-      units_delta: -12.345678,
-      note: "import:fintual|cert|goal=99|day=2026-06-10|flow_kind=deposit_clp|medio=x",
-    };
-    const inn = {
-      movement_id: 456,
-      occurred_on: "2026-06-11",
-      amount_clp: 1_325_724,
-      units_delta: null,
-      note: null,
-    };
-    const merged = buildMirrorMergeNote(out, inn);
-    // Structural pipes only — embedded tags must not be scannable (e.g. |flow_kind=).
-    expect(merged).not.toContain("|flow_kind=");
-    const parsed = parseMirrorMergeNote(merged);
-    expect(parsed.out).toEqual(out);
-    expect(parsed.in).toEqual(inn);
-  });
-
-  it("throws on malformed notes", () => {
-    expect(() => parseMirrorMergeNote("mirror-merge|garbage")).toThrow();
-    expect(() => parseMirrorMergeNote("not-a-merge")).toThrow();
-  });
-});
-
 describe("convertMirrorPairs", () => {
   it("replaces both legs with one transfer on the outflow date and preserves balances", () => {
     const OUT_D = "2026-04-10";
@@ -135,9 +108,20 @@ describe("convertMirrorPairs", () => {
     expect(sumClpThroughDate(genericId, monthEnd)).toBe(outBalBefore);
     expect(sumClpThroughDate(generic2Id, monthEnd)).toBe(inBalBefore);
 
-    const parsed = parseMirrorMergeNote(t.note!);
-    expect(parsed.out.movement_id).toBe(outId);
-    expect(parsed.in.occurred_on).toBe(IN_D);
+    // The original legs' exact content lives in movement_mirror_merges (undo payload).
+    const merge = db
+      .prepare(`SELECT * FROM movement_mirror_merges WHERE transfer_movement_id = ?`)
+      .get(t.id) as {
+      out_movement_id: number;
+      out_note: string | null;
+      in_occurred_on: string;
+      in_units_delta: number | null;
+    };
+    expect(merge.out_movement_id).toBe(outId);
+    expect(merge.out_note).toBe(`${NOTE}|salida`);
+    expect(merge.in_occurred_on).toBe(IN_D);
+    // The transfer note is a human summary, not a machine payload.
+    expect(t.note).not.toContain("mirror-merge|");
   });
 
   it("carries the cuota leg's units onto the transfer (fund retiro → checking)", () => {

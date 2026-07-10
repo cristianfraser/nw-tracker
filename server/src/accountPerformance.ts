@@ -33,7 +33,6 @@ import {
   colorRgbForTimeseriesAccountLine,
 } from "./chartColorRgb.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { AFP_IMPORT_CUOTAS_NOTE_SQL } from "./afpUnoValuation.js";
 import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
@@ -126,7 +125,7 @@ export type ReanchorMonthlyPerfOpts = {
   accountId: number;
   bucketSlug: string;
   unit: TsUnit;
-  notes?: string | null;
+  import_key?: string | null;
   name?: string | null;
 };
 
@@ -176,7 +175,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
             out,
             priorMk,
             opts.unit,
-            { notes: opts.notes, name: opts.name }
+            { import_key: opts.import_key, name: opts.name }
           )
         : null;
     const closeFromMark = monthEndCloseForAccountInUnit(
@@ -185,7 +184,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
       out,
       mk,
       opts.unit,
-      { notes: opts.notes, name: opts.name }
+      { import_key: opts.import_key, name: opts.name }
     );
     const close = closeFromMark ?? row.closing_value;
     let netFlow = row.net_capital_flow;
@@ -267,22 +266,22 @@ function collapseMonthlyPerfDuplicateCalendarMonths(
 
 function accountMetaForLivePerfClose(
   accountId: number
-): { bucket_slug: string; notes: string | null; name: string } | null {
+): { bucket_slug: string; import_key: string | null; name: string } | null {
   const row = db
     .prepare(
-      `SELECT a.name, a.notes, g.slug AS bucket_slug
+      `SELECT a.name, a.import_key, g.slug AS bucket_slug
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id = ?`
     )
-    .get(accountId) as { name: string; notes: string | null; bucket_slug: string } | undefined;
+    .get(accountId) as { name: string; import_key: string | null; bucket_slug: string } | undefined;
   return row ?? null;
 }
 
 function livePerfCloseClpForCurrentMonth(accountId: number, categorySlug: string): number | null {
   const meta = accountMetaForLivePerfClose(accountId);
   const slug = categorySlug || meta?.bucket_slug || "";
-  const markOpts = { notes: meta?.notes ?? null, name: meta?.name ?? null };
+  const markOpts = { import_key: meta?.import_key ?? null, name: meta?.name ?? null };
   const deptoKind = accountBucketKindSlug(slug);
   if (deptoKind === "property" || deptoKind === "mortgage") {
     const today = chileCalendarTodayYmd();
@@ -314,7 +313,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
   if (bucketKind === "credit_card") return sortedAsc;
   const markOpts: MonthEndCloseForAccountOpts = {
-    notes: meta?.notes ?? null,
+    import_key: meta?.import_key ?? null,
     name: meta?.name ?? null,
   };
   const priorClose = monthEndCloseForAccountInUnit(
@@ -608,7 +607,6 @@ function afpPositiveCuotasInflowByMonthKey(accountId: number): Map<string, numbe
       `SELECT occurred_on, COALESCE(units_delta, 0) AS ud
        FROM movements
        WHERE account_id = ?
-         AND ${AFP_IMPORT_CUOTAS_NOTE_SQL}
          AND COALESCE(units_delta, 0) > 0`
     )
     .all(accountId) as { occurred_on: string; ud: number }[];
@@ -886,7 +884,7 @@ function buildAccountMonthlyPerformanceUncached(
     accountId,
     bucketSlug,
     unit,
-    notes: perfMeta?.notes ?? null,
+    import_key: perfMeta?.import_key ?? null,
     name: perfMeta?.name ?? null,
   };
   const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc, reanchorOpts);

@@ -26,7 +26,7 @@ describe("seedCreditCardTree", () => {
       .get() as { id: number };
     const createdIds: number[] = [];
     for (const n of fixtureNotes) {
-      const exists = db.prepare(`SELECT 1 FROM accounts WHERE notes = ?`).get(n) != null;
+      const exists = db.prepare(`SELECT 1 FROM accounts WHERE import_key = ?`).get(n) != null;
       if (exists) continue;
       // Superseded masters carry exclude_from_group_totals=1 (isSupersededSantanderCcMaster
       // requires it alongside the hardcoded notes + a resolvable successor).
@@ -35,12 +35,16 @@ describe("seedCreditCardTree", () => {
         Number(
           db
             .prepare(
-              `INSERT INTO accounts (asset_group_id, name, notes, account_kind, exclude_from_group_totals)
-               VALUES (?, ?, ?, 'master', ?)`
+              `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind, exclude_from_group_totals)
+               VALUES (?, ?, ?, ?, 'master', ?)`
             )
-            .run(group.id, `CC fixture ${n.slice(-4)}`, n, superseded ? 1 : 0).lastInsertRowid
+            .run(group.id, `CC fixture ${n.slice(-4)}`, n, n, superseded ? 1 : 0).lastInsertRowid
         )
       );
+      // Card identity lives on the config row (resolveMasterAccountIdForCardLast4).
+      db.prepare(
+        `INSERT OR IGNORE INTO credit_card_account_config (account_id, card_last4) VALUES (?, ?)`
+      ).run(createdIds[createdIds.length - 1], n.slice(-4));
     }
     try {
       seedCreditCardTree();
@@ -59,7 +63,10 @@ describe("seedCreditCardTree", () => {
       expect(notes).not.toContain("credit_card_master|santander|4112");
       expect(notes).toContain("credit_card_master|santander|4242");
     } finally {
-      for (const id of createdIds) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+      for (const id of createdIds) {
+        db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(id);
+        db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+      }
       seedCreditCardTree();
     }
   });

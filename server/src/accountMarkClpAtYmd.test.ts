@@ -1,14 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import {
-  buildDeptoDividendosMovementNote,
-  buildDeptoMortgageMovementNote,
+  deptoPaymentColumnsFromPaymentRow,
+  deptoPaymentHumanNote,
   deptoSueciaNetEquityUfBySnapshotDates,
+  insertDeptoPaymentRow,
   sheetRowToPaymentRow,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import {
-  DEPTO_PROPERTY_ACCOUNT_NOTES,
+  DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
   deptoAccountMarkClpAtYmd,
   loadDeptoLedgerFromMovements,
 } from "./deptoLedgerFromMovements.js";
@@ -86,8 +87,8 @@ let fixtureMortgageId: number | null = null;
 
 beforeAll(() => {
   const existing = db
-    .prepare(`SELECT 1 FROM accounts WHERE notes = ? AND account_kind = 'master'`)
-    .get(DEPTO_PROPERTY_ACCOUNT_NOTES);
+    .prepare(`SELECT 1 FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
+    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY);
   if (existing) return; // real depto tracked — tests run against it
 
   const propGroup = db
@@ -101,23 +102,23 @@ beforeAll(() => {
   fixturePropertyId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-         VALUES (?, 'suecia fixture', ?, 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
+         VALUES (?, 'suecia fixture', ?, ?, 'master')`
       )
-      .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_NOTES).lastInsertRowid
+      .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY).lastInsertRowid
   );
   const hadMortgage = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master'`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
     .get(MORTGAGE_ACCOUNT_NOTES) as { id: number } | undefined;
   fixtureMortgageId = hadMortgage
     ? null
     : Number(
         db
           .prepare(
-            `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-             VALUES (?, 'suecia fixture', ?, 'master')`
+            `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
+             VALUES (?, 'suecia fixture', ?, ?, 'master')`
           )
-          .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
+          .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
       );
   const mortgageId = fixtureMortgageId ?? hadMortgage!.id;
 
@@ -188,9 +189,32 @@ beforeAll(() => {
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
   );
   for (const { r, onMortgage } of rows) {
-    ins.run(fixturePropertyId, r.amount_clp, r.occurred_on, buildDeptoDividendosMovementNote(r));
+    const cols = deptoPaymentColumnsFromPaymentRow(r);
+    const prop = ins.run(
+      fixturePropertyId,
+      r.amount_clp,
+      r.occurred_on,
+      deptoPaymentHumanNote("dividendos", r.cuota, false)
+    );
+    insertDeptoPaymentRow({
+      movement_id: Number(prop.lastInsertRowid),
+      kind: "dividendos",
+      origin: "import",
+      ...cols,
+    });
     if (onMortgage) {
-      ins.run(mortgageId, Math.abs(r.amount_clp), r.occurred_on, buildDeptoMortgageMovementNote(r));
+      const mort = ins.run(
+        mortgageId,
+        Math.abs(r.amount_clp),
+        r.occurred_on,
+        deptoPaymentHumanNote("mortgage", r.cuota, false)
+      );
+      insertDeptoPaymentRow({
+        movement_id: Number(mort.lastInsertRowid),
+        kind: "mortgage",
+        origin: "import",
+        ...cols,
+      });
     }
   }
 });
@@ -205,8 +229,8 @@ afterAll(() => {
 
 function propertyAccountRow(): { id: number } | undefined {
   return db
-    .prepare(`SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master' LIMIT 1`)
-    .get(DEPTO_PROPERTY_ACCOUNT_NOTES) as { id: number } | undefined;
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' LIMIT 1`)
+    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
 }
 
 describe("deptoAccountMarkClpAtYmd", () => {
@@ -312,11 +336,11 @@ describe("accountMarkClpAtYmd property", () => {
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
     const current = accountMarkClpAtYmd(row.id, today, row.bucket_slug, {
-      notes: row.notes,
+      import_key: row.notes,
       name: row.name,
     });
     const prior = accountMarkClpAtYmd(row.id, priorEnd, row.bucket_slug, {
-      notes: row.notes,
+      import_key: row.notes,
       name: row.name,
     });
     if (!current || !prior || current.value_clp === prior.value_clp) return;

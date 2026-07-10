@@ -143,8 +143,8 @@ export function listCreditCardMasterAccountIds(): number[] {
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (g.slug = 'credit_card' OR g.slug LIKE '%__credit_card')
          AND a.account_kind = 'master'
-         AND a.notes LIKE 'credit_card_master|%'
-       ORDER BY a.notes`
+         AND a.import_key LIKE 'credit_card_master|%'
+       ORDER BY a.import_key`
     )
     .all() as { id: number }[];
   return rows
@@ -241,14 +241,7 @@ export function resolveMasterAccountIdForCardLast4(last4: string): number | null
     )
     .get(l4) as { id: number } | undefined;
   if (row) return row.id;
-  for (const issuer of ["santander", "bci"] as const) {
-    const byNotes = db
-      .prepare(`SELECT id FROM accounts WHERE notes = ? LIMIT 1`)
-      .get(`credit_card_master|${issuer}|${l4}`) as { id: number } | undefined;
-    if (byNotes) return byNotes.id;
-  }
-  const fallback = db
-    .prepare(`SELECT id FROM accounts WHERE notes LIKE ? LIMIT 1`)
-    .get(`credit_card_master|%|${l4}`) as { id: number } | undefined;
-  return fallback?.id ?? null;
+  // `credit_card_account_config.card_last4` is the card identity — a master without a
+  // config row is a data problem, not a case for note archaeology.
+  return null;
 }

@@ -1,4 +1,4 @@
-import { noteIsDeptoPiePayment } from "./deptoDividendosLedger.js";
+import { deptoPieMovementIdSet } from "./deptoDividendosLedger.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
@@ -42,9 +42,6 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
       note: r.note,
       amount_clp: signedClpDeltaForAccountMovement(r, accountId),
       flow_kind: r.flow_kind,
-      accountId,
-      movementId: r.id,
-      occurred_on: r.occurred_on,
       transfer_direction: transferDirectionForAccount(r, accountId),
     });
     return {
@@ -85,7 +82,8 @@ export function listAccountMovementsForApi(accountId: number): AccountMovementAp
     .get(accountId) as { bucket_slug: string } | undefined;
   let rows = movementsForAccountStmt.all(accountId, accountId, accountId) as MovementTransferRow[];
   if (cat && accountBucketKindSlug(cat.bucket_slug) === "mortgage") {
-    rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
+    const pieIds = deptoPieMovementIdSet();
+    rows = rows.filter((r) => r.id == null || !pieIds.has(r.id));
   }
   return mapMovementRows(accountId, rows);
 }
