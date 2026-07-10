@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import {
-  buildDeptoDividendosMovementNote,
-  buildDeptoMortgageMovementNote,
+  deptoPaymentColumnsFromPaymentRow,
+  deptoPaymentHumanNote,
   deptoSueciaNetEquityUfBySnapshotDates,
+  insertDeptoPaymentRow,
   sheetRowToPaymentRow,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
@@ -188,9 +189,32 @@ beforeAll(() => {
     `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
   );
   for (const { r, onMortgage } of rows) {
-    ins.run(fixturePropertyId, r.amount_clp, r.occurred_on, buildDeptoDividendosMovementNote(r));
+    const cols = deptoPaymentColumnsFromPaymentRow(r);
+    const prop = ins.run(
+      fixturePropertyId,
+      r.amount_clp,
+      r.occurred_on,
+      deptoPaymentHumanNote("dividendos", r.cuota, false)
+    );
+    insertDeptoPaymentRow({
+      movement_id: Number(prop.lastInsertRowid),
+      kind: "dividendos",
+      origin: "import",
+      ...cols,
+    });
     if (onMortgage) {
-      ins.run(mortgageId, Math.abs(r.amount_clp), r.occurred_on, buildDeptoMortgageMovementNote(r));
+      const mort = ins.run(
+        mortgageId,
+        Math.abs(r.amount_clp),
+        r.occurred_on,
+        deptoPaymentHumanNote("mortgage", r.cuota, false)
+      );
+      insertDeptoPaymentRow({
+        movement_id: Number(mort.lastInsertRowid),
+        kind: "mortgage",
+        origin: "import",
+        ...cols,
+      });
     }
   }
 });

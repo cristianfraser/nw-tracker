@@ -1,4 +1,4 @@
-import { noteIsDeptoPiePayment } from "./deptoDividendosLedger.js";
+import { deptoPieMovementIdSet } from "./deptoDividendosLedger.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
@@ -82,7 +82,8 @@ export function listAccountMovementsForApi(accountId: number): AccountMovementAp
     .get(accountId) as { bucket_slug: string } | undefined;
   let rows = movementsForAccountStmt.all(accountId, accountId, accountId) as MovementTransferRow[];
   if (cat && accountBucketKindSlug(cat.bucket_slug) === "mortgage") {
-    rows = rows.filter((r) => !noteIsDeptoPiePayment(r.note));
+    const pieIds = deptoPieMovementIdSet();
+    rows = rows.filter((r) => r.id == null || !pieIds.has(r.id));
   }
   return mapMovementRows(accountId, rows);
 }

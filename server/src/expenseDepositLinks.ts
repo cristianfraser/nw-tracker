@@ -17,8 +17,8 @@ import {
 } from "./flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
-  noteIsDeptoPiePayment,
-  parseDeptoDividendosMovementNote,
+  deptoPaymentRowForMovementId,
+  isDeptoPieCuota,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
@@ -198,7 +198,7 @@ function findDepositMovement(
   if (exact.length === 0) return null;
   if (exact.length === 1) return exact[0]!;
 
-  const deptoRows = exact.filter((r) => parseDeptoDividendosMovementNote(r.note) != null);
+  const deptoRows = exact.filter((r) => deptoPaymentRowForMovementId(r.id) != null);
   if (deptoRows.length === 1) return deptoRows[0]!;
   if (deptoRows.length > 1) {
     throw new Error(
@@ -225,9 +225,9 @@ function findPropertyDepositForSheetRow(
   for (const accountId of listRealEstatePropertyAccountIds()) {
     const movement = findDepositMovement(accountId, sheet.occurred_on, sheetPago);
     if (movement == null) continue;
-    const parsed = parseDeptoDividendosMovementNote(movement.note);
-    if (parsed?.cuota != null && parsed.cuota !== sheet.cuota) continue;
-    if (noteIsDeptoPiePayment(movement.note)) continue;
+    const payment = deptoPaymentRowForMovementId(movement.id);
+    if (payment != null && payment.cuota !== sheet.cuota) continue;
+    if (payment != null && isDeptoPieCuota(payment.cuota)) continue;
 
     const candidate = { ...movement, account_id: accountId };
     if (match != null) {
@@ -273,7 +273,8 @@ function resolveAmortizationForDepositMovement(
   movement: { id: number; note: string | null; amount_clp: number; occurred_on: string },
   sheetRow?: DeptoMortgageSheetRow
 ): { amortization_clp: number; depto_cuota: string | null; depto_occurred_on: string } | null {
-  if (noteIsDeptoPiePayment(movement.note)) return null;
+  const payment = deptoPaymentRowForMovementId(movement.id);
+  if (payment != null && isDeptoPieCuota(payment.cuota)) return null;
 
   if (sheetRow != null) {
     const amort = amortizationClpFromSheetRow(sheetRow);
@@ -290,20 +291,19 @@ function resolveAmortizationForDepositMovement(
     };
   }
 
-  const parsed = parseDeptoDividendosMovementNote(movement.note);
-  if (parsed?.cuota != null) {
-    const fromNote =
-      Math.round(parsed.amortizacion_clp ?? 0) + Math.round(parsed.amortizacion_ext_clp ?? 0);
-    if (fromNote > 0) {
+  if (payment != null) {
+    const fromRow =
+      Math.round(payment.amortizacion_clp ?? 0) + Math.round(payment.amortizacion_ext_clp ?? 0);
+    if (fromRow > 0) {
       const paymentRef = Math.round(movement.amount_clp);
-      if (fromNote > paymentRef) {
+      if (fromRow > paymentRef) {
         throw new Error(
-          `depto movement ${movement.id} amortization ${fromNote} exceeds payment ${paymentRef}`
+          `depto movement ${movement.id} amortization ${fromRow} exceeds payment ${paymentRef}`
         );
       }
       return {
-        amortization_clp: fromNote,
-        depto_cuota: parsed.cuota,
+        amortization_clp: fromRow,
+        depto_cuota: payment.cuota,
         depto_occurred_on: movement.occurred_on,
       };
     }

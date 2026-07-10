@@ -4,8 +4,10 @@ import {
   commitMortgagePayment,
   previewMortgagePayment,
 } from "./mortgagePaymentCreate.js";
-import { loadDeptoDividendosSheetLedgerFromDb } from "./deptoDividendosLedger.js";
-import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
+import {
+  deptoAccountMarkClpAtYmd,
+  loadDeptoLedgerFromMovements,
+} from "./deptoLedgerFromMovements.js";
 
 describe("mortgage payment create API layer", () => {
   it("preview and commit update ledger balances", () => {
@@ -16,7 +18,7 @@ describe("mortgage payment create API layer", () => {
       .get() as { id: number } | undefined;
     if (!mortgage) return;
 
-    const ledgerBefore = loadDeptoDividendosSheetLedgerFromDb();
+    const ledgerBefore = loadDeptoLedgerFromMovements();
     if (ledgerBefore.length === 0) return;
 
     const testCuota = `vitest-pay-${Date.now()}`;
@@ -47,7 +49,18 @@ describe("mortgage payment create API layer", () => {
     expect(committed.mortgage_movement_id).toBeGreaterThan(0);
     expect(committed.property_movement_id).toBeGreaterThan(0);
 
-    const ledgerAfter = loadDeptoDividendosSheetLedgerFromDb();
+    // Both movements carry a depto_payments row; the mortgage one carries the flow kind column.
+    const paymentRows = db
+      .prepare(`SELECT movement_id, kind, origin FROM depto_payments WHERE cuota = ? ORDER BY kind`)
+      .all(testCuota) as { movement_id: number; kind: string; origin: string }[];
+    expect(paymentRows.map((r) => r.kind)).toEqual(["dividendos", "mortgage"]);
+    expect(paymentRows.every((r) => r.origin === "manual")).toBe(true);
+    const mortgageFlowKind = db
+      .prepare(`SELECT flow_kind FROM movements WHERE id = ?`)
+      .get(committed.mortgage_movement_id) as { flow_kind: string | null };
+    expect(mortgageFlowKind.flow_kind).toBe("pago_cuota_hipotecario");
+
+    const ledgerAfter = loadDeptoLedgerFromMovements();
     expect(ledgerAfter.some((r) => r.cuota === testCuota && r.occurred_on === occurredOn)).toBe(true);
 
     const propertyAfter = deptoAccountMarkClpAtYmd("property", occurredOn);
@@ -55,10 +68,14 @@ describe("mortgage payment create API layer", () => {
       expect(propertyAfter.value_clp).not.toBe(propertyBefore.value_clp);
     }
 
+    // depto_payments rows cascade with the movements.
     db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(
       committed.mortgage_movement_id,
       committed.property_movement_id
     );
-    db.prepare(`DELETE FROM depto_dividendos_sheet_rows WHERE cuota = ?`).run(testCuota);
+    const left = db.prepare(`SELECT COUNT(*) c FROM depto_payments WHERE cuota = ?`).get(testCuota) as {
+      c: number;
+    };
+    expect(left.c).toBe(0);
   });
 });

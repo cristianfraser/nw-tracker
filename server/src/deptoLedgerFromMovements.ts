@@ -1,15 +1,14 @@
 /**
  * DB-first depto ledger: reconstructs the dividendos payment ledger from the PROPERTY
  * account's movements (pie + cuotas + prepagos — the mortgage account is the non-pie
- * subset), whose notes encode every runtime-critical field via
- * `buildDeptoDividendosMovementNote` (see `parseDeptoDividendosMovementNote`).
+ * subset) joined with `depto_payments`, the table holding every runtime-critical field
+ * (movement notes are human provenance only).
  *
- * This is the ONLY runtime ledger source. `depto_dividendos_sheet_rows` is import/manual
- * staging (spreadsheet master mirror) — never read on request paths.
+ * This is the ONLY runtime ledger source.
  *
- * Derivations for fields not present in notes (all display-only or recomputed):
- * - `uf_clp_day` from `uf_daily` (same as the sheet loader — the note `ufdia` is ignored),
- * - `restante_clp` = round(cruf × ufdia); gross `valor_vivienda_uf` comes from the note (`vvuf`),
+ * Derivations for fields not stored (all display-only or recomputed):
+ * - `uf_clp_day` from `uf_daily`,
+ * - `restante_clp` = round(cruf × ufdia); gross `valor_vivienda_uf` from the stored row,
  * - UF insurance legs from CLP ÷ ufdia; deltas from consecutive rows; acumulados as cumsums,
  * - analysis columns via `computeMortgagePaymentAnalytics` (already used for manual rows).
  *
@@ -19,11 +18,11 @@
 import { db } from "./db.js";
 import {
   enrichDeptoRowsUfClpFromDb,
-  parseDeptoDividendosMovementNote,
   deptoMortgageCloseClpBySnapshotDates,
   deptoSueciaPropertyCloseClpBySnapshotDates,
   type DeptoAccountMarkAtYmd,
   type DeptoMortgageSheetRow,
+  type DeptoPaymentTableRow,
 } from "./deptoDividendosLedger.js";
 import {
   computeMortgagePaymentAnalytics,
@@ -33,26 +32,13 @@ import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 
 export const DEPTO_PROPERTY_ACCOUNT_NOTES = "import:excel|key=property";
 
-const DEPTO_NOTE_PREFIXES = [
-  "import:excel|depto-dividendos",
-  "import:excel|depto-mortgage",
-  "manual|depto-dividendos",
-  "manual|depto-mortgage",
-] as const;
-
-function isDeptoNote(note: string | null): boolean {
-  return note != null && DEPTO_NOTE_PREFIXES.some((p) => note.startsWith(p));
-}
-
 function roundUf5(v: number): number {
   return Math.round(v * 1e5) / 1e5;
 }
 
-type PropertyMovementRow = {
-  id: number;
+type PropertyPaymentJoinRow = DeptoPaymentTableRow & {
   occurred_on: string;
   amount_clp: number;
-  note: string | null;
 };
 
 function deptoPropertyAccountId(): number | null {
@@ -74,37 +60,28 @@ export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
   const propertyId = deptoPropertyAccountId();
   if (propertyId == null) {
     const stray = db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM movements
-         WHERE note LIKE 'import:excel|depto-%' OR note LIKE 'manual|depto-%'`
-      )
+      .prepare(`SELECT COUNT(*) AS c FROM depto_payments WHERE kind = 'dividendos'`)
       .get() as { c: number };
     if (stray.c > 0) {
       throw new Error(
-        `depto ledger: ${stray.c} depto-note movements exist but no property master with notes '${DEPTO_PROPERTY_ACCOUNT_NOTES}'`
+        `depto ledger: ${stray.c} depto_payments rows exist but no property master with notes '${DEPTO_PROPERTY_ACCOUNT_NOTES}'`
       );
     }
     return [];
   }
 
-  const movements = (
-    db
-      .prepare(
-        `SELECT id, occurred_on, amount_clp, note FROM movements
-         WHERE account_id = ? ORDER BY occurred_on, id`
-      )
-      .all(propertyId) as PropertyMovementRow[]
-  ).filter((m) => isDeptoNote(m.note));
+  const movements = db
+    .prepare(
+      `SELECT p.*, m.occurred_on, m.amount_clp FROM movements m
+       JOIN depto_payments p ON p.movement_id = m.id
+       WHERE m.account_id = ? ORDER BY m.occurred_on, m.id`
+    )
+    .all(propertyId) as PropertyPaymentJoinRow[];
   if (movements.length === 0) return [];
 
-  // Pass 1 — base rows straight from the notes (+ per-row uf_daily for derivations).
+  // Pass 1 — base rows straight from depto_payments (+ per-row uf_daily for derivations).
   const base: DeptoMortgageSheetRow[] = movements.map((m) => {
-    const p = parseDeptoDividendosMovementNote(m.note);
-    if (!p || !p.cuota) {
-      throw new Error(
-        `depto ledger: property movement ${m.id} (${m.occurred_on}) has an unparseable depto note`
-      );
-    }
+    const p = m;
     const ufDay = ufRowOnOrBefore(m.occurred_on)?.clp_per_uf ?? null;
     const cruf = p.credito_restante_uf ?? null;
     const vnuf = p.valor_neto_uf ?? null;

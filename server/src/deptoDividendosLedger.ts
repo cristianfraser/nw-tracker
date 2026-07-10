@@ -1,9 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-  loadDeptoDividendosSheetRowsRawFromDb,
-  replaceDeptoDividendosSheetRowsInDb,
-} from "./deptoSheetDb.js";
+import { db } from "./db.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 
 /** Semicolon CSV + es-CL number parsing (aligned with `cfraserCsv.ts`). */
@@ -59,60 +56,11 @@ export type DeptoDividendosPaymentRow = {
   desgravamen_clp: number | null;
 };
 
-const COL = {
-  cuota: 0,
-  fecha: 1,
-  pago_clp: 2,
-  pago_uf: 3,
-  pct_dividendo: 4,
-  uf_dia: 5,
-  mm_pct: 6,
-  yy_pct: 7,
-  tasa_plus: 8,
-  pago_clp_dup: 9,
-  credito_restante_uf: 10,
-  pct_credito_uf: 11,
-  restante_clp: 12,
-  pct_de_total: 13,
-  delta_credito_clp: 14,
-  valor_neto_uf: 15,
-  valor_neto_clp: 16,
-  pagado_neto_uf: 17,
-  delta_valor_neto_clp: 18,
-  valor_vivienda_uf: 19,
-  valor_vivienda_clp: 20,
-  min_uf: 24,
-  incendio_clp: 46,
-  incendio_uf: 47,
-  desgravamen_clp: 48,
-  desgravamen_uf: 49,
-  total_seguros_uf: 50,
-  total_seguros_clp: 51,
-  amortizacion_clp: 52,
-  amortizacion_uf: 53,
-  amortizacion_ext_clp: 54,
-  amortizacion_ext_uf: 55,
-  interes_clp: 58,
-  interes_uf: 59,
-  delta_credito_amort_clp: 60,
-  interes_oculto_clp: 61,
-  interes_oculto_b_clp: 62,
-  interes_real_clp: 63,
-  interes_calculado_uf: 66,
-  amort_interes_text: 67,
-  pago_acumulado_clp: 72,
-  amort_acum_clp: 73,
-  interes_acum_clp: 74,
-} as const;
 
 function roundUf4(v: number): number {
   return Math.round(v * 1e4) / 1e4;
 }
 
-/** UF amounts in payment breakdown (amort, interés, pago) — 5 decimals in the sheet. */
-function roundUf5(v: number): number {
-  return Math.round(v * 1e5) / 1e5;
-}
 
 /** Depto Suecia — shared account label (Table 2-1 / product). Gross UF is data-derived (vnuf + cruf). */
 export const DEPTO_SUECIA_ACCOUNT_DISPLAY_NAME = "suecia";
@@ -198,72 +146,8 @@ export type DeptoMortgageCsvMeta = {
   csv_file_exists?: boolean;
 };
 
-function strCell(row: string[], i: number): string | null {
-  const s = String(row[i] ?? "").trim();
-  return s || null;
-}
 
-function numAt(row: string[], i: number): number | null {
-  if (i >= row.length) return null;
-  return numCsv(row[i]);
-}
 
-function parseDividendosDataRow(row: string[]): DeptoMortgageSheetRow | null {
-  if (!row || row.length < 22) return null;
-  const occurred_on = String(row[COL.fecha] ?? "")
-    .trim()
-    .replace(/^\ufeff/, "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) return null;
-  const pago_clp = numCsv(row[COL.pago_clp]);
-  if (pago_clp == null || !Number.isFinite(pago_clp) || pago_clp === 0) return null;
-  const cuota = String(row[COL.cuota] ?? "").trim() || "—";
-  const nUfBal = (v: number | null) => (v != null ? roundUf4(v) : null);
-  const nUf5 = (v: number | null) => (v != null ? roundUf5(v) : null);
-  return {
-    cuota,
-    occurred_on,
-    pago_clp,
-    pago_uf: nUf5(numCsv(row[COL.pago_uf])),
-    pct_dividendo: strCell(row, COL.pct_dividendo),
-    uf_clp_day: numCsv(row[COL.uf_dia]),
-    mm_pct: strCell(row, COL.mm_pct),
-    yy_pct: strCell(row, COL.yy_pct),
-    tasa_plus: numCsv(row[COL.tasa_plus]),
-    credito_restante_uf: nUfBal(numCsv(row[COL.credito_restante_uf])),
-    pct_credito_uf: strCell(row, COL.pct_credito_uf),
-    restante_clp: numCsv(row[COL.restante_clp]),
-    pct_de_total: strCell(row, COL.pct_de_total),
-    delta_credito_clp: numCsv(row[COL.delta_credito_clp]),
-    valor_neto_uf: nUfBal(numCsv(row[COL.valor_neto_uf])),
-    valor_neto_clp: numCsv(row[COL.valor_neto_clp]),
-    pagado_neto_uf: nUf5(numCsv(row[COL.pagado_neto_uf])),
-    delta_valor_neto_clp: numCsv(row[COL.delta_valor_neto_clp]),
-    valor_vivienda_uf: nUfBal(numCsv(row[COL.valor_vivienda_uf])),
-    valor_vivienda_clp: numCsv(row[COL.valor_vivienda_clp]),
-    min_uf: nUf5(numCsv(row[COL.min_uf])),
-    incendio_clp: numCsv(row[COL.incendio_clp]),
-    incendio_uf: nUf5(numCsv(row[COL.incendio_uf])),
-    desgravamen_clp: numCsv(row[COL.desgravamen_clp]),
-    desgravamen_uf: nUf5(numCsv(row[COL.desgravamen_uf])),
-    total_seguros_uf: nUf5(numCsv(row[COL.total_seguros_uf])),
-    total_seguros_clp: numCsv(row[COL.total_seguros_clp]),
-    amortizacion_clp: numCsv(row[COL.amortizacion_clp]),
-    amortizacion_uf: nUf5(numCsv(row[COL.amortizacion_uf])),
-    amortizacion_ext_clp: numCsv(row[COL.amortizacion_ext_clp]),
-    amortizacion_ext_uf: nUf5(numCsv(row[COL.amortizacion_ext_uf])),
-    interes_clp: numCsv(row[COL.interes_clp]),
-    interes_uf: nUf5(numCsv(row[COL.interes_uf])),
-    delta_credito_amort_clp: numCsv(row[COL.delta_credito_amort_clp]),
-    interes_oculto_clp: numCsv(row[COL.interes_oculto_clp]),
-    interes_oculto_b_clp: numCsv(row[COL.interes_oculto_b_clp]),
-    interes_real_clp: numCsv(row[COL.interes_real_clp]),
-    interes_calculado_uf: nUf5(numCsv(row[COL.interes_calculado_uf])),
-    amort_interes_text: strCell(row, COL.amort_interes_text),
-    pago_acumulado_clp: numAt(row, COL.pago_acumulado_clp),
-    amort_acum_clp: numAt(row, COL.amort_acum_clp),
-    interes_acum_clp: numAt(row, COL.interes_acum_clp),
-  };
-}
 
 export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosPaymentRow {
   return {
@@ -481,180 +365,107 @@ export function loadDeptoTable11SupplementalPrepayments(cfraserDir: string): Dep
   return out;
 }
 
-/** Month where sheet payments do not explain the CLP balance drop (typical prepago month). */
-function inferSupplementalMonthFromBalanceGap(
-  main: readonly DeptoMortgageSheetRow[],
-  afterYm: string
-): string | null {
-  const byMonth = new Map<string, DeptoMortgageSheetRow>();
-  for (const r of main) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
-    const ym = r.occurred_on.slice(0, 7);
-    const prev = byMonth.get(ym);
-    if (!prev || r.occurred_on >= prev.occurred_on) byMonth.set(ym, r);
-  }
-  const months = [...byMonth.keys()].sort();
-  let bestYm: string | null = null;
-  let bestGap = 0;
-  for (let i = 1; i < months.length; i++) {
-    const ym = months[i]!;
-    if (ym <= afterYm) continue;
-    if (main.some((p) => /^prepago/i.test(p.cuota) && p.occurred_on.startsWith(ym))) continue;
-    const prior = byMonth.get(months[i - 1]!)?.restante_clp;
-    const close = byMonth.get(ym)?.restante_clp;
-    if (prior == null || close == null) continue;
-    const payments = main
-      .filter((r) => r.occurred_on.startsWith(ym) && isDeptoMortgagePaymentCuota(r.cuota))
-      .reduce((s, r) => s + Math.abs(r.pago_clp), 0);
-    const gap = prior - close - payments;
-    if (gap > bestGap && gap > 1_000_000) {
-      bestGap = gap;
-      bestYm = ym;
-    }
-  }
-  return bestYm;
+
+
+
+
+// ---------- depto_payments table (machine payload; notes are human provenance) ----------
+
+/** One `depto_payments` row: the payment fields runtime derives the ledger from. */
+export type DeptoPaymentTableRow = {
+  movement_id: number;
+  kind: "dividendos" | "mortgage";
+  origin: "import" | "manual";
+  cuota: string;
+  amount_uf: number | null;
+  credito_restante_uf: number | null;
+  valor_vivienda_uf: number | null;
+  valor_neto_uf: number | null;
+  valor_neto_clp: number | null;
+  pagado_neto_uf: number | null;
+  pago_acumulado_clp: number | null;
+  min_uf: number | null;
+  amortizacion_clp: number | null;
+  amortizacion_uf: number | null;
+  amortizacion_ext_clp: number | null;
+  amortizacion_ext_uf: number | null;
+  interes_clp: number | null;
+  interes_uf: number | null;
+  incendio_clp: number | null;
+  desgravamen_clp: number | null;
+};
+
+export function deptoPaymentRowForMovementId(movementId: number): DeptoPaymentTableRow | null {
+  const r = db
+    .prepare(`SELECT * FROM depto_payments WHERE movement_id = ?`)
+    .get(movementId) as DeptoPaymentTableRow | undefined;
+  return r ?? null;
 }
 
-/** Assign undated supplementals from Table 1-1 to months missing a prepago row in the main sheet. */
-function supplementalPrepaymentDatesByCuota(
-  supplementals: readonly DeptoTable11Prepayment[],
-  main: readonly DeptoMortgageSheetRow[]
-): Map<string, string> {
-  const mainLabels = new Set(main.map((r) => r.cuota.toLowerCase().trim()));
-  const missing = supplementals.filter((s) => !mainLabels.has(s.cuota.toLowerCase().trim()));
-  const out = new Map<string, string>();
-  if (missing.length === 0) return out;
-
-  const lastPrepago = main
-    .filter((r) => /^prepago/i.test(r.cuota) && /^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on))
-    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on))
-    .at(-1);
-  const afterYm = lastPrepago?.occurred_on.slice(0, 7) ?? "0000-00";
-
-  if (missing.length === 1) {
-    const ym = inferSupplementalMonthFromBalanceGap(main, afterYm);
-    if (ym) out.set(missing[0]!.cuota.toLowerCase().trim(), `${ym}-10`);
-    return out;
-  }
-
-  const gapMonths: string[] = [];
-  const seenYm = new Set<string>();
-  for (const r of [...main].sort((a, b) => a.occurred_on.localeCompare(b.occurred_on))) {
-    const ym = r.occurred_on.slice(0, 7);
-    if (ym <= afterYm) continue;
-    if (seenYm.has(ym)) continue;
-    if (/^prepago/i.test(r.cuota)) continue;
-    if (!isDeptoMortgagePaymentCuota(r.cuota)) continue;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
-    if (main.some((p) => /^prepago/i.test(p.cuota) && p.occurred_on.startsWith(ym))) continue;
-    seenYm.add(ym);
-    gapMonths.push(ym);
-  }
-  const assignFromEnd = gapMonths.slice(-missing.length);
-  for (let i = 0; i < missing.length; i++) {
-    const ym =
-      assignFromEnd[i] ??
-      [...main]
-        .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on))
-        .at(-1)!
-        .occurred_on.slice(0, 7);
-    out.set(missing[i]!.cuota.toLowerCase().trim(), `${ym}-10`);
-  }
-  return out;
+/** Movement ids of "pie" (down payment) rows — property capital, excluded from payment lists. */
+export function deptoPieMovementIdSet(): Set<number> {
+  const rows = db
+    .prepare(`SELECT movement_id FROM depto_payments WHERE LOWER(TRIM(cuota)) = 'pie'`)
+    .all() as { movement_id: number }[];
+  return new Set(rows.map((r) => r.movement_id));
 }
 
-function buildSyntheticPrepaymentRow(p: DeptoTable11Prepayment, occurred_on: string): DeptoMortgageSheetRow {
+export function insertDeptoPaymentRow(row: DeptoPaymentTableRow): void {
+  db.prepare(
+    `INSERT INTO depto_payments (
+       movement_id, kind, origin, cuota,
+       amount_uf, credito_restante_uf, valor_vivienda_uf, valor_neto_uf, valor_neto_clp,
+       pagado_neto_uf, pago_acumulado_clp, min_uf,
+       amortizacion_clp, amortizacion_uf, amortizacion_ext_clp, amortizacion_ext_uf,
+       interes_clp, interes_uf, incendio_clp, desgravamen_clp
+     ) VALUES (
+       @movement_id, @kind, @origin, @cuota,
+       @amount_uf, @credito_restante_uf, @valor_vivienda_uf, @valor_neto_uf, @valor_neto_clp,
+       @pagado_neto_uf, @pago_acumulado_clp, @min_uf,
+       @amortizacion_clp, @amortizacion_uf, @amortizacion_ext_clp, @amortizacion_ext_uf,
+       @interes_clp, @interes_uf, @incendio_clp, @desgravamen_clp
+     )`
+  ).run(row);
+}
+
+/** `depto_payments` columns for a payment row (shared by manual entry, recompute, and demo data). */
+export function deptoPaymentColumnsFromPaymentRow(
+  r: DeptoDividendosPaymentRow
+): Omit<DeptoPaymentTableRow, "movement_id" | "kind" | "origin"> {
   return {
-    cuota: p.cuota,
-    occurred_on,
-    pago_clp: p.pago_clp,
-    pago_uf: p.pago_uf != null ? roundUf5(p.pago_uf) : null,
-    pct_dividendo: null,
-    uf_clp_day: null,
-    mm_pct: null,
-    yy_pct: null,
-    tasa_plus: null,
-    credito_restante_uf: null,
-    pct_credito_uf: null,
-    restante_clp: null,
-    pct_de_total: null,
-    delta_credito_clp: null,
-    valor_neto_uf: null,
-    valor_neto_clp: null,
-    pagado_neto_uf: null,
-    delta_valor_neto_clp: null,
-    valor_vivienda_uf: null,
-    valor_vivienda_clp: null,
-    min_uf: null,
-    incendio_clp: null,
-    incendio_uf: null,
-    desgravamen_clp: null,
-    desgravamen_uf: null,
-    total_seguros_uf: null,
-    total_seguros_clp: null,
-    amortizacion_clp: null,
-    amortizacion_uf: null,
-    amortizacion_ext_clp: null,
-    amortizacion_ext_uf: null,
-    interes_clp: null,
-    interes_uf: null,
-    delta_credito_amort_clp: null,
-    interes_oculto_clp: null,
-    interes_oculto_b_clp: null,
-    interes_real_clp: null,
-    interes_calculado_uf: null,
-    amort_interes_text: null,
-    pago_acumulado_clp: null,
-    amort_acum_clp: null,
-    interes_acum_clp: null,
+    cuota: r.cuota,
+    amount_uf: r.amount_uf ?? null,
+    credito_restante_uf: r.credito_restante_uf ?? null,
+    valor_vivienda_uf: r.valor_vivienda_uf ?? null,
+    valor_neto_uf: r.valor_neto_uf ?? null,
+    valor_neto_clp: r.valor_neto_clp != null ? Math.round(r.valor_neto_clp) : null,
+    pagado_neto_uf: r.pagado_neto_uf ?? null,
+    pago_acumulado_clp: r.pago_acumulado_clp != null ? Math.round(r.pago_acumulado_clp) : null,
+    min_uf: r.min_uf ?? null,
+    amortizacion_clp: r.amortizacion_clp != null ? Math.round(r.amortizacion_clp) : null,
+    amortizacion_uf: r.amortizacion_uf ?? null,
+    amortizacion_ext_clp: r.amortizacion_ext_clp != null ? Math.round(r.amortizacion_ext_clp) : null,
+    amortizacion_ext_uf: r.amortizacion_ext_uf ?? null,
+    interes_clp: r.interes_clp != null ? Math.round(r.interes_clp) : null,
+    interes_uf: r.interes_uf ?? null,
+    incendio_clp: r.incendio_clp != null ? Math.round(r.incendio_clp) : null,
+    desgravamen_clp: r.desgravamen_clp != null ? Math.round(r.desgravamen_clp) : null,
   };
 }
 
-function mergeSupplementalPrepaymentsIntoLedger(
-  main: DeptoMortgageSheetRow[],
-  cfraserDir: string
-): DeptoMortgageSheetRow[] {
-  const supplementals = loadDeptoTable11SupplementalPrepayments(cfraserDir);
-  if (supplementals.length === 0) return main;
-
-  const dates = supplementalPrepaymentDatesByCuota(supplementals, main);
-  const merged = [...main];
-  for (const p of supplementals) {
-    const key = p.cuota.toLowerCase().trim();
-    if (main.some((r) => r.cuota.toLowerCase().trim() === key)) continue;
-    const occurred_on = dates.get(key);
-    if (!occurred_on) continue;
-    merged.push(buildSyntheticPrepaymentRow(p, occurred_on));
-  }
-  merged.sort((a, b) => {
-    const c = a.occurred_on.localeCompare(b.occurred_on);
-    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
-  });
-  return merged;
+/** Human note for a depto payment movement (machine payload lives in `depto_payments`). */
+export function deptoPaymentHumanNote(
+  kind: "dividendos" | "mortgage",
+  cuota: string,
+  manual: boolean
+): string {
+  const base = isDeptoPieCuota(cuota)
+    ? "Depto pie"
+    : kind === "mortgage"
+      ? `Pago hipoteca — cuota ${cuota}`
+      : `Depto dividendo — cuota ${cuota}`;
+  return manual ? `${base} (manual)` : base;
 }
-
-/** Import scripts only — parses `cfraser/depto-dividendos.csv` (+ Table 1-1 supplementals). */
-export function loadDeptoDividendosSheetLedgerFromFile(cfraserDir: string): DeptoMortgageSheetRow[] {
-  const fp = path.join(cfraserDir, "depto-dividendos.csv");
-  const rows = readSemicolonCsv(fp);
-  const out: DeptoMortgageSheetRow[] = [];
-  for (let i = 3; i < rows.length; i++) {
-    const parsed = parseDividendosDataRow(rows[i] ?? []);
-    if (parsed) out.push(parsed);
-  }
-  return enrichDeptoRowsUfClpFromDb(mergeSupplementalPrepaymentsIntoLedger(out, cfraserDir));
-}
-
-/**
- * @deprecated Import/manual WRITE paths and their tests only. Runtime reads use
- * `loadDeptoLedgerFromMovements()` (movements + uf_daily) — the sheet table is the
- * spreadsheet master mirror, never a request-path source.
- */
-export function loadDeptoDividendosSheetLedgerFromDb(): DeptoMortgageSheetRow[] {
-  return enrichDeptoRowsUfClpFromDb(loadDeptoDividendosSheetRowsRawFromDb());
-}
-
-export { replaceDeptoDividendosSheetRowsInDb };
 
 /** Σ mortgage payments (cuotas + prepagos) in the calendar month of `asOf`, from the merged dividendos ledger. */
 export function mortgageSheetPaymentsClpInMonth(
@@ -733,11 +544,6 @@ export function mortgageMetaFromSheetRows(rows: DeptoMortgageSheetRow[]): DeptoM
   };
 }
 
-/** Rows for `import:excel` property movements (subset of the sheet). */
-export function loadDeptoDividendosPaymentRows(cfraserDir: string): DeptoDividendosPaymentRow[] {
-  return loadDeptoDividendosSheetLedgerFromFile(cfraserDir).map(sheetRowToPaymentRow);
-}
-
 /** Down payment row — property (inmueble) capital, not a mortgage installment. */
 export function isDeptoPieCuota(cuota: string): boolean {
   return String(cuota).trim().toLowerCase() === "pie";
@@ -786,17 +592,6 @@ export function filterPointsFromFirstMortgagePayment<
   return points.filter((p) => String(p.as_of_date ?? "") >= first);
 }
 
-export function noteIsDeptoPiePayment(note: string | null | undefined): boolean {
-  if (!note?.includes("import:excel|depto-")) return false;
-  const raw = note.match(/\|cuota=([^|]+)/)?.[1];
-  if (!raw) return false;
-  try {
-    return isDeptoPieCuota(decodeURIComponent(raw));
-  } catch {
-    return isDeptoPieCuota(raw);
-  }
-}
-
 export function mortgageFlowKindFromCuota(
   cuota: string
 ): "pago_cuota_hipotecario" | "prepago_parcial_hipotecario" {
@@ -804,85 +599,4 @@ export function mortgageFlowKindFromCuota(
   return "pago_cuota_hipotecario";
 }
 
-export function buildDeptoMortgageMovementNote(r: DeptoDividendosPaymentRow): string {
-  const kind = mortgageFlowKindFromCuota(r.cuota);
-  return `${buildDeptoDividendosMovementNote(r, "depto-mortgage")}|flow_kind=${kind}`;
-}
-
-export function buildDeptoDividendosMovementNote(
-  r: DeptoDividendosPaymentRow,
-  tag: "depto-dividendos" | "depto-mortgage" = "depto-dividendos"
-): string {
-  const parts = [
-    `import:excel|${tag}`,
-    `cuota=${encodeURIComponent(r.cuota)}`,
-    r.amount_uf != null ? `uf=${r.amount_uf}` : null,
-    tag !== "depto-mortgage" && r.uf_clp_day != null
-      ? `ufdia=${Math.round(r.uf_clp_day * 100) / 100}`
-      : null,
-    r.credito_restante_uf != null ? `cruf=${r.credito_restante_uf}` : null,
-    r.valor_vivienda_uf != null ? `vvuf=${r.valor_vivienda_uf}` : null,
-    r.valor_neto_uf != null ? `vnuf=${r.valor_neto_uf}` : null,
-    r.valor_neto_clp != null ? `vnclp=${Math.round(r.valor_neto_clp)}` : null,
-    r.pagado_neto_uf != null ? `pnuf=${r.pagado_neto_uf}` : null,
-    r.pago_acumulado_clp != null ? `paclp=${Math.round(r.pago_acumulado_clp)}` : null,
-    r.min_uf != null ? `minuf=${r.min_uf}` : null,
-    r.amortizacion_clp != null ? `amclp=${Math.round(r.amortizacion_clp)}` : null,
-    r.amortizacion_uf != null ? `amuf=${r.amortizacion_uf}` : null,
-    r.amortizacion_ext_clp != null ? `axclp=${Math.round(r.amortizacion_ext_clp)}` : null,
-    r.amortizacion_ext_uf != null ? `axuf=${r.amortizacion_ext_uf}` : null,
-    r.interes_clp != null ? `iclp=${Math.round(r.interes_clp)}` : null,
-    r.interes_uf != null ? `iuf=${r.interes_uf}` : null,
-    r.incendio_clp != null ? `fireclp=${Math.round(r.incendio_clp)}` : null,
-    r.desgravamen_clp != null ? `desclp=${Math.round(r.desgravamen_clp)}` : null,
-  ].filter(Boolean) as string[];
-  return parts.join("|");
-}
-
-export function parseDeptoDividendosMovementNote(note: string | null): Partial<DeptoDividendosPaymentRow> & {
-  cuota?: string;
-} | null {
-  if (
-    !note ||
-    (!note.startsWith("import:excel|depto-dividendos") &&
-      !note.startsWith("import:excel|depto-mortgage") &&
-      !note.startsWith("manual|depto-dividendos") &&
-      !note.startsWith("manual|depto-mortgage"))
-  ) {
-    return null;
-  }
-  const out: Record<string, string> = {};
-  for (const seg of note.split("|").slice(1)) {
-    const eq = seg.indexOf("=");
-    if (eq <= 0) continue;
-    const k = seg.slice(0, eq);
-    const v = seg.slice(eq + 1);
-    out[k] = v;
-  }
-  const num = (k: string) => {
-    const s = out[k];
-    if (s == null || s === "") return null;
-    return Number(s);
-  };
-  return {
-    cuota: out.cuota != null ? decodeURIComponent(out.cuota) : undefined,
-    amount_uf: num("uf"),
-    uf_clp_day: num("ufdia"),
-    credito_restante_uf: num("cruf"),
-    valor_vivienda_uf: num("vvuf"),
-    valor_neto_uf: num("vnuf"),
-    valor_neto_clp: num("vnclp"),
-    pagado_neto_uf: num("pnuf"),
-    pago_acumulado_clp: num("paclp"),
-    min_uf: num("minuf"),
-    amortizacion_clp: num("amclp"),
-    amortizacion_uf: num("amuf"),
-    amortizacion_ext_clp: num("axclp"),
-    amortizacion_ext_uf: num("axuf"),
-    interes_clp: num("iclp"),
-    interes_uf: num("iuf"),
-    incendio_clp: num("fireclp"),
-    desgravamen_clp: num("desclp"),
-  };
-}
 
