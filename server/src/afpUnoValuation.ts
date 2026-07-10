@@ -10,124 +10,27 @@ import {
 } from "./afpQuetalmiApi.js";
 import { countFundUnitRowsInRange, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
-import {
-  AFP_UNO_WEBSITE_CUOTAS_TARGET,
-  readOptionalAfpUnoWebsiteCuotasTarget,
-} from "./afpModeloPriorCuotasBackfill.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
-
-function afpUnoWebsiteCuotasTarget(): number {
-  return readOptionalAfpUnoWebsiteCuotasTarget(resolveCfraserCsvDir()) ?? AFP_UNO_WEBSITE_CUOTAS_TARGET;
-}
-
-/** Post-cert website reconcile only; obsolete import rows used δ≈+291. */
-const AFP_WEBSITE_RECONCILE_MAX_ABS_DELTA = 50;
-
-function afpCuotasWebsiteReconcileDelta(accountId: number, asOfYmd: string): number | null {
-  const row = db
-    .prepare(
-      `SELECT units_delta FROM movements
-       WHERE account_id = ?
-         AND note LIKE 'import:excel|afp-cuotas-website-reconcile%'
-         AND date(occurred_on) <= date(?)
-       ORDER BY occurred_on DESC, id DESC LIMIT 1`
-    )
-    .get(accountId, asOfYmd) as { units_delta: number | null } | undefined;
-  const delta = row?.units_delta;
-  if (delta == null || !Number.isFinite(delta)) return null;
-  if (Math.abs(delta) > AFP_WEBSITE_RECONCILE_MAX_ABS_DELTA) return null;
-  return delta;
-}
 
 /** SQL fragment: import rows that affect AFP Uno cuotas (sheet deposits + fixed 10% retiros + cert sync tags + Modelo prior adjustment). */
 export const AFP_IMPORT_CUOTAS_NOTE_SQL = `(note LIKE '%Table1-3|AFP%' OR note LIKE 'import:excel|retiro-10pct|UNO-Fondo-A|%' OR note LIKE '%|afp-cert:period=%' OR note LIKE 'import:excel|afp-modelo-prior-cuotas%' OR note LIKE 'import:excel|afp-orphan-cert-month%' OR note LIKE 'import:excel|afp-antecedentes-opening%' OR note LIKE 'import:excel|afp-cuotas-synthetic-trim%' OR note LIKE 'import:excel|afp-cuotas-website-reconcile%')`;
 
-/** Ledger Σ cuotas excluding website-reconcile rows (for comparing cert-backed totals). */
-export function afpCuotasLedgerExcludingWebsiteReconcile(
-  accountId: number,
-  asOfYmd: string
-): number {
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(COALESCE(units_delta, 0)), 0) AS u
-       FROM movements
-       WHERE account_id = ?
-         AND ${AFP_IMPORT_CUOTAS_NOTE_SQL}
-         AND note NOT LIKE 'import:excel|afp-cuotas-website-reconcile%'
-         AND date(occurred_on) <= date(?)`
-    )
-    .get(accountId, asOfYmd) as { u: number };
-  return row?.u ?? 0;
-}
-
 /**
- * Cumulative AFP cuotas from `movements.units_delta` on AFP import rows (after cert sync).
- * Ignores obsolete `afp-cuotas-website-reconcile` rows once the cert-backed ledger is large
- * (import used to reconcile against Σ through 2017-06 only, leaving a bogus +291 cuota bump).
+ * Cumulative AFP cuotas: Σ `movements.units_delta` on the account plus manual transfer legs.
+ * The cuota ledger is cert-backed and reconciled (Σ equals the official AFP website total,
+ * including the one small historical reconcile correction, itself a movement). A wrong sum
+ * is data to fix in the ledger — no target snapping or note-filtered fallbacks.
  */
 export function afpCuotasCumulativeThroughDate(accountId: number, asOfYmd: string): number {
   const manual = transferLegUnitsThroughDate(accountId, asOfYmd);
-  const ledger = afpCuotasLedgerExcludingWebsiteReconcile(accountId, asOfYmd);
-  const recon = afpCuotasWebsiteReconcileDelta(accountId, asOfYmd);
-  if (recon != null) return Math.round((ledger + recon + manual) * 10000) / 10000;
-  const target = afpUnoWebsiteCuotasTarget();
-  if (ledger >= target * 0.15) return Math.round((ledger + manual) * 10000) / 10000;
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(COALESCE(units_delta, 0)), 0) AS u
        FROM movements
-       WHERE account_id = ?
-         AND ${AFP_IMPORT_CUOTAS_NOTE_SQL}
-         AND date(occurred_on) <= date(?)`
+       WHERE account_id = ? AND date(occurred_on) <= date(?)`
     )
     .get(accountId, asOfYmd) as { u: number };
   return Math.round(((row?.u ?? 0) + manual) * 10000) / 10000;
-}
-
-/**
- * Cuotas for AFP spot / live mark: ledger with reconcile fix, official website target when
- * close, and prior month-end valuation when movements still drift.
- */
-export function afpCuotasForMarkToMarket(
-  accountId: number,
-  asOfYmd: string,
-  px?: number
-): number {
-  const ledger = afpCuotasCumulativeThroughDate(accountId, asOfYmd);
-  const target = afpUnoWebsiteCuotasTarget();
-  // Obsolete website-reconcile (+291) roughly doubles the official total.
-  if (ledger > target * 1.85) return target;
-  if (ledger > 0 && ledger < target && target - ledger <= 12) return target;
-
-  if (px != null && Number.isFinite(px) && px > 0) {
-    const prior = db
-      .prepare(
-        `SELECT value AS value_clp, currency, units_snapshot FROM valuations
-         WHERE account_id = ? AND as_of_date < ?
-         ORDER BY as_of_date DESC LIMIT 1`
-      )
-      .get(accountId, asOfYmd) as
-      | { value_clp: number; currency: string; units_snapshot: number | null }
-      | undefined;
-    if (prior) assertValuationCurrencyClp(prior.currency, "afpUnoValuation prior");
-    if (prior?.value_clp != null && Number.isFinite(prior.value_clp) && prior.value_clp > 0) {
-      const implied =
-        prior.units_snapshot != null &&
-        Number.isFinite(prior.units_snapshot) &&
-        prior.units_snapshot > 0
-          ? prior.units_snapshot
-          : prior.value_clp / px;
-      if (
-        implied >= target * 0.85 &&
-        implied <= target * 1.05 &&
-        Math.abs(ledger - implied) / implied > 0.05
-      ) {
-        return Math.round(implied * 10000) / 10000;
-      }
-    }
-  }
-  return ledger;
 }
 
 export function latestFundUnitRowOnOrBefore(
@@ -307,7 +210,7 @@ export function upsertAfpSpotValuation(opts: {
   const seriesKey = opts.seriesKey ?? AFP_UNO_CUOTA_SERIES_KEY;
   const asOf = opts.asOfYmd ?? chileCalendarTodayYmd();
   const px = latestFundUnitClpOnOrBefore(seriesKey, asOf);
-  const units = afpCuotasForMarkToMarket(opts.accountId, asOf, px ?? undefined);
+  const units = afpCuotasCumulativeThroughDate(opts.accountId, asOf);
   if (px == null || units <= 0) return null;
   const value_clp = Math.round(units * px * 100) / 100;
   if (!opts.dryRun) {
@@ -353,7 +256,7 @@ export function upsertAfpSpotValuationWithExplicitPx(opts: {
   const asOf = opts.asOfYmd ?? chileCalendarTodayYmd();
   const px = opts.px;
   if (!Number.isFinite(px) || px <= 0) return null;
-  const units = afpCuotasForMarkToMarket(opts.accountId, asOf, px);
+  const units = afpCuotasCumulativeThroughDate(opts.accountId, asOf);
   if (units <= 0) return null;
   const value_clp = Math.round(units * px * 100) / 100;
   if (!opts.dryRun) {

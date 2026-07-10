@@ -3,7 +3,6 @@ import {
   monthEndUtcYmd,
   monthKeyFromYmd,
 } from "./calendarMonth.js";
-import { cryptoSheetMovementDeltas, type CryptoSheetMonthMovement } from "./cryptoSheetUnits.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -17,8 +16,6 @@ import {
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
-
-const CRYPTO_IMPORT_NOTE_SQL = `note LIKE '%import:excel|cripto-sheet|%'`;
 
 export type CryptoAsset = "BTC" | "ETH";
 
@@ -55,45 +52,10 @@ export function accountUsesCryptoMtm(accountId: number): boolean {
   return stmtHasCryptoUnits.get(accountId) != null;
 }
 
-const coinFromNoteRe = /coin=([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/;
-
-function parseCoinUnitsFromNote(note: string | null): number | null {
-  const m = note?.match(coinFromNoteRe);
-  if (!m) return null;
-  const qty = Number(m[1]);
-  return Number.isFinite(qty) ? Math.abs(qty) : null;
-}
-
-/** Net coin through `asOfYmd` from ledger notes (legacy rows without `units_delta`). */
-export function netCryptoCoinFromLedgerNotes(
-  accountId: number,
-  asset: CryptoAsset,
-  asOfYmd?: string
-): number {
-  const rows = db
-    .prepare(
-      `SELECT amount_clp, note, occurred_on FROM movements
-       WHERE account_id = ? AND ${CRYPTO_IMPORT_NOTE_SQL} AND note LIKE ?
-       ORDER BY occurred_on, id`
-    )
-    .all(accountId, `%cripto-sheet|${asset}|%`) as {
-    amount_clp: number;
-    note: string | null;
-    occurred_on: string;
-  }[];
-  let sum = 0;
-  for (const r of rows) {
-    if (asOfYmd && r.occurred_on > asOfYmd) continue;
-    const qty = parseCoinUnitsFromNote(r.note);
-    if (qty == null) continue;
-    const wdw = r.note?.includes("|wdw");
-    sum += wdw ? -qty : qty;
-  }
-  return Number.isFinite(sum) ? sum : 0;
-}
-
 /**
- * Cumulative coin held through `asOfYmd` (Σ `movements.units_delta` on cripto-sheet rows; falls back to note parsing).
+ * Cumulative coin held through `asOfYmd`: Σ `movements.units_delta` plus signed transfer legs.
+ * `units_delta` is the data; there is no note-derived fallback — a crypto account whose units
+ * do not sum is bad ledger data to fix.
  */
 export function cryptoCoinCumulativeThroughDate(
   accountId: number,
@@ -115,13 +77,7 @@ export function cryptoCoinCumulativeThroughDate(
     )
     .get(accountId, asOfYmd) as { u: number };
 
-  const sum = (row?.u ?? 0) + transferLegUnitsThroughDate(accountId, asOfYmd);
-  if (sum !== 0) return sum;
-
-  const legacyAsset =
-    asset ?? cryptoAssetFromCategorySlug(categorySlugForAccount(accountId) ?? "") ?? null;
-  if (!legacyAsset) return 0;
-  return netCryptoCoinFromLedgerNotes(accountId, legacyAsset, asOfYmd);
+  return (row?.u ?? 0) + transferLegUnitsThroughDate(accountId, asOfYmd);
 }
 
 /** CLP MTM: coin units through `asOfYmd` × USD price × FX. */
@@ -210,36 +166,6 @@ export function computeCryptoMtmClpDisplaySync(
   return { value_clp: c, as_of_date: md };
 }
 
-/**
- * Replay cripto-sheet legs in `occurred_on`/`id` order and set `units_delta` from cumulative vs flow rules
- * (see `cryptoSheetUnits.ts`). Replaces legacy row-wise ±`coin=` backfill, which double-counted cumulative cells.
- */
-export function recalculateCryptoMovementUnitsFromLedger(accountId: number, asset: CryptoAsset): number {
-  const rows = db
-    .prepare(
-      `SELECT id, note FROM movements
-       WHERE account_id = ? AND ${CRYPTO_IMPORT_NOTE_SQL} AND note LIKE ?
-       ORDER BY occurred_on, id`
-    )
-    .all(accountId, `%cripto-sheet|${asset}|%`) as { id: number; note: string | null }[];
-  const legs: CryptoSheetMonthMovement[] = [];
-  const ids: number[] = [];
-  for (const r of rows) {
-    const coin = parseCoinUnitsFromNote(r.note);
-    if (coin == null) continue;
-    const wdw = r.note?.includes("|wdw");
-    legs.push(wdw ? { kind: "wdw", coin } : { kind: "dep", coin });
-    ids.push(r.id);
-  }
-  if (legs.length === 0) return 0;
-  const deltas = cryptoSheetMovementDeltas(legs);
-  const upd = db.prepare(`UPDATE movements SET units_delta = ? WHERE id = ?`);
-  for (let i = 0; i < ids.length; i++) {
-    upd.run(deltas[i], ids[i]);
-  }
-  return ids.length;
-}
-
 function snapshotDatesForCryptoAccount(accountId: number, equityTicker: "BTC-USD" | "ETH-USD"): string[] {
   const s = new Set<string>();
   const movDates = db
@@ -278,17 +204,11 @@ export function applyCryptoValuationsFromCoinHoldings(opts: {
   btcAccountId?: number;
   ethAccountId?: number;
   dryRun?: boolean;
-}): { btcRows: number; ethRows: number; btcUnitsBackfill: number; ethUnitsBackfill: number } {
+}): { btcRows: number; ethRows: number } {
   let btcRows = 0;
   let ethRows = 0;
-  let btcUnitsBackfill = 0;
-  let ethUnitsBackfill = 0;
 
   const applyOne = (accountId: number, asset: CryptoAsset, equityTicker: "BTC-USD" | "ETH-USD") => {
-    const recalcN = recalculateCryptoMovementUnitsFromLedger(accountId, asset);
-    if (asset === "BTC") btcUnitsBackfill = recalcN;
-    else ethUnitsBackfill = recalcN;
-
     const dates = snapshotDatesForCryptoAccount(accountId, equityTicker);
     let rows = 0;
     for (const d of dates) {
@@ -315,7 +235,7 @@ export function applyCryptoValuationsFromCoinHoldings(opts: {
     ethRows = applyOne(opts.ethAccountId, "ETH", "ETH-USD");
   }
 
-  return { btcRows, ethRows, btcUnitsBackfill, ethUnitsBackfill };
+  return { btcRows, ethRows };
 }
 
 /** Merge timeline keys with month-ends covered by `equity_daily` for crypto accounts. */
