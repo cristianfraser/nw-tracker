@@ -3570,6 +3570,54 @@
       "fromLedgerHint": {
         "en": "mortgage ledger",
         "es": "ledger hipotecario"
+      },
+      "addPlaceAction": {
+        "en": "Add place…",
+        "es": "Añadir lugar…"
+      },
+      "addPlaceModalTitle": {
+        "en": "Add a place",
+        "es": "Añadir un lugar"
+      },
+      "placeLabelField": {
+        "en": "Name",
+        "es": "Nombre"
+      },
+      "placeSlugField": {
+        "en": "Slug",
+        "es": "Slug"
+      },
+      "placeFromField": {
+        "en": "From (YYYY-MM)",
+        "es": "Desde (YYYY-MM)"
+      },
+      "placeToField": {
+        "en": "To (YYYY-MM, empty = current)",
+        "es": "Hasta (YYYY-MM, vacío = actual)"
+      },
+      "placePropertyField": {
+        "en": "Property account (owned places)",
+        "es": "Cuenta propiedad (lugares propios)"
+      },
+      "placePropertyNone": {
+        "en": "None (rental)",
+        "es": "Ninguna (arriendo)"
+      },
+      "placeCreate": {
+        "en": "Create place",
+        "es": "Crear lugar"
+      },
+      "onlyBillsToggle": {
+        "en": "Only “Cuentas y servicios”",
+        "es": "Solo «Cuentas y servicios»"
+      },
+      "assignSelected": {
+        "en": "Assign {{count}} selected",
+        "es": "Asignar {{count}} seleccionadas"
+      },
+      "merchantMatchHintKind": {
+        "en": "matches kind",
+        "es": "coincide con el tipo"
       }
     },
     "chartGranularityLabel": {

@@ -35,6 +35,7 @@ import {
 import { normalizeManualExpenseNote, validateManualExpenseCategorySlug } from "../flowsManualExpenses.js";
 import {
   buildRealEstateExpensesPayload,
+  createRealEstatePlace,
   listRealEstateLinkCandidates,
   listRealEstateUnlinkedPurchases,
 } from "../flowsRealEstateExpenses.js";
@@ -45,7 +46,6 @@ import {
   unmatchRealEstateExpense,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
-import type { RealEstateApartmentSlug } from "../realEstateExpenseMerchants.js";
 import {
   isFiniteNumber,
   isPositiveFiniteNumber,
@@ -341,10 +341,54 @@ app.delete("/api/flows/expenses/real-estate/links/:expenseEntryId", (req, res) =
 });
 
 app.get("/api/flows/expenses/real-estate/unlinked-purchases", (req, res) => {
-  const q = typeof req.query.q === "string" ? req.query.q : undefined;
-  const month = typeof req.query.month === "string" ? req.query.month : undefined;
-  const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
-  res.json({ purchases: listRealEstateUnlinkedPurchases({ q, month, limit }) });
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  res.json({
+    purchases: listRealEstateUnlinkedPurchases({
+      q: str(req.query.q),
+      month: str(req.query.month),
+      category: str(req.query.category),
+      placeSlug: str(req.query.place),
+      kind: str(req.query.kind),
+      limit: req.query.limit != null ? Number(req.query.limit) : undefined,
+    }),
+  });
+});
+
+app.post("/api/flows/expenses/real-estate/places", (req, res) => {
+  const body = req.body as {
+    slug?: string;
+    label?: string;
+    active_from?: string | null;
+    active_to?: string | null;
+    property_account_id?: number | null;
+  };
+  try {
+    const place = createRealEstatePlace({
+      slug: String(body.slug ?? ""),
+      label: String(body.label ?? ""),
+      activeFrom: body.active_from ?? null,
+      activeTo: body.active_to ?? null,
+      propertyAccountId: body.property_account_id ?? null,
+    });
+    res.status(201).json(place);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "create place failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+/** Net-worth property masters (candidates for a place's property_account_id link). */
+app.get("/api/flows/expenses/real-estate/property-accounts", (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.name FROM accounts a
+       JOIN portfolio_group_items i ON i.account_id = a.id
+       JOIN portfolio_groups g ON g.id = i.portfolio_group_id
+       WHERE g.slug = 'real_estate' AND a.account_kind = 'master'
+       ORDER BY a.name`
+    )
+    .all();
+  res.json({ accounts: rows });
 });
 
 app.post("/api/flows/expenses/real-estate/assign", (req, res) => {
@@ -366,7 +410,7 @@ app.post("/api/flows/expenses/real-estate/assign", (req, res) => {
   try {
     const result = assignPurchaseToRealEstateExpense({
       purchaseKey,
-      accountSlug: accountSlug as RealEstateApartmentSlug,
+      accountSlug,
       kind,
       billMonth: typeof body.bill_month === "string" ? body.bill_month : undefined,
       kwh: body.kwh ?? null,
