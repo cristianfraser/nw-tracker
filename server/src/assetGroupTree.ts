@@ -254,7 +254,7 @@ const LIST_BY_BUCKET_IDS = `
          a.exclude_from_group_totals AS exclude_from_group_totals
   FROM accounts a
   INNER JOIN asset_groups g ON g.id = a.asset_group_id
-  WHERE (a.notes IS NULL OR a.notes != ?)
+  WHERE (a.import_key IS NULL OR a.import_key != ?)
     AND a.asset_group_id IN (__IDS__)
     AND g.slug != 'individual_stocks'
   ORDER BY g.sort_order, g.id, a.name
@@ -301,7 +301,7 @@ const LIST_BY_ACCOUNT_IDS = `
          a.exclude_from_group_totals AS exclude_from_group_totals
   FROM accounts a
   INNER JOIN asset_groups g ON g.id = a.asset_group_id
-  WHERE (a.notes IS NULL OR a.notes != ?)
+  WHERE (a.import_key IS NULL OR a.import_key != ?)
     AND a.id IN (__IDS__)
     AND g.slug != 'individual_stocks'
   ORDER BY g.sort_order, g.id, a.name

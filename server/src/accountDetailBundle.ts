@@ -111,7 +111,7 @@ export async function buildAccountDetailBundle(
           SELECT COUNT(*) FROM accounts a2
           JOIN asset_groups g2 ON g2.id = a2.asset_group_id
           WHERE g2.slug = g.slug
-            AND (a2.notes IS NULL OR a2.notes != ?)
+            AND (a2.import_key IS NULL OR a2.import_key != ?)
             AND g2.slug != 'individual_stocks'
             AND COALESCE(a2.exclude_from_group_totals, 0) = 0
         ) AS group_peer_count
@@ -286,7 +286,7 @@ export async function buildAccountDetailBundle(
              FROM accounts a
              JOIN asset_groups g ON g.id = a.asset_group_id
              WHERE a.asset_group_id IN (${retPh})
-               AND (a.notes IS NULL OR a.notes != ?)
+               AND (a.import_key IS NULL OR a.import_key != ?)
              ORDER BY g.sort_order, a.name`
           )
           .all(...retirementBucketIds, NOTE_STOCKS_LEGACY);

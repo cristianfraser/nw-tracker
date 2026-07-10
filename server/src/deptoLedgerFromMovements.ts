@@ -30,7 +30,7 @@ import {
 } from "./mortgagePaymentAnalytics.js";
 import { ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
 
-export const DEPTO_PROPERTY_ACCOUNT_NOTES = "import:excel|key=property";
+export const DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
 
 function roundUf5(v: number): number {
   return Math.round(v * 1e5) / 1e5;
@@ -44,9 +44,9 @@ type PropertyPaymentJoinRow = DeptoPaymentTableRow & {
 function deptoPropertyAccountId(): number | null {
   const row = db
     .prepare(
-      `SELECT id FROM accounts WHERE notes = ? AND account_kind = 'master' ORDER BY id LIMIT 1`
+      `SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' ORDER BY id LIMIT 1`
     )
-    .get(DEPTO_PROPERTY_ACCOUNT_NOTES) as { id: number } | undefined;
+    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
   return row?.id ?? null;
 }
 
@@ -64,7 +64,7 @@ export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
       .get() as { c: number };
     if (stray.c > 0) {
       throw new Error(
-        `depto ledger: ${stray.c} depto_payments rows exist but no property master with notes '${DEPTO_PROPERTY_ACCOUNT_NOTES}'`
+        `depto ledger: ${stray.c} depto_payments rows exist but no property master with import_key '${DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY}'`
       );
     }
     return [];

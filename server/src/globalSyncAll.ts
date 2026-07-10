@@ -266,7 +266,7 @@ async function runUnoSpot(
     return;
   }
   const row = db
-    .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=afp'`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=afp'`)
     .get() as { id: number } | undefined;
   if (!row) {
     console.warn("sync: AFP UNO — no account notes=import:excel|key=afp");

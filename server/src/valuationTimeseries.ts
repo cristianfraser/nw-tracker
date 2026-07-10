@@ -1871,7 +1871,7 @@ function listAccountsForPortfolioGroupSlug(portfolioGroupSlug: string): GroupTab
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})
-         AND (a.notes IS NULL OR a.notes != ?)
+         AND (a.import_key IS NULL OR a.import_key != ?)
          AND g.slug != 'individual_stocks'
        ORDER BY g.sort_order, g.id, a.name`
     )

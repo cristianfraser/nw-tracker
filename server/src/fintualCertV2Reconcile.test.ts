@@ -112,15 +112,15 @@ describe("fintualCertV2Reconcile", () => {
       .get() as { id: number } | undefined;
     expect(bucket).toBeTruthy();
     const notes = "import:fintual|cert|key=risky_norris";
-    const existing = db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(notes) as
+    const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(notes) as
       | { id: number }
       | undefined;
     let accountId = existing?.id;
     if (accountId == null) {
       const ins = db.prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'cleanup vitest', ?)`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'cleanup vitest', ?, ?)`
       );
-      const r = ins.run(bucket!.id, notes);
+      const r = ins.run(bucket!.id, notes, notes);
       accountId = Number(r.lastInsertRowid);
     }
     db.prepare(

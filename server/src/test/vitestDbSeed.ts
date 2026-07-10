@@ -19,7 +19,7 @@ export function ensureVitestCreditCardFixtures(): void {
   }
 
   const existing = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
     .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
 
   if (!existing) {
@@ -34,13 +34,13 @@ export function ensureVitestCreditCardFixtures(): void {
       );
     }
     db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-       VALUES (?, 'Vitest · santander · fixture', ?, 'master')`
-    ).run(bucket.id, VITEST_SANTANDER_CC_MASTER_NOTES);
+      `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
+       VALUES (?, 'Vitest · santander · fixture', ?, ?, 'master')`
+    ).run(bucket.id, VITEST_SANTANDER_CC_MASTER_NOTES, VITEST_SANTANDER_CC_MASTER_NOTES);
   }
 
   const accountId = (
-    db.prepare(`SELECT id FROM accounts WHERE notes = ?`).get(VITEST_SANTANDER_CC_MASTER_NOTES) as {
+    db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(VITEST_SANTANDER_CC_MASTER_NOTES) as {
       id: number;
     }
   ).id;
@@ -64,7 +64,7 @@ export function getVitestSantanderCcMasterAccountId(): number | null {
     return null;
   }
   const row = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
     .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
   return row?.id ?? null;
 }
@@ -76,7 +76,7 @@ export function getVitestSantanderCcMasterAccountId(): number | null {
  */
 export function wipeVitestCcFixtureData(): void {
   const account = db
-    .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
     .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
   if (!account) return;
   const id = account.id;

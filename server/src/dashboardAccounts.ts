@@ -103,7 +103,7 @@ export function listDashboardSourceAccounts(): {
              a.account_kind, a.source_account_id
       FROM accounts a
       INNER JOIN asset_groups g ON g.id = a.asset_group_id
-      WHERE (a.notes IS NULL OR a.notes != ?)
+      WHERE (a.import_key IS NULL OR a.import_key != ?)
         AND g.slug != 'individual_stocks'
         AND NOT (
           g.slug IN ('liabilities', 'credit_cards')

@@ -16,25 +16,6 @@ export const SQL_LIABILITY_LEAF_BUCKET = `(
   OR g.slug LIKE '%__other_debt'
 )`;
 
-function santanderPerCardCreditCardMastersExist(): boolean {
-  const row = db
-    .prepare(
-      `SELECT 1 AS o FROM accounts WHERE notes LIKE 'credit_card_master|santander|%' LIMIT 1`
-    )
-    .get() as { o: number } | undefined;
-  return row != null;
-}
-
-function legacyCombinedCreditCardMasterIds(): Set<number> {
-  return new Set(
-    (
-      db
-        .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=credit_card'`)
-        .all() as { id: number }[]
-    ).map((r) => r.id)
-  );
-}
-
 /** CC masters in `credit_card_group_items` — single id for Gastos and Pasivos. */
 function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
   const rows = db
@@ -45,8 +26,8 @@ function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
        JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
        JOIN asset_groups g ON g.id = m.asset_group_id
        WHERE m.account_kind = 'master'
-         AND m.notes LIKE 'credit_card_master|%'
-         AND (m.notes IS NULL OR m.notes != ?)
+         AND m.import_key LIKE 'credit_card_master|%'
+         AND (m.import_key IS NULL OR m.import_key != ?)
        ORDER BY m.id, m.name`
     )
     .all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
@@ -64,7 +45,7 @@ export function ensureMortgageLiabilityView(): number {
   const master = db
     .prepare(
       `SELECT id, name, color_rgb FROM accounts
-       WHERE notes = 'import:excel|key=mortgage' AND account_kind = 'master'
+       WHERE import_key = 'import:excel|key=mortgage' AND account_kind = 'master'
        ORDER BY id LIMIT 1`
     )
     .get() as { id: number; name: string; color_rgb: string | null } | undefined;
@@ -78,8 +59,8 @@ export function ensureMortgageLiabilityView(): number {
   if (exists) return 0;
 
   db.prepare(
-    `INSERT INTO accounts (asset_group_id, name, notes, account_kind, source_account_id, color_rgb)
-     VALUES (?, ?, 'liability_view|mortgage', 'liability_view', ?, ?)`
+    `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind, source_account_id, color_rgb)
+     VALUES (?, ?, 'liability_view|mortgage', 'liability_view|mortgage', 'liability_view', ?, ?)`
   ).run(leaf.id, master.name, master.id, master.color_rgb);
   return 1;
 }
@@ -98,7 +79,7 @@ export function listCreditCardIssuerTabAccountRows(issuerSlug: string): GroupTab
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})
-         AND (a.notes IS NULL OR a.notes != ?)
+         AND (a.import_key IS NULL OR a.import_key != ?)
        ORDER BY a.id, a.name`
     )
     .all(...masterIds, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
@@ -119,28 +100,19 @@ export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAcc
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (g.slug = 'mortgage' OR g.slug LIKE '%__mortgage')
          AND a.account_kind = 'liability_view'
-         AND (a.notes IS NULL OR a.notes != ?)
+         AND (a.import_key IS NULL OR a.import_key != ?)
        ORDER BY g.slug, a.id, a.name`
     )
     .all(NOTE_STOCKS_LEGACY) as (GroupTabAccountRow & { source_account_id: number | null })[];
 
   let kept = [...ccRows, ...mortgageRows.map(({ source_account_id: _src, ...row }) => row)];
 
-  const perCard = santanderPerCardCreditCardMastersExist();
-  if (perCard) {
-    const legacyMasterIds = legacyCombinedCreditCardMasterIds();
-    kept = kept.filter((r) => {
-      const isCc = accountBucketKindSlug(r.bucket_slug) === "credit_card";
-      if (isCc) return true;
-      if (r.exclude_from_group_totals === 1) return false;
-      const src = (
-        db.prepare(`SELECT source_account_id FROM accounts WHERE id = ?`).get(r.account_id) as
-          | { source_account_id: number | null }
-          | undefined
-      )?.source_account_id;
-      return src == null || !legacyMasterIds.has(src);
-    });
-  }
+  // Non-CC liability views excluded from totals stay off the tab. (The legacy combined
+  // worldmember filter died with the excel importer and its account.)
+  kept = kept.filter(
+    (r) =>
+      accountBucketKindSlug(r.bucket_slug) === "credit_card" || r.exclude_from_group_totals !== 1
+  );
 
   if (tabSubgroup) {
     kept = kept.filter((r) => accountBucketKindSlug(r.bucket_slug) === tabSubgroup);
