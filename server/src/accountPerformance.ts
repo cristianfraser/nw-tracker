@@ -33,7 +33,6 @@ import {
   colorRgbForTimeseriesAccountLine,
 } from "./chartColorRgb.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { AFP_IMPORT_CUOTAS_NOTE_SQL } from "./afpUnoValuation.js";
 import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
@@ -608,7 +607,6 @@ function afpPositiveCuotasInflowByMonthKey(accountId: number): Map<string, numbe
       `SELECT occurred_on, COALESCE(units_delta, 0) AS ud
        FROM movements
        WHERE account_id = ?
-         AND ${AFP_IMPORT_CUOTAS_NOTE_SQL}
          AND COALESCE(units_delta, 0) > 0`
     )
     .all(accountId) as { occurred_on: string; ud: number }[];

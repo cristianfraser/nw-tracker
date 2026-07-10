@@ -42,13 +42,6 @@ type MergedSortFlow = SortFlow & {
   capital_kind?: DepositInflowEvent["capital_kind"];
 };
 
-const MOVEMENT_EXCLUDE_NOTE_SQL = `note IS NULL OR (
-  note NOT LIKE '%|afp-modelo-prior-cuotas|%'
-  AND note NOT LIKE '%|afp-orphan-cert-month|%'
-  AND note NOT LIKE '%|afp-antecedentes-opening|%'
-  AND note NOT LIKE '%|afp-cuotas-synthetic-trim|%'
-  AND note NOT LIKE '%|afp-cuotas-website-reconcile|%'
-)`;
 
 const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
   "compra_usd",
@@ -79,7 +72,6 @@ function loadMovementSignedFlowEvents(
       `SELECT account_id, occurred_on, amount_clp, id, note, flow_kind
        FROM movements
        WHERE account_id IN (${ph})
-         AND (${MOVEMENT_EXCLUDE_NOTE_SQL})
        ORDER BY account_id, occurred_on, id`
     )
     .all(...uniq) as {

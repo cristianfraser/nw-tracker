@@ -1,7 +1,13 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 
-export type DocumentImportType = "afp_uno_cert";
+/**
+ * Per-account document-upload types. Empty since the AFP UNO cert upload was retired
+ * (2026-07, cuota ledger certificate-rebuilt); the client renders upload buttons from
+ * DOCUMENT_IMPORT_SPECS, so an empty list means no upload UI. Future document types
+ * (e.g. EUR card statements) add entries here.
+ */
+export type DocumentImportType = string;
 
 export type DocumentImportSpec = {
   type: DocumentImportType;
@@ -10,14 +16,7 @@ export type DocumentImportSpec = {
   categorySlugs: string[];
 };
 
-export const DOCUMENT_IMPORT_SPECS: DocumentImportSpec[] = [
-  {
-    type: "afp_uno_cert",
-    labelKey: "accountDetail.import.afpUnoCert",
-    accept: ".pdf,.csv,.txt",
-    categorySlugs: ["afp"],
-  },
-];
+export const DOCUMENT_IMPORT_SPECS: DocumentImportSpec[] = [];
 
 export function documentImportSpecsForAccount(accountId: number): DocumentImportSpec[] {
   const row = db

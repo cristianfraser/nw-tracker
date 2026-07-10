@@ -275,23 +275,9 @@ export function getAccountPositionMeta(
       .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
     if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition afp stored");
 
-    const cuotasFromMovements = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
-    let cuotas = cuotasFromMovements;
-    if (
-      stored?.value_clp != null &&
-      Number.isFinite(stored.value_clp) &&
-      px != null &&
-      Number.isFinite(px) &&
-      px > 0 &&
-      Number.isFinite(cuotasFromMovements) &&
-      cuotasFromMovements > 0
-    ) {
-      const derivedValue = Math.round(cuotasFromMovements * px * 100) / 100;
-      const relDiff = Math.abs(derivedValue - stored.value_clp) / stored.value_clp;
-      if (relDiff > 0.05) {
-        cuotas = Math.round((stored.value_clp / px) * 1e4) / 1e4;
-      }
-    }
+    // The cuota ledger is certificate-backed (rebuilt 2026-07 from the official UNO
+    // movement certs); it IS the truth — no stored-valuation drift substitution.
+    const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
 
     const out: AccountPositionMeta = {
       ticker: "UNO-A",
