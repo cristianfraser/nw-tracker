@@ -13,9 +13,11 @@ import type { EntityColorTarget } from "../../entityColor";
 import { useTranslation } from "../../i18n";
 import { useGroupConsolidatedMonthlyPage } from "../../queries/hooks";
 import {
+  consolidatedRowsForDisplay,
   useGroupInfoConsolidatedTables,
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
+import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { InversionesPeriodMetricsDto } from "../../portfolioNavDashboardCards";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
@@ -126,13 +128,23 @@ export function GroupInfoBase({
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
   const placeholderMonthlyRows = useMemo(() => buildPlaceholderConsolidatedMonthlyRows(), []);
 
-  const monthlyRows = loading
-    ? placeholderMonthlyRows
-    : serverPaginatedMonthlyDetail
-      ? serverMonthly.data?.rows ?? placeholderMonthlyRows
-      : tablesLoading
-        ? placeholderMonthlyRows
-        : consolidatedMonthlyPerf;
+  // During a CLP↔USD switch the held prior-unit page converts via FX (keep-previous), so the
+  // table shows approximate values instead of blanking; undefined (no data / no rate) falls
+  // back to placeholder rows inside resolveMonthlyDetailRows.
+  const serverMonthlyRows = useMemo(() => {
+    const resp = serverMonthly.data;
+    if (!resp) return undefined;
+    return consolidatedRowsForDisplay(resp.rows, resp.unit, displayUnit) ?? undefined;
+  }, [serverMonthly.data, displayUnit]);
+
+  const monthlyRows = resolveMonthlyDetailRows({
+    serverPaginated: serverPaginatedMonthlyDetail,
+    serverRows: serverMonthlyRows,
+    clientRows: consolidatedMonthlyPerf,
+    pageLoading: loading,
+    tablesLoading,
+    placeholderRows: placeholderMonthlyRows,
+  });
 
   const monthlyError = serverPaginatedMonthlyDetail
     ? serverMonthly.isError

@@ -4,9 +4,11 @@ import type {
   AccountDetailBundleResponse,
   AccountMonthlyPerformanceResponse,
   AccountValuationTimeseriesResponse,
+  ConsolidatedMonthlyPerfRow,
   DashboardResponse,
   FxLatest,
   GroupMonthlyPerformanceResponse,
+  PeriodReturnsPayload,
   TimeseriesBlock,
   ValuationTimeseriesResponse,
 } from "../types";
@@ -204,6 +206,50 @@ function scaleAccountValuationTs(
     allocation_pie: ts.allocation_pie.map((s) => ({
       ...s,
       value: Number.isFinite(s.value) ? s.value * factor : s.value,
+    })),
+  };
+}
+
+/**
+ * Convert held prior-unit consolidated monthly rows to `targetUnit` for the keep-previous table
+ * render during a CLP↔USD switch. `uf` payloads are not clp↔usd convertible and pass through, as
+ * does data already in the target unit. Percent and units columns stay as-is.
+ */
+export function convertConsolidatedMonthlyRowsUnit(
+  rows: ConsolidatedMonthlyPerfRow[],
+  sourceUnit: "clp" | "usd" | "uf",
+  targetUnit: DisplayUnit,
+  clpPerUsd: number
+): ConsolidatedMonthlyPerfRow[] {
+  if (sourceUnit === "uf" || sourceUnit === tsUnit(targetUnit)) return rows;
+  const factor = unitScaleFactor(targetUnit, clpPerUsd);
+  return rows.map((row) => {
+    const next = { ...row };
+    for (const key of PERF_ROW_MONEY_FIELDS) {
+      const v = row[key];
+      if (typeof v === "number" && Number.isFinite(v)) next[key] = v * factor;
+    }
+    return next;
+  });
+}
+
+/** Convert a held prior-unit period-returns payload (money `nominal_pl` only; pcts are unit-free). */
+export function convertPeriodReturnsUnit(
+  payload: PeriodReturnsPayload,
+  targetUnit: DisplayUnit,
+  clpPerUsd: number
+): PeriodReturnsPayload {
+  if (payload.unit === "uf" || payload.unit === tsUnit(targetUnit)) return payload;
+  const factor = unitScaleFactor(targetUnit, clpPerUsd);
+  return {
+    ...payload,
+    unit: tsUnit(targetUnit),
+    periods: payload.periods.map((cell) => ({
+      ...cell,
+      nominal_pl:
+        cell.nominal_pl != null && Number.isFinite(cell.nominal_pl)
+          ? cell.nominal_pl * factor
+          : cell.nominal_pl,
     })),
   };
 }

@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { LoginPage, safeNextPath } from "./pages/LoginPage";
 import { useTranslation } from "./i18n";
+import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
 import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
 
 // Route-level code splitting: each page (and its chart/table deps, notably recharts)
@@ -112,6 +113,8 @@ function AppTree() {
   useDisplayPreferences();
   const { status, authRequired } = useAuth();
   const { t } = useTranslation();
+  // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
+  useEnsureFxLatestCache(status !== "loading" && !(authRequired && status === "anonymous"));
 
   if (status === "loading") {
     return <FullScreenMessage>{t("common.loading")}</FullScreenMessage>;
