@@ -33,6 +33,25 @@ function baseRow(overrides: Partial<DashboardAccountRow> & Pick<DashboardAccount
   };
 }
 
+describe("roundedMetricDelta USD cents", () => {
+  const metrics = {
+    deposits_clp: 0,
+    delta_total_clp: null,
+    deposits_period_clp: 0,
+    delta_period_clp: null,
+    delta_total_usd: 4.567,
+    delta_period_usd: -54.327,
+  };
+
+  it("USD always keeps cents; CLP stays whole", () => {
+    expect(roundedMetricDelta(metrics, true, "total")).toBe(4.57);
+    expect(roundedMetricDelta(metrics, true, "period")).toBe(-54.33);
+    expect(roundedMetricDelta({ ...metrics, delta_total_usd: 772.444 }, true, "total")).toBe(772.44);
+    expect(roundedMetricDelta({ ...metrics, delta_total_usd: 4478.409 }, true, "total")).toBe(4478.41);
+    expect(roundedMetricDelta({ ...metrics, delta_total_clp: 772.4 }, false, "total")).toBe(772);
+  });
+});
+
 describe("dashboard card accounting identity", () => {
   it("sold-out account deposits count in metrics while live balance sums as 0", () => {
     const withBalance = baseRow({

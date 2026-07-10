@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  adaptiveUsdAccountingNumberFlowParts,
+  adaptiveUsdFractionDigits,
   formatClp,
   formatClpUfDay,
   formatCcExpenseLineAmount,
@@ -7,6 +9,8 @@ import {
   formatPct,
   formatUsd,
   formatUsdFine,
+  minAdaptiveUsdFractionDigits,
+  roundUsdAdaptive,
   setDecimalSeparatorForFormatting,
   titleBalanceDeltaNumberFlowParts,
 } from "./format";
@@ -65,6 +69,78 @@ describe("decimal-separator preference applies to every currency", () => {
     expect(formatClpUfDay(40_763.45)).toBe("$40,763.45");
     expect(formatUsdFine(1_234.56)).toBe("US$1,234.56");
     expect(formatGroupedDecimal(1_234.5, 2)).toBe("1,234.50");
+  });
+});
+
+describe("adaptive USD decimals (summary-card balances / deltas)", () => {
+  it("keeps ≥4 significant digits capped at cents", () => {
+    expect(adaptiveUsdFractionDigits(4.56)).toBe(2);
+    expect(adaptiveUsdFractionDigits(54.3)).toBe(2);
+    expect(adaptiveUsdFractionDigits(100)).toBe(1);
+    expect(adaptiveUsdFractionDigits(772.4)).toBe(1);
+    expect(adaptiveUsdFractionDigits(1000)).toBe(0);
+    expect(adaptiveUsdFractionDigits(4478)).toBe(0);
+  });
+
+  it("rounds to the adaptive precision", () => {
+    expect(roundUsdAdaptive(4.567)).toBe(4.57);
+    expect(roundUsdAdaptive(-54.327)).toBe(-54.33);
+    expect(roundUsdAdaptive(772.44)).toBe(772.4);
+    expect(roundUsdAdaptive(4478.4)).toBe(4478);
+  });
+
+  it("group digits are the least adaptive decimals — largest amount wins", () => {
+    expect(minAdaptiveUsdFractionDigits([42.41, 2.48])).toBe(2);
+    expect(minAdaptiveUsdFractionDigits([425.03, -147.82])).toBe(1);
+    expect(minAdaptiveUsdFractionDigits([16512.34, 122.29, 4.96])).toBe(0);
+    expect(minAdaptiveUsdFractionDigits([159.78, null, 4.96])).toBe(1);
+    expect(minAdaptiveUsdFractionDigits([null, undefined])).toBe(0);
+  });
+
+  it("number-flow parts carry the adaptive fraction digits, min 0 for trimming", () => {
+    const small = adaptiveUsdAccountingNumberFlowParts(4.567, "$");
+    expect(small.value).toBe(4.57);
+    expect(small.format.maximumFractionDigits).toBe(2);
+    expect(small.format.minimumFractionDigits).toBe(0);
+    expect(small.prefix).toBe("$");
+
+    const mid = adaptiveUsdAccountingNumberFlowParts(-54.327, "$");
+    expect(mid.value).toBe(54.33);
+    expect(mid.format.maximumFractionDigits).toBe(2);
+    expect(mid.prefix).toBe("($");
+    expect(mid.suffix).toBe(")");
+
+    const trimmed = adaptiveUsdAccountingNumberFlowParts(55.004, "$");
+    expect(trimmed.value).toBe(55);
+    expect(trimmed.format.minimumFractionDigits).toBe(0);
+
+    const big = adaptiveUsdAccountingNumberFlowParts(4478.4, "$");
+    expect(big.value).toBe(4478);
+    expect(big.format.maximumFractionDigits).toBe(0);
+  });
+
+  it("fixed fraction digits pin sub-balance decimals (no trimming)", () => {
+    const padded = adaptiveUsdAccountingNumberFlowParts(55.004, "$", 2);
+    expect(padded.value).toBe(55);
+    expect(padded.format.minimumFractionDigits).toBe(2);
+    expect(padded.format.maximumFractionDigits).toBe(2);
+
+    // Fixed digits override the magnitude band (large sibling aligned to a small one).
+    const large = adaptiveUsdAccountingNumberFlowParts(16512.345, "$", 2);
+    expect(large.value).toBe(16512.35);
+    expect(large.format.minimumFractionDigits).toBe(2);
+
+    const whole = adaptiveUsdAccountingNumberFlowParts(-42.518, "$", 0);
+    expect(whole.value).toBe(43);
+    expect(whole.prefix).toBe("($");
+    expect(whole.format.maximumFractionDigits).toBe(0);
+  });
+
+  it("negatives that round to zero lose the accounting parentheses", () => {
+    const parts = adaptiveUsdAccountingNumberFlowParts(-0.004, "$");
+    expect(parts.value).toBe(0);
+    expect(parts.prefix).toBe("$");
+    expect(parts.suffix).toBe("");
   });
 });
 

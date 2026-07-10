@@ -5,7 +5,7 @@ import {
   type CardGroupMetrics,
   type CardGroupMetricsPeriod,
 } from "../../dashboardCardBreakdown";
-import { accountingCurrencyNumberFlowParts } from "../../format";
+import { accountingCurrencyNumberFlowParts, minAdaptiveUsdFractionDigits } from "../../format";
 import { useTranslation } from "../../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
@@ -65,6 +65,7 @@ function MetricsRow({
   depositedLabel,
   delta,
   deltaLabel,
+  deltaFractionDigits,
   showUsd,
   animated,
   placeholderPhase,
@@ -75,6 +76,7 @@ function MetricsRow({
   depositedLabel: string;
   delta: number | null;
   deltaLabel: string;
+  deltaFractionDigits: number;
   showUsd: boolean;
   animated: boolean;
   placeholderPhase: boolean;
@@ -99,6 +101,7 @@ function MetricsRow({
           animated={animated}
           placeholderPhase={placeholderPhase}
           mountSeedId={`${cardSlug}:delta:${rowKey}`}
+          fractionDigits={deltaFractionDigits}
         />
       </span>
     </div>
@@ -127,6 +130,10 @@ export function DashboardCardGroupMetrics({
   const totalDelta = roundedMetricDelta(metrics, showUsd, "total");
   const periodDeposited = roundedMetricDeposits(metrics, showUsd, "period");
   const periodDelta = roundedMetricDelta(metrics, showUsd, "period");
+  // Both USD deltas of the card share the least adaptive decimals of the pair.
+  const deltaFractionDigits = showUsd
+    ? minAdaptiveUsdFractionDigits([totalDelta, periodDelta])
+    : 0;
 
   return (
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
@@ -136,6 +143,7 @@ export function DashboardCardGroupMetrics({
           depositedLabel={t("dashboard.cardBreakdown.totalDeposited")}
           delta={totalDelta}
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
+          deltaFractionDigits={deltaFractionDigits}
           showUsd={showUsd}
           animated={animated}
           placeholderPhase={placeholderPhase}
@@ -147,6 +155,7 @@ export function DashboardCardGroupMetrics({
           depositedLabel={periodDepositsLabel}
           delta={periodDelta}
           deltaLabel={periodDeltaLabel}
+          deltaFractionDigits={deltaFractionDigits}
           showUsd={showUsd}
           animated={animated}
           placeholderPhase={placeholderPhase}

@@ -1,6 +1,10 @@
 import { NumberFlowElement, NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useRef, type ReactNode } from "react";
-import { accountingCurrencyNumberFlowParts } from "../../format";
+import {
+  accountingCurrencyNumberFlowParts,
+  adaptiveUsdAccountingNumberFlowParts,
+  roundUsdAdaptive,
+} from "../../format";
 import { useTranslation } from "../../i18n";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { cn } from "../../cn";
@@ -80,9 +84,22 @@ const ALIGN_STYLE: Record<DashboardCardValueVariant, { id: string; css: string }
   },
 };
 
-function resolvedAmount(clp: number, apiUsd: number | null | undefined, showUsd: boolean): number | null {
+function resolvedAmount(
+  clp: number,
+  apiUsd: number | null | undefined,
+  showUsd: boolean,
+  usdFractionDigits: 0 | 1 | 2 | undefined
+): number | null {
   if (showUsd) {
-    if (apiUsd != null && Number.isFinite(apiUsd)) return Math.round(apiUsd);
+    if (apiUsd != null && Number.isFinite(apiUsd)) {
+      // Sub-balance lists pin decimals so sibling rows align; main balances adapt
+      // to magnitude (cents below US$100, tenths below US$1.000).
+      if (usdFractionDigits != null) {
+        const factor = 10 ** usdFractionDigits;
+        return Math.round(apiUsd * factor) / factor;
+      }
+      return roundUsdAdaptive(apiUsd);
+    }
     return null;
   }
   return Math.round(clp);
@@ -111,6 +128,11 @@ type Props = {
   syncStale?: boolean;
   /** Bundle loading: hold placeholder values until false, then one spin to final. */
   placeholderPhase?: boolean;
+  /**
+   * Fixed USD decimals for card sub-balance lists — parent passes the max adaptive
+   * need across siblings so the column aligns. Omit → adaptive (main balances).
+   */
+  usdFractionDigits?: 0 | 1 | 2;
 };
 
 export function DashboardCardValue({
@@ -123,12 +145,12 @@ export function DashboardCardValue({
   fxMissing = false,
   syncStale = false,
   placeholderPhase = false,
+  usdFractionDigits,
 }: Props) {
   const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
-  const target = resolvedAmount(clp, apiUsd, showUsd);
+  const target = resolvedAmount(clp, apiUsd, showUsd, usdFractionDigits);
   const { duration, transformTiming, spinTiming } = VARIANT_TIMING[variant];
-  const flowUnit = showUsd ? "usd" : "clp";
   const isMain = variant === "main";
 
   useEffect(() => {
@@ -156,7 +178,11 @@ export function DashboardCardValue({
       animated={animated}
       placeholderPhase={placeholderPhase}
       {...mountProps}
-      mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, flowUnit, "$")}
+      mapDisplayValue={(n) =>
+        showUsd
+          ? adaptiveUsdAccountingNumberFlowParts(n, "$", usdFractionDigits)
+          : accountingCurrencyNumberFlowParts(n, "clp", "$")
+      }
       wrapClassName={wrapClass}
       className={valueClass}
       mountDuration={duration}
