@@ -3459,8 +3459,8 @@
   },
   "expenses": {
     "realEstateIntro": {
-      "en": "Per-apartment utility accounts linked to real expenses (card or checking). The CSV rows define the bill's month and type; the charge can match that month or show up one or two months later. Chart amounts use the linked expense or, if missing, the CSV's expected value.",
-      "es": "Cuentas de servicios por departamento vinculadas a gastos reales (tarjeta o cuenta corriente). Las filas del CSV definen mes y tipo de boleta; el cargo puede coincidir con ese mes o aparecer uno o dos meses después. El monto en gráficos usa el gasto vinculado o, si falta, el valor esperado del CSV."
+      "en": "Per-place bills linked to the real purchases that paid them (card or checking). A bill's charge can land the same month or one or two months later; amounts use the linked purchase or, if missing, the expected value. Use “Assign purchase…” to link history purchase-first.",
+      "es": "Cuentas por lugar vinculadas a las compras reales que las pagaron (tarjeta o cuenta corriente). El cargo puede caer el mismo mes o uno o dos meses después; los montos usan la compra vinculada o, si falta, el valor esperado. Usa “Asignar compra…” para vincular historia partiendo de la compra."
     },
     "realEstate": {
       "colLinkedPurchase": {
@@ -3530,6 +3530,46 @@
       "expectedHint": {
         "en": "CSV expected: {{amount}}",
         "es": "Esperado CSV: {{amount}}"
+      },
+      "assignAction": {
+        "en": "Assign purchase…",
+        "es": "Asignar compra…"
+      },
+      "assignModalTitle": {
+        "en": "Assign a purchase",
+        "es": "Asignar una compra"
+      },
+      "assignKindLabel": {
+        "en": "Kind",
+        "es": "Tipo"
+      },
+      "assignSearchPlaceholder": {
+        "en": "Search merchant…",
+        "es": "Buscar comercio…"
+      },
+      "assignConfirm": {
+        "en": "Assign",
+        "es": "Asignar"
+      },
+      "noUnlinkedPurchases": {
+        "en": "No unlinked purchases found",
+        "es": "No hay compras sin vincular"
+      },
+      "deleteEntryAction": {
+        "en": "Delete row",
+        "es": "Eliminar fila"
+      },
+      "deleteEntryConfirm": {
+        "en": "Delete this bill row? Its link is removed too.",
+        "es": "¿Eliminar esta fila? Su vínculo también se elimina."
+      },
+      "consumptionEditAction": {
+        "en": "kWh/m³…",
+        "es": "kWh/m³…"
+      },
+      "fromLedgerHint": {
+        "en": "mortgage ledger",
+        "es": "ledger hipotecario"
       }
     },
     "chartGranularityLabel": {
@@ -4016,6 +4056,18 @@
       "kwh": {
         "en": "kWh (reading)",
         "es": "kWh (lectura)"
+      },
+      "water": {
+        "en": "Water",
+        "es": "Agua"
+      },
+      "rent": {
+        "en": "Rent",
+        "es": "Arriendo"
+      },
+      "mortgage": {
+        "en": "Mortgage",
+        "es": "Dividendo hipotecario"
       }
     },
     "emptyAccount": {

@@ -572,6 +572,29 @@ export const api = {
     }),
   unmatchRealEstateExpense: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/links/${expenseEntryId}`, { method: "DELETE" }),
+  realEstateUnlinkedPurchases: (q: string) =>
+    j<{ purchases: import("./types").RealEstateUnlinkedPurchaseDto[] }>(
+      `/api/flows/expenses/real-estate/unlinked-purchases?q=${encodeURIComponent(q)}`
+    ),
+  assignRealEstatePurchase: (body: {
+    purchase_key: string;
+    account_slug: import("./types").ExpenseApartmentSlug;
+    kind: string;
+  }) =>
+    j<{ expense_entry_id: number }>("/api/flows/expenses/real-estate/assign", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateRealEstateConsumption: (
+    expenseEntryId: number,
+    body: { kwh: number | null; m3: number | null }
+  ) =>
+    j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/consumption`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
+    j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
   flowsCreditCardExpenses: () =>
     j<import("./types").FlowsCreditCardExpensesResponse>("/api/flows/expenses/credit-card"),
   assignCcExpenseLineCategory: (

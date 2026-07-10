@@ -489,6 +489,45 @@ export function useUnmatchRealEstateExpenseMutation() {
   });
 }
 
+export function useAssignRealEstatePurchaseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      purchase_key: string;
+      account_slug: import("../types").ExpenseApartmentSlug;
+      kind: string;
+    }) => api.assignRealEstatePurchase(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateUnlinkedPurchases"] });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+    },
+  });
+}
+
+export function useUpdateRealEstateConsumptionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { expense_entry_id: number; kwh: number | null; m3: number | null }) =>
+      api.updateRealEstateConsumption(vars.expense_entry_id, { kwh: vars.kwh, m3: vars.m3 }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+    },
+  });
+}
+
+export function useDeleteRealEstateExpenseEntryMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (expenseEntryId: number) => api.deleteRealEstateExpenseEntry(expenseEntryId),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateUnlinkedPurchases"] });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
+    },
+  });
+}
+
 export function usePatchWorkEarningMutation() {
   const queryClient = useQueryClient();
   return useMutation({
