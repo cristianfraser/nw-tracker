@@ -107,6 +107,14 @@ export const api = {
       ticker: string | null;
     }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
   deleteAccount: (id: number) => j<{ ok: boolean; deleted: number }>(`/api/accounts/${id}`, { method: "DELETE" }),
+  updateAccount: (id: number, body: { name?: string; bucket_slug?: string }) =>
+    j<{
+      account_id: number;
+      name: string;
+      asset_group_id: number;
+      bucket_slug: string;
+      created_leaf_bucket: boolean;
+    }>(`/api/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   portfolioTree: () => j<import("./types").PortfolioTreeResponse>("/api/meta/portfolio-tree"),
   updateAccountColor: (id: number, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
