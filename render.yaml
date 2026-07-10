@@ -34,7 +34,9 @@ services:
     plan: starter
     domains:
       - nw-tracker.crfrsr.io
-    buildCommand: npm install --include=dev && npm run build -w nw-tracker-client
+    # version-info.mjs first: writes version.json (commit-stamped) at repo root while
+    # .git is present, so the server can report the deployed commit at /api/health.
+    buildCommand: node scripts/version-info.mjs --write version.json && npm install --include=dev && npm run build -w nw-tracker-client
     startCommand: npm run serve -w nw-tracker-server
     healthCheckPath: /api/health
     # Persistent disk for the recruiter-login log only. The synthetic demo DB
