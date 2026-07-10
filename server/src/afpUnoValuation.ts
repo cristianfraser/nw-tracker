@@ -12,9 +12,6 @@ import { countFundUnitRowsInRange, upsertFundUnitSpotPreservingHistory } from ".
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 
-/** SQL fragment: import rows that affect AFP Uno cuotas (sheet deposits + fixed 10% retiros + cert sync tags + Modelo prior adjustment). */
-export const AFP_IMPORT_CUOTAS_NOTE_SQL = `(note LIKE '%Table1-3|AFP%' OR note LIKE 'import:excel|retiro-10pct|UNO-Fondo-A|%' OR note LIKE '%|afp-cert:period=%' OR note LIKE 'import:excel|afp-modelo-prior-cuotas%' OR note LIKE 'import:excel|afp-orphan-cert-month%' OR note LIKE 'import:excel|afp-antecedentes-opening%' OR note LIKE 'import:excel|afp-cuotas-synthetic-trim%' OR note LIKE 'import:excel|afp-cuotas-website-reconcile%')`;
-
 /**
  * Cumulative AFP cuotas: Σ `movements.units_delta` on the account plus manual transfer legs.
  * The cuota ledger is cert-backed and reconciled (Σ equals the official AFP website total,
