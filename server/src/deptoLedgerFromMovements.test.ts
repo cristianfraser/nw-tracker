@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  buildDeptoDividendosMovementNote,
-  loadDeptoDividendosSheetLedgerFromDb,
+  deptoPaymentColumnsFromPaymentRow,
+  deptoPaymentHumanNote,
+  insertDeptoPaymentRow,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import {
@@ -12,10 +13,10 @@ import {
 } from "./deptoLedgerFromMovements.js";
 
 /**
- * Synthetic fixture: a property master + movements written with the REAL note builders
- * (the same round-trip import and manual payments produce). Far-future dates so the
- * fixture never collides with generated demo/test data; own uf_daily rows so UF-derived
- * fields are deterministic.
+ * Synthetic fixture: a property master + movements + depto_payments rows written with the
+ * REAL table helpers (the same write shape manual payments produce). Far-future dates so
+ * the fixture never collides with generated demo/test data; own uf_daily rows so
+ * UF-derived fields are deterministic.
  */
 const FIXTURE_UF: ReadonlyArray<[string, number]> = [
   ["2099-01-10", 40_000],
@@ -153,7 +154,18 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
       `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
     );
     for (const r of rows) {
-      ins.run(accountId, r.amount_clp, r.occurred_on, buildDeptoDividendosMovementNote(r));
+      const mov = ins.run(
+        accountId,
+        r.amount_clp,
+        r.occurred_on,
+        deptoPaymentHumanNote("dividendos", r.cuota, false)
+      );
+      insertDeptoPaymentRow({
+        movement_id: Number(mov.lastInsertRowid),
+        kind: "dividendos",
+        origin: "import",
+        ...deptoPaymentColumnsFromPaymentRow(r),
+      });
     }
   });
 
@@ -214,12 +226,12 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     expect(after?.value_clp).toBe(Math.round(3921.8 * 40_250));
   });
 
-  it("returns [] with no depto data and throws on stray depto notes", () => {
+  it("returns [] with no depto data and throws on stray depto payments", () => {
     if (preexistingProperty) return;
     // temporarily orphan the fixture account's notes
     db.prepare(`UPDATE accounts SET notes = 'depto-fixture-parked' WHERE id = ?`).run(accountId);
     try {
-      expect(() => loadDeptoLedgerFromMovements()).toThrow(/depto-note movements/);
+      expect(() => loadDeptoLedgerFromMovements()).toThrow(/depto_payments rows exist/);
     } finally {
       db.prepare(`UPDATE accounts SET notes = ? WHERE id = ?`).run(
         DEPTO_PROPERTY_ACCOUNT_NOTES,
@@ -229,46 +241,3 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
   });
 });
 
-describe("loadDeptoLedgerFromMovements (dev-DB parity)", () => {
-  it("matches the sheet ledger on runtime-critical fields", () => {
-    const sheet = loadDeptoDividendosSheetLedgerFromDb();
-    if (sheet.length === 0) return; // no sheet data on this DB (generated lean DB)
-
-    const fromMovements = loadDeptoLedgerFromMovements();
-    expect(fromMovements.length).toBe(sheet.length);
-
-    for (let i = 0; i < sheet.length; i++) {
-      const a = sheet[i]!;
-      const b = fromMovements[i]!;
-      const ctx = `row ${i} (${a.cuota} ${a.occurred_on})`;
-      expect(b.cuota, ctx).toBe(a.cuota);
-      expect(b.occurred_on, ctx).toBe(a.occurred_on);
-      // exact UF fields (builders write the sheet-rounded values verbatim)
-      expect(b.credito_restante_uf, ctx).toBe(a.credito_restante_uf);
-      expect(b.valor_vivienda_uf, ctx).toBe(a.valor_vivienda_uf);
-      expect(b.valor_neto_uf, ctx).toBe(a.valor_neto_uf);
-      expect(b.pago_uf, ctx).toBe(a.pago_uf);
-      expect(b.min_uf, ctx).toBe(a.min_uf);
-      expect(b.amortizacion_uf, ctx).toBe(a.amortizacion_uf);
-      expect(b.interes_uf, ctx).toBe(a.interes_uf);
-      // CLP fields: notes store Math.round() of the sheet value (±1 peso)
-      const near = (x: number | null, y: number | null) => {
-        if (x == null || y == null) return x === y;
-        return Math.abs(x - y) <= 1;
-      };
-      expect(near(b.pago_clp, a.pago_clp), `${ctx} pago_clp ${b.pago_clp} vs ${a.pago_clp}`).toBe(true);
-      expect(near(b.valor_neto_clp, a.valor_neto_clp), `${ctx} vnclp`).toBe(true);
-      expect(near(b.pago_acumulado_clp, a.pago_acumulado_clp), `${ctx} paclp`).toBe(true);
-      expect(near(b.amortizacion_clp, a.amortizacion_clp), `${ctx} amclp`).toBe(true);
-      expect(near(b.amortizacion_ext_clp, a.amortizacion_ext_clp), `${ctx} axclp`).toBe(true);
-      expect(near(b.interes_clp, a.interes_clp), `${ctx} iclp`).toBe(true);
-      expect(near(b.incendio_clp, a.incendio_clp), `${ctx} fireclp`).toBe(true);
-      expect(near(b.desgravamen_clp, a.desgravamen_clp), `${ctx} desclp`).toBe(true);
-      // uf_clp_day: both enriched from uf_daily — identical
-      expect(b.uf_clp_day, ctx).toBe(a.uf_clp_day);
-      // Accepted drift (display-only, documented): restante_clp / UF-seguros / analysis
-      // columns are re-derived from cruf/vnuf × uf_daily instead of the Numbers-frozen
-      // sheet cells — NOT compared here.
-    }
-  });
-});

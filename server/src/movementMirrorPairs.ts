@@ -111,7 +111,6 @@ function loadEligibleLegs(): EligibleLegRow[] {
          AND (m.note IS NULL OR (
                m.note NOT LIKE 'import:cartola|anchor|%'
            AND m.note NOT LIKE 'import:cartola|opening|%'
-           AND m.note NOT LIKE 'mirror-merge|%'
            AND m.note NOT LIKE 'import:buda|%'
            AND m.note NOT LIKE 'buda-abono|%'
            AND m.note NOT LIKE 'ahorro-split|%'
@@ -254,8 +253,7 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
      WHERE m.id = ? AND m.account_id IS NOT NULL
        AND m.flow_kind IS NULL AND m.amount_usd IS NULL AND m.amount_clp > 0
        AND (m.note IS NULL OR (
-             m.note NOT LIKE 'mirror-merge|%'
-         AND m.note NOT LIKE 'import:buda|%'
+             m.note NOT LIKE 'import:buda|%'
          AND m.note NOT LIKE 'buda-abono|%'
          AND m.note NOT LIKE 'ahorro-split|%'))
        AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)`

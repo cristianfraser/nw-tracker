@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
-import {
-  deptoMortgageCloseClpBySnapshotDates,
-  loadDeptoDividendosSheetLedgerFromDb,
-} from "./deptoDividendosLedger.js";
+import { deptoMortgageCloseClpBySnapshotDates } from "./deptoDividendosLedger.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { pocketDepositsClpForAccount } from "./accountDeposits.js";
 import { totalDividendsClpForAccount } from "./equityReturns.js";
@@ -26,7 +24,7 @@ describe("getAccountValuationTimeseries deposit lines", () => {
       expect(pt[depKey]).toBeUndefined();
     }
 
-    const ledger = loadDeptoDividendosSheetLedgerFromDb();
+    const ledger = loadDeptoLedgerFromMovements();
     if (ledger.length === 0) return;
     const last = ts!.accounts.points.at(-1)!;
     const asOf = String(last.as_of_date);
