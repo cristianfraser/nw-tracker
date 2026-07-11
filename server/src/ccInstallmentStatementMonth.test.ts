@@ -30,6 +30,7 @@ describe("ledgerInstallmentsPaid statement-month timing", () => {
     description_merged: "MUNICIPALIDAD DE MAIPU",
     matched_baseline_purchase_id: null,
     source: "pdf",
+    first_due_month: null,
   };
 
   it("counts 01/N on May statement as one paid when reference is May (00/N was April)", () => {
@@ -96,6 +97,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
     description_merged: "TGR",
     matched_baseline_purchase_id: null,
     source: "pdf",
+    first_due_month: null,
   };
 
   it("does not reduce remaining when only 00/N appears on statement", () => {
@@ -130,6 +132,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
       description_merged: "FLOW   *PINARES.CL",
       matched_baseline_purchase_id: null,
       source: "pdf",
+      first_due_month: null,
     };
     const payList = [
       {
@@ -186,6 +189,7 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
     description_merged: "BLUNDSTONE MUT",
     matched_baseline_purchase_id: null,
     source: "pdf",
+    first_due_month: null,
   };
 
   it("anchors first indexed cuota on pay-by month after 00/03 preamble", () => {

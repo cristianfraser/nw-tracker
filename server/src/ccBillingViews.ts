@@ -206,21 +206,28 @@ export function paymentAbonosClpForBillingMonth(
   return sum;
 }
 
-/** Open-month facturado from imported statement lines only (matches facturación modal scope). */
+/**
+ * Open-month facturado from imported statement lines only (matches facturación modal scope).
+ * PAGOs are NOT netted here: a PAGO in the open cycle settles the *prior* facturación, so it
+ * must not reduce this cycle's billed únicos. Pasted "últimos movimientos" always carry the
+ * prior bill's PAGO (dated post-cierre → lands in the open web-paste bucket); netting it drove
+ * the total negative and the clamp collapsed facturado to cuota-only. Matches the closed-month
+ * convention (`facturadoFromStatement` = charges + cuotas, payment merchants excluded). Payments
+ * belong to the balance roll-forward only (see `buildBillingDetailByMonthInner`). The ≥0 clamp
+ * stays for the refund-heavy edge (non-payment negative lines still net inside the sum).
+ */
 export function facturadoClpFromOpenMonthStatementLines(
   accountId: number,
   billingMonth: string
 ): number {
   const charges = incrementalChargesClpForBillingMonth(accountId, billingMonth);
-  const payments = paymentAbonosClpForBillingMonth(accountId, billingMonth);
-  const net = charges - payments;
-  return net > 0 ? Math.round(net) : 0;
+  return charges > 0 ? Math.round(charges) : 0;
 }
 
 /**
  * Open-month facturado: what is billed in THIS facturación cycle — charges/únicos billed so
- * far (net of payments) plus the cuota a pagar — not the prior balance rolled forward.
- * Shared by Facturaciones and Detalle por mes so both views report the same facturado.
+ * far plus the cuota a pagar — not the prior balance rolled forward, and not net of the prior
+ * bill's PAGO. Shared by Facturaciones and Detalle por mes so both views report the same facturado.
  */
 export function openMonthFacturadoTotalClp(
   accountId: number,
