@@ -1773,6 +1773,14 @@
         "en": "Interest CLP",
         "es": "Interés CLP"
       },
+      "minUfLabel": {
+        "en": "Minimum installment UF",
+        "es": "Cuota mínima UF"
+      },
+      "minUfHint": {
+        "en": "From the statement — used to split scheduled amortization from any prepayment.",
+        "es": "Del estado de cuenta — separa la amortización programada del prepago."
+      },
       "incendioClpLabel": {
         "en": "Fire insurance CLP",
         "es": "Seguro incendio CLP"
@@ -1784,6 +1792,14 @@
       "desgravamenOverride": {
         "en": "Use the bank's value (instead of the computed one)",
         "es": "Usar valor del banco (en lugar del calculado)"
+      },
+      "amortExtClpLabel": {
+        "en": "Extra amortization CLP",
+        "es": "Amortización extra CLP"
+      },
+      "amortExtOverride": {
+        "en": "Enter the prepayment directly (instead of splitting from the minimum)",
+        "es": "Ingresar el prepago directamente (en lugar de calcularlo desde la cuota mínima)"
       },
       "previewAmort": {
         "en": "Amortization CLP",

@@ -197,11 +197,14 @@ export function recomputeStoredMortgagePaymentRow(
        WHERE p.cuota = ? AND m.occurred_on = ? AND p.origin = 'manual' AND p.kind = 'dividendos'`
     )
     .get(cuota, occurredOn) as
-    | { amount_clp: number; interes_clp: number | null; incendio_clp: number | null; desgravamen_clp: number | null; amortizacion_ext_clp: number | null }
+    | { amount_clp: number; interes_clp: number | null; incendio_clp: number | null; desgravamen_clp: number | null; min_uf: number | null; amortizacion_ext_clp: number | null }
     | undefined;
   if (!target) {
     throw new Error(`No stored manual input for cuota ${cuota} on ${occurredOn}`);
   }
+  // Carry the stored min_uf through unchanged — it is a bank statement figure, not a
+  // derived value. Recompute reproduces the amort/ext split from the stored
+  // amortizacion_ext_clp (the explicit-ext path), so this only preserves display.
   const input: MortgagePaymentInput = {
     occurred_on: occurredOn,
     pago_clp: Math.abs(target.amount_clp),
@@ -209,6 +212,7 @@ export function recomputeStoredMortgagePaymentRow(
     incendio_clp: target.incendio_clp ?? 0,
     desgravamen_clp: target.desgravamen_clp,
     cuota,
+    min_uf: target.min_uf,
     amortizacion_ext_clp: target.amortizacion_ext_clp,
   };
   const ledger = loadDeptoLedgerFromMovements().filter(
@@ -250,6 +254,8 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
       : Number(body.desgravamen_clp);
   const cuota =
     body.cuota === undefined || body.cuota === null ? null : String(body.cuota).trim();
+  const min_uf =
+    body.min_uf === undefined || body.min_uf === null ? null : Number(body.min_uf);
   const amortizacion_ext_clp =
     body.amortizacion_ext_clp === undefined || body.amortizacion_ext_clp === null
       ? null
@@ -262,6 +268,9 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
   if (desgravamen_clp != null && !Number.isFinite(desgravamen_clp)) {
     throw new Error("desgravamen_clp must be a number when provided");
   }
+  if (min_uf != null && !Number.isFinite(min_uf)) {
+    throw new Error("min_uf must be a number when provided");
+  }
   if (amortizacion_ext_clp != null && !Number.isFinite(amortizacion_ext_clp)) {
     throw new Error("amortizacion_ext_clp must be a number when provided");
   }
@@ -273,6 +282,7 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
     incendio_clp,
     desgravamen_clp,
     cuota,
+    min_uf,
     amortizacion_ext_clp,
   };
 }

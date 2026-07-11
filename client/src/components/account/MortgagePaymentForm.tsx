@@ -29,14 +29,25 @@ function parseClpInput(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** UF minimum installment — same Chilean "dots=thousands, comma=decimal" input, but positive. */
+function parseUfInput(raw: string): number | null {
+  const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
+  if (!normalized) return null;
+  const n = Number(normalized);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function buildBody(
   occurredOn: string,
   pagoClp: string,
   interesClp: string,
   incendioClp: string,
   desgravamenClp: string,
+  minUf: string,
+  amortExtClp: string,
   cuota: string,
-  useDesgravamenOverride: boolean
+  useDesgravamenOverride: boolean,
+  useAmortExtOverride: boolean
 ): Record<string, unknown> | null {
   const pago_clp = parseClpInput(pagoClp);
   const interes_clp = parseClpInput(interesClp);
@@ -54,6 +65,16 @@ function buildBody(
     const des = parseClpInput(desgravamenClp);
     if (des == null) return null;
     body.desgravamen_clp = des;
+  }
+  // The split needs EITHER the bank's minimum installment (min_uf) OR an explicit prepago.
+  if (useAmortExtOverride) {
+    const ext = parseClpInput(amortExtClp);
+    if (ext == null) return null;
+    body.amortizacion_ext_clp = ext;
+  } else {
+    const min_uf = parseUfInput(minUf);
+    if (min_uf == null) return null;
+    body.min_uf = min_uf;
   }
   return body;
 }
@@ -74,6 +95,9 @@ export function MortgagePaymentForm({
   );
   const [desgravamenClp, setDesgravamenClp] = useState("");
   const [useDesgravamenOverride, setUseDesgravamenOverride] = useState(false);
+  const [minUf, setMinUf] = useState("");
+  const [amortExtClp, setAmortExtClp] = useState("");
+  const [useAmortExtOverride, setUseAmortExtOverride] = useState(false);
   const [cuota, setCuota] = useState(schema.next_cuota);
   const [preview, setPreview] = useState<MortgagePaymentPreviewResponse | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -88,8 +112,11 @@ export function MortgagePaymentForm({
         interesClp,
         incendioClp,
         desgravamenClp,
+        minUf,
+        amortExtClp,
         cuota,
-        useDesgravamenOverride
+        useDesgravamenOverride,
+        useAmortExtOverride
       ),
     [
       occurredOn,
@@ -97,8 +124,11 @@ export function MortgagePaymentForm({
       interesClp,
       incendioClp,
       desgravamenClp,
+      minUf,
+      amortExtClp,
       cuota,
       useDesgravamenOverride,
+      useAmortExtOverride,
     ]
   );
 
@@ -145,6 +175,8 @@ export function MortgagePaymentForm({
       setOccurredOn("");
       setPagoClp("");
       setInteresClp("");
+      setMinUf("");
+      setAmortExtClp("");
       setPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({
@@ -184,6 +216,22 @@ export function MortgagePaymentForm({
           <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.interesClpLabel")}</span>
           <input className="mono" value={interesClp} onChange={(e) => setInteresClp(e.target.value)} inputMode="numeric" />
         </label>
+        <label style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
+          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.minUfLabel")}</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
+            <input
+              className="mono"
+              value={minUf}
+              onChange={(e) => setMinUf(e.target.value)}
+              inputMode="decimal"
+              disabled={useAmortExtOverride}
+              placeholder="11,0333"
+            />
+            <span className="muted" style={{ fontSize: "0.8rem" }}>
+              {t("accountDetail.mortgagePayment.minUfHint")}
+            </span>
+          </span>
+        </label>
         <label style={brokerageMovementFieldRowStyle()}>
           <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.incendioClpLabel")}</span>
           <input className="mono" value={incendioClp} onChange={(e) => setIncendioClp(e.target.value)} inputMode="numeric" />
@@ -205,6 +253,26 @@ export function MortgagePaymentForm({
                 onChange={(e) => setUseDesgravamenOverride(e.target.checked)}
               />{" "}
               {t("accountDetail.mortgagePayment.desgravamenOverride")}
+            </label>
+          </span>
+        </label>
+        <label style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
+          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.amortExtClpLabel")}</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
+            <input
+              className="mono"
+              value={amortExtClp}
+              onChange={(e) => setAmortExtClp(e.target.value)}
+              inputMode="numeric"
+              disabled={!useAmortExtOverride}
+            />
+            <label style={{ fontSize: "0.85rem" }}>
+              <input
+                type="checkbox"
+                checked={useAmortExtOverride}
+                onChange={(e) => setUseAmortExtOverride(e.target.checked)}
+              />{" "}
+              {t("accountDetail.mortgagePayment.amortExtOverride")}
             </label>
           </span>
         </label>
