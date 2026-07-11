@@ -687,6 +687,8 @@ export const api = {
     j<void>(`/api/flows/expenses/credit-card/financing-links/${id}`, { method: "DELETE" }),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
   fxCoverage: () => j<import("./types").FxCoverage>("/api/fx/coverage"),
+  mortgageUfReminder: () =>
+    j<import("./types").MortgageUfReminder>("/api/reminders/mortgage-uf"),
   fxBidAskGaps: () => j<{ gaps: import("./types").FxBidAskGapRow[] }>("/api/fx/bid-ask/gaps"),
   upsertFxBidAsk: (date: string, buy_clp_per_usd: number, sell_clp_per_usd: number) =>
     j<{ ok: boolean }>("/api/fx/bid-ask", {

@@ -95,3 +95,21 @@ export interface AccountMortgageLedgerResponse {
   rows: DeptoMortgageSheetRow[];
   payment_scenarios?: DeptoPaymentScenarioRow[];
 }
+
+/** UF-timing reminder for the CC-paid mortgage cuota (global toast). See server/src/mortgageUfReminder.ts. */
+export interface MortgageUfReminder {
+  show: boolean;
+  mode: "wait" | "pay_today" | null;
+  reason: "no_cc_mortgage_line" | "already_paid" | "uf_unavailable" | "not_qualified" | null;
+  cycle_month: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  cierre_iso: string | null;
+  pay_after_iso: string | null;
+  next_billing_month: string | null;
+  uf_now: number | null;
+  uf_best: number | null;
+  best_pay_date: string | null;
+  horizon_limited: boolean;
+  card_last4: string | null;
+}

@@ -9,9 +9,16 @@ import {
 import { isDeptoMortgagePaymentCuota, mortgageMetaFromSheetRows } from "../deptoDividendosLedger.js";
 import { buildDeptoPaymentScenarioRows } from "../mortgageScenarioPayments.js";
 import { accountKindSlugForAccountId } from "../accountBucket.js";
+import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
 import { operationalAccountIdFromReq } from "./shared.js";
 
 export function registerMortgageRoutes(app: express.Express): void {
+  // UF-timing reminder for the CC-paid Suecia mortgage cuota (global toast). Cheap indexed
+  // lookups only — no aggregation cache. Sync handler (better-sqlite3 is synchronous).
+  app.get("/api/reminders/mortgage-uf", (_req, res) => {
+    res.json(buildMortgageUfReminder());
+  });
+
 app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
   const id = operationalAccountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
