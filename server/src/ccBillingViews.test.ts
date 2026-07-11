@@ -256,16 +256,27 @@ describe("buildBillingDetailByMonth", () => {
         (d) => d.billing_month === openBm
       );
       expect(after).toBeDefined();
-      // Open-month facturado tracks únicos billed this cycle (charges net of the PAGO,
-      // floored at 0) plus cuota a pagar — both the purchases and the PAGO flow through.
+      // Open-month facturado tracks únicos billed this cycle (charges) plus cuota a pagar. The
+      // PAGO settles the PRIOR facturación and is NOT netted here — it flows through the balance
+      // roll-forward only. So facturado rises by exactly the two charges even though the PAGO
+      // (1,000,000) dwarfs them; the old netting formula would have clamped facturado to 0.
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
       expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
+      expect(after!.total_facturado_clp! - (before.total_facturado_clp ?? 0)).toBe(
+        chargeA + chargeB
+      );
+      expect(uniquo).toBeGreaterThanOrEqual(chargeA + chargeB);
+      // Facturaciones view shares the helper, so it must report the same un-clamped facturado.
+      const factAfter = buildFacturaciones(master.id, payload.months).find(
+        (f) => f.billing_month === openBm
+      );
+      expect(factAfter?.facturado_total_clp).toBe(after!.total_facturado_clp);
+      // Balance, in contrast, DOES net the PAGO via the roll-forward.
       const detAfter = buildBillingDetailByMonth(master.id, payload.months);
       expect(after!.balance_total_clp).toBe(
         expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
       );
-      // The large PAGO drives net únicos to zero (floored), below the pre-insert facturado.
-      expect(uniquo).toBe(0);
+      expect(after!.balance_total_clp).toBeLessThan(before.balance_total_clp);
     } finally {
       for (const id of [insA.lastInsertRowid, insB.lastInsertRowid, insPago.lastInsertRowid]) {
         db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
@@ -273,7 +284,7 @@ describe("buildBillingDetailByMonth", () => {
     }
   });
 
-  it("PAGO in open month reduces facturado and balance_total", () => {
+  it("PAGO in open month reduces balance_total but leaves facturado unchanged", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
       .get() as { id: number } | undefined;
@@ -308,16 +319,17 @@ describe("buildBillingDetailByMonth", () => {
         (d) => d.billing_month === openBm
       );
       expect(after).toBeDefined();
-      // Facturado tracks the non-rolled cycle formula; a PAGO does not increase it.
+      // Facturado tracks this cycle's charges + cuota; a PAGO settles the PRIOR bill and is not
+      // netted, so inserting a PAGO alone (no new charges) leaves facturado exactly unchanged.
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
       expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
+      expect(after!.total_facturado_clp).toBe(before.total_facturado_clp);
       const detAfter = buildBillingDetailByMonth(master.id, payload.months);
       expect(after!.balance_total_clp).toBe(
         expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
       );
       // The PAGO reduces the rolled balance relative to the pre-insert detail.
       expect(after!.balance_total_clp).toBeLessThan(before.balance_total_clp);
-      expect(after!.total_facturado_clp ?? 0).toBeLessThanOrEqual(before.total_facturado_clp ?? 0);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
     }
