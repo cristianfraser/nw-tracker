@@ -4,6 +4,7 @@ import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
+import { MortgageUfReminderToast } from "./components/layout/MortgageUfReminderToast";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
@@ -135,6 +136,7 @@ function AppTree() {
           <AppSidebar />
         </MobileNavDrawer>
         <MarketTickerPanel />
+        <MortgageUfReminderToast />
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
