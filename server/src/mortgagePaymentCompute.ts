@@ -1,13 +1,9 @@
-import {
-  type DeptoMortgageSheetRow,
-  isDeptoMortgagePaymentCuota,
-} from "./deptoDividendosLedger.js";
+import { type DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import {
   computeMortgagePaymentAnalytics,
   mortgageAnalyticsMetaFromLedger,
   roundUf4,
 } from "./mortgagePaymentAnalytics.js";
-import { computeMortgageScenarioPaymentUf } from "./mortgageScenarioPayments.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 
@@ -16,7 +12,6 @@ export type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 /** Calibrated from recent Suecia cuotas: desgravamen_clp ≈ balance_before_clp × rate. */
 export const DESGRAVAMEN_CLP_PER_CLP_BALANCE = 0.00003961;
 
-const TERM_30_PLAZO_MESES = 360;
 const PAYMENT_RECONCILE_TOLERANCE_CLP = 1;
 
 export type MortgagePaymentComputeResult = {
@@ -131,15 +126,6 @@ function sortSheetRows(a: DeptoMortgageSheetRow, b: DeptoMortgageSheetRow): numb
   return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
 }
 
-function monthsPaidBeforeCuota(ledger: readonly DeptoMortgageSheetRow[], cuotaNum: number): number {
-  let n = 0;
-  for (const row of ledger) {
-    const num = numericCuota(row.cuota);
-    if (num != null && num < cuotaNum && isDeptoMortgagePaymentCuota(row.cuota)) n += 1;
-  }
-  return n;
-}
-
 export function computeMortgagePaymentRow(
   ledger: readonly DeptoMortgageSheetRow[],
   rawInput: MortgagePaymentInput
@@ -197,15 +183,17 @@ export function computeMortgagePaymentRow(
   const total_seguros_clp = incendio_clp + desgravamen_clp;
   const total_seguros_uf = roundUf4(incendio_uf + desgravamen_uf);
 
-  const cuotaNum = numericCuota(cuota);
-  const paymentNum = cuotaNum ?? monthsPaidBeforeCuota(ledger, cuotaNum ?? 0) + 1;
+  // The scheduled amortización is split off the bank's cuota mínima (min_uf); the rest of
+  // the payment is prepago (amortización extra). min_uf is a statement figure the user
+  // enters — there is no model-rate fallback (the scenario formula diverges by a few CLP,
+  // which is exactly the misallocation bug this replaced). When the caller instead supplies
+  // amortización extra directly (e.g. recompute of an already-split row), that wins and
+  // min_uf is display-only.
   const min_uf =
-    computeMortgageScenarioPaymentUf(
-      balanceBeforeUf,
-      TERM_30_PLAZO_MESES,
-      paymentNum,
-      total_seguros_uf
-    ) ?? null;
+    rawInput.min_uf != null && Number.isFinite(rawInput.min_uf) ? rawInput.min_uf : null;
+  if (min_uf != null && min_uf <= 0) {
+    throw new Error("min_uf must be a positive number when provided");
+  }
 
   let amortizacion_clp: number;
   let amortizacion_ext_clp: number;
@@ -220,7 +208,9 @@ export function computeMortgagePaymentRow(
     }
   } else {
     if (min_uf == null) {
-      throw new Error("Cannot split amortización: min UF payment unavailable");
+      throw new Error(
+        "Cannot split amortización: enter the cuota mínima (min_uf) from the statement, or supply amortización extra directly"
+      );
     }
     const split = splitAmortFromMinPayment(
       pago_clp,

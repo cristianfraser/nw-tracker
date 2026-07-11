@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { db } from "./db.js";
 import {
   computeMortgagePaymentRow,
   defaultDesgravamenClp,
   DESGRAVAMEN_CLP_PER_CLP_BALANCE,
 } from "./mortgagePaymentCompute.js";
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
+
+// Controlled UF rate on a far-future date so the split math is deterministic regardless of
+// what uf_daily holds in the synthetic test DB. on-or-before this date returns exactly this
+// row (nothing later exists), reproducing the real Suecia rate on the day of the bug report.
+const TEST_UF_YMD = "2099-01-11";
+const TEST_UF_CLP = 40844.79;
 
 function basePrior(overrides: Partial<DeptoMortgageSheetRow> = {}): DeptoMortgageSheetRow {
   return {
@@ -55,26 +62,87 @@ function basePrior(overrides: Partial<DeptoMortgageSheetRow> = {}): DeptoMortgag
 }
 
 describe("mortgagePaymentCompute", () => {
-  it("splits scheduled amortización from min UF and remainder as prepago", () => {
-    const ledger = [basePrior()];
-    const result = computeMortgagePaymentRow(ledger, {
-      occurred_on: "2026-06-11",
-      pago_clp: 1_795_575,
-      interes_clp: 304_240,
-      incendio_clp: 41_651,
-      desgravamen_clp: 3041,
+  beforeAll(() => {
+    db.prepare(`INSERT OR REPLACE INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`).run(
+      TEST_UF_YMD,
+      TEST_UF_CLP
+    );
+  });
+  afterAll(() => {
+    db.prepare(`DELETE FROM uf_daily WHERE date = ?`).run(TEST_UF_YMD);
+  });
+
+  it("splits amortización exactly from the bank minimum installment (regression)", () => {
+    // The exact bug report: a modeled min payment (scenario formula) misallocated ~413 CLP
+    // between amortización and prepago. With the real cuota mínima as input, the split is exact.
+    const prior = basePrior({
       cuota: "28",
+      occurred_on: "2026-06-11",
+      credito_restante_uf: 1800.0,
+      valor_vivienda_uf: 5400,
+      uf_clp_day: TEST_UF_CLP,
     });
-    expect(result.sheet.cuota).toBe("28");
-    expect(result.sheet.amortizacion_clp).toBeGreaterThan(0);
-    expect(result.sheet.amortizacion_clp).toBeLessThan(200_000);
-    expect(result.sheet.amortizacion_ext_clp).toBeGreaterThan(1_000_000);
+    const result = computeMortgagePaymentRow([prior], {
+      occurred_on: TEST_UF_YMD,
+      pago_clp: 750_200,
+      interes_clp: 298_968,
+      incendio_clp: 42_242,
+      desgravamen_clp: 2912,
+      min_uf: 11.0333,
+      cuota: "29",
+    });
+    expect(result.sheet.cuota).toBe("29");
+    expect(result.sheet.amortizacion_clp).toBe(106_531);
+    expect(result.sheet.amortizacion_ext_clp).toBe(299_547);
+    expect(result.sheet.min_uf).toBe(11.0333);
+    expect(result.sheet.credito_restante_uf).toBe(1790.058);
+    // Components still reconcile to pago exactly.
     expect(
-      (result.sheet.amortizacion_clp ?? 0) + (result.sheet.amortizacion_ext_clp ?? 0)
-    ).toBe(1_795_575 - 304_240 - 41_651 - 3041);
-    expect(result.sheet.pct_dividendo).not.toBeNull();
-    expect(result.sheet.interes_oculto_clp).not.toBeNull();
-    expect(result.sheet.credito_restante_uf).toBeLessThan(1835.4735);
+      298_968 + 42_242 + 2912 + (result.sheet.amortizacion_clp ?? 0) + (result.sheet.amortizacion_ext_clp ?? 0)
+    ).toBe(750_200);
+  });
+
+  it("throws when neither min_uf nor amortización extra is supplied", () => {
+    const prior = basePrior({
+      cuota: "28",
+      occurred_on: "2026-06-11",
+      credito_restante_uf: 1800.0,
+      uf_clp_day: TEST_UF_CLP,
+    });
+    expect(() =>
+      computeMortgagePaymentRow([prior], {
+        occurred_on: TEST_UF_YMD,
+        pago_clp: 750_200,
+        interes_clp: 298_968,
+        incendio_clp: 42_242,
+        desgravamen_clp: 2912,
+        cuota: "29",
+      })
+    ).toThrow(/cuota mínima/);
+  });
+
+  it("uses explicit amortización extra when given (min_uf display-only)", () => {
+    const prior = basePrior({
+      cuota: "28",
+      occurred_on: "2026-06-11",
+      credito_restante_uf: 1800.0,
+      valor_vivienda_uf: 5400,
+      uf_clp_day: TEST_UF_CLP,
+    });
+    const result = computeMortgagePaymentRow([prior], {
+      occurred_on: TEST_UF_YMD,
+      pago_clp: 750_200,
+      interes_clp: 298_968,
+      incendio_clp: 42_242,
+      desgravamen_clp: 2912,
+      amortizacion_ext_clp: 299_547,
+      min_uf: 11.0333,
+      cuota: "29",
+    });
+    // Explicit prepago drives the split; amortización is the remainder.
+    expect(result.sheet.amortizacion_ext_clp).toBe(299_547);
+    expect(result.sheet.amortizacion_clp).toBe(750_200 - 298_968 - 42_242 - 2912 - 299_547);
+    expect(result.sheet.min_uf).toBe(11.0333);
   });
 
   it("uses default desgravamen calibrated near historical cuota 27", () => {
@@ -107,6 +175,7 @@ describe("mortgagePaymentCompute", () => {
         interes_clp: 50_000,
         incendio_clp: 1000,
         desgravamen_clp: 1000,
+        min_uf: 11.0,
         cuota: "28",
       })
     ).toThrow(/Payment too small for scheduled cuota/);

@@ -23,15 +23,17 @@ describe("mortgage payment create API layer", () => {
 
     const testCuota = `vitest-pay-${Date.now()}`;
     const occurredOn = "2098-07-11";
-    // pago must cover the SCHEDULED cuota (amortización from the min-UF schedule, which
-    // grows with the ledger/UF) plus any prepago — a hardcoded 400.000 rotted once the
-    // scheduled amortización outgrew its residual. Large pago keeps prepago ≥ 0.
+    // This test exercises the API/DB layer (commit writes both movements + depto rows and
+    // cascades), not split precision — so it supplies amortización extra directly rather than
+    // a cuota mínima whose split would depend on the test DB's UF rate. amort = pago − interés
+    // − seguros − prepago; prepago 0 keeps the whole residual as scheduled amortización.
     const input = {
       occurred_on: occurredOn,
       pago_clp: 1_000_000,
       interes_clp: 250_000,
       incendio_clp: 41_651,
       desgravamen_clp: 3000,
+      amortizacion_ext_clp: 0,
       cuota: testCuota,
     };
 
