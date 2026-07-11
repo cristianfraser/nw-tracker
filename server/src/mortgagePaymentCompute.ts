@@ -66,7 +66,8 @@ function requireYmd(occurredOn: string): void {
   }
 }
 
-function numericCuota(cuota: string): number | null {
+/** Installment number for a regular cuota, or null for `pie` / `prepago …` labels. */
+export function numericCuota(cuota: string): number | null {
   const n = parseInt(String(cuota).trim(), 10);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
