@@ -85,6 +85,38 @@
       }
     }
   },
+  "reminders": {
+    "mortgageUf": {
+      "title": {
+        "en": "Mortgage cuota — UF timing",
+        "es": "Cuota hipoteca — UF"
+      },
+      "trendFlat": {
+        "en": "flat",
+        "es": "igual"
+      },
+      "trendLower": {
+        "en": "lower",
+        "es": "más baja"
+      },
+      "waitMessage": {
+        "en": "Don't pay the dividendo yet — the UF is {{trend}}. Wait past the cierre on {{cierre}} so the charge lands on the {{nextMonth}} facturación. Best known day: {{bestDate}} (UF {{ufBest}} vs {{ufNow}} today).",
+        "es": "No pagues el dividendo aún: la UF está {{trend}}. Espera pasado el cierre del {{cierre}} para que el cargo caiga en la facturación de {{nextMonth}}. Mejor día conocido: {{bestDate}} (UF {{ufBest}} vs {{ufNow}} hoy)."
+      },
+      "horizonNote": {
+        "en": "The UF after {{horizon}} isn't published yet (comes ~the 9th) — a later day could be cheaper still.",
+        "es": "La UF posterior al {{horizon}} aún no se publica (llega ~el 9) — un día más tarde podría ser aún más barato."
+      },
+      "payTodayMessage": {
+        "en": "Pay the dividendo today — from here the UF turns up (or the window ends). The charge lands on the {{nextMonth}} facturación.",
+        "es": "Paga el dividendo hoy: desde aquí la UF sube (o se acaba el plazo). El cargo cae en la facturación de {{nextMonth}}."
+      },
+      "dismiss": {
+        "en": "Dismiss",
+        "es": "Descartar"
+      }
+    }
+  },
   "fxCoverage": {
     "title": {
       "en": "USD/CLP exchange rate incomplete",
