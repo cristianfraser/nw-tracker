@@ -98,6 +98,14 @@ function formatResult(data: Record<string, unknown>): string {
   const removed = num("overlap_removed");
   if (removed) parts.push(`removidos (cuotas): ${removed}`);
 
+  const nudges = data.installment_first_due_nudges;
+  if (Array.isArray(nudges) && nudges.length > 0) {
+    const labels = (nudges as { merchant?: string | null; to?: string }[])
+      .map((n) => `${n.merchant || "—"} → ${n.to ?? ""}`)
+      .join(", ");
+    parts.push(`1er mes cuotas ajustado: ${labels}`);
+  }
+
   const cartola = num("skipped_superseded_by_cartola");
   if (cartola) parts.push(`omitidos (ya en cartola): ${cartola}`);
 

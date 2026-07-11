@@ -24,6 +24,7 @@ describe("ledgerInstallmentsPaid", () => {
       description_merged: "MK WEBPAY.CL",
       matched_baseline_purchase_id: null,
       source: "pdf",
+      first_due_month: null,
     };
 
     const payList: PaymentRow[] = Array.from({ length: 11 }, (_, idx) => ({

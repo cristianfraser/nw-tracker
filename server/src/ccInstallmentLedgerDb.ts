@@ -37,6 +37,8 @@ type PurchaseRow = {
   description_merged: string | null;
   matched_baseline_purchase_id: string | null;
   source: string;
+  /** Evidence-backed first-cuota month (YYYY-MM); NULL = derive it (migration 163). */
+  first_due_month: string | null;
 };
 
 export type PaymentRow = {
@@ -185,6 +187,13 @@ export function purchaseFirstDueYm(
     const lastPayYm = monthKeyFromYmd(last.pay_by_date);
     if (lastPayYm) return addCalendarMonths(lastPayYm, 1);
   }
+
+  // Evidence-backed first-cuota month (set by the web-paste importer when a pasted
+  // no-facturado line pins a manual plan's real first cycle). Ranks below any statement
+  // cuota evidence above, so a later PDF cuota-01 line always overrides it — but above the
+  // manual open+1 guess below, which is only a heuristic for the yet-unbilled case.
+  const storedFirstDue = parseYearMonth(String(pr.first_due_month ?? "").slice(0, 7));
+  if (storedFirstDue) return storedFirstDue;
 
   if (pr.source === "manual" && accountId != null) {
     // A manual purchase posts into the open facturación (the purchase falls in that
@@ -642,7 +651,7 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   const purchasesDb = db
     .prepare(
       `SELECT id, canonical_row_id, card_group, purchase_date, total_amount_clp, cuotas_totales,
-              merchant, description_merged, matched_baseline_purchase_id, source
+              merchant, description_merged, matched_baseline_purchase_id, source, first_due_month
        FROM cc_installment_purchases
        WHERE account_id = ?
        ORDER BY purchase_date, id`
