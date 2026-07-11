@@ -367,6 +367,19 @@ export function manualLinkRealEstateExpense(
   return { expense_entry_id: expenseEntryId, purchase_key: purchaseKey, link_source: "manual" };
 }
 
+/** kWh is an electricity metric, m³ a gas metric — a bill only carries its own kind's reading. */
+export function assertConsumptionMatchesKind(
+  kind: string | null,
+  values: { kwh: number | null | undefined; m3: number | null | undefined }
+): void {
+  if (kind === "gas" && values.kwh != null) {
+    throw new Error("kwh belongs to electricidad bills, not gas");
+  }
+  if ((kind === "electricidad" || kind === "kwh") && values.m3 != null) {
+    throw new Error("m3 belongs to gas bills, not electricidad");
+  }
+}
+
 /** Set the consumption metadata (kWh / m³) on a real-estate bill entry. */
 export function updateRealEstateExpenseConsumption(
   expenseEntryId: number,
@@ -379,6 +392,7 @@ export function updateRealEstateExpenseConsumption(
       throw new Error("kwh/m3 must be non-negative numbers");
     }
   }
+  assertConsumptionMatchesKind(exp.category, values);
   db.prepare(`UPDATE expense_entries SET kwh = ?, m3 = ? WHERE id = ?`).run(
     values.kwh,
     values.m3,
@@ -432,6 +446,7 @@ export function assignPurchaseToRealEstateExpense(
       throw new Error("kwh/m3 must be non-negative numbers");
     }
   }
+  assertConsumptionMatchesKind(opts.kind, { kwh: opts.kwh, m3: opts.m3 });
 
   const noteParts = [line.merchant ?? opts.purchaseKey, line.purchase_on ?? purchaseMonth];
   const note = `Asignado desde compra — ${noteParts.join(" · ")}`;
