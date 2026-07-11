@@ -8,6 +8,7 @@ import {
   creditCardMasterMetaForAccount,
 } from "./ccWebPasteParse.js";
 import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
+import { applyWebPasteInstallmentFirstDueNudges } from "./ccWebPasteInstallmentNudge.js";
 import {
   checkingAccountId,
   importCheckingCartola,
@@ -57,11 +58,17 @@ export function importCcWebPaste(accountId: number, text: string) {
   );
   const merged = mergeCcAccountFromParsedRows(accountId, records, { replaceLedger: false });
 
+  // A pasted line that re-lists a manual plan's upcoming cuota is import-skipped as an overlap,
+  // but it is evidence of the plan's real first-cuota month. Pin it (write-once) so the open
+  // facturación and the projected months bill the cuota in the right cycle.
+  const firstDueNudges = applyWebPasteInstallmentFirstDueNudges(accountId, parsed.lines);
+
   const batch_id = createImportBatch("cc_web_paste", `web-paste|${batchId}`, {
     account_id: accountId,
     lines_parsed: parsed.lines.length,
     ...merged.statements,
     ledger: merged.ledger,
+    installment_first_due_nudges: firstDueNudges,
     parse_errors: parsed.errors,
   });
 
@@ -73,6 +80,7 @@ export function importCcWebPaste(accountId: number, text: string) {
     skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
     skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
     overlap_removed: merged.overlap_removed ?? 0,
+    installment_first_due_nudges: firstDueNudges,
     parse_errors: parsed.errors,
   };
 }
