@@ -247,22 +247,26 @@ export function RealEstateExpensesPage() {
                             marginTop: "0.25rem",
                           }}
                         >
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={editing.kwh}
-                            placeholder="kWh"
-                            style={{ width: "5rem" }}
-                            onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
-                          />
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={editing.m3}
-                            placeholder="m³"
-                            style={{ width: "5rem" }}
-                            onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
-                          />
+                          {slot.kind !== "gas" ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={editing.kwh}
+                              placeholder="kWh"
+                              style={{ width: "5rem" }}
+                              onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
+                            />
+                          ) : null}
+                          {slot.kind === "gas" ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={editing.m3}
+                              placeholder="m³"
+                              style={{ width: "5rem" }}
+                              onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
+                            />
+                          ) : null}
                           <button
                             type="button"
                             className="btn"

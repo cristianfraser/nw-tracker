@@ -78,16 +78,16 @@ describe("runExpenseConsumptionBackfill161", () => {
 });
 
 describe("updateRealEstateExpenseConsumption", () => {
-  it("sets and clears kwh/m3 on a real-estate entry", () => {
+  it("sets and clears m3 on a gas entry", () => {
     const accountId = ensureFixtureExpenseAccount();
     const entryId = insertFixtureEntry(accountId, null);
 
-    updateRealEstateExpenseConsumption(entryId, { kwh: 250, m3: 8.5 });
+    updateRealEstateExpenseConsumption(entryId, { kwh: null, m3: 8.5 });
     let row = db.prepare(`SELECT kwh, m3 FROM expense_entries WHERE id = ?`).get(entryId) as {
       kwh: number | null;
       m3: number | null;
     };
-    expect(row.kwh).toBe(250);
+    expect(row.kwh).toBeNull();
     expect(row.m3).toBeCloseTo(8.5, 6);
 
     updateRealEstateExpenseConsumption(entryId, { kwh: null, m3: null });
@@ -99,6 +99,33 @@ describe("updateRealEstateExpenseConsumption", () => {
     expect(row.m3).toBeNull();
 
     db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+  });
+
+  it("kwh belongs to electricidad, m3 to gas — cross-kind values throw", () => {
+    const accountId = ensureFixtureExpenseAccount();
+    const gasEntryId = insertFixtureEntry(accountId, null);
+    expect(() => updateRealEstateExpenseConsumption(gasEntryId, { kwh: 250, m3: null })).toThrow(
+      /kwh belongs to electricidad/
+    );
+
+    const luzEntryId = Number(
+      db
+        .prepare(
+          `INSERT INTO expense_entries (amount_clp, spent_on, category, expense_account_id)
+           VALUES (12345, '2024-05-31', 'electricidad', ?)`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    expect(() => updateRealEstateExpenseConsumption(luzEntryId, { kwh: null, m3: 8.5 })).toThrow(
+      /m3 belongs to gas/
+    );
+    updateRealEstateExpenseConsumption(luzEntryId, { kwh: 250, m3: null });
+    const row = db.prepare(`SELECT kwh FROM expense_entries WHERE id = ?`).get(luzEntryId) as {
+      kwh: number | null;
+    };
+    expect(row.kwh).toBe(250);
+
+    db.prepare(`DELETE FROM expense_entries WHERE id IN (?, ?)`).run(gasEntryId, luzEntryId);
   });
 
   it("rejects negative values and unknown entries", () => {
