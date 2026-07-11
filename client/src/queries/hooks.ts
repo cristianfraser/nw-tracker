@@ -354,6 +354,15 @@ export function useFxCoverage(enabled = true) {
   });
 }
 
+export function useMortgageUfReminder(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.mortgageUfReminder(),
+    queryFn: () => api.mortgageUfReminder(),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useMessagesUnreadCount() {
   return useQuery({
     queryKey: queryKeys.messagesUnread(),

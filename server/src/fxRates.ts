@@ -149,6 +149,25 @@ export function ufRowOnOrBefore(date: string | null): { date: string; clp_per_uf
 }
 
 /**
+ * Exact-date UF rows in `[fromYmd, toYmd]` (inclusive) as a `Map<date, clp_per_uf>`.
+ * Exact dates only — NO on-or-before fallback: the mortgage UF-timing reminder compares a
+ * present-day UF against a FUTURE (post-cierre) UF, and a silent fallback to an older row
+ * would corrupt that comparison. A future date simply absent from the map means BCentral
+ * has not published it yet (the daily UF horizon is ~the 9th of the next month).
+ */
+export function ufClpByDateRange(fromYmd: string, toYmd: string): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!fromYmd || !toYmd || fromYmd > toYmd) return out;
+  const rows = db
+    .prepare(`SELECT date, clp_per_uf FROM uf_daily WHERE date >= ? AND date <= ?`)
+    .all(fromYmd, toYmd) as { date: string; clp_per_uf: number }[];
+  for (const r of rows) {
+    if (Number.isFinite(r.clp_per_uf)) out.set(r.date, r.clp_per_uf);
+  }
+  return out;
+}
+
+/**
  * Official UF (CLP per 1 UF) from `uf_daily` at each snapshot label — last row on or before each date.
  * Used for mortgage cierre / UF día (not duplicated from the depto dividendos sheet).
  */

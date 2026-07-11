@@ -28,6 +28,17 @@
       "unknown": "No se pudo iniciar sesión. Inténtalo de nuevo."
     }
   },
+  "reminders": {
+    "mortgageUf": {
+      "title": "Cuota hipoteca — UF",
+      "trendFlat": "igual",
+      "trendLower": "más baja",
+      "waitMessage": "No pagues el dividendo aún: la UF está {{trend}}. Espera pasado el cierre del {{cierre}} para que el cargo caiga en la facturación de {{nextMonth}}. Mejor día conocido: {{bestDate}} (UF {{ufBest}} vs {{ufNow}} hoy).",
+      "horizonNote": "La UF posterior al {{horizon}} aún no se publica (llega ~el 9) — un día más tarde podría ser aún más barato.",
+      "payTodayMessage": "Paga el dividendo hoy: desde aquí la UF sube (o se acaba el plazo). El cargo cae en la facturación de {{nextMonth}}.",
+      "dismiss": "Descartar"
+    }
+  },
   "fxCoverage": {
     "title": "Tipo de cambio USD/CLP incompleto",
     "missingFromDate": "Sin tipo de cambio desde {{date}} para convertir saldos y gráficos en US$.",

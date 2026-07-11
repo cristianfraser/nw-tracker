@@ -28,6 +28,17 @@
       "unknown": "Could not sign in. Try again."
     }
   },
+  "reminders": {
+    "mortgageUf": {
+      "title": "Mortgage cuota — UF timing",
+      "trendFlat": "flat",
+      "trendLower": "lower",
+      "waitMessage": "Don't pay the dividendo yet — the UF is {{trend}}. Wait past the cierre on {{cierre}} so the charge lands on the {{nextMonth}} facturación. Best known day: {{bestDate}} (UF {{ufBest}} vs {{ufNow}} today).",
+      "horizonNote": "The UF after {{horizon}} isn't published yet (comes ~the 9th) — a later day could be cheaper still.",
+      "payTodayMessage": "Pay the dividendo today — from here the UF turns up (or the window ends). The charge lands on the {{nextMonth}} facturación.",
+      "dismiss": "Dismiss"
+    }
+  },
   "fxCoverage": {
     "title": "USD/CLP exchange rate incomplete",
     "missingFromDate": "No exchange rate since {{date}} to convert balances and charts to US$.",
