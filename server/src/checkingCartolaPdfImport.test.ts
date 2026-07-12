@@ -15,6 +15,8 @@ const APR_2019_PDF = "2019-04-30 cartola cuenta corriente 27.pdf";
 const MAY_2021_PDF = "2021-05-31 cartola cuenta corriente 1457.pdf";
 
 describe("checkingCartolaPdfImport", () => {
+  // Shells out to parse-checking-cartola-pdfs.py over the full cartola corpus
+  // (~5s warm cache) — needs more than vitest's 5s default.
   it("parses Apr 2019 and May 2021 sample cartola PDFs", () => {
     const pdfDir = resolveCfraserCheckingCartolaPdfsDir();
     if (!fs.existsSync(path.join(pdfDir, APR_2019_PDF))) return;
@@ -60,5 +62,5 @@ describe("checkingCartolaPdfImport", () => {
     expect(ocrApril?.parse_status).toBe("ok");
     expect(ocrApril?.period_month).toBe("2020-04");
     expect(ocrApril?.movements.length).toBe(2);
-  });
+  }, 30_000);
 });
