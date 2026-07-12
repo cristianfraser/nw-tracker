@@ -12,6 +12,7 @@ import { useRealEstateExpenses } from "../queries/hooks";
 import {
   useDeleteRealEstateExpenseEntryMutation,
   useUnmatchRealEstateExpenseMutation,
+  useUpdateRealEstateBillMonthMutation,
   useUpdateRealEstateConsumptionMutation,
 } from "../queries/mutations";
 import type { ExpenseApartmentSlug, RealEstateBillSlot } from "../types";
@@ -34,6 +35,13 @@ function consumptionLabel(slot: RealEstateBillSlot): string | null {
   if (slot.kwh != null) parts.push(`${formatGroupedDecimalTrimmed(slot.kwh)} kWh`);
   if (slot.m3 != null) parts.push(`${formatGroupedDecimalTrimmed(slot.m3)} m³`);
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** Real payment date when it falls outside the billed month (late/skipped payments). */
+function paidDateForSlot(slot: RealEstateBillSlot): string | null {
+  const paid = slot.expense_entry_id == null ? slot.spent_on : (slot.link?.purchase_on ?? null);
+  if (!paid) return null;
+  return paid.slice(0, 7) === slot.bill_month ? null : paid;
 }
 
 function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => string): string {
@@ -59,9 +67,15 @@ export function RealEstateExpensesPage() {
   const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [editing, setEditing] = useState<{ id: number; kwh: string; m3: string } | null>(null);
+  const [editingBillMonth, setEditingBillMonth] = useState<{
+    id: number;
+    value: string;
+    error: string | null;
+  } | null>(null);
   const { data, error } = useRealEstateExpenses();
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
   const consumptionMutation = useUpdateRealEstateConsumptionMutation();
+  const billMonthMutation = useUpdateRealEstateBillMonthMutation();
   const deleteEntryMutation = useDeleteRealEstateExpenseEntryMutation();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -79,6 +93,22 @@ export function RealEstateExpensesPage() {
       m3: parse(editing.m3),
     });
     setEditing(null);
+  };
+
+  const saveBillMonth = async () => {
+    if (!editingBillMonth) return;
+    try {
+      await billMonthMutation.mutateAsync({
+        expense_entry_id: editingBillMonth.id,
+        bill_month: editingBillMonth.value,
+      });
+      setEditingBillMonth(null);
+    } catch (e) {
+      setEditingBillMonth({
+        ...editingBillMonth,
+        error: e instanceof Error ? e.message : t("common.loadFailed"),
+      });
+    }
   };
 
   const chartPoints = useMemo(() => {
@@ -225,7 +255,73 @@ export function RealEstateExpensesPage() {
               ) : (
                 acc.slots.map((slot) => (
                   <tr key={slot.expense_entry_id ?? `${slot.kind}|${slot.spent_on}`}>
-                    <td className="mono">{slot.bill_month}</td>
+                    <td className="mono">
+                      {editingBillMonth != null && editingBillMonth.id === slot.expense_entry_id ? (
+                        <span
+                          style={{
+                            display: "flex",
+                            gap: "0.35rem",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <input
+                            type="month"
+                            value={editingBillMonth.value}
+                            onChange={(e) =>
+                              setEditingBillMonth({
+                                ...editingBillMonth,
+                                value: e.target.value,
+                                error: null,
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={billMonthMutation.isPending}
+                            onClick={() => void saveBillMonth()}
+                          >
+                            {t("common.save")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => setEditingBillMonth(null)}
+                          >
+                            {t("common.cancel")}
+                          </button>
+                          {editingBillMonth.error ? (
+                            <span className="error" style={{ fontSize: "0.75rem" }}>
+                              {editingBillMonth.error}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : slot.expense_entry_id != null ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          style={{ fontSize: "0.85rem" }}
+                          title={t("expenses.realEstate.billMonthEditAction")}
+                          onClick={() =>
+                            setEditingBillMonth({
+                              id: slot.expense_entry_id!,
+                              value: slot.bill_month,
+                              error: null,
+                            })
+                          }
+                        >
+                          {slot.bill_month}
+                        </button>
+                      ) : (
+                        slot.bill_month
+                      )}
+                      {paidDateForSlot(slot) ? (
+                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          {t("expenses.realEstate.paidOnHint", { date: paidDateForSlot(slot) })}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>{expenseKindLabel(slot.kind)}</td>
                     <td className="mono">
                       {formatAmountCell(slot)}
