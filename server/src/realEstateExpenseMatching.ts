@@ -12,7 +12,13 @@ import {
 } from "./realEstateExpenseMerchants.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 
-const GASTOS_INSTALLMENT_MODE = "split" as const;
+/**
+ * Bills pair with FULL payments: an installment-paid bill (TGR contribuciones in 3/6
+ * cuotas) links to the plan's purchase-total line — one candidate per plan at the plan
+ * amount — never to individual cuota lines (which share one purchase_key and would
+ * create a one-cuota-sized bill).
+ */
+const GASTOS_INSTALLMENT_MODE = "total" as const;
 
 /** Bill month X may be paid same month (X+0) or on the card in X+1 / X+2. */
 export const REAL_ESTATE_LINK_PURCHASE_MONTH_OFFSET_MIN = 0;

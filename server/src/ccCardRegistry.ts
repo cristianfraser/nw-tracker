@@ -25,6 +25,13 @@ export type CcCardRegistry = {
   reconcile_skip_last4s: readonly string[];
   /** Primary-import cards whose statements require reconcile. */
   reconcile_primary_last4s: readonly string[];
+  /**
+   * Additional-cardholder card last4s (someone else's plastic on the user's account):
+   * only these origins auto-tag purchases Único + no_cuenta. The user's own
+   * predecessor/successor plastics appear as foreign origins on transition-month
+   * statements and must NOT trip the tag.
+   */
+  additional_card_last4s: readonly string[];
 };
 
 const EMPTY_REGISTRY: CcCardRegistry = {
@@ -35,6 +42,7 @@ const EMPTY_REGISTRY: CcCardRegistry = {
   lider_filename_last4s: [],
   reconcile_skip_last4s: [],
   reconcile_primary_last4s: [],
+  additional_card_last4s: [],
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

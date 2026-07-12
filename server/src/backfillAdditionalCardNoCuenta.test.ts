@@ -43,7 +43,7 @@ describe("backfillAdditionalCardNoCuenta", () => {
         `INSERT INTO cc_statement_lines (
            statement_id, transaction_date, merchant, amount_clp, installment_flag,
            parser_row_id, origin_card_last4
-         ) VALUES (?, '19/05/2026', 'Additional card fixture', 9999, 0, ?, '3670')`
+         ) VALUES (?, '19/05/2026', 'Additional card fixture', 9999, 0, ?, '4999')`
       )
       .run(statementId, parserRowId);
     const lineId = Number(line.lastInsertRowid);

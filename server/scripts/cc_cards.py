@@ -28,6 +28,9 @@ _DEFAULTS: dict = {
     "lider_filename_last4s": [],
     "reconcile_skip_last4s": [],
     "reconcile_primary_last4s": [],
+    # Additional-cardholder plastics (read by the TS expense auto-tagger; listed
+    # here only so the shared JSON passes the unknown-key check).
+    "additional_card_last4s": [],
 }
 
 

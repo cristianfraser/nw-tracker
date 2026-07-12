@@ -144,7 +144,7 @@ describe("importCcStatementsMerge", () => {
         installment_flag: "false",
         dedupe_key: dedupeKey,
         row_id: rowId,
-        origin_card_last4: "3670",
+        origin_card_last4: "4999",
         currency: "clp",
         parser_layout: "compact",
       },
@@ -182,7 +182,7 @@ describe("importCcStatementsMerge", () => {
       const patched = db
         .prepare(`SELECT origin_card_last4 FROM cc_statement_lines WHERE id = ?`)
         .get(line.id) as { origin_card_last4: string | null };
-      expect(patched.origin_card_last4).toBe("3670");
+      expect(patched.origin_card_last4).toBe("4999");
     } finally {
       cleanupVitestCcMergeRows();
     }

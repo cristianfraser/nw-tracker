@@ -16,16 +16,22 @@ import { db } from "./db.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 describe("ccAdditionalCardExpenseMatch", () => {
-  it("detects adicional lines when origin differs from statement card", () => {
-    expect(isAdditionalCardExpenseLine("3670", "4242")).toBe(true);
+  it("detects adicional lines only for registry-listed additional cards", () => {
+    // 4999 is the fixture's additional_card_last4s entry.
+    expect(isAdditionalCardExpenseLine("4999", "4242")).toBe(true);
     expect(isAdditionalCardExpenseLine("4242", "4242")).toBe(false);
     expect(isAdditionalCardExpenseLine(null, "4242")).toBe(false);
-    expect(isAdditionalCardExpenseLine("3670", null)).toBe(false);
+    expect(isAdditionalCardExpenseLine("4999", null)).toBe(false);
+    // A foreign origin NOT in the list (own successor/predecessor plastic on a
+    // transition-month statement) is the user's own purchase.
+    expect(isAdditionalCardExpenseLine("4242", "4111")).toBe(false);
+    expect(isAdditionalCardExpenseLine("4999", "4242", ["4999"])).toBe(true);
+    expect(isAdditionalCardExpenseLine("4999", "4242", [])).toBe(false);
   });
 
   it("formats and merges auto additional-card notes", () => {
-    const auto = formatAutoAdditionalCardNote({ originLast4: "3670", primaryLast4: "4242" });
-    expect(auto).toBe(`${AUTO_ADDITIONAL_CARD_NOTE_PREFIX}|origin:3670|stmt:4242`);
+    const auto = formatAutoAdditionalCardNote({ originLast4: "4999", primaryLast4: "4242" });
+    expect(auto).toBe(`${AUTO_ADDITIONAL_CARD_NOTE_PREFIX}|origin:4999|stmt:4242`);
     expect(mergeAutoAdditionalCardNote("", auto)).toBe(auto);
     expect(mergeAutoAdditionalCardNote("user note", auto)).toBe(`${auto}\n\nuser note`);
     expect(mergeAutoAdditionalCardNote(`${auto}\n\nkeep me`, auto)).toBe(`${auto}\n\nkeep me`);
@@ -57,7 +63,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
         `INSERT INTO cc_statement_lines (
            statement_id, transaction_date, merchant, amount_clp, installment_flag,
            nro_cuota_current, nro_cuota_total, parser_row_id, origin_card_last4
-         ) VALUES (?, '19/05/2026', 'Adicional installment fixture', 5000, 1, 2, 6, 'vitest-addl-inst', '3670')`
+         ) VALUES (?, '19/05/2026', 'Adicional installment fixture', 5000, 1, 2, 6, 'vitest-addl-inst', '4999')`
       )
       .run(statementId);
     const lineId = Number(line.lastInsertRowid);
@@ -65,7 +71,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
     const result = applyAdditionalCardNoCuentaForLine({
       accountId,
       statementLineId: lineId,
-      originCardLast4: "3670",
+      originCardLast4: "4999",
       primaryCardLast4: "4242",
     });
     expect(result.skippedInstallment).toBe(true);
@@ -93,7 +99,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
         `INSERT INTO cc_statement_lines (
            statement_id, transaction_date, merchant, amount_clp, installment_flag,
            parser_row_id, origin_card_last4
-         ) VALUES (?, '19/05/2026', 'Adicional skip category fixture', 1000, 0, 'vitest-addl-skip-cat', '3670')`
+         ) VALUES (?, '19/05/2026', 'Adicional skip category fixture', 1000, 0, 'vitest-addl-skip-cat', '4999')`
       )
       .run(statementId);
     const lineId = Number(line.lastInsertRowid);
@@ -110,7 +116,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
     const result = applyAdditionalCardNoCuentaForLine({
       accountId,
       statementLineId: lineId,
-      originCardLast4: "3670",
+      originCardLast4: "4999",
       primaryCardLast4: "4242",
     });
     expect(result.skippedExistingCategory).toBe(true);

@@ -161,7 +161,7 @@ describe("flowsCreditCardExpenses", () => {
         `INSERT INTO cc_statement_lines (
            statement_id, transaction_date, merchant, amount_clp, installment_flag,
            parser_row_id, origin_card_last4, dedupe_key
-         ) VALUES (?, '19/05/2026', 'Additional card payload fixture', 12345, 0, ?, '3670', ?)`
+         ) VALUES (?, '19/05/2026', 'Additional card payload fixture', 12345, 0, ?, '4999', ?)`
       )
       .run(statementId, parserRowId, `vitest-addl-dedupe-${parserRowId}`);
     const lineId = Number(line.lastInsertRowid);
@@ -171,7 +171,7 @@ describe("flowsCreditCardExpenses", () => {
     expect(found).toBeDefined();
     expect(found!.category_slug).toBe(NO_CUENTA_CC_EXPENSE_SLUG);
     expect(found!.category_unique).toBe(true);
-    expect(found!.origin_card_last4).toBe("3670");
+    expect(found!.origin_card_last4).toBe("4999");
     expect(found!.primary_card_last4).toBe("4242");
   });
 
@@ -195,7 +195,7 @@ describe("flowsCreditCardExpenses", () => {
         `INSERT INTO cc_statement_lines (
            statement_id, transaction_date, merchant, amount_clp, installment_flag,
            parser_row_id, origin_card_last4, dedupe_key
-         ) VALUES (?, '19/05/2026', 'Additional card cleared fixture', 22222, 0, ?, '3670', ?)`
+         ) VALUES (?, '19/05/2026', 'Additional card cleared fixture', 22222, 0, ?, '4999', ?)`
       )
       .run(statementId, parserRowId, `vitest-addl-dedupe-${parserRowId}`);
     const lineId = Number(line.lastInsertRowid);
