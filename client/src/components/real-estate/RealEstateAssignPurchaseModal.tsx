@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
+import { addCalendarMonths } from "../../calendarMonth";
 import { formatClp } from "../../format";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateUnlinkedPurchases } from "../../queries/hooks";
@@ -37,6 +38,7 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<string>("rent");
   const [onlyBills, setOnlyBills] = useState(true);
+  const [billPreviousMonth, setBillPreviousMonth] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const { data, isLoading, error } = useRealEstateUnlinkedPurchases(
@@ -73,10 +75,15 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
     setBusy(true);
     try {
       for (const key of keys) {
+        const purchase = purchases.find((p) => p.purchase_key === key);
         await assignMutation.mutateAsync({
           purchase_key: key,
           account_slug: place.slug,
           kind,
+          bill_month:
+            billPreviousMonth && purchase
+              ? addCalendarMonths(purchase.purchase_month, -1)
+              : undefined,
         });
       }
       setSelected(new Set());
@@ -119,6 +126,14 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
             onChange={(e) => setOnlyBills(e.target.checked)}
           />
           {t("expenses.realEstate.onlyBillsToggle")}
+        </label>
+        <label className="radio-pill" style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={billPreviousMonth}
+            onChange={(e) => setBillPreviousMonth(e.target.checked)}
+          />
+          {t("expenses.realEstate.billPreviousMonthToggle")}
         </label>
         <input
           type="search"

@@ -4,6 +4,7 @@ import { runExpenseConsumptionBackfill161 } from "./legacyNoteBackfills.js";
 import {
   assignPurchaseToRealEstateExpense,
   deleteRealEstateExpenseEntry,
+  updateRealEstateExpenseBillMonth,
   updateRealEstateExpenseConsumption,
 } from "./realEstateExpenseMatching.js";
 import { buildRealEstateExpensesPayload, listRealEstateUnlinkedPurchases } from "./flowsRealEstateExpenses.js";
@@ -135,6 +136,47 @@ describe("updateRealEstateExpenseConsumption", () => {
     expect(() => updateRealEstateExpenseConsumption(99999999, { kwh: 1, m3: null })).toThrow(
       /not found/
     );
+    db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+  });
+});
+
+describe("updateRealEstateExpenseBillMonth", () => {
+  it("re-months an entry to the new bill month's month-end", () => {
+    const accountId = ensureFixtureExpenseAccount();
+    const entryId = insertFixtureEntry(accountId, null);
+
+    updateRealEstateExpenseBillMonth(entryId, "2024-04");
+
+    const row = db.prepare(`SELECT spent_on FROM expense_entries WHERE id = ?`).get(entryId) as {
+      spent_on: string;
+    };
+    expect(row.spent_on).toBe("2024-04-30");
+
+    db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+  });
+
+  it("rejects malformed months and unknown entries", () => {
+    const accountId = ensureFixtureExpenseAccount();
+    const entryId = insertFixtureEntry(accountId, null);
+    expect(() => updateRealEstateExpenseBillMonth(entryId, "2024-4")).toThrow(/YYYY-MM/);
+    expect(() => updateRealEstateExpenseBillMonth(99999999, "2024-04")).toThrow(/not found/);
+    db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+  });
+
+  it("tolerates a linked purchase_key that no longer resolves to a gastos line", () => {
+    const accountId = ensureFixtureExpenseAccount();
+    const entryId = insertFixtureEntry(accountId, null);
+    db.prepare(
+      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source)
+       VALUES (?, 'vitest:no-such-line', 'manual')`
+    ).run(entryId);
+
+    updateRealEstateExpenseBillMonth(entryId, "2024-03");
+    const row = db.prepare(`SELECT spent_on FROM expense_entries WHERE id = ?`).get(entryId) as {
+      spent_on: string;
+    };
+    expect(row.spent_on).toBe("2024-03-31");
+
     db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
   });
 });

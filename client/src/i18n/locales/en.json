@@ -1039,7 +1039,10 @@
       "placeCreate": "Create place",
       "onlyBillsToggle": "Only “Cuentas y servicios”",
       "assignSelected": "Assign {{count}} selected",
-      "merchantMatchHintKind": "matches kind"
+      "merchantMatchHintKind": "matches kind",
+      "billPreviousMonthToggle": "Billed period: previous month",
+      "billMonthEditAction": "Edit billed month",
+      "paidOnHint": "paid {{date}}"
     },
     "chartGranularityLabel": "Chart",
     "colDate": "Date",
