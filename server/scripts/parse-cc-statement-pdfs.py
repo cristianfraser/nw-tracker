@@ -1985,11 +1985,13 @@ RE_WIDE_MCC_DATE = re.compile(
     r"^(\d{4,}[A-ZÁ-ÿ]*)\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$",
     re.I,
 )
+# Place prefix: BCI place tokens include slashes and MCC-glued digits
+# (`SANTIAGO/CHL`, `111SANTIAGOCL`) — dropping them silently loses charge rows.
 RE_BCI_LIDER_CHARGE = re.compile(
-    r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
+    r"^(?:[A-Za-zÁ-ÿ0-9][A-Za-zÁ-ÿ0-9\s\./,-]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
 )
 RE_BCI_LIDER_INSTALLMENT_ROW = re.compile(
-    r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?"
+    r"^(?:[A-Za-zÁ-ÿ0-9][A-Za-zÁ-ÿ0-9\s\./,-]*?\s+)?"
     r"(?P<date>\d{2}/\d{2}/\d{4})\s*"
     r"(?P<prefix>.+?)"
     r"\$\s*(?P<orig>[\d.]+)\s+"
@@ -3673,7 +3675,7 @@ def main() -> int:
             if (
                 reconcile_statement_required(pdf_name, full_text)
                 and result.skip_reason
-                not in ("zero_rows", "incomplete_parse")
+                not in ("zero_rows", "incomplete_parse", "duplicate_statement")
                 and not result.ok
             ):
                 reconcile_fail_count += 1
