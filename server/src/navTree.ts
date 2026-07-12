@@ -327,13 +327,14 @@ export function getNetWorthNavGroupNode(
   return buildNode(nw, itemsByGroup, groupsById, accountMeta, expenseMeta, options);
 }
 
-/** Full sidebar layout: dashboard, main asset branches, flows, projections, rates. */
+/** Full sidebar layout: dashboard, main asset branches, flows, projections, wealth percentile, rates. */
 export function getSidebarNavPayload(): {
   dashboard: NavTreeNodeDto | null;
   net_worth: NavTreeNodeDto | null;
   main: NavTreeNodeDto[];
   flows: NavTreeNodeDto | null;
   projections: NavTreeNodeDto | null;
+  wealth_percentile: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
 } {
   const linkRoots = buildNavForest("link");
@@ -348,6 +349,7 @@ export function getSidebarNavPayload(): {
     main: mainRoots,
     flows: flowRoots.find((n) => n.slug === "flows") ?? flowRoots[0] ?? null,
     projections: linkRoots.find((n) => n.slug === "projections") ?? null,
+    wealth_percentile: linkRoots.find((n) => n.slug === "wealth_percentile") ?? null,
     rates: linkRoots.find((n) => n.slug === "rates") ?? null,
   };
 }

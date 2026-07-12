@@ -748,6 +748,8 @@ export const api = {
     const q = qs.toString();
     return j<import("./types").ProjectionsResponse>(`/api/projections${q ? `?${q}` : ""}`);
   },
+  wealthPercentile: () =>
+    j<import("./types").WealthPercentileResponse>("/api/wealth-percentile"),
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
   convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>

@@ -36,6 +36,7 @@ export const SERVER_NAV_LABEL_I18N_KEYS = [
   "sidebar.inversiones",
   "sidebar.projections",
   "sidebar.rates",
+  "sidebar.wealthPercentile",
   "sidebar.watchlist",
   "watchlist.riskyNorrisProxy",
 ] as const;
@@ -94,6 +95,7 @@ export function buildSidebarNavFromApi(payload: SidebarNavResponse): SidebarNavN
   }
   for (const n of visibleNavChildren(payload.main)) out.push(mapNode(n));
   if (payload.projections) out.push(mapNode(payload.projections));
+  if (payload.wealth_percentile) out.push(mapNode(payload.wealth_percentile));
   if (payload.flows) out.push(mapNode(payload.flows));
   if (payload.rates) out.push(mapNode(payload.rates));
   return out;

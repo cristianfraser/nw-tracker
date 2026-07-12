@@ -9,6 +9,7 @@ const minimalPayload: SidebarNavResponse = {
   net_worth: null,
   flows: null,
   projections: null,
+  wealth_percentile: null,
   rates: null,
   main: [
     {
