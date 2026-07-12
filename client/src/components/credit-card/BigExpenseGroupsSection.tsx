@@ -18,6 +18,8 @@ function BigGroupBlock({
   lines,
   categories,
   bigGroups,
+  excludedFromChart,
+  onToggleExcluded,
 }: {
   slug: string;
   label: string;
@@ -26,6 +28,8 @@ function BigGroupBlock({
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
+  excludedFromChart: boolean;
+  onToggleExcluded: () => void;
 }) {
   const { t } = useTranslation();
   const rename = useRenameCcExpenseBigGroupMutation();
@@ -95,6 +99,10 @@ function BigGroupBlock({
         >
           {t("expenses.creditCard.bigGroups.deleteAction")}
         </button>
+        <label className="radio-pill" style={{ cursor: "pointer" }}>
+          <input type="checkbox" checked={excludedFromChart} onChange={onToggleExcluded} />
+          {t("expenses.creditCard.bigGroups.chartFilterLabel")}
+        </label>
       </div>
       {open ? (
         <CreditCardExpenseLinesTable
@@ -114,11 +122,15 @@ export function BigExpenseGroupsSection({
   categories,
   bigGroups,
   installmentMode,
+  isExcluded,
+  toggleExcluded,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
   installmentMode: CcInstallmentGastosMode;
+  isExcluded: (slug: string) => boolean;
+  toggleExcluded: (slug: string) => void;
 }) {
   const { t } = useTranslation();
   const usage = useMemo(
@@ -148,6 +160,8 @@ export function BigExpenseGroupsSection({
           lines={lines}
           categories={categories}
           bigGroups={bigGroups}
+          excludedFromChart={isExcluded(g.slug)}
+          onToggleExcluded={() => toggleExcluded(g.slug)}
         />
       ))}
     </section>
