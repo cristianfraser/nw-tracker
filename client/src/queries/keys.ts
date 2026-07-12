@@ -63,4 +63,5 @@ export const queryKeys = {
   accountFlows: (id: string, filtersKey: string) => ["accountFlows", id, filtersKey] as const,
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
+  wealthPercentile: () => ["wealth-percentile"] as const,
 };

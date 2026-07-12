@@ -58,6 +58,10 @@ const PANEL_SUBROUTE_ELEMENTS: Record<PanelSubrouteSlug, ReactElement> = {
 
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");
 const ProjectionsPage = lazyPage(() => import("./pages/ProjectionsPage"), "ProjectionsPage");
+const WealthPercentilePage = lazyPage(
+  () => import("./pages/WealthPercentilePage"),
+  "WealthPercentilePage"
+);
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
 const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"), "NotFoundPage");
 
@@ -162,6 +166,7 @@ function AppTree() {
             </Route>
             <Route path="/rates" element={<RatesPage />} />
             <Route path="/projections" element={<ProjectionsPage />} />
+            <Route path="/wealth-percentile" element={<WealthPercentilePage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />

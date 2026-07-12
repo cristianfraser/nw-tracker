@@ -692,6 +692,10 @@
       "en": "Projections",
       "es": "Proyecciones"
     },
+    "wealthPercentile": {
+      "en": "Wealth percentile",
+      "es": "Percentil de riqueza"
+    },
     "rates": {
       "en": "Exchange rates",
       "es": "Tipos de cambio"
@@ -4596,6 +4600,102 @@
       "movements": {
         "en": "Movements",
         "es": "Movimientos"
+      }
+    }
+  },
+  "wealthPercentile": {
+    "title": {
+      "en": "Wealth percentile",
+      "es": "Percentil de riqueza"
+    },
+    "intro": {
+      "en": "Your net worth's position in each country's wealth-per-adult distribution (lognormal model calibrated with the UBS Global Wealth Databooks; CLP converted at the year-end dólar observado).",
+      "es": "Posición de tu patrimonio en la distribución de riqueza por adulto de cada país (modelo lognormal calibrado con los UBS Global Wealth Databooks; conversión CLP al dólar observado de fin de año)."
+    },
+    "chart": {
+      "seriesTotal": {
+        "en": "Total percentile (CL)",
+        "es": "Percentil total (CL)"
+      },
+      "seriesFinancial": {
+        "en": "Financial percentile (CL)",
+        "es": "Percentil financiero (CL)"
+      }
+    },
+    "tables": {
+      "myData": {
+        "en": "My data",
+        "es": "Mis datos"
+      },
+      "countryData": {
+        "en": "Country data",
+        "es": "Datos país"
+      },
+      "clFinancialThresholds": {
+        "en": "Chile financial thresholds (ex real estate)",
+        "es": "Umbrales financieros de Chile (sin inmuebles)"
+      }
+    },
+    "table": {
+      "year": {
+        "en": "Year",
+        "es": "Año"
+      },
+      "netWorth": {
+        "en": "Net worth",
+        "es": "Patrimonio"
+      },
+      "finNetWorth": {
+        "en": "Fin. net worth",
+        "es": "Patr. financiero"
+      },
+      "thresholdLabel": {
+        "en": "Threshold",
+        "es": "Umbral"
+      }
+    },
+    "belowSupport": {
+      "en": "< p10",
+      "es": "< p10"
+    },
+    "markers": {
+      "distributionYear": {
+        "en": "* uses the latest available databook distribution ({{year}})",
+        "es": "* usa la distribución del último databook disponible ({{year}})"
+      },
+      "interpolated": {
+        "en": "† parameters interpolated 2022→2025",
+        "es": "† parámetros interpolados 2022→2025"
+      },
+      "reconstructed": {
+        "en": "‡ own reconstruction (not an official UBS figure)",
+        "es": "‡ reconstrucción propia (no es cifra oficial de UBS)"
+      }
+    },
+    "caveats": {
+      "title": {
+        "en": "Methodology notes",
+        "es": "Notas metodológicas"
+      },
+      "tail": {
+        "en": "The lognormal model underestimates the extreme tail (>p99.5); p99 thresholds are more reliable than any figure about the ultra-rich.",
+        "es": "El modelo lognormal subestima la cola extrema (>p99,5); los umbrales p99 son más confiables que cualquier cifra sobre los ultra ricos."
+      },
+      "reconstruction": {
+        "en": "Chile 2025 is an own reconstruction (BCCh + FX + UBS Gini) validated against the UBS millionaire count, not an official UBS figure.",
+        "es": "Chile 2025 es una reconstrucción propia (BCCh + tipo de cambio + Gini UBS) validada contra el conteo de millonarios de UBS, no una cifra oficial de UBS."
+      },
+      "methodologyBreak": {
+        "en": "Pre- and post-2023 medians are not comparable due to UBS's methodology change; 2023–2024 parameters are interpolated across the break.",
+        "es": "Las medianas pre y post 2023 no son comparables por el cambio de metodología de UBS; los parámetros 2023–2024 están interpolados sobre ese quiebre."
+      },
+      "adults": {
+        "en": "Percentiles are over each country's adult (20+) population; wealth is measured at the individual level (UBS assigns household wealth to adults).",
+        "es": "Percentiles sobre la población adulta (20+) de cada país; la riqueza se mide a nivel individual (UBS asigna la riqueza del hogar a los adultos)."
+      },
+      "fx": {
+        "en": "CLP→USD conversion uses the year-end BCentral dólar observado (UBS end-of-period convention), not the app-wide Yahoo rate.",
+        "es": "La conversión CLP→USD usa el dólar observado del BCentral a fin de año (convención de fin de período de UBS), no la tasa Yahoo del resto de la app."
       }
     }
   },
