@@ -1606,6 +1606,12 @@ export function writeMarketSeries(narrative: DemoNarrative, rng: () => number): 
     `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
      ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
   );
+  // BCentral dólar observado tracks the market rate; readers that require the official
+  // series (wealth percentile year-end conversions) fail fast on an empty table.
+  const insFxBcentral = db.prepare(
+    `INSERT INTO fx_daily_bcentral (date, clp_per_usd) VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
+  );
   const insUf = db.prepare(
     `INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)
      ON CONFLICT(date) DO UPDATE SET clp_per_uf = excluded.clp_per_uf`
@@ -1627,10 +1633,12 @@ export function writeMarketSeries(narrative: DemoNarrative, rng: () => number): 
     const ymd = d.toISOString().slice(0, 10);
     fx = Math.min(1100, Math.max(550, fx * (1 + (rng() * 2 - 1) * 0.012 + 0.00105)));
     insFx.run(ymd, Math.round(fx * 100) / 100);
+    insFxBcentral.run(ymd, Math.round(fx * 100) / 100);
     d = new Date(d.getTime() + 7 * 24 * 3600 * 1000);
   }
   // Always a rate on the final day so "today" conversions never reach past the window.
   insFx.run(endYmd, Math.round(fx * 100) / 100);
+  insFxBcentral.run(endYmd, Math.round(fx * 100) / 100);
 
   // Era-anchored UF (~26.800 in early 2018, ~39.000 by 2026 at 0.35%/month).
   const monthsSince2018 =

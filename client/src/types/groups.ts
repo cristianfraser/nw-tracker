@@ -222,5 +222,6 @@ export interface SidebarNavResponse {
   main: NavTreeNodeDto[];
   flows: NavTreeNodeDto | null;
   projections: NavTreeNodeDto | null;
+  wealth_percentile: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
 }

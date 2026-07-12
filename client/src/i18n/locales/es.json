@@ -209,6 +209,7 @@
     "checking_accounts": "Checking accounts",
     "flows": "Flujos",
     "projections": "Proyecciones",
+    "wealthPercentile": "Percentil de riqueza",
     "rates": "Tipos de cambio",
     "watchlist": "Watchlist"
   },
@@ -1291,6 +1292,39 @@
       "aportes": "Aportes",
       "pl": "P&L mensual",
       "movements": "Movimientos"
+    }
+  },
+  "wealthPercentile": {
+    "title": "Percentil de riqueza",
+    "intro": "Posición de tu patrimonio en la distribución de riqueza por adulto de cada país (modelo lognormal calibrado con los UBS Global Wealth Databooks; conversión CLP al dólar observado de fin de año).",
+    "chart": {
+      "seriesTotal": "Percentil total (CL)",
+      "seriesFinancial": "Percentil financiero (CL)"
+    },
+    "tables": {
+      "myData": "Mis datos",
+      "countryData": "Datos país",
+      "clFinancialThresholds": "Umbrales financieros de Chile (sin inmuebles)"
+    },
+    "table": {
+      "year": "Año",
+      "netWorth": "Patrimonio",
+      "finNetWorth": "Patr. financiero",
+      "thresholdLabel": "Umbral"
+    },
+    "belowSupport": "< p10",
+    "markers": {
+      "distributionYear": "* usa la distribución del último databook disponible ({{year}})",
+      "interpolated": "† parámetros interpolados 2022→2025",
+      "reconstructed": "‡ reconstrucción propia (no es cifra oficial de UBS)"
+    },
+    "caveats": {
+      "title": "Notas metodológicas",
+      "tail": "El modelo lognormal subestima la cola extrema (>p99,5); los umbrales p99 son más confiables que cualquier cifra sobre los ultra ricos.",
+      "reconstruction": "Chile 2025 es una reconstrucción propia (BCCh + tipo de cambio + Gini UBS) validada contra el conteo de millonarios de UBS, no una cifra oficial de UBS.",
+      "methodologyBreak": "Las medianas pre y post 2023 no son comparables por el cambio de metodología de UBS; los parámetros 2023–2024 están interpolados sobre ese quiebre.",
+      "adults": "Percentiles sobre la población adulta (20+) de cada país; la riqueza se mide a nivel individual (UBS asigna la riqueza del hogar a los adultos).",
+      "fx": "La conversión CLP→USD usa el dólar observado del BCentral a fin de año (convención de fin de período de UBS), no la tasa Yahoo del resto de la app."
     }
   },
   "projections": {
