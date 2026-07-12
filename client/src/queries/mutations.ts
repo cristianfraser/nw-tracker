@@ -496,6 +496,7 @@ export function useAssignRealEstatePurchaseMutation() {
       purchase_key: string;
       account_slug: import("../types").ExpenseApartmentSlug;
       kind: string;
+      bill_month?: string;
     }) => api.assignRealEstatePurchase(body),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
@@ -518,6 +519,18 @@ export function useCreateRealEstatePlaceMutation() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.sidebarNav() });
+    },
+  });
+}
+
+export function useUpdateRealEstateBillMonthMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { expense_entry_id: number; bill_month: string }) =>
+      api.updateRealEstateBillMonth(vars.expense_entry_id, { bill_month: vars.bill_month }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+      void queryClient.invalidateQueries({ queryKey: ["realEstateLinkCandidates"] });
     },
   });
 }

@@ -400,6 +400,38 @@ export function updateRealEstateExpenseConsumption(
   );
 }
 
+/**
+ * Re-month a bill: set the billed-period month (stored as month-end `spent_on`).
+ * When the entry has a linked purchase, the new month must keep the purchase
+ * inside the bill+0..+2 window — otherwise the next auto-link pass would drop
+ * the link, so reject instead.
+ */
+export function updateRealEstateExpenseBillMonth(
+  expenseEntryId: number,
+  billMonth: string
+): void {
+  const exp = loadExpectationById(expenseEntryId);
+  if (!exp) throw new Error("expense entry not found");
+  if (!/^\d{4}-\d{2}$/.test(billMonth)) throw new Error("bill_month must be YYYY-MM");
+
+  const link = db
+    .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
+    .get(expenseEntryId) as { purchase_key: string } | undefined;
+  if (link) {
+    const line = gastosLineByPurchaseKey(link.purchase_key, loadGastosLinesForRealEstateMatching());
+    if (line && !purchaseMonthMatchesBillSlot(billMonth, purchaseMonthForLine(line))) {
+      throw new Error(
+        `bill_month ${billMonth} puts the linked purchase (${purchaseMonthForLine(line)}) outside the +0..+2 window`
+      );
+    }
+  }
+
+  db.prepare(`UPDATE expense_entries SET spent_on = ? WHERE id = ?`).run(
+    monthEndUtcYmd(billMonth),
+    expenseEntryId
+  );
+}
+
 export type AssignPurchaseToRealEstateOpts = {
   purchaseKey: string;
   accountSlug: string;

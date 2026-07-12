@@ -91,9 +91,6 @@ export type {
   CcExpenseGastosScope,
   CcInstallmentGastosMode,
 } from "./ccExpensePeriodMonth.js";
-import {
-  enrichFlowLinesWithGastosPeriodMonthOverrides,
-} from "./ccExpenseGastosPeriodMonthOverrides.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
@@ -144,12 +141,6 @@ export type FlowCcExpenseLineRow = {
   /** Calendar month bucket for gastos (YYYY-MM). */
 
   expense_month: string;
-
-  /**
-   * Optional override for gastos chart / month table / modal bucketing only.
-   * purchase_on and purchase_month stay on the real transaction date.
-   */
-  gastos_period_month?: string;
 
   /** Facturación month for CC lines; same as expense_month for checking. */
 
@@ -1045,8 +1036,7 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   syncExpenseDepositLinksFromGastosLines(withNotes);
   const withGroups = enrichFlowLinesWithBigGroups(withNotes);
   const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
-  const withDepositLinks = enrichFlowLinesWithExpenseDepositLinks(withOrigin);
-  return enrichFlowLinesWithGastosPeriodMonthOverrides(withDepositLinks);
+  return enrichFlowLinesWithExpenseDepositLinks(withOrigin);
 }
 
 export function buildFlowsCreditCardExpensesPayload(

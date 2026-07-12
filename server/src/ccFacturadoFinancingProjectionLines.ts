@@ -72,7 +72,6 @@ function makeProjectedLine(
     source: "cc",
     statement_line_id: overrides.statementLineId,
     expense_month: overrides.month,
-    gastos_period_month: undefined,
     billing_month: overrides.month,
     purchase_month: overrides.month,
     occurred_on: occurredOn,
