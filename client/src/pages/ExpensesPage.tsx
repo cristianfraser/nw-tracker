@@ -186,34 +186,6 @@ export function ExpensesPage() {
         </span>
       </div>
 
-      {bigGroupUsage.length > 0 ? (
-        <div
-          className="chart-controls"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "flex-start",
-            gap: "0.35rem 1rem",
-            marginBottom: "1rem",
-          }}
-        >
-          <span className="label-inline">{t("expenses.creditCard.bigGroups.chartFilterLabel")}</span>
-          {bigGroupUsage.map((g) => (
-            <label key={g.slug} className="radio-pill" style={{ cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={isExcluded(g.slug)}
-                onChange={() => toggleExcluded(g.slug)}
-              />
-              {g.label}
-              <span className="mono muted" style={{ marginLeft: "0.35rem", fontSize: "0.85em" }}>
-                {formatFlowMoney(g.total_clp, displayUnit)}
-              </span>
-            </label>
-          ))}
-        </div>
-      ) : null}
-
       <div
         className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
         style={{ marginBottom: chartFilterActive ? "0.35rem" : "1.5rem" }}
@@ -238,6 +210,8 @@ export function ExpensesPage() {
         categories={data.categories}
         bigGroups={data.big_groups ?? []}
         installmentMode={installmentMode}
+        isExcluded={isExcluded}
+        toggleExcluded={toggleExcluded}
       />
 
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
