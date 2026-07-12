@@ -624,6 +624,18 @@ export function seedNavTree(): void {
     });
 
     upsert({
+      slug: "wealth_percentile",
+      label: "Percentil de riqueza",
+      label_i18n_key: "sidebar.wealthPercentile",
+      sort_order: 58,
+      route_path: "/wealth-percentile",
+      active_prefix: "/wealth-percentile",
+      nav_end: false,
+      show_leaf_hyphen: false,
+      sidebar_section: "link",
+    });
+
+    upsert({
       slug: "rates",
       label: "Tipos de cambio",
       label_i18n_key: "sidebar.rates",

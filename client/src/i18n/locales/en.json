@@ -209,6 +209,7 @@
     "checking_accounts": "Checking accounts",
     "flows": "Flows",
     "projections": "Projections",
+    "wealthPercentile": "Wealth percentile",
     "rates": "Exchange rates",
     "watchlist": "Watchlist"
   },
@@ -1291,6 +1292,39 @@
       "aportes": "Contributions",
       "pl": "Monthly P&L",
       "movements": "Movements"
+    }
+  },
+  "wealthPercentile": {
+    "title": "Wealth percentile",
+    "intro": "Your net worth's position in each country's wealth-per-adult distribution (lognormal model calibrated with the UBS Global Wealth Databooks; CLP converted at the year-end dólar observado).",
+    "chart": {
+      "seriesTotal": "Total percentile (CL)",
+      "seriesFinancial": "Financial percentile (CL)"
+    },
+    "tables": {
+      "myData": "My data",
+      "countryData": "Country data",
+      "clFinancialThresholds": "Chile financial thresholds (ex real estate)"
+    },
+    "table": {
+      "year": "Year",
+      "netWorth": "Net worth",
+      "finNetWorth": "Fin. net worth",
+      "thresholdLabel": "Threshold"
+    },
+    "belowSupport": "< p10",
+    "markers": {
+      "distributionYear": "* uses the latest available databook distribution ({{year}})",
+      "interpolated": "† parameters interpolated 2022→2025",
+      "reconstructed": "‡ own reconstruction (not an official UBS figure)"
+    },
+    "caveats": {
+      "title": "Methodology notes",
+      "tail": "The lognormal model underestimates the extreme tail (>p99.5); p99 thresholds are more reliable than any figure about the ultra-rich.",
+      "reconstruction": "Chile 2025 is an own reconstruction (BCCh + FX + UBS Gini) validated against the UBS millionaire count, not an official UBS figure.",
+      "methodologyBreak": "Pre- and post-2023 medians are not comparable due to UBS's methodology change; 2023–2024 parameters are interpolated across the break.",
+      "adults": "Percentiles are over each country's adult (20+) population; wealth is measured at the individual level (UBS assigns household wealth to adults).",
+      "fx": "CLP→USD conversion uses the year-end BCentral dólar observado (UBS end-of-period convention), not the app-wide Yahoo rate."
     }
   },
   "projections": {
