@@ -896,15 +896,52 @@ def reconcile_statement(
             row_count=0,
         )
 
+    # Re-downloaded statement PDFs: cross-statement dedupe assigns every purchase row
+    # to the older canonical PDF, leaving only section-3 lines here. The canonical PDF
+    # reconciles the real rows; comparing this copy's ~empty sums to its totals is noise.
+    nondup = [
+        r
+        for r in rows
+        if str(r.get("is_duplicate_across_statements") or "").lower() != "true"
+    ]
+    def _counts_toward_sections(row: Dict[str, Any]) -> bool:
+        merchant = str(row.get("merchant") or "")
+        if str(row.get("currency") or "clp").lower() == "usd":
+            try:
+                usd = float(str(row.get("amount_usd") or "0").replace(",", "."))
+            except ValueError:
+                usd = 0.0
+            return not _is_usd_section3_line(merchant, usd)
+        return not _is_clp_section3_line(merchant)
+    if len(nondup) < len(rows) and not any(_counts_toward_sections(r) for r in nondup):
+        return ReconcileResult(
+            source_pdf=source_pdf,
+            currency=currency,
+            ok=True,
+            skip_reason="duplicate_statement",
+            row_count=len(active_rows),
+        )
+
+    # BCI caches store the same pdftotext output in both full and layout — appending
+    # would double the summation-based subsection totals (expected = 2× actual).
     text_for_totals = full
-    if layout_text.strip():
+    if layout_text.strip() and layout_text.strip() != full.strip():
         text_for_totals = f"{full}\n{layout_text}"
     pdf_totals = extract_pdf_section_totals(text_for_totals, currency, parse_clp, parse_usd)
     op_pdf = pdf_totals.get("pdf_total_operaciones")
 
     parsed = sum_parsed_sections(rows, parse_clp, parse_usd)
 
-    if op_pdf is not None and op_pdf > 100_000 and len(active_rows) < 20:
+    # Legacy Santander PDFs can extract partially (pypdf drops sections) — those skip
+    # as incomplete_parse. BCI/Líder text is complete pdftotext output, so a low row
+    # count or a big operaciones gap there means DROPPED ROWS: never skip, always check
+    # (a 2-row loss on the Oct 2025 1015 statement sailed through these hatches).
+    if (
+        op_pdf is not None
+        and op_pdf > 100_000
+        and len(active_rows) < 20
+        and not is_bci_lider_statement(full)
+    ):
         return ReconcileResult(
             source_pdf=source_pdf,
             currency=currency,
@@ -914,31 +951,6 @@ def reconcile_statement(
             pdf_totals=pdf_totals,
             parsed_sums=parsed,
         )
-
-    if is_bci_lider_statement(full) and op_pdf is not None:
-        op_parsed = float(parsed.get("parsed_operaciones") or 0)
-        op_expected = float(op_pdf)
-        if len(active_rows) < 12:
-            return ReconcileResult(
-                source_pdf=source_pdf,
-                currency=currency,
-                ok=True,
-                skip_reason="incomplete_parse",
-                row_count=len(active_rows),
-                pdf_totals=pdf_totals,
-                parsed_sums=parsed,
-            )
-        rel_gap = abs(op_parsed - op_expected) / max(op_expected, 1.0)
-        if rel_gap > 0.08:
-            return ReconcileResult(
-                source_pdf=source_pdf,
-                currency=currency,
-                ok=True,
-                skip_reason="incomplete_parse",
-                row_count=len(active_rows),
-                pdf_totals=pdf_totals,
-                parsed_sums=parsed,
-            )
 
     checks: List[ReconcileCheck] = []
     issue_codes: List[str] = []
@@ -991,6 +1003,10 @@ def reconcile_statement(
         mid_period_adj or facturado_double or (monto_pdf is not None and float(monto_pdf) > 0)
     ):
         op_required = not mid_period_adj and not facturado_double
+    if is_bci_lider_statement(full) and op_expected is None:
+        # BCI subtotal lines missing from the extracted text — cannot anchor the
+        # operaciones sum, so fail loud instead of passing with zero checks.
+        add_check("operaciones", None, parsed.get("parsed_operaciones"), required=True)
     if op_required and op_expected is not None and float(op_expected) >= 0:
         add_check(
             "operaciones",
@@ -1081,22 +1097,22 @@ def reconcile_statement(
             if not ok:
                 issue_codes.append("usd_balance")
 
-    if currency == "clp" and monto_pdf is not None and float(monto_pdf) > 0:
-        if is_bci_lider_statement(full):
-            expected_billed = float(parsed.get("parsed_operaciones") or 0) + float(
-                parsed.get("parsed_cargos_abonos") or 0
-            )
-            detail = "operaciones+cargos vs Monto Total Facturado"
-        else:
-            expected_billed = _clp_billed_from_parsed_and_pdf(parsed, pdf_totals)
-            target = float(monto_pdf)
-            delta = expected_billed - target
-            detail = (
-                "operaciones+cargos(+saldo) vs Monto Total Facturado"
-            )
+    # BCI Monto Total Facturado is a balance identity (saldo anterior − pagos + compras
+    # + new-plan first cuotas), not operaciones+cargos — skip until modeled; the
+    # operaciones subsection check above already anchors row completeness.
+    if (
+        currency == "clp"
+        and monto_pdf is not None
+        and float(monto_pdf) > 0
+        and not is_bci_lider_statement(full)
+    ):
+        expected_billed = _clp_billed_from_parsed_and_pdf(parsed, pdf_totals)
+        detail = (
+            "operaciones+cargos(+saldo) vs Monto Total Facturado"
+        )
+        delta = expected_billed - float(monto_pdf)
         monto_tol = _tolerance("clp", float(monto_pdf))
-        if not is_bci_lider_statement(full):
-            monto_tol = max(monto_tol, abs(float(monto_pdf)) * 0.025)
+        monto_tol = max(monto_tol, abs(float(monto_pdf)) * 0.025)
         ok_billed = abs(delta) <= monto_tol
         checks.append(
             ReconcileCheck(
