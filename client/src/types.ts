@@ -11,3 +11,4 @@ export * from "./types/flows";
 export * from "./types/sync";
 export * from "./types/mirrors";
 export * from "./types/projections";
+export * from "./types/wealthPercentile";

@@ -750,3 +750,10 @@ export function useProjections(
     placeholderData: (prev) => prev,
   });
 }
+
+export function useWealthPercentile() {
+  return useQuery({
+    queryKey: queryKeys.wealthPercentile(),
+    queryFn: () => api.wealthPercentile(),
+  });
+}

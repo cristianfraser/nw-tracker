@@ -116,6 +116,18 @@ export function maxFxBcentralDateOnOrBefore(asOfYmd: string): string | null {
   return r?.d ?? null;
 }
 
+/** Latest BCentral dólar observado value row on or before `asOfYmd`. */
+export function fxBcentralRowOnOrBefore(
+  asOfYmd: string
+): { date: string; clp_per_usd: number } | null {
+  const r = db
+    .prepare(
+      `SELECT date, clp_per_usd FROM fx_daily_bcentral WHERE date <= ? ORDER BY date DESC LIMIT 1`
+    )
+    .get(asOfYmd) as { date: string; clp_per_usd: number } | undefined;
+  return r ?? null;
+}
+
 export function maxEurDateOnOrBefore(asOfYmd: string): string | null {
   const r = db
     .prepare(`SELECT MAX(date) AS d FROM eur_daily WHERE date <= ?`)
