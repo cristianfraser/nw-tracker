@@ -2,7 +2,7 @@ import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { paymentStatementMonthYm } from "./ccInstallmentStatementMonth.js";
+import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForLedgerPurchase } from "./ccManualBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -681,10 +681,27 @@ function purchaseDateIso(iso: string): string {
 type NotaCreditRow = {
   amountAbs: number;
   occurredIso: string;
+  /** Statement month (YYYY-MM) the nota posted on — banks backdate `occurredIso`, never this. */
+  statementYm: string | null;
 };
 
+type CancellablePurchase = Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp"> & {
+  /** Statement month (YYYY-MM) of the plan's first billed row (cuota 00/1). */
+  firstBilledYm?: string | null;
+};
+
+/**
+ * A full-principal NOTA DE CREDITO annuls the plan when either:
+ * - its transaction date is strictly after the purchase date (plain refund), or
+ * - it posts on a statement strictly after the plan's first-billed statement (refund
+ *   backdated to the purchase date — e.g. Santander dates the credit at the original
+ *   transaction; the posting statement is the evidence a bank cannot backdate).
+ * A same-date nota on the plan's own first statement never matches: that shape is an
+ * instant reversal of a same-day non-installment twin, which this matcher cannot see
+ * (the gastos-line pairing annuls the twin instead).
+ */
 export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
-  purchases: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[];
+  purchases: readonly CancellablePurchase[];
   notaCredits: readonly NotaCreditRow[];
 }): Set<number> {
   const cancelled = new Set<number>();
@@ -698,17 +715,24 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
 
   for (const purchase of purchases) {
     const pDate = purchaseDateIso(purchase.purchase_date);
+    const firstBilledYm = purchase.firstBilledYm ?? null;
     for (let i = 0; i < credits.length; i++) {
       if (usedCreditIdx.has(i)) continue;
       const c = credits[i]!;
       if (c.amountAbs !== purchase.total_amount_clp) continue;
-      if (c.occurredIso <= pDate) continue;
-      if (
-        calendarMonthsAfterPurchase(pDate, c.occurredIso) >
-        NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE
-      ) {
-        continue;
-      }
+
+      const byTransactionDate =
+        c.occurredIso > pDate &&
+        calendarMonthsAfterPurchase(pDate, c.occurredIso) <=
+          NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE;
+      const byLaterStatement =
+        c.statementYm != null &&
+        firstBilledYm != null &&
+        c.statementYm > firstBilledYm &&
+        calendarMonthsAfterPurchase(pDate, `${c.statementYm}-01`) <=
+          NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE;
+      if (!byTransactionDate && !byLaterStatement) continue;
+
       cancelled.add(purchase.id);
       usedCreditIdx.add(i);
       break;
@@ -719,39 +743,61 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
 
 /** Ledger-backed cancelled purchases (NOTA DE CREDITO match with month window). */
 export function cancelledInstallmentPurchaseIdsForAccount(accountId: number): Set<number> {
-  const purchasesRaw = db
-    .prepare(
-      `SELECT id, purchase_date, total_amount_clp
-       FROM cc_installment_purchases
-       WHERE account_id = ?`
-    )
-    .all(accountId) as Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[];
-  return loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw);
+  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  return loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw, paymentsByPurchase);
+}
+
+/** Statement month (YYYY-MM) of the plan's earliest billed row (cuota 00 preamble counts). */
+function purchaseFirstBilledYm(payList: readonly PaymentRow[]): string | null {
+  let minYm: string | null = null;
+  for (const p of payList) {
+    const ym = paymentBillingMonth(p);
+    if (ym && (minYm == null || ymCompare(ym, minYm) < 0)) minYm = ym;
+  }
+  return minYm;
 }
 
 function loadCancelledInstallmentPurchaseIds(
   accountId: number,
-  purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[]
+  purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[],
+  paymentsByPurchase: ReadonlyMap<number, PaymentRow[]>
 ): Set<number> {
   const notaRows = db
     .prepare(
-      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred
+      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred,
+              s.period_to AS stmt_period_to, s.statement_date AS stmt_statement_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ?
          AND l.installment_flag = 0
          AND l.amount_clp < 0`
     )
-    .all(accountId) as { merchant: string | null; amount_clp: number; occurred: string | null }[];
+    .all(accountId) as {
+    merchant: string | null;
+    amount_clp: number;
+    occurred: string | null;
+    stmt_period_to: string | null;
+    stmt_statement_date: string | null;
+  }[];
   const notaCredits: NotaCreditRow[] = [];
   for (const row of notaRows) {
     if (!isNotaDeCreditoMerchant(row.merchant)) continue;
     const occurredIso = parseDateLikeToIso(row.occurred);
     if (!occurredIso || !/^\d{4}-\d{2}-\d{2}$/.test(occurredIso)) continue;
-    notaCredits.push({ amountAbs: Math.abs(Math.round(row.amount_clp)), occurredIso });
+    notaCredits.push({
+      amountAbs: Math.abs(Math.round(row.amount_clp)),
+      occurredIso,
+      statementYm: statementPeriodMonthFromParsedRow({
+        period_to: row.stmt_period_to,
+        statement_date: row.stmt_statement_date,
+      }),
+    });
   }
   return cancelledInstallmentPurchaseIdsByNotaCredit({
-    purchases: purchasesRaw,
+    purchases: purchasesRaw.map((p) => ({
+      ...p,
+      firstBilledYm: purchaseFirstBilledYm(paymentsByPurchase.get(p.id) ?? []),
+    })),
     notaCredits,
   });
 }
@@ -896,7 +942,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   for (const pays of paymentsByPurchase.values()) db_payment_count += pays.length;
   const nowYm = currentCalendarYm();
   const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
-  const cancelledPurchaseIds = loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw);
+  const cancelledPurchaseIds = loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw, paymentsByPurchase);
 
   const computed: CcInstallmentPurchaseComputed[] = [];
   for (const pr of purchasesRaw) {
