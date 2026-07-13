@@ -1191,7 +1191,7 @@
   },
   "account": {
     "creditCard": {
-      "colBillingMonth": "Mes",
+      "colBillingMonth": "Facturación (pagar hasta)",
       "colFacturado": "Facturado",
       "colFacturadoTotal": "Facturado total",
       "lineMerchant": "Comercio",
@@ -1229,9 +1229,9 @@
       "heuristics": "Heurísticas: {{hints}}",
       "statementNoDate": "sin fecha estado",
       "statementNoSourcePdf": "sin source_pdf",
-      "monthCuotasTitle": "Cuotas del mes",
-      "colMonthCuotaTotal": "Total cuota del mes",
-      "colInstallmentDebt": "Deuda en cuotas",
+      "monthCuotasTitle": "Cuotas por facturación",
+      "colMonthCuotaTotal": "Cuota a pagar",
+      "colDebtAfterPayment": "Deuda tras pago",
       "colMonthBreakdown": "Detalle",
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - {{label}}: {{amount}}",
       "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
