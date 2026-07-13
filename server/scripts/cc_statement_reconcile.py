@@ -1018,6 +1018,20 @@ def reconcile_statement(
     if is_bci_lider_statement(full):
         # PAGO lines in section 3 are not emitted as rows; PDF total still includes them.
         cargos_required = False
+    if (
+        currency == "usd"
+        and cargos_required
+        and float(parsed.get("parsed_cargos_abonos") or 0) == 0
+        and pdf_totals.get("pdf_abono") is not None
+        and abs(
+            float(pdf_totals.get("pdf_total_cargos_abonos") or 0)
+            - float(pdf_totals.get("pdf_abono") or 0)
+        )
+        < 0.01
+    ):
+        # Legacy Santander USD: section 3 is solely the PAGO (never emitted as a
+        # row) — the total equals the header abono, nothing row-level to reconcile.
+        cargos_required = False
     if santander_clp and monto_pdf is not None and float(monto_pdf) > 0:
         cargos_required = False
     if cargos_required:

@@ -300,14 +300,24 @@ export function importCcStatementsMerge(
       const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
       const amountClp = parseInt10(String(row.amount_clp ?? ""));
       const amountUsd = parseUsdAmount(String(row.amount_usd ?? ""));
-      const dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
+      let dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
 
       if (dedupeKeys.length > 0) {
-        const batchHit = dedupeKeys.some((k) => seenDedupeInBatch.has(k));
-        if (batchHit) {
+        // All keys seen (parser key included) = a truly redundant repeat: skip. A
+        // colliding computed key with a fresh parser key is a genuine same-statement
+        // twin (identical merchant+amount+date twice, e.g. a double PAT charge):
+        // occurrence-suffix the colliding key so both twins import and re-imports
+        // stay idempotent.
+        if (dedupeKeys.every((k) => seenDedupeInBatch.has(k))) {
           linesSkippedDuplicate += 1;
           continue;
         }
+        dedupeKeys = dedupeKeys.map((k) => {
+          if (!seenDedupeInBatch.has(k)) return k;
+          let n = 1;
+          while (seenDedupeInBatch.has(`${k}#dup${n}`)) n += 1;
+          return `${k}#dup${n}`;
+        });
         for (const k of dedupeKeys) seenDedupeInBatch.add(k);
         if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys)) {
           const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
@@ -339,7 +349,13 @@ export function importCcStatementsMerge(
           linesSkippedInstallmentOverlap += 1;
           continue;
         }
-        if (oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp)) {
+        // A #dup-keyed row is a parser-affirmed same-statement twin — its sibling in
+        // the DB is exactly what the fuzzy match would find, so skip that check.
+        const isSameStatementTwin = dedupeKeys.some((k) => k.includes("#dup"));
+        if (
+          !isSameStatementTwin &&
+          oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp)
+        ) {
           linesSkippedFuzzyDuplicate += 1;
           continue;
         }

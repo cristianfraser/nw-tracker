@@ -11,17 +11,20 @@ export type CcExpenseLineSplit = {
   note: string | null;
 };
 
-/** Load all excel-gap splits keyed by `${source}:${line_id}`. */
-export function loadExcelGapLineSplits(): Map<string, CcExpenseLineSplit[]> {
+/**
+ * Load ALL line splits keyed by `${source}:${line_id}` — excel-gap reconstruction
+ * splits and manual splits alike (e.g. one bank transfer covering two months'
+ * gastos comunes, note `split:manual|…`). The note records provenance only.
+ */
+export function loadCcExpenseLineSplits(): Map<string, CcExpenseLineSplit[]> {
   const rows = db
     .prepare(
       `SELECT s.source, s.line_id, s.seq, c.slug AS category_slug, s.amount_clp, s.note
        FROM cc_expense_line_splits s
        JOIN cc_expense_categories c ON c.id = s.category_id
-       WHERE s.note LIKE ?
        ORDER BY s.source, s.line_id, s.seq`
     )
-    .all(`${EXCEL_GAP_SPLIT_NOTE_PREFIX}%`) as {
+    .all() as {
     source: string;
     line_id: number;
     seq: number;
