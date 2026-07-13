@@ -10,7 +10,12 @@ import {
 } from "./watchlistCompositeHoldings.js";
 import type { MarketDisplaySeriesRow, WatchlistSource } from "./marketDisplaySeries.js";
 import { watchlistStatsForRow, type WatchlistRowStats } from "./watchlistStats.js";
-import { listCompositeConstituentTickers, RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
+import {
+  listCompositeConstituentTickers,
+  loadCompositeHoldings,
+  loadCompositeMeta,
+  RISKY_NORRIS_PROXY_BUCKET,
+} from "./watchlistComposite.js";
 
 export type { WatchlistSource } from "./marketDisplaySeries.js";
 export type { WatchlistCompositeHoldingRow } from "./watchlistCompositeHoldings.js";
@@ -20,6 +25,22 @@ export type WatchlistRow = MarketDisplaySeriesRow &
     composite_holdings?: WatchlistCompositeHoldingRow[];
   };
 
+const stmtFundUnitHasData = db.prepare(
+  `SELECT 1 FROM fund_unit_daily WHERE series_key = ? LIMIT 1`
+);
+
+/** A fund/composite builtin whose backing data is absent (e.g. the demo DB) is never inserted. */
+function fundSeriesHasData(seriesKey: string): boolean {
+  return stmtFundUnitHasData.get(seriesKey) != null;
+}
+
+function riskyNorrisProxyHasData(): boolean {
+  return (
+    loadCompositeMeta(RISKY_NORRIS_PROXY_BUCKET) != null &&
+    loadCompositeHoldings(RISKY_NORRIS_PROXY_BUCKET).length > 0
+  );
+}
+
 const BUILTIN_INSTRUMENTS: {
   slug: string;
   label: string;
@@ -27,6 +48,8 @@ const BUILTIN_INSTRUMENTS: {
   sort_order: number;
   kind: MarketDisplaySeriesRow["kind"];
   series_key: string | null;
+  /** Insert only when the instrument's backing data exists; omitted = always insert (UF/USD). */
+  hasBackingData?: () => boolean;
 }[] = [
   {
     slug: "uf",
@@ -51,6 +74,7 @@ const BUILTIN_INSTRUMENTS: {
     sort_order: 30,
     kind: "fund_unit",
     series_key: "afp_uno_cuota_a",
+    hasBackingData: () => fundSeriesHasData("afp_uno_cuota_a"),
   },
   {
     slug: "fintual_risky_norris",
@@ -59,6 +83,7 @@ const BUILTIN_INSTRUMENTS: {
     sort_order: 40,
     kind: "fund_unit",
     series_key: "fintual_risky_norris",
+    hasBackingData: () => fundSeriesHasData("fintual_risky_norris"),
   },
   {
     slug: "fintual_risky_norris_proxy",
@@ -67,6 +92,7 @@ const BUILTIN_INSTRUMENTS: {
     sort_order: 45,
     kind: "composite",
     series_key: RISKY_NORRIS_PROXY_BUCKET,
+    hasBackingData: riskyNorrisProxyHasData,
   },
 ];
 
@@ -159,13 +185,11 @@ function consolidateAfpUnoDisplaySeries(): void {
 /** Idempotent sync of builtin + account instruments into market_display_series. */
 export function syncWatchlistFromApp(): void {
   db.transaction(() => {
-    consolidateAfpUnoDisplaySeries();
-
     for (const b of BUILTIN_INSTRUMENTS) {
       const existing = db
         .prepare(`SELECT id FROM market_display_series WHERE slug = ?`)
         .get(b.slug) as { id: number } | undefined;
-      if (existing == null) {
+      if (existing == null && (b.hasBackingData?.() ?? true)) {
         stmtInsert.run(
           b.slug,
           b.label,
@@ -191,7 +215,7 @@ export function syncWatchlistFromApp(): void {
         accountTickerSortOrder(ticker),
         "equity",
         ticker,
-        0,
+        1,
         ticker,
         "account"
       );
@@ -209,6 +233,9 @@ export function syncWatchlistFromApp(): void {
            AND upper(series_key) NOT IN (${placeholders})`
       ).run(...accountTickers);
     }
+
+    // After the UNO-A builtin may have just been inserted, stamp its rates flag / title in the same sync.
+    consolidateAfpUnoDisplaySeries();
   })();
 }
 
