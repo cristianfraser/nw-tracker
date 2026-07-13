@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTooltipPlacement, TOOLTIP_VIEWPORT_INSET_PX } from "./ChartTooltip";
+import { computeTooltipPlacement, horizontalGuideRect, TOOLTIP_VIEWPORT_INSET_PX } from "./ChartTooltip";
 
 const VIEWPORT = { width: 1280, height: 800 };
 
@@ -103,5 +103,37 @@ describe("computeTooltipPlacement", () => {
   it("skips vertical handling without a panel when the tooltip itself is fully off-screen", () => {
     const tip = rect(500, -1300, 200, 140);
     expect(computeTooltipPlacement(tip, FLIP_RISE, null, VIEWPORT)).toEqual({ x: 0, y: 0, placement: "below" });
+  });
+});
+
+describe("horizontalGuideRect", () => {
+  // Plot band: y ∈ [40, 340], x from 60 spanning 900px.
+  const viewBox = { x: 60, y: 40, width: 900, height: 300 };
+
+  it("spans the plot width at the hovered y when inside the plot band", () => {
+    expect(horizontalGuideRect(200, viewBox)).toEqual({ left: 60, top: 200, width: 900 });
+  });
+
+  it("returns a rect on the exact top and bottom edges of the band", () => {
+    expect(horizontalGuideRect(40, viewBox)).toEqual({ left: 60, top: 40, width: 900 });
+    expect(horizontalGuideRect(340, viewBox)).toEqual({ left: 60, top: 340, width: 900 });
+  });
+
+  it("returns null above the plot band", () => {
+    expect(horizontalGuideRect(39, viewBox)).toBeNull();
+  });
+
+  it("returns null below the plot band", () => {
+    expect(horizontalGuideRect(341, viewBox)).toBeNull();
+  });
+
+  it("returns null when y is unknown or non-finite", () => {
+    expect(horizontalGuideRect(undefined, viewBox)).toBeNull();
+    expect(horizontalGuideRect(Number.NaN, viewBox)).toBeNull();
+  });
+
+  it("defaults missing viewBox fields to 0 (band collapses to y === 0)", () => {
+    expect(horizontalGuideRect(0, {})).toEqual({ left: 0, top: 0, width: 0 });
+    expect(horizontalGuideRect(1, {})).toBeNull();
   });
 });

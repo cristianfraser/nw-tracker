@@ -16,10 +16,12 @@ export type AppPieChartProps = ComponentProps<typeof PieChart> & {
  * tooltip. `<Pie>`/`<Cell>`/`<Legend>` stay composable as children.
  */
 export function AppPieChart({ tooltip, margin, children, ...rest }: AppPieChartProps) {
+  // A mouse-y crosshair is meaningless on a pie (centric layout — `coordinate` is a polar conversion).
+  const pieTooltip = tooltip ? { ...tooltip, horizontalGuide: false } : tooltip;
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart margin={margin ?? PIE_CHART_MARGIN} {...rest}>
-        {tooltip ? appTooltipElement(tooltip) : null}
+        {pieTooltip ? appTooltipElement(pieTooltip) : null}
         {children}
       </PieChart>
     </ResponsiveContainer>
