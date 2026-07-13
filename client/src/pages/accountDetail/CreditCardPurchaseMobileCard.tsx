@@ -83,7 +83,11 @@ export function CreditCardPurchaseMobileCard({
             value={formatGroupedDecimal(purchase.annual_interest_pct, 2)}
           />
         ) : null}
-        <TableMobileCardRow label={t("account.creditCard.colPurchaseMonth")} value={purchase.purchase_month ?? "—"} />
+        <TableMobileCardRow label={t("account.creditCard.colPurchaseDate")} value={purchase.purchase_date ?? "—"} />
+        <TableMobileCardRow
+          label={t("account.creditCard.colPurchaseBillingMonth")}
+          value={purchase.purchase_billing_month ?? purchase.purchase_month ?? "—"}
+        />
         {dueColumn !== "last" ? (
           <TableMobileCardRow label={t("account.creditCard.colFirstDue")} value={purchase.first_due_month} />
         ) : null}
@@ -171,9 +175,10 @@ export function purchaseTableColSpan(
   hasLedger: boolean,
   dueColumn: "last" | "none"
 ): number {
-  // Base desktop columns — "last": Compra, Cuotas, Principal, Mes compra, Cuota CLP, Mes último
-  // pago; "none" swaps the último-pago column for Pagadas, Restan, 1.ª cuota, Restante CLP.
-  // Without a ledger the Tasa + Offset CSV/UI columns are added. +1 = the mobile-only cell.
-  const desktop = (dueColumn === "last" ? 6 : 9) + (hasLedger ? 0 : 3);
+  // Base desktop columns — "last": Compra, Cuotas, Principal, Fecha, Mes facturación,
+  // Cuota CLP, Mes último pago; "none" swaps the último-pago column for Pagadas, Restan,
+  // 1.ª cuota, Restante CLP. Without a ledger the Tasa + Offset CSV/UI columns are added.
+  // +1 = the mobile-only cell.
+  const desktop = (dueColumn === "last" ? 7 : 10) + (hasLedger ? 0 : 3);
   return desktop + 1;
 }

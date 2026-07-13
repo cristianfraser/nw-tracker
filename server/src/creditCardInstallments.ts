@@ -90,6 +90,10 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   origin: DataOrigin;
   /** @deprecated Use `origin`. */
   purchase_source?: "pdf" | "manual";
+  /** Purchase date (YYYY-MM-DD; DB ledger only). */
+  purchase_date?: string;
+  /** Facturación month the purchase falls into (billing config applied to the purchase date). */
+  purchase_billing_month?: string | null;
 };
 
 export type CcInstallmentMonthBreakdown = {
@@ -101,9 +105,18 @@ export type CcInstallmentMonthBreakdown = {
 };
 
 export type CcInstallmentMonthRow = {
+  /** Facturación (statement) month — the close that bills these cuotas. */
   month: string;
   total_clp: number;
   breakdown: CcInstallmentMonthBreakdown[];
+};
+
+/** Cuotas-del-mes calendar row: one facturación event with its pay-by date and the plan debt left after it. */
+export type CcInstallmentCalendarMonthRow = CcInstallmentMonthRow & {
+  /** Statement `PAGAR HASTA` when the facturación is closed; derived (~10th of next month) for open/projected. */
+  pay_by_date: string;
+  /** Plan debt remaining after this facturación's cuotas are paid (suffix sum; last row = 0). */
+  debt_after_clp: number;
 };
 
 export type CcInstallmentsTotals = {
@@ -294,7 +307,7 @@ export type CcInstallmentsResponseBase = {
   purchases: CcInstallmentPurchaseComputed[];
   purchases_completed: CcInstallmentPurchaseComputed[];
   hidden_cancelled_purchases?: CcInstallmentPurchaseComputed[];
-  months: CcInstallmentMonthRow[];
+  months: CcInstallmentCalendarMonthRow[];
   totals: CcInstallmentsTotals;
   installment_history_months?: {
     month: string;

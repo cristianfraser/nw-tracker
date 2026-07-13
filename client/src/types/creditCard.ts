@@ -106,6 +106,10 @@ export interface CcInstallmentPurchaseComputed {
   first_due_month: string;
   schedule_offset_months: number;
   purchase_month: string | null;
+  /** Purchase date (YYYY-MM-DD; DB ledger only). */
+  purchase_date?: string;
+  /** Facturación month the purchase falls into (billing config applied to the purchase date). */
+  purchase_billing_month?: string | null;
   note: string | null;
   remaining_installments: number;
   remaining_principal_clp: number;
@@ -135,9 +139,14 @@ export interface CcInstallmentMonthBreakdown {
 }
 
 export interface CcInstallmentMonthRow {
+  /** Facturación (statement) month — the close that bills these cuotas. */
   month: string;
   total_clp: number;
   breakdown: CcInstallmentMonthBreakdown[];
+  /** Statement PAGAR HASTA when closed; derived (~10th of next month) for open/projected. */
+  pay_by_date: string;
+  /** Plan debt remaining after this facturación's cuotas are paid (last row = 0). */
+  debt_after_clp: number;
 }
 
 export interface AccountCcInstallmentsMeta {

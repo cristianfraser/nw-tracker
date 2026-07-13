@@ -88,8 +88,9 @@ describe("applyWebPasteInstallmentFirstDueNudges", () => {
     });
     trackPurchase(id);
 
-    // Before the nudge, the manual heuristic guesses first cuota bills the NEXT cycle.
-    expect(computedFirstDueMonth(accountId, id)).toBe(addCalendarMonths(openBm, 1));
+    // The manual heuristic already guesses the purchase's own cycle (same-cycle default);
+    // the nudge below confirms it with pasted evidence and persists it write-once.
+    expect(computedFirstDueMonth(accountId, id)).toBe(openBm);
 
     // Paste re-lists the plan's per-cuota charge (90.000 / 6 = 15.000) with the full merchant name.
     const lines = [
