@@ -103,6 +103,22 @@ describe("resolveEquityQuote NYSE session pair", () => {
     expect(q!.previous_close).toBe(500);
     expect(q!.delta_pct).toBeCloseTo(2, 5);
   });
+
+  it("falls back to the last available prior bar when the exact prior session has no bar", () => {
+    // Sparse (e.g. demo weekly) bars: no bar on the calendar prior session (Wed 2026-05-13),
+    // so the day change must use the previous available session (Thu 2026-05-07), not go null.
+    upsertEod(TEST_TICKER, "2026-05-14", 520);
+    upsertEod(TEST_TICKER, "2026-05-07", 500);
+    const thuAfterClose = new Date("2026-05-14T17:00:00-04:00");
+    const q = resolveEquityQuote(TEST_TICKER, "2026-05-14", {
+      preferLive: false,
+      now: thuAfterClose,
+    });
+    expect(q!.trade_date).toBe("2026-05-14");
+    expect(q!.price).toBe(520);
+    expect(q!.previous_close).toBe(500);
+    expect(q!.delta_pct).toBeCloseTo(4, 5);
+  });
 });
 
 describe("resolveEquityQuote crypto session pair", () => {

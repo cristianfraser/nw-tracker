@@ -114,6 +114,12 @@ export type DemoNarrative = {
   firstMonth: DemoMonth;
   /** Always the current calendar month — the demo/test data never goes stale. */
   lastMonth: DemoMonth;
+  /**
+   * Extend the market price series (equity_daily / fx_daily / uf_daily) this many years before
+   * `lastMonth`, independent of the portfolio window, so the watchlist 10Y column has an anchor.
+   * Unset (lean test preset) = no extension; the series starts at `firstMonth`.
+   */
+  marketHistoryYears?: number;
   chapters: DemoChapter[];
   events: DemoEvent[];
   cards: DemoCard[];
@@ -183,6 +189,7 @@ function demoNarrative(): DemoNarrative {
     seed: 20260701,
     firstMonth: "2018-03",
     lastMonth: currentMonth(),
+    marketHistoryYears: 11,
     chapters: [
       {
         id: "first_job_at_parents",
