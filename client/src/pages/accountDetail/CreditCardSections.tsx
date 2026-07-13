@@ -56,21 +56,6 @@ function CreditCardInstallmentsSection({
   const manualBusy = deletePurchase.isPending;
   const purchasesCompleted = ledger.purchases_completed ?? [];
 
-  const installmentDebtClpForMonth = useMemo(() => {
-    const fromBilling = new Map<string, number>();
-    for (const row of ledger.billing_detail_by_month ?? []) {
-      fromBilling.set(row.billing_month, row.cupo_en_cuotas_clp);
-    }
-    const fromPlan = new Map<string, number>();
-    for (const row of ledger.installment_history_months ?? []) {
-      if (row.ledger_remaining_installments_clp != null) {
-        fromPlan.set(row.month, row.ledger_remaining_installments_clp);
-      }
-    }
-    return (month: string): number | null =>
-      fromBilling.get(month) ?? fromPlan.get(month) ?? null;
-  }, [ledger.billing_detail_by_month, ledger.installment_history_months]);
-
   const purchasesActiveSorted = useMemo(() => {
     const list = [...ledger.purchases];
     list.sort((a, b) => {
@@ -409,7 +394,7 @@ function CreditCardInstallmentsSection({
                 <tr>
                   <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
                   <th className="desktop-only">{t("account.creditCard.colMonthCuotaTotal")}</th>
-                  <th className="desktop-only">{t("account.creditCard.colInstallmentDebt")}</th>
+                  <th className="desktop-only">{t("account.creditCard.colDebtAfterPayment")}</th>
                   <th className="desktop-only">{t("account.creditCard.colMonthBreakdown")}</th>
                   <th className="mobile-only" aria-hidden="true" />
                 </tr>
@@ -424,33 +409,27 @@ function CreditCardInstallmentsSection({
               </tr>
             ) : (
               ledger.months.map((row) => {
-                const installmentDebtClp = installmentDebtClpForMonth(row.month);
                 return (
                   <tr key={row.month}>
                     <td className="mono desktop-only">
-                      {formatYmEs(row.month)}
+                      {formatYmEs(row.month)}{" "}
+                      <span className="muted">({row.pay_by_date})</span>
                     </td>
                     <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
-                    <td className="mono muted desktop-only">
-                      {installmentDebtClp != null ? formatClp(installmentDebtClp) : "—"}
-                    </td>
+                    <td className="mono muted desktop-only">{formatClp(row.debt_after_clp)}</td>
                     <td className="desktop-only">
                       {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
                     </td>
                     <td className="mobile-only">
-                      <TableMobileCard title={formatYmEs(row.month)}>
+                      <TableMobileCard title={`${formatYmEs(row.month)} (${row.pay_by_date})`}>
                         <TableMobileCardSection>
                           <TableMobileCardRow
                             label={t("account.creditCard.colMonthCuotaTotal")}
                             value={formatClp(row.total_clp)}
                           />
                           <TableMobileCardRow
-                            label={t("account.creditCard.colInstallmentDebt")}
-                            value={
-                              <span className="muted">
-                                {installmentDebtClp != null ? formatClp(installmentDebtClp) : "—"}
-                              </span>
-                            }
+                            label={t("account.creditCard.colDebtAfterPayment")}
+                            value={<span className="muted">{formatClp(row.debt_after_clp)}</span>}
                           />
                         </TableMobileCardSection>
                         {row.breakdown.length > 0 ? (

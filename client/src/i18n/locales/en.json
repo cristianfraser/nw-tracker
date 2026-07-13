@@ -1191,7 +1191,7 @@
   },
   "account": {
     "creditCard": {
-      "colBillingMonth": "Month",
+      "colBillingMonth": "Billing cycle (pay by)",
       "colFacturado": "Billed",
       "colFacturadoTotal": "Total billed",
       "lineMerchant": "Merchant",
@@ -1229,9 +1229,9 @@
       "heuristics": "Heuristics: {{hints}}",
       "statementNoDate": "no statement date",
       "statementNoSourcePdf": "no source_pdf",
-      "monthCuotasTitle": "Month's installments",
-      "colMonthCuotaTotal": "Month installment total",
-      "colInstallmentDebt": "Installment debt",
+      "monthCuotasTitle": "Installments by billing cycle",
+      "colMonthCuotaTotal": "Installment due",
+      "colDebtAfterPayment": "Debt after payment",
       "colMonthBreakdown": "Detail",
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - {{label}}: {{amount}}",
       "monthCuotasEmpty": "No pending installments on the calendar.",
