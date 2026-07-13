@@ -205,6 +205,20 @@ function monthsBetween(a: DemoMonth, b: DemoMonth): number {
   );
 }
 
+/**
+ * First month of the market price series (equity_daily / fx_daily / uf_daily). When the narrative
+ * sets `marketHistoryYears`, the series reaches that many years before `lastMonth` — so the
+ * watchlist 10Y anchor has data — without moving the portfolio window; else it starts at `firstMonth`.
+ */
+function marketHistoryFirstMonth(narrative: DemoNarrative): DemoMonth {
+  const years = narrative.marketHistoryYears;
+  if (years == null) return narrative.firstMonth;
+  const [ly, lm] = narrative.lastMonth.split("-").map(Number) as [number, number];
+  const idx = ly * 12 + (lm - 1) - Math.round(years * 12);
+  const candidate: DemoMonth = `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
+  return candidate < narrative.firstMonth ? candidate : narrative.firstMonth;
+}
+
 function prevMonthOf(month: DemoMonth): DemoMonth {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
@@ -379,12 +393,19 @@ export function buildDemoEquitySeries(
   for (const p of narrative.stocks?.positions ?? []) tickers.add(p.ticker);
   for (const p of narrative.stocks?.longTermPositions ?? []) tickers.add(p.ticker);
   if (narrative.withCrypto) tickers.add("BTC-USD");
-  const start = dayInMonth(narrative.firstMonth, 1);
+  const portfolioStart = dayInMonth(narrative.firstMonth, 1);
+  const marketStart = dayInMonth(marketHistoryFirstMonth(narrative), 1);
   const end = monthEndUtcYmd(narrative.lastMonth);
   const out: DemoEquitySeries = new Map();
   for (const ticker of tickers) {
     const rows: [string, number][] = [];
-    for (let d = start; d <= end; d = ymdAddDays(d, 7)) {
+    // Pre-portfolio history uses anchor prices only (no shared-rng noise), so the portfolio-era
+    // rows below keep their exact original values and rng draws — these old rows only feed the
+    // watchlist 10Y anchor, never portfolio unit math.
+    for (let d = marketStart; d < portfolioStart; d = ymdAddDays(d, 7)) {
+      rows.push([d, Math.round(anchorPriceUsd(ticker, d) * 100) / 100]);
+    }
+    for (let d = portfolioStart; d <= end; d = ymdAddDays(d, 7)) {
       const noisy = anchorPriceUsd(ticker, d) * (1 + (rng() * 2 - 1) * 0.015);
       rows.push([d, Math.round(noisy * 100) / 100]);
     }
@@ -1622,6 +1643,26 @@ export function writeMarketSeries(narrative: DemoNarrative, rng: () => number): 
   const startYmd = ymdAddDays(dayInMonth(narrative.firstMonth, 1), -40);
   const endYmd = monthEndUtcYmd(narrative.lastMonth);
 
+  const fxLevelForYmd = (ymd: string): number => {
+    const yrs = (new Date(`${ymd}T00:00:00Z`).getTime() - Date.UTC(2018, 0, 1)) / (365.25 * 24 * 3600 * 1000);
+    return Math.min(1100, Math.max(550, 610 * Math.pow(1.055, yrs)));
+  };
+
+  // Pre-narrative fx/bcentral history (deterministic anchor curve, no rng) so the random walk
+  // below — and every portfolio-era conversion it feeds — stays byte-identical. Only lights the
+  // watchlist 10Y anchor for USD. `< startYmd` keeps it disjoint from the walk's first bar.
+  {
+    let ed = new Date(`${dayInMonth(marketHistoryFirstMonth(narrative), 1)}T00:00:00Z`);
+    const walkStart = new Date(`${startYmd}T00:00:00Z`);
+    while (ed < walkStart) {
+      const ymd = ed.toISOString().slice(0, 10);
+      const level = Math.round(fxLevelForYmd(ymd) * 100) / 100;
+      insFx.run(ymd, level);
+      insFxBcentral.run(ymd, level);
+      ed = new Date(ed.getTime() + 7 * 24 * 3600 * 1000);
+    }
+  }
+
   // Era-anchored level (~610 CLP/USD in 2018 drifting ~5.5%/yr to ~950 by 2026) so a
   // preset starting mid-history still opens at a realistic rate.
   const yearsSince2018 =
@@ -1640,11 +1681,13 @@ export function writeMarketSeries(narrative: DemoNarrative, rng: () => number): 
   insFx.run(endYmd, Math.round(fx * 100) / 100);
   insFxBcentral.run(endYmd, Math.round(fx * 100) / 100);
 
-  // Era-anchored UF (~26.800 in early 2018, ~39.000 by 2026 at 0.35%/month).
+  // Era-anchored UF (~26.800 in early 2018, ~39.000 by 2026 at 0.35%/month). Anchored to the 2018
+  // calendar, so extending the start earlier (negative exponent) leaves firstMonth+ values unchanged.
+  const ufFirstMonth = marketHistoryFirstMonth(narrative);
   const monthsSince2018 =
-    (Number(narrative.firstMonth.slice(0, 4)) - 2018) * 12 + (Number(narrative.firstMonth.slice(5, 7)) - 1);
-  let uf = 26_800 * Math.pow(1.0035, Math.max(0, monthsSince2018));
-  let m = narrative.firstMonth;
+    (Number(ufFirstMonth.slice(0, 4)) - 2018) * 12 + (Number(ufFirstMonth.slice(5, 7)) - 1);
+  let uf = 26_800 * Math.pow(1.0035, monthsSince2018);
+  let m = ufFirstMonth;
   for (;;) {
     insUf.run(dayInMonth(m, 1), Math.round(uf * 100) / 100);
     uf *= 1.0035;
