@@ -1302,18 +1302,35 @@
     "intro": "Posición de tu patrimonio en la distribución de riqueza por adulto de cada país (modelo lognormal calibrado con los UBS Global Wealth Databooks; conversión CLP al dólar observado de fin de año).",
     "chart": {
       "seriesTotal": "Percentil total (CL)",
-      "seriesFinancial": "Percentil financiero (CL)"
+      "seriesFinancial": "Percentil financiero (CL)",
+      "seriesBenchmark": "Percentil ({{country}})",
+      "scaleLabel": "Escala",
+      "scaleLinear": "Lineal",
+      "scaleLog": "Log (top %)"
+    },
+    "settings": {
+      "title": "Países de referencia"
+    },
+    "countries": {
+      "US": "Estados Unidos",
+      "ES": "España",
+      "CH": "Suiza",
+      "UK": "Reino Unido",
+      "AU": "Australia",
+      "DE": "Alemania",
+      "JP": "Japón",
+      "MX": "México",
+      "BR": "Brasil",
+      "CN": "China continental"
     },
     "tables": {
       "myData": "Mis datos",
-      "countryData": "Datos país",
-      "clFinancialThresholds": "Umbrales financieros de Chile (sin inmuebles)"
+      "countryData": "Datos país"
     },
     "table": {
       "year": "Año",
       "netWorth": "Patrimonio",
-      "finNetWorth": "Patr. financiero",
-      "thresholdLabel": "Umbral"
+      "finNetWorth": "Patr. financiero"
     },
     "belowSupport": "< p10",
     "markers": {
@@ -1325,6 +1342,7 @@
       "title": "Notas metodológicas",
       "tail": "El modelo lognormal subestima la cola extrema (>p99,5); los umbrales p99 son más confiables que cualquier cifra sobre los ultra ricos.",
       "reconstruction": "Chile 2025 es una reconstrucción propia (BCCh + tipo de cambio + Gini UBS) validada contra el conteo de millonarios de UBS, no una cifra oficial de UBS.",
+      "benchmarkReconstruction": "México, Brasil y China continental 2025 son reconstrucciones propias a partir del Gini + conteo de millonarios del UBS GWR 2026 (sus medias/medianas quedan fuera de las tablas top-30 publicadas).",
       "methodologyBreak": "Las medianas pre y post 2023 no son comparables por el cambio de metodología de UBS; los parámetros 2023–2024 están interpolados sobre ese quiebre.",
       "adults": "Percentiles sobre la población adulta (20+) de cada país; la riqueza se mide a nivel individual (UBS asigna la riqueza del hogar a los adultos).",
       "fx": "La conversión CLP→USD usa el dólar observado del BCentral a fin de año (convención de fin de período de UBS), no la tasa Yahoo del resto de la app."

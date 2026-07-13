@@ -4632,6 +4632,70 @@
       "seriesFinancial": {
         "en": "Financial percentile (CL)",
         "es": "Percentil financiero (CL)"
+      },
+      "seriesBenchmark": {
+        "en": "Percentile ({{country}})",
+        "es": "Percentil ({{country}})"
+      },
+      "scaleLabel": {
+        "en": "Scale",
+        "es": "Escala"
+      },
+      "scaleLinear": {
+        "en": "Linear",
+        "es": "Lineal"
+      },
+      "scaleLog": {
+        "en": "Log (top %)",
+        "es": "Log (top %)"
+      }
+    },
+    "settings": {
+      "title": {
+        "en": "Benchmark countries",
+        "es": "Países de referencia"
+      }
+    },
+    "countries": {
+      "US": {
+        "en": "United States",
+        "es": "Estados Unidos"
+      },
+      "ES": {
+        "en": "Spain",
+        "es": "España"
+      },
+      "CH": {
+        "en": "Switzerland",
+        "es": "Suiza"
+      },
+      "UK": {
+        "en": "United Kingdom",
+        "es": "Reino Unido"
+      },
+      "AU": {
+        "en": "Australia",
+        "es": "Australia"
+      },
+      "DE": {
+        "en": "Germany",
+        "es": "Alemania"
+      },
+      "JP": {
+        "en": "Japan",
+        "es": "Japón"
+      },
+      "MX": {
+        "en": "Mexico",
+        "es": "México"
+      },
+      "BR": {
+        "en": "Brazil",
+        "es": "Brasil"
+      },
+      "CN": {
+        "en": "Mainland China",
+        "es": "China continental"
       }
     },
     "tables": {
@@ -4642,10 +4706,6 @@
       "countryData": {
         "en": "Country data",
         "es": "Datos país"
-      },
-      "clFinancialThresholds": {
-        "en": "Chile financial thresholds (ex real estate)",
-        "es": "Umbrales financieros de Chile (sin inmuebles)"
       }
     },
     "table": {
@@ -4660,10 +4720,6 @@
       "finNetWorth": {
         "en": "Fin. net worth",
         "es": "Patr. financiero"
-      },
-      "thresholdLabel": {
-        "en": "Threshold",
-        "es": "Umbral"
       }
     },
     "belowSupport": {
@@ -4696,6 +4752,10 @@
       "reconstruction": {
         "en": "Chile 2025 is an own reconstruction (BCCh + FX + UBS Gini) validated against the UBS millionaire count, not an official UBS figure.",
         "es": "Chile 2025 es una reconstrucción propia (BCCh + tipo de cambio + Gini UBS) validada contra el conteo de millonarios de UBS, no una cifra oficial de UBS."
+      },
+      "benchmarkReconstruction": {
+        "en": "Mexico, Brazil and Mainland China 2025 are own reconstructions from the UBS GWR 2026 Gini + millionaire counts (their means/medians fall outside the published top-30 tables).",
+        "es": "México, Brasil y China continental 2025 son reconstrucciones propias a partir del Gini + conteo de millonarios del UBS GWR 2026 (sus medias/medianas quedan fuera de las tablas top-30 publicadas)."
       },
       "methodologyBreak": {
         "en": "Pre- and post-2023 medians are not comparable due to UBS's methodology change; 2023–2024 parameters are interpolated across the break.",
