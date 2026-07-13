@@ -15,7 +15,7 @@ import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
   ccInstallmentsDbApiPayload,
   ccLedgerMonthEndIso,
-  cupoEnCuotasClpForCalendarMonth,
+  installmentRemainingClpByCalendarMonth,
   ledgerFacturadoClpForBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
 import { latestCreditCardBillingBalanceTotalClp } from "./ccCreditCardValuations.js";
@@ -58,7 +58,7 @@ describe("billingDetailBalanceClp", () => {
 });
 
 describe("projected future billing months", () => {
-  it("months after the open facturación carry no facturado and saldo = remaining cuotas", () => {
+  it("months after the open facturación carry no facturado and saldo = owed at month-end (pay frame)", () => {
     ensureVitestCreditCardFixtures();
     const accountId = getVitestSantanderCcMasterAccountId();
     if (!accountId) return;
@@ -85,15 +85,17 @@ describe("projected future billing months", () => {
       expect(openRow!.projected).toBeUndefined();
 
       // Plan extends past the open month → projected rows exist. None of them mirrors the
-      // open row: facturado is null (nothing billed yet) and saldo is the remaining-cuotas
-      // projection ("owed on that date" once each cycle's bill is paid on time).
+      // open row: facturado is null (nothing billed yet) and saldo is pay-frame owed at that
+      // month-end — the remainder after the PREVIOUS month's close (a cycle's cuotas leave
+      // the debt on their pay-by, ~10th of the next month, not at the close billing them).
       const projectedRows = det.filter((d) => ymCompare(d.billing_month, openBm!) > 0);
       expect(projectedRows.length).toBeGreaterThan(0);
+      const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
       for (const row of projectedRows) {
         expect(row.projected).toBe(true);
         expect(row.total_facturado_clp).toBeNull();
         expect(row.balance_total_clp).toBe(
-          cupoEnCuotasClpForCalendarMonth(accountId, row.billing_month)
+          remainingByMonth.get(addCalendarMonths(row.billing_month, -1)) ?? 0
         );
       }
 

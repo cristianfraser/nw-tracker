@@ -2356,8 +2356,8 @@
         "es": "Historial"
       },
       "historialHint": {
-        "en": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = the plan's remaining installments, assuming payments on time.",
-        "es": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas restantes del plan, asumiendo pagos al día."
+        "en": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
+        "es": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
       },
       "historialCurrentMonth": {
         "en": "Current month",
@@ -4219,6 +4219,10 @@
         "en": "Month",
         "es": "Mes"
       },
+      "colFacturacionPayBy": {
+        "en": "Billing cycle (pay by)",
+        "es": "Facturación (pagar hasta)"
+      },
       "colFacturado": {
         "en": "Billed",
         "es": "Facturado"
@@ -4311,9 +4315,13 @@
         "en": "Annual rate %",
         "es": "Tasa % anual"
       },
-      "colPurchaseMonth": {
-        "en": "Purchase month",
-        "es": "Mes compra"
+      "colPurchaseDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colPurchaseBillingMonth": {
+        "en": "Billing month",
+        "es": "Mes facturación"
       },
       "colFirstDue": {
         "en": "1st installment (MONTH)",
@@ -4368,16 +4376,16 @@
         "es": "sin source_pdf"
       },
       "monthCuotasTitle": {
-        "en": "Month's installments",
-        "es": "Cuotas del mes"
+        "en": "Installments by billing cycle",
+        "es": "Cuotas por facturación"
       },
       "colMonthCuotaTotal": {
-        "en": "Month installment total",
-        "es": "Total cuota del mes"
+        "en": "Installment due",
+        "es": "Cuota a pagar"
       },
-      "colInstallmentDebt": {
-        "en": "Installment debt",
-        "es": "Deuda en cuotas"
+      "colDebtAfterPayment": {
+        "en": "Debt after payment",
+        "es": "Deuda tras pago"
       },
       "colMonthBreakdown": {
         "en": "Detail",

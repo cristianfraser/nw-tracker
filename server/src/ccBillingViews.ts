@@ -253,18 +253,13 @@ export function billingDetailBalanceClp(
 
 function cuotaAPagarNextMesClp(
   billingMonth: string,
-  ledgerMonths: CcInstallmentMonthRow[],
-  slots: Map<string, CcStatementSlotByCurrency>
+  ledgerMonths: CcInstallmentMonthRow[]
 ): number {
-  const slot = slots.get(billingMonth);
-  const primary = slot?.clp ?? slot?.usd;
-  if (slot && primary) {
-    const { pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
-    const cuota = cuotaForPayByMonth(payByIso, ledgerMonths);
-    if (cuota != null) return cuota;
-  }
-  const payYm = addCalendarMonths(billingMonth, 1);
-  const row = ledgerMonths.find((m) => m.month === payYm);
+  // Plan months are statement/facturación months: the cuotas billed at this month's close
+  // (payable ~10th of the next month) live at the billing month itself. The old +1 /
+  // pay-by-month lookup read the NEXT cycle's cuotas — nearly equal for constant-cuota
+  // plans, wrong at every plan start/end.
+  const row = ledgerMonths.find((m) => m.month === billingMonth);
   return row && row.total_clp > 0 ? row.total_clp : 0;
 }
 
@@ -325,7 +320,7 @@ function buildBillingDetailByMonthInner(
     let totalFacturado = fromStatement ?? fromBalance;
 
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
-    const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths, slots);
+    const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     if (!hasPdfClose && !inactive) {
       // Open month: facturado is what is billed this cycle (matches Facturaciones), not the
       // prior balance rolled forward.
@@ -412,20 +407,13 @@ function buildBillingDetailByMonthInner(
   return withProjected;
 }
 
-function planMonthHasProjectedInstallmentData(
-  ym: string,
-  payByMonth: Map<string, number>,
-  remainingByMonth: Map<string, number>
-): boolean {
-  const cupo = remainingByMonth.get(ym) ?? 0;
-  const pay = payByMonth.get(ym) ?? 0;
-  return pay > 0 || cupo > 0;
-}
-
 /**
  * Future billing months: plan cupo + cuota schedule. Months after the open facturación have
- * no facturado (null — nothing billed yet) and saldo = remaining installment principal: the
- * projected "owed on that date" once each cycle's bill is paid on time.
+ * no facturado (null — nothing billed yet) and saldo = cuotas still OWED at that month-end
+ * (pay frame): billing at the close (~20th) is a reclassification, the money leaves on the
+ * pay-by (~10th of the next month), so month-end owed = the remainder after the PREVIOUS
+ * month's close. The series steps down one facturación per month and lands on a trailing
+ * zero month once the final cuota's pay-by has passed.
  */
 function appendProjectedBillingDetailRows(
   accountId: number,
@@ -442,11 +430,25 @@ function appendProjectedBillingDetailRows(
   const payByMonth = creditCardInstallmentPaymentsByBillingMonth(accountId);
   const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
 
-  const candidateMonths = new Set<string>([...payByMonth.keys(), ...remainingByMonth.keys()]);
+  /** Cuotas still owed at month-end `ym`: the plan remainder after (ym − 1)'s close. */
+  const owedAtMonthEnd = (ym: string): number =>
+    remainingByMonth.get(addCalendarMonths(ym, -1)) ?? 0;
+  // A month is worth projecting while a cuota bills at its close, something is still owed at
+  // its month-end, or the previous month-end owed something (the trailing month landing at 0).
+  const monthHasProjectedData = (ym: string): boolean =>
+    (payByMonth.get(ym) ?? 0) > 0 ||
+    owedAtMonthEnd(ym) > 0 ||
+    owedAtMonthEnd(addCalendarMonths(ym, -1)) > 0;
+
+  const candidateMonths = new Set<string>();
+  for (const ym of [...payByMonth.keys(), ...remainingByMonth.keys()]) {
+    candidateMonths.add(ym);
+    candidateMonths.add(addCalendarMonths(ym, 1));
+  }
   let maxProjectedYm: string | null = null;
   for (const ym of candidateMonths) {
     if (ymCompare(ym, lastDetalleYm) <= 0) continue;
-    if (!planMonthHasProjectedInstallmentData(ym, payByMonth, remainingByMonth)) continue;
+    if (!monthHasProjectedData(ym)) continue;
     if (maxProjectedYm == null || ymCompare(ym, maxProjectedYm) > 0) {
       maxProjectedYm = ym;
     }
@@ -458,10 +460,10 @@ function appendProjectedBillingDetailRows(
     if (ymCompare(ym, lastDetalleYm) <= 0) continue;
     if (ymCompare(ym, maxProjectedYm) > 0) continue;
     if (existingMonths.has(ym)) continue;
-    if (!planMonthHasProjectedInstallmentData(ym, payByMonth, remainingByMonth)) continue;
+    if (!monthHasProjectedData(ym)) continue;
 
-    const cupo = cupoEnCuotasClpForCalendarMonth(accountId, ym);
-    const cuotaNext = cuotaAPagarNextMesClp(ym, ledgerMonths, slots);
+    const cupo = owedAtMonthEnd(ym);
+    const cuotaNext = cuotaAPagarNextMesClp(ym, ledgerMonths);
     projected.push({
       billing_month: ym,
       as_of_date: `${ym}-01`,
@@ -514,18 +516,6 @@ function resolveFacturacionPayBy(
   return { pay_by: isoToDdMmYyyy(payByIso), pay_by_iso: payByIso };
 }
 
-function cuotaForPayByMonth(
-  payByIso: string | null,
-  ledgerMonths: CcInstallmentMonthRow[]
-): number | null {
-  if (!payByIso) return null;
-  const ym = billingMonthForStatementDate(payByIso);
-  if (!ym) return null;
-  const row = ledgerMonths.find((m) => m.month === ym);
-  if (!row || row.total_clp <= 0) return null;
-  return row.total_clp;
-}
-
 export function buildFacturaciones(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
@@ -575,7 +565,8 @@ function buildFacturacionesInner(
       facturadoUsd != null
         ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
-    const cuotaAPagar = cuotaForPayByMonth(payByIso, ledgerMonths);
+    const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
+    const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
     let facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
     const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
     if (!hasPdfClose) {
