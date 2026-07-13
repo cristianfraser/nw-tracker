@@ -90,6 +90,10 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   origin: DataOrigin;
   /** @deprecated Use `origin`. */
   purchase_source?: "pdf" | "manual";
+  /** Purchase date (YYYY-MM-DD; DB ledger only). */
+  purchase_date?: string;
+  /** Facturación month the purchase falls into (billing config applied to the purchase date). */
+  purchase_billing_month?: string | null;
 };
 
 export type CcInstallmentMonthBreakdown = {
