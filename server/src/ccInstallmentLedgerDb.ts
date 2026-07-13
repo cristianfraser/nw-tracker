@@ -2,8 +2,8 @@ import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
-import { isCcStatementPdfSource } from "./importSyncDocumentMonth.js";
+import { paymentStatementMonthYm } from "./ccInstallmentStatementMonth.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForLedgerPurchase } from "./ccManualBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
@@ -96,50 +96,35 @@ function paymentBillingMonth(p: PaymentRow): string | null {
   return paymentStatementMonthYm(p);
 }
 
-/** Latest `period_to` month (YYYY-MM) among imported PDF cartolas (excludes web-paste / synthetic buckets). */
-export function latestUploadedStatementMonthYm(accountId: number): string | null {
-  const rows = db
-    .prepare(
-      `SELECT source_pdf, period_to, statement_date FROM cc_statements
-       WHERE account_id = ?`
-    )
-    .all(accountId) as { source_pdf: string | null; period_to: string | null; statement_date: string | null }[];
-  let maxYm: string | null = null;
-  for (const row of rows) {
-    if (!isCcStatementPdfSource(row.source_pdf)) continue;
-    const ym = statementPeriodMonthFromParsedRow(row);
-    if (ym && (maxYm == null || ymCompare(ym, maxYm) > 0)) maxYm = ym;
-  }
-  return maxYm;
-}
-
-/** Statement month of the highest-index installment payment row (final cuota when indexed). */
-export function lastInstallmentPaymentStatementMonthYm(payList: PaymentRow[]): string | null {
+/** Pay-by date (YYYY-MM-DD) of the highest-index installment payment row (final cuota when indexed). */
+export function lastInstallmentPaymentPayByYmd(payList: PaymentRow[]): string | null {
   let bestCuota = 0;
-  let bestYm: string | null = null;
+  let bestYmd: string | null = null;
   for (const p of payList) {
     const cuota = p.cuota_current ?? 0;
     if (cuota <= 0) continue;
-    const ym = paymentBillingMonth(p);
-    if (!ym) continue;
+    const ymd = parseDateLikeToIso(p.pay_by_date);
+    if (!ymd) continue;
     if (cuota > bestCuota) {
       bestCuota = cuota;
-      bestYm = ym;
-    } else if (cuota === bestCuota && bestYm != null && ymCompare(ym, bestYm) > 0) {
-      bestYm = ym;
+      bestYmd = ymd;
+    } else if (cuota === bestCuota && bestYmd != null && ymd > bestYmd) {
+      bestYmd = ymd;
     }
   }
-  if (bestYm != null) return bestYm;
+  if (bestYmd != null) return bestYmd;
   for (const p of payList) {
-    const ym = paymentBillingMonth(p);
-    if (ym && (bestYm == null || ymCompare(ym, bestYm) > 0)) bestYm = ym;
+    const ymd = parseDateLikeToIso(p.pay_by_date);
+    if (ymd && (bestYmd == null || ymd > bestYmd)) bestYmd = ymd;
   }
-  return bestYm;
+  return bestYmd;
 }
 
 /**
- * Active purchases table: keep fully settled contracts visible through the statement month
- * of their final cuota; drop to completed only after a later statement is uploaded.
+ * Active purchases table: keep a fully settled contract visible until its final cuota's
+ * `PAGAR HASTA` (pay-by) date, then drop it to completed. On the pay-by date the money
+ * has left the account and the contract is genuinely closed, so completion is a property
+ * of the data already in the DB (independent of when the next statement is imported).
  */
 export function installmentPurchaseShowsActive(
   summary: {
@@ -149,14 +134,13 @@ export function installmentPurchaseShowsActive(
     installment_count: number;
   },
   payList: PaymentRow[],
-  latestStatementYm: string | null
+  todayYmd: string
 ): boolean {
   if (summary.remaining_installments > 0 || summary.remaining_principal_clp > 0) return true;
-  if (latestStatementYm == null) return false;
   if (summary.installments_paid < summary.installment_count) return false;
-  const lastStmtYm = lastInstallmentPaymentStatementMonthYm(payList);
-  if (lastStmtYm == null) return false;
-  return ymCompare(lastStmtYm, latestStatementYm) >= 0;
+  const finalPayByYmd = lastInstallmentPaymentPayByYmd(payList);
+  if (finalPayByYmd == null) return false;
+  return todayYmd < finalPayByYmd;
 }
 
 /** First installment month (YYYY-MM): cuota 1 statement month, else month after 00/N preamble, else purchase month. */
@@ -1014,7 +998,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   );
 
   let total_remaining_principal_clp = 0;
-  const latestStatementYm = latestUploadedStatementMonthYm(accountId);
+  const todayYmd = chileCalendarTodayYmd();
   const purchaseIsActive = (c: CcInstallmentPurchaseComputed): boolean => {
     if (cancelledPurchaseIds.has(c.purchase_db_id ?? -1)) return false;
     const payList = paymentsByPurchase.get(c.purchase_db_id ?? -1) ?? [];
@@ -1026,7 +1010,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
         installment_count: c.installment_count,
       },
       payList,
-      latestStatementYm
+      todayYmd
     );
   };
   const purchases_active = computed.filter(purchaseIsActive);
