@@ -1,11 +1,10 @@
 import { db } from "./db.js";
-import { monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { paymentStatementMonthYm } from "./ccInstallmentStatementMonth.js";
+import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForLedgerPurchase } from "./ccManualBillingMonth.js";
-import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
+import { billingMonthForPurchaseDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
@@ -17,8 +16,8 @@ import {
   NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE,
 } from "./ccNotaDeCreditoPairing.js";
 import type {
+  CcInstallmentCalendarMonthRow,
   CcInstallmentMonthBreakdown,
-  CcInstallmentMonthRow,
   CcInstallmentPurchaseComputed,
 } from "./creditCardInstallments.js";
 import {
@@ -166,27 +165,35 @@ export function purchaseFirstDueYm(
     (p) => p.amount_clp > 0 && (p.cuota_current == null || p.cuota_current <= 0)
   );
   if (withCuota.length === 0 && preambleOnly.length > 0) {
-    const sorted = [...preambleOnly].sort((a, b) => a.pay_by_date.localeCompare(b.pay_by_date));
-    const last = sorted[sorted.length - 1]!;
-    const lastPayYm = monthKeyFromYmd(last.pay_by_date);
-    if (lastPayYm) return addCalendarMonths(lastPayYm, 1);
+    // Cuota 1 bills the statement after the latest 00/N preamble, so the anchor is the
+    // preamble's STATEMENT month + 1. Anchoring on the pay-by month (already the next
+    // calendar month) pushed these plans one facturación late in every schedule consumer
+    // until real cuota-01 evidence arrived and silently shifted them back.
+    let lastStmtYm: string | null = null;
+    for (const p of preambleOnly) {
+      const ym = paymentBillingMonth(p);
+      if (ym && (lastStmtYm == null || ymCompare(ym, lastStmtYm) > 0)) lastStmtYm = ym;
+    }
+    if (lastStmtYm) return addCalendarMonths(lastStmtYm, 1);
   }
 
   // Evidence-backed first-cuota month (set by the web-paste importer when a pasted
   // no-facturado line pins a manual plan's real first cycle). Ranks below any statement
   // cuota evidence above, so a later PDF cuota-01 line always overrides it — but above the
-  // manual open+1 guess below, which is only a heuristic for the yet-unbilled case.
+  // manual same-cycle guess below, which is only a heuristic for the yet-unbilled case.
   const storedFirstDue = parseYearMonth(String(pr.first_due_month ?? "").slice(0, 7));
   if (storedFirstDue) return storedFirstDue;
 
   if (pr.source === "manual" && accountId != null) {
-    // A manual purchase posts into the open facturación (the purchase falls in that
-    // period), but its first real cuota (01) bills the *next* facturación — the open
-    // statement only carries it as cuota 00 / informativa. So the first installment's
-    // expense month is one facturación after the open month. The open-month PDF, once
-    // imported, replaces this guess with the statement's actual cuota-01 month.
-    const openBm = billingMonthForLedgerPurchase(accountId, pr);
-    if (openBm) return addCalendarMonths(openBm, 1);
+    // Default guess: the first cuota bills at the close of the facturación the purchase
+    // falls into (Lider always bills cuota 1 same-cycle; Santander usually does, sometimes
+    // deferring it behind a cuota-00 preamble). The next statement's evidence replaces the
+    // guess either way: a cuota-01 line pins the real month, a cuota-00 preamble moves the
+    // anchor to statement + 1. Date-based (not "the open month at read time") so the guess
+    // does not drift forward as cycles roll while the statement is pending.
+    const cfg = loadCreditCardBillingConfig(accountId);
+    const purchaseBm = billingMonthForPurchaseDate(pr.purchase_date, cfg);
+    if (purchaseBm) return purchaseBm;
   }
   return parseYearMonth(pr.purchase_date.slice(0, 7)) ?? "1970-01";
 }
@@ -631,6 +638,9 @@ export function filterLedgerPurchasesForSchedule(purchases: PurchaseRow[]): Purc
 function loadLedgerPurchasesAndPayments(accountId: number): {
   purchasesRaw: PurchaseRow[];
   paymentsByPurchase: Map<number, PaymentRow[]>;
+  cancelledPurchaseIds: Set<number>;
+  /** `purchasesRaw` minus nota-cancelled plans — the only set schedule math may see. */
+  schedulePurchases: PurchaseRow[];
 } {
   const purchasesDb = db
     .prepare(
@@ -665,13 +675,26 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
     list.push(row);
     paymentsByPurchase.set(row.purchase_id, list);
   }
-  return { purchasesRaw, paymentsByPurchase };
+
+  // A refunded (nota-cancelled) plan has no future cuotas: it must not contribute to any
+  // schedule aggregate (plan due months, remainders, live cupo). The June-2026 statement's
+  // printed «cupo utilizado en cuotas» matches the plan outstanding only with these excluded.
+  const cancelledPurchaseIds = loadCancelledInstallmentPurchaseIds(
+    accountId,
+    purchasesRaw,
+    paymentsByPurchase
+  );
+  const schedulePurchases =
+    cancelledPurchaseIds.size === 0
+      ? purchasesRaw
+      : purchasesRaw.filter((p) => !cancelledPurchaseIds.has(p.id));
+  return { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, schedulePurchases };
 }
 
 /** Plan cuota breakdown keyed by calendar due month (YYYY-MM). */
 export function installmentPlanBreakdownByMonth(accountId: number): Map<string, CcInstallmentMonthBreakdown[]> {
-  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  return scheduledPaymentsPlanBreakdownByMonth(purchasesRaw, paymentsByPurchase, accountId);
+  const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  return scheduledPaymentsPlanBreakdownByMonth(schedulePurchases, paymentsByPurchase, accountId);
 }
 
 function purchaseDateIso(iso: string): string {
@@ -681,10 +704,27 @@ function purchaseDateIso(iso: string): string {
 type NotaCreditRow = {
   amountAbs: number;
   occurredIso: string;
+  /** Statement month (YYYY-MM) the nota posted on — banks backdate `occurredIso`, never this. */
+  statementYm: string | null;
 };
 
+type CancellablePurchase = Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp"> & {
+  /** Statement month (YYYY-MM) of the plan's first billed row (cuota 00/1). */
+  firstBilledYm?: string | null;
+};
+
+/**
+ * A full-principal NOTA DE CREDITO annuls the plan when either:
+ * - its transaction date is strictly after the purchase date (plain refund), or
+ * - it posts on a statement strictly after the plan's first-billed statement (refund
+ *   backdated to the purchase date — e.g. Santander dates the credit at the original
+ *   transaction; the posting statement is the evidence a bank cannot backdate).
+ * A same-date nota on the plan's own first statement never matches: that shape is an
+ * instant reversal of a same-day non-installment twin, which this matcher cannot see
+ * (the gastos-line pairing annuls the twin instead).
+ */
 export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
-  purchases: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[];
+  purchases: readonly CancellablePurchase[];
   notaCredits: readonly NotaCreditRow[];
 }): Set<number> {
   const cancelled = new Set<number>();
@@ -698,17 +738,24 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
 
   for (const purchase of purchases) {
     const pDate = purchaseDateIso(purchase.purchase_date);
+    const firstBilledYm = purchase.firstBilledYm ?? null;
     for (let i = 0; i < credits.length; i++) {
       if (usedCreditIdx.has(i)) continue;
       const c = credits[i]!;
       if (c.amountAbs !== purchase.total_amount_clp) continue;
-      if (c.occurredIso <= pDate) continue;
-      if (
-        calendarMonthsAfterPurchase(pDate, c.occurredIso) >
-        NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE
-      ) {
-        continue;
-      }
+
+      const byTransactionDate =
+        c.occurredIso > pDate &&
+        calendarMonthsAfterPurchase(pDate, c.occurredIso) <=
+          NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE;
+      const byLaterStatement =
+        c.statementYm != null &&
+        firstBilledYm != null &&
+        c.statementYm > firstBilledYm &&
+        calendarMonthsAfterPurchase(pDate, `${c.statementYm}-01`) <=
+          NOTA_DE_CREDITO_MAX_CALENDAR_MONTHS_AFTER_PURCHASE;
+      if (!byTransactionDate && !byLaterStatement) continue;
+
       cancelled.add(purchase.id);
       usedCreditIdx.add(i);
       break;
@@ -719,39 +766,60 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
 
 /** Ledger-backed cancelled purchases (NOTA DE CREDITO match with month window). */
 export function cancelledInstallmentPurchaseIdsForAccount(accountId: number): Set<number> {
-  const purchasesRaw = db
-    .prepare(
-      `SELECT id, purchase_date, total_amount_clp
-       FROM cc_installment_purchases
-       WHERE account_id = ?`
-    )
-    .all(accountId) as Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[];
-  return loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw);
+  return loadLedgerPurchasesAndPayments(accountId).cancelledPurchaseIds;
+}
+
+/** Statement month (YYYY-MM) of the plan's earliest billed row (cuota 00 preamble counts). */
+function purchaseFirstBilledYm(payList: readonly PaymentRow[]): string | null {
+  let minYm: string | null = null;
+  for (const p of payList) {
+    const ym = paymentBillingMonth(p);
+    if (ym && (minYm == null || ymCompare(ym, minYm) < 0)) minYm = ym;
+  }
+  return minYm;
 }
 
 function loadCancelledInstallmentPurchaseIds(
   accountId: number,
-  purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[]
+  purchasesRaw: readonly Pick<PurchaseRow, "id" | "purchase_date" | "total_amount_clp">[],
+  paymentsByPurchase: ReadonlyMap<number, PaymentRow[]>
 ): Set<number> {
   const notaRows = db
     .prepare(
-      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred
+      `SELECT l.merchant, l.amount_clp, COALESCE(l.transaction_date, l.posting_date) AS occurred,
+              s.period_to AS stmt_period_to, s.statement_date AS stmt_statement_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ?
          AND l.installment_flag = 0
          AND l.amount_clp < 0`
     )
-    .all(accountId) as { merchant: string | null; amount_clp: number; occurred: string | null }[];
+    .all(accountId) as {
+    merchant: string | null;
+    amount_clp: number;
+    occurred: string | null;
+    stmt_period_to: string | null;
+    stmt_statement_date: string | null;
+  }[];
   const notaCredits: NotaCreditRow[] = [];
   for (const row of notaRows) {
     if (!isNotaDeCreditoMerchant(row.merchant)) continue;
     const occurredIso = parseDateLikeToIso(row.occurred);
     if (!occurredIso || !/^\d{4}-\d{2}-\d{2}$/.test(occurredIso)) continue;
-    notaCredits.push({ amountAbs: Math.abs(Math.round(row.amount_clp)), occurredIso });
+    notaCredits.push({
+      amountAbs: Math.abs(Math.round(row.amount_clp)),
+      occurredIso,
+      statementYm: statementPeriodMonthFromParsedRow({
+        period_to: row.stmt_period_to,
+        statement_date: row.stmt_statement_date,
+      }),
+    });
   }
   return cancelledInstallmentPurchaseIdsByNotaCredit({
-    purchases: purchasesRaw,
+    purchases: purchasesRaw.map((p) => ({
+      ...p,
+      firstBilledYm: purchaseFirstBilledYm(paymentsByPurchase.get(p.id) ?? []),
+    })),
     notaCredits,
   });
 }
@@ -759,8 +827,8 @@ function loadCancelledInstallmentPurchaseIds(
 /** Plan cuotas due in each calendar month (for tarjeta monthly P/L when saldo is flat). */
 export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): Map<string, number> {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
-  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  return scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
+  const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  return scheduledPaymentsPlanDueByMonth(schedulePurchases, paymentsByPurchase, accountId);
 }
 
 /**
@@ -769,8 +837,8 @@ export function creditCardInstallmentPaymentsByBillingMonth(accountId: number): 
  */
 export function installmentRemainingClpByCalendarMonth(accountId: number): Map<string, number> {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
-  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  return scheduledTotalRemainingByMonth(purchasesRaw, paymentsByPurchase, accountId);
+  const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  return scheduledTotalRemainingByMonth(schedulePurchases, paymentsByPurchase, accountId);
 }
 
 /**
@@ -791,9 +859,9 @@ export function cupoEnCuotasClpForCalendarMonth(accountId: number, ym: string): 
 /** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */
 export function liveCreditCardOutstandingClp(accountId: number): number | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
-  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const nowYm = currentCalendarYm();
-  const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
+  const schedules = buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, nowYm, accountId);
   let total = 0;
   for (const sched of schedules.values()) {
     total += scheduledOutstandingPrincipal(sched);
@@ -835,10 +903,10 @@ export function ccInstallmentLedgerRowCount(accountId: number): number {
 }
 
 const PAY_BY_META =
-  "Cuotas del mes: suma de cuotas **pendientes** del plan con vencimiento ese mes (índice ≥ cuotas pagadas; 1ª cuota = primer mes del plan desde compra y 1er pagar-hasta). Los PDF fijan montos y avance; el total mensual sigue el plan.";
+  "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece pasado su pagar-hasta.";
 
 const SALDO_LINE_META =
-  "Saldo fin de mes: Σ cuotas del plan con vencimiento posterior a ese mes (solo índices no pagados). Equivalente a la fila «falta» / saldo acumulado de flujos Table 3.";
+  "Deuda tras pago: Σ cuotas del plan de facturaciones posteriores (suma sufija; la última fila queda en 0). Saldo fin de mes del historial: Σ cuotas con facturación posterior a ese mes.";
 
 function installmentHistoryMonthsFromLedgerData(
   purchasesRaw: PurchaseRow[],
@@ -878,7 +946,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   purchases: CcInstallmentPurchaseComputed[];
   purchases_completed: CcInstallmentPurchaseComputed[];
   hidden_cancelled_purchases: CcInstallmentPurchaseComputed[];
-  months: CcInstallmentMonthRow[];
+  months: CcInstallmentCalendarMonthRow[];
   installment_history_months: {
     month: string;
     remaining_balance_clp: number;
@@ -891,13 +959,14 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     next_calendar_month: string | null;
   };
 } {
-  const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  const { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, schedulePurchases } =
+    loadLedgerPurchasesAndPayments(accountId);
   let db_payment_count = 0;
   for (const pays of paymentsByPurchase.values()) db_payment_count += pays.length;
   const nowYm = currentCalendarYm();
   const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
-  const cancelledPurchaseIds = loadCancelledInstallmentPurchaseIds(accountId, purchasesRaw);
 
+  const billingCfg = loadCreditCardBillingConfig(accountId);
   const computed: CcInstallmentPurchaseComputed[] = [];
   for (const pr of purchasesRaw) {
     const payList = paymentsByPurchase.get(pr.id) ?? [];
@@ -956,6 +1025,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       first_due_month,
       schedule_offset_months: 0,
       purchase_month: parseYearMonth(pr.purchase_date.slice(0, 7)),
+      purchase_date: pr.purchase_date,
+      purchase_billing_month: billingMonthForPurchaseDate(pr.purchase_date, billingCfg),
       note: pr.matched_baseline_purchase_id ? `baseline: ${pr.matched_baseline_purchase_id}` : null,
       remaining_installments,
       remaining_principal_clp,
@@ -970,15 +1041,41 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     });
   }
 
-  const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
+  const payByMonth = scheduledPaymentsPlanDueByMonth(schedulePurchases, paymentsByPurchase, accountId);
   const breakdownByMonth = scheduledPaymentsPlanBreakdownByMonth(
-    purchasesRaw,
+    schedulePurchases,
     paymentsByPurchase,
     accountId
   );
-  const months: CcInstallmentMonthRow[] = [...payByMonth.keys()]
-    .filter((month) => ymCompare(month, nowYm) >= 0)
-    .sort(ymCompare)
+  const todayYmd = chileCalendarTodayYmd();
+
+  // Pay-by evidence per facturación month: every payment row on a statement carries the
+  // statement's PAGAR HASTA. Open/projected months derive it (~10th of the next month —
+  // same convention as resolveInstallmentPayByIso's statement-date fallback).
+  const payByEvidenceByMonth = new Map<string, string>();
+  for (const pays of paymentsByPurchase.values()) {
+    for (const p of pays) {
+      const ym = paymentBillingMonth(p);
+      const iso = parseDateLikeToIso(p.pay_by_date);
+      if (!ym || !iso) continue;
+      const cur = payByEvidenceByMonth.get(ym);
+      if (cur == null || iso > cur) payByEvidenceByMonth.set(ym, iso);
+    }
+  }
+
+  // Suffix sums over the full plan: debt left after each facturación's cuotas are paid.
+  const allPlanMonths = [...payByMonth.keys()].sort(ymCompare);
+  const debtAfterByMonth = new Map<string, number>();
+  {
+    let acc = 0;
+    for (let i = allPlanMonths.length - 1; i >= 0; i--) {
+      const m = allPlanMonths[i]!;
+      debtAfterByMonth.set(m, acc);
+      acc += payByMonth.get(m) ?? 0;
+    }
+  }
+
+  const months: CcInstallmentCalendarMonthRow[] = allPlanMonths
     .map((month) => {
       const breakdown = breakdownByMonth.get(month) ?? [];
       const total_clp = payByMonth.get(month) ?? 0;
@@ -988,17 +1085,27 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
           `installment month breakdown mismatch for account ${accountId} month ${month}: breakdown=${breakdownSum} total=${total_clp}`
         );
       }
-      return { month, total_clp, breakdown };
-    });
+      const pay_by_date =
+        payByEvidenceByMonth.get(month) ?? `${addCalendarMonths(month, 1)}-10`;
+      return {
+        month,
+        total_clp,
+        breakdown,
+        pay_by_date,
+        debt_after_clp: debtAfterByMonth.get(month) ?? 0,
+      };
+    })
+    // A facturación row stays visible through its pay-by date, then rolls off — the same
+    // clock that flips its final-cuota purchases to completed.
+    .filter((row) => row.pay_by_date >= todayYmd);
 
   const installment_history_months = installmentHistoryMonthsFromLedgerData(
-    purchasesRaw,
+    schedulePurchases,
     paymentsByPurchase,
     accountId
   );
 
   let total_remaining_principal_clp = 0;
-  const todayYmd = chileCalendarTodayYmd();
   const purchaseIsActive = (c: CcInstallmentPurchaseComputed): boolean => {
     if (cancelledPurchaseIds.has(c.purchase_db_id ?? -1)) return false;
     const payList = paymentsByPurchase.get(c.purchase_db_id ?? -1) ?? [];
@@ -1025,16 +1132,16 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     });
   const hidden_cancelled_purchases = computed.filter((c) => cancelledPurchaseIds.has(c.purchase_db_id ?? -1));
 
-  // Próximo pago = the next upcoming cuota payment. `months` is already filtered to >= nowYm and
-  // sorted ascending, so its first entry with a positive total is the next month a cuota is owed
-  // (the pay-by month of the latest facturación). Deriving this from per-purchase next_due_month
-  // instead let a stale/behind purchase whose next_due_month lags today drag "próximo pago" into
-  // the past (e.g. a Santander card showing "mar 2025" instead of the June facturación pay-by).
+  // Próximo pago = the next upcoming cuota payment. `months` rows roll off once their pay-by
+  // passes, so the first entry with a positive total is the next real payment event; report it
+  // by its PAY month (when the money leaves), not the facturación month that billed it.
+  // Deriving this from per-purchase next_due_month instead let a stale/behind purchase whose
+  // next_due_month lags today drag "próximo pago" into the past.
   let next_calendar_month: string | null = null;
   let next_calendar_month_total_clp: number | null = null;
   const nextPaymentMonth = months.find((m) => m.total_clp > 0);
   if (nextPaymentMonth) {
-    next_calendar_month = nextPaymentMonth.month;
+    next_calendar_month = nextPaymentMonth.pay_by_date.slice(0, 7);
     next_calendar_month_total_clp = nextPaymentMonth.total_clp;
   }
 
