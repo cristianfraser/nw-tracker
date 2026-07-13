@@ -3,12 +3,11 @@ import { db } from "./db.js";
 import {
   ccInstallmentsDbApiPayload,
   installmentPurchaseShowsActive,
-  lastInstallmentPaymentStatementMonthYm,
-  latestUploadedStatementMonthYm,
+  lastInstallmentPaymentPayByYmd,
 } from "./ccInstallmentLedgerDb.js";
 
 describe("installmentPurchaseShowsActive", () => {
-  it("keeps fully paid purchase active when final cuota is on latest uploaded statement", () => {
+  it("keeps fully paid purchase active until its final cuota pay-by date, then completes it", () => {
     const payList = [
       {
         id: 1,
@@ -23,34 +22,22 @@ describe("installmentPurchaseShowsActive", () => {
         cuota_total: null,
       },
     ];
-    expect(lastInstallmentPaymentStatementMonthYm(payList)).toBe("2026-05");
-    expect(
-      installmentPurchaseShowsActive(
-        {
-          remaining_installments: 0,
-          remaining_principal_clp: 0,
-          installments_paid: 3,
-          installment_count: 3,
-        },
-        payList,
-        "2026-05"
-      )
-    ).toBe(true);
-    expect(
-      installmentPurchaseShowsActive(
-        {
-          remaining_installments: 0,
-          remaining_principal_clp: 0,
-          installments_paid: 3,
-          installment_count: 3,
-        },
-        payList,
-        "2026-06"
-      )
-    ).toBe(false);
+    expect(lastInstallmentPaymentPayByYmd(payList)).toBe("2026-06-25");
+    const settled = {
+      remaining_installments: 0,
+      remaining_principal_clp: 0,
+      installments_paid: 3,
+      installment_count: 3,
+    };
+    // Day before pay-by → still active.
+    expect(installmentPurchaseShowsActive(settled, payList, "2026-06-24")).toBe(true);
+    // On the pay-by date → completed.
+    expect(installmentPurchaseShowsActive(settled, payList, "2026-06-25")).toBe(false);
+    // After the pay-by date → completed.
+    expect(installmentPurchaseShowsActive(settled, payList, "2026-07-13")).toBe(false);
   });
 
-  it("still treats outstanding installments as active regardless of statement month", () => {
+  it("still treats outstanding installments as active regardless of date", () => {
     expect(
       installmentPurchaseShowsActive(
         {
@@ -60,13 +47,13 @@ describe("installmentPurchaseShowsActive", () => {
           installment_count: 3,
         },
         [],
-        "2026-05"
+        "2030-01-01"
       )
     ).toBe(true);
   });
 });
 
-describe("ccInstallmentsDbApiPayload active grace", () => {
+describe("ccInstallmentsDbApiPayload active-through-pay-by", () => {
   const insertedStatementIds: number[] = [];
   const insertedPurchaseIds: number[] = [];
 
@@ -84,16 +71,16 @@ describe("ccInstallmentsDbApiPayload active grace", () => {
     insertedPurchaseIds.length = 0;
   });
 
-  it("lists final-cuota purchase under active until a newer statement exists", () => {
+  function insertFinalCuotaPurchase(canonicalId: string, finalPayByYmd: string): number {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|vitest-fixture' LIMIT 1`)
       .get() as { id: number } | undefined;
-    if (!master) return;
+    if (!master) throw new Error("vitest CC master fixture missing");
 
     db.prepare(
       `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
        VALUES (?, 'A', ?, ?, ?, ?)`
-    ).run(master.id, "vitest-may.pdf", "25/05/2026", "24/04/2026", "25/05/2026");
+    ).run(master.id, `vitest-${canonicalId}.pdf`, "25/05/2026", "24/04/2026", "25/05/2026");
     insertedStatementIds.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
     db.prepare(
@@ -101,11 +88,11 @@ describe("ccInstallmentsDbApiPayload active grace", () => {
          account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
          purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id, source
        ) VALUES (?, 'A', ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, NULL, 'pdf')`
-    ).run(master.id, "final-cuota-grace", "2026-03-01", 30_000, 3, "VITEST FINAL", "VITEST FINAL");
+    ).run(master.id, canonicalId, "2026-03-01", 30_000, 3, "VITEST FINAL", "VITEST FINAL");
     const pid = (
       db.prepare(
-        `SELECT id FROM cc_installment_purchases WHERE account_id = ? AND canonical_row_id = 'final-cuota-grace'`
-      ).get(master.id) as { id: number }
+        `SELECT id FROM cc_installment_purchases WHERE account_id = ? AND canonical_row_id = ?`
+      ).get(master.id, canonicalId) as { id: number }
     ).id;
     insertedPurchaseIds.push(pid);
 
@@ -116,49 +103,24 @@ describe("ccInstallmentsDbApiPayload active grace", () => {
     );
     insPay.run(pid, "2026-04-25", "24/04/2026", "2026-04", "apr.pdf", 10_000, 1, 3);
     insPay.run(pid, "2026-05-25", "24/05/2026", "2026-05", "may.pdf", 10_000, 2, 3);
-    insPay.run(pid, "2026-06-25", "24/05/2026", "2026-05", "may.pdf", 10_000, 3, 3);
+    insPay.run(pid, finalPayByYmd, "24/05/2026", "2026-05", "may.pdf", 10_000, 3, 3);
+    return master.id;
+  }
 
-    const payloadMay = ccInstallmentsDbApiPayload(master.id);
-    expect(payloadMay.purchases.some((p) => p.purchase_id === "final-cuota-grace")).toBe(true);
-    expect(payloadMay.purchases_completed.some((p) => p.purchase_id === "final-cuota-grace")).toBe(false);
-    const graceRow = payloadMay.purchases.find((p) => p.purchase_id === "final-cuota-grace");
-    expect(graceRow?.payment_statements?.length).toBe(3);
-    expect(graceRow?.payment_statements?.every((st) => (st.cuota_current ?? 0) > 0)).toBe(true);
-
-    db.prepare(
-      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
-       VALUES (?, 'A', ?, ?, ?, ?)`
-    ).run(master.id, "vitest-jun.pdf", "25/06/2026", "24/05/2026", "25/06/2026");
-    insertedStatementIds.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
-
-    const payloadJun = ccInstallmentsDbApiPayload(master.id);
-    expect(payloadJun.purchases.some((p) => p.purchase_id === "final-cuota-grace")).toBe(false);
-    expect(payloadJun.purchases_completed.some((p) => p.purchase_id === "final-cuota-grace")).toBe(true);
+  it("lists a final-cuota purchase under active while its pay-by date is in the future", () => {
+    const master = insertFinalCuotaPurchase("final-cuota-future", "2999-06-25");
+    const payload = ccInstallmentsDbApiPayload(master);
+    expect(payload.purchases.some((p) => p.purchase_id === "final-cuota-future")).toBe(true);
+    expect(payload.purchases_completed.some((p) => p.purchase_id === "final-cuota-future")).toBe(false);
+    const activeRow = payload.purchases.find((p) => p.purchase_id === "final-cuota-future");
+    expect(activeRow?.payment_statements?.length).toBe(3);
+    expect(activeRow?.payment_statements?.every((st) => (st.cuota_current ?? 0) > 0)).toBe(true);
   });
 
-  it("ignores import:web-paste open bucket when resolving latest imported cartola month", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|vitest-fixture' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    db.prepare(
-      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
-       VALUES (?, 'A', ?, ?, ?, ?)`
-    ).run(master.id, "2026-05-25 vitest cartola.pdf", "25/05/2026", "24/04/2026", "25/05/2026");
-    insertedStatementIds.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
-    db.prepare(
-      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
-       VALUES (?, 'A', ?, ?, ?, ?)`
-    ).run(
-      master.id,
-      "import:web-paste|open|2026-06",
-      "open",
-      "2026-06",
-      "20/06/2026"
-    );
-    insertedStatementIds.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
-
-    expect(latestUploadedStatementMonthYm(master.id)).toBe("2026-05");
+  it("moves a final-cuota purchase to completed once its pay-by date has passed", () => {
+    const master = insertFinalCuotaPurchase("final-cuota-past", "2020-06-25");
+    const payload = ccInstallmentsDbApiPayload(master);
+    expect(payload.purchases.some((p) => p.purchase_id === "final-cuota-past")).toBe(false);
+    expect(payload.purchases_completed.some((p) => p.purchase_id === "final-cuota-past")).toBe(true);
   });
 });
