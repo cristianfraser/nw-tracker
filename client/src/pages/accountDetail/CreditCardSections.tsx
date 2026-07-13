@@ -137,7 +137,8 @@ function CreditCardInstallmentsSection({
         {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colRemain")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th>
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colAnnualRate")}</th> : null}
-        <th className="desktop-only">{t("account.creditCard.colPurchaseMonth")}</th>
+        <th className="desktop-only">{t("account.creditCard.colPurchaseDate")}</th>
+        <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
         {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colFirstDue")}</th> : null}
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetUi")}</th> : null}
@@ -183,7 +184,8 @@ function CreditCardInstallmentsSection({
             {!hasLedger ? (
               <td className="mono desktop-only">{formatGroupedDecimal(p.annual_interest_pct, 2)}</td>
             ) : null}
-            <td className="mono desktop-only">{p.purchase_month ?? "—"}</td>
+            <td className="mono desktop-only">{p.purchase_date ?? "—"}</td>
+            <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.first_due_month}</td> : null}
             {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
             {!hasLedger ? (
@@ -392,7 +394,7 @@ function CreditCardInstallmentsSection({
             header={
               <thead>
                 <tr>
-                  <th className="desktop-only">{t("account.creditCard.colBillingMonth")}</th>
+                  <th className="desktop-only">{t("account.creditCard.colFacturacionPayBy")}</th>
                   <th className="desktop-only">{t("account.creditCard.colMonthCuotaTotal")}</th>
                   <th className="desktop-only">{t("account.creditCard.colDebtAfterPayment")}</th>
                   <th className="desktop-only">{t("account.creditCard.colMonthBreakdown")}</th>

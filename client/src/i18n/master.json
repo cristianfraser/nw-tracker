@@ -4216,6 +4216,10 @@
   "account": {
     "creditCard": {
       "colBillingMonth": {
+        "en": "Month",
+        "es": "Mes"
+      },
+      "colFacturacionPayBy": {
         "en": "Billing cycle (pay by)",
         "es": "Facturación (pagar hasta)"
       },
@@ -4311,9 +4315,13 @@
         "en": "Annual rate %",
         "es": "Tasa % anual"
       },
-      "colPurchaseMonth": {
-        "en": "Purchase month",
-        "es": "Mes compra"
+      "colPurchaseDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colPurchaseBillingMonth": {
+        "en": "Billing month",
+        "es": "Mes facturación"
       },
       "colFirstDue": {
         "en": "1st installment (MONTH)",

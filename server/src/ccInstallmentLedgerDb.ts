@@ -4,7 +4,7 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForLedgerPurchase } from "./ccManualBillingMonth.js";
-import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
+import { billingMonthForPurchaseDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
@@ -180,18 +180,20 @@ export function purchaseFirstDueYm(
   // Evidence-backed first-cuota month (set by the web-paste importer when a pasted
   // no-facturado line pins a manual plan's real first cycle). Ranks below any statement
   // cuota evidence above, so a later PDF cuota-01 line always overrides it — but above the
-  // manual open+1 guess below, which is only a heuristic for the yet-unbilled case.
+  // manual same-cycle guess below, which is only a heuristic for the yet-unbilled case.
   const storedFirstDue = parseYearMonth(String(pr.first_due_month ?? "").slice(0, 7));
   if (storedFirstDue) return storedFirstDue;
 
   if (pr.source === "manual" && accountId != null) {
-    // A manual purchase posts into the open facturación (the purchase falls in that
-    // period), but its first real cuota (01) bills the *next* facturación — the open
-    // statement only carries it as cuota 00 / informativa. So the first installment's
-    // expense month is one facturación after the open month. The open-month PDF, once
-    // imported, replaces this guess with the statement's actual cuota-01 month.
-    const openBm = billingMonthForLedgerPurchase(accountId, pr);
-    if (openBm) return addCalendarMonths(openBm, 1);
+    // Default guess: the first cuota bills at the close of the facturación the purchase
+    // falls into (Lider always bills cuota 1 same-cycle; Santander usually does, sometimes
+    // deferring it behind a cuota-00 preamble). The next statement's evidence replaces the
+    // guess either way: a cuota-01 line pins the real month, a cuota-00 preamble moves the
+    // anchor to statement + 1. Date-based (not "the open month at read time") so the guess
+    // does not drift forward as cycles roll while the statement is pending.
+    const cfg = loadCreditCardBillingConfig(accountId);
+    const purchaseBm = billingMonthForPurchaseDate(pr.purchase_date, cfg);
+    if (purchaseBm) return purchaseBm;
   }
   return parseYearMonth(pr.purchase_date.slice(0, 7)) ?? "1970-01";
 }
@@ -964,6 +966,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   const nowYm = currentCalendarYm();
   const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
 
+  const billingCfg = loadCreditCardBillingConfig(accountId);
   const computed: CcInstallmentPurchaseComputed[] = [];
   for (const pr of purchasesRaw) {
     const payList = paymentsByPurchase.get(pr.id) ?? [];
@@ -1022,6 +1025,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       first_due_month,
       schedule_offset_months: 0,
       purchase_month: parseYearMonth(pr.purchase_date.slice(0, 7)),
+      purchase_date: pr.purchase_date,
+      purchase_billing_month: billingMonthForPurchaseDate(pr.purchase_date, billingCfg),
       note: pr.matched_baseline_purchase_id ? `baseline: ${pr.matched_baseline_purchase_id}` : null,
       remaining_installments,
       remaining_principal_clp,

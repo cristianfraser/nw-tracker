@@ -1191,7 +1191,8 @@
   },
   "account": {
     "creditCard": {
-      "colBillingMonth": "Billing cycle (pay by)",
+      "colBillingMonth": "Month",
+      "colFacturacionPayBy": "Billing cycle (pay by)",
       "colFacturado": "Billed",
       "colFacturadoTotal": "Total billed",
       "lineMerchant": "Merchant",
@@ -1215,7 +1216,8 @@
       "colRemain": "Remaining",
       "colPrincipal": "Principal",
       "colAnnualRate": "Annual rate %",
-      "colPurchaseMonth": "Purchase month",
+      "colPurchaseDate": "Date",
+      "colPurchaseBillingMonth": "Billing month",
       "colFirstDue": "1st installment (MONTH)",
       "colOffsetCsv": "CSV offset (months)",
       "colOffsetUi": "UI offset (months)",
