@@ -1,4 +1,5 @@
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   incrementalChargesClpForBillingMonth,
   listCcBillingMonthBalances,
@@ -406,20 +407,13 @@ function buildBillingDetailByMonthInner(
   return withProjected;
 }
 
-function planMonthHasProjectedInstallmentData(
-  ym: string,
-  payByMonth: Map<string, number>,
-  remainingByMonth: Map<string, number>
-): boolean {
-  const cupo = remainingByMonth.get(ym) ?? 0;
-  const pay = payByMonth.get(ym) ?? 0;
-  return pay > 0 || cupo > 0;
-}
-
 /**
  * Future billing months: plan cupo + cuota schedule. Months after the open facturación have
- * no facturado (null — nothing billed yet) and saldo = remaining installment principal: the
- * projected "owed on that date" once each cycle's bill is paid on time.
+ * no facturado (null — nothing billed yet) and saldo = cuotas still OWED at that month-end
+ * (pay frame): billing at the close (~20th) is a reclassification, the money leaves on the
+ * pay-by (~10th of the next month), so month-end owed = the remainder after the PREVIOUS
+ * month's close. The series steps down one facturación per month and lands on a trailing
+ * zero month once the final cuota's pay-by has passed.
  */
 function appendProjectedBillingDetailRows(
   accountId: number,
@@ -436,11 +430,25 @@ function appendProjectedBillingDetailRows(
   const payByMonth = creditCardInstallmentPaymentsByBillingMonth(accountId);
   const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
 
-  const candidateMonths = new Set<string>([...payByMonth.keys(), ...remainingByMonth.keys()]);
+  /** Cuotas still owed at month-end `ym`: the plan remainder after (ym − 1)'s close. */
+  const owedAtMonthEnd = (ym: string): number =>
+    remainingByMonth.get(addCalendarMonths(ym, -1)) ?? 0;
+  // A month is worth projecting while a cuota bills at its close, something is still owed at
+  // its month-end, or the previous month-end owed something (the trailing month landing at 0).
+  const monthHasProjectedData = (ym: string): boolean =>
+    (payByMonth.get(ym) ?? 0) > 0 ||
+    owedAtMonthEnd(ym) > 0 ||
+    owedAtMonthEnd(addCalendarMonths(ym, -1)) > 0;
+
+  const candidateMonths = new Set<string>();
+  for (const ym of [...payByMonth.keys(), ...remainingByMonth.keys()]) {
+    candidateMonths.add(ym);
+    candidateMonths.add(addCalendarMonths(ym, 1));
+  }
   let maxProjectedYm: string | null = null;
   for (const ym of candidateMonths) {
     if (ymCompare(ym, lastDetalleYm) <= 0) continue;
-    if (!planMonthHasProjectedInstallmentData(ym, payByMonth, remainingByMonth)) continue;
+    if (!monthHasProjectedData(ym)) continue;
     if (maxProjectedYm == null || ymCompare(ym, maxProjectedYm) > 0) {
       maxProjectedYm = ym;
     }
@@ -452,9 +460,9 @@ function appendProjectedBillingDetailRows(
     if (ymCompare(ym, lastDetalleYm) <= 0) continue;
     if (ymCompare(ym, maxProjectedYm) > 0) continue;
     if (existingMonths.has(ym)) continue;
-    if (!planMonthHasProjectedInstallmentData(ym, payByMonth, remainingByMonth)) continue;
+    if (!monthHasProjectedData(ym)) continue;
 
-    const cupo = cupoEnCuotasClpForCalendarMonth(accountId, ym);
+    const cupo = owedAtMonthEnd(ym);
     const cuotaNext = cuotaAPagarNextMesClp(ym, ledgerMonths);
     projected.push({
       billing_month: ym,

@@ -684,7 +684,7 @@
       "deudaEnCuotas": "Installment debt",
       "saldoTotal": "Total balance",
       "historialTitle": "History",
-      "historialHint": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = the plan's remaining installments, assuming payments on time.",
+      "historialHint": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
       "historialCurrentMonth": "Current month",
       "historialOpenMonth": "Open billing month",
       "valuationTitle": "Valuation and contributions",
