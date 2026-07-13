@@ -30,7 +30,9 @@ const updFirstDueMonth = db.prepare<[string, number]>(
  * A web paste of "movimientos no facturados" re-lists a manual installment plan's upcoming cuota
  * (BCI Lider posts it under the original purchase date). That line is import-skipped as an
  * installment overlap, but it is also evidence that the plan's first cuota bills in THIS
- * facturación — not the "open + 1" that the manual-plan heuristic guesses (`purchaseFirstDueYm`).
+ * facturación. The manual-plan heuristic (`purchaseFirstDueYm`) now guesses the purchase's own
+ * cycle by default, so the nudge usually confirms the guess — it still matters as stored
+ * evidence (write-once) that survives if the default heuristic ever changes.
  * When a pasted charge maps to a manual plan that has not yet billed any cuota and whose purchase
  * date naturally falls in the open cycle, pin `first_due_month` to the open billing month.
  *

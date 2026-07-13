@@ -1191,7 +1191,8 @@
   },
   "account": {
     "creditCard": {
-      "colBillingMonth": "Facturación (pagar hasta)",
+      "colBillingMonth": "Mes",
+      "colFacturacionPayBy": "Facturación (pagar hasta)",
       "colFacturado": "Facturado",
       "colFacturadoTotal": "Facturado total",
       "lineMerchant": "Comercio",
@@ -1215,7 +1216,8 @@
       "colRemain": "Restan",
       "colPrincipal": "Principal",
       "colAnnualRate": "Tasa % anual",
-      "colPurchaseMonth": "Mes compra",
+      "colPurchaseDate": "Fecha",
+      "colPurchaseBillingMonth": "Mes facturación",
       "colFirstDue": "1.ª cuota (MES)",
       "colOffsetCsv": "Offset CSV (meses)",
       "colOffsetUi": "Offset UI (meses)",
