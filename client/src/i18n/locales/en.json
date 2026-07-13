@@ -1302,18 +1302,35 @@
     "intro": "Your net worth's position in each country's wealth-per-adult distribution (lognormal model calibrated with the UBS Global Wealth Databooks; CLP converted at the year-end dólar observado).",
     "chart": {
       "seriesTotal": "Total percentile (CL)",
-      "seriesFinancial": "Financial percentile (CL)"
+      "seriesFinancial": "Financial percentile (CL)",
+      "seriesBenchmark": "Percentile ({{country}})",
+      "scaleLabel": "Scale",
+      "scaleLinear": "Linear",
+      "scaleLog": "Log (top %)"
+    },
+    "settings": {
+      "title": "Benchmark countries"
+    },
+    "countries": {
+      "US": "United States",
+      "ES": "Spain",
+      "CH": "Switzerland",
+      "UK": "United Kingdom",
+      "AU": "Australia",
+      "DE": "Germany",
+      "JP": "Japan",
+      "MX": "Mexico",
+      "BR": "Brazil",
+      "CN": "Mainland China"
     },
     "tables": {
       "myData": "My data",
-      "countryData": "Country data",
-      "clFinancialThresholds": "Chile financial thresholds (ex real estate)"
+      "countryData": "Country data"
     },
     "table": {
       "year": "Year",
       "netWorth": "Net worth",
-      "finNetWorth": "Fin. net worth",
-      "thresholdLabel": "Threshold"
+      "finNetWorth": "Fin. net worth"
     },
     "belowSupport": "< p10",
     "markers": {
@@ -1325,6 +1342,7 @@
       "title": "Methodology notes",
       "tail": "The lognormal model underestimates the extreme tail (>p99.5); p99 thresholds are more reliable than any figure about the ultra-rich.",
       "reconstruction": "Chile 2025 is an own reconstruction (BCCh + FX + UBS Gini) validated against the UBS millionaire count, not an official UBS figure.",
+      "benchmarkReconstruction": "Mexico, Brazil and Mainland China 2025 are own reconstructions from the UBS GWR 2026 Gini + millionaire counts (their means/medians fall outside the published top-30 tables).",
       "methodologyBreak": "Pre- and post-2023 medians are not comparable due to UBS's methodology change; 2023–2024 parameters are interpolated across the break.",
       "adults": "Percentiles are over each country's adult (20+) population; wealth is measured at the individual level (UBS assigns household wealth to adults).",
       "fx": "CLP→USD conversion uses the year-end BCentral dólar observado (UBS end-of-period convention), not the app-wide Yahoo rate."
