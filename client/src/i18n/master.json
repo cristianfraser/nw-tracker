@@ -3670,6 +3670,18 @@
       "merchantMatchHintKind": {
         "en": "matches kind",
         "es": "coincide con el tipo"
+      },
+      "billPreviousMonthToggle": {
+        "en": "Billed period: previous month",
+        "es": "Período facturado: mes anterior"
+      },
+      "billMonthEditAction": {
+        "en": "Edit billed month",
+        "es": "Editar mes facturado"
+      },
+      "paidOnHint": {
+        "en": "paid {{date}}",
+        "es": "pagado {{date}}"
       }
     },
     "chartGranularityLabel": {

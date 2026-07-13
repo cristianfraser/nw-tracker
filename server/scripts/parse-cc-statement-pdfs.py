@@ -1491,28 +1491,69 @@ def _santander_clp_row_merge_rank(layout: str) -> int:
     return 1
 
 
+def _santander_clp_row_base_key(row: Dict[str, Any]) -> str:
+    return "|".join(
+        [
+            str(row.get("transaction_date") or ""),
+            str(row.get("merchant") or ""),
+            str(row.get("amount_clp") or ""),
+        ]
+    )
+
+
+def _collapse_extraction_duplicated_body(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """pypdf sometimes extracts a legacy statement's movement section twice — EVERY
+    row duplicated (e.g. 2020-08 1617: 17/17 keys ×2). Halve wholesale duplication;
+    an isolated genuine twin (a double PAT charge among unique rows) is untouched."""
+    if len(rows) < 6:
+        return rows
+    counts: Dict[str, int] = {}
+    for row in rows:
+        k = _santander_clp_row_base_key(row)
+        counts[k] = counts.get(k, 0) + 1
+    dup_keys = sum(1 for v in counts.values() if v >= 2)
+    if dup_keys * 5 < len(counts) * 4:  # < 80% of distinct keys duplicated
+        return rows
+    keep: Dict[str, int] = {k: (v + 1) // 2 for k, v in counts.items()}
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        k = _santander_clp_row_base_key(row)
+        if keep.get(k, 0) > 0:
+            keep[k] -= 1
+            out.append(row)
+    return out
+
+
 def _merge_santander_clp_row_lists(
     compact_rows: List[Dict[str, Any]], wide_rows: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """Compact supplies section-3 / payment lines; wide supplies place+date movimientos."""
+    """Compact supplies section-3 / payment lines; wide supplies place+date movimientos.
+
+    Keys carry an occurrence index WITHIN each input list so genuine duplicate
+    purchases (identical date+merchant+amount twice on one statement — e.g. a
+    double PAT charge later reversed by NOTA DE CREDITO) survive: the Nth twin
+    in one body merges with the Nth twin in the other, never with its sibling.
+    """
     by_key: Dict[str, Dict[str, Any]] = {}
-    for row in compact_rows + wide_rows:
-        key = "|".join(
-            [
-                str(row.get("transaction_date") or ""),
-                str(row.get("merchant") or ""),
-                str(row.get("amount_clp") or ""),
-            ]
-        )
-        prev = by_key.get(key)
-        if prev is None or _santander_clp_row_merge_rank(
-            str(row.get("layout") or "")
-        ) >= _santander_clp_row_merge_rank(str(prev.get("layout") or "")):
-            by_key[key] = row
+    for rows in (compact_rows, wide_rows):
+        occurrence: Dict[str, int] = {}
+        for row in _collapse_extraction_duplicated_body(rows):
+            base = _santander_clp_row_base_key(row)
+            n = occurrence.get(base, 0)
+            occurrence[base] = n + 1
+            key = f"{base}|#{n}"
+            prev = by_key.get(key)
+            if prev is None or _santander_clp_row_merge_rank(
+                str(row.get("layout") or "")
+            ) >= _santander_clp_row_merge_rank(str(prev.get("layout") or "")):
+                by_key[key] = row
     return list(by_key.values())
 
 
 def _finish_clp_parsed_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # Applied on every CLP return path: some pdfs double-extract the whole
+    # movement section regardless of which body wins the row-count pick.
+    rows = _collapse_extraction_duplicated_body(rows)
     sanitize_parsed_rows_dates(rows)
     return rows
 
@@ -1985,11 +2026,13 @@ RE_WIDE_MCC_DATE = re.compile(
     r"^(\d{4,}[A-ZÁ-ÿ]*)\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s+\$\s*([-]?[\d.]+)\s*$",
     re.I,
 )
+# Place prefix: BCI place tokens include slashes and MCC-glued digits
+# (`SANTIAGO/CHL`, `111SANTIAGOCL`) — dropping them silently loses charge rows.
 RE_BCI_LIDER_CHARGE = re.compile(
-    r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
+    r"^(?:[A-Za-zÁ-ÿ0-9][A-Za-zÁ-ÿ0-9\s\./,-]*?\s+)?(\d{2}/\d{2}/\d{4})\s*([^\$]+?)\s*\$\s*([-]?[\d.]+)\s*$"
 )
 RE_BCI_LIDER_INSTALLMENT_ROW = re.compile(
-    r"^(?:[A-Za-zÁ-ÿ][A-Za-zÁ-ÿ0-9\s\.]*?\s+)?"
+    r"^(?:[A-Za-zÁ-ÿ0-9][A-Za-zÁ-ÿ0-9\s\./,-]*?\s+)?"
     r"(?P<date>\d{2}/\d{2}/\d{4})\s*"
     r"(?P<prefix>.+?)"
     r"\$\s*(?P<orig>[\d.]+)\s+"
@@ -3547,6 +3590,12 @@ def main() -> int:
                 full_text = str(cached.get("full") or "")
                 source_pdf = statement_source_pdf_name(meta, p.name, parser, full_text)
                 meta["source_pdf"] = source_pdf
+                if source_pdf in pdf_context:
+                    # Second physical copy of an already-parsed statement (e.g. the same
+                    # PDF filed under both 1617/clp/ and legacy/clp/): same rows, same
+                    # statement — appending them would double every line.
+                    print(f"# skip duplicate statement copy\t{p}\t(already parsed: {source_pdf})")
+                    continue
                 rows = rows_from_parse_payload(
                     effective_group=effective_group,
                     source_pdf=source_pdf,
@@ -3570,6 +3619,24 @@ def main() -> int:
                 p = Path(str(ctx.get("pdf_path") or p))
                 effective_group = "INTL" if ctx["parser"] == "international_usd" else card_group
                 source_pdf = str(ctx.get("source_pdf") or p.name)
+                if source_pdf in pdf_context:
+                    print(f"# skip duplicate statement copy\t{p}\t(already parsed: {source_pdf})")
+                    if not no_cache:
+                        save_parse_cache(
+                            p,
+                            parser_version,
+                            {
+                                "source_pdf": p.name,
+                                "card_group": card_group,
+                                "effective_group": effective_group,
+                                "parser": ctx["parser"],
+                                "meta": ctx["meta"],
+                                "parsed": ctx["parsed"],
+                                "full": ctx["full"],
+                                "layout": ctx["layout"],
+                            },
+                        )
+                    continue
                 pdf_context[source_pdf] = ctx
                 if not no_cache:
                     save_parse_cache(
@@ -3631,8 +3698,17 @@ def main() -> int:
 
     ordered_rows.sort(key=sort_key_row)
 
+    # Genuine same-statement twins (identical merchant+amount+date twice on ONE
+    # statement) get an occurrence suffix so they never dedupe against each other;
+    # the Nth twin still dedupes against the Nth twin of an overlapping statement.
+    within_stmt_occurrence: Dict[Tuple[str, str], int] = {}
     for r in ordered_rows:
         dk = row_dedupe_key(str(r.get("card_group")), _row_to_pr(r))
+        occ_key = (str(r.get("source_pdf") or ""), dk)
+        n = within_stmt_occurrence.get(occ_key, 0)
+        within_stmt_occurrence[occ_key] = n + 1
+        if n > 0:
+            dk = f"{dk}#dup{n}"
         r["dedupe_key"] = dk
         if dk in by_key_first:
             r["is_duplicate_across_statements"] = "true"
@@ -3673,7 +3749,7 @@ def main() -> int:
             if (
                 reconcile_statement_required(pdf_name, full_text)
                 and result.skip_reason
-                not in ("zero_rows", "incomplete_parse")
+                not in ("zero_rows", "incomplete_parse", "duplicate_statement")
                 and not result.ok
             ):
                 reconcile_fail_count += 1

@@ -9,9 +9,25 @@
     "credit_card_master|santander|4111",
     "credit_card_master|santander|4112"
   ],
-  "multicard_marker_tokens": ["XXXX-4141"],
-  "legacy_group_b_tokens": ["4901", "4902", "4141"],
-  "lider_filename_last4s": ["4343"],
-  "reconcile_skip_last4s": ["4111", "4112"],
-  "reconcile_primary_last4s": ["4141"]
+  "multicard_marker_tokens": [
+    "XXXX-4141"
+  ],
+  "legacy_group_b_tokens": [
+    "4901",
+    "4902",
+    "4141"
+  ],
+  "lider_filename_last4s": [
+    "4343"
+  ],
+  "reconcile_skip_last4s": [
+    "4111",
+    "4112"
+  ],
+  "reconcile_primary_last4s": [
+    "4141"
+  ],
+  "additional_card_last4s": [
+    "4999"
+  ]
 }

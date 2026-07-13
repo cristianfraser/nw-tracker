@@ -605,9 +605,15 @@ export const api = {
     purchase_key: string;
     account_slug: import("./types").ExpenseApartmentSlug;
     kind: string;
+    bill_month?: string;
   }) =>
     j<{ expense_entry_id: number }>("/api/flows/expenses/real-estate/assign", {
       method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateRealEstateBillMonth: (expenseEntryId: number, body: { bill_month: string }) =>
+    j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/bill-month`, {
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
   updateRealEstateConsumption: (

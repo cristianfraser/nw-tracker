@@ -75,6 +75,32 @@ describe("pairNotaDeCreditoAnnulments", () => {
     expect(pairing.unmatchedNotaIds.size).toBe(0);
   });
 
+  it("same-day charge + nota pair with each other, not an older innocent purchase", () => {
+    const olderRealPayment = ccLine({
+      statement_line_id: 99,
+      amount_clp: 12_990,
+      purchase_on: "2024-09-03",
+      expense_month: "2024-09",
+    });
+    const reversedCharge = ccLine({
+      statement_line_id: 100,
+      amount_clp: 12_990,
+      purchase_on: "2024-10-14",
+      expense_month: "2024-10",
+    });
+    const nota = ccLine({
+      statement_line_id: 200,
+      amount_clp: -12_990,
+      merchant: "NOTA DE CREDITO",
+      purchase_on: "2024-10-14",
+      expense_month: "2024-10",
+    });
+
+    const pairing = pairNotaDeCreditoAnnulments([olderRealPayment, reversedCharge, nota]);
+    expect([...pairing.annulledPurchaseIds]).toEqual([100]);
+    expect([...pairing.matchedNotaIds]).toEqual([200]);
+  });
+
   it("leaves large NOTA DE CREDITO without a purchase match unpaired (abono via negative amount)", () => {
     const nota = ccLine({
       statement_line_id: 400,
