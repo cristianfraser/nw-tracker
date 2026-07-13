@@ -13,10 +13,9 @@ export type CcExpenseGastosScope = "both" | "total_only" | "split_only" | "exclu
 export function gastosPeriodMonthForLine(
   line: Pick<
     FlowCcExpenseLineRow,
-    "expense_month" | "gastos_period_month" | "billing_month" | "purchase_month" | "line_role"
+    "expense_month" | "billing_month" | "purchase_month" | "line_role"
   >
 ): string {
-  if (line.gastos_period_month) return line.gastos_period_month;
   if (line.line_role === "installment_purchase_total") return line.purchase_month;
   if (line.line_role === "installment_cuota") return line.billing_month;
   return line.expense_month;

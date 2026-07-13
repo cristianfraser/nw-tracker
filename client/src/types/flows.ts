@@ -84,11 +84,6 @@ export interface FlowCcExpenseLineRow {
   account_id: number;
   /** Calendar month bucket (YYYY-MM). */
   expense_month: string;
-  /**
-   * Optional override for gastos chart / month table / modal bucketing only.
-   * purchase_on and purchase_month stay on the real transaction date.
-   */
-  gastos_period_month?: string;
   /** Facturación month (CC); same as expense_month for checking. */
   billing_month: string;
   /** Calendar month of purchase (YYYY-MM). */

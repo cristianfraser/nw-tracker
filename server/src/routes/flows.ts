@@ -44,6 +44,7 @@ import {
   deleteRealEstateExpenseEntry,
   manualLinkRealEstateExpense,
   unmatchRealEstateExpense,
+  updateRealEstateExpenseBillMonth,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
 import {
@@ -419,6 +420,26 @@ app.post("/api/flows/expenses/real-estate/assign", (req, res) => {
     res.status(201).json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "assign failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/bill-month", (req, res) => {
+  const expenseEntryId = Number(req.params.expenseEntryId);
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
+    res.status(400).json({ error: "invalid expense entry id" });
+    return;
+  }
+  const billMonth = String((req.body as { bill_month?: string }).bill_month ?? "").trim();
+  if (!/^\d{4}-\d{2}$/.test(billMonth)) {
+    res.status(400).json({ error: "bill_month must be YYYY-MM" });
+    return;
+  }
+  try {
+    updateRealEstateExpenseBillMonth(expenseEntryId, billMonth);
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "update failed";
     res.status(400).json({ error: msg });
   }
 });
