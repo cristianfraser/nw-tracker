@@ -44,6 +44,28 @@ export function dedupeTooltipPayloadPreferVisibleStroke(
 
 export type TooltipEdgeRect = { left: number; right: number; top: number; bottom: number };
 
+export type ChartGuideViewBox = { x?: number; y?: number; width?: number; height?: number };
+
+export type HorizontalGuideRect = { left: number; top: number; width: number };
+
+/**
+ * The horizontal crosshair at the hovered mouse y (recharts `coordinate.y` for horizontal-layout charts),
+ * spanning the plot width. Returns null when y is unknown or outside the plot band, so the guide shows and
+ * hides in lockstep with the tooltip. `viewBox` is the plot area rect (SVG pixel space, same as the dock).
+ */
+export function horizontalGuideRect(
+  y: number | undefined,
+  viewBox: ChartGuideViewBox
+): HorizontalGuideRect | null {
+  if (y == null || !Number.isFinite(y)) return null;
+  const vx = viewBox.x ?? 0;
+  const vy = viewBox.y ?? 0;
+  const vw = viewBox.width ?? 0;
+  const vh = viewBox.height ?? 0;
+  if (y < vy || y > vy + vh) return null;
+  return { left: vx, top: y, width: vw };
+}
+
 export type TooltipDockPlacement = "below" | "above";
 
 export type TooltipDockFit = { x: number; y: number; placement: TooltipDockPlacement };
@@ -270,6 +292,8 @@ export type AppTooltipSpec = {
   renderContent?: (p: { label: string | number | undefined; payload: ChartTooltipEntry[] }) => ReactNode;
   /** Recharts Tooltip `cursor`; default thin slate line. Pass `false` to hide. */
   cursor?: TooltipProps<number, string>["cursor"];
+  /** Horizontal crosshair at the hovered mouse y, spanning the plot. Default on; pass `false` to hide. */
+  horizontalGuide?: boolean;
 };
 
 export const DEFAULT_TOOLTIP_CURSOR = { stroke: "rgba(148, 163, 184, 0.45)", strokeWidth: 1 } as const;
@@ -287,6 +311,7 @@ export function AppChartTooltipContent(props: TooltipProps<number, string> & { s
   const mapped = payload?.length ? (spec.mapPayload ? spec.mapPayload(payload) : payload) : [];
   const cx = coordinate?.x;
   if (!active || !viewBox || cx == null || mapped.length === 0) return null;
+  const guide = spec.horizontalGuide === false ? null : horizontalGuideRect(coordinate?.y, viewBox);
   const vy = viewBox.y ?? 0;
   const vw = viewBox.width ?? 0;
   const vh = viewBox.height ?? 0;
@@ -314,9 +339,27 @@ export function AppChartTooltipContent(props: TooltipProps<number, string> & { s
   if (content == null) return null;
 
   return (
-    <ChartTooltipDock cx={cx} top={top} flipTop={flipTop} plotWidth={vw} anchorLabel={String(label)}>
-      {content}
-    </ChartTooltipDock>
+    <>
+      {guide ? (
+        <div
+          aria-hidden
+          className="line-chart-horizontal-guide"
+          style={{
+            position: "absolute",
+            left: guide.left,
+            top: guide.top,
+            width: guide.width,
+            height: 0,
+            borderTop: `1px solid ${DEFAULT_TOOLTIP_CURSOR.stroke}`,
+            pointerEvents: "none",
+            zIndex: 19,
+          }}
+        />
+      ) : null}
+      <ChartTooltipDock cx={cx} top={top} flipTop={flipTop} plotWidth={vw} anchorLabel={String(label)}>
+        {content}
+      </ChartTooltipDock>
+    </>
   );
 }
 
