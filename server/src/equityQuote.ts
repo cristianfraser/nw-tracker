@@ -113,13 +113,14 @@ function sessionPairEodQuote(
     price = fallback.price;
     tradeDate = fallback.trade_date;
   }
-  const priorClose =
-    priorYmd != null ? eodCloseOnDate(ticker, priorYmd) : null;
+  const priorClose = priorYmd != null ? eodCloseOnDate(ticker, priorYmd) : null;
+  // Fall back to the last bar strictly before the resolved trade_date when the exact prior session
+  // has no stored bar (holiday-adjacent gap, thin history, or the demo's weekly cadence) — so the
+  // day change is always the change vs the previous available session, never null when a prior exists.
   const priorFromStmt =
     priorClose ??
-    (priorYmd == null
-      ? (stmtEodPrior.get(ticker, tradeDate) as { close: number } | undefined)?.close
-      : null);
+    (stmtEodPrior.get(ticker, tradeDate) as { close: number } | undefined)?.close ??
+    null;
   return {
     price,
     currency: equityQuoteCurrency(ticker),
