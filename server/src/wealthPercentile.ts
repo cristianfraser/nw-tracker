@@ -36,7 +36,18 @@ import {
 /** Max staleness of the fx row behind an as-of date (year-end lookbacks span holidays). */
 const FX_MAX_LOOKBACK_DAYS = 21;
 
-export const WEALTH_BENCHMARK_COUNTRIES = ["US", "ES", "CH", "UK"] as const;
+export const WEALTH_BENCHMARK_COUNTRIES = [
+  "US",
+  "ES",
+  "CH",
+  "UK",
+  "AU",
+  "DE",
+  "JP",
+  "MX",
+  "BR",
+  "CN",
+] as const;
 export type WealthBenchmarkCountry = (typeof WEALTH_BENCHMARK_COUNTRIES)[number];
 
 /** One net worth placed in one country-mode distribution. */

@@ -1,6 +1,17 @@
 /** DTOs for /wealth-percentile (see server wealthPercentile.ts). */
 
-export type WealthCountry = "CL" | "US" | "ES" | "CH" | "UK";
+export type WealthCountry =
+  | "CL"
+  | "US"
+  | "ES"
+  | "CH"
+  | "UK"
+  | "AU"
+  | "DE"
+  | "JP"
+  | "MX"
+  | "BR"
+  | "CN";
 export type WealthBenchmarkCountry = Exclude<WealthCountry, "CL">;
 
 /** One net worth placed in one country-mode distribution. */
