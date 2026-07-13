@@ -112,7 +112,7 @@ export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
-import { loadExcelGapLineSplits } from "./ccExpenseLineSplits.js";
+import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 import {
   buildNormalPurchaseProxyForAccount,
   getCcProxyTickers,
@@ -992,7 +992,7 @@ export function loadFinalizedCheckingGastosLinesReadOnly(): Omit<
 export function expandLineSplitsInDrafts(
   drafts: readonly FlowCcExpenseLineRowDraft[]
 ): FlowCcExpenseLineRowDraft[] {
-  const splitsMap = loadExcelGapLineSplits();
+  const splitsMap = loadCcExpenseLineSplits();
   if (splitsMap.size === 0) return [...drafts];
 
   const result: FlowCcExpenseLineRowDraft[] = [];

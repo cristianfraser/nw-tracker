@@ -15,6 +15,9 @@ export type CcExpenseLineForDedupe = {
   statement_line_id: number;
   category_slug: string;
   category_unique: boolean;
+  source?: string;
+  /** Raw statement close (CC lines); used to recognize same-statement twins. */
+  statement_date?: string;
 };
 
 const dbCheckDedupeKey = db.prepare(
@@ -89,6 +92,19 @@ export function purchaseExpenseLinesMatchForDisplayDedupe(
   if (a.billing_month !== b.billing_month) return false;
   if (a.amount_clp !== b.amount_clp) return false;
   if ((a.purchase_on ?? "") !== (b.purchase_on ?? "")) return false;
+  // Two distinct CC lines on the SAME statement are affirmed twins (a genuine
+  // double charge — the import batch dedupe already collapses true repeats);
+  // display dedupe only targets the same purchase surfacing via different
+  // statements/sources (web paste vs pdf, mixed date formats).
+  if (
+    a.source === "cc" &&
+    b.source === "cc" &&
+    a.statement_line_id !== b.statement_line_id &&
+    (a.statement_date ?? "") !== "" &&
+    a.statement_date === b.statement_date
+  ) {
+    return false;
+  }
   return merchantsMatchForCrossDedupe(a.merchant_key, b.merchant_key);
 }
 
