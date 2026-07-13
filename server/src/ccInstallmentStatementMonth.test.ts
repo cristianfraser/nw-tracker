@@ -192,7 +192,7 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
     first_due_month: null,
   };
 
-  it("anchors first indexed cuota on pay-by month after 00/03 preamble", () => {
+  it("anchors first indexed cuota on the statement month after the 00/03 preamble", () => {
     const payList = [
       {
         id: 1,
@@ -207,10 +207,10 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
         cuota_total: null,
       },
     ];
-    expect(purchaseFirstDueYm(purchase, payList)).toBe("2026-08");
+    expect(purchaseFirstDueYm(purchase, payList)).toBe("2026-07");
   });
 
-  it("schedules 01/03 in August after June 00/03 only", () => {
+  it("schedules 01/03 in July after June 00/03 only", () => {
     const payList = [
       {
         id: 1,
@@ -227,10 +227,11 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
     ];
     const paymentsByPurchase = new Map([[1, payList]]);
     const breakdown = scheduledPaymentsPlanBreakdownByMonth([purchase], paymentsByPurchase);
-    const aug = breakdown.get("2026-08") ?? [];
-    expect(aug).toHaveLength(1);
-    expect(aug[0]!.installment_index).toBe(0);
-    expect(aug[0]!.installment_count).toBe(3);
-    expect(aug[0]!.amount_clp).toBe(63_300);
+    const jul = breakdown.get("2026-07") ?? [];
+    expect(jul).toHaveLength(1);
+    expect(jul[0]!.installment_index).toBe(0);
+    expect(jul[0]!.installment_count).toBe(3);
+    expect(jul[0]!.amount_clp).toBe(63_300);
+    expect(breakdown.get("2026-08") ?? []).toHaveLength(1);
   });
 });

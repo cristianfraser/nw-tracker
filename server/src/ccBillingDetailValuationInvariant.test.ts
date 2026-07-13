@@ -85,11 +85,10 @@ describe("CC billing detail / valuation path invariant", () => {
       const broken: { billing_month: string; pay_by: string | undefined }[] = [];
       for (const f of response.facturaciones) {
         if (!f.billing_month || f.billing_month >= nowYm) continue;
-        // Infer pay_by month from billing_month+1 (approximate; sufficient for regression check)
-        const [y, m] = f.billing_month.split("-").map(Number) as [number, number];
-        const payByYm = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-        if (!historyMonthSet.has(payByYm)) continue;
-        // This month has installments due in the pay_by period — cuota_a_pagar_clp must be set
+        // Plan months are facturación months: the cuotas billed at this month's close live
+        // at the billing month itself in the history schedule.
+        if (!historyMonthSet.has(f.billing_month)) continue;
+        // This month billed installments at its close — cuota_a_pagar_clp must be set
         if (f.cuota_a_pagar_clp == null) {
           broken.push({ billing_month: f.billing_month, pay_by: f.pay_by ?? undefined });
         }

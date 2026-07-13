@@ -24,6 +24,7 @@ import {
   ccInstallmentLedgerRowCount,
   creditCardInstallmentPaymentsByBillingMonth,
 } from "./ccInstallmentLedgerDb.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
@@ -820,7 +821,10 @@ function buildAccountMonthlyPerformanceUncached(
           ? perfDeptoPropertyPaymentsInUnit(deptoLedger, asOf, propertyAfterExclusive, unit)
           : cumDep - (prevCumDep ?? 0);
     if (ccBillingPayByMonth != null) {
-      const sched = ccBillingPayByMonth.get(monthKeyFromYmd(asOf)) ?? 0;
+      // Cuotas paid during month M (~10th) were billed at the previous month's close, and
+      // the plan schedule is keyed by facturación month — so look up M−1.
+      const asOfYm = monthKeyFromYmd(asOf);
+      const sched = asOfYm != null ? ccBillingPayByMonth.get(addCalendarMonths(asOfYm, -1)) ?? 0 : 0;
       const balanceDelta = close - prevClose;
       if (sched > 0 && Math.abs(balanceDelta) < MONTH_ROW_EPS) {
         netFlow = perfSheetClpFlowInUnit(sched, asOf, unit);

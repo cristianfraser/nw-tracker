@@ -4216,8 +4216,8 @@
   "account": {
     "creditCard": {
       "colBillingMonth": {
-        "en": "Month",
-        "es": "Mes"
+        "en": "Billing cycle (pay by)",
+        "es": "Facturación (pagar hasta)"
       },
       "colFacturado": {
         "en": "Billed",
@@ -4368,16 +4368,16 @@
         "es": "sin source_pdf"
       },
       "monthCuotasTitle": {
-        "en": "Month's installments",
-        "es": "Cuotas del mes"
+        "en": "Installments by billing cycle",
+        "es": "Cuotas por facturación"
       },
       "colMonthCuotaTotal": {
-        "en": "Month installment total",
-        "es": "Total cuota del mes"
+        "en": "Installment due",
+        "es": "Cuota a pagar"
       },
-      "colInstallmentDebt": {
-        "en": "Installment debt",
-        "es": "Deuda en cuotas"
+      "colDebtAfterPayment": {
+        "en": "Debt after payment",
+        "es": "Deuda tras pago"
       },
       "colMonthBreakdown": {
         "en": "Detail",
