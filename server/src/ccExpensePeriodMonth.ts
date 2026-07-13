@@ -14,7 +14,6 @@ export type CcExpenseGastosScope = "both" | "total_only" | "split_only" | "exclu
 export type GastosPeriodLine = {
   source: "cc" | "checking" | "manual";
   expense_month: string;
-  gastos_period_month?: string;
   billing_month: string;
   purchase_month: string;
   line_role: CcExpenseLineRole;
@@ -24,7 +23,6 @@ export type GastosPeriodLine = {
 
 /** Gastos chart / table / modal calendar month for this line. */
 export function gastosPeriodMonthForLine(line: GastosPeriodLine): string {
-  if (line.gastos_period_month) return line.gastos_period_month;
   if (line.line_role === "installment_purchase_total") return line.purchase_month;
   if (line.line_role === "installment_cuota") return line.billing_month;
   return line.expense_month;

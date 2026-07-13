@@ -1,6 +1,7 @@
 import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
+import { numericCuota } from "./mortgagePaymentCompute.js";
 import type {
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
@@ -254,12 +255,77 @@ function expectationToSlot(
   };
 }
 
+function monthIndex(ym: string): number {
+  return Number(ym.slice(0, 4)) * 12 + (Number(ym.slice(5, 7)) - 1);
+}
+
+function monthFromIndex(idx: number): string {
+  const y = Math.floor(idx / 12);
+  const m = (idx % 12) + 1;
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}`;
+}
+
+export type MortgageCuotaPaymentRow = { occurred_on: string; cuota: string };
+
+/**
+ * Scheduled (billed) month per regular cuota, derived from the cuota numbers:
+ * consecutive cuotas are consecutive months, so a single anchor — the modal value
+ * of month(occurred_on) − cuotaN across rows — maps cuota N to anchor + N. A
+ * skipped-then-caught-up payment shifts individual rows off the anchor without
+ * moving the mode. Inconsistent evidence (non-numeric cuota, ambiguous anchor, a
+ * payment > 3 months off schedule) throws — fix the depto_payments rows instead.
+ */
+export function mortgageCuotaBillMonths(rows: readonly MortgageCuotaPaymentRow[]): string[] {
+  const cuotaNs = rows.map((r) => {
+    const n = numericCuota(r.cuota);
+    if (n == null) {
+      throw new Error(`mortgage bill months: non-numeric regular cuota '${r.cuota}' (${r.occurred_on})`);
+    }
+    return n;
+  });
+
+  const anchorVotes = new Map<number, number>();
+  rows.forEach((r, i) => {
+    const anchor = monthIndex(monthKeyFromYmd(r.occurred_on)) - cuotaNs[i]!;
+    anchorVotes.set(anchor, (anchorVotes.get(anchor) ?? 0) + 1);
+  });
+  // Mode wins; on a vote tie prefer the smallest anchor — payments run late
+  // (the payable window opens on the 11th), never early, so the lower anchor is
+  // the on-schedule one.
+  let anchor: number | null = null;
+  let best = 0;
+  for (const [a, votes] of anchorVotes) {
+    if (votes > best || (votes === best && anchor != null && a < anchor)) {
+      anchor = a;
+      best = votes;
+    }
+  }
+  if (anchor == null) return [];
+
+  const seen = new Set<number>();
+  return rows.map((r, i) => {
+    const idx = anchor + cuotaNs[i]!;
+    const drift = monthIndex(monthKeyFromYmd(r.occurred_on)) - idx;
+    if (drift < -1 || drift > 3) {
+      throw new Error(
+        `mortgage bill months: cuota ${cuotaNs[i]} paid ${r.occurred_on} is ${drift} months off its scheduled month ${monthFromIndex(idx)}`
+      );
+    }
+    if (seen.has(idx)) {
+      throw new Error(`mortgage bill months: duplicate scheduled month ${monthFromIndex(idx)} (cuota ${cuotaNs[i]})`);
+    }
+    seen.add(idx);
+    return monthFromIndex(idx);
+  });
+}
+
 /**
  * Monthly dividendo as read-only slots for every place linked to a property master
  * (`expense_accounts.property_account_id`), sourced from the depto ledger. Regular
  * cuotas only — pie and prepagos are capital events, not monthly expenses. The cash
  * cost is the component sum (amortización + interés + seguros); the movement's
- * `amount_clp` is an equity mark, not the payment.
+ * `amount_clp` is an equity mark, not the payment. `bill_month` is the cuota's
+ * scheduled month (billed-period framing); `spent_on` keeps the real payment date.
  */
 function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateBillSlot[] {
   const linked = places.filter((p) => p.property_account_id != null);
@@ -267,7 +333,7 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
 
   const slots: RealEstateBillSlot[] = [];
   const stmt = db.prepare(
-    `SELECT m.occurred_on,
+    `SELECT m.occurred_on, p.cuota,
             COALESCE(p.amortizacion_clp, 0) + COALESCE(p.interes_clp, 0)
               + COALESCE(p.incendio_clp, 0) + COALESCE(p.desgravamen_clp, 0) AS pago_clp
      FROM movements m
@@ -279,16 +345,19 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
      ORDER BY m.occurred_on DESC`
   );
   for (const place of linked) {
-    const rows = stmt.all(place.property_account_id) as {
-      occurred_on: string;
-      pago_clp: number;
-    }[];
-    for (const r of rows) {
-      if (r.pago_clp <= 0) continue;
+    const rows = (
+      stmt.all(place.property_account_id) as {
+        occurred_on: string;
+        cuota: string;
+        pago_clp: number;
+      }[]
+    ).filter((r) => r.pago_clp > 0);
+    const billMonths = mortgageCuotaBillMonths(rows);
+    rows.forEach((r, i) => {
       slots.push({
         expense_entry_id: null,
         account_slug: place.slug,
-        bill_month: monthKeyFromYmd(r.occurred_on),
+        bill_month: billMonths[i]!,
         spent_on: r.occurred_on,
         kind: "mortgage",
         expected_amount_clp: Math.round(r.pago_clp),
@@ -299,7 +368,7 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
         m3: null,
         can_link: false,
       });
-    }
+    });
   }
   return slots;
 }

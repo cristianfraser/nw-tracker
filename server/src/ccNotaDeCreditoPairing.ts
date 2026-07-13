@@ -86,7 +86,9 @@ export function pairNotaDeCreditoAnnulments(
       if (usedPurchaseIds.has(purchase.statement_line_id)) continue;
       if (purchase.account_id !== nota.account_id) continue;
       if (purchase.amount_clp !== absAmount) continue;
-      if (purchaseDate >= notaDate) continue;
+      // Same-day pairs: an instant reversal (charge + nota on one day) must annul its
+      // twin, not reach back to an older innocent same-amount purchase.
+      if (purchaseDate > notaDate) continue;
       if (purchaseDate > bestPurchaseDate) {
         bestPurchase = purchase;
         bestPurchaseDate = purchaseDate;
