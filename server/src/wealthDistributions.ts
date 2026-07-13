@@ -19,8 +19,31 @@
  */
 import { phi, phiInv } from "./normalDist.js";
 
-export type WealthCountry = "CL" | "US" | "ES" | "CH" | "UK";
-export const WEALTH_COUNTRIES: readonly WealthCountry[] = ["CL", "US", "ES", "CH", "UK"];
+export type WealthCountry =
+  | "CL"
+  | "US"
+  | "ES"
+  | "CH"
+  | "UK"
+  | "AU"
+  | "DE"
+  | "JP"
+  | "MX"
+  | "BR"
+  | "CN";
+export const WEALTH_COUNTRIES: readonly WealthCountry[] = [
+  "CL",
+  "US",
+  "ES",
+  "CH",
+  "UK",
+  "AU",
+  "DE",
+  "JP",
+  "MX",
+  "BR",
+  "CN",
+];
 
 export function isWealthCountry(v: string): v is WealthCountry {
   return (WEALTH_COUNTRIES as readonly string[]).includes(v);
@@ -56,6 +79,14 @@ const GWD2023_WITH_GINI = `UBS Global Wealth Databook 2023, Table 2-2 (end-2022)
 const GWR2026 = "UBS Global Wealth Report 2026 (end-2025)";
 const CL_2025_SOURCE =
   "Own reconstruction end-2025 (BCCh + FX + UBS Gini), validated against the UBS GWR 2026 millionaire count (~69,100); mean_fin from est. fin/debt shares of gross (0.58/0.16)";
+/**
+ * GWR 2026 publishes mean/median only for its top-30 markets; MX/BR/CN fall outside both lists.
+ * Their end-2025 rows are reconstructed with the CL-2025 method from published GWR 2026 figures:
+ * sigma from the Gini table, mu from the UBS Millionaire Index count over extrapolated adults
+ * (GWD 2023 Table 2-2 2016→2022 linear trend), median = e^mu, mean = e^(mu + sigma²/2).
+ */
+const GWR2026_MILLIONAIRE_RECONSTRUCTION = (millionairesK: number) =>
+  `Own reconstruction end-2025 from UBS GWR 2026 Gini + Millionaire Index (${millionairesK}k millionaires) over trend-extrapolated adults`;
 
 /** CL `mean_fin_usd` = Table 2-2 "financial wealth per adult" − "debt per adult". */
 const BASE_RECORDS: readonly WealthDistributionRecord[] = [
@@ -109,6 +140,66 @@ const BASE_RECORDS: readonly WealthDistributionRecord[] = [
   { country: "UK", year: 2021, mean_usd: 318_501, median_usd: 155_813, adults_thousands: 52_562, source: GWD2023(2021) },
   { country: "UK", year: 2022, mean_usd: 302_783, median_usd: 151_825, gini: 0.702, adults_thousands: 52_752, source: GWD2023_WITH_GINI },
   { country: "UK", year: 2025, mean_usd: 292_808, median_usd: 125_335, gini: 0.59, source: GWR2026 },
+
+  // Australia
+  { country: "AU", year: 2016, mean_usd: 380_957, median_usd: 187_619, adults_thousands: 18_295, source: GWD2023(2016) },
+  { country: "AU", year: 2017, mean_usd: 432_269, median_usd: 209_390, adults_thousands: 18_520, source: GWD2023(2017) },
+  { country: "AU", year: 2018, mean_usd: 385_207, median_usd: 185_397, adults_thousands: 18_737, source: GWD2023(2018) },
+  { country: "AU", year: 2019, mean_usd: 418_060, median_usd: 210_705, adults_thousands: 18_952, source: GWD2023(2019) },
+  { country: "AU", year: 2020, mean_usd: 483_755, median_usd: 245_454, adults_thousands: 19_159, source: GWD2023(2020) },
+  { country: "AU", year: 2021, mean_usd: 554_480, median_usd: 276_079, adults_thousands: 19_359, source: GWD2023(2021) },
+  { country: "AU", year: 2022, mean_usd: 496_819, median_usd: 247_453, gini: 0.663, adults_thousands: 19_564, source: GWD2023_WITH_GINI },
+  { country: "AU", year: 2025, mean_usd: 616_306, median_usd: 210_783, gini: 0.53, source: GWR2026 },
+
+  // Germany
+  { country: "DE", year: 2016, mean_usd: 180_988, median_usd: 42_227, adults_thousands: 67_185, source: GWD2023(2016) },
+  { country: "DE", year: 2017, mean_usd: 218_666, median_usd: 54_656, adults_thousands: 67_478, source: GWD2023(2017) },
+  { country: "DE", year: 2018, mean_usd: 218_764, median_usd: 54_421, adults_thousands: 67_731, source: GWD2023(2018) },
+  { country: "DE", year: 2019, mean_usd: 229_190, median_usd: 56_652, adults_thousands: 67_907, source: GWD2023(2019) },
+  { country: "DE", year: 2020, mean_usd: 265_425, median_usd: 65_864, adults_thousands: 68_015, source: GWD2023(2020) },
+  { country: "DE", year: 2021, mean_usd: 270_537, median_usd: 63_830, adults_thousands: 68_056, source: GWD2023(2021) },
+  { country: "DE", year: 2022, mean_usd: 256_179, median_usd: 66_735, gini: 0.772, adults_thousands: 68_024, source: GWD2023_WITH_GINI },
+  { country: "DE", year: 2025, mean_usd: 346_613, median_usd: 53_485, gini: 0.67, source: GWR2026 },
+
+  // Japan
+  { country: "JP", year: 2016, mean_usd: 212_367, median_usd: 104_244, adults_thousands: 105_308, source: GWD2023(2016) },
+  { country: "JP", year: 2017, mean_usd: 226_610, median_usd: 116_607, adults_thousands: 105_264, source: GWD2023(2017) },
+  { country: "JP", year: 2018, mean_usd: 228_846, median_usd: 104_994, adults_thousands: 105_200, source: GWD2023(2018) },
+  { country: "JP", year: 2019, mean_usd: 240_319, median_usd: 119_531, adults_thousands: 105_094, source: GWD2023(2019) },
+  { country: "JP", year: 2020, mean_usd: 254_815, median_usd: 126_294, adults_thousands: 104_953, source: GWD2023(2020) },
+  { country: "JP", year: 2021, mean_usd: 239_387, median_usd: 117_136, adults_thousands: 104_763, source: GWD2023(2021) },
+  { country: "JP", year: 2022, mean_usd: 216_078, median_usd: 103_681, gini: 0.65, adults_thousands: 104_511, source: GWD2023_WITH_GINI },
+  { country: "JP", year: 2025, mean_usd: 211_846, median_usd: 135_745, gini: 0.53, source: GWR2026 },
+
+  // Mexico
+  { country: "MX", year: 2016, mean_usd: 31_055, median_usd: 9_323, adults_thousands: 79_329, source: GWD2023(2016) },
+  { country: "MX", year: 2017, mean_usd: 36_403, median_usd: 11_158, adults_thousands: 80_792, source: GWD2023(2017) },
+  { country: "MX", year: 2018, mean_usd: 39_001, median_usd: 11_973, adults_thousands: 82_248, source: GWD2023(2018) },
+  { country: "MX", year: 2019, mean_usd: 43_552, median_usd: 14_116, adults_thousands: 83_693, source: GWD2023(2019) },
+  { country: "MX", year: 2020, mean_usd: 44_249, median_usd: 14_282, adults_thousands: 85_136, source: GWD2023(2020) },
+  { country: "MX", year: 2021, mean_usd: 48_608, median_usd: 15_837, adults_thousands: 86_570, source: GWD2023(2021) },
+  { country: "MX", year: 2022, mean_usd: 55_274, median_usd: 18_920, gini: 0.793, adults_thousands: 87_983, source: GWD2023_WITH_GINI },
+  { country: "MX", year: 2025, mean_usd: 53_000, median_usd: 16_500, gini: 0.72, adults_thousands: 92_300, reconstructed: true, source: GWR2026_MILLIONAIRE_RECONSTRUCTION(333) },
+
+  // Brazil
+  { country: "BR", year: 2016, mean_usd: 20_106, median_usd: 3_828, adults_thousands: 144_692, source: GWD2023(2016) },
+  { country: "BR", year: 2017, mean_usd: 26_659, median_usd: 5_505, adults_thousands: 146_930, source: GWD2023(2017) },
+  { country: "BR", year: 2018, mean_usd: 24_162, median_usd: 4_518, adults_thousands: 149_139, source: GWD2023(2018) },
+  { country: "BR", year: 2019, mean_usd: 25_329, median_usd: 5_061, adults_thousands: 151_275, source: GWD2023(2019) },
+  { country: "BR", year: 2020, mean_usd: 20_168, median_usd: 3_757, adults_thousands: 153_307, source: GWD2023(2020) },
+  { country: "BR", year: 2021, mean_usd: 22_649, median_usd: 4_156, adults_thousands: 155_248, source: GWD2023(2021) },
+  { country: "BR", year: 2022, mean_usd: 29_452, median_usd: 5_702, gini: 0.884, adults_thousands: 157_120, source: GWD2023_WITH_GINI },
+  { country: "BR", year: 2025, mean_usd: 29_600, median_usd: 5_300, gini: 0.81, adults_thousands: 163_300, reconstructed: true, source: GWR2026_MILLIONAIRE_RECONSTRUCTION(386) },
+
+  // Mainland China
+  { country: "CN", year: 2016, mean_usd: 48_297, median_usd: 16_295, adults_thousands: 1_077_268, source: GWD2023(2016) },
+  { country: "CN", year: 2017, mean_usd: 57_478, median_usd: 19_953, adults_thousands: 1_084_961, source: GWD2023(2017) },
+  { country: "CN", year: 2018, mean_usd: 60_376, median_usd: 22_360, adults_thousands: 1_092_199, source: GWD2023(2018) },
+  { country: "CN", year: 2019, mean_usd: 63_894, median_usd: 23_717, adults_thousands: 1_098_868, source: GWD2023(2019) },
+  { country: "CN", year: 2020, mean_usd: 66_849, median_usd: 24_142, adults_thousands: 1_104_956, source: GWD2023(2020) },
+  { country: "CN", year: 2021, mean_usd: 77_395, median_usd: 28_537, adults_thousands: 1_110_504, source: GWD2023(2021) },
+  { country: "CN", year: 2022, mean_usd: 75_731, median_usd: 27_273, gini: 0.709, adults_thousands: 1_115_602, source: GWD2023_WITH_GINI },
+  { country: "CN", year: 2025, mean_usd: 92_100, median_usd: 45_300, gini: 0.6, adults_thousands: 1_134_800, reconstructed: true, source: GWR2026_MILLIONAIRE_RECONSTRUCTION(5_305) },
 ];
 
 function geometricInterp(from: number, to: number, fraction: number): number {

@@ -19,6 +19,12 @@ describe("wealthDistributions seed", () => {
       ES: { mean: 224_209, median: 107_507, gini: 0.683 },
       CH: { mean: 685_226, median: 167_353, gini: 0.772 },
       UK: { mean: 302_783, median: 151_825, gini: 0.702 },
+      AU: { mean: 496_819, median: 247_453, gini: 0.663 },
+      DE: { mean: 256_179, median: 66_735, gini: 0.772 },
+      JP: { mean: 216_078, median: 103_681, gini: 0.65 },
+      MX: { mean: 55_274, median: 18_920, gini: 0.793 },
+      BR: { mean: 29_452, median: 5_702, gini: 0.884 },
+      CN: { mean: 75_731, median: 27_273, gini: 0.709 },
     };
     for (const country of WEALTH_COUNTRIES) {
       const rec = wealthDistributionRecordFor(country, 2022);
@@ -124,5 +130,19 @@ describe("model validation: Chile end-2025 millionaire count", () => {
     const millionaires = adults * (1 - lognormalPercentile(params, 1_000_000));
     expect(millionaires).toBeGreaterThan(60_000);
     expect(millionaires).toBeLessThan(80_000);
+  });
+
+  it("reconstructed MX/BR/CN 2025 rows reproduce the GWR 2026 Millionaire Index counts", () => {
+    // These rows were derived FROM the counts (sigma from Gini, mu from millionaire share),
+    // so the seeded rounded mean/median must round-trip back to the published counts.
+    const published: Record<string, number> = { MX: 333_000, BR: 386_000, CN: 5_305_000 };
+    for (const country of ["MX", "BR", "CN"] as const) {
+      const rec = wealthDistributionRecordFor(country, 2025);
+      expect(rec.reconstructed).toBe(true);
+      const params = lognormalParamsFor(country, 2025, "total");
+      const adults = rec.adults_thousands! * 1_000;
+      const millionaires = adults * (1 - lognormalPercentile(params, 1_000_000));
+      expect(Math.abs(millionaires - published[country]!) / published[country]!).toBeLessThan(0.02);
+    }
   });
 });
