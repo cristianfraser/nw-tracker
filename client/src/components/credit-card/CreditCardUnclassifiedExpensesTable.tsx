@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
+import type {
+  CcExpenseBigGroupDto,
+  CcExpenseCategoryDto,
+  FlowCcExpenseLineRow,
+} from "../../types";
+import { isUnclassifiedPendingGasto } from "../../ccExpenseLineBuckets";
 import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByAmountDesc,
@@ -15,9 +20,11 @@ const UNCLASSIFIED_PAGE_SIZE = 10;
 export function CreditCardUnclassifiedExpensesTable({
   lines,
   categories,
+  bigGroups = [],
 }: {
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
+  bigGroups?: readonly CcExpenseBigGroupDto[];
 }) {
   const { t } = useTranslation();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -25,12 +32,7 @@ export function CreditCardUnclassifiedExpensesTable({
   const unclassifiedGastos = useMemo(
     () =>
       lines
-        .filter(
-          (ln) =>
-            ln.line_role !== "installment_purchase_total" &&
-            ln.amount_clp > 0 &&
-            ln.category_slug === "unclassified"
-        )
+        .filter(isUnclassifiedPendingGasto)
         .sort(sortCreditCardExpenseLinesByAmountDesc),
     [lines]
   );
@@ -111,6 +113,8 @@ export function CreditCardUnclassifiedExpensesTable({
         <CreditCardExpenseLinesTable
           lines={currentLines}
           categories={categories}
+          bigGroups={bigGroups}
+          showBigGroupControls
           emptyLabel={t("expenses.creditCard.unclassifiedTableEmpty")}
           showCategoryControls
           categoryControlVariant="pills"
