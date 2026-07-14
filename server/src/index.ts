@@ -13,6 +13,7 @@ import {
   sharedPasswordAuthMiddleware,
 } from "./httpSecurity.js";
 import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
+import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
@@ -35,6 +36,7 @@ seedNavTree();
 
 loadRootDotenv();
 bootstrapDemoModeIfEnabled();
+applyBackgroundJobsEnvDefaults();
 ensureAccountSyncSourcesSeeded();
 
 const app = express();
