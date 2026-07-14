@@ -5,7 +5,7 @@ import { formatYmEs } from "./shared";
 import { cn } from "../../cn";
 import styles from "../AccountDetailPage.module.css";
 import type { CcBillingDetailMonthDto } from "../../types";
-import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
+import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
 import {
   TableMobileCard,
@@ -79,7 +79,14 @@ export function CreditCardDetallePorMesTable({
     [rows]
   );
 
-  const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
+  // Rows are newest-first with future plan projections appended; land on the open/live billing
+  // month — the first non-projected row (settled cards have none → page 1).
+  const defaultPage = useMemo(
+    () => pageForFirstMatch(sortedRows, PAGE_SIZE, (r) => !r.projected),
+    [sortedRows]
+  );
+
+  const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE, defaultPage);
 
   return (
     <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>

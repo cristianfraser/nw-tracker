@@ -3935,6 +3935,10 @@
         "en": "No statement lines imported.",
         "es": "Sin líneas de estado de cuenta importadas."
       },
+      "currentMonthHint": {
+        "en": "Current month",
+        "es": "Mes actual"
+      },
       "monthModalTitle": {
         "en": "Expenses {{month}}",
         "es": "Gastos {{month}}"
