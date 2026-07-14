@@ -4,7 +4,8 @@ import { flowPeriodLabel, formatFlowMoney, type FlowChartGranularity } from "../
 import type { DisplayUnit } from "../../queries/keys";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow, FlowCcExpenseMonthRow } from "../../types";
 import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
-import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
+import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../ui/PaginatedTable";
+import { chileTodayYmd } from "../../calendarMonth";
 import { Table } from "../ui/Table";
 import { Modal } from "../ui/Modal";
 import {
@@ -23,12 +24,23 @@ import {
 } from "../ui/TableMobileCard";
 import linkStyles from "../../pages/accountDetail/CreditCardFacturacionesTable.module.css";
 
+/** True when the row's period is the current Chile month (or current year in year-rollup mode). */
+function isCurrentPeriodRow(
+  periodMonth: string,
+  periodGranularity: FlowChartGranularity,
+  todayYm: string
+): boolean {
+  if (periodGranularity === "year") return periodMonth.slice(0, 4) === todayYm.slice(0, 4);
+  return periodMonth === todayYm;
+}
+
 function GroupExpensesMonthMobileCard({
   row,
   labels,
   onOpen,
   displayUnit,
   periodGranularity,
+  isCurrentPeriod,
 }: {
   row: FlowCcExpenseMonthRow;
   labels: {
@@ -36,15 +48,25 @@ function GroupExpensesMonthMobileCard({
     gastosReal: string;
     cumulative: string;
     lineCount: string;
+    currentMonthHint: string;
   };
   onOpen: (row: FlowCcExpenseMonthRow) => void;
   displayUnit: DisplayUnit;
   periodGranularity: FlowChartGranularity;
+  isCurrentPeriod: boolean;
 }) {
   const title = (
-    <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
-      {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
-    </button>
+    <>
+      <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
+        {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
+      </button>
+      {isCurrentPeriod ? (
+        <span className="muted" title={labels.currentMonthHint}>
+          {" "}
+          *
+        </span>
+      ) : null}
+    </>
   );
 
   return (
@@ -111,7 +133,10 @@ export function GroupExpensesMonthTable({
     gastosReal: t("expenses.creditCard.colMonthExpenseReal"),
     cumulative: t("expenses.creditCard.colCumulative"),
     lineCount: t("expenses.creditCard.colLineCount"),
+    currentMonthHint: t("expenses.creditCard.currentMonthHint"),
   };
+
+  const currentYm = chileTodayYmd().slice(0, 7);
 
   const monthBucket = useMemo(() => {
     if (!selected) return emptyCreditCardExpenseMonthBucket();
@@ -134,7 +159,19 @@ export function GroupExpensesMonthTable({
     [rows]
   );
 
-  const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
+  // Land on the page holding the current period (rows are newest-first and include future cuota
+  // buckets). Year-rollup rows use `YYYY-12` as period_month, so compare on year in that mode.
+  const defaultPage = useMemo(() => {
+    const today = chileTodayYmd();
+    if (periodGranularity === "year") {
+      const currentYear = today.slice(0, 4);
+      return pageForFirstMatch(sortedRows, PAGE_SIZE, (r) => r.period_month.slice(0, 4) <= currentYear);
+    }
+    const currentYm = today.slice(0, 7);
+    return pageForFirstMatch(sortedRows, PAGE_SIZE, (r) => r.period_month <= currentYm);
+  }, [sortedRows, periodGranularity]);
+
+  const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE, defaultPage);
 
   if (rows.length === 0) {
     return <p className="muted">{t("expenses.creditCard.emptyMonths")}</p>;
@@ -185,6 +222,12 @@ export function GroupExpensesMonthTable({
                 >
                   {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
                 </button>
+                {isCurrentPeriodRow(row.period_month, periodGranularity, currentYm) ? (
+                  <span className="muted" title={mobileLabels.currentMonthHint}>
+                    {" "}
+                    *
+                  </span>
+                ) : null}
               </td>
               <td className="mono desktop-only">
                 {formatFlowMoney(row.gastos_mes_clp, displayUnit)}
@@ -203,6 +246,7 @@ export function GroupExpensesMonthTable({
                   onOpen={openMonth}
                   displayUnit={displayUnit}
                   periodGranularity={periodGranularity}
+                  isCurrentPeriod={isCurrentPeriodRow(row.period_month, periodGranularity, currentYm)}
                 />
               </td>
             </tr>
