@@ -1,17 +1,37 @@
 import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 
-/** Client-side pagination state + page slice. Pass the full sorted array; get back the current page's rows. */
-export function useClientPagination<T>(rows: readonly T[], pageSize: number) {
-  const [page, setPage] = useState(1);
+/**
+ * Client-side pagination state + page slice. Pass the full sorted array; get back the current page's rows.
+ * Until the user paginates, the page tracks `defaultPage` (which may change as async rows arrive); once the
+ * user picks a page it sticks (clamped to the valid range).
+ */
+export function useClientPagination<T>(rows: readonly T[], pageSize: number, defaultPage = 1) {
+  const [userPage, setUserPage] = useState<number | null>(null);
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = userPage ?? defaultPage;
   const safePage = Math.min(Math.max(1, page), totalPages);
   const pageRows = useMemo(() => {
     const start = (safePage - 1) * pageSize;
     return rows.slice(start, start + pageSize);
   }, [rows, safePage, pageSize]);
-  return { page: safePage, setPage, pageRows, total };
+  return { page: safePage, setPage: setUserPage, pageRows, total };
+}
+
+/**
+ * 1-based page containing the first row matching `pred`. No match (e.g. every row is a future
+ * projection) → last page; empty rows → 1.
+ */
+export function pageForFirstMatch<T>(
+  rows: readonly T[],
+  pageSize: number,
+  pred: (row: T) => boolean
+): number {
+  if (rows.length === 0) return 1;
+  const idx = rows.findIndex(pred);
+  if (idx === -1) return Math.max(1, Math.ceil(rows.length / pageSize));
+  return Math.floor(idx / pageSize) + 1;
 }
 
 export type PaginatedTableProps = {
