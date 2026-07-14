@@ -106,6 +106,7 @@
   },
   "charts": {
     "groupAccumulatedDeposits": "Total accum. contributions",
+    "accumulatedDeposits": "accum. contributions",
     "valuationAndDeposits": "Valuation and contributions",
     "currentValueByAccount": "Current value by account",
     "monthlyDeltaConsolidated": "Monthly Δ (consolidated)",

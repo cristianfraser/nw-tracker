@@ -4,6 +4,7 @@ import { formatMoneyForPie } from "../../format";
 import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../../chartColors";
+import { GROUP_TAB_DEP_TOTAL } from "../../groupTabAggregation";
 import type { TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
@@ -188,14 +189,18 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
     block.accounts.forEach((a, i) => {
       raw.push({
         dataKey: a.dataKey,
-        name: a.name,
+        name: a.name_i18n_key ? i18n.t(a.name_i18n_key) : a.name,
         colorIndex: i,
         color_rgb: a.color_rgb,
       });
       if (includeAccumulatedLines && a.depositDataKey) {
+        const depName =
+          a.depositDataKey === GROUP_TAB_DEP_TOTAL
+            ? i18n.t("charts.groupAccumulatedDeposits")
+            : a.deposit_series_name?.trim() || i18n.t("charts.accumulatedDeposits");
         raw.push({
           dataKey: a.depositDataKey,
-          name: a.deposit_series_name?.trim() || "aportes acum.",
+          name: depName,
           colorIndex: i,
           isDeposit: true,
         });
@@ -354,7 +359,8 @@ export function LineChartPanel({
   }, [blockWithAnchors.points, xAxisGranularity, valuationKeys, block.chart_end_ymd]);
   const series = useMemo(
     () => resolveLineSeriesColors(buildRawLineSeries(blockWithAnchors, includeAccumulatedLines), colorPlan),
-    [blockWithAnchors, includeAccumulatedLines, colorPlan]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language: bucket/deposit labels translate at render (no cached t()).
+    [blockWithAnchors, includeAccumulatedLines, colorPlan, i18n.language]
   );
 
   const seriesByDataKey = useMemo(
@@ -565,6 +571,8 @@ export interface PieSlice {
   name: string;
   value: number;
   account_id?: number;
+  /** i18n key for server-grouped bucket slices; resolved at render (falls back to `name`). */
+  name_i18n_key?: string | null;
 }
 
 interface PiePanelProps {
@@ -578,7 +586,9 @@ interface PiePanelProps {
 
 export function AllocationPiePanel({ title, slices, displayUnit, titleAs = "h2", sliceFill }: PiePanelProps) {
   const TitleTag = titleAs;
-  const pieData = slices.filter((s) => s.value > 0);
+  const pieData = slices
+    .filter((s) => s.value > 0)
+    .map((s) => (s.name_i18n_key ? { ...s, name: i18n.t(s.name_i18n_key) } : s));
   if (pieData.length === 0) {
     return (
       <div className="chart-grid__col">

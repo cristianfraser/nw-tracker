@@ -296,5 +296,17 @@ export function attachColorsToValuationPayload<T extends Record<string, unknown>
       out[key] = attachColorsToTimeseriesBlock(block as TimeseriesAccountsBlock);
     }
   }
+  // Server-side "Agrupado" blocks: bucket lines carry inline colors; this fills unmapped member lines.
+  if (out.nav_grouped_blocks && typeof out.nav_grouped_blocks === "object") {
+    const g = out.nav_grouped_blocks as Record<string, unknown>;
+    out.nav_grouped_blocks = {
+      ...g,
+      ...(g.grouped ? { grouped: attachColorsToTimeseriesBlock(g.grouped as TimeseriesAccountsBlock) } : {}),
+      ...(g.ungrouped ? { ungrouped: attachColorsToTimeseriesBlock(g.ungrouped as TimeseriesAccountsBlock) } : {}),
+    };
+  }
+  if (out.liab_grouped_block && typeof out.liab_grouped_block === "object") {
+    out.liab_grouped_block = attachColorsToTimeseriesBlock(out.liab_grouped_block as TimeseriesAccountsBlock);
+  }
   return out as T;
 }

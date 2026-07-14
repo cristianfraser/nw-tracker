@@ -13,7 +13,6 @@ import {
   buildDisplayValuationBlock,
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
-import { liabilitiesChartBucketNavNodes } from "../liabilitiesChartBuckets";
 import { resolveLiabilitiesPageKind } from "../liabilitiesPageKind";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
 import { findBestNavNodeForPathname, findNavNodeBySlug } from "../portfolioNavFromApi";
@@ -161,11 +160,6 @@ export function LiabilitiesGroupPage() {
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
 
-  const chartCtx = useMemo(
-    () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode, accounts) : null),
-    [navMatchNode, accounts]
-  );
-
   const accountsTreeRoot = useMemo(
     () => (navMatchNode ? enrichNavTreeWithAllAccounts(navMatchNode, accounts) : null),
     [navMatchNode, accounts]
@@ -219,27 +213,37 @@ export function LiabilitiesGroupPage() {
   const ts = resolved.ts;
   const groupPerfRaw = resolved.groupPerf;
 
+  const chartCtx = useMemo(
+    () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode, ts) : null),
+    [navMatchNode, ts]
+  );
+
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group || !chartCtx || !navMatchNode) return null;
-    return buildDisplayValuationBlock(ts, accounts, chartCtx, false, navMatchNode);
-  }, [ts, accounts, chartCtx, navMatchNode]);
+    return buildDisplayValuationBlock(ts, chartCtx, false);
+  }, [ts, chartCtx, navMatchNode]);
 
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx || !navMatchNode) return [];
-    return buildDisplayPieSlices(ts, accounts, chartCtx, false, navMatchNode);
-  }, [ts, accounts, chartCtx, navMatchNode]);
+    return buildDisplayPieSlices(ts, chartCtx, false);
+  }, [ts, chartCtx, navMatchNode]);
 
   const displayGroupPerf = useMemo(() => {
     if (!chartCtx || !navMatchNode) return groupPerfRaw;
-    return buildDisplayGroupPerf(groupPerfRaw, accounts, chartCtx, false, navMatchNode);
-  }, [groupPerfRaw, accounts, chartCtx, navMatchNode]);
+    return buildDisplayGroupPerf(groupPerfRaw, chartCtx, false);
+  }, [groupPerfRaw, chartCtx, navMatchNode]);
 
+  // Grouped Pasivos charts collapse the accounts into bucket lines server-side; count those (data
+  // lines, excluding the Total reference) so the layout matches, else the raw per-account count.
   const chartSeriesCount = useMemo(() => {
-    if (chartCtx?.liabilitiesGrouped && navMatchNode) {
-      return liabilitiesChartBucketNavNodes(navMatchNode, accounts).length;
+    if (chartCtx?.liabilitiesGrouped) {
+      const dataLines = displayValuationBlock?.accounts?.filter(
+        (a) => a.valueSeriesType === "data"
+      ).length;
+      if (dataLines != null) return dataLines;
     }
     return accounts.length;
-  }, [chartCtx, navMatchNode, accounts.length]);
+  }, [chartCtx, displayValuationBlock, accounts.length]);
 
   const charts = usePortfolioGroupCharts({
     displayValuationBlock,

@@ -53,9 +53,20 @@ import { movementBoundsByAccountIds } from "./movementBounds.js";
 import { cacheKeyGroupClosingByDate, getAggregationCached } from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
+  averageRgbTriplets,
   colorRgbForSyntheticAccountLine,
+  getAccountColorRgb,
   syntheticGroupColorRgbMapForValuationGroup,
 } from "./chartColorRgb.js";
+import {
+  buildLiabilitiesChartBucketPlan,
+  buildNavChartBucketPlan,
+  isLiabilitiesChartNavNode,
+  shouldAggregateLiabilitiesCharts,
+  shouldAggregateNavCharts,
+  type ChartBucketPlan,
+} from "./groupChartBuckets.js";
+import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import {
   listFirstLevelPortfolioGroupChildren,
   portfolioGroupColorRgbBySlug,
@@ -108,12 +119,16 @@ export function convertTs(clp: number, asOf: string, unit: TsUnit): number {
 type AccountLine = {
   account_id: number;
   name: string;
+  /** i18n key for grouped bucket lines (nav node `label_i18n_key`); client resolves at render. */
+  name_i18n_key?: string | null;
   dataKey: string;
   /** Client tail-clip: `reference` for class totals (recomputed after clip). */
   valueSeriesType: "data" | "reference";
   depositDataKey?: string;
   /** Legend label for the cumulative deposit line (client default: "aportes acum."). */
   deposit_series_name?: string;
+  /** Nav / portfolio group color (`r,g,b`) for grouped bucket lines; else attached at the route. */
+  color_rgb?: string;
   /** When true, omitted from class “Total” and dashboard bucket lines; still plotted as its own series. */
   exclude_from_group_totals?: boolean;
 };
@@ -1945,21 +1960,196 @@ function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): 
 
 export { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 
-/** @heavy Builds class-tab or portfolio-group valuation points for all accounts in the group. */
-export function getGroupValuationTimeseries(groupSlug: string, unit: TsUnit, tabSubgroup?: string) {
-  return withPortfolioGroupIndex(() => getGroupValuationTimeseriesInner(groupSlug, unit, tabSubgroup));
+export type GroupChartPieSlice = { name: string; account_id: number; value: number; name_i18n_key?: string | null };
+
+function addNullable(
+  a: string | number | null | undefined,
+  b: string | number | null | undefined
+): number | null {
+  const av = typeof a === "number" && Number.isFinite(a) ? a : null;
+  const bv = typeof b === "number" && Number.isFinite(b) ? b : null;
+  if (av == null && bv == null) return null;
+  return (av ?? 0) + (bv ?? 0);
 }
 
-function getGroupValuationTimeseriesInner(groupSlug: string, unit: TsUnit, tabSubgroup?: string) {
+/**
+ * Sum per-account lines of an **unclipped** group block into synthetic per-bucket lines, copying the
+ * `__group_val_total` / `__group_dep_total` rows and the Total line VERBATIM (aggregates are never
+ * display-derived). The display clip runs on the result afterwards. Mirrors the retired client
+ * `aggregateValuationByBucket`, but reads uncorrupted data.
+ */
+function aggregateBlockByBuckets(
+  base: GroupTabValuationBlock,
+  plan: ChartBucketPlan
+): GroupTabValuationBlock {
+  const { orderedKeys, meta, idToBucket } = plan;
+  const members = base.accounts.filter((a) => a.account_id > 0 && !a.exclude_from_group_totals);
+  const used = new Set<string>();
+  for (const a of members) {
+    const b = idToBucket(a.account_id);
+    if (b) used.add(b);
+  }
+  if (used.size === 0) return base;
+
+  const ordered = orderedKeys.filter((k) => used.has(k));
+  const unmappedMembers = members.filter((a) => !idToBucket(a.account_id));
+
+  const synth: AccountLine[] = ordered.map((k) => {
+    const m = meta[k]!;
+    const groupMembers = members.filter((a) => idToBucket(a.account_id) === k);
+    const anyMemberDep = groupMembers.some((a) => Boolean(a.depositDataKey));
+    const color_rgb =
+      m.color_rgb ??
+      averageRgbTriplets(groupMembers.map((a) => getAccountColorRgb(a.account_id))) ??
+      undefined;
+    const line: AccountLine = {
+      account_id: m.accountId,
+      name: m.name,
+      dataKey: m.dataKey,
+      valueSeriesType: "data",
+      ...(m.name_i18n_key ? { name_i18n_key: m.name_i18n_key } : {}),
+      ...(anyMemberDep ? { depositDataKey: m.depKey } : {}),
+      ...(color_rgb ? { color_rgb } : {}),
+    };
+    return line;
+  });
+
+  const points = base.points.map((row) => {
+    const out: Record<string, string | number | null> = { ...row };
+    for (const k of ordered) {
+      out[meta[k]!.dataKey] = null;
+      out[meta[k]!.depKey] = null;
+    }
+    for (const a of members) {
+      const b = idToBucket(a.account_id);
+      if (!b) continue;
+      const m = meta[b]!;
+      out[m.dataKey] = addNullable(out[m.dataKey], row[a.dataKey]);
+      if (a.depositDataKey) {
+        out[m.depKey] = addNullable(out[m.depKey], row[a.depositDataKey]);
+      }
+    }
+    return out;
+  });
+
+  const baseTotal = base.accounts.find((a) => a.dataKey === GROUP_TAB_VAL_TOTAL);
+  // The Total line's children here are the negative-id bucket lines, so it can't be colored by the
+  // route's positive-id averaging — set it from the bucket colors at build time.
+  const totalLine = baseTotal
+    ? {
+        ...baseTotal,
+        ...(baseTotal.color_rgb
+          ? {}
+          : (() => {
+              const avg = averageRgbTriplets(
+                synth.map((s) => s.color_rgb).filter((c): c is string => Boolean(c))
+              );
+              return avg ? { color_rgb: avg } : {};
+            })()),
+      }
+    : undefined;
+  return {
+    accounts: [...(totalLine ? [totalLine] : []), ...synth, ...unmappedMembers],
+    points,
+    ...(base.lines?.length ? { lines: base.lines } : {}),
+    ...(base.synthetic_group_color_rgb ? { synthetic_group_color_rgb: base.synthetic_group_color_rgb } : {}),
+    ...(base.referenceMilestoneByDate ? { referenceMilestoneByDate: base.referenceMilestoneByDate } : {}),
+  };
+}
+
+function aggregatePieByBuckets(
+  pie: readonly GroupChartPieSlice[],
+  plan: ChartBucketPlan
+): GroupChartPieSlice[] {
+  const sums = new Map<string, number>();
+  for (const s of pie) {
+    const b = plan.idToBucket(s.account_id);
+    if (!b) continue;
+    sums.set(b, (sums.get(b) ?? 0) + s.value);
+  }
+  return plan.orderedKeys
+    .filter((k) => sums.has(k))
+    .map((k) => {
+      const m = plan.meta[k]!;
+      return {
+        name: m.name,
+        account_id: m.accountId,
+        value: sums.get(k) ?? 0,
+        ...(m.name_i18n_key ? { name_i18n_key: m.name_i18n_key } : {}),
+      };
+    });
+}
+
+type GroupedChartPayload = {
+  nav_grouped_blocks?: { grouped?: GroupTabValuationBlock; ungrouped?: GroupTabValuationBlock };
+  nav_grouped_pie?: { grouped?: GroupChartPieSlice[]; ungrouped?: GroupChartPieSlice[] };
+  liab_grouped_block?: GroupTabValuationBlock;
+  liab_grouped_pie?: GroupChartPieSlice[];
+};
+
+/**
+ * Server-side "Agrupado" blocks + pies for a group page, built from the pre-clip consolidated block
+ * so grouped totals are identical to the raw view; each block is display-clipped independently.
+ */
+function buildGroupedChartPayload(
+  groupSlug: string,
+  preClipBase: GroupTabValuationBlock,
+  basePie: readonly GroupChartPieSlice[],
+  unit: TsUnit
+): GroupedChartPayload {
+  const navNode = getNavChartGroupNodeBySlug(groupSlug);
+  if (!navNode) return {};
+
+  if (isLiabilitiesChartNavNode(navNode)) {
+    if (!shouldAggregateLiabilitiesCharts(navNode)) return {};
+    const plan = buildLiabilitiesChartBucketPlan(navNode);
+    return {
+      liab_grouped_block: applyTrailingZeroTailClipToBlock(aggregateBlockByBuckets(preClipBase, plan)),
+      liab_grouped_pie: aggregatePieByBuckets(basePie, plan),
+    };
+  }
+
+  const out: GroupedChartPayload = {};
+  for (const grouped of [true, false] as const) {
+    if (!shouldAggregateNavCharts(navNode, grouped)) continue;
+    const plan = buildNavChartBucketPlan(navNode, grouped);
+    const block = applyTrailingZeroTailClipToBlock(aggregateBlockByBuckets(preClipBase, plan));
+    const pie = aggregatePieByBuckets(basePie, plan);
+    const mode = grouped ? "grouped" : "ungrouped";
+    (out.nav_grouped_blocks ??= {})[mode] = block;
+    (out.nav_grouped_pie ??= {})[mode] = pie;
+  }
+  return out;
+}
+
+/** @heavy Builds class-tab or portfolio-group valuation points for all accounts in the group. */
+export function getGroupValuationTimeseries(
+  groupSlug: string,
+  unit: TsUnit,
+  tabSubgroup?: string,
+  opts?: { groupedBlocks?: boolean }
+) {
+  return withPortfolioGroupIndex(() =>
+    getGroupValuationTimeseriesInner(groupSlug, unit, tabSubgroup, opts)
+  );
+}
+
+function getGroupValuationTimeseriesInner(
+  groupSlug: string,
+  unit: TsUnit,
+  tabSubgroup?: string,
+  opts?: { groupedBlocks?: boolean }
+) {
   return withAccountValuationTsCache(() =>
-    getGroupValuationTimeseriesInnerUncached(groupSlug, unit, tabSubgroup)
+    getGroupValuationTimeseriesInnerUncached(groupSlug, unit, tabSubgroup, opts)
   );
 }
 
 function getGroupValuationTimeseriesInnerUncached(
   groupSlug: string,
   unit: TsUnit,
-  tabSubgroup?: string
+  tabSubgroup?: string,
+  opts?: { groupedBlocks?: boolean }
 ) {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
 
@@ -2032,11 +2222,18 @@ function getGroupValuationTimeseriesInnerUncached(
     accounts_in_group = { ...accounts_in_group, synthetic_group_color_rgb: synthColors };
   }
 
+  // Server-side "Agrupado" blocks/pies built from the pre-clip consolidated block (grouped totals
+  // must equal the raw view); each grouped block is display-clipped inside the helper.
+  const grouped = opts?.groupedBlocks
+    ? buildGroupedChartPayload(groupSlug, accounts_in_group, group_allocation_pie, unit)
+    : {};
+
   return {
     unit,
     group_slug: groupSlug,
     accounts_in_group: applyTrailingZeroTailClipToBlock(accounts_in_group),
     group_allocation_pie,
+    ...grouped,
   };
 }
 

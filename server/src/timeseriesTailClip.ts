@@ -102,18 +102,10 @@ function groupValTotalSourceKeys(accs: readonly ClipAccountLine[] | undefined): 
     )
     .map((a) => a.dataKey);
   if (keys.length === 0) return undefined;
-  // Portfolio account ids and nav-grouped bucket lines keep the server consolidated month cierre.
-  if (keys.every((k) => /^\d+$/.test(k) || k.startsWith("nav_"))) return undefined;
+  // Portfolio account ids and nav-/liab-grouped bucket lines keep the server consolidated month cierre.
+  if (keys.every((k) => /^\d+$/.test(k) || k.startsWith("nav_") || k.startsWith("liab_")))
+    return undefined;
   return keys;
-}
-
-function groupDepTotalSourceKeys(accs: readonly ClipAccountLine[] | undefined): string[] | undefined {
-  if (!accs?.some((a) => a.dataKey === GROUP_DEP_TOTAL)) return undefined;
-  if (!accs.some((a) => a.valueSeriesType === "data" && Boolean(a.depositDataKey))) return undefined;
-  const keys = accs
-    .filter((a) => a.valueSeriesType === "data" && !a.exclude_from_group_totals && a.depositDataKey)
-    .map((a) => a.depositDataKey!);
-  return keys.length ? keys : undefined;
 }
 
 /**
@@ -131,7 +123,10 @@ export function applyTrailingZeroTailClipToBlock<T extends TailClipableBlock>(
 
   const depositKeysByValuationKey: Record<string, string[]> = {};
   for (const a of block.accounts ?? []) {
-    if (a.account_id <= 0) continue;
+    // A line's deposit series clips together with its value for display (a sold-out account/bucket's
+    // aportes line ends with its value line). The group Total is the sole exception: its value and
+    // aportes are independent aggregates and must never be clipped (they stay verbatim).
+    if (a.dataKey === GROUP_VAL_TOTAL) continue;
     if (a.depositDataKey) depositKeysByValuationKey[a.dataKey] = [a.depositDataKey];
   }
   const linkedDepositKeys = new Set(Object.values(depositKeysByValuationKey).flat());
@@ -176,10 +171,6 @@ export function applyTrailingZeroTailClipToBlock<T extends TailClipableBlock>(
   const valTotalKeys = groupValTotalSourceKeys(block.accounts);
   if (valTotalKeys?.length && points[0] && GROUP_VAL_TOTAL in points[0]) {
     points = recomputeTotalKey(points, GROUP_VAL_TOTAL, valTotalKeys);
-  }
-  const depTotalKeys = groupDepTotalSourceKeys(block.accounts);
-  if (depTotalKeys?.length && points[0] && GROUP_DEP_TOTAL in points[0]) {
-    points = recomputeTotalKey(points, GROUP_DEP_TOTAL, depTotalKeys);
   }
 
   let chart_end_ymd: string | undefined;
