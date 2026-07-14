@@ -9,8 +9,8 @@
     },
     {
       "name": "server",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "nw-tracker-server"],
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"],
       "port": 3001
     },
     {
@@ -27,7 +27,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "PORT=3299 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+        "PORT=3299 BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
       ],
       "port": 3299
     },
@@ -45,7 +45,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "PORT=3399 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+        "PORT=3399 BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
       ],
       "port": 3399
     },
@@ -63,7 +63,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "PORT=3599 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+        "PORT=3599 BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
       ],
       "port": 3599
     },
@@ -72,7 +72,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "PORT=3499 NW_TRACKER_TEST_DB=split-rehearsal.db GLOBAL_SYNC_ENABLED=0 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+        "PORT=3499 NW_TRACKER_TEST_DB=split-rehearsal.db BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
       ],
       "port": 3499
     },
@@ -90,7 +90,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "PORT=3210 DEMO_MODE=1 NW_TRACKER_TEST_DB=nw-tracker.demo.db AUTH_PASSWORD=demo GLOBAL_SYNC_ENABLED=0 CACHE_WARM_ENABLED=0 DB_BACKUP_ENABLED=0 LIVE_QUOTES_SYNC_ENABLED=0 npm run dev -w nw-tracker-server"
+        "PORT=3210 DEMO_MODE=1 NW_TRACKER_TEST_DB=nw-tracker.demo.db AUTH_PASSWORD=demo BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
       ],
       "port": 3210
     },
