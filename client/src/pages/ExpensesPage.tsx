@@ -240,7 +240,11 @@ export function ExpensesPage() {
         periodGranularity={chartGranularity}
       />
 
-      <CreditCardUnclassifiedExpensesTable lines={data.lines} categories={data.categories} />
+      <CreditCardUnclassifiedExpensesTable
+        lines={data.lines}
+        categories={data.categories}
+        bigGroups={data.big_groups ?? []}
+      />
 
       <CreditCardDepositMatchedExpensesTable lines={data.lines} categories={data.categories} />
     </>

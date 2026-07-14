@@ -153,6 +153,20 @@ export function isNotaCreditoExcludedLine(line: FlowCcExpenseLineRow): boolean {
   );
 }
 
+/**
+ * Positive, still-unclassified charges that belong in the «Gastos sin clasificar» pending list.
+ * A NOTA-annulled purchase is dropped: it never counts toward gastos (it lives under «Excluidos»),
+ * so its missing category is meaningless and shouldn't nag in the pending list.
+ */
+export function isUnclassifiedPendingGasto(line: FlowCcExpenseLineRow): boolean {
+  return (
+    line.line_role !== "installment_purchase_total" &&
+    line.amount_clp > 0 &&
+    line.category_slug === "unclassified" &&
+    !isNotaCreditoExcludedLine(line)
+  );
+}
+
 export function sumLineAmountsClp(lines: readonly FlowCcExpenseLineRow[]): number {
   return lines.reduce((s, ln) => s + ln.amount_clp, 0);
 }
