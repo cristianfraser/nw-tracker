@@ -171,6 +171,8 @@ export type ValueSeriesType = "data" | "reference";
 export interface TimeseriesAccountLine {
   account_id: number;
   name: string;
+  /** i18n key for server-grouped bucket lines; client resolves at render (falls back to `name`). */
+  name_i18n_key?: string | null;
   dataKey: string;
   /** Set on every chart line: `data` = clip trailing zeros; `reference` = totals / overlays (not clipped). */
   valueSeriesType: ValueSeriesType;
@@ -182,6 +184,14 @@ export interface TimeseriesAccountLine {
   exclude_from_group_totals?: boolean;
   /** Chart line color as `r,g,b` (0–255), from DB. */
   color_rgb?: string;
+}
+
+/** Allocation-pie slice; `name_i18n_key` set for server-grouped bucket slices. */
+export interface GroupAllocationPieSlice {
+  name: string;
+  account_id: number;
+  value: number;
+  name_i18n_key?: string | null;
 }
 
 export interface TimeseriesBlock {
@@ -214,5 +224,11 @@ export interface ValuationTimeseriesResponse {
   group_slug?: string;
   /** Whole class tab: all accounts on one line chart (+ deposit lines) */
   accounts_in_group?: TimeseriesBlock;
-  group_allocation_pie?: { name: string; account_id: number; value: number }[];
+  group_allocation_pie?: GroupAllocationPieSlice[];
+  /** Server-side "Agrupado" bucket blocks (built pre-clip; totals identical to accounts_in_group). */
+  nav_grouped_blocks?: { grouped?: TimeseriesBlock; ungrouped?: TimeseriesBlock };
+  nav_grouped_pie?: { grouped?: GroupAllocationPieSlice[]; ungrouped?: GroupAllocationPieSlice[] };
+  /** Pasivos grouped bucket block/pie (single mode — no Agrupado toggle). */
+  liab_grouped_block?: TimeseriesBlock;
+  liab_grouped_pie?: GroupAllocationPieSlice[];
 }

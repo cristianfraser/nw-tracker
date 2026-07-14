@@ -30,9 +30,20 @@ import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
 import {
+  averageRgbTriplets,
   colorRgbForSyntheticAccountLine,
   colorRgbForTimeseriesAccountLine,
+  getAccountColorRgb,
 } from "./chartColorRgb.js";
+import {
+  buildLiabilitiesChartBucketPlan,
+  buildNavChartBucketPlan,
+  isLiabilitiesChartNavNode,
+  shouldAggregateLiabilitiesCharts,
+  shouldAggregateNavCharts,
+  type ChartBucketPlan,
+} from "./groupChartBuckets.js";
+import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
@@ -959,6 +970,8 @@ export function latestAccountMonthDelta(accountId: number, unit: TsUnit = "clp")
 export type GroupMonthlyPerformanceBarAccount = {
   account_id: number;
   name: string;
+  /** i18n key for grouped bucket bars (nav node `label_i18n_key`); client resolves at render. */
+  name_i18n_key?: string | null;
   /** Point field for this account’s monthly nominal P/L (e.g. `pl_12`). */
   bar_data_key: string;
   /** Portfolio group / account color (`r,g,b`), same as valuation lines. */
@@ -1006,16 +1019,77 @@ function bestPerformanceRowByMonthKey(
  * nominal for that month is taken from its latest performance row in that month, so brokerage / inversiones
  * tabs stay consistent when e.g. equities end on “today” mid-month and Fintual only on month-end.
  */
+/**
+ * Grouped P/L bars per bucket: `bar_accounts` with `pl_nav_<slug>` / `pl_liab_<slug>` keys + those
+ * per-point sums of member `pl_<id>`. Mirrors the retired client `aggregatePerformanceByBucket`.
+ */
+function aggregatePerfByBuckets(
+  bar_accounts: readonly GroupMonthlyPerformanceBarAccount[],
+  points: readonly Record<string, string | number | null>[],
+  plan: ChartBucketPlan
+): { bar_accounts: GroupMonthlyPerformanceBarAccount[]; points: Record<string, string | number | null>[] } {
+  const { orderedKeys, meta, idToBucket } = plan;
+  const used = new Set<string>();
+  for (const ba of bar_accounts) {
+    const b = idToBucket(ba.account_id);
+    if (b) used.add(b);
+  }
+  const ordered = orderedKeys.filter((k) => used.has(k));
+
+  const grouped_bar_accounts: GroupMonthlyPerformanceBarAccount[] = ordered.map((k) => {
+    const m = meta[k]!;
+    const members = bar_accounts.filter((ba) => idToBucket(ba.account_id) === k);
+    const color_rgb =
+      m.color_rgb ??
+      averageRgbTriplets(members.map((ba) => getAccountColorRgb(ba.account_id))) ??
+      undefined;
+    return {
+      account_id: m.accountId,
+      name: m.name,
+      bar_data_key: m.barDataKey,
+      ...(m.name_i18n_key ? { name_i18n_key: m.name_i18n_key } : {}),
+      ...(color_rgb ? { color_rgb } : {}),
+    };
+  });
+
+  const outPoints = points.map((row) => {
+    const out: Record<string, string | number | null> = { ...row };
+    for (const k of ordered) {
+      const m = meta[k]!;
+      let acc = 0;
+      let any = false;
+      for (const ba of bar_accounts) {
+        if (idToBucket(ba.account_id) !== k) continue;
+        const v = row[ba.bar_data_key];
+        if (typeof v === "number" && Number.isFinite(v)) {
+          acc += v;
+          any = true;
+        }
+      }
+      out[m.barDataKey] = any ? acc : null;
+    }
+    return out;
+  });
+
+  return { bar_accounts: grouped_bar_accounts, points: outPoints };
+}
+
 /** @heavy One {@link getAccountMonthlyPerformance} per account in the group tab. */
 export function getGroupMonthlyPerformanceSeries(
   groupSlug: string,
   unit: TsUnit = "clp",
-  tabSubgroup?: string
+  tabSubgroup?: string,
+  opts?: { groupedBlocks?: boolean }
 ): {
   unit: TsUnit;
   group_slug: string;
   bar_accounts: GroupMonthlyPerformanceBarAccount[];
   points: Record<string, string | number | null>[];
+  nav_grouped_bars?: {
+    grouped?: { bar_accounts: GroupMonthlyPerformanceBarAccount[]; points: Record<string, string | number | null>[] };
+    ungrouped?: { bar_accounts: GroupMonthlyPerformanceBarAccount[]; points: Record<string, string | number | null>[] };
+  };
+  liab_grouped_bars?: { bar_accounts: GroupMonthlyPerformanceBarAccount[]; points: Record<string, string | number | null>[] };
 } {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const perfRows = rows.filter(
@@ -1087,11 +1161,31 @@ export function getGroupMonthlyPerformanceSeries(
     pointsAsc.push(pt);
   }
 
+  type GroupedBars = { bar_accounts: GroupMonthlyPerformanceBarAccount[]; points: Record<string, string | number | null>[] };
+  let navGrouped: { grouped?: GroupedBars; ungrouped?: GroupedBars } | undefined;
+  let liabGrouped: GroupedBars | undefined;
+  if (opts?.groupedBlocks) {
+    const navNode = getNavChartGroupNodeBySlug(groupSlug);
+    if (navNode && isLiabilitiesChartNavNode(navNode)) {
+      if (shouldAggregateLiabilitiesCharts(navNode)) {
+        liabGrouped = aggregatePerfByBuckets(bar_accounts, pointsAsc, buildLiabilitiesChartBucketPlan(navNode));
+      }
+    } else if (navNode) {
+      for (const grouped of [true, false] as const) {
+        if (!shouldAggregateNavCharts(navNode, grouped)) continue;
+        const agg = aggregatePerfByBuckets(bar_accounts, pointsAsc, buildNavChartBucketPlan(navNode, grouped));
+        (navGrouped ??= {})[grouped ? "grouped" : "ungrouped"] = agg;
+      }
+    }
+  }
+
   return {
     unit,
     group_slug: groupSlug,
     bar_accounts,
     points: pointsAsc,
+    ...(navGrouped ? { nav_grouped_bars: navGrouped } : {}),
+    ...(liabGrouped ? { liab_grouped_bars: liabGrouped } : {}),
   };
 }
 

@@ -85,7 +85,9 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
       return;
     }
     res.json(
-      attachColorsToValuationPayload(getGroupValuationTimeseries(tabSlug, unit, undefined))
+      attachColorsToValuationPayload(
+        getGroupValuationTimeseries(tabSlug, unit, undefined, { groupedBlocks: true })
+      )
     );
     return;
   }
@@ -240,7 +242,7 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getGroupMonthlyPerformanceSeries(tabSlug, unit, undefined));
+  res.json(getGroupMonthlyPerformanceSeries(tabSlug, unit, undefined, { groupedBlocks: true }));
 });
 
 }

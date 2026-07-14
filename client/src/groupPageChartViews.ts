@@ -1,17 +1,5 @@
-import { shouldAggregateLiabilitiesCharts } from "./liabilitiesChartBuckets";
-import {
-  aggregateLiabilitiesNavGroupedPerformance,
-  aggregateLiabilitiesNavGroupedPie,
-  aggregateLiabilitiesNavGroupedValuationBlock,
-} from "./liabilitiesGroupedAggregation";
-import { shouldAggregateNavCharts, shouldShowNavGroupedChartToggle } from "./navChartBuckets";
-import {
-  aggregateNavGroupedPerformance,
-  aggregateNavGroupedPie,
-  aggregateNavGroupedValuationBlock,
-} from "./navGroupedChartAggregation";
 import type {
-  AccountListRow,
+  GroupAllocationPieSlice,
   GroupMonthlyPerformanceResponse,
   NavTreeNodeDto,
   ValuationTimeseriesResponse,
@@ -26,15 +14,23 @@ export type GroupPageChartContext = {
   brokerageSubgroup?: "acciones" | "mutual_funds" | "crypto";
 };
 
+/**
+ * Chart context for a group page. The "Agrupado" toggle and Pasivos grouping now follow the
+ * SERVER payload: the grouped bucket blocks/pies/bars are computed server-side (see
+ * server/src/groupChartBuckets.ts) from unclipped data, so the client only picks which precomputed
+ * block to display — it never re-aggregates already-clipped series (which corrupted grouped totals).
+ */
 export function resolveGroupPageChartContext(
   navNode: NavTreeNodeDto,
-  listRows?: readonly AccountListRow[]
+  ts?: ValuationTimeseriesResponse | null
 ): GroupPageChartContext {
   const sub = navNode.api_subgroup ?? undefined;
   const apiGroup = navNode.api_group ?? "";
 
-  const liabilitiesGrouped = shouldAggregateLiabilitiesCharts(navNode, listRows);
-  const showGroupedToggle = liabilitiesGrouped || shouldShowNavGroupedChartToggle(navNode);
+  const liabilitiesGrouped = Boolean(ts?.liab_grouped_block);
+  const showGroupedToggle = Boolean(
+    ts?.nav_grouped_blocks?.grouped || ts?.nav_grouped_blocks?.ungrouped
+  );
 
   const chartColorSlug =
     apiGroup === "brokerage" && sub === "crypto" ? "crypto" : apiGroup || "inversiones";
@@ -65,56 +61,32 @@ export function resolveGroupPageChartContext(
 
 export function buildDisplayValuationBlock(
   ts: ValuationTimeseriesResponse,
-  accounts: AccountListRow[],
   ctx: GroupPageChartContext,
-  grouped: boolean,
-  navNode?: NavTreeNodeDto | null
+  grouped: boolean
 ) {
-  const block = ts.accounts_in_group;
-  if (!block) return null;
-  if (ctx.liabilitiesGrouped && navNode) {
-    return aggregateLiabilitiesNavGroupedValuationBlock(block, accounts, navNode);
-  }
-  if (navNode && shouldAggregateNavCharts(navNode, grouped)) {
-    return aggregateNavGroupedValuationBlock(block, accounts, navNode, grouped);
-  }
-  return block;
+  if (ctx.liabilitiesGrouped) return ts.liab_grouped_block ?? ts.accounts_in_group ?? null;
+  const g = ts.nav_grouped_blocks?.[grouped ? "grouped" : "ungrouped"];
+  return g ?? ts.accounts_in_group ?? null;
 }
 
 export function buildDisplayPieSlices(
   ts: ValuationTimeseriesResponse,
-  _accounts: AccountListRow[],
   ctx: GroupPageChartContext,
-  grouped: boolean,
-  navNode?: NavTreeNodeDto | null
-) {
-  const base = (ts.group_allocation_pie ?? []).map((p) => ({
-    name: p.name,
-    value: p.value,
-    account_id: p.account_id,
-  }));
-  if (ctx.liabilitiesGrouped && navNode) {
-    return aggregateLiabilitiesNavGroupedPie(base, navNode, _accounts);
-  }
-  if (navNode && shouldAggregateNavCharts(navNode, grouped)) {
-    return aggregateNavGroupedPie(base, navNode, grouped, _accounts);
-  }
-  return base;
+  grouped: boolean
+): GroupAllocationPieSlice[] {
+  if (ctx.liabilitiesGrouped) return ts.liab_grouped_pie ?? ts.group_allocation_pie ?? [];
+  const g = ts.nav_grouped_pie?.[grouped ? "grouped" : "ungrouped"];
+  return g ?? ts.group_allocation_pie ?? [];
 }
 
 export function buildDisplayGroupPerf(
   groupPerf: GroupMonthlyPerformanceResponse | null,
-  accounts: AccountListRow[],
   ctx: GroupPageChartContext,
-  grouped: boolean,
-  navNode?: NavTreeNodeDto | null
-) {
+  grouped: boolean
+): GroupMonthlyPerformanceResponse | null {
   if (!groupPerf) return null;
-  if (ctx.liabilitiesGrouped && navNode) {
-    return aggregateLiabilitiesNavGroupedPerformance(groupPerf, accounts, navNode);
-  }
-  if (navNode && shouldAggregateNavCharts(navNode, grouped)) {
-    return aggregateNavGroupedPerformance(groupPerf, accounts, navNode, grouped);
-  }
-  return groupPerf;
+  const g = ctx.liabilitiesGrouped
+    ? groupPerf.liab_grouped_bars
+    : groupPerf.nav_grouped_bars?.[grouped ? "grouped" : "ungrouped"];
+  return g ? { ...groupPerf, bar_accounts: g.bar_accounts, points: g.points } : groupPerf;
 }

@@ -106,6 +106,7 @@
   },
   "charts": {
     "groupAccumulatedDeposits": "Total aportes acum.",
+    "accumulatedDeposits": "aportes acum.",
     "valuationAndDeposits": "Valorización y aportes",
     "currentValueByAccount": "Valor actual por cuenta",
     "monthlyDeltaConsolidated": "Δ mensual (consolidado)",

@@ -322,6 +322,10 @@
       "en": "Total accum. contributions",
       "es": "Total aportes acum."
     },
+    "accumulatedDeposits": {
+      "en": "accum. contributions",
+      "es": "aportes acum."
+    },
     "valuationAndDeposits": {
       "en": "Valuation and contributions",
       "es": "Valorización y aportes"

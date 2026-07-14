@@ -106,13 +106,6 @@ export function GroupInfoPage() {
     setChartsGrouped(true);
   }, [pathname]);
 
-  const chartCtx = useMemo(
-    () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode) : null),
-    [navMatchNode]
-  );
-
-  const groupedToggleOn = chartCtx?.showGroupedToggle ? chartsGrouped : false;
-
   const placeholderFirstMonth = shell?.first_month ?? navSnapshot?.chart_shape?.first_month;
   const placeholderBundle = useMemo(
     () =>
@@ -204,20 +197,27 @@ export function GroupInfoPage() {
   const ts = resolved.ts;
   const groupPerfRaw = resolved.groupPerf;
 
+  const chartCtx = useMemo(
+    () => (navMatchNode ? resolveGroupPageChartContext(navMatchNode, ts) : null),
+    [navMatchNode, ts]
+  );
+
+  const groupedToggleOn = chartCtx?.showGroupedToggle ? chartsGrouped : false;
+
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group || !chartCtx) return null;
-    return buildDisplayValuationBlock(ts, accounts, chartCtx, groupedToggleOn, navMatchNode);
-  }, [ts, accounts, chartCtx, groupedToggleOn, navMatchNode]);
+    return buildDisplayValuationBlock(ts, chartCtx, groupedToggleOn);
+  }, [ts, chartCtx, groupedToggleOn]);
 
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx) return [];
-    return buildDisplayPieSlices(ts, accounts, chartCtx, groupedToggleOn, navMatchNode);
-  }, [ts, accounts, chartCtx, groupedToggleOn, navMatchNode]);
+    return buildDisplayPieSlices(ts, chartCtx, groupedToggleOn);
+  }, [ts, chartCtx, groupedToggleOn]);
 
   const displayGroupPerf = useMemo(() => {
     if (!chartCtx) return groupPerfRaw;
-    return buildDisplayGroupPerf(groupPerfRaw, accounts, chartCtx, groupedToggleOn, navMatchNode);
-  }, [groupPerfRaw, accounts, chartCtx, groupedToggleOn, navMatchNode]);
+    return buildDisplayGroupPerf(groupPerfRaw, chartCtx, groupedToggleOn);
+  }, [groupPerfRaw, chartCtx, groupedToggleOn]);
 
   const chartSeriesCount = accounts.length;
   const chartColorSlug = (chartCtx?.chartColorSlug ?? portfolioGroup) as AssetGroupSlug | "crypto";

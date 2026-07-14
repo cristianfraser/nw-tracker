@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import i18n from "./i18n";
 import { buildGroupTabColorMaps, groupTabTotalStroke } from "./chartColors";
 
 export type GroupTabColorMaps = {
@@ -77,13 +78,14 @@ export function usePortfolioGroupCharts(opts: {
     const maps = buildGroupTabColorMaps(chartColorSlug, lines, groupColorRgb);
     return displayGroupPerf.bar_accounts.map((a) => ({
       dataKey: a.bar_data_key,
-      name: `Δ ${a.name}`,
+      name: `Δ ${a.name_i18n_key ? i18n.t(a.name_i18n_key) : a.name}`,
       color:
         groupColorMaps.byAccountId.get(a.account_id) ??
         maps.byDataKey.get(a.bar_data_key) ??
         "#60a5fa",
     }));
-  }, [chartColorSlug, displayGroupPerf, groupColorMaps, groupColorRgb]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language: bucket bar labels translate at render (no cached t()).
+  }, [chartColorSlug, displayGroupPerf, groupColorMaps, groupColorRgb, i18n.language]);
 
   const groupTotalStroke = useMemo(
     () => groupTabTotalStroke(groupColorRgb, navGroupSlug ?? pieAllocationSlug),

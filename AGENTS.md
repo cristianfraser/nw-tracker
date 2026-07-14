@@ -115,6 +115,18 @@ Tranche status, by measured surface:
 - **Bucket totals**: sum accounts via `accountIdsInPortfolioGroupForTotals(portfolio_group_slug)` — not per-account `dashboard_bucket_slug` tags. `portfolio_groups.slug` / `kind_slug` are stable node ids and behavior keys, not parsed `__` heuristics.
 - **Panel / nav / dashboard** all use the same tree: `GET /api/meta/sidebar-nav` → `net_worth` (`portfolio_groups` + `portfolio_group_items`). `/api/meta/asset-tree` is legacy `asset_groups` (deprecated; do not use in new UI).
 
+## Group page charts — server-side "Agrupado" bucketing
+
+**All grouped chart series come from the server; the client never re-aggregates.** On group pages the "Agrupado" toggle (and the Pasivos grouped charts) collapse per-account lines into per-child-bucket lines. This is computed **server-side** in `server/src/groupChartBuckets.ts` (bucket-node selection ported from the sidebar `NavTreeNodeDto` walk) and emitted as sibling fields on the existing responses — no extra HTTP round-trips, toggle stays instant:
+
+- **Valuation** (`getGroupValuationTimeseries(..., { groupedBlocks: true })`, `valuationTimeseries.ts`): `nav_grouped_blocks: { grouped, ungrouped }` + `nav_grouped_pie`, or `liab_grouped_block` + `liab_grouped_pie` (Pasivos, single mode — no toggle). Built from the **pre-clip consolidated** block with `__group_val_total` / `__group_dep_total` (and the Total line) copied **verbatim**, then each grouped block is display-clipped independently.
+- **Monthly P/L bars** (`getGroupMonthlyPerformanceSeries(..., { groupedBlocks: true })`, `accountPerformance.ts`): `nav_grouped_bars` / `liab_grouped_bars` with `pl_nav_<slug>` / `pl_liab_<slug>` keys = per-row sums of member `pl_<id>`.
+- Only the group HTTP routes pass `groupedBlocks: true`; internal callers (dashboard bundle, totals) skip the extra work. Client `groupPageChartViews.ts` only **picks** the precomputed block by toggle state (`resolveGroupPageChartContext` reads toggle visibility from payload presence). There is no client bucket aggregation.
+- **Pasivos CC buckets** map masters to issuers via `listCreditCardGroupMasterAccountIds` (config, catches inactive/superseded masters the nav tree omits) — never account-name heuristics.
+- Bucket line/bar/pie labels carry `name_i18n_key` (client resolves at render — translate, don't cache `t()`; deposit-line label keys `charts.groupAccumulatedDeposits` / `charts.accumulatedDeposits`).
+
+**Tail clip is display-only** (`timeseriesTailClip.ts`, the final payload step): it nulls sold-out trailing series and bundles each line's aportes with its value (they clip together) — but it must **never** rewrite an aggregate. The group Total line (`dataKey === "__group_val_total"`) is the sole line excluded from deposit bundling, and `__group_val_total` / `__group_dep_total` are never recomputed post-clip. A client Σ over already-clipped series is the bug this replaced (brokerage "Total aportes acum." disagreed with the summary card).
+
 ## Data provenance (`DataOrigin`)
 
 API payloads must **not** use top-level `source: "db"` / `"csv"` — the client always reads SQLite. Provenance describes how data entered the system:
