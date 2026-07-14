@@ -6,6 +6,7 @@ import {
   countsTowardGastosMes,
   DEPOSITS_CC_EXPENSE_SLUG,
   isInstallmentCuotaZeroLine,
+  isUnclassifiedPendingGasto,
   NO_CUENTA_CC_EXPENSE_SLUG,
   sumLineAmountsClp,
 } from "./ccExpenseLineBuckets";
@@ -153,6 +154,42 @@ describe("ccExpenseLineBuckets", () => {
     expect(countsTowardGastosMes(nota)).toBe(false);
     expect(countsTowardComprasModal(nota)).toBe(false);
     expect(countsTowardAbonosMes(nota)).toBe(false);
+  });
+
+  it("keeps NOTA-annulled purchases out of the unclassified pending list", () => {
+    // A duplicated charge later refunded by a NOTA DE CREDITO: still positive and unclassified,
+    // but it never counts toward gastos, so it must not appear in «Gastos sin clasificar».
+    const annulledTwin = line({
+      statement_line_id: 600,
+      amount_clp: 356_980,
+      merchant: "FPAY",
+      category_slug: "unclassified",
+      nota_credito_role: "annulled_purchase",
+    });
+    // The surviving identical twin (same amount/merchant) stays in the pending list.
+    const survivingTwin = line({
+      statement_line_id: 601,
+      amount_clp: 356_980,
+      merchant: "FPAY",
+      category_slug: "unclassified",
+    });
+    // The matched NOTA line itself is negative and already excluded.
+    const nota = line({
+      statement_line_id: 602,
+      amount_clp: -356_980,
+      merchant: "NOTA DE CREDITO",
+      category_slug: "unclassified",
+      nota_credito_role: "matched_nota",
+    });
+    const ordinary = line({ statement_line_id: 603, category_slug: "unclassified" });
+
+    expect(isUnclassifiedPendingGasto(annulledTwin)).toBe(false);
+    expect(isUnclassifiedPendingGasto(survivingTwin)).toBe(true);
+    expect(isUnclassifiedPendingGasto(nota)).toBe(false);
+    expect(isUnclassifiedPendingGasto(ordinary)).toBe(true);
+    expect(
+      [annulledTwin, survivingTwin, nota, ordinary].filter(isUnclassifiedPendingGasto)
+    ).toHaveLength(2);
   });
 
   it("sums only gastos lines for modal subtotal", () => {
