@@ -17,6 +17,7 @@ import {
   resolveCcExpensePurchaseKey,
   resolveMerchantCategorySlug,
   isGenericTransferMerchantKey,
+  registerGenericUniquePurchaseMode,
 } from "./ccExpenseCategories.js";
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
@@ -186,6 +187,74 @@ describe("ccExpenseCategories", () => {
         uniquePurchases: new Map(),
       })
     ).toBe("no_cuenta");
+  });
+
+  it("generic Único auto-registration skips traspaso deuda so no_cuenta still derives", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    const purchaseKey = "line-pr:vitest-traspaso-register";
+    const modeKeys = new Set<string>();
+    try {
+      registerGenericUniquePurchaseMode(
+        accountId,
+        purchaseKey,
+        "TRASPASO A DEUDA NACIONAL",
+        modeKeys
+      );
+      expect(modeKeys.size).toBe(0);
+      expect(
+        db
+          .prepare(
+            `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+          )
+          .get(accountId, purchaseKey)
+      ).toBeUndefined();
+      // Without the shadow row, resolution reaches the derived traspaso branch.
+      expect(
+        resolveCcExpenseCategorySlug({
+          statementLineId: 1,
+          accountId,
+          merchantKey: "TRASPASO A DEUDA NACIONAL",
+          purchaseKey,
+          lineOverrides: new Map(),
+          merchantRules: new Map(),
+          uniquePurchases: new Map(),
+          uniquePurchaseModeKeys: modeKeys,
+        })
+      ).toBe("no_cuenta");
+
+      // Other generic transfer merchants keep the Único-mode registration.
+      registerGenericUniquePurchaseMode(accountId, purchaseKey, "TRANSFERENCIA", modeKeys);
+      expect(modeKeys.has(`${accountId}|${purchaseKey}`)).toBe(true);
+      expect(
+        db
+          .prepare(
+            `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+          )
+          .get(accountId, purchaseKey)
+      ).toBeTruthy();
+    } finally {
+      db.prepare(
+        `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
+      ).run(accountId, purchaseKey);
+    }
+  });
+
+  it("explicit user clear on a traspaso line still resolves unclassified", () => {
+    // A NULL-category unique row written by the clear path loads into uniquePurchaseModeKeys,
+    // which outranks the derived traspaso branch.
+    expect(
+      resolveCcExpenseCategorySlug({
+        statementLineId: 1,
+        accountId: 15,
+        merchantKey: "TRASPASO A DEUDA NACIONAL",
+        purchaseKey: "one:1",
+        lineOverrides: new Map(),
+        merchantRules: new Map(),
+        uniquePurchases: new Map(),
+        uniquePurchaseModeKeys: new Set(["15|one:1"]),
+      })
+    ).toBe("unclassified");
   });
 
   it("generic transfer merchants skip merchant rules", () => {

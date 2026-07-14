@@ -475,6 +475,11 @@ export function ensureGenericUniquePurchaseRow(
   opts?: { statementLineId?: number; categoryId?: number | null }
 ): boolean {
   if (!isGenericTransferMerchantKey(merchantKey)) return false;
+  // Traspaso-deuda lines resolve to no_cuenta via the derived branch in
+  // resolveCcExpenseCategorySlug; an auto-created NULL-category row here would put the
+  // purchase in Único-sin-categoría mode, which short-circuits resolution to
+  // «Sin clasificar» before that branch. Only an explicit user clear may write that row.
+  if (isCcTraspasoDeudaMerchant(merchantKey)) return false;
   const exists = db
     .prepare(
       `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
@@ -511,6 +516,8 @@ export function registerGenericUniquePurchaseMode(
   opts?: { statementLineId?: number; categoryId?: number | null }
 ): void {
   if (!isGenericTransferMerchantKey(merchantKey)) return;
+  // Traspaso-deuda: never enter Único-sin-categoría mode — see ensureGenericUniquePurchaseRow.
+  if (isCcTraspasoDeudaMerchant(merchantKey)) return;
   ensureGenericUniquePurchaseRow(accountId, purchaseKey, merchantKey, opts);
   uniquePurchaseModeKeys.add(uniquePurchaseMapKey(accountId, purchaseKey));
 }
