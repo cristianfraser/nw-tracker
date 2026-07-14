@@ -354,6 +354,39 @@ export function getSidebarNavPayload(): {
   };
 }
 
+function findNavNodeBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeDto | null {
+  if (node.slug === slug) return node;
+  for (const c of node.children ?? []) {
+    const hit = findNavNodeBySlugDeep(c, slug);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Pasivos root node (`liabilities`) with its DB-driven children — mirrors {@link getSidebarNavPayload}. */
+function getLiabilitiesNavRootNode(): NavTreeNodeDto | null {
+  const liab = buildNavForest("main").find((n) => n.slug === "liabilities");
+  if (!liab) return null;
+  return { ...liab, children: getLiabilitiesNavChildren() };
+}
+
+/**
+ * Nav node for a group-chart page slug (`brokerage`, `retirement`, `cash_eqs`, `liabilities`,
+ * `liabilities_credit_card`, …). Chart-inactive accounts are kept so bucket membership matches the
+ * group valuation block. Used by the server-side chart bucketing (see groupChartBuckets.ts).
+ */
+export function getNavChartGroupNodeBySlug(slug: string): NavTreeNodeDto | null {
+  const clean = slug.trim();
+  if (!clean) return null;
+  const nw = getNetWorthNavGroupNode({ includeChartInactiveAccounts: true });
+  const inNw = nw ? findNavNodeBySlugDeep(nw, clean) : null;
+  // The net-worth tree carries a childless `liabilities` stub; the Pasivos subtree is the real one.
+  if (inNw && (inNw.children?.length ?? 0) > 0) return inNw;
+  const liabRoot = getLiabilitiesNavRootNode();
+  const inLiab = liabRoot ? findNavNodeBySlugDeep(liabRoot, clean) : null;
+  return inLiab ?? inNw;
+}
+
 /** Inversiones portfolio subtree only (chart grouping). */
 export function getPortfolioTreeForCharts(): NavTreeNodeDto[] {
   const groups = loadGroups();

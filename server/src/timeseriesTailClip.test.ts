@@ -138,6 +138,78 @@ describe("applyTrailingZeroTailClipToBlock", () => {
     expect(out.points.map((r) => r["78"])).toEqual([29_408_136, 0, null]);
   });
 
+  it("clips a sold bucket's value AND its bundled aportes for display, but never the group aportes total", () => {
+    // Grouped block shape: Total line (reference, carries __group_dep_total as depositDataKey) +
+    // synthetic bucket lines with NEGATIVE ids. The Mutual funds bucket sells out (value → 0) while
+    // its cumulative aportes stay a non-zero constant (withdrew realized gains). The clip must:
+    //   - clip the value line for display (one zero month then stop),
+    //   - clip the bucket's OWN aportes line together with its value (display bundling),
+    //   - keep __group_dep_total (the aggregate) byte-for-byte identical — never display-rewritten.
+    const block = {
+      accounts: [
+        {
+          account_id: -1,
+          name: "Total",
+          dataKey: "__group_val_total",
+          valueSeriesType: "reference" as const,
+          depositDataKey: "__group_dep_total",
+        },
+        {
+          account_id: -720,
+          name: "Acciones",
+          dataKey: "nav_acciones",
+          valueSeriesType: "data" as const,
+          depositDataKey: "nav_acciones_dep",
+        },
+        {
+          account_id: -721,
+          name: "Mutual funds",
+          dataKey: "nav_mutual_funds",
+          valueSeriesType: "data" as const,
+          depositDataKey: "nav_mutual_funds_dep",
+        },
+      ],
+      points: [
+        {
+          as_of_date: "2026-05-31",
+          nav_acciones: 100,
+          nav_acciones_dep: 60,
+          nav_mutual_funds: 500,
+          nav_mutual_funds_dep: -21,
+          __group_val_total: 600,
+          __group_dep_total: 39,
+        },
+        {
+          as_of_date: "2026-06-30",
+          nav_acciones: 100,
+          nav_acciones_dep: 60,
+          nav_mutual_funds: 0,
+          nav_mutual_funds_dep: -21,
+          __group_val_total: 100,
+          __group_dep_total: 39,
+        },
+        {
+          as_of_date: "2026-07-31",
+          nav_acciones: 100,
+          nav_acciones_dep: 60,
+          nav_mutual_funds: 0,
+          nav_mutual_funds_dep: -21,
+          __group_val_total: 100,
+          __group_dep_total: 39,
+        },
+      ],
+    };
+    const out = applyTrailingZeroTailClipToBlock(block);
+    // Value line: display clip (one zero month then null).
+    expect(out.points.map((r) => r.nav_mutual_funds)).toEqual([500, 0, null]);
+    // Aportes line: bundled with its value line — clips on the SAME rows (display only).
+    expect(out.points.map((r) => r.nav_mutual_funds_dep)).toEqual([-21, -21, null]);
+    // Aggregate: identical to the pre-clip input at every row (never bundled/clipped).
+    expect(out.points.map((r) => r.__group_dep_total)).toEqual([39, 39, 39]);
+    expect(out.points.map((r) => r.__group_val_total)).toEqual([600, 100, 100]);
+    expect(out.tail_clipped_keys).toEqual(["nav_mutual_funds", "nav_mutual_funds_dep"]);
+  });
+
   it("collapses an all-zero block to its kept zero month (client skeletons never pass through here)", () => {
     const block = {
       accounts: [accountLine("7")],

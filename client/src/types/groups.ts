@@ -7,8 +7,15 @@ import type { DashboardAccountRow, DashboardResponse, FxLatest, ValuationTimeser
 export interface GroupMonthlyPerformanceBarAccount {
   account_id: number;
   name: string;
+  /** i18n key for server-grouped bucket bars; client resolves at render (falls back to `name`). */
+  name_i18n_key?: string | null;
   bar_data_key: string;
   color_rgb?: string;
+}
+
+export interface GroupMonthlyPerformanceGroupedBars {
+  bar_accounts: GroupMonthlyPerformanceBarAccount[];
+  points: Record<string, string | number | null>[];
 }
 
 export interface GroupMonthlyPerformanceResponse {
@@ -16,6 +23,12 @@ export interface GroupMonthlyPerformanceResponse {
   group_slug: string;
   bar_accounts: GroupMonthlyPerformanceBarAccount[];
   points: Record<string, string | number | null>[];
+  /** Server-side "Agrupado" bucket bars (built from unclipped per-account P/L). */
+  nav_grouped_bars?: {
+    grouped?: GroupMonthlyPerformanceGroupedBars;
+    ungrouped?: GroupMonthlyPerformanceGroupedBars;
+  };
+  liab_grouped_bars?: GroupMonthlyPerformanceGroupedBars;
 }
 
 export interface DashboardChartShapeLine {
