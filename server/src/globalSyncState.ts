@@ -74,7 +74,18 @@ export function loadGlobalSyncState(): GlobalSyncStateFile {
     const raw = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
     if (!raw || typeof raw !== "object") return {};
     return migrateLoadedState(raw as GlobalSyncStateFile);
-  } catch {
+  } catch (e) {
+    // Corrupt state file: keep the evidence aside and start fresh (sources re-sync as "never synced").
+    const aside = `${p}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    try {
+      fs.renameSync(p, aside);
+    } catch {
+      // rename best-effort; the parse error below is the signal that matters
+    }
+    console.error(
+      `[global-sync] corrupt state file ${p} — moved aside to ${aside}; starting with empty state`,
+      e
+    );
     return {};
   }
 }

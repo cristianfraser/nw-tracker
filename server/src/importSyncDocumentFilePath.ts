@@ -77,14 +77,18 @@ export function loadCartolaParsedPdfJsonEntries(
 ): CartolaParsedPdfJsonEntry[] {
   const jsonPath = resolveCartolaParsedPdfJsonPath(kind);
   if (!fs.existsSync(jsonPath)) return [];
+  let raw: unknown;
   try {
-    const raw = JSON.parse(fs.readFileSync(jsonPath, "utf8")) as {
-      cartolas?: CartolaParsedPdfJsonEntry[];
-    };
-    return raw.cartolas ?? [];
-  } catch {
-    return [];
+    raw = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+  } catch (e) {
+    // Corrupt parse output must not read as "no coverage" — fail so the matrix shows the problem.
+    throw new Error(
+      `corrupt parsed-cartola JSON at ${jsonPath} (re-run the cartola parse): ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
   }
+  return (raw as { cartolas?: CartolaParsedPdfJsonEntry[] }).cartolas ?? [];
 }
 
 /** Build month → PDF path map from parsed cartola JSON entries (testable without disk JSON). */
