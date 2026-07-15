@@ -4,9 +4,6 @@ import { db } from "./db.js";
 import {
   assignCheckingGastosMovementCategory,
   autoMatchCategorySlugForDeposit,
-  checkingWithdrawalMayAutoMatchDeposit,
-  cartolaDescriptionFromNote,
-  cartolaDocumentFromNote,
   checkingGastosMovementBelongs,
   checkingGastosMovementPurchaseKey,
   buildCheckingGastosLines,
@@ -14,24 +11,31 @@ import {
   createSplittableInternalTransferPool,
   depositMatchesInternalTransferTiming,
   ledgerCapitalReturnMatchesTiming,
-  fondoReservaAccountId,
-  loadDepositMatchCandidates,
-  loadCheckingCartolaCredits,
   splitCheckingWithdrawalAgainstDeposits,
-  isDapAbonoDescription,
-  isExcludedCheckingWithdrawal,
-  isCheckingCorrienteVistaTraspasoOutflow,
-  isInvestmentDepositTarget,
-  isMercadoCapitalesCargoDescription,
   matchWithdrawalToDeposit,
   matchWithdrawalToInvestmentDeposit,
   withdrawalIsReversedByDapAbono,
   withdrawalMatchesInternalCashTransfer,
-  checkingOutflowIsAtmWithdrawal,
-  stripCheckingBranchPrefix,
+} from "./flowsCheckingGastos.js";
+import {
+  fondoReservaAccountId,
+  loadCheckingCartolaCredits,
+  loadDepositMatchCandidates,
   type CheckingCartolaCredit,
   type DepositMatchCandidate,
-} from "./flowsCheckingGastos.js";
+} from "./checkingCartolaLoaders.js";
+import {
+  cartolaDescriptionFromNote,
+  cartolaDocumentFromNote,
+  checkingOutflowIsAtmWithdrawal,
+  checkingWithdrawalMayAutoMatchDeposit,
+  isCheckingCorrienteVistaTraspasoOutflow,
+  isDapAbonoDescription,
+  isExcludedCheckingWithdrawal,
+  isInvestmentDepositTarget,
+  isMercadoCapitalesCargoDescription,
+  stripCheckingBranchPrefix,
+} from "./checkingDescriptionPredicates.js";
 import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
 import {
   isAutoDepositMatchedPurchaseNote,

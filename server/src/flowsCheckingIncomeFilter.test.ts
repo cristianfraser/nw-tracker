@@ -3,17 +3,19 @@ import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import {
   buildFintualIncomingWireBatches,
-  checkingCreditLooksLikeFintualIncomingWire,
-  checkingCreditLooksLikeMonthBucketCashReturn,
   checkingCreditMatchesLedgerNetWorthCapitalReturn,
   checkingCreditMatchesMonthBucketLedgerCapitalReturn,
   checkingCreditMatchesNetWorthCapitalReturn,
-  checkingCreditMayAutoMatchNetWorthCapitalReturn,
   checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn,
-  checkingWithdrawalFundsInvestmentCapital,
-  isExcludedCheckingInflow,
   ledgerCapitalReturnMatchesTiming,
 } from "./flowsCheckingGastos.js";
+import {
+  checkingCreditLooksLikeFintualIncomingWire,
+  checkingCreditLooksLikeMonthBucketCashReturn,
+  checkingCreditMayAutoMatchNetWorthCapitalReturn,
+  checkingWithdrawalFundsInvestmentCapital,
+  isExcludedCheckingInflow,
+} from "./checkingDescriptionPredicates.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import {
   upsertCheckingIncomeMovementOverride,

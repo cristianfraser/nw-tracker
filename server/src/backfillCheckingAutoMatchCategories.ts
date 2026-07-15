@@ -7,10 +7,14 @@ import {
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import {
-  cartolaDescriptionFromNote,
-  loadDepositMatchCandidates,
   resolveAutoMatchCategorySlugForCheckingWithdrawal,
 } from "./flowsCheckingGastos.js";
+import {
+  loadDepositMatchCandidates,
+} from "./checkingCartolaLoaders.js";
+import {
+  cartolaDescriptionFromNote,
+} from "./checkingDescriptionPredicates.js";
 
 type CheckingPurchaseRow = {
   account_id: number;

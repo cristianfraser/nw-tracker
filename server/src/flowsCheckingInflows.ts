@@ -3,7 +3,6 @@ import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import { db } from "./db.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
-  cartolaDescriptionFromNote,
   checkingCreditMatchesAfpRetiroReturn,
   checkingCreditMatchesInternalWithdrawal,
   checkingCreditMatchesLedgerNetWorthCapitalReturn,
@@ -11,15 +10,20 @@ import {
   checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn,
   createSplittableInternalTransferPool,
   buildFintualIncomingWireBatches,
-  loadNetWorthCapitalReturnLedgerOutflows,
   creditIsReversingMercadoCapitalesCargo,
-  isExcludedCheckingInflow,
+  type FintualIncomingWireBatch,
+} from "./flowsCheckingGastos.js";
+import {
   loadAfpRetiroOutflowCandidates,
   loadAllCheckingCartolaWithdrawals,
   loadCheckingCartolaWithdrawals,
   loadDepositMatchCandidates,
-  type FintualIncomingWireBatch,
-} from "./flowsCheckingGastos.js";
+  loadNetWorthCapitalReturnLedgerOutflows,
+} from "./checkingCartolaLoaders.js";
+import {
+  cartolaDescriptionFromNote,
+  isExcludedCheckingInflow,
+} from "./checkingDescriptionPredicates.js";
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {

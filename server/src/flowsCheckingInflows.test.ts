@@ -7,7 +7,7 @@ import {
 } from "./flowsCheckingInflows.js";
 import {
   isExcludedCheckingInflow,
-} from "./flowsCheckingGastos.js";
+} from "./checkingDescriptionPredicates.js";
 
 function insertCheckingCartolaCredit(
   accountId: number,
