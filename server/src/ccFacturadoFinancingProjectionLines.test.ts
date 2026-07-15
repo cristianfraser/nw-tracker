@@ -128,6 +128,30 @@ describe("ccFacturadoFinancingProjection", () => {
     expect(projected.every((l) => l.line_role === "installment_cuota")).toBe(true);
   });
 
+  it("projected slices anchor category edits to their source line; gap lines have no anchor", () => {
+    const { lines, links } = buildScenario();
+    lines[1] = ccLine({
+      statement_line_id: 12,
+      amount_clp: 1_267_034,
+      category_slug: "restaurants",
+      category_unique: true,
+      purchase_key: "line-pr:12",
+    });
+    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const projected = out.filter((l) => l.gastos_scope === "split_only");
+
+    const slicesOf = (sourceLineId: number) =>
+      projected.filter((l) => l.category_statement_line_id === sourceLineId);
+    expect(slicesOf(11).length).toBe(3);
+    expect(slicesOf(11).every((l) => l.category_unique === false)).toBe(true);
+    expect(slicesOf(12).length).toBe(3);
+    expect(slicesOf(12).every((l) => l.category_unique === true)).toBe(true);
+
+    const gapLines = projected.filter((l) => l.purchase_key.startsWith("financing-proj-gap:"));
+    expect(gapLines.length).toBe(3);
+    expect(gapLines.every((l) => l.category_statement_line_id == null)).toBe(true);
+  });
+
   it("total mode: facturado in June, financing suppressed", () => {
     const { lines, links } = buildScenario();
     const out = applyCcFacturadoFinancingProjection(lines, links);
