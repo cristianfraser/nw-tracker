@@ -1,4 +1,5 @@
 import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
+import { invalidateMarketDataAggregations } from "./aggregationCache.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
@@ -249,19 +250,13 @@ function rowToWatchlist(row: MarketDisplaySeriesRow & { source: WatchlistSource 
   return item;
 }
 
-export async function getWatchlistPayload(now = new Date()): Promise<{ app: WatchlistRow[]; manual: WatchlistRow[] }> {
+/**
+ * DB-only payload — never fetches Yahoo. History depth for the YTD/YoY stats is maintained
+ * by {@link ensureWatchlistEquityHistoryDepth} on the live-quotes scheduler tick.
+ */
+export function getWatchlistPayload(now = new Date()): { app: WatchlistRow[]; manual: WatchlistRow[] } {
   syncWatchlistFromApp();
-  const today = chileCalendarTodayYmd();
   const rows = stmtSelectAll.all() as (MarketDisplaySeriesRow & { source: WatchlistSource })[];
-  const equityTickers = rows
-    .filter((r) => r.kind === "equity" && r.series_key?.trim())
-    .map((r) => r.series_key!.trim().toUpperCase());
-  const compositionTickers = listCompositeConstituentTickers();
-  await ensureEquityDailyHistoryForWatchlistTickers(
-    [...new Set([...equityTickers, ...compositionTickers])],
-    today
-  );
-
   const app: WatchlistRow[] = [];
   const manual: WatchlistRow[] = [];
   for (const row of rows) {
@@ -270,6 +265,22 @@ export async function getWatchlistPayload(now = new Date()): Promise<{ app: Watc
     else app.push(item);
   }
   return { app, manual };
+}
+
+/**
+ * Ensure `equity_daily` reaches the watchlist YTD/YoY anchors for every watchlist equity
+ * ticker + composite constituent (~400d Yahoo backfill for new/shallow tickers). Runs on the
+ * live-quotes scheduler tick and the manual `live-quotes:sync` script — never on HTTP request
+ * paths. Invalidates market-data aggregations when history rows were actually added.
+ */
+export async function ensureWatchlistEquityHistoryDepth(): Promise<number> {
+  syncWatchlistFromApp();
+  const backfilled = await ensureEquityDailyHistoryForWatchlistTickers(
+    listWatchlistEquitySeriesKeys(),
+    chileCalendarTodayYmd()
+  );
+  if (backfilled > 0) invalidateMarketDataAggregations();
+  return backfilled;
 }
 
 export function patchWatchlistRow(
