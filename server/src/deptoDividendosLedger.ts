@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { db } from "./db.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 
@@ -21,13 +19,6 @@ export function numCsv(v: unknown): number | null {
   const n = Number(t);
   if (!Number.isFinite(n)) return null;
   return neg ? -n : n;
-}
-
-export function readSemicolonCsv(filePath: string): string[][] {
-  if (!fs.existsSync(filePath)) return [];
-  const text = fs.readFileSync(filePath, "utf8");
-  const lines = text.split(/\r?\n/);
-  return lines.map((line) => line.split(";"));
 }
 
 /** One payment / capital row from Numbers export `depto-dividendos.csv` (sheet “dividendos”). */
@@ -330,44 +321,6 @@ export function deptoSueciaPropertyCloseClpBySnapshotDates(
   }
   return out;
 }
-
-const DEPTO_TABLE11_CSV = "depto-Table 1-1.csv";
-
-/** Undated prepago rows from Numbers “Table 1-1” (e.g. `prepago parcial`). */
-export type DeptoTable11Prepayment = {
-  cuota: string;
-  pago_clp: number;
-  pago_uf: number | null;
-};
-
-function parseTable11PrepaymentRow(row: string[]): DeptoTable11Prepayment | null {
-  const cuota = String(row[0] ?? "")
-    .trim()
-    .replace(/^\ufeff/, "");
-  if (!cuota || !/^prepago/i.test(cuota)) return null;
-  if (/^prepago\s+total$/i.test(cuota)) return null;
-  /** Summary row on Table 1-1 — not a dated payment (do not merge into dividendos). */
-  if (/^prepago\s+parcial$/i.test(cuota)) return null;
-  const pago_clp = numCsv(row[2]);
-  if (pago_clp == null || !Number.isFinite(pago_clp) || Math.abs(pago_clp) < 1) return null;
-  return { cuota, pago_clp: Math.abs(pago_clp), pago_uf: numCsv(row[1]) };
-}
-
-/** Prepayments listed on Table 1-1 but missing from `depto-dividendos.csv`. */
-export function loadDeptoTable11SupplementalPrepayments(cfraserDir: string): DeptoTable11Prepayment[] {
-  const fp = path.join(cfraserDir, DEPTO_TABLE11_CSV);
-  const rows = readSemicolonCsv(fp);
-  const out: DeptoTable11Prepayment[] = [];
-  for (const row of rows) {
-    const p = parseTable11PrepaymentRow(row);
-    if (p) out.push(p);
-  }
-  return out;
-}
-
-
-
-
 
 // ---------- depto_payments table (machine payload; notes are human provenance) ----------
 
