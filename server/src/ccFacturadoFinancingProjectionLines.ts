@@ -22,6 +22,11 @@ import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
  *   synthetic lines carrying `L_i`'s category), and the financing interest gap (Σ cuotas −
  *   facturado) is added as a `bills` line per month so it isn't lost.
  *
+ * Projected slices are display derivations: their category is read from the source line at build
+ * time, so they carry `category_statement_line_id` = the source's real statement line id and the
+ * category PATCH targets that line (the synthetic ids here are not PATCHable). Gap lines have no
+ * single source line and keep a null anchor.
+ *
  * Grand totals: total mode = `F` (Σ financed expenses); cuotas mode = `T` (Σ financing cuotas).
  */
 
@@ -49,6 +54,9 @@ function makeProjectedLine(
     cuotaCurrent: number;
     cuotaTotal: number;
     categorySlug: string;
+    categoryUnique: boolean;
+    /** Source line the category PATCH redirects to; null for gap lines (no single source). */
+    categoryStatementLineId: number | null;
     merchant: string | null;
     merchantKey: string;
     purchaseKey: string;
@@ -83,14 +91,14 @@ function makeProjectedLine(
     merchant: overrides.merchant,
     merchant_key: overrides.merchantKey,
     category_slug: overrides.categorySlug,
-    category_unique: false,
+    category_unique: overrides.categoryUnique,
     installment_flag: 1,
     nro_cuota_current: overrides.cuotaCurrent,
     nro_cuota_total: overrides.cuotaTotal,
     line_role: "installment_cuota",
     gastos_scope: "split_only",
     nota_credito_role: undefined,
-    category_statement_line_id: null,
+    category_statement_line_id: overrides.categoryStatementLineId,
     purchase_key: overrides.purchaseKey,
     purchase_notes: "",
     expense_deposit_links: overrides.expenseDepositLinks,
@@ -159,6 +167,10 @@ export function applyCcFacturadoFinancingProjection(
     // Per financed expense: divide L_i equally across the n months, preserving face value.
     for (const i of financedIdx) {
       const src = lines[i]!;
+      const srcCategoryAnchorId =
+        src.statement_line_id > 0
+          ? src.statement_line_id
+          : src.category_statement_line_id ?? null;
       const mortgageLink = src.expense_deposit_links?.find((l) => l.depto_cuota != null);
       if (hasSplittableMortgageExpenseDepositLink(mortgageLink)) {
         // Mortgage line: split each cuota into carrying (bills) + amortization (offset), so the
@@ -175,6 +187,8 @@ export function applyCcFacturadoFinancingProjection(
               cuotaCurrent: k + 1,
               cuotaTotal: n,
               categorySlug: BILLS_CC_EXPENSE_SLUG,
+              categoryUnique: src.category_unique,
+              categoryStatementLineId: srcCategoryAnchorId,
               merchant: src.merchant,
               merchantKey: src.merchant_key,
               purchaseKey: `financing-proj:${link.id}:${src.purchase_key}:${m}`,
@@ -201,6 +215,8 @@ export function applyCcFacturadoFinancingProjection(
             cuotaCurrent: k + 1,
             cuotaTotal: n,
             categorySlug: src.category_slug,
+            categoryUnique: src.category_unique,
+            categoryStatementLineId: srcCategoryAnchorId,
             merchant: src.merchant,
             merchantKey: src.merchant_key,
             purchaseKey: `financing-proj:${link.id}:${src.purchase_key}:${m}`,
@@ -223,6 +239,8 @@ export function applyCcFacturadoFinancingProjection(
             cuotaCurrent: k + 1,
             cuotaTotal: n,
             categorySlug: BILLS_CC_EXPENSE_SLUG,
+            categoryUnique: false,
+            categoryStatementLineId: null,
             merchant: anchor.merchant,
             merchantKey: anchor.merchant_key,
             purchaseKey: `financing-proj-gap:${link.id}:${m}`,
