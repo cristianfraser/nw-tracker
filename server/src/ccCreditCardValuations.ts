@@ -85,7 +85,11 @@ export function ccLedgerStatementClosingPointsClp(
   accountId: number
 ): { as_of_date: string; value_clp: number }[] | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
-  const { months: ledgerMonths, detail } = billingDetailCacheForAccount(accountId);
+  const { payload, detail } = billingDetailCacheForAccount(accountId);
+  if (payload == null) {
+    throw new Error(`account ${accountId}: ledger rows exist but cached bundle has no payload`);
+  }
+  const ledgerMonths = payload.months;
   const balanceByMonth = new Map(detail.map((d) => [d.billing_month, d.balance_total_clp]));
   const months = [
     ...new Set([

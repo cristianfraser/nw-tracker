@@ -1,12 +1,7 @@
-import path from "node:path";
 import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
 import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
-import {
-  buildBillingDetailByMonth,
-  buildFacturaciones,
-  type CcBillingDetailMonthRow,
-  type CcFacturacionRow,
-} from "./ccBillingViews.js";
+import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { buildCreditCardFinancingPlByBillingMonth, type CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
 import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -18,7 +13,6 @@ import {
 } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
-import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import {
   buildCcHistorialChartSeries,
   buildCcBillingMonthChartSeries,
@@ -26,9 +20,6 @@ import {
   type CcBillingMonthChartPoint,
 } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
-import { parseYearMonth } from "./ccYearMonth.js";
-import { numCsv, readSemicolonCsv } from "./deptoDividendosLedger.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   computeProxyLot,
@@ -43,7 +34,6 @@ import {
 
 export { parseYearMonth, addCalendarMonths } from "./ccYearMonth.js";
 
-export const CREDIT_CARD_INSTALLMENTS_CSV = "credit-card-installments.csv";
 
 export type CcInstallmentPurchaseRow = {
   purchase_id: string;
@@ -134,24 +124,6 @@ export type CcInstallmentsMeta = {
 };
 
 
-function normHeader(s: string): string {
-  return String(s ?? "")
-    .trim()
-    .replace(/^\ufeff/, "")
-    .toLowerCase()
-    .replace(/\s+/g, "_");
-}
-
-/** Nominal APR, monthly compounding: fixed payment for fully amortizing loan. */
-function amortizedCuotaClp(principal: number, annualPct: number, n: number): number {
-  if (n <= 0 || principal <= 0) return 0;
-  const r = annualPct / 100 / 12;
-  if (r <= 0) return principal / n;
-  const factor = 1 - Math.pow(1 + r, -n);
-  if (factor <= 0) return principal / n;
-  return (principal * r) / factor;
-}
-
 /** Interest portion of cuota at 0-based installment index (0% APR → 0). */
 export function installmentInterestClpForCuota(
   principal: number,
@@ -174,12 +146,6 @@ export function installmentInterestClpForCuota(
   return Math.round(bal * r);
 }
 
-function parseIntCell(v: unknown, fallback: number): number {
-  const n = numCsv(v);
-  if (n == null || !Number.isFinite(n)) return fallback;
-  return Math.trunc(n);
-}
-
 /** Parses the `extraOffsets` query param. Throws on malformed input — callers 400. */
 export function parseExtraOffsetsJson(raw: unknown): Record<string, number> {
   if (raw == null || raw === "") return {};
@@ -200,101 +166,6 @@ export function parseExtraOffsetsJson(raw: unknown): Record<string, number> {
     if (!Number.isFinite(n)) throw new Error(`extraOffsets["${key}"] must be a number`);
     if (n === 0) continue;
     out[key] = Math.trunc(n);
-  }
-  return out;
-}
-
-export function resolveCreditCardInstallmentsCsvPath(): string {
-  return path.join(resolveCfraserCsvDir(), CREDIT_CARD_INSTALLMENTS_CSV);
-}
-
-export function loadCreditCardInstallmentPurchases(csvDir?: string): CcInstallmentPurchaseRow[] {
-  const dir = csvDir ?? resolveCfraserCsvDir();
-  const fp = path.join(dir, CREDIT_CARD_INSTALLMENTS_CSV);
-  const rows = readSemicolonCsv(fp);
-  if (rows.length < 2) return [];
-  const header = rows[0]!.map((c) => normHeader(String(c ?? "")));
-  const idx = (name: string) => header.indexOf(name);
-
-  const iId = idx("purchase_id");
-  const iLabel = idx("label");
-  const iPrincipal = idx("principal_clp");
-  const iN = idx("installment_count");
-  const iPaid = idx("installments_paid");
-  const iCuota = idx("cuota_clp");
-  const iRate = idx("annual_interest_pct");
-  const iFirst = idx("first_due_month");
-  const iOff = idx("schedule_offset_months");
-  const iPurchaseMonth = idx("purchase_month");
-  const iNote = idx("note");
-
-  const required: [string, number][] = [
-    ["purchase_id", iId],
-    ["label", iLabel],
-    ["principal_clp", iPrincipal],
-    ["installment_count", iN],
-    ["installments_paid", iPaid],
-    ["cuota_clp", iCuota],
-    ["first_due_month", iFirst],
-  ];
-  const missing = required.filter(([, i]) => i < 0).map(([name]) => name);
-  if (missing.length > 0) {
-    throw new Error(`${CREDIT_CARD_INSTALLMENTS_CSV}: missing required columns: ${missing.join(", ")}`);
-  }
-
-  const out: CcInstallmentPurchaseRow[] = [];
-  for (let r = 1; r < rows.length; r++) {
-    const row = rows[r];
-    if (!row || !row.some((c) => String(c ?? "").trim())) continue;
-    const line0 = String(row[0] ?? "").trim();
-    if (line0.startsWith("#")) continue;
-
-    const purchase_id = String(row[iId] ?? "").trim();
-    const label = String(row[iLabel] ?? "").trim();
-    if (!purchase_id || !label) continue;
-
-    const principal_clp = numCsv(row[iPrincipal]);
-    const installment_count = parseIntCell(row[iN], 0);
-    const installments_paid = parseIntCell(row[iPaid], 0);
-    const cuotaRaw = numCsv(row[iCuota]);
-    const annual_interest_pct = iRate >= 0 ? numCsv(row[iRate]) ?? 0 : 0;
-    const firstRaw = String(row[iFirst] ?? "").trim();
-    const first_due_month = parseYearMonth(firstRaw) ?? "";
-
-    if (
-      principal_clp == null ||
-      principal_clp <= 0 ||
-      installment_count <= 0 ||
-      installments_paid < 0 ||
-      installments_paid > installment_count ||
-      !first_due_month
-    ) {
-      continue;
-    }
-
-    let cuota_clp = cuotaRaw != null && cuotaRaw > 0 ? cuotaRaw : 0;
-    if (cuota_clp <= 0) {
-      cuota_clp = amortizedCuotaClp(principal_clp, annual_interest_pct, installment_count);
-    }
-
-    const schedule_offset_months = iOff >= 0 ? parseIntCell(row[iOff], 0) : 0;
-    const purchase_month =
-      iPurchaseMonth >= 0 ? parseYearMonth(String(row[iPurchaseMonth] ?? "").trim()) : null;
-    const note = iNote >= 0 && String(row[iNote] ?? "").trim() ? String(row[iNote]).trim() : null;
-
-    out.push({
-      purchase_id,
-      label,
-      principal_clp,
-      installment_count,
-      installments_paid,
-      cuota_clp,
-      annual_interest_pct: Math.max(0, annual_interest_pct),
-      first_due_month,
-      schedule_offset_months,
-      purchase_month,
-      note,
-    });
   }
   return out;
 }
@@ -372,18 +243,16 @@ export function creditCardInstallmentsResponse(
   const tickers = proxyTickers ?? getCcProxyTickers();
   const today = chileCalendarTodayYmd();
 
-  if (ccInstallmentLedgerRowCount(accountId) > 0) {
-    const db = ccInstallmentsDbApiPayload(accountId);
-    // Build billing detail and facturaciones with the full history schedule so
-    // cuota_a_pagar_next_mes_clp / cuota_a_pagar_clp are non-zero for past billing months too.
-    // db.months is filtered to >= nowYm; passing it to either builder would leave those lookups
-    // returning 0/null for past months — causing the historial chart to show flat bars, wrong
-    // balance_total_clp in the detalle table, and an empty "cuota a pagar" column in facturaciones.
-    const allScheduleMonths: CcInstallmentMonthRow[] = db.installment_history_months.map(
-      (h) => ({ month: h.month, total_clp: h.installment_payments_clp, breakdown: [] })
-    );
-    const billingDetail = buildBillingDetailByMonth(accountId, allScheduleMonths);
-    const facturaciones = buildFacturaciones(accountId, allScheduleMonths);
+  // Ledger payload + billing detail + facturaciones come from the per-account aggregation
+  // cache (cc.billing_detail|<id>) — shared with the CC valuations sync, one build per
+  // cache generation instead of a full rebuild per request (the Pasivos group ledger calls
+  // this once per master).
+  const bundle = billingDetailCacheForAccount(accountId);
+
+  if (bundle.payload != null) {
+    const db = bundle.payload;
+    const billingDetail = bundle.detail;
+    const facturaciones = bundle.facturaciones;
     const financingPl = buildCreditCardFinancingPlByBillingMonth(
       accountId,
       [...db.purchases, ...db.purchases_completed],
@@ -437,8 +306,8 @@ export function creditCardInstallmentsResponse(
       billing.length > 0
         ? [...billing].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date))[0]!.cupo_utilizado_clp
         : 0;
-    const billingDetail = buildBillingDetailByMonth(accountId, []);
-    const facturaciones = buildFacturaciones(accountId, []);
+    const billingDetail = bundle.detail;
+    const facturaciones = bundle.facturaciones;
     const financingPl = buildCreditCardFinancingPlByBillingMonth(accountId, [], extraOffsets);
     return {
       account_id: accountId,

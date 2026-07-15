@@ -23,7 +23,6 @@ import {
 import { assertCcImportReconcilesOrThrow } from "./ccStatementImportReconcile.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
-import { loadCreditCardInstallmentPurchases } from "./creditCardInstallments.js";
 
 function parseInt10(s: string): number | null {
   const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
@@ -98,7 +97,6 @@ export function mergeInstallmentLedgerFromParsedRows(
   opts?: CcInstallmentLedgerMergeOpts
 ): CcInstallmentLedgerMergeResult {
   const replaceLedger = opts?.replaceLedger === true;
-  const baselineIds = new Set(loadCreditCardInstallmentPurchases().map((r) => r.purchase_id));
 
   const byLoan = new Map<string, Agg>();
   for (const row of accountRecords) {
@@ -212,8 +210,10 @@ export function mergeInstallmentLedgerFromParsedRows(
       }
       if (maxCuotas <= 0) continue;
 
+      // Parser-provided baseline match (the Python parser matched it against the archived
+      // installments CSV at parse time) — trusted as-is; runtime never re-reads cfraser CSVs.
       const matched = String(first.matched_excel_row ?? "").trim();
-      const matched_baseline = baselineIds.has(matched) ? matched : null;
+      const matched_baseline = matched !== "" ? matched : null;
 
       const merchant = String(first.merchant ?? "").trim() || null;
       const fingerprint = installmentPurchaseLedgerDedupeKey({
