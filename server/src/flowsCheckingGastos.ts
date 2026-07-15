@@ -1,28 +1,16 @@
-import { accountBucketKindSlug } from "./accountBucket.js";
-import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
-import {
-  isCheckingPartialWithdrawalNote,
-  parsePartialMovementNote,
-  partialMovementSupersededByCartola,
-} from "./checkingCartolaPartialReconcile.js";
-import { checkingCartolaStablePurchaseKey, stripTrailingCartolaNoteTags } from "./checkingCartolaParse.js";
+import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import {
   legacyCheckingGastosPurchaseKey,
   parseLegacyCheckingGastosPurchaseKey,
 } from "./checkingGastosCategoryPersist.js";
-import { cartolaCashAccountIdOptional, isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
-import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
 import {
   getCcExpenseCategoryBySlug,
   categoryUniqueForExpenseLine,
   isCcExpenseTotalsExcludedSlug,
-  isGenericTransferMerchantKey,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
   merchantRuleKeysMatchingLineMerchant,
@@ -33,44 +21,54 @@ import {
   DEPOSITS_CC_EXPENSE_SLUG,
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import {
   formatAutoDepositMatchNote,
   type DepositMatchAllocation,
 } from "./ccExpenseDepositMatchNotes.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
-
-/** Asset group for cash / efectivo accounts (internal transfer targets from checking). */
-export const CHECKING_GASTOS_CASH_GROUP = "cash_eqs";
-
-export function stripCheckingBranchPrefix(description: string): string {
-  const trimmed = description.trim();
-  const m = trimmed.match(
-    /^(?:\S+\s+)*((?:Transf|Traspaso|Giro|Egreso|COMPRA|TRANSF|TRASPASO|GIRO).*)$/i
-  );
-  return m?.[1] ?? trimmed;
-}
-
-/** ATM cash withdrawals must not pair with internal deposit inflows. */
-export function checkingOutflowIsAtmWithdrawal(description: string): boolean {
-  const key = normalizeCcExpenseMerchantKey(stripCheckingBranchPrefix(description));
-  return /^GIRO\s+(?:EN\s+)?CAJERO|^GIRO\s+POR\s+CAJAS/.test(key);
-}
+import {
+  CHECKING_CORRIENTE_INTERNET_TRANSFER_RE,
+  CHECKING_GASTOS_CASH_GROUP,
+  DAP_ABONO_MAX_DAY_GAP,
+  cartolaDescriptionFromNote,
+  cartolaDocsMatchForDapAbono,
+  cartolaDocumentFromNote,
+  checkingCreditLooksLikeFintualIncomingWire,
+  checkingCreditLooksLikeMonthBucketCashReturn,
+  checkingCreditMayAutoMatchNetWorthCapitalReturn,
+  checkingOutflowIsAtmWithdrawal,
+  checkingWithdrawalFundsInvestmentCapital,
+  checkingWithdrawalMayAutoMatchDeposit,
+  dapAbonoAmountMatchesCargo,
+  dapReferenceFromDescription,
+  daysBetweenYmd,
+  isCheckingCorrienteVistaTraspasoOutflow,
+  isCheckingGastosWithdrawalNote,
+  isDapReturnCreditDescription,
+  isExcludedCheckingWithdrawal,
+  isInvestmentDepositTarget,
+  LONG_NUMERIC_CARGO_REF_RE,
+  isMercadoCapitalesCargoDescription,
+  isPayrollRemuneracionCartolaCredit,
+  signedDaysFromTo,
+  stripCheckingBranchPrefix,
+  withdrawalMayUseSplittableReservaPool,
+} from "./checkingDescriptionPredicates.js";
+import {
+  checkingGastosAccountCategorySlug,
+  loadCheckingCartolaCredits,
+  loadCheckingCartolaWithdrawals,
+  loadCheckingGastosWithdrawalRows,
+  loadDepositMatchCandidates,
+  loadMovementBalanceCashCartolaCredits,
+  type CheckingCartolaCredit,
+  type CheckingCartolaWithdrawal,
+  type CheckingCartolaWithdrawalWithAccount,
+  type DepositMatchCandidate,
+} from "./checkingCartolaLoaders.js";
 
 export type { DepositMatchAllocation };
-
-const INVESTMENT_DEPOSIT_GROUPS = new Set(["real_estate", "brokerage", "retirement"]);
-
-export function isInvestmentDepositTarget(groupSlug: string): boolean {
-  return INVESTMENT_DEPOSIT_GROUPS.has(groupSlug);
-}
-
-export function isCheckingGastosWithdrawalNote(note: string | null | undefined): boolean {
-  const n = String(note ?? "").trim();
-  if (!n || isCheckingLedgerAnchorNote(n)) return false;
-  return n.startsWith("import:cartola|") || isCheckingPartialWithdrawalNote(n);
-}
 
 export function checkingGastosMovementPurchaseKey(
   movementId: number,
@@ -272,88 +270,6 @@ export function assignCheckingGastosMovementCategory(opts: {
   };
 }
 
-const INTERNAL_TRANSFER_RE = /CRISTIAN\s+FRASER\s*-\s*SANTANDER/i;
-const CC_PAYMENT_DESC_RE =
-  /MONTO\s+CANCELADO|PAGO\s+.*TARJETA|TARJETA\s+DE\s+CR[EÉ]DITO|PAGO\s+TARJETA|TRASPASO(?:\s+\w+)*\s+A\s+T\.?\s*CR[EÉ]DITO|TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[EÉ]DITO|(?:EGRESO\s+POR\s+)?COMPRA\s+DE\s+DIVISAS/i;
-/** Own Santander account transfers (not spending). */
-const OWN_SANTANDER_TRANSFER_RE = /TRASPASO(?:\s+\w+)*\s+A\s+CUENTAM[AÁ]TICA/i;
-/** Transfers to cuenta vista (CUENTAMATICA / vale vista), e.g. AFP 10% retiros. */
-export const CUENTA_VISTA_TRANSFER_DESC_RE =
-  /TRASPASO(?:\s+\w+)*\s+A\s+CUENTA\s+VISTA/i;
-/** Transfers to Fondo reserva (internal, not consumption). */
-const RESERVA_TRANSFER_DESC_RE =
-  /\bRESERVA\b|FONDO\s+RESERVA|TRASPASO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b|DEP[OÓ]SITO(?:\s+\w+)*\s+A\s+.*\bRESERVA\b/i;
-
-/** Direct "FINTUAL ADMINISTRADORA" wires — excluded from the gastos list outright. Kept narrow so
- *  "TRASPASO A FINTUAL" / "Transf a Fintual" stay OUT of the exclusion set and flow through the
- *  gastos matcher instead (see the excludes-internal-transfer test). */
-const FINTUAL_TRANSFER_DESC_RE = /FINTUAL\s+ADMINISTRADORA/i;
-
-/** Any transfer mentioning Fintual (Transf a Fintual, PAC FINTUAL, FINTUAL ADMINISTRADORA) is
- *  investment funding — used for auto-matching a withdrawal to a Fintual deposit. Broader than the
- *  exclusion regex; safe because the deposit pairing still requires an exact amount + date match. */
-const FINTUAL_INVESTMENT_TRANSFER_RE = /\bFINTUAL\b/i;
-
-/** Incoming checking abono from Fintual (capital return from net-worth accounts). */
-const FINTUAL_INCOMING_TRANSFER_RE = /\bFINTUAL\b/i;
-
-/** Buda.com crypto exchange wires into checking (sale proceeds, not salary / external income). */
-const BUDA_CRYPTO_EXCHANGE_TRANSFER_RE = /\bTRANSF\.?\s+.*\bBUDA\b/i;
-
-/** AFP 10% retiro proceeds wired into checking (not external income). */
-const AFP_CHECKING_INFLOW_DESC_RE = /\bABONO\s+10\s*%\s*AFP\b|\bANTI\s+PREV\s+AFP\b/i;
-
-/** Employer payroll deposits (REMUNERACION) — real income even when swept to vista same day. */
-export const PAYROLL_REMUNERACION_INFLOW_RE = /\bREMUNERACION(?:ES)?\b/i;
-
-/** ATM / branch cash deposit on cartola (often cuenta ahorro month-end retiro proceeds). */
-// Cash-style deposits into checking that book a cuenta_ahorro (or similar month-bucket) withdrawal
-// returning to the account: "Depósito en Efectivo", "Depósito con Vales Vista", "… con Cheque".
-const CHECKING_CASH_DEPOSIT_INFLOW_RE =
-  /DEP[OÓ]SITO\s+(?:EN\s+EFECTIVO|CON\s+(?:VALES?\s+VISTA|CHEQUES?))/i;
-
-export function isPayrollRemuneracionCheckingInflow(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  return PAYROLL_REMUNERACION_INFLOW_RE.test(d);
-}
-
-/** Payroll deposit on cartola — REMUNERACION may live in branch or description segment of the note. */
-export function isPayrollRemuneracionCartolaCredit(credit: {
-  note: string | null;
-}): boolean {
-  const n = String(credit.note ?? "").trim();
-  if (PAYROLL_REMUNERACION_INFLOW_RE.test(n)) return true;
-  return isPayrollRemuneracionCheckingInflow(cartolaDescriptionFromNote(credit.note));
-}
-
-/** Vista ↔ corriente internet traspaso (both directions on cartola). */
-export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE =
-  /TRASPASO\s+INTERNET\s+(?:A\s+CTA\.?\s*CTE?\.?|DESDE\s+CTA\.?\s*CT\.?|(?:DE|A)\s+CUENTA\s+VISTA)/i;
-
-/** Vista (or checking) outflow wiring money to cuenta corriente — always an internal move. */
-export const CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE =
-  /TRASPASO\s+INTERNET\s+A\s+CTA\.?\s*CTE?\.?/i;
-
-export function isCheckingCorrienteVistaTraspasoOutflow(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  return CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE.test(d);
-}
-
-/** Only generic internal-transfer cartola descriptions may auto-pair with deposit inflows. */
-export function checkingWithdrawalMayAutoMatchDeposit(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  if (!d) return false;
-  if (isCheckingCorrienteVistaTraspasoOutflow(d)) return true;
-  if (INTERNAL_TRANSFER_RE.test(d)) return true;
-  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
-  const merchantKey = normalizeCcExpenseMerchantKey(d);
-  if (isExactGenericUniqueMerchantKey(merchantKey)) return true;
-  if (isGenericTransferMerchantKey(merchantKey)) return true;
-  return false;
-}
-
 export function autoMatchCategorySlugForDeposit(
   deposit: Pick<DepositMatchCandidate, "category_slug" | "group_slug">
 ): string {
@@ -402,44 +318,6 @@ export function resolveAutoMatchCategorySlugForCheckingWithdrawal(
   if (split.investmentDeposit != null) return DEPOSITS_CC_EXPENSE_SLUG;
   return null;
 }
-
-/** Santander capital-markets money order charge (downpayment rail). */
-const MERCADO_CAPITALES_CARGO_RE = /Cargo\s+Mercado\s+Capitales/i;
-/** Long numeric cartola reference used for the same money-order rail. */
-const LONG_NUMERIC_CARGO_REF_RE = /^\d{10,}$/;
-
-/** DAP refund when a money order was annulled or a DAP matured (paired with cargo by `doc:`). */
-const DAP_ABONADO_RE = /\bDAP\s+(\d+)\s+ABONADO\b/i;
-/** Cuenta vista return of a DAP placed via Mercado Capitales (vale vista collection). */
-const COBRO_VVISTA_DAP_RE = /\bCOBRO\s+VVISTA\s+(\d+)/i;
-
-/** Max days between MC cargo and matching DAP ABONADO credit (12 months). */
-export const DAP_ABONO_MAX_DAY_GAP = 365;
-
-/** Min premium on short DAP maturities (e.g. 42-day ~0.49% on Aug 2024 doc 9204418). */
-export const DAP_ABONO_MIN_PREMIUM_RATIO = 0.01;
-
-/** Max premium at {@link DAP_ABONO_MAX_DAY_GAP} (longer DAP terms). */
-export const DAP_ABONO_MAX_PREMIUM_RATIO = 0.1;
-
-/** Abono `doc:` may be cargo doc + N (Santander cartola numbering). */
-export const DAP_ABONO_DOC_SPREAD = 2;
-
-export type CheckingCartolaCredit = {
-  occurred_on: string;
-  amount_clp: number;
-  note: string | null;
-};
-
-export type CheckingCartolaWithdrawal = CheckingCartolaCredit;
-
-export type DepositMatchCandidate = {
-  occurred_on: string;
-  amount_clp: number;
-  account_id: number;
-  category_slug: string;
-  group_slug: string;
-};
 
 /** Cash accounts whose inflows are month-end aggregates (no exact transfer dates). */
 export const MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES = new Set(["cuenta_ahorro_vivienda"]);
@@ -490,191 +368,6 @@ export function ledgerCapitalReturnMatchesTiming(
   }
   const dayGap = signedDaysFromTo(outflowOccurredOn, creditOccurredOn);
   return dayGap >= 0 && dayGap <= maxDayGap;
-}
-
-export function checkingCreditLooksLikeMonthBucketCashReturn(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  if (!d) return false;
-  if (isPayrollRemuneracionCheckingInflow(d)) return false;
-  return CHECKING_CASH_DEPOSIT_INFLOW_RE.test(d);
-}
-
-function daysBetweenYmd(a: string, b: string): number {
-  const ta = Date.parse(`${a}T12:00:00Z`);
-  const tb = Date.parse(`${b}T12:00:00Z`);
-  if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 999;
-  return Math.round(Math.abs(ta - tb) / 86_400_000);
-}
-
-function signedDaysFromTo(fromYmd: string, toYmd: string): number {
-  const from = Date.parse(`${fromYmd}T12:00:00Z`);
-  const to = Date.parse(`${toYmd}T12:00:00Z`);
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return 999;
-  return Math.round((to - from) / 86_400_000);
-}
-
-function dapReferenceFromDescription(description: string): string | null {
-  const d = description.trim();
-  const abono = DAP_ABONADO_RE.exec(d);
-  if (abono?.[1]) return abono[1];
-  const vv = COBRO_VVISTA_DAP_RE.exec(d);
-  return vv?.[1] ?? null;
-}
-
-function cartolaDocsMatchForDapAbono(cargoDoc: string, creditDoc: string | null, dapRef: string | null): boolean {
-  if (creditDoc === cargoDoc) return true;
-  if (creditDoc != null) {
-    const cargoNum = Number.parseInt(cargoDoc, 10);
-    const creditNum = Number.parseInt(creditDoc, 10);
-    if (
-      Number.isFinite(cargoNum) &&
-      Number.isFinite(creditNum) &&
-      creditNum >= cargoNum &&
-      creditNum <= cargoNum + DAP_ABONO_DOC_SPREAD
-    ) {
-      return true;
-    }
-  }
-  if (dapRef != null && (dapRef.endsWith(cargoDoc) || dapRef.includes(cargoDoc))) return true;
-  return false;
-}
-
-function dapAbonoMaxPremiumRatioForDayGap(dayGap: number): number {
-  const clamped = Math.max(0, Math.min(dayGap, DAP_ABONO_MAX_DAY_GAP));
-  const t = clamped / DAP_ABONO_MAX_DAY_GAP;
-  return DAP_ABONO_MIN_PREMIUM_RATIO + t * (DAP_ABONO_MAX_PREMIUM_RATIO - DAP_ABONO_MIN_PREMIUM_RATIO);
-}
-
-function dapAbonoAmountMatchesCargo(cargoAmount: number, abonoAmount: number, dayGap: number): boolean {
-  const cargo = Math.round(Math.abs(cargoAmount));
-  const abono = Math.round(abonoAmount);
-  if (cargo <= 0 || abono <= 0) return false;
-  if (abono < cargo) return false;
-  const maxPremium = dapAbonoMaxPremiumRatioForDayGap(dayGap);
-  return abono <= Math.round(cargo * (1 + maxPremium));
-}
-
-/** Parse withdrawal description from official cartola or partial import notes. */
-export function cartolaDescriptionFromNote(note: string | null | undefined): string {
-  const n = String(note ?? "").trim();
-  const partial = parsePartialMovementNote(n);
-  if (partial) return partial.description;
-  if (!n.startsWith("import:cartola|")) return n;
-  const rest = n.slice("import:cartola|".length);
-  const firstBar = rest.indexOf("|");
-  if (firstBar < 0) return rest;
-  const afterPeriod = rest.slice(firstBar + 1);
-  const secondBar = afterPeriod.indexOf("|");
-  if (secondBar < 0) return afterPeriod.trim();
-  let desc = afterPeriod.slice(secondBar + 1).trim();
-  if (desc.startsWith("doc:")) desc = "";
-  return stripTrailingCartolaNoteTags(desc);
-}
-
-/** Document number from `import:cartola|…|description|doc:NNNN`. */
-export function cartolaDocumentFromNote(note: string | null | undefined): string | null {
-  const n = String(note ?? "").trim();
-  const idx = n.lastIndexOf("|doc:");
-  if (idx < 0) return null;
-  let doc = n.slice(idx + "|doc:".length).trim();
-  const meta = doc.search(/\|(on:|amt:|idx:)/);
-  if (meta >= 0) doc = doc.slice(0, meta).trim();
-  return doc.length > 0 ? doc : null;
-}
-
-export function isMercadoCapitalesCargoDescription(description: string): boolean {
-  const d = description.trim();
-  if (!d) return false;
-  if (MERCADO_CAPITALES_CARGO_RE.test(d)) return true;
-  if (LONG_NUMERIC_CARGO_REF_RE.test(d.replace(/\s/g, ""))) return true;
-  return false;
-}
-
-export function isDapAbonoDescription(description: string): boolean {
-  return DAP_ABONADO_RE.test(description.trim());
-}
-
-export function isDapReturnCreditDescription(description: string): boolean {
-  const d = description.trim();
-  if (isDapAbonoDescription(d)) return true;
-  return COBRO_VVISTA_DAP_RE.test(d);
-}
-
-export function loadCheckingCartolaCredits(accountId: number): CheckingCartolaCredit[] {
-  return db
-    .prepare(
-      `SELECT occurred_on, amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND amount_clp > 0
-         AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:cartola|anchor|%'
-       ORDER BY occurred_on, id`
-    )
-    .all(accountId) as CheckingCartolaCredit[];
-}
-
-export function loadMovementBalanceCashCartolaCredits(
-  accountIds = listMovementBalanceCashAccountIds()
-): CheckingCartolaCredit[] {
-  const out: CheckingCartolaCredit[] = [];
-  for (const accountId of accountIds) {
-    out.push(...loadCheckingCartolaCredits(accountId));
-  }
-  out.sort((a, b) => {
-    const d = a.occurred_on.localeCompare(b.occurred_on);
-    if (d !== 0) return d;
-    return a.amount_clp - b.amount_clp;
-  });
-  return out;
-}
-
-export function loadCheckingCartolaWithdrawals(accountId: number): CheckingCartolaWithdrawal[] {
-  return db
-    .prepare(
-      `SELECT occurred_on, amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND amount_clp < 0
-         AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:cartola|anchor|%'
-       ORDER BY occurred_on, id`
-    )
-    .all(accountId) as CheckingCartolaWithdrawal[];
-}
-
-type CheckingGastosWithdrawalRow = {
-  id: number;
-  occurred_on: string;
-  amount_clp: number;
-  note: string | null;
-};
-
-/** Cartola + non-superseded partial withdrawals for gastos (partial excluded when official cartola exists). */
-export function loadCheckingGastosWithdrawalRows(accountId: number): CheckingGastosWithdrawalRow[] {
-  const rows = db
-    .prepare(
-      `SELECT id, occurred_on, amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND amount_clp < 0
-         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%')
-         AND note NOT LIKE 'import:cartola|anchor|%'
-       ORDER BY occurred_on DESC, id DESC`
-    )
-    .all(accountId) as CheckingGastosWithdrawalRow[];
-
-  return rows.filter((row) => {
-    if (!isCheckingPartialWithdrawalNote(row.note)) return true;
-    const parsed = parsePartialMovementNote(String(row.note ?? ""));
-    if (!parsed) return false;
-    return !partialMovementSupersededByCartola(accountId, {
-      occurred_on: parsed.occurred_on,
-      amount_clp: parsed.amount_clp,
-      description: parsed.description,
-      document_no: parsed.document_no,
-    });
-  });
 }
 
 /**
@@ -747,36 +440,6 @@ export function withdrawalIsReversedByDapAbono(
   return false;
 }
 
-export function isExcludedCheckingWithdrawal(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  if (!d) return true;
-  if (INTERNAL_TRANSFER_RE.test(d)) return true;
-  if (isCcPaymentMerchant(d)) return true;
-  if (CC_PAYMENT_DESC_RE.test(d)) return true;
-  if (OWN_SANTANDER_TRANSFER_RE.test(d)) return true;
-  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
-  return false;
-}
-
-/** Incoming cartola abono excluded by description (symmetric to {@link isExcludedCheckingWithdrawal}). */
-export function isExcludedCheckingInflow(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  if (!d) return true;
-  if (isDapReturnCreditDescription(d)) return true;
-  if (CHECKING_CORRIENTE_INTERNET_TRANSFER_RE.test(d)) return true;
-  if (INTERNAL_TRANSFER_RE.test(d)) return true;
-  if (OWN_SANTANDER_TRANSFER_RE.test(d)) return true;
-  if (CUENTA_VISTA_TRANSFER_DESC_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_INCOMING_TRANSFER_RE.test(d)) return true;
-  if (BUDA_CRYPTO_EXCHANGE_TRANSFER_RE.test(d)) return true;
-  if (AFP_CHECKING_INFLOW_DESC_RE.test(d)) return true;
-  return false;
-}
-
 /**
  * DAP ABONADO / COBRO VVISTA credit that pairs with a Mercado Capitales cargo (product return, not income).
  */
@@ -801,18 +464,6 @@ export function creditIsReversingMercadoCapitalesCargo(
     return true;
   }
   return false;
-}
-
-export type CheckingCartolaWithdrawalWithAccount = CheckingCartolaWithdrawal & { account_id: number };
-
-export function loadAllCheckingCartolaWithdrawals(): CheckingCartolaWithdrawalWithAccount[] {
-  const out: CheckingCartolaWithdrawalWithAccount[] = [];
-  for (const accountId of listMovementBalanceCashAccountIds()) {
-    for (const row of loadCheckingCartolaWithdrawals(accountId)) {
-      out.push({ ...row, account_id: accountId });
-    }
-  }
-  return out;
 }
 
 /** Abono that pairs with a sibling checking withdrawal classified as internal transfer. */
@@ -868,52 +519,6 @@ export const NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP = 14;
 
 /** AFP retiro ledger rows often post days after the checking abono (bidirectional match window). */
 export const AFP_RETIRO_RETURN_MAX_DAY_GAP = 31;
-
-/** Wires from checking into Fintual / reserva (capital funding, not consumption). */
-export function checkingWithdrawalFundsInvestmentCapital(note: string | null): boolean {
-  const d = stripCheckingBranchPrefix(cartolaDescriptionFromNote(note)).trim();
-  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  return false;
-}
-
-/**
- * Only generic cartola abonos may auto-filter as net-worth capital return (checking-outflow path).
- * Named person transfers (e.g. "… Transf. Cristian Alejandro Fraser") stay in income.
- */
-export function checkingCreditMayAutoMatchNetWorthCapitalReturn(description: string): boolean {
-  const d = stripCheckingBranchPrefix(description).trim();
-  if (!d) return false;
-  if (isPayrollRemuneracionCheckingInflow(d)) return false;
-  const merchantKey = normalizeCcExpenseMerchantKey(d);
-  if (isExactGenericUniqueMerchantKey(merchantKey)) return true;
-  if (isGenericTransferMerchantKey(merchantKey)) return true;
-  if (/^(?:ABONO\s+)?TRANSFERENCIA\s+ELECTRONICA$/.test(merchantKey)) return true;
-  return false;
-}
-
-/**
- * Fintual wire proceeds on cartola (ledger-return path). Truncated vista lines may be
- * "0768106274 Transf." with no FINTUAL token; named person transfers are excluded.
- */
-export function checkingCreditLooksLikeFintualIncomingWire(description: string): boolean {
-  const trimmed = description.trim();
-  if (!trimmed) return false;
-  if (isPayrollRemuneracionCheckingInflow(trimmed)) return false;
-  if (FINTUAL_INCOMING_TRANSFER_RE.test(trimmed)) return true;
-
-  const fullKey = normalizeCcExpenseMerchantKey(trimmed);
-  if (/^\d{6,}\s+TRANSF\.?$/.test(fullKey)) return true;
-
-  const strippedKey = normalizeCcExpenseMerchantKey(stripCheckingBranchPrefix(trimmed));
-  if (
-    /^\d{6,}\s+TRANSF/i.test(fullKey) &&
-    /^TRANSF\.?$/.test(strippedKey)
-  ) {
-    return true;
-  }
-  return false;
-}
 
 function checkingWithdrawalPairKey(row: {
   account_id: number;
@@ -1167,44 +772,6 @@ export function checkingCreditMatchesNetWorthCapitalReturn(
   });
 }
 
-/** Brokerage/retirement ledger retiros that may pair with Fintual incoming wires (excludes AFP). */
-export function loadNetWorthCapitalReturnLedgerOutflows(): DepositMatchCandidate[] {
-  return loadNetWorthCapitalOutflowCandidates().filter((o) => o.category_slug !== "afp");
-}
-
-export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] {
-  const accounts = listDepositFlowAccounts().filter(
-    (a) =>
-      !isMovementBalanceCashCategory(a.category_slug) &&
-      !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug)
-  );
-  const ids = accounts.map((a) => a.account_id);
-  const metaById = new Map(
-    accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
-  );
-  const byAccount = loadMergedDepositInflowEvents(ids);
-  const out: DepositMatchCandidate[] = [];
-  for (const [accountId, events] of byAccount) {
-    const meta = metaById.get(accountId);
-    if (!meta) continue;
-    for (const e of events) {
-      if (e.amt >= 0 || !Number.isFinite(e.amt)) continue;
-      out.push({
-        occurred_on: e.occurred_on,
-        amount_clp: Math.round(Math.abs(e.amt)),
-        account_id: accountId,
-        category_slug: meta.category_slug,
-        group_slug: meta.group_slug,
-      });
-    }
-  }
-  return out;
-}
-
-export function loadAfpRetiroOutflowCandidates(): DepositMatchCandidate[] {
-  return loadNetWorthCapitalOutflowCandidates().filter((c) => c.category_slug === "afp");
-}
-
 export function checkingCreditMatchesAfpRetiroReturn(
   credit: { occurred_on: string; amount_clp: number },
   afpOutflows: readonly DepositMatchCandidate[],
@@ -1218,51 +785,6 @@ export function checkingCreditMatchesAfpRetiroReturn(
     return true;
   }
   return false;
-}
-
-export function withdrawalMayUseSplittableReservaPool(description: string): boolean {
-  const d = description.trim();
-  if (RESERVA_TRANSFER_DESC_RE.test(d)) return true;
-  if (FINTUAL_INVESTMENT_TRANSFER_RE.test(d)) return true;
-  return false;
-}
-
-export function fondoReservaAccountId(): number | null {
-  const row = db
-    .prepare(
-      `SELECT a.id FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE g.slug = 'fondo_reserva' OR g.slug LIKE '%__fondo_reserva'
-       LIMIT 1`
-    )
-    .get() as { id: number } | undefined;
-  return row?.id ?? null;
-}
-
-function listDepositFlowAccounts(): { account_id: number; category_slug: string; group_slug: string }[] {
-  const rows = db
-    .prepare(
-      `SELECT a.id AS account_id, g.slug AS bucket_slug
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.import_key IS NULL OR a.import_key != ?)
-         AND COALESCE(a.exclude_from_group_totals, 0) = 0
-         AND g.slug != 'individual_stocks'`
-    )
-    .all(NOTE_STOCKS_LEGACY) as { account_id: number; bucket_slug: string }[];
-  return rows
-    .map((r) => {
-      const dash = dashboardBucketForAssetGroupSlug(r.bucket_slug);
-      if (!dash || !["real_estate", "cash_eqs", "brokerage", "retirement"].includes(dash)) {
-        return null;
-      }
-      return {
-        account_id: r.account_id,
-        category_slug: accountBucketKindSlug(r.bucket_slug),
-        group_slug: dash,
-      };
-    })
-    .filter((r): r is { account_id: number; category_slug: string; group_slug: string } => r != null);
 }
 
 function depositIsCrossAccountInternalTransfer(
@@ -1594,69 +1116,6 @@ export function withdrawalMatchesInternalCashTransfer(
   if (splittablePool == null) return false;
   if (!withdrawalMayUseSplittableReservaPool(withdrawal.description ?? "")) return false;
   return tryAllocateSplittableInternalTransfer(withdrawal, deposits, splittablePool);
-}
-
-function loadCuentaVistaInternalTransferCredits(): DepositMatchCandidate[] {
-  const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
-  if (vistaId == null) return [];
-  const byAccount = loadMergedDepositInflowEvents([vistaId]);
-  const events = byAccount.get(vistaId) ?? [];
-  return events
-    .filter((e) => e.amt > 0 && Number.isFinite(e.amt))
-    .map((e) => ({
-      occurred_on: e.occurred_on,
-      amount_clp: Math.round(e.amt),
-      account_id: vistaId,
-      category_slug: "cuenta_vista",
-      group_slug: CHECKING_GASTOS_CASH_GROUP,
-    }));
-}
-
-export function checkingGastosAccountCategorySlug(accountId: number): string {
-  const row = db
-    .prepare(
-      `SELECT g.slug AS bucket_slug FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id = ?`
-    )
-    .get(accountId) as { bucket_slug: string } | undefined;
-  return row ? accountBucketKindSlug(row.bucket_slug) : "";
-}
-
-/**
- * Account kinds whose flows never enter the matcher candidate pools. DAP round-trips are already
- * netted internal on the checking side (Cargo Mercado Capitales out / "DAP … ABONADO" back), so a
- * DAP abono must not be claimable by an unrelated same-amount checking wire, and a DAP retiro must
- * not be consumable as a capital return.
- */
-const MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS = new Set(["dap"]);
-
-export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
-  const accounts = listDepositFlowAccounts().filter(
-    (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug)
-  );
-  const ids = accounts.map((a) => a.account_id);
-  const metaById = new Map(
-    accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
-  );
-  const byAccount = loadMergedDepositInflowEvents(ids);
-  const out: DepositMatchCandidate[] = [];
-  for (const [accountId, events] of byAccount) {
-    const meta = metaById.get(accountId);
-    const category_slug = meta?.category_slug ?? "";
-    const group_slug = meta?.group_slug ?? "";
-    for (const e of events) {
-      if (e.amt <= 0 || !Number.isFinite(e.amt)) continue;
-      out.push({
-        occurred_on: e.occurred_on,
-        amount_clp: Math.round(e.amt),
-        account_id: accountId,
-        category_slug,
-        group_slug,
-      });
-    }
-  }
-  return [...out, ...loadCuentaVistaInternalTransferCredits()];
 }
 
 export function matchWithdrawalToInvestmentDeposit(

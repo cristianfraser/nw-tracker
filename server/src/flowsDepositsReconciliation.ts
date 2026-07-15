@@ -16,9 +16,11 @@ import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSpl
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
 import {
-  loadNetWorthCapitalReturnLedgerOutflows,
   netWorthCapitalLedgerOutflowPairKey,
 } from "./flowsCheckingGastos.js";
+import {
+  loadNetWorthCapitalReturnLedgerOutflows,
+} from "./checkingCartolaLoaders.js";
 import { loadConsumedNetWorthCapitalReturnOutflowKeys } from "./flowsCheckingInflows.js";
 import {
   clearFxConversionWarnings,

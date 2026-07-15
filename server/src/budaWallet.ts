@@ -2,11 +2,15 @@ import { db } from "./db.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import {
   NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP,
-  cartolaDescriptionFromNote,
   ledgerCapitalReturnMatchesTiming,
   netWorthCapitalLedgerOutflowPairKey,
-  type DepositMatchCandidate,
 } from "./flowsCheckingGastos.js";
+import {
+  type DepositMatchCandidate,
+} from "./checkingCartolaLoaders.js";
+import {
+  cartolaDescriptionFromNote,
+} from "./checkingDescriptionPredicates.js";
 
 const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 

@@ -5,7 +5,12 @@ import {
   normalizeCcExpenseMerchantKey,
   stableCcExpensePurchaseKeyFromCtx,
 } from "./ccExpenseCategories.js";
-import { cartolaDescriptionFromNote, checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
+import {
+  checkingGastosMovementPurchaseKey,
+} from "./flowsCheckingGastos.js";
+import {
+  cartolaDescriptionFromNote,
+} from "./checkingDescriptionPredicates.js";
 import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
