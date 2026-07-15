@@ -300,8 +300,8 @@ function CreditCardInstallmentsSection({
               components={{ 1: <span className="mono" />, 2: <span className="mono" /> }}
             />
           ) : null}{" "}
-          {m?.pay_by_rule ? (
-            <span className={cn("muted", styles.stateNote)}>{m.pay_by_rule}</span>
+          {m?.pay_by_rule_i18n_key ? (
+            <span className={cn("muted", styles.stateNote)}>{t(m.pay_by_rule_i18n_key)}</span>
           ) : null}
         </p>
       ) : null}

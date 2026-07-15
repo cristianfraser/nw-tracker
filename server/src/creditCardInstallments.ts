@@ -119,8 +119,8 @@ export type CcInstallmentsTotals = {
 export type CcInstallmentsMeta = {
   installment_purchase_count?: number;
   installment_payment_count?: number;
-  pay_by_rule?: string;
-  remaining_balance_line_rule?: string;
+  /** master.json key resolved client-side via t() — server payloads carry no display prose. */
+  pay_by_rule_i18n_key?: string;
 };
 
 
@@ -273,8 +273,7 @@ export function creditCardInstallmentsResponse(
       meta: {
         installment_purchase_count: db.meta.installment_purchase_count,
         installment_payment_count: db.meta.installment_payment_count,
-        pay_by_rule: db.meta.pay_by_rule,
-        remaining_balance_line_rule: db.meta.remaining_balance_line_rule,
+        pay_by_rule_i18n_key: db.meta.pay_by_rule_i18n_key,
       },
       purchases: db.purchases,
       purchases_completed: db.purchases_completed,
@@ -316,8 +315,7 @@ export function creditCardInstallmentsResponse(
       open_billing_month,
       associated_card_last4s,
       meta: {
-        pay_by_rule:
-          "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP.",
+        pay_by_rule_i18n_key: "account.creditCard.payByRule.statementsOnly",
       },
       purchases: [],
       purchases_completed: [],
