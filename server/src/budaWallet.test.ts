@@ -3,7 +3,9 @@ import {
   checkingCreditLooksLikeBudaRetiro,
   checkingCreditMatchesBudaRetiro,
 } from "./budaWallet.js";
-import type { DepositMatchCandidate } from "./flowsCheckingGastos.js";
+import type {
+  DepositMatchCandidate,
+} from "./checkingCartolaLoaders.js";
 
 const BUDA_ID = 97;
 const budaRetiro = (occurred_on: string, amount_clp: number): DepositMatchCandidate => ({

@@ -1,5 +1,7 @@
 import { db } from "./db.js";
-import { cartolaDescriptionFromNote } from "./flowsCheckingGastos.js";
+import {
+  cartolaDescriptionFromNote,
+} from "./checkingDescriptionPredicates.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
 
