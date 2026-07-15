@@ -214,6 +214,11 @@ function calendarMonthsPriorYmd(ymd: string, months: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/**
+ * Per-day proxy value or null when that day lacks data (holiday/gap — expected).
+ * Day-independent corruption (invalid anchor metadata) still throws: swallowing it
+ * would silently null every day and hide the broken composition row.
+ */
 function tryProxyClp(
   meta: CompositeMeta,
   holdings: CompositeHolding[],
@@ -222,7 +227,8 @@ function tryProxyClp(
 ): number | null {
   try {
     return proxyClpFromMeta(meta, holdings, ymd, opts);
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("invalid anchor metadata")) throw e;
     return null;
   }
 }
