@@ -122,6 +122,7 @@ describe("dashPickForNavStrip USD totals", () => {
 
     const dash = dashPickForNavStrip(
       {
+        card_metrics_by_slug: {},
         accounts,
         overviewPoints: [],
         dashboard_layout: [
@@ -158,6 +159,7 @@ describe("dashPickForNavStrip USD totals", () => {
   it("omits USD totals when accounts lack current_value_usd", () => {
     const dash = dashPickForNavStrip(
       {
+        card_metrics_by_slug: {},
         accounts: [
           dashRow({
             account_id: 1,

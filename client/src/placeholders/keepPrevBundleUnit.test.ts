@@ -19,6 +19,7 @@ const RATE = 950; // clp_per_usd
 function clpDashboardBundle(): DashboardBundle {
   return {
     dash: {
+      card_metrics_by_slug: {},
       totals: {
         net_worth_clp: 950_000,
         deposits_clp: 0,

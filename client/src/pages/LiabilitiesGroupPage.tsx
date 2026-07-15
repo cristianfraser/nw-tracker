@@ -182,6 +182,7 @@ export function LiabilitiesGroupPage() {
           navCtx?.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
         dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
         nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
+        card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
         overviewPoints,
       },
       sidebarNav?.net_worth
