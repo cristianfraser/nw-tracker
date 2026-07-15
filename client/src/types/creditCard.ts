@@ -149,11 +149,18 @@ export interface CcInstallmentMonthRow {
   debt_after_clp: number;
 }
 
+/**
+ * Server-chosen explanatory copy for the installments meta, resolved via t() at render.
+ * The literal union doubles as the key registration for i18n/keyIntegrity.test.ts.
+ */
+export type CcPayByRuleI18nKey =
+  | "account.creditCard.payByRule.ledger"
+  | "account.creditCard.payByRule.statementsOnly";
+
 export interface AccountCcInstallmentsMeta {
   installment_purchase_count?: number;
   installment_payment_count?: number;
-  pay_by_rule?: string;
-  remaining_balance_line_rule?: string;
+  pay_by_rule_i18n_key?: CcPayByRuleI18nKey;
 }
 
 export interface CcInstallmentHistoryMonthPoint {

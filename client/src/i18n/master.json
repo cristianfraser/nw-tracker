@@ -385,6 +385,12 @@
     "groupAccumHint": {
       "en": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data.",
       "es": "Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el primer mes con datos."
+    },
+    "overview": {
+      "invested": {
+        "en": "Invested",
+        "es": "Invertido"
+      }
     }
   },
   "dashboard": {
@@ -411,7 +417,7 @@
       },
       "liabilities": {
         "en": "Liabilities",
-        "es": "Liabilities"
+        "es": "Pasivos"
       },
       "retirement": {
         "en": "Retirement",
@@ -686,7 +692,7 @@
     },
     "checking_accounts": {
       "en": "Checking accounts",
-      "es": "Checking accounts"
+      "es": "Cuentas corrientes"
     },
     "flows": {
       "en": "Flows",
@@ -4414,6 +4420,16 @@
       "mortgageSheetEmpty": {
         "en": "No payment rows in the database. Run npm run import:excel (export depto-dividendos.csv from Numbers into cfraser/ before the import).",
         "es": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import)."
+      },
+      "payByRule": {
+        "ledger": {
+          "en": "Installments by statement month: each row is one facturación (closing ~20th) with its pay-by date (~10th of the next month); \"cuota a pagar\" = plan installments billed at that close. PDFs pin amounts, progress and pay-by dates; open/projected months follow the plan. Rows roll off once their pay-by date passes.",
+          "es": "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece pasado su pagar-hasta."
+        },
+        "statementsOnly": {
+          "en": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported.",
+          "es": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."
+        }
       }
     }
   },

@@ -902,11 +902,17 @@ export function ccInstallmentLedgerRowCount(accountId: number): number {
   return Number(r.c);
 }
 
-const PAY_BY_META =
-  "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece pasado su pagar-hasta.";
-
-const SALDO_LINE_META =
-  "Deuda tras pago: Σ cuotas del plan de facturaciones posteriores (suma sufija; la última fila queda en 0). Saldo fin de mes del historial: Σ cuotas con facturación posterior a ese mes.";
+/**
+ * Explanatory copy for the ledger meta is an i18n key (resolved client-side via t() —
+ * master.json `account.creditCard.payByRule.ledger`): cuotas por facturación semantics —
+ * each row is one facturación (cierre ~20) with its pagar-hasta (~10 next month); PDFs pin
+ * amounts/progress/pay-by; open/projected months follow the plan; rows roll off past pay-by.
+ *
+ * Saldo-line semantics (formerly a payload prose field nothing rendered): deuda tras pago =
+ * Σ plan cuotas of later facturaciones (suffix sum; last row 0); historial month-end saldo =
+ * Σ cuotas whose facturación is after that month.
+ */
+const PAY_BY_RULE_I18N_KEY = "account.creditCard.payByRule.ledger";
 
 function installmentHistoryMonthsFromLedgerData(
   purchasesRaw: PurchaseRow[],
@@ -940,8 +946,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   meta: {
     installment_purchase_count: number;
     installment_payment_count: number;
-    pay_by_rule: string;
-    remaining_balance_line_rule: string;
+    /** master.json key resolved client-side — never prose (bilingual UI). */
+    pay_by_rule_i18n_key: string;
   };
   purchases: CcInstallmentPurchaseComputed[];
   purchases_completed: CcInstallmentPurchaseComputed[];
@@ -1150,8 +1156,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     meta: {
       installment_purchase_count: purchasesRaw.length,
       installment_payment_count: db_payment_count,
-      pay_by_rule: PAY_BY_META,
-      remaining_balance_line_rule: SALDO_LINE_META,
+      pay_by_rule_i18n_key: PAY_BY_RULE_I18N_KEY,
     },
     purchases: purchases_active,
     purchases_completed,
