@@ -14,6 +14,7 @@ import { demoNarrativeForPreset, demoRng, type DemoPreset } from "./demoNarrativ
 import {
   DEMO_FONDO_FUND_SERIES_KEY,
   initialDemoRunState,
+  renameDemoTreesCategoryToHobbies,
   writeDemoPriceSeries,
   seedDemoCheckingBillCategoryRules,
   seedDemoEventAndUsdCategoryRules,
@@ -258,6 +259,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   );
   seedCreditCardTree();
   seedNavTree();
+  renameDemoTreesCategoryToHobbies();
 
   const rng = demoRng(narrative.seed);
   writeMarketSeries(narrative, rng);
