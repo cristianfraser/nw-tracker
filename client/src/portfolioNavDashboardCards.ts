@@ -5,14 +5,7 @@ import {
   buildCashSavingsCardBreakdown,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
-  cardGroupMetricsForDashboardBucket,
-  cardGroupMetricsFromAccounts,
-  cardGroupTitleBalanceDelta,
-  hasCanonicalDashboardPriorCloses,
   dashboardBucketMainValue,
-  periodBalanceChangeFromAccountRows,
-  subsetTitleBalanceDeltaRounded,
-  sumCardGroupMetrics,
   sumCurrentValueClpUsd,
   type CardBreakdownLine,
   type CardGroupMetrics,
@@ -33,7 +26,13 @@ import {
   portfolioStripGroupChildren,
   resolveDashboardBucketFromNavNode,
 } from "./portfolioNavFromApi";
-import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
+import type {
+  DashboardAccountRow,
+  DashboardResponse,
+  NavCardMetricsDto,
+  NavCardMetricsVariantDto,
+  NavTreeNodeDto,
+} from "./types";
 
 function accountBucketSlug(row: Pick<DashboardAccountRow, "bucket_slug" | "group_slug">): string {
   return (row.bucket_slug ?? row.group_slug ?? "").trim();
@@ -142,10 +141,6 @@ export function routableNavStripChildren(navChildren: NavTreeNodeDto[]): NavTree
   return navChildren.filter((c) => Boolean(c.route_path?.trim()));
 }
 
-export type NavChildTitleDeltaModel =
-  | { mode: "dashboard_group"; group: DashboardGroupSlug; groupRowFilter?: (a: DashboardAccountRow) => boolean }
-  | { mode: "subset" };
-
 /** Main balance + deposits/Δ metrics for a nav child card (bucket totals or nav subtree). */
 function rowsForCashSavingsCard(
   all: DashboardAccountRow[],
@@ -190,53 +185,55 @@ function usesFullDashboardBucketTotals(navChild: NavTreeNodeDto): DashboardGroup
   return null;
 }
 
-/** Title Δ for a nav strip child: full bucket totals on home cards, subtree sum on subgroup pages. */
+/**
+ * Server card-metrics entry for a nav node — the metrics/title numbers are computed
+ * server-side (server/src/dashboardNavCardMetrics.ts) and the client only renders them.
+ * Missing entry = payload/tree drift; fail fast rather than silently re-summing rows.
+ */
+export function requireNavCardMetrics(
+  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
+  node: NavTreeNodeDto
+): NavCardMetricsDto {
+  const entry = dash.card_metrics_by_slug?.[node.slug];
+  if (!entry) {
+    throw new Error(`card_metrics_by_slug has no entry for nav node "${node.slug}"`);
+  }
+  return entry;
+}
+
+function titleDeltaFromVariant(
+  variant: NavCardMetricsVariantDto,
+  period: CardGroupMetricsPeriod,
+  showUsd: boolean
+): number | null {
+  const t = variant.title_delta;
+  if (period === "month") return showUsd ? t.month_usd : t.month_clp;
+  return showUsd ? t.year_usd : t.year_clp;
+}
+
+/** Title Δ for a nav strip child (server-computed; full bucket totals vs subtree per node). */
 export function titleBalanceDeltaForNavChild(
-  dash: Pick<DashboardResponse, "accounts" | "totals">,
-  overviewPoints: Record<string, string | number | null>[],
+  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
   navChild: NavTreeNodeDto,
   period: CardGroupMetricsPeriod,
   showUsd: boolean
 ): number | null {
-  const metricsRows = stripMetricsRowsForNavChild(dash, navChild);
-  const fullBucket = usesFullDashboardBucketTotals(navChild);
-  if (fullBucket) {
-    return cardGroupTitleBalanceDelta(
-      dash.accounts,
-      dash.totals,
-      overviewPoints,
-      fullBucket,
-      period,
-      showUsd
-    );
-  }
-  return periodBalanceChangeFromAccountRows(metricsRows, period, showUsd);
+  return titleDeltaFromVariant(requireNavCardMetrics(dash, navChild).child, period, showUsd);
 }
 
 export function mainValueAndMetricsForNavChild(
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
+  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug">,
   navChild: NavTreeNodeDto,
   metricsPeriod: CardGroupMetricsPeriod,
   showUsd: boolean
 ): { clp: number; apiUsd: number | null; metrics: CardGroupMetrics } {
-  const metricsRows = stripMetricsRowsForNavChild(dash, navChild);
+  const entry = requireNavCardMetrics(dash, navChild);
+  const metrics = metricsPeriod === "month" ? entry.child.month : entry.child.year;
   const fullBucket = usesFullDashboardBucketTotals(navChild);
-  const metrics =
-    fullBucket && hasCanonicalDashboardPriorCloses(dash.totals.prior_closes)
-      ? cardGroupMetricsForDashboardBucket(
-          dash.totals,
-          fullBucket,
-          dash.accounts,
-          metricsPeriod,
-          showUsd
-        )
-      : cardGroupMetricsFromAccounts(metricsRows, metricsPeriod);
-  if (fullBucket === "cash_eqs") {
-    return { ...dashboardBucketMainValue(dash.totals, "cash_eqs", showUsd), metrics };
-  }
   if (fullBucket) {
     return { ...dashboardBucketMainValue(dash.totals, fullBucket, showUsd), metrics };
   }
+  const metricsRows = stripMetricsRowsForNavChild(dash, navChild);
   return { ...sumCurrentValueClpUsd(metricsRows, showUsd), metrics };
 }
 
@@ -246,14 +243,13 @@ export function mainValueAndMetricsForNavChild(
  * yearly view still shows the year it went to zero).
  */
 export function navChildCardHasPeriodActivity(
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
-  overviewPoints: Record<string, string | number | null>[],
+  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug">,
   navChild: NavTreeNodeDto,
   period: CardGroupMetricsPeriod,
   showUsd: boolean
 ): boolean {
   const { clp, metrics } = mainValueAndMetricsForNavChild(dash, navChild, period, showUsd);
-  const titleDelta = titleBalanceDeltaForNavChild(dash, overviewPoints, navChild, period, showUsd);
+  const titleDelta = titleBalanceDeltaForNavChild(dash, navChild, period, showUsd);
   const material = (v: number | null | undefined) => v != null && Math.abs(v) >= 0.5;
   return (
     material(clp) ||
@@ -330,14 +326,6 @@ export function inactiveAccountNavLeavesWithPeriodActivity(
   return out;
 }
 
-/**
- * Title Δ / main balance: always sum accounts under this nav node's portfolio subtree.
- * (No per-account `dashboard_bucket_slug` tagging — matches breakdown lines.)
- */
-export function titleDeltaModelForNavChild(_navChild: NavTreeNodeDto): NavChildTitleDeltaModel {
-  return { mode: "subset" };
-}
-
 export type PortfolioNavParentTitleDeltaMode =
   | { kind: "dashboard_group"; group: DashboardGroupSlug; groupRowFilter?: (a: DashboardAccountRow) => boolean }
   | { kind: "sum_dashboard_groups"; groups: readonly DashboardGroupSlug[] }
@@ -384,70 +372,14 @@ export function cardGroupMetricsFromConsolidatedHubPeriodMetrics(
   };
 }
 
-export function titleBalanceDeltaForAccountIds(
-  dash: Pick<DashboardResponse, "accounts" | "totals">,
-  overviewPoints: Record<string, string | number | null>[],
-  accountIds: Set<number>,
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean,
-  model: NavChildTitleDeltaModel
-): number | null {
-  const inIds = (a: DashboardAccountRow) => accountIds.has(a.account_id);
-  if (model.mode === "dashboard_group") {
-    return cardGroupTitleBalanceDelta(
-      dash.accounts,
-      dash.totals,
-      overviewPoints,
-      model.group,
-      period,
-      showUsd,
-      (a) => inIds(a) && (!model.groupRowFilter || model.groupRowFilter(a))
-    );
-  }
-  return subsetTitleBalanceDeltaRounded(dash.accounts, period, showUsd, inIds);
-}
-
+/** Compact parent card title Δ (server-computed per node; mode logic lives server-side). */
 export function parentTitleBalanceDelta(
-  dash: Pick<DashboardResponse, "accounts" | "totals">,
-  overviewPoints: Record<string, string | number | null>[],
-  accountIds: Set<number>,
+  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
+  parentNavNode: NavTreeNodeDto,
   period: CardGroupMetricsPeriod,
-  showUsd: boolean,
-  mode: PortfolioNavParentTitleDeltaMode
+  showUsd: boolean
 ): number | null {
-  const inIds = (a: DashboardAccountRow) => accountIds.has(a.account_id);
-  if (mode.kind === "dashboard_group") {
-    return cardGroupTitleBalanceDelta(
-      dash.accounts,
-      dash.totals,
-      overviewPoints,
-      mode.group,
-      period,
-      showUsd,
-      (a) => inIds(a) && (!mode.groupRowFilter || mode.groupRowFilter(a))
-    );
-  }
-  if (mode.kind === "sum_dashboard_groups") {
-    let sum = 0;
-    let any = false;
-    for (const g of mode.groups) {
-      const d = cardGroupTitleBalanceDelta(
-        dash.accounts,
-        dash.totals,
-        overviewPoints,
-        g,
-        period,
-        showUsd,
-        inIds
-      );
-      if (d != null && Number.isFinite(d)) {
-        sum += d;
-        any = true;
-      }
-    }
-    return any ? Math.round(sum) : null;
-  }
-  return subsetTitleBalanceDeltaRounded(dash.accounts, period, showUsd, inIds);
+  return titleDeltaFromVariant(requireNavCardMetrics(dash, parentNavNode).parent, period, showUsd);
 }
 
 /**
@@ -480,71 +412,14 @@ export function portfolioNavParentMainValue(
   return sumCurrentValueClpUsd(navSubtreeRows, showUsd);
 }
 
-/** Deposits / period Δ metrics aligned with {@link portfolioNavParentMainValue}. */
+/** Deposits / period Δ metrics aligned with {@link portfolioNavParentMainValue} (server-computed). */
 export function portfolioNavParentMetrics(
-  dash: Pick<
-    DashboardResponse,
-    "accounts" | "totals" | "dashboard_layout" | "net_worth_period_metrics"
-  > & {
-    inversiones_period_metrics?: InversionesPeriodMetricsDto;
-  },
-  mode: PortfolioNavParentTitleDeltaMode,
-  navSubtreeRows: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  parentNavNode?: NavTreeNodeDto,
-  showUsd = false
+  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
+  parentNavNode: NavTreeNodeDto,
+  period: CardGroupMetricsPeriod
 ): CardGroupMetrics {
-  if (
-    parentNavNode?.slug === "inversiones" &&
-    dash.inversiones_period_metrics &&
-    mode.kind === "sum_dashboard_groups"
-  ) {
-    const stripChildren = portfolioStripGroupChildren(parentNavNode);
-    if (stripChildren.length === 0) {
-      throw new Error(
-        `portfolioNavParentMetrics: no strip children under nav node ${parentNavNode.slug}`
-      );
-    }
-    const lifetime = sumCardGroupMetrics(
-      stripChildren.map((child) =>
-        mainValueAndMetricsForNavChild(dash, child, period, showUsd).metrics
-      )
-    );
-    return cardGroupMetricsFromConsolidatedHubPeriodMetrics(
-      dash.inversiones_period_metrics,
-      period,
-      lifetime
-    );
-  }
-  if (mode.kind === "dashboard_group" && hasCanonicalDashboardPriorCloses(dash.totals.prior_closes)) {
-    return cardGroupMetricsForDashboardBucket(
-      dash.totals,
-      mode.group,
-      dash.accounts,
-      period,
-      showUsd,
-      (a) =>
-        navSubtreeRows.some((r) => r.account_id === a.account_id) &&
-        (!mode.groupRowFilter || mode.groupRowFilter(a))
-    );
-  }
-  if (mode.kind === "sum_dashboard_groups") {
-    if (!parentNavNode) {
-      throw new Error("portfolioNavParentMetrics: sum_dashboard_groups requires parentNavNode");
-    }
-    const stripChildren = portfolioStripGroupChildren(parentNavNode);
-    if (stripChildren.length === 0) {
-      throw new Error(
-        `portfolioNavParentMetrics: no strip children under nav node ${parentNavNode.slug}`
-      );
-    }
-    return sumCardGroupMetrics(
-      stripChildren.map((child) =>
-        mainValueAndMetricsForNavChild(dash, child, period, showUsd).metrics
-      )
-    );
-  }
-  return cardGroupMetricsFromAccounts(navSubtreeRows, period);
+  const variant = requireNavCardMetrics(dash, parentNavNode).parent;
+  return period === "month" ? variant.month : variant.year;
 }
 
 /** Parent title balance Δ mode from the matched nav node (`asset_group_slug`, hub children, or subtree). */

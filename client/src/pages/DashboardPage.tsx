@@ -126,6 +126,7 @@ export function DashboardPage() {
       liabilities_breakdown: data.dash.liabilities_breakdown,
       dashboard_layout: data.dash.dashboard_layout,
       nw_bucket_totals: nwBucketTotalsFromDashTotals(data.dash.totals),
+      card_metrics_by_slug: data.dash.card_metrics_by_slug,
       chart_shape: chartShapeFromLoadedDashboardBundle(data),
     });
     writeFxLatestCache(data.fx);
@@ -142,6 +143,7 @@ export function DashboardPage() {
         liabilities_breakdown: navSnapshot.liabilities_breakdown,
         dashboard_layout: navSnapshot.dashboard_layout,
         nw_bucket_totals: navSnapshot.nw_bucket_totals,
+        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
         overviewPoints,
       },
       netWorthNav

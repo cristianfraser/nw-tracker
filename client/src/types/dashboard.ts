@@ -87,6 +87,39 @@ export interface DashboardPriorCloses {
   year: DashboardBucketCloseTotals;
 }
 
+/** One period slice of server-computed nav card metrics (mirror of CardGroupMetrics). */
+export interface NavCardPeriodMetricsDto {
+  deposits_clp: number;
+  deposits_usd: number | null;
+  delta_total_clp: number | null;
+  delta_total_usd: number | null;
+  deposits_period_clp: number;
+  deposits_period_usd: number | null;
+  delta_period_clp: number | null;
+  delta_period_usd: number | null;
+}
+
+export interface NavCardMetricsVariantDto {
+  month: NavCardPeriodMetricsDto;
+  year: NavCardPeriodMetricsDto;
+  title_delta: {
+    month_clp: number | null;
+    month_usd: number | null;
+    year_clp: number | null;
+    year_usd: number | null;
+  };
+}
+
+/**
+ * Server-computed card metrics per nav-tree group slug (server/src/dashboardNavCardMetrics.ts).
+ * `child` = the node as a strip detail card; `parent` = the node as its page's compact card.
+ * The client renders these — it never re-sums account rows for group cards.
+ */
+export interface NavCardMetricsDto {
+  child: NavCardMetricsVariantDto;
+  parent: NavCardMetricsVariantDto;
+}
+
 export interface DashboardResponse {
   totals: {
     net_worth_clp: number;
@@ -115,6 +148,8 @@ export interface DashboardResponse {
     color_rgb?: string;
   }[];
   accounts: DashboardAccountRow[];
+  /** Server-computed nav card metrics keyed by portfolio-group slug. */
+  card_metrics_by_slug: Record<string, NavCardMetricsDto>;
   liabilities_breakdown?: {
     mortgage_clp: number;
     credit_card_clp: number;

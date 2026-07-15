@@ -8,9 +8,9 @@ export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
   return false;
 }
 
-/** Bump when cached snapshot shape changes (v3 adds `nw_bucket_totals`, v4 `chart_shape`). */
-const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v4";
-const LEGACY_STORAGE_PREFIXES = ["nw:dashboard-nav-snapshot-v3"];
+/** Bump when cached snapshot shape changes (v4 adds `chart_shape`, v5 `card_metrics_by_slug`). */
+const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v5";
+const LEGACY_STORAGE_PREFIXES = ["nw:dashboard-nav-snapshot-v3", "nw:dashboard-nav-snapshot-v4"];
 
 /** Strip full dashboard totals to nav-snapshot bucket fields (server canonical card headers). */
 export function nwBucketTotalsFromDashTotals(

@@ -48,6 +48,9 @@ import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js"
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
+import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
+import type { InversionesPeriodMetrics } from "./netWorthConsolidation.js";
+import { getNetWorthNavGroupNode } from "./navTree.js";
 import { inversionesPeriodMetrics } from "./netWorthConsolidation.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
@@ -409,7 +412,13 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
 /** @heavy One {@link getAccountMonthlyPerformance} per tracked account (via {@link buildDashboardAccountRows}). */
-export async function buildDashboardNavSnapshot(includeUsd: boolean) {
+export async function buildDashboardNavSnapshot(
+  includeUsd: boolean,
+  opts?: {
+    /** Consolidated inversiones slice for the hub parent card — nav-context passes the slice it serves; the standalone snapshot has none. */
+    inversiones?: InversionesPeriodMetrics | null;
+  }
+) {
   const rowsBuilt = await buildDashboardAccountRows(includeUsd);
   const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
     ...rest,
@@ -432,11 +441,21 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
       : card
   );
   const nw_bucket_totals = buildDashboardNwBucketTotals(includeUsd);
+  // Nav-strip card metrics, precomputed server-side (see dashboardNavCardMetrics.ts).
+  const navRoot = getNetWorthNavGroupNode();
+  if (!navRoot) throw new Error("nav snapshot: net_worth nav tree missing");
+  const card_metrics_by_slug = buildNavCardMetricsBySlug({
+    navRoot,
+    rows: rowsBuilt,
+    totals: nw_bucket_totals,
+    inversiones: opts?.inversiones ?? null,
+  });
   return {
     accounts: clientAccounts,
     liabilities_breakdown,
     dashboard_layout,
     nw_bucket_totals,
+    card_metrics_by_slug,
     chart_shape: getDashboardChartShape(),
   };
 }
@@ -450,8 +469,11 @@ export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit
 }
 
 async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) {
+  // Same inversiones slice feeds both the payload field and the hub card metrics, so the
+  // inversiones parent card always matches the served consolidated series.
+  const inversiones = inversionesPeriodMetrics(unit);
   const [nav, ts] = await Promise.all([
-    timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd)),
+    timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd, { inversiones })),
     Promise.resolve().then(() =>
       timeHeavy(HeavyWork.dashboardOverviewBlock, () => getDashboardOverviewBlock(unit))
     ),
@@ -461,7 +483,8 @@ async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) 
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
-    inversiones_period_metrics: inversionesPeriodMetrics(unit),
+    card_metrics_by_slug: nav.card_metrics_by_slug,
+    inversiones_period_metrics: inversiones,
     overview: ts,
     fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
   };

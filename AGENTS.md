@@ -127,6 +127,13 @@ Tranche status, by measured surface:
 
 **Tail clip is display-only** (`timeseriesTailClip.ts`, the final payload step): it nulls sold-out trailing series and bundles each line's aportes with its value (they clip together) — but it must **never** rewrite an aggregate. The group Total line (`dataKey === "__group_val_total"`) is the sole line excluded from deposit bundling, and `__group_val_total` / `__group_dep_total` are never recomputed post-clip. A client Σ over already-clipped series is the bug this replaced (brokerage "Total aportes acum." disagreed with the summary card).
 
+## Nav card metrics — server-side (2026-07-15)
+
+**Card metrics (deposits, cumulative P/L, period Δ, title balance Δ) come from the server; the client never re-sums account rows for group cards.** `server/src/dashboardNavCardMetrics.ts` walks the net_worth nav tree and emits `card_metrics_by_slug: Record<portfolio_group_slug, { child, parent }>` on the page-bundle dash, nav-context, and nav-snapshot payloads (each variant = `{ month, year, title_delta }`; `child` = the node as a strip detail card, `parent` = the node as its own page's compact card — the two compositions differ, e.g. net_worth parent = Σ strip-children child-metrics while its title Δ = Σ 4 bucket totals-deltas; the inversiones hub parent bakes in the served `inversiones_period_metrics` slice). The port was verified against the old client Σ with a parity script on the real DB (2,584 comparisons, zero mismatches) before the client switched; scope rules (bucket membership, cash_eqs savings-only period P/L, chart-inactive nav coverage) live only in this module now — unit-tested in `dashboardNavCardMetrics.test.ts`.
+
+- Client `portfolioNavDashboardCards.ts` only **picks**: `requireNavCardMetrics(dash, node)` (fail-fast on a missing slug — no re-summing fallback), consumed by `mainValueAndMetricsForNavChild` / `titleBalanceDeltaForNavChild` / `portfolioNavParentMetrics` / `parentTitleBalanceDelta`. Card **main values** stay as before (server bucket totals, or Σ of current values for subtree cards); single-account compact cards and account-detail metrics remain 1-row client projections (no drift possible).
+- The localStorage nav-snapshot cache is versioned (`nw:dashboard-nav-snapshot-v5` adds `card_metrics_by_slug`); placeholder paths perturb the entries (`perturbNavCardMetricsBySlug`) and the CLP→USD switch synthesizes missing usd fields from the same fx rate as the row synthesizer.
+
 ## Data provenance (`DataOrigin`)
 
 API payloads must **not** use top-level `source: "db"` / `"csv"` — the client always reads SQLite. Provenance describes how data entered the system:

@@ -11,12 +11,12 @@ describe("isPageShapeLoading", () => {
   });
 
   it("does not block when accounts exist even if nav snapshot is pending", () => {
-    expect(isPageShapeLoading(true, undefined, false, { accounts: [] })).toBe(false);
+    expect(isPageShapeLoading(true, undefined, false, { accounts: [], card_metrics_by_slug: {} })).toBe(false);
     expect(isPageShapeLoading(false, [], true, undefined)).toBe(false);
   });
 
   it("unblocks when both have data", () => {
-    expect(isPageShapeLoading(false, [], false, { accounts: [] })).toBe(false);
+    expect(isPageShapeLoading(false, [], false, { accounts: [], card_metrics_by_slug: {} })).toBe(false);
   });
 });
 

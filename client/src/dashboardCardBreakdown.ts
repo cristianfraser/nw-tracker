@@ -6,8 +6,6 @@ import {
 } from "./accountGroupTotals";
 import {
   accountBelongsToDashboardBucket,
-  accountDashboardBucketSlug,
-  isDashboardNwBucketSlug,
 } from "./accountDashboardBucket";
 import { dashboardBucketRoutePath } from "./portfolioDashboardBuckets";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
@@ -237,85 +235,6 @@ export function cardGroupMetricsFromAccounts(
   };
 }
 
-/** Card title Δ: Σ current − Σ prior close (not reconciled period P/L). */
-export function periodBalanceChangeFromAccountRows(
-  rows: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean
-): number | null {
-  return subsetTitleBalanceDeltaRounded(rows, period, showUsd, () => true);
-}
-
-/** Sum Patrimonio neto (or hub) card metrics from bucket-level parts (matches child card rows). */
-export function sumCardGroupMetrics(parts: readonly CardGroupMetrics[]): CardGroupMetrics {
-  if (parts.length === 0) {
-    return {
-      deposits_clp: 0,
-      deposits_usd: null,
-      delta_total_clp: null,
-      delta_total_usd: null,
-      deposits_period_clp: 0,
-      deposits_period_usd: null,
-      delta_period_clp: null,
-      delta_period_usd: null,
-    };
-  }
-  let deposits_clp = 0;
-  let deposits_usd = 0;
-  let delta_total_clp = 0;
-  let delta_total_usd = 0;
-  let deposits_period_clp = 0;
-  let deposits_period_usd = 0;
-  let delta_period_clp = 0;
-  let delta_period_usd = 0;
-  let anyUsdDep = false;
-  let anyUsdTotalDelta = false;
-  let anyUsdPeriodDep = false;
-  let anyPeriodDelta = false;
-  let anyUsdPeriodDelta = false;
-  let anyTotalDelta = false;
-
-  for (const m of parts) {
-    deposits_clp += m.deposits_clp;
-    if (m.deposits_usd != null && Number.isFinite(m.deposits_usd)) {
-      deposits_usd += m.deposits_usd;
-      anyUsdDep = true;
-    }
-    if (m.delta_total_clp != null && Number.isFinite(m.delta_total_clp)) {
-      delta_total_clp += m.delta_total_clp;
-      anyTotalDelta = true;
-    }
-    if (m.delta_total_usd != null && Number.isFinite(m.delta_total_usd)) {
-      delta_total_usd += m.delta_total_usd;
-      anyUsdTotalDelta = true;
-    }
-    deposits_period_clp += m.deposits_period_clp;
-    if (m.deposits_period_usd != null && Number.isFinite(m.deposits_period_usd)) {
-      deposits_period_usd += m.deposits_period_usd;
-      anyUsdPeriodDep = true;
-    }
-    if (m.delta_period_clp != null && Number.isFinite(m.delta_period_clp)) {
-      delta_period_clp += m.delta_period_clp;
-      anyPeriodDelta = true;
-    }
-    if (m.delta_period_usd != null && Number.isFinite(m.delta_period_usd)) {
-      delta_period_usd += m.delta_period_usd;
-      anyUsdPeriodDelta = true;
-    }
-  }
-
-  return {
-    deposits_clp,
-    deposits_usd: anyUsdDep ? deposits_usd : null,
-    delta_total_clp: anyTotalDelta ? delta_total_clp : null,
-    delta_total_usd: anyUsdTotalDelta ? delta_total_usd : null,
-    deposits_period_clp,
-    deposits_period_usd: anyUsdPeriodDep ? deposits_period_usd : null,
-    delta_period_clp: anyPeriodDelta ? delta_period_clp : null,
-    delta_period_usd: anyUsdPeriodDelta ? delta_period_usd : null,
-  };
-}
-
 /** Account scope for bucket card metrics and balance Δ (includes sold-out + chart_inactive). */
 export function accountInDashboardGroupScope(
   a: DashboardAccountRow,
@@ -336,74 +255,6 @@ export function accountInDashboardGroupDisplayScope(
   if (!accountInDashboardGroupScope(a, groupSlug, filter)) return false;
   if (!isChartActiveAccount(a)) return false;
   return hasMaterialDashboardBalance(a);
-}
-
-/** Card metrics from all in-scope accounts (sold-out balances count as 0). */
-export function cardGroupMetricsFromBalanceAndPlScopes(
-  accounts: DashboardAccountRow[],
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  filter?: (a: DashboardAccountRow) => boolean
-): CardGroupMetrics {
-  const rows = accounts.filter((a) => accountInDashboardGroupScope(a, groupSlug, filter));
-  return cardGroupMetricsFromAccounts(rows, period);
-}
-
-/** Sum deposits + monthly Δ for accounts in a dashboard bucket (big-4 cards). */
-export function cardGroupMetricsForGroup(
-  accounts: DashboardAccountRow[],
-  groupSlug: string,
-  period: CardGroupMetricsPeriod,
-  filter?: (a: DashboardAccountRow) => boolean,
-  totals?: DashboardBucketTotals
-): CardGroupMetrics {
-  if (groupSlug === "net_worth") {
-    return cardGroupMetricsNetWorth(accounts, period, totals);
-  }
-  if (
-    hasCanonicalDashboardPriorCloses(totals?.prior_closes) &&
-    (NW_BUCKET_ORDER as readonly string[]).includes(groupSlug)
-  ) {
-    return cardGroupMetricsForDashboardBucket(
-      totals,
-      groupSlug as DashboardGroupSlug,
-      accounts,
-      period,
-      false,
-      filter
-    );
-  }
-  return cardGroupMetricsFromBalanceAndPlScopes(
-    accounts,
-    groupSlug as DashboardGroupSlug,
-    period,
-    filter
-  );
-}
-
-const NW_BUCKET_ORDER = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
-
-/** Patrimonio neto: sum metrics across RE, retiro, brokerage, efectivo (same scope as NW total). */
-export function cardGroupMetricsNetWorth(
-  accounts: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  totals?: DashboardBucketTotals
-): CardGroupMetrics {
-  if (hasCanonicalDashboardPriorCloses(totals?.prior_closes)) {
-    return sumCardGroupMetrics(
-      NW_BUCKET_ORDER.map((slug) =>
-        cardGroupMetricsForDashboardBucket(totals!, slug, accounts, period, false)
-      )
-    );
-  }
-  const rows = accounts.filter((a) => {
-    const dashBucket = accountDashboardBucketSlug(a);
-    if (!isDashboardNwBucketSlug(dashBucket) || !(NW_BUCKET_ORDER as readonly string[]).includes(dashBucket)) {
-      return false;
-    }
-    return accountInDashboardGroupScope(a, dashBucket);
-  });
-  return cardGroupMetricsFromAccounts(rows, period);
 }
 
 function sumUsd(rows: DashboardAccountRow[]): number | null {
@@ -503,15 +354,6 @@ export function accountCardTitleBalanceDelta(
   return subsetTitleBalanceDeltaRounded([row], period, showUsd, () => true);
 }
 
-/** Sum deposits + P/L metrics for an arbitrary account subset. */
-export function cardGroupMetricsForAccountSubset(
-  accounts: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  include: (a: DashboardAccountRow) => boolean
-): CardGroupMetrics {
-  return cardGroupMetricsFromAccounts(accounts.filter(include), period);
-}
-
 /** Sum live dashboard current values for an account subset (CLP always; USD when `showUsd`). */
 export function sumCurrentValueClpUsd(
   rows: DashboardAccountRow[],
@@ -531,14 +373,6 @@ export function sumCurrentValueClpUsd(
 }
 
 export type DashboardBucketTotals = DashboardResponse["totals"];
-
-/** True when prior closes came from the server (not the loading-strip zero placeholder). */
-export function hasCanonicalDashboardPriorCloses(
-  prior: DashboardBucketTotals["prior_closes"] | undefined | null
-): prior is DashboardBucketTotals["prior_closes"] {
-  const end = prior?.month_end?.trim();
-  return Boolean(end);
-}
 
 /** Primary balance for a dashboard bucket (`GET /api/dashboard` totals — single source of truth). */
 export function dashboardBucketMainValue(
@@ -575,141 +409,6 @@ export function compareDashboardCardMainDesc(
   showUsd: boolean
 ): number {
   return dashboardCardMainSortKey(bClp, bUsd, showUsd) - dashboardCardMainSortKey(aClp, aUsd, showUsd);
-}
-
-/** Balance Δ: Σ current (live dashboard) − Σ prior period close (performance month/year-end). */
-export function groupPeriodBalanceDeltaFromAccounts(
-  accounts: DashboardAccountRow[],
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd",
-  filter?: (a: DashboardAccountRow) => boolean
-): number | null {
-  return subsetPeriodBalanceDeltaFromAccounts(accounts, period, unit, (a) =>
-    accountInDashboardGroupScope(a, groupSlug, filter)
-  );
-}
-
-/** Balance Δ from server bucket totals vs prior_closes (single valuation source). */
-export function bucketPeriodBalanceDeltaFromTotals(
-  totals: DashboardBucketTotals,
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd"
-): number | null {
-  const priorCloses = totals.prior_closes;
-  if (!hasCanonicalDashboardPriorCloses(priorCloses)) return null;
-  const current =
-    unit === "usd" ? totals[`${groupSlug}_usd`] : totals[`${groupSlug}_clp` as const];
-  const priorBlock = period === "year" ? priorCloses.year : priorCloses.month;
-  const prior =
-    unit === "usd"
-      ? priorBlock[`${groupSlug}_usd` as keyof typeof priorBlock]
-      : priorBlock[`${groupSlug}_clp` as keyof typeof priorBlock];
-  if (current == null || !Number.isFinite(current)) return null;
-  if (prior == null || !Number.isFinite(prior)) return null;
-  return current - prior;
-}
-
-export function resolveGroupPeriodBalanceDelta(
-  accounts: DashboardAccountRow[],
-  totals: DashboardBucketTotals,
-  _overviewPoints: Record<string, string | number | null>[],
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd",
-  filter?: (a: DashboardAccountRow) => boolean
-): number | null {
-  const fromTotals = bucketPeriodBalanceDeltaFromTotals(totals, groupSlug, period, unit);
-  if (fromTotals != null) return fromTotals;
-  return groupPeriodBalanceDeltaFromAccounts(accounts, groupSlug, period, unit, filter);
-}
-
-/** Card metrics for a dashboard bucket: deposits + period Δ summed from server account rows. */
-export function cardGroupMetricsForDashboardBucket(
-  _totals: DashboardBucketTotals,
-  groupSlug: DashboardGroupSlug,
-  accounts: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  _showUsd: boolean,
-  filter?: (a: DashboardAccountRow) => boolean
-): CardGroupMetrics {
-  const base = cardGroupMetricsFromBalanceAndPlScopes(accounts, groupSlug, period, filter);
-
-  if (groupSlug === "cash_eqs") {
-    const savingsRows = accounts.filter(
-      (a) =>
-        isCashSavingsBucketPeriodPlRow(a) &&
-        accountInDashboardGroupScope(a, "cash_eqs", filter)
-    );
-    const savingsPl = cardGroupMetricsFromAccounts(savingsRows, period);
-    return {
-      ...base,
-      delta_period_clp:
-        savingsPl.delta_period_clp != null && Number.isFinite(savingsPl.delta_period_clp)
-          ? Math.round(savingsPl.delta_period_clp)
-          : null,
-      delta_period_usd:
-        savingsPl.delta_period_usd != null && Number.isFinite(savingsPl.delta_period_usd)
-          ? Math.round(savingsPl.delta_period_usd)
-          : null,
-    };
-  }
-
-  return base;
-}
-
-/** Card title: closing value Δ = Σ current close − Σ prior period close (same rows as card metrics). */
-export function cardGroupTitleBalanceDelta(
-  accounts: DashboardAccountRow[],
-  totals: DashboardBucketTotals,
-  overviewPoints: Record<string, string | number | null>[],
-  groupSlug: DashboardGroupSlug,
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean,
-  filter?: (a: DashboardAccountRow) => boolean
-): number | null {
-  if (groupSlug === "net_worth") {
-    return cardGroupNetWorthTitleBalanceDelta(accounts, totals, overviewPoints, period, showUsd);
-  }
-  const delta = resolveGroupPeriodBalanceDelta(
-    accounts,
-    totals,
-    overviewPoints,
-    groupSlug,
-    period,
-    showUsd ? "usd" : "clp",
-    filter
-  );
-  return delta != null && Number.isFinite(delta) ? Math.round(delta) : null;
-}
-
-/** Net worth card title: sum of bucket closing value Δs. */
-export function cardGroupNetWorthTitleBalanceDelta(
-  accounts: DashboardAccountRow[],
-  totals: DashboardBucketTotals,
-  overviewPoints: Record<string, string | number | null>[],
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean
-): number | null {
-  const unit = showUsd ? "usd" : "clp";
-  let sum = 0;
-  let any = false;
-  for (const slug of NW_BUCKET_ORDER) {
-    const d = resolveGroupPeriodBalanceDelta(
-      accounts,
-      totals,
-      overviewPoints,
-      slug,
-      period,
-      unit
-    );
-    if (d != null && Number.isFinite(d)) {
-      sum += d;
-      any = true;
-    }
-  }
-  return any ? Math.round(sum) : null;
 }
 
 /** Real estate card: property (net equity) with valor and hipoteca detail lines. */

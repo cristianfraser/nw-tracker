@@ -9,7 +9,6 @@ import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
   inactiveAccountNavLeavesWithPeriodActivity,
-  navMetricsAccountIdSet,
   parentTitleBalanceDelta,
   routableNavStripChildren,
   portfolioNavParentMainValue,
@@ -27,11 +26,10 @@ import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 export type PortfolioNavEntityCardsStripProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout"
+    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   > & {
     inversiones_period_metrics?: InversionesPeriodMetricsDto;
   };
-  overviewPoints: Record<string, string | number | null>[];
   parentNavNode: NavTreeNodeDto;
   compactTitle: string;
   compactTitleTo?: string;
@@ -46,7 +44,6 @@ export type PortfolioNavEntityCardsStripProps = {
  */
 export function PortfolioNavEntityCardsStrip({
   dash,
-  overviewPoints,
   parentNavNode,
   compactTitle,
   compactTitleTo,
@@ -59,22 +56,8 @@ export function PortfolioNavEntityCardsStrip({
   const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
   const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
   const parentTotals = portfolioNavParentMainValue(dash, parentTitleMode, parentRows, showUsd);
-  const parentMetrics = portfolioNavParentMetrics(
-    dash,
-    parentTitleMode,
-    parentRows,
-    metricsPeriod,
-    parentNavNode,
-    showUsd
-  );
-  const parentTitleDelta = parentTitleBalanceDelta(
-    dash,
-    overviewPoints,
-    navMetricsAccountIdSet(parentNavNode, dash.accounts),
-    metricsPeriod,
-    showUsd,
-    parentTitleMode
-  );
+  const parentMetrics = portfolioNavParentMetrics(dash, parentNavNode, metricsPeriod);
+  const parentTitleDelta = parentTitleBalanceDelta(dash, parentNavNode, metricsPeriod, showUsd);
 
   const stripGroupChildren = useMemo(
     () => portfolioStripGroupChildren(parentNavNode),
@@ -177,7 +160,6 @@ export function PortfolioNavEntityCardsStrip({
           showDetailSlots ? (
             <PortfolioNavChildDetailCards
               dash={dash}
-              overviewPoints={overviewPoints}
               navChildren={filteredGroupChildren}
               showUsd={showUsd}
               metricsPeriod={metricsPeriod}

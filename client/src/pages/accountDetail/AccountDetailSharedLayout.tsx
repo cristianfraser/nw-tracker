@@ -25,7 +25,6 @@ type LayoutProps = {
   heroClp: number;
   heroApiUsd: number | null;
   dash: ReturnType<typeof dashPickForNavStrip> | null;
-  overviewPoints: Record<string, string | number | null>[];
   accountNavChildren: NonNullable<
     ReturnType<typeof import("../../portfolioNavFromApi").findNavTreeNodeByAccountId>
   >["children"];
@@ -53,7 +52,6 @@ export function AccountDetailSharedLayout({
   heroClp,
   heroApiUsd,
   dash,
-  overviewPoints,
   accountNavChildren,
   heroSubtitle,
   stripDetailSlots,
@@ -66,7 +64,6 @@ export function AccountDetailSharedLayout({
     showNavChildCards && dash && accountNavChildren.length > 0 ? (
       <PortfolioNavChildDetailCards
         dash={dash}
-        overviewPoints={overviewPoints}
         navChildren={accountNavChildren}
         showUsd={displayUnit === "usd"}
         metricsPeriod={metricsPeriod}

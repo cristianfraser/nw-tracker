@@ -19,9 +19,8 @@ import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 export type PortfolioNavChildDetailCardsProps = {
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout"
+    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
-  overviewPoints: Record<string, string | number | null>[];
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
   metricsPeriod: CardGroupMetricsPeriod;
@@ -32,7 +31,6 @@ export type PortfolioNavChildDetailCardsProps = {
 /** Second-row dashboard-style cards for first-level portfolio nav children (subset of dashboard accounts). */
 export function PortfolioNavChildDetailCards({
   dash,
-  overviewPoints,
   navChildren,
   showUsd,
   metricsPeriod,
@@ -44,14 +42,14 @@ export function PortfolioNavChildDetailCards({
       (c) =>
         c.route_path?.trim() &&
         (c.chart_inactive !== true ||
-          navChildCardHasPeriodActivity(dash, overviewPoints, c, metricsPeriod, showUsd))
+          navChildCardHasPeriodActivity(dash, c, metricsPeriod, showUsd))
     );
     return [...filtered].sort((a, b) => {
       const aMain = mainValueAndMetricsForNavChild(dash, a, metricsPeriod, showUsd);
       const bMain = mainValueAndMetricsForNavChild(dash, b, metricsPeriod, showUsd);
       return compareDashboardCardMainDesc(aMain.clp, aMain.apiUsd, bMain.clp, bMain.apiUsd, showUsd);
     });
-  }, [navChildren, dash, overviewPoints, metricsPeriod, showUsd]);
+  }, [navChildren, dash, metricsPeriod, showUsd]);
 
   if (!sorted.length) return null;
 
@@ -65,13 +63,7 @@ export function PortfolioNavChildDetailCards({
           metricsPeriod,
           showUsd
         );
-        const childTitleDelta = titleBalanceDeltaForNavChild(
-          dash,
-          overviewPoints,
-          child,
-          metricsPeriod,
-          showUsd
-        );
+        const childTitleDelta = titleBalanceDeltaForNavChild(dash, child, metricsPeriod, showUsd);
         const br = breakdownForNavChild(child, childRows, dash);
         const rp = child.route_path?.trim() ?? "";
         const cashClass =

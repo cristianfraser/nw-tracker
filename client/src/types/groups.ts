@@ -58,6 +58,7 @@ export interface DashboardNavSnapshotResponse {
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
   nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
+  card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   chart_shape?: DashboardChartShape;
 }
 
@@ -93,6 +94,7 @@ export interface DashboardNavContextResponse {
         "net_worth_usd" | "real_estate_usd" | "retirement_usd" | "brokerage_usd" | "cash_eqs_usd"
       >
     >;
+  card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   overview: ValuationTimeseriesResponse["overview"];
   fx_coverage: FxCoverage | null;
   /** Month/year metrics for the inversiones nav hub (canonical consolidated series). */

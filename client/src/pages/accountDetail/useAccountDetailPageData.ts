@@ -47,7 +47,6 @@ export type AccountDetailPageData = {
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   invNavAccounts: DetailBundle["invNavAccounts"]["accounts"];
   dash: ReturnType<typeof dashPickForNavStrip> | null;
-  overviewPoints: Record<string, string | number | null>[];
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
   periodReturns: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
@@ -148,7 +147,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
   );
   const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
-  const overviewPoints = navCtx?.overviewPoints ?? [];
 
   const monthlyPerfErr: string | null = null;
 
@@ -264,7 +262,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     checkingCartolaMonths,
     invNavAccounts,
     dash,
-    overviewPoints,
     monthlyPerf,
     periodReturns,
     displayUnit,

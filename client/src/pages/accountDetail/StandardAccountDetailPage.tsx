@@ -120,7 +120,6 @@ export function StandardAccountDetailPage({ data }: Props) {
         displayUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null
       }
       dash={data.dash}
-      overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
       loading={data.contentLoading}
     >
