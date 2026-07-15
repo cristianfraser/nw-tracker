@@ -131,9 +131,10 @@ app.get("/api/market-ticker", (_req, res) => {
   }
 });
 
-app.get("/api/watchlist", async (_req, res) => {
+// DB-only: history depth is maintained by the live-quotes scheduler, never on request.
+app.get("/api/watchlist", (_req, res) => {
   try {
-    res.json(await getWatchlistPayload());
+    res.json(getWatchlistPayload());
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "watchlist_failed" });
   }

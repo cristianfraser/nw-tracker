@@ -6,6 +6,7 @@
 import { loadRootDotenv } from "./rootDotenv.js";
 import { liveQuotesIntervalMs, liveQuotesSyncEnabled } from "./liveMarketQuotesConfig.js";
 import { syncAllLiveMarketQuotes } from "./liveMarketQuotesSync.js";
+import { ensureWatchlistEquityHistoryDepth } from "./watchlist.js";
 
 let inFlight = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -43,6 +44,19 @@ async function schedulerTick(): Promise<void> {
     await syncAllLiveMarketQuotes();
   } catch (e) {
     console.error(`live-quotes:scheduler — error: ${e instanceof Error ? e.message : e}`);
+  }
+  try {
+    // Watchlist YTD/YoY history depth (~400d Yahoo backfill for new/shallow tickers).
+    // Lives on the scheduler so GET /api/watchlist stays DB-only; separate catch so a
+    // history failure never masks a quotes failure (or vice versa).
+    const backfilled = await ensureWatchlistEquityHistoryDepth();
+    if (backfilled > 0) {
+      console.log(`live-quotes:scheduler — watchlist history backfilled for ${backfilled} ticker(s)`);
+    }
+  } catch (e) {
+    console.error(
+      `live-quotes:scheduler — watchlist history backfill error: ${e instanceof Error ? e.message : e}`
+    );
   } finally {
     inFlight = false;
     if (schedulerEnabled) {
