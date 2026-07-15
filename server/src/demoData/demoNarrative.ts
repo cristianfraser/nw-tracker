@@ -281,7 +281,7 @@ function demoNarrative(): DemoNarrative {
           { desc: "VTR INTERNET", meanClp: 32_000, categorySlug: "bills", day: 15 },
           { desc: "PLAN CELULAR ENTEL", meanClp: 30_000, categorySlug: "bills", day: 10 },
           { desc: "SEGURO HOGAR DEMO", meanClp: 35_000, categorySlug: "bills", day: 20 },
-          { desc: "JARDINERO DON PEDRO", meanClp: 45_000, categorySlug: "trees", day: 22, everyNMonths: 2 },
+          { desc: "JARDINERO DON PEDRO", meanClp: 45_000, categorySlug: "hobbies", day: 22, everyNMonths: 2 },
           { desc: "MANTENCION CASA VARIOS", meanClp: 60_000, categorySlug: "others", day: 18 },
           { desc: "GIMNASIO POWER FIT", meanClp: 25_000, categorySlug: "fun", day: 6 },
         ],
