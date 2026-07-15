@@ -1473,6 +1473,27 @@ export function writeInvestmentMonth(
 
 /* ------------------------------ category rules ----------------------------------- */
 
+/**
+ * The demo persona files gardener bills under a "Hobbies" category, so the seeded
+ * `trees` ("Jardín / plantas") reference row is renamed in the generated DB only —
+ * real DBs keep the original slug and label.
+ */
+export function renameDemoTreesCategoryToHobbies(): void {
+  const res = db
+    .prepare(
+      `UPDATE cc_expense_categories
+       SET slug = 'hobbies', label = 'Hobbies',
+           label_i18n_key = 'expenses.creditCard.categories.hobbies'
+       WHERE slug = 'trees'`
+    )
+    .run();
+  if (res.changes !== 1) {
+    throw new Error(
+      "demo: cc_expense_categories missing slug trees (reference migrations not applied?)"
+    );
+  }
+}
+
 const MERCHANT_CATEGORY_SLUGS: Record<DemoMerchant["category"], string> = {
   supermarket: "supermarket",
   fun: "fun",
