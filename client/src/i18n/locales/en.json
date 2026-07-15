@@ -121,7 +121,10 @@
     "ytdGroupSeries": "YTD (group)",
     "deltaTotalSeries": "Total Δ",
     "groupAccumTitle": "Accumulated earnings (group)",
-    "groupAccumHint": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data."
+    "groupAccumHint": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data.",
+    "overview": {
+      "invested": "Invested"
+    }
   },
   "dashboard": {
     "chartGranularityLabel": "Period:",
@@ -1240,7 +1243,11 @@
       "colMonthBreakdown": "Detail",
       "monthCuotasBreakdownLine": "{{current}}/{{total}} - {{label}}: {{amount}}",
       "monthCuotasEmpty": "No pending installments on the calendar.",
-      "mortgageSheetEmpty": "No payment rows in the database. Run npm run import:excel (export depto-dividendos.csv from Numbers into cfraser/ before the import)."
+      "mortgageSheetEmpty": "No payment rows in the database. Run npm run import:excel (export depto-dividendos.csv from Numbers into cfraser/ before the import).",
+      "payByRule": {
+        "ledger": "Installments by statement month: each row is one facturación (closing ~20th) with its pay-by date (~10th of the next month); \"cuota a pagar\" = plan installments billed at that close. PDFs pin amounts, progress and pay-by dates; open/projected months follow the plan. Rows roll off once their pay-by date passes.",
+        "statementsOnly": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported."
+      }
     }
   },
   "mirrorPairs": {

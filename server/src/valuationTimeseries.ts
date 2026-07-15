@@ -140,6 +140,8 @@ type GroupTabValuationBlock = {
   lines?: {
     dataKey: string;
     name: string;
+    /** master.json key; client resolves at render and falls back to `name`. */
+    name_i18n_key?: string;
     valueSeriesType: "data" | "reference";
     color_rgb?: string;
   }[];
@@ -1323,8 +1325,18 @@ function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
     ? prependPatrimonioUsdMilestoneAnchorPoints(points, firstOverviewYmd)
     : points;
   const lines: NonNullable<GroupTabValuationBlock["lines"]> = [
-    { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
-    { dataKey: "invested", name: "Invested", valueSeriesType: "data" },
+    {
+      dataKey: "total_nw",
+      name: "Patrimonio neto",
+      name_i18n_key: "dashboard.cards.netWorth",
+      valueSeriesType: "data",
+    },
+    {
+      dataKey: "invested",
+      name: "Invested",
+      name_i18n_key: "charts.overview.invested",
+      valueSeriesType: "data",
+    },
     ...PATRIMONIO_USD_MILESTONE_AMOUNTS.map((usd) => ({
       dataKey: usdMilestoneDataKey(usd),
       name: `US$${usd.toLocaleString("en-US")}`,
@@ -1390,22 +1402,63 @@ function overviewLineColorRgb(dataKey: string): string | undefined {
   return portfolioGroupColorRgbBySlug(slug) ?? undefined;
 }
 
+/**
+ * Line labels resolve client-side from `name_i18n_key` (master.json; same keys as the home
+ * bucket cards where one exists). `name` is only the legacy fallback for payload consumers
+ * without the key — never authoritative display copy.
+ */
 function buildDashboardOverviewLines(): NonNullable<GroupTabValuationBlock["lines"]> {
   const cashSavingsLabel = (
     portfolioGroupLabelStmt.get(DASHBOARD_NW_CASH_PORTFOLIO_SLUG) as { label: string } | undefined
   )?.label;
-  const specs: { dataKey: string; name: string; valueSeriesType: "data" | "reference" }[] = [
-    { dataKey: "real_estate", name: "Inmuebles", valueSeriesType: "data" },
-    { dataKey: "retirement", name: "Retiro", valueSeriesType: "data" },
-    { dataKey: "brokerage", name: "Brokerage", valueSeriesType: "data" },
-    { dataKey: "invested", name: "Invested", valueSeriesType: "reference" },
+  const specs: {
+    dataKey: string;
+    name: string;
+    name_i18n_key: string;
+    valueSeriesType: "data" | "reference";
+  }[] = [
+    {
+      dataKey: "real_estate",
+      name: "Inmuebles",
+      name_i18n_key: "dashboard.buckets.real_estate",
+      valueSeriesType: "data",
+    },
+    {
+      dataKey: "retirement",
+      name: "Retiro",
+      name_i18n_key: "dashboard.cards.retirement",
+      valueSeriesType: "data",
+    },
+    {
+      dataKey: "brokerage",
+      name: "Brokerage",
+      name_i18n_key: "dashboard.cards.brokerage",
+      valueSeriesType: "data",
+    },
+    {
+      dataKey: "invested",
+      name: "Invested",
+      name_i18n_key: "charts.overview.invested",
+      valueSeriesType: "reference",
+    },
     {
       dataKey: "cash",
       name: cashSavingsLabel ?? "Cash savings",
+      name_i18n_key: "dashboard.buckets.cash_eqs",
       valueSeriesType: "data",
     },
-    { dataKey: "liabilities", name: "Pasivos", valueSeriesType: "data" },
-    { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
+    {
+      dataKey: "liabilities",
+      name: "Pasivos",
+      name_i18n_key: "dashboard.cards.liabilities",
+      valueSeriesType: "data",
+    },
+    {
+      dataKey: "total_nw",
+      name: "Patrimonio neto",
+      name_i18n_key: "dashboard.cards.netWorth",
+      valueSeriesType: "data",
+    },
   ];
   return specs.map((s) => {
     const color_rgb = overviewLineColorRgb(s.dataKey);

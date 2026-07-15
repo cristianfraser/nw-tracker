@@ -168,6 +168,13 @@ export interface UfLatest {
 /** `data` = account valuation / flows (tail-clip trailing zeros). `reference` = totals, NW, liquidity overlays. */
 export type ValueSeriesType = "data" | "reference";
 
+/**
+ * Server-sent overview chart line label keys without a bucket-card counterpart. The literal
+ * union registers them for i18n/keyIntegrity.test.ts (same role as SERVER_NAV_LABEL_I18N_KEYS).
+ * (Liabilities/net-worth/bucket lines reuse their dashboard.* card keys.)
+ */
+export type OverviewChartLineI18nKey = "charts.overview.invested";
+
 export interface TimeseriesAccountLine {
   account_id: number;
   name: string;
