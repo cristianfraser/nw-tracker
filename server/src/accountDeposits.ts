@@ -120,14 +120,21 @@ function loadTransferLegSignedFlowEvents(
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT id, account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-              flow_kind, amount_usd, units_delta
-       FROM movements
-       WHERE account_id IS NULL
-         AND (from_account_id IN (${ph}) OR to_account_id IN (${ph}))
-       ORDER BY occurred_on, id`
+      `SELECT m.id, m.account_id, m.from_account_id, m.to_account_id, m.amount_clp, m.occurred_on,
+              m.note, m.flow_kind, m.amount_usd, m.units_delta,
+              mm.out_occurred_on AS merge_out_occurred_on, mm.in_occurred_on AS merge_in_occurred_on
+       FROM movements m
+       LEFT JOIN movement_mirror_merges mm ON mm.transfer_movement_id = m.id
+       WHERE m.account_id IS NULL
+         AND (m.from_account_id IN (${ph}) OR m.to_account_id IN (${ph}))
+       ORDER BY m.occurred_on, m.id`
     )
-    .all(...uniq, ...uniq) as (MovementTransferRow & { id: number; note: string | null })[];
+    .all(...uniq, ...uniq) as (MovementTransferRow & {
+    id: number;
+    note: string | null;
+    merge_out_occurred_on: string | null;
+    merge_in_occurred_on: string | null;
+  })[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
   const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
   const requested = new Set(uniq);
@@ -154,8 +161,15 @@ function loadTransferLegSignedFlowEvents(
       if (personalOnly && movementIsStateContribution(r.flow_kind)) continue;
       const amt = signedClpDeltaForAccountMovement(r, endpoint);
       if (amt === 0 || !Number.isFinite(amt)) continue;
+      // Mirror-converted transfers carry a single date, but each side's valuation evidence
+      // follows its ORIGINAL leg (month-precision ahorro legs can sit in the adjacent month).
+      // Bucket the aportes event by that side's pre-conversion date so a cross-month
+      // conversion stays P/L-neutral per account, not just same-month ones.
+      const occurredOn =
+        (endpoint === r.from_account_id ? r.merge_out_occurred_on : r.merge_in_occurred_on) ??
+        r.occurred_on;
       if (!map.has(endpoint)) map.set(endpoint, []);
-      map.get(endpoint)!.push({ occurred_on: r.occurred_on, amt, tie: `t:${r.id}:${endpoint}` });
+      map.get(endpoint)!.push({ occurred_on: occurredOn, amt, tie: `t:${r.id}:${endpoint}` });
     }
   }
   return map;
