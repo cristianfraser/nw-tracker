@@ -29,6 +29,7 @@ describe("hasDashboardNavSnapshotCache", () => {
   it("is true when unit cache exists", () => {
     writeDashboardNavSnapshotCache("clp", {
       accounts: [],
+      card_metrics_by_slug: {},
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
       nw_bucket_totals: {
         net_worth_clp: 1,
@@ -62,6 +63,7 @@ describe("hasDashboardNavSnapshotCache", () => {
   it("USD falls back to CLP cache", () => {
     writeDashboardNavSnapshotCache("clp", {
       accounts: [],
+      card_metrics_by_slug: {},
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
       nw_bucket_totals: {
         net_worth_clp: 1,
@@ -97,6 +99,7 @@ describe("prefetchDashboardNavSnapshot", () => {
   it("skips prefetch when cache exists", async () => {
     writeDashboardNavSnapshotCache("clp", {
       accounts: [],
+      card_metrics_by_slug: {},
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
       nw_bucket_totals: {
         net_worth_clp: 1,

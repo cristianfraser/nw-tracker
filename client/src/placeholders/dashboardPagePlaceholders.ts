@@ -120,6 +120,9 @@ export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardRespo
       : {}),
   };
   return {
+    // Empty map: the strip never mounts from the placeholder dash (dashForStrip is
+    // null until a nav snapshot exists), charts/allocation ignore it.
+    card_metrics_by_slug: {},
     totals: {
       net_worth_clp: 0,
       deposits_clp: 0,

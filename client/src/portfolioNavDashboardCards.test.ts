@@ -7,14 +7,20 @@ import {
   navChildCardHasPeriodActivity,
   navLeafAccountIdSet,
   navMetricsAccountIdSet,
+  parentTitleBalanceDelta,
   portfolioNavParentMainValue,
   portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
-  titleDeltaModelForNavChild,
 } from "./portfolioNavDashboardCards";
-import { sumCardGroupMetrics } from "./dashboardCardBreakdown";
-import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode, portfolioStripGroupChildren } from "./portfolioNavFromApi";
-import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
+import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode } from "./portfolioNavFromApi";
+import type {
+  DashboardAccountRow,
+  DashboardResponse,
+  NavCardMetricsDto,
+  NavCardMetricsVariantDto,
+  NavCardPeriodMetricsDto,
+  NavTreeNodeDto,
+} from "./types";
 import { navNodeFixture } from "./test/navNodeFixture";
 
 function testTotals(
@@ -59,6 +65,45 @@ function leafAccount(id: number): NavTreeNodeDto {
     account_id: id,
     children: [],
   });
+}
+
+const zeroCardPeriodMetrics: NavCardPeriodMetricsDto = {
+  deposits_clp: 0,
+  deposits_usd: null,
+  delta_total_clp: null,
+  delta_total_usd: null,
+  deposits_period_clp: 0,
+  deposits_period_usd: null,
+  delta_period_clp: null,
+  delta_period_usd: null,
+};
+
+function cardMetricsVariantFixture(partial?: {
+  month?: Partial<NavCardPeriodMetricsDto>;
+  year?: Partial<NavCardPeriodMetricsDto>;
+  title?: Partial<NavCardMetricsVariantDto["title_delta"]>;
+}): NavCardMetricsVariantDto {
+  return {
+    month: { ...zeroCardPeriodMetrics, ...partial?.month },
+    year: { ...zeroCardPeriodMetrics, ...partial?.year },
+    title_delta: {
+      month_clp: null,
+      month_usd: null,
+      year_clp: null,
+      year_usd: null,
+      ...partial?.title,
+    },
+  };
+}
+
+function cardMetricsEntryFixture(partial?: {
+  child?: Parameters<typeof cardMetricsVariantFixture>[0];
+  parent?: Parameters<typeof cardMetricsVariantFixture>[0];
+}): NavCardMetricsDto {
+  return {
+    child: cardMetricsVariantFixture(partial?.child),
+    parent: cardMetricsVariantFixture(partial?.parent),
+  };
 }
 
 describe("navLeafAccountIdSet", () => {
@@ -122,32 +167,6 @@ describe("navMetricsAccountIdSet", () => {
     expect(metrics.has(99)).toBe(true);
     const rows = dashboardRowsForNavSubtree(accounts, accionesNode);
     expect(rows.map((r) => r.account_id).sort()).toEqual([10, 99]);
-  });
-});
-
-describe("titleDeltaModelForNavChild", () => {
-  it("always uses nav subtree (subset) mode", () => {
-    expect(
-      titleDeltaModelForNavChild(
-        navNodeFixture({
-          slug: "brokerage",
-          label: "Brokerage",
-          asset_group_slug: "brokerage",
-          children: [],
-        })
-      ).mode
-    ).toBe("subset");
-    expect(
-      titleDeltaModelForNavChild(
-        navNodeFixture({
-          slug: "brokerage_mutual_funds",
-          label: "Mutual funds",
-          api_group: "brokerage",
-          api_subgroup: "mutual_funds",
-          children: [leafAccount(10)],
-        })
-      ).mode
-    ).toBe("subset");
   });
 });
 
@@ -449,160 +468,59 @@ describe("portfolioNavParentMainValue", () => {
     expect(clp).not.toBe(144_818_228 + 95_651_400 + 16_343_745 + 24_403_210);
   });
 
-  it("sums strip child metrics for net_worth deposit / period rows", () => {
+  it("parent metrics and title Δ come from the served net_worth entry", () => {
     const netWorthNode: NavTreeNodeDto = navNodeFixture({
       slug: "net_worth",
       label: "Patrimonio neto",
       asset_group_slug: "net_worth",
-      children: [
-        navNodeFixture({
-          slug: "real_estate",
-          label: "Inmuebles",
-          route_path: "/real_estate",
-          portfolio_group_id: 1,
-          children: [leafAccount(1)],
-        }),
-        navNodeFixture({
-          slug: "cash_savings",
-          label: "Ahorros",
-          route_path: "/cash_eqs/savings",
-          asset_group_slug: "cash_eqs__cash_savings",
-          dashboard_bucket_slug: "cash_eqs",
-          portfolio_group_id: 2,
-          children: [leafAccount(2)],
-        }),
-      ],
+      children: [],
     });
-    const row = (id: number, deposits: number, deltaTotal: number, deltaMonth: number): DashboardAccountRow =>
-      ({
-        account_id: id,
-        name: `Account ${id}`,
-        group_slug: id === 1 ? "real_estate" : "cash_eqs__fondo_reserva",
-        group_label: "g",
-        category_slug: id === 1 ? "property" : "fondo_reserva",
-        category_label: "c",
-        bucket_slug: id === 1 ? "real_estate" : "cash_eqs__fondo_reserva",
-        dashboard_bucket_slug: id === 1 ? "real_estate" : "cash_eqs",
-        deposits_clp: deposits,
-        delta_total_clp: deltaTotal,
-        delta_month_clp: deltaMonth,
-        deposits_month_clp: 0,
-        current_value_clp: deposits + deltaTotal,
-        prior_month_close_clp: deposits + deltaTotal - deltaMonth,
-        exclude_from_group_totals: 0,
-      }) as DashboardAccountRow;
-    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
-      accounts: [row(1, 100, 50, 10), row(2, 200, 80, 20)],
-      dashboard_layout: [],
-      totals: testTotals(
-        {
-          net_worth_clp: 430,
-          real_estate_clp: 150,
-          retirement_clp: 0,
-          brokerage_clp: 0,
-          cash_eqs_clp: 280,
-        },
-        {
-          net_worth_clp: 400,
-          real_estate_clp: 140,
-          retirement_clp: 0,
-          brokerage_clp: 0,
-          cash_eqs_clp: 260,
-        }
-      ),
+    const dash = {
+      card_metrics_by_slug: {
+        net_worth: cardMetricsEntryFixture({
+          parent: {
+            month: { deposits_clp: 300, delta_total_clp: 130, delta_period_clp: 30 },
+            title: { month_clp: 41 },
+          },
+        }),
+      },
     };
-    const mode = portfolioNavParentTitleModeForNavNode(netWorthNode);
-    const metrics = portfolioNavParentMetrics(dash, mode, dash.accounts, "month", netWorthNode, false);
-    const childMetrics = sumCardGroupMetrics(
-      portfolioStripGroupChildren(netWorthNode).map((child) =>
-        mainValueAndMetricsForNavChild(dash, child, "month", false).metrics
-      )
-    );
-    expect(metrics.deposits_clp).toBe(childMetrics.deposits_clp);
+    const metrics = portfolioNavParentMetrics(dash, netWorthNode, "month");
     expect(metrics.deposits_clp).toBe(300);
     expect(metrics.delta_total_clp).toBe(130);
     expect(metrics.delta_period_clp).toBe(30);
+    expect(parentTitleBalanceDelta(dash, netWorthNode, "month", false)).toBe(41);
+    expect(parentTitleBalanceDelta(dash, netWorthNode, "month", true)).toBeNull();
   });
 
-  it("uses canonical consolidated period metrics for inversiones nav hub", () => {
+  it("hub parent metrics come from the served entry (consolidated period baked in server-side)", () => {
     const inversionesNode: NavTreeNodeDto = navNodeFixture({
       slug: "inversiones",
       label: "Inversiones",
       group_kind: "nav_bucket",
       route_path: "/inversiones",
-      children: [
-        navNodeFixture({
-          slug: "brokerage",
-          label: "Brokerage",
-          route_path: "/inversiones/brokerage",
-          dashboard_bucket_slug: "brokerage",
-          portfolio_group_id: 1,
-          children: [leafAccount(1)],
-        }),
-        navNodeFixture({
-          slug: "retirement",
-          label: "Retirement",
-          route_path: "/inversiones/retirement",
-          dashboard_bucket_slug: "retirement",
-          portfolio_group_id: 2,
-          children: [leafAccount(2)],
-        }),
-      ],
+      children: [],
     });
-    const row = (id: number, deposits: number, deltaTotal: number, deltaMonth: number): DashboardAccountRow =>
-      ({
-        account_id: id,
-        name: `Account ${id}`,
-        group_slug: id === 1 ? "brokerage_acciones" : "retirement",
-        group_label: "g",
-        category_slug: id === 1 ? "acciones" : "afp",
-        category_label: "c",
-        bucket_slug: id === 1 ? "brokerage_acciones" : "afp",
-        dashboard_bucket_slug: id === 1 ? "brokerage" : "retirement",
-        deposits_clp: deposits,
-        delta_total_clp: deltaTotal,
-        delta_month_clp: deltaMonth,
-        deposits_month_clp: id === 1 ? 5_000_000 : 100_000,
-        current_value_clp: deposits + deltaTotal,
-        prior_month_close_clp: deposits + deltaTotal - deltaMonth,
-        exclude_from_group_totals: 0,
-      }) as DashboardAccountRow;
-    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> & {
-      inversiones_period_metrics?: import("./portfolioNavDashboardCards").InversionesPeriodMetricsDto;
-    } = {
-      accounts: [row(1, 100, 50, 10), row(2, 200, 80, 20)],
-      dashboard_layout: [],
-      totals: testTotals({
-        net_worth_clp: 430,
-        real_estate_clp: 0,
-        retirement_clp: 280,
-        brokerage_clp: 150,
-        cash_eqs_clp: 0,
-      }),
-      inversiones_period_metrics: {
-        month: {
-          closing_clp: 430,
-          prior_closing_clp: 400,
-          net_capital_flow_clp: 5_100_000,
-          nominal_pl_clp: 30,
-          balance_delta_clp: 30,
-        },
-        year: null,
+    const dash = {
+      card_metrics_by_slug: {
+        inversiones: cardMetricsEntryFixture({
+          parent: {
+            month: { deposits_clp: 300, deposits_period_clp: 5_100_000, delta_period_clp: 30 },
+          },
+        }),
       },
     };
-    const mode = portfolioNavParentTitleModeForNavNode(inversionesNode);
-    expect(mode.kind).toBe("sum_dashboard_groups");
-    const metrics = portfolioNavParentMetrics(
-      dash,
-      mode,
-      dash.accounts,
-      "month",
-      inversionesNode,
-      false
-    );
+    const metrics = portfolioNavParentMetrics(dash, inversionesNode, "month");
     expect(metrics.deposits_period_clp).toBe(5_100_000);
     expect(metrics.delta_period_clp).toBe(30);
     expect(metrics.deposits_clp).toBe(300);
+  });
+
+  it("throws on a missing entry instead of re-summing rows", () => {
+    const node: NavTreeNodeDto = navNodeFixture({ slug: "brokerage", label: "B", children: [] });
+    expect(() => portfolioNavParentMetrics({ card_metrics_by_slug: {} }, node, "month")).toThrow(
+      /no entry for nav node/
+    );
   });
 });
 
@@ -615,7 +533,15 @@ describe("mainValueAndMetricsForNavChild", () => {
       portfolio_group_id: 1,
       children: [leafAccount(1), leafAccount(2)],
     });
-    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
+    const dash: Pick<
+      DashboardResponse,
+      "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug"
+    > = {
+      card_metrics_by_slug: {
+        brokerage_mutual_funds: cardMetricsEntryFixture({
+          child: { year: { delta_period_clp: 2_300_000 } },
+        }),
+      },
       accounts: [
         {
           ...dashRow(1, 10_000_000, "brokerage_mutual_funds"),
@@ -643,6 +569,10 @@ describe("mainValueAndMetricsForNavChild", () => {
     expect(clp).toBe(16_000_000);
     expect(clp).not.toBe(dash.totals.brokerage_clp);
     expect(metrics.delta_period_clp).toBe(2_300_000);
+    expect(
+      mainValueAndMetricsForNavChild(dash, mutualFundsNode, "month", false).metrics
+        .delta_period_clp
+    ).toBeNull();
   });
 
   it("sums subtree accounts for brokerage subgroups, not the whole bucket", () => {
@@ -651,7 +581,13 @@ describe("mainValueAndMetricsForNavChild", () => {
       label: "Mutual funds",
       children: [leafAccount(1)],
     });
-    const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
+    const dash: Pick<
+      DashboardResponse,
+      "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug"
+    > = {
+      card_metrics_by_slug: {
+        brokerage_mutual_funds: cardMetricsEntryFixture(),
+      },
       accounts: [dashRow(1, 10_000_000, "brokerage_mutual_funds"), dashRow(2, 5_000_000, "brokerage_crypto")],
       dashboard_layout: [],
       totals: testTotals({
@@ -678,7 +614,18 @@ describe("navChildCardHasPeriodActivity", () => {
     chart_inactive: true,
     children: [],
   });
-  const dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout"> = {
+  const dash: Pick<
+    DashboardResponse,
+    "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug"
+  > = {
+    card_metrics_by_slug: {
+      brokerage_mutual_funds: cardMetricsEntryFixture({
+        child: {
+          year: { deposits_period_clp: -21_000_000, delta_period_clp: 300_000 },
+          title: { year_clp: -20_700_000 },
+        },
+      }),
+    },
     accounts: [
       {
         ...dashRow(45, 0, "brokerage__mutual_funds"),
@@ -702,13 +649,13 @@ describe("navChildCardHasPeriodActivity", () => {
   };
 
   it("reports no activity for the month view (zero balance, zero month flows)", () => {
-    expect(navChildCardHasPeriodActivity(dash, [], inactiveMutualFundsNode, "month", false)).toBe(
+    expect(navChildCardHasPeriodActivity(dash, inactiveMutualFundsNode, "month", false)).toBe(
       false
     );
   });
 
   it("reports activity for the year view (year flows and Δ nonzero)", () => {
-    expect(navChildCardHasPeriodActivity(dash, [], inactiveMutualFundsNode, "year", false)).toBe(
+    expect(navChildCardHasPeriodActivity(dash, inactiveMutualFundsNode, "year", false)).toBe(
       true
     );
   });

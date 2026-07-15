@@ -106,15 +106,31 @@ function row(p: Partial<DashboardAccountRow>): DashboardAccountRow {
 
 describe("loading PL placeholder repro", () => {
   it("without nw_bucket_totals period PL stays near cached delta_month not full balance", () => {
+    const periodMetrics = {
+      deposits_clp: 0,
+      deposits_usd: null,
+      delta_total_clp: 49_710_689,
+      delta_total_usd: null,
+      deposits_period_clp: 0,
+      deposits_period_usd: null,
+      delta_period_clp: -594_703,
+      delta_period_usd: null,
+    };
+    const variant = {
+      month: periodMetrics,
+      year: periodMetrics,
+      title_delta: { month_clp: null, month_usd: null, year_clp: null, year_usd: null },
+    };
     const raw: CachedDashboardNavSnapshot = {
       accounts: [row({})],
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
+      card_metrics_by_slug: { retirement: { child: variant, parent: variant } },
     };
     const perturbed = perturbDashboardNavSnapshot(raw);
     const dash = dashPickForNavStrip({ ...perturbed, overviewPoints: [] }, netWorthRoot);
     const { clp, metrics } = mainValueAndMetricsForNavChild(dash, retirementChild, "month", false);
     const periodPl = roundedMetricDelta(metrics, false, "period");
-    titleBalanceDeltaForNavChild(dash, [], retirementChild, "month", false);
+    titleBalanceDeltaForNavChild(dash, retirementChild, "month", false);
     const cachedDelta = perturbed.accounts[0]!.delta_month_clp!;
 
     expect(dash.totals.prior_closes.month_end).toBe("");

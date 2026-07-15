@@ -102,6 +102,7 @@ describe("perturbCachedAmountsPreservingSortOrder", () => {
 describe("perturbDashboardNavSnapshot", () => {
   it("perturbs account current_value_clp away from raw cache", () => {
     const raw: CachedDashboardNavSnapshot = {
+      card_metrics_by_slug: {},
       accounts: [
         dashRow({ account_id: 1, name: "A", current_value_clp: 5_000_000 }),
         dashRow({ account_id: 2, name: "B", current_value_clp: 2_000_000 }),
@@ -123,6 +124,7 @@ describe("perturbDashboardNavSnapshot", () => {
 
   it("perturbs nw_bucket_totals away from raw cache", () => {
     const raw: DashboardNavSnapshotResponse = {
+      card_metrics_by_slug: {},
       accounts: [dashRow({ account_id: 1, name: "A", current_value_clp: 5_000_000 })],
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
       nw_bucket_totals: {
@@ -169,6 +171,7 @@ describe("perturbDashboardNavSnapshot", () => {
 describe("synthesizeMissingUsdOnNavSnapshot", () => {
   it("converts CLP fields to USD using row fx_clp_per_usd before perturb", () => {
     const raw: CachedDashboardNavSnapshot = {
+      card_metrics_by_slug: {},
       accounts: [
         dashRow({
           account_id: 1,
@@ -195,6 +198,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
 
   it("uses cached bundle fx for aggregates when row fx is missing", () => {
     const raw: CachedDashboardNavSnapshot = {
+      card_metrics_by_slug: {},
       accounts: [
         dashRow({ account_id: 1, name: "A", current_value_clp: 950_000 }),
       ],
@@ -214,6 +218,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
 
   it("leaves USD null when no fx rate is available", () => {
     const raw: CachedDashboardNavSnapshot = {
+      card_metrics_by_slug: {},
       accounts: [
         dashRow({ account_id: 1, name: "A", current_value_clp: 5_000_000 }),
       ],
@@ -225,6 +230,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
 
   it("perturbs synthesized USD away from the converted value", () => {
     const raw: CachedDashboardNavSnapshot = {
+      card_metrics_by_slug: {},
       accounts: [
         dashRow({
           account_id: 1,
@@ -256,6 +262,7 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
 describe("synthesizeMissingUsdOnDashboardNavContext", () => {
   function navCtx(): DashboardNavContext {
     return {
+      card_metrics_by_slug: {},
       accounts: [
         dashRow({
           account_id: 1,
@@ -472,7 +479,29 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       dashRow({ account_id: 4, name: "Cash", current_value_clp: 80_000_000, group_slug: "cash_savings" }),
     ];
 
+    const zeroPeriod = {
+      deposits_clp: 0,
+      deposits_usd: null,
+      delta_total_clp: null,
+      delta_total_usd: null,
+      deposits_period_clp: 0,
+      deposits_period_usd: null,
+      delta_period_clp: null,
+      delta_period_usd: null,
+    };
+    const zeroVariant = {
+      month: zeroPeriod,
+      year: zeroPeriod,
+      title_delta: { month_clp: null, month_usd: null, year_clp: null, year_usd: null },
+    };
+    const zeroEntry = { child: zeroVariant, parent: zeroVariant };
     const snapshot: CachedDashboardNavSnapshot = {
+      card_metrics_by_slug: {
+        real_estate: zeroEntry,
+        retirement: zeroEntry,
+        brokerage: zeroEntry,
+        cash_savings: zeroEntry,
+      },
       accounts,
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 5_000_000 },
       dashboard_layout: [

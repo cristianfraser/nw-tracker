@@ -30,7 +30,7 @@ export type GroupInfoPortfolioStrip = {
   subgroup?: string;
   dash: Pick<
     DashboardResponse,
-    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout"
+    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   > & {
     inversiones_period_metrics?: InversionesPeriodMetricsDto;
   };
@@ -166,7 +166,6 @@ export function GroupInfoBase({
         {showPortfolioStrip ? (
           <PortfolioNavEntityCardsStrip
             dash={portfolio.dash}
-            overviewPoints={portfolio.overviewPoints}
             parentNavNode={portfolio.navNode}
             compactTitle={title}
             compactTitleTo={portfolio.compactTitleTo}

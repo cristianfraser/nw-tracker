@@ -52,7 +52,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       heroClp={heroClp}
       heroApiUsd={displayUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null}
       dash={data.dash}
-      overviewPoints={data.overviewPoints}
       accountNavChildren={data.accountNavChildren}
       stripDetailSlots={<CreditCardSummaryCards ccLedger={ccLedger} stripSlots />}
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}

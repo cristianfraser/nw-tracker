@@ -8,6 +8,8 @@ import type {
   DashboardNavSnapshotResponse,
   DashboardResponse,
   FxLatest,
+  NavCardMetricsVariantDto,
+  NavCardPeriodMetricsDto,
   NavTreeNodeDto,
 } from "../types";
 
@@ -192,6 +194,41 @@ function synthesizeMissingUsdOnStripParts(
   };
 }
 
+/** FX-derive missing usd fields on server card-metric entries (placeholder during CLP→USD switch). */
+function synthesizeMissingUsdOnNavCardMetricsBySlug(
+  entries: DashboardResponse["card_metrics_by_slug"] | undefined,
+  fxRate: number | null | undefined
+): DashboardResponse["card_metrics_by_slug"] | undefined {
+  if (!entries || fxRate == null || !Number.isFinite(fxRate) || fxRate <= 0) return entries;
+  const period = (m: NavCardPeriodMetricsDto): NavCardPeriodMetricsDto => ({
+    ...m,
+    deposits_usd: m.deposits_usd ?? m.deposits_clp / fxRate,
+    delta_total_usd:
+      m.delta_total_usd ?? (m.delta_total_clp != null ? m.delta_total_clp / fxRate : null),
+    deposits_period_usd: m.deposits_period_usd ?? m.deposits_period_clp / fxRate,
+    delta_period_usd:
+      m.delta_period_usd ?? (m.delta_period_clp != null ? m.delta_period_clp / fxRate : null),
+  });
+  const variant = (v: NavCardMetricsVariantDto): NavCardMetricsVariantDto => ({
+    month: period(v.month),
+    year: period(v.year),
+    title_delta: {
+      ...v.title_delta,
+      month_usd:
+        v.title_delta.month_usd ??
+        (v.title_delta.month_clp != null ? Math.round(v.title_delta.month_clp / fxRate) : null),
+      year_usd:
+        v.title_delta.year_usd ??
+        (v.title_delta.year_clp != null ? Math.round(v.title_delta.year_clp / fxRate) : null),
+    },
+  });
+  const out: DashboardResponse["card_metrics_by_slug"] = {};
+  for (const [slug, entry] of Object.entries(entries)) {
+    out[slug] = { child: variant(entry.child), parent: variant(entry.parent) };
+  }
+  return out;
+}
+
 /** Fill missing USD fields on CLP-only cached snapshot before perturb (USD unit switch / first USD visit). */
 export function synthesizeMissingUsdOnNavSnapshot(
   snapshot: DashboardNavSnapshotResponse,
@@ -213,6 +250,10 @@ export function synthesizeMissingUsdOnNavSnapshot(
       snapshot.dashboard_layout,
       cachedFx
     ),
+    card_metrics_by_slug: synthesizeMissingUsdOnNavCardMetricsBySlug(
+      snapshot.card_metrics_by_slug,
+      resolveSnapshotFxRate(snapshot.accounts, cachedFx)
+    ) ?? snapshot.card_metrics_by_slug,
   };
 }
 
@@ -234,6 +275,10 @@ export function synthesizeMissingUsdOnDashboardNavContext(
       ctx.dashboard_layout,
       cachedFx
     ),
+    card_metrics_by_slug: synthesizeMissingUsdOnNavCardMetricsBySlug(
+      ctx.card_metrics_by_slug,
+      resolveSnapshotFxRate(ctx.accounts, cachedFx)
+    ) ?? ctx.card_metrics_by_slug,
   };
 }
 
@@ -436,6 +481,44 @@ function perturbNwBucketTotals(buckets: NwBucketTotals, factor: number): NwBucke
   };
 }
 
+function perturbNavCardPeriodMetrics(
+  m: NavCardPeriodMetricsDto,
+  factor: number
+): NavCardPeriodMetricsDto {
+  return {
+    deposits_clp: perturbCachedAmount(m.deposits_clp, factor),
+    deposits_usd: perturbOptionalNumber(m.deposits_usd, factor),
+    delta_total_clp: perturbOptionalNumber(m.delta_total_clp, factor),
+    delta_total_usd: perturbOptionalNumber(m.delta_total_usd, factor),
+    deposits_period_clp: perturbCachedAmount(m.deposits_period_clp, factor),
+    deposits_period_usd: perturbOptionalNumber(m.deposits_period_usd, factor),
+    delta_period_clp: perturbOptionalNumber(m.delta_period_clp, factor),
+    delta_period_usd: perturbOptionalNumber(m.delta_period_usd, factor),
+  };
+}
+
+function perturbNavCardMetricsBySlug(
+  entries: DashboardResponse["card_metrics_by_slug"] | undefined,
+  factor: number
+): DashboardResponse["card_metrics_by_slug"] | undefined {
+  if (!entries) return entries;
+  const variant = (v: NavCardMetricsVariantDto): NavCardMetricsVariantDto => ({
+    month: perturbNavCardPeriodMetrics(v.month, factor),
+    year: perturbNavCardPeriodMetrics(v.year, factor),
+    title_delta: {
+      month_clp: perturbOptionalNumber(v.title_delta.month_clp, factor),
+      month_usd: perturbOptionalNumber(v.title_delta.month_usd, factor),
+      year_clp: perturbOptionalNumber(v.title_delta.year_clp, factor),
+      year_usd: perturbOptionalNumber(v.title_delta.year_usd, factor),
+    },
+  });
+  const out: DashboardResponse["card_metrics_by_slug"] = {};
+  for (const [slug, entry] of Object.entries(entries)) {
+    out[slug] = { child: variant(entry.child), parent: variant(entry.parent) };
+  }
+  return out;
+}
+
 export function perturbDashboardNavSnapshot(
   snapshot: DashboardNavSnapshotResponse
 ): DashboardNavSnapshotResponse;
@@ -465,6 +548,9 @@ export function perturbDashboardNavSnapshot(
   return {
     ...snapshot,
     nw_bucket_totals,
+    card_metrics_by_slug:
+      perturbNavCardMetricsBySlug(snapshot.card_metrics_by_slug, factor) ??
+      snapshot.card_metrics_by_slug,
     accounts: snapshot.accounts.map((row) =>
       perturbDashboardAccountRow(
         row,
