@@ -171,7 +171,7 @@ describe("buildNavCardMetricsBySlug", () => {
   });
 
   const input: NavCardMetricsBuildInput = {
-    navRoot: tree,
+    navRoots: [tree],
     rows: brokerageRows,
     totals,
     inversiones: null,
@@ -210,11 +210,49 @@ describe("buildNavCardMetricsBySlug", () => {
         }),
       ],
     });
-    const out = buildNavCardMetricsBySlug({ ...input, navRoot: subtree });
+    const out = buildNavCardMetricsBySlug({ ...input, navRoots: [subtree] });
     const mf = out.brokerage_mutual_funds!;
     expect(mf.child.month.deposits_clp).toBe(800);
     // subset title: current 1100 − prior 1000 from the row itself
     expect(mf.child.title_delta.month_clp).toBe(100);
+  });
+
+  it("walks extra roots: liability nodes get subset entries; the shared liabilities slug uses the Pasivos root", () => {
+    const liabRow = row({
+      account_id: 31,
+      group_slug: "liabilities",
+      bucket_slug: "liabilities__credit_card",
+      dashboard_bucket_slug: "",
+      category_slug: "credit_card",
+      deposits_clp: 0,
+      delta_month_clp: -12_000,
+      current_value_clp: -500_000,
+      prior_month_close_clp: -488_000,
+    });
+    const liabilitiesRoot = navNode({
+      slug: "liabilities",
+      group_kind: "liability_group",
+      asset_group_slug: "liabilities",
+      children: [
+        navNode({
+          slug: "liabilities_credit_card",
+          group_kind: "liability_group",
+          asset_group_slug: "liabilities",
+          children: [accountLeaf("acc-31", 31)],
+        }),
+      ],
+    });
+    const out = buildNavCardMetricsBySlug({
+      ...input,
+      navRoots: [tree, liabilitiesRoot],
+      rows: [...brokerageRows, liabRow],
+    });
+    const cc = out.liabilities_credit_card!;
+    expect(cc.child.month.delta_period_clp).toBe(-12_000);
+    expect(cc.child.title_delta.month_clp).toBe(-12_000);
+    // shared slug: the later (Pasivos) root's composition wins
+    const liab = out.liabilities!;
+    expect(liab.parent.month.delta_period_clp).toBe(-12_000);
   });
 
   it("cash_eqs bucket delta_period comes from savings rows only (checking excluded)", () => {
@@ -250,7 +288,7 @@ describe("buildNavCardMetricsBySlug", () => {
     });
     const out = buildNavCardMetricsBySlug({
       ...input,
-      navRoot: cashTree,
+      navRoots: [cashTree],
       rows: cashRows,
     });
     const cash = out.cash_savings!;

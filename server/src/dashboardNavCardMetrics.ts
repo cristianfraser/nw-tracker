@@ -580,7 +580,13 @@ function parentTitleModeForNavNode(node: NavTreeNodeDto): ParentTitleDeltaMode {
 /* ----------------------------------- builder -------------------------------------- */
 
 export type NavCardMetricsBuildInput = {
-  navRoot: NavTreeNodeDto;
+  /**
+   * Nav roots whose group nodes get entries — the net_worth portfolio tree plus the Pasivos
+   * root (whose DB-driven `liability_groups` children are NOT part of the net_worth tree).
+   * Later roots override earlier ones on slug collision: both trees carry a `liabilities`
+   * node, and the Pasivos-root version (with liability children) is the one its page renders.
+   */
+  navRoots: readonly NavTreeNodeDto[];
   rows: readonly CardMetricsAccountRow[];
   totals: BucketTotalsForCardMetrics;
   /** Consolidated hub series for the inversiones parent card (same value the payload serves). */
@@ -727,31 +733,34 @@ function parentVariantForNode(
 }
 
 /**
- * Metrics for every group node in the net_worth nav tree (root included), keyed by slug.
+ * Metrics for every group node of the given nav roots (roots included), keyed by slug.
  * Account leaves are skipped — compact account cards are single-row projections the client
- * keeps computing from its row.
+ * keeps computing from its row. Each root is processed with its own child-variant map so a
+ * slug shared across trees (e.g. `liabilities`) always composes from its own tree's children.
  */
 export function buildNavCardMetricsBySlug(
   input: NavCardMetricsBuildInput
 ): Record<string, NavCardMetricsDto> {
-  const groupNodes: NavTreeNodeDto[] = [];
-  const visit = (n: NavTreeNodeDto) => {
-    if (n.account_id == null && n.expense_account_id == null) groupNodes.push(n);
-    for (const c of n.children ?? []) visit(c);
-  };
-  visit(input.navRoot);
-
-  const childBySlug = new Map<string, NavCardMetricsVariantDto>();
-  for (const node of groupNodes) {
-    childBySlug.set(node.slug, childVariantForNode(node, input));
-  }
-
   const out: Record<string, NavCardMetricsDto> = {};
-  for (const node of groupNodes) {
-    out[node.slug] = {
-      child: childBySlug.get(node.slug)!,
-      parent: parentVariantForNode(node, input, childBySlug),
+  for (const navRoot of input.navRoots) {
+    const groupNodes: NavTreeNodeDto[] = [];
+    const visit = (n: NavTreeNodeDto) => {
+      if (n.account_id == null && n.expense_account_id == null) groupNodes.push(n);
+      for (const c of n.children ?? []) visit(c);
     };
+    visit(navRoot);
+
+    const childBySlug = new Map<string, NavCardMetricsVariantDto>();
+    for (const node of groupNodes) {
+      childBySlug.set(node.slug, childVariantForNode(node, input));
+    }
+
+    for (const node of groupNodes) {
+      out[node.slug] = {
+        child: childBySlug.get(node.slug)!,
+        parent: parentVariantForNode(node, input, childBySlug),
+      };
+    }
   }
   return out;
 }

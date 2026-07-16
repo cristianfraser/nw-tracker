@@ -2,7 +2,7 @@ import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
-import { getNetWorthNavGroupNode } from "./navTree.js";
+import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { buildFlowsDepositsPayload, inversionesBrokerageDepositsSeries } from "./flowsDeposits.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -83,10 +83,13 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     // Nav-strip card metrics, precomputed server-side (see dashboardNavCardMetrics.ts).
     // `inversiones: null` mirrors this payload's shape: the bundle never carried
     // inversiones_period_metrics, and the home strip never renders that parent card.
+    // The liabilities root is included for the Pasivos page (its nodes are not in net_worth).
     const navRoot = getNetWorthNavGroupNode();
     if (!navRoot) throw new Error("dashboard payload: net_worth nav tree missing");
+    const liabilitiesRoot = getLiabilitiesNavRootNode();
+    if (!liabilitiesRoot) throw new Error("dashboard payload: liabilities nav tree missing");
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
-      navRoot,
+      navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,
       totals: bucketTotals,
       inversiones: null,
