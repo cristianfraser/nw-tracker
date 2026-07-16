@@ -249,11 +249,16 @@ describe("deptoAccountMarkClpAtYmd", () => {
     const ufNow = ufMap.get(today);
     if (ufPrior == null || ufNow == null || ufPrior === ufNow) return;
 
-    const netUf = deptoSueciaNetEquityUfBySnapshotDates([priorEnd], ledger).get(priorEnd);
-    if (netUf == null) return;
+    const netMap = deptoSueciaNetEquityUfBySnapshotDates([priorEnd, today], ledger);
+    const netPrior = netMap.get(priorEnd);
+    const netNow = netMap.get(today);
+    if (netPrior == null || netNow == null) return;
 
     expect(now.value_clp).not.toBe(may.value_clp);
-    expect(now.value_clp - may.value_clp).toBeCloseTo(netUf * (ufNow - ufPrior), -2);
+    // Mark identity: value(d) = netEquityUf(d) × uf(d). Net equity can change inside the
+    // window (a cuota paid after the prior month-end adds amortización equity), so each
+    // date uses its own net UF — a single shared netUf made this calendar-date dependent.
+    expect(now.value_clp - may.value_clp).toBeCloseTo(netNow * ufNow - netPrior * ufPrior, -2);
   });
 });
 
