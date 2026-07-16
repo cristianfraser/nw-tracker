@@ -24,6 +24,54 @@ export interface FlowDepositChartPoint {
   total: number;
 }
 
+export type FlowsPlBucketSlug = "brokerage" | "retirement" | "cash";
+
+/** Monthly market P/L per money bucket (`YYYY-12-31` dates on yearly rows). */
+export interface FlowsPlChartPoint {
+  as_of_date: string;
+  brokerage: number;
+  retirement: number;
+  cash: number;
+  total: number;
+  /** Running Σ `total` within the calendar year (resets each January). */
+  ytd_total: number;
+  /** Running Σ `total` from the first period of the series. */
+  cumulative_total: number;
+}
+
+export interface FlowsPlAccountRow {
+  account_id: number;
+  name: string;
+  pl_month_clp: number;
+  pl_month_usd: number;
+  pl_ytd_clp: number;
+  pl_ytd_usd: number;
+  pl_cumulative_clp: number;
+  pl_cumulative_usd: number;
+}
+
+export interface FlowsPlBucketBlock {
+  slug: FlowsPlBucketSlug;
+  group_slug: string;
+  label_i18n_key: string;
+  total_month_clp: number;
+  total_month_usd: number;
+  total_ytd_clp: number;
+  total_ytd_usd: number;
+  total_cumulative_clp: number;
+  total_cumulative_usd: number;
+  accounts: FlowsPlAccountRow[];
+}
+
+/** `GET /api/flows/pl` — monthly net-worth P/L of the money buckets (no real estate). */
+export interface FlowsPlResponse {
+  chart_monthly: FlowsPlChartPoint[];
+  chart_yearly: FlowsPlChartPoint[];
+  chart_monthly_usd: FlowsPlChartPoint[];
+  chart_yearly_usd: FlowsPlChartPoint[];
+  by_bucket: FlowsPlBucketBlock[];
+}
+
 /** Slug of a tracked place (`expense_accounts` row) — data-driven, not a fixed union. */
 export type ExpenseApartmentSlug = string;
 

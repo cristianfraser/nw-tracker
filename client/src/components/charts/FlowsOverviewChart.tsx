@@ -19,14 +19,16 @@ const CHART_ANIM_MS = 90;
 
 const EXPENSES_COLOR = "#ef4444";
 const DEPOSITS_COLOR = "#3b82f6";
+const PL_COLOR = "#60a5fa";
 const INCOME_COLOR = "#22c55e";
 
-/** `expenses` stacks above the axis; `deposits` is pre-negated and stacks below. */
+/** `expenses` is pre-negated and stacks below the axis; `deposits` and `pl` stack above. */
 export type FlowsOverviewChartPoint = {
   as_of_date: string;
   income: number;
   expenses: number;
   deposits: number;
+  pl: number;
 };
 
 export function FlowsOverviewChart({
@@ -47,8 +49,12 @@ export function FlowsOverviewChart({
     let minV = 0;
     let maxV = 0;
     for (const row of points) {
-      minV = Math.min(minV, Math.min(row.deposits, 0), row.income);
-      maxV = Math.max(maxV, row.expenses + Math.max(row.deposits, 0), row.income);
+      minV = Math.min(
+        minV,
+        row.expenses + Math.min(row.deposits, 0) + Math.min(row.pl, 0),
+        row.income
+      );
+      maxV = Math.max(maxV, Math.max(row.deposits, 0) + Math.max(row.pl, 0), row.income);
     }
     return buildNiceYAxis(minV, maxV);
   }, [points]);
@@ -124,6 +130,15 @@ export function FlowsOverviewChart({
               dataKey="deposits"
               name={t("flows.overview.deposits")}
               fill={DEPOSITS_COLOR}
+              stackId="flows"
+              isAnimationActive
+              animationDuration={CHART_ANIM_MS}
+              maxBarSize={22}
+            />
+            <Bar
+              dataKey="pl"
+              name={t("flows.overview.pl")}
+              fill={PL_COLOR}
               stackId="flows"
               isAnimationActive
               animationDuration={CHART_ANIM_MS}
