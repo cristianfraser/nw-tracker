@@ -590,12 +590,22 @@ export function seedNavTree(): void {
       route_path: "/flows/deposits",
       nav_end: true,
     });
+    upsert({
+      slug: "flows_pl",
+      label: "PL",
+      label_i18n_key: "sidebar.flowsPl",
+      parent_slug: "flows",
+      sort_order: 30,
+      route_path: "/flows/pl",
+      nav_end: true,
+    });
 
     const flowsId = (groupIdBySlug.get("flows") as { id: number }).id;
     deleteGroupItems.run(flowsId);
     linkGroup("flows", "flows_income", 0);
     linkGroup("flows", "flows_expenses", 10);
     linkGroup("flows", "flows_deposits", 20);
+    linkGroup("flows", "flows_pl", 30);
     if (hasRealEstateExpenseAccounts) {
       linkGroup("flows_expenses", "flows_expenses_real_estate", 0);
       linkExpenseAccounts("flows_expenses_real_estate", [...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS]);

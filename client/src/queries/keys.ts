@@ -33,6 +33,7 @@ export const queryKeys = {
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
   income: () => ["income"] as const,
   flowsDeposits: () => ["flowsDeposits"] as const,
+  flowsPl: () => ["flowsPl"] as const,
   flowsDepositsReconciliation: () => ["flowsDepositsReconciliation"] as const,
   flowsRealEstateExpenses: () => ["flowsRealEstateExpenses"] as const,
   realEstateLinkCandidates: (expenseEntryId: number) =>

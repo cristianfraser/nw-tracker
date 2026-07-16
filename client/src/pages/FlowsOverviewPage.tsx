@@ -14,7 +14,7 @@ import {
   formatFlowMoney,
 } from "../flowsDisplay";
 import { useTranslation } from "../i18n";
-import { useFlowsCreditCardExpenses, useFlowsDeposits, useIncome } from "../queries/hooks";
+import { useFlowsCreditCardExpenses, useFlowsDeposits, useFlowsPl, useIncome } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 
 const PAGE_SIZE = 12;
@@ -29,20 +29,22 @@ export function FlowsOverviewPage() {
   const income = useIncome();
   const expenses = useFlowsCreditCardExpenses();
   const deposits = useFlowsDeposits();
+  const pl = useFlowsPl();
 
-  const error = income.error ?? expenses.error ?? deposits.error;
+  const error = income.error ?? expenses.error ?? deposits.error ?? pl.error;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const monthRows = useMemo(() => {
-    if (!income.data || !expenses.data || !deposits.data) return null;
+    if (!income.data || !expenses.data || !deposits.data || !pl.data) return null;
     return aggregateFlowsOverview(
       income.data,
       expenses.data,
       deposits.data,
+      pl.data,
       installmentMode,
       displayUnit
     );
-  }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode]);
+  }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, pl.data]);
 
   const rows = useMemo(() => {
     if (!monthRows) return [];
@@ -54,8 +56,9 @@ export function FlowsOverviewPage() {
       rows.map((r) => ({
         as_of_date: r.as_of_date,
         income: r.income,
-        expenses: r.expenses,
-        deposits: -r.deposits,
+        expenses: -r.expenses,
+        deposits: r.deposits,
+        pl: r.pl,
       })),
     [rows]
   );
@@ -114,6 +117,10 @@ export function FlowsOverviewPage() {
         </span>
         {" · "}
         <span className="mono" style={{ color: "var(--text)" }}>
+          {t("flows.overview.pl")} {formatFlowMoney(totals.pl, displayUnit)}
+        </span>
+        {" · "}
+        <span className="mono" style={{ color: "var(--text)" }}>
           {t("flows.overview.net")} {formatFlowMoney(totals.net, displayUnit)}
         </span>
       </p>
@@ -128,6 +135,7 @@ export function FlowsOverviewPage() {
                 <th>{t("flows.overview.expenses")}</th>
                 <th>{t("flows.overview.deposits")}</th>
                 <th>{t("flows.overview.depositsPreTax")}</th>
+                <th>{t("flows.overview.pl")}</th>
                 <th>{t("flows.overview.net")}</th>
               </tr>
             </thead>
@@ -141,6 +149,7 @@ export function FlowsOverviewPage() {
               <td className="mono">{formatFlowMoney(row.expenses, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.deposits, displayUnit)}</td>
               <td className="mono muted">{formatFlowMoney(row.deposits_pre_tax, displayUnit)}</td>
+              <td className="mono muted">{formatFlowMoney(row.pl, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.net, displayUnit)}</td>
             </tr>
           ))}
