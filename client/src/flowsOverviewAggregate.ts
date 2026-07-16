@@ -12,6 +12,7 @@ import type {
   FlowsCreditCardExpensesResponse,
   FlowsDepositsResponse,
   FlowsIncomeResponse,
+  FlowsPlResponse,
 } from "./types";
 
 export type FlowsOverviewMonthRow = {
@@ -34,6 +35,8 @@ export type FlowsOverviewMonthRow = {
    * neutral (AFP outflow offsets the checking Δ it funds).
    */
   deposits_pre_tax: number;
+  /** Market P/L of the money buckets (brokerage/retiro/efectivo) — informational, excluded from `net`. */
+  pl: number;
   /** income − expenses − deposits (post-tax). */
   net: number;
 };
@@ -88,15 +91,22 @@ export function aggregateFlowsOverview(
   income: FlowsIncomeResponse,
   ccExpenses: Pick<FlowsCreditCardExpensesResponse, "lines">,
   deposits: Pick<FlowsDepositsResponse, "rows" | "fx_conversion_error">,
+  pl: Pick<FlowsPlResponse, "chart_monthly" | "chart_monthly_usd">,
   installmentMode: CcInstallmentGastosMode = "split",
   unit: DisplayUnit = "clp"
 ): FlowsOverviewMonthRow[] {
-  type Bucket = { income: number; expenses: number; deposits: number; depositsPreTax: number };
+  type Bucket = {
+    income: number;
+    expenses: number;
+    deposits: number;
+    depositsPreTax: number;
+    pl: number;
+  };
   const byMonth = new Map<string, Bucket>();
   const touch = (ym: string): Bucket => {
     const existing = byMonth.get(ym);
     if (existing) return existing;
-    const fresh: Bucket = { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0 };
+    const fresh: Bucket = { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0, pl: 0 };
     byMonth.set(ym, fresh);
     return fresh;
   };
@@ -135,6 +145,11 @@ export function aggregateFlowsOverview(
     touch(month).deposits -= carrying;
   }
 
+  const plSeries = unit === "usd" ? pl.chart_monthly_usd : pl.chart_monthly;
+  for (const point of plSeries) {
+    touch(point.as_of_date.slice(0, 7)).pl += point.total;
+  }
+
   const months = [...byMonth.keys()].sort(ymCompare);
   if (months.length === 0) return [];
   const rows: FlowsOverviewMonthRow[] = [];
@@ -143,7 +158,13 @@ export function aggregateFlowsOverview(
   const lastDataYm = months[months.length - 1]!;
   const last = ymCompare(lastDataYm, todayYm) > 0 ? todayYm : lastDataYm;
   for (let ym = months[0]!; ymCompare(ym, last) <= 0; ym = addCalendarMonths(ym, 1)) {
-    const b = byMonth.get(ym) ?? { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0 };
+    const b = byMonth.get(ym) ?? {
+      income: 0,
+      expenses: 0,
+      deposits: 0,
+      depositsPreTax: 0,
+      pl: 0,
+    };
     const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
     const incomeAmt = round(b.income);
     const expensesAmt = round(b.expenses);
@@ -155,6 +176,7 @@ export function aggregateFlowsOverview(
       expenses: expensesAmt,
       deposits: depositsAmt,
       deposits_pre_tax: round(b.depositsPreTax),
+      pl: round(b.pl),
       net: incomeAmt - expensesAmt - depositsAmt,
     });
   }
@@ -180,6 +202,7 @@ export function rollupFlowsOverviewRowsByYear(
     cur.expenses += row.expenses;
     cur.deposits += row.deposits;
     cur.deposits_pre_tax += row.deposits_pre_tax;
+    cur.pl += row.pl;
     cur.net += row.net;
   }
   return [...byYear.keys()].sort().map((year) => byYear.get(year)!);
@@ -190,17 +213,20 @@ export function flowsOverviewTotals(rows: readonly FlowsOverviewMonthRow[]): {
   expenses: number;
   deposits: number;
   deposits_pre_tax: number;
+  pl: number;
   net: number;
 } {
   let income = 0;
   let expenses = 0;
   let deposits = 0;
   let deposits_pre_tax = 0;
+  let pl = 0;
   for (const row of rows) {
     income += row.income;
     expenses += row.expenses;
     deposits += row.deposits;
     deposits_pre_tax += row.deposits_pre_tax;
+    pl += row.pl;
   }
-  return { income, expenses, deposits, deposits_pre_tax, net: income - expenses - deposits };
+  return { income, expenses, deposits, deposits_pre_tax, pl, net: income - expenses - deposits };
 }

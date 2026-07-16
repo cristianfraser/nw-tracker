@@ -99,9 +99,29 @@ const marchDeposits = {
   ],
 };
 
+const noPl = { chart_monthly: [], chart_monthly_usd: [] };
+
+function plPoint(overrides: Partial<import("./types").FlowsPlChartPoint> = {}) {
+  return {
+    as_of_date: "2024-03-31",
+    brokerage: 0,
+    retirement: 0,
+    cash: 0,
+    total: 0,
+    ytd_total: 0,
+    cumulative_total: 0,
+    ...overrides,
+  };
+}
+
 describe("aggregateFlowsOverview", () => {
   it("splits a linked mortgage payment: carrying → expenses, amortización → deposits", () => {
-    const rows = aggregateFlowsOverview(incomePayload(), { lines: [mortgageLine()] }, marchDeposits);
+    const rows = aggregateFlowsOverview(
+      incomePayload(),
+      { lines: [mortgageLine()] },
+      marchDeposits,
+      noPl
+    );
     const march = rows.find((r) => r.period_month === "2024-03");
     expect(march).toBeDefined();
     expect(march!.income).toBe(2_000_000);
@@ -118,7 +138,8 @@ describe("aggregateFlowsOverview", () => {
     const rows = aggregateFlowsOverview(
       incomePayload(),
       { lines: [mortgageLine(), mortgageLine({ statement_line_id: 2 })] },
-      marchDeposits
+      marchDeposits,
+      noPl
     );
     const march = rows.find((r) => r.period_month === "2024-03");
     expect(march!.deposits).toBe(1_500_000 - 400_000);
@@ -132,6 +153,7 @@ describe("aggregateFlowsOverview", () => {
         income,
         { lines: [] },
         { ...marchDeposits, fx_conversion_error: true },
+        noPl,
         "split",
         "usd"
       )
@@ -163,7 +185,8 @@ describe("aggregateFlowsOverview", () => {
             amount_clp: -200_000,
           }),
         ],
-      }
+      },
+      noPl
     );
     const march = rows.find((r) => r.period_month === "2024-03");
     expect(march!.deposits_pre_tax).toBe(300_000);
@@ -172,7 +195,12 @@ describe("aggregateFlowsOverview", () => {
   });
 
   it("rolls up months into calendar years with matching totals", () => {
-    const rows = aggregateFlowsOverview(incomePayload(), { lines: [mortgageLine()] }, marchDeposits);
+    const rows = aggregateFlowsOverview(
+      incomePayload(),
+      { lines: [mortgageLine()] },
+      marchDeposits,
+      noPl
+    );
     const years = rollupFlowsOverviewRowsByYear(rows);
     const y2024 = years.find((r) => r.period_month === "2024-12");
     expect(y2024!.income).toBe(2_000_000);
@@ -180,6 +208,54 @@ describe("aggregateFlowsOverview", () => {
     expect(y2024!.deposits).toBe(1_100_000);
     const totals = flowsOverviewTotals(rows);
     expect(totals.income).toBe(years.reduce((s, r) => s + r.income, 0));
+    expect(totals.net).toBe(totals.income - totals.expenses - totals.deposits);
+  });
+
+  it("buckets monthly PL totals by unit and keeps them out of net", () => {
+    const pl = {
+      chart_monthly: [
+        plPoint({ brokerage: 250_000, cash: 50_000, total: 300_000 }),
+        plPoint({ as_of_date: "2024-04-30", retirement: -100_000, total: -100_000 }),
+      ],
+      chart_monthly_usd: [plPoint({ brokerage: 300, total: 300 })],
+    };
+    const rows = aggregateFlowsOverview(incomePayload(), { lines: [] }, marchDeposits, pl);
+    const march = rows.find((r) => r.period_month === "2024-03");
+    expect(march!.pl).toBe(300_000);
+    expect(march!.net).toBe(march!.income - march!.expenses - march!.deposits);
+    const april = rows.find((r) => r.period_month === "2024-04");
+    expect(april!.pl).toBe(-100_000);
+
+    const usdIncome = incomePayload();
+    usdIncome.lines[0]!.amount_usd = 2_000;
+    const usdRows = aggregateFlowsOverview(
+      usdIncome,
+      { lines: [] },
+      {
+        rows: marchDeposits.rows.map((r) => ({ ...r, amount_usd: r.amount_clp / 1000 })),
+      },
+      pl,
+      "split",
+      "usd"
+    );
+    const usdMarch = usdRows.find((r) => r.period_month === "2024-03");
+    expect(usdMarch!.pl).toBe(300);
+  });
+
+  it("sums PL in yearly rollup and totals", () => {
+    const pl = {
+      chart_monthly: [
+        plPoint({ brokerage: 100_000, total: 100_000 }),
+        plPoint({ as_of_date: "2024-04-30", cash: 25_000, total: 25_000 }),
+      ],
+      chart_monthly_usd: [],
+    };
+    const rows = aggregateFlowsOverview(incomePayload(), { lines: [] }, marchDeposits, pl);
+    const years = rollupFlowsOverviewRowsByYear(rows);
+    const y2024 = years.find((r) => r.period_month === "2024-12");
+    expect(y2024!.pl).toBe(125_000);
+    const totals = flowsOverviewTotals(rows);
+    expect(totals.pl).toBe(125_000);
     expect(totals.net).toBe(totals.income - totals.expenses - totals.deposits);
   });
 });

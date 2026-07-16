@@ -37,6 +37,7 @@ const RealEstateExpensesPage = lazyPage(
 );
 const FlowsLayout = lazyPage(() => import("./pages/FlowsLayout"), "FlowsLayout");
 const FlowsOverviewPage = lazyPage(() => import("./pages/FlowsOverviewPage"), "FlowsOverviewPage");
+const FlowsPlPage = lazyPage(() => import("./pages/FlowsPlPage"), "FlowsPlPage");
 const IncomePage = lazyPage(() => import("./pages/IncomePage"), "IncomePage");
 const ControlPanelLayout = lazyPage(() => import("./pages/panel/ControlPanelLayout"), "ControlPanelLayout");
 const AccountsPanelPage = lazyPage(() => import("./pages/panel/AccountsPanelPage"), "AccountsPanelPage");
@@ -163,6 +164,7 @@ function AppTree() {
               <Route path="expenses/real_estate/:accountSlug" element={<RealEstateExpensesPage />} />
               <Route path="deposits" element={<DepositsPage />} />
               <Route path="deposits/reconciliation" element={<DepositsReconciliationPage />} />
+              <Route path="pl" element={<FlowsPlPage />} />
             </Route>
             <Route path="/rates" element={<RatesPage />} />
             <Route path="/projections" element={<ProjectionsPage />} />

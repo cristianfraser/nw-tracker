@@ -467,6 +467,13 @@ export function useFlowsDeposits() {
   });
 }
 
+export function useFlowsPl() {
+  return useQuery({
+    queryKey: queryKeys.flowsPl(),
+    queryFn: () => api.flowsPl(),
+  });
+}
+
 export function useFlowsDepositsReconciliation() {
   return useQuery({
     queryKey: queryKeys.flowsDepositsReconciliation(),

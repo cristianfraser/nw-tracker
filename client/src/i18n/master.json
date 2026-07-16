@@ -682,6 +682,10 @@
       "en": "Deposits",
       "es": "Depósitos"
     },
+    "flowsPl": {
+      "en": "P/L",
+      "es": "PL"
+    },
     "controlPanel": {
       "en": "Control panel",
       "es": "Panel de control"
@@ -2914,12 +2918,12 @@
         "es": "Resumen"
       },
       "intro": {
-        "en": "Income versus expenses and net deposits. Mortgage payments are split with the existing breakdown: interest + insurance counts as expense and amortization as deposit (no double counting). AFP+AFC contributions (payroll deductions, they never pass through the checking account) are shown separately and do not subtract from the net; withdrawals do count because they return to the post-tax circuit.",
-        "es": "Ingresos versus gastos y depósitos netos. Los dividendos hipotecarios se separan con el desglose existente: interés + seguros cuenta como gasto y la amortización como depósito (sin doble conteo). Las cotizaciones AFP+AFC (descuento por planilla, nunca pasan por la cuenta corriente) se muestran aparte y no descuentan del neto; los retiros sí cuentan porque vuelven al circuito post-impuestos."
+        "en": "Income versus expenses and net deposits. Mortgage payments are split with the existing breakdown: interest + insurance counts as expense and amortization as deposit (no double counting). AFP+AFC contributions (payroll deductions, they never pass through the checking account) are shown separately and do not subtract from the net; withdrawals do count because they return to the post-tax circuit. Market P/L of the money buckets is stacked as its own bar and does not enter the net.",
+        "es": "Ingresos versus gastos y depósitos netos. Los dividendos hipotecarios se separan con el desglose existente: interés + seguros cuenta como gasto y la amortización como depósito (sin doble conteo). Las cotizaciones AFP+AFC (descuento por planilla, nunca pasan por la cuenta corriente) se muestran aparte y no descuentan del neto; los retiros sí cuentan porque vuelven al circuito post-impuestos. El PL de mercado de los buckets se apila como barra propia y no entra en el neto."
       },
       "chartTitle": {
-        "en": "Income, expenses, and deposits",
-        "es": "Ingresos, gastos y depósitos"
+        "en": "Income, expenses, deposits, and P/L",
+        "es": "Ingresos, gastos, depósitos y PL"
       },
       "chartEmpty": {
         "en": "No flow data.",
@@ -2941,6 +2945,10 @@
         "en": "AFP+AFC (contributions)",
         "es": "AFP+AFC (cotizaciones)"
       },
+      "pl": {
+        "en": "P/L",
+        "es": "PL"
+      },
       "net": {
         "en": "Net",
         "es": "Neto"
@@ -2956,6 +2964,52 @@
       "colMonth": {
         "en": "Month",
         "es": "Mes"
+      }
+    },
+    "pl": {
+      "title": {
+        "en": "P/L",
+        "es": "PL"
+      },
+      "intro": {
+        "en": "Monthly market P/L (value change minus deposits) of the net-worth money buckets: brokerage, retirement, and cash. Real estate is excluded. Cash P/L is savings interest only — checking accounts have no market P/L.",
+        "es": "PL de mercado mensual (cambio de valor menos depósitos) de los buckets de patrimonio: brokerage, retiro y efectivo. Inmuebles queda excluido. El PL de efectivo es solo interés de ahorro — las cuentas corrientes no tienen PL de mercado."
+      },
+      "chartTitle": {
+        "en": "Monthly P/L by bucket",
+        "es": "PL mensual por bucket"
+      },
+      "chartEmpty": {
+        "en": "No P/L data.",
+        "es": "Sin datos de PL."
+      },
+      "colTotal": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "colAccount": {
+        "en": "Account",
+        "es": "Cuenta"
+      },
+      "colMonthPl": {
+        "en": "This month",
+        "es": "Mes actual"
+      },
+      "colYtd": {
+        "en": "YTD",
+        "es": "YTD"
+      },
+      "colCumulative": {
+        "en": "Cumulative",
+        "es": "Acumulado"
+      },
+      "totalsLabel": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "breakdownTitle": {
+        "en": "Breakdown by account",
+        "es": "Desglose por cuenta"
       }
     },
     "filters": {

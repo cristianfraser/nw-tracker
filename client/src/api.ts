@@ -557,6 +557,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
+  flowsPl: () => j<import("./types").FlowsPlResponse>("/api/flows/pl"),
   flowsDepositsReconciliation: () =>
     j<import("./types").DepositsReconciliationPayload>("/api/flows/deposits/reconciliation"),
   flowsRealEstateExpenses: () =>

@@ -3,6 +3,7 @@ import express from "express";
 import { db } from "../db.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
+import { buildFlowsPlPayload } from "../flowsPl.js";
 import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "../ccExpenseCategories.js";
 import { purchaseIdFromPlanGastosLineId } from "../ccInstallmentPlanGastosLines.js";
 import { assignFlowExpenseLineCategory } from "../assignFlowExpenseLineCategory.js";
@@ -57,6 +58,10 @@ import { parseProxyTickersParam } from "./shared.js";
 export function registerFlowsRoutes(app: express.Express): void {
 app.get("/api/flows/deposits", (_req, res) => {
   res.json(buildFlowsDepositsPayload());
+});
+
+app.get("/api/flows/pl", (_req, res) => {
+  res.json(buildFlowsPlPayload());
 });
 
 app.get("/api/flows/deposits/reconciliation", (_req, res) => {

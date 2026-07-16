@@ -1,8 +1,10 @@
 import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
+import { allocationBucketColor } from "../../chartColors";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
-import { useTranslation } from "../../i18n";
+import { flowsPlBucketLabel, useTranslation } from "../../i18n";
+import type { FlowsPlBucketSlug, FlowsPlChartPoint } from "../../types";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   AXIS_LINE_STROKE,
@@ -12,51 +14,37 @@ import {
   computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
   formatLineChartXTick,
+  minMaxForKeys,
   rechartsMoneyYAxisWidth,
 } from "./chartLayout";
 
 const CHART_ANIM_MS = 90;
 
-const EXPENSES_COLOR = "#ef4444";
-const DEPOSITS_COLOR = "#3b82f6";
-const PL_COLOR = "#60a5fa";
-const INCOME_COLOR = "#22c55e";
+const PL_CHART_BUCKETS: { dataKey: FlowsPlBucketSlug; color: string }[] = [
+  { dataKey: "brokerage", color: allocationBucketColor("brokerage") },
+  { dataKey: "retirement", color: allocationBucketColor("retirement") },
+  { dataKey: "cash", color: allocationBucketColor("cash_eqs") },
+];
 
-/** `expenses` is pre-negated and stacks below the axis; `deposits` and `pl` stack above. */
-export type FlowsOverviewChartPoint = {
-  as_of_date: string;
-  income: number;
-  expenses: number;
-  deposits: number;
-  pl: number;
-};
-
-export function FlowsOverviewChart({
+export function FlowsPlChart({
   title,
   points,
   xAxisGranularity = "month",
   displayUnit = "clp",
 }: {
   title: string;
-  points: readonly FlowsOverviewChartPoint[];
+  points: readonly FlowsPlChartPoint[];
   xAxisGranularity?: "month" | "year";
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();
 
-  // stackOffset="sign": positive segments stack above zero, negatives below.
   const yScale = useMemo(() => {
-    let minV = 0;
-    let maxV = 0;
-    for (const row of points) {
-      minV = Math.min(
-        minV,
-        row.expenses + Math.min(row.deposits, 0) + Math.min(row.pl, 0),
-        row.income
-      );
-      maxV = Math.max(maxV, Math.max(row.deposits, 0) + Math.max(row.pl, 0), row.income);
-    }
-    return buildNiceYAxis(minV, maxV);
+    const { min, max } = minMaxForKeys(
+      points as unknown as Record<string, string | number | null>[],
+      [...PL_CHART_BUCKETS.map((b) => b.dataKey), "total"]
+    );
+    return buildNiceYAxis(Math.min(0, min), Math.max(0, max));
   }, [points]);
 
   const xAxisTicks = useMemo(() => {
@@ -73,7 +61,7 @@ export function FlowsOverviewChart({
     return (
       <div className="chart-grid__col">
         <h2 className="chart-panel-title">{title}</h2>
-        <p className="empty muted">{t("flows.overview.chartEmpty")}</p>
+        <p className="empty muted">{t("flows.pl.chartEmpty")}</p>
       </div>
     );
   }
@@ -84,7 +72,6 @@ export function FlowsOverviewChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={[...points]}
-          stackOffset="sign"
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),
             formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
@@ -117,38 +104,22 @@ export function FlowsOverviewChart({
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
               formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
             />
-            <Bar
-              dataKey="expenses"
-              name={t("flows.overview.expenses")}
-              fill={EXPENSES_COLOR}
-              stackId="flows"
-              isAnimationActive
-              animationDuration={CHART_ANIM_MS}
-              maxBarSize={22}
-            />
-            <Bar
-              dataKey="deposits"
-              name={t("flows.overview.deposits")}
-              fill={DEPOSITS_COLOR}
-              stackId="flows"
-              isAnimationActive
-              animationDuration={CHART_ANIM_MS}
-              maxBarSize={22}
-            />
-            <Bar
-              dataKey="pl"
-              name={t("flows.overview.pl")}
-              fill={PL_COLOR}
-              stackId="flows"
-              isAnimationActive
-              animationDuration={CHART_ANIM_MS}
-              maxBarSize={22}
-            />
+            {PL_CHART_BUCKETS.map((b) => (
+              <Bar
+                key={b.dataKey}
+                dataKey={b.dataKey}
+                name={flowsPlBucketLabel(b.dataKey)}
+                fill={b.color}
+                isAnimationActive
+                animationDuration={CHART_ANIM_MS}
+                maxBarSize={22}
+              />
+            ))}
             <Line
               type="monotone"
-              dataKey="income"
-              name={t("flows.overview.income")}
-              stroke={INCOME_COLOR}
+              dataKey="total"
+              name={t("flows.pl.colTotal")}
+              stroke="#e2e8f0"
               strokeWidth={2}
               dot={false}
               isAnimationActive

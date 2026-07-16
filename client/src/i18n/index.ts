@@ -2,7 +2,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import type { BrokeragePortfolioGroup } from "../brokerageGroupedAggregation";
 import { readInitialLanguage } from "../languagePreference";
-import type { DepositFlowCategory, ExpenseApartmentSlug } from "../types";
+import type { DepositFlowCategory, ExpenseApartmentSlug, FlowsPlBucketSlug } from "../types";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
 
@@ -64,4 +64,14 @@ export function depositFlowCategoryLabel(cat: DepositFlowCategory): string {
     inversiones: "sidebar.inversiones",
   };
   return i18n.t(key[cat]);
+}
+
+/** Flows → PL bucket labels: same keys as the dashboard buckets. */
+export function flowsPlBucketLabel(slug: FlowsPlBucketSlug): string {
+  const key: Record<FlowsPlBucketSlug, string> = {
+    brokerage: "dashboard.buckets.brokerage",
+    retirement: "dashboard.buckets.retirement",
+    cash: "dashboard.buckets.cash_eqs",
+  };
+  return i18n.t(key[slug]);
 }
