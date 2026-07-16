@@ -50,7 +50,7 @@ import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import type { InversionesPeriodMetrics } from "./netWorthConsolidation.js";
-import { getNetWorthNavGroupNode } from "./navTree.js";
+import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { inversionesPeriodMetrics } from "./netWorthConsolidation.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
@@ -442,10 +442,14 @@ export async function buildDashboardNavSnapshot(
   );
   const nw_bucket_totals = buildDashboardNwBucketTotals(includeUsd);
   // Nav-strip card metrics, precomputed server-side (see dashboardNavCardMetrics.ts).
+  // The Pasivos page renders nav nodes from the liabilities root (DB-driven liability_groups
+  // children), so both trees get entries; the liabilities root wins the shared `liabilities` slug.
   const navRoot = getNetWorthNavGroupNode();
   if (!navRoot) throw new Error("nav snapshot: net_worth nav tree missing");
+  const liabilitiesRoot = getLiabilitiesNavRootNode();
+  if (!liabilitiesRoot) throw new Error("nav snapshot: liabilities nav tree missing");
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
-    navRoot,
+    navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
     totals: nw_bucket_totals,
     inversiones: opts?.inversiones ?? null,
