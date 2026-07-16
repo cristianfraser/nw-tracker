@@ -364,7 +364,7 @@ function findNavNodeBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeD
 }
 
 /** Pasivos root node (`liabilities`) with its DB-driven children — mirrors {@link getSidebarNavPayload}. */
-function getLiabilitiesNavRootNode(): NavTreeNodeDto | null {
+export function getLiabilitiesNavRootNode(): NavTreeNodeDto | null {
   const liab = buildNavForest("main").find((n) => n.slug === "liabilities");
   if (!liab) return null;
   return { ...liab, children: getLiabilitiesNavChildren() };
