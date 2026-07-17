@@ -22,11 +22,11 @@ function monthEndSeries(fromYm: string, toYm: string): string[] {
 }
 
 describe("computeRegularMonthXAxisTicks", () => {
-  it("uses December year markers (not anchor month) for multi-year spans", () => {
+  it("uses January year markers (not anchor month) for multi-year spans", () => {
     const dates = monthEndSeries("2017-05", "2026-06");
     const ticks = computeRegularMonthXAxisTicks(dates)!;
 
-    expect(ticks.filter((d) => d.endsWith("-12-31")).length).toBeGreaterThanOrEqual(8);
+    expect(ticks.filter((d) => d.endsWith("-01-31")).length).toBeGreaterThanOrEqual(8);
     expect(ticks).not.toContain("2018-05-31");
     expect(ticks).not.toContain("2019-05-31");
   });
@@ -37,8 +37,8 @@ describe("computeRegularMonthXAxisTicks", () => {
 
     expect(ticks[0]).toBe("2017-05-31");
     expect(ticks[ticks.length - 1]).toBe("2026-06-30");
-    expect(ticks).toContain("2025-12-31");
-    expect(ticks).not.toContain("2026-01-31");
+    expect(ticks).toContain("2026-01-31");
+    expect(ticks).not.toContain("2025-12-31");
     expect(ticks.length).toBeLessThanOrEqual(14);
   });
 
@@ -48,7 +48,7 @@ describe("computeRegularMonthXAxisTicks", () => {
 
     expect(ticks).toContain("2017-05-31");
     expect(ticks).not.toContain("2026-06-30");
-    expect(ticks).toContain("2025-12-31");
+    expect(ticks).toContain("2026-01-31");
   });
 
   it("keeps month-stride ticks for spans shorter than a year", () => {
@@ -61,7 +61,7 @@ describe("computeRegularMonthXAxisTicks", () => {
 });
 
 describe("computeRegularYearXAxisTicks", () => {
-  it("prefers December (then January) over arbitrary in-year dates", () => {
+  it("prefers January (then December) over arbitrary in-year dates", () => {
     const dates = [
       "2017-05-15",
       "2017-12-31",
@@ -73,7 +73,9 @@ describe("computeRegularYearXAxisTicks", () => {
     ];
     const ticks = computeRegularYearXAxisTicks(dates)!;
 
-    expect(ticks).toContain("2017-12-31");
+    // Head year has no January → covered by the first data point, not dic 2017.
+    expect(ticks).toContain("2017-05-15");
+    expect(ticks).not.toContain("2017-12-31");
     expect(ticks).toContain("2018-12-31");
     expect(ticks).toContain("2019-01-31");
     expect(ticks).toContain("2020-12-31");
