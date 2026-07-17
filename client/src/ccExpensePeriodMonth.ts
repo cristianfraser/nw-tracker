@@ -32,14 +32,23 @@ export function lineMatchesGastosPeriodMonth(
   return gastosPeriodMonthForLine(line) === periodMonth;
 }
 
+/** Whether a line participates in the given installment mode (`gastos_scope` gate). */
+export function gastosScopeAllowsMode(
+  line: Pick<FlowCcExpenseLineRow, "gastos_scope">,
+  mode: CcInstallmentGastosMode
+): boolean {
+  const scope = line.gastos_scope ?? "both";
+  if (scope === "excluded") return false;
+  if (scope === "total_only" && mode !== "total") return false;
+  if (scope === "split_only" && mode !== "split") return false;
+  return true;
+}
+
 export function gastosSumMonthForLine(
   line: FlowCcExpenseLineRow,
   mode: CcInstallmentGastosMode = "split"
 ): string {
-  const scope = line.gastos_scope ?? "both";
-  if (scope === "excluded") return "";
-  if (scope === "total_only" && mode !== "total") return "";
-  if (scope === "split_only" && mode !== "split") return "";
+  if (!gastosScopeAllowsMode(line, mode)) return "";
   if (line.source === "checking" || line.line_role === "purchase") {
     return gastosPeriodMonthForLine(line);
   }
