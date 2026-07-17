@@ -2,7 +2,7 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { loadMergedDepositInflowEvents, type DepositInflowEvent } from "./accountDeposits.js";
+import { loadMergedDisplayDepositInflowEvents, type DepositInflowEvent } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
@@ -142,7 +142,7 @@ function flowsDepositsNetTotalsByAccount(opts?: {
 }): { clp: Map<number, number>; usd: Map<number, number | null> } {
   const accounts = listDepositFlowAccounts(opts?.includeExcludedFromGroupTotals ?? false);
   const ids = accounts.map((a) => a.account_id);
-  const eventsByAccount = loadMergedDepositInflowEvents(ids);
+  const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
   const today = chileCalendarTodayYmd();
   const currentMk = monthKeyFromYmd(today);
   const currentY = today.slice(0, 4);
@@ -220,7 +220,7 @@ export function netDepositFlowBetween(
       usdCashBalanceClpAt(accountId, ymd) - cashInterestClpThroughDate(accountId, ymd);
     return dep(endYmd) - dep(startYmd);
   }
-  const events = loadMergedDepositInflowEvents([accountId]).get(accountId) ?? [];
+  const events = loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
   let sum = 0;
   for (const e of events) {
     if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
@@ -273,7 +273,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
   clearFxConversionWarnings();
   const accounts = listDepositFlowAccounts(false);
   const ids = accounts.map((a) => a.account_id);
-  const eventsByAccount = loadMergedDepositInflowEvents(ids);
+  const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
 
   const rows: FlowDepositRow[] = [];
   for (const acc of accounts) {
