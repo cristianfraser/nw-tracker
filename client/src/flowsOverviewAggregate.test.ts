@@ -145,6 +145,38 @@ describe("aggregateFlowsOverview", () => {
     expect(march!.deposits).toBe(1_500_000 - 400_000);
   });
 
+  it("counts a card-financed dividendo's carrying once per installment mode", () => {
+    // A financed dividendo exists twice in `lines`: the original (`total_only`) plus
+    // prorated `split_only` financing projections sharing the SAME deposit link under
+    // distinct purchase_keys. Carrying must land once in either mode.
+    const original = mortgageLine({ gastos_scope: "total_only" });
+    const projection = (i: number) =>
+      mortgageLine({
+        statement_line_id: 100 + i,
+        purchase_key: `financing-proj:1:${original.purchase_key}:2024-0${3 + i}`,
+        gastos_scope: "split_only",
+        expense_month: `2024-0${3 + i}`,
+        amount_clp: 500_000,
+        expense_deposit_links: [
+          {
+            deposit_movement_id: 99,
+            payment_clp: 500_000,
+            amortization_clp: 300_000,
+            carrying_clp: 200_000,
+            depto_cuota: "7",
+            depto_occurred_on: "2024-03-11",
+            link_source: "auto",
+          },
+        ],
+      });
+    const lines = [original, projection(1), projection(2)];
+    for (const mode of ["split", "total"] as const) {
+      const rows = aggregateFlowsOverview(incomePayload(), { lines }, marchDeposits, noPl, mode);
+      const march = rows.find((r) => r.period_month === "2024-03")!;
+      expect(march.deposits).toBe(1_500_000 - 400_000);
+    }
+  });
+
   it("throws in USD display when deposits carry an FX conversion error", () => {
     const income = incomePayload();
     income.lines[0]!.amount_usd = 2_000;

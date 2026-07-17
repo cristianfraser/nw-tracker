@@ -4,7 +4,7 @@ import {
   hasSplittableMortgageExpenseDepositLink,
   mortgageLinkCarryingAmount,
 } from "./ccExpenseGastosAggregate";
-import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth";
+import { gastosScopeAllowsMode, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth";
 import { aggregateIncomeFromPayload } from "./incomeAggregates";
 import type { DisplayUnit } from "./queries/keys";
 import type {
@@ -52,11 +52,17 @@ const PRE_TAX_DEPOSIT_KIND_SLUGS = new Set(["afp", "afc"]);
  */
 function mortgageCarryingByDepositMonth(
   lines: readonly FlowCcExpenseLineRow[],
+  installmentMode: CcInstallmentGastosMode,
   unit: DisplayUnit
 ): Map<string, number> {
   const seen = new Set<string>();
   const out = new Map<string, number>();
   for (const ln of lines) {
+    // A card-financed dividendo exists twice in `lines` (original `total_only` line +
+    // prorated `split_only` financing projections, all sharing one deposit link under
+    // distinct purchase_keys), so the carrying must be scoped to one mode like gastos —
+    // otherwise it is subtracted once per representation.
+    if (!gastosScopeAllowsMode(ln, installmentMode)) continue;
     const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
     if (!hasSplittableMortgageExpenseDepositLink(link)) continue;
     const key = `${ln.purchase_key}|${link.deposit_movement_id}`;
@@ -141,7 +147,11 @@ export function aggregateFlowsOverview(
       bucket.deposits += amount;
     }
   }
-  for (const [month, carrying] of mortgageCarryingByDepositMonth(ccExpenses.lines, unit)) {
+  for (const [month, carrying] of mortgageCarryingByDepositMonth(
+    ccExpenses.lines,
+    installmentMode,
+    unit
+  )) {
     touch(month).deposits -= carrying;
   }
 
