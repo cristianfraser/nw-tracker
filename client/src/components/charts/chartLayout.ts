@@ -208,26 +208,30 @@ function yearFromYmd(ymd: string): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
-/** Prefer December; January only for interior years with no December. Tail years need December. */
+/**
+ * Prefer January (the marker reads as the start of year `year`); December only for years with no
+ * January row (year-end-row series). Head years need January — a mid-year series start is covered
+ * by the first-data-point push instead, avoiding adjacent markers like `dic 17` + `ene 18`.
+ */
 function findYearBoundaryDate(
   datesAsc: string[],
   year: number,
-  lastYear: number
+  firstYear: number
 ): string | undefined {
-  const decRows = datesAsc.filter((d) => d.startsWith(`${year}-12`));
-  if (decRows.length > 0) return decRows[decRows.length - 1]!;
-  if (year === lastYear) return undefined;
   const jan = datesAsc.find((d) => d.startsWith(`${year}-01`));
   if (jan) return jan;
-  const inYear = datesAsc.filter((d) => d.startsWith(`${year}-`));
-  return inYear.length > 0 ? inYear[inYear.length - 1] : undefined;
+  if (year === firstYear) return undefined;
+  const decRows = datesAsc.filter((d) => d.startsWith(`${year}-12`));
+  if (decRows.length > 0) return decRows[decRows.length - 1]!;
+  return datesAsc.find((d) => d.startsWith(`${year}-`));
 }
 
 type XAxisTickOpts = { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean };
 
 /**
- * Multi-year X-axis ticks at **January or December** (one marker per calendar year when possible),
- * then the first/last series dates only when there is room under `maxTickCount`.
+ * Multi-year X-axis ticks at **January (December for year-end-row series)** — one marker per
+ * calendar year when possible — then the first/last series dates only when there is room under
+ * `maxTickCount`.
  */
 function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts): string[] | undefined {
   const minT = Math.max(2, opts?.minTickCount ?? 4);
@@ -260,7 +264,7 @@ function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts)
     if (d && !ticks.includes(d)) ticks.push(d);
   };
   for (let y = y0; y <= y1; y += yearStep) {
-    push(findYearBoundaryDate(datesAsc, y, y1));
+    push(findYearBoundaryDate(datesAsc, y, y0));
   }
 
   const firstD = datesAsc[0]!;
