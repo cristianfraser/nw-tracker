@@ -76,23 +76,6 @@ export default function App() {
   );
 }
 
-/** Full-viewport centered message (auth check in flight). */
-function FullScreenMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "var(--space-2xl)",
-      }}
-    >
-      <p className="muted">{children}</p>
-    </div>
-  );
-}
-
 /** Anonymous + on a gated route → bounce to /login, remembering where we were headed. */
 function RedirectToLogin() {
   const loc = useLocation();
@@ -111,20 +94,18 @@ function LoginRedirect() {
  * (e.g. decimal separator) re-renders it top-down, so plain format helpers
  * re-run everywhere without remounting anything (no loading flash, state kept).
  *
- * It also carries the demo auth gate: while the session status is unknown we show a
- * spinner; when auth is required but absent, only the bare `/login` page renders (no app
- * chrome, routes never mount); otherwise the normal app renders.
+ * It also carries the demo auth gate: when auth is required but absent, only the bare
+ * `/login` page renders (no app chrome, routes never mount); otherwise the normal app
+ * renders. Auth state is seeded optimistically from the last resolved outcome (see
+ * AuthContext), so there is no fullscreen loading state — first paint never waits on
+ * `/api/auth/status`.
  */
 function AppTree() {
   useDisplayPreferences();
   const { status, authRequired } = useAuth();
   const { t } = useTranslation();
   // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
-  useEnsureFxLatestCache(status !== "loading" && !(authRequired && status === "anonymous"));
-
-  if (status === "loading") {
-    return <FullScreenMessage>{t("common.loading")}</FullScreenMessage>;
-  }
+  useEnsureFxLatestCache(!(authRequired && status === "anonymous"));
 
   if (authRequired && status === "anonymous") {
     return (
