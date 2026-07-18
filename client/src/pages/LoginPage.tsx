@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth, type AuthLoginErrorCode } from "../context/AuthContext";
 import { useTranslation } from "../i18n";
@@ -34,6 +34,12 @@ export function LoginPage() {
   const [password, setPassword] = useState(passwordHint ?? "");
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // The page can mount before /api/auth/status resolves (optimistic auth seed); adopt the
+  // demo hint as the prefill once it arrives, unless the user already typed a password.
+  useEffect(() => {
+    if (passwordHint) setPassword((prev) => (prev === "" ? passwordHint : prev));
+  }, [passwordHint]);
 
   // Destination is applied by the /login route once auth flips (see App.tsx LoginRedirect),
   // so a successful submit just needs to leave this component mounted while status updates.
