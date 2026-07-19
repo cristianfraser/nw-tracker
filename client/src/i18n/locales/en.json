@@ -451,7 +451,7 @@
     "sameBaseAsValuation": "Same base as valuation and contributions.",
     "ytdCalendarTitle": "YTD (calendar year)",
     "plMonthlyVsYtdTitle": "Monthly P/L vs YTD",
-    "financingCostMonth": "Month financing cost",
+    "financingCostMonth": "Month P/L (financing cost)",
     "deltaMonthNominal": "Month Δ (nominal P/L)",
     "monthlyDelta": "Monthly Δ",
     "monthlyDeltaAndAccumTitle": "Monthly Δ and accumulated earnings",
@@ -561,15 +561,15 @@
     "balanceUfColumn": "UF balance",
     "netDepositsColumn": "Net contributions",
     "perf": {
-      "plMortgage": "Financing cost",
+      "plMortgage": "P/L (financing cost)",
       "plInvestment": "P/L",
       "pctInvestmentYearly": "% year",
       "pctInvestmentMonthly": "% month",
-      "ytdMortgageYearly": "Financing cost DTD",
-      "ytdMortgageMonthly": "Financing cost YTD",
+      "ytdMortgageYearly": "P/L DTD",
+      "ytdMortgageMonthly": "P/L YTD",
       "ytdInvestmentYearly": "P/L DTD",
       "ytdInvestmentMonthly": "P/L YTD",
-      "cumMortgage": "Accum. financing cost",
+      "cumMortgage": "Accum. P/L",
       "cumInvestment": "Accum. P/L",
       "inflowAfp": "Units (contributions)",
       "inflowDefault": "Stock inflows"
@@ -754,7 +754,7 @@
       "associatedCardsHint": "Physical card numbers with statements imported into this account."
     },
     "monthlyPerfIntro": "Two charts: (1) monthly P/L vs <1>YTD</1> (the area restarts every January). (2) the same monthly Δ with an <3>Accumulated earnings</3> area (continuous from the first month, no per-year bands). The table keeps the detail.",
-    "monthlyPerfMortgageNote": " For the mortgage, <1>month P/L</1> = net contributions − CLP balance drop (UF cost + interest vs visible amortization), not the investment formula.",
+    "monthlyPerfMortgageNote": " For the mortgage, <1>month P/L</1> = CLP balance drop − payments: negative = financing cost (interest, insurance and UF variation), not the investment formula.",
     "monthlyPerfCcLedgerNote": " This account's monthly valuations are written to the database when importing the PDF's CSV; class tabs (e.g. Liabilities) read the same table.",
     "monthlyPerfUnit": " Unit: <1>{{unit}}</1>",
     "monthlyPerfNotEnough": "Not enough months of monthly valuation to compute changes (or the account only has one point).",
@@ -806,8 +806,8 @@
       "mortgageSectionHint": "Installments, balance, and financing cost from the payments spreadsheet.",
       "mortgageValuationTitle": "Valuation",
       "mortgagePerfTitle": "Monthly performance (computed)",
-      "mortgagePerfHint": "For the mortgage, month P/L = financing cost (interest and UF variation), not the investment formula.",
-      "mortgageYtdChartTitle": "Monthly financing cost vs YTD",
+      "mortgagePerfHint": "For the mortgage, month P/L = CLP amortization minus payments: negative = financing cost (interest, insurance and UF variation).",
+      "mortgageYtdChartTitle": "Monthly P/L vs YTD (financing cost)",
       "mortgageAccChartTitle": "Monthly and accumulated financing cost",
       "mortgageBarMonthlyCost": "Month financing cost"
     }

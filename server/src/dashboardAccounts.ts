@@ -10,7 +10,11 @@ import {
   dashboardCardReconcilePeriodDeltas,
   reconcileDashboardCardMetrics,
 } from "./dashboardCardMetricsReconcile.js";
-import { dashboardAccountPerfDerived } from "./dashboardAccountCardMetrics.js";
+import {
+  accountCardPerformanceMetricsFromPerf,
+  dashboardAccountPerfDerived,
+  type AccountCardPerformanceMetrics,
+} from "./dashboardAccountCardMetrics.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
@@ -59,8 +63,8 @@ import {
   nwDashboardMetricGroupForAccount,
   withPortfolioGroupIndex,
 } from "./portfolioGroupTree.js";
-import {
-} from "./deptoDividendosLedger.js";
+import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { db } from "./db.js";
 import {
   latestDisplayedBalanceForAccount,
@@ -215,6 +219,58 @@ export async function latestValuationDisplayForAccount(
   return null;
 }
 
+type MortgageCardDeposits = {
+  total_clp: number;
+  total_usd: number | null;
+  month_clp: number;
+  month_usd: number | null;
+  year_clp: number;
+  year_usd: number | null;
+};
+
+/**
+ * Aportado on mortgage cards = depto ledger payments (cuotas + prepagos; pie is property
+ * capital), not the flows deposit pool — mortgage cash-in carries `flow_kind` mortgage and
+ * is excluded there. Null when no ledger (demo/test installs without depto data).
+ */
+function computeMortgageCardDeposits(
+  includeUsd: boolean,
+  todayYmd: string,
+  priorMonthEnd: string,
+  priorYearEnd: string
+): MortgageCardDeposits | null {
+  const ledger = loadDeptoLedgerFromMovements();
+  if (!ledger.length) return null;
+  const events = mortgageSheetPaymentEventsThroughDate(ledger, todayYmd);
+  if (!events.length) return null;
+  let total_clp = 0;
+  let month_clp = 0;
+  let year_clp = 0;
+  let total_usd: number | null = includeUsd ? 0 : null;
+  let month_usd: number | null = includeUsd ? 0 : null;
+  let year_usd: number | null = includeUsd ? 0 : null;
+  for (const e of events) {
+    total_clp += e.pago_clp;
+    const inMonth = e.occurred_on > priorMonthEnd;
+    const inYear = e.occurred_on > priorYearEnd;
+    if (inMonth) month_clp += e.pago_clp;
+    if (inYear) year_clp += e.pago_clp;
+    if (total_usd != null) {
+      const usd = depositClpToUsdAtDate(e.pago_clp, e.occurred_on);
+      if (usd == null || !Number.isFinite(usd)) {
+        total_usd = null;
+        month_usd = null;
+        year_usd = null;
+      } else {
+        total_usd += usd;
+        if (inMonth && month_usd != null) month_usd += usd;
+        if (inYear && year_usd != null) year_usd += usd;
+      }
+    }
+  }
+  return { total_clp, total_usd, month_clp, month_usd, year_clp, year_usd };
+}
+
 /** Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit). */
 export async function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
   return withAccountValuationTsCache(() => buildDashboardAccountRowsInner(includeUsd));
@@ -233,12 +289,29 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   const priorYearEnd = priorPeriodEndYmd("ytd", today);
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
 
+  /** Shared by the master and its liability_view row (never both in one summed scope). */
+  let mortgageDepositsMemo: MortgageCardDeposits | null | undefined;
+  const mortgageCardDeposits = (): MortgageCardDeposits | null => {
+    if (mortgageDepositsMemo === undefined) {
+      mortgageDepositsMemo = computeMortgageCardDeposits(
+        includeUsd,
+        today,
+        priorMonthEnd,
+        priorYearEnd
+      );
+    }
+    return mortgageDepositsMemo;
+  };
+
   const rowsBuilt: DashboardAccountStats[] = await Promise.all(
     accounts.map(async (a) => {
-      const deposits = depositsNetByAccount.get(a.id) ?? 0;
-      const deposits_usd = depositsNetUsdByAccount?.get(a.id) ?? null;
       const leafSlug = a.bucket_slug;
       const kindSlug = accountBucketKindSlug(leafSlug);
+      const mortgagePayments = kindSlug === "mortgage" ? mortgageCardDeposits() : null;
+      const deposits = mortgagePayments?.total_clp ?? depositsNetByAccount.get(a.id) ?? 0;
+      const deposits_usd = mortgagePayments
+        ? mortgagePayments.total_usd
+        : depositsNetUsdByAccount?.get(a.id) ?? null;
       const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
       const metricGroup = nwDashboardMetricGroupForAccount(a.id) ?? leafSlug;
       const dashboard_bucket_slug = nwDashboardMetricGroupForAccount(a.id);
@@ -349,10 +422,26 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
               perfUsd?.delta_total
             )
           : undefined,
-        deposits_month_clp: trackAssetMetrics ? (depositsMonth.clp.get(a.id) ?? 0) : undefined,
-        deposits_month_usd: trackAssetMetrics ? (depositsMonth.usd.get(a.id) ?? null) : undefined,
-        deposits_year_clp: trackAssetMetrics ? (depositsYear.clp.get(a.id) ?? 0) : undefined,
-        deposits_year_usd: trackAssetMetrics ? (depositsYear.usd.get(a.id) ?? null) : undefined,
+        deposits_month_clp: mortgagePayments
+          ? mortgagePayments.month_clp
+          : trackAssetMetrics
+            ? (depositsMonth.clp.get(a.id) ?? 0)
+            : undefined,
+        deposits_month_usd: mortgagePayments
+          ? mortgagePayments.month_usd
+          : trackAssetMetrics
+            ? (depositsMonth.usd.get(a.id) ?? null)
+            : undefined,
+        deposits_year_clp: mortgagePayments
+          ? mortgagePayments.year_clp
+          : trackAssetMetrics
+            ? (depositsYear.clp.get(a.id) ?? 0)
+            : undefined,
+        deposits_year_usd: mortgagePayments
+          ? mortgagePayments.year_usd
+          : trackAssetMetrics
+            ? (depositsYear.usd.get(a.id) ?? null)
+            : undefined,
         prior_month_close_clp,
         prior_month_close_usd: derivedUsd?.prior_month_close,
         prior_year_close_clp,
@@ -397,6 +486,27 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
             reconciled.delta_month_usd = null;
             reconciled.delta_year_usd = null;
           }
+        }
+      }
+
+      if (kindSlug === "mortgage") {
+        // Card P/L = financing cost from the monthly perf series (negative = losing money),
+        // never the generic balance − deposits reconcile: the balance is debt, not return.
+        const masterAccountId = a.source_account_id ?? a.id;
+        const perfMetricsFor = (unit: TsUnit): AccountCardPerformanceMetrics | null => {
+          if (mortgagePayments == null) return null;
+          const perf = getAccountMonthlyPerformance(masterAccountId, unit);
+          return perf && perf.monthly.length ? accountCardPerformanceMetricsFromPerf(perf) : null;
+        };
+        const plClp = perfMetricsFor("clp");
+        reconciled.delta_total_clp = plClp?.delta_total ?? null;
+        reconciled.delta_month_clp = plClp?.delta_month ?? null;
+        reconciled.delta_year_clp = plClp?.delta_year ?? null;
+        if (includeUsd) {
+          const plUsd = perfMetricsFor("usd");
+          reconciled.delta_total_usd = plUsd?.delta_total ?? null;
+          reconciled.delta_month_usd = plUsd?.delta_month ?? null;
+          reconciled.delta_year_usd = plUsd?.delta_year ?? null;
         }
       }
 

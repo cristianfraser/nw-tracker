@@ -449,6 +449,21 @@ export function mortgageSheetPaymentsClpThroughDate(
   return sum;
 }
 
+/** Mortgage payment cash events (cuotas + prepagos; pie is property capital) with `occurred_on` ≤ `asOf`. */
+export function mortgageSheetPaymentEventsThroughDate(
+  ledger: readonly DeptoMortgageSheetRow[],
+  asOf: string
+): { occurred_on: string; pago_clp: number }[] {
+  const out: { occurred_on: string; pago_clp: number }[] = [];
+  for (const r of ledger) {
+    if (!isDeptoMortgagePaymentCuota(r.cuota)) continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
+    if (r.occurred_on > asOf) continue;
+    out.push({ occurred_on: r.occurred_on, pago_clp: Math.abs(r.pago_clp) });
+  }
+  return out;
+}
+
 /**
  * Property capital flow: actual CLP paid in the calendar month of `asOf` (pie, cuotas, prepagos).
  * P/L compares pesos out of pocket vs UF-based net-equity marks converted to CLP at month-end.
