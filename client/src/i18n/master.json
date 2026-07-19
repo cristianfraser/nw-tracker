@@ -1933,17 +1933,9 @@
         "en": "% month",
         "es": "% mes"
       },
-      "ytdMortgageYearly": {
-        "en": "P/L DTD",
-        "es": "P/L DTD"
-      },
       "ytdMortgageMonthly": {
         "en": "P/L YTD",
         "es": "P/L YTD"
-      },
-      "ytdInvestmentYearly": {
-        "en": "P/L DTD",
-        "es": "P/L DTD"
       },
       "ytdInvestmentMonthly": {
         "en": "P/L YTD",

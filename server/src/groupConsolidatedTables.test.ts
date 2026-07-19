@@ -71,19 +71,14 @@ describe("rollupConsolidatedMonthlyYearly", () => {
     expect(y2024.nominal_pl).toBe(20);
   });
 
-  it("resets the decade-to-date running P/L on years ending in 0", () => {
+  it("nulls the YTD column (not shown in yearly mode)", () => {
     const rows = [
-      monthRow({ as_of_date: "2020-06-30", nominal_pl: 7 }),
-      monthRow({ as_of_date: "2019-06-30", nominal_pl: 5 }),
-      monthRow({ as_of_date: "2018-06-30", nominal_pl: 3 }),
+      monthRow({ as_of_date: "2020-06-30", nominal_pl: 7, ytd_nominal_pl: 7 }),
+      monthRow({ as_of_date: "2019-06-30", nominal_pl: 5, ytd_nominal_pl: 5 }),
     ];
 
     const yearly = rollupConsolidatedMonthlyYearly(rows);
-    expect(yearly.map((r) => [r.as_of_date.slice(0, 4), r.ytd_nominal_pl])).toEqual([
-      ["2020", 7], // new decade: running sum restarts
-      ["2019", 8], // 3 + 5 within 2010-2019
-      ["2018", 3],
-    ]);
+    expect(yearly.map((r) => r.ytd_nominal_pl)).toEqual([null, null]);
   });
 
   it("treats null pct months as flat when compounding", () => {

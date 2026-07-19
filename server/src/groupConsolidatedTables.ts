@@ -90,8 +90,8 @@ export type ConsolidatedMonthlyPeriod = "month" | "year";
 /**
  * Yearly rollup of consolidated monthly rows (mirrors the client-side rollup used by
  * client-paginated detalle tables): flows/P-L sum per year, % compounds the months,
- * closing/cumulative take the year's latest month, and the YTD column becomes a
- * decade-to-date running P/L (resets on years ending in 0). Returns newest-first.
+ * closing/cumulative take the year's latest month, and the YTD column is null (the
+ * detalle tables don't show it in yearly mode). Returns newest-first.
  */
 export function rollupConsolidatedMonthlyYearly(
   rows: readonly ConsolidatedMonthlyPerfRow[]
@@ -106,9 +106,6 @@ export function rollupConsolidatedMonthlyYearly(
   }
 
   const yearsAsc = [...byYear.keys()].sort((a, b) => a.localeCompare(b));
-
-  let dtdSum = 0;
-  let currentDecadeStart = -1;
 
   const ascRows = yearsAsc.map((year) => {
     const monthsAsc = [...byYear.get(year)!].sort((a, b) =>
@@ -126,14 +123,6 @@ export function rollupConsolidatedMonthlyYearly(
         return prod * (1 + (p != null && Number.isFinite(p) ? p : 0));
       }, 1) - 1;
 
-    const y = Number(year);
-    const decadeStart = y - (y % 10);
-    if (decadeStart !== currentDecadeStart) {
-      dtdSum = 0;
-      currentDecadeStart = decadeStart;
-    }
-    dtdSum += nominalPl;
-
     return {
       ...latest,
       as_of_date: `${year}-12-31`,
@@ -141,7 +130,7 @@ export function rollupConsolidatedMonthlyYearly(
       stock_units_inflow: stockUnitsInflow,
       nominal_pl: nominalPl,
       pct_month: pctYear,
-      ytd_nominal_pl: dtdSum,
+      ytd_nominal_pl: null,
       cumulative_nominal_pl: latest.cumulative_nominal_pl,
     } satisfies ConsolidatedMonthlyPerfRow;
   });
