@@ -222,7 +222,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
     } else {
       prior_closing = prior;
       nominal_pl = isMortgage
-        ? mortgageFinancingCostClp(prior, close, netFlow)
+        ? mortgageMonthlyNominalPl(prior, close, netFlow)
         : isCreditCard
           ? creditCardNominalPlStub()
           : close - prior - netFlow;
@@ -351,6 +351,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     else return sortedAsc;
   }
 
+  const mortgageLedger = bucketKind === "mortgage" ? loadDeptoLedgerFromMovements() : null;
   const netFlow = (() => {
     if (bucketKind === "property") {
       const ledger = loadDeptoLedgerFromMovements();
@@ -358,23 +359,33 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
         return perfDeptoPropertyPaymentsInUnit(ledger, today, null, unit);
       }
     }
-    if (bucketKind === "mortgage") return row?.net_capital_flow ?? 0;
+    if (bucketKind === "mortgage") {
+      return mortgageLedger != null && mortgageLedger.length > 0
+        ? perfMortgagePaymentsInUnit(mortgageLedger, today, null, unit)
+        : row?.net_capital_flow ?? 0;
+    }
     // Live close is as-of-today, so the flow must be too: the base row sums the whole
     // calendar month and a future-dated movement would read as phantom negative P/L.
     return netDepositFlowCurrentMonthThroughToday(accountId, unit === "usd" ? "usd" : "clp");
   })();
-  const nominal = live - priorClose - netFlow;
+  const nominal =
+    bucketKind === "mortgage"
+      ? mortgageMonthlyNominalPl(priorClose, live, netFlow)
+      : live - priorClose - netFlow;
   const denom = priorClose + netFlow;
   const pct =
-    Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
+    bucketKind === "mortgage"
+      ? mortgagePctMonth(nominal, priorClose)
+      : Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom)
+        ? nominal / denom
+        : null;
 
   const mortgageUfFields =
     bucketKind === "mortgage"
       ? (() => {
-          const ledger = loadDeptoLedgerFromMovements();
-          if (!ledger.length) return {};
+          if (!mortgageLedger?.length) return {};
           const ufMap = ufClpBySnapshotDatesAsc([today]);
-          const ufByDate = deptoCreditoRestanteUfBySnapshotDates([today], ledger);
+          const ufByDate = deptoCreditoRestanteUfBySnapshotDates([today], mortgageLedger);
           return {
             uf_clp_day: ufMap.get(today) ?? null,
             closing_balance_uf: ufByDate.get(today) ?? null,
@@ -517,15 +528,15 @@ export function creditCardNominalPlStub(): number {
 }
 
 /**
- * Mortgage month cost: payments minus CLP amortization on the balance.
- * Positive = you paid more than the debt fell (UF revaluation + interest/fees).
+ * Mortgage month P/L (in the series unit): CLP amortization on the balance minus payments.
+ * Negative = the debt fell less than you paid — the financing cost (interest/fees + UF revaluation).
  */
-function mortgageFinancingCostClp(
+function mortgageMonthlyNominalPl(
   priorClosing: number,
   closing: number,
   netCapitalFlow: number
 ): number {
-  return netCapitalFlow - (priorClosing - closing);
+  return priorClosing - closing - netCapitalFlow;
 }
 
 function mortgagePctMonth(nominal: number, priorClosing: number): number | null {
@@ -842,7 +853,7 @@ function buildAccountMonthlyPerformanceUncached(
       }
     }
     const nominal = isMortgage
-      ? mortgageFinancingCostClp(prevClose, close, netFlow)
+      ? mortgageMonthlyNominalPl(prevClose, close, netFlow)
       : isCreditCard
         ? creditCardNominalPlStub()
         : close - prevClose - netFlow;

@@ -1541,8 +1541,8 @@
       "es": "P/L mensual vs YTD"
     },
     "financingCostMonth": {
-      "en": "Month financing cost",
-      "es": "Coste financiero mes"
+      "en": "Month P/L (financing cost)",
+      "es": "P/L mes (coste financiero)"
     },
     "deltaMonthNominal": {
       "en": "Month Δ (nominal P/L)",
@@ -1918,8 +1918,8 @@
     },
     "perf": {
       "plMortgage": {
-        "en": "Financing cost",
-        "es": "Coste financiero"
+        "en": "P/L (financing cost)",
+        "es": "P/L (coste financiero)"
       },
       "plInvestment": {
         "en": "P/L",
@@ -1934,12 +1934,12 @@
         "es": "% mes"
       },
       "ytdMortgageYearly": {
-        "en": "Financing cost DTD",
-        "es": "Coste financiero DTD"
+        "en": "P/L DTD",
+        "es": "P/L DTD"
       },
       "ytdMortgageMonthly": {
-        "en": "Financing cost YTD",
-        "es": "Coste financiero YTD"
+        "en": "P/L YTD",
+        "es": "P/L YTD"
       },
       "ytdInvestmentYearly": {
         "en": "P/L DTD",
@@ -1950,8 +1950,8 @@
         "es": "P/L YTD"
       },
       "cumMortgage": {
-        "en": "Accum. financing cost",
-        "es": "Coste financiero acum."
+        "en": "Accum. P/L",
+        "es": "P/L acum."
       },
       "cumInvestment": {
         "en": "Accum. P/L",
@@ -2627,8 +2627,8 @@
       "es": "Dos gráficos: (1) P/L mensual vs <1>YTD</1> (área reinicia cada enero). (2) mismo Δ mensual con área <3>Accumulated earnings</3> (continua desde el primer mes, sin franjas por año). La tabla conserva el detalle."
     },
     "monthlyPerfMortgageNote": {
-      "en": " For the mortgage, <1>month P/L</1> = net contributions − CLP balance drop (UF cost + interest vs visible amortization), not the investment formula.",
-      "es": " En hipoteca, <1>P/L mes</1> = aportes netos − baja de saldo en CLP (coste UF + intereses vs amortización visible), no la fórmula de inversión."
+      "en": " For the mortgage, <1>month P/L</1> = CLP balance drop − payments: negative = financing cost (interest, insurance and UF variation), not the investment formula.",
+      "es": " En hipoteca, <1>P/L mes</1> = baja de saldo en CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF), no la fórmula de inversión."
     },
     "monthlyPerfCcLedgerNote": {
       "en": " This account's monthly valuations are written to the database when importing the PDF's CSV; class tabs (e.g. Liabilities) read the same table.",
@@ -2814,12 +2814,12 @@
         "es": "Rendimiento mensual (calculado)"
       },
       "mortgagePerfHint": {
-        "en": "For the mortgage, month P/L = financing cost (interest and UF variation), not the investment formula.",
-        "es": "En hipoteca, P/L mes = coste financiero (intereses y variación UF), no la fórmula de inversión."
+        "en": "For the mortgage, month P/L = CLP amortization minus payments: negative = financing cost (interest, insurance and UF variation).",
+        "es": "En hipoteca, P/L mes = amortización CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF)."
       },
       "mortgageYtdChartTitle": {
-        "en": "Monthly financing cost vs YTD",
-        "es": "Coste financiero mensual vs YTD"
+        "en": "Monthly P/L vs YTD (financing cost)",
+        "es": "P/L mensual vs YTD (coste financiero)"
       },
       "mortgageAccChartTitle": {
         "en": "Monthly and accumulated financing cost",
