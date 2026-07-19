@@ -169,7 +169,9 @@ export function LiabilitiesMortgageGroupSection({
               alternateYearAreaStripes={false}
             />
           </div>
-          <h4 className={styles.subsectionTitleMid}>{t("accountDetail.monthlyDetailTitle")}</h4>
+          <h4 className={styles.subsectionTitleMid}>
+            {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
+          </h4>
           <MonthlyPerfDetailTable
             rows={monthlyPerfRows}
             displayUnit={displayUnit}

@@ -1486,6 +1486,10 @@
       "en": "Monthly detail",
       "es": "Detalle por mes"
     },
+    "yearlyDetailTitle": {
+      "en": "Yearly detail",
+      "es": "Detalle por año"
+    },
     "positionHint": {
       "en": "Stocks and crypto: ticker and units (shares or coin) from movements in the database (<1>movements.units_delta</1> and import notes).",
       "es": "Acciones y cripto: ticker y unidades (acciones o moneda) desde movimientos en la base (<1>movements.units_delta</1> y notas de import)."
@@ -2369,6 +2373,34 @@
         "en": "Current month",
         "es": "Mes actual"
       },
+      "historialCurrentYear": {
+        "en": "Current year",
+        "es": "Año actual"
+      },
+      "historialHintYearly": {
+        "en": "Lines: installment debt and total balance at each year-end (projected for future years). Bars: the year's installment payments (projected plan months included) and the total billed across the year's statement closes.",
+        "es": "Líneas: cupo en cuotas y balance total a fin de cada año (proyectado en años futuros). Barras: pagos de cuotas del año (incluye meses proyectados del plan) y facturado total de los cierres del año."
+      },
+      "historialEmpty": {
+        "en": "No installment history for this account.",
+        "es": "Sin historial de cuotas para esta cuenta."
+      },
+      "chartInstallmentPaymentsMonth": {
+        "en": "Installment payments (month)",
+        "es": "Pagos de cuotas (mes)"
+      },
+      "chartInstallmentPaymentsYear": {
+        "en": "Installment payments (year)",
+        "es": "Pagos de cuotas (año)"
+      },
+      "tooltipPagosMonth": {
+        "en": "Month's payments",
+        "es": "Pagos del mes"
+      },
+      "tooltipPagosYear": {
+        "en": "Year's payments",
+        "es": "Pagos del año"
+      },
       "historialOpenMonth": {
         "en": "Open billing month",
         "es": "Facturación abierta"
@@ -2404,6 +2436,10 @@
       "financingChartTitle": {
         "en": "Billed and financing cost by month",
         "es": "Facturado y coste financiero por mes"
+      },
+      "financingChartTitleYearly": {
+        "en": "Billed and financing cost by year",
+        "es": "Facturado y coste financiero por año"
       },
       "financingChartEmpty": {
         "en": "No billing months or financing cost to chart.",
@@ -2488,6 +2524,14 @@
       "colTotalFacturadoProjectedHint": {
         "en": "Projected value: estimated payment due for this billing month (no statement close yet).",
         "es": "Valor proyectado: cuota a pagar estimada de esta facturación (aún sin cierre de estado)."
+      },
+      "detallePorMesBillingHintYearly": {
+        "en": "One row per calendar year of billing months. Total billed = sum of the year's statement closes; ≈ marks years with months not yet closed, counted at their estimated payment due. Installment debt and total balance = year-end values (projected for future years).",
+        "es": "Una fila por año calendario de meses de facturación. Total facturado = suma de los cierres del año; ≈ marca años con meses aún sin cierre, contados con su cuota a pagar estimada. Deuda en cuotas y balance total = valores a fin de año (proyectados en años futuros)."
+      },
+      "colTotalFacturadoProjectedHintYearly": {
+        "en": "Estimated value: the year includes billing months without a statement close yet, each counted at its estimated payment due.",
+        "es": "Valor estimado: el año incluye meses de facturación aún sin cierre de estado, cada uno contado con su cuota a pagar estimada."
       },
       "colBalanceTotal": {
         "en": "Total balance",
@@ -2727,6 +2771,10 @@
     "monthlyDetailTitle": {
       "en": "Monthly detail",
       "es": "Detalle por mes"
+    },
+    "yearlyDetailTitle": {
+      "en": "Yearly detail",
+      "es": "Detalle por año"
     },
     "flowsTitle": {
       "en": "Flows",

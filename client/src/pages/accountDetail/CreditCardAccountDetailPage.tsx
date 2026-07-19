@@ -32,6 +32,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
   const historialChartRows = ccLedger.historial_chart ?? [];
   const financingChartPoints = ccLedger.billing_month_chart ?? [];
+  const isYearly = metricsPeriod === "year";
 
   const heroClp =
     displayUnit === "usd"
@@ -75,7 +76,13 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
-          <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.historialHint")}</p>
+          <p className={cn("muted", styles.proseSmTight)}>
+            {t(
+              isYearly
+                ? "accountDetail.creditCard.historialHintYearly"
+                : "accountDetail.creditCard.historialHint"
+            )}
+          </p>
           <CcInstallmentHistoryChart rows={historialChartRows} openBillingMonth={ccLedger.open_billing_month} />
         </section>
       ) : null}
@@ -84,7 +91,11 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
       <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
         <CcBillingMonthFinancingChart
-          title={t("accountDetail.creditCard.financingChartTitle")}
+          title={t(
+            isYearly
+              ? "accountDetail.creditCard.financingChartTitleYearly"
+              : "accountDetail.creditCard.financingChartTitle"
+          )}
           titleAs="h3"
           points={financingChartPoints}
           displayUnit={displayUnit}
@@ -93,9 +104,15 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
       {(ccLedger.billing_detail_by_month?.length ?? 0) > 0 ? (
         <>
-          <h3 className={styles.subsectionTitleMid}>{t("accountDetail.monthlyDetailTitle")}</h3>
+          <h3 className={styles.subsectionTitleMid}>
+            {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
+          </h3>
           <p className={cn("muted", styles.proseSmTight)}>
-            {t("accountDetail.creditCard.detallePorMesBillingHint")}
+            {t(
+              isYearly
+                ? "accountDetail.creditCard.detallePorMesBillingHintYearly"
+                : "accountDetail.creditCard.detallePorMesBillingHint"
+            )}
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}

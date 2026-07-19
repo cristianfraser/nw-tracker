@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { CcInstallmentHistoryChart } from "../charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../charts/CcBillingMonthFinancingChart";
 import { LineChartPanel } from "../charts/ValuationLineCharts";
@@ -31,6 +32,8 @@ export function LiabilitiesCreditCardGroupSection({
   linkTo,
 }: Props) {
   const { t } = useTranslation();
+  const { metricsPeriod } = useDisplayPreferences();
+  const isYearly = metricsPeriod === "year";
 
   const historialChartRows = ccLedger.historial_chart ?? [];
   const financingChartPoints = ccLedger.billing_month_chart ?? [];
@@ -68,7 +71,13 @@ export function LiabilitiesCreditCardGroupSection({
       {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
           <h3 className={styles.subsectionTitleMid}>{t("accountDetail.creditCard.historialTitle")}</h3>
-          <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.historialHint")}</p>
+          <p className={cn("muted", styles.proseSmTight)}>
+            {t(
+              isYearly
+                ? "accountDetail.creditCard.historialHintYearly"
+                : "accountDetail.creditCard.historialHint"
+            )}
+          </p>
           <CcInstallmentHistoryChart rows={historialChartRows} openBillingMonth={ccLedger.open_billing_month} />
         </section>
       ) : null}
@@ -88,7 +97,11 @@ export function LiabilitiesCreditCardGroupSection({
       <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
       <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
         <CcBillingMonthFinancingChart
-          title={t("accountDetail.creditCard.financingChartTitle")}
+          title={t(
+            isYearly
+              ? "accountDetail.creditCard.financingChartTitleYearly"
+              : "accountDetail.creditCard.financingChartTitle"
+          )}
           titleAs="h3"
           points={financingChartPoints}
           displayUnit={displayUnit}
@@ -97,9 +110,15 @@ export function LiabilitiesCreditCardGroupSection({
 
       {(ccLedger.billing_detail_by_month?.length ?? 0) > 0 ? (
         <>
-          <h3 className={styles.subsectionTitleMid}>{t("accountDetail.monthlyDetailTitle")}</h3>
+          <h3 className={styles.subsectionTitleMid}>
+            {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
+          </h3>
           <p className={cn("muted", styles.proseSmTight)}>
-            {t("accountDetail.creditCard.detallePorMesBillingHint")}
+            {t(
+              isYearly
+                ? "accountDetail.creditCard.detallePorMesBillingHintYearly"
+                : "accountDetail.creditCard.detallePorMesBillingHint"
+            )}
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}

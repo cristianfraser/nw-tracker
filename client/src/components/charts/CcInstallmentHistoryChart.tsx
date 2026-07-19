@@ -3,6 +3,8 @@ import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "r
 import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
+import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatClp } from "../../format";
 import { AppComposedChart } from "./AppComposedChart";
 import {
@@ -52,22 +54,32 @@ export function CcInstallmentHistoryChart({
   openBillingMonth?: string | null;
 }) {
   const { t } = useTranslation();
+  const { metricsPeriod } = useDisplayPreferences();
+  const isYearly = metricsPeriod === "year";
+  const displayRows = useMemo(
+    () => (isYearly ? rollupCcHistorialChartYearly(rows) : rows),
+    [rows, isYearly]
+  );
+  const periodLabel = (ym: string) => (isYearly ? ym.slice(0, 4) : formatYmEs(ym));
   const currentYm = chileTodayYmd().slice(0, 7);
-  const refMonth = openBillingMonth ?? currentYm;
-  const showCurrentMonthLine = rows.some((r) => r.month === refMonth);
+  // Yearly buckets are keyed YYYY-12, so the marker lands on the year containing the ref month.
+  const refMonth = isYearly
+    ? `${(openBillingMonth ?? currentYm).slice(0, 4)}-12`
+    : openBillingMonth ?? currentYm;
+  const showCurrentMonthLine = displayRows.some((r) => r.month === refMonth);
   const yScale = useMemo(() => {
-    const { min, max } = unifiedMinMax(rows);
+    const { min, max } = unifiedMinMax(displayRows);
     return buildNiceYAxis(min, max);
-  }, [rows]);
+  }, [displayRows]);
 
   if (rows.length === 0) {
-    return <p className="muted empty">Sin historial de cuotas para esta cuenta.</p>;
+    return <p className="muted empty">{t("accountDetail.creditCard.historialEmpty")}</p>;
   }
 
   return (
     <div className="chart-box line-chart-focus-wrap" style={{ height: 280, marginTop: "0.35rem" }}>
         <AppComposedChart
-          data={rows}
+          data={displayRows}
           margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 8, bottom: 4 }}
           tooltip={{
             formatValue: (v) => formatClp(v),
@@ -76,7 +88,7 @@ export function CcInstallmentHistoryChart({
               if (!d) return null;
               return (
                 <div style={{ fontSize: 12 }}>
-                  <div style={{ marginBottom: 6, fontWeight: 600 }}>{formatYmEs(String(label))}</div>
+                  <div style={{ marginBottom: 6, fontWeight: 600 }}>{periodLabel(String(label))}</div>
                   <div>
                     {t("accountDetail.creditCard.colCupoEnCuotas")}:{" "}
                     {d.cupo_en_cuotas_clp != null ? formatClp(d.cupo_en_cuotas_clp) : "—"}
@@ -86,7 +98,12 @@ export function CcInstallmentHistoryChart({
                     {d.balance_total_clp != null ? formatClp(d.balance_total_clp) : "—"}
                   </div>
                   <div>
-                    Pagos del mes: {formatClp(d.installment_payments_clp)}
+                    {t(
+                      isYearly
+                        ? "accountDetail.creditCard.tooltipPagosYear"
+                        : "accountDetail.creditCard.tooltipPagosMonth"
+                    )}
+                    : {formatClp(d.installment_payments_clp)}
                   </div>
                   {d.facturado_clp != null && Number.isFinite(d.facturado_clp) ? (
                     <div>
@@ -104,7 +121,7 @@ export function CcInstallmentHistoryChart({
             dataKey="month"
             type="category"
             tick={{ fontSize: 10, fill: "#94a3b8" }}
-            tickFormatter={(ym: string) => formatYmEs(String(ym))}
+            tickFormatter={(ym: string) => periodLabel(String(ym))}
             axisLine={{ stroke: AXIS_STROKE }}
             tickLine={{ stroke: AXIS_STROKE }}
             interval="preserveStartEnd"
@@ -130,9 +147,11 @@ export function CcInstallmentHistoryChart({
               strokeWidth={1.5}
               label={{
                 value: t(
-                  openBillingMonth
-                    ? "accountDetail.creditCard.historialOpenMonth"
-                    : "accountDetail.creditCard.historialCurrentMonth"
+                  isYearly
+                    ? "accountDetail.creditCard.historialCurrentYear"
+                    : openBillingMonth
+                      ? "accountDetail.creditCard.historialOpenMonth"
+                      : "accountDetail.creditCard.historialCurrentMonth"
                 ),
                 position: "insideTopRight",
                 fill: CURRENT_MONTH_STROKE,
@@ -149,7 +168,11 @@ export function CcInstallmentHistoryChart({
           />
           <Bar
             dataKey="installment_payments_clp"
-            name="Pagos de cuotas (mes)"
+            name={t(
+              isYearly
+                ? "accountDetail.creditCard.chartInstallmentPaymentsYear"
+                : "accountDetail.creditCard.chartInstallmentPaymentsMonth"
+            )}
             fill="#64748b"
             maxBarSize={32}
             radius={[2, 2, 0, 0]}
