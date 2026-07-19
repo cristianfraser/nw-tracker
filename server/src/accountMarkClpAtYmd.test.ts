@@ -5,9 +5,12 @@ import {
   deptoPaymentHumanNote,
   deptoSueciaNetEquityUfBySnapshotDates,
   insertDeptoPaymentRow,
+  mortgageSheetPaymentEventsThroughDate,
   sheetRowToPaymentRow,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
+import { buildDashboardAccountRows } from "./dashboardAccounts.js";
+import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import {
   DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,
   deptoAccountMarkClpAtYmd,
@@ -217,12 +220,29 @@ beforeAll(() => {
       });
     }
   }
+
+  // Month-end snapshots so the mortgage perf series has rows (closes themselves are
+  // recomputed from the UF ledger; stored values only anchor snapshot dates).
+  if (fixtureMortgageId != null) {
+    const today = chileCalendarTodayYmd();
+    const monthEnds = new Set<string>();
+    for (const { r } of rows) {
+      const [y, m] = r.occurred_on.split("-").map(Number);
+      const me = new Date(Date.UTC(y!, m!, 0)).toISOString().slice(0, 10);
+      if (me <= today) monthEnds.add(me);
+    }
+    const insVal = db.prepare(
+      `INSERT OR IGNORE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`
+    );
+    for (const me of monthEnds) insVal.run(fixtureMortgageId, me, 150_000_000);
+  }
 });
 
 afterAll(() => {
   for (const id of [fixturePropertyId, fixtureMortgageId]) {
     if (id == null) continue;
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(id);
+    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   }
 });
@@ -391,5 +411,89 @@ describe("depto mortgage live perf row", () => {
     expect(Number.isFinite(cur.uf_clp_day)).toBe(true);
     expect(cur.closing_balance_uf).not.toBeNull();
     expect(Number.isFinite(cur.closing_balance_uf)).toBe(true);
+  });
+});
+
+function mortgageMasterRow(): { id: number } | undefined {
+  return db
+    .prepare(
+      `SELECT a.id FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage') AND a.account_kind = 'master'
+       ORDER BY (a.import_key = 'import:excel|key=mortgage') DESC
+       LIMIT 1`
+    )
+    .get() as { id: number } | undefined;
+}
+
+describe("mortgage P/L sign convention", () => {
+  it("nominal_pl = prior − close − payments on every row; lifetime P/L is a loss", () => {
+    if (!loadDeptoLedgerFromMovements().length) return;
+    const row = mortgageMasterRow();
+    if (!row) return;
+
+    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    if (!perf?.monthly.length) return;
+
+    let sawPaymentMonth = false;
+    for (const r of perf.monthly) {
+      if (r.prior_closing == null || r.nominal_pl == null) continue;
+      expect(r.nominal_pl).toBeCloseTo(
+        r.prior_closing - r.closing_value - r.net_capital_flow,
+        2
+      );
+      if (r.net_capital_flow > 0) sawPaymentMonth = true;
+    }
+    expect(sawPaymentMonth).toBe(true);
+
+    const cum = perf.monthly[0]?.cumulative_nominal_pl;
+    expect(cum).not.toBeNull();
+    expect(cum!).toBeLessThan(0);
+  });
+});
+
+describe("mortgage dashboard card metrics", () => {
+  it("deposits = ledger payments and deltas = perf financing-cost P/L (not balance − deposits)", async () => {
+    const ledger = loadDeptoLedgerFromMovements();
+    if (!ledger.length) return;
+    const master = mortgageMasterRow();
+    if (!master) return;
+
+    const today = chileCalendarTodayYmd();
+    const events = mortgageSheetPaymentEventsThroughDate(ledger, today);
+    const expectedDeposits = events.reduce((s, e) => s + e.pago_clp, 0);
+    if (expectedDeposits <= 0) return;
+    const priorMonthEnd = priorPeriodEndYmd("mtd", today);
+    const expectedMonthDeposits = events
+      .filter((e) => e.occurred_on > priorMonthEnd)
+      .reduce((s, e) => s + e.pago_clp, 0);
+
+    const perf = getAccountMonthlyPerformance(master.id, "clp");
+    const cum = perf?.monthly[0]?.cumulative_nominal_pl ?? null;
+
+    const view = db
+      .prepare(
+        `SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`
+      )
+      .get(master.id) as { id: number } | undefined;
+    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
+
+    let checked = 0;
+    for (const id of [master.id, view?.id]) {
+      if (id == null) continue;
+      const dash = rows.find((r) => r.account_id === id);
+      if (!dash) continue;
+      checked += 1;
+      expect(dash.deposits_clp).toBe(expectedDeposits);
+      expect(dash.deposits_month_clp).toBe(expectedMonthDeposits);
+      if (cum != null) {
+        expect(dash.delta_total_clp).toBeCloseTo(cum, 2);
+        expect(dash.delta_total_clp!).toBeLessThan(0);
+      } else {
+        // No perf series (no snapshots): honest null, never balance − deposits.
+        expect(dash.delta_total_clp).toBeNull();
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

@@ -451,7 +451,7 @@
     "sameBaseAsValuation": "Misma base que valorización y aportes.",
     "ytdCalendarTitle": "YTD (año calendario)",
     "plMonthlyVsYtdTitle": "P/L mensual vs YTD",
-    "financingCostMonth": "Coste financiero mes",
+    "financingCostMonth": "P/L mes (coste financiero)",
     "deltaMonthNominal": "Δ mes (P/L nominal)",
     "monthlyDelta": "Δ mensual",
     "monthlyDeltaAndAccumTitle": "Δ mensual y ganancias acumuladas",
@@ -561,15 +561,15 @@
     "balanceUfColumn": "Saldo UF",
     "netDepositsColumn": "Aportes netos",
     "perf": {
-      "plMortgage": "Coste financiero",
+      "plMortgage": "P/L (coste financiero)",
       "plInvestment": "P/L",
       "pctInvestmentYearly": "% año",
       "pctInvestmentMonthly": "% mes",
-      "ytdMortgageYearly": "Coste financiero DTD",
-      "ytdMortgageMonthly": "Coste financiero YTD",
+      "ytdMortgageYearly": "P/L DTD",
+      "ytdMortgageMonthly": "P/L YTD",
       "ytdInvestmentYearly": "P/L DTD",
       "ytdInvestmentMonthly": "P/L YTD",
-      "cumMortgage": "Coste financiero acum.",
+      "cumMortgage": "P/L acum.",
       "cumInvestment": "P/L acum.",
       "inflowAfp": "Cuotas (aportes)",
       "inflowDefault": "Stock inflows"
@@ -754,7 +754,7 @@
       "associatedCardsHint": "Números de tarjeta física con estados importados en esta cuenta."
     },
     "monthlyPerfIntro": "Dos gráficos: (1) P/L mensual vs <1>YTD</1> (área reinicia cada enero). (2) mismo Δ mensual con área <3>Accumulated earnings</3> (continua desde el primer mes, sin franjas por año). La tabla conserva el detalle.",
-    "monthlyPerfMortgageNote": " En hipoteca, <1>P/L mes</1> = aportes netos − baja de saldo en CLP (coste UF + intereses vs amortización visible), no la fórmula de inversión.",
+    "monthlyPerfMortgageNote": " En hipoteca, <1>P/L mes</1> = baja de saldo en CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF), no la fórmula de inversión.",
     "monthlyPerfCcLedgerNote": " Las valorizaciones mensuales de esta cuenta se escriben en la base al importar el CSV del PDF; las pestañas de clase (p. ej. Liabilities) leen la misma tabla.",
     "monthlyPerfUnit": " Unidad: <1>{{unit}}</1>",
     "monthlyPerfNotEnough": "Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un punto).",
@@ -806,8 +806,8 @@
       "mortgageSectionHint": "Cuotas, saldo y coste financiero desde la planilla de dividendos.",
       "mortgageValuationTitle": "Valorización",
       "mortgagePerfTitle": "Rendimiento mensual (calculado)",
-      "mortgagePerfHint": "En hipoteca, P/L mes = coste financiero (intereses y variación UF), no la fórmula de inversión.",
-      "mortgageYtdChartTitle": "Coste financiero mensual vs YTD",
+      "mortgagePerfHint": "En hipoteca, P/L mes = amortización CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF).",
+      "mortgageYtdChartTitle": "P/L mensual vs YTD (coste financiero)",
       "mortgageAccChartTitle": "Coste financiero mensual y acumulado",
       "mortgageBarMonthlyCost": "Coste financiero mes"
     }
