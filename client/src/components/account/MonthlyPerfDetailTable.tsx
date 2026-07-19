@@ -52,11 +52,6 @@ function formatPerfPeriodLabel(asOfDate: string, isYearly: boolean): string {
   return formatYmEs(ym);
 }
 
-function decadeStartYear(y: number): number {
-  // Decade: 2020–2029, 2010–2019, etc. (resets on years ending in 0)
-  return y - (y % 10);
-}
-
 function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {
   if (!rows.length) return [];
 
@@ -67,11 +62,7 @@ function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {
     byYear.get(year)!.push(row);
   }
 
-  // Build annual rows ascending, then compute DTD as running sum within each decade
   const yearsAsc = [...byYear.keys()].sort((a, b) => a.localeCompare(b));
-
-  let dtdSum = 0;
-  let currentDecadeStart = -1;
 
   const ascRows: PerfRow[] = yearsAsc.map((year) => {
     const monthRows = byYear.get(year)!;
@@ -89,15 +80,6 @@ function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {
       return prod * (1 + (p != null && Number.isFinite(p) ? p : 0));
     }, 1) - 1;
 
-    // DTD: running sum within decade, reset at decade boundary
-    const y = Number(year);
-    const ds = decadeStartYear(y);
-    if (ds !== currentDecadeStart) {
-      dtdSum = 0;
-      currentDecadeStart = ds;
-    }
-    dtdSum += nominalPl;
-
     const mortgageLast = latest as AccountMonthlyPerformanceRow;
 
     return {
@@ -107,7 +89,7 @@ function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {
       stock_units_inflow: stockUnitsInflow,
       nominal_pl: nominalPl,
       pct_month: pctYear,
-      ytd_nominal_pl: dtdSum,
+      ytd_nominal_pl: null,
       cumulative_nominal_pl: latest.cumulative_nominal_pl,
       closing_value: latest.closing_value,
       closing_balance_uf: mortgageLast.closing_balance_uf,
@@ -181,7 +163,9 @@ function MonthlyPerfDetailMobileCard({
         {!isMortgageAccount ? (
           <TableMobileCardRow label={labels.pct} value={cellPct(row.pct_month)} />
         ) : null}
-        <TableMobileCardRow label={labels.ytd} value={fmtPerf(row.ytd_nominal_pl)} />
+        {!isYearly ? (
+          <TableMobileCardRow label={labels.ytd} value={fmtPerf(row.ytd_nominal_pl)} />
+        ) : null}
         <TableMobileCardRow label={labels.cum} value={fmtPerf(row.cumulative_nominal_pl)} />
       </TableMobileCardSection>
     </TableMobileCard>
@@ -228,8 +212,8 @@ export function MonthlyPerfDetailTable({
     ? t("accountDetail.perf.pctInvestmentYearly")
     : t("accountDetail.perf.pctInvestmentMonthly");
   const ytdLabel = isMortgageAccount
-    ? (isYearly ? t("accountDetail.perf.ytdMortgageYearly") : t("accountDetail.perf.ytdMortgageMonthly"))
-    : (isYearly ? t("accountDetail.perf.ytdInvestmentYearly") : t("accountDetail.perf.ytdInvestmentMonthly"));
+    ? t("accountDetail.perf.ytdMortgageMonthly")
+    : t("accountDetail.perf.ytdInvestmentMonthly");
   const cumLabel = isMortgageAccount ? t("accountDetail.perf.cumMortgage") : t("accountDetail.perf.cumInvestment");
   const inflowLabel = isAfpAccount ? t("accountDetail.perf.inflowAfp") : t("accountDetail.perf.inflowDefault");
 
@@ -280,7 +264,7 @@ export function MonthlyPerfDetailTable({
         ) : null}
         <th className="desktop-only">{plLabel}</th>
         {!isMortgageAccount ? <th className="desktop-only">{pctLabel}</th> : null}
-        <th className="desktop-only">{ytdLabel}</th>
+        {!isYearly ? <th className="desktop-only">{ytdLabel}</th> : null}
         <th className="desktop-only">{cumLabel}</th>
         <th className="mobile-only" aria-hidden="true" />
       </tr>
@@ -324,7 +308,9 @@ export function MonthlyPerfDetailTable({
               {!isMortgageAccount ? (
                 <td className="mono desktop-only">{cellPct(row.pct_month)}</td>
               ) : null}
-              <td className="mono desktop-only">{fmtPerf(row.ytd_nominal_pl)}</td>
+              {!isYearly ? (
+                <td className="mono desktop-only">{fmtPerf(row.ytd_nominal_pl)}</td>
+              ) : null}
               <td className="mono desktop-only">{fmtPerf(row.cumulative_nominal_pl)}</td>
               <td className="mobile-only">
                 <MonthlyPerfDetailMobileCard
