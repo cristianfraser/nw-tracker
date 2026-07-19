@@ -215,7 +215,11 @@ export function ExpensesPage() {
       />
 
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-        {t("accountDetail.monthlyDetailTitle")}
+        {t(
+          chartGranularity === "year"
+            ? "accountDetail.yearlyDetailTitle"
+            : "accountDetail.monthlyDetailTitle"
+        )}
         <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(view.total, displayUnit)}
           {view.total_real !== view.total ? (
