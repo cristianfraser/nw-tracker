@@ -188,7 +188,13 @@ export function GroupInfoBase({
                 <PeriodReturnsStrip data={periodReturns} displayUnit={displayUnit} />
               </>
             ) : null}
-            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.monthlyDetailTitle")}</h2>
+            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>
+              {t(
+                metricsPeriod === "year"
+                  ? "groupPage.yearlyDetailTitle"
+                  : "groupPage.monthlyDetailTitle"
+              )}
+            </h2>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
               {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
             </p>

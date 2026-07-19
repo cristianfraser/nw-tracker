@@ -383,7 +383,13 @@ export function StandardAccountDetailPage({ data }: Props) {
                   alternateYearAreaStripes={false}
                 />
               </div>
-              <h3 className={styles.subsectionTitleMid}>{t("accountDetail.monthlyDetailTitle")}</h3>
+              <h3 className={styles.subsectionTitleMid}>
+                {t(
+                  metricsPeriod === "year"
+                    ? "accountDetail.yearlyDetailTitle"
+                    : "accountDetail.monthlyDetailTitle"
+                )}
+              </h3>
               <MonthlyPerfDetailTable
                 key={`${id}-${displayUnit}-mp-detail`}
                 rows={monthlyPerfRows}

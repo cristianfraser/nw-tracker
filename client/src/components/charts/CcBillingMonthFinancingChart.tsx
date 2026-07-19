@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { Area, Bar, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
 import type { CcBillingMonthChartPoint } from "../../types";
+import { rollupCcBillingMonthChartYearly } from "../../ccYearlyRollup";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   buildNiceYAxis,
@@ -54,19 +56,21 @@ export function CcBillingMonthFinancingChart({
   displayUnit: ChartDisplayUnit;
 }) {
   const { t } = useTranslation();
+  const { metricsPeriod } = useDisplayPreferences();
+  const isYearly = metricsPeriod === "year";
   const TitleTag = titleAs;
+  const periodLabel = (ym: string) => (isYearly ? ym.slice(0, 4) : formatYmEs(ym));
 
-  const plotPoints = useMemo(
-    () =>
-      points.map((p) => ({
-        ...p,
-        facturado_clp: p.facturado_clp ?? 0,
-        facturado_usd_clp: p.facturado_usd_clp ?? 0,
-        financing_cost_clp: p.financing_cost_clp ?? 0,
-        ytd_financing_cost_clp: p.ytd_financing_cost_clp ?? null,
-      })),
-    [points]
-  );
+  const plotPoints = useMemo(() => {
+    const displayPoints = isYearly ? rollupCcBillingMonthChartYearly(points) : points;
+    return displayPoints.map((p) => ({
+      ...p,
+      facturado_clp: p.facturado_clp ?? 0,
+      facturado_usd_clp: p.facturado_usd_clp ?? 0,
+      financing_cost_clp: p.financing_cost_clp ?? 0,
+      ytd_financing_cost_clp: p.ytd_financing_cost_clp ?? null,
+    }));
+  }, [points, isYearly]);
 
   const yScale = useMemo(() => {
     const { min, max } = minMaxForKeys(plotPoints, [
@@ -95,7 +99,7 @@ export function CcBillingMonthFinancingChart({
           data={plotPoints}
           tooltip={{
             formatValue: (v) => formatAxisValue(v, displayUnit),
-            formatLabel: (l) => formatYmEs(String(l)),
+            formatLabel: (l) => periodLabel(String(l)),
             mapPayload: (payload) =>
               payload.filter((e) => typeof e.value === "number" && Number.isFinite(e.value)),
             footer: (
@@ -113,7 +117,7 @@ export function CcBillingMonthFinancingChart({
               tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_STROKE }}
               tickLine={{ stroke: AXIS_STROKE }}
-              tickFormatter={(ym: string) => formatYmEs(String(ym))}
+              tickFormatter={(ym: string) => periodLabel(String(ym))}
               interval="preserveStartEnd"
             />
             <YAxis
@@ -129,19 +133,21 @@ export function CcBillingMonthFinancingChart({
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
               formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
             />
-            <Area
-              type="monotone"
-              dataKey="ytd_financing_cost_clp"
-              name={t("accountDetail.creditCard.chartFinancingYtd")}
-              stroke={YTD_AREA_STROKE}
-              fill={YTD_AREA_FILL}
-              fillOpacity={1}
-              strokeWidth={1.2}
-              connectNulls
-              legendType="rect"
-              isAnimationActive
-              animationDuration={CHART_ANIM_MS}
-            />
+            {!isYearly ? (
+              <Area
+                type="monotone"
+                dataKey="ytd_financing_cost_clp"
+                name={t("accountDetail.creditCard.chartFinancingYtd")}
+                stroke={YTD_AREA_STROKE}
+                fill={YTD_AREA_FILL}
+                fillOpacity={1}
+                strokeWidth={1.2}
+                connectNulls
+                legendType="rect"
+                isAnimationActive
+                animationDuration={CHART_ANIM_MS}
+              />
+            ) : null}
             <Bar
               dataKey="facturado_clp"
               name={t("accountDetail.creditCard.chartFacturadoClp")}
