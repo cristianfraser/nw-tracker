@@ -2,11 +2,17 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
+import {
+  DISPLAY_UNIT_LS_KEY,
+  METRICS_PERIOD_LS_KEY,
+  parsePreferenceStorageChange,
+} from "../displayPreferenceStorageSync";
 import { setDecimalSeparatorForFormatting } from "../format";
 import i18n from "../i18n";
 import {
@@ -21,14 +27,12 @@ import {
 } from "../numberFormatPreference";
 import type { DisplayUnit } from "../queries/keys";
 
-const LS_UNIT = "nw-tracker.displayUnit";
-const LS_METRICS_PERIOD = "nw-tracker.metricsPeriod";
 /** Legacy key when period was stored as dashboard-style `monthly` | `yearly`. */
 const LS_CHART_GRANULARITY_LEGACY = "nw-tracker.chartGranularity";
 
 function readStoredUnit(): DisplayUnit {
   try {
-    const v = localStorage.getItem(LS_UNIT);
+    const v = localStorage.getItem(DISPLAY_UNIT_LS_KEY);
     if (v === "usd" || v === "clp") return v;
   } catch {
     /* ignore */
@@ -38,7 +42,7 @@ function readStoredUnit(): DisplayUnit {
 
 function readStoredMetricsPeriod(): CardGroupMetricsPeriod {
   try {
-    const v = localStorage.getItem(LS_METRICS_PERIOD);
+    const v = localStorage.getItem(METRICS_PERIOD_LS_KEY);
     if (v === "year" || v === "month") return v;
     const legacy = localStorage.getItem(LS_CHART_GRANULARITY_LEGACY);
     if (legacy === "yearly") return "year";
@@ -73,10 +77,25 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   );
   const [language, setLanguageState] = useState<AppLanguage>(readInitialLanguage);
 
+  // Each preference splits into apply (side effects + state, shared with the
+  // cross-tab storage handler below) and set (apply + persist; user-initiated).
+  const applyDecimalSeparator = useCallback((s: DecimalSeparator) => {
+    // Update the module-level formatter locale before React re-renders.
+    setDecimalSeparatorForFormatting(s);
+    setDecimalSeparatorState(s);
+  }, []);
+
+  const applyLanguage = useCallback((l: AppLanguage) => {
+    // changeLanguage notifies react-i18next subscribers; the context state change
+    // re-renders AppTree top-down so module-level i18n.t helpers re-run too.
+    void i18n.changeLanguage(l);
+    setLanguageState(l);
+  }, []);
+
   const setDisplayUnit = useCallback((u: DisplayUnit) => {
     setDisplayUnitState(u);
     try {
-      localStorage.setItem(LS_UNIT, u);
+      localStorage.setItem(DISPLAY_UNIT_LS_KEY, u);
     } catch {
       /* ignore */
     }
@@ -85,26 +104,52 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   const setMetricsPeriod = useCallback((p: CardGroupMetricsPeriod) => {
     setMetricsPeriodState(p);
     try {
-      localStorage.setItem(LS_METRICS_PERIOD, p);
+      localStorage.setItem(METRICS_PERIOD_LS_KEY, p);
     } catch {
       /* ignore */
     }
   }, []);
 
-  const setDecimalSeparator = useCallback((s: DecimalSeparator) => {
-    // Update the module-level formatter locale before React re-renders.
-    setDecimalSeparatorForFormatting(s);
-    persistDecimalSeparator(s);
-    setDecimalSeparatorState(s);
-  }, []);
+  const setDecimalSeparator = useCallback(
+    (s: DecimalSeparator) => {
+      applyDecimalSeparator(s);
+      persistDecimalSeparator(s);
+    },
+    [applyDecimalSeparator]
+  );
 
-  const setLanguage = useCallback((l: AppLanguage) => {
-    // changeLanguage notifies react-i18next subscribers; the context state change
-    // re-renders AppTree top-down so module-level i18n.t helpers re-run too.
-    void i18n.changeLanguage(l);
-    persistLanguage(l);
-    setLanguageState(l);
-  }, []);
+  const setLanguage = useCallback(
+    (l: AppLanguage) => {
+      applyLanguage(l);
+      persistLanguage(l);
+    },
+    [applyLanguage]
+  );
+
+  // Cross-tab sync: another tab's preference write lands here as a `storage`
+  // event (other tabs only, value actually changed) — apply without persisting.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      const change = parsePreferenceStorageChange(e.key, e.newValue);
+      if (!change) return;
+      switch (change.pref) {
+        case "displayUnit":
+          setDisplayUnitState(change.value);
+          break;
+        case "metricsPeriod":
+          setMetricsPeriodState(change.value);
+          break;
+        case "decimalSeparator":
+          applyDecimalSeparator(change.value);
+          break;
+        case "language":
+          applyLanguage(change.value);
+          break;
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [applyDecimalSeparator, applyLanguage]);
 
   const value = useMemo(
     (): DisplayPreferencesContextValue => ({
