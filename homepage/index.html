@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cristian Fraser</title>
-    <meta name="description" content="Cristian Fraser — projects" />
+    <meta name="description" content="Cristian Fraser — projects and work history" />
     <style>
       :root {
         color-scheme: light dark;
@@ -58,7 +58,7 @@
       a.card:hover {
         border-color: var(--accent);
       }
-      .card h2 {
+      .card h3 {
         font-size: 1.05rem;
         font-weight: 650;
         margin: 0 0 0.3rem;
@@ -76,6 +76,51 @@
         color: var(--muted);
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
+      h2.section-title {
+        font-size: 0.85rem;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 2.75rem 0 1rem;
+      }
+      .tagline + h2.section-title {
+        margin-top: 0;
+      }
+      .rows {
+        display: grid;
+        gap: 1.1rem;
+      }
+      @media (min-width: 640px) {
+        .rows {
+          max-width: 50%;
+        }
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 0.75rem;
+      }
+      .row .name {
+        font-weight: 650;
+        font-size: 1rem;
+      }
+      .row a.link {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.8rem;
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .row a.link:hover {
+        text-decoration: underline;
+      }
+      .row .blurb {
+        flex-basis: 100%;
+        margin: 0.2rem 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
       footer {
         margin-top: 3rem;
         font-size: 0.85rem;
@@ -89,11 +134,13 @@
   </head>
   <body>
     <h1>Cristian Fraser</h1>
-    <p class="tagline">Software projects</p>
+    <p class="tagline">Software engineer</p>
+
+    <h2 class="section-title">Personal projects</h2>
 
     <div class="cards">
       <a class="card" href="https://nw-tracker-demo.onrender.com/">
-        <h2>nw-tracker</h2>
+        <h3>nw-tracker</h3>
         <p>
           Personal net-worth &amp; cash-flow tracker: multi-currency portfolio (CLP/USD/UF),
           market-data sync, credit-card statement PDF parsing, and flow reconciliation.
@@ -103,14 +150,68 @@
       </a>
 
       <a class="card" href="https://poketeam.crfrsr.io">
-        <h2>PokeTeam</h2>
-        <p>Side project.</p>
+        <h3>PokeTeam</h3>
+        <p>Build your Pok&eacute;mon team and see how it performs against others.</p>
         <span class="domain">poketeam.crfrsr.io</span>
       </a>
     </div>
 
+    <h2 class="section-title">Work history</h2>
+
+    <div class="rows">
+      <div class="row">
+        <span class="name">Perficient</span>
+        <a class="link" href="https://www.activedisclosure.com/">activedisclosure.com</a>
+        <p class="blurb">
+          ActiveDisclosure &mdash; DFIN's collaborative SEC financial-reporting platform
+          (document drafting, review, and filing).
+        </p>
+      </div>
+
+      <div class="row">
+        <span class="name">Depando</span>
+        <a class="link" href="https://www.depando.cl/">depando.cl</a>
+        <p class="blurb">
+          Platform for managing holiday rental properties &mdash; listings, bookings, and
+          owner operations.
+        </p>
+      </div>
+
+      <div class="row">
+        <span class="name">JetBridge</span>
+        <a class="link" href="https://www.invitae.com/">invitae.com</a>
+        <p class="blurb">
+          Internal CMS powering medical content for Invitae, the US medical-genetics
+          company. Next.js.
+        </p>
+      </div>
+
+      <div class="row">
+        <span class="name">Klare</span>
+        <p class="blurb">
+          Chilean insurtech &mdash; fully digital insurance sales across life, sports, and
+          pet verticals. Acquired by Santander.
+        </p>
+      </div>
+
+      <div class="row">
+        <span class="name">DealSyte</span>
+        <a class="link" href="https://www.finalis.com/">finalis.com</a>
+        <p class="blurb">
+          Deal platform for M&amp;A and investment banking &mdash; now Finalis.
+        </p>
+      </div>
+
+      <div class="row">
+        <span class="name">Tech-K</span>
+        <a class="link" href="https://techk.cl/">techk.cl</a>
+        <p class="blurb">
+          B2B supply-chain/retail intelligence for consumer brands.
+        </p>
+      </div>
+    </div>
+
     <footer>
-      <a href="/about.html">About the nw-tracker project</a> ·
       <a href="mailto:cristian.fraser@gmail.com">cristian.fraser@gmail.com</a>
     </footer>
   </body>
