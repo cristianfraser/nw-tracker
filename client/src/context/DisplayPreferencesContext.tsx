@@ -43,7 +43,7 @@ function readStoredUnit(): DisplayUnit {
 function readStoredMetricsPeriod(): CardGroupMetricsPeriod {
   try {
     const v = localStorage.getItem(METRICS_PERIOD_LS_KEY);
-    if (v === "year" || v === "month") return v;
+    if (v === "day" || v === "year" || v === "month") return v;
     const legacy = localStorage.getItem(LS_CHART_GRANULARITY_LEGACY);
     if (legacy === "yearly") return "year";
     if (legacy === "monthly") return "month";

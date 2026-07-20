@@ -208,7 +208,15 @@ function titleDeltaFromVariant(
 ): number | null {
   const t = variant.title_delta;
   if (period === "month") return showUsd ? t.month_usd : t.month_clp;
+  if (period === "day") return showUsd ? t.day_usd : t.day_clp;
   return showUsd ? t.year_usd : t.year_clp;
+}
+
+function periodMetricsFromVariant(
+  variant: NavCardMetricsVariantDto,
+  period: CardGroupMetricsPeriod
+): CardGroupMetrics {
+  return period === "month" ? variant.month : period === "day" ? variant.day : variant.year;
 }
 
 /** Title Δ for a nav strip child (server-computed; full bucket totals vs subtree per node). */
@@ -228,7 +236,7 @@ export function mainValueAndMetricsForNavChild(
   showUsd: boolean
 ): { clp: number; apiUsd: number | null; metrics: CardGroupMetrics } {
   const entry = requireNavCardMetrics(dash, navChild);
-  const metrics = metricsPeriod === "month" ? entry.child.month : entry.child.year;
+  const metrics = periodMetricsFromVariant(entry.child, metricsPeriod);
   const fullBucket = usesFullDashboardBucketTotals(navChild);
   if (fullBucket) {
     return { ...dashboardBucketMainValue(dash.totals, fullBucket, showUsd), metrics };
@@ -265,8 +273,14 @@ export function inactiveAccountRowHasPeriodActivity(
   period: CardGroupMetricsPeriod
 ): boolean {
   const material = (v: number | null | undefined) => v != null && Math.abs(v) >= 0.5;
-  const deposits = period === "month" ? row.deposits_month_clp : row.deposits_year_clp;
-  const delta = period === "month" ? row.delta_month_clp : row.delta_year_clp;
+  const deposits =
+    period === "month"
+      ? row.deposits_month_clp
+      : period === "day"
+        ? row.deposits_day_clp
+        : row.deposits_year_clp;
+  const delta =
+    period === "month" ? row.delta_month_clp : period === "day" ? row.delta_day_clp : row.delta_year_clp;
   return (
     material(row.current_value_clp) ||
     material(deposits) ||
@@ -353,7 +367,9 @@ export function cardGroupMetricsFromConsolidatedHubPeriodMetrics(
     "deposits_clp" | "deposits_usd" | "delta_total_clp" | "delta_total_usd"
   >
 ): CardGroupMetrics {
-  const slice = period === "month" ? hubMetrics.month : hubMetrics.year;
+  // The consolidated hub series is monthly — no day slice exists (server composes day from
+  // child buckets); day renders the no-slice shape here.
+  const slice = period === "month" ? hubMetrics.month : period === "day" ? null : hubMetrics.year;
   if (!slice) {
     return {
       ...lifetime,
@@ -418,8 +434,7 @@ export function portfolioNavParentMetrics(
   parentNavNode: NavTreeNodeDto,
   period: CardGroupMetricsPeriod
 ): CardGroupMetrics {
-  const variant = requireNavCardMetrics(dash, parentNavNode).parent;
-  return period === "month" ? variant.month : variant.year;
+  return periodMetricsFromVariant(requireNavCardMetrics(dash, parentNavNode).parent, period);
 }
 
 /** Parent title balance Δ mode from the matched nav node (`asset_group_slug`, hub children, or subtree). */

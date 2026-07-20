@@ -406,6 +406,10 @@
       "en": "Yearly",
       "es": "Anual"
     },
+    "daily": {
+      "en": "Daily",
+      "es": "Diario"
+    },
     "cards": {
       "netWorth": {
         "en": "Net worth",
@@ -635,6 +639,10 @@
         "en": "Year's deposits",
         "es": "Depósitos del año"
       },
+      "periodDepositsDay": {
+        "en": "Day's deposits",
+        "es": "Depósitos del día"
+      },
       "periodDeltaMonth": {
         "en": "Month P/L",
         "es": "P/L del mes"
@@ -642,6 +650,10 @@
       "periodDeltaYear": {
         "en": "Year P/L",
         "es": "P/L del año"
+      },
+      "periodDeltaDay": {
+        "en": "Day P/L",
+        "es": "P/L del día"
       },
       "summaryAria": {
         "en": "Deposits and total and period Δ",

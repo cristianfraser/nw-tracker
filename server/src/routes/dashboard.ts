@@ -19,6 +19,11 @@ import {
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
+import { DAILY_SERIES_MAX_SESSIONS } from "../dailySeries.js";
+import {
+  getDashboardOverviewDaily,
+  OVERVIEW_DAILY_DEFAULT_SESSIONS,
+} from "../dashboardOverviewDaily.js";
 import { getGroupConsolidatedMonthlyPage, getGroupConsolidatedTables } from "../groupConsolidatedTables.js";
 import {
   buildGroupFlows,
@@ -51,6 +56,18 @@ app.get("/api/dashboard/page-bundle", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(await buildDashboardPageBundle(unit));
+}));
+
+/** Daily net-worth series (one point per NYSE session) for the day period view. */
+app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const sessions =
+    req.query.sessions != null ? Number(req.query.sessions) : OVERVIEW_DAILY_DEFAULT_SESSIONS;
+  if (!Number.isInteger(sessions) || sessions < 1 || sessions > DAILY_SERIES_MAX_SESSIONS) {
+    res.status(400).json({ error: `sessions must be 1..${DAILY_SERIES_MAX_SESSIONS}` });
+    return;
+  }
+  res.json(getDashboardOverviewDaily(includeUsd ? "usd" : "clp", sessions));
 }));
 
 app.get("/api/dashboard", asyncHandler(async (req, res) => {

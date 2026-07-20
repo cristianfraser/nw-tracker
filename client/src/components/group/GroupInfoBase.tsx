@@ -18,7 +18,7 @@ import {
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
-import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import { monthYearMetricsPeriod, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { InversionesPeriodMetricsDto } from "../../portfolioNavDashboardCards";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
@@ -119,7 +119,8 @@ export function GroupInfoBase({
   const serverMonthly = useGroupConsolidatedMonthlyPage(
     portfolio?.groupSlug ?? "",
     displayUnit,
-    metricsPeriod,
+    // Detalle tables are month/year surfaces — the day toggle renders the monthly view.
+    monthYearMetricsPeriod(metricsPeriod),
     monthlyPage,
     MONTHLY_PERF_DETAIL_PAGE_SIZE,
     tablesFetchEnabled && serverPaginatedMonthlyDetail
