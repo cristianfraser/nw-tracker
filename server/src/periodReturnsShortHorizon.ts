@@ -30,7 +30,8 @@ export type ShortHorizonAccountRef = {
   exclude_from_group_totals?: number;
 };
 
-function includeAccount(a: ShortHorizonAccountRef): boolean {
+/** Accounts that participate in bucket values/flows (shared with the daily series builder). */
+export function includeShortHorizonAccount(a: ShortHorizonAccountRef): boolean {
   return a.account_id > 0 && a.exclude_from_group_totals !== 1;
 }
 
@@ -50,8 +51,11 @@ function convertLegToUnit(rawClp: number, ymd: string, unit: TsUnit, now: Date):
   return convertTs(rawClp, ymd, unit);
 }
 
-/** Sum per-account CLP marks at `ymd`, converted once to `unit`; null when no account marks. */
-function bucketValueInUnitAt(
+/**
+ * Sum per-account CLP marks at `ymd`, converted once to `unit`; null when no account marks.
+ * Shared with the daily series builder (`dailySeries.ts`) so both derive identical legs.
+ */
+export function bucketValueInUnitAt(
   accounts: readonly ShortHorizonAccountRef[],
   ymd: string,
   unit: TsUnit,
@@ -60,7 +64,7 @@ function bucketValueInUnitAt(
   let rawClp = 0;
   let any = false;
   for (const a of accounts) {
-    if (!includeAccount(a)) continue;
+    if (!includeShortHorizonAccount(a)) continue;
     const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
       import_key: a.import_key ?? null,
       name: a.name ?? null,
@@ -134,7 +138,7 @@ function shortHorizonCell(
   const flowUnit = unit === "usd" ? "usd" : "clp";
   let flowRaw = 0;
   for (const a of accounts) {
-    if (!includeAccount(a)) continue;
+    if (!includeShortHorizonAccount(a)) continue;
     flowRaw += netDepositFlowBetween(a.account_id, startYmd, endYmd, flowUnit);
   }
   const flow = unit === "uf" ? convertTs(flowRaw, endYmd, "uf") : flowRaw;
