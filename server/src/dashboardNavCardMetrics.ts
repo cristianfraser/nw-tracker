@@ -18,7 +18,7 @@ import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import type { InversionesPeriodMetrics } from "./netWorthConsolidation.js";
 
-export type CardMetricsPeriod = "month" | "year";
+export type CardMetricsPeriod = "day" | "month" | "year";
 
 /** Mirror of the client `CardGroupMetrics` (null-vs-0 semantics preserved exactly). */
 export type CardPeriodMetricsDto = {
@@ -37,9 +37,12 @@ export type CardTitleDeltaDto = {
   month_usd: number | null;
   year_clp: number | null;
   year_usd: number | null;
+  day_clp: number | null;
+  day_usd: number | null;
 };
 
 export type NavCardMetricsVariantDto = {
+  day: CardPeriodMetricsDto;
   month: CardPeriodMetricsDto;
   year: CardPeriodMetricsDto;
   title_delta: CardTitleDeltaDto;
@@ -68,14 +71,20 @@ export type CardMetricsAccountRow = Pick<
   | "deposits_month_usd"
   | "deposits_year_clp"
   | "deposits_year_usd"
+  | "deposits_day_clp"
+  | "deposits_day_usd"
   | "delta_month_clp"
   | "delta_month_usd"
   | "delta_year_clp"
   | "delta_year_usd"
+  | "delta_day_clp"
+  | "delta_day_usd"
   | "prior_month_close_clp"
   | "prior_month_close_usd"
   | "prior_year_close_clp"
   | "prior_year_close_usd"
+  | "prior_day_close_clp"
+  | "prior_day_close_usd"
   | "current_value_clp"
   | "current_value_usd"
 >;
@@ -84,8 +93,11 @@ export type CardMetricsAccountRow = Pick<
 export type BucketTotalsForCardMetrics = {
   prior_closes: {
     month_end?: string | null;
+    /** Prior completed NYSE session (day window anchor); null when unresolvable. */
+    day_end?: string | null;
     month: Record<string, number | null | undefined>;
     year: Record<string, number | null | undefined>;
+    day?: Record<string, number | null | undefined>;
   };
 } & Record<string, unknown>;
 
@@ -195,23 +207,35 @@ export function cardMetricsFromRows(
       anyUsdTotalDelta = true;
     }
 
-    const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
+    const periodDepClp =
+      period === "month"
+        ? r.deposits_month_clp
+        : period === "day"
+          ? r.deposits_day_clp
+          : r.deposits_year_clp;
     if (periodDepClp != null && Number.isFinite(periodDepClp)) {
       deposits_period_clp += periodDepClp;
     }
 
-    const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
+    const periodDepUsd =
+      period === "month"
+        ? r.deposits_month_usd
+        : period === "day"
+          ? r.deposits_day_usd
+          : r.deposits_year_usd;
     if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
       deposits_period_usd += periodDepUsd;
       anyUsdPeriodDep = true;
     }
 
-    const periodDeltaClp = period === "month" ? r.delta_month_clp : r.delta_year_clp;
+    const periodDeltaClp =
+      period === "month" ? r.delta_month_clp : period === "day" ? r.delta_day_clp : r.delta_year_clp;
     if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
       delta_period_clp += periodDeltaClp;
       anyPeriodDeltaClp = true;
     }
-    const periodDeltaUsd = period === "month" ? r.delta_month_usd : r.delta_year_usd;
+    const periodDeltaUsd =
+      period === "month" ? r.delta_month_usd : period === "day" ? r.delta_day_usd : r.delta_year_usd;
     if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
       delta_period_usd += periodDeltaUsd;
       anyPeriodDeltaUsd = true;
@@ -312,9 +336,13 @@ function subsetPeriodBalanceDelta(
         ? unit === "usd"
           ? r.prior_year_close_usd
           : r.prior_year_close_clp
-        : unit === "usd"
-          ? r.prior_month_close_usd
-          : r.prior_month_close_clp;
+        : period === "day"
+          ? unit === "usd"
+            ? r.prior_day_close_usd
+            : r.prior_day_close_clp
+          : unit === "usd"
+            ? r.prior_month_close_usd
+            : r.prior_month_close_clp;
     const cur =
       unit === "usd"
         ? r.current_value_usd != null && Number.isFinite(r.current_value_usd)
@@ -348,8 +376,13 @@ function bucketPeriodBalanceDeltaFromTotals(
 ): number | null {
   if (!totals.prior_closes.month_end?.trim()) return null;
   const current = totals[`${bucket}_${unit}`];
-  const priorBlock = period === "year" ? totals.prior_closes.year : totals.prior_closes.month;
-  const prior = priorBlock[`${bucket}_${unit}`];
+  const priorBlock =
+    period === "year"
+      ? totals.prior_closes.year
+      : period === "day"
+        ? totals.prior_closes.day
+        : totals.prior_closes.month;
+  const prior = priorBlock?.[`${bucket}_${unit}`];
   if (current == null || typeof current !== "number" || !Number.isFinite(current)) return null;
   if (prior == null || !Number.isFinite(prior)) return null;
   return current - prior;
@@ -627,6 +660,7 @@ function childVariantForNode(
       : subsetTitleBalanceDeltaRounded(metricsRows, period, unit);
 
   return {
+    day: metricsFor("day"),
     month: metricsFor("month"),
     year: metricsFor("year"),
     title_delta: {
@@ -634,6 +668,8 @@ function childVariantForNode(
       month_usd: titleFor("month", "usd"),
       year_clp: titleFor("year", "clp"),
       year_usd: titleFor("year", "usd"),
+      day_clp: titleFor("day", "clp"),
+      day_usd: titleFor("day", "usd"),
     },
   };
 }
@@ -678,12 +714,18 @@ function parentVariantForNode(
     }
     return stripChildren.map((child) => {
       const v = childVariantBySlug.get(child.slug) ?? childVariantForNode(child, input);
-      return period === "month" ? v.month : v.year;
+      return period === "month" ? v.month : period === "day" ? v.day : v.year;
     });
   };
 
   const metricsFor = (period: CardMetricsPeriod): CardPeriodMetricsDto => {
-    if (node.slug === "inversiones" && inversiones && mode.kind === "sum_dashboard_groups") {
+    // The consolidated hub series is monthly — day composes from child buckets instead.
+    if (
+      node.slug === "inversiones" &&
+      inversiones &&
+      mode.kind === "sum_dashboard_groups" &&
+      period !== "day"
+    ) {
       const lifetime = sumCardMetrics(childMetricsOfStripChildren(period));
       const slice = period === "month" ? inversiones.month : inversiones.year;
       return hubMetricsFromConsolidated(slice, lifetime);
@@ -721,6 +763,7 @@ function parentVariantForNode(
   };
 
   return {
+    day: metricsFor("day"),
     month: metricsFor("month"),
     year: metricsFor("year"),
     title_delta: {
@@ -728,6 +771,8 @@ function parentVariantForNode(
       month_usd: titleFor("month", "usd"),
       year_clp: titleFor("year", "clp"),
       year_usd: titleFor("year", "usd"),
+      day_clp: titleFor("day", "clp"),
+      day_usd: titleFor("day", "usd"),
     },
   };
 }

@@ -25,6 +25,15 @@ export interface DashboardAccountStats {
   deposits_month_usd?: number | null;
   deposits_year_clp?: number;
   deposits_year_usd?: number | null;
+  /** Day window = (prior completed NYSE session, Chile today]; see dashboardAccounts.ts. */
+  deposits_day_clp?: number;
+  deposits_day_usd?: number | null;
+  /** Balance change vs prior-session close net of day deposits (null for CC/mortgage). */
+  delta_day_clp?: number | null;
+  delta_day_usd?: number | null;
+  /** Account mark at the prior completed NYSE session (the day window anchor). */
+  prior_day_close_clp?: number | null;
+  prior_day_close_usd?: number | null;
   /** Performance series month-end close for the calendar month before Chile today. */
   prior_month_close_clp?: number | null;
   prior_month_close_usd?: number | null;

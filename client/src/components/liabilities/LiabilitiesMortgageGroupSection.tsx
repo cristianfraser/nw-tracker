@@ -8,6 +8,7 @@ import { DeptoAccountSummaryCards } from "../../pages/accountDetail/DeptoAccount
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "../../pages/accountDetail/MortgageTables";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { rollupPerfPointsYearly } from "../../dashboardTimeseriesYearly";
+import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import type {
   AccountMonthlyPerformanceRow,
@@ -21,7 +22,7 @@ import styles from "../../pages/AccountDetailPage.module.css";
 type Props = {
   mortgageLedger: AccountMortgageLedgerResponse;
   displayUnit: "clp" | "usd";
-  metricsPeriod: "month" | "year";
+  metricsPeriod: CardGroupMetricsPeriod;
   xAxisGranularity: "month" | "year";
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   summary: Pick<AccountSummaryResponse, "latest_valuation_clp" | "account_id">;

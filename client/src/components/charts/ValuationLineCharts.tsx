@@ -136,8 +136,8 @@ interface BlockProps {
   colorPlan?: ChartColorPlan;
   /** When true, Y scale is anchored at 0. Default: padded band from data min/max. */
   yAxisMinZero?: boolean;
-  /** X-axis tick labels: calendar year only vs month+year (dashboard yearly rollup). */
-  xAxisGranularity?: "month" | "year";
+  /** X-axis tick labels: calendar year, month+year, or daily sessions (ISO tooltip titles). */
+  xAxisGranularity?: "month" | "year" | "day";
   /** When set, Y-axis min/max uses only these series (others may render off-scale). */
   yScaleDataKeys?: readonly string[];
 }
@@ -156,7 +156,7 @@ function lineSeriesTooltipRenderContent({
   seriesByDataKey,
 }: {
   displayUnit: ChartDisplayUnit;
-  xAxisGranularity: "month" | "year";
+  xAxisGranularity: "month" | "year" | "day";
   focusColorIndex: number | null;
   seriesByDataKey: ReadonlyMap<string, ResolvedLineSeriesItem>;
 }): NonNullable<AppTooltipSpec["renderContent"]> {
@@ -177,9 +177,12 @@ function lineSeriesTooltipRenderContent({
         emphasized: isHi,
       };
     });
-    return (
-      <ChartTooltipRows title={formatLineChartXTick(String(label), xAxisGranularity)} rows={rows} />
-    );
+    // Day view: the point IS a calendar day — title with the ISO date (repo date convention).
+    const title =
+      xAxisGranularity === "day"
+        ? String(label)
+        : formatLineChartXTick(String(label), xAxisGranularity);
+    return <ChartTooltipRows title={title} rows={rows} />;
   };
 }
 
@@ -628,7 +631,9 @@ interface Props {
   primaryColorPlan?: ChartColorPlan;
   secondaryColorPlan?: ChartColorPlan;
   /** Dashboard yearly rollup: X-axis shows calendar year. */
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
+  /** Override for the primary panel only (daily overview keeps the secondary monthly). */
+  primaryXAxisGranularity?: "month" | "year" | "day";
   /**
    * `fullWidthStack`: one chart per row (full width). Default `twoColumn` matches legacy side-by-side on wide viewports.
    */
@@ -647,6 +652,7 @@ export function ValuationLineCharts({
   primaryColorPlan,
   secondaryColorPlan,
   xAxisGranularity = "month",
+  primaryXAxisGranularity,
   chartLayout = "twoColumn",
 }: Props) {
   const gridClass =
@@ -661,7 +667,7 @@ export function ValuationLineCharts({
         includeAccumulatedLines={includeAccumulatedLines}
         trimLeadingInactive={trimLeadingInactive}
         colorPlan={primaryColorPlan}
-        xAxisGranularity={xAxisGranularity}
+        xAxisGranularity={primaryXAxisGranularity ?? xAxisGranularity}
       />
       <LineChartPanel
         title={secondaryTitle}

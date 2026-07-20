@@ -78,7 +78,7 @@ function syntheticRow(
 
 export type DensifyCalendarOptions = {
   dateKey?: string;
-  granularity: "month" | "year";
+  granularity: "month" | "year" | "day";
   /** Missing buckets: all numeric fields null (lines), or listed keys set to 0 (bars). */
   fillMissing?: "null_all" | { zeroKeys: readonly string[] };
   /** Extend the right edge through this calendar day (month or year bucket), even with no data. */
@@ -106,6 +106,14 @@ export function densifyRecordsByCalendarPeriod<T extends ChartSparseRow>(
   for (const d of seen) sortedDates.push(d);
   sortedDates.sort((a, b) => a.localeCompare(b));
   if (sortedDates.length === 0) return [...points];
+
+  // Daily series arrive on their own complete session grid — no calendar filling, and no
+  // right-edge extension (the grid always ends at the display session).
+  if (opts.granularity === "day") {
+    return [...points].sort((a, b) =>
+      String(a[dateKey] ?? "").localeCompare(String(b[dateKey] ?? ""))
+    );
+  }
 
   const templateKeys = collectKeys(points, dateKey);
   const zeroKeys =

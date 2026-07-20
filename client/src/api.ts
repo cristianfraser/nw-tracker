@@ -158,6 +158,14 @@ export const api = {
     const qs = q.toString();
     return j<import("./types").DashboardPageBundleResponse>(`/api/dashboard/page-bundle${qs ? `?${qs}` : ""}`);
   },
+  dashboardOverviewDaily: (unit: "clp" | "usd", sessions: number) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    q.set("sessions", String(sessions));
+    return j<import("./types").DashboardOverviewDailyResponse>(
+      `/api/dashboard/overview-daily?${q.toString()}`
+    );
+  },
   valuationTimeseries: (
     unit: "clp" | "usd",
     opts?: { portfolio_group?: string; group?: string; subgroup?: string }

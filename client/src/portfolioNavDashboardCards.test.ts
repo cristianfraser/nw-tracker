@@ -79,11 +79,13 @@ const zeroCardPeriodMetrics: NavCardPeriodMetricsDto = {
 };
 
 function cardMetricsVariantFixture(partial?: {
+  day?: Partial<NavCardPeriodMetricsDto>;
   month?: Partial<NavCardPeriodMetricsDto>;
   year?: Partial<NavCardPeriodMetricsDto>;
   title?: Partial<NavCardMetricsVariantDto["title_delta"]>;
 }): NavCardMetricsVariantDto {
   return {
+    day: { ...zeroCardPeriodMetrics, ...partial?.day },
     month: { ...zeroCardPeriodMetrics, ...partial?.month },
     year: { ...zeroCardPeriodMetrics, ...partial?.year },
     title_delta: {
@@ -91,6 +93,8 @@ function cardMetricsVariantFixture(partial?: {
       month_usd: null,
       year_clp: null,
       year_usd: null,
+      day_clp: null,
+      day_usd: null,
       ...partial?.title,
     },
   };

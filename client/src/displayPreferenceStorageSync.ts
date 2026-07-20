@@ -36,7 +36,7 @@ export function parsePreferenceStorageChange(
       }
       return null;
     case METRICS_PERIOD_LS_KEY:
-      if (newValue === "month" || newValue === "year") {
+      if (newValue === "day" || newValue === "month" || newValue === "year") {
         return { pref: "metricsPeriod", value: newValue };
       }
       return null;

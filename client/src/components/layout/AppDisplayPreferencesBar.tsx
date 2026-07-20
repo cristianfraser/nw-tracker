@@ -42,6 +42,7 @@ export function AppDisplayPreferencesBar() {
                 value={metricsPeriod}
                 onChange={(e) => setMetricsPeriod(e.target.value as CardGroupMetricsPeriod)}
               >
+                <option value="day">{t("dashboard.daily")}</option>
                 <option value="month">{t("dashboard.monthly")}</option>
                 <option value="year">{t("dashboard.yearly")}</option>
               </select>

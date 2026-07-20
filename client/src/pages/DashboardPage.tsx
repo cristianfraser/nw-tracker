@@ -26,6 +26,7 @@ import {
   useAccountsByPortfolioGroup,
   useDashboardBundle,
   useDashboardNavSnapshot,
+  useDashboardOverviewDaily,
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -51,6 +52,18 @@ import {
 import type { ValuationTimeseriesResponse } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
+
+/** Day-view window (~4.5 months of NYSE sessions). */
+const DAILY_OVERVIEW_SESSIONS = 90;
+
+/** Overview line dataKeys the daily payload can feed (aportes/liabilities stay monthly-only). */
+const DAILY_OVERVIEW_LINE_KEYS = new Set([
+  "total_nw",
+  "real_estate",
+  "retirement",
+  "brokerage",
+  "cash",
+]);
 
 export function DashboardPage() {
   const { t } = useTranslation();
@@ -155,7 +168,30 @@ export function DashboardPage() {
   const showUsd = displayUnit === "usd";
   const unitSwitching = isFetching && (isPlaceholderData || !bundlePending);
   const isYearly = metricsPeriod === "year";
+  const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
+
+  // Day view: the overview chart swaps to the per-session series (lazily fetched); every
+  // other chart keeps its monthly rendering until the daily detalle work lands.
+  const { data: dailyOverview } = useDashboardOverviewDaily(
+    displayUnit,
+    DAILY_OVERVIEW_SESSIONS,
+    isDaily
+  );
+  const dailyOverviewBlock = useMemo(() => {
+    if (!isDaily || !dailyOverview?.points.length || !ts?.overview) return null;
+    const lines = ts.overview.lines.filter((l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)));
+    if (!lines.length) return null;
+    const points = dailyOverview.points.map((p) => ({
+      as_of_date: p.as_of_date,
+      total_nw: p.net_worth,
+      real_estate: p.real_estate,
+      retirement: p.retirement,
+      brokerage: p.brokerage,
+      cash: p.cash_eqs,
+    }));
+    return { lines, points };
+  }, [isDaily, dailyOverview, ts?.overview]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {
@@ -329,7 +365,9 @@ export function DashboardPage() {
       <ValuationLineCharts
         displayUnit={displayUnit}
         primaryTitle={t("dashboard.sections.overviewTitle")}
-        primary={{ lines: tsForCharts.overview.lines, points: tsForCharts.overview.points }}
+        primary={
+          dailyOverviewBlock ?? { lines: tsForCharts.overview.lines, points: tsForCharts.overview.points }
+        }
         secondaryTitle={t("dashboard.sections.primaryAccountsTitle")}
         secondary={tsForCharts.accounts_ex_property}
         thickLineDataKey="total_nw"
@@ -337,6 +375,7 @@ export function DashboardPage() {
         primaryColorPlan={{ kind: "dashboard-overview" }}
         secondaryColorPlan={{ kind: "dashboard-primary" }}
         xAxisGranularity={xAxisGranularity}
+        {...(dailyOverviewBlock ? { primaryXAxisGranularity: "day" as const } : {})}
         chartLayout="fullWidthStack"
       />
 

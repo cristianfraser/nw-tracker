@@ -190,6 +190,43 @@ export type DashboardBucketValueTotals = {
   cash_eqs_usd?: number | null;
 };
 
+/**
+ * Per-session bucket values for daily views: Σ `accountMarkClpAtYmd` per bucket at each
+ * session (+ the cash_eqs linked-CC netting), bucket account lists fetched once. This
+ * deliberately bypasses `consolidatedBucketValueClpAt` — the consolidated monthly closing
+ * maps one value onto every chart date of its month, which is correct for month grids but
+ * flattens a daily series (all sessions of the current month would show today's value).
+ */
+export function buildDashboardBucketDailySeriesClp(
+  sessionsAsc: readonly string[]
+): Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }> {
+  const accountsByBucket = new Map(
+    NW_DASHBOARD_BUCKET_SLUGS.map((slug) => [slug, listAccountsForDashboardBucket(slug)] as const)
+  );
+  const out = new Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }>();
+  for (const ymd of sessionsAsc) {
+    const row = { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 0, net_worth: 0 };
+    for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+      let raw = 0;
+      for (const a of accountsByBucket.get(slug)!) {
+        if (a.exclude_from_group_totals === 1) continue;
+        const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
+          import_key: a.import_key,
+          name: a.name,
+        });
+        if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) raw += mark.value_clp;
+      }
+      if (slug === "cash_eqs") {
+        raw = applyCashSavingsNwAdjustment(raw, linkedCreditCardClpForCashCardAsOf(ymd));
+      }
+      row[slug] = Math.round(raw);
+    }
+    row.net_worth = row.real_estate + row.retirement + row.brokerage + row.cash_eqs;
+    out.set(ymd, row);
+  }
+  return out;
+}
+
 export function buildDashboardBucketValueTotals(
   asOfYmd: string,
   includeUsd: boolean

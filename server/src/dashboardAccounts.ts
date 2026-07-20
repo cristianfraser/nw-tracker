@@ -23,7 +23,9 @@ import {
   flowsDepositsNetInPeriodByAccount,
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
+  netDepositFlowBetween,
 } from "./flowsDeposits.js";
+import { priorNyseSessionYmd } from "./marketHolidays.js";
 import {
   getAccountPositionMeta,
   liveFintualCertDisplayValueClp,
@@ -226,6 +228,8 @@ type MortgageCardDeposits = {
   month_usd: number | null;
   year_clp: number;
   year_usd: number | null;
+  day_clp: number;
+  day_usd: number | null;
 };
 
 /**
@@ -237,7 +241,8 @@ function computeMortgageCardDeposits(
   includeUsd: boolean,
   todayYmd: string,
   priorMonthEnd: string,
-  priorYearEnd: string
+  priorYearEnd: string,
+  priorDayAnchor: string | null
 ): MortgageCardDeposits | null {
   const ledger = loadDeptoLedgerFromMovements();
   if (!ledger.length) return null;
@@ -246,29 +251,35 @@ function computeMortgageCardDeposits(
   let total_clp = 0;
   let month_clp = 0;
   let year_clp = 0;
+  let day_clp = 0;
   let total_usd: number | null = includeUsd ? 0 : null;
   let month_usd: number | null = includeUsd ? 0 : null;
   let year_usd: number | null = includeUsd ? 0 : null;
+  let day_usd: number | null = includeUsd ? 0 : null;
   for (const e of events) {
     total_clp += e.pago_clp;
     const inMonth = e.occurred_on > priorMonthEnd;
     const inYear = e.occurred_on > priorYearEnd;
+    const inDay = priorDayAnchor != null && e.occurred_on > priorDayAnchor;
     if (inMonth) month_clp += e.pago_clp;
     if (inYear) year_clp += e.pago_clp;
+    if (inDay) day_clp += e.pago_clp;
     if (total_usd != null) {
       const usd = depositClpToUsdAtDate(e.pago_clp, e.occurred_on);
       if (usd == null || !Number.isFinite(usd)) {
         total_usd = null;
         month_usd = null;
         year_usd = null;
+        day_usd = null;
       } else {
         total_usd += usd;
         if (inMonth && month_usd != null) month_usd += usd;
         if (inYear && year_usd != null) year_usd += usd;
+        if (inDay && day_usd != null) day_usd += usd;
       }
     }
   }
-  return { total_clp, total_usd, month_clp, month_usd, year_clp, year_usd };
+  return { total_clp, total_usd, month_clp, month_usd, year_clp, year_usd, day_clp, day_usd };
 }
 
 /** Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit). */
@@ -287,6 +298,12 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   const today = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", today);
   const priorYearEnd = priorPeriodEndYmd("ytd", today);
+  /**
+   * Day window anchor = last completed NYSE session strictly before Chile today ("vs last
+   * workday"): Monday cards read vs Friday's close, weekend drift included. Day deltas are
+   * always balance-change net of flows (no monthly perf series exists at day grain).
+   */
+  const priorDayAnchor = priorNyseSessionYmd(today);
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
 
   /** Shared by the master and its liability_view row (never both in one summed scope). */
@@ -297,7 +314,8 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         includeUsd,
         today,
         priorMonthEnd,
-        priorYearEnd
+        priorYearEnd,
+        priorDayAnchor
       );
     }
     return mortgageDepositsMemo;
@@ -342,6 +360,29 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 
       const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
       const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
+      const priorDayMark =
+        trackAssetMetrics && priorDayAnchor != null
+          ? accountMarkClpAtYmd(a.id, priorDayAnchor, markCategorySlug, markOpts)
+          : null;
+      const prior_day_close_clp = priorDayMark?.value_clp ?? null;
+      const priorDayCloseUsdRaw =
+        includeUsd && prior_day_close_clp != null && priorDayAnchor != null
+          ? convertTs(prior_day_close_clp, priorDayAnchor, "usd")
+          : null;
+      const prior_day_close_usd =
+        priorDayCloseUsdRaw != null && Number.isFinite(priorDayCloseUsdRaw)
+          ? priorDayCloseUsdRaw
+          : null;
+      const deposits_day_clp = mortgagePayments
+        ? mortgagePayments.day_clp
+        : trackAssetMetrics && priorDayAnchor != null
+          ? netDepositFlowBetween(a.id, priorDayAnchor, today, "clp")
+          : undefined;
+      const deposits_day_usd = mortgagePayments
+        ? mortgagePayments.day_usd
+        : trackAssetMetrics && includeUsd && priorDayAnchor != null
+          ? netDepositFlowBetween(a.id, priorDayAnchor, today, "usd")
+          : undefined;
       const prior_month_close_clp =
         priorMonthMark?.value_clp ??
         (trackAssetMetrics
@@ -385,6 +426,16 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         includeUsd &&
         ((current_value_clp != null && fxRow == null) ||
           (deposits !== 0 && deposits_usd == null));
+      // Day Δ = live value vs prior-session close net of day flows — same identity the
+      // daily series uses (pl = delta − flow), so cards and the daily view agree.
+      const delta_day_clp =
+        current_value_clp != null && prior_day_close_clp != null
+          ? current_value_clp - prior_day_close_clp - (deposits_day_clp ?? 0)
+          : null;
+      const delta_day_usd =
+        includeUsd && current_value_usd != null && prior_day_close_usd != null
+          ? current_value_usd - prior_day_close_usd - (deposits_day_usd ?? 0)
+          : null;
       const rowBeforeReconcile = {
         account_id: a.id,
         name: a.name,
@@ -442,6 +493,12 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
           : trackAssetMetrics
             ? (depositsYear.usd.get(a.id) ?? null)
             : undefined,
+        deposits_day_clp,
+        deposits_day_usd: includeUsd ? deposits_day_usd : undefined,
+        delta_day_clp,
+        delta_day_usd: includeUsd ? delta_day_usd : undefined,
+        prior_day_close_clp,
+        prior_day_close_usd: includeUsd ? prior_day_close_usd : undefined,
         prior_month_close_clp,
         prior_month_close_usd: derivedUsd?.prior_month_close,
         prior_year_close_clp,

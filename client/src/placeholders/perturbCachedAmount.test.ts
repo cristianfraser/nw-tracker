@@ -490,9 +490,17 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       delta_period_usd: null,
     };
     const zeroVariant = {
+      day: zeroPeriod,
       month: zeroPeriod,
       year: zeroPeriod,
-      title_delta: { month_clp: null, month_usd: null, year_clp: null, year_usd: null },
+      title_delta: {
+        month_clp: null,
+        month_usd: null,
+        year_clp: null,
+        year_usd: null,
+        day_clp: null,
+        day_usd: null,
+      },
     };
     const zeroEntry = { child: zeroVariant, parent: zeroVariant };
     const snapshot: CachedDashboardNavSnapshot = {

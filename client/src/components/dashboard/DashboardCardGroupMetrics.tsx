@@ -120,11 +120,15 @@ export function DashboardCardGroupMetrics({
   const periodDepositsLabel =
     period === "year"
       ? t("dashboard.cardBreakdown.periodDepositsYear")
-      : t("dashboard.cardBreakdown.periodDepositsMonth");
+      : period === "day"
+        ? t("dashboard.cardBreakdown.periodDepositsDay")
+        : t("dashboard.cardBreakdown.periodDepositsMonth");
   const periodDeltaLabel =
     period === "year"
       ? t("dashboard.cardBreakdown.periodDeltaYear")
-      : t("dashboard.cardBreakdown.periodDeltaMonth");
+      : period === "day"
+        ? t("dashboard.cardBreakdown.periodDeltaDay")
+        : t("dashboard.cardBreakdown.periodDeltaMonth");
 
   const totalDeposited = roundedMetricDeposits(metrics, showUsd, "total");
   const totalDelta = roundedMetricDelta(metrics, showUsd, "total");

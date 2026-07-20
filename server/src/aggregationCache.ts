@@ -105,12 +105,13 @@ export function invalidateDashboardPageBundle(): void {
 }
 
 /**
- * Drop every cached daily bucket series (`dailySeries.ts`). The whole namespace goes at once:
- * entries bake per-session marks across many accounts, so per-account precision isn't worth
- * the mapping — they rebuild lazily on the next daily-view request.
+ * Drop every cached daily aggregation (`dailySeries.ts` bucket series + the overview-daily
+ * payload). The whole namespace goes at once: entries bake per-session marks across many
+ * accounts, so per-account precision isn't worth the mapping — they rebuild lazily on the
+ * next daily-view request.
  */
 export function invalidateDailySeries(): void {
-  deleteKeysMatchingPrefix("daily.series|");
+  deleteKeysMatchingPrefix("daily.");
 }
 
 /**
