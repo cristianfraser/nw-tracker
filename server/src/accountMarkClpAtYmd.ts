@@ -15,6 +15,7 @@ import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClp } from "./cryptoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
@@ -111,7 +112,15 @@ function historicalMarkClpAtYmd(
     .get(accountId, asOfYmd) as { as_of_date: string; value_clp: number; currency: string } | undefined;
   if (stored) assertValuationCurrencyClp(stored.currency, "accountMarkClpAtYmd");
   if (stored?.value_clp != null && Number.isFinite(stored.value_clp)) {
-    return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+    // Book-value carry: a stale mark forward-fills plus net flows since its date, so a
+    // deposit day moves the value (daily pl 0) instead of booking −flow until the next mark.
+    // Never for CC/mortgage balances (own branches above; flows ≠ balance deltas there).
+    const kind = accountBucketKindSlug(categorySlug);
+    const value_clp =
+      kind === "credit_card" || kind === "mortgage"
+        ? stored.value_clp
+        : storedMarkValueWithFlowCarry(accountId, stored.value_clp, stored.as_of_date, asOfYmd);
+    return { value_clp, as_of_date: stored.as_of_date };
   }
 
   return null;

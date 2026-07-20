@@ -105,6 +105,15 @@ export function invalidateDashboardPageBundle(): void {
 }
 
 /**
+ * Drop every cached daily bucket series (`dailySeries.ts`). The whole namespace goes at once:
+ * entries bake per-session marks across many accounts, so per-account precision isn't worth
+ * the mapping — they rebuild lazily on the next daily-view request.
+ */
+export function invalidateDailySeries(): void {
+  deleteKeysMatchingPrefix("daily.series|");
+}
+
+/**
  * Drop the cached CC billing detail (ledger months + detalle por mes) for one account, or for
  * all accounts when omitted. Same-connection CC writes must call this (directly or via
  * `invalidateAggregationForAccountDate` / `recomputeCcBillingMonthBalances` /
@@ -120,8 +129,10 @@ export function invalidateCcBillingDetail(accountId?: number): void {
     if (operationalId !== accountId) cache.delete(cacheKeyCcBillingDetail(operationalId));
   }
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
-  // invalidateLinkedCreditCardAggregationCache both call this) — the bundle goes with it.
+  // invalidateLinkedCreditCardAggregationCache both call this) — the bundle and the daily
+  // series (whose historical legs read movements/valuations/CC valuations) go with it.
   invalidateDashboardPageBundle();
+  invalidateDailySeries();
   invalidationListener?.();
 }
 
@@ -263,6 +274,7 @@ export function invalidateMarketDataAggregations(): void {
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
   invalidateDashboardPageBundle();
+  invalidateDailySeries();
   invalidationListener?.();
 }
 
