@@ -5,7 +5,9 @@ import {
 } from "./brokerageEquityMtm.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
+import { accountBucketKindSlug, accountKindSlugForAccountId } from "./accountBucket.js";
+import { resolveOperationalAccountId } from "./accountSource.js";
+import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import {
   accountUsesCryptoMtm,
@@ -52,9 +54,39 @@ export function syncLatestDisplayValueClp(
     const crypto = computeCryptoMtmClpDisplaySync(accountId);
     if (crypto != null) return crypto;
   }
+  // Depto UF marks beat stored valuations for property/mortgage (same order as the
+  // `accountMarkClpAtYmd` today branch) — a stale property valuation must not shadow the
+  // live ledger mark in pies/live points.
+  if (categorySlug) {
+    const kind = accountBucketKindSlug(categorySlug);
+    if (kind === "property" || kind === "mortgage") {
+      const depto = deptoAccountMarkClpAtYmd(kind, chileCalendarTodayYmd());
+      if (depto) return depto;
+      if (kind === "mortgage") {
+        const v = latestMortgageDisplayedBalance(accountId);
+        if (v?.value_clp != null && v.as_of_date) {
+          return { value_clp: v.value_clp, as_of_date: v.as_of_date };
+        }
+      }
+    }
+  }
   const stored = latestDisplayedBalanceForAccount(accountId);
   if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
-    return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
+    // Book-value carry for manual-marked accounts: stale mark + net personal flows since its
+    // date, so a deposit entered today moves today's value (daily/monthly pl 0, not −flow).
+    // CC/mortgage displayed balances are their own derivations — never carried.
+    const effectiveId = resolveOperationalAccountId(accountId);
+    const kind = accountKindSlugForAccountId(effectiveId) ?? "";
+    const value_clp =
+      kind === "credit_card" || kind === "mortgage"
+        ? stored.value_clp
+        : storedMarkValueWithFlowCarry(
+            effectiveId,
+            stored.value_clp,
+            stored.as_of_date,
+            chileCalendarTodayYmd()
+          );
+    return { value_clp, as_of_date: stored.as_of_date };
   }
   if (bucketKind === "afp") {
     const live = liveAfpDisplayValueClp(accountId);
@@ -66,23 +98,14 @@ export function syncLatestDisplayValueClp(
       return { value_clp: v.value_clp, as_of_date: v.as_of_date };
     }
   }
-  if (categorySlug) {
-    const kind = accountBucketKindSlug(categorySlug);
-    if (kind === "property" || kind === "mortgage") {
-      const today = chileCalendarTodayYmd();
-      const depto = deptoAccountMarkClpAtYmd(kind, today);
-      if (depto) return depto;
-      if (kind === "mortgage") {
-        const v = latestMortgageDisplayedBalance(accountId);
-        if (v?.value_clp != null && v.as_of_date) {
-          return { value_clp: v.value_clp, as_of_date: v.as_of_date };
-        }
-      }
-    }
-  }
   const vrow = latestValuationRowOnOrBeforeChileToday(accountId);
   if (vrow?.value_clp != null && vrow.as_of_date) {
-    return { value_clp: vrow.value_clp, as_of_date: vrow.as_of_date };
+    const kind = accountKindSlugForAccountId(accountId) ?? "";
+    const value_clp =
+      kind === "credit_card" || kind === "mortgage"
+        ? vrow.value_clp
+        : storedMarkValueWithFlowCarry(accountId, vrow.value_clp, vrow.as_of_date, chileCalendarTodayYmd());
+    return { value_clp, as_of_date: vrow.as_of_date };
   }
   return null;
 }
