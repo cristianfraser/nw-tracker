@@ -130,6 +130,7 @@
     "chartGranularityLabel": "Período:",
     "monthly": "Mensual",
     "yearly": "Anual",
+    "daily": "Diario",
     "cards": {
       "netWorth": "Patrimonio neto",
       "brokerage": "Brokerage",
@@ -194,8 +195,10 @@
       "totalDelta": "P/L acumulado",
       "periodDepositsMonth": "Depósitos del mes",
       "periodDepositsYear": "Depósitos del año",
+      "periodDepositsDay": "Depósitos del día",
       "periodDeltaMonth": "P/L del mes",
       "periodDeltaYear": "P/L del año",
+      "periodDeltaDay": "P/L del día",
       "summaryAria": "Depósitos y Δ total y del período",
       "creditCardShortfallFromSavings": "Cobertura tarjeta desde ahorros"
     }

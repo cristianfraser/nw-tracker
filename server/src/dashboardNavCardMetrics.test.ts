@@ -189,6 +189,46 @@ describe("buildNavCardMetricsBySlug", () => {
     expect(brokerage.child.title_delta.month_usd).toBeNull();
   });
 
+  it("day period: metrics from day row fields; title from prior_closes.day totals", () => {
+    const dayTotals = {
+      ...totals,
+      prior_closes: {
+        ...totals.prior_closes,
+        day_end: "2026-07-17",
+        day: { brokerage_clp: 1080, cash_eqs_clp: 498, real_estate_clp: 0, retirement_clp: 0 },
+      },
+    };
+    const dayRows = [
+      row({
+        account_id: 11,
+        deposits_clp: 800,
+        deposits_day_clp: 5,
+        delta_day_clp: 15,
+        current_value_clp: 1100,
+        prior_day_close_clp: 1080,
+      }),
+      row({ account_id: 12, exclude_from_group_totals: 1, delta_day_clp: 999 }),
+    ];
+    const out = buildNavCardMetricsBySlug({ ...input, rows: dayRows, totals: dayTotals });
+    const brokerage = out.brokerage!;
+    expect(brokerage.child.day.deposits_period_clp).toBe(5);
+    expect(brokerage.child.day.delta_period_clp).toBe(15);
+    // totals-based day title delta: 1100 − 1080
+    expect(brokerage.child.title_delta.day_clp).toBe(20);
+    const root = out.net_worth!;
+    expect(root.parent.day.delta_period_clp).toBe(15);
+    expect(root.parent.title_delta.day_clp).toBe(20 + 2);
+  });
+
+  it("day period without prior_closes.day: totals title falls back to subset rows (null when no prior_day_close)", () => {
+    const out = buildNavCardMetricsBySlug(input);
+    const brokerage = out.brokerage!;
+    // rows carry no day fields → day metrics are empty but present, title null
+    expect(brokerage.child.day.deposits_period_clp).toBe(0);
+    expect(brokerage.child.day.delta_period_clp).toBeNull();
+    expect(brokerage.child.title_delta.day_clp).toBeNull();
+  });
+
   it("net_worth root parent: sums strip-children child metrics; title = Σ bucket totals deltas", () => {
     const out = buildNavCardMetricsBySlug(input);
     const root = out.net_worth!;

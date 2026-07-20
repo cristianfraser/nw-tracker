@@ -183,11 +183,15 @@ export function buildNiceYAxisPositiveBand(
   return { domain: [y0, y1], ticks };
 }
 
-export function formatLineChartXTick(d: string, granularity: "month" | "year"): string {
+export function formatLineChartXTick(
+  d: string,
+  granularity: "month" | "year" | "day"
+): string {
   if (granularity === "year") {
     const y = d.slice(0, 4);
     return /^\d{4}$/.test(y) ? y : d;
   }
+  // Day view keeps month-boundary axis ticks (tooltips carry the exact ISO day).
   return formatMonthYearShortLabel(d);
 }
 

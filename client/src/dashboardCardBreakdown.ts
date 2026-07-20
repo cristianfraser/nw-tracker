@@ -30,7 +30,16 @@ export type CardGroupMetrics = {
   delta_period_usd?: number | null;
 };
 
-export type CardGroupMetricsPeriod = "month" | "year";
+export type CardGroupMetricsPeriod = "day" | "month" | "year";
+
+/**
+ * Month/year-only surfaces (flow pages, detalle tables, CC rollups) clamp the global
+ * D | M | Y toggle: `day` renders as the monthly view there — daily rows are a
+ * net-worth-surface feature, not a flows one.
+ */
+export function monthYearMetricsPeriod(period: CardGroupMetricsPeriod): "month" | "year" {
+  return period === "year" ? "year" : "month";
+}
 
 export type CardBreakdownLine = {
   label: string;
@@ -200,23 +209,35 @@ export function cardGroupMetricsFromAccounts(
       anyUsdTotalDelta = true;
     }
 
-    const periodDepClp = period === "month" ? r.deposits_month_clp : r.deposits_year_clp;
+    const periodDepClp =
+      period === "month"
+        ? r.deposits_month_clp
+        : period === "day"
+          ? r.deposits_day_clp
+          : r.deposits_year_clp;
     if (periodDepClp != null && Number.isFinite(periodDepClp)) {
       deposits_period_clp += periodDepClp;
     }
 
-    const periodDepUsd = period === "month" ? r.deposits_month_usd : r.deposits_year_usd;
+    const periodDepUsd =
+      period === "month"
+        ? r.deposits_month_usd
+        : period === "day"
+          ? r.deposits_day_usd
+          : r.deposits_year_usd;
     if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
       deposits_period_usd += periodDepUsd;
       anyUsdPeriodDep = true;
     }
 
-    const periodDeltaClp = period === "month" ? r.delta_month_clp : r.delta_year_clp;
+    const periodDeltaClp =
+      period === "month" ? r.delta_month_clp : period === "day" ? r.delta_day_clp : r.delta_year_clp;
     if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
       delta_period_clp += periodDeltaClp;
       anyPeriodDeltaClp = true;
     }
-    const periodDeltaUsd = period === "month" ? r.delta_month_usd : r.delta_year_usd;
+    const periodDeltaUsd =
+      period === "month" ? r.delta_month_usd : period === "day" ? r.delta_day_usd : r.delta_year_usd;
     if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
       delta_period_usd += periodDeltaUsd;
       anyPeriodDeltaUsd = true;
@@ -315,9 +336,13 @@ export function subsetPeriodBalanceDeltaFromAccounts(
         ? unit === "usd"
           ? r.prior_year_close_usd
           : r.prior_year_close_clp
-        : unit === "usd"
-          ? r.prior_month_close_usd
-          : r.prior_month_close_clp;
+        : period === "day"
+          ? unit === "usd"
+            ? r.prior_day_close_usd
+            : r.prior_day_close_clp
+          : unit === "usd"
+            ? r.prior_month_close_usd
+            : r.prior_month_close_clp;
     const cur =
       unit === "usd"
         ? r.current_value_usd != null && Number.isFinite(r.current_value_usd)

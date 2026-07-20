@@ -175,8 +175,10 @@ export function prependInitialZeroAnchors(
 
 export function prependInitialZeroAnchorsOnBlock(
   block: TimeseriesBlock,
-  granularity: "month" | "year"
+  granularity: "month" | "year" | "day"
 ): TimeseriesBlock {
+  // Daily blocks are dense session grids starting mid-history — no zero anchor to prepend.
+  if (granularity === "day") return block;
   const dataKeys = valuationDataKeysForInitialZeroAnchors(block);
   if (!block.points.length || !dataKeys.length) return block;
   return {

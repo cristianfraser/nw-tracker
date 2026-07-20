@@ -27,6 +27,13 @@ export interface DashboardAccountRow {
   deposits_month_usd?: number | null;
   deposits_year_clp?: number;
   deposits_year_usd?: number | null;
+  /** Day window = (prior completed NYSE session, Chile today]; null for CC/mortgage rows. */
+  deposits_day_clp?: number;
+  deposits_day_usd?: number | null;
+  delta_day_clp?: number | null;
+  delta_day_usd?: number | null;
+  prior_day_close_clp?: number | null;
+  prior_day_close_usd?: number | null;
   prior_month_close_clp?: number | null;
   prior_month_close_usd?: number | null;
   prior_year_close_clp?: number | null;
@@ -83,8 +90,11 @@ export interface DashboardBucketCloseTotals {
 export interface DashboardPriorCloses {
   month_end: string;
   year_end: string;
+  /** Prior completed NYSE session (day window anchor). */
+  day_end?: string | null;
   month: DashboardBucketCloseTotals;
   year: DashboardBucketCloseTotals;
+  day?: DashboardBucketCloseTotals;
 }
 
 /** One period slice of server-computed nav card metrics (mirror of CardGroupMetrics). */
@@ -100,6 +110,7 @@ export interface NavCardPeriodMetricsDto {
 }
 
 export interface NavCardMetricsVariantDto {
+  day: NavCardPeriodMetricsDto;
   month: NavCardPeriodMetricsDto;
   year: NavCardPeriodMetricsDto;
   title_delta: {
@@ -107,6 +118,8 @@ export interface NavCardMetricsVariantDto {
     month_usd: number | null;
     year_clp: number | null;
     year_usd: number | null;
+    day_clp: number | null;
+    day_usd: number | null;
   };
 }
 
@@ -273,4 +286,24 @@ export interface ValuationTimeseriesResponse {
   /** Pasivos grouped bucket block/pie (single mode — no Agrupado toggle). */
   liab_grouped_block?: TimeseriesBlock;
   liab_grouped_pie?: GroupAllocationPieSlice[];
+}
+
+/** One NYSE-session point of `GET /api/dashboard/overview-daily` (values in the request unit). */
+export interface DashboardOverviewDailyPoint {
+  as_of_date: string;
+  net_worth: number | null;
+  real_estate: number | null;
+  retirement: number | null;
+  brokerage: number | null;
+  cash_eqs: number | null;
+}
+
+/** Daily net-worth series for the day period view (grid = NYSE sessions, "vs last workday"). */
+export interface DashboardOverviewDailyResponse {
+  unit: "clp" | "usd";
+  sessions: number;
+  end_session_ymd: string;
+  /** True while the NYSE regular session is open (the last point tracks live marks). */
+  d1_is_live: boolean;
+  points: DashboardOverviewDailyPoint[];
 }

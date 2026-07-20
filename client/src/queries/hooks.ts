@@ -71,6 +71,16 @@ export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
   });
 }
 
+/** Daily net-worth series for the day period view (fetched only while the D toggle is active). */
+export function useDashboardOverviewDaily(unit: DisplayUnit, sessions: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.dashboardOverviewDaily(unit, sessions),
+    queryFn: () => api.dashboardOverviewDaily(unit, sessions),
+    enabled,
+    ...displayUnitQueryBehavior,
+  });
+}
+
 /**
  * Held prior-unit data during a CLP→USD switch gets its USD fields synthesized (FX approximation),
  * memoized per source object so downstream `useMemo`s keep a stable identity across renders —

@@ -22,6 +22,7 @@ import type { EntityColorTarget } from "../../entityColor";
 import {
   accountCardTitleBalanceDelta,
   cardGroupMetricsFromAccounts,
+  type CardGroupMetricsPeriod,
 } from "../../dashboardCardBreakdown";
 import type {
   AccountCcInstallmentsResponse,
@@ -50,7 +51,7 @@ export type AccountDetailPageData = {
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
   periodReturns: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
-  metricsPeriod: "month" | "year";
+  metricsPeriod: CardGroupMetricsPeriod;
   isYearly: boolean;
   xAxisGranularity: "month" | "year";
   extraCcOffsets: Record<string, number>;
