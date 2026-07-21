@@ -337,4 +337,6 @@ export interface DailySeriesResponse {
   accounts?: DailySeriesAccountLineDto[];
   /** Σ of account `deposits_acum` per session (`__group_dep_total` line). */
   deposits_acum_total?: number[];
+  /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
+  grouped_accounts?: DailySeriesAccountLineDto[];
 }

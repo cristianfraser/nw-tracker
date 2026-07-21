@@ -361,10 +361,12 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 
       const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
       const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
-      // Per-class day anchor (UF/crypto = yesterday, USD stocks = prior NYSE session,
-      // rest = prior Chilean business day). Mortgage tracks day marks too (daily UF cost).
+      // Per-class day anchor (UF/crypto/CC = yesterday, USD stocks = prior NYSE session,
+      // rest = prior Chilean business day). Mortgage and CC track day marks too (daily UF
+      // cost; per-day owed) — their title deltas move daily, P/L stays their own convention.
       const rowDayAnchor = dayWindowAnchorForAccount(a.id, kindSlug, dayAnchors);
-      const rowTracksDayMetrics = trackAssetMetrics || kindSlug === "mortgage";
+      const rowTracksDayMetrics =
+        trackAssetMetrics || kindSlug === "mortgage" || kindSlug === "credit_card";
       const priorDayMark =
         rowTracksDayMetrics && rowDayAnchor != null
           ? accountMarkClpAtYmd(a.id, rowDayAnchor, markCategorySlug, markOpts)
@@ -435,15 +437,18 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       // series uses (pl = delta − flow), so cards and the daily view agree. Mortgage keeps
       // its loss-negative convention (prior − close − payments, as the monthly nominal_pl):
       // a UF uptick is a daily financing loss, an amortizing cuota nets interest+seguros.
+      // CC rows carry the day mark for title deltas only — a balance move is purchases and
+      // PAGOs (flows), not P/L, and daily financing cost isn't modeled — so delta_day is null.
       const isMortgageRow = kindSlug === "mortgage";
+      const isCcRow = kindSlug === "credit_card";
       const delta_day_clp =
-        current_value_clp != null && prior_day_close_clp != null
+        !isCcRow && current_value_clp != null && prior_day_close_clp != null
           ? isMortgageRow
             ? prior_day_close_clp - current_value_clp - (deposits_day_clp ?? 0)
             : current_value_clp - prior_day_close_clp - (deposits_day_clp ?? 0)
           : null;
       const delta_day_usd =
-        includeUsd && current_value_usd != null && prior_day_close_usd != null
+        !isCcRow && includeUsd && current_value_usd != null && prior_day_close_usd != null
           ? isMortgageRow
             ? prior_day_close_usd - current_value_usd - (deposits_day_usd ?? 0)
             : current_value_usd - prior_day_close_usd - (deposits_day_usd ?? 0)

@@ -9,9 +9,12 @@ import {
 } from "react";
 import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
 import {
+  DAILY_SESSIONS_LS_KEY,
   DISPLAY_UNIT_LS_KEY,
   METRICS_PERIOD_LS_KEY,
+  parseDailySessions,
   parsePreferenceStorageChange,
+  type DailySessionsWindow,
 } from "../displayPreferenceStorageSync";
 import { setDecimalSeparatorForFormatting } from "../format";
 import i18n from "../i18n";
@@ -59,6 +62,9 @@ type DisplayPreferencesContextValue = {
   /** MTD vs YTD for card metrics, title deltas, and dashboard chart rollups (`month` = MTD, `year` = YTD). */
   metricsPeriod: CardGroupMetricsPeriod;
   setMetricsPeriod: (p: CardGroupMetricsPeriod) => void;
+  /** Day-view window in sessions (daily charts + detalle por día). */
+  dailySessions: DailySessionsWindow;
+  setDailySessions: (s: DailySessionsWindow) => void;
   /** Separator convention shared by every number, whatever the display currency. */
   decimalSeparator: DecimalSeparator;
   setDecimalSeparator: (s: DecimalSeparator) => void;
@@ -69,9 +75,20 @@ type DisplayPreferencesContextValue = {
 
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
 
+function readStoredDailySessions(): DailySessionsWindow {
+  try {
+    const v = parseDailySessions(localStorage.getItem(DAILY_SESSIONS_LS_KEY));
+    if (v != null) return v;
+  } catch {
+    /* ignore */
+  }
+  return 90;
+}
+
 export function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
   const [displayUnit, setDisplayUnitState] = useState<DisplayUnit>(readStoredUnit);
   const [metricsPeriod, setMetricsPeriodState] = useState<CardGroupMetricsPeriod>(readStoredMetricsPeriod);
+  const [dailySessions, setDailySessionsState] = useState<DailySessionsWindow>(readStoredDailySessions);
   const [decimalSeparator, setDecimalSeparatorState] = useState<DecimalSeparator>(
     readInitialDecimalSeparator
   );
@@ -110,6 +127,15 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     }
   }, []);
 
+  const setDailySessions = useCallback((s: DailySessionsWindow) => {
+    setDailySessionsState(s);
+    try {
+      localStorage.setItem(DAILY_SESSIONS_LS_KEY, String(s));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const setDecimalSeparator = useCallback(
     (s: DecimalSeparator) => {
       applyDecimalSeparator(s);
@@ -139,6 +165,9 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
         case "metricsPeriod":
           setMetricsPeriodState(change.value);
           break;
+        case "dailySessions":
+          setDailySessionsState(change.value);
+          break;
         case "decimalSeparator":
           applyDecimalSeparator(change.value);
           break;
@@ -157,6 +186,8 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
       setDisplayUnit,
       metricsPeriod,
       setMetricsPeriod,
+      dailySessions,
+      setDailySessions,
       decimalSeparator,
       setDecimalSeparator,
       language,
@@ -167,6 +198,8 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
       setDisplayUnit,
       metricsPeriod,
       setMetricsPeriod,
+      dailySessions,
+      setDailySessions,
       decimalSeparator,
       setDecimalSeparator,
       language,

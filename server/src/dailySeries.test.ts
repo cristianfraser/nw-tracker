@@ -4,6 +4,8 @@ import {
   DAILY_SERIES_MAX_SESSIONS,
   getBucketDailySeries,
   getBucketDailySeriesCached,
+  groupDailySeriesAccounts,
+  type BucketDailySeries,
 } from "./dailySeries.js";
 import { db } from "./db.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
@@ -321,6 +323,48 @@ describe("getBucketDailySeries — includeAccounts", () => {
     const s = getBucketDailySeries(refs, { unit: "clp", sessions: 2, now: NOW });
     expect(s.accounts).toBeUndefined();
     expect(s.deposits_acum_total).toBeUndefined();
+  });
+});
+
+describe("groupDailySeriesAccounts", () => {
+  it("sums mapped accounts into bucket lines (values + aportes) and passes unmapped through", () => {
+    const series: BucketDailySeries = {
+      unit: "clp",
+      end_session_ymd: "2026-03-25",
+      d1_is_live: false,
+      baseline: { as_of_date: "2026-03-19", value: 0 },
+      points: [
+        { as_of_date: "2026-03-24", value: 30, flow: 0, delta: null, pl: null, pct: null },
+        { as_of_date: "2026-03-25", value: 33, flow: 0, delta: 3, pl: 3, pct: 0.1 },
+      ],
+      accounts: [
+        { account_id: 1, name: "a", values: [10, 11], deposits_acum: [5, 5] },
+        { account_id: 2, name: "b", values: [null, 12], deposits_acum: [7, 8] },
+        { account_id: 3, name: "solo", values: [20, 10] },
+      ],
+    };
+    const plan = {
+      orderedKeys: ["bucket1"],
+      meta: {
+        bucket1: {
+          key: "bucket1",
+          accountId: -720,
+          dataKey: "-720",
+          depKey: "dep_-720",
+          barDataKey: "bar_-720",
+          name: "Bucket",
+          name_i18n_key: null,
+          color_rgb: null,
+        },
+      },
+      idToBucket: (id: number) => (id === 1 || id === 2 ? "bucket1" : null),
+    };
+    const grouped = groupDailySeriesAccounts(series, plan)!;
+    expect(grouped).toHaveLength(2);
+    const bucket = grouped.find((l) => l.account_id === -720)!;
+    expect(bucket.values).toEqual([10, 23]);
+    expect(bucket.deposits_acum).toEqual([12, 13]);
+    expect(grouped.find((l) => l.account_id === 3)!.values).toEqual([20, 10]);
   });
 });
 
