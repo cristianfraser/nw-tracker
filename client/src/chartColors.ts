@@ -207,6 +207,8 @@ export type LineSeriesColorInput = {
   /** Server `portfolio_groups` color (`r,g,b`) when provided. */
   color_rgb?: string;
   isDeposit?: boolean;
+  /** Deposit companions: dataKey of the value series this aportes-acum. line belongs to. */
+  depositFor?: string;
   /** Dashed overlay (e.g. USD milestone lines on patrimonio chart). */
   isReferenceOverlay?: boolean;
 };

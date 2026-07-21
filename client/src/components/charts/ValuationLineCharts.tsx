@@ -162,16 +162,39 @@ function lineSeriesTooltipRenderContent({
 }): NonNullable<AppTooltipSpec["renderContent"]> {
   return ({ label, payload }) => {
     const dim = focusColorIndex != null;
-    const rows = payload.map((entry) => {
+    const fmt = (raw: unknown): string => {
+      const v = typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
+      return Number.isFinite(v) ? formatTooltipValue(v, displayUnit) : "—";
+    };
+    // Merge each aportes-acum. companion into its account's row — one line per account:
+    // `cuenta : TOTAL (acumulado)`, the acumulado dimmer. Companions whose value series is
+    // absent from this payload keep their own row.
+    const subValueByParentKey = new Map<string, string>();
+    const mainEntries: typeof payload = [];
+    for (const entry of payload) {
+      const dataKey = String(entry.dataKey ?? "");
+      const parentKey = seriesByDataKey.get(dataKey)?.depositFor;
+      if (parentKey && payload.some((p) => String(p.dataKey ?? "") === parentKey)) {
+        // Wrapper parens carry the "companion" meaning, so a negative acumulado uses an
+        // explicit minus — accounting-style `($…)` inside `(…)` would make positive and
+        // negative aportes indistinguishable.
+        const raw = entry.value;
+        const v = typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
+        const inner = !Number.isFinite(v) ? "—" : v < 0 ? `-${fmt(Math.abs(v))}` : fmt(v);
+        subValueByParentKey.set(parentKey, `(${inner})`);
+        continue;
+      }
+      mainEntries.push(entry);
+    }
+    const rows = mainEntries.map((entry) => {
       const dataKey = String(entry.dataKey ?? "");
       const meta = seriesByDataKey.get(dataKey);
       const isHi = focusColorIndex != null && meta?.colorIndex === focusColorIndex;
-      const raw = entry.value;
-      const v = typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
       return {
         key: dataKey,
         name: String(entry.name ?? meta?.name ?? dataKey),
-        value: Number.isFinite(v) ? formatTooltipValue(v, displayUnit) : "—",
+        value: fmt(entry.value),
+        subValue: subValueByParentKey.get(dataKey),
         swatchColor: tooltipColorIsVisible(entry.color) ? String(entry.color) : (meta?.stroke ?? "#94a3b8"),
         dim: dim && !isHi,
         emphasized: isHi,
@@ -206,6 +229,7 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
           name: depName,
           colorIndex: i,
           isDeposit: true,
+          depositFor: a.dataKey,
         });
       }
     });
