@@ -86,7 +86,7 @@ export function PortfolioGroupChartsSection({
           block={valuationBlockForChart}
           displayUnit={displayUnit}
           xAxisGranularity={valuationXAxisGranularity ?? xAxisGranularity}
-          includeAccumulatedLines={valuationXAxisGranularity === "day" ? false : includeDeposits}
+          includeAccumulatedLines={includeDeposits}
           colorPlan={{
             kind: "group-tab",
             groupSlug:

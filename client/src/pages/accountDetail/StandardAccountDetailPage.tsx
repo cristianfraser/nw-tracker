@@ -290,7 +290,6 @@ export function StandardAccountDetailPage({ data }: Props) {
           block={dailyValuationBlock ?? valuationBlockForChart ?? ts.accounts}
           displayUnit={displayUnit}
           xAxisGranularity={dailyValuationBlock ? "day" : xAxisGranularity}
-          includeAccumulatedLines={!dailyValuationBlock}
           trimLeadingInactive={!isMovementCartolaAccount}
         />
       </div>
