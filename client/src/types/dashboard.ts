@@ -307,3 +307,30 @@ export interface DashboardOverviewDailyResponse {
   d1_is_live: boolean;
   points: DashboardOverviewDailyPoint[];
 }
+
+/** One session row of `GET /api/daily-series` (unit-converted; nulls = missing legs). */
+export interface DailySeriesPointDto {
+  as_of_date: string;
+  value: number | null;
+  flow: number;
+  delta: number | null;
+  pl: number | null;
+  pct: number | null;
+}
+
+export interface DailySeriesAccountLineDto {
+  account_id: number;
+  name: string | null;
+  /** Per-session values, index-aligned with `points`. */
+  values: (number | null)[];
+}
+
+/** Daily series for a group page or account (grid = NYSE sessions, "vs last workday"). */
+export interface DailySeriesResponse {
+  unit: string;
+  end_session_ymd: string;
+  d1_is_live: boolean;
+  baseline: { as_of_date: string; value: number | null };
+  points: DailySeriesPointDto[];
+  accounts?: DailySeriesAccountLineDto[];
+}

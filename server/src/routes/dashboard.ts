@@ -10,6 +10,7 @@ import { attachColorsToValuationPayload } from "../chartColorRgb.js";
 import {
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
+  listAccountsForGroupTab,
   type TsUnit,
 } from "../valuationTimeseries.js";
 import {
@@ -19,7 +20,8 @@ import {
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
-import { DAILY_SERIES_MAX_SESSIONS } from "../dailySeries.js";
+import { DAILY_SERIES_MAX_SESSIONS, getBucketDailySeriesCached } from "../dailySeries.js";
+import { db } from "../db.js";
 import {
   getDashboardOverviewDaily,
   OVERVIEW_DAILY_DEFAULT_SESSIONS,
@@ -56,6 +58,64 @@ app.get("/api/dashboard/page-bundle", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   res.json(await buildDashboardPageBundle(unit));
+}));
+
+/**
+ * Daily series for one group page (`portfolio_group`, incl. liabilities/CC issuer tabs) or
+ * one account (`account_id`): per-session bucket points + per-account chart lines for the
+ * day period view (chart + detalle por día). Fetched lazily while the D toggle is active.
+ */
+app.get("/api/daily-series", asyncHandler(async (req, res) => {
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const sessions =
+    req.query.sessions != null ? Number(req.query.sessions) : OVERVIEW_DAILY_DEFAULT_SESSIONS;
+  if (!Number.isInteger(sessions) || sessions < 1 || sessions > DAILY_SERIES_MAX_SESSIONS) {
+    res.status(400).json({ error: `sessions must be 1..${DAILY_SERIES_MAX_SESSIONS}` });
+    return;
+  }
+  const portfolioGroup = String(req.query.portfolio_group ?? "").trim();
+  const accountIdRaw = req.query.account_id != null ? Number(req.query.account_id) : null;
+  if ((portfolioGroup !== "") === (accountIdRaw != null)) {
+    res.status(400).json({ error: "pass exactly one of portfolio_group or account_id" });
+    return;
+  }
+  if (portfolioGroup !== "") {
+    const rows = listAccountsForGroupTab(portfolioGroup).filter((r) => r.account_id > 0);
+    if (!rows.length) {
+      res.status(404).json({ error: `no accounts for group ${portfolioGroup}` });
+      return;
+    }
+    res.json(
+      getBucketDailySeriesCached(`pg:${portfolioGroup}`, rows, {
+        unit,
+        sessions,
+        includeAccounts: true,
+      })
+    );
+    return;
+  }
+  const accountId = Number(accountIdRaw);
+  const row = db
+    .prepare(
+      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug, a.import_key
+       FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
+    )
+    .get(accountId) as
+    | { account_id: number; name: string; bucket_slug: string; import_key: string | null }
+    | undefined;
+  if (!row) {
+    res.status(404).json({ error: `account ${accountId} not found` });
+    return;
+  }
+  // Excluded-from-totals accounts still get their own daily series on their page.
+  res.json(
+    getBucketDailySeriesCached(`account:${accountId}`, [{ ...row, exclude_from_group_totals: 0 }], {
+      unit,
+      sessions,
+      includeAccounts: true,
+    })
+  );
 }));
 
 /** Daily net-worth series (one point per NYSE session) for the day period view. */

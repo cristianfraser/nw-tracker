@@ -166,6 +166,18 @@ export const api = {
       `/api/dashboard/overview-daily?${q.toString()}`
     );
   },
+  dailySeries: (
+    unit: "clp" | "usd",
+    scope: { portfolioGroup?: string; accountId?: number },
+    sessions: number
+  ) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    if (scope.portfolioGroup) q.set("portfolio_group", scope.portfolioGroup);
+    if (scope.accountId != null) q.set("account_id", String(scope.accountId));
+    q.set("sessions", String(sessions));
+    return j<import("./types").DailySeriesResponse>(`/api/daily-series?${q.toString()}`);
+  },
   valuationTimeseries: (
     unit: "clp" | "usd",
     opts?: { portfolio_group?: string; group?: string; subgroup?: string }

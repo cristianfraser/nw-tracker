@@ -40,8 +40,9 @@ export function includeShortHorizonAccount(a: ShortHorizonAccountRef): boolean {
  * `CLP=X` the live mark was built with (`fxForLiveMtm`) — `convertTs` would divide by EOD FX
  * and leave an FX artifact in the USD return on the live day. Prior/historical legs use
  * `convertTs` (EOD on-or-before), which cancels each mark's own EOD FX cleanly.
+ * Shared with the daily series builder so its legs convert identically.
  */
-function convertLegToUnit(rawClp: number, ymd: string, unit: TsUnit, now: Date): number {
+export function convertLegToUnit(rawClp: number, ymd: string, unit: TsUnit, now: Date): number {
   if (unit === "usd" && ymd === chileCalendarTodayYmd()) {
     const live = fxForLiveMtm(ymd, now);
     if (live != null && Number.isFinite(live.clp_per_usd) && live.clp_per_usd > 0) {
