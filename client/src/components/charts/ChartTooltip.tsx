@@ -226,6 +226,8 @@ export type ChartTooltipRow = {
   key: string;
   name: string;
   value: string;
+  /** Dimmer companion after the value (e.g. merged aportes acum.: `TOTAL (acumulado)`). */
+  subValue?: string;
   swatchColor: string;
   /** Fade the row (another series is focused). */
   dim?: boolean;
@@ -269,6 +271,9 @@ export function ChartTooltipRows({
             <span style={{ color: r.emphasized ? "#f1f5f9" : "#e2e8f0", fontWeight: r.emphasized ? 600 : 400 }}>
               {r.value}
             </span>
+            {r.subValue ? (
+              <span style={{ color: "#64748b", fontWeight: 400 }}>{r.subValue}</span>
+            ) : null}
           </li>
         ))}
       </ul>
