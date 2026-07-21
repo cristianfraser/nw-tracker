@@ -5,6 +5,9 @@ import {
   MONTHLY_PERF_DETAIL_PAGE_SIZE,
   MonthlyPerfDetailTable,
 } from "../account/MonthlyPerfDetailTable";
+import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
+import { DAILY_SERIES_DEFAULT_SESSIONS } from "../../dailySeriesChart";
+import { useDailySeries } from "../../queries/hooks";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PeriodReturnsStrip } from "../perf/PeriodReturnsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
@@ -123,7 +126,17 @@ export function GroupInfoBase({
     monthYearMetricsPeriod(metricsPeriod),
     monthlyPage,
     MONTHLY_PERF_DETAIL_PAGE_SIZE,
-    tablesFetchEnabled && serverPaginatedMonthlyDetail
+    tablesFetchEnabled && serverPaginatedMonthlyDetail && metricsPeriod !== "day"
+  );
+
+  // Day view: the detalle table swaps to per-session rows (same query the page chart uses,
+  // so react-query dedupes the fetch).
+  const isDaily = metricsPeriod === "day";
+  const dailySeries = useDailySeries(
+    { portfolioGroup: portfolio?.groupSlug || undefined },
+    displayUnit,
+    DAILY_SERIES_DEFAULT_SESSIONS,
+    isDaily && tablesFetchEnabled
   );
 
   const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
@@ -191,15 +204,29 @@ export function GroupInfoBase({
             ) : null}
             <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>
               {t(
-                metricsPeriod === "year"
-                  ? "groupPage.yearlyDetailTitle"
-                  : "groupPage.monthlyDetailTitle"
+                isDaily
+                  ? "groupPage.dailyDetailTitle"
+                  : metricsPeriod === "year"
+                    ? "groupPage.yearlyDetailTitle"
+                    : "groupPage.monthlyDetailTitle"
               )}
             </h2>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-              {monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
+              {isDaily ? t("groupPage.dailyDetailHint") : monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
             </p>
-            {monthlyError ? (
+            {isDaily ? (
+              dailySeries.isError ? (
+                <p className="error">
+                  {dailySeries.error instanceof Error
+                    ? dailySeries.error.message
+                    : t("common.loadFailedTables")}
+                </p>
+              ) : dailySeries.data ? (
+                <DailyPerfDetailTable series={dailySeries.data} displayUnit={displayUnit} />
+              ) : (
+                <p className="muted">{t("common.loading")}</p>
+              )
+            ) : monthlyError ? (
               <p className="error">{monthlyError}</p>
             ) : monthlyRows.length > 0 ? (
               <MonthlyPerfDetailTable

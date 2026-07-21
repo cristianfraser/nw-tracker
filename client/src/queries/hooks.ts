@@ -81,6 +81,26 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, sessions: number, e
   });
 }
 
+/** Daily series for one group page or account (day period view: chart + detalle por día). */
+export function useDailySeries(
+  scope: { portfolioGroup?: string; accountId?: number },
+  unit: DisplayUnit,
+  sessions: number,
+  enabled = true
+) {
+  const scopeKey = scope.portfolioGroup
+    ? `pg:${scope.portfolioGroup}`
+    : scope.accountId != null
+      ? `account:${scope.accountId}`
+      : "";
+  return useQuery({
+    queryKey: queryKeys.dailySeries(scopeKey, unit, sessions),
+    queryFn: () => api.dailySeries(unit, scope, sessions),
+    enabled: enabled && scopeKey !== "",
+    ...displayUnitQueryBehavior,
+  });
+}
+
 /**
  * Held prior-unit data during a CLP→USD switch gets its USD fields synthesized (FX approximation),
  * memoized per source object so downstream `useMemo`s keep a stable identity across renders —

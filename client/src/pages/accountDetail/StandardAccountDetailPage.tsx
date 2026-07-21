@@ -1,7 +1,11 @@
+import { useMemo } from "react";
 import { Trans, useTranslation } from "../../i18n";
 import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
+import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
+import { buildDailyValuationBlock, DAILY_SERIES_DEFAULT_SESSIONS } from "../../dailySeriesChart";
+import { useDailySeries } from "../../queries/hooks";
 import { PeriodReturnsStrip } from "../../components/perf/PeriodReturnsStrip";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
@@ -74,6 +78,19 @@ export function StandardAccountDetailPage({ data }: Props) {
     ? summary.movement_create?.unit_label ?? "unidades"
     : null;
   const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
+
+  const isDaily = metricsPeriod === "day";
+  // Day view: per-session line + detalle por día, fetched lazily while the D toggle is on.
+  const dailySeries = useDailySeries(
+    { accountId: summary.account_id },
+    displayUnit,
+    DAILY_SERIES_DEFAULT_SESSIONS,
+    isDaily
+  );
+  const dailyValuationBlock = useMemo(() => {
+    if (!isDaily) return null;
+    return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
+  }, [isDaily, dailySeries.data, valuationBlockForChart, ts.accounts]);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
@@ -270,9 +287,10 @@ export function StandardAccountDetailPage({ data }: Props) {
       <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
         <LineChartPanel
           title={t("charts.valuationAndDeposits")}
-          block={valuationBlockForChart ?? ts.accounts}
+          block={dailyValuationBlock ?? valuationBlockForChart ?? ts.accounts}
           displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
+          xAxisGranularity={dailyValuationBlock ? "day" : xAxisGranularity}
+          includeAccumulatedLines={!dailyValuationBlock}
           trimLeadingInactive={!isMovementCartolaAccount}
         />
       </div>
@@ -385,19 +403,29 @@ export function StandardAccountDetailPage({ data }: Props) {
               </div>
               <h3 className={styles.subsectionTitleMid}>
                 {t(
-                  metricsPeriod === "year"
-                    ? "accountDetail.yearlyDetailTitle"
-                    : "accountDetail.monthlyDetailTitle"
+                  isDaily
+                    ? "accountDetail.dailyDetailTitle"
+                    : metricsPeriod === "year"
+                      ? "accountDetail.yearlyDetailTitle"
+                      : "accountDetail.monthlyDetailTitle"
                 )}
               </h3>
-              <MonthlyPerfDetailTable
-                key={`${id}-${displayUnit}-mp-detail`}
-                rows={monthlyPerfRows}
-                displayUnit={displayUnit}
-                isMortgageAccount={isMortgageAccount}
-                isAfpAccount={isAfpAccount}
-                movementUnitsKind={movementUnitsKind}
-              />
+              {isDaily ? (
+                dailySeries.data ? (
+                  <DailyPerfDetailTable series={dailySeries.data} displayUnit={displayUnit} />
+                ) : (
+                  <p className="muted">{t("common.loading")}</p>
+                )
+              ) : (
+                <MonthlyPerfDetailTable
+                  key={`${id}-${displayUnit}-mp-detail`}
+                  rows={monthlyPerfRows}
+                  displayUnit={displayUnit}
+                  isMortgageAccount={isMortgageAccount}
+                  isAfpAccount={isAfpAccount}
+                  movementUnitsKind={movementUnitsKind}
+                />
+              )}
             </>
           )}
         </>

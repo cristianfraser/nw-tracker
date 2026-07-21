@@ -7,9 +7,10 @@ import { cashInterestClpThroughDate, cashInterestUsdThroughDate } from "./cashAc
 import { depositInflowEventUsd } from "./flowsDeposits.js";
 import { nyseSessionsListEndingAt } from "./marketHolidays.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { isNyseRegularSessionOpen, nyseDisplaySessionYmd } from "./nyseSession.js";
 import {
-  bucketValueInUnitAt,
+  convertLegToUnit,
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
@@ -53,6 +54,13 @@ export type DailySeriesPoint = {
   pct: number | null;
 };
 
+export type DailySeriesAccountLine = {
+  account_id: number;
+  name: string | null;
+  /** Per-session values in the request unit, index-aligned with `points`. */
+  values: (number | null)[];
+};
+
 export type BucketDailySeries = {
   unit: TsUnit;
   /** Last grid session = the NYSE display session at build time. */
@@ -62,6 +70,8 @@ export type BucketDailySeries = {
   /** Prior-session anchor for the first point (its `delta` baseline). */
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPoint[];
+  /** Per-account value lines (chart series), present when `includeAccounts` was requested. */
+  accounts?: DailySeriesAccountLine[];
 };
 
 /**
@@ -136,6 +146,8 @@ export type BucketDailySeriesOpts = {
   /** Number of daily points (sessions) to emit, 1..{@link DAILY_SERIES_MAX_SESSIONS}. */
   sessions: number;
   now?: Date;
+  /** Emit per-account value lines alongside the bucket points (same marks, no extra cost). */
+  includeAccounts?: boolean;
 };
 
 /** Build the daily series for one bucket of accounts. Throws on an out-of-bounds window. */
@@ -152,7 +164,34 @@ export function getBucketDailySeries(
   // count + 1 sessions: [0] is the baseline anchor for the first point's delta.
   const grid = nyseSessionsListEndingAt(endSession, count + 1);
 
-  const values = grid.map((ymd) => bucketValueInUnitAt(accounts, ymd, unit, now));
+  // Same value legs as `bucketValueInUnitAt` (Σ finite per-account CLP marks, converted once
+  // per date), looped inline so the per-account marks can double as chart lines. The d1
+  // parity test guards against divergence from the short-horizon cells.
+  const included = accounts.filter(includeShortHorizonAccount);
+  const perAccount: DailySeriesAccountLine[] | null = opts.includeAccounts
+    ? included.map((a) => ({ account_id: a.account_id, name: a.name ?? null, values: [] }))
+    : null;
+  const values: (number | null)[] = grid.map((ymd, gi) => {
+    let rawClp = 0;
+    let any = false;
+    included.forEach((a, ai) => {
+      const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
+        import_key: a.import_key ?? null,
+        name: a.name ?? null,
+      });
+      const clp = mark?.value_clp;
+      const ok = clp != null && Number.isFinite(clp);
+      if (ok) {
+        rawClp += clp;
+        any = true;
+      }
+      // Baseline (gi 0) anchors deltas only; account lines align with `points`.
+      if (perAccount && gi >= 1) {
+        perAccount[ai]!.values.push(ok ? convertLegToUnit(clp, ymd, unit, now) : null);
+      }
+    });
+    return any ? convertLegToUnit(rawClp, ymd, unit, now) : null;
+  });
   const flowUnit = unit === "usd" ? "usd" : "clp";
   const flows = sessionFlows(accounts, grid, flowUnit);
 
@@ -179,6 +218,7 @@ export function getBucketDailySeries(
     d1_is_live: isNyseRegularSessionOpen(now),
     baseline: { as_of_date: grid[0]!, value: values[0]! },
     points,
+    ...(perAccount ? { accounts: perAccount } : {}),
   };
 }
 
@@ -191,9 +231,9 @@ export function getBucketDailySeries(
 export function getBucketDailySeriesCached(
   scopeKey: string,
   accounts: readonly ShortHorizonAccountRef[],
-  opts: { unit: TsUnit; sessions: number }
+  opts: { unit: TsUnit; sessions: number; includeAccounts?: boolean }
 ): BucketDailySeries {
   const rowsKey = accounts.map((a) => a.account_id).join(",");
-  const key = `daily.series|${scopeKey}|${opts.unit}|${opts.sessions}|${rowsKey}`;
+  const key = `daily.series|${scopeKey}|${opts.unit}|${opts.sessions}|${opts.includeAccounts ? "acc" : "sum"}|${rowsKey}`;
   return getAggregationCached(key, () => getBucketDailySeries(accounts, opts));
 }

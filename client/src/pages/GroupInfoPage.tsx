@@ -35,12 +35,14 @@ import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   useAccountsByPortfolioGroup,
+  useDailySeries,
   useDashboardNavContext,
   useDashboardNavSnapshot,
   useGroupPageShell,
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
+import { buildDailyValuationBlock, DAILY_SERIES_DEFAULT_SESSIONS } from "../dailySeriesChart";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
@@ -48,6 +50,7 @@ export function GroupInfoPage() {
 
   const { displayUnit, metricsPeriod } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
+  const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
@@ -210,6 +213,19 @@ export function GroupInfoPage() {
     return buildDisplayValuationBlock(ts, chartCtx, groupedToggleOn);
   }, [ts, chartCtx, groupedToggleOn]);
 
+  // Day view: per-session lines fetched lazily; series identities/colors reuse the
+  // ungrouped monthly block (the Agrupado toggle stays a monthly-view feature).
+  const dailySeries = useDailySeries(
+    { portfolioGroup: portfolioGroup || undefined },
+    displayUnit,
+    DAILY_SERIES_DEFAULT_SESSIONS,
+    isDaily && portfolioGroup !== ""
+  );
+  const dailyValuationBlock = useMemo(() => {
+    if (!isDaily) return null;
+    return buildDailyValuationBlock(dailySeries.data, ts?.accounts_in_group ?? null);
+  }, [isDaily, dailySeries.data, ts?.accounts_in_group]);
+
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx) return [];
     return buildDisplayPieSlices(ts, chartCtx, groupedToggleOn);
@@ -314,10 +330,11 @@ export function GroupInfoPage() {
           accountsEmpty={accounts.length === 0}
           accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
           chartSeriesCount={chartSeriesCount}
-          valuationBlockForChart={charts.valuationBlockForChart}
+          valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
           displayPieSlices={displayPieSlices}
           displayUnit={displayUnit}
           xAxisGranularity={xAxisGranularity}
+          valuationXAxisGranularity={dailyValuationBlock ? "day" : undefined}
           chartColorSlug={charts.chartColorSlug}
           pieAllocationSlug={charts.pieAllocationSlug}
           colorPlanGroupSlug={charts.colorPlanGroupSlug}
