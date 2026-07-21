@@ -15,6 +15,7 @@ import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClp } from "./cryptoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -96,10 +97,19 @@ function historicalMarkClpAtYmd(
   if (accountBucketKindSlug(categorySlug) === "credit_card") {
     // Owed-on-date convention (Saldo pasivos / chart lines): stored `valuations` for
     // historical dates, live billing balance for today+ — not the billing-month "balance
-    // total", which subtracts the next-month payment before it happens.
+    // total", which subtracts the next-month payment before it happens. Between anchors,
+    // per-day owed carries the anchor plus post-anchor signed line activity (charges +,
+    // PAGOs −) — the same evidence stream the month-end writer applies post-cierre.
+    // Installments enter at anchors (cupo-based), matching the billing module.
     const cc = latestCreditCardValuationRowAsOf(accountId, asOfYmd);
     if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) {
-      return { value_clp: cc.value_clp, as_of_date: cc.as_of_date };
+      const value_clp =
+        cc.as_of_date < asOfYmd
+          ? Math.round(
+              cc.value_clp + postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd)
+            )
+          : cc.value_clp;
+      return { value_clp, as_of_date: cc.as_of_date };
     }
   }
 

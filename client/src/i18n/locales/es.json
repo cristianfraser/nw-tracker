@@ -128,6 +128,7 @@
   },
   "dashboard": {
     "chartGranularityLabel": "Período:",
+    "dailyWindowLabel": "Sesiones:",
     "monthly": "Mensual",
     "yearly": "Anual",
     "daily": "Diario",

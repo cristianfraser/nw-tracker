@@ -42,13 +42,13 @@ import {
   usePortfolioGroupBundle,
   useSidebarNav,
 } from "../queries/hooks";
-import { buildDailyValuationBlock, DAILY_SERIES_DEFAULT_SESSIONS } from "../dailySeriesChart";
+import { buildDailyValuationBlock } from "../dailySeriesChart";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
 
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
   const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
@@ -218,13 +218,23 @@ export function GroupInfoPage() {
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
-    DAILY_SERIES_DEFAULT_SESSIONS,
+    dailySessions,
     isDaily && portfolioGroup !== ""
   );
   const dailyValuationBlock = useMemo(() => {
     if (!isDaily) return null;
-    return buildDailyValuationBlock(dailySeries.data, ts?.accounts_in_group ?? null);
-  }, [isDaily, dailySeries.data, ts?.accounts_in_group]);
+    const daily = dailySeries.data;
+    if (!daily) return null;
+    // Agrupado: bucket lines share synthetic ids with the monthly grouped block, so the
+    // same builder maps them onto that block's series metadata (names/colors/dep keys).
+    if (groupedToggleOn && daily.grouped_accounts?.length && ts?.nav_grouped_blocks?.grouped) {
+      return buildDailyValuationBlock(
+        { ...daily, accounts: daily.grouped_accounts },
+        ts.nav_grouped_blocks.grouped
+      );
+    }
+    return buildDailyValuationBlock(daily, ts?.accounts_in_group ?? null);
+  }, [isDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks?.grouped, ts?.accounts_in_group]);
 
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx) return [];

@@ -4,7 +4,8 @@ import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPer
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
-import { buildDailyValuationBlock, DAILY_SERIES_DEFAULT_SESSIONS } from "../../dailySeriesChart";
+import { buildDailyValuationBlock } from "../../dailySeriesChart";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useDailySeries } from "../../queries/hooks";
 import { PeriodReturnsStrip } from "../../components/perf/PeriodReturnsStrip";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
@@ -79,12 +80,13 @@ export function StandardAccountDetailPage({ data }: Props) {
     : null;
   const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
 
+  const { dailySessions } = useDisplayPreferences();
   const isDaily = metricsPeriod === "day";
   // Day view: per-session line + detalle por día, fetched lazily while the D toggle is on.
   const dailySeries = useDailySeries(
     { accountId: summary.account_id },
     displayUnit,
-    DAILY_SERIES_DEFAULT_SESSIONS,
+    dailySessions,
     isDaily
   );
   const dailyValuationBlock = useMemo(() => {

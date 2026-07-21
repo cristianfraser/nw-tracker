@@ -1,9 +1,6 @@
 import { GROUP_TAB_VAL_TOTAL } from "./groupTabAggregation";
 import type { DailySeriesResponse, TimeseriesAccountLine, TimeseriesBlock } from "./types";
 
-/** Shared day-view window (~4.5 months of sessions) for group/account daily fetches. */
-export const DAILY_SERIES_DEFAULT_SESSIONS = 90;
-
 /**
  * Daily valuation block for the day period view: per-account session lines + the group
  * Total, reusing the monthly block's account metadata (dataKeys, names, colors) so the

@@ -6,6 +6,7 @@ import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
@@ -213,8 +214,12 @@ function linkedCreditCardMasters(): LinkedCreditCardMasterRow[] {
 }
 
 /**
- * Linked CC balance for one card: billing **balance total** (Detalle por mes) when the ledger exists;
- * otherwise liability valuation on or before `asOfYmd`.
+ * Linked CC balance for one card. Today+: billing **balance total** (Detalle por mes) when
+ * the ledger exists, else the liability snapshot. Historical dates: stored month-end anchor
+ * **plus per-day post-anchor line activity** (charges +, PAGOs −) — the same daily
+ * owed-on-date convention as `accountMarkClpAtYmd`'s CC branch, so the cash_eqs netting in
+ * daily series moves the day a purchase/PAGO lands (month-end values are unchanged: the
+ * carry window is empty there, and stored month-ends equal the billing balance total).
  */
 function linkedCreditCardBalanceTotalClpAsOf(
   master: LinkedCreditCardMasterRow,
@@ -223,16 +228,29 @@ function linkedCreditCardBalanceTotalClpAsOf(
   todayYmd: string
 ): number | null {
   const masterId = master.account_id;
-  if (ccInstallmentLedgerRowCount(masterId) > 0) {
-    const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
-    if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
-  }
   if (asOfYmd >= todayYmd) {
+    if (ccInstallmentLedgerRowCount(masterId) > 0) {
+      const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
+      if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
+    }
     return (
       latestLiabilityValuationRowForSnapshot(masterId, "credit_card", asOfYmd)?.value_clp ?? null
     );
   }
-  return latestValuationClpFromAscRows(valuationRowsAsc, asOfYmd);
+  const anchor = latestValuationRowFromAscRows(valuationRowsAsc, asOfYmd);
+  if (anchor != null) {
+    return anchor.as_of_date < asOfYmd
+      ? Math.round(
+          anchor.value_clp +
+            postCloseLiveBalanceAdjustmentClp(masterId, anchor.as_of_date, asOfYmd)
+        )
+      : anchor.value_clp;
+  }
+  if (ccInstallmentLedgerRowCount(masterId) > 0) {
+    const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
+    if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
+  }
+  return null;
 }
 
 /** Sum linked tarjeta balances (billing balance total; same number on Ahorros card footer). */
@@ -246,14 +264,14 @@ const stmtValuationsOnOrBefore = db.prepare(
    ORDER BY as_of_date ASC`
 );
 
-function latestValuationClpFromAscRows(
+function latestValuationRowFromAscRows(
   rows: { as_of_date: string; value_clp: number }[],
   asOfYmd: string
-): number | null {
-  let last: number | null = null;
+): { as_of_date: string; value_clp: number } | null {
+  let last: { as_of_date: string; value_clp: number } | null = null;
   for (const r of rows) {
     if (r.as_of_date > asOfYmd) break;
-    if (Number.isFinite(r.value_clp)) last = r.value_clp;
+    if (Number.isFinite(r.value_clp)) last = r;
   }
   return last;
 }

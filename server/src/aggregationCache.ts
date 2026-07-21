@@ -125,9 +125,12 @@ export function invalidateCcBillingDetail(accountId?: number): void {
   if (accountId == null) {
     deleteKeysMatchingPrefix("cc.billing_detail|");
   } else {
-    cache.delete(cacheKeyCcBillingDetail(accountId));
-    const operationalId = resolveOperationalAccountId(accountId);
-    if (operationalId !== accountId) cache.delete(cacheKeyCcBillingDetail(operationalId));
+    // Exact key + `<key>|`-prefixed satellites (e.g. the normalized post-close line memo);
+    // the delimiter keeps account 16 from clobbering 1617.
+    for (const id of new Set([accountId, resolveOperationalAccountId(accountId)])) {
+      cache.delete(cacheKeyCcBillingDetail(id));
+      deleteKeysMatchingPrefix(`${cacheKeyCcBillingDetail(id)}|`);
+    }
   }
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
   // invalidateLinkedCreditCardAggregationCache both call this) — the bundle and the daily
