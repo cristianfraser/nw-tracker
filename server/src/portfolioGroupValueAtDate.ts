@@ -1,6 +1,8 @@
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
+import { dayWindowAnchorForAccount, type DayWindowAnchors } from "./dayWindowAnchor.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import {
   consolidatedClosingRawByDate,
@@ -225,6 +227,51 @@ export function buildDashboardBucketDailySeriesClp(
     out.set(ymd, row);
   }
   return out;
+}
+
+/**
+ * Prior-close bucket totals for the day window, each account marked at ITS OWN calendar's
+ * last close (`dayWindowAnchorForAccount`: UF/crypto = yesterday, USD stocks = prior NYSE
+ * session, retirement/efectivo/`.SN` = prior Chilean business day). cash_eqs nets linked CC
+ * at the Chilean anchor. USD sums convert each account at its own anchor date.
+ */
+export function dashboardBucketDayPriorCloses(anchors: DayWindowAnchors): {
+  clp: Record<NwDashboardBucketSlug, number> & { net_worth: number };
+  usd: Record<NwDashboardBucketSlug, number> & { net_worth: number };
+} {
+  const clp = { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 0, net_worth: 0 };
+  const usd = { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 0, net_worth: 0 };
+  for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+    let rawClp = 0;
+    let rawUsd = 0;
+    for (const a of listAccountsForDashboardBucket(slug)) {
+      if (a.exclude_from_group_totals === 1) continue;
+      const kind = accountBucketKindSlug(a.bucket_slug);
+      const anchor = dayWindowAnchorForAccount(a.account_id, kind, anchors);
+      if (anchor == null) continue;
+      const mark = accountMarkClpAtYmd(a.account_id, anchor, a.bucket_slug, {
+        import_key: a.import_key,
+        name: a.name,
+      });
+      if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
+      rawClp += mark.value_clp;
+      const u = clpToUsdForBalanceAt(mark.value_clp, anchor);
+      if (u != null && Number.isFinite(u)) rawUsd += u;
+    }
+    if (slug === "cash_eqs") {
+      const netDate = anchors.chile ?? anchors.calendar;
+      const cc = linkedCreditCardClpForCashCardAsOf(netDate);
+      const netted = applyCashSavingsNwAdjustment(rawClp, cc);
+      const ccUsdAdj = clpToUsdForBalanceAt(netted - rawClp, netDate);
+      if (ccUsdAdj != null && Number.isFinite(ccUsdAdj)) rawUsd += ccUsdAdj;
+      rawClp = netted;
+    }
+    clp[slug] = Math.round(rawClp);
+    usd[slug] = rawUsd;
+  }
+  clp.net_worth = clp.real_estate + clp.retirement + clp.brokerage + clp.cash_eqs;
+  usd.net_worth = usd.real_estate + usd.retirement + usd.brokerage + usd.cash_eqs;
+  return { clp, usd };
 }
 
 export function buildDashboardBucketValueTotals(

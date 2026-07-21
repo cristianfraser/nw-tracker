@@ -25,7 +25,6 @@ import {
   flowsDepositsNetTotalUsdByAccount,
   netDepositFlowBetween,
 } from "./flowsDeposits.js";
-import { priorNyseSessionYmd } from "./marketHolidays.js";
 import {
   getAccountPositionMeta,
   liveFintualCertDisplayValueClp,
@@ -51,7 +50,8 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { dayWindowAnchorForAccount, dayWindowAnchorsForToday } from "./dayWindowAnchor.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
@@ -299,16 +299,12 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   const priorMonthEnd = priorPeriodEndYmd("mtd", today);
   const priorYearEnd = priorPeriodEndYmd("ytd", today);
   /**
-   * Day window anchor = last completed NYSE session strictly before Chile today ("vs last
-   * workday"): Monday cards read vs Friday's close, weekend drift included. Day deltas are
-   * always balance-change net of flows (no monthly perf series exists at day grain).
-   * UF-marked accounts (property/mortgage) reprice every **calendar** day — their day window
-   * is yesterday → today (`priorCalendarDayAnchor`), the true one-day UF move.
+   * Day-window anchors follow each account's own valuation calendar (`dayWindowAnchor.ts`):
+   * UF-marked + crypto vs yesterday, USD stocks vs the prior NYSE session ("vs last workday",
+   * weekend drift included), retirement/efectivo/`.SN` vs the prior Chilean business day.
+   * Day deltas are always balance-change net of flows (no perf series exists at day grain).
    */
-  const priorDayAnchor = priorNyseSessionYmd(today);
-  const priorCalendarDayAnchor = chileCalendarAddDays(today, -1);
-  const dayAnchorForKind = (kindSlug: string): string | null =>
-    kindSlug === "property" || kindSlug === "mortgage" ? priorCalendarDayAnchor : priorDayAnchor;
+  const dayAnchors = dayWindowAnchorsForToday(today);
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
 
   /** Shared by the master and its liability_view row (never both in one summed scope). */
@@ -320,7 +316,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         today,
         priorMonthEnd,
         priorYearEnd,
-        priorCalendarDayAnchor
+        dayAnchors.calendar
       );
     }
     return mortgageDepositsMemo;
@@ -365,9 +361,9 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 
       const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
       const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
-      // UF-marked rows (property + mortgage) anchor on yesterday; market/cash rows on the
-      // prior NYSE session. Mortgage rows track day marks too (daily UF financing cost).
-      const rowDayAnchor = dayAnchorForKind(kindSlug);
+      // Per-class day anchor (UF/crypto = yesterday, USD stocks = prior NYSE session,
+      // rest = prior Chilean business day). Mortgage tracks day marks too (daily UF cost).
+      const rowDayAnchor = dayWindowAnchorForAccount(a.id, kindSlug, dayAnchors);
       const rowTracksDayMetrics = trackAssetMetrics || kindSlug === "mortgage";
       const priorDayMark =
         rowTracksDayMetrics && rowDayAnchor != null
