@@ -53,9 +53,6 @@ import type { ValuationTimeseriesResponse } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
 
-/** Day-view window (~4.5 months of NYSE sessions). */
-const DAILY_OVERVIEW_SESSIONS = 90;
-
 /** Overview line dataKeys the daily payload can feed (aportes/liabilities stay monthly-only). */
 const DAILY_OVERVIEW_LINE_KEYS = new Set([
   "total_nw",
@@ -68,7 +65,7 @@ const DAILY_OVERVIEW_LINE_KEYS = new Set([
 export function DashboardPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
@@ -175,7 +172,7 @@ export function DashboardPage() {
   // other chart keeps its monthly rendering until the daily detalle work lands.
   const { data: dailyOverview } = useDashboardOverviewDaily(
     displayUnit,
-    DAILY_OVERVIEW_SESSIONS,
+    dailySessions,
     isDaily
   );
   const dailyOverviewBlock = useMemo(() => {

@@ -398,6 +398,10 @@
       "en": "Period:",
       "es": "Período:"
     },
+    "dailyWindowLabel": {
+      "en": "Sessions:",
+      "es": "Sesiones:"
+    },
     "monthly": {
       "en": "Monthly",
       "es": "Mensual"

@@ -20,8 +20,19 @@ import {
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
-import { DAILY_SERIES_MAX_SESSIONS, getBucketDailySeriesCached } from "../dailySeries.js";
+import {
+  DAILY_SERIES_MAX_SESSIONS,
+  getBucketDailySeriesCached,
+  groupDailySeriesAccounts,
+} from "../dailySeries.js";
 import { db } from "../db.js";
+import {
+  buildLiabilitiesChartBucketPlan,
+  buildNavChartBucketPlan,
+  shouldAggregateLiabilitiesCharts,
+  shouldAggregateNavCharts,
+} from "../groupChartBuckets.js";
+import { getNavChartGroupNodeBySlug } from "../navTree.js";
 import {
   getDashboardOverviewDaily,
   OVERVIEW_DAILY_DEFAULT_SESSIONS,
@@ -86,13 +97,30 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       res.status(404).json({ error: `no accounts for group ${portfolioGroup}` });
       return;
     }
-    res.json(
-      getBucketDailySeriesCached(`pg:${portfolioGroup}`, rows, {
-        unit,
-        sessions,
-        includeAccounts: true,
-      })
-    );
+    const series = getBucketDailySeriesCached(`pg:${portfolioGroup}`, rows, {
+      unit,
+      sessions,
+      includeAccounts: true,
+    });
+    // Agrupado lines when the page has bucket nodes — same plan (synthetic ids/names) as
+    // the monthly grouped blocks, so the client reuses that block's series metadata.
+    // Pasivos pages use the liabilities plan (issuer/mortgage buckets, single-mode).
+    const navNode = getNavChartGroupNodeBySlug(portfolioGroup);
+    const plan = navNode
+      ? shouldAggregateLiabilitiesCharts(navNode)
+        ? buildLiabilitiesChartBucketPlan(navNode)
+        : shouldAggregateNavCharts(navNode, true)
+          ? buildNavChartBucketPlan(navNode, true)
+          : null
+      : null;
+    if (plan) {
+      const grouped = groupDailySeriesAccounts(series, plan);
+      if (grouped?.length) {
+        res.json({ ...series, grouped_accounts: grouped });
+        return;
+      }
+    }
+    res.json(series);
     return;
   }
   const accountId = Number(accountIdRaw);

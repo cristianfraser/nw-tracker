@@ -34,9 +34,11 @@ import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
 import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import { buildDailyValuationBlock } from "../dailySeriesChart";
 import {
   useAccountMonthlyPerformance,
   useAccountsByPortfolioGroup,
+  useDailySeries,
   useDashboardNavContext,
   useDashboardNavSnapshot,
   useGroupPageShell,
@@ -56,8 +58,9 @@ export function LiabilitiesGroupPage() {
     [liabilitiesSubgroupParam]
   );
 
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
+  const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
@@ -257,6 +260,25 @@ export function LiabilitiesGroupPage() {
     navGroupSlug: navMatchNode?.slug,
   });
 
+  // Day view: per-session lines (CC per-day owed / mortgage UF drift). Grouped issuer lines
+  // share synthetic ids with the displayed liab grouped block, so the builder maps onto it.
+  const dailySeries = useDailySeries(
+    { portfolioGroup: portfolioGroup || undefined },
+    displayUnit,
+    dailySessions,
+    isDaily && portfolioGroup !== ""
+  );
+  const dailyValuationBlock = useMemo(() => {
+    if (!isDaily) return null;
+    const daily = dailySeries.data;
+    if (!daily || !displayValuationBlock) return null;
+    const useGrouped = Boolean(chartCtx?.liabilitiesGrouped && daily.grouped_accounts?.length);
+    return buildDailyValuationBlock(
+      useGrouped ? { ...daily, accounts: daily.grouped_accounts } : daily,
+      displayValuationBlock
+    );
+  }, [isDaily, dailySeries.data, displayValuationBlock, chartCtx?.liabilitiesGrouped]);
+
   const mortgageAccount = useMemo(() => {
     if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return null;
     return (
@@ -309,10 +331,11 @@ export function LiabilitiesGroupPage() {
         accountsEmpty={accounts.length === 0}
         accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
         chartSeriesCount={chartSeriesCount}
-        valuationBlockForChart={charts.valuationBlockForChart}
+        valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
         displayPieSlices={displayPieSlices}
         displayUnit={displayUnit}
         xAxisGranularity={xAxisGranularity}
+        valuationXAxisGranularity={dailyValuationBlock ? "day" : undefined}
         chartColorSlug={charts.chartColorSlug}
         pieAllocationSlug={charts.pieAllocationSlug}
         colorPlanGroupSlug={charts.colorPlanGroupSlug}

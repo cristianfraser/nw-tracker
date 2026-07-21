@@ -35,6 +35,8 @@ export function dayWindowAnchorForAccount(
   anchors: DayWindowAnchors
 ): string | null {
   if (kindSlug === "property" || kindSlug === "mortgage") return anchors.calendar;
+  // CC owed moves on any calendar day (purchases/PAGOs land on their transaction date).
+  if (kindSlug === "credit_card") return anchors.calendar;
   if (accountUsesCryptoMtm(accountId)) return anchors.calendar;
   if (accountUsesEquityMtm(accountId)) {
     const ticker = equityTickerForAccount(accountId);

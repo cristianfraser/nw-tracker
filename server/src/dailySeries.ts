@@ -8,6 +8,7 @@ import { depositInflowEventUsd } from "./flowsDeposits.js";
 import { nyseSessionsListEndingAt } from "./marketHolidays.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import type { ChartBucketPlan } from "./groupChartBuckets.js";
 import { isNyseRegularSessionOpen, nyseDisplaySessionYmd } from "./nyseSession.js";
 import {
   convertLegToUnit,
@@ -76,6 +77,8 @@ export type BucketDailySeries = {
   accounts?: DailySeriesAccountLine[];
   /** Σ of account `deposits_acum` per session (`__group_dep_total` line), same presence. */
   deposits_acum_total?: number[];
+  /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
+  grouped_accounts?: DailySeriesAccountLine[];
 };
 
 /**
@@ -298,6 +301,51 @@ export function getBucketDailySeries(
     ...(perAccount ? { accounts: perAccount } : {}),
     ...(depsAcumTotal ? { deposits_acum_total: depsAcumTotal } : {}),
   };
+}
+
+/**
+ * Agrupado view of a daily series: per-account lines summed into their chart buckets
+ * (synthetic bucket ids/names from {@link ChartBucketPlan} — the same plan the monthly
+ * grouped blocks use, so the client can reuse the grouped block's series metadata).
+ * Accounts the plan leaves ungrouped pass through as their own lines. Pure transform over
+ * an already-built series (values and aportes both sum; null + null stays null).
+ */
+export function groupDailySeriesAccounts(
+  series: BucketDailySeries,
+  plan: ChartBucketPlan
+): DailySeriesAccountLine[] | null {
+  if (!series.accounts?.length) return null;
+  const pointCount = series.points.length;
+  const byBucketKey = new Map<string, DailySeriesAccountLine>();
+  const out: DailySeriesAccountLine[] = [];
+  for (const line of series.accounts) {
+    const bucketKey = plan.idToBucket(line.account_id);
+    const meta = bucketKey != null ? plan.meta[bucketKey] : undefined;
+    if (bucketKey == null || !meta) {
+      out.push(line);
+      continue;
+    }
+    let agg = byBucketKey.get(bucketKey);
+    if (!agg) {
+      agg = {
+        account_id: meta.accountId,
+        name: meta.name,
+        values: new Array<number | null>(pointCount).fill(null),
+      };
+      byBucketKey.set(bucketKey, agg);
+      out.push(agg);
+    }
+    for (let i = 0; i < pointCount; i++) {
+      const v = line.values[i];
+      if (v != null) agg.values[i] = (agg.values[i] ?? 0) + v;
+      const d = line.deposits_acum?.[i];
+      if (d != null) {
+        agg.deposits_acum ??= new Array<number>(pointCount).fill(0);
+        agg.deposits_acum[i] = (agg.deposits_acum[i] ?? 0) + d;
+      }
+    }
+  }
+  return out;
 }
 
 /**

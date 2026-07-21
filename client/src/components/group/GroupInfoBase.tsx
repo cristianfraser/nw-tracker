@@ -6,7 +6,6 @@ import {
   MonthlyPerfDetailTable,
 } from "../account/MonthlyPerfDetailTable";
 import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
-import { DAILY_SERIES_DEFAULT_SESSIONS } from "../../dailySeriesChart";
 import { useDailySeries } from "../../queries/hooks";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PeriodReturnsStrip } from "../perf/PeriodReturnsStrip";
@@ -99,7 +98,7 @@ export function GroupInfoBase({
   serverPaginatedMonthlyDetail = false,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
   const tablesEnabled =
     !hideConsolidatedTables &&
     (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
@@ -135,7 +134,7 @@ export function GroupInfoBase({
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolio?.groupSlug || undefined },
     displayUnit,
-    DAILY_SERIES_DEFAULT_SESSIONS,
+    dailySessions,
     isDaily && tablesFetchEnabled
   );
 

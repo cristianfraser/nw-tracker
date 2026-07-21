@@ -1,4 +1,8 @@
-import { invalidateCcBillingDetail } from "./aggregationCache.js";
+import {
+  cacheKeyCcBillingDetail,
+  getAggregationCached,
+  invalidateCcBillingDetail,
+} from "./aggregationCache.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
@@ -174,9 +178,59 @@ export function postCloseLiveBalanceAdjustmentClp(
 }
 
 /**
- * Batch form of {@link postCloseLiveBalanceAdjustmentClp}: one line scan + per-line
- * normalization for the account, reused across every (close, month-end] window — the detalle
- * builder calls this once per account instead of re-scanning all lines per billing month.
+ * Normalized non-installment line stream for post-close windows (transaction-date ISO,
+ * dedupe key, signed CLP), memoized in the aggregation cache under the account's
+ * `cc.billing_detail|<id>|…` satellite key — dropped by `invalidateCcBillingDetail` with the
+ * detalle cache. Daily owed-on-date evaluates one window per session, so the scan must not
+ * re-run per date.
+ */
+function normalizedPostCloseLines(
+  accountId: number
+): { iso: string; key: string; clp: number | null }[] {
+  return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|postclose_lines`, () => {
+    const rows = db
+      .prepare(
+        `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
+                l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
+                l.transaction_date, s.statement_date, l.dedupe_key
+         FROM cc_statement_lines l
+         JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.installment_flag = 0`
+      )
+      .all(accountId) as PostCloseLineRow[];
+    const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+
+    const fxDateByStatementDate = new Map<string, string | null>();
+    const fxDateFor = (statementDate: string): string | null => {
+      if (!fxDateByStatementDate.has(statementDate)) {
+        fxDateByStatementDate.set(statementDate, balanceUsdFxDateIso(accountId, statementDate));
+      }
+      return fxDateByStatementDate.get(statementDate) ?? null;
+    };
+
+    // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
+    // inside a window (same as the single-window loop did).
+    const lines: { iso: string; key: string; clp: number | null }[] = [];
+    for (const r of rows) {
+      if (superseded.has(r.id)) continue;
+      if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+      const iso = normalizeTransactionDateIso(r.transaction_date);
+      if (!iso) continue;
+      const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
+      const clp = effectiveCcExpenseLineAmountClp(
+        { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
+        fxDateFor(r.statement_date)
+      );
+      lines.push({ iso, key, clp: clp != null && Number.isFinite(clp) ? clp : null });
+    }
+    return lines;
+  });
+}
+
+/**
+ * Batch form of {@link postCloseLiveBalanceAdjustmentClp}: one (memoized) line scan for the
+ * account, reused across every (close, month-end] window — the detalle builder calls this
+ * once per account instead of re-scanning all lines per billing month.
  */
 export function postCloseLiveBalanceAdjustmentsClp(
   accountId: number,
@@ -188,41 +242,7 @@ export function postCloseLiveBalanceAdjustmentsClp(
   );
   if (!anyActive) return windows.map(() => 0);
 
-  const rows = db
-    .prepare(
-      `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
-              l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
-              l.transaction_date, s.statement_date, l.dedupe_key
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND l.installment_flag = 0`
-    )
-    .all(accountId) as PostCloseLineRow[];
-  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
-
-  const fxDateByStatementDate = new Map<string, string | null>();
-  const fxDateFor = (statementDate: string): string | null => {
-    if (!fxDateByStatementDate.has(statementDate)) {
-      fxDateByStatementDate.set(statementDate, balanceUsdFxDateIso(accountId, statementDate));
-    }
-    return fxDateByStatementDate.get(statementDate) ?? null;
-  };
-
-  // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
-  // inside a window (same as the single-window loop did).
-  const lines: { iso: string; key: string; clp: number | null }[] = [];
-  for (const r of rows) {
-    if (superseded.has(r.id)) continue;
-    if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
-    const iso = normalizeTransactionDateIso(r.transaction_date);
-    if (!iso) continue;
-    const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
-    const clp = effectiveCcExpenseLineAmountClp(
-      { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
-      fxDateFor(r.statement_date)
-    );
-    lines.push({ iso, key, clp: clp != null && Number.isFinite(clp) ? clp : null });
-  }
+  const lines = normalizedPostCloseLines(accountId);
 
   return windows.map((w) => {
     if (!w.closeIso || !w.monthEndIso || w.closeIso >= w.monthEndIso) return 0;

@@ -2,6 +2,10 @@ import { useTranslation } from "../../i18n";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { cn } from "../../cn";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import {
+  DAILY_SESSIONS_OPTIONS,
+  parseDailySessions,
+} from "../../displayPreferenceStorageSync";
 import type { DisplayUnit } from "../../queries/keys";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
@@ -13,7 +17,14 @@ import styles from "./AppDisplayPreferencesBar.module.css";
  */
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();
-  const { displayUnit, setDisplayUnit, metricsPeriod, setMetricsPeriod } = useDisplayPreferences();
+  const {
+    displayUnit,
+    setDisplayUnit,
+    metricsPeriod,
+    setMetricsPeriod,
+    dailySessions,
+    setDailySessions,
+  } = useDisplayPreferences();
 
   return (
     <div className={styles.host} data-app-display-prefs-host>
@@ -47,6 +58,25 @@ export function AppDisplayPreferencesBar() {
                 <option value="year">{t("dashboard.yearly")}</option>
               </select>
             </label>
+            {metricsPeriod === "day" ? (
+              <label className={styles.field}>
+                <span className="muted">{t("dashboard.dailyWindowLabel")}</span>
+                <select
+                  name="nw-global-dw"
+                  value={String(dailySessions)}
+                  onChange={(e) => {
+                    const v = parseDailySessions(e.target.value);
+                    if (v != null) setDailySessions(v);
+                  }}
+                >
+                  {DAILY_SESSIONS_OPTIONS.map((n) => (
+                    <option key={n} value={String(n)}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
         </div>
       </div>

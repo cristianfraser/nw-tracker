@@ -17,10 +17,23 @@ import type { DisplayUnit } from "./queries/keys";
 
 export const DISPLAY_UNIT_LS_KEY = "nw-tracker.displayUnit";
 export const METRICS_PERIOD_LS_KEY = "nw-tracker.metricsPeriod";
+export const DAILY_SESSIONS_LS_KEY = "nw-tracker.dailySessions";
+
+/** Day-view window sizes (sessions) offered by the toolbar selector. */
+export const DAILY_SESSIONS_OPTIONS = [30, 90, 180, 250] as const;
+export type DailySessionsWindow = (typeof DAILY_SESSIONS_OPTIONS)[number];
+
+export function parseDailySessions(raw: string | null): DailySessionsWindow | null {
+  const n = raw != null ? Number(raw) : Number.NaN;
+  return (DAILY_SESSIONS_OPTIONS as readonly number[]).includes(n)
+    ? (n as DailySessionsWindow)
+    : null;
+}
 
 export type DisplayPreferenceStorageChange =
   | { pref: "displayUnit"; value: DisplayUnit }
   | { pref: "metricsPeriod"; value: CardGroupMetricsPeriod }
+  | { pref: "dailySessions"; value: DailySessionsWindow }
   | { pref: "decimalSeparator"; value: DecimalSeparator }
   | { pref: "language"; value: AppLanguage };
 
@@ -40,6 +53,11 @@ export function parsePreferenceStorageChange(
         return { pref: "metricsPeriod", value: newValue };
       }
       return null;
+    case DAILY_SESSIONS_LS_KEY: {
+      const sessions = parseDailySessions(newValue);
+      if (sessions != null) return { pref: "dailySessions", value: sessions };
+      return null;
+    }
     case DECIMAL_SEPARATOR_LS_KEY:
       if (newValue === "comma" || newValue === "period") {
         return { pref: "decimalSeparator", value: newValue };
