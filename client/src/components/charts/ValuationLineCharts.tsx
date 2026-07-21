@@ -186,6 +186,13 @@ function lineSeriesTooltipRenderContent({
       }
       mainEntries.push(entry);
     }
+    // Rows sort by this date's balance, descending (the Total tops the list simply by
+    // being the largest); valueless rows sink to the bottom.
+    const numericValue = (raw: unknown): number => {
+      const v = typeof raw === "number" ? raw : raw == null ? Number.NaN : Number(raw);
+      return Number.isFinite(v) ? v : Number.NEGATIVE_INFINITY;
+    };
+    mainEntries.sort((a, b) => numericValue(b.value) - numericValue(a.value));
     const rows = mainEntries.map((entry) => {
       const dataKey = String(entry.dataKey ?? "");
       const meta = seriesByDataKey.get(dataKey);
