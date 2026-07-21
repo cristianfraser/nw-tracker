@@ -1,7 +1,7 @@
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { nwDashboardMetricGroupForAccount } from "./portfolioGroupTree.js";
@@ -230,28 +230,47 @@ export function buildDashboardNwBucketTotalsFromRows(
   };
 }
 
-/** Prior-session bucket closes for the day window (per-session raw marks + fx at that date). */
-function dailyPriorCloseTotals(priorDayAnchor: string, includeUsd: boolean) {
-  const row = buildDashboardBucketDailySeriesClp([priorDayAnchor]).get(priorDayAnchor)!;
+/**
+ * Prior bucket closes for the day window: market/cash buckets at the prior NYSE session,
+ * the UF-marked real_estate bucket at the prior **calendar** day (UF reprices every day).
+ * Raw per-date marks + fx at each bucket's own anchor date.
+ */
+function dailyPriorCloseTotals(
+  priorSession: string,
+  priorCalendarDay: string,
+  includeUsd: boolean
+) {
+  const dates = [...new Set([priorSession, priorCalendarDay])].sort();
+  const byDate = buildDashboardBucketDailySeriesClp(dates);
+  const session = byDate.get(priorSession)!;
+  const calDay = byDate.get(priorCalendarDay)!;
   const base = {
-    net_worth_clp: row.net_worth,
-    real_estate_clp: row.real_estate,
-    retirement_clp: row.retirement,
-    brokerage_clp: row.brokerage,
-    cash_eqs_clp: row.cash_eqs,
+    real_estate_clp: calDay.real_estate,
+    retirement_clp: session.retirement,
+    brokerage_clp: session.brokerage,
+    cash_eqs_clp: session.cash_eqs,
+    net_worth_clp:
+      calDay.real_estate + session.retirement + session.brokerage + session.cash_eqs,
   };
   if (!includeUsd) return base;
-  const toUsd = (clp: number) => {
-    const u = clpToUsdForBalanceAt(clp, priorDayAnchor);
+  const toUsd = (clp: number, ymd: string) => {
+    const u = clpToUsdForBalanceAt(clp, ymd);
     return u != null && Number.isFinite(u) ? u : undefined;
   };
+  const reUsd = toUsd(calDay.real_estate, priorCalendarDay);
+  const retUsd = toUsd(session.retirement, priorSession);
+  const brkUsd = toUsd(session.brokerage, priorSession);
+  const cashUsd = toUsd(session.cash_eqs, priorSession);
   return {
     ...base,
-    net_worth_usd: toUsd(row.net_worth),
-    real_estate_usd: toUsd(row.real_estate),
-    retirement_usd: toUsd(row.retirement),
-    brokerage_usd: toUsd(row.brokerage),
-    cash_eqs_usd: toUsd(row.cash_eqs),
+    net_worth_usd:
+      reUsd != null && retUsd != null && brkUsd != null && cashUsd != null
+        ? reUsd + retUsd + brkUsd + cashUsd
+        : undefined,
+    real_estate_usd: reUsd,
+    retirement_usd: retUsd,
+    brokerage_usd: brkUsd,
+    cash_eqs_usd: cashUsd,
   };
 }
 
@@ -278,7 +297,15 @@ export function buildDashboardNwBucketTotals(includeUsd: boolean) {
       // Per-session raw marks — buildDashboardBucketValueTotals maps the consolidated
       // MONTHLY closing onto any date of its month, which would make the prior-session
       // close equal today's live value (day deltas ≈ 0).
-      ...(priorDayAnchor != null ? { day: dailyPriorCloseTotals(priorDayAnchor, includeUsd) } : {}),
+      ...(priorDayAnchor != null
+        ? {
+            day: dailyPriorCloseTotals(
+              priorDayAnchor,
+              chileCalendarAddDays(asOfToday, -1),
+              includeUsd
+            ),
+          }
+        : {}),
     },
     ...(includeUsd
       ? {
