@@ -296,11 +296,31 @@ describe("getBucketDailySeries — includeAccounts", () => {
     });
   });
 
+  it("emits full-history aportes acum. per account + group total; steps equal the flow legs", () => {
+    const refs = accountRefs();
+    if (refs.length < 2) return;
+    const s = getBucketDailySeries(refs, {
+      unit: "clp",
+      sessions: 4,
+      now: NOW,
+      includeAccounts: true,
+    });
+    const equity = s.accounts!.find((l) => l.account_id === equityAccountId)!;
+    const manual = s.accounts!.find((l) => l.account_id === manualAccountId)!;
+    // Equity buy (03-10, CLP-funded) predates the window: flat lifetime level.
+    expect(equity.deposits_acum).toEqual([100000, 100000, 100000, 100000]);
+    // Manual deposit lands 03-24: the line steps by exactly that day's flow leg.
+    expect(manual.deposits_acum).toEqual([0, 0, 50000, 50000]);
+    expect(manual.deposits_acum![2]! - manual.deposits_acum![1]!).toBe(s.points[2]!.flow);
+    expect(s.deposits_acum_total).toEqual([100000, 100000, 150000, 150000]);
+  });
+
   it("omits account lines by default", () => {
     const refs = accountRefs();
     if (refs.length === 0) return;
     const s = getBucketDailySeries(refs, { unit: "clp", sessions: 2, now: NOW });
     expect(s.accounts).toBeUndefined();
+    expect(s.deposits_acum_total).toBeUndefined();
   });
 });
 
