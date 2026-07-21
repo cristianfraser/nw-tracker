@@ -486,6 +486,16 @@ describe("mortgage dashboard card metrics", () => {
       checked += 1;
       expect(dash.deposits_clp).toBe(expectedDeposits);
       expect(dash.deposits_month_clp).toBe(expectedMonthDeposits);
+      // Day metrics: mortgage is UF-marked (reprices every calendar day) — the day window
+      // anchors on yesterday and the delta keeps the loss-negative convention
+      // (prior − close − payments). Regression: v1 shipped mortgage day deltas as null.
+      if (dash.prior_day_close_clp != null && dash.current_value_clp != null) {
+        expect(dash.delta_day_clp).not.toBeNull();
+        expect(dash.delta_day_clp!).toBeCloseTo(
+          dash.prior_day_close_clp - dash.current_value_clp - (dash.deposits_day_clp ?? 0),
+          2
+        );
+      }
       if (cum != null) {
         expect(dash.delta_total_clp).toBeCloseTo(cum, 2);
         expect(dash.delta_total_clp!).toBeLessThan(0);
