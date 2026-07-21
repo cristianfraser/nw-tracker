@@ -275,6 +275,35 @@ describe("getBucketDailySeries — parity with the d1 short-horizon cell", () =>
   });
 });
 
+describe("getBucketDailySeries — includeAccounts", () => {
+  it("per-account lines align with points and sum to the bucket value", () => {
+    const refs = accountRefs();
+    if (refs.length < 2) return;
+    const s = getBucketDailySeries(refs, {
+      unit: "clp",
+      sessions: 4,
+      now: NOW,
+      includeAccounts: true,
+    });
+    expect(s.accounts).toHaveLength(2);
+    for (const line of s.accounts!) {
+      expect(line.values).toHaveLength(s.points.length);
+    }
+    s.points.forEach((p, i) => {
+      if (p.value == null) return;
+      const sum = s.accounts!.reduce((acc, l) => acc + (l.values[i] ?? 0), 0);
+      expect(sum).toBeCloseTo(p.value, 6);
+    });
+  });
+
+  it("omits account lines by default", () => {
+    const refs = accountRefs();
+    if (refs.length === 0) return;
+    const s = getBucketDailySeries(refs, { unit: "clp", sessions: 2, now: NOW });
+    expect(s.accounts).toBeUndefined();
+  });
+});
+
 describe("getBucketDailySeriesCached", () => {
   it("caches per scope and drops on market-data invalidation", () => {
     const refs = accountRefs();

@@ -37,6 +37,7 @@ export function PortfolioGroupChartsSection({
   showValuationDeposits = true,
   chartControls,
   hideGroupPerf = false,
+  valuationXAxisGranularity,
 }: {
   accountsEmpty: boolean;
   accountsEmptyMessage: string;
@@ -59,6 +60,8 @@ export function PortfolioGroupChartsSection({
   chartControls?: ReactNode;
   /** Omit investment-style group P/L charts (pasivos routes). */
   hideGroupPerf?: boolean;
+  /** Valuation-panel-only override (daily series); the P/L bars keep `xAxisGranularity`. */
+  valuationXAxisGranularity?: "month" | "year" | "day";
 }) {
   if (accountsEmpty) {
     return (
@@ -82,8 +85,8 @@ export function PortfolioGroupChartsSection({
           title={i18n.t("charts.valuationAndDeposits")}
           block={valuationBlockForChart}
           displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
-          includeAccumulatedLines={includeDeposits}
+          xAxisGranularity={valuationXAxisGranularity ?? xAxisGranularity}
+          includeAccumulatedLines={valuationXAxisGranularity === "day" ? false : includeDeposits}
           colorPlan={{
             kind: "group-tab",
             groupSlug:
