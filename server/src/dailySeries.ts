@@ -59,6 +59,8 @@ export type DailySeriesAccountLine = {
   name: string | null;
   /** Per-session values in the request unit, index-aligned with `points`. */
   values: (number | null)[];
+  /** Cumulative personal deposits (full history through each session) — the aportes acum. line. */
+  deposits_acum?: number[];
 };
 
 export type BucketDailySeries = {
@@ -72,6 +74,8 @@ export type BucketDailySeries = {
   points: DailySeriesPoint[];
   /** Per-account value lines (chart series), present when `includeAccounts` was requested. */
   accounts?: DailySeriesAccountLine[];
+  /** Σ of account `deposits_acum` per session (`__group_dep_total` line), same presence. */
+  deposits_acum_total?: number[];
 };
 
 /**
@@ -141,6 +145,58 @@ function usdFlowForEvent(e: DepositInflowEvent): number | null {
   return usd != null && Number.isFinite(usd) ? usd : null;
 }
 
+/**
+ * Full-history cumulative personal deposits through each grid date, per account — the
+ * "aportes acum." chart companion. Same event source as {@link sessionFlows} (regular
+ * accounts: merged display deposit events; USD-cash: `balance − interest` at the date), so
+ * the line's step on a deposit day equals that day's flow leg. CLP for clp/uf units, native
+ * USD for usd (uf conversion happens at emit time, per session date).
+ */
+function accountDepositCumsOnGrid(
+  accounts: readonly ShortHorizonAccountRef[],
+  grid: readonly string[],
+  flowUnit: "clp" | "usd"
+): Map<number, number[]> {
+  const out = new Map<number, number[]>();
+  const regularIds = accounts
+    .map((a) => a.account_id)
+    .filter((id) => !isUsdCashAccount(id));
+  const eventsById = loadMergedDisplayDepositInflowEvents(regularIds);
+
+  for (const a of accounts) {
+    const id = a.account_id;
+    if (isUsdCashAccount(id)) {
+      const depAt =
+        flowUnit === "usd"
+          ? (ymd: string) => usdCashBalanceUsdAt(id, ymd) - cashInterestUsdThroughDate(id, ymd)
+          : (ymd: string) => usdCashBalanceClpAt(id, ymd) - cashInterestClpThroughDate(id, ymd);
+      out.set(
+        id,
+        grid.map((ymd) => depAt(ymd))
+      );
+      continue;
+    }
+    const events = eventsById.get(id) ?? [];
+    const cums = new Array<number>(grid.length).fill(0);
+    let cum = 0;
+    let ei = 0;
+    for (let gi = 0; gi < grid.length; gi++) {
+      const ymd = grid[gi]!;
+      while (ei < events.length && events[ei]!.occurred_on <= ymd) {
+        const e = events[ei]!;
+        ei += 1;
+        if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+        const amt = flowUnit === "usd" ? usdFlowForEvent(e) : e.amt;
+        if (amt == null) continue;
+        cum += amt;
+      }
+      cums[gi] = cum;
+    }
+    out.set(id, cums);
+  }
+  return out;
+}
+
 export type BucketDailySeriesOpts = {
   unit: TsUnit;
   /** Number of daily points (sessions) to emit, 1..{@link DAILY_SERIES_MAX_SESSIONS}. */
@@ -195,6 +251,27 @@ export function getBucketDailySeries(
   const flowUnit = unit === "usd" ? "usd" : "clp";
   const flows = sessionFlows(accounts, grid, flowUnit);
 
+  // Aportes acum. companion lines (parity with the monthly chart's deposit series): full-
+  // history cumulative deposits at each session, per account plus the group total.
+  let depsAcumTotal: number[] | null = null;
+  if (perAccount) {
+    const cumsById = accountDepositCumsOnGrid(included, grid, flowUnit);
+    const emit = (cumRaw: number, ymd: string): number =>
+      unit === "uf" ? convertTs(cumRaw, ymd, "uf") : cumRaw;
+    depsAcumTotal = new Array<number>(grid.length - 1).fill(0);
+    included.forEach((a, ai) => {
+      const cums = cumsById.get(a.account_id);
+      if (!cums) return;
+      const line = perAccount[ai]!;
+      line.deposits_acum = [];
+      for (let i = 1; i < grid.length; i++) {
+        const v = emit(cums[i]!, grid[i]!);
+        line.deposits_acum.push(v);
+        depsAcumTotal![i - 1]! += v;
+      }
+    });
+  }
+
   const points: DailySeriesPoint[] = [];
   for (let i = 1; i < grid.length; i++) {
     const ymd = grid[i]!;
@@ -219,6 +296,7 @@ export function getBucketDailySeries(
     baseline: { as_of_date: grid[0]!, value: values[0]! },
     points,
     ...(perAccount ? { accounts: perAccount } : {}),
+    ...(depsAcumTotal ? { deposits_acum_total: depsAcumTotal } : {}),
   };
 }
 

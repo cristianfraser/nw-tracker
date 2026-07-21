@@ -323,6 +323,8 @@ export interface DailySeriesAccountLineDto {
   name: string | null;
   /** Per-session values, index-aligned with `points`. */
   values: (number | null)[];
+  /** Cumulative personal deposits through each session (aportes acum. companion line). */
+  deposits_acum?: number[];
 }
 
 /** Daily series for a group page or account (grid = NYSE sessions, "vs last workday"). */
@@ -333,4 +335,6 @@ export interface DailySeriesResponse {
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPointDto[];
   accounts?: DailySeriesAccountLineDto[];
+  /** Σ of account `deposits_acum` per session (`__group_dep_total` line). */
+  deposits_acum_total?: number[];
 }
