@@ -228,6 +228,35 @@ export function getAccountPositionMeta(
     if (asset) {
       const units = cryptoCoinCumulativeThroughDate(accountId, asOf, asset);
       const equityTickerRow = equityTicker;
+      const out: AccountPositionMeta = {
+        ticker: asset === "BTC" ? "BTC" : "ETH",
+        units_kind: "coin",
+        units: units > 1e-12 && Number.isFinite(units) ? units : null,
+      };
+
+      // Live-first, like `equityBrokeragePositionMeta`: crypto trades 24/7, so a today
+      // valuation uses the cached live quote (intraday fx) — a raw EOD close here pinned
+      // dashboard crypto rows at yesterday's close and zeroed their day delta (the day
+      // anchor mark IS that same close).
+      const today = chileCalendarTodayYmd();
+      const session = equitySessionYmdForTicker(equityTickerRow, now);
+      const useLive =
+        asOf === today && shouldUseLiveEquityQuote(equityTickerRow, session, now);
+      const liveQuote = useLive ? getLiveEquityQuoteFromDb(equityTickerRow) : null;
+
+      if (liveQuote != null) {
+        const mtm = computeCryptoMtmClp(accountId, session, liveQuote.price, now);
+        if (mtm != null && Number.isFinite(mtm)) {
+          out.afp_override_value_clp = Math.round(mtm * 100) / 100;
+          out.afp_override_value_as_of = liveQuote.trade_date ?? session;
+          const u = out.units;
+          if (u != null && u > 1e-12) {
+            out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
+          }
+          return out;
+        }
+      }
+
       const mtm = computeCryptoMtmClp(accountId, asOf);
       const closeRow = db
         .prepare(
@@ -235,11 +264,6 @@ export function getAccountPositionMeta(
            WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
         )
         .get(equityTickerRow, asOf) as { trade_date: string; close: number } | undefined;
-      const out: AccountPositionMeta = {
-        ticker: asset === "BTC" ? "BTC" : "ETH",
-        units_kind: "coin",
-        units: units > 1e-12 && Number.isFinite(units) ? units : null,
-      };
       if (mtm != null && Number.isFinite(mtm) && closeRow?.trade_date) {
         out.afp_override_value_clp = Math.round(mtm * 100) / 100;
         out.afp_override_value_as_of = closeRow.trade_date;
