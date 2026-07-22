@@ -216,14 +216,16 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
 
   it("marks property and mortgage from the movement ledger (UF × uf_daily)", () => {
     if (preexistingProperty) return;
-    // 2099-03-15: last non-prepago row is cuota 2 (3921.8 UF / 1478.2 UF); UF on-or-before = 40,200.
+    // 2099-03-15: last row is cuota 2 (3921.8 UF / 1478.2 UF); UF on-or-before = 40,200.
     const property = deptoAccountMarkClpAtYmd("property", "2099-03-15");
     const mortgage = deptoAccountMarkClpAtYmd("mortgage", "2099-03-15");
     expect(property?.value_clp).toBe(Math.round(1478.2 * 40_200));
     expect(mortgage?.value_clp).toBe(Math.round(3921.8 * 40_200));
-    // after the prepago (skipped in fills, like the sheet path): balances unchanged, UF moves
+    // After the prepago (2099-03-20) its balance drop applies on its own date: 3821.8 UF.
     const after = deptoAccountMarkClpAtYmd("mortgage", "2099-03-25");
-    expect(after?.value_clp).toBe(Math.round(3921.8 * 40_250));
+    expect(after?.value_clp).toBe(Math.round(3821.8 * 40_250));
+    const propertyAfter = deptoAccountMarkClpAtYmd("property", "2099-03-25");
+    expect(propertyAfter?.value_clp).toBe(Math.round((5400 - 3821.8) * 40_250));
   });
 
   it("returns [] with no depto data and throws on stray depto payments", () => {
