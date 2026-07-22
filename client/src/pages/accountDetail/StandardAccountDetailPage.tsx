@@ -414,7 +414,11 @@ export function StandardAccountDetailPage({ data }: Props) {
               </h3>
               {isDaily ? (
                 dailySeries.data ? (
-                  <DailyPerfDetailTable series={dailySeries.data} displayUnit={displayUnit} />
+                  <DailyPerfDetailTable
+                    series={dailySeries.data}
+                    displayUnit={displayUnit}
+                    dimClosedDays
+                  />
                 ) : (
                   <p className="muted">{t("common.loading")}</p>
                 )

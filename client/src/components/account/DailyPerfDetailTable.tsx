@@ -19,16 +19,20 @@ function cellPct(p: number | null | undefined) {
 
 /**
  * Detalle por día: one row per calendar day from `GET /api/daily-series` (cierre, day deposits,
- * day P/L = Δ − flow, day %). Rows with `market_day: false` (weekend/shared holiday) render
- * dimmed. Dates render as ISO YYYY-MM-DD per the repo date convention.
+ * day P/L = Δ − flow, day %). With `dimClosedDays` (account pages only — a single account has
+ * one market calendar), rows with `market_day: false` (weekend/shared holiday) render dimmed;
+ * bucket pages mix calendars, so their weekend rows carry real crypto/UF P/L and stay normal.
+ * Dates render as ISO YYYY-MM-DD per the repo date convention.
  * Parallel desktop `<td>` / mobile `<TableMobileCard>` renderings (keep in sync).
  */
 export function DailyPerfDetailTable({
   series,
   displayUnit,
+  dimClosedDays = false,
 }: {
   series: DailySeriesResponse | null | undefined;
   displayUnit: "clp" | "usd";
+  dimClosedDays?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -79,7 +83,7 @@ export function DailyPerfDetailTable({
         {pageRows.map((row) => (
           <tr
             key={row.as_of_date}
-            style={row.market_day === false ? { opacity: 0.45 } : undefined}
+            style={dimClosedDays && row.market_day === false ? { opacity: 0.45 } : undefined}
           >
             <td className="mono desktop-only">{row.as_of_date}</td>
             <td className="mono desktop-only">{fmt(row.value)}</td>
