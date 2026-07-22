@@ -2859,8 +2859,8 @@
       "es": "Totales del grupo por mes (suma de las cuentas hijas)."
     },
     "dailyDetailHint": {
-      "en": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar; dimmed rows = market holiday or weekend).",
-      "es": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta; filas atenuadas = feriado bursátil o fin de semana)."
+      "en": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar).",
+      "es": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta)."
     },
     "dailyDetailEmpty": {
       "en": "No daily data for this group's accounts.",

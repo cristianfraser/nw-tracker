@@ -818,7 +818,7 @@
     "flowsTitle": "Flujos",
     "flowsAccountColumn": "Cuenta",
     "monthlyDetailHint": "Totales del grupo por mes (suma de las cuentas hijas).",
-    "dailyDetailHint": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta; filas atenuadas = feriado bursátil o fin de semana).",
+    "dailyDetailHint": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta).",
     "dailyDetailEmpty": "Sin datos diarios para las cuentas de este grupo.",
     "monthlyDetailHintLiabilities": "Totales del grupo por mes (suma de todas las cuentas bajo este nodo, incluidas tarjetas y hipoteca).",
     "monthlyDetailEmpty": "Sin datos de rendimiento mensual para las cuentas de este grupo.",

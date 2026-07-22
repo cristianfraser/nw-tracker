@@ -818,7 +818,7 @@
     "flowsTitle": "Flows",
     "flowsAccountColumn": "Account",
     "monthlyDetailHint": "Group totals per month (sum of the child accounts).",
-    "dailyDetailHint": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar; dimmed rows = market holiday or weekend).",
+    "dailyDetailHint": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar).",
     "dailyDetailEmpty": "No daily data for this group's accounts.",
     "monthlyDetailHintLiabilities": "Group totals per month (sum of every account under this node, including cards and the mortgage).",
     "monthlyDetailEmpty": "No monthly performance data for this group's accounts.",
