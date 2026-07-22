@@ -1,8 +1,10 @@
 import { getAggregationCached } from "./aggregationCache.js";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { DAILY_SERIES_MAX_DAYS, totalRangeDays } from "./dailySeries.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
+import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
 /**
  * Daily net-worth overview: one point per **calendar day** ending at Chile today (same grid
@@ -22,6 +24,10 @@ export type OverviewDailyPoint = {
   retirement: number | null;
   brokerage: number | null;
   cash_eqs: number | null;
+  /** Retirement + brokerage level (the monthly overview's dashed reference line). */
+  invested: number | null;
+  /** Pasivos: Σ liability-account marks (mortgage balance + CC owed-on-date). */
+  liabilities: number | null;
 };
 
 export type OverviewDailyPayload = {
@@ -31,6 +37,26 @@ export type OverviewDailyPayload = {
   points: OverviewDailyPoint[];
 };
 
+/** Σ liability-account marks per grid day (same accounts as the Pasivos group daily view). */
+function liabilitiesClpByDate(grid: readonly string[]): Map<string, number> {
+  const rows = listAccountsForGroupTab("liabilities").filter(
+    (r) => r.account_id > 0 && r.exclude_from_group_totals !== 1
+  );
+  const out = new Map<string, number>();
+  for (const ymd of grid) {
+    let raw = 0;
+    for (const a of rows) {
+      const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
+        import_key: a.import_key ?? null,
+        name: a.name ?? null,
+      });
+      if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) raw += mark.value_clp;
+    }
+    out.set(ymd, Math.round(raw));
+  }
+  return out;
+}
+
 function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPayload {
   const endYmd = chileCalendarTodayYmd();
   const count = days === 0 ? totalRangeDays(endYmd) : days;
@@ -39,7 +65,13 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     grid[count - 1 - i] = i === 0 ? endYmd : chileCalendarAddDays(endYmd, -i);
   }
   const byDate = buildDashboardBucketDailySeriesClp(grid);
+  const liabByDate = liabilitiesClpByDate(grid);
 
+  // Same leading-null convention as the monthly overview: real_estate and liabilities stay
+  // null (line not drawn) until their first non-zero value — a flat 0 pre-ownership reads
+  // as data, not absence.
+  let reStarted = false;
+  let liabStarted = false;
   const points: OverviewDailyPoint[] = grid.map((ymd) => {
     const row = byDate.get(ymd)!;
     const pick = (clp: number): number | null => {
@@ -47,13 +79,18 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
       const usd = clpToUsdForBalanceAt(clp, ymd);
       return usd != null && Number.isFinite(usd) ? usd : null;
     };
+    if (!reStarted && Math.abs(row.real_estate) >= 0.5) reStarted = true;
+    const liabClp = liabByDate.get(ymd)!;
+    if (!liabStarted && Math.abs(liabClp) >= 0.5) liabStarted = true;
     return {
       as_of_date: ymd,
       net_worth: pick(row.net_worth),
-      real_estate: pick(row.real_estate),
+      real_estate: reStarted ? pick(row.real_estate) : null,
       retirement: pick(row.retirement),
       brokerage: pick(row.brokerage),
       cash_eqs: pick(row.cash_eqs),
+      invested: pick(row.retirement + row.brokerage),
+      liabilities: liabStarted ? pick(liabClp) : null,
     };
   });
 
