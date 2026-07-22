@@ -461,7 +461,7 @@ export function LineChartPanel({
   if (!chartData.length || !series.length) {
     return (
       <div className="chart-grid__col">
-        <TitleTag className="chart-panel-title">{title}</TitleTag>
+        {title ? <TitleTag className="chart-panel-title">{title}</TitleTag> : null}
         <p className="empty muted">{i18n.t("charts.noValuationSeries")}</p>
       </div>
     );
@@ -474,7 +474,7 @@ export function LineChartPanel({
 
   return (
     <div className="chart-grid__col">
-      <TitleTag className="chart-panel-title">{title}</TitleTag>
+      {title ? <TitleTag className="chart-panel-title">{title}</TitleTag> : null}
       <div
         className="chart-box line-chart-focus-wrap"
         onPointerLeave={() => setHighlightedKey(null)}
