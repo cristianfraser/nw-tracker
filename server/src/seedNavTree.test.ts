@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createPanelAccount, updatePanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { seedNavTree } from "./seedNavTree.js";
 
@@ -155,5 +156,48 @@ describe("seedNavTree retirement APV A", () => {
       )
       .get(row.id) as { slug: string };
     expect(ag.slug).toBe("retirement_apv_a__apv");
+  });
+});
+
+describe("seedNavTree brokerage sub-bucket move-out", () => {
+  it("drops the stale sub-bucket membership when an account moves out of brokerage", () => {
+    const cleanup: (() => void)[] = [];
+    try {
+      const created = createPanelAccount({
+        account: {
+          account_type: "clp_cash",
+          name: "vitest-brokerage-moveout",
+          category_slug: `vitest_brk_moveout_${Date.now()}`,
+          bucket_slug: "brokerage_cash",
+          exclude_from_group_totals: false,
+        },
+      });
+      const accountId = created.account_id;
+      cleanup.push(() => {
+        db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ?`).run(accountId);
+        db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+        seedNavTree();
+      });
+
+      const groupsFor = (id: number) =>
+        (
+          db
+            .prepare(
+              `SELECT pg.slug FROM portfolio_group_items pgi
+               JOIN portfolio_groups pg ON pg.id = pgi.group_id
+               WHERE pgi.account_id = ? ORDER BY pg.slug`
+            )
+            .all(id) as { slug: string }[]
+        ).map((r) => r.slug);
+
+      expect(groupsFor(accountId)).toContain("brokerage_cash");
+
+      updatePanelAccount(accountId, { bucket_slug: "cash_savings" });
+      const after = groupsFor(accountId);
+      expect(after).toContain("cash_savings");
+      expect(after).not.toContain("brokerage_cash");
+    } finally {
+      for (const fn of cleanup.reverse()) fn();
+    }
   });
 });
