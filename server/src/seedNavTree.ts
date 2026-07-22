@@ -236,6 +236,10 @@ function rebuildBrokerageNav() {
     ["brokerage_cash", 30],
   ];
   for (const [slug, sort] of buckets) {
+    // Delete before the empty-bucket continue (same as rebuildRetirementNav) — an account
+    // moved OUT of a sub-bucket must drop its stale membership even if the bucket empties.
+    const gid = (groupIdBySlug.get(slug) as { id: number } | undefined)?.id;
+    if (gid != null) deleteGroupItems.run(gid);
     if (!assetGroupSubtreeHasAccounts(slug)) continue;
     linkGroup("brokerage", slug, sort);
     linkAccountsByAssetGroup(slug, slug, 0);
