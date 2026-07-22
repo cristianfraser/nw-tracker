@@ -298,17 +298,15 @@ export interface DashboardOverviewDailyPoint {
   cash_eqs: number | null;
 }
 
-/** Daily net-worth series for the day period view (grid = NYSE sessions, "vs last workday"). */
+/** Daily net-worth series for the day period view (calendar-day grid, last point live). */
 export interface DashboardOverviewDailyResponse {
   unit: "clp" | "usd";
   days: number;
   end_ymd: string;
-  /** True while the NYSE regular session is open (the last point tracks live marks). */
-  d1_is_live: boolean;
   points: DashboardOverviewDailyPoint[];
 }
 
-/** One session row of `GET /api/daily-series` (unit-converted; nulls = missing legs). */
+/** One calendar-day row of `GET /api/daily-series` (unit-converted; nulls = missing legs). */
 export interface DailySeriesPointDto {
   as_of_date: string;
   value: number | null;
@@ -323,21 +321,20 @@ export interface DailySeriesPointDto {
 export interface DailySeriesAccountLineDto {
   account_id: number;
   name: string | null;
-  /** Per-session values, index-aligned with `points`. */
+  /** Per-day values, index-aligned with `points`. */
   values: (number | null)[];
-  /** Cumulative personal deposits through each session (aportes acum. companion line). */
+  /** Cumulative personal deposits through each day (aportes acum. companion line). */
   deposits_acum?: number[];
 }
 
-/** Daily series for a group page or account (grid = NYSE sessions, "vs last workday"). */
+/** Daily series for a group page or account (calendar-day grid, last point live). */
 export interface DailySeriesResponse {
   unit: string;
   end_ymd: string;
-  d1_is_live: boolean;
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPointDto[];
   accounts?: DailySeriesAccountLineDto[];
-  /** Σ of account `deposits_acum` per session (`__group_dep_total` line). */
+  /** Σ of account `deposits_acum` per day (`__group_dep_total` line). */
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
   grouped_accounts?: DailySeriesAccountLineDto[];

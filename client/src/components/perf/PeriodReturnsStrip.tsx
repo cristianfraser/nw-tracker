@@ -38,7 +38,7 @@ export function PeriodReturnsStrip({
   const renderCell = (cell: PeriodReturnCell) => {
     const label = t(PERIOD_LABEL_KEY[cell.period]);
     const isLive =
-      (cell.period === "mtd" && data.mtd_is_live) || (cell.period === "d1" && data.d1_is_live);
+      cell.period === "mtd" && data.mtd_is_live;
     const cellTitle =
       cell.pct == null
         ? t("periodReturns.insufficientHistory")

@@ -1,8 +1,6 @@
-import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
-import { dayWindowAnchorForAccount, type DayWindowAnchors } from "./dayWindowAnchor.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import {
   consolidatedClosingRawByDate,
@@ -230,12 +228,12 @@ export function buildDashboardBucketDailySeriesClp(
 }
 
 /**
- * Prior-close bucket totals for the day window, each account marked at ITS OWN calendar's
- * last close (`dayWindowAnchorForAccount`: UF/crypto = yesterday, USD stocks = prior NYSE
- * session, retirement/efectivo/`.SN` = prior Chilean business day). cash_eqs nets linked CC
- * at the Chilean anchor. USD sums convert each account at its own anchor date.
+ * Prior-close bucket totals for the day window: every account marked at yesterday (Chile
+ * calendar). Marks are flat on each account's closed days, so per-account market calendars
+ * fall out of the level delta with no anchor machinery. cash_eqs nets linked CC at the same
+ * date; USD sums convert at that date.
  */
-export function dashboardBucketDayPriorCloses(anchors: DayWindowAnchors): {
+export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
   clp: Record<NwDashboardBucketSlug, number> & { net_worth: number };
   usd: Record<NwDashboardBucketSlug, number> & { net_worth: number };
 } {
@@ -246,20 +244,17 @@ export function dashboardBucketDayPriorCloses(anchors: DayWindowAnchors): {
     let rawUsd = 0;
     for (const a of listAccountsForDashboardBucket(slug)) {
       if (a.exclude_from_group_totals === 1) continue;
-      const kind = accountBucketKindSlug(a.bucket_slug);
-      const anchor = dayWindowAnchorForAccount(a.account_id, kind, anchors);
-      if (anchor == null) continue;
-      const mark = accountMarkClpAtYmd(a.account_id, anchor, a.bucket_slug, {
+      const mark = accountMarkClpAtYmd(a.account_id, priorDayYmd, a.bucket_slug, {
         import_key: a.import_key,
         name: a.name,
       });
       if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
       rawClp += mark.value_clp;
-      const u = clpToUsdForBalanceAt(mark.value_clp, anchor);
+      const u = clpToUsdForBalanceAt(mark.value_clp, priorDayYmd);
       if (u != null && Number.isFinite(u)) rawUsd += u;
     }
     if (slug === "cash_eqs") {
-      const netDate = anchors.chile ?? anchors.calendar;
+      const netDate = priorDayYmd;
       const cc = linkedCreditCardClpForCashCardAsOf(netDate);
       const netted = applyCashSavingsNwAdjustment(rawClp, cc);
       const ccUsdAdj = clpToUsdForBalanceAt(netted - rawClp, netDate);

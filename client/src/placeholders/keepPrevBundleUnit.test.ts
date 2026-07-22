@@ -276,7 +276,6 @@ describe("convertPeriodReturnsUnit", () => {
     unit: "clp",
     as_of_date: "2025-01-31",
     mtd_is_live: false,
-    d1_is_live: false,
     first_month: "2020-01",
     periods: [
       {

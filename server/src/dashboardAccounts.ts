@@ -50,8 +50,7 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
-import { dayWindowAnchorForAccount, dayWindowAnchorsForToday } from "./dayWindowAnchor.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
@@ -299,12 +298,11 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   const priorMonthEnd = priorPeriodEndYmd("mtd", today);
   const priorYearEnd = priorPeriodEndYmd("ytd", today);
   /**
-   * Day-window anchors follow each account's own valuation calendar (`dayWindowAnchor.ts`):
-   * UF-marked + crypto vs yesterday, USD stocks vs the prior NYSE session ("vs last workday",
-   * weekend drift included), retirement/efectivo/`.SN` vs the prior Chilean business day.
+   * Day window = yesterday (Chile calendar) for every account: marks are flat on each
+   * account's closed days, so per-account market calendars fall out of the level delta.
    * Day deltas are always balance-change net of flows (no perf series exists at day grain).
    */
-  const dayAnchors = dayWindowAnchorsForToday(today);
+  const priorDayYmd = chileCalendarAddDays(today, -1);
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
 
   /** Shared by the master and its liability_view row (never both in one summed scope). */
@@ -316,7 +314,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         today,
         priorMonthEnd,
         priorYearEnd,
-        dayAnchors.calendar
+        priorDayYmd
       );
     }
     return mortgageDepositsMemo;
@@ -361,20 +359,17 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 
       const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
       const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
-      // Per-class day anchor (UF/crypto/CC = yesterday, USD stocks = prior NYSE session,
-      // rest = prior Chilean business day). Mortgage and CC track day marks too (daily UF
-      // cost; per-day owed) — their title deltas move daily, P/L stays their own convention.
-      const rowDayAnchor = dayWindowAnchorForAccount(a.id, kindSlug, dayAnchors);
+      // Mortgage and CC track day marks too (daily UF cost; per-day owed) — their title
+      // deltas move daily, P/L stays their own convention.
       const rowTracksDayMetrics =
         trackAssetMetrics || kindSlug === "mortgage" || kindSlug === "credit_card";
-      const priorDayMark =
-        rowTracksDayMetrics && rowDayAnchor != null
-          ? accountMarkClpAtYmd(a.id, rowDayAnchor, markCategorySlug, markOpts)
-          : null;
+      const priorDayMark = rowTracksDayMetrics
+        ? accountMarkClpAtYmd(a.id, priorDayYmd, markCategorySlug, markOpts)
+        : null;
       const prior_day_close_clp = priorDayMark?.value_clp ?? null;
       const priorDayCloseUsdRaw =
-        includeUsd && prior_day_close_clp != null && rowDayAnchor != null
-          ? convertTs(prior_day_close_clp, rowDayAnchor, "usd")
+        includeUsd && prior_day_close_clp != null
+          ? convertTs(prior_day_close_clp, priorDayYmd, "usd")
           : null;
       const prior_day_close_usd =
         priorDayCloseUsdRaw != null && Number.isFinite(priorDayCloseUsdRaw)
@@ -382,13 +377,13 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
           : null;
       const deposits_day_clp = mortgagePayments
         ? mortgagePayments.day_clp
-        : trackAssetMetrics && rowDayAnchor != null
-          ? netDepositFlowBetween(a.id, rowDayAnchor, today, "clp")
+        : trackAssetMetrics
+          ? netDepositFlowBetween(a.id, priorDayYmd, today, "clp")
           : undefined;
       const deposits_day_usd = mortgagePayments
         ? mortgagePayments.day_usd
-        : trackAssetMetrics && includeUsd && rowDayAnchor != null
-          ? netDepositFlowBetween(a.id, rowDayAnchor, today, "usd")
+        : trackAssetMetrics && includeUsd
+          ? netDepositFlowBetween(a.id, priorDayYmd, today, "usd")
           : undefined;
       const prior_month_close_clp =
         priorMonthMark?.value_clp ??
