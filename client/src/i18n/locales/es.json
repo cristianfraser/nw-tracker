@@ -1330,7 +1330,13 @@
     "confirmSingleTitle": "Convertir par",
     "confirmSingleMessage": "Convertir {{from}} → {{to}} por {{amount}} en una transferencia única.",
     "confirmConvert": "Convertir",
-    "confirmCancel": "Cancelar"
+    "confirmCancel": "Cancelar",
+    "ccTitle": "Pagos de tarjeta ({{n}})",
+    "ccIntro": "Cargos de la cuenta corriente emparejados con la evidencia de pago de la tarjeta (PAGO del estado de cuenta o encabezado). Convertir los une en un traspaso fechado el día del abono en la tarjeta; la fecha de la cartola se conserva.",
+    "emptyCc": "No hay pagos de tarjeta pendientes.",
+    "badgeSkew": "desfase {{n}}d",
+    "confirmCcBatchTitle": "Convertir pagos de tarjeta",
+    "confirmCcBatchMessage": "¿Convertir {{n}} pago(s) de tarjeta en traspasos espejo?"
   },
   "export": {
     "button": "Exportar",

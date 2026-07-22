@@ -9,6 +9,11 @@ import {
   type MirrorPairRef,
 } from "../movementMirrorConvert.js";
 import { listMirrorPairCandidates, listRejectedMirrorPairs } from "../movementMirrorPairs.js";
+import {
+  convertCcPaymentMirrors,
+  listCcPaymentMirrorCandidates,
+  type CcPaymentMirrorRef,
+} from "../ccPaymentMirrors.js";
 
 function parsePairRefs(body: unknown): MirrorPairRef[] | null {
   const pairs = (body as { pairs?: unknown } | null)?.pairs;
@@ -28,6 +33,7 @@ export function registerMovementMirrorsRoutes(app: express.Express): void {
     res.json({
       pairs: listMirrorPairCandidates(),
       rejected: listRejectedMirrorPairs(),
+      cc_payment_pairs: listCcPaymentMirrorCandidates(),
     });
   });
 
@@ -45,6 +51,34 @@ export function registerMovementMirrorsRoutes(app: express.Express): void {
         return;
       }
       throw e;
+    }
+  });
+
+  app.post("/api/movement-mirrors/convert-cc-payments", (req, res) => {
+    const raw = (req.body as { pairs?: unknown } | null)?.pairs;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      res.status(400).json({ error: "pairs must be a non-empty array" });
+      return;
+    }
+    const refs: CcPaymentMirrorRef[] = [];
+    for (const p of raw) {
+      const outId = Number((p as { out_movement_id?: unknown })?.out_movement_id);
+      const lineId = (p as { statement_line_id?: unknown })?.statement_line_id;
+      const stmtId = (p as { statement_id?: unknown })?.statement_id;
+      if (!Number.isInteger(outId) || outId <= 0) {
+        res.status(400).json({ error: "each pair needs out_movement_id" });
+        return;
+      }
+      refs.push({
+        out_movement_id: outId,
+        statement_line_id: lineId == null ? null : Number(lineId),
+        statement_id: stmtId == null ? null : Number(stmtId),
+      });
+    }
+    try {
+      res.json(convertCcPaymentMirrors(refs));
+    } catch (e) {
+      res.status(409).json({ error: e instanceof Error ? e.message : String(e) });
     }
   });
 

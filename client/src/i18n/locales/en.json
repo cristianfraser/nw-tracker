@@ -1330,7 +1330,13 @@
     "confirmSingleTitle": "Convert pair",
     "confirmSingleMessage": "Convert {{from}} → {{to}} for {{amount}} into a single transfer.",
     "confirmConvert": "Convert",
-    "confirmCancel": "Cancel"
+    "confirmCancel": "Cancel",
+    "ccTitle": "Card payments ({{n}})",
+    "ccIntro": "Checking debits paired with the card's payment evidence (statement PAGO or header). Converting merges them into one transfer dated at the card's credit date; the cartola date is preserved.",
+    "emptyCc": "No card-payment pairs pending.",
+    "badgeSkew": "{{n}}d skew",
+    "confirmCcBatchTitle": "Convert card payments",
+    "confirmCcBatchMessage": "Convert {{n}} card payment(s) into mirror transfers?"
   },
   "export": {
     "button": "Export",

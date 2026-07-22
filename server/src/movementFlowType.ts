@@ -13,6 +13,8 @@ import {
 } from "./brokerageFlowMovement.js";
 
 export const FLOW_KIND_PAGO_CUOTA_HIPOTECARIO = "pago_cuota_hipotecario" as const;
+/** Checking→CC payment mirror transfer (ccPaymentMirrors.ts) — internal to the CC-netted cash bucket. */
+export const FLOW_KIND_PAGO_TARJETA = "pago_tarjeta" as const;
 export const FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO = "prepago_parcial_hipotecario" as const;
 
 export type MortgageFlowKind =
@@ -23,6 +25,7 @@ export type MovementFlowType =
   | DepositFlowKind
   | MortgageFlowKind
   | BrokerageFlowKind
+  | typeof FLOW_KIND_PAGO_TARJETA
   | "withdrawal_clp"
   | "other";
 
@@ -49,6 +52,7 @@ export function movementFlowTypeFromRow(row: {
 }): MovementFlowType {
   if (row.transfer_direction === "out" || row.transfer_direction === "in") {
     if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
+    if (row.flow_kind === FLOW_KIND_PAGO_TARJETA) return FLOW_KIND_PAGO_TARJETA;
     return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
   }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
@@ -76,6 +80,7 @@ export function movementFlowTypeLabel(flowType: MovementFlowType): string {
   const label = flowType as string;
   if (label === "withdrawal_clp") return "Retiro";
   if (label === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
+  if (label === FLOW_KIND_PAGO_TARJETA) return "Pago tarjeta";
   if (label === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
   if (isDepositMovementFlowType(flowType)) {
     return depositFlowKindLabel(flowType);

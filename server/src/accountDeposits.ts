@@ -140,6 +140,10 @@ function loadTransferLegSignedFlowEvents(
   const requested = new Set(uniq);
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
+    // Checking→CC payment mirrors move no wealth (the cash bucket nets the card balance):
+    // neither endpoint gets a flow event — the checking drop and the owed drop share the
+    // transfer date, so the daily/monthly P/L is zero by construction.
+    if (r.flow_kind === "pago_tarjeta") continue;
     // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
     // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
     // together (the USD `to` leg is dropped below via usdCashIds). stock_buy/stock_sell also pass
