@@ -158,12 +158,20 @@ type PostCloseLineRow = RevolvingLineRow & {
 };
 
 /**
- * Net CLP of non-installment statement lines whose `transaction_date` falls AFTER a billing
- * month's statement close and ON/BEFORE the calendar month-end — i.e. charges and payments that
- * belong to the live end-of-month balance but are billed on a later statement. Payments carry
- * negative CLP, so they net against charges. Installments are excluded (tracked live via cupo).
- * Deduped across statement versions by dedupe key so a transaction billed on both a web-paste and
- * a PDF statement is counted once.
+ * Net CLP of owed-changing events whose date falls AFTER a billing month's statement close
+ * and ON/BEFORE the calendar month-end — i.e. activity that belongs to the live end-of-month
+ * balance but is billed on a later statement: revolving charges (+) and payments (−, incl.
+ * header-only pagados synthesized below). Per-month cuota billing lines stay excluded:
+ * billing moves debt between facturado/por-facturar, it does not change what is owed.
+ * Deduped across statement versions by dedupe key so a transaction billed on both a
+ * web-paste and a PDF statement is counted once.
+ *
+ * `includeInstallmentPurchases` (daily owed walk + daily CC netting ONLY): adds installment
+ * purchases at full contract value on their purchase date — cupo is consumed at purchase,
+ * so the daily line ramps as you buy instead of stepping at the next anchor. The month-end
+ * writer must NOT pass it: its `balance_total` is cupo-based at month-end and already
+ * contains contracts made after the cierre (passing it double-counted them, +3.1M on the
+ * 2026-06-30 anchor when first tried).
  *
  * Added to the statement-anchored `balance_total` so the Detalle por mes / chart show the true
  * end-of-month liability (e.g. a card paid off within its own closing cycle drops that month,
@@ -172,9 +180,10 @@ type PostCloseLineRow = RevolvingLineRow & {
 export function postCloseLiveBalanceAdjustmentClp(
   accountId: number,
   closeIso: string,
-  monthEndIso: string
+  monthEndIso: string,
+  opts?: { includeInstallmentPurchases?: boolean }
 ): number {
-  return postCloseLiveBalanceAdjustmentsClp(accountId, [{ closeIso, monthEndIso }])[0]!;
+  return postCloseLiveBalanceAdjustmentsClp(accountId, [{ closeIso, monthEndIso }], opts)[0]!;
 }
 
 /**
@@ -254,8 +263,42 @@ function normalizedPostCloseLines(
       if (covered) continue;
       lines.push({ iso: s.pago_iso, key: `hdr-pago|${s.pago_iso}|${amtAbs}`, clp: -amtAbs });
     }
+
     return lines;
   });
+}
+
+/**
+ * Installment purchases as owed events: +full contract value on the purchase date (cupo is
+ * consumed at purchase). Consumed only by the daily owed walk / daily CC netting between
+ * stored anchors — anchors already carry outstanding cuota principal (cupo-based), and the
+ * walk resets at every anchor, so there is no double count. The superseded one-shot lines
+ * are dropped from the line stream (they duplicate these contracts) and a nota-cancelled
+ * plan self-corrects via its NOTA DE CREDITO revolving line.
+ */
+function normalizedInstallmentPurchaseEvents(
+  accountId: number
+): { iso: string; key: string; clp: number }[] {
+  return getAggregationCached(
+    `${cacheKeyCcBillingDetail(accountId)}|instpurchase_events`,
+    () => {
+      const purchases = db
+        .prepare(
+          `SELECT id, purchase_date, total_amount_clp FROM cc_installment_purchases
+           WHERE account_id = ? AND purchase_date IS NOT NULL AND total_amount_clp IS NOT NULL`
+        )
+        .all(accountId) as { id: number; purchase_date: string; total_amount_clp: number }[];
+      const events: { iso: string; key: string; clp: number }[] = [];
+      for (const pu of purchases) {
+        const iso = normalizeTransactionDateIso(pu.purchase_date);
+        if (!iso) continue;
+        const amt = Math.round(pu.total_amount_clp);
+        if (!Number.isFinite(amt) || amt === 0) continue;
+        events.push({ iso, key: `inst-purchase|${pu.id}`, clp: amt });
+      }
+      return events;
+    }
+  );
 }
 
 /**
@@ -265,7 +308,8 @@ function normalizedPostCloseLines(
  */
 export function postCloseLiveBalanceAdjustmentsClp(
   accountId: number,
-  windows: readonly { closeIso: string; monthEndIso: string }[]
+  windows: readonly { closeIso: string; monthEndIso: string }[],
+  opts?: { includeInstallmentPurchases?: boolean }
 ): number[] {
   if (windows.length === 0) return [];
   const anyActive = windows.some(
@@ -273,7 +317,9 @@ export function postCloseLiveBalanceAdjustmentsClp(
   );
   if (!anyActive) return windows.map(() => 0);
 
-  const lines = normalizedPostCloseLines(accountId);
+  const lines = opts?.includeInstallmentPurchases
+    ? [...normalizedPostCloseLines(accountId), ...normalizedInstallmentPurchaseEvents(accountId)]
+    : normalizedPostCloseLines(accountId);
 
   return windows.map((w) => {
     if (!w.closeIso || !w.monthEndIso || w.closeIso >= w.monthEndIso) return 0;

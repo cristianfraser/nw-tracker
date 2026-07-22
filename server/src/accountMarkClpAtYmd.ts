@@ -106,7 +106,10 @@ function historicalMarkClpAtYmd(
       const value_clp =
         cc.as_of_date < asOfYmd
           ? Math.round(
-              cc.value_clp + postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd)
+              cc.value_clp +
+                postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd, {
+                  includeInstallmentPurchases: true,
+                })
             )
           : cc.value_clp;
       return { value_clp, as_of_date: cc.as_of_date };
