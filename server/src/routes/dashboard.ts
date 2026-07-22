@@ -20,6 +20,8 @@ import {
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
+import { accountBucketKindSlug } from "../accountBucket.js";
+import { ccInstallmentDebtDailyClp } from "../ccInstallmentDebtDaily.js";
 import {
   DAILY_SERIES_MAX_DAYS,
   getBucketDailySeriesCached,
@@ -137,13 +139,24 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     return;
   }
   // Excluded-from-totals accounts still get their own daily series on their page.
-  res.json(
-    getBucketDailySeriesCached(`account:${accountId}`, [{ ...row, exclude_from_group_totals: 0 }], {
-      unit,
-      days,
-      includeAccounts: true,
-    })
+  const series = getBucketDailySeriesCached(
+    `account:${accountId}`,
+    [{ ...row, exclude_from_group_totals: 0 }],
+    { unit, days, includeAccounts: true }
   );
+  // CC masters: attach the daily plan debt («deuda en cuotas», CLP like the historial
+  // chart) so the account page's daily historial has both lines from one fetch.
+  if (accountBucketKindSlug(row.bucket_slug) === "credit_card") {
+    const debt = ccInstallmentDebtDailyClp(
+      accountId,
+      series.points.map((p) => p.as_of_date)
+    );
+    if (debt) {
+      res.json({ ...series, cc_installment_debt: debt });
+      return;
+    }
+  }
+  res.json(series);
 }));
 
 /** Daily net-worth series (one point per NYSE session) for the day period view. */

@@ -116,6 +116,33 @@ export function buildCcHistorialChartSeries(
   });
 }
 
+// ─── Daily installment-debt series ────────────────────────────────────────────
+
+/**
+ * Plan debt («deuda en cuotas») per calendar day from signed events: +full contract value
+ * on each purchase date (cupo consumed at purchase), −the facturación's billed cuotas on
+ * their pay-by date (cuotas leave the debt when paid, not at the close that bills them).
+ * Null before the first event (line not drawn); clamped at 0 — tiny end-of-schedule
+ * residue from interest rounding must not draw a negative debt.
+ */
+export function buildCcInstallmentDebtDailySeries(
+  datesAsc: readonly string[],
+  events: readonly { iso: string; clp: number }[]
+): (number | null)[] {
+  const sorted = [...events].sort((a, b) => a.iso.localeCompare(b.iso));
+  const firstIso = sorted[0]?.iso ?? null;
+  let i = 0;
+  let cum = 0;
+  return datesAsc.map((d) => {
+    while (i < sorted.length && sorted[i]!.iso <= d) {
+      cum += sorted[i]!.clp;
+      i++;
+    }
+    if (firstIso == null || d < firstIso) return null;
+    return Math.max(0, Math.round(cum));
+  });
+}
+
 // ─── Billing-month chart ──────────────────────────────────────────────────────
 
 export type CcBillingMonthChartPoint = {
