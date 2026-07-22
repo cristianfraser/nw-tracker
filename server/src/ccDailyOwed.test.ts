@@ -96,4 +96,59 @@ describe("CC per-day owed-on-date", () => {
     invalidateCcBillingDetail(accountId);
     expect(markAt("2026-04-18")).toBe(170000);
   });
+
+  it("synthesizes the header-only pagado-anterior payment on its printed date", () => {
+    if (accountId == null || statementId == null) return;
+    // Current Santander format: no PAGO line; the payment lives on the statement header
+    // (amount + printed date, migration 166). The walk must subtract it on that date.
+    const nextStatementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date,
+             period_from, period_to, currency, monto_pagado_anterior, monto_pagado_anterior_date)
+           VALUES (?, 'santander', 'vitest-daily-owed-2.pdf', '25/05/2026', '23/04/2026',
+             '25/05/2026', 'clp', 170000, '2026-05-08')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    try {
+      invalidateCcBillingDetail(accountId);
+      expect(markAt("2026-05-07")).toBe(170000); // pre-payment: prior balance carried
+      expect(markAt("2026-05-08")).toBe(0); // header PAGO lands on its printed date
+      expect(markAt("2026-05-15")).toBe(0);
+    } finally {
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(nextStatementId);
+      invalidateCcBillingDetail(accountId);
+    }
+  });
+
+  it("does not double-count when the payment also exists as a statement line", () => {
+    if (accountId == null || statementId == null) return;
+    // Legacy-format statement: the same payment is BOTH a real PAGO line and a header
+    // amount+date — synthesis must skip it (covered by the line).
+    const legacyStatementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date,
+             period_from, period_to, currency, monto_pagado_anterior, monto_pagado_anterior_date)
+           VALUES (?, 'santander', 'vitest-daily-owed-3.pdf', '23/06/2026', '25/05/2026',
+             '23/06/2026', 'clp', 60000, '2026-06-09')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+       VALUES (?, '09/06/2026', 'MONTO CANCELADO', -60000, 0, 'vitest-daily-owed-4')`
+    ).run(legacyStatementId);
+    try {
+      invalidateCcBillingDetail(accountId);
+      // 170000 balance − 60000 paid once (not twice) = 110000.
+      expect(markAt("2026-06-09")).toBe(110000);
+      expect(markAt("2026-06-15")).toBe(110000);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(legacyStatementId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(legacyStatementId);
+      invalidateCcBillingDetail(accountId);
+    }
+  });
 });
