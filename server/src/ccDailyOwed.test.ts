@@ -122,6 +122,27 @@ describe("CC per-day owed-on-date", () => {
     }
   });
 
+  it("ramps owed by the full contract amount on an installment purchase date", () => {
+    if (accountId == null) return;
+    const purchaseId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_installment_purchases (account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, source, dedupe_key)
+           VALUES (?, 'santander', 'vitest-daily-owed-purchase', '2026-04-22', 300000, 3, 'VITEST CUOTAS', 'manual', 'vitest-daily-owed-purchase')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    try {
+      invalidateCcBillingDetail(accountId);
+      expect(markAt("2026-04-21")).toBe(170000); // pre-purchase (balance after earlier events)
+      expect(markAt("2026-04-22")).toBe(470000); // + full contract on purchase day, not at the next anchor
+      expect(markAt("2026-04-25")).toBe(470000);
+    } finally {
+      db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(purchaseId);
+      invalidateCcBillingDetail(accountId);
+    }
+  });
+
   it("does not double-count when the payment also exists as a statement line", () => {
     if (accountId == null || statementId == null) return;
     // Legacy-format statement: the same payment is BOTH a real PAGO line and a header
