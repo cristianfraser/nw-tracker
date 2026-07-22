@@ -2436,8 +2436,8 @@
         "es": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
       },
       "historialHintDaily": {
-        "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day, each cycle's cuotas off on their pay-by). Billed/paid bars are billing-month figures and hide in daily view.",
-        "es": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra y las cuotas de cada ciclo salen en su fecha de pago). Las barras de facturado/pagado son cifras por mes de facturación y se ocultan en la vista diaria."
+        "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day, each cycle's cuotas off on their pay-by). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Billed/paid bars are billing-month figures and hide in daily view.",
+        "es": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra y las cuotas de cada ciclo salen en su fecha de pago). Después de hoy el plan de cuotas se proyecta hasta su término (ambas líneas se juntan una vez pagado el ciclo abierto). Las barras de facturado/pagado son cifras por mes de facturación y se ocultan en la vista diaria."
       },
       "historialCurrentMonth": {
         "en": "Current month",
@@ -2474,6 +2474,10 @@
       "historialOpenMonth": {
         "en": "Open billing month",
         "es": "Facturación abierta"
+      },
+      "historialProjectionStart": {
+        "en": "Today (projection →)",
+        "es": "Hoy (proyección →)"
       },
       "valuationTitle": {
         "en": "Valuation and contributions",

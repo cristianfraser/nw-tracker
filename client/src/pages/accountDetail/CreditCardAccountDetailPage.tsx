@@ -5,6 +5,7 @@ import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingM
 import { useDailySeries } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { timeRangeToDays } from "../../timeRange";
+import { rangeWindowStartYmd, windowMonthRows } from "../../chartRangeWindow";
 import type { CcHistorialChartPoint } from "../../types";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
@@ -53,14 +54,77 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   const dailyHistorialRows = useMemo((): CcHistorialChartPoint[] | null => {
     if (!isDaily || !dailySeries.data?.points.length) return null;
     const debt = dailySeries.data.cc_installment_debt ?? null;
-    return dailySeries.data.points.map((pt, i) => ({
+    const rows: CcHistorialChartPoint[] = dailySeries.data.points.map((pt, i) => ({
       month: pt.as_of_date,
       installment_payments_clp: 0,
       facturado_clp: null,
       cupo_en_cuotas_clp: debt?.[i] ?? null,
       balance_total_clp: pt.value,
     }));
-  }, [isDaily, dailySeries.data]);
+    // Extend past today with the installment-plan simulation tail so the daily window ends at
+    // the plan end, aligned with the monthly/yearly historial (both lines, CLP, no bars).
+    for (const tail of dailySeries.data.cc_plan_tail ?? []) {
+      rows.push({
+        month: tail.as_of_date,
+        installment_payments_clp: 0,
+        facturado_clp: null,
+        cupo_en_cuotas_clp: tail.plan_debt_clp,
+        balance_total_clp: tail.balance_clp,
+      });
+    }
+    // Clip the leading empty grid to the shared range window (keeps a 20% empty lead as the
+    // truncation cue; `total` starts flush at the first data day).
+    const firstData =
+      rows.find((r) => r.cupo_en_cuotas_clp != null || r.balance_total_clp != null)?.month ?? null;
+    const start = rangeWindowStartYmd(timeRange, firstData);
+    return start == null ? rows : rows.filter((r) => r.month >= start);
+  }, [isDaily, dailySeries.data, timeRange]);
+
+  // Monthly/yearly historial + financing: apply the same range window (left-clip + pad the empty
+  // 20% lead so the left edge matches the daily grid; right edge stays — the historial keeps its
+  // projected plan tail, financing has no simulation). Yearly rollup runs inside the chart
+  // components over these already-windowed rows.
+  const clippedHistorialRows = useMemo(
+    () =>
+      isDaily
+        ? historialChartRows
+        : windowMonthRows(
+            historialChartRows,
+            timeRange,
+            (r) => r.month,
+            (r) =>
+              r.cupo_en_cuotas_clp != null ||
+              r.balance_total_clp != null ||
+              r.installment_payments_clp > 0,
+            (month) => ({
+              month,
+              installment_payments_clp: 0,
+              facturado_clp: null,
+              cupo_en_cuotas_clp: null,
+              balance_total_clp: null,
+            })
+          ),
+    [historialChartRows, isDaily, timeRange]
+  );
+
+  const clippedFinancingPoints = useMemo(
+    () =>
+      windowMonthRows(
+        financingChartPoints,
+        timeRange,
+        (p) => p.billing_month,
+        (p) =>
+          p.facturado_clp != null || p.facturado_usd_clp != null || p.financing_cost_clp != null,
+        (billing_month) => ({
+          billing_month,
+          facturado_clp: null,
+          facturado_usd_clp: null,
+          financing_cost_clp: null,
+          ytd_financing_cost_clp: null,
+        })
+      ),
+    [financingChartPoints, timeRange]
+  );
 
   const heroClp =
     displayUnit === "usd"
@@ -117,7 +181,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
             <p className="muted">{t("common.loading")}</p>
           ) : (
             <CcInstallmentHistoryChart
-              rows={historialChartRows}
+              rows={clippedHistorialRows}
               openBillingMonth={ccLedger.open_billing_month}
               dailyRows={dailyHistorialRows}
             />
@@ -137,7 +201,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
                   : "accountDetail.creditCard.financingChartTitle"
               )}
               titleAs="h3"
-              points={financingChartPoints}
+              points={clippedFinancingPoints}
               displayUnit={displayUnit}
             />
           </div>
