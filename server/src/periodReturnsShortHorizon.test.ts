@@ -45,7 +45,6 @@ describe("withShortHorizonCells (assembler)", () => {
     unit: "clp",
     as_of_date: "2026-07-07",
     mtd_is_live: true,
-    d1_is_live: false,
     first_month: "2020-01",
     periods: [
       { period: "mtd", pct: 0.01, nominal_pl: 10, annualized_pct: null, months: 1, window_start_month: "2026-07" },
@@ -80,12 +79,11 @@ describe("withShortHorizonCells (assembler)", () => {
 });
 
 describe("computeShortHorizonReturnCells (integration, synthetic DB)", () => {
-  it("returns two ordered cells and a boolean live flag for a real investment group", () => {
+  it("returns two ordered cells for a real investment group", () => {
     const brokerage = getGroupConsolidatedTables("brokerage", "clp");
     if (brokerage.consolidated_monthly.length === 0) return; // synthetic DB without brokerage data
     const pr = brokerage.period_returns!;
     expect(pr.periods.slice(0, 2).map((c) => c.period)).toEqual(["d1", "w1"]);
-    expect(typeof pr.d1_is_live).toBe("boolean");
     // Short-horizon cells carry a prior-anchor date (or null), never a month key.
     for (const c of pr.periods.slice(0, 2)) {
       expect(c.window_start_month).toBeNull();

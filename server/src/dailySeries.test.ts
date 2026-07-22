@@ -257,7 +257,7 @@ describe("getBucketDailySeries — parity with the d1 short-horizon cell", () =>
     const refs = accountRefs();
     if (refs.length < 2) return;
 
-    // NOW is a Wednesday: the d1 session window (Tue, Wed] equals the calendar-day window.
+    // NOW is a Wednesday; the strip d1 shares the calendar (yesterday, today] legs.
     const s = getBucketDailySeries(refs, { unit: "clp", days: 1, now: NOW });
     const { cells } = computeShortHorizonReturnCells(refs, "clp", NOW);
     const d1 = cells.find((c) => c.period === "d1")!;
@@ -268,6 +268,26 @@ describe("getBucketDailySeries — parity with the d1 short-horizon cell", () =>
     expect(d1.window_start_date).toBe(s.baseline.as_of_date);
     expect(last.pl).toBeCloseTo(d1.nominal_pl!, 6);
     expect(last.pct).toBeCloseTo(d1.pct!, 12);
+  });
+
+  it("weekend: strip d1 equals the Saturday row, and closed markets contribute 0", () => {
+    const refs = accountRefs();
+    if (refs.length < 2) return;
+
+    const SAT = new Date("2026-03-21T18:00:00Z"); // Saturday afternoon Chile
+    const s = getBucketDailySeries(refs, { unit: "clp", days: 1, now: SAT });
+    const { cells } = computeShortHorizonReturnCells(refs, "clp", SAT);
+    const d1 = cells.find((c) => c.period === "d1")!;
+
+    expect(s.points).toHaveLength(1);
+    const last = s.points[0]!;
+    expect(last.as_of_date).toBe("2026-03-21");
+    expect(last.market_day).toBe(false);
+    expect(d1.window_start_date).toBe("2026-03-20");
+    // Both fixture accounts (`.SN` equity, stored-mark) are flat on Saturday: real PL = 0,
+    // with no per-class anchor machinery involved.
+    expect(last.pl).toBe(0);
+    expect(d1.nominal_pl).toBe(0);
   });
 });
 
@@ -325,7 +345,6 @@ describe("groupDailySeriesAccounts", () => {
     const series: BucketDailySeries = {
       unit: "clp",
       end_ymd: "2026-03-25",
-      d1_is_live: false,
       baseline: { as_of_date: "2026-03-23", value: 0 },
       points: [
         { as_of_date: "2026-03-24", value: 30, flow: 0, delta: null, pl: null, pct: null, market_day: true },

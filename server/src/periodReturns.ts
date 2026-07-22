@@ -48,8 +48,6 @@ export type PeriodReturnsPayload = {
   as_of_date: string;
   /** A row exists for the current Chile calendar month (MTD reflects an in-progress month). */
   mtd_is_live: boolean;
-  /** The 1D end leg is the live NYSE session (1D reflects an in-progress session). */
-  d1_is_live: boolean;
   /** Series start month key (`YYYY-MM`). */
   first_month: string;
   /** Fixed order: d1, w1, mtd, ytd, y1, y3, y5, total. */
@@ -222,9 +220,6 @@ export function computePeriodReturns(
     unit,
     as_of_date: asOfByMonth.get(lastMonth)!,
     mtd_is_live: mtdLive,
-    // Short-horizon (d1/w1) cells + this flag are filled by the short-horizon assembler;
-    // the pure monthly builder never sets them.
-    d1_is_live: false,
     first_month: firstMonth,
     periods,
   };

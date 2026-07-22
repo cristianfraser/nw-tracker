@@ -10,7 +10,6 @@ import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
-import { isNyseRegularSessionOpen } from "./nyseSession.js";
 import {
   convertLegToUnit,
   includeShortHorizonAccount,
@@ -74,8 +73,6 @@ export type BucketDailySeries = {
   unit: TsUnit;
   /** Last grid day = Chile today (the live point). */
   end_ymd: string;
-  /** True while the NYSE regular session is open (the last point tracks live marks). */
-  d1_is_live: boolean;
   /** Prior-session anchor for the first point (its `delta` baseline). */
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPoint[];
@@ -331,7 +328,6 @@ export function getBucketDailySeries(
   return {
     unit,
     end_ymd: endYmd,
-    d1_is_live: isNyseRegularSessionOpen(now),
     baseline: { as_of_date: grid[0]!, value: values[0]! },
     points,
     ...(perAccount ? { accounts: perAccount } : {}),

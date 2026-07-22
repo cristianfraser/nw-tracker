@@ -4,6 +4,7 @@ import {
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
+import { displayDayPct, equityTickerDayCalendar } from "./tickerDayDisplay.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -174,7 +175,11 @@ function statsForEquity(row: MarketDisplaySeriesRow, today: string, now: Date): 
     value: q.price,
     value_currency: valueCurrency,
     as_of_date: asOf,
-    changes: changesFromAnchors(q.price, anchors, q.delta_pct),
+    changes: changesFromAnchors(
+      q.price,
+      anchors,
+      displayDayPct(equityTickerDayCalendar(ticker), today, q.delta_pct)
+    ),
   };
 }
 
@@ -242,7 +247,11 @@ function statsForFx(today: string, now: Date): WatchlistRowStats {
     value: fxRow.clp_per_usd,
     value_currency: "clp",
     as_of_date: asOf,
-    changes: changesFromAnchors(fxRow.clp_per_usd, anchors, percentChange(fxRow.clp_per_usd, dayPrior)),
+    changes: changesFromAnchors(
+      fxRow.clp_per_usd,
+      anchors,
+      displayDayPct("weekday", today, percentChange(fxRow.clp_per_usd, dayPrior))
+    ),
   };
 }
 
@@ -282,7 +291,7 @@ function statsForFundUnit(row: MarketDisplaySeriesRow, today: string): Watchlist
     changes: changesFromAnchors(
       fuRow.unit_value_clp,
       anchors,
-      percentChange(fuRow.unit_value_clp, dayPrior)
+      displayDayPct("chile", today, percentChange(fuRow.unit_value_clp, dayPrior))
     ),
   };
 }
@@ -303,7 +312,7 @@ function statsForComposite(row: MarketDisplaySeriesRow, today: string, now: Date
     value: live.value,
     value_currency: "clp",
     as_of_date: live.as_of_date,
-    changes: changesFromAnchors(live.value, anchors, live.day_pct),
+    changes: changesFromAnchors(live.value, anchors, displayDayPct("nyse", today, live.day_pct)),
   };
 }
 

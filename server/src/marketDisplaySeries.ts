@@ -10,6 +10,7 @@ import { equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js"
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
 import { syncWatchlistFromApp } from "./watchlist.js";
 import { compositeLiveStats, RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
+import { displayDayPct, equityTickerDayCalendar } from "./tickerDayDisplay.js";
 
 export type WatchlistSource = "builtin" | "account" | "manual";
 
@@ -99,8 +100,9 @@ export type MarketTickerPayload = {
 /**
  * Marquee snapshot driven by `market_display_series` rows with `show_in_marquee = 1`.
  *
- * Day deltas anchor to each row's own as-of date (last close vs prior close), same as the
- * watchlist 1D column — an after-midnight stale row keeps the last session's move, never 0%.
+ * Day deltas are display values (`displayDayPct`): the series' real last-vs-prior change on
+ * days the instrument's market is open, a hard 0 on its closed days (weekends/holidays) —
+ * same convention as the watchlist 1D column.
  */
 export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayload {
   syncWatchlistFromApp();
@@ -130,7 +132,7 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
         usd = {
           date: fxRow.date,
           clp_per_usd: fxRow.clp_per_usd,
-          delta_pct: percentChange(fxRow.clp_per_usd, prior),
+          delta_pct: displayDayPct("weekday", today, percentChange(fxRow.clp_per_usd, prior)),
         };
       }
       continue;
@@ -143,7 +145,11 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
           uno_a = {
             day: fuRow.day,
             unit_value_clp: fuRow.unit_value_clp,
-            delta_pct: percentChange(fuRow.unit_value_clp, prior?.unit_value_clp),
+            delta_pct: displayDayPct(
+              "chile",
+              today,
+              percentChange(fuRow.unit_value_clp, prior?.unit_value_clp)
+            ),
           };
         }
         continue;
@@ -163,7 +169,7 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
           risky_norris = {
             day: rnRow.day,
             unit_value_clp: rnRow.unit_value_clp,
-            delta_pct: percentChange(rnRow.unit_value_clp, prior),
+            delta_pct: displayDayPct("chile", today, percentChange(rnRow.unit_value_clp, prior)),
           };
         }
         continue;
@@ -175,7 +181,7 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
         risky_norris_proxy = {
           day: live.as_of_date,
           unit_value_clp: live.value,
-          delta_pct: live.day_pct,
+          delta_pct: displayDayPct("nyse", today, live.day_pct),
         };
       }
       continue;
@@ -191,7 +197,7 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
       trade_date: q.trade_date,
       value: q.price,
       currency: q.currency,
-      delta_pct: q.delta_pct,
+      delta_pct: displayDayPct(equityTickerDayCalendar(ticker), today, q.delta_pct),
       source: q.source,
     });
   }
