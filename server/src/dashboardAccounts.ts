@@ -39,6 +39,7 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { isUsdCashKindSlug, isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceLive, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
+import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
@@ -429,21 +430,27 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         ((current_value_clp != null && fxRow == null) ||
           (deposits !== 0 && deposits_usd == null));
       // Day Δ = live value vs day-anchor close net of day flows — same identity the daily
-      // series uses (pl = delta − flow), so cards and the daily view agree. Mortgage keeps
-      // its loss-negative convention (prior − close − payments, as the monthly nominal_pl):
-      // a UF uptick is a daily financing loss, an amortizing cuota nets interest+seguros.
-      // CC rows carry the day mark for title deltas only — a balance move is purchases and
-      // PAGOs (flows), not P/L, and daily financing cost isn't modeled — so delta_day is null.
+      // series uses (pl = delta − flow), so cards and the daily view agree. Both liabilities
+      // keep the loss-negative convention (prior − close − payments, as the monthly
+      // nominal_pl): a UF uptick is a daily financing loss on the mortgage, an amortizing
+      // cuota nets interest+seguros. A card's day cost is the intereses/comisiones charged
+      // that day (`ccFinancingCostDaily.ts`) — its purchases and PAGOs are flows, so they
+      // cancel out and most days read 0.
       const isMortgageRow = kindSlug === "mortgage";
       const isCcRow = kindSlug === "credit_card";
-      const delta_day_clp =
-        !isCcRow && current_value_clp != null && prior_day_close_clp != null
+      const ccDayFinancingClp = isCcRow ? ccFinancingCostClpBetween(a.id, priorDayYmd, today) : 0;
+      const delta_day_clp = isCcRow
+        ? -ccDayFinancingClp
+        : current_value_clp != null && prior_day_close_clp != null
           ? isMortgageRow
             ? prior_day_close_clp - current_value_clp - (deposits_day_clp ?? 0)
             : current_value_clp - prior_day_close_clp - (deposits_day_clp ?? 0)
           : null;
-      const delta_day_usd =
-        !isCcRow && includeUsd && current_value_usd != null && prior_day_close_usd != null
+      const delta_day_usd = isCcRow
+        ? includeUsd
+          ? depositClpToUsdAtDate(-ccDayFinancingClp, today)
+          : null
+        : includeUsd && current_value_usd != null && prior_day_close_usd != null
           ? isMortgageRow
             ? prior_day_close_usd - current_value_usd - (deposits_day_usd ?? 0)
             : current_value_usd - prior_day_close_usd - (deposits_day_usd ?? 0)

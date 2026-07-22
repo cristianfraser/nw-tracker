@@ -93,7 +93,7 @@ describe("getAccountMonthlyPerformance", () => {
     expect(perf?.monthly).toEqual([]);
   });
 
-  it("credit_card accounts report zero nominal_pl until installment-interest P/L", () => {
+  it("credit_card rows are loss-negative financing cost: nominal_pl = prior − closing − net_flow", () => {
     const cc = db
       .prepare(
         `SELECT a.id FROM accounts a
@@ -111,8 +111,12 @@ describe("getAccountMonthlyPerformance", () => {
     const perf = getAccountMonthlyPerformance(row.id, "clp");
     expect(perf?.monthly.length).toBeGreaterThan(0);
     for (const m of perf!.monthly) {
-      expect(m.nominal_pl).toBe(0);
-      expect(m.pct_month).toBeNull();
+      // A card's P/L is what the bank charged (never a gain), and the rest of the balance
+      // move is capital flow — the liability identity the daily series shares.
+      const prior = m.prior_closing ?? 0;
+      expect(m.nominal_pl).not.toBeNull();
+      expect(m.nominal_pl!).toBeLessThanOrEqual(0);
+      expect(m.nominal_pl!).toBeCloseTo(prior - m.closing_value - m.net_capital_flow, 6);
     }
   });
 
