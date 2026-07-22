@@ -9,6 +9,8 @@ import { formatClp } from "../../format";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   buildNiceYAxis,
+  computeRegularMonthXAxisTicks,
+  formatLineChartXTick,
   RECHARTS_MONEY_CHART_MARGIN,
   AXIS_LINE_STROKE as AXIS_STROKE,
 } from "./chartLayout";
@@ -49,24 +51,39 @@ const CURRENT_MONTH_STROKE = "#94a3b8";
 export function CcInstallmentHistoryChart({
   rows,
   openBillingMonth,
+  dailyRows,
 }: {
   rows: CcHistorialChartRow[];
   openBillingMonth?: string | null;
+  /** Day-period rows (`month` = ISO date): lines only — the billed/paid bars are month-frame. */
+  dailyRows?: CcHistorialChartRow[] | null;
 }) {
   const { t } = useTranslation();
   const { metricsPeriod } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
+  const isDailyMode = metricsPeriod === "day" && (dailyRows?.length ?? 0) > 0;
   const displayRows = useMemo(
-    () => (isYearly ? rollupCcHistorialChartYearly(rows) : rows),
-    [rows, isYearly]
+    () => (isDailyMode ? dailyRows! : isYearly ? rollupCcHistorialChartYearly(rows) : rows),
+    [rows, isYearly, isDailyMode, dailyRows]
   );
-  const periodLabel = (ym: string) => (isYearly ? ym.slice(0, 4) : formatYmEs(ym));
+  const dayTicks = useMemo(
+    () =>
+      isDailyMode
+        ? computeRegularMonthXAxisTicks(
+            displayRows.map((r) => r.month),
+            { includeLastDataPoint: false }
+          )
+        : undefined,
+    [isDailyMode, displayRows]
+  );
+  const periodLabel = (ym: string) =>
+    isDailyMode ? ym : isYearly ? ym.slice(0, 4) : formatYmEs(ym);
   const currentYm = chileTodayYmd().slice(0, 7);
   // Yearly buckets are keyed YYYY-12, so the marker lands on the year containing the ref month.
   const refMonth = isYearly
     ? `${(openBillingMonth ?? currentYm).slice(0, 4)}-12`
     : openBillingMonth ?? currentYm;
-  const showCurrentMonthLine = displayRows.some((r) => r.month === refMonth);
+  const showCurrentMonthLine = !isDailyMode && displayRows.some((r) => r.month === refMonth);
   const yScale = useMemo(() => {
     const { min, max } = unifiedMinMax(displayRows);
     return buildNiceYAxis(min, max);
@@ -97,15 +114,17 @@ export function CcInstallmentHistoryChart({
                     {t("accountDetail.creditCard.saldoTotal")}:{" "}
                     {d.balance_total_clp != null ? formatClp(d.balance_total_clp) : "—"}
                   </div>
-                  <div>
-                    {t(
-                      isYearly
-                        ? "accountDetail.creditCard.tooltipPagosYear"
-                        : "accountDetail.creditCard.tooltipPagosMonth"
-                    )}
-                    : {formatClp(d.installment_payments_clp)}
-                  </div>
-                  {d.facturado_clp != null && Number.isFinite(d.facturado_clp) ? (
+                  {!isDailyMode ? (
+                    <div>
+                      {t(
+                        isYearly
+                          ? "accountDetail.creditCard.tooltipPagosYear"
+                          : "accountDetail.creditCard.tooltipPagosMonth"
+                      )}
+                      : {formatClp(d.installment_payments_clp)}
+                    </div>
+                  ) : null}
+                  {!isDailyMode && d.facturado_clp != null && Number.isFinite(d.facturado_clp) ? (
                     <div>
                       {t("accountDetail.creditCard.chartFacturadoClose")}: {formatClp(d.facturado_clp)}
                     </div>
@@ -121,10 +140,12 @@ export function CcInstallmentHistoryChart({
             dataKey="month"
             type="category"
             tick={{ fontSize: 10, fill: "#94a3b8" }}
-            tickFormatter={(ym: string) => periodLabel(String(ym))}
+            tickFormatter={(ym: string) =>
+              isDailyMode ? formatLineChartXTick(String(ym), "day") : periodLabel(String(ym))
+            }
             axisLine={{ stroke: AXIS_STROKE }}
             tickLine={{ stroke: AXIS_STROKE }}
-            interval="preserveStartEnd"
+            {...(isDailyMode ? { ticks: dayTicks } : { interval: "preserveStartEnd" as const })}
           />
           <YAxis
             domain={yScale.domain}
@@ -159,31 +180,35 @@ export function CcInstallmentHistoryChart({
               }}
             />
           ) : null}
-          <Bar
-            dataKey="facturado_clp"
-            name={t("accountDetail.creditCard.chartFacturadoClose")}
-            fill={FACTURADO_FILL}
-            maxBarSize={32}
-            radius={[2, 2, 0, 0]}
-          />
-          <Bar
-            dataKey="installment_payments_clp"
-            name={t(
-              isYearly
-                ? "accountDetail.creditCard.chartInstallmentPaymentsYear"
-                : "accountDetail.creditCard.chartInstallmentPaymentsMonth"
-            )}
-            fill="#64748b"
-            maxBarSize={32}
-            radius={[2, 2, 0, 0]}
-          />
+          {!isDailyMode ? (
+            <Bar
+              dataKey="facturado_clp"
+              name={t("accountDetail.creditCard.chartFacturadoClose")}
+              fill={FACTURADO_FILL}
+              maxBarSize={32}
+              radius={[2, 2, 0, 0]}
+            />
+          ) : null}
+          {!isDailyMode ? (
+            <Bar
+              dataKey="installment_payments_clp"
+              name={t(
+                isYearly
+                  ? "accountDetail.creditCard.chartInstallmentPaymentsYear"
+                  : "accountDetail.creditCard.chartInstallmentPaymentsMonth"
+              )}
+              fill="#64748b"
+              maxBarSize={32}
+              radius={[2, 2, 0, 0]}
+            />
+          ) : null}
           <Line
             type="monotone"
             dataKey="cupo_en_cuotas_clp"
             name={t("accountDetail.creditCard.colCupoEnCuotas")}
             stroke={CUPO_STROKE}
             strokeWidth={2}
-            dot={{ r: 2.5, fill: CUPO_STROKE }}
+            dot={isDailyMode ? false : { r: 2.5, fill: CUPO_STROKE }}
             connectNulls
           />
           <Line
@@ -192,7 +217,7 @@ export function CcInstallmentHistoryChart({
             name={t("accountDetail.creditCard.saldoTotal")}
             stroke={BALANCE_TOTAL_STROKE}
             strokeWidth={2}
-            dot={{ r: 2.5, fill: BALANCE_TOTAL_STROKE }}
+            dot={isDailyMode ? false : { r: 2.5, fill: BALANCE_TOTAL_STROKE }}
             connectNulls
           />
         </AppComposedChart>
