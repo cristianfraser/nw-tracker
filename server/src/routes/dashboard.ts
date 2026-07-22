@@ -21,7 +21,8 @@ import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboar
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
-import { ccInstallmentDebtDailyClp } from "../ccInstallmentDebtDaily.js";
+import { ccInstallmentDebtDailyClp, ccInstallmentPlanTailClp } from "../ccInstallmentDebtDaily.js";
+import { chileCalendarTodayYmd } from "../chileDate.js";
 import {
   DAILY_SERIES_MAX_DAYS,
   getBucketDailySeriesCached,
@@ -145,14 +146,17 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     { unit, days, includeAccounts: true }
   );
   // CC masters: attach the daily plan debt («deuda en cuotas», CLP like the historial
-  // chart) so the account page's daily historial has both lines from one fetch.
+  // chart) plus the future plan tail (today+1 .. plan end) so the account page's daily
+  // historial has both lines and covers the same window as its monthly/yearly forms.
   if (accountBucketKindSlug(row.bucket_slug) === "credit_card") {
     const debt = ccInstallmentDebtDailyClp(
       accountId,
       series.points.map((p) => p.as_of_date)
     );
     if (debt) {
-      res.json({ ...series, cc_installment_debt: debt });
+      const todayYmd = series.points.at(-1)?.as_of_date ?? chileCalendarTodayYmd();
+      const planTail = ccInstallmentPlanTailClp(accountId, todayYmd);
+      res.json({ ...series, cc_installment_debt: debt, ...(planTail ? { cc_plan_tail: planTail } : {}) });
       return;
     }
   }
