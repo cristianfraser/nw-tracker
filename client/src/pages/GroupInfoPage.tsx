@@ -43,12 +43,13 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
+import { timeRangeToDays } from "../timeRange";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
 
-  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
   const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
@@ -218,7 +219,7 @@ export function GroupInfoPage() {
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
-    dailySessions,
+    timeRangeToDays(timeRange),
     isDaily && portfolioGroup !== ""
   );
   const dailyValuationBlock = useMemo(() => {

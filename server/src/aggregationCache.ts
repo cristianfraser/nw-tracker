@@ -133,10 +133,12 @@ export function invalidateCcBillingDetail(accountId?: number): void {
     }
   }
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
-  // invalidateLinkedCreditCardAggregationCache both call this) — the bundle and the daily
-  // series (whose historical legs read movements/valuations/CC valuations) go with it.
+  // invalidateLinkedCreditCardAggregationCache both call this) — the bundle, the daily
+  // series (whose historical legs read movements/valuations/CC valuations), and the depto
+  // ledger memo go with it.
   invalidateDashboardPageBundle();
   invalidateDailySeries();
+  deleteKeysMatchingPrefix("depto.ledger|");
   invalidationListener?.();
 }
 

@@ -11,6 +11,8 @@ import { AppLineChart } from "./AppLineChart";
 import { AllocationPie } from "./AllocationPie";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { timeRangeCutoffYmd } from "../../timeRange";
 import {
   coerceKeptTrailingZeroMonth,
   prependInitialZeroAnchorsOnBlock,
@@ -367,14 +369,27 @@ export function LineChartPanel({
   yScaleDataKeys,
 }: BlockProps) {
   const TitleTag = titleAs;
+  const { timeRange } = useDisplayPreferences();
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const blockPlotted = useMemo(
     () => (trimLeadingInactive ? trimLeadingInactivePoints(block, includeAccumulatedLines) : block),
     [block, includeAccumulatedLines, trimLeadingInactive]
   );
+  // Global range clip (M/Y views; daily payloads arrive range-sized from the server). When the
+  // clip removes leading history, the zero anchors are skipped — a left-edge dive to 0 would
+  // misread as "the account started here".
+  const { blockRanged, rangeClipped } = useMemo(() => {
+    if (xAxisGranularity === "day") return { blockRanged: blockPlotted, rangeClipped: false };
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    if (cutoff == null) return { blockRanged: blockPlotted, rangeClipped: false };
+    const points = blockPlotted.points.filter((p) => String(p.as_of_date ?? "") >= cutoff);
+    if (points.length === blockPlotted.points.length)
+      return { blockRanged: blockPlotted, rangeClipped: false };
+    return { blockRanged: { ...blockPlotted, points }, rangeClipped: true };
+  }, [blockPlotted, timeRange, xAxisGranularity]);
   const blockWithAnchors = useMemo(
-    () => prependInitialZeroAnchorsOnBlock(blockPlotted, xAxisGranularity),
-    [blockPlotted, xAxisGranularity]
+    () => (rangeClipped ? blockRanged : prependInitialZeroAnchorsOnBlock(blockRanged, xAxisGranularity)),
+    [blockRanged, rangeClipped, xAxisGranularity]
   );
   const valuationKeys = useMemo(
     () => valuationDataKeysForInitialZeroAnchors(blockWithAnchors),

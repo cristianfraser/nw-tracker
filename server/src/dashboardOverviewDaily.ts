@@ -1,15 +1,16 @@
 import { getAggregationCached } from "./aggregationCache.js";
-import { DAILY_SERIES_MAX_SESSIONS } from "./dailySeries.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { DAILY_SERIES_MAX_DAYS, totalRangeDays } from "./dailySeries.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
-import { nyseSessionsListEndingAt } from "./marketHolidays.js";
-import { isNyseRegularSessionOpen, nyseDisplaySessionYmd } from "./nyseSession.js";
+import { isNyseRegularSessionOpen } from "./nyseSession.js";
 import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
 
 /**
- * Daily net-worth overview: one point per NYSE session (same grid + "vs last workday"
- * semantics as `dailySeries.ts`), each valued by summing per-account marks per bucket
+ * Daily net-worth overview: one point per **calendar day** ending at Chile today (same grid
+ * as `dailySeries.ts` — weekends/holidays included, each account flat on its own closed
+ * days), each valued by summing per-account marks per bucket
  * (`buildDashboardBucketDailySeriesClp` — the consolidated monthly closing would flatten
- * every session of a month to one value). The last point uses the live mark stack, matching
+ * every day of a month to one value). The last point uses the live mark stack, matching
  * the headline the same way the Rentabilidad strip's live leg does. Served by
  * `GET /api/dashboard/overview-daily`; cached under `daily.overview|…` and dropped with the
  * daily-series namespace.
@@ -26,17 +27,21 @@ export type OverviewDailyPoint = {
 
 export type OverviewDailyPayload = {
   unit: "clp" | "usd";
-  sessions: number;
-  end_session_ymd: string;
+  days: number;
+  end_ymd: string;
   /** True while the NYSE regular session is open (the last point tracks live marks). */
   d1_is_live: boolean;
   points: OverviewDailyPoint[];
 };
 
-function buildOverviewDaily(unit: "clp" | "usd", sessions: number): OverviewDailyPayload {
+function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPayload {
   const now = new Date();
-  const endSession = nyseDisplaySessionYmd(now);
-  const grid = nyseSessionsListEndingAt(endSession, sessions);
+  const endYmd = chileCalendarTodayYmd();
+  const count = days === 0 ? totalRangeDays(endYmd) : days;
+  const grid: string[] = new Array(count);
+  for (let i = 0; i < count; i++) {
+    grid[count - 1 - i] = i === 0 ? endYmd : chileCalendarAddDays(endYmd, -i);
+  }
   const byDate = buildDashboardBucketDailySeriesClp(grid);
 
   const points: OverviewDailyPoint[] = grid.map((ymd) => {
@@ -58,26 +63,24 @@ function buildOverviewDaily(unit: "clp" | "usd", sessions: number): OverviewDail
 
   return {
     unit,
-    sessions,
-    end_session_ymd: endSession,
+    days,
+    end_ymd: endYmd,
     d1_is_live: isNyseRegularSessionOpen(now),
     points,
   };
 }
 
-export const OVERVIEW_DAILY_DEFAULT_SESSIONS = 90;
+export const OVERVIEW_DAILY_DEFAULT_DAYS = 90;
 
 /** Validated + aggregation-cached overview series. Throws on an out-of-bounds window. */
 export function getDashboardOverviewDaily(
   unit: "clp" | "usd",
-  sessions: number
+  days: number
 ): OverviewDailyPayload {
-  if (!Number.isInteger(sessions) || sessions < 1 || sessions > DAILY_SERIES_MAX_SESSIONS) {
-    throw new Error(
-      `overview-daily: sessions must be 1..${DAILY_SERIES_MAX_SESSIONS}, got ${sessions}`
-    );
+  if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
+    throw new Error(`overview-daily: days must be 0..${DAILY_SERIES_MAX_DAYS}, got ${days}`);
   }
-  return getAggregationCached(`daily.overview|${unit}|${sessions}`, () =>
-    buildOverviewDaily(unit, sessions)
+  return getAggregationCached(`daily.overview|${unit}|${days}`, () =>
+    buildOverviewDaily(unit, days)
   );
 }

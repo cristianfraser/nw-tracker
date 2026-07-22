@@ -15,6 +15,7 @@
  * Lives in its own module (not deptoDividendosLedger.ts) to avoid an import cycle:
  * this loader needs mortgagePaymentAnalytics, which imports types from deptoDividendosLedger.
  */
+import { getAggregationCached } from "./aggregationCache.js";
 import { db } from "./db.js";
 import {
   enrichDeptoRowsUfClpFromDb,
@@ -55,8 +56,16 @@ function deptoPropertyAccountId(): number | null {
  * `defaultIncendioClpFromLedger` rely on the order) from property-account movements.
  * Returns [] when no depto property is tracked; throws when depto-note movements exist
  * without a resolvable property master (data problem — fix data, not the loader).
+ *
+ * Memoized in the aggregation cache (`depto.ledger|`) — daily views price the property and
+ * mortgage marks once per grid date, and the ledger rebuild dominated that cost. Dropped by
+ * the account-write funnel (`invalidateCcBillingDetail`) and day/data_version freshness.
  */
 export function loadDeptoLedgerFromMovements(): DeptoMortgageSheetRow[] {
+  return getAggregationCached("depto.ledger|rows", () => loadDeptoLedgerFromMovementsUncached());
+}
+
+function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
   const propertyId = deptoPropertyAccountId();
   if (propertyId == null) {
     const stray = db

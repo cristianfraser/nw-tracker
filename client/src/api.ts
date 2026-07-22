@@ -158,10 +158,10 @@ export const api = {
     const qs = q.toString();
     return j<import("./types").DashboardPageBundleResponse>(`/api/dashboard/page-bundle${qs ? `?${qs}` : ""}`);
   },
-  dashboardOverviewDaily: (unit: "clp" | "usd", sessions: number) => {
+  dashboardOverviewDaily: (unit: "clp" | "usd", days: number) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
-    q.set("sessions", String(sessions));
+    q.set("days", String(days));
     return j<import("./types").DashboardOverviewDailyResponse>(
       `/api/dashboard/overview-daily?${q.toString()}`
     );
@@ -169,13 +169,13 @@ export const api = {
   dailySeries: (
     unit: "clp" | "usd",
     scope: { portfolioGroup?: string; accountId?: number },
-    sessions: number
+    days: number
   ) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
     if (scope.portfolioGroup) q.set("portfolio_group", scope.portfolioGroup);
     if (scope.accountId != null) q.set("account_id", String(scope.accountId));
-    q.set("sessions", String(sessions));
+    q.set("days", String(days));
     return j<import("./types").DailySeriesResponse>(`/api/daily-series?${q.toString()}`);
   },
   valuationTimeseries: (

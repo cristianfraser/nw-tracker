@@ -5,10 +5,10 @@ export const queryKeys = {
   dashboardNav: (unit: DisplayUnit) => ["dashboardNav", unit] as const,
   dashboardNavSnapshot: (unit: DisplayUnit) => ["dashboardNavSnapshot", unit] as const,
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
-  dashboardOverviewDaily: (unit: DisplayUnit, sessions: number) =>
-    ["dashboardOverviewDaily", unit, sessions] as const,
-  dailySeries: (scope: string, unit: DisplayUnit, sessions: number) =>
-    ["dailySeries", scope, unit, sessions] as const,
+  dashboardOverviewDaily: (unit: DisplayUnit, days: number) =>
+    ["dashboardOverviewDaily", unit, days] as const,
+  dailySeries: (scope: string, unit: DisplayUnit, days: number) =>
+    ["dailySeries", scope, unit, days] as const,
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
   groupConsolidatedMonthlyPage: (

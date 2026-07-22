@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache, invalidateMarketDataAggregations } from "./aggregationCache.js";
 import {
-  DAILY_SERIES_MAX_SESSIONS,
+  DAILY_SERIES_MAX_DAYS,
   getBucketDailySeries,
   getBucketDailySeriesCached,
   groupDailySeriesAccounts,
@@ -9,7 +9,6 @@ import {
 } from "./dailySeries.js";
 import { db } from "./db.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
-import { nyseSessionsListEndingAt } from "./marketHolidays.js";
 import {
   computeShortHorizonReturnCells,
   type ShortHorizonAccountRef,
@@ -18,14 +17,22 @@ import {
 /**
  * Synthetic fixtures only (repo policy): a `.SN` (clp-quoted, no fx dependency) equity MTM
  * account with seeded `equity_daily` bars, and a stored-valuations account with a mid-window
- * deposit. All dates are fixed historical sessions so marks resolve through the historical
+ * deposit. All dates are fixed historical days so marks resolve through the historical
  * branch deterministically; `now` is passed explicitly.
  */
 
-// NY 2026-03-25 19:00 EDT (after close, Wednesday) → display session 2026-03-25.
+// Chile 2026-03-25 20:00 (Wednesday) → grid ends at calendar day 2026-03-25.
 const NOW = new Date("2026-03-25T23:00:00Z");
-// Sessions grid ending 2026-03-25: 03-19 Thu, 03-20 Fri, 03-23 Mon, 03-24 Tue, 03-25 Wed.
-const GRID = ["2026-03-19", "2026-03-20", "2026-03-23", "2026-03-24", "2026-03-25"];
+// Calendar grid for days=6: baseline Thu 03-19, then Fri, Sat, Sun, Mon, Tue, Wed.
+const GRID = [
+  "2026-03-19",
+  "2026-03-20",
+  "2026-03-21",
+  "2026-03-22",
+  "2026-03-23",
+  "2026-03-24",
+  "2026-03-25",
+];
 
 const TICKER = "VITESTDAILY.SN";
 const UNITS = 100;
@@ -107,64 +114,49 @@ afterAll(() => {
   clearAggregationCache();
 });
 
-describe("nyseSessionsListEndingAt", () => {
-  it("skips weekends and NYSE holidays (2026-07-03) walking back from a Monday", () => {
-    expect(nyseSessionsListEndingAt("2026-07-06", 3)).toEqual([
-      "2026-07-01",
-      "2026-07-02",
-      "2026-07-06",
-    ]);
-  });
-
-  it("returns the fixture grid ending 2026-03-25", () => {
-    expect(nyseSessionsListEndingAt("2026-03-25", 5)).toEqual(GRID);
-  });
-
-  it("throws on a non-session end date and on an invalid count", () => {
-    expect(() => nyseSessionsListEndingAt("2026-07-04", 2)).toThrow(/not an NYSE session/);
-    expect(() => nyseSessionsListEndingAt("2026-07-06", 0)).toThrow(/invalid count/);
-  });
-});
-
-describe("getBucketDailySeries — equity MTM (clp-quoted)", () => {
-  it("per-session values = units × on-or-before close; deltas are day moves", () => {
+describe("getBucketDailySeries — calendar-day grid", () => {
+  it("emits every calendar day incl. weekends; market_day flags weekends false", () => {
     if (equityAccountId == null || leafSlug == null) return;
     const s = getBucketDailySeries([{ account_id: equityAccountId, bucket_slug: leafSlug }], {
       unit: "clp",
-      sessions: 4,
+      days: 6,
       now: NOW,
     });
-
-    expect(s.end_session_ymd).toBe("2026-03-25");
-    expect(s.d1_is_live).toBe(false);
+    expect(s.end_ymd).toBe("2026-03-25");
     expect(s.baseline).toEqual({ as_of_date: "2026-03-19", value: UNITS * 1000 });
     expect(s.points.map((p) => p.as_of_date)).toEqual(GRID.slice(1));
+    expect(s.points.map((p) => p.market_day)).toEqual([true, false, false, true, true, true]);
+  });
 
-    const [fri, mon, tue, wed] = s.points;
+  it("equity MTM: flat carry over the weekend, full move on its own market days", () => {
+    if (equityAccountId == null || leafSlug == null) return;
+    const s = getBucketDailySeries([{ account_id: equityAccountId, bucket_slug: leafSlug }], {
+      unit: "clp",
+      days: 6,
+      now: NOW,
+    });
+    const [fri, sat, sun, mon, tue, wed] = s.points;
     expect(fri!.value).toBe(UNITS * 1010);
     expect(fri!.delta).toBe(UNITS * 10);
-    expect(fri!.flow).toBe(0);
-    expect(fri!.pl).toBe(UNITS * 10);
-    expect(fri!.pct).toBeCloseTo((UNITS * 10) / (UNITS * 1000), 12);
-
+    // Weekend: Friday's close carries — level rows, zero attribution.
+    expect(sat!.value).toBe(UNITS * 1010);
+    expect(sat!.delta).toBe(0);
+    expect(sun!.delta).toBe(0);
+    // Monday's row carries the Fri→Mon session move.
+    expect(mon!.value).toBe(UNITS * 1005);
     expect(mon!.delta).toBe(UNITS * -5);
-
-    // Missing 03-24 bar: mark forward-fills Monday's close, so the day is flat.
-    expect(tue!.value).toBe(UNITS * 1005);
+    // Missing 03-24 bar: forward-fill, flat day.
     expect(tue!.delta).toBe(0);
-    expect(tue!.pl).toBe(0);
-    expect(tue!.pct).toBe(0);
-
     expect(wed!.value).toBe(UNITS * 1020);
     expect(wed!.delta).toBe(UNITS * 15);
   });
 
-  it("throws on out-of-bounds session counts", () => {
+  it("throws on out-of-bounds day windows (0 = total stays valid)", () => {
     if (equityAccountId == null || leafSlug == null) return;
     const refs = [{ account_id: equityAccountId, bucket_slug: leafSlug }];
-    expect(() => getBucketDailySeries(refs, { unit: "clp", sessions: 0, now: NOW })).toThrow();
+    expect(() => getBucketDailySeries(refs, { unit: "clp", days: -1, now: NOW })).toThrow();
     expect(() =>
-      getBucketDailySeries(refs, { unit: "clp", sessions: DAILY_SERIES_MAX_SESSIONS + 1, now: NOW })
+      getBucketDailySeries(refs, { unit: "clp", days: DAILY_SERIES_MAX_DAYS + 1, now: NOW })
     ).toThrow();
   });
 });
@@ -174,14 +166,14 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     if (manualAccountId == null || leafSlug == null) return;
     const s = getBucketDailySeries([{ account_id: manualAccountId, bucket_slug: leafSlug }], {
       unit: "clp",
-      sessions: 4,
+      days: 6,
       now: NOW,
     });
 
     expect(s.baseline.value).toBe(500000); // 03-18 mark forward-filled to 03-19
-    const [fri, mon, tue, wed] = s.points;
+    const [fri, sat, , , tue, wed] = s.points;
     expect(fri!.delta).toBe(0);
-    expect(mon!.delta).toBe(0);
+    expect(sat!.delta).toBe(0);
 
     // Deposit 03-24: the stale mark carries forward plus the flow, so the day's pl is 0.
     expect(tue!.value).toBe(550000);
@@ -226,17 +218,18 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     try {
       const s = getBucketDailySeries([{ account_id: accountId, bucket_slug: leafSlug }], {
         unit: "clp",
-        sessions: 4,
+        days: 6,
         now: NOW,
       });
-      const [, , tue, wed] = s.points;
+      const tue = s.points[4]!;
+      const wed = s.points[5]!;
       // Mark and deposit both dated 03-24: empty carry window — value is the mark, not mark + flow.
-      expect(tue!.value).toBe(600000);
-      expect(tue!.flow).toBe(50000);
-      expect(tue!.delta).toBe(40000);
-      expect(tue!.pl).toBe(-10000); // 600000 − 560000 − 50000
-      expect(wed!.value).toBe(600000);
-      expect(wed!.delta).toBe(0);
+      expect(tue.value).toBe(600000);
+      expect(tue.flow).toBe(50000);
+      expect(tue.delta).toBe(40000);
+      expect(tue.pl).toBe(-10000); // 600000 − 560000 − 50000
+      expect(wed.value).toBe(600000);
+      expect(wed.delta).toBe(0);
     } finally {
       db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
       db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
@@ -244,11 +237,11 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     }
   });
 
-  it("per-session flows match netDepositFlowBetween on every window", () => {
+  it("per-day flows match netDepositFlowBetween on every window", () => {
     if (manualAccountId == null || leafSlug == null) return;
     const s = getBucketDailySeries([{ account_id: manualAccountId, bucket_slug: leafSlug }], {
       unit: "clp",
-      sessions: 4,
+      days: 6,
       now: NOW,
     });
     for (let i = 1; i < GRID.length; i++) {
@@ -260,11 +253,12 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
 });
 
 describe("getBucketDailySeries — parity with the d1 short-horizon cell", () => {
-  it("last point pl/pct equal the Rentabilidad strip d1 cell for the same bucket", () => {
+  it("midweek, the newest row's pl/pct equal the Rentabilidad strip d1 cell", () => {
     const refs = accountRefs();
     if (refs.length < 2) return;
 
-    const s = getBucketDailySeries(refs, { unit: "clp", sessions: 1, now: NOW });
+    // NOW is a Wednesday: the d1 session window (Tue, Wed] equals the calendar-day window.
+    const s = getBucketDailySeries(refs, { unit: "clp", days: 1, now: NOW });
     const { cells } = computeShortHorizonReturnCells(refs, "clp", NOW);
     const d1 = cells.find((c) => c.period === "d1")!;
 
@@ -283,7 +277,7 @@ describe("getBucketDailySeries — includeAccounts", () => {
     if (refs.length < 2) return;
     const s = getBucketDailySeries(refs, {
       unit: "clp",
-      sessions: 4,
+      days: 6,
       now: NOW,
       includeAccounts: true,
     });
@@ -303,24 +297,24 @@ describe("getBucketDailySeries — includeAccounts", () => {
     if (refs.length < 2) return;
     const s = getBucketDailySeries(refs, {
       unit: "clp",
-      sessions: 4,
+      days: 6,
       now: NOW,
       includeAccounts: true,
     });
     const equity = s.accounts!.find((l) => l.account_id === equityAccountId)!;
     const manual = s.accounts!.find((l) => l.account_id === manualAccountId)!;
     // Equity buy (03-10, CLP-funded) predates the window: flat lifetime level.
-    expect(equity.deposits_acum).toEqual([100000, 100000, 100000, 100000]);
+    expect(equity.deposits_acum).toEqual([100000, 100000, 100000, 100000, 100000, 100000]);
     // Manual deposit lands 03-24: the line steps by exactly that day's flow leg.
-    expect(manual.deposits_acum).toEqual([0, 0, 50000, 50000]);
-    expect(manual.deposits_acum![2]! - manual.deposits_acum![1]!).toBe(s.points[2]!.flow);
-    expect(s.deposits_acum_total).toEqual([100000, 100000, 150000, 150000]);
+    expect(manual.deposits_acum).toEqual([0, 0, 0, 0, 50000, 50000]);
+    expect(manual.deposits_acum![4]! - manual.deposits_acum![3]!).toBe(s.points[4]!.flow);
+    expect(s.deposits_acum_total).toEqual([100000, 100000, 100000, 100000, 150000, 150000]);
   });
 
   it("omits account lines by default", () => {
     const refs = accountRefs();
     if (refs.length === 0) return;
-    const s = getBucketDailySeries(refs, { unit: "clp", sessions: 2, now: NOW });
+    const s = getBucketDailySeries(refs, { unit: "clp", days: 2, now: NOW });
     expect(s.accounts).toBeUndefined();
     expect(s.deposits_acum_total).toBeUndefined();
   });
@@ -330,12 +324,12 @@ describe("groupDailySeriesAccounts", () => {
   it("sums mapped accounts into bucket lines (values + aportes) and passes unmapped through", () => {
     const series: BucketDailySeries = {
       unit: "clp",
-      end_session_ymd: "2026-03-25",
+      end_ymd: "2026-03-25",
       d1_is_live: false,
-      baseline: { as_of_date: "2026-03-19", value: 0 },
+      baseline: { as_of_date: "2026-03-23", value: 0 },
       points: [
-        { as_of_date: "2026-03-24", value: 30, flow: 0, delta: null, pl: null, pct: null },
-        { as_of_date: "2026-03-25", value: 33, flow: 0, delta: 3, pl: 3, pct: 0.1 },
+        { as_of_date: "2026-03-24", value: 30, flow: 0, delta: null, pl: null, pct: null, market_day: true },
+        { as_of_date: "2026-03-25", value: 33, flow: 0, delta: 3, pl: 3, pct: 0.1, market_day: true },
       ],
       accounts: [
         { account_id: 1, name: "a", values: [10, 11], deposits_acum: [5, 5] },
@@ -373,12 +367,12 @@ describe("getBucketDailySeriesCached", () => {
     const refs = accountRefs();
     if (refs.length === 0) return;
 
-    const a = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", sessions: 2 });
-    const b = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", sessions: 2 });
+    const a = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", days: 2 });
+    const b = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", days: 2 });
     expect(b).toBe(a);
 
     invalidateMarketDataAggregations();
-    const c = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", sessions: 2 });
+    const c = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", days: 2 });
     expect(c).not.toBe(a);
   });
 });
