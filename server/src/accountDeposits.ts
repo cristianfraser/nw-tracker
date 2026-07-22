@@ -1,5 +1,6 @@
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
+import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
@@ -140,10 +141,6 @@ function loadTransferLegSignedFlowEvents(
   const requested = new Set(uniq);
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
-    // Checking→CC payment mirrors move no wealth (the cash bucket nets the card balance):
-    // neither endpoint gets a flow event — the checking drop and the owed drop share the
-    // transfer date, so the daily/monthly P/L is zero by construction.
-    if (r.flow_kind === "pago_tarjeta") continue;
     // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
     // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
     // together (the USD `to` leg is dropped below via usdCashIds). stock_buy/stock_sell also pass
@@ -162,6 +159,10 @@ function loadTransferLegSignedFlowEvents(
     for (const endpoint of [r.from_account_id, r.to_account_id]) {
       if (endpoint == null || !requested.has(endpoint)) continue;
       if (equityMtmIds.has(endpoint) || usdCashIds.has(endpoint)) continue;
+      // Checking→CC payment mirrors: only the CASH side emits (its withdrawal is real capital
+      // leaving the account). The card leg is inert here forever — CC flows come from statement
+      // evidence (`ccOwedFlowEvents.ts`), so counting the transfer too would double the payment.
+      if (r.flow_kind === "pago_tarjeta" && isCreditCardAccountId(endpoint)) continue;
       if (personalOnly && movementIsStateContribution(r.flow_kind)) continue;
       const amt = signedClpDeltaForAccountMovement(r, endpoint);
       if (amt === 0 || !Number.isFinite(amt)) continue;
