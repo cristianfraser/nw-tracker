@@ -147,27 +147,3 @@ export function nyseSessionsBack(fromYmd: string, sessions: number): string | nu
   }
   return cur;
 }
-
-/**
- * Ascending list of `count` NYSE sessions ending at `endYmd` inclusive. `endYmd` must itself
- * be a scheduled session (callers anchor on `nyseDisplaySessionYmd`).
- */
-export function nyseSessionsListEndingAt(endYmd: string, count: number): string[] {
-  if (!Number.isInteger(count) || count < 1) {
-    throw new Error(`nyseSessionsListEndingAt: invalid count ${count}`);
-  }
-  if (!isNyseTradingDay(endYmd)) {
-    throw new Error(`nyseSessionsListEndingAt: ${endYmd} is not an NYSE session`);
-  }
-  const out: string[] = [endYmd];
-  let cur = endYmd;
-  for (let i = 1; i < count; i++) {
-    const prior = priorNyseSessionYmd(cur);
-    if (prior == null) {
-      throw new Error(`nyseSessionsListEndingAt: no session before ${cur}`);
-    }
-    out.push(prior);
-    cur = prior;
-  }
-  return out.reverse();
-}

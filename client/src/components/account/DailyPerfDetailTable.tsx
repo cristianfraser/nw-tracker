@@ -18,8 +18,9 @@ function cellPct(p: number | null | undefined) {
 }
 
 /**
- * Detalle por día: one row per session from `GET /api/daily-series` (cierre, day deposits,
- * day P/L = Δ − flow, day %). Dates render as ISO YYYY-MM-DD per the repo date convention.
+ * Detalle por día: one row per calendar day from `GET /api/daily-series` (cierre, day deposits,
+ * day P/L = Δ − flow, day %). Rows with `market_day: false` (weekend/shared holiday) render
+ * dimmed. Dates render as ISO YYYY-MM-DD per the repo date convention.
  * Parallel desktop `<td>` / mobile `<TableMobileCard>` renderings (keep in sync).
  */
 export function DailyPerfDetailTable({
@@ -76,7 +77,10 @@ export function DailyPerfDetailTable({
         tableClassName="table--parallel-mobile"
       >
         {pageRows.map((row) => (
-          <tr key={row.as_of_date}>
+          <tr
+            key={row.as_of_date}
+            style={row.market_day === false ? { opacity: 0.45 } : undefined}
+          >
             <td className="mono desktop-only">{row.as_of_date}</td>
             <td className="mono desktop-only">{fmt(row.value)}</td>
             <td className="mono desktop-only">{row.flow !== 0 ? fmt(row.flow) : "—"}</td>

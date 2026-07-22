@@ -4,55 +4,61 @@ import {
 } from "./accountDeposits.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { cashInterestClpThroughDate, cashInterestUsdThroughDate } from "./cashAccountInterest.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { depositInflowEventUsd } from "./flowsDeposits.js";
-import { nyseSessionsListEndingAt } from "./marketHolidays.js";
+import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
-import { isNyseRegularSessionOpen, nyseDisplaySessionYmd } from "./nyseSession.js";
+import { isNyseRegularSessionOpen } from "./nyseSession.js";
 import {
   convertLegToUnit,
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
+import { portfolioStartYmd } from "./portfolioStart.js";
 import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
 
 /**
- * Daily bucket series on the NYSE session grid — the "vs last workday" view. One point per
- * session ending at `nyseDisplaySessionYmd` (the live session when open, else the last
- * completed one), so a Monday point's delta covers everything since Friday's close (weekend
- * crypto/UF drift included), matching the Rentabilidad strip's d1 cell and the watchlist
- * `day_pct` convention.
+ * Daily bucket series on the **calendar-day** grid: one point per Chile calendar day ending
+ * at today (live marks), weekends and holidays included. Each account attributes P/L on its
+ * OWN market calendar automatically, because historical marks forward-fill on-or-before: a
+ * USD stock is flat Sat/Sun (its full Fri→Mon move lands on Monday's row), a `.SN` stock or
+ * AFP is flat on Chilean holidays, while crypto / UF assets / CC owed move every day — so
+ * weekend rows carry exactly the every-day assets' P/L.
  *
- * Value legs are the same per-account marks the d1 cell uses (`bucketValueInUnitAt` →
- * `accountMarkClpAtYmd`: MTM EOD, cuotas × valor cuota, cartola balance, UF marks, stored
- * valuations on-or-before; live stack when the session is Chile today). Flows use the same
- * deposit-event accounting as `netDepositFlowBetween`, bucketed per session window
- * `(prev_session, session]`. `pl = delta − flow`; a missing leg yields nulls, never a fake 0.
+ * Value legs are the same per-account marks the short-horizon cells use
+ * (`accountMarkClpAtYmd`: MTM EOD, cuotas × valor cuota, cartola balance, UF marks, per-day
+ * CC owed, stored valuations on-or-before; live stack for today). Flows use the same
+ * deposit-event accounting as `netDepositFlowBetween`, bucketed per `(prev day, day]`.
+ * `pl = delta − flow`; a missing leg yields nulls, never a fake 0.
  *
  * Accounts whose marks only move monthly (stored month-end valuations) render honestly as
- * steps: flat rows, the whole month's delta on the mark day, and `−flow` on a deposit day
- * until the next mark absorbs it.
+ * steps — the book-value carry keeps deposit days at pl 0 and the mark day carries the
+ * inter-mark P/L.
  */
 
 const RETURN_EPS = 1e-9;
 
-/** Hard cap on the session window (~19 months of trading days). */
-export const DAILY_SERIES_MAX_SESSIONS = 400;
+/** Sanity bound on the day window (~20 years) — parameter validation, not a product cap. */
+export const DAILY_SERIES_MAX_DAYS = 7400;
 
 export type DailySeriesPoint = {
   as_of_date: string;
-  /** Bucket value at session close (live for the open session), in the request unit. */
+  /** Bucket value at that day's close (live for today), in the request unit. */
   value: number | null;
-  /** Net deposit flow in `(prev_session, session]`, in the request unit. */
+  /** Net deposit flow in `(prev day, day]`, in the request unit. */
   flow: number;
-  /** Total balance change vs the prior session (`value − prev`); null when a leg is missing. */
+  /** Total balance change vs the prior day (`value − prev`); null when a leg is missing. */
   delta: number | null;
   /** Flow-adjusted P/L (`delta − flow`); null when `delta` is. */
   pl: number | null;
   /** `pl / (prev + flow)`; null when `pl` is null or the denominator is ~0. */
   pct: number | null;
+  /** False on weekends/shared holidays (no NYSE session AND no Chilean business day) — the
+   * detalle table dims those rows; every-day assets still attribute real P/L on them. */
+  market_day: boolean;
 };
 
 export type DailySeriesAccountLine = {
@@ -66,8 +72,8 @@ export type DailySeriesAccountLine = {
 
 export type BucketDailySeries = {
   unit: TsUnit;
-  /** Last grid session = the NYSE display session at build time. */
-  end_session_ymd: string;
+  /** Last grid day = Chile today (the live point). */
+  end_ymd: string;
   /** True while the NYSE regular session is open (the last point tracks live marks). */
   d1_is_live: boolean;
   /** Prior-session anchor for the first point (its `delta` baseline). */
@@ -81,15 +87,24 @@ export type BucketDailySeries = {
   grouped_accounts?: DailySeriesAccountLine[];
 };
 
+/** Ascending list of `count` Chile calendar days ending at `endYmd` inclusive. */
+function chileCalendarDaysListEndingAt(endYmd: string, count: number): string[] {
+  const out = new Array<string>(count);
+  for (let i = 0; i < count; i++) {
+    out[count - 1 - i] = i === 0 ? endYmd : chileCalendarAddDays(endYmd, -i);
+  }
+  return out;
+}
+
 /**
- * Per-session net deposit flows for one grid. Same event source and window semantics as
+ * Per-day net deposit flows for one grid. Same event source and window semantics as
  * `netDepositFlowBetween` — regular accounts bucket merged display deposit events into
- * `(sessions[i-1], sessions[i]]`; USD-cash accounts telescope `balance − interest` at each
- * session (identical sums by construction, one evaluation per session instead of per pair).
+ * `(grid[i-1], grid[i]]`; USD-cash accounts telescope `balance − interest` at each
+ * date (identical sums by construction, one evaluation per date instead of per pair).
  * Returns CLP flows for clp/uf units and native USD flows for usd (events without USD skip,
  * as in `netDepositFlowBetween`).
  */
-function sessionFlows(
+function gridFlows(
   accounts: readonly ShortHorizonAccountRef[],
   sessions: readonly string[],
   flowUnit: "clp" | "usd"
@@ -202,26 +217,39 @@ function accountDepositCumsOnGrid(
 
 export type BucketDailySeriesOpts = {
   unit: TsUnit;
-  /** Number of daily points (sessions) to emit, 1..{@link DAILY_SERIES_MAX_SESSIONS}. */
-  sessions: number;
+  /**
+   * Number of daily points (calendar days) to emit, 1..{@link DAILY_SERIES_MAX_DAYS};
+   * `0` = since portfolio start ("total").
+   */
+  days: number;
   now?: Date;
   /** Emit per-account value lines alongside the bucket points (same marks, no extra cost). */
   includeAccounts?: boolean;
 };
+
+/** Days in the "total" range: portfolio start through Chile today, inclusive of both ends. */
+export function totalRangeDays(todayYmd: string = chileCalendarTodayYmd()): number {
+  const start = portfolioStartYmd();
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const endMs = Date.parse(`${todayYmd}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return 1;
+  return Math.round((endMs - startMs) / 86_400_000) + 1;
+}
 
 /** Build the daily series for one bucket of accounts. Throws on an out-of-bounds window. */
 export function getBucketDailySeries(
   accounts: readonly ShortHorizonAccountRef[],
   opts: BucketDailySeriesOpts
 ): BucketDailySeries {
-  const { unit, sessions: count } = opts;
-  if (!Number.isInteger(count) || count < 1 || count > DAILY_SERIES_MAX_SESSIONS) {
-    throw new Error(`getBucketDailySeries: sessions must be 1..${DAILY_SERIES_MAX_SESSIONS}, got ${count}`);
+  const { unit } = opts;
+  if (!Number.isInteger(opts.days) || opts.days < 0 || opts.days > DAILY_SERIES_MAX_DAYS) {
+    throw new Error(`getBucketDailySeries: days must be 0..${DAILY_SERIES_MAX_DAYS}, got ${opts.days}`);
   }
   const now = opts.now ?? new Date();
-  const endSession = nyseDisplaySessionYmd(now);
-  // count + 1 sessions: [0] is the baseline anchor for the first point's delta.
-  const grid = nyseSessionsListEndingAt(endSession, count + 1);
+  const endYmd = chileWallClockAt(now).ymd;
+  const count = opts.days === 0 ? totalRangeDays(endYmd) : opts.days;
+  // count + 1 days: [0] is the baseline anchor for the first point's delta.
+  const grid = chileCalendarDaysListEndingAt(endYmd, count + 1);
 
   // Same value legs as `bucketValueInUnitAt` (Σ finite per-account CLP marks, converted once
   // per date), looped inline so the per-account marks can double as chart lines. The d1
@@ -252,10 +280,10 @@ export function getBucketDailySeries(
     return any ? convertLegToUnit(rawClp, ymd, unit, now) : null;
   });
   const flowUnit = unit === "usd" ? "usd" : "clp";
-  const flows = sessionFlows(accounts, grid, flowUnit);
+  const flows = gridFlows(accounts, grid, flowUnit);
 
   // Aportes acum. companion lines (parity with the monthly chart's deposit series): full-
-  // history cumulative deposits at each session, per account plus the group total.
+  // history cumulative deposits at each day, per account plus the group total.
   let depsAcumTotal: number[] | null = null;
   if (perAccount) {
     const cumsById = accountDepositCumsOnGrid(included, grid, flowUnit);
@@ -289,12 +317,20 @@ export function getBucketDailySeries(
       pl != null && denom != null && Math.abs(denom) > RETURN_EPS && Number.isFinite(pl / denom)
         ? pl / denom
         : null;
-    points.push({ as_of_date: ymd, value, flow, delta, pl, pct });
+    points.push({
+      as_of_date: ymd,
+      value,
+      flow,
+      delta,
+      pl,
+      pct,
+      market_day: isNyseTradingDay(ymd) || isChileBusinessDay(ymd),
+    });
   }
 
   return {
     unit,
-    end_session_ymd: endSession,
+    end_ymd: endYmd,
     d1_is_live: isNyseRegularSessionOpen(now),
     baseline: { as_of_date: grid[0]!, value: values[0]! },
     points,
@@ -357,9 +393,9 @@ export function groupDailySeriesAccounts(
 export function getBucketDailySeriesCached(
   scopeKey: string,
   accounts: readonly ShortHorizonAccountRef[],
-  opts: { unit: TsUnit; sessions: number; includeAccounts?: boolean }
+  opts: { unit: TsUnit; days: number; includeAccounts?: boolean }
 ): BucketDailySeries {
   const rowsKey = accounts.map((a) => a.account_id).join(",");
-  const key = `daily.series|${scopeKey}|${opts.unit}|${opts.sessions}|${opts.includeAccounts ? "acc" : "sum"}|${rowsKey}`;
+  const key = `daily.series|${scopeKey}|${opts.unit}|${opts.days}|${opts.includeAccounts ? "acc" : "sum"}|${rowsKey}`;
   return getAggregationCached(key, () => getBucketDailySeries(accounts, opts));
 }

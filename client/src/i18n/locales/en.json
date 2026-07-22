@@ -128,7 +128,17 @@
   },
   "dashboard": {
     "chartGranularityLabel": "Period:",
-    "dailyWindowLabel": "Sessions:",
+    "rangeLabel": "Range:",
+    "range": {
+      "30d": "30d",
+      "60d": "60d",
+      "90d": "90d",
+      "6m": "6m",
+      "1y": "1y",
+      "5y": "5y",
+      "10y": "10y",
+      "total": "All"
+    },
     "monthly": "Monthly",
     "yearly": "Yearly",
     "daily": "Daily",
@@ -808,7 +818,7 @@
     "flowsTitle": "Flows",
     "flowsAccountColumn": "Account",
     "monthlyDetailHint": "Group totals per month (sum of the child accounts).",
-    "dailyDetailHint": "One row per session: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar).",
+    "dailyDetailHint": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar; dimmed rows = market holiday or weekend).",
     "dailyDetailEmpty": "No daily data for this group's accounts.",
     "monthlyDetailHintLiabilities": "Group totals per month (sum of every account under this node, including cards and the mortgage).",
     "monthlyDetailEmpty": "No monthly performance data for this group's accounts.",

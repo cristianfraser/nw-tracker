@@ -128,7 +128,17 @@
   },
   "dashboard": {
     "chartGranularityLabel": "Período:",
-    "dailyWindowLabel": "Sesiones:",
+    "rangeLabel": "Rango:",
+    "range": {
+      "30d": "30d",
+      "60d": "60d",
+      "90d": "90d",
+      "6m": "6m",
+      "1y": "1a",
+      "5y": "5a",
+      "10y": "10a",
+      "total": "Todo"
+    },
     "monthly": "Mensual",
     "yearly": "Anual",
     "daily": "Diario",
@@ -808,7 +818,7 @@
     "flowsTitle": "Flujos",
     "flowsAccountColumn": "Cuenta",
     "monthlyDetailHint": "Totales del grupo por mes (suma de las cuentas hijas).",
-    "dailyDetailHint": "Una fila por sesión: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta).",
+    "dailyDetailHint": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta; filas atenuadas = feriado bursátil o fin de semana).",
     "dailyDetailEmpty": "Sin datos diarios para las cuentas de este grupo.",
     "monthlyDetailHintLiabilities": "Totales del grupo por mes (suma de todas las cuentas bajo este nodo, incluidas tarjetas y hipoteca).",
     "monthlyDetailEmpty": "Sin datos de rendimiento mensual para las cuentas de este grupo.",

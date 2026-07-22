@@ -49,6 +49,7 @@ import {
   isDashboardNwBucketSlug,
   netWorthTableAccountsFromDash,
 } from "../portfolioDashboardBuckets";
+import { timeRangeToDays } from "../timeRange";
 import type { ValuationTimeseriesResponse } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -65,7 +66,7 @@ const DAILY_OVERVIEW_LINE_KEYS = new Set([
 export function DashboardPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
@@ -172,7 +173,7 @@ export function DashboardPage() {
   // other chart keeps its monthly rendering until the daily detalle work lands.
   const { data: dailyOverview } = useDashboardOverviewDaily(
     displayUnit,
-    dailySessions,
+    timeRangeToDays(timeRange),
     isDaily
   );
   const dailyOverviewBlock = useMemo(() => {

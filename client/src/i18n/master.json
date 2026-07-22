@@ -398,9 +398,43 @@
       "en": "Period:",
       "es": "Período:"
     },
-    "dailyWindowLabel": {
-      "en": "Sessions:",
-      "es": "Sesiones:"
+    "rangeLabel": {
+      "en": "Range:",
+      "es": "Rango:"
+    },
+    "range": {
+      "30d": {
+        "en": "30d",
+        "es": "30d"
+      },
+      "60d": {
+        "en": "60d",
+        "es": "60d"
+      },
+      "90d": {
+        "en": "90d",
+        "es": "90d"
+      },
+      "6m": {
+        "en": "6m",
+        "es": "6m"
+      },
+      "1y": {
+        "en": "1y",
+        "es": "1a"
+      },
+      "5y": {
+        "en": "5y",
+        "es": "5a"
+      },
+      "10y": {
+        "en": "10y",
+        "es": "10a"
+      },
+      "total": {
+        "en": "All",
+        "es": "Todo"
+      }
     },
     "monthly": {
       "en": "Monthly",
@@ -2825,8 +2859,8 @@
       "es": "Totales del grupo por mes (suma de las cuentas hijas)."
     },
     "dailyDetailHint": {
-      "en": "One row per session: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar).",
-      "es": "Una fila por sesión: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta)."
+      "en": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar; dimmed rows = market holiday or weekend).",
+      "es": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta; filas atenuadas = feriado bursátil o fin de semana)."
     },
     "dailyDetailEmpty": {
       "en": "No daily data for this group's accounts.",
