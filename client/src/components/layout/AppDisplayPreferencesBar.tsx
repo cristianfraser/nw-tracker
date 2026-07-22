@@ -2,10 +2,7 @@ import { useTranslation } from "../../i18n";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { cn } from "../../cn";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
-import {
-  DAILY_SESSIONS_OPTIONS,
-  parseDailySessions,
-} from "../../displayPreferenceStorageSync";
+import { parseTimeRange, TIME_RANGE_OPTIONS } from "../../timeRange";
 import type { DisplayUnit } from "../../queries/keys";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
@@ -22,8 +19,8 @@ export function AppDisplayPreferencesBar() {
     setDisplayUnit,
     metricsPeriod,
     setMetricsPeriod,
-    dailySessions,
-    setDailySessions,
+    timeRange,
+    setTimeRange,
   } = useDisplayPreferences();
 
   return (
@@ -58,25 +55,23 @@ export function AppDisplayPreferencesBar() {
                 <option value="year">{t("dashboard.yearly")}</option>
               </select>
             </label>
-            {metricsPeriod === "day" ? (
-              <label className={styles.field}>
-                <span className="muted">{t("dashboard.dailyWindowLabel")}</span>
-                <select
-                  name="nw-global-dw"
-                  value={String(dailySessions)}
-                  onChange={(e) => {
-                    const v = parseDailySessions(e.target.value);
-                    if (v != null) setDailySessions(v);
-                  }}
-                >
-                  {DAILY_SESSIONS_OPTIONS.map((n) => (
-                    <option key={n} value={String(n)}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
+            <label className={styles.field}>
+              <span className="muted">{t("dashboard.rangeLabel")}</span>
+              <select
+                name="nw-global-tr"
+                value={timeRange}
+                onChange={(e) => {
+                  const v = parseTimeRange(e.target.value);
+                  if (v != null) setTimeRange(v);
+                }}
+              >
+                {TIME_RANGE_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {t(`dashboard.range.${r}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
       </div>

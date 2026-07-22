@@ -72,10 +72,10 @@ export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
 }
 
 /** Daily net-worth series for the day period view (fetched only while the D toggle is active). */
-export function useDashboardOverviewDaily(unit: DisplayUnit, sessions: number, enabled = true) {
+export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.dashboardOverviewDaily(unit, sessions),
-    queryFn: () => api.dashboardOverviewDaily(unit, sessions),
+    queryKey: queryKeys.dashboardOverviewDaily(unit, days),
+    queryFn: () => api.dashboardOverviewDaily(unit, days),
     enabled,
     ...displayUnitQueryBehavior,
   });
@@ -85,7 +85,7 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, sessions: number, e
 export function useDailySeries(
   scope: { portfolioGroup?: string; accountId?: number },
   unit: DisplayUnit,
-  sessions: number,
+  days: number,
   enabled = true
 ) {
   const scopeKey = scope.portfolioGroup
@@ -94,8 +94,8 @@ export function useDailySeries(
       ? `account:${scope.accountId}`
       : "";
   return useQuery({
-    queryKey: queryKeys.dailySeries(scopeKey, unit, sessions),
-    queryFn: () => api.dailySeries(unit, scope, sessions),
+    queryKey: queryKeys.dailySeries(scopeKey, unit, days),
+    queryFn: () => api.dailySeries(unit, scope, days),
     enabled: enabled && scopeKey !== "",
     ...displayUnitQueryBehavior,
   });

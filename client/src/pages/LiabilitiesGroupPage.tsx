@@ -35,6 +35,7 @@ import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCac
 import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
+import { timeRangeToDays } from "../timeRange";
 import {
   useAccountMonthlyPerformance,
   useAccountsByPortfolioGroup,
@@ -58,7 +59,7 @@ export function LiabilitiesGroupPage() {
     [liabilitiesSubgroupParam]
   );
 
-  const { displayUnit, metricsPeriod, dailySessions } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
   const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
@@ -265,7 +266,7 @@ export function LiabilitiesGroupPage() {
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
-    dailySessions,
+    timeRangeToDays(timeRange),
     isDaily && portfolioGroup !== ""
   );
   const dailyValuationBlock = useMemo(() => {

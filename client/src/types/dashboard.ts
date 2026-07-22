@@ -301,8 +301,8 @@ export interface DashboardOverviewDailyPoint {
 /** Daily net-worth series for the day period view (grid = NYSE sessions, "vs last workday"). */
 export interface DashboardOverviewDailyResponse {
   unit: "clp" | "usd";
-  sessions: number;
-  end_session_ymd: string;
+  days: number;
+  end_ymd: string;
   /** True while the NYSE regular session is open (the last point tracks live marks). */
   d1_is_live: boolean;
   points: DashboardOverviewDailyPoint[];
@@ -316,6 +316,8 @@ export interface DailySeriesPointDto {
   delta: number | null;
   pl: number | null;
   pct: number | null;
+  /** False on weekends/shared holidays — the detalle table dims those rows. */
+  market_day?: boolean;
 }
 
 export interface DailySeriesAccountLineDto {
@@ -330,7 +332,7 @@ export interface DailySeriesAccountLineDto {
 /** Daily series for a group page or account (grid = NYSE sessions, "vs last workday"). */
 export interface DailySeriesResponse {
   unit: string;
-  end_session_ymd: string;
+  end_ymd: string;
   d1_is_live: boolean;
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPointDto[];

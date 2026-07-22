@@ -21,7 +21,7 @@ import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboar
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
 import {
-  DAILY_SERIES_MAX_SESSIONS,
+  DAILY_SERIES_MAX_DAYS,
   getBucketDailySeriesCached,
   groupDailySeriesAccounts,
 } from "../dailySeries.js";
@@ -35,7 +35,7 @@ import {
 import { getNavChartGroupNodeBySlug } from "../navTree.js";
 import {
   getDashboardOverviewDaily,
-  OVERVIEW_DAILY_DEFAULT_SESSIONS,
+  OVERVIEW_DAILY_DEFAULT_DAYS,
 } from "../dashboardOverviewDaily.js";
 import { getGroupConsolidatedMonthlyPage, getGroupConsolidatedTables } from "../groupConsolidatedTables.js";
 import {
@@ -79,10 +79,10 @@ app.get("/api/dashboard/page-bundle", asyncHandler(async (req, res) => {
 app.get("/api/daily-series", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  const sessions =
-    req.query.sessions != null ? Number(req.query.sessions) : OVERVIEW_DAILY_DEFAULT_SESSIONS;
-  if (!Number.isInteger(sessions) || sessions < 1 || sessions > DAILY_SERIES_MAX_SESSIONS) {
-    res.status(400).json({ error: `sessions must be 1..${DAILY_SERIES_MAX_SESSIONS}` });
+  // Calendar days back from today; 0 = since portfolio start ("total" range).
+  const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
+  if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
+    res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
     return;
   }
   const portfolioGroup = String(req.query.portfolio_group ?? "").trim();
@@ -99,7 +99,7 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     }
     const series = getBucketDailySeriesCached(`pg:${portfolioGroup}`, rows, {
       unit,
-      sessions,
+      days,
       includeAccounts: true,
     });
     // Agrupado lines when the page has bucket nodes — same plan (synthetic ids/names) as
@@ -140,7 +140,7 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
   res.json(
     getBucketDailySeriesCached(`account:${accountId}`, [{ ...row, exclude_from_group_totals: 0 }], {
       unit,
-      sessions,
+      days,
       includeAccounts: true,
     })
   );
@@ -149,13 +149,12 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
 /** Daily net-worth series (one point per NYSE session) for the day period view. */
 app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
-  const sessions =
-    req.query.sessions != null ? Number(req.query.sessions) : OVERVIEW_DAILY_DEFAULT_SESSIONS;
-  if (!Number.isInteger(sessions) || sessions < 1 || sessions > DAILY_SERIES_MAX_SESSIONS) {
-    res.status(400).json({ error: `sessions must be 1..${DAILY_SERIES_MAX_SESSIONS}` });
+  const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
+  if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
+    res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
     return;
   }
-  res.json(getDashboardOverviewDaily(includeUsd ? "usd" : "clp", sessions));
+  res.json(getDashboardOverviewDaily(includeUsd ? "usd" : "clp", days));
 }));
 
 app.get("/api/dashboard", asyncHandler(async (req, res) => {

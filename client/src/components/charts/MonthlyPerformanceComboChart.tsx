@@ -2,6 +2,8 @@ import { Area, Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } f
 import { useMemo } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { clipPointsToTimeRange } from "../../timeRange";
 import i18n from "../../i18n";
 import { AppComposedChart } from "./AppComposedChart";
 import {
@@ -137,15 +139,16 @@ export function MonthlyPerformanceComboChart({
   xAxisGranularity?: "month" | "year";
 }) {
   const TitleTag = titleAs;
+  const { timeRange } = useDisplayPreferences();
 
   const densePoints = useMemo(() => {
     const zeroKeys = barSeries.map((b) => b.dataKey);
-    return densifyRecordsByCalendarPeriod(points, {
+    return densifyRecordsByCalendarPeriod(clipPointsToTimeRange(points, timeRange), {
       granularity: xAxisGranularity,
       dateKey: "as_of_date",
       fillMissing: { zeroKeys },
     });
-  }, [points, xAxisGranularity, barSeries]);
+  }, [points, timeRange, xAxisGranularity, barSeries]);
 
   const resolvedLineSeries = useMemo((): MonthlyPlLineSeries[] => {
     if (lineSeries?.length) return lineSeries;
