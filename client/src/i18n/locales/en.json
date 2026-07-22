@@ -723,6 +723,8 @@
       "chartFacturadoClose": "Billed (close)",
       "financingSectionTitle": "Financing cost vs billed",
       "financingSectionHint": "Same data as the Billing cycles table. Stacked bars = CLP billed + US$ billed (in CLP). Financing cost = statement interest and fees + implicit interest on installment plans with rate > 0% (0% plans contribute nothing).",
+      "dailyOwedSectionHint": "Daily balance owed on each date: purchases (including installment plans at their full amount) raise it on the purchase date, payments drop it. Statement closes still anchor the series to the printed balance.",
+      "dailyOwedChartTitle": "Balance owed (daily)",
       "financingChartTitle": "Billed and financing cost by month",
       "financingChartTitleYearly": "Billed and financing cost by year",
       "financingChartEmpty": "No billing months or financing cost to chart.",

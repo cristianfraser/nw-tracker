@@ -723,6 +723,8 @@
       "chartFacturadoClose": "Facturado (cierre)",
       "financingSectionTitle": "Coste financiero vs facturado",
       "financingSectionHint": "Mismos datos que la tabla Facturaciones. Barras apiladas = facturado CLP + facturado US$ (en CLP). Coste financiero = intereses y comisiones del estado + interés implícito de cuotas con tasa > 0% (cuotas al 0% no aportan).",
+      "dailyOwedSectionHint": "Saldo adeudado por día en cada fecha: las compras (incluidas las en cuotas por su monto total) lo suben el día de la compra y los pagos lo bajan. Los cierres de estado de cuenta siguen anclando la serie al saldo impreso.",
+      "dailyOwedChartTitle": "Saldo adeudado (diario)",
       "financingChartTitle": "Facturado y coste financiero por mes",
       "financingChartTitleYearly": "Facturado y coste financiero por año",
       "financingChartEmpty": "Sin meses de facturación o coste financiero para graficar.",
