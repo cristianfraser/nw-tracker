@@ -33,9 +33,40 @@ export interface RejectedMirrorPair {
   created_at: string;
 }
 
+/** Checking↔credit-card payment mirror: the "in" side is statement evidence, not a movement. */
+export interface CcPaymentMirrorCandidateDto {
+  out: {
+    movement_id: number;
+    account_id: number;
+    account_name: string;
+    occurred_on: string;
+    amount_clp: number;
+    note: string | null;
+  };
+  evidence: {
+    cc_account_id: number;
+    cc_account_name: string;
+    statement_line_id: number | null;
+    statement_id: number | null;
+    pago_iso: string;
+    amount_clp: number;
+    label: string;
+  };
+  skew_days: number;
+  blocked: boolean;
+  blocked_reason: string | null;
+}
+
+export interface CcPaymentMirrorRefDto {
+  out_movement_id: number;
+  statement_line_id?: number | null;
+  statement_id?: number | null;
+}
+
 export interface MovementMirrorCandidatesResponse {
   pairs: MirrorPairCandidate[];
   rejected: RejectedMirrorPair[];
+  cc_payment_pairs: CcPaymentMirrorCandidateDto[];
 }
 
 export interface MirrorPairRef {
