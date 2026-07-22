@@ -244,17 +244,31 @@ export function runMigrations() {
   const done = new Set(appliedRows.map((r) => r.id));
   let appliedCount = 0;
 
+  // BEGIN IMMEDIATE + in-lock re-check: several processes share this SQLite file (primary
+  // app, alt-port dev servers, scripts), and the applied-set read above is a snapshot. The
+  // write lock is taken BEFORE re-checking, so a concurrent boot that lost the race skips
+  // cleanly instead of re-running the SQL (data transforms must never double-run) and
+  // crashing on the UNIQUE schema_migrations insert.
+  const applyOne = dbInternal.transaction((file: string, sql: string): boolean => {
+    const already = dbInternal
+      .prepare("SELECT 1 FROM schema_migrations WHERE id = ?")
+      .get(file);
+    if (already) return false;
+    execMigrationSql(sql);
+    POST_MIGRATION_HOOKS[file]?.(dbInternal);
+    dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
+    return true;
+  });
+
   for (const file of files) {
     if (done.has(file)) {
       continue;
     }
     const full = path.join(migrationsDir, file);
     const sql = fs.readFileSync(full, "utf8");
-    dbInternal.transaction(() => {
-      execMigrationSql(sql);
-      POST_MIGRATION_HOOKS[file]?.(dbInternal);
-      dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
-    })();
+    if (!applyOne.immediate(file, sql)) {
+      continue; // another process applied it between our snapshot and the lock
+    }
     appliedCount += 1;
     console.log(`migration applied: ${file}`);
   }
