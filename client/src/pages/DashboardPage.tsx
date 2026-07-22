@@ -54,13 +54,15 @@ import type { ValuationTimeseriesResponse } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
 
-/** Overview line dataKeys the daily payload can feed (aportes/liabilities stay monthly-only). */
+/** Overview line dataKeys the daily payload can feed. */
 const DAILY_OVERVIEW_LINE_KEYS = new Set([
   "total_nw",
   "real_estate",
   "retirement",
   "brokerage",
   "cash",
+  "invested",
+  "liabilities",
 ]);
 
 export function DashboardPage() {
@@ -187,6 +189,8 @@ export function DashboardPage() {
       retirement: p.retirement,
       brokerage: p.brokerage,
       cash: p.cash_eqs,
+      invested: p.invested,
+      liabilities: p.liabilities,
     }));
     return { lines, points };
   }, [isDaily, dailyOverview, ts?.overview]);

@@ -290,6 +290,8 @@ export interface ValuationTimeseriesResponse {
 
 /** One NYSE-session point of `GET /api/dashboard/overview-daily` (values in the request unit). */
 export interface DashboardOverviewDailyPoint {
+  invested: number | null;
+  liabilities: number | null;
   as_of_date: string;
   net_worth: number | null;
   real_estate: number | null;
