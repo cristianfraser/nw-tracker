@@ -1,7 +1,6 @@
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { dayWindowAnchorsForToday, type DayWindowAnchors } from "./dayWindowAnchor.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { nwDashboardMetricGroupForAccount } from "./portfolioGroupTree.js";
@@ -86,9 +85,7 @@ export function buildDashboardNwBucketTotalsFromRows(
   const asOfToday = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", asOfToday);
   const priorYearEnd = priorPeriodEndYmd("ytd", asOfToday);
-  const dayAnchors = dayWindowAnchorsForToday(asOfToday);
-  /** Rows carry per-class day anchors already; efectivo (incl. CC netting) is Chilean. */
-  const priorDayAnchor = dayAnchors.chile ?? dayAnchors.calendar;
+  const priorDayAnchor = chileCalendarAddDays(asOfToday, -1);
 
   const clp: Record<NwDashboardBucketSlug, number> = {
     real_estate: 0,
@@ -232,13 +229,9 @@ export function buildDashboardNwBucketTotalsFromRows(
   };
 }
 
-/**
- * Prior bucket closes for the day window — every account marked at its own calendar's last
- * close (`dashboardBucketDayPriorCloses`; UF/crypto = yesterday, USD stocks = prior NYSE
- * session, retirement/efectivo/`.SN` = prior Chilean business day).
- */
-function dailyPriorCloseTotals(anchors: DayWindowAnchors, includeUsd: boolean) {
-  const { clp, usd } = dashboardBucketDayPriorCloses(anchors);
+/** Prior bucket closes for the day window — every account marked at yesterday. */
+function dailyPriorCloseTotals(priorDayYmd: string, includeUsd: boolean) {
+  const { clp, usd } = dashboardBucketDayPriorCloses(priorDayYmd);
   const base = {
     net_worth_clp: clp.net_worth,
     real_estate_clp: clp.real_estate,
@@ -262,7 +255,7 @@ export function buildDashboardNwBucketTotals(includeUsd: boolean) {
   const asOfToday = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", asOfToday);
   const priorYearEnd = priorPeriodEndYmd("ytd", asOfToday);
-  const dayAnchors = dayWindowAnchorsForToday(asOfToday);
+  const priorDayYmd = chileCalendarAddDays(asOfToday, -1);
   const live = buildDashboardBucketValueTotals(asOfToday, includeUsd);
 
   return {
@@ -274,13 +267,13 @@ export function buildDashboardNwBucketTotals(includeUsd: boolean) {
     prior_closes: {
       month_end: priorMonthEnd,
       year_end: priorYearEnd,
-      day_end: dayAnchors.chile ?? dayAnchors.calendar,
+      day_end: priorDayYmd,
       month: buildDashboardBucketValueTotals(priorMonthEnd, includeUsd),
       year: buildDashboardBucketValueTotals(priorYearEnd, includeUsd),
-      // Per-account raw marks at per-class anchors — buildDashboardBucketValueTotals maps
-      // the consolidated MONTHLY closing onto any date of its month, which would make the
+      // Per-account raw marks at yesterday — buildDashboardBucketValueTotals maps the
+      // consolidated MONTHLY closing onto any date of its month, which would make the
       // prior close equal today's live value (day deltas ≈ 0).
-      day: dailyPriorCloseTotals(dayAnchors, includeUsd),
+      day: dailyPriorCloseTotals(priorDayYmd, includeUsd),
     },
     ...(includeUsd
       ? {

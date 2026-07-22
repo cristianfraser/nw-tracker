@@ -2,7 +2,6 @@ import { getAggregationCached } from "./aggregationCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { DAILY_SERIES_MAX_DAYS, totalRangeDays } from "./dailySeries.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
-import { isNyseRegularSessionOpen } from "./nyseSession.js";
 import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
 
 /**
@@ -29,13 +28,10 @@ export type OverviewDailyPayload = {
   unit: "clp" | "usd";
   days: number;
   end_ymd: string;
-  /** True while the NYSE regular session is open (the last point tracks live marks). */
-  d1_is_live: boolean;
   points: OverviewDailyPoint[];
 };
 
 function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPayload {
-  const now = new Date();
   const endYmd = chileCalendarTodayYmd();
   const count = days === 0 ? totalRangeDays(endYmd) : days;
   const grid: string[] = new Array(count);
@@ -65,7 +61,6 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     unit,
     days,
     end_ymd: endYmd,
-    d1_is_live: isNyseRegularSessionOpen(now),
     points,
   };
 }

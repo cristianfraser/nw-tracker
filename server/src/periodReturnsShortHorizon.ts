@@ -1,9 +1,7 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { fxForLiveMtm } from "./fxRates.js";
-import { nyseSessionsBack, priorNyseSessionYmd } from "./marketHolidays.js";
-import { isNyseRegularSessionOpen, nyseDisplaySessionYmd } from "./nyseSession.js";
 import type { PeriodReturnCell, PeriodReturnsPayload } from "./periodReturns.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
 
@@ -13,11 +11,12 @@ import { convertTs, type TsUnit } from "./valuationTimeseries.js";
  * anchor dates by summing `accountMarkClpAtYmd`, flow-adjust with the same deposit-event
  * accounting the monthly builder uses, and express in the request unit.
  *
- * Anchoring matches the watchlist composite `day_pct` (`compositeLiveStats`): the END leg is
- * the NYSE display session — the live session when open, else the last completed one — so a
- * weekend view reads "last full day" (Fri close vs Thu close) with every mixed-calendar
- * constituent (NYSE / `.SN` / crypto / cuota / cash) resolving its own on-or-before close at
- * one shared anchor date. Fail-fast: an unavailable leg yields a null cell, never a fake 0%.
+ * Real calendar framing (2026-07-21): 1D = today (live) vs yesterday, 1W = today vs 7
+ * calendar days ago — the same legs as the daily series, so the 1D cell equals the daily
+ * table's last row by construction. Marks are flat on each account's closed days, so a
+ * closed-market constituent contributes 0 with no per-class anchor machinery; weekend
+ * crypto/UF drift shows on the weekend itself, never folded into Monday. Fail-fast: an
+ * unavailable leg yields a null cell, never a fake 0%.
  */
 
 const RETURN_EPS = 1e-9;
@@ -147,20 +146,20 @@ function shortHorizonCell(
   return shortHorizonCellFromLegs(period, vEnd, vStart, flow, startYmd);
 }
 
-/** The 1D and 1W cells plus whether the reference NYSE session is currently open. */
+/** The 1D and 1W cells: today (live) vs yesterday / vs 7 calendar days ago. */
 export function computeShortHorizonReturnCells(
   accounts: readonly ShortHorizonAccountRef[],
   unit: TsUnit,
   now: Date = new Date()
-): { cells: PeriodReturnCell[]; d1_is_live: boolean } {
-  const sessionYmd = nyseDisplaySessionYmd(now);
-  const d1Start = priorNyseSessionYmd(sessionYmd);
-  const w1Start = nyseSessionsBack(sessionYmd, 5) ?? chileCalendarAddDays(sessionYmd, -7);
+): { cells: PeriodReturnCell[] } {
+  const todayYmd = chileWallClockAt(now).ymd;
+  const d1Start = chileCalendarAddDays(todayYmd, -1);
+  const w1Start = chileCalendarAddDays(todayYmd, -7);
 
-  const d1 = d1Start ? shortHorizonCell("d1", accounts, unit, d1Start, sessionYmd, now) : emptyCell("d1", null);
-  const w1 = w1Start ? shortHorizonCell("w1", accounts, unit, w1Start, sessionYmd, now) : emptyCell("w1", null);
+  const d1 = shortHorizonCell("d1", accounts, unit, d1Start, todayYmd, now);
+  const w1 = shortHorizonCell("w1", accounts, unit, w1Start, todayYmd, now);
 
-  return { cells: [d1, w1], d1_is_live: isNyseRegularSessionOpen(now) };
+  return { cells: [d1, w1] };
 }
 
 /** Prepend the 1D/1W cells to a monthly period-returns payload (null passes through). */
@@ -171,6 +170,6 @@ export function withShortHorizonCells(
   now: Date = new Date()
 ): PeriodReturnsPayload | null {
   if (payload == null) return null;
-  const { cells, d1_is_live } = computeShortHorizonReturnCells(accounts, unit, now);
-  return { ...payload, d1_is_live, periods: [...cells, ...payload.periods] };
+  const { cells } = computeShortHorizonReturnCells(accounts, unit, now);
+  return { ...payload, periods: [...cells, ...payload.periods] };
 }
