@@ -29,6 +29,15 @@ export function accountKindSlugForAccountId(accountId: number): string | null {
   return accountBucketKindSlug(bucketSlug);
 }
 
+/**
+ * Debt account: its mark is a positive amount OWED, so value moves and P/L run opposite to an
+ * asset's (`pl = prior − owed − flow`, flows positive when capital goes into the debt).
+ */
+export function isLiabilityAccountId(accountId: number): boolean {
+  const kind = accountKindSlugForAccountId(accountId);
+  return kind === "credit_card" || kind === "mortgage";
+}
+
 export function dashboardBucketSlugForPortfolioGroupSlug(portfolioGroupSlug: string): string | null {
   const pg = portfolioGroupBySlug(portfolioGroupSlug);
   if (!pg) return null;
