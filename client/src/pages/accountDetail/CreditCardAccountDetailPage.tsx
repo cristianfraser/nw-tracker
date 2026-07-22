@@ -1,6 +1,12 @@
+import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
+import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
+import { buildDailyValuationBlock } from "../../dailySeriesChart";
+import { useDailySeries } from "../../queries/hooks";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { timeRangeToDays } from "../../timeRange";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
@@ -33,6 +39,22 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   const historialChartRows = ccLedger.historial_chart ?? [];
   const financingChartPoints = ccLedger.billing_month_chart ?? [];
   const isYearly = metricsPeriod === "year";
+  const isDaily = metricsPeriod === "day";
+
+  // Day mode: the financing (billing-month) chart swaps to the per-day owed-on-date line
+  // (`accountMarkClpAtYmd` CC branch — ramps with purchases, drops on payments), reusing the
+  // monthly block's account metadata so the line color/identity survives the M↔D toggle.
+  const { timeRange } = useDisplayPreferences();
+  const dailySeries = useDailySeries(
+    { accountId: summary.account_id },
+    displayUnit,
+    timeRangeToDays(timeRange),
+    isDaily
+  );
+  const dailyOwedBlock = useMemo(
+    () => (isDaily ? buildDailyValuationBlock(dailySeries.data, ts.accounts) : null),
+    [isDaily, dailySeries.data, ts.accounts]
+  );
 
   const heroClp =
     displayUnit === "usd"
@@ -73,7 +95,29 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         </section>
       ) : null}
 
-      {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
+      {isDaily ? (
+        <section className={styles.chartBlock}>
+          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.dailyOwedChartTitle")}</h2>
+          <p className={cn("muted", styles.proseSmTight)}>
+            {t("accountDetail.creditCard.dailyOwedSectionHint")}
+          </p>
+          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
+            {dailyOwedBlock ? (
+              <LineChartPanel
+                title=""
+                titleAs="h3"
+                block={dailyOwedBlock}
+                displayUnit={displayUnit}
+                xAxisGranularity="day"
+              />
+            ) : (
+              <p className="muted">{t("common.loading")}</p>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {!isDaily && ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
           <p className={cn("muted", styles.proseSmTight)}>
@@ -87,20 +131,24 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         </section>
       ) : null}
 
-      <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
-      <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
-      <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-        <CcBillingMonthFinancingChart
-          title={t(
-            isYearly
-              ? "accountDetail.creditCard.financingChartTitleYearly"
-              : "accountDetail.creditCard.financingChartTitle"
-          )}
-          titleAs="h3"
-          points={financingChartPoints}
-          displayUnit={displayUnit}
-        />
-      </div>
+      {!isDaily ? (
+        <>
+          <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
+          <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
+          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
+            <CcBillingMonthFinancingChart
+              title={t(
+                isYearly
+                  ? "accountDetail.creditCard.financingChartTitleYearly"
+                  : "accountDetail.creditCard.financingChartTitle"
+              )}
+              titleAs="h3"
+              points={financingChartPoints}
+              displayUnit={displayUnit}
+            />
+          </div>
+        </>
+      ) : null}
 
       {(ccLedger.billing_detail_by_month?.length ?? 0) > 0 ? (
         <>
