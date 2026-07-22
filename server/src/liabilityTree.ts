@@ -242,7 +242,9 @@ function linkedCreditCardBalanceTotalClpAsOf(
     return anchor.as_of_date < asOfYmd
       ? Math.round(
           anchor.value_clp +
-            postCloseLiveBalanceAdjustmentClp(masterId, anchor.as_of_date, asOfYmd)
+            postCloseLiveBalanceAdjustmentClp(masterId, anchor.as_of_date, asOfYmd, {
+              includeInstallmentPurchases: true,
+            })
         )
       : anchor.value_clp;
   }
