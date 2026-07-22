@@ -20,11 +20,7 @@ import {
   mortgageSheetPaymentsClpThroughDate,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import {
-  ccInstallmentLedgerRowCount,
-  creditCardInstallmentPaymentsByBillingMonth,
-} from "./ccInstallmentLedgerDb.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
+import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
@@ -210,12 +206,24 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
     let nominal_pl: number | null;
     let pct_month: number | null;
 
+    const ccPerf = isCreditCard
+      ? creditCardMonthPerf(
+          opts.accountId,
+          prior,
+          close,
+          out.length > 0 ? monthEndUtcYmd(priorMk) : null,
+          monthEndUtcYmd(mk),
+          opts.unit
+        )
+      : null;
+    if (ccPerf) netFlow = ccPerf.netFlow;
+
     if (prior == null || !Number.isFinite(prior)) {
       prior_closing = null;
-      nominal_pl = isMortgage ? 0 : isCreditCard ? creditCardNominalPlStub() : close - netFlow;
+      nominal_pl = isMortgage ? 0 : ccPerf ? ccPerf.nominal : close - netFlow;
       pct_month =
-        isCreditCard
-          ? null
+        ccPerf
+          ? ccPerf.pct
           : !isMortgage && Math.abs(netFlow) > MONTH_ROW_EPS && Number.isFinite((close - netFlow) / netFlow)
             ? (close - netFlow) / netFlow
             : null;
@@ -223,13 +231,13 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
       prior_closing = prior;
       nominal_pl = isMortgage
         ? mortgageMonthlyNominalPl(prior, close, netFlow)
-        : isCreditCard
-          ? creditCardNominalPlStub()
+        : ccPerf
+          ? ccPerf.nominal
           : close - prior - netFlow;
       pct_month = isMortgage
-        ? mortgagePctMonth(nominal_pl, prior)
-        : isCreditCard
-          ? null
+        ? liabilityPctMonth(nominal_pl, prior)
+        : ccPerf
+          ? ccPerf.pct
           : (() => {
             const denom = prior + netFlow;
             return nominal_pl != null &&
@@ -323,7 +331,6 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const priorMk = priorCalendarMonthKeyFromToday(today);
   const meta = accountMetaForLivePerfClose(accountId);
   const bucketKind = accountBucketKindSlug(categorySlug || meta?.bucket_slug || "");
-  if (bucketKind === "credit_card") return sortedAsc;
   const markOpts: MonthEndCloseForAccountOpts = {
     import_key: meta?.import_key ?? null,
     name: meta?.name ?? null,
@@ -352,7 +359,14 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   }
 
   const mortgageLedger = bucketKind === "mortgage" ? loadDeptoLedgerFromMovements() : null;
+  // Card: the month so far costs whatever it has been charged; the rest of the balance move
+  // (purchases, PAGOs, anchor corrections) is flow — same identity as the closed months.
+  const ccPerf =
+    bucketKind === "credit_card"
+      ? creditCardMonthPerf(accountId, priorClose, live, monthEndUtcYmd(priorMk), today, unit)
+      : null;
   const netFlow = (() => {
+    if (ccPerf) return ccPerf.netFlow;
     if (bucketKind === "property") {
       const ledger = loadDeptoLedgerFromMovements();
       if (ledger.length > 0) {
@@ -368,14 +382,16 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     // calendar month and a future-dated movement would read as phantom negative P/L.
     return netDepositFlowCurrentMonthThroughToday(accountId, unit === "usd" ? "usd" : "clp");
   })();
-  const nominal =
-    bucketKind === "mortgage"
+  const nominal = ccPerf
+    ? ccPerf.nominal
+    : bucketKind === "mortgage"
       ? mortgageMonthlyNominalPl(priorClose, live, netFlow)
       : live - priorClose - netFlow;
   const denom = priorClose + netFlow;
-  const pct =
-    bucketKind === "mortgage"
-      ? mortgagePctMonth(nominal, priorClose)
+  const pct = ccPerf
+    ? ccPerf.pct
+    : bucketKind === "mortgage"
+      ? liabilityPctMonth(nominal, priorClose)
       : Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom)
         ? nominal / denom
         : null;
@@ -520,11 +536,32 @@ function monthEndCloseForPerformance(
 }
 
 /**
- * Phase-1 stub until installment-interest P/L (`creditCardPerformancePl.ts`).
- * Credit-card balance change is not investment return.
+ * Credit-card month, in the series unit: P/L is the cost of financing (intereses, comisiones,
+ * impuestos from the statements, loss-negative) and the capital flow is everything else that
+ * moved the balance — purchases as borrowing, payments as capital in, plus the corrections the
+ * evidence anchors apply to both. See `ccFinancingCostDaily.ts` for why the balance move is
+ * flow rather than cost; the monthly rows are the daily identity aggregated to month-ends, so
+ * Σ of the daily P/L over a month equals `nominal_pl` here.
  */
-export function creditCardNominalPlStub(): number {
-  return 0;
+function creditCardMonthPerf(
+  accountId: number,
+  priorClosing: number | null,
+  closing: number,
+  fromYmdExclusive: string | null,
+  toYmd: string,
+  unit: TsUnit
+): { netFlow: number; nominal: number; pct: number | null } {
+  const financing = perfSheetClpFlowInUnit(
+    ccFinancingCostClpBetween(accountId, fromYmdExclusive ?? "", toYmd),
+    toYmd,
+    unit
+  );
+  const prior = priorClosing != null && Number.isFinite(priorClosing) ? priorClosing : 0;
+  return {
+    netFlow: -(closing - prior) + financing,
+    nominal: -financing,
+    pct: liabilityPctMonth(-financing, prior),
+  };
 }
 
 /**
@@ -539,7 +576,8 @@ function mortgageMonthlyNominalPl(
   return priorClosing - closing - netCapitalFlow;
 }
 
-function mortgagePctMonth(nominal: number, priorClosing: number): number | null {
+/** Debt cost as a rate on the balance carried (both liability kinds). */
+function liabilityPctMonth(nominal: number, priorClosing: number): number | null {
   return Math.abs(priorClosing) > 1e-6 && Number.isFinite(nominal / priorClosing)
     ? nominal / priorClosing
     : null;
@@ -742,10 +780,6 @@ function buildAccountMonthlyPerformanceUncached(
       ? deptoSueciaPropertyCloseClpBySnapshotDates(deptoSnapshotDates, deptoLedger, deptoUfClpByDate)
       : null;
   const deptoCloseClpByDate = mortgageCloseClpByDate ?? propertyCloseClpByDate;
-  const ccBillingPayByMonth =
-    bucketKind === "credit_card" && ccInstallmentLedgerRowCount(accountId) > 0
-      ? creditCardInstallmentPaymentsByBillingMonth(accountId)
-      : null;
   const stockUnitsInflowForPerfRow = (asOf: string) =>
     afpCuotasByMonthKey != null
       ? afpCuotasByMonthKey.get(monthKeyFromYmd(asOf)) ?? 0
@@ -783,24 +817,24 @@ function buildAccountMonthlyPerformanceUncached(
       ytdYear = y;
       ytdRun = 0;
       /** First month in the series: no prior month-end — net flow = cumulative aportes at this date (vs 0). */
+      const ccFirst = isCreditCard
+        ? creditCardMonthPerf(accountId, null, close, null, asOf, unit)
+        : null;
       const netFlowFirst =
         isMortgage && deptoLedger
           ? perfMortgagePaymentsInUnit(deptoLedger, asOf, null, unit)
           : isDeptoProperty && deptoLedger
             ? perfDeptoPropertyPaymentsInUnit(deptoLedger, asOf, null, unit)
-            : cumDep;
+            : ccFirst
+              ? ccFirst.netFlow
+              : cumDep;
       /** Mortgage: opening balance after pie is not P/L (only cuota-driven changes count). */
-      const nominalFirst = isMortgage
-        ? 0
-        : isCreditCard
-          ? creditCardNominalPlStub()
-          : close - netFlowFirst;
-      const pctFirst =
-        isCreditCard
-          ? null
-          : Math.abs(netFlowFirst) > 1e-6 && Number.isFinite(nominalFirst / netFlowFirst)
-            ? nominalFirst / netFlowFirst
-            : null;
+      const nominalFirst = isMortgage ? 0 : ccFirst ? ccFirst.nominal : close - netFlowFirst;
+      const pctFirst = ccFirst
+        ? ccFirst.pct
+        : Math.abs(netFlowFirst) > 1e-6 && Number.isFinite(nominalFirst / netFlowFirst)
+          ? nominalFirst / netFlowFirst
+          : null;
       ytdRun += nominalFirst;
       cumPl += nominalFirst;
       outAsc.push({
@@ -842,25 +876,19 @@ function buildAccountMonthlyPerformanceUncached(
         : isDeptoProperty && deptoLedger
           ? perfDeptoPropertyPaymentsInUnit(deptoLedger, asOf, propertyAfterExclusive, unit)
           : cumDep - (prevCumDep ?? 0);
-    if (ccBillingPayByMonth != null) {
-      // Cuotas paid during month M (~10th) were billed at the previous month's close, and
-      // the plan schedule is keyed by facturación month — so look up M−1.
-      const asOfYm = monthKeyFromYmd(asOf);
-      const sched = asOfYm != null ? ccBillingPayByMonth.get(addCalendarMonths(asOfYm, -1)) ?? 0 : 0;
-      const balanceDelta = close - prevClose;
-      if (sched > 0 && Math.abs(balanceDelta) < MONTH_ROW_EPS) {
-        netFlow = perfSheetClpFlowInUnit(sched, asOf, unit);
-      }
-    }
+    const ccPerf = isCreditCard
+      ? creditCardMonthPerf(accountId, prevClose, close, prevPerfAsOf, asOf, unit)
+      : null;
+    if (ccPerf) netFlow = ccPerf.netFlow;
     const nominal = isMortgage
       ? mortgageMonthlyNominalPl(prevClose, close, netFlow)
-      : isCreditCard
-        ? creditCardNominalPlStub()
+      : ccPerf
+        ? ccPerf.nominal
         : close - prevClose - netFlow;
     const pct = isMortgage
-      ? mortgagePctMonth(nominal, prevClose)
-      : isCreditCard
-        ? null
+      ? liabilityPctMonth(nominal, prevClose)
+      : ccPerf
+        ? ccPerf.pct
         : (() => {
             const denom = prevClose + netFlow;
             return Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;

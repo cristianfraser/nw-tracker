@@ -25,6 +25,10 @@ import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import {
+  isClpSection3FinancingChargeMerchant,
+  isUsdSection3FinancingChargeMerchant,
+} from "./ccStatementSection3.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
 export type CcBillingMonthBalanceRow = {
@@ -158,6 +162,21 @@ type PostCloseLineRow = RevolvingLineRow & {
 };
 
 /**
+ * Section-3 bank charge (interés, comisión, impuesto) rather than consumption or a payment —
+ * the same test `statementSection3ChargesClpForBillingMonth` sums for the monthly financing
+ * cost, so the flow-based P/L and the financing chart agree by construction. Refunds (NOTA DE
+ * CREDITO, negative amounts) match the section-3 merchant patterns but are negative
+ * consumption, not cost, hence the positive-amount guard on both currencies.
+ */
+function isFinancingChargeLine(r: PostCloseLineRow): boolean {
+  if (r.statement_currency === "usd") {
+    const usd = r.amount_usd ?? 0;
+    return usd > 0 && isUsdSection3FinancingChargeMerchant(r.merchant, usd);
+  }
+  return (r.amount_clp ?? 0) > 0 && isClpSection3FinancingChargeMerchant(r.merchant);
+}
+
+/**
  * Net CLP of owed-changing events whose date falls AFTER a billing month's statement close
  * and ON/BEFORE the calendar month-end — i.e. activity that belongs to the live end-of-month
  * balance but is billed on a later statement: revolving charges (+) and payments (−, incl.
@@ -192,10 +211,15 @@ export function postCloseLiveBalanceAdjustmentClp(
  * `cc.billing_detail|<id>|…` satellite key — dropped by `invalidateCcBillingDetail` with the
  * detalle cache. Daily owed-on-date evaluates one window per session, so the scan must not
  * re-run per date.
+ *
+ * `financing` marks section-3 bank charges (intereses, comisiones, impuestos) using the same
+ * predicate as the monthly financing-cost metric. They are owed like any other charge — the
+ * balance walk ignores the flag — but `ccOwedFlowEvents.ts` withholds them from the flow leg
+ * so that a card's P/L is exactly its cost of financing.
  */
-function normalizedPostCloseLines(
+export function normalizedPostCloseLines(
   accountId: number
-): { iso: string; key: string; clp: number | null }[] {
+): { iso: string; key: string; clp: number | null; financing?: boolean }[] {
   return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|postclose_lines`, () => {
     const rows = db
       .prepare(
@@ -219,7 +243,7 @@ function normalizedPostCloseLines(
 
     // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
     // inside a window (same as the single-window loop did).
-    const lines: { iso: string; key: string; clp: number | null }[] = [];
+    const lines: { iso: string; key: string; clp: number | null; financing?: boolean }[] = [];
     for (const r of rows) {
       if (superseded.has(r.id)) continue;
       if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
@@ -230,7 +254,12 @@ function normalizedPostCloseLines(
         { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
         fxDateFor(r.statement_date)
       );
-      lines.push({ iso, key, clp: clp != null && Number.isFinite(clp) ? clp : null });
+      lines.push({
+        iso,
+        key,
+        clp: clp != null && Number.isFinite(clp) ? clp : null,
+        ...(isFinancingChargeLine(r) ? { financing: true } : {}),
+      });
     }
 
     // Header-only payments (current Santander CLP format): the previous facturación's
@@ -276,7 +305,7 @@ function normalizedPostCloseLines(
  * are dropped from the line stream (they duplicate these contracts) and a nota-cancelled
  * plan self-corrects via its NOTA DE CREDITO revolving line.
  */
-function normalizedInstallmentPurchaseEvents(
+export function normalizedInstallmentPurchaseEvents(
   accountId: number
 ): { iso: string; key: string; clp: number }[] {
   return getAggregationCached(
