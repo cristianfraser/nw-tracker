@@ -84,6 +84,9 @@ export function CcInstallmentHistoryChart({
     ? `${(openBillingMonth ?? currentYm).slice(0, 4)}-12`
     : openBillingMonth ?? currentYm;
   const showCurrentMonthLine = !isDailyMode && displayRows.some((r) => r.month === refMonth);
+  // Daily view: mark today, where the real owed walk ends and the plan projection begins.
+  const todayYmd = chileTodayYmd();
+  const showDailyTodayLine = isDailyMode && displayRows.some((r) => r.month === todayYmd);
   const yScale = useMemo(() => {
     const { min, max } = unifiedMinMax(displayRows);
     return buildNiceYAxis(min, max);
@@ -174,6 +177,20 @@ export function CcInstallmentHistoryChart({
                       ? "accountDetail.creditCard.historialOpenMonth"
                       : "accountDetail.creditCard.historialCurrentMonth"
                 ),
+                position: "insideTopRight",
+                fill: CURRENT_MONTH_STROKE,
+                fontSize: 10,
+              }}
+            />
+          ) : null}
+          {showDailyTodayLine ? (
+            <ReferenceLine
+              x={todayYmd}
+              stroke={CURRENT_MONTH_STROKE}
+              strokeDasharray="4 4"
+              strokeWidth={1.5}
+              label={{
+                value: t("accountDetail.creditCard.historialProjectionStart"),
                 position: "insideTopRight",
                 fill: CURRENT_MONTH_STROKE,
                 fontSize: 10,

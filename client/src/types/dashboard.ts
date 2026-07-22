@@ -338,6 +338,11 @@ export interface DailySeriesResponse {
   accounts?: DailySeriesAccountLineDto[];
   /** CC masters only: per-day plan debt («deuda en cuotas», CLP), index-aligned with points. */
   cc_installment_debt?: (number | null)[];
+  /**
+   * CC masters only: future daily tail of the installment simulation (`today+1 .. plan end`, CLP),
+   * so the daily historial covers the same window as its monthly/yearly forms.
+   */
+  cc_plan_tail?: { as_of_date: string; plan_debt_clp: number; balance_clp: number }[];
   /** Σ of account `deposits_acum` per day (`__group_dep_total` line). */
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
