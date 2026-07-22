@@ -8,7 +8,25 @@ import { useMovementMirrorCandidates } from "../../queries/hooks";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Table } from "../../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../../components/ui/TableMobileCard";
-import type { MirrorLegDto, MirrorPairCandidate, MirrorPairRef } from "../../types";
+import type {
+  CcPaymentMirrorCandidateDto,
+  CcPaymentMirrorRefDto,
+  MirrorLegDto,
+  MirrorPairCandidate,
+  MirrorPairRef,
+} from "../../types";
+
+function ccPairKey(p: CcPaymentMirrorCandidateDto): string {
+  return `cc|${p.out.movement_id}|${p.evidence.statement_line_id ?? ""}|${p.evidence.statement_id ?? ""}`;
+}
+
+function ccPairRef(p: CcPaymentMirrorCandidateDto): CcPaymentMirrorRefDto {
+  return {
+    out_movement_id: p.out.movement_id,
+    statement_line_id: p.evidence.statement_line_id,
+    statement_id: p.evidence.statement_id,
+  };
+}
 
 function pairKey(p: { out: MirrorLegDto; in: MirrorLegDto }): string {
   return `${p.out.movement_id}|${p.in.movement_id}`;
@@ -108,6 +126,14 @@ export function MirrorPairsPanelPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["movementMirrorCandidates"] }),
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
   });
+  const convertCc = useMutation({
+    mutationFn: (pairs: CcPaymentMirrorRefDto[]) => api.convertCcPaymentMirrors(pairs),
+    onSuccess: () => {
+      setActionError(null);
+      invalidateAll();
+    },
+    onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
+  });
 
   const high = useMemo(() => (data?.pairs ?? []).filter((p) => p.confidence === "high"), [data]);
   const ambiguous = useMemo(
@@ -117,8 +143,13 @@ export function MirrorPairsPanelPage() {
   const blocked = useMemo(() => (data?.pairs ?? []).filter((p) => p.blocked), [data]);
   const rejected = data?.rejected ?? [];
 
+  const ccPairs = useMemo(() => (data?.cc_payment_pairs ?? []).filter((p) => !p.blocked), [data]);
+  const [ccUnchecked, setCcUnchecked] = useState<Set<string>>(new Set());
+  const [confirmCcBatch, setConfirmCcBatch] = useState(false);
+  const selectedCc = ccPairs.filter((p) => !ccUnchecked.has(ccPairKey(p)));
+
   const selectedHigh = high.filter((p) => !unchecked.has(pairKey(p)));
-  const busy = convert.isPending || reject.isPending || unreject.isPending;
+  const busy = convert.isPending || reject.isPending || unreject.isPending || convertCc.isPending;
 
   if (isPending) return <p className="muted">{t("common.loading")}</p>;
   if (error) {
@@ -303,6 +334,127 @@ export function MirrorPairsPanelPage() {
         </Table>
       )}
 
+      <h3>{t("mirrorPairs.ccTitle", { n: ccPairs.length })}</h3>
+      <p className="muted">{t("mirrorPairs.ccIntro")}</p>
+      {ccPairs.length === 0 ? (
+        <p className="muted">{t("mirrorPairs.emptyCc")}</p>
+      ) : (
+        <>
+          <Table
+            header={
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={ccPairs.length > 0 && selectedCc.length === ccPairs.length}
+                    onChange={() =>
+                      setCcUnchecked(
+                        selectedCc.length === ccPairs.length
+                          ? new Set(ccPairs.map(ccPairKey))
+                          : new Set()
+                      )
+                    }
+                    aria-label={t("mirrorPairs.selectAll")}
+                  />
+                </th>
+                <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
+              </tr>
+            }
+          >
+            {ccPairs.map((p) => {
+              const key = ccPairKey(p);
+              const dates = (
+                <>
+                  {p.out.occurred_on}
+                  {p.skew_days !== 0 ? (
+                    <span className="muted"> → {p.evidence.pago_iso}</span>
+                  ) : null}
+                </>
+              );
+              const flags =
+                p.skew_days !== 0 ? (
+                  <span className="muted">
+                    {t("mirrorPairs.badgeSkew", { n: Math.abs(p.skew_days) })}
+                  </span>
+                ) : null;
+              const note = p.out.note ? (
+                <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>
+                  {p.out.note} · {p.evidence.label}
+                </span>
+              ) : (
+                <span className="muted">{p.evidence.label}</span>
+              );
+              const checkbox = (
+                <input
+                  type="checkbox"
+                  checked={!ccUnchecked.has(key)}
+                  onChange={() =>
+                    setCcUnchecked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    })
+                  }
+                  aria-label={t("mirrorPairs.selectPair")}
+                />
+              );
+              return (
+                <tr key={key}>
+                  <td>{checkbox}</td>
+                  <td className="desktop-only">{dates}</td>
+                  <td className="desktop-only">
+                    <Link to={`/account/${p.out.account_id}`}>{p.out.account_name}</Link>
+                  </td>
+                  <td className="desktop-only">
+                    <Link to={`/account/${p.evidence.cc_account_id}`}>
+                      {p.evidence.cc_account_name}
+                    </Link>
+                  </td>
+                  <td className="desktop-only">{formatClp(p.evidence.amount_clp)}</td>
+                  <td className="desktop-only">{flags}</td>
+                  <td className="desktop-only">{note}</td>
+                  <td className="mobile-only">
+                    <TableMobileCard
+                      title={
+                        <>
+                          <Link to={`/account/${p.out.account_id}`}>{p.out.account_name}</Link> →{" "}
+                          <Link to={`/account/${p.evidence.cc_account_id}`}>
+                            {p.evidence.cc_account_name}
+                          </Link>
+                        </>
+                      }
+                    >
+                      <TableMobileCardRow label={t("mirrorPairs.colDates")} value={dates} />
+                      <TableMobileCardRow
+                        label={t("mirrorPairs.colAmount")}
+                        value={formatClp(p.evidence.amount_clp)}
+                      />
+                      <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={flags} />
+                      <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={note} />
+                    </TableMobileCard>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+          <p>
+            <button
+              type="button"
+              disabled={busy || selectedCc.length === 0}
+              onClick={() => setConfirmCcBatch(true)}
+            >
+              {t("mirrorPairs.convertSelected", { n: selectedCc.length })}
+            </button>
+          </p>
+        </>
+      )}
+
       {blocked.length > 0 ? (
         <>
           <h3>{t("mirrorPairs.blockedTitle", { n: blocked.length })}</h3>
@@ -336,6 +488,19 @@ export function MirrorPairsPanelPage() {
         </>
       ) : null}
 
+      <ConfirmDialog
+        open={confirmCcBatch}
+        title={t("mirrorPairs.confirmCcBatchTitle")}
+        message={t("mirrorPairs.confirmCcBatchMessage", { n: selectedCc.length })}
+        confirmLabel={t("mirrorPairs.confirmConvert")}
+        cancelLabel={t("mirrorPairs.confirmCancel")}
+        confirmDisabled={busy}
+        onConfirm={() => {
+          setConfirmCcBatch(false);
+          convertCc.mutate(selectedCc.map(ccPairRef));
+        }}
+        onCancel={() => setConfirmCcBatch(false)}
+      />
       <ConfirmDialog
         open={confirmBatch}
         title={t("mirrorPairs.confirmBatchTitle")}

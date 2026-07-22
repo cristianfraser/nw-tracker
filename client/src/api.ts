@@ -784,6 +784,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pairs }),
     }),
+  convertCcPaymentMirrors: (pairs: import("./types").CcPaymentMirrorRefDto[]) =>
+    j<{ converted: { transfer_movement_id: number }[] }>(
+      "/api/movement-mirrors/convert-cc-payments",
+      { method: "POST", body: JSON.stringify({ pairs }) }
+    ),
   rejectMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>
     j<{ rejected: number }>("/api/movement-mirrors/reject", {
       method: "POST",

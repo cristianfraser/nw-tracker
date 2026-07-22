@@ -4741,6 +4741,30 @@
     "confirmCancel": {
       "en": "Cancel",
       "es": "Cancelar"
+    },
+    "ccTitle": {
+      "en": "Card payments ({{n}})",
+      "es": "Pagos de tarjeta ({{n}})"
+    },
+    "ccIntro": {
+      "en": "Checking debits paired with the card's payment evidence (statement PAGO or header). Converting merges them into one transfer dated at the card's credit date; the cartola date is preserved.",
+      "es": "Cargos de la cuenta corriente emparejados con la evidencia de pago de la tarjeta (PAGO del estado de cuenta o encabezado). Convertir los une en un traspaso fechado el día del abono en la tarjeta; la fecha de la cartola se conserva."
+    },
+    "emptyCc": {
+      "en": "No card-payment pairs pending.",
+      "es": "No hay pagos de tarjeta pendientes."
+    },
+    "badgeSkew": {
+      "en": "{{n}}d skew",
+      "es": "desfase {{n}}d"
+    },
+    "confirmCcBatchTitle": {
+      "en": "Convert card payments",
+      "es": "Convertir pagos de tarjeta"
+    },
+    "confirmCcBatchMessage": {
+      "en": "Convert {{n}} card payment(s) into mirror transfers?",
+      "es": "¿Convertir {{n}} pago(s) de tarjeta en traspasos espejo?"
     }
   },
   "export": {

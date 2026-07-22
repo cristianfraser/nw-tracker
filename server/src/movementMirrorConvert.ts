@@ -198,7 +198,7 @@ export function undoMirrorConversion(transferMovementId: number): {
         out_amount_clp: number;
         out_units_delta: number | null;
         out_note: string | null;
-        in_movement_id: number;
+        in_movement_id: number | null;
         in_occurred_on: string;
         in_amount_clp: number;
         in_units_delta: number | null;
@@ -207,6 +207,30 @@ export function undoMirrorConversion(transferMovementId: number): {
     | undefined;
   if (!merge) {
     throw new Error(`movement ${transferMovementId} is not a mirror-merge conversion`);
+  }
+  // CC-payment mirrors (ccPaymentMirrors.ts): the "in" side is statement evidence that was
+  // never deleted — undo restores only the checking leg.
+  if (merge.in_movement_id == null) {
+    const insOut = db.prepare(
+      `INSERT INTO movements (account_id, amount_clp, occurred_on, units_delta, note) VALUES (?,?,?,?,?)`
+    );
+    const restored = db.transaction(() => {
+      const outId = Number(
+        insOut.run(
+          row.from_account_id,
+          merge.out_amount_clp,
+          merge.out_occurred_on,
+          merge.out_units_delta,
+          merge.out_note
+        ).lastInsertRowid
+      );
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferMovementId);
+      return { restored_out_id: outId, restored_in_id: outId };
+    })();
+    clearCheckingBalanceCache(row.from_account_id!);
+    invalidateAggregationForAccountDate(row.from_account_id!, merge.out_occurred_on);
+    invalidateAggregationForAccountDate(row.to_account_id!, merge.out_occurred_on);
+    return restored;
   }
   const data = {
     out: {
