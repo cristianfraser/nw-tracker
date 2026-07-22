@@ -192,9 +192,11 @@ describe("convertCcPaymentMirrors", () => {
     ).toBeUndefined();
     expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(pagoLineId)).toBeTruthy();
 
-    // Flow-neutral: pago_tarjeta transfers emit no deposit events for either endpoint.
+    // The cash side keeps its withdrawal (conversion must not turn a payment into checking P/L);
+    // the card leg stays inert — CC flows come from statement evidence, not from this transfer.
     clearAggregationCache();
-    expect(netDepositFlowBetween(checkingId, "2037-04-01", "2037-04-30", "clp")).toBe(0);
+    expect(netDepositFlowBetween(checkingId, "2037-04-01", "2037-04-30", "clp")).toBe(-487331);
+    expect(netDepositFlowBetween(ccId, "2037-04-01", "2037-04-30", "clp")).toBe(0);
     // Evidence now consumed — the pair leaves the candidate list.
     expect(myCandidates().find((c) => c.evidence.amount_clp === 487331)).toBeUndefined();
 
