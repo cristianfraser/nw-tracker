@@ -18,6 +18,8 @@
 import { getAggregationCached } from "./aggregationCache.js";
 import { db } from "./db.js";
 import {
+  assertDeptoPrepagoSequencing,
+  deptoLedgerChronoCompare,
   enrichDeptoRowsUfClpFromDb,
   deptoMortgageCloseClpBySnapshotDates,
   deptoSueciaPropertyCloseClpBySnapshotDates,
@@ -160,10 +162,8 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
     } satisfies DeptoMortgageSheetRow;
   });
 
-  base.sort((a, b) => {
-    const c = a.occurred_on.localeCompare(b.occurred_on);
-    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
-  });
+  base.sort(deptoLedgerChronoCompare);
+  assertDeptoPrepagoSequencing(base);
   if (!base.some((r) => r.valor_vivienda_uf != null)) {
     throw new Error(
       "depto ledger: no movement note carries vvuf (valor vivienda UF) — regenerate notes from the staging rows (backfill)"

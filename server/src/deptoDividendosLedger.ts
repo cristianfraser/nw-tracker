@@ -167,22 +167,64 @@ export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosP
 
 /** Full “dividendos” sheet (one row per bank transfer / pie). Source for account UI. */
 /** Align month-end snapshot labels with dividendos payment dates (see valuation chart cutoffs). */
-function snapshotDepositCutoff(asOfLabel: string): string {
-  const m = /^(\d{4})-(\d{2})-01$/.exec(asOfLabel);
-  if (!m) return asOfLabel;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  if (!Number.isFinite(y) || mo < 1 || mo > 12) return asOfLabel;
-  return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+/**
+ * Chronological ledger order: by date; same-day rows by decreasing crédito restante (a
+ * running balance only falls within a day, so the smaller balance is the later payment —
+ * fixes prepago+cuota pairs sharing one date, where the cuota-label sort applied them
+ * backwards); cuota label as the final tiebreak.
+ */
+export function deptoLedgerChronoCompare(
+  a: { occurred_on: string; credito_restante_uf: number | null; cuota: string },
+  b: { occurred_on: string; credito_restante_uf: number | null; cuota: string }
+): number {
+  const c = a.occurred_on.localeCompare(b.occurred_on);
+  if (c !== 0) return c;
+  if (
+    a.credito_restante_uf != null &&
+    b.credito_restante_uf != null &&
+    a.credito_restante_uf !== b.credito_restante_uf
+  ) {
+    return b.credito_restante_uf - a.credito_restante_uf;
+  }
+  return a.cuota.localeCompare(b.cuota);
 }
 
 /**
- * Forward-filled **crédito restante (UF)** from the depto dividendos sheet at each snapshot date.
- * Used for mortgage month-end detail (`Saldo UF` column; CLP cierre = UF × UF día).
- *
- * Prepago rows carry unreliable `credito_restante_uf` in the Numbers export (balance can rise vs the
- * prior cuota). Month-end marks use the last **cuota** row on or before the snapshot; prepagos still
- * count in CLP capital flow via {@link deptoPropertyClpPaymentsThroughDate}.
+ * Fail fast on a mis-sequenced prepago: a prepago strictly reduces the balance, so its
+ * `credito_restante_uf` must not exceed the chronologically previous row's. (Regular cuotas
+ * CAN follow a balance increase — grace-period interest capitalizes between pie and the
+ * first billed cuota — so only prepago rows carry this invariant.) A violation means the
+ * row still holds a month-grain non-sequential balance: fix the `depto_payments` data.
+ */
+export function assertDeptoPrepagoSequencing(
+  rowsChronoAsc: readonly Pick<
+    DeptoMortgageSheetRow,
+    "cuota" | "occurred_on" | "credito_restante_uf"
+  >[]
+): void {
+  let prev: number | null = null;
+  let prevCuota = "";
+  for (const row of rowsChronoAsc) {
+    const v = row.credito_restante_uf;
+    if (v == null || !Number.isFinite(v)) continue;
+    if (isDeptoPrepagoCuota(row.cuota) && prev != null && v > prev + 1e-6) {
+      throw new Error(
+        `depto ledger: prepago "${row.cuota}" (${row.occurred_on}) has credito_restante_uf ` +
+          `${v} > previous row "${prevCuota}" ${prev} — non-sequential balance, fix depto_payments`
+      );
+    }
+    prev = v;
+    prevCuota = row.cuota;
+  }
+}
+
+/**
+ * Forward-filled **crédito restante (UF)** from the depto ledger at each snapshot date:
+ * last row with `occurred_on <=` the exact date, in chronological order — a prepago's
+ * balance drop lands on the prepago's own date (rows are sequential per
+ * {@link assertDeptoPrepagoSequencing}; the old first-of-month → month-end cutoff
+ * expansion and the prepago-row skip are gone — both invented month-grain values on a
+ * daily grid).
  */
 export function deptoCreditoRestanteUfBySnapshotDates(
   dateStrsAsc: readonly string[],
@@ -190,20 +232,13 @@ export function deptoCreditoRestanteUfBySnapshotDates(
 ): Map<string, number> {
   const out = new Map<string, number>();
   if (dateStrsAsc.length === 0 || ledger.length === 0) return out;
-  const sorted = [...ledger].sort((a, b) => {
-    const c = a.occurred_on.localeCompare(b.occurred_on);
-    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
-  });
+  const sorted = [...ledger].sort(deptoLedgerChronoCompare);
   let j = 0;
   let last: number | null = null;
   for (const d of dateStrsAsc) {
-    const cut = snapshotDepositCutoff(d);
-    while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
-      const row = sorted[j]!;
-      if (!isDeptoPrepagoCuota(row.cuota)) {
-        const v = row.credito_restante_uf;
-        if (v != null && Number.isFinite(v)) last = v;
-      }
+    while (j < sorted.length && sorted[j]!.occurred_on <= d) {
+      const v = sorted[j]!.credito_restante_uf;
+      if (v != null && Number.isFinite(v)) last = v;
       j++;
     }
     if (last != null) out.set(d, last);
@@ -265,8 +300,9 @@ export type DeptoAccountMarkAtYmd = { value_clp: number; as_of_date: string };
 /**
  * Net equity UF at each snapshot — DERIVED as gross − balance: forward-filled
  * **valor vivienda (UF)** (the observed tasación, a row column) minus forward-filled
- * **crédito restante (UF)**. Prepago rows are skipped in both fills (their balances are
- * unreliable in the Numbers export). Only on/after pie / compra.
+ * **crédito restante (UF)**, both at the exact snapshot date in chronological order
+ * (prepago rows included — their balance drop lands on their own date). Only on/after
+ * pie / compra.
  */
 export function deptoSueciaNetEquityUfBySnapshotDates(
   dateStrsAsc: readonly string[],
@@ -275,24 +311,18 @@ export function deptoSueciaNetEquityUfBySnapshotDates(
   const firstOwn = firstDeptoPropertyOwnershipYmd(ledger);
   const out = new Map<string, number>();
   if (dateStrsAsc.length === 0 || ledger.length === 0) return out;
-  const sorted = [...ledger].sort((a, b) => {
-    const c = a.occurred_on.localeCompare(b.occurred_on);
-    return c !== 0 ? c : a.cuota.localeCompare(b.cuota);
-  });
+  const sorted = [...ledger].sort(deptoLedgerChronoCompare);
   let j = 0;
   let gross: number | null = null;
   let balance: number | null = null;
   for (const d of dateStrsAsc) {
-    const cut = snapshotDepositCutoff(d);
-    while (j < sorted.length && sorted[j]!.occurred_on <= cut) {
+    while (j < sorted.length && sorted[j]!.occurred_on <= d) {
       const row = sorted[j]!;
-      if (!isDeptoPrepagoCuota(row.cuota)) {
-        if (row.valor_vivienda_uf != null && Number.isFinite(row.valor_vivienda_uf)) {
-          gross = row.valor_vivienda_uf;
-        }
-        if (row.credito_restante_uf != null && Number.isFinite(row.credito_restante_uf)) {
-          balance = row.credito_restante_uf;
-        }
+      if (row.valor_vivienda_uf != null && Number.isFinite(row.valor_vivienda_uf)) {
+        gross = row.valor_vivienda_uf;
+      }
+      if (row.credito_restante_uf != null && Number.isFinite(row.credito_restante_uf)) {
+        balance = row.credito_restante_uf;
       }
       j++;
     }
