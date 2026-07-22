@@ -497,6 +497,7 @@ def extract_pdf_section_totals(
         "pdf_monto_facturado": None,
         "pdf_monto_facturado_anterior": None,
         "pdf_monto_pagado_anterior": None,
+        "pdf_monto_pagado_anterior_date": None,
         "pdf_saldo_anterior": None,
         "pdf_abono": None,
         "pdf_compras_cargos": None,
@@ -596,6 +597,26 @@ def extract_pdf_section_totals(
             )
             if pagado_v is not None:
                 out["pdf_monto_pagado_anterior"] = float(pagado_v)
+        # Printed payment date: the movement-section "dd/mm/yy MONTO CANCELADO $ -amount"
+        # row whose amount equals the header. That row is dropped from parsed lines by
+        # design (the header carries the amount), but the DATE only exists here — the
+        # daily owed walk synthesizes the PAGO event from (amount, date). Ambiguous
+        # (multiple distinct dates) or absent -> None; single date (dupes collapse) wins.
+        if out["pdf_monto_pagado_anterior"] is not None:
+            pagado_abs = abs(float(out["pdf_monto_pagado_anterior"]))
+            cancel_dates = set()
+            for m_c in re.finditer(
+                r"(\d{2}/\d{2}/\d{2,4})\s+MONTO\s+CANCELADO[^\n\d]*\$\s*-?\s?([\d.]+)",
+                full,
+                re.I,
+            ):
+                amt_c = parse_clp(m_c.group(2))
+                if amt_c is not None and abs(float(amt_c)) == pagado_abs:
+                    cancel_dates.add(m_c.group(1))
+            if len(cancel_dates) == 1:
+                iso = _cc_iso_from_ddmmyy(next(iter(cancel_dates)))
+                if iso is not None:
+                    out["pdf_monto_pagado_anterior_date"] = iso
         for m_total in re.finditer(
             r"MONTO\s+TOTAL\s+FACTURADO(?:\s+A\s+PAGAR)?[^\$]*\$\s*([\d.\-]+)",
             full,
@@ -675,6 +696,19 @@ def merge_section_totals_into_meta(
     totals = extract_pdf_section_totals(full, currency, parse_clp, parse_usd)
     meta.update(totals)
     return meta
+
+
+def _cc_iso_from_ddmmyy(raw: str) -> Optional[str]:
+    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2,4})", raw.strip())
+    if not m:
+        return None
+    dd, mm, yy = m.group(1), m.group(2), m.group(3)
+    year = int(yy)
+    if year < 100:
+        year += 2000
+    if not (1 <= int(mm) <= 12 and 1 <= int(dd) <= 31):
+        return None
+    return f"{year:04d}-{mm}-{dd}"
 
 
 def _close_enough(a: Optional[float], b: Optional[float], tol: float) -> bool:

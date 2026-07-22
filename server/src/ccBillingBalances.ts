@@ -223,6 +223,37 @@ function normalizedPostCloseLines(
       );
       lines.push({ iso, key, clp: clp != null && Number.isFinite(clp) ? clp : null });
     }
+
+    // Header-only payments (current Santander CLP format): the previous facturación's
+    // MONTO CANCELADO is statement meta, never a line — the parser drops the pagado-
+    // anterior row by design and only the header carries the amount, with the printed
+    // payment date stored alongside (migration 166). Synthesize the PAGO event so the
+    // between-anchors daily walk sees payments, not just charges. Legacy statements that
+    // DO carry the payment as a real line are skipped (no double count); duplicate
+    // statement versions collapse on the shared synthetic key.
+    const hdrPagos = db
+      .prepare(
+        `SELECT statement_date, monto_pagado_anterior AS amt,
+                monto_pagado_anterior_date AS pago_iso
+         FROM cc_statements
+         WHERE account_id = ? AND currency = 'clp'
+           AND monto_pagado_anterior IS NOT NULL AND monto_pagado_anterior_date IS NOT NULL`
+      )
+      .all(accountId) as { statement_date: string; amt: number; pago_iso: string }[];
+    for (const s of hdrPagos) {
+      const amtAbs = Math.abs(s.amt);
+      if (!Number.isFinite(amtAbs) || amtAbs === 0) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s.pago_iso)) {
+        throw new Error(
+          `cc_statements ${s.statement_date}: invalid monto_pagado_anterior_date ${s.pago_iso}`
+        );
+      }
+      const covered = lines.some(
+        (l) => l.iso === s.pago_iso && l.clp != null && Math.abs(l.clp + amtAbs) < 1
+      );
+      if (covered) continue;
+      lines.push({ iso: s.pago_iso, key: `hdr-pago|${s.pago_iso}|${amtAbs}`, clp: -amtAbs });
+    }
     return lines;
   });
 }

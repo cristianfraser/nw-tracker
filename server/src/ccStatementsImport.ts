@@ -180,11 +180,13 @@ export function importCcStatementsMerge(
     INSERT INTO cc_statements (
       account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
       card_last4, card_product, layout, currency,
-      saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado
+      saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
+      monto_pagado_anterior, monto_pagado_anterior_date
     ) VALUES (
       @account_id, @card_group, @source_pdf, @statement_date, @period_from, @period_to, @pay_by,
       @card_last4, @card_product, @layout, @currency,
-      @saldo_anterior, @abono, @compras_cargos, @deuda_total, @monto_facturado
+      @saldo_anterior, @abono, @compras_cargos, @deuda_total, @monto_facturado,
+      @monto_pagado_anterior, @monto_pagado_anterior_date
     )
   `);
 
@@ -194,7 +196,9 @@ export function importCcStatementsMerge(
       period_from = @period_from, period_to = @period_to, pay_by = @pay_by,
       card_last4 = @card_last4, card_product = @card_product, layout = @layout, currency = @currency,
       saldo_anterior = @saldo_anterior, abono = @abono, compras_cargos = @compras_cargos,
-      deuda_total = @deuda_total, monto_facturado = @monto_facturado
+      deuda_total = @deuda_total, monto_facturado = @monto_facturado,
+      monto_pagado_anterior = @monto_pagado_anterior,
+      monto_pagado_anterior_date = @monto_pagado_anterior_date
     WHERE id = @id
   `);
 
@@ -249,6 +253,13 @@ export function importCcStatementsMerge(
           parseUsdAmount(String(first.statement_monto_facturado ?? "")) ??
           parseInt10(String(first.statement_monto_facturado ?? ""));
         return v != null && v > 0 ? v : null;
+      })(),
+      monto_pagado_anterior:
+        parseUsdAmount(String(first.statement_monto_pagado_anterior ?? "")) ??
+        parseInt10(String(first.statement_monto_pagado_anterior ?? "")),
+      monto_pagado_anterior_date: (() => {
+        const s = String(first.statement_monto_pagado_anterior_date ?? "").trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
       })(),
     };
 
