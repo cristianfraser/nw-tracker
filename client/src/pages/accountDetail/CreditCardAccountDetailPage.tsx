@@ -2,11 +2,10 @@ import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
-import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
-import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { useDailySeries } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { timeRangeToDays } from "../../timeRange";
+import type { CcHistorialChartPoint } from "../../types";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
@@ -41,20 +40,27 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   const isYearly = metricsPeriod === "year";
   const isDaily = metricsPeriod === "day";
 
-  // Day mode: the financing (billing-month) chart swaps to the per-day owed-on-date line
-  // (`accountMarkClpAtYmd` CC branch — ramps with purchases, drops on payments), reusing the
-  // monthly block's account metadata so the line color/identity survives the M↔D toggle.
+  // Day mode: the historial chart keeps its two lines at day grain — saldo total from the
+  // per-day owed walk and deuda en cuotas from the daily plan-debt series — with the
+  // month-frame billed/paid bars hidden. CLP always, matching the monthly historial.
   const { timeRange } = useDisplayPreferences();
   const dailySeries = useDailySeries(
     { accountId: summary.account_id },
-    displayUnit,
+    "clp",
     timeRangeToDays(timeRange),
     isDaily
   );
-  const dailyOwedBlock = useMemo(
-    () => (isDaily ? buildDailyValuationBlock(dailySeries.data, ts.accounts) : null),
-    [isDaily, dailySeries.data, ts.accounts]
-  );
+  const dailyHistorialRows = useMemo((): CcHistorialChartPoint[] | null => {
+    if (!isDaily || !dailySeries.data?.points.length) return null;
+    const debt = dailySeries.data.cc_installment_debt ?? null;
+    return dailySeries.data.points.map((pt, i) => ({
+      month: pt.as_of_date,
+      installment_payments_clp: 0,
+      facturado_clp: null,
+      cupo_en_cuotas_clp: debt?.[i] ?? null,
+      balance_total_clp: pt.value,
+    }));
+  }, [isDaily, dailySeries.data]);
 
   const heroClp =
     displayUnit === "usd"
@@ -95,39 +101,27 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         </section>
       ) : null}
 
-      {isDaily ? (
-        <section className={styles.chartBlock}>
-          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.dailyOwedChartTitle")}</h2>
-          <p className={cn("muted", styles.proseSmTight)}>
-            {t("accountDetail.creditCard.dailyOwedSectionHint")}
-          </p>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-            {dailyOwedBlock ? (
-              <LineChartPanel
-                title=""
-                titleAs="h3"
-                block={dailyOwedBlock}
-                displayUnit={displayUnit}
-                xAxisGranularity="day"
-              />
-            ) : (
-              <p className="muted">{t("common.loading")}</p>
-            )}
-          </div>
-        </section>
-      ) : null}
-
-      {!isDaily && ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
+      {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
           <p className={cn("muted", styles.proseSmTight)}>
             {t(
-              isYearly
-                ? "accountDetail.creditCard.historialHintYearly"
-                : "accountDetail.creditCard.historialHint"
+              isDaily
+                ? "accountDetail.creditCard.historialHintDaily"
+                : isYearly
+                  ? "accountDetail.creditCard.historialHintYearly"
+                  : "accountDetail.creditCard.historialHint"
             )}
           </p>
-          <CcInstallmentHistoryChart rows={historialChartRows} openBillingMonth={ccLedger.open_billing_month} />
+          {isDaily && dailyHistorialRows == null ? (
+            <p className="muted">{t("common.loading")}</p>
+          ) : (
+            <CcInstallmentHistoryChart
+              rows={historialChartRows}
+              openBillingMonth={ccLedger.open_billing_month}
+              dailyRows={dailyHistorialRows}
+            />
+          )}
         </section>
       ) : null}
 

@@ -2435,6 +2435,10 @@
         "en": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
         "es": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
       },
+      "historialHintDaily": {
+        "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day, each cycle's cuotas off on their pay-by). Billed/paid bars are billing-month figures and hide in daily view.",
+        "es": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra y las cuotas de cada ciclo salen en su fecha de pago). Las barras de facturado/pagado son cifras por mes de facturación y se ocultan en la vista diaria."
+      },
       "historialCurrentMonth": {
         "en": "Current month",
         "es": "Mes actual"
@@ -2498,14 +2502,6 @@
       "financingSectionHint": {
         "en": "Same data as the Billing cycles table. Stacked bars = CLP billed + US$ billed (in CLP). Financing cost = statement interest and fees + implicit interest on installment plans with rate > 0% (0% plans contribute nothing).",
         "es": "Mismos datos que la tabla Facturaciones. Barras apiladas = facturado CLP + facturado US$ (en CLP). Coste financiero = intereses y comisiones del estado + interés implícito de cuotas con tasa > 0% (cuotas al 0% no aportan)."
-      },
-      "dailyOwedSectionHint": {
-        "en": "Daily balance owed on each date: purchases (including installment plans at their full amount) raise it on the purchase date, payments drop it. Statement closes still anchor the series to the printed balance.",
-        "es": "Saldo adeudado por día en cada fecha: las compras (incluidas las en cuotas por su monto total) lo suben el día de la compra y los pagos lo bajan. Los cierres de estado de cuenta siguen anclando la serie al saldo impreso."
-      },
-      "dailyOwedChartTitle": {
-        "en": "Balance owed (daily)",
-        "es": "Saldo adeudado (diario)"
       },
       "financingChartTitle": {
         "en": "Billed and financing cost by month",

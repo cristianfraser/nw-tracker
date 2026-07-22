@@ -691,6 +691,19 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   return { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, schedulePurchases };
 }
 
+/** Schedule purchases as daily plan-debt events: +full contract value on the purchase date. */
+export function listSchedulePurchaseEvents(accountId: number): { iso: string; clp: number }[] {
+  const { schedulePurchases } = loadLedgerPurchasesAndPayments(accountId);
+  return schedulePurchases
+    .filter(
+      (p) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date ?? "")) &&
+        Number.isFinite(p.total_amount_clp) &&
+        p.total_amount_clp > 0
+    )
+    .map((p) => ({ iso: String(p.purchase_date), clp: Math.round(p.total_amount_clp) }));
+}
+
 /** Plan cuota breakdown keyed by calendar due month (YYYY-MM). */
 export function installmentPlanBreakdownByMonth(accountId: number): Map<string, CcInstallmentMonthBreakdown[]> {
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);

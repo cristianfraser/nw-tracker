@@ -336,6 +336,8 @@ export interface DailySeriesResponse {
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPointDto[];
   accounts?: DailySeriesAccountLineDto[];
+  /** CC masters only: per-day plan debt («deuda en cuotas», CLP), index-aligned with points. */
+  cc_installment_debt?: (number | null)[];
   /** Σ of account `deposits_acum` per day (`__group_dep_total` line). */
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
