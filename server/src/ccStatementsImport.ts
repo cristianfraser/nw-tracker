@@ -96,6 +96,12 @@ export type CcStatementsMergeResult = {
   /** Adicional-card lines auto-tagged Único + no_cuenta during import. */
   additionalCardCategoriesApplied: number;
   categoriesRestored: number;
+  /**
+   * Earliest transaction date among lines this run actually INSERTED (null when everything
+   * deduped). Feeds `upsertCreditCardValuationsFromLedger`'s stale-stamp purge: evidence
+   * added for a past day invalidates the frozen stamps written after it.
+   */
+  earliestInsertedTxDate: string | null;
 };
 
 export type CcStatementsMergeOpts = {
@@ -226,6 +232,7 @@ export function importCcStatementsMerge(
   let linesSkippedInstallmentOverlap = 0;
   let linesOriginCardPatched = 0;
   let additionalCardCategoriesApplied = 0;
+  let earliestInsertedTxDate: string | null = null;
 
   for (const [key, rows] of byStmt) {
     const first = rows[0]!;
@@ -262,6 +269,15 @@ export function importCcStatementsMerge(
         return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
       })(),
     };
+    // The synthesized header PAGO is dated evidence like any line (see `normalizedPostCloseLines`),
+    // so it too can contradict a stamp written after that day.
+    if (
+      header.monto_pagado_anterior_date &&
+      (earliestInsertedTxDate == null ||
+        header.monto_pagado_anterior_date < earliestInsertedTxDate)
+    ) {
+      earliestInsertedTxDate = header.monto_pagado_anterior_date;
+    }
 
     const stmtParams = {
       account_id: accountId,
@@ -404,6 +420,14 @@ export function importCcStatementsMerge(
       ) {
         additionalCardCategoriesApplied += 1;
       }
+      // Earliest date this import actually ADDED evidence for — dedupe-skipped rows change
+      // nothing, so re-importing the same statement contradicts no stamp.
+      const insertedIso =
+        parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
+        parseDdMmYyToIso(String(row.posting_date ?? "").trim());
+      if (insertedIso && (earliestInsertedTxDate == null || insertedIso < earliestInsertedTxDate)) {
+        earliestInsertedTxDate = insertedIso;
+      }
       lineCount += 1;
       linesInserted += 1;
     }
@@ -421,6 +445,7 @@ export function importCcStatementsMerge(
     linesOriginCardPatched,
     additionalCardCategoriesApplied,
     categoriesRestored: restored.lineCategories + restored.uniquePurchases,
+    earliestInsertedTxDate,
   };
 }
 

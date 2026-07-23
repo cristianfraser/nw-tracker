@@ -70,7 +70,8 @@ export function createManualCcInstallmentPurchase(
     removeOneShotLinesForInstallmentPurchase(accountId, purchaseId);
   }
 
-  upsertCreditCardValuationsFromLedger(accountId);
+  // The contract consumes cupo on its purchase date, so stamps written after it are stale.
+  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: purchaseDate });
   recomputeCcBillingMonthBalances(accountId);
 
   return { id: purchaseId, canonical_row_id: canonical };
@@ -83,17 +84,22 @@ export function updateManualCcInstallmentPurchase(
 ): void {
   const row = db
     .prepare(
-      `SELECT id, source FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
+      `SELECT id, source, purchase_date FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
     )
-    .get(purchaseId, accountId) as { id: number; source: string } | undefined;
+    .get(purchaseId, accountId) as
+    | { id: number; source: string; purchase_date: string | null }
+    | undefined;
   if (!row) throw new Error("purchase not found");
   if (row.source !== "manual") throw new Error("only manual purchases can be edited");
 
+  // A moved contract invalidates stamps after BOTH its old and new dates.
+  let affectedFrom: string | null = row.purchase_date ?? null;
   const fields: string[] = [];
   const params: unknown[] = [];
   if (patch.purchase_date != null) {
     const iso = parsePurchaseDateIso(patch.purchase_date);
     if (!iso) throw new Error("invalid purchase_date");
+    if (affectedFrom == null || iso < affectedFrom) affectedFrom = iso;
     fields.push("purchase_date = ?");
     params.push(iso);
   }
@@ -119,7 +125,7 @@ export function updateManualCcInstallmentPurchase(
     `UPDATE cc_installment_purchases SET ${fields.join(", ")} WHERE id = ? AND account_id = ?`
   ).run(...params);
 
-  upsertCreditCardValuationsFromLedger(accountId);
+  upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: affectedFrom });
   recomputeCcBillingMonthBalances(accountId);
 }
 
@@ -197,15 +203,19 @@ export function convertStatementLineToInstallmentPurchase(
 export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId: number): void {
   const row = db
     .prepare(
-      `SELECT id, source FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
+      `SELECT id, source, purchase_date FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
     )
-    .get(purchaseId, accountId) as { id: number; source: string } | undefined;
+    .get(purchaseId, accountId) as
+    | { id: number; source: string; purchase_date: string | null }
+    | undefined;
   if (!row) throw new Error("purchase not found");
   if (row.source !== "manual") throw new Error("only manual purchases can be deleted");
   db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ? AND account_id = ?`).run(
     purchaseId,
     accountId
   );
-  upsertCreditCardValuationsFromLedger(accountId);
+  upsertCreditCardValuationsFromLedger(accountId, {
+    affectedEvidenceFromYmd: row.purchase_date ?? null,
+  });
   recomputeCcBillingMonthBalances(accountId);
 }

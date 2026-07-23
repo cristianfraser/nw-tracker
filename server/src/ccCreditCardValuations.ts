@@ -118,22 +118,77 @@ export function ccLedgerStatementClosingPointsClpForAccounts(
   return out;
 }
 
+/** Last day of its own month (the shape every statement-derived anchor is written on). */
+function isMonthEndIso(ymd: string): boolean {
+  const t = Date.parse(`${ymd}T00:00:00Z`);
+  if (!Number.isFinite(t)) return false;
+  return new Date(t + 86_400_000).toISOString().slice(8, 10) === "01";
+}
+
+/**
+ * Delete the daily "today" stamps that newly-imported evidence contradicts: rows dated from
+ * the earliest affected transaction date through yesterday.
+ *
+ * Those stamps froze the live formula on the day they were written, so a statement or manual
+ * contract imported later — carrying transaction dates BEFORE them — leaves them asserting a
+ * balance that provably predates the evidence. The owed walk would climb through the new
+ * purchases and then snap back down to the stale stamp, and the whole import would land in
+ * "today's" delta instead of on the days it happened. A card's balance follows its evidence
+ * dates; when the evidence arrived is not part of the model.
+ *
+ * Month-end rows are kept: they are statement-derived, and this same run recomputes them.
+ * Returns the purged dates for the caller's import log.
+ */
+function purgeContradictedDailyStamps(
+  accountId: number,
+  fromYmd: string,
+  todayYmd: string
+): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromYmd) || fromYmd >= todayYmd) return [];
+  const rows = db
+    .prepare(
+      `SELECT as_of_date FROM valuations
+       WHERE account_id = ? AND as_of_date >= ? AND as_of_date < ?
+       ORDER BY as_of_date`
+    )
+    .all(accountId, fromYmd, todayYmd) as { as_of_date: string }[];
+  const stale = rows.map((r) => r.as_of_date).filter((d) => !isMonthEndIso(d));
+  if (stale.length === 0) return [];
+  const del = db.prepare(`DELETE FROM valuations WHERE account_id = ? AND as_of_date = ?`);
+  for (const d of stale) del.run(accountId, d);
+  invalidateAggregationForAccountDate(accountId, stale[0]!);
+  return stale;
+}
+
 /**
  * Persists month-end `valuations` aligned with credit-card **balance total** (not cupo-only).
  * Run after ledger + billing recompute so dashboard / charts match account detail.
+ *
+ * `affectedEvidenceFromYmd`: earliest transaction date this write's evidence touched (new
+ * statement lines, installment contracts, header payments, or the dates of removed ones).
+ * Pass it from any caller that ADDED or REMOVED dated evidence so the stamps it contradicts
+ * are purged (see {@link purgeContradictedDailyStamps}); pure recomputes omit it.
  */
-export function upsertCreditCardValuationsFromLedger(accountId: number): number {
+export function upsertCreditCardValuationsFromLedger(
+  accountId: number,
+  opts?: { affectedEvidenceFromYmd?: string | null }
+): number {
   // This runs after CC writes — drop the cached detail first so the points below (and every
   // later read) reflect the new ledger/statement state instead of a pre-write cache entry.
   invalidateCcBillingDetail(accountId);
-  const pts = ccLedgerStatementClosingPointsClp(accountId);
-  if (!pts || pts.length === 0) return 0;
   const row = db
     .prepare(
       `SELECT g.slug AS bucket_slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
     )
     .get(accountId) as { bucket_slug: string } | undefined;
   if (!row || accountBucketKindSlug(row.bucket_slug) !== "credit_card") return 0;
+  // Before the points check: dropping stamps the new evidence contradicts is about removing
+  // wrong data, so it must happen even when this run has no month-end points to write.
+  if (opts?.affectedEvidenceFromYmd) {
+    purgeContradictedDailyStamps(accountId, opts.affectedEvidenceFromYmd, chileCalendarTodayYmd());
+  }
+  const pts = ccLedgerStatementClosingPointsClp(accountId);
+  if (!pts || pts.length === 0) return 0;
   let n = 0;
   for (const p of pts) {
     upsertValuationMonth.run({

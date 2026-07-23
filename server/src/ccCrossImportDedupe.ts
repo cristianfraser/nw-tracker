@@ -6,7 +6,7 @@ import {
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 
@@ -340,6 +340,22 @@ export function oneShotLineFuzzyMatchExists(
 
 const delLines = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);
 
+/**
+ * Earliest transaction date among these lines — read BEFORE deleting them. Removing evidence
+ * changes past balances just as adding it does, so the stamps written after that date are
+ * contradicted too.
+ */
+export function earliestTransactionDateForLineIds(lineIds: number[]): string | null {
+  let out: string | null = null;
+  const sel = db.prepare(`SELECT transaction_date FROM cc_statement_lines WHERE id = ?`);
+  for (const id of lineIds) {
+    const row = sel.get(id) as { transaction_date: string | null } | undefined;
+    const iso = normalizeTransactionDateIso(row?.transaction_date ?? null);
+    if (iso && (out == null || iso < out)) out = iso;
+  }
+  return out;
+}
+
 export function deleteStatementLinesByIds(lineIds: number[]): number {
   let n = 0;
   for (const id of lineIds) {
@@ -372,9 +388,10 @@ export function removeOneShotLinesSupersededByInstallmentPurchases(
     }
   }
   const ids = [...superseded.keys()];
+  const removedFrom = earliestTransactionDateForLineIds(ids);
   const removed_count = deleteStatementLinesByIds(ids);
   if (opts?.recompute !== false && removed_count > 0) {
-    upsertCreditCardValuationsFromLedger(accountId);
+    upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: removedFrom });
     recomputeCcBillingMonthBalances(accountId);
   }
   return { removed_line_ids: ids, removed_count };
@@ -392,9 +409,10 @@ export function removeOneShotLinesForInstallmentPurchase(
     .get(purchaseId, accountId) as CcInstallmentPurchaseMatch | undefined;
   if (!purchase) return { removed_line_ids: [], removed_count: 0 };
   const ids = findOneShotLinesMatchingPurchase(accountId, purchase);
+  const removedFrom = earliestTransactionDateForLineIds(ids);
   const removed_count = deleteStatementLinesByIds(ids);
   if (removed_count > 0) {
-    upsertCreditCardValuationsFromLedger(accountId);
+    upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: removedFrom });
     recomputeCcBillingMonthBalances(accountId);
   }
   return { removed_line_ids: ids, removed_count };
