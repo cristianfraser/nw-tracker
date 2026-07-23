@@ -85,6 +85,7 @@ import {
 } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
+  chartHostSlugForValuationGroup,
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
   portfolioGroupApiForValuation,
@@ -1884,7 +1885,6 @@ export type { GroupTabAccountRow };
 import {
   CASH_SAVINGS_BUCKET,
   CHECKING_ACCOUNTS_BUCKET,
-  isCashEqsNwValuationGroupSlug,
   isCashSavingsValuationGroupSlug,
   leafAssetGroupIdsUnder,
   listAccountsForBucketIds,
@@ -2236,11 +2236,9 @@ function getGroupValuationTimeseriesInnerUncached(
       consolidated
     ) as unknown as GroupTabValuationBlock;
   }
-  if (groupSlug === "liabilities" && !tabSubgroup && accounts_in_group.points.length > 0) {
-    accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "liabilities", unit);
-  }
-  if (isCashEqsNwValuationGroupSlug(groupSlug) && accounts_in_group.points.length > 0) {
-    accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, "cash_eqs", unit);
+  const chartHostSlug = chartHostSlugForValuationGroup(groupSlug, tabSubgroup);
+  if (chartHostSlug && accounts_in_group.points.length > 0) {
+    accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, chartHostSlug, unit);
   }
   if (groupSlug === "real_estate") {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");

@@ -8,10 +8,15 @@ import type { DailySeriesResponse, TimeseriesAccountLine, TimeseriesBlock } from
  * ("aportes acum.") map from the payload's cumulative series when present — the Aportes
  * acumulados toggle behaves exactly as in the monthly view — and are stripped only when the
  * payload lacks them.
+ *
+ * Chart-host reference overlays («Disponible» on Pasivos, «Tarjeta de crédito» on Efectivo)
+ * come as values keyed by dataKey and pair with the monthly block's `lines` metadata, the
+ * same borrow-the-monthly-metadata rule the account lines follow. They live in `lines` only —
+ * `buildRawLineSeries` also walks `accounts`, so duplicating there would draw them twice.
  */
 export function buildDailyValuationBlock(
   daily: DailySeriesResponse | null | undefined,
-  monthlyBlock: Pick<TimeseriesBlock, "accounts"> | null | undefined
+  monthlyBlock: Pick<TimeseriesBlock, "accounts" | "lines"> | null | undefined
 ): TimeseriesBlock | null {
   if (!daily?.points.length) return null;
   const pointCount = daily.points.length;
@@ -38,6 +43,14 @@ export function buildDailyValuationBlock(
     };
   });
 
+  // Overlay values matched to the monthly line defs; an unknown dataKey is skipped rather
+  // than drawn with a synthesized label.
+  const monthlyLineByKey = new Map((monthlyBlock?.lines ?? []).map((l) => [l.dataKey, l] as const));
+  const refLines = (daily.reference_lines ?? []).flatMap((r) => {
+    const meta = monthlyLineByKey.get(r.dataKey);
+    return meta && r.values.length === pointCount ? [{ meta, values: r.values }] : [];
+  });
+
   const totalMeta = monthlyAccounts.find((a) => a.dataKey === GROUP_TAB_VAL_TOTAL);
   const totalDepsAcum =
     totalMeta?.depositDataKey && daily.deposits_acum_total?.length === pointCount
@@ -59,8 +72,11 @@ export function buildDailyValuationBlock(
         row[totalMeta.depositDataKey] = totalDepsAcum[i] ?? null;
       }
     }
+    for (const ref of refLines) row[ref.meta.dataKey] = ref.values[i] ?? null;
     return row;
   });
 
-  return { accounts, points };
+  return refLines.length
+    ? { accounts, lines: refLines.map((r) => r.meta), points }
+    : { accounts, points };
 }

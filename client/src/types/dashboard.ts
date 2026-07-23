@@ -347,4 +347,10 @@ export interface DailySeriesResponse {
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
   grouped_accounts?: DailySeriesAccountLineDto[];
+  /**
+   * Chart-host overlays (Pasivos «Disponible»/«Disponible total», Efectivo «Tarjeta de
+   * crédito»), index-aligned with points. Values only — name/color/reference styling come
+   * from the monthly block's matching `lines` entry.
+   */
+  reference_lines?: { dataKey: string; values: (number | null)[] }[];
 }
