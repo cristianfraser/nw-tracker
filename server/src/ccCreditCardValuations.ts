@@ -3,6 +3,7 @@ import {
   invalidateCcBillingDetail,
 } from "./aggregationCache.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -198,17 +199,25 @@ export function upsertCreditCardValuationsFromLedger(
     });
     n += 1;
   }
+  // Today's stamp is the WALKED balance (anchor + evidence dated after it), the same frame the
+  // series uses for every other day — see `ccOwedWalk.ts`. Stamping the live billing formula
+  // here instead made tomorrow's anchor a different frame from the walk that leads into it, so
+  // the gap surfaced as a phantom move on a day with no transactions. Falls back to the live
+  // number only when there is no anchor to walk from.
   const today = chileCalendarTodayYmd();
+  const walkedToday = ccOwedWalkClpAtYmd(accountId, today)?.value_clp;
   const liveBalance = latestCreditCardBillingBalanceTotalClp(accountId);
-  const liveToday =
-    liveBalance != null && Number.isFinite(liveBalance)
-      ? liveBalance
-      : liveCreditCardOutstandingClp(accountId);
-  if (liveToday != null && Number.isFinite(liveToday)) {
+  const valueToday =
+    walkedToday != null && Number.isFinite(walkedToday)
+      ? walkedToday
+      : liveBalance != null && Number.isFinite(liveBalance)
+        ? liveBalance
+        : liveCreditCardOutstandingClp(accountId);
+  if (valueToday != null && Number.isFinite(valueToday)) {
     upsertValuationMonth.run({
       account_id: accountId,
       as_of_date: today,
-      value_clp: liveToday,
+      value_clp: valueToday,
     });
     n += 1;
     invalidateAggregationForAccountDate(accountId, today);
