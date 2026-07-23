@@ -229,10 +229,10 @@ function linkedCreditCardBalanceTotalClpAsOf(
 ): number | null {
   const masterId = master.account_id;
   if (asOfYmd >= todayYmd) {
-    if (ccInstallmentLedgerRowCount(masterId) > 0) {
-      const billing = creditCardBillingBalanceTotalClpAsOf(masterId, asOfYmd);
-      if (billing != null && Number.isFinite(billing.value_clp)) return billing.value_clp;
-    }
+    // Same funnel as the CC card itself (`latestCreditCardDisplayedBalance`): today is the
+    // evidence walk, with the live billing formula only as its no-anchor fallback. Netting
+    // the live number here while the card walked put the frame gap on the Efectivo card as a
+    // phantom day move (−21.294 on 2026-07-23, a day with no cash or card activity).
     return (
       latestLiabilityValuationRowForSnapshot(masterId, "credit_card", asOfYmd)?.value_clp ?? null
     );
