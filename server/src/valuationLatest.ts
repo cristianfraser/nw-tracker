@@ -3,6 +3,7 @@ import { resolveOperationalAccountId } from "./accountSource.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
+import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   deptoMortgageCloseClpBySnapshotDates,
@@ -83,6 +84,14 @@ export function latestCreditCardDisplayedBalance(
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const today = chileCalendarTodayYmd();
   if (asOfYmd >= today && ccInstallmentLedgerRowCount(accountId) > 0) {
+    // Today (and beyond) is walked from the last anchor, the same frame every past day uses —
+    // `as_of_date` is the walked-through date so callers don't re-apply the window on top.
+    // The live billing formula is a DIFFERENT framing of the same debt (facturado + cupo −
+    // cuota a pagar next mes); valuing today with it while history was walked dumped the gap
+    // between the two into today's delta (·1015 read +15.486 — one TGR cuota — on a day with
+    // no purchase). Billing surfaces still show the live number; this is the balance series.
+    const walked = ccOwedWalkClpAtYmd(accountId, asOfYmd);
+    if (walked) return { value_clp: walked.value_clp, as_of_date: asOfYmd };
     const live = creditCardBillingBalanceTotalClpAsOf(accountId, asOfYmd);
     if (live && Number.isFinite(live.value_clp)) {
       return {
