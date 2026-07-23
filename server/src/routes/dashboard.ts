@@ -23,6 +23,8 @@ import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
 import { ccInstallmentDebtDailyClp, ccInstallmentPlanTailClp } from "../ccInstallmentDebtDaily.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
+import { dailyReferenceLinesForChartHost } from "../dailyReferenceLines.js";
+import { chartHostSlugForValuationGroup } from "../portfolioGroupReference.js";
 import {
   DAILY_SERIES_MAX_DAYS,
   getBucketDailySeriesCached,
@@ -116,14 +118,29 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
           ? buildNavChartBucketPlan(navNode, true)
           : null
       : null;
+    // Chart-host overlays («Disponible» on Pasivos, «Tarjeta de crédito» on Efectivo): the
+    // monthly block carries them in `lines`, so the daily view needs the same values on the
+    // same grid. Values only — the client pairs them with that block's line metadata.
+    const chartHost = chartHostSlugForValuationGroup(portfolioGroup);
+    const referenceLines = chartHost
+      ? dailyReferenceLinesForChartHost(
+          chartHost,
+          unit,
+          days,
+          series.points.map((p) => p.as_of_date)
+        )
+      : null;
+    const withRefs = referenceLines?.length
+      ? { ...series, reference_lines: referenceLines }
+      : series;
     if (plan) {
       const grouped = groupDailySeriesAccounts(series, plan);
       if (grouped?.length) {
-        res.json({ ...series, grouped_accounts: grouped });
+        res.json({ ...withRefs, grouped_accounts: grouped });
         return;
       }
     }
-    res.json(series);
+    res.json(withRefs);
     return;
   }
   const accountId = Number(accountIdRaw);
