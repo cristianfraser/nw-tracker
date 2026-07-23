@@ -294,7 +294,11 @@ describe("breakdownForNavChild real_estate", () => {
 });
 
 describe("breakdownForNavChild cash_savings", () => {
-  it("builds savings account lines and linked tarjeta bottom row", () => {
+  /**
+   * The linked tarjeta row belongs to the home cash card only: the savings card's own total is
+   * not CC-netted, so a card balance pinned under it explained nothing.
+   */
+  it("carries no linked tarjeta row, even when the layout declares one", () => {
     const dash = {
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 500_000 },
       dashboard_layout: [
@@ -329,8 +333,7 @@ describe("breakdownForNavChild cash_savings", () => {
     );
     expect(br?.lines).toHaveLength(1);
     expect(br?.lines?.[0]?.clp).toBe(2_000_000);
-    expect(br?.bottomLines?.[0]?.clp).toBe(500_000);
-    expect(br?.pinBottom).toBe(true);
+    expect(br?.bottomLines).toBeUndefined();
   });
 
   it("builds savings breakdown (not full cash hub) for savings nav node", () => {

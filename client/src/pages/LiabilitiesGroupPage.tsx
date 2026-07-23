@@ -15,7 +15,11 @@ import {
 } from "../groupPageChartViews";
 import { resolveLiabilitiesPageKind } from "../liabilitiesPageKind";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
-import { findBestNavNodeForPathname, findNavNodeBySlug } from "../portfolioNavFromApi";
+import {
+  findBestNavNodeForPathname,
+  findNavNodeBySlug,
+  resolveLinkedCardNavChildren,
+} from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
@@ -74,6 +78,11 @@ export function LiabilitiesGroupPage() {
     if (issuerNode?.asset_group_slug === "credit_cards") return issuerNode;
     return best;
   }, [sidebarNav, pathname, issuerParam]);
+
+  const linkedCardNavChildren = useMemo(
+    () => resolveLinkedCardNavChildren(navMatchNode, sidebarNav?.main),
+    [navMatchNode, sidebarNav?.main]
+  );
 
   const pageKind = useMemo(
     () => (navMatchNode ? resolveLiabilitiesPageKind(navMatchNode) : null),
@@ -454,6 +463,7 @@ export function LiabilitiesGroupPage() {
               metricsPeriod,
               showUsd,
               animated: true,
+              linkedCardNavChildren,
             }
           : null
       }

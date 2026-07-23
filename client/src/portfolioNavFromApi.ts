@@ -156,6 +156,8 @@ export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
   if (node.asset_group_slug === "credit_cards" && (node.children?.length ?? 0) > 0) return true;
   /** e.g. brokerage_mutual_funds, retirement_apv — `api_group` without top-level bucket slug. */
   if (node.portfolio_group_id != null && (node.api_group || node.api_subgroup)) return true;
+  /** Leaf asset buckets carrying a behavior id (cash_savings, checking_accounts). */
+  if (node.portfolio_group_id != null && node.kind_slug) return true;
   return false;
 }
 
@@ -182,4 +184,24 @@ export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDt
 /** Direct account leaves for strip row 3 (compact cards). */
 export function portfolioStripAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   return (root.children ?? []).filter(isPortfolioStripAccountNode);
+}
+
+/**
+ * Nodes for `node.linked_card_slugs` — groups the server declares as belonging on this page
+ * even though they live elsewhere in the tree (Efectivo ← Pasivos > tarjeta de crédito, whose
+ * balance nets into the Efectivo total). Looked up across every root, since the host and the
+ * linked group sit in different trees; an unresolvable slug is skipped rather than synthesized.
+ */
+export function resolveLinkedCardNavChildren(
+  node: NavTreeNodeDto | null | undefined,
+  roots: NavTreeNodeDto[] | null | undefined
+): NavTreeNodeDto[] {
+  const slugs = node?.linked_card_slugs ?? [];
+  if (!slugs.length || !roots?.length) return [];
+  const out: NavTreeNodeDto[] = [];
+  for (const slug of slugs) {
+    const hit = findNavNodeBySlug(roots, slug);
+    if (hit) out.push(hit);
+  }
+  return out;
 }

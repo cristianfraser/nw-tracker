@@ -46,6 +46,8 @@ export type GroupInfoPortfolioStrip = {
   /** While bundle loads: static placeholder values, then one spin to final. */
   placeholderPhase?: boolean;
   compactTitleTo?: string;
+  /** Nodes for `navNode.linked_card_slugs`, resolved against the sidebar nav by the page. */
+  linkedCardNavChildren?: NavTreeNodeDto[];
 };
 
 export type GroupInfoBaseProps = {
@@ -187,6 +189,7 @@ export function GroupInfoBase({
             metricsPeriod={portfolio.metricsPeriod}
             animated={portfolio.animated}
             placeholderPhase={portfolio.placeholderPhase ?? loading}
+            linkedCardNavChildren={portfolio.linkedCardNavChildren}
           />
         ) : null}
         {notice}

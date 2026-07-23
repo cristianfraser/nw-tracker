@@ -45,6 +45,48 @@ const referenceGroupsStmt = db.prepare(
    ORDER BY sort_order, id`
 );
 
+const singleSourceReferencesStmt = db.prepare(
+  `SELECT r.id AS ref_id, r.chart_host_slug AS host_slug, g.slug AS source_slug,
+          i.link_weight AS weight
+   FROM portfolio_groups r
+   JOIN portfolio_group_items i ON i.group_id = r.id AND i.item_kind = 'linked_group'
+   JOIN portfolio_groups g ON g.id = i.child_group_id
+   WHERE r.group_kind = 'reference' AND r.chart_host_slug IS NOT NULL
+   ORDER BY r.sort_order, r.id, i.sort_order, i.id`
+);
+
+/**
+ * Chart-host slug → the groups its reference overlays are a plain alias of (single link,
+ * weight 1), so a host page can render those groups as sibling cards beside its own children:
+ * Efectivo hosts the Pasivos credit-card group, whose balance nets into the Efectivo total.
+ * Weighted or multi-source references (Pasivos «Disponible») are sums with no card of their
+ * own and are excluded — nothing here knows a slug, the DB registration decides.
+ */
+export function listSingleSourceReferenceSlugsByChartHost(): Map<string, string[]> {
+  const rows = singleSourceReferencesStmt.all() as {
+    ref_id: number;
+    host_slug: string;
+    source_slug: string;
+    weight: number;
+  }[];
+  const linksByRef = new Map<number, { host: string; sources: { slug: string; weight: number }[] }>();
+  for (const r of rows) {
+    const entry = linksByRef.get(r.ref_id) ?? { host: r.host_slug, sources: [] };
+    entry.sources.push({ slug: r.source_slug, weight: r.weight });
+    linksByRef.set(r.ref_id, entry);
+  }
+  const out = new Map<string, string[]>();
+  for (const { host, sources } of linksByRef.values()) {
+    if (sources.length !== 1) continue;
+    const only = sources[0]!;
+    if (only.weight !== 1) continue;
+    const arr = out.get(host) ?? [];
+    arr.push(only.slug);
+    out.set(host, arr);
+  }
+  return out;
+}
+
 export function listReferenceGroupsForChartHost(chartHostSlug: string): ReferenceGroupDef[] {
   const rows = referenceGroupsStmt.all(chartHostSlug) as {
     id: number;

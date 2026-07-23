@@ -492,6 +492,7 @@ function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
   if (node.asset_group_slug === "liabilities") return true;
   if (node.asset_group_slug === "credit_cards" && (node.children?.length ?? 0) > 0) return true;
   if (node.portfolio_group_id != null && (node.api_group || node.api_subgroup)) return true;
+  if (node.portfolio_group_id != null && node.kind_slug) return true;
   return false;
 }
 
