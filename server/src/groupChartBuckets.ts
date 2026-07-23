@@ -61,6 +61,7 @@ function isChartBucketCardNode(n: NavTreeNodeDto): boolean {
   if (n.asset_group_slug === "liabilities") return true;
   if (n.asset_group_slug === "credit_cards" && (n.children?.length ?? 0) > 0) return true;
   if (n.portfolio_group_id != null && (n.api_group || n.api_subgroup)) return true;
+  if (n.portfolio_group_id != null && n.kind_slug) return true;
   return false;
 }
 

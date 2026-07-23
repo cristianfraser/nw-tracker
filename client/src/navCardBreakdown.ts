@@ -55,7 +55,7 @@ function sortByClpDesc<T extends { clp: number }>(items: T[]): T[] {
 
 function accountLines(
   rows: DashboardAccountRow[],
-  depth: 1 | 2
+  depth: 0 | 1 | 2
 ): CardBreakdownLine[] {
   return sortByClpDesc(
     rows.map((r) => ({
@@ -137,7 +137,17 @@ export function buildNavCardBreakdown(
   const rowsById = dashboardAccountRowsById(scopedRows);
 
   const childNodes = stripChartBucketNavNodes(navNode);
-  if (childNodes.length === 0) return null;
+  /**
+   * Too few children to bucket (a single-account leaf such as Ahorros y reservas): list the
+   * node's own accounts flat, the way a bucket's sole account already renders through the
+   * nesting collapse. Rows are kept to the node's own leaves so a synthetic bucket-scoped row
+   * (the cash CC shortfall) never reaches a card.
+   */
+  if (childNodes.length === 0) {
+    const ownIds = navAccountIdSet(navNode);
+    const ownRows = active.filter((r) => ownIds.has(r.account_id));
+    return ownRows.length ? accountLines(ownRows, 0) : null;
+  }
 
   const blocks: { clp: number; lines: CardBreakdownLine[] }[] = [];
   for (const child of childNodes) {

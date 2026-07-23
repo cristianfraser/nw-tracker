@@ -586,12 +586,6 @@ export function buildCashEqsCardBreakdown(accounts: DashboardAccountRow[]): Card
   return sortGroupsDesc(cash.map((r) => mapCashBreakdownLine(r, false)));
 }
 
-/** Ahorros y reservas: account lines under the savings nav subtree (linked tarjeta is `bottomLines`). */
-export function buildCashSavingsCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
-  const savings = valueRows(accounts.filter((a) => !isCashSavingsCcShortfallRow(a)));
-  return sortGroupsDesc(savings.map((r) => mapCashBreakdownLine(r, false)));
-}
-
 const LIABILITY_KEYS = {
   mortgage: "liabilities.mortgage",
   credit_card: "liabilities.creditCard",

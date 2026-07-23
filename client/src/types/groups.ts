@@ -227,6 +227,13 @@ export interface NavTreeNodeDto {
   group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
   /** Long zero tail: listed for chart history; omitted from group tables and strip cards. */
   chart_inactive?: boolean;
+  /**
+   * Groups from elsewhere in the tree that belong on this node's page as sibling cards
+   * (Efectivo hosts the Pasivos credit-card group, whose balance nets into its total).
+   * Server-declared from the single-source chart reference overlays; resolve against the
+   * sidebar nav — an unknown slug is skipped, never synthesized.
+   */
+  linked_card_slugs?: string[];
   children: NavTreeNodeDto[];
 }
 
