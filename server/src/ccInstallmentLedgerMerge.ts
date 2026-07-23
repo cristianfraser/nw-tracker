@@ -80,6 +80,8 @@ function stmtSortKey(statementDate: string): number {
 
 export type CcInstallmentLedgerMergeResult = {
   purchaseUpserts: number;
+  /** Earliest `purchase_date` among contracts this run INSERTED (null when all deduped). */
+  earliestNewPurchaseDate: string | null;
   paymentUpserts: number;
   gapFilled: number;
   valuationMonthsSynced: number;
@@ -158,6 +160,7 @@ export function mergeInstallmentLedgerFromParsedRows(
   );
 
   let purchaseUpserts = 0;
+  let earliestNewPurchaseDate: string | null = null;
   let paymentUpserts = 0;
 
   const run = db.transaction(() => {
@@ -239,6 +242,14 @@ export function mergeInstallmentLedgerFromParsedRows(
           matched_baseline_purchase_id: matched_baseline,
         });
         purchaseUpserts++;
+        // A contract added now consumes cupo on its OWN purchase date (see the daily walk),
+        // so it invalidates any frozen stamp written after that date.
+        if (
+          purchaseDate &&
+          (earliestNewPurchaseDate == null || purchaseDate < earliestNewPurchaseDate)
+        ) {
+          earliestNewPurchaseDate = purchaseDate;
+        }
         pid = (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
         purchaseIdByFingerprint.set(fingerprint, pid);
       } else {
@@ -319,12 +330,15 @@ export function mergeInstallmentLedgerFromParsedRows(
 
   const gapFilled = backfillMissingInstallmentPaymentsForAccount(accountId).inserted;
   removeOneShotLinesSupersededByInstallmentPurchases(accountId, { recompute: false });
-  const valuationMonthsSynced = upsertCreditCardValuationsFromLedger(accountId);
+  const valuationMonthsSynced = upsertCreditCardValuationsFromLedger(accountId, {
+    affectedEvidenceFromYmd: earliestNewPurchaseDate,
+  });
   const billingSnapshots = recomputeCcBillingMonthBalances(accountId);
 
   return {
     purchaseUpserts,
     paymentUpserts,
+    earliestNewPurchaseDate,
     gapFilled,
     valuationMonthsSynced,
     billingSnapshots,
@@ -341,6 +355,16 @@ export type CcAccountImportMergeResult = {
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
+/** Earliest of the given ISO dates (nulls ignored); null when none is set. */
+function earliestIso(...dates: (string | null | undefined)[]): string | null {
+  let out: string | null = null;
+  for (const d of dates) {
+    if (!d) continue;
+    if (out == null || d < out) out = d;
+  }
+  return out;
+}
+
 export function mergeCcAccountFromParsedRows(
   accountId: number,
   records: CcStatementCsvRecord[],
@@ -397,7 +421,14 @@ export function mergeCcAccountFromParsedRows(
   // so its points can bake a pre-repair balance — e.g. a post-cierre PAGO pasted for the open
   // month must land in the closed month's month-end point (owed-on-date), not wait for the
   // next unrelated CC write.
-  upsertCreditCardValuationsFromLedger(accountId);
+  // Whatever this import added for past days also invalidates the frozen daily stamps written
+  // after it — a paste of last week's purchases must show up on those days, not as today's move.
+  upsertCreditCardValuationsFromLedger(accountId, {
+    affectedEvidenceFromYmd: earliestIso(
+      result.statements.earliestInsertedTxDate,
+      result.ledger.earliestNewPurchaseDate
+    ),
+  });
 
   return result;
 }
