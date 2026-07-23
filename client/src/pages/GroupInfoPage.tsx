@@ -14,7 +14,11 @@ import {
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
 import type { AssetGroupSlug } from "../types";
-import { findBestNavNodeForPathname, resolveGroupPageApiParams } from "../portfolioNavFromApi";
+import {
+  findBestNavNodeForPathname,
+  resolveGroupPageApiParams,
+  resolveLinkedCardNavChildren,
+} from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
@@ -64,6 +68,11 @@ export function GroupInfoPage() {
 
   const apiParams = navMatchNode ? resolveGroupPageApiParams(navMatchNode) : null;
   const portfolioGroup = apiParams?.portfolio_group ?? "";
+
+  const linkedCardNavChildren = useMemo(
+    () => resolveLinkedCardNavChildren(navMatchNode, sidebarNav?.main),
+    [navMatchNode, sidebarNav?.main]
+  );
 
   const queryClient = useQueryClient();
   const shapeEnabled = Boolean(navMatchNode && portfolioGroup);
@@ -313,6 +322,7 @@ export function GroupInfoPage() {
             metricsPeriod,
             showUsd,
             animated: true,
+            linkedCardNavChildren,
           }
           : null
       }

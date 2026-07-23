@@ -2,7 +2,6 @@ import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountG
 import {
   accountCardTitleBalanceDelta,
   buildCashEqsCardBreakdown,
-  buildCashSavingsCardBreakdown,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
   dashboardBucketMainValue,
@@ -22,6 +21,7 @@ import { collectNavBucketCoverageKeys } from "./navChartBuckets";
 import {
   collectNavAccountDataKeys,
   dashboardBucketGroupsUnderNavHub,
+  isLiabilityGroupNavNode,
   isNavHubNode,
   portfolioStripGroupChildren,
   resolveDashboardBucketFromNavNode,
@@ -514,21 +514,7 @@ function breakdownByNavSlug(
   _rows: DashboardAccountRow[],
   dash: BreakdownDash
 ): NavChildBreakdownResult | null {
-  if (slug === "liabilities_credit_card") {
-    const lb = dash.liabilities_breakdown;
-    if (!lb || lb.credit_card_clp <= 0) return null;
-    return {
-      lines: [
-        {
-          label: i18n.t("liabilities.creditCard"),
-          clp: lb.credit_card_clp,
-          usd: lb.credit_card_usd ?? null,
-          depth: 0,
-          to: liabilitiesSubgroupPath("credit_card"),
-        },
-      ],
-    };
-  }
+  /** No `liabilities_credit_card` case: its issuer children carry the breakdown (Santander, BCI). */
   if (slug === "liabilities_mortgage") {
     const lb = dash.liabilities_breakdown;
     if (!lb || lb.mortgage_clp <= 0) return null;
@@ -563,17 +549,6 @@ export function breakdownForNavChild(
   const bySlug = breakdownByNavSlug(navChild.slug, rows, dash);
   if (bySlug) return bySlug;
 
-  if (isCashSavingsNavNode(navChild)) {
-    const cardRows = rowsForCashSavingsCard(rows, navChild);
-    const lines = buildCashSavingsCardBreakdown(cardRows);
-    const bottomLines = cashSavingsLinkedBottomLines(dash);
-    if (!lines.length && !bottomLines?.length) return null;
-    return {
-      lines,
-      ...(bottomLines?.length ? { bottomLines, pinBottom: true } : {}),
-    };
-  }
-
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (bucket === "cash_eqs" && navChild.slug === "cash_eqs") {
     const byCash = breakdownByAssetGroup("cash_eqs", rows, dash);
@@ -586,12 +561,17 @@ export function breakdownForNavChild(
   }
 
   const asset = navChild.asset_group_slug;
-  if (asset === "real_estate" || asset === "liabilities") {
+  if (asset === "real_estate") {
     const byAsset = breakdownByAssetGroup(asset, rows, dash);
     if (byAsset) return byAsset;
   }
-  if (navChild.slug.startsWith("liabilities_")) {
-    return breakdownByAssetGroup("liabilities", rows, dash);
+  /**
+   * Only the Pasivos root splits into the two liability kinds; its subgroup cards share that
+   * `asset_group_slug` and must describe themselves (issuer children, own accounts) instead.
+   */
+  if (isLiabilityGroupNavNode(navChild)) {
+    const byAsset = breakdownByAssetGroup("liabilities", rows, dash);
+    if (byAsset) return byAsset;
   }
 
   const navLines = buildNavCardBreakdown(navChild, rows);

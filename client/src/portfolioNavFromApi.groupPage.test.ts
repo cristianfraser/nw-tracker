@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { NavTreeNodeDto } from "./types";
 import {
   findBestNavNodeForPathname,
+  isPortfolioStripCardNode,
   resolveGroupPageApiParams,
+  resolveLinkedCardNavChildren,
 } from "./portfolioNavFromApi";
 
 function navNode(partial: Partial<NavTreeNodeDto> & Pick<NavTreeNodeDto, "slug">): NavTreeNodeDto {
@@ -28,6 +30,7 @@ function navNode(partial: Partial<NavTreeNodeDto> & Pick<NavTreeNodeDto, "slug">
     kind_slug: partial.kind_slug ?? null,
     dashboard_bucket_slug: partial.dashboard_bucket_slug ?? null,
     group_kind: partial.group_kind ?? "bucket",
+    ...(partial.linked_card_slugs ? { linked_card_slugs: partial.linked_card_slugs } : {}),
     children: partial.children ?? [],
   };
 }
@@ -58,6 +61,59 @@ describe("resolveGroupPageApiParams", () => {
       asset_group_slug: "cash_eqs__cash_savings",
     });
     expect(resolveGroupPageApiParams(node)).toEqual({ portfolio_group: "cash_savings" });
+  });
+});
+
+describe("isPortfolioStripCardNode", () => {
+  it("accepts leaf asset buckets identified by kind_slug (cash subgroups)", () => {
+    for (const slug of ["cash_savings", "checking_accounts"]) {
+      expect(
+        isPortfolioStripCardNode(
+          navNode({
+            slug,
+            route_path: `/cash_eqs/${slug}`,
+            asset_group_slug: `cash_eqs__${slug}`,
+            kind_slug: slug,
+          })
+        )
+      ).toBe(true);
+    }
+  });
+
+  it("still rejects routable non-asset nodes (no kind_slug)", () => {
+    expect(isPortfolioStripCardNode(navNode({ slug: "flows_income", route_path: "/flows/income" }))).toBe(
+      false
+    );
+  });
+});
+
+describe("resolveLinkedCardNavChildren", () => {
+  const creditCard = navNode({
+    slug: "liabilities_credit_card",
+    route_path: "/liabilities/credit-card",
+    asset_group_slug: "liabilities",
+  });
+  const roots = [
+    navNode({ slug: "cash_eqs", route_path: "/cash_eqs", group_kind: "nav_bucket" }),
+    navNode({ slug: "liabilities", route_path: "/liabilities", children: [creditCard] }),
+  ];
+
+  it("resolves a host's declared slug from another tree", () => {
+    const host = navNode({
+      slug: "cash_eqs",
+      route_path: "/cash_eqs",
+      group_kind: "nav_bucket",
+      linked_card_slugs: ["liabilities_credit_card"],
+    });
+    expect(resolveLinkedCardNavChildren(host, roots).map((n) => n.slug)).toEqual([
+      "liabilities_credit_card",
+    ]);
+  });
+
+  it("skips unknown slugs and hosts that declare none", () => {
+    const unknown = navNode({ slug: "cash_eqs", linked_card_slugs: ["nope"] });
+    expect(resolveLinkedCardNavChildren(unknown, roots)).toEqual([]);
+    expect(resolveLinkedCardNavChildren(navNode({ slug: "cash_eqs" }), roots)).toEqual([]);
   });
 });
 

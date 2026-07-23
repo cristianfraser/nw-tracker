@@ -1,12 +1,10 @@
 import { useMemo } from "react";
-import { DashboardCardBreakdown } from "./DashboardCardBreakdown";
 import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { CompactEntityCard } from "./CompactEntityCard";
 import { PortfolioEntityCardsStrip } from "./PortfolioEntityCardsStrip";
 import { PortfolioNavAccountCompactCards } from "./PortfolioNavAccountCompactCards";
 import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
-  breakdownForNavChild,
   dashboardRowsForNavSubtree,
   inactiveAccountNavLeavesWithPeriodActivity,
   parentTitleBalanceDelta,
@@ -37,6 +35,8 @@ export type PortfolioNavEntityCardsStripProps = {
   metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
   placeholderPhase?: boolean;
+  /** Nodes for `parentNavNode.linked_card_slugs`, resolved by the page against the sidebar nav. */
+  linkedCardNavChildren?: NavTreeNodeDto[];
 };
 
 /**
@@ -51,6 +51,7 @@ export function PortfolioNavEntityCardsStrip({
   metricsPeriod,
   animated = true,
   placeholderPhase = false,
+  linkedCardNavChildren = [],
 }: PortfolioNavEntityCardsStripProps) {
   const parentTitleMode = portfolioNavParentTitleModeForNavNode(parentNavNode);
   const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
@@ -93,35 +94,16 @@ export function PortfolioNavEntityCardsStrip({
     [filteredAccountChildren, dash, parentNavNode, stripGroupChildren, metricsPeriod]
   );
 
-  const showDetailSlots = filteredGroupChildren.length > 0;
+  /** Groups hosted from elsewhere in the tree (Efectivo ← Pasivos > tarjeta de crédito). */
+  const detailChildren = useMemo(
+    () => [...filteredGroupChildren, ...linkedCardNavChildren],
+    [filteredGroupChildren, linkedCardNavChildren]
+  );
+
+  const showDetailSlots = detailChildren.length > 0;
   const showAccountCompactSlots = accountCardChildren.length > 0;
 
-  const isCashEqsHub = parentNavNode.slug === "cash_eqs";
-  const isCashSavings = parentNavNode.slug === "cash_savings";
-  const isCashParent = isCashEqsHub || isCashSavings;
-  const cashBreakdown = useMemo(() => {
-    if (isCashSavings) {
-      const rows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
-      return breakdownForNavChild(parentNavNode, rows, dash);
-    }
-    if (isCashEqsHub) {
-      const rows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
-      return breakdownForNavChild(parentNavNode, rows, dash);
-    }
-    return null;
-  }, [isCashSavings, isCashEqsHub, dash, parentNavNode]);
-
-  const compactBreakdown = cashBreakdown ? (
-    <DashboardCardBreakdown
-      lines={cashBreakdown.lines}
-      bottomLines={cashBreakdown.bottomLines}
-      pinBottomToCard={cashBreakdown.pinBottom}
-      showUsd={showUsd}
-      cardSlug={compactCardSlug}
-      animated={animated}
-      placeholderPhase={placeholderPhase}
-    />
-  ) : undefined;
+  const isCashParent = parentNavNode.slug === "cash_eqs" || parentNavNode.slug === "cash_savings";
 
   const compactTitleToResolved =
     compactTitleTo ?? (parentNavNode.route_path?.trim() ? parentNavNode.route_path.trim() : undefined);
@@ -143,7 +125,6 @@ export function PortfolioNavEntityCardsStrip({
             placeholderPhase={placeholderPhase}
             stripInner
             valueVariant="main"
-            breakdown={compactBreakdown}
             metrics={
               <DashboardCardGroupMetrics
                 metrics={parentMetrics}
@@ -160,7 +141,7 @@ export function PortfolioNavEntityCardsStrip({
           showDetailSlots ? (
             <PortfolioNavChildDetailCards
               dash={dash}
-              navChildren={filteredGroupChildren}
+              navChildren={detailChildren}
               showUsd={showUsd}
               metricsPeriod={metricsPeriod}
               animated={animated}

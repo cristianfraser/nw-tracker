@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCashEqsCardBreakdown,
-  buildCashSavingsCardBreakdown,
   CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
 } from "./dashboardCardBreakdown";
+import { buildNavCardBreakdown } from "./navCardBreakdown";
+import { navNodeFixture } from "./test/navNodeFixture";
 import type { DashboardAccountRow } from "./types";
 
 function cashRow(
@@ -29,6 +30,7 @@ describe("cash card breakdown CC link", () => {
   });
   const reserva = cashRow({
     account_id: 1,
+    name: "Reserva",
     category_slug: "fondo_reserva",
     bucket_slug: "cash_eqs__fondo_reserva",
     current_value_clp: 2_000_000,
@@ -46,11 +48,33 @@ describe("cash card breakdown CC link", () => {
     expect(lines.every((l) => !l.to?.includes("credit_card"))).toBe(true);
   });
 
-  it("savings breakdown lists subtree accounts except shortfall (linked tarjeta is bottomLines)", () => {
-    const lines = buildCashSavingsCardBreakdown([reserva, shortfall]);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]?.clp).toBe(2_000_000);
-    expect(lines.some((l) => l.clp === -500_000)).toBe(false);
-    expect(lines.some((l) => l.clp === 300_000)).toBe(false);
+  /**
+   * The savings card goes through the generic nav builder (no cash special case). Its single
+   * account still gets a line, and the synthetic bucket-scoped shortfall row must not.
+   */
+  it("savings nav card lists its own account only, never the shortfall row", () => {
+    const savingsNode = navNodeFixture({
+      slug: "cash_savings",
+      label: "Ahorros y reservas",
+      route_path: "/cash_eqs/savings",
+      portfolio_group_id: 7,
+      kind_slug: "cash_savings",
+      asset_group_slug: "cash_eqs__cash_savings",
+      children: [
+        navNodeFixture({
+          slug: "account_1",
+          label: "Reserva",
+          route_path: "/account/1",
+          account_id: 1,
+          children: [],
+        }),
+      ],
+    });
+
+    const lines = buildNavCardBreakdown(savingsNode, [reserva, shortfall]);
+
+    expect(lines).not.toBeNull();
+    expect(lines!.map((l) => l.label)).toEqual(["Reserva"]);
+    expect(lines!.some((l) => l.clp === -500_000)).toBe(false);
   });
 });

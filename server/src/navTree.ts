@@ -2,6 +2,7 @@ import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
+import { listSingleSourceReferenceSlugsByChartHost } from "./portfolioGroupReference.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
 
 export type NavTreeBuildOptions = {
@@ -39,6 +40,12 @@ export type NavTreeNodeDto = {
    * all inactive are kept but marked — the sidebar hides them, group pages keep them for period cards.
    */
   chart_inactive?: boolean;
+  /**
+   * Groups from elsewhere in the tree that belong on this node's page as sibling cards, from its
+   * single-source chart reference overlays (see `listSingleSourceReferenceSlugsByChartHost`).
+   * Omitted when the node hosts none.
+   */
+  linked_card_slugs?: string[];
   children: NavTreeNodeDto[];
 };
 
@@ -132,6 +139,7 @@ function buildNode(
   groupsById: Map<number, GroupRow>,
   accountMeta: Map<number, { name: string; color_rgb: string }>,
   expenseMeta: Map<number, { label: string; slug: string }>,
+  linkedCardSlugsByHost: Map<string, string[]>,
   options: NavTreeBuildOptions = {}
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
@@ -141,7 +149,17 @@ function buildNode(
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
       if (child) {
-        children.push(buildNode(child, itemsByGroup, groupsById, accountMeta, expenseMeta, options));
+        children.push(
+          buildNode(
+            child,
+            itemsByGroup,
+            groupsById,
+            accountMeta,
+            expenseMeta,
+            linkedCardSlugsByHost,
+            options
+          )
+        );
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
       if (
@@ -224,6 +242,7 @@ function buildNode(
 
   const prunedChildren = pruneEmptyNavGroups(children);
   const chartInactive = navGroupChartInactive(groupKind, group.kind_slug, prunedChildren);
+  const linkedCardSlugs = linkedCardSlugsByHost.get(group.slug);
 
   return {
     node_id: group.slug,
@@ -249,6 +268,7 @@ function buildNode(
     color: rgbTripletToCss(resolved),
     group_kind: groupKind,
     ...(chartInactive ? { chart_inactive: true } : {}),
+    ...(linkedCardSlugs?.length ? { linked_card_slugs: linkedCardSlugs } : {}),
     children: prunedChildren,
   };
 }
@@ -305,7 +325,11 @@ function buildNavForest(section: string | null): NavTreeNodeDto[] {
     return g.sidebar_section === section;
   });
 
-  return roots.map((g) => buildNode(g, itemsByGroup, groupsById, accountMeta, expenseMeta));
+  const linkedCardSlugsByHost = listSingleSourceReferenceSlugsByChartHost();
+
+  return roots.map((g) =>
+    buildNode(g, itemsByGroup, groupsById, accountMeta, expenseMeta, linkedCardSlugsByHost)
+  );
 }
 
 /** `portfolio_groups.slug = net_worth` — home page + dashboard hierarchy (first-level bucket groups as children). */
@@ -324,7 +348,15 @@ export function getNetWorthNavGroupNode(
     itemsByGroup.set(item.group_id, arr);
   }
   const { accountMeta, expenseMeta } = loadMetaMaps(items);
-  return buildNode(nw, itemsByGroup, groupsById, accountMeta, expenseMeta, options);
+  return buildNode(
+    nw,
+    itemsByGroup,
+    groupsById,
+    accountMeta,
+    expenseMeta,
+    listSingleSourceReferenceSlugsByChartHost(),
+    options
+  );
 }
 
 /** Full sidebar layout: dashboard, main asset branches, flows, projections, wealth percentile, rates. */
@@ -401,5 +433,14 @@ export function getPortfolioTreeForCharts(): NavTreeNodeDto[] {
     itemsByGroup.set(item.group_id, arr);
   }
   const { accountMeta, expenseMeta } = loadMetaMaps(items);
-  return [buildNode(inv, itemsByGroup, groupsById, accountMeta, expenseMeta)];
+  return [
+    buildNode(
+      inv,
+      itemsByGroup,
+      groupsById,
+      accountMeta,
+      expenseMeta,
+      listSingleSourceReferenceSlugsByChartHost()
+    ),
+  ];
 }
