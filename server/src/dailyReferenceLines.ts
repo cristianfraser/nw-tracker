@@ -7,28 +7,21 @@
  * `chart_host_slug`, each a weighted sum of *other* nav groups' totals. Nothing here knows a
  * slug — a new reference node starts working with no code change.
  *
- * What differs from the monthly path is the source totals. A reference line needs only Σ marks
- * per date, so this builds **values only**: no flow legs, no aportes-acum companions, no
- * per-account lines. That is most of the cost of a full daily series (cash_eqs is the slowest
- * source at 5y despite having 6 accounts, because its USD-cash flow legs telescope
- * balance − interest at every date), and the overlay would throw all of it away.
- *
- * The value leg itself is `bucketValueInUnitAt` — the same helper `getBucketDailySeries` sums
- * inline — so a reference line equals the sum of its source groups' own daily Totals by
- * construction.
+ * What differs from the monthly path is where the source totals come from: a source group's
+ * daily Total is exactly what its OWN daily page already builds, so this asks
+ * `getBucketDailySeriesCached` for it with that page's scope key, rows and options. One build
+ * then serves both — opening Pasivos warms Brokerage/Efectivo/APV in day mode and vice versa,
+ * where a private values-only build would pay for identical marks twice (marks dominate the
+ * cost of a daily series; the flow legs this would skip are the cheap part).
  */
 import { getAggregationCached } from "./aggregationCache.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
+import { getBucketDailySeriesCached } from "./dailySeries.js";
 import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
-import {
-  bucketValueInUnitAt,
-  convertLegToUnit,
-  includeShortHorizonAccount,
-} from "./periodReturnsShortHorizon.js";
+import { convertLegToUnit } from "./periodReturnsShortHorizon.js";
 import {
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
-  portfolioGroupApiForValuation,
 } from "./portfolioGroupReference.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
@@ -39,38 +32,43 @@ export type DailyReferenceLine = {
 };
 
 /**
- * Per-date totals of one source group over `datesAsc`, cached under the `daily.` namespace so
+ * Per-date totals of one source group, keyed under the `daily.` namespace so
  * `invalidateDailySeries()` (both write funnels + day rollover) drops it with the rest of the
  * daily aggregations. Real clock only, like `getBucketDailySeriesCached`.
+ *
+ * The heavy part — the per-day marks — comes from that group's own daily series under the very
+ * scope key its page uses (`pg:<slug>` + the same rows and options as the `/api/daily-series`
+ * group branch), so the two never build the same marks twice. This thin per-unit map stays
+ * cached on top because the CC netting below is not free to redo per request.
  */
 function sourceGroupDailyValues(
   sourceSlug: string,
   unit: TsUnit,
-  days: number,
-  datesAsc: readonly string[]
+  days: number
 ): Map<string, number> {
   const key = `daily.refsrc|${sourceSlug}|${unit}|${days}`;
   return getAggregationCached(key, () => {
-    const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(sourceSlug);
-    const accounts = listAccountsForGroupTab(groupSlug, tabSubgroup).filter(
-      includeShortHorizonAccount
-    );
-    const now = new Date();
     const out = new Map<string, number>();
-    if (!accounts.length) return out;
+    const rows = listAccountsForGroupTab(sourceSlug).filter((r) => r.account_id > 0);
+    if (!rows.length) return out;
+    const series = getBucketDailySeriesCached(`pg:${sourceSlug}`, rows, {
+      unit,
+      days,
+      includeAccounts: true,
+    });
     // A cash bucket's canonical Total is CC-netted (`netLinkedCreditCardFromCashConsolidated`
     // feeds the monthly chart Total via `applyConsolidatedTotalToGroupTabBlock`), so the
     // overlay has to net too or the daily line sits a whole card balance above the monthly
     // one. Per-date, on the daily owed convention.
-    const ccByDate = isCashEqsNwValuationGroupSlug(groupSlug)
-      ? linkedCreditCardClpForCashCardByDates([...datesAsc])
+    const ccByDate = isCashEqsNwValuationGroupSlug(sourceSlug)
+      ? linkedCreditCardClpForCashCardByDates(series.points.map((p) => p.as_of_date))
       : null;
-    for (const ymd of datesAsc) {
-      const v = bucketValueInUnitAt(accounts, ymd, unit, now);
-      if (v == null || !Number.isFinite(v)) continue;
-      const ccClp = ccByDate?.get(ymd) ?? 0;
-      const cc = ccClp !== 0 ? convertLegToUnit(ccClp, ymd, unit, now) : 0;
-      out.set(ymd, Number.isFinite(cc) ? v - cc : v);
+    const now = new Date();
+    for (const p of series.points) {
+      if (p.value == null || !Number.isFinite(p.value)) continue;
+      const ccClp = ccByDate?.get(p.as_of_date) ?? 0;
+      const cc = ccClp !== 0 ? convertLegToUnit(ccClp, p.as_of_date, unit, now) : 0;
+      out.set(p.as_of_date, Number.isFinite(cc) ? p.value - cc : p.value);
     }
     return out;
   });
@@ -94,10 +92,7 @@ export function dailyReferenceLinesForChartHost(
   for (const def of defs) {
     for (const link of def.links) {
       if (totalsBySource.has(link.source_slug)) continue;
-      totalsBySource.set(
-        link.source_slug,
-        sourceGroupDailyValues(link.source_slug, unit, days, datesAsc)
-      );
+      totalsBySource.set(link.source_slug, sourceGroupDailyValues(link.source_slug, unit, days));
     }
   }
 
