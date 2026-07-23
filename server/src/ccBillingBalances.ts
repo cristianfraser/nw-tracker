@@ -10,7 +10,11 @@ import {
   redundantInstallmentSummaryLineIds,
   type CcStatementLineForInstallmentTotals,
 } from "./ccInstallmentLineDedupe.js";
-import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
+import {
+  normalizeTransactionDateIso,
+  parseDdMmYyToIso,
+  resolveInstallmentPayByIso,
+} from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForStatementDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -145,14 +149,6 @@ export function sumRevolvingChargesClpForStatementDate(
   return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, {
     excludePayments: true,
   });
-}
-
-/** ISO of a stored transaction_date (accepts `YYYY-MM-DD` or `DD/MM/YYYY` parser output). */
-function normalizeTransactionDateIso(td: string | null): string | null {
-  if (!td) return null;
-  const t = td.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  return parseDdMmYyToIso(t);
 }
 
 type PostCloseLineRow = RevolvingLineRow & {

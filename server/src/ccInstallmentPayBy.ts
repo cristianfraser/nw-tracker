@@ -76,3 +76,11 @@ export function resolveInstallmentPayByIso(row: {
   }
   return null;
 }
+
+/** ISO of a stored `cc_statement_lines.transaction_date` (accepts `YYYY-MM-DD` or parser `DD/MM/YYYY`). */
+export function normalizeTransactionDateIso(td: string | null | undefined): string | null {
+  if (!td) return null;
+  const t = String(td).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return parseDdMmYyToIso(t);
+}

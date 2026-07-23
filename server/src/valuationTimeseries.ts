@@ -1703,10 +1703,13 @@ function forwardFillTotalsToChartDates(
   return out;
 }
 
+/**
+ * A source group's total at each of ITS OWN chart dates. Every point is kept — the caller
+ * forward-fills on-or-before onto the host's dates, so a source whose value lands mid-month
+ * (Fintual snapshots fall on flow/sync days) still counts at the host's month-end. Filtering
+ * to the host's dates here instead would drop that point and carry the previous month.
+ */
 function groupTabValuationTotalFromBuilt(
-  _portfolioGroupSlug: string,
-  _unit: TsUnit,
-  datesAsc: string[],
   built: BuiltGroupValuationTimeseries
 ): Map<string, number> {
   const block = built.accounts_in_group;
@@ -1716,11 +1719,9 @@ function groupTabValuationTotalFromBuilt(
     .filter((a) => a.account_id > 0 && a.valueSeriesType === "data")
     .map((a) => a.dataKey);
 
-  const dateSet = new Set(datesAsc);
   const out = new Map<string, number>();
   for (const row of block.points) {
     const d = String(row.as_of_date);
-    if (!dateSet.has(d)) continue;
     let v = row[GROUP_TAB_VAL_TOTAL];
     if (typeof v !== "number" || !Number.isFinite(v)) {
       let sum = 0;
@@ -1743,12 +1744,10 @@ function groupTabValuationTotalFromBuilt(
 
 function groupTabValuationTotalByDate(
   portfolioGroupSlug: string,
-  unit: TsUnit,
-  datesAsc: string[]
+  unit: TsUnit
 ): Map<string, number> {
   const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioGroupSlug);
-  const built = getGroupValuationTimeseries(groupSlug, unit, tabSubgroup);
-  return groupTabValuationTotalFromBuilt(portfolioGroupSlug, unit, datesAsc, built);
+  return groupTabValuationTotalFromBuilt(getGroupValuationTimeseries(groupSlug, unit, tabSubgroup));
 }
 
 /** Reference overlay lines for a chart host (e.g. Pasivos root tab). */
@@ -1765,7 +1764,7 @@ function appendChartHostReferenceOverlays(
   for (const def of defs) {
     for (const link of def.links) {
       if (!totalsBySource.has(link.source_slug)) {
-        const raw = groupTabValuationTotalByDate(link.source_slug, unit, datesAsc);
+        const raw = groupTabValuationTotalByDate(link.source_slug, unit);
         totalsBySource.set(link.source_slug, forwardFillTotalsToChartDates(raw, datesAsc));
       }
     }
