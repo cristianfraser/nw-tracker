@@ -47,6 +47,7 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
+import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
@@ -256,6 +257,23 @@ export function GroupInfoPage() {
     return buildDisplayGroupPerf(groupPerfRaw, chartCtx, groupedToggleOn);
   }, [groupPerfRaw, chartCtx, groupedToggleOn]);
 
+  // Day view: per-day P/L bars keyed by the monthly block's bar metadata, with the cumulative
+  // areas anchored on the monthly series so month-ends read the same in both period modes.
+  const dailyGroupPerfPoints = useMemo(() => {
+    if (!isDaily) return null;
+    const daily = dailySeries.data;
+    if (!daily || !displayGroupPerf?.bar_accounts.length) return null;
+    const lines =
+      groupedToggleOn && daily.grouped_accounts?.length ? daily.grouped_accounts : daily.accounts;
+    if (!lines?.length) return null;
+    return buildDailyPerfComboPoints({
+      series: daily,
+      lines,
+      barAccounts: displayGroupPerf.bar_accounts,
+      monthlyPointsAsc: groupPerfRaw?.points ?? [],
+    });
+  }, [isDaily, dailySeries.data, displayGroupPerf, groupedToggleOn, groupPerfRaw]);
+
   const chartSeriesCount = accounts.length;
   const chartColorSlug = (chartCtx?.chartColorSlug ?? portfolioGroup) as AssetGroupSlug | "crypto";
   const pieAllocationSlug = (chartCtx?.pieAllocationSlug ?? portfolioGroup) as AssetGroupSlug;
@@ -357,8 +375,11 @@ export function GroupInfoPage() {
           pieAllocationSlug={charts.pieAllocationSlug}
           colorPlanGroupSlug={charts.colorPlanGroupSlug}
           groupColorMaps={charts.groupColorMaps}
-          groupPerfForChart={charts.groupPerfForChart}
+          groupPerfForChart={
+            dailyGroupPerfPoints ? { points: dailyGroupPerfPoints } : charts.groupPerfForChart
+          }
           groupPerfBarSeries={charts.groupPerfBarSeries}
+          perfXAxisGranularity={dailyGroupPerfPoints ? "day" : undefined}
           groupTotalStroke={charts.groupTotalStroke}
           groupColorRgb={navMatchNode.color_rgb}
           chartCtx={chartCtx}
