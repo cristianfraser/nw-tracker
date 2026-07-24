@@ -2,6 +2,7 @@ import { getAggregationCached } from "./aggregationCache.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { DAILY_SERIES_MAX_DAYS, getBucketDailySeriesCached, totalRangeDays } from "./dailySeries.js";
+import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
 import {
@@ -96,7 +97,13 @@ function buildPrimaryDailyLines(
       includeAccounts: true,
     });
     const byDate = new Map(series.points.map((p) => [p.as_of_date, p.value]));
-    lines.push({ dataKey, values: grid.map((ymd) => byDate.get(ymd) ?? null) });
+    const values = grid.map((ymd) => byDate.get(ymd) ?? null);
+    // A sold-out child group (e.g. mutual funds after the fund was liquidated) reads a finite 0
+    // every day after, which would hug zero to today; the monthly `accounts_ex_property` block is
+    // clipped by `applyTrailingZeroTailClipToBlock`, so mirror it here — same kept-zeros rule.
+    const startNullAt = trailingZeroRunClipStartIndex(values);
+    if (startNullAt != null) for (let i = startNullAt; i < values.length; i++) values[i] = null;
+    lines.push({ dataKey, values });
   }
   return lines;
 }

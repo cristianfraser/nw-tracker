@@ -237,6 +237,46 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     }
   });
 
+  it("sold-out account: chart line keeps one zero then ends; points keep their true zeros", () => {
+    if (leafSlug == null) return;
+    const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as
+      | { id: number }
+      | undefined;
+    if (!leaf) return;
+
+    const accountId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest · daily series sold out', 'vitest-daily-series-soldout', 'vitest-daily-series-soldout')`
+        )
+        .run(leaf.id).lastInsertRowid
+    );
+    const insVal = db.prepare(
+      `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`
+    );
+    insVal.run(accountId, "2026-03-18", 300000);
+    insVal.run(accountId, "2026-03-21", 0); // liquidated — marks 0 from here on
+
+    try {
+      const s = getBucketDailySeries([{ account_id: accountId, bucket_slug: leafSlug }], {
+        unit: "clp",
+        days: 6,
+        now: NOW,
+        includeAccounts: true,
+      });
+      const line = s.accounts?.find((a) => a.account_id === accountId);
+      // Points 03-20..03-25: 300000, then 0 from the 03-21 liquidation onward. The chart line
+      // keeps exactly one plotted zero (the monthly's TS_TRAILING_ZERO_MONTHS_KEPT) and ends.
+      expect(line?.values).toEqual([300000, 0, null, null, null, null]);
+      // The bucket points are the P/L legs — display trimming must not touch them.
+      expect(s.points.map((p) => p.value)).toEqual([300000, 0, 0, 0, 0, 0]);
+    } finally {
+      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    }
+  });
+
   it("per-day flows match netDepositFlowBetween on every window", () => {
     if (manualAccountId == null || leafSlug == null) return;
     const s = getBucketDailySeries([{ account_id: manualAccountId, bucket_slug: leafSlug }], {
