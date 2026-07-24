@@ -390,6 +390,20 @@ export function getBucketDailySeries(
     });
   }
 
+  // Prefer-null leading edge: an equity/crypto account marks to a finite 0 before its first
+  // holding (0 units × price), which would draw a flat-0 line from portfolio start. The
+  // monthly per-account line instead starts at the first holding (null before it); null the
+  // leading run of 0/null on each daily line so the two agree. Interior/trailing zeros (a
+  // sold-out gap) are kept. `deposits_acum` is already 0 before the first holding (deposits
+  // are what create value), so it needs no trim.
+  if (perAccount) {
+    for (const line of perAccount) {
+      let firstHeld = line.values.findIndex((v) => v != null && v !== 0);
+      if (firstHeld < 0) firstHeld = line.values.length; // never held: whole line absent
+      for (let k = 0; k < firstHeld; k++) line.values[k] = null;
+    }
+  }
+
   const points: DailySeriesPoint[] = [];
   for (let i = 1; i < grid.length; i++) {
     const ymd = grid[i]!;
