@@ -340,8 +340,9 @@ export interface DailySeriesAccountLineDto {
   name: string | null;
   /** Per-day values, index-aligned with `points`. */
   values: (number | null)[];
-  /** Cumulative personal deposits through each day (aportes acum. companion line). */
-  deposits_acum?: number[];
+  /** Cumulative personal deposits through each day (aportes acum. companion line). Null past the
+   * value line's trailing clip — a sold-out account's aportes end with its value line. */
+  deposits_acum?: (number | null)[];
   /**
    * Per-day flow-adjusted P/L for this account alone — the day-grain twin of the monthly
    * `pl_<account_id>` bars. Σ over the lines equals the bucket point's `pl`.
