@@ -69,6 +69,9 @@ export interface FlowsPlResponse {
   chart_yearly: FlowsPlChartPoint[];
   chart_monthly_usd: FlowsPlChartPoint[];
   chart_yearly_usd: FlowsPlChartPoint[];
+  /** Per-calendar-day P/L (Diario), windowed to the requested `days`; present only when requested. */
+  chart_daily?: FlowsPlChartPoint[];
+  chart_daily_usd?: FlowsPlChartPoint[];
   by_bucket: FlowsPlBucketBlock[];
 }
 

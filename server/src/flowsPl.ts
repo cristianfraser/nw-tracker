@@ -14,6 +14,7 @@ import {
   type ConsolidatedMonthlyPerfRow,
 } from "./groupMonthlyPerfConsolidation.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
+import { resolveGroupDailySeries } from "./groupDailySeries.js";
 
 /** Money buckets on the flows → PL page (real estate and liabilities excluded). */
 export const FLOWS_PL_BUCKETS = [
@@ -65,6 +66,9 @@ export type FlowsPlPayload = {
   chart_yearly: FlowsPlChartPoint[];
   chart_monthly_usd: FlowsPlChartPoint[];
   chart_yearly_usd: FlowsPlChartPoint[];
+  /** Per-calendar-day P/L (Diario), windowed to `?days`; present only when `days` is passed. */
+  chart_daily?: FlowsPlChartPoint[];
+  chart_daily_usd?: FlowsPlChartPoint[];
   by_bucket: FlowsPlBucketBlock[];
 };
 
@@ -143,6 +147,58 @@ export function assembleFlowsPlChartSeries(
     pt.cumulative_total = cumulative;
   }
   return densified;
+}
+
+/**
+ * Per-calendar-day P/L per bucket (Diario), summed from each bucket's shared daily series
+ * (`pg:<group_slug>`). The three buckets share one grid (same `days`, same today), so merging
+ * by `as_of_date` is exact. `ytd_total` / `cumulative_total` accumulate over the windowed grid
+ * (window-relative, like every daily view). Σ(daily `total` over a calendar month) reconciles
+ * to the monthly chart's `total` — same marks, one sampling per grid vs month-end.
+ */
+export function buildFlowsPlDailyChartSeries(
+  unit: "clp" | "usd",
+  days: number
+): FlowsPlChartPoint[] {
+  const byDay = new Map<string, FlowsPlChartPoint>();
+  for (const bucket of FLOWS_PL_BUCKETS) {
+    const series = resolveGroupDailySeries(bucket.group_slug, unit, days);
+    if (!series) continue;
+    for (const pt of series.points) {
+      let out = byDay.get(pt.as_of_date);
+      if (!out) {
+        out = {
+          as_of_date: pt.as_of_date,
+          brokerage: 0,
+          retirement: 0,
+          cash: 0,
+          total: 0,
+          ytd_total: 0,
+          cumulative_total: 0,
+        };
+        byDay.set(pt.as_of_date, out);
+      }
+      const pl = pt.pl ?? 0;
+      out[bucket.slug] += pl;
+      out.total += pl;
+    }
+  }
+  const sorted = [...byDay.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  let year = "";
+  let ytd = 0;
+  let cumulative = 0;
+  for (const pt of sorted) {
+    const y = pt.as_of_date.slice(0, 4);
+    if (y !== year) {
+      year = y;
+      ytd = 0;
+    }
+    ytd += pt.total;
+    cumulative += pt.total;
+    pt.ytd_total = ytd;
+    pt.cumulative_total = cumulative;
+  }
+  return sorted;
 }
 
 /**
@@ -244,7 +300,7 @@ function buildFlowsPlBucketBlock(
 }
 
 /** @heavy 3 buckets × 2 units of consolidated monthly perf (inner per-account/group caches). */
-export function buildFlowsPlPayload(): FlowsPlPayload {
+export function buildFlowsPlPayload(opts?: { days?: number }): FlowsPlPayload {
   return withAccountValuationTsCache(() => {
     const consolidatedClp = {} as Record<FlowsPlBucketSlug, ConsolidatedMonthlyPerfRow[]>;
     const consolidatedUsd = {} as Record<FlowsPlBucketSlug, ConsolidatedMonthlyPerfRow[]>;
@@ -269,12 +325,17 @@ export function buildFlowsPlPayload(): FlowsPlPayload {
         )
       );
     }
-    return {
+    const payload: FlowsPlPayload = {
       chart_monthly: assembleFlowsPlChartSeries(consolidatedClp, "month"),
       chart_yearly: assembleFlowsPlChartSeries(consolidatedClp, "year"),
       chart_monthly_usd: assembleFlowsPlChartSeries(consolidatedUsd, "month"),
       chart_yearly_usd: assembleFlowsPlChartSeries(consolidatedUsd, "year"),
       by_bucket,
     };
+    if (opts?.days != null) {
+      payload.chart_daily = buildFlowsPlDailyChartSeries("clp", opts.days);
+      payload.chart_daily_usd = buildFlowsPlDailyChartSeries("usd", opts.days);
+    }
+    return payload;
   });
 }

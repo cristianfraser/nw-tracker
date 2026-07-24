@@ -41,7 +41,7 @@ export function CreditCardGroupExpensesChart({
   categorySortPoints?: readonly FlowCcExpenseCategoryChartPoint[];
   categories: readonly CcExpenseCategoryDto[];
   displayUnit?: DisplayUnit;
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
 }) {
   const { t } = useTranslation();
   const bars = useMemo(

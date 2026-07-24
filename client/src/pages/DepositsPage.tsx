@@ -11,6 +11,7 @@ import {
   sumChartPointsField,
 } from "../flowsDisplay";
 import { clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
+import { aggregateDepositChartPointsByDay } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
@@ -24,6 +25,12 @@ export function DepositsPage() {
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
+    if (chartGranularity === "day") {
+      return clipPointsToTimeRange(
+        aggregateDepositChartPointsByDay(data.rows, displayUnit),
+        timeRange
+      );
+    }
     const base =
       displayUnit === "usd"
         ? chartGranularity === "year"
