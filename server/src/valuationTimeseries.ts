@@ -91,7 +91,7 @@ import {
   portfolioGroupApiForValuation,
 } from "./portfolioGroupReference.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
-import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
+import { slugMarkTotalsAtDatesClp } from "./dashboardChartMarkTotals.js";
 import {
   applyConsolidatedTotalToGroupTabBlock,
   consolidatedClosingRawByDate,
@@ -1191,7 +1191,6 @@ function densifyMonthlyValuationPoints(
 import {
   liabilitiesBreakdownClpAsOf,
   liabilitiesBreakdownClpByDates,
-  liabilitiesOnlyBalanceClpByDates,
 } from "./liabilitiesValuation.js";
 
 export { liabilitiesBreakdownClpAsOf, liabilitiesBreakdownClpByDates };
@@ -1584,23 +1583,37 @@ const portfolioGroupLabelStmt = db.prepare(
 
 type BuiltGroupValuationTimeseries = ReturnType<typeof getGroupValuationTimeseries>;
 
-/** Consolidated monthly perf only (no full {@link getGroupValuationTimeseries} per bucket). */
+/**
+ * Dashboard chart bucket totals (CLP), per slug per chart date.
+ *
+ * Chart DATES are the union of each group's consolidated monthly-closing dates (month-ends +
+ * live/snapshot dates) — that decides which points the monthly x-axis shows, unchanged. Chart
+ * VALUES are Σ marks per slug at those dates (`slugMarkTotalsAtDatesClp`), the same
+ * `accountMarkClpAtYmd` the daily views sum. So a monthly chart value at date `d` equals the
+ * daily chart value at `d` by construction: the legacy path forward-filled each group's
+ * monthly closing onto the grid, which drifted from the true mark wherever a source had no
+ * row on that exact date (mid-month snapshot dates, a month a group skipped, a linked card the
+ * consolidated cash didn't net at that date). Cost is bounded — marks are read only at the
+ * ~130 month-ends, not off a full daily grid.
+ */
 function buildDashboardPortfolioGroupTotalsClp(): {
   datesAsc: string[];
   totalsBySlug: Map<string, Map<string, number>>;
 } {
   const chartDates = new Set<string>();
-  const closingRawBySlug = new Map<string, Map<string, number>>();
+  const accountsBySlug = new Map<string, GroupTabAccountRow[]>();
 
   for (const slug of dashboardChartPortfolioSlugs()) {
     if (slug === "liabilities") continue;
     const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(slug);
+    const tabRows = listAccountsForGroupTab(groupSlug, tabSubgroup);
+    accountsBySlug.set(slug, tabRows);
+    // Consolidated closing is read for DATE DISCOVERY only now (kept cached — it also feeds
+    // the P/L detalle tables); the values come from marks below.
     const raw = getAggregationCached(cacheKeyGroupClosingByDate(slug, "clp"), () => {
-      const tabRows = listAccountsForGroupTab(groupSlug, tabSubgroup);
       const consolidated = getGroupConsolidatedMonthlyPerfForRows(tabRows, groupSlug, "clp");
       return consolidatedClosingRawByDate(consolidated);
     });
-    closingRawBySlug.set(slug, raw);
     for (const d of raw.keys()) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(d)) chartDates.add(d);
     }
@@ -1612,15 +1625,32 @@ function buildDashboardPortfolioGroupTotalsClp(): {
     return { datesAsc, totalsBySlug };
   }
 
-  const liabilitiesByDate = liabilitiesBucketTotalByDates(datesAsc, "clp");
+  const overviewSlugs = new Set<string>(DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS);
   for (const slug of dashboardChartPortfolioSlugs()) {
-    if (slug === "liabilities") {
-      totalsBySlug.set(slug, liabilitiesByDate);
+    if (overviewSlugs.has(slug)) {
+      // Overview buckets: Σ marks (+ cash CC-netting) reproduces the daily overview builder
+      // (`buildDashboardBucketDailySeriesClp` + its liabilities leg) exactly — same accounts,
+      // same netting — so the overview chart's monthly and daily renderings agree to the peso.
+      // The headline reads the same marks at today, so chart-last still equals the summary
+      // cards. Row resolution stays as the consolidation used (`accountsBySlug`); the account
+      // sets match the daily overview's (verified) so the marks and totals coincide.
+      const rows =
+        slug === "liabilities"
+          ? listAccountsForGroupTab("liabilities").filter((r) => r.account_id > 0)
+          : accountsBySlug.get(slug);
+      if (!rows) continue;
+      const netLinkedCreditCard = slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG;
+      totalsBySlug.set(slug, slugMarkTotalsAtDatesClp(rows, datesAsc, { netLinkedCreditCard }));
       continue;
     }
-    const raw = closingRawBySlug.get(slug);
-    if (!raw) continue;
-    totalsBySlug.set(slug, mapMonthlyClosingToChartDates(raw, datesAsc));
+    // "Cuentas principales" child lines: Σ the same marks the group-page / day-mode daily
+    // series sums, at the month-end dates. `getBucketDailySeries`'s value at date `d` is
+    // exactly this Σ, so the monthly child line equals the daily one point-for-point — the
+    // null-before-first-holding included (an unstarted child reads absent, not a flat 0).
+    // Raw-slug rows match the daily route's resolution.
+    const rows = listAccountsForGroupTab(slug).filter((r) => r.account_id > 0);
+    if (!rows.length) continue;
+    totalsBySlug.set(slug, slugMarkTotalsAtDatesClp(rows, datesAsc));
   }
   return { datesAsc, totalsBySlug };
 }
@@ -1639,17 +1669,6 @@ function convertDashboardPortfolioGroupTotals(
     totalsBySlug.set(slug, converted);
   }
   return { datesAsc: clp.datesAsc, totalsBySlug };
-}
-
-function liabilitiesBucketTotalByDates(datesAsc: string[], unit: TsUnit): Map<string, number> {
-  const out = new Map<string, number>();
-  const totalsClp = liabilitiesOnlyBalanceClpByDates(datesAsc, "all");
-  for (const d of datesAsc) {
-    const totalClp = totalsClp.get(d) ?? 0;
-    const totalUnit = unit === "clp" ? totalClp : convertTs(totalClp, d, unit);
-    if (Number.isFinite(totalUnit)) out.set(d, totalUnit);
-  }
-  return out;
 }
 
 function buildDashboardPrimaryFromTotals(
