@@ -79,6 +79,13 @@ export type DailySeriesAccountLine = {
   values: (number | null)[];
   /** Cumulative personal deposits (full history through each session) — the aportes acum. line. */
   deposits_acum?: number[];
+  /**
+   * Per-session flow-adjusted P/L for this account alone (the day-grain twin of the monthly
+   * `pl_<account_id>` bars). Same convention as the bucket's `pl` — computed on wealth, so a
+   * card's intereses and a UF uptick on the mortgage read as losses — and Σ over the accounts
+   * equals the bucket's `pl` by construction.
+   */
+  pl?: (number | null)[];
 };
 
 export type BucketDailySeries = {
@@ -122,9 +129,19 @@ function gridFlows(
   accounts: readonly ShortHorizonAccountRef[],
   sessions: readonly string[],
   flowUnit: "clp" | "usd"
-): { flows: number[]; liabilityFlows: number[] } {
+): { flows: number[]; liabilityFlows: number[]; byAccount: Map<number, number[]> } {
   const flows = new Array<number>(sessions.length - 1).fill(0);
   const liabilityFlows = new Array<number>(sessions.length - 1).fill(0);
+  // Same legs, kept per account so a per-account P/L line can be derived (Σ = the bucket legs).
+  const byAccount = new Map<number, number[]>();
+  const addFor = (accountId: number, row: number, amt: number): void => {
+    let arr = byAccount.get(accountId);
+    if (!arr) {
+      arr = new Array<number>(sessions.length - 1).fill(0);
+      byAccount.set(accountId, arr);
+    }
+    arr[row] += amt;
+  };
   const first = sessions[0]!;
   const last = sessions[sessions.length - 1]!;
 
@@ -159,7 +176,9 @@ function gridFlows(
       if (e.occurred_on <= first || e.occurred_on > last) continue;
       const amt = flowUnit === "usd" ? usdFlowForEvent(e) : e.amt;
       if (amt == null) continue;
-      flows[rowIndexForEvent(e.occurred_on)] += amt;
+      const row = rowIndexForEvent(e.occurred_on);
+      flows[row] += amt;
+      addFor(id, row, amt);
     }
   }
 
@@ -172,6 +191,7 @@ function gridFlows(
     for (let i = 1; i < sessions.length; i++) {
       const cur = depAt(sessions[i]!);
       flows[i - 1] += cur - prev;
+      addFor(id, i - 1, cur - prev);
       prev = cur;
     }
   }
@@ -185,11 +205,15 @@ function gridFlows(
       if (e.occurred_on <= first || e.occurred_on > last) continue;
       const amt = flowUnit === "usd" ? depositClpToUsdAtDate(e.pago_clp, e.occurred_on) : e.pago_clp;
       if (amt == null || !Number.isFinite(amt)) continue;
-      liabilityFlows[rowIndexForEvent(e.occurred_on)] += amt;
+      const row = rowIndexForEvent(e.occurred_on);
+      liabilityFlows[row] += amt;
+      // The depto ledger is one mortgage's payment history (the loop above is gated on there
+      // being any mortgage account), so attribute it to that account.
+      addFor(mortgageIds[0]!, row, amt);
     }
   }
 
-  return { flows, liabilityFlows };
+  return { flows, liabilityFlows, byAccount };
 }
 
 /**
@@ -335,6 +359,12 @@ export function getBucketDailySeries(
       grid
     )
   );
+  // Per-account wealth (sign-flipped for debt) across the WHOLE grid incl. the baseline, kept
+  // separate from `perAccount[].values` because those get their leading edge nulled below —
+  // the P/L legs must read the untouched marks.
+  const wealthByAccount: (number | null)[][] | null = perAccount
+    ? included.map(() => new Array<number | null>(grid.length).fill(null))
+    : null;
   const values: (number | null)[] = grid.map((ymd, gi) => {
     let rawClp = 0;
     let rawWealthClp = 0;
@@ -348,6 +378,9 @@ export function getBucketDailySeries(
         any = true;
       }
       ccMarksClp.get(a.account_id)?.push(ok ? clp : null);
+      if (wealthByAccount && ok) {
+        wealthByAccount[ai]![gi] = convertLegToUnit(isLiability[ai] ? -clp : clp, ymd, unit, now);
+      }
       // Baseline (gi 0) anchors deltas only; account lines align with `points`.
       if (perAccount && gi >= 1) {
         perAccount[ai]!.values.push(ok ? convertLegToUnit(clp, ymd, unit, now) : null);
@@ -357,7 +390,7 @@ export function getBucketDailySeries(
     return any ? convertLegToUnit(rawClp, ymd, unit, now) : null;
   });
   const flowUnit = unit === "usd" ? "usd" : "clp";
-  const { flows, liabilityFlows } = gridFlows(accounts, grid, flowUnit);
+  const { flows, liabilityFlows, byAccount: flowsByAccount } = gridFlows(accounts, grid, flowUnit);
   for (const [accountId, marks] of ccMarksClp) {
     const derived = ccDerivedFlowsClp(accountId, grid, marks);
     for (let i = 1; i < grid.length; i++) {
@@ -366,6 +399,9 @@ export function getBucketDailySeries(
       const amt = flowUnit === "usd" ? depositClpToUsdAtDate(clp, grid[i]!) : clp;
       if (amt == null || !Number.isFinite(amt)) continue;
       liabilityFlows[i - 1] += amt;
+      const arr = flowsByAccount.get(accountId) ?? new Array<number>(grid.length - 1).fill(0);
+      arr[i - 1] += amt;
+      flowsByAccount.set(accountId, arr);
     }
   }
 
@@ -387,6 +423,27 @@ export function getBucketDailySeries(
         line.deposits_acum.push(v);
         depsAcumTotal![i - 1]! += v;
       }
+    });
+  }
+
+  // Per-account P/L: the same `wealth − prevWealth − flow` identity the bucket uses, on that
+  // account's own legs, so the day-mode P/L bars carry the monthly chart's per-account
+  // breakdown and Σ over accounts reproduces the bucket's `pl`.
+  if (perAccount && wealthByAccount) {
+    included.forEach((a, ai) => {
+      const w = wealthByAccount[ai]!;
+      const accFlows = flowsByAccount.get(a.account_id);
+      const line = perAccount[ai]!;
+      const pl = new Array<number | null>(grid.length - 1).fill(null);
+      for (let i = 1; i < grid.length; i++) {
+        const cur = w[i];
+        const prev = w[i - 1];
+        if (cur == null || prev == null) continue;
+        const rawFlow = accFlows?.[i - 1] ?? 0;
+        const flowInUnit = unit === "uf" ? convertTs(rawFlow, grid[i]!, "uf") : rawFlow;
+        pl[i - 1] = cur - prev - flowInUnit;
+      }
+      line.pl = pl;
     });
   }
 
@@ -485,6 +542,11 @@ export function groupDailySeriesAccounts(
       if (d != null) {
         agg.deposits_acum ??= new Array<number>(pointCount).fill(0);
         agg.deposits_acum[i] = (agg.deposits_acum[i] ?? 0) + d;
+      }
+      const p = line.pl?.[i];
+      if (p != null) {
+        agg.pl ??= new Array<number | null>(pointCount).fill(null);
+        agg.pl[i] = (agg.pl[i] ?? 0) + p;
       }
     }
   }

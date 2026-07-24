@@ -38,6 +38,7 @@ export function PortfolioGroupChartsSection({
   chartControls,
   hideGroupPerf = false,
   valuationXAxisGranularity,
+  perfXAxisGranularity,
 }: {
   accountsEmpty: boolean;
   accountsEmptyMessage: string;
@@ -60,8 +61,10 @@ export function PortfolioGroupChartsSection({
   chartControls?: ReactNode;
   /** Omit investment-style group P/L charts (pasivos routes). */
   hideGroupPerf?: boolean;
-  /** Valuation-panel-only override (daily series); the P/L bars keep `xAxisGranularity`. */
+  /** Valuation-panel-only override (daily series). */
   valuationXAxisGranularity?: "month" | "year" | "day";
+  /** P/L-combo override (daily per-account P/L bars + anchored cumulative areas). */
+  perfXAxisGranularity?: "month" | "year" | "day";
 }) {
   if (accountsEmpty) {
     return (
@@ -136,7 +139,7 @@ export function PortfolioGroupChartsSection({
               title={i18n.t("charts.groupPerfComboTitle")}
               points={groupPerfForChart.points}
               displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
+              xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
               barSeries={groupPerfBarSeries}
               areaKey="ytd_group"
               areaName={i18n.t("charts.ytdGroupSeries")}
@@ -164,7 +167,7 @@ export function PortfolioGroupChartsSection({
               title={i18n.t("charts.monthlyDeltaConsolidatedAccumTitle")}
               points={groupPerfForChart.points}
               displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
+              xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_total",

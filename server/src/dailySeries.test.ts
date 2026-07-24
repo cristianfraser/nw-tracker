@@ -337,6 +337,41 @@ describe("getBucketDailySeries — includeAccounts", () => {
     const s = getBucketDailySeries(refs, { unit: "clp", days: 2, now: NOW });
     expect(s.accounts).toBeUndefined();
     expect(s.deposits_acum_total).toBeUndefined();
+    expect(s.accounts?.[0]?.pl).toBeUndefined();
+  });
+
+  it("per-account P/L sums to the bucket P/L (the day-mode P/L bars' identity)", () => {
+    const refs = accountRefs();
+    if (refs.length < 2) return;
+    const s = getBucketDailySeries(refs, {
+      unit: "clp",
+      days: 6,
+      now: NOW,
+      includeAccounts: true,
+    });
+    for (const line of s.accounts!) {
+      expect(line.pl).toHaveLength(s.points.length);
+    }
+    s.points.forEach((p, i) => {
+      if (p.pl == null) return;
+      const sum = s.accounts!.reduce((acc, l) => acc + (l.pl?.[i] ?? 0), 0);
+      expect(sum).toBeCloseTo(p.pl, 6);
+    });
+  });
+
+  it("a deposit day is P/L-neutral on the account that received it", () => {
+    const refs = accountRefs();
+    if (refs.length < 2) return;
+    const s = getBucketDailySeries(refs, {
+      unit: "clp",
+      days: 6,
+      now: NOW,
+      includeAccounts: true,
+    });
+    // The manual account's only move in the window is the 03-24 deposit (index 4): the flow
+    // leg cancels the balance step, so its own P/L that day is 0 — not a +50.000 phantom.
+    const manual = s.accounts!.find((l) => l.account_id === manualAccountId)!;
+    expect(manual.pl![4]).toBeCloseTo(0, 6);
   });
 });
 
