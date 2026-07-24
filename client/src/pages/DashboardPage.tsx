@@ -171,8 +171,9 @@ export function DashboardPage() {
   const isDaily = metricsPeriod === "day";
   const xAxisGranularity = isYearly ? "year" : "month";
 
-  // Day view: the overview chart swaps to the per-session series (lazily fetched); every
-  // other chart keeps its monthly rendering until the daily detalle work lands.
+  // Day view: the overview, «Cuentas principales» and «Patrimonio neto vs invested» charts
+  // all swap to daily series (from the lazily-fetched overview-daily payload); the P/L combo
+  // charts below keep their monthly rendering.
   const { data: dailyOverview } = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(timeRange),
@@ -194,6 +195,32 @@ export function DashboardPage() {
     }));
     return { lines, points };
   }, [isDaily, dailyOverview, ts?.overview]);
+
+  // Day mode: «Cuentas principales» swaps to the per-child daily lines. Borrow the monthly
+  // block's account metadata (ids/colors/labels) so line identities survive the M↔D toggle,
+  // and pair each account's dataKey with the daily values (index-aligned to the daily grid).
+  const dailyPrimaryBlock = useMemo(() => {
+    const accounts = ts?.accounts_ex_property?.accounts;
+    if (!isDaily || !dailyOverview?.primary_lines?.length || !accounts?.length) return null;
+    const valuesByKey = new Map(dailyOverview.primary_lines.map((l) => [l.dataKey, l.values]));
+    const points = dailyOverview.points.map((p, i) => {
+      const row: Record<string, string | number | null> = { as_of_date: p.as_of_date };
+      for (const a of accounts) {
+        const vals = valuesByKey.get(a.dataKey);
+        row[a.dataKey] = vals ? (vals[i] ?? null) : null;
+      }
+      return row;
+    });
+    return { accounts, points };
+  }, [isDaily, dailyOverview, ts?.accounts_ex_property]);
+
+  // Day mode: «Patrimonio neto vs invested» swaps to daily points (always CLP). Borrow the
+  // monthly block's line + milestone metadata; only the points change.
+  const dailyPatrimonioBlock = useMemo(() => {
+    const src = ts?.patrimonio_usd_milestones_chart;
+    if (!isDaily || !dailyOverview?.patrimonio?.length || !src) return null;
+    return { ...src, points: dailyOverview.patrimonio };
+  }, [isDaily, dailyOverview, ts?.patrimonio_usd_milestones_chart]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {
@@ -371,13 +398,14 @@ export function DashboardPage() {
           dailyOverviewBlock ?? { lines: tsForCharts.overview.lines, points: tsForCharts.overview.points }
         }
         secondaryTitle={t("dashboard.sections.primaryAccountsTitle")}
-        secondary={tsForCharts.accounts_ex_property}
+        secondary={dailyPrimaryBlock ?? tsForCharts.accounts_ex_property}
         thickLineDataKey="total_nw"
         includeAccumulatedLines={false}
         primaryColorPlan={{ kind: "dashboard-overview" }}
         secondaryColorPlan={{ kind: "dashboard-primary" }}
         xAxisGranularity={xAxisGranularity}
         {...(dailyOverviewBlock ? { primaryXAxisGranularity: "day" as const } : {})}
+        {...(dailyPrimaryBlock ? { secondaryXAxisGranularity: "day" as const } : {})}
         chartLayout="fullWidthStack"
       />
 
@@ -391,13 +419,13 @@ export function DashboardPage() {
             <LineChartPanel
               title={t("dashboard.sections.netWorthUsdChartTitle")}
               titleAs="h3"
-              block={tsForCharts.patrimonio_usd_milestones_chart}
+              block={dailyPatrimonioBlock ?? tsForCharts.patrimonio_usd_milestones_chart}
               displayUnit="clp"
               includeAccumulatedLines={false}
               trimLeadingInactive={false}
               colorPlan={{ kind: "dashboard-patrimonio-usd" }}
               thickKey="total_nw"
-              xAxisGranularity={xAxisGranularity}
+              xAxisGranularity={dailyPatrimonioBlock ? "day" : xAxisGranularity}
               yScaleDataKeys={["total_nw", "invested"]}
             />
           </div>

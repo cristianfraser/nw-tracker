@@ -1283,7 +1283,7 @@ function priorCalendarPeriodEndYmdChart(
   return lastDayOfMonthYmdChart(addCalendarMonthsChart(ym, -1));
 }
 
-function milestoneClpFieldsForDate(asOfYmd: string): Record<string, number | null> {
+export function milestoneClpFieldsForDate(asOfYmd: string): Record<string, number | null> {
   const row: Record<string, string | number | null> = {};
   appendUsdMilestoneClpFields(row, asOfYmd);
   const out: Record<string, number | null> = {};
@@ -1421,7 +1421,7 @@ const OVERVIEW_LINE_PORTFOLIO_SLUG: Record<string, string> = {
 };
 
 /** Portfolio slug for NW-linked cash on dashboard charts (cash_eqs hub: savings + checking). */
-const DASHBOARD_NW_CASH_PORTFOLIO_SLUG = "cash_eqs";
+export const DASHBOARD_NW_CASH_PORTFOLIO_SLUG = "cash_eqs";
 
 function overviewLineColorRgb(dataKey: string): string | undefined {
   const slug = OVERVIEW_LINE_PORTFOLIO_SLUG[dataKey];
@@ -1577,13 +1577,13 @@ const DASHBOARD_PRIMARY_CHART_ACCOUNT_ID: Record<string, number> = {
   cash_eqs: -9201,
 };
 
-type DashboardPrimaryLineSpec = { slug: string; chartAccountId: number };
+export type DashboardPrimaryLineSpec = { slug: string; chartAccountId: number };
 
 /**
  * “Cuentas principales”: brokerage + retirement first-level portfolio children + ahorros y reservas.
  * Totals from each child’s class-tab valuation (`groupTabValuationTotalFromBuilt`).
  */
-function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
+export function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
   const specs: DashboardPrimaryLineSpec[] = [];
   for (const parentSlug of ["brokerage", "retirement"] as const) {
     for (const child of listFirstLevelPortfolioGroupChildren(parentSlug)) {

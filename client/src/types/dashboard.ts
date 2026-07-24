@@ -300,12 +300,27 @@ export interface DashboardOverviewDailyPoint {
   cash_eqs: number | null;
 }
 
+/** One day of the «Patrimonio neto vs invested» chart (always CLP): total_nw + invested +
+ * per-day USD milestone levels, same keys as the monthly `patrimonio_usd_milestones_chart`. */
+export type PatrimonioDailyPoint = Record<string, string | number | null>;
+
+/** A «Cuentas principales» child line: values in the request unit, aligned to `points`,
+ * keyed by the same synthetic dataKey as the monthly `accounts_ex_property` accounts. */
+export interface PrimaryDailyLine {
+  dataKey: string;
+  values: (number | null)[];
+}
+
 /** Daily net-worth series for the day period view (calendar-day grid, last point live). */
 export interface DashboardOverviewDailyResponse {
   unit: "clp" | "usd";
   days: number;
   end_ymd: string;
   points: DashboardOverviewDailyPoint[];
+  /** «Patrimonio neto vs invested» daily points (CLP). */
+  patrimonio: PatrimonioDailyPoint[];
+  /** «Cuentas principales» per-child-group daily lines (request unit). */
+  primary_lines: PrimaryDailyLine[];
 }
 
 /** One calendar-day row of `GET /api/daily-series` (unit-converted; nulls = missing legs). */
