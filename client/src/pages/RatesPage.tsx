@@ -9,6 +9,7 @@ import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
 import { RatesLineChart, type RatesLineSeries } from "../components/charts/RatesLineChart";
 import { useDailyRateTailClip } from "./ratesDailyTailClip";
+import { timeRangeCutoffYmd } from "../timeRange";
 
 const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
 const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
@@ -198,19 +199,21 @@ function FxUsdClpDualChart({
   recentColValue: string;
   recentEmptyLabel: string;
 }) {
+  const { timeRange } = useDisplayPreferences();
   const merged = useMemo(
     () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
     [yahooData, bcentralData, buyData, sellData]
   );
-  const denseData = useMemo(
-    () =>
-      densifyRecordsByCalendarDay(
-        merged as unknown as ChartSparseRow[],
-        "date",
-        ["yahoo", "bcentral", "buy", "sell"]
-      ),
-    [merged]
-  );
+  const denseData = useMemo(() => {
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    const clipped = cutoff ? merged.filter((r) => r.date >= cutoff) : merged;
+    return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", [
+      "yahoo",
+      "bcentral",
+      "buy",
+      "sell",
+    ]);
+  }, [merged, timeRange]);
 
   const clip = useDailyRateTailClip(
     denseData as unknown as Record<string, string | number | null>[],
@@ -312,10 +315,12 @@ function MiniLineChart({
   recentColValue: string;
   recentEmptyLabel: string;
 }) {
-  const denseData = useMemo(
-    () => densifyRecordsByCalendarDay(data as unknown as ChartSparseRow[], "date", ["value"]),
-    [data]
-  );
+  const { timeRange } = useDisplayPreferences();
+  const denseData = useMemo(() => {
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    const clipped = cutoff ? data.filter((r) => r.date >= cutoff) : data;
+    return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", ["value"]);
+  }, [data, timeRange]);
 
   const clip = useDailyRateTailClip(
     denseData as unknown as Record<string, string | number | null>[],
