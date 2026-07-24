@@ -83,6 +83,7 @@ import {
   afpValuationRawClpForChart,
   liveAfpDisplayValueClp,
 } from "./accountPosition.js";
+import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   chartHostSlugForValuationGroup,
   composeReferenceValuesByDate,
@@ -491,6 +492,51 @@ function augmentChartDatesForDeptoSheetAccounts(
   return [...aug].sort();
 }
 
+/** Earliest date a Fintual cert account held cuotas — a single-leg cuota row OR a checking→fund
+ * transfer leg (aportes are mostly modeled as transfers). Null if it never held any. */
+function firstFintualCuotaEventYmd(accountId: number): string | null {
+  const single = (
+    db
+      .prepare(
+        `SELECT MIN(occurred_on) AS d FROM movements WHERE account_id = ? AND units_delta IS NOT NULL`
+      )
+      .get(accountId) as { d: string | null }
+  ).d;
+  const transfer = (
+    db
+      .prepare(
+        `SELECT MIN(occurred_on) AS d FROM movements
+         WHERE account_id IS NULL AND units_delta IS NOT NULL AND (from_account_id = ? OR to_account_id = ?)`
+      )
+      .get(accountId, accountId) as { d: string | null }
+  ).d;
+  const dates = [single, transfer].filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d));
+  return dates.length ? dates.sort()[0]! : null;
+}
+
+/**
+ * Fintual cert accounts are valued through `accountMarkClpAtYmd` (cuotas × fund-unit price), so
+ * their chart dates need not come from stored `valuations` rows — derive the monthly grid from
+ * the cuota history (first cuota event through today), the same as checking/CC/depto accounts do.
+ * This lets the redundant, sometimes-stale stored valuations be dropped without emptying the line.
+ */
+function augmentChartDatesForFintualCertAccounts(
+  dateStrs: string[],
+  allIds: number[],
+  chartMetaById: Map<number, { import_key?: string | null; name?: string | null }>
+): string[] {
+  const aug = new Set(dateStrs);
+  const today = chileCalendarTodayYmd();
+  for (const id of allIds) {
+    const meta = chartMetaById.get(id);
+    if (!(meta?.import_key && isFintualCertV2ValuationNotes(meta.import_key))) continue;
+    const first = firstFintualCuotaEventYmd(id);
+    if (!first) continue;
+    for (const d of monthEndsBetweenInclusive(first, today)) aug.add(d);
+  }
+  return [...aug].sort();
+}
+
 /**
  * Month-end CLP series from `depto-dividendos.csv` (same as Numbers: **valor neto** + **pago acumulado**),
  * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the same amortization timeline as the sheet.
@@ -844,6 +890,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   dateStrs = augmentChartDatesForCreditCardAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForDeptoSheetAccounts(dateStrs, allIds, slugById);
+  dateStrs = augmentChartDatesForFintualCertAccounts(dateStrs, allIds, chartMetaById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   const propertyAccountIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "property");
   const propertyDeptoSheets =
