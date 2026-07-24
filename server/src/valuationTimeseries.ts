@@ -81,10 +81,8 @@ import {
 } from "./fxRates.js";
 import {
   afpValuationRawClpForChart,
-  fintualCertValuationRawClpForChart,
   liveAfpDisplayValueClp,
 } from "./accountPosition.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   chartHostSlugForValuationGroup,
   composeReferenceValuesByDate,
@@ -983,16 +981,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
       }
       const chartMeta = chartMetaById.get(aid);
-      if (chartMeta?.import_key && isFintualCertV2ValuationNotes(chartMeta.import_key)) {
-        raw = fintualCertValuationRawClpForChart(
-          aid,
-          chartMeta.import_key,
-          chartMeta.name,
-          d,
-          raw,
-          useLiveAfpOnDate
-        );
-      }
       if (propertyAccountIds.length === 1 && aidKind === "property") {
         // Sheet UF marks on every date including the trailing/today point: suecia CLP is
         // (valor_neto_uf × UF(d)), the same daily re-mark as the Hipoteca line and the monthly table.
@@ -1001,15 +989,19 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
           raw = fromDepto;
         }
       }
-      // Plain stored-valuation accounts (manual marks, DAP, cuenta ahorro, the pre-Fintual
-      // Principal) previously forward-filled the last stored value with no flow carry, so a
-      // liquidation or deposit after the last mark left the line stale (the daily view winds it
-      // down via book-value carry). Value them through the mark instead — stored + net flows
-      // since, null before the first mark — so the group-page line matches the daily one. The
-      // special-branch kinds above (equity/crypto/cash MTM, CC, mortgage, AFP, Fintual cert,
-      // property) keep the raw they just computed.
+      // Mark-valued accounts value each chart date through `accountMarkClpAtYmd`, so the
+      // group-page line matches the daily one:
+      //  - Plain stored-valuation accounts (manual marks, DAP, cuenta ahorro, the pre-Fintual
+      //    Principal) — previously forward-filled the last stored value with no flow carry, so a
+      //    later deposit/liquidation left the line stale; the mark carries stored + net flows.
+      //  - Fintual cert accounts — previously PREFERRED the stored `valuations` snapshot on
+      //    historical dates (`fintualCertValuationRawClpForChart`), which lagged the true fund
+      //    value whenever the snapshot sync was stale; the mark is cuotas × fund-unit price
+      //    (the certificado value), fresh at every date.
+      // The remaining special-branch kinds (equity/crypto/cash MTM, CC, mortgage, AFP, property)
+      // keep the raw they computed above — those framings are intentional.
       const aidSlug = slugById.get(aid) ?? "";
-      const isPlainStoredValuation =
+      const isMarkValued =
         !accountUsesEquityMtm(aid) &&
         !accountUsesCryptoMtm(aid) &&
         !isMovementBalanceCashCategory(aidSlug) &&
@@ -1018,9 +1010,8 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         aidKind !== "credit_card" &&
         aidKind !== "mortgage" &&
         aidKind !== "afp" &&
-        aidKind !== "property" &&
-        !(chartMeta?.import_key && isFintualCertV2ValuationNotes(chartMeta.import_key));
-      if (isPlainStoredValuation) {
+        aidKind !== "property";
+      if (isMarkValued) {
         const mark = accountMarkClpAtYmd(aid, d, aidSlug, {
           import_key: chartMeta?.import_key ?? null,
           name: chartMeta?.name ?? null,
