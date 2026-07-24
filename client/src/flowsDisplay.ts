@@ -14,6 +14,19 @@ export function formatFlowMoney(amount: number, unit: DisplayUnit): string {
   return unit === "usd" ? formatUsd(amount) : formatClp(amount);
 }
 
+/**
+ * Sum a numeric field across chart points — used for the Rango "en el rango" companion
+ * total, computed over the already-clipped points so the number always matches the bars.
+ */
+export function sumChartPointsField<T>(points: readonly T[], field: keyof T & string): number {
+  let sum = 0;
+  for (const p of points) {
+    const v = (p as Record<string, unknown>)[field];
+    if (typeof v === "number" && Number.isFinite(v)) sum += v;
+  }
+  return sum;
+}
+
 type NumericChartPoint = {
   as_of_date: string;
   [key: string]: string | number;

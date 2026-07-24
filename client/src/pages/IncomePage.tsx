@@ -15,11 +15,13 @@ import {
 import {
   flowChartGranularityFromMetricsPeriod,
   formatFlowMoney,
+  sumChartPointsField,
 } from "../flowsDisplay";
+import { clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
 
 export function IncomePage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useIncome();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -31,15 +33,21 @@ export function IncomePage() {
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    return chartGranularity === "year" ? view.chart_yearly : view.chart_monthly;
-  }, [chartGranularity, view]);
+    const base = chartGranularity === "year" ? view.chart_yearly : view.chart_monthly;
+    return clipPointsToTimeRange(base, timeRange);
+  }, [chartGranularity, view, timeRange]);
+
+  /** "En el rango" companion (headline `view.total` stays full history). */
+  const rangeTotal = useMemo(() => sumChartPointsField(chartPoints, "total"), [chartPoints]);
 
   const monthTableRows = useMemo(() => {
     if (!view) return [];
-    if (chartGranularity === "month") return view.by_month;
-    const asc = [...view.by_month].reverse();
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    const clipped = cutoff ? view.by_month.filter((r) => r.as_of_date >= cutoff) : view.by_month;
+    if (chartGranularity === "month") return clipped;
+    const asc = [...clipped].reverse();
     return [...rollupIncomeMonthRowsByYear(asc)].reverse();
-  }, [chartGranularity, view]);
+  }, [chartGranularity, view, timeRange]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -61,6 +69,12 @@ export function IncomePage() {
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(view.total, displayUnit)}
         </span>
+        {timeRange !== "total" ? (
+          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
+            · {t("flows.rangeTotalLabel")}{" "}
+            <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
+          </span>
+        ) : null}
       </p>
 
       <div
