@@ -168,6 +168,60 @@ describe("aggregationCache", () => {
     expect(ccRebuilds).toBe(0);
   });
 
+  describe("daily namespace: mark series vs aggregations", () => {
+    const MARKS_KEY = "daily.marks|1|brokerage_acciones__vitest";
+    const SERIES_KEY = "daily.series|pg:brokerage|clp|90|acc|1,2";
+    const OVERVIEW_KEY = "daily.overview|clp|90";
+
+    function seedDailyEntries(): void {
+      getAggregationCached(MARKS_KEY, () => ({ start_ymd: "2026-02-01", end_ymd: "2026-02-02", values: [1, 2] }));
+      getAggregationCached(SERIES_KEY, () => ({ points: [] }));
+      getAggregationCached(OVERVIEW_KEY, () => ({ points: [] }));
+    }
+
+    /** Rebuild counts for the three seeded keys: 1 = the entry was dropped, 0 = it survived. */
+    function rebuildCounts(): { marks: number; series: number; overview: number } {
+      const counts = { marks: 0, series: 0, overview: 0 };
+      getAggregationCached(MARKS_KEY, () => {
+        counts.marks += 1;
+        return { start_ymd: "2026-02-01", end_ymd: "2026-02-02", values: [1, 2] };
+      });
+      getAggregationCached(SERIES_KEY, () => {
+        counts.series += 1;
+        return { points: [] };
+      });
+      getAggregationCached(OVERVIEW_KEY, () => {
+        counts.overview += 1;
+        return { points: [] };
+      });
+      return counts;
+    }
+
+    it("live_tail keeps cached marks and drops only the daily aggregations", () => {
+      seedDailyEntries();
+      invalidateMarketDataAggregations("live_tail");
+      expect(rebuildCounts()).toEqual({ marks: 0, series: 1, overview: 1 });
+    });
+
+    it("historical market data (the default) drops marks too", () => {
+      seedDailyEntries();
+      invalidateMarketDataAggregations();
+      expect(rebuildCounts()).toEqual({ marks: 1, series: 1, overview: 1 });
+    });
+
+    it("an account/CC write drops marks for every account, not just the written one", () => {
+      // Marks can depend on another account's rows (shared depto ledger, transfer-leg deposit
+      // carry), so the write funnel stays conservative — see `invalidateDailySeries`.
+      seedDailyEntries();
+      invalidateCcBillingDetail(9);
+      expect(rebuildCounts()).toEqual({ marks: 1, series: 1, overview: 1 });
+
+      seedDailyEntries();
+      invalidateAggregationForAccountDate(1, "2026-03-15");
+      expect(rebuildCounts()).toEqual({ marks: 1, series: 1, overview: 1 });
+    });
+  });
+
   it("every explicit invalidation drops the cached page bundle", () => {
     const invalidations: Array<[string, () => void]> = [
       ["invalidateAggregationForAccountDate", () => invalidateAggregationForAccountDate(1, "2026-03-15")],

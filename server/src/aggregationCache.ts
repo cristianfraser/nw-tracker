@@ -74,6 +74,17 @@ export function getAggregationCached<T>(key: string, build: () => T): T {
   return value;
 }
 
+/**
+ * Overwrite a cached entry. Only for read-modify-write caches — entries a reader **extends**
+ * rather than rebuilds (`accountMarkDailyCache.ts` grows one account's mark series when a
+ * later request asks for a wider date range). Everything else builds once and must use
+ * {@link getAggregationCached}, whose miss-path build is the single writer.
+ */
+export function setAggregationCached<T>(key: string, value: T): void {
+  ensureCacheFreshForChileDay();
+  cache.set(key, value);
+}
+
 export function cacheKeyAccountMonthlyPerf(accountId: number, unit: TsUnit): string {
   return `account.monthly_perf|${accountId}|${unit}`;
 }
@@ -105,10 +116,37 @@ export function invalidateDashboardPageBundle(): void {
 }
 
 /**
- * Drop every cached daily aggregation (`dailySeries.ts` bucket series + the overview-daily
- * payload). The whole namespace goes at once: entries bake per-session marks across many
- * accounts, so per-account precision isn't worth the mapping — they rebuild lazily on the
- * next daily-view request.
+ * Daily-view aggregations: bucket series, the overview-daily payload, and the reference-line
+ * source totals. Each bakes per-day marks across many accounts, so per-account precision
+ * isn't worth the mapping — they rebuild lazily on the next daily-view request, now on top
+ * of the cached per-account marks rather than re-walking evidence.
+ */
+const DAILY_AGGREGATE_PREFIXES = ["daily.series|", "daily.overview|", "daily.refsrc|"] as const;
+
+/**
+ * Drop the daily aggregations but KEEP the per-account mark series (`daily.marks|`).
+ *
+ * Only valid when the write cannot have moved a **historical** mark, which is exactly the
+ * live-quote case: `daily.marks|` entries hold days strictly before Chile today, and a
+ * historical mark reads `equity_daily` / `fx_daily` EOD only (`accountMarkClpAtYmd`'s live
+ * stack is gated on `asOfYmd === today`, and `computeEquityMtmClp` only reaches
+ * `fxForLiveMtm` when handed an explicit live price). Today's mark is never cached, so the
+ * rebuilt aggregations still pick up the new quote.
+ */
+export function invalidateDailyAggregates(): void {
+  for (const prefix of DAILY_AGGREGATE_PREFIXES) deleteKeysMatchingPrefix(prefix);
+}
+
+/**
+ * Drop every cached daily entry — aggregations **and** per-account mark series. The default
+ * for anything that touches stored evidence (movements, valuations, statements) or historical
+ * market data (EOD closes, fx/UF rows), since those move historical marks.
+ *
+ * Mark series are dropped for **all** accounts, not just the written one: an account's marks
+ * can depend on another account's rows (the depto property and mortgage accounts share one
+ * ledger; deposit-carry flows follow transfer legs), and there is no dependency map to make
+ * a narrower drop provably correct. Writes are rare next to live-quote ticks, which keep
+ * their marks via {@link invalidateDailyAggregates}.
  */
 export function invalidateDailySeries(): void {
   deleteKeysMatchingPrefix("daily.");
@@ -269,18 +307,37 @@ export function rollupSlugsForAccountTest(accountId: number): string[] {
 }
 
 /**
+ * What a market-data write touched, which decides whether cached per-account mark series
+ * survive it:
+ * - `historical` (default): rows dated in the past — EOD closes, fx/UF, fund units. Every
+ *   mark from that date forward can move, so the whole daily namespace goes.
+ * - `live_tail`: `live_market_quotes` only, which no historical mark reads. The cached mark
+ *   series stay; today's mark is recomputed on the next read because it is never cached.
+ *
+ * Unknown callers get the conservative default — only pass `live_tail` from the live-quotes
+ * poll, whose writes are confined to that table.
+ */
+export type MarketDataInvalidationScope = "historical" | "live_tail";
+
+/**
  * Market-data writes from this process (live-quote poll, global sync applying EOD closes,
  * fund units, fx/UF rows) don't bump `data_version` and carry no account/date, but they move
  * the live "today" marks baked into monthly-perf and consolidated aggregations. Drop those
  * namespaces — `cc.billing_detail|` stays, CC ledgers don't read market quotes — and notify
  * the warmer so the bucket totals track intraday marks instead of the price at cache-build time.
  */
-export function invalidateMarketDataAggregations(): void {
+export function invalidateMarketDataAggregations(
+  scope: MarketDataInvalidationScope = "historical"
+): void {
   deleteKeysMatchingPrefix("account.monthly_perf|");
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
   invalidateDashboardPageBundle();
-  invalidateDailySeries();
+  if (scope === "live_tail") {
+    invalidateDailyAggregates();
+  } else {
+    invalidateDailySeries();
+  }
   invalidationListener?.();
 }
 
