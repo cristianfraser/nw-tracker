@@ -5,6 +5,7 @@ import { AccountFlowsSection } from "../../components/account/AccountFlowsSectio
 import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
+import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useDailySeries } from "../../queries/hooks";
 import { timeRangeToDays } from "../../timeRange";
@@ -94,6 +95,26 @@ export function StandardAccountDetailPage({ data }: Props) {
     if (!isDaily) return null;
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
   }, [isDaily, dailySeries.data, valuationBlockForChart, ts.accounts]);
+
+  // Day view P/L bars: one bar account (this account), so a single build serves both combos —
+  // `nominal_pl`/`delta_month` are the same daily P/L and the two areas ride along.
+  const dailyPerfPoints = useMemo(() => {
+    if (!isDaily || !dailySeries.data?.points.length || !monthlyPerfRows.length) return null;
+    const line = dailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
+    if (!line?.pl) return null;
+    return buildDailyPerfComboPoints({
+      series: dailySeries.data,
+      lines: [line],
+      barAccounts: [{ account_id: summary.account_id, bar_data_key: "nominal_pl" }],
+      monthlyPointsAsc: [...monthlyPerfRows].reverse().map((r) => ({
+        as_of_date: r.as_of_date,
+        ytd_nominal_pl: r.ytd_nominal_pl ?? 0,
+        accumulated_earnings: r.cumulative_nominal_pl ?? 0,
+      })),
+      ytdKey: "ytd_nominal_pl",
+      totalKey: "delta_month",
+    });
+  }, [isDaily, dailySeries.data, monthlyPerfRows, summary.account_id]);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
@@ -358,9 +379,9 @@ export function StandardAccountDetailPage({ data }: Props) {
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.plMonthlyVsYtdTitle")}
                   titleAs="h3"
-                  points={ytdChartPoints}
+                  points={dailyPerfPoints ?? ytdChartPoints}
                   displayUnit={displayUnit}
-                  xAxisGranularity={xAxisGranularity}
+                  xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
                   barSeries={[
                     {
                       dataKey: "nominal_pl",
@@ -381,9 +402,9 @@ export function StandardAccountDetailPage({ data }: Props) {
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.monthlyDeltaAndAccumTitle")}
                   titleAs="h3"
-                  points={accChartPoints}
+                  points={dailyPerfPoints ?? accChartPoints}
                   displayUnit={displayUnit}
-                  xAxisGranularity={xAxisGranularity}
+                  xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
                   barSeries={[
                     {
                       dataKey: "delta_month",
