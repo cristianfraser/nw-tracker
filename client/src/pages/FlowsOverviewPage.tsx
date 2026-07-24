@@ -11,6 +11,7 @@ import {
 import {
   flowChartGranularityFromMetricsPeriod,
   flowPeriodLabel,
+  flowTableGranularity,
   formatFlowMoney,
 } from "../flowsDisplay";
 import { timeRangeCutoffYmd } from "../timeRange";
@@ -25,6 +26,9 @@ export function FlowsOverviewPage() {
   const { t } = useTranslation();
   const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  // Day mode falls back to the monthly chart/table here for now (Overview composes four feeds;
+  // the day composite is the remaining Phase B work). Rango still applies.
+  const displayGranularity = flowTableGranularity(chartGranularity);
   const { installmentMode } = useCcInstallmentGastosMode();
 
   const income = useIncome();
@@ -98,7 +102,7 @@ export function FlowsOverviewPage() {
         <FlowsOverviewChart
           title={t("flows.overview.chartTitle")}
           points={chartPoints}
-          xAxisGranularity={chartGranularity}
+          xAxisGranularity={displayGranularity}
           displayUnit={displayUnit}
         />
       </div>
@@ -176,7 +180,7 @@ export function FlowsOverviewPage() {
         >
           {pageRows.map((row) => (
             <tr key={row.period_month}>
-              <td className="mono">{flowPeriodLabel(row.period_month, chartGranularity)}</td>
+              <td className="mono">{flowPeriodLabel(row.period_month, displayGranularity)}</td>
               <td className="mono">{formatFlowMoney(row.income, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.expenses, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.deposits, displayUnit)}</td>

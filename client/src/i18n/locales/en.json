@@ -1097,7 +1097,6 @@
       "billMonthEditAction": "Edit billed month",
       "paidOnHint": "paid {{date}}"
     },
-    "chartGranularityLabel": "Chart",
     "colDate": "Date",
     "colKind": "Type",
     "colAmount": "Amount",

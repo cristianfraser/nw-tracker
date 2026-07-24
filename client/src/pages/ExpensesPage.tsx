@@ -15,6 +15,7 @@ import {
 } from "../ccExpenseGastosAggregate";
 import {
   flowChartGranularityFromMetricsPeriod,
+  flowTableGranularity,
   formatFlowMoney,
   rollupChartPointsByYear,
 } from "../flowsDisplay";
@@ -210,7 +211,7 @@ export function ExpensesPage() {
           categorySortPoints={chartSortPoints}
           categories={data.categories}
           displayUnit={displayUnit}
-          xAxisGranularity={chartGranularity}
+          xAxisGranularity={flowTableGranularity(chartGranularity)}
         />
       </div>
       {chartFilterActive ? (
@@ -261,7 +262,7 @@ export function ExpensesPage() {
         bigGroups={data.big_groups ?? []}
         installmentMode={installmentMode}
         displayUnit={displayUnit}
-        periodGranularity={chartGranularity}
+        periodGranularity={flowTableGranularity(chartGranularity)}
       />
 
       <CreditCardUnclassifiedExpensesTable

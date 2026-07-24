@@ -316,6 +316,67 @@ export function aggregateIncomeFromPayload(
   };
 }
 
+/**
+ * Per-calendar-day income chart points (Diario). Unlike the monthly view, day grain buckets
+ * by the actual arrival date (`received_on` / wire date), not payroll-month attribution —
+ * income is spiky on pay days, matching the daily-series deposit-day convention. The chart's
+ * calendar-day densify fills the empty days; Σ(day points in a month) reconciles to the
+ * received-date month total (not the payroll-attributed monthly chart, which shifts salary).
+ */
+export function aggregateIncomeChartPointsByDay(
+  data: FlowsIncomeResponse,
+  unit: DisplayUnit = "clp"
+): FlowIncomeChartPoint[] {
+  type DayBucket = { salary: number; severance: number; parent_gift: number; other: number };
+  const byDay = new Map<string, DayBucket>();
+  const add = (day: string, kind: IncomeKind, amount: number) => {
+    let b = byDay.get(day);
+    if (!b) {
+      b = { salary: 0, severance: 0, parent_gift: 0, other: 0 };
+      byDay.set(day, b);
+    }
+    if (kind === "salary") b.salary += amount;
+    else if (kind === "severance") b.severance += amount;
+    else if (kind === "parent_gift") b.parent_gift += amount;
+    else b.other += amount;
+  };
+
+  for (const line of data.lines) {
+    add(
+      line.received_on.slice(0, 10),
+      incomeKindForCheckingLine(line, data),
+      incomeCartolaAmount(line, unit)
+    );
+  }
+  for (const line of data.manual) {
+    add(line.received_on.slice(0, 10), "other", incomeManualAmount(line, unit));
+  }
+  for (const row of data.work_earnings) {
+    if (row.earning_type !== "salary" || !isUsdSyntheticWorkEarning(row)) continue;
+    const day = (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10);
+    add(day, "salary", workEarningSalaryAmount(row, unit));
+  }
+
+  return [...byDay.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((day) => {
+      const b = byDay.get(day)!;
+      const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
+      const salary = round(b.salary);
+      const severance = round(b.severance);
+      const parent_gift = round(b.parent_gift);
+      const other = round(b.other);
+      return {
+        as_of_date: day,
+        salary,
+        severance,
+        parent_gift,
+        other,
+        total: salary + severance + parent_gift + other,
+      };
+    });
+}
+
 export function paginateRowsByYear<T extends { received_on: string }>(
   rows: readonly T[]
 ): { pageNumber: number; data: T[] }[] {

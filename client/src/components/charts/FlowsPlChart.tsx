@@ -34,7 +34,7 @@ export function FlowsPlChart({
 }: {
   title: string;
   points: readonly FlowsPlChartPoint[];
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();

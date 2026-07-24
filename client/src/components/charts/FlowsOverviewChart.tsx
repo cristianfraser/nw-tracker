@@ -39,7 +39,7 @@ export function FlowsOverviewChart({
 }: {
   title: string;
   points: readonly FlowsOverviewChartPoint[];
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();

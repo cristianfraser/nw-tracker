@@ -497,10 +497,10 @@ export function useFlowsDeposits() {
   });
 }
 
-export function useFlowsPl() {
+export function useFlowsPl(days?: number) {
   return useQuery({
-    queryKey: queryKeys.flowsPl(),
-    queryFn: () => api.flowsPl(),
+    queryKey: queryKeys.flowsPl(days),
+    queryFn: () => api.flowsPl(days),
   });
 }
 

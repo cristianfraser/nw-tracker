@@ -1097,7 +1097,6 @@
       "billMonthEditAction": "Editar mes facturado",
       "paidOnHint": "pagado {{date}}"
     },
-    "chartGranularityLabel": "Gráfico",
     "colDate": "Fecha",
     "colKind": "Tipo",
     "colAmount": "Monto",

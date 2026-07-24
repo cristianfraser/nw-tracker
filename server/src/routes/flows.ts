@@ -4,6 +4,7 @@ import { db } from "../db.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
 import { buildFlowsPlPayload } from "../flowsPl.js";
+import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
 import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "../ccExpenseCategories.js";
 import { purchaseIdFromPlanGastosLineId } from "../ccInstallmentPlanGastosLines.js";
 import { assignFlowExpenseLineCategory } from "../assignFlowExpenseLineCategory.js";
@@ -60,8 +61,14 @@ app.get("/api/flows/deposits", (_req, res) => {
   res.json(buildFlowsDepositsPayload());
 });
 
-app.get("/api/flows/pl", (_req, res) => {
-  res.json(buildFlowsPlPayload());
+app.get("/api/flows/pl", (req, res) => {
+  // `days` (0 = total) opts into the Diario per-day P/L block; absent = M/Y-only (unchanged).
+  const days = req.query.days != null ? Number(req.query.days) : null;
+  if (days != null && (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS)) {
+    res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
+    return;
+  }
+  res.json(buildFlowsPlPayload(days != null ? { days } : undefined));
 });
 
 app.get("/api/flows/deposits/reconciliation", (_req, res) => {

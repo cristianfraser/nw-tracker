@@ -9,7 +9,7 @@ import {
   flowPeriodLabel,
   formatFlowMoney,
 } from "../flowsDisplay";
-import { clipPointsToTimeRange } from "../timeRange";
+import { clipPointsToTimeRange, timeRangeToDays } from "../timeRange";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
 import type { FlowsPlAccountRow, FlowsPlBucketBlock } from "../types";
@@ -37,11 +37,17 @@ export function FlowsPlPage() {
   const { t } = useTranslation();
   const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
-  const { data, error } = useFlowsPl();
+  const isDaily = chartGranularity === "day";
+  // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
+  const { data, error } = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
+    if (isDaily) {
+      // Server already windows the daily series to `days`; no client clip.
+      return (displayUnit === "usd" ? data.chart_daily_usd : data.chart_daily) ?? [];
+    }
     const base =
       displayUnit === "usd"
         ? chartGranularity === "year"
@@ -51,7 +57,7 @@ export function FlowsPlPage() {
           ? data.chart_yearly
           : data.chart_monthly;
     return clipPointsToTimeRange(base, timeRange);
-  }, [chartGranularity, data, displayUnit, timeRange]);
+  }, [chartGranularity, data, displayUnit, isDaily, timeRange]);
 
   const tableRows = useMemo(() => [...chartPoints].reverse(), [chartPoints]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
@@ -106,7 +112,7 @@ export function FlowsPlPage() {
           {pageRows.map((row) => (
             <tr key={row.as_of_date}>
               <td className="mono">
-                {flowPeriodLabel(row.as_of_date.slice(0, 7), chartGranularity)}
+                {flowPeriodLabel(row.as_of_date, chartGranularity)}
               </td>
               <td className="mono">{formatFlowMoney(row.brokerage, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.retirement, displayUnit)}</td>
