@@ -1173,7 +1173,22 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
     return row;
   });
-  return { accounts: topOut, points: densifyMonthlyValuationPoints(points) };
+  const densified = densifyMonthlyValuationPoints(points);
+  // Leading-null edge (matches the daily series' per-account trim): null each account line's
+  // leading run of 0/null so a late-starting account begins at its first holding instead of a
+  // flat 0 from the block start. Equity already reads null pre-holding; crypto's zero-unit
+  // mark is a finite 0 — nulling the lead makes the two agree here and with the daily view.
+  // Interior/trailing zeros are untouched (the trailing tail-clip runs downstream).
+  for (const t of topOut) {
+    const dk = t.dataKey;
+    let firstHeld = densified.findIndex((r) => {
+      const v = r[dk];
+      return typeof v === "number" && Number.isFinite(v) && v !== 0;
+    });
+    if (firstHeld < 0) firstHeld = densified.length;
+    for (let i = 0; i < firstHeld; i++) densified[i]![dk] = null;
+  }
+  return { accounts: topOut, points: densified };
 }
 
 /**
