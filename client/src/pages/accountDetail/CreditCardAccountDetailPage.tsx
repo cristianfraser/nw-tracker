@@ -134,10 +134,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   return (
     <AccountDetailSharedLayout
       title={ts.name}
-      accountColorRgb={data.accountColorRgb}
-      pageColorTarget={data.pageColorTarget}
       accountId={summary.account_id}
-      accountName={ts.name}
       accountTitleDelta={data.accountTitleDelta}
       accountMetricsAgg={data.accountMetricsAgg}
       displayUnit={displayUnit}

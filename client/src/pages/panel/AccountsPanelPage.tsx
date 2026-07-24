@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { AddAccountForm } from "../../components/panel/AddAccountForm";
 import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountExcludeFromTotalsToggle";
 import { EditAccountModal } from "../../components/panel/EditAccountModal";
+import { EntityColorPicker } from "../../components/dashboard/EntityColorPicker";
 import { Table } from "../../components/ui/Table";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
@@ -40,6 +41,13 @@ function PortfolioGroupTableRows({
         <td className="mono">{node.slug}</td>
         <td className="mono">{node.group_kind}</td>
         <td className="mono">{accountCount}</td>
+        <td>
+          <EntityColorPicker
+            colorRgb={node.color_rgb}
+            colorTarget={{ kind: "portfolio_group", slug: node.slug }}
+            size="compact"
+          />
+        </td>
       </tr>
       {node.children
         .filter((c) => c.portfolio_group_id != null && c.account_id == null)
@@ -147,16 +155,25 @@ export function AccountsPanelPage() {
                 />
               </td>
               <td>
-                <button type="button" onClick={() => setEditingAccount(a)}>
-                  {t("panelAccounts.editBtn")}
-                </button>{" "}
-                <button
-                  type="button"
-                  onClick={() => void onDeleteAccount(a.id, a.name)}
-                  disabled={deletingId === a.id}
+                <span
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
                 >
-                  {deletingId === a.id ? t("common.loading") : t("panelAccounts.deleteBtn")}
-                </button>
+                  <EntityColorPicker
+                    colorRgb={a.color_rgb}
+                    colorTarget={{ kind: "account", accountId: a.id }}
+                    size="compact"
+                  />
+                  <button type="button" onClick={() => setEditingAccount(a)}>
+                    {t("panelAccounts.editBtn")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onDeleteAccount(a.id, a.name)}
+                    disabled={deletingId === a.id}
+                  >
+                    {deletingId === a.id ? t("common.loading") : t("panelAccounts.deleteBtn")}
+                  </button>
+                </span>
               </td>
             </tr>
           ))
@@ -175,13 +192,14 @@ export function AccountsPanelPage() {
               <th>{t("panelAccounts.colSlug")}</th>
               <th>{t("panelAccounts.colGroupKind")}</th>
               <th>{t("panelAccounts.colAccounts")}</th>
+              <th>{t("panelAccounts.colActions")}</th>
             </tr>
           </thead>
         }
       >
         {!netWorthNode ? (
           <tr>
-            <td colSpan={5} className="muted">
+            <td colSpan={6} className="muted">
               {t("panelAccounts.emptyTree")}
             </td>
           </tr>

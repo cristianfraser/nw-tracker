@@ -12,7 +12,6 @@ import { PageTitleRow } from "../layout/PageTitleRow";
 import { PeriodReturnsStrip } from "../perf/PeriodReturnsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import type { EntityColorTarget } from "../../entityColor";
 import { useTranslation } from "../../i18n";
 import { useGroupConsolidatedMonthlyPage } from "../../queries/hooks";
 import {
@@ -45,7 +44,6 @@ export type GroupInfoPortfolioStrip = {
   enabled?: boolean;
   /** While bundle loads: static placeholder values, then one spin to final. */
   placeholderPhase?: boolean;
-  compactTitleTo?: string;
   /** Nodes for `navNode.linked_card_slugs`, resolved against the sidebar nav by the page. */
   linkedCardNavChildren?: NavTreeNodeDto[];
 };
@@ -53,8 +51,6 @@ export type GroupInfoPortfolioStrip = {
 export type GroupInfoBaseProps = {
   mainClassName?: string;
   title: string;
-  colorRgb?: string | null;
-  colorTarget?: EntityColorTarget;
   /** e.g. Agrupado / Aportes acumulados toggles (group pages). */
   toolbar?: ReactNode;
   /** Nav node + dashboard bundle for the two-row portfolio card strip. */
@@ -85,8 +81,6 @@ export type GroupInfoBaseProps = {
 export function GroupInfoBase({
   mainClassName,
   title,
-  colorRgb,
-  colorTarget,
   toolbar,
   portfolio,
   notice,
@@ -177,14 +171,12 @@ export function GroupInfoBase({
       <div
         className={cn(pageShellStyles.contentShell, loading && pageShellStyles.contentShellLoading)}
       >
-        <PageTitleRow title={title} colorRgb={colorRgb} colorTarget={colorTarget} />
+        <PageTitleRow title={title} />
         {toolbar}
         {showPortfolioStrip ? (
           <PortfolioNavEntityCardsStrip
             dash={portfolio.dash}
             parentNavNode={portfolio.navNode}
-            compactTitle={title}
-            compactTitleTo={portfolio.compactTitleTo}
             showUsd={portfolio.showUsd}
             metricsPeriod={portfolio.metricsPeriod}
             animated={portfolio.animated}

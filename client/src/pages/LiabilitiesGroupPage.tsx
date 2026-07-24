@@ -21,7 +21,7 @@ import {
   resolveLinkedCardNavChildren,
 } from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
-import { navColorTargetFromDto, resolveNavTreeLabel } from "../sidebarNavFromApi";
+import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
@@ -405,7 +405,6 @@ export function LiabilitiesGroupPage() {
   );
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
-  const pageColorTarget = navMatchNode ? navColorTargetFromDto(navMatchNode) : undefined;
   const showUsd = displayUnit === "usd";
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -448,8 +447,6 @@ export function LiabilitiesGroupPage() {
   return (
     <GroupInfoBase
       title={title}
-      colorRgb={navMatchNode.color_rgb}
-      colorTarget={pageColorTarget}
       loading={contentLoading}
       hideConsolidatedTables
       portfolio={

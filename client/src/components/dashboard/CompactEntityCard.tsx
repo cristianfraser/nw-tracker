@@ -6,7 +6,8 @@ import { cn } from "../../cn";
 import styles from "./CompactEntityCard.module.css";
 
 export type CompactEntityCardProps = {
-  label: string;
+  /** Omit to render only the Δ + value (e.g. the hero card, whose name repeats the page title). */
+  label?: string;
   /** When set, label is rendered as a `Link`. */
   to?: string;
   balanceDelta?: number | null;
