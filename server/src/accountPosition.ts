@@ -358,17 +358,6 @@ export function liveAfpDisplayValueClp(
   return null;
 }
 
-export function afpValuationRawClpForChart(
-  accountId: number,
-  storedClp: number | null | undefined,
-  useLiveMark: boolean
-): number | null {
-  if (useLiveMark) {
-    const live = liveAfpDisplayValueClp(accountId);
-    if (live) return live.value_clp;
-  }
-  return storedClp != null && Number.isFinite(storedClp) ? storedClp : null;
-}
 
 export function applyLiveAfpToAccountValueMap(
   lastVal: Map<number, number>,
