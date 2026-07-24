@@ -107,20 +107,36 @@ export function densifyRecordsByCalendarPeriod<T extends ChartSparseRow>(
   sortedDates.sort((a, b) => a.localeCompare(b));
   if (sortedDates.length === 0) return [...points];
 
-  // Daily series arrive on their own complete session grid — no calendar filling, and no
-  // right-edge extension (the grid always ends at the display session).
-  if (opts.granularity === "day") {
-    return [...points].sort((a, b) =>
-      String(a[dateKey] ?? "").localeCompare(String(b[dateKey] ?? ""))
-    );
-  }
-
   const templateKeys = collectKeys(points, dateKey);
   const zeroKeys =
     opts.fillMissing && typeof opts.fillMissing === "object" && "zeroKeys" in opts.fillMissing
       ? new Set(opts.fillMissing.zeroKeys)
       : new Set<string>();
   const fill: "null" | "zero" = zeroKeys.size > 0 ? "zero" : "null";
+
+  /**
+   * Every calendar day gets a row. Server-built daily series already arrive complete, so this is
+   * a no-op for them; the flows day aggregations are event-sparse (only days with a deposit /
+   * purchase / income), and on a **category** x-axis unfilled gaps would space a 2-day and a
+   * 40-day gap identically — the axis has to carry real time.
+   */
+  if (opts.granularity === "day") {
+    const byDate = new Map<string, T>();
+    for (const r of points) {
+      const d = String(r[dateKey] ?? "").trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) byDate.set(d, r);
+    }
+    const first = sortedDates[0]!;
+    let last = sortedDates[sortedDates.length - 1]!;
+    const extendThrough = String(opts.extendThroughYmd ?? "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(extendThrough) && extendThrough > last) last = extendThrough;
+    const out: T[] = [];
+    for (let cur = first; cur <= last; cur = addCalendarDaysIso(cur, 1)) {
+      const hit = byDate.get(cur);
+      out.push(hit ? { ...hit } : (syntheticRow(dateKey, cur, templateKeys, fill, zeroKeys) as T));
+    }
+    return out;
+  }
 
   if (opts.granularity === "year") {
     const byYear = new Map<number, T>();
