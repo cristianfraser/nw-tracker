@@ -1,5 +1,5 @@
 import { formatClp, formatUsd } from "../../format";
-import { formatMonthYearShortLabel } from "../../formatDateLabel";
+import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 
 export type ChartDisplayUnit = "clp" | "usd";
 
@@ -362,4 +362,78 @@ export function computeRegularYearXAxisTicks(
   opts?: { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean }
 ): string[] | undefined {
   return computeYearBoundaryXAxisTicks(datesAsc, opts);
+}
+
+/** Day strides that read as round intervals on a calendar-day axis. */
+const DAY_TICK_STRIDES = [1, 2, 3, 5, 7, 10, 14, 21, 28, 35, 42, 56, 70, 91, 120] as const;
+
+/**
+ * Ticks for a dense **calendar-day** grid, spaced by a whole number of days so every label is a
+ * distinct date (`dic 16`). Month-boundary ticks are wrong here: on a daily axis they repeat the
+ * same `dic 26` label for several ticks and carry no day information.
+ *
+ * Beyond `maxDaySpan` (default ~14 months) a day-precision label is noise — the axis falls back to
+ * month/year boundaries (`withDay: false`, so the caller labels with month + year instead).
+ */
+export function computeRegularDayXAxisTicks(
+  datesAsc: string[],
+  opts?: { minTickCount?: number; maxTickCount?: number; maxDaySpan?: number }
+): { ticks: string[] | undefined; withDay: boolean } {
+  const maxT = Math.max(2, opts?.maxTickCount ?? 12);
+  const maxDaySpan = opts?.maxDaySpan ?? 420;
+  if (datesAsc.length === 0) return { ticks: undefined, withDay: false };
+  if (datesAsc.length === 1) return { ticks: [datesAsc[0]!], withDay: true };
+  if (datesAsc.length > maxDaySpan) {
+    // Long window: month/year boundaries. `includeLastDataPoint: false` keeps the tail tick
+    // stride-aligned instead of appending a date that repeats the previous label's month.
+    return {
+      ticks: computeRegularMonthXAxisTicks(datesAsc, { includeLastDataPoint: false }),
+      withDay: false,
+    };
+  }
+  const n = datesAsc.length;
+  let stride = DAY_TICK_STRIDES[DAY_TICK_STRIDES.length - 1]!;
+  for (const s of DAY_TICK_STRIDES) {
+    if (Math.ceil(n / s) <= maxT) {
+      stride = s;
+      break;
+    }
+  }
+  const ticks: string[] = [];
+  for (let i = 0; i < n; i += stride) ticks.push(datesAsc[i]!);
+  // Label the final day too, unless it would crowd the previous tick.
+  const last = datesAsc[n - 1]!;
+  if (ticks[ticks.length - 1] !== last && (n - 1) % stride > stride / 2) ticks.push(last);
+  return { ticks, withDay: true };
+}
+
+/**
+ * X-axis ticks + label/tooltip formatters for a period chart. Day grids get day-spaced ticks with
+ * date labels and ISO tooltip titles (the repo date convention); month/year keep their existing
+ * boundary ticks and labels. Shared so the flows charts can't drift from each other.
+ */
+export function resolvePeriodXAxis(
+  datesAsc: string[],
+  granularity: "month" | "year" | "day"
+): {
+  ticks: string[] | undefined;
+  formatTick: (d: string) => string;
+  formatTooltipTitle: (d: string) => string;
+} {
+  if (granularity === "day") {
+    const { ticks, withDay } = computeRegularDayXAxisTicks(datesAsc);
+    return {
+      ticks,
+      formatTick: (d) => (withDay ? formatDayMonthShortLabel(d) : formatMonthYearShortLabel(d)),
+      formatTooltipTitle: (d) => d,
+    };
+  }
+  return {
+    ticks:
+      granularity === "year"
+        ? computeRegularYearXAxisTicks(datesAsc)
+        : computeRegularMonthXAxisTicks(datesAsc),
+    formatTick: (d) => formatLineChartXTick(d, granularity),
+    formatTooltipTitle: (d) => formatLineChartXTick(d, granularity),
+  };
 }

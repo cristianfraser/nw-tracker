@@ -8,12 +8,10 @@ import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
   CHART_TICK_STYLE,
-  computeRegularMonthXAxisTicks,
-  computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
-  formatLineChartXTick,
   minMaxForKeys,
   rechartsMoneyYAxisWidth,
+  resolvePeriodXAxis,
 } from "./chartLayout";
 
 const CHART_ANIM_MS = 90;
@@ -59,15 +57,14 @@ export function ExpensesByApartmentChart({
     return buildNiceYAxis(0, max);
   }, [densePoints, yKeys]);
 
-  const xAxisTicks = useMemo(() => {
-    if (!densePoints.length) return undefined;
-    const dates = extractSortedAsOfDates(
-      densePoints as unknown as Record<string, string | number | null>[]
-    );
-    return xAxisGranularity === "year"
-      ? computeRegularYearXAxisTicks(dates)
-      : computeRegularMonthXAxisTicks(dates);
-  }, [densePoints, xAxisGranularity]);
+  const xAxis = useMemo(
+    () =>
+      resolvePeriodXAxis(
+        extractSortedAsOfDates(densePoints as unknown as Record<string, string | number | null>[]),
+        xAxisGranularity
+      ),
+    [densePoints, xAxisGranularity]
+  );
 
   if (!points.length) {
     return (
@@ -86,7 +83,7 @@ export function ExpensesByApartmentChart({
           data={densePoints}
           tooltip={{
             formatValue: (v) => formatClp(v),
-            formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
+            formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             cursor: true,
           }}
         >
@@ -95,11 +92,11 @@ export function ExpensesByApartmentChart({
             <XAxis
               dataKey="as_of_date"
               type="category"
-              {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
+              {...(xAxis.ticks ? { ticks: xAxis.ticks } : {})}
               tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
+              tickFormatter={(d: string) => xAxis.formatTick(String(d))}
             />
             <YAxis
               domain={yScale.domain}
