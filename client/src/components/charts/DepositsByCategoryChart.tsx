@@ -43,7 +43,7 @@ export function DepositsByCategoryChart({
 }: {
   title: string;
   points: FlowDepositChartPoint[];
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();

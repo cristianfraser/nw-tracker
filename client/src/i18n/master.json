@@ -3878,10 +3878,6 @@
         "es": "pagado {{date}}"
       }
     },
-    "chartGranularityLabel": {
-      "en": "Chart",
-      "es": "Gráfico"
-    },
     "colDate": {
       "en": "Date",
       "es": "Fecha"

@@ -6,7 +6,7 @@ import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEst
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
+import { monthYearMetricsPeriod } from "../dashboardCardBreakdown";
 import { clipPointsToTimeRange } from "../timeRange";
 import { formatClp, formatGroupedDecimalTrimmed } from "../format";
 import { expenseKindLabel, useTranslation } from "../i18n";
@@ -63,9 +63,11 @@ function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => strin
 /** Gastos de arriendo / departamento (`/flows/expenses/real_estate`). */
 export function RealEstateExpensesPage() {
   const { t } = useTranslation();
-  const { timeRange } = useDisplayPreferences();
+  const { metricsPeriod, timeRange } = useDisplayPreferences();
+  // Real estate is billed-period (bill_month) → month/year only; the global Período toolbar
+  // clamps Diario → Mensual here (a per-day billed view has no meaning). Rango still applies.
+  const granularity = monthYearMetricsPeriod(metricsPeriod);
   const { accountSlug } = useParams<{ accountSlug?: string }>();
-  const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
   const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
@@ -116,7 +118,7 @@ export function RealEstateExpensesPage() {
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    const base = granularity === "yearly" ? data.chart_yearly : data.chart_monthly;
+    const base = granularity === "year" ? data.chart_yearly : data.chart_monthly;
     return clipPointsToTimeRange(base, timeRange);
   }, [data, granularity, timeRange]);
 
@@ -168,28 +170,6 @@ export function RealEstateExpensesPage() {
         {t("expenses.realEstateIntro")}
       </p>
 
-      <div className="chart-controls" style={{ marginBottom: "0.75rem" }}>
-        <span className="label-inline">{t("expenses.chartGranularityLabel")}</span>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="expenses-granularity"
-            checked={granularity === "monthly"}
-            onChange={() => setGranularity("monthly")}
-          />
-          {t("dashboard.monthly")}
-        </label>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="expenses-granularity"
-            checked={granularity === "yearly"}
-            onChange={() => setGranularity("yearly")}
-          />
-          {t("dashboard.yearly")}
-        </label>
-      </div>
-
       <div
         className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
         style={{ marginBottom: "1.5rem" }}
@@ -198,7 +178,7 @@ export function RealEstateExpensesPage() {
           title={t("expenses.chartTitle")}
           points={chartPoints}
           places={places}
-          xAxisGranularity={granularity === "yearly" ? "year" : "month"}
+          xAxisGranularity={granularity}
           accountFilter={accountFilter}
         />
       </div>

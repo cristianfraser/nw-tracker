@@ -10,7 +10,6 @@ import { attachColorsToValuationPayload } from "../chartColorRgb.js";
 import {
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
-  listAccountsForGroupTab,
   type TsUnit,
 } from "../valuationTimeseries.js";
 import {
@@ -30,6 +29,7 @@ import {
   getBucketDailySeriesCached,
   groupDailySeriesAccounts,
 } from "../dailySeries.js";
+import { resolveGroupDailySeries } from "../groupDailySeries.js";
 import { db } from "../db.js";
 import {
   buildLiabilitiesChartBucketPlan,
@@ -97,16 +97,11 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     return;
   }
   if (portfolioGroup !== "") {
-    const rows = listAccountsForGroupTab(portfolioGroup).filter((r) => r.account_id > 0);
-    if (!rows.length) {
+    const series = resolveGroupDailySeries(portfolioGroup, unit, days);
+    if (!series) {
       res.status(404).json({ error: `no accounts for group ${portfolioGroup}` });
       return;
     }
-    const series = getBucketDailySeriesCached(`pg:${portfolioGroup}`, rows, {
-      unit,
-      days,
-      includeAccounts: true,
-    });
     // Agrupado lines when the page has bucket nodes — same plan (synthetic ids/names) as
     // the monthly grouped blocks, so the client reuses that block's series metadata.
     // Pasivos pages use the liabilities plan (issuer/mortgage buckets, single-mode).

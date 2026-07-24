@@ -9,11 +9,13 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
 import {
+  aggregateIncomeChartPointsByDay,
   aggregateIncomeFromPayload,
   rollupIncomeMonthRowsByYear,
 } from "../incomeAggregates";
 import {
   flowChartGranularityFromMetricsPeriod,
+  flowTableGranularity,
   formatFlowMoney,
   sumChartPointsField,
 } from "../flowsDisplay";
@@ -33,9 +35,14 @@ export function IncomePage() {
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    const base = chartGranularity === "year" ? view.chart_yearly : view.chart_monthly;
+    const base =
+      chartGranularity === "day"
+        ? aggregateIncomeChartPointsByDay(data!, displayUnit)
+        : chartGranularity === "year"
+          ? view.chart_yearly
+          : view.chart_monthly;
     return clipPointsToTimeRange(base, timeRange);
-  }, [chartGranularity, view, timeRange]);
+  }, [chartGranularity, data, displayUnit, view, timeRange]);
 
   /** "En el rango" companion (headline `view.total` stays full history). */
   const rangeTotal = useMemo(() => sumChartPointsField(chartPoints, "total"), [chartPoints]);
@@ -44,7 +51,8 @@ export function IncomePage() {
     if (!view) return [];
     const cutoff = timeRangeCutoffYmd(timeRange);
     const clipped = cutoff ? view.by_month.filter((r) => r.as_of_date >= cutoff) : view.by_month;
-    if (chartGranularity === "month") return clipped;
+    // Tables clamp to month/year even in Diario (the chart is the day surface).
+    if (chartGranularity !== "year") return clipped;
     const asc = [...clipped].reverse();
     return [...rollupIncomeMonthRowsByYear(asc)].reverse();
   }, [chartGranularity, view, timeRange]);
@@ -97,7 +105,7 @@ export function IncomePage() {
         <IncomeMonthTable
           rows={monthTableRows}
           displayUnit={displayUnit}
-          periodGranularity={chartGranularity}
+          periodGranularity={flowTableGranularity(chartGranularity)}
         />
       </section>
 

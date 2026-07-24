@@ -2,12 +2,21 @@ import type { CardGroupMetricsPeriod } from "./dashboardCardBreakdown";
 import { formatClp, formatUsd } from "./format";
 import type { DisplayUnit } from "./queries/keys";
 
-export type FlowChartGranularity = "month" | "year";
+export type FlowChartGranularity = "day" | "month" | "year";
 
 export function flowChartGranularityFromMetricsPeriod(
   period: CardGroupMetricsPeriod
 ): FlowChartGranularity {
-  return period === "year" ? "year" : "month";
+  return period;
+}
+
+/**
+ * Period-detail tables stay at month/year grain even in Diario (a per-day flows table over
+ * years is unwieldy — the daily surface is the chart). Charts get the full granularity; tables
+ * get this clamp.
+ */
+export function flowTableGranularity(g: FlowChartGranularity): "month" | "year" {
+  return g === "year" ? "year" : "month";
 }
 
 export function formatFlowMoney(amount: number, unit: DisplayUnit): string {
@@ -58,6 +67,8 @@ export function rollupChartPointsByYear<T extends NumericChartPoint>(
 
 export function flowPeriodLabel(periodMonth: string, granularity: FlowChartGranularity): string {
   if (granularity === "year") return periodMonth.slice(0, 4);
+  // Day grain keeps the ISO date (tables clamp to month/year, so this is a defensive branch).
+  if (granularity === "day") return periodMonth.slice(0, 10);
   const [ys, ms] = periodMonth.split("-");
   const m = Number(ms);
   const names = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];

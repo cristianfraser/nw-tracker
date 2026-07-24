@@ -35,7 +35,7 @@ export function IncomeMonthlyChart({
 }: {
   title: string;
   points: readonly FlowIncomeChartPoint[];
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();
