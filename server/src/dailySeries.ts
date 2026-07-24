@@ -22,6 +22,7 @@ import {
 } from "./periodReturnsShortHorizon.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -77,8 +78,10 @@ export type DailySeriesAccountLine = {
   name: string | null;
   /** Per-session values in the request unit, index-aligned with `points`. */
   values: (number | null)[];
-  /** Cumulative personal deposits (full history through each session) — the aportes acum. line. */
-  deposits_acum?: number[];
+  /** Cumulative personal deposits (full history through each session) — the aportes acum. line.
+   * Null past the value line's trailing clip: a sold-out account's aportes end with its value,
+   * as the monthly block clip bundles them. */
+  deposits_acum?: (number | null)[];
   /**
    * Per-session flow-adjusted P/L for this account alone (the day-grain twin of the monthly
    * `pl_<account_id>` bars). Same convention as the bucket's `pl` — computed on wealth, so a
@@ -447,17 +450,30 @@ export function getBucketDailySeries(
     });
   }
 
-  // Prefer-null leading edge: an equity/crypto account marks to a finite 0 before its first
-  // holding (0 units × price), which would draw a flat-0 line from portfolio start. The
-  // monthly per-account line instead starts at the first holding (null before it); null the
-  // leading run of 0/null on each daily line so the two agree. Interior/trailing zeros (a
-  // sold-out gap) are kept. `deposits_acum` is already 0 before the first holding (deposits
-  // are what create value), so it needs no trim.
+  // Display-only edge trims on the per-account chart lines, mirroring the monthly block clip so
+  // a line covers the same span in both grains. `points` (and the P/L legs, which read the
+  // untouched `wealthByAccount`) keep their true zeros — this shapes lines, never arithmetic.
+  //
+  //  - Leading: an equity/crypto account marks to a finite 0 before its first holding (0 units ×
+  //    price), which would draw a flat-0 line from portfolio start; the monthly line starts at the
+  //    first holding. Null the leading run of 0/null so the two agree.
+  //  - Trailing: a sold-out account otherwise hugs 0 from its sell-out day through today, while
+  //    the monthly ends (`applyTrailingZeroTailClipToBlock`). Keep the same number of plotted
+  //    zeros (`TS_TRAILING_ZERO_MONTHS_KEPT` — one DAY at this grain) then null, and clip each
+  //    line's `deposits_acum` with its value exactly as the monthly bundles the two (a sold-out
+  //    account's aportes line ends with its value line rather than lingering flat).
   if (perAccount) {
     for (const line of perAccount) {
       let firstHeld = line.values.findIndex((v) => v != null && v !== 0);
       if (firstHeld < 0) firstHeld = line.values.length; // never held: whole line absent
       for (let k = 0; k < firstHeld; k++) line.values[k] = null;
+      if (firstHeld >= line.values.length) continue;
+      const startNullAt = trailingZeroRunClipStartIndex(line.values);
+      if (startNullAt == null) continue;
+      for (let k = startNullAt; k < line.values.length; k++) {
+        line.values[k] = null;
+        if (line.deposits_acum) line.deposits_acum[k] = null;
+      }
     }
   }
 

@@ -51,23 +51,43 @@ function dataSeriesKeys(series: readonly SeriesEntry[]): string[] {
   return [...new Set(series.filter((s) => s.type === "data").map((s) => s.dataKey))];
 }
 
+/**
+ * Index from which to null a plain value series after its trailing zero run, or `null` when the
+ * run is within `kept`. The arithmetic both grains share: the monthly block clip below reads it
+ * per dataKey, and `dailySeries.ts` applies it to each per-account daily line, so a sold-out
+ * series keeps the same number of plotted zeros before it ends (`kept` is months on a monthly
+ * grid, days on a daily one).
+ */
+export function trailingZeroRunClipStartIndex(
+  values: readonly (number | null | undefined)[],
+  kept = TS_TRAILING_ZERO_MONTHS_KEPT
+): number | null {
+  let lastNonZeroIdx = -1;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) > 1e-9) {
+      lastNonZeroIdx = i;
+    }
+  }
+  const n = values.length;
+  const trailingLen = lastNonZeroIdx >= 0 ? n - 1 - lastNonZeroIdx : n;
+  if (trailingLen <= kept) return null;
+  return lastNonZeroIdx + 1 + kept;
+}
+
 /** Index from which to null a series after trailing zeros; `null` if no clip. */
 export function trailingZeroTailClipStartIndex(
   points: readonly Row[],
   dataKey: string,
   monthsKept = TS_TRAILING_ZERO_MONTHS_KEPT
 ): number | null {
-  let lastNonZeroIdx = -1;
-  for (let i = 0; i < points.length; i++) {
-    const v = points[i]![dataKey];
-    if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) > 1e-9) {
-      lastNonZeroIdx = i;
-    }
-  }
-  const n = points.length;
-  const trailingLen = lastNonZeroIdx >= 0 ? n - 1 - lastNonZeroIdx : n;
-  if (trailingLen <= monthsKept) return null;
-  return lastNonZeroIdx + 1 + monthsKept;
+  return trailingZeroRunClipStartIndex(
+    points.map((p) => {
+      const v = p[dataKey];
+      return typeof v === "number" ? v : null;
+    }),
+    monthsKept
+  );
 }
 
 /** Recompute Σ of `sourceKeys` per row into `totalKey` (null when no finite parts). */
