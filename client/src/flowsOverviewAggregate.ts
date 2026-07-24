@@ -1,11 +1,18 @@
 import { addCalendarMonths, chileTodayYmd, monthEndUtcYmd, ymCompare } from "./calendarMonth";
 import {
   aggregateGastosFromLines,
+  expenseLineGastosAmount,
   hasSplittableMortgageExpenseDepositLink,
   mortgageLinkCarryingAmount,
 } from "./ccExpenseGastosAggregate";
-import { gastosScopeAllowsMode, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth";
-import { aggregateIncomeFromPayload } from "./incomeAggregates";
+import { gastosDayForLine } from "./ccExpenseGastosDaily";
+import { countsTowardGastosMes } from "./ccExpenseLineBuckets";
+import {
+  gastosScopeAllowsMode,
+  gastosSumMonthForLine,
+  type CcInstallmentGastosMode,
+} from "./ccExpensePeriodMonth";
+import { aggregateIncomeChartPointsByDay, aggregateIncomeFromPayload } from "./incomeAggregates";
 import type { DisplayUnit } from "./queries/keys";
 import type {
   FlowCcExpenseLineRow,
@@ -191,6 +198,148 @@ export function aggregateFlowsOverview(
     });
   }
   return rows;
+}
+
+/**
+ * Per-calendar-day overview rows (Diario) — the day-grain mirror of
+ * {@link aggregateFlowsOverview}. Same accounting rules (pre-tax deposit split, mortgage
+ * carrying subtracted from deposits, P/L informational and outside `net`); only the bucket key
+ * changes from calendar month to calendar day:
+ *
+ * - income: the day it was received (not payroll-month attribution — see
+ *   `aggregateIncomeChartPointsByDay`);
+ * - expenses: {@link gastosDayForLine} (purchase day, cuotas on their facturación's pay-by);
+ * - deposits: the event day;
+ * - P/L: the server's per-day bucket P/L (`chart_daily`), already windowed to the range.
+ *
+ * Rows are emitted only for days that carry something — the chart densifies the gaps.
+ */
+export function aggregateFlowsOverviewByDay(
+  income: FlowsIncomeResponse,
+  ccExpenses: Pick<FlowsCreditCardExpensesResponse, "lines" | "cuota_pay_by_iso">,
+  deposits: Pick<FlowsDepositsResponse, "rows" | "fx_conversion_error">,
+  plDaily: readonly { as_of_date: string; total: number }[],
+  installmentMode: CcInstallmentGastosMode = "split",
+  unit: DisplayUnit = "clp"
+): FlowsOverviewMonthRow[] {
+  type Bucket = {
+    income: number;
+    expenses: number;
+    deposits: number;
+    depositsPreTax: number;
+    pl: number;
+  };
+  const byDay = new Map<string, Bucket>();
+  const touch = (day: string): Bucket => {
+    const existing = byDay.get(day);
+    if (existing) return existing;
+    const fresh: Bucket = { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0, pl: 0 };
+    byDay.set(day, fresh);
+    return fresh;
+  };
+
+  for (const point of aggregateIncomeChartPointsByDay(income, unit)) {
+    touch(point.as_of_date).income += point.total;
+  }
+
+  for (const ln of ccExpenses.lines) {
+    if (!gastosSumMonthForLine(ln, installmentMode)) continue;
+    if (ln.nota_credito_role === "annulled_purchase" || ln.nota_credito_role === "matched_nota") {
+      continue;
+    }
+    const day = gastosDayForLine(ln, ccExpenses.cuota_pay_by_iso);
+    if (!day) continue;
+    const amount = expenseLineGastosAmount(ln, unit);
+    if (amount <= 0) continue;
+    const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
+    if (hasSplittableMortgageExpenseDepositLink(link)) {
+      if (
+        (ln.line_role !== "installment_purchase_total" || installmentMode === "total") &&
+        (ln.line_role !== "installment_cuota" || installmentMode === "split")
+      ) {
+        touch(day).expenses += mortgageLinkCarryingAmount(ln, link, unit);
+      }
+      continue;
+    }
+    if (countsTowardGastosMes(ln, installmentMode)) touch(day).expenses += amount;
+  }
+
+  if (unit === "usd" && deposits.fx_conversion_error) {
+    throw new Error("missing FX conversion for deposits in USD display");
+  }
+  for (const row of deposits.rows) {
+    let amount: number = row.amount_clp;
+    if (unit === "usd") {
+      if (row.amount_usd == null) {
+        throw new Error(`missing amount_usd for deposit on account ${row.account_id}`);
+      }
+      amount = row.amount_usd;
+    }
+    const bucket = touch(row.occurred_on.slice(0, 10));
+    if (PRE_TAX_DEPOSIT_KIND_SLUGS.has(row.kind_slug) && row.amount_clp > 0) {
+      bucket.depositsPreTax += amount;
+    } else {
+      bucket.deposits += amount;
+    }
+  }
+  // Carrying already counts as an expense above, so the property deposit keeps amortización only.
+  for (const [day, carrying] of mortgageCarryingByDepositDay(
+    ccExpenses.lines,
+    installmentMode,
+    unit
+  )) {
+    touch(day).deposits -= carrying;
+  }
+
+  for (const point of plDaily) {
+    touch(point.as_of_date).pl += point.total;
+  }
+
+  const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
+  return [...byDay.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((day) => {
+      const b = byDay.get(day)!;
+      const incomeAmt = round(b.income);
+      const expensesAmt = round(b.expenses);
+      const depositsAmt = round(b.deposits);
+      return {
+        period_month: day,
+        as_of_date: day,
+        income: incomeAmt,
+        expenses: expensesAmt,
+        deposits: depositsAmt,
+        deposits_pre_tax: round(b.depositsPreTax),
+        pl: round(b.pl),
+        net: incomeAmt - expensesAmt - depositsAmt,
+      };
+    });
+}
+
+/** Day-grain twin of {@link mortgageCarryingByDepositMonth}, keyed by the depto payment day. */
+function mortgageCarryingByDepositDay(
+  lines: readonly FlowCcExpenseLineRow[],
+  installmentMode: CcInstallmentGastosMode,
+  unit: DisplayUnit
+): Map<string, number> {
+  const seen = new Set<string>();
+  const out = new Map<string, number>();
+  for (const ln of lines) {
+    if (!gastosScopeAllowsMode(ln, installmentMode)) continue;
+    const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
+    if (!hasSplittableMortgageExpenseDepositLink(link)) continue;
+    const key = `${ln.purchase_key}|${link.deposit_movement_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!link.depto_occurred_on) {
+      throw new Error(
+        `mortgage expense deposit link without depto_occurred_on: ${ln.purchase_key}`
+      );
+    }
+    const day = link.depto_occurred_on.slice(0, 10);
+    out.set(day, (out.get(day) ?? 0) + mortgageLinkCarryingAmount(ln, link, unit));
+  }
+  return out;
 }
 
 export function rollupFlowsOverviewRowsByYear(

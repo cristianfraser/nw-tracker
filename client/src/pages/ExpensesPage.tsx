@@ -13,6 +13,7 @@ import {
   computeExpensesTotal,
   rollupExpenseMonthRowsByYear,
 } from "../ccExpenseGastosAggregate";
+import { aggregateGastosChartPointsByDay } from "../ccExpenseGastosDaily";
 import {
   flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
@@ -100,6 +101,17 @@ export function ExpensesPage() {
   const chartPoints = useMemo(() => {
     if (!view) return [];
     const cutoff = timeRangeCutoffYmd(timeRange);
+    if (chartGranularity === "day") {
+      if (!data) return [];
+      return aggregateGastosChartPointsByDay(
+        data.lines,
+        chartCategorySlugs,
+        installmentMode,
+        excludedBigGroups,
+        displayUnit,
+        data.cuota_pay_by_iso
+      ).filter((p) => cutoff == null || p.as_of_date >= cutoff);
+    }
     const monthly = view.chart.chart_monthly_by_category.filter(
       (p) =>
         (latestNonEmptyMonth == null || p.as_of_date.slice(0, 7) <= latestNonEmptyMonth) &&
@@ -109,7 +121,17 @@ export function ExpensesPage() {
       return rollupChartPointsByYear(monthly, chartCategorySlugs);
     }
     return monthly;
-  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view, timeRange]);
+  }, [
+    chartCategorySlugs,
+    chartGranularity,
+    data,
+    displayUnit,
+    excludedBigGroups,
+    installmentMode,
+    latestNonEmptyMonth,
+    view,
+    timeRange,
+  ]);
 
   /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
   const chartSortPoints = useMemo(() => {
@@ -211,7 +233,7 @@ export function ExpensesPage() {
           categorySortPoints={chartSortPoints}
           categories={data.categories}
           displayUnit={displayUnit}
-          xAxisGranularity={flowTableGranularity(chartGranularity)}
+          xAxisGranularity={chartGranularity}
         />
       </div>
       {chartFilterActive ? (
