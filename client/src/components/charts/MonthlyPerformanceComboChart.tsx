@@ -10,14 +10,12 @@ import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
   CHART_TICK_STYLE,
-  computeRegularMonthXAxisTicks,
-  computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
   formatAxisValue,
-  formatLineChartXTick,
   formatTooltipValue,
   minMaxForKeys,
   rechartsMoneyYAxisWidth,
+  resolvePeriodXAxis,
   type ChartDisplayUnit,
 } from "./chartLayout";
 
@@ -136,14 +134,17 @@ export function MonthlyPerformanceComboChart({
   lineName?: string;
   lineSeries?: MonthlyPlLineSeries[];
   alternateYearAreaStripes?: boolean;
-  xAxisGranularity?: "month" | "year";
+  xAxisGranularity?: "month" | "year" | "day";
 }) {
   const TitleTag = titleAs;
   const { timeRange } = useDisplayPreferences();
 
   const densePoints = useMemo(() => {
     const zeroKeys = barSeries.map((b) => b.dataKey);
-    return densifyRecordsByCalendarPeriod(clipPointsToTimeRange(points, timeRange), {
+    // Day mode arrives server-windowed to the range (like the daily valuation charts), so the
+    // client clip would only re-cut an already-cut window.
+    const ranged = xAxisGranularity === "day" ? points : clipPointsToTimeRange(points, timeRange);
+    return densifyRecordsByCalendarPeriod(ranged, {
       granularity: xAxisGranularity,
       dateKey: "as_of_date",
       fillMissing: { zeroKeys },
@@ -177,13 +178,10 @@ export function MonthlyPerformanceComboChart({
     [densePoints, areaKey, alternateYearAreaStripes]
   );
 
-  const xAxisTicks = useMemo(() => {
-    if (!densePoints.length) return undefined;
-    const dates = extractSortedAsOfDates(densePoints);
-    return xAxisGranularity === "year"
-      ? computeRegularYearXAxisTicks(dates)
-      : computeRegularMonthXAxisTicks(dates);
-  }, [densePoints, xAxisGranularity]);
+  const xAxis = useMemo(
+    () => resolvePeriodXAxis(extractSortedAsOfDates(densePoints), xAxisGranularity),
+    [densePoints, xAxisGranularity]
+  );
 
   const [fillEvenYear, fillOddYear] = useMemo(
     () => pairAlternatingYearAreaFills(areaFill ?? "rgba(148, 163, 184, 0.22)"),
@@ -207,7 +205,7 @@ export function MonthlyPerformanceComboChart({
           data={plotPoints}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),
-            formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
+            formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             // The YTD area renders as two year-parity stripe series; merge whichever stripe is
             // hit back into a single row labeled as the area.
             mapPayload: (payload) => {
@@ -240,11 +238,11 @@ export function MonthlyPerformanceComboChart({
             <XAxis
               dataKey="as_of_date"
               type="category"
-              {...(xAxisTicks ? { ticks: xAxisTicks } : {})}
+              {...(xAxis.ticks ? { ticks: xAxis.ticks } : {})}
               tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
+              tickFormatter={(d: string) => xAxis.formatTick(String(d))}
             />
             <YAxis
               domain={yScale.domain}

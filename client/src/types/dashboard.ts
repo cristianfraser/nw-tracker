@@ -342,6 +342,11 @@ export interface DailySeriesAccountLineDto {
   values: (number | null)[];
   /** Cumulative personal deposits through each day (aportes acum. companion line). */
   deposits_acum?: number[];
+  /**
+   * Per-day flow-adjusted P/L for this account alone — the day-grain twin of the monthly
+   * `pl_<account_id>` bars. Σ over the lines equals the bucket point's `pl`.
+   */
+  pl?: (number | null)[];
 }
 
 /** Daily series for a group page or account (calendar-day grid, last point live). */
