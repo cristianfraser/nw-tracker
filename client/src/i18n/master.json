@@ -3038,6 +3038,10 @@
       "en": "Flow sections",
       "es": "Secciones de flujos"
     },
+    "rangeTotalLabel": {
+      "en": "in range",
+      "es": "en el rango"
+    },
     "overview": {
       "title": {
         "en": "Overview",

@@ -18,6 +18,7 @@ import {
   formatFlowMoney,
   rollupChartPointsByYear,
 } from "../flowsDisplay";
+import { timeRangeCutoffYmd } from "../timeRange";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
@@ -27,7 +28,7 @@ import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTot
 /** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
 export function ExpensesPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsCreditCardExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
@@ -97,43 +98,56 @@ export function ExpensesPage() {
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    const monthly =
-      latestNonEmptyMonth == null
-        ? view.chart.chart_monthly_by_category
-        : view.chart.chart_monthly_by_category.filter(
-            (p) => p.as_of_date.slice(0, 7) <= latestNonEmptyMonth
-          );
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    const monthly = view.chart.chart_monthly_by_category.filter(
+      (p) =>
+        (latestNonEmptyMonth == null || p.as_of_date.slice(0, 7) <= latestNonEmptyMonth) &&
+        (cutoff == null || p.as_of_date >= cutoff)
+    );
     if (chartGranularity === "year") {
       return rollupChartPointsByYear(monthly, chartCategorySlugs);
     }
     return monthly;
-  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view]);
+  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view, timeRange]);
 
   /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
   const chartSortPoints = useMemo(() => {
     if (!view) return [];
-    const monthly =
-      latestNonEmptyMonth == null
-        ? view.table.chart_monthly_by_category
-        : view.table.chart_monthly_by_category.filter(
-            (p) => p.as_of_date.slice(0, 7) <= latestNonEmptyMonth
-          );
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    const monthly = view.table.chart_monthly_by_category.filter(
+      (p) =>
+        (latestNonEmptyMonth == null || p.as_of_date.slice(0, 7) <= latestNonEmptyMonth) &&
+        (cutoff == null || p.as_of_date >= cutoff)
+    );
     if (chartGranularity === "year") {
       return rollupChartPointsByYear(monthly, chartCategorySlugs);
     }
     return monthly;
-  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view]);
+  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view, timeRange]);
 
   const monthTableRows = useMemo(() => {
     if (!view) return [];
-    const clipped =
-      latestNonEmptyMonth == null
-        ? view.table.by_month
-        : view.table.by_month.filter((r) => r.period_month <= latestNonEmptyMonth);
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    const clipped = view.table.by_month.filter(
+      (r) =>
+        (latestNonEmptyMonth == null || r.period_month <= latestNonEmptyMonth) &&
+        (cutoff == null || r.as_of_date >= cutoff)
+    );
     if (chartGranularity === "month") return clipped;
     const asc = [...clipped].reverse();
     return [...rollupExpenseMonthRowsByYear(asc)].reverse();
-  }, [chartGranularity, latestNonEmptyMonth, view]);
+  }, [chartGranularity, latestNonEmptyMonth, view, timeRange]);
+
+  /** "En el rango" companion for the monthly-detail total (headline `view.total` stays full). */
+  const rangeTotals = useMemo(() => {
+    let total = 0;
+    let total_real = 0;
+    for (const r of monthTableRows) {
+      total += r.gastos_mes_clp;
+      total_real += r.gastos_real_mes_clp;
+    }
+    return { total, total_real };
+  }, [monthTableRows]);
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 
@@ -227,6 +241,12 @@ export function ExpensesPage() {
               {" · "}
               {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
               {formatFlowMoney(view.total_real, displayUnit)}
+            </>
+          ) : null}
+          {timeRange !== "total" ? (
+            <>
+              {" · "}
+              {t("flows.rangeTotalLabel")}: {formatFlowMoney(rangeTotals.total, displayUnit)}
             </>
           ) : null}
         </span>

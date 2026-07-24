@@ -8,25 +8,32 @@ import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import {
   flowChartGranularityFromMetricsPeriod,
   formatFlowMoney,
+  sumChartPointsField,
 } from "../flowsDisplay";
+import { clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
 import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
 export function DepositsPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsDeposits();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    if (displayUnit === "usd") {
-      return chartGranularity === "year" ? data.chart_yearly_usd : data.chart_monthly_usd;
-    }
-    return chartGranularity === "year" ? data.chart_yearly : data.chart_monthly;
-  }, [chartGranularity, data, displayUnit]);
+    const base =
+      displayUnit === "usd"
+        ? chartGranularity === "year"
+          ? data.chart_yearly_usd
+          : data.chart_monthly_usd
+        : chartGranularity === "year"
+          ? data.chart_yearly
+          : data.chart_monthly;
+    return clipPointsToTimeRange(base, timeRange);
+  }, [chartGranularity, data, displayUnit, timeRange]);
 
   const total = useMemo(() => {
     if (!data) return 0;
@@ -38,6 +45,15 @@ export function DepositsPage() {
     }
     return data.net_total_clp;
   }, [data, displayUnit]);
+
+  /** "En el rango" companion: sum of the clipped chart points (matches the visible bars). */
+  const rangeTotal = useMemo(
+    () => sumChartPointsField(chartPoints, "total"),
+    [chartPoints]
+  );
+
+  /** Inclusive left cutoff for the per-category event tables; null = full history. */
+  const rowCutoff = useMemo(() => timeRangeCutoffYmd(timeRange), [timeRange]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -62,6 +78,12 @@ export function DepositsPage() {
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
+        {timeRange !== "total" ? (
+          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
+            · {t("flows.rangeTotalLabel")}{" "}
+            <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
+          </span>
+        ) : null}
       </p>
 
       <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack" style={{ marginBottom: "1.5rem" }}>
@@ -75,10 +97,15 @@ export function DepositsPage() {
 
       {CATEGORY_ORDER.map((cat) => {
         const block = data.by_category[cat];
-        const blockTotal =
-          displayUnit === "usd"
-            ? block.total_usd ?? 0
-            : block.total_clp;
+        // Rango filters the detail: clip the event rows and derive the section subtotal
+        // from what's shown (equals the server subtotal at Rango = Todo).
+        const blockRows = rowCutoff
+          ? block.rows.filter((r) => r.occurred_on >= rowCutoff)
+          : block.rows;
+        const blockTotal = blockRows.reduce(
+          (s, r) => s + (displayUnit === "usd" ? r.amount_usd ?? 0 : r.amount_clp),
+          0
+        );
         return (
           <section key={cat} style={{ marginBottom: "1.5rem" }}>
             <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
@@ -103,14 +130,14 @@ export function DepositsPage() {
                 </thead>
               }
             >
-              {block.rows.length === 0 ? (
+              {blockRows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="muted">
                     {t("deposits.emptyCategory")}
                   </td>
                 </tr>
               ) : (
-                block.rows.map((r, idx) => {
+                blockRows.map((r, idx) => {
                   const amount =
                     displayUnit === "usd"
                       ? r.amount_usd ?? 0

@@ -869,6 +869,7 @@
   "flows": {
     "layoutTitle": "Flows",
     "subnavAria": "Flow sections",
+    "rangeTotalLabel": "in range",
     "overview": {
       "title": "Overview",
       "intro": "Income versus expenses and net deposits. Mortgage payments are split with the existing breakdown: interest + insurance counts as expense and amortization as deposit (no double counting). AFP+AFC contributions (payroll deductions, they never pass through the checking account) are shown separately and do not subtract from the net; withdrawals do count because they return to the post-tax circuit. Market P/L of the money buckets is stacked as its own bar and does not enter the net.",
