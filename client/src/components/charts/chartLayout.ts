@@ -367,30 +367,48 @@ export function computeRegularYearXAxisTicks(
 /** Day strides that read as round intervals on a calendar-day axis. */
 const DAY_TICK_STRIDES = [1, 2, 3, 5, 7, 10, 14, 21, 28, 35, 42, 56, 70, 91, 120] as const;
 
+/** Month strides that read as round intervals when a daily axis is labelled by month. */
+const MONTH_TICK_STRIDES = [1, 2, 3, 4, 6, 12, 24, 36, 60, 120] as const;
+
+/** Take every `stride`-th entry anchored on the LAST one, so the newest tick is always labelled. */
+function thinFromEnd<T>(items: readonly T[], stride: number): T[] {
+  const out: T[] = [];
+  for (let i = items.length - 1; i >= 0; i -= stride) out.unshift(items[i]!);
+  return out;
+}
+
 /**
- * Ticks for a dense **calendar-day** grid, spaced by a whole number of days so every label is a
- * distinct date (`dic 16`). Month-boundary ticks are wrong here: on a daily axis they repeat the
- * same `dic 26` label for several ticks and carry no day information.
+ * Ticks for a dense **calendar-day** grid.
  *
- * Beyond `maxDaySpan` (default ~14 months) a day-precision label is noise — the axis falls back to
- * month/year boundaries (`withDay: false`, so the caller labels with month + year instead).
+ * Preferred form: **the first day of each month** (thinned to every Nth month when the window is
+ * long), labelled `jul 25` — evenly spaced in calendar terms and self-explanatory, instead of the
+ * arbitrary days an every-N-days stride lands on (`jul 23, ago 27, oct 1, …`).
+ *
+ * A window too short to contain `minMonthTicks` month starts (30d/60d ranges) falls back to a
+ * whole-day stride with day-precision labels (`withDay: true`), since one or two month boundaries
+ * would leave the axis nearly unlabelled.
  */
 export function computeRegularDayXAxisTicks(
   datesAsc: string[],
-  opts?: { minTickCount?: number; maxTickCount?: number; maxDaySpan?: number }
+  opts?: { maxTickCount?: number; minMonthTicks?: number }
 ): { ticks: string[] | undefined; withDay: boolean } {
   const maxT = Math.max(2, opts?.maxTickCount ?? 12);
-  const maxDaySpan = opts?.maxDaySpan ?? 420;
+  const minMonthTicks = Math.max(2, opts?.minMonthTicks ?? 3);
   if (datesAsc.length === 0) return { ticks: undefined, withDay: false };
   if (datesAsc.length === 1) return { ticks: [datesAsc[0]!], withDay: true };
-  if (datesAsc.length > maxDaySpan) {
-    // Long window: month/year boundaries. `includeLastDataPoint: false` keeps the tail tick
-    // stride-aligned instead of appending a date that repeats the previous label's month.
-    return {
-      ticks: computeRegularMonthXAxisTicks(datesAsc, { includeLastDataPoint: false }),
-      withDay: false,
-    };
+
+  const monthFirsts = datesAsc.filter((d) => d.slice(8, 10) === "01");
+  if (monthFirsts.length >= minMonthTicks) {
+    let stride = MONTH_TICK_STRIDES[MONTH_TICK_STRIDES.length - 1]!;
+    for (const s of MONTH_TICK_STRIDES) {
+      if (Math.ceil(monthFirsts.length / s) <= maxT) {
+        stride = s;
+        break;
+      }
+    }
+    return { ticks: thinFromEnd(monthFirsts, stride), withDay: false };
   }
+
   const n = datesAsc.length;
   let stride = DAY_TICK_STRIDES[DAY_TICK_STRIDES.length - 1]!;
   for (const s of DAY_TICK_STRIDES) {
@@ -399,11 +417,7 @@ export function computeRegularDayXAxisTicks(
       break;
     }
   }
-  const ticks: string[] = [];
-  for (let i = 0; i < n; i += stride) ticks.push(datesAsc[i]!);
-  // Label the final day too, unless it would crowd the previous tick.
-  const last = datesAsc[n - 1]!;
-  if (ticks[ticks.length - 1] !== last && (n - 1) % stride > stride / 2) ticks.push(last);
+  const ticks = thinFromEnd(datesAsc, stride);
   return { ticks, withDay: true };
 }
 
