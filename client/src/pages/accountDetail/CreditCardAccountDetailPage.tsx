@@ -5,7 +5,11 @@ import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingM
 import { useDailySeries } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { timeRangeToDays } from "../../timeRange";
-import { rangeWindowStartYmd, windowMonthRows } from "../../chartRangeWindow";
+import {
+  rangeWindowStartYmd,
+  windowCcFinancingPoints,
+  windowCcHistorialRows,
+} from "../../chartRangeWindow";
 import type { CcHistorialChartPoint } from "../../types";
 import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
@@ -85,44 +89,12 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   // projected plan tail, financing has no simulation). Yearly rollup runs inside the chart
   // components over these already-windowed rows.
   const clippedHistorialRows = useMemo(
-    () =>
-      isDaily
-        ? historialChartRows
-        : windowMonthRows(
-            historialChartRows,
-            timeRange,
-            (r) => r.month,
-            (r) =>
-              r.cupo_en_cuotas_clp != null ||
-              r.balance_total_clp != null ||
-              r.installment_payments_clp > 0,
-            (month) => ({
-              month,
-              installment_payments_clp: 0,
-              facturado_clp: null,
-              cupo_en_cuotas_clp: null,
-              balance_total_clp: null,
-            })
-          ),
+    () => (isDaily ? historialChartRows : windowCcHistorialRows(historialChartRows, timeRange)),
     [historialChartRows, isDaily, timeRange]
   );
 
   const clippedFinancingPoints = useMemo(
-    () =>
-      windowMonthRows(
-        financingChartPoints,
-        timeRange,
-        (p) => p.billing_month,
-        (p) =>
-          p.facturado_clp != null || p.facturado_usd_clp != null || p.financing_cost_clp != null,
-        (billing_month) => ({
-          billing_month,
-          facturado_clp: null,
-          facturado_usd_clp: null,
-          financing_cost_clp: null,
-          ytd_financing_cost_clp: null,
-        })
-      ),
+    () => windowCcFinancingPoints(financingChartPoints, timeRange),
     [financingChartPoints, timeRange]
   );
 

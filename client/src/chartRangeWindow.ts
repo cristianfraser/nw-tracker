@@ -1,5 +1,6 @@
 import { addCalendarMonths, chileTodayYmd } from "./calendarMonth";
 import { timeRangeCutoffYmd, timeRangeToDays, type TimeRange } from "./timeRange";
+import type { CcBillingMonthChartPoint, CcHistorialChartPoint } from "./types";
 
 /** Fraction of the range span kept as an empty lead before the first data as a truncation cue. */
 const LEADING_GAP_FRACTION = 0.2;
@@ -60,4 +61,56 @@ export function windowMonthRows<T>(
     for (let m = startMonth; m < firstMonth; m = addCalendarMonths(m, 1)) lead.push(makeEmpty(m));
   }
   return [...lead, ...clipped];
+}
+
+/**
+ * Shared M/Y range window for a CC historial chart (`month`-keyed): left-clip + pad the empty
+ * 20% lead. Used by both the CC account page and the Pasivos issuer section so their windows
+ * can't drift. The right edge (projected plan tail) is untouched; yearly rollup runs downstream.
+ */
+export function windowCcHistorialRows(
+  rows: readonly CcHistorialChartPoint[],
+  range: TimeRange,
+  todayYmd?: string
+): CcHistorialChartPoint[] {
+  return windowMonthRows(
+    rows,
+    range,
+    (r) => r.month,
+    (r) =>
+      r.cupo_en_cuotas_clp != null ||
+      r.balance_total_clp != null ||
+      r.installment_payments_clp > 0,
+    (month) => ({
+      month,
+      installment_payments_clp: 0,
+      facturado_clp: null,
+      cupo_en_cuotas_clp: null,
+      balance_total_clp: null,
+    }),
+    todayYmd
+  );
+}
+
+/** Shared M/Y range window for a CC billing-month financing chart (`billing_month`-keyed). */
+export function windowCcFinancingPoints(
+  points: readonly CcBillingMonthChartPoint[],
+  range: TimeRange,
+  todayYmd?: string
+): CcBillingMonthChartPoint[] {
+  return windowMonthRows(
+    points,
+    range,
+    (p) => p.billing_month,
+    (p) =>
+      p.facturado_clp != null || p.facturado_usd_clp != null || p.financing_cost_clp != null,
+    (billing_month) => ({
+      billing_month,
+      facturado_clp: null,
+      facturado_usd_clp: null,
+      financing_cost_clp: null,
+      ytd_financing_cost_clp: null,
+    }),
+    todayYmd
+  );
 }
