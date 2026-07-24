@@ -680,6 +680,8 @@ interface Props {
   xAxisGranularity?: "month" | "year" | "day";
   /** Override for the primary panel only (daily overview keeps the secondary monthly). */
   primaryXAxisGranularity?: "month" | "year" | "day";
+  /** Override for the secondary panel only (day mode swaps «Cuentas principales» to daily). */
+  secondaryXAxisGranularity?: "month" | "year" | "day";
   /**
    * `fullWidthStack`: one chart per row (full width). Default `twoColumn` matches legacy side-by-side on wide viewports.
    */
@@ -699,6 +701,7 @@ export function ValuationLineCharts({
   secondaryColorPlan,
   xAxisGranularity = "month",
   primaryXAxisGranularity,
+  secondaryXAxisGranularity,
   chartLayout = "twoColumn",
 }: Props) {
   const gridClass =
@@ -722,7 +725,7 @@ export function ValuationLineCharts({
         includeAccumulatedLines={includeAccumulatedLines}
         trimLeadingInactive={trimLeadingInactive}
         colorPlan={secondaryColorPlan}
-        xAxisGranularity={xAxisGranularity}
+        xAxisGranularity={secondaryXAxisGranularity ?? xAxisGranularity}
       />
     </div>
   );
