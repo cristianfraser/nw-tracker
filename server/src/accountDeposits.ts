@@ -1,4 +1,5 @@
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
+import { accountIsMonthPrecisionDated } from "./accountBucket.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -138,6 +139,7 @@ function loadTransferLegSignedFlowEvents(
   })[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
   const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
+  const monthPrecisionIds = new Set(uniq.filter((id) => accountIsMonthPrecisionDated(id)));
   const requested = new Set(uniq);
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
@@ -166,13 +168,19 @@ function loadTransferLegSignedFlowEvents(
       if (personalOnly && movementIsStateContribution(r.flow_kind)) continue;
       const amt = signedClpDeltaForAccountMovement(r, endpoint);
       if (amt === 0 || !Number.isFinite(amt)) continue;
-      // Mirror-converted transfers carry a single date, but each side's valuation evidence
-      // follows its ORIGINAL leg (month-precision ahorro legs can sit in the adjacent month).
-      // Bucket the aportes event by that side's pre-conversion date so a cross-month
-      // conversion stays P/L-neutral per account, not just same-month ones.
-      const occurredOn =
-        (endpoint === r.from_account_id ? r.merge_out_occurred_on : r.merge_in_occurred_on) ??
-        r.occurred_on;
+      // Mirror-converted transfers carry a single date. Bucket each side's aportes event on the
+      // day THAT side's valuation evidence actually moves, or flow and value are measured in
+      // different frames and the difference lands in P/L:
+      //   - month-precision accounts (cuenta ahorro): marks sit in the original leg's month, so
+      //     the pre-conversion date keeps a cross-month conversion P/L-neutral per account;
+      //   - everything else: balances and `transferLegUnitsThroughDate` both key off the
+      //     movement, so the transfer date is where the value moves. Dating those legs at the
+      //     original day instead produced a phantom ±X P/L couplet across the settlement gap
+      //     (checking → Fintual on 2026-04-21/23: +18M then −18M, cancelling within the month).
+      const occurredOn = monthPrecisionIds.has(endpoint)
+        ? ((endpoint === r.from_account_id ? r.merge_out_occurred_on : r.merge_in_occurred_on) ??
+          r.occurred_on)
+        : r.occurred_on;
       if (!map.has(endpoint)) map.set(endpoint, []);
       map.get(endpoint)!.push({ occurred_on: occurredOn, amt, tie: `t:${r.id}:${endpoint}` });
     }

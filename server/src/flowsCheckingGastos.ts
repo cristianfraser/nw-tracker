@@ -1,3 +1,4 @@
+import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
@@ -319,8 +320,12 @@ export function resolveAutoMatchCategorySlugForCheckingWithdrawal(
   return null;
 }
 
-/** Cash accounts whose inflows are month-end aggregates (no exact transfer dates). */
-export const MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES = new Set(["cuenta_ahorro_vivienda"]);
+/**
+ * Cash accounts whose inflows are month-end aggregates (no exact transfer dates). Same kinds as
+ * the canonical {@link MONTH_PRECISION_ACCOUNT_KIND_SLUGS}, re-exported here under the deposit
+ * matcher's name — one definition, in the low-level module the flow readers can import.
+ */
+export const MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES = MONTH_PRECISION_ACCOUNT_KIND_SLUGS;
 
 /** Fintual reserva deposits may be merged on one day; checking wires can split against one lump sum. */
 export const SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES = new Set(["fondo_reserva"]);
