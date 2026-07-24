@@ -16,11 +16,9 @@ import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
   CHART_TICK_STYLE,
-  computeRegularMonthXAxisTicks,
-  computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
-  formatLineChartXTick,
   rechartsMoneyYAxisWidth,
+  resolvePeriodXAxis,
 } from "./chartLayout";
 
 const CHART_ANIM_MS = 90;
@@ -90,13 +88,8 @@ export function CreditCardGroupExpensesChart({
   }, [displayPoints, barKeys, xAxisGranularity]);
 
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);
-  const xTicks = useMemo(
-    () =>
-      xAxisGranularity === "year"
-        ? computeRegularYearXAxisTicks(dates)
-        : computeRegularMonthXAxisTicks(dates),
-    [dates, xAxisGranularity]
-  );
+  const xAxis = useMemo(() => resolvePeriodXAxis(dates, xAxisGranularity), [dates, xAxisGranularity]);
+  const xTicks = xAxis.ticks;
 
   const yScale = useMemo(() => {
     let minV = 0;
@@ -182,7 +175,7 @@ export function CreditCardGroupExpensesChart({
           stackOffset={chartStyle === "stacked_bar" ? "sign" : undefined}
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),
-            formatLabel: (d) => formatLineChartXTick(String(d), xAxisGranularity),
+            formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             formatName: (entry) => {
               const slug = String(entry.name ?? entry.dataKey ?? "");
               return slug === EXPENSE_CHART_TOTAL_KEY
@@ -208,7 +201,7 @@ export function CreditCardGroupExpensesChart({
               tick={CHART_TICK_STYLE}
               axisLine={{ stroke: AXIS_LINE_STROKE }}
               tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(d: string) => formatLineChartXTick(String(d), xAxisGranularity)}
+              tickFormatter={(d: string) => xAxis.formatTick(String(d))}
             />
             <YAxis
               domain={yScale.domain}
