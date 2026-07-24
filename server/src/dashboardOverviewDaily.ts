@@ -1,5 +1,5 @@
 import { getAggregationCached } from "./aggregationCache.js";
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { DAILY_SERIES_MAX_DAYS, totalRangeDays } from "./dailySeries.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
@@ -42,18 +42,26 @@ function liabilitiesClpByDate(grid: readonly string[]): Map<string, number> {
   const rows = listAccountsForGroupTab("liabilities").filter(
     (r) => r.account_id > 0 && r.exclude_from_group_totals !== 1
   );
-  const out = new Map<string, number>();
-  for (const ymd of grid) {
-    let raw = 0;
-    for (const a of rows) {
-      const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
+  const marksByAccount = rows.map((a) =>
+    accountMarkClpSeriesOnGrid(
+      {
+        account_id: a.account_id,
+        bucket_slug: a.bucket_slug,
         import_key: a.import_key ?? null,
         name: a.name ?? null,
-      });
-      if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) raw += mark.value_clp;
+      },
+      grid
+    )
+  );
+  const out = new Map<string, number>();
+  grid.forEach((ymd, gi) => {
+    let raw = 0;
+    for (const marks of marksByAccount) {
+      const clp = marks[gi];
+      if (clp != null && Number.isFinite(clp)) raw += clp;
     }
     out.set(ymd, Math.round(raw));
-  }
+  });
   return out;
 }
 
