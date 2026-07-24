@@ -869,6 +869,7 @@
   "flows": {
     "layoutTitle": "Flujos",
     "subnavAria": "Secciones de flujos",
+    "rangeTotalLabel": "en el rango",
     "overview": {
       "title": "Resumen",
       "intro": "Ingresos versus gastos y depósitos netos. Los dividendos hipotecarios se separan con el desglose existente: interés + seguros cuenta como gasto y la amortización como depósito (sin doble conteo). Las cotizaciones AFP+AFC (descuento por planilla, nunca pasan por la cuenta corriente) se muestran aparte y no descuentan del neto; los retiros sí cuentan porque vuelven al circuito post-impuestos. El PL de mercado de los buckets se apila como barra propia y no entra en el neto.",

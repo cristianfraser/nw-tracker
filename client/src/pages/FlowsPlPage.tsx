@@ -9,6 +9,7 @@ import {
   flowPeriodLabel,
   formatFlowMoney,
 } from "../flowsDisplay";
+import { clipPointsToTimeRange } from "../timeRange";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
 import type { FlowsPlAccountRow, FlowsPlBucketBlock } from "../types";
@@ -34,18 +35,23 @@ function bucketTotal(
 /** Flows → PL: monthly market P/L of the money buckets (brokerage / retiro / efectivo). */
 export function FlowsPlPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
+  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsPl();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    if (displayUnit === "usd") {
-      return chartGranularity === "year" ? data.chart_yearly_usd : data.chart_monthly_usd;
-    }
-    return chartGranularity === "year" ? data.chart_yearly : data.chart_monthly;
-  }, [chartGranularity, data, displayUnit]);
+    const base =
+      displayUnit === "usd"
+        ? chartGranularity === "year"
+          ? data.chart_yearly_usd
+          : data.chart_monthly_usd
+        : chartGranularity === "year"
+          ? data.chart_yearly
+          : data.chart_monthly;
+    return clipPointsToTimeRange(base, timeRange);
+  }, [chartGranularity, data, displayUnit, timeRange]);
 
   const tableRows = useMemo(() => [...chartPoints].reverse(), [chartPoints]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);

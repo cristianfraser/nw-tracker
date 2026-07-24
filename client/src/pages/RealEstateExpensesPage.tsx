@@ -5,7 +5,9 @@ import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAdd
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import type { DashboardChartGranularity } from "../dashboardTimeseriesYearly";
+import { clipPointsToTimeRange } from "../timeRange";
 import { formatClp, formatGroupedDecimalTrimmed } from "../format";
 import { expenseKindLabel, useTranslation } from "../i18n";
 import { useRealEstateExpenses } from "../queries/hooks";
@@ -61,6 +63,7 @@ function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => strin
 /** Gastos de arriendo / departamento (`/flows/expenses/real_estate`). */
 export function RealEstateExpensesPage() {
   const { t } = useTranslation();
+  const { timeRange } = useDisplayPreferences();
   const { accountSlug } = useParams<{ accountSlug?: string }>();
   const [granularity, setGranularity] = useState<DashboardChartGranularity>("monthly");
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
@@ -113,8 +116,9 @@ export function RealEstateExpensesPage() {
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    return granularity === "yearly" ? data.chart_yearly : data.chart_monthly;
-  }, [data, granularity]);
+    const base = granularity === "yearly" ? data.chart_yearly : data.chart_monthly;
+    return clipPointsToTimeRange(base, timeRange);
+  }, [data, granularity, timeRange]);
 
   const places = useMemo(() => data?.places ?? [], [data]);
 
