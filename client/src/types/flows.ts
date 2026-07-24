@@ -294,6 +294,11 @@ export interface FlowsCreditCardExpensesResponse {
    * keyed by statement_line_id.
    */
   line_proxy?: Record<number, CcProxyLotResult>;
+  /**
+   * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO), for the Diario
+   * gastos view (cuotas land on the day their facturación is paid).
+   */
+  cuota_pay_by_iso?: Record<string, string>;
 }
 
 /** `GET /api/income` — cartola abonos + manual income_entries. */

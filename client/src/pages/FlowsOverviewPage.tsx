@@ -5,6 +5,7 @@ import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   aggregateFlowsOverview,
+  aggregateFlowsOverviewByDay,
   flowsOverviewTotals,
   rollupFlowsOverviewRowsByYear,
 } from "../flowsOverviewAggregate";
@@ -14,7 +15,7 @@ import {
   flowTableGranularity,
   formatFlowMoney,
 } from "../flowsDisplay";
-import { timeRangeCutoffYmd } from "../timeRange";
+import { timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
 import { useFlowsCreditCardExpenses, useFlowsDeposits, useFlowsPl, useIncome } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
@@ -26,15 +27,16 @@ export function FlowsOverviewPage() {
   const { t } = useTranslation();
   const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
-  // Day mode falls back to the monthly chart/table here for now (Overview composes four feeds;
-  // the day composite is the remaining Phase B work). Rango still applies.
-  const displayGranularity = flowTableGranularity(chartGranularity);
+  const isDaily = chartGranularity === "day";
+  // The month-detail table stays month/year even in Diario (the chart is the day surface).
+  const tableGranularity = flowTableGranularity(chartGranularity);
   const { installmentMode } = useCcInstallmentGastosMode();
 
   const income = useIncome();
   const expenses = useFlowsCreditCardExpenses();
   const deposits = useFlowsDeposits();
-  const pl = useFlowsPl();
+  // Day mode needs the server's per-day bucket P/L for the overview's P/L leg.
+  const pl = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);
 
   const error = income.error ?? expenses.error ?? deposits.error ?? pl.error;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -51,31 +53,52 @@ export function FlowsOverviewPage() {
     );
   }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, pl.data]);
 
+  /** Day composite (Diario chart only); the detail table below stays month/year. */
+  const dayRows = useMemo(() => {
+    if (!isDaily || !income.data || !expenses.data || !deposits.data || !pl.data) return null;
+    return aggregateFlowsOverviewByDay(
+      income.data,
+      expenses.data,
+      deposits.data,
+      (displayUnit === "usd" ? pl.data.chart_daily_usd : pl.data.chart_daily) ?? [],
+      installmentMode,
+      displayUnit
+    );
+  }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, isDaily, pl.data]);
+
   const rows = useMemo(() => {
     if (!monthRows) return [];
     const cutoff = timeRangeCutoffYmd(timeRange);
     const clipped = cutoff ? monthRows.filter((r) => r.as_of_date >= cutoff) : monthRows;
-    return chartGranularity === "year" ? rollupFlowsOverviewRowsByYear(clipped) : clipped;
-  }, [chartGranularity, monthRows, timeRange]);
+    return tableGranularity === "year" ? rollupFlowsOverviewRowsByYear(clipped) : clipped;
+  }, [tableGranularity, monthRows, timeRange]);
+
+  /** What the chart plots: day rows in Diario (server-windowed P/L, client-clipped rest). */
+  const chartRows = useMemo(() => {
+    if (!isDaily) return rows;
+    if (!dayRows) return [];
+    const cutoff = timeRangeCutoffYmd(timeRange);
+    return cutoff ? dayRows.filter((r) => r.as_of_date >= cutoff) : dayRows;
+  }, [dayRows, isDaily, rows, timeRange]);
 
   const chartPoints = useMemo(
     () =>
-      rows.map((r) => ({
+      chartRows.map((r) => ({
         as_of_date: r.as_of_date,
         income: r.income,
         expenses: -r.expenses,
         deposits: r.deposits,
         pl: r.pl,
       })),
-    [rows]
+    [chartRows]
   );
 
-  /** Headline totals stay full history; `rangeTotals` (shown when Rango ≠ Todo) follow the clip. */
+  /** Headline totals stay full history; `rangeTotals` (shown when Rango ≠ Todo) follow the chart. */
   const fullTotals = useMemo(
     () => (monthRows ? flowsOverviewTotals(monthRows) : null),
     [monthRows]
   );
-  const rangeTotals = useMemo(() => flowsOverviewTotals(rows), [rows]);
+  const rangeTotals = useMemo(() => flowsOverviewTotals(chartRows), [chartRows]);
 
   const tableRows = useMemo(() => [...rows].reverse(), [rows]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
@@ -102,7 +125,7 @@ export function FlowsOverviewPage() {
         <FlowsOverviewChart
           title={t("flows.overview.chartTitle")}
           points={chartPoints}
-          xAxisGranularity={displayGranularity}
+          xAxisGranularity={chartGranularity}
           displayUnit={displayUnit}
         />
       </div>
@@ -180,7 +203,7 @@ export function FlowsOverviewPage() {
         >
           {pageRows.map((row) => (
             <tr key={row.period_month}>
-              <td className="mono">{flowPeriodLabel(row.period_month, displayGranularity)}</td>
+              <td className="mono">{flowPeriodLabel(row.period_month, tableGranularity)}</td>
               <td className="mono">{formatFlowMoney(row.income, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.expenses, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.deposits, displayUnit)}</td>

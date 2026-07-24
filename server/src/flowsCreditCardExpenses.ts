@@ -1,6 +1,7 @@
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 
 import {
 
@@ -319,6 +320,13 @@ export type FlowsCreditCardExpensesPayload = {
    * keyed by statement_line_id.
    */
   line_proxy?: Record<number, import("./ccInvestmentProxy.js").ProxyLotResult>;
+
+  /**
+   * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO). The Diario
+   * gastos view places each cuota on the day its facturación is actually paid; billing
+   * calendars live on the server, so the client never derives these.
+   */
+  cuota_pay_by_iso?: Record<string, string>;
 
 };
 
@@ -1039,6 +1047,31 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   return enrichFlowLinesWithExpenseDepositLinks(withOrigin);
 }
 
+/**
+ * `<account_id>|<billing_month>` → PAGAR HASTA (ISO) for every facturación of every CC master.
+ * The gastos Diario view lands each cuota on its facturación's pay-by day; open/projected months
+ * that never printed one fall back to the ~10th of the following month (same rule as the daily
+ * installment-debt walk in `ccInstallmentDebtDaily.ts`).
+ */
+function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const accountId of accountIds) {
+    const { facturaciones } = billingDetailCacheForAccount(accountId);
+    for (const f of facturaciones) {
+      const iso = f.pay_by_iso ?? tenthOfNextMonthIso(f.billing_month);
+      if (iso) out[`${accountId}|${f.billing_month}`] = iso;
+    }
+  }
+  return out;
+}
+
+/** ~10th of the month after `billingMonth` — the derived pay-by for months with no printed date. */
+function tenthOfNextMonthIso(billingMonth: string): string | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(billingMonth);
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]), 10)).toISOString().slice(0, 10);
+}
+
 export function buildFlowsCreditCardExpensesPayload(
   proxyTickers?: string[]
 ): FlowsCreditCardExpensesPayload {
@@ -1140,6 +1173,8 @@ export function buildFlowsCreditCardExpensesPayload(
     proxy_tickers: tickers,
 
     line_proxy,
+
+    cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds),
 
   };
 
