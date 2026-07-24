@@ -358,20 +358,6 @@ export function liveAfpDisplayValueClp(
   return null;
 }
 
-/** Chart / pie trailing point: live AFP when requested, else stored valuation snapshot. */
-export function fintualCertValuationRawClpForChart(
-  accountId: number,
-  importNotes: string,
-  accountName: string | null | undefined,
-  asOfYmd: string,
-  storedClp: number | null | undefined,
-  useLiveMark: boolean
-): number | null {
-  const live = liveFintualCertDisplayValueClp(accountId, importNotes, accountName, asOfYmd);
-  if (live && (useLiveMark || storedClp == null || !Number.isFinite(storedClp))) return live.value_clp;
-  return storedClp != null && Number.isFinite(storedClp) ? storedClp : null;
-}
-
 export function afpValuationRawClpForChart(
   accountId: number,
   storedClp: number | null | undefined,
