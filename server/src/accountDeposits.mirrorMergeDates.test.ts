@@ -4,17 +4,22 @@ import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 
 /**
- * Mirror-converted transfers carry ONE date (the real-day checking leg for month-precision
- * pairs), but each side's valuation evidence follows its original leg. Cross-month pairs
- * (e.g. ahorro retiro dated 2021-12-31 merged with a checking deposit on 2022-01-07) must
- * bucket the aportes event by the ORIGINAL leg date per side, or the out account shows a
- * −X/+X monthly P/L couplet across the boundary.
+ * Mirror-converted transfers carry ONE date, and each side's aportes event must be bucketed on
+ * the day THAT side's valuation evidence actually moves:
+ *
+ * - **month-precision accounts** (cuenta ahorro: sheet months, not real days) keep their
+ *   ORIGINAL leg date — a cross-month pair (ahorro retiro 2025-12-31 merged with a checking
+ *   deposit on 2026-01-07) would otherwise show a −X/+X monthly P/L couplet;
+ * - **every other account** follows the transfer date, because balances and
+ *   `transferLegUnitsThroughDate` both key off the movement. Dating a Fintual/APV leg at its
+ *   original settlement day instead produced a phantom ±X P/L couplet across the 1–3 day gap.
  */
 
 const PREFIX = "vitest-mirrormergedates";
 
 let outAccountId = 0;
 let inAccountId = 0;
+let fintualAccountId = 0;
 
 function cleanup() {
   db.prepare(
@@ -50,6 +55,12 @@ beforeAll(() => {
   const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`);
   outAccountId = Number(ins.run(ahorro.id, `${PREFIX}-out`).lastInsertRowid);
   inAccountId = Number(ins.run(ahorro.id, `${PREFIX}-in`).lastInsertRowid);
+  // Real-day account (fondo reserva = Fintual): its units/balance move on the transfer date.
+  const reserva = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%\\_\\_fondo\\_reserva' ESCAPE '\\' LIMIT 1`)
+    .get() as { id: number } | undefined;
+  if (!reserva) throw new Error("test DB is missing the fondo_reserva asset group");
+  fintualAccountId = Number(ins.run(reserva.id, `${PREFIX}-fintual`).lastInsertRowid);
 });
 
 afterAll(cleanup);
@@ -79,6 +90,42 @@ describe("mirror-merged transfer aportes bucketing", () => {
 
     const inEvents = getMergedDepositInflowEventsForAccount(inAccountId);
     expect(inEvents).toContainEqual({ occurred_on: "2026-01-07", amt: 800_000 });
+
+    db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferId);
+  });
+
+  it("a real-day in-leg (Fintual) uses the TRANSFER date, not its settlement day", () => {
+    // Money leaves checking 2026-04-21 and lands at Fintual 2026-04-23; the merged transfer is
+    // dated 04-21 and its units count from 04-21, so the aportes event must too — otherwise the
+    // bucket reads flow −X on the 21st with no value change (pl +X) and the mirror on the 23rd.
+    const transferId = insertTransfer(outAccountId, fintualAccountId, 18_000_000, "2026-04-21");
+    db.prepare(
+      `INSERT INTO movement_mirror_merges
+         (transfer_movement_id, out_movement_id, out_occurred_on, out_amount_clp, out_note,
+          in_movement_id, in_occurred_on, in_amount_clp, in_note)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(
+      transferId,
+      900_000_005,
+      "2026-04-21",
+      -18_000_000,
+      `${PREFIX}|retiro`,
+      900_000_006,
+      "2026-04-23",
+      18_000_000,
+      `${PREFIX}|deposito`
+    );
+
+    const inEvents = getMergedDepositInflowEventsForAccount(fintualAccountId).filter(
+      (e) => e.occurred_on >= "2026-04-19" && e.occurred_on <= "2026-04-25"
+    );
+    expect(inEvents).toEqual([{ occurred_on: "2026-04-21", amt: 18_000_000 }]);
+
+    // …and the two legs cancel on the same day, so a bucket holding both nets to zero flow.
+    const outEvents = getMergedDepositInflowEventsForAccount(outAccountId).filter(
+      (e) => e.occurred_on >= "2026-04-19" && e.occurred_on <= "2026-04-25"
+    );
+    expect(outEvents).toEqual([{ occurred_on: "2026-04-21", amt: -18_000_000 }]);
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferId);
   });

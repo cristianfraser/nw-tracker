@@ -1,6 +1,7 @@
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { portfolioGroupBySlug } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
+import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 
 const bucketSlugStmt = db.prepare(
   `SELECT g.slug FROM accounts a
@@ -27,6 +28,12 @@ export function accountKindSlugForAccountId(accountId: number): string | null {
   const bucketSlug = bucketSlugForAccountId(accountId);
   if (!bucketSlug) return null;
   return accountBucketKindSlug(bucketSlug);
+}
+
+/** True when this account's movement dates are month-precision (see the kind set). */
+export function accountIsMonthPrecisionDated(accountId: number): boolean {
+  const kind = accountKindSlugForAccountId(accountId);
+  return kind != null && MONTH_PRECISION_ACCOUNT_KIND_SLUGS.has(kind);
 }
 
 /**
