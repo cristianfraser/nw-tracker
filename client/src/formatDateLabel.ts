@@ -66,6 +66,15 @@ export function formatMonthYearShortLabel(dateStr: string): string {
   return `${monthShort(mo)} ${m[1]!.slice(2)}`;
 }
 
+/** `2026-12-16` → `dic 16` / `Dec 16` (day-grain chart X-axis ticks). */
+export function formatDayMonthShortLabel(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd.trim());
+  if (!m) return ymd;
+  const mo = Number(m[2]);
+  if (mo < 1 || mo > 12) return ymd;
+  return `${monthShort(mo)} ${Number(m[3])}`;
+}
+
 /** Local-time `YYYY-MM-DD HH:MM` for timestamps (notifications, sync log). Language-independent. */
 export function formatDateTimeLabel(d: Date): string {
   const p2 = (n: number) => String(n).padStart(2, "0");
