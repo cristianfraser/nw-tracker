@@ -79,10 +79,7 @@ import {
   ufClpBySnapshotDatesAsc,
   ufRowOnOrBefore,
 } from "./fxRates.js";
-import {
-  afpValuationRawClpForChart,
-  liveAfpDisplayValueClp,
-} from "./accountPosition.js";
+import { liveAfpDisplayValueClp } from "./accountPosition.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   chartHostSlugForValuationGroup,
@@ -1024,9 +1021,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
         if (mtgClose != null && Number.isFinite(mtgClose)) raw = mtgClose;
       }
-      if (aidKind === "afp") {
-        raw = afpValuationRawClpForChart(aid, raw, useLiveAfpOnDate);
-      }
       const chartMeta = chartMetaById.get(aid);
       if (propertyAccountIds.length === 1 && aidKind === "property") {
         // Sheet UF marks on every date including the trailing/today point: suecia CLP is
@@ -1045,7 +1039,14 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       //    historical dates (`fintualCertValuationRawClpForChart`), which lagged the true fund
       //    value whenever the snapshot sync was stale; the mark is cuotas × fund-unit price
       //    (the certificado value), fresh at every date.
-      // The remaining special-branch kinds (equity/crypto/cash MTM, CC, mortgage, AFP, property)
+      //  - AFP — same shape: it read the stored snapshot for history and the live mark only on
+      //    the trailing point. Those historical rows are a **write-once cache no scheduled job
+      //    refreshes** (the `afp_uno` sync only upserts a today spot row), so they went stale
+      //    against the 2026-07-10 cert-backed ledger rebuild. The mark is ledger×px where
+      //    `fund_unit_daily` has prices (from 2019-10) and falls back to the stored row before
+      //    that — the AFP px series starts after the ledger does, and those ~28 pre-price
+      //    month-ends are the sole source for 2017-06…2019-09 (verified: mark == stored there).
+      // The remaining special-branch kinds (equity/crypto/cash MTM, CC, mortgage, property)
       // keep the raw they computed above — those framings are intentional.
       const aidSlug = slugById.get(aid) ?? "";
       const isMarkValued =
@@ -1056,7 +1057,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         !isClpCashKindSlug(aidKind) &&
         aidKind !== "credit_card" &&
         aidKind !== "mortgage" &&
-        aidKind !== "afp" &&
         aidKind !== "property";
       if (isMarkValued) {
         const mark = accountMarkClpAtYmd(aid, d, aidSlug, {
