@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { windowCcFinancingPoints, windowCcHistorialRows } from "../../chartRangeWindow";
 import { CcInstallmentHistoryChart } from "../charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../charts/CcBillingMonthFinancingChart";
 import { LineChartPanel } from "../charts/ValuationLineCharts";
@@ -32,11 +34,20 @@ export function LiabilitiesCreditCardGroupSection({
   linkTo,
 }: Props) {
   const { t } = useTranslation();
-  const { metricsPeriod } = useDisplayPreferences();
+  const { metricsPeriod, timeRange } = useDisplayPreferences();
   const isYearly = metricsPeriod === "year";
 
   const historialChartRows = ccLedger.historial_chart ?? [];
   const financingChartPoints = ccLedger.billing_month_chart ?? [];
+  // Same shared range window as the CC account page (left-clip + 20% empty lead).
+  const windowedHistorialRows = useMemo(
+    () => windowCcHistorialRows(historialChartRows, timeRange),
+    [historialChartRows, timeRange]
+  );
+  const windowedFinancingPoints = useMemo(
+    () => windowCcFinancingPoints(financingChartPoints, timeRange),
+    [financingChartPoints, timeRange]
+  );
 
   const title = sectionTitle ?? t("groupPage.pasivos.creditCardSectionTitle");
   const hint = sectionHint ?? t("groupPage.pasivos.creditCardSectionHint");
@@ -78,7 +89,7 @@ export function LiabilitiesCreditCardGroupSection({
                 : "accountDetail.creditCard.historialHint"
             )}
           </p>
-          <CcInstallmentHistoryChart rows={historialChartRows} openBillingMonth={ccLedger.open_billing_month} />
+          <CcInstallmentHistoryChart rows={windowedHistorialRows} openBillingMonth={ccLedger.open_billing_month} />
         </section>
       ) : null}
 
@@ -103,7 +114,7 @@ export function LiabilitiesCreditCardGroupSection({
               : "accountDetail.creditCard.financingChartTitle"
           )}
           titleAs="h3"
-          points={financingChartPoints}
+          points={windowedFinancingPoints}
           displayUnit={displayUnit}
         />
       </div>
