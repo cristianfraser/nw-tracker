@@ -18,7 +18,6 @@ import {
   resolveClpPerUsdForKeepPrev,
 } from "../../placeholders/keepPrevBundleUnit";
 import { readFxLatestCache } from "../../queries/fxLatestCache";
-import type { EntityColorTarget } from "../../entityColor";
 import {
   accountCardTitleBalanceDelta,
   cardGroupMetricsFromAccounts,
@@ -62,8 +61,6 @@ export type AccountDetailPageData = {
   accChartPoints: Record<string, string | number | null>[];
   valuationBlockForChart: NonNullable<DetailBundle["ts"]>["accounts"] | null;
   navSelf: ReturnType<typeof findNavTreeNodeByAccountId>;
-  accountColorRgb: string | null;
-  pageColorTarget: EntityColorTarget | undefined;
   accountChartTheme: { bar: string; areaStroke: string; areaFill: string };
   accountDashRow: DashboardAccountRow | null;
   accountTitleDelta: ReturnType<typeof accountCardTitleBalanceDelta>;
@@ -210,12 +207,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     return ts.accounts.accounts?.find((a) => a.account_id === summary.account_id)?.color_rgb ?? null;
   }, [summary.account_id, ts.accounts.accounts]);
 
-  const pageColorTarget = useMemo((): EntityColorTarget | undefined => {
-    const accountId = summary.account_id;
-    if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
-    return { kind: "account", accountId };
-  }, [summary.account_id]);
-
   const accountChartTheme = useMemo(
     () => ({
       bar: chartStrokeFromRgbTriplet(accountColorRgb),
@@ -277,8 +268,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     accChartPoints,
     valuationBlockForChart,
     navSelf,
-    accountColorRgb,
-    pageColorTarget,
     accountChartTheme,
     accountDashRow,
     accountTitleDelta,

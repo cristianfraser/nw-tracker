@@ -92,6 +92,19 @@
   min-width: 0;
 }
 
+/**
+ * Label-less card (the hero card, whose name repeats the page title): with no label to set the
+ * row height, collapse the number container and nudge the lone Δ onto the value's baseline rhythm.
+ */
+.card-title-row.card-title-row--no-label {
+  margin-top: -0.1rem;
+}
+
+.card-title-row--no-label>.number-container {
+  height: 0;
+  transform: translateY(2px);
+}
+
 .card-title-row__delta {
   flex-shrink: 0;
   font-size: var(--font-size-card-meta);
