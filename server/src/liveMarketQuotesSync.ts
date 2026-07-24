@@ -226,8 +226,11 @@ export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMar
   // baked today's live marks (bucket totals, overview live point, current-month perf rows)
   // would keep serving the old price. Invalidate only when a value actually changed —
   // closed-market no-op polls must not churn the cache.
+  // `live_tail`: this poll only writes `live_market_quotes`, which no historical mark reads,
+  // so the cached per-account daily mark series survive — a rebuilt daily view re-prices just
+  // today (the one day never cached) instead of re-walking all of history every 5 minutes.
   const valuesChanged = equities.some((r) => r.changed === true) || fxSync.changed;
-  if (valuesChanged) invalidateMarketDataAggregations();
+  if (valuesChanged) invalidateMarketDataAggregations("live_tail");
 
   console.log(
     `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (Yahoo EOD fx_daily)"}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`

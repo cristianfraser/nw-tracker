@@ -1,4 +1,5 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
@@ -201,20 +202,39 @@ export function buildDashboardBucketDailySeriesClp(
   sessionsAsc: readonly string[]
 ): Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }> {
   const accountsByBucket = new Map(
-    NW_DASHBOARD_BUCKET_SLUGS.map((slug) => [slug, listAccountsForDashboardBucket(slug)] as const)
+    NW_DASHBOARD_BUCKET_SLUGS.map((slug) => [
+      slug,
+      listAccountsForDashboardBucket(slug).filter((a) => a.exclude_from_group_totals !== 1),
+    ] as const)
+  );
+  // One cached mark series per account for the whole grid, instead of a mark lookup per
+  // account per day (see `accountMarkDailyCache.ts`).
+  const marksByBucket = new Map(
+    NW_DASHBOARD_BUCKET_SLUGS.map((slug) => [
+      slug,
+      accountsByBucket
+        .get(slug)!
+        .map((a) =>
+          accountMarkClpSeriesOnGrid(
+            {
+              account_id: a.account_id,
+              bucket_slug: a.bucket_slug,
+              import_key: a.import_key,
+              name: a.name,
+            },
+            sessionsAsc
+          )
+        ),
+    ] as const)
   );
   const out = new Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }>();
-  for (const ymd of sessionsAsc) {
+  sessionsAsc.forEach((ymd, gi) => {
     const row = { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 0, net_worth: 0 };
     for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
       let raw = 0;
-      for (const a of accountsByBucket.get(slug)!) {
-        if (a.exclude_from_group_totals === 1) continue;
-        const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
-          import_key: a.import_key,
-          name: a.name,
-        });
-        if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) raw += mark.value_clp;
+      for (const marks of marksByBucket.get(slug)!) {
+        const clp = marks[gi];
+        if (clp != null && Number.isFinite(clp)) raw += clp;
       }
       if (slug === "cash_eqs") {
         raw = applyCashSavingsNwAdjustment(raw, linkedCreditCardClpForCashCardAsOf(ymd));
@@ -223,7 +243,7 @@ export function buildDashboardBucketDailySeriesClp(
     }
     row.net_worth = row.real_estate + row.retirement + row.brokerage + row.cash_eqs;
     out.set(ymd, row);
-  }
+  });
   return out;
 }
 

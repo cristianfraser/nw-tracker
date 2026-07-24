@@ -13,7 +13,7 @@ import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.j
 import { depositClpToUsdAtDate, depositInflowEventUsd } from "./flowsDeposits.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
 import {
   convertLegToUnit,
@@ -322,16 +322,25 @@ export function getBucketDailySeries(
     included.filter((a) => isCreditCardAccountId(a.account_id)).map((a) => [a.account_id, []])
   );
   const wealth: (number | null)[] = [];
+  // Marks per account for the whole grid up front: historical days come from the cached
+  // series, today is computed live (see `accountMarkDailyCache.ts`).
+  const marksByAccount = included.map((a) =>
+    accountMarkClpSeriesOnGrid(
+      {
+        account_id: a.account_id,
+        bucket_slug: a.bucket_slug,
+        import_key: a.import_key ?? null,
+        name: a.name ?? null,
+      },
+      grid
+    )
+  );
   const values: (number | null)[] = grid.map((ymd, gi) => {
     let rawClp = 0;
     let rawWealthClp = 0;
     let any = false;
     included.forEach((a, ai) => {
-      const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
-        import_key: a.import_key ?? null,
-        name: a.name ?? null,
-      });
-      const clp = mark?.value_clp;
+      const clp = marksByAccount[ai]![gi];
       const ok = clp != null && Number.isFinite(clp);
       if (ok) {
         rawWealthClp += isLiability[ai] ? -clp : clp;
