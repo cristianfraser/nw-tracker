@@ -50,6 +50,8 @@ import {
   netWorthTableAccountsFromDash,
 } from "../portfolioDashboardBuckets";
 import { timeRangeToDays } from "../timeRange";
+import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
+import { useDailySeries } from "../queries/hooks";
 import type { ValuationTimeseriesResponse } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -281,6 +283,55 @@ export function DashboardPage() {
     return rollupRetirementBrokeragePerfYearly(retirementBrokeragePerfPoints);
   }, [retirementBrokeragePerfPoints, isYearly]);
 
+  // Day mode P/L bars: the two invested buckets' own daily series (shared `pg:` builds, warm
+  // from their group pages). Synthetic bar accounts map them onto the monthly chart's keys.
+  const retirementDaily = useDailySeries(
+    { portfolioGroup: "retirement" },
+    displayUnit,
+    timeRangeToDays(timeRange),
+    isDaily
+  );
+  const brokerageDaily = useDailySeries(
+    { portfolioGroup: "brokerage" },
+    displayUnit,
+    timeRangeToDays(timeRange),
+    isDaily
+  );
+  const dailyRetirementBrokeragePoints = useMemo(() => {
+    if (!isDaily) return null;
+    const ret = retirementDaily.data;
+    const brk = brokerageDaily.data;
+    if (!ret?.points.length || !brk?.points.length) return null;
+    // Both series run the same calendar grid (same `days`, same today); bail rather than
+    // mis-align if that ever stops holding.
+    if (ret.points.length !== brk.points.length) return null;
+    const depositsPerDay = (s: typeof ret): number[] => {
+      const cum = s.deposits_acum_total;
+      if (!cum?.length) return s.points.map(() => 0);
+      return cum.map((v, i) => (i === 0 ? 0 : v - (cum[i - 1] ?? 0)));
+    };
+    const retDeps = depositsPerDay(ret);
+    const brkDeps = depositsPerDay(brk);
+    const rows = buildDailyPerfComboPoints({
+      series: ret,
+      lines: [
+        { account_id: -1, name: "retirement", values: [], pl: ret.points.map((p) => p.pl) },
+        { account_id: -2, name: "brokerage", values: [], pl: brk.points.map((p) => p.pl) },
+      ],
+      barAccounts: [
+        { account_id: -1, bar_data_key: "delta_retirement" },
+        { account_id: -2, bar_data_key: "delta_brokerage" },
+      ],
+      monthlyPointsAsc: retirementBrokeragePerfPoints,
+      ytdKey: "ytd_combined",
+      totalKey: "delta_combined",
+    });
+    return rows.map((row, i) => ({
+      ...row,
+      deposits_inversiones: (retDeps[i] ?? 0) + (brkDeps[i] ?? 0),
+    }));
+  }, [isDaily, retirementDaily.data, brokerageDaily.data, retirementBrokeragePerfPoints]);
+
   const retirementBrokerageAccumChart = useMemo(() => {
     const depChart = dash?.inversiones_deposits_chart;
     const depositSeries = !depChart
@@ -445,9 +496,9 @@ export function DashboardPage() {
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
               titleAs="h3"
-              points={retirementBrokerageForCharts}
+              points={dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts}
               displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
+              xAxisGranularity={dailyRetirementBrokeragePoints ? "day" : xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_retirement",
@@ -486,9 +537,9 @@ export function DashboardPage() {
                   : t("dashboard.sections.accumEarningsChartTitleMonthly")
               }
               titleAs="h3"
-              points={retirementBrokerageAccumChart}
+              points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
+              xAxisGranularity={dailyRetirementBrokeragePoints ? "day" : xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_combined",
@@ -503,7 +554,7 @@ export function DashboardPage() {
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes={false}
-              lineSeries={[
+              lineSeries={dailyRetirementBrokeragePoints ? [] : [
                 {
                   dataKey: "delta_combined_ma3",
                   name: isYearly
@@ -522,9 +573,9 @@ export function DashboardPage() {
                   : t("dashboard.sections.accumFlowsChartTitleMonthly")
               }
               titleAs="h3"
-              points={retirementBrokerageAccumChart}
+              points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
-              xAxisGranularity={xAxisGranularity}
+              xAxisGranularity={dailyRetirementBrokeragePoints ? "day" : xAxisGranularity}
               barSeries={[
                 {
                   dataKey: "delta_combined",
@@ -541,7 +592,7 @@ export function DashboardPage() {
                   color: "#a78bfa",
                 },
               ]}
-              lineSeries={[
+              lineSeries={dailyRetirementBrokeragePoints ? [] : [
                 {
                   dataKey: "delta_combined_ma3",
                   name: isYearly
