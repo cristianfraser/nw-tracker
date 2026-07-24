@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseLineBuckets";
 import {
   aggregateFlowsOverview,
+  aggregateFlowsOverviewByDay,
   flowsOverviewTotals,
   rollupFlowsOverviewRowsByYear,
 } from "./flowsOverviewAggregate";
@@ -289,5 +290,73 @@ describe("aggregateFlowsOverview", () => {
     const totals = flowsOverviewTotals(rows);
     expect(totals.pl).toBe(125_000);
     expect(totals.net).toBe(totals.income - totals.expenses - totals.deposits);
+  });
+});
+
+describe("aggregateFlowsOverviewByDay", () => {
+  it("buckets each leg on its own day and keeps the monthly accounting rules", () => {
+    const rows = aggregateFlowsOverviewByDay(
+      incomePayload(),
+      { lines: [mortgageLine()] },
+      marchDeposits,
+      [{ as_of_date: "2024-03-20", total: 75_000 }]
+    );
+
+    // income on the day it was received (2024-03-05), not a month bucket
+    const incomeDay = rows.find((r) => r.as_of_date === "2024-03-05");
+    expect(incomeDay!.income).toBe(2_000_000);
+
+    // the mortgage payment day carries carrying as expense and amortización only as deposit
+    const payDay = rows.find((r) => r.as_of_date === "2024-03-11");
+    expect(payDay!.expenses).toBe(400_000);
+    expect(payDay!.deposits).toBe(1_000_000 + 500_000 - 400_000);
+
+    // P/L rides its own day and stays out of `net`
+    const plDay = rows.find((r) => r.as_of_date === "2024-03-20");
+    expect(plDay!.pl).toBe(75_000);
+    expect(plDay!.net).toBe(0);
+
+    for (const r of rows) expect(r.net).toBe(r.income - r.expenses - r.deposits);
+  });
+
+  it("day totals reconcile with the monthly composite over the same month", () => {
+    const income = incomePayload();
+    const lines = [mortgageLine()];
+    const pl = [{ as_of_date: "2024-03-20", total: 75_000 }];
+
+    const dayRows = aggregateFlowsOverviewByDay(income, { lines }, marchDeposits, pl);
+    const monthRows = aggregateFlowsOverview(income, { lines }, marchDeposits, {
+      chart_monthly: [plPoint({ total: 75_000 })],
+      chart_monthly_usd: [],
+    });
+
+    const march = monthRows.find((r) => r.period_month === "2024-03")!;
+    const dayTotals = flowsOverviewTotals(
+      dayRows.filter((r) => r.as_of_date.slice(0, 7) === "2024-03")
+    );
+    expect(dayTotals.income).toBe(march.income);
+    expect(dayTotals.expenses).toBe(march.expenses);
+    expect(dayTotals.deposits).toBe(march.deposits);
+    expect(dayTotals.pl).toBe(march.pl);
+  });
+
+  it("keeps pre-tax AFP/AFC contributions out of the post-tax net", () => {
+    const deposits = {
+      rows: [
+        depositRow({
+          category: "inversiones",
+          category_label: "Investments",
+          account_id: 60,
+          account_name: "AFP",
+          kind_slug: "afp",
+          amount_clp: 300_000,
+        }),
+      ],
+    };
+    const rows = aggregateFlowsOverviewByDay(incomePayload(), { lines: [] }, deposits, []);
+    const day = rows.find((r) => r.as_of_date === "2024-03-11")!;
+    expect(day.deposits_pre_tax).toBe(300_000);
+    expect(day.deposits).toBe(0);
+    expect(day.net).toBe(0);
   });
 });
