@@ -1,4 +1,5 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import {
   loadMergedDepositInflowEvents,
   loadMergedDisplayDepositInflowEvents,
@@ -999,6 +1000,32 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         if (fromDepto != null && Number.isFinite(fromDepto)) {
           raw = fromDepto;
         }
+      }
+      // Plain stored-valuation accounts (manual marks, DAP, cuenta ahorro, the pre-Fintual
+      // Principal) previously forward-filled the last stored value with no flow carry, so a
+      // liquidation or deposit after the last mark left the line stale (the daily view winds it
+      // down via book-value carry). Value them through the mark instead — stored + net flows
+      // since, null before the first mark — so the group-page line matches the daily one. The
+      // special-branch kinds above (equity/crypto/cash MTM, CC, mortgage, AFP, Fintual cert,
+      // property) keep the raw they just computed.
+      const aidSlug = slugById.get(aid) ?? "";
+      const isPlainStoredValuation =
+        !accountUsesEquityMtm(aid) &&
+        !accountUsesCryptoMtm(aid) &&
+        !isMovementBalanceCashCategory(aidSlug) &&
+        !isUsdCashKindSlug(aidKind) &&
+        !isClpCashKindSlug(aidKind) &&
+        aidKind !== "credit_card" &&
+        aidKind !== "mortgage" &&
+        aidKind !== "afp" &&
+        aidKind !== "property" &&
+        !(chartMeta?.import_key && isFintualCertV2ValuationNotes(chartMeta.import_key));
+      if (isPlainStoredValuation) {
+        const mark = accountMarkClpAtYmd(aid, d, aidSlug, {
+          import_key: chartMeta?.import_key ?? null,
+          name: chartMeta?.name ?? null,
+        });
+        raw = mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
       }
       if (raw != null) last.set(aid, raw);
       const v = last.get(aid);
