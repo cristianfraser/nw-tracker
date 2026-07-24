@@ -29,8 +29,6 @@ export type PortfolioNavEntityCardsStripProps = {
     inversiones_period_metrics?: InversionesPeriodMetricsDto;
   };
   parentNavNode: NavTreeNodeDto;
-  compactTitle: string;
-  compactTitleTo?: string;
   showUsd: boolean;
   metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
@@ -45,8 +43,6 @@ export type PortfolioNavEntityCardsStripProps = {
 export function PortfolioNavEntityCardsStrip({
   dash,
   parentNavNode,
-  compactTitle,
-  compactTitleTo,
   showUsd,
   metricsPeriod,
   animated = true,
@@ -105,17 +101,12 @@ export function PortfolioNavEntityCardsStrip({
 
   const isCashParent = parentNavNode.slug === "cash_eqs" || parentNavNode.slug === "cash_savings";
 
-  const compactTitleToResolved =
-    compactTitleTo ?? (parentNavNode.route_path?.trim() ? parentNavNode.route_path.trim() : undefined);
-
   return (
     <div style={{ marginTop: "0.85rem" }}>
       <PortfolioEntityCardsStrip
         compactStripClassName={isCashParent ? "card--cash" : undefined}
         compactSlot={
           <CompactEntityCard
-            label={compactTitle}
-            to={compactTitleToResolved}
             balanceDelta={parentTitleDelta}
             showUsd={showUsd}
             clp={parentTotals.clp}

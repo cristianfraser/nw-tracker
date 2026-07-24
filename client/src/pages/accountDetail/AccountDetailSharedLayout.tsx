@@ -5,7 +5,6 @@ import { DashboardCardGroupMetrics } from "../../components/dashboard/DashboardC
 import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioEntityCardsStrip";
 import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
 import { PageTitleRow } from "../../components/layout/PageTitleRow";
-import type { EntityColorTarget } from "../../entityColor";
 import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { accountCardTitleBalanceDelta } from "../../dashboardCardBreakdown";
 import type { cardGroupMetricsFromAccounts } from "../../dashboardCardBreakdown";
@@ -14,10 +13,7 @@ import styles from "../AccountDetailPage.module.css";
 
 type LayoutProps = {
   title: string;
-  accountColorRgb: string | null;
-  pageColorTarget: EntityColorTarget | undefined;
   accountId: number;
-  accountName: string;
   accountTitleDelta: ReturnType<typeof accountCardTitleBalanceDelta>;
   accountMetricsAgg: ReturnType<typeof cardGroupMetricsFromAccounts>;
   displayUnit: "clp" | "usd";
@@ -41,10 +37,7 @@ type LayoutProps = {
 
 export function AccountDetailSharedLayout({
   title,
-  accountColorRgb,
-  pageColorTarget,
   accountId,
-  accountName,
   accountTitleDelta,
   accountMetricsAgg,
   displayUnit,
@@ -82,12 +75,11 @@ export function AccountDetailSharedLayout({
 
   return (
     <main>
-      <PageTitleRow title={title} colorRgb={accountColorRgb} colorTarget={pageColorTarget} />
+      <PageTitleRow title={title} />
       <div className={cn(styles.contentShell, loading && styles.contentShellLoading)}>
         <PortfolioEntityCardsStrip
           compactSlot={
             <CompactEntityCard
-              label={accountName}
               balanceDelta={accountTitleDelta}
               showUsd={displayUnit === "usd"}
               clp={displayUnit === "usd" ? 0 : heroClp}

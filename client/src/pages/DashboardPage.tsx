@@ -43,7 +43,7 @@ import {
   chartShapeFromLoadedDashboardBundle,
 } from "../placeholders/dashboardPagePlaceholders";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
-import { navColorTargetFromDto, resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
+import { resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { formatMoneyForPie } from "../format";
 import {
   isDashboardNwBucketSlug,
@@ -73,7 +73,6 @@ export function DashboardPage() {
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
   const netWorthNav = sidebarNav?.net_worth ?? null;
-  const netWorthColorTarget = netWorthNav ? navColorTargetFromDto(netWorthNav) : undefined;
 
   const navShell = useMemo(
     () => (netWorthNav ? buildGroupPageShellFromNav(netWorthNav, displayUnit) : null),
@@ -588,8 +587,6 @@ export function DashboardPage() {
     <GroupInfoBase
       mainClassName="page-dashboard"
       title={pageTitle}
-      colorRgb={netWorthNav?.color_rgb}
-      colorTarget={netWorthColorTarget}
       loading={contentLoading}
       portfolio={
         netWorthNav && dashForStrip

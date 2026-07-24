@@ -121,10 +121,7 @@ export function StandardAccountDetailPage({ data }: Props) {
     <AccountDetailSharedLayout
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       title={ts.name}
-      accountColorRgb={data.accountColorRgb}
-      pageColorTarget={data.pageColorTarget}
       accountId={summary.account_id}
-      accountName={ts.name}
       accountTitleDelta={data.accountTitleDelta}
       accountMetricsAgg={data.accountMetricsAgg}
       displayUnit={displayUnit}

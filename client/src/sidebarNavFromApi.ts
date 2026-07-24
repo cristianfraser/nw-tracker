@@ -1,7 +1,6 @@
 import i18n from "./i18n";
 import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
 import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
-import type { EntityColorTarget } from "./entityColor";
 
 /**
  * Label keys the SERVER emits via `label_i18n_key` (seedNavTree.ts and friends),
@@ -48,15 +47,6 @@ export function resolveNavTreeLabel(dto: NavTreeNodeDto): string {
     if (translated !== dto.label_i18n_key) return translated;
   }
   return dto.label;
-}
-
-/** Persistable color target for a nav tree node (account or portfolio group). */
-export function navColorTargetFromDto(dto: NavTreeNodeDto): EntityColorTarget | undefined {
-  if (dto.account_id != null && dto.account_id > 0) {
-    return { kind: "account", accountId: dto.account_id };
-  }
-  if (dto.expense_account_id != null || dto.portfolio_group_id == null) return undefined;
-  return { kind: "portfolio_group", slug: dto.slug };
 }
 
 /** Inactive buckets stay in the payload for group pages; the sidebar and subnav tabs hide them. */
