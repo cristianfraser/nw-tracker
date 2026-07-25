@@ -197,22 +197,24 @@ export function MirrorPairsPanelPage() {
         <>
           <Table
             header={
-              <tr>
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={allChecked}
-                    onChange={toggleAll}
-                    aria-label={t("mirrorPairs.selectAll")}
-                  />
-                </th>
-                <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
-              </tr>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      onChange={toggleAll}
+                      aria-label={t("mirrorPairs.selectAll")}
+                    />
+                  </th>
+                  <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
+                </tr>
+              </thead>
             }
           >
             {high.map((p) => {
@@ -282,15 +284,17 @@ export function MirrorPairsPanelPage() {
       ) : (
         <Table
           header={
-            <tr>
-              <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
-              <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
-              <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
-              <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
-              <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
-              <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
-              <th className="desktop-only">{t("mirrorPairs.colActions")}</th>
-            </tr>
+            <thead>
+              <tr>
+                <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colActions")}</th>
+              </tr>
+            </thead>
           }
         >
           {ambiguous.map((p) => (
@@ -342,28 +346,30 @@ export function MirrorPairsPanelPage() {
         <>
           <Table
             header={
-              <tr>
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={ccPairs.length > 0 && selectedCc.length === ccPairs.length}
-                    onChange={() =>
-                      setCcUnchecked(
-                        selectedCc.length === ccPairs.length
-                          ? new Set(ccPairs.map(ccPairKey))
-                          : new Set()
-                      )
-                    }
-                    aria-label={t("mirrorPairs.selectAll")}
-                  />
-                </th>
-                <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
-              </tr>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={ccPairs.length > 0 && selectedCc.length === ccPairs.length}
+                      onChange={() =>
+                        setCcUnchecked(
+                          selectedCc.length === ccPairs.length
+                            ? new Set(ccPairs.map(ccPairKey))
+                            : new Set()
+                        )
+                      }
+                      aria-label={t("mirrorPairs.selectAll")}
+                    />
+                  </th>
+                  <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
+                  <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
+                </tr>
+              </thead>
             }
           >
             {ccPairs.map((p) => {
