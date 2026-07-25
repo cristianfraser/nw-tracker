@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { BASE_DOCUMENT_TITLE, documentTitleFromH1Text } from "./useDocumentTitleFromH1";
 
 describe("documentTitleFromH1Text", () => {
-  it("uses the heading text", () => {
-    expect(documentTitleFromH1Text("Watchlist")).toBe("Watchlist");
+  it("suffixes the heading text with the app name", () => {
+    expect(documentTitleFromH1Text("Watchlist")).toBe("Watchlist · NW Tracker");
   });
 
   it("collapses the whitespace a wrapped heading carries", () => {
     expect(documentTitleFromH1Text("\n  Cuenta corriente\n  Santander\n")).toBe(
-      "Cuenta corriente Santander"
+      "Cuenta corriente Santander · NW Tracker"
     );
   });
 
