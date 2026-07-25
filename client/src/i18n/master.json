@@ -85,6 +85,12 @@
       }
     }
   },
+  "demo": {
+    "readOnly": {
+      "en": "This is a read-only demo — changes can't be saved.",
+      "es": "Esta es una demo de solo lectura: los cambios no se pueden guardar."
+    }
+  },
   "reminders": {
     "mortgageUf": {
       "title": {

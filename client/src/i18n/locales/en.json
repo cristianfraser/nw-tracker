@@ -28,6 +28,9 @@
       "unknown": "Could not sign in. Try again."
     }
   },
+  "demo": {
+    "readOnly": "This is a read-only demo — changes can't be saved."
+  },
   "reminders": {
     "mortgageUf": {
       "title": "Mortgage cuota — UF timing",

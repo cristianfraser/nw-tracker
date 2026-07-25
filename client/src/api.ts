@@ -1,3 +1,5 @@
+import i18n from "./i18n";
+
 const base = () => import.meta.env.VITE_API_URL ?? "";
 
 const API_HINT =
@@ -14,6 +16,16 @@ function notifyAuthExpiredIfNeeded(path: string, status: number) {
   if (status === 401 && !path.startsWith("/api/auth/")) {
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
   }
+}
+
+/**
+ * The hosted demo serves reads only (server: `demoReadOnlyMiddleware`). Turn its 403
+ * sentinel into a sentence instead of letting the raw JSON body surface as the error.
+ * Translated at call time — never cache the result (the language can change at runtime).
+ */
+function demoReadOnlyMessage(status: number, body: string): string | null {
+  if (status !== 403 || !body.includes("demo_read_only")) return null;
+  return i18n.t("demo.readOnly");
 }
 
 function isProbablyHtml(body: string) {
@@ -34,6 +46,8 @@ async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<
   const trimmed = text.trim();
   if (!res.ok) {
     notifyAuthExpiredIfNeeded(path, res.status);
+    const readOnly = demoReadOnlyMessage(res.status, trimmed);
+    if (readOnly) throw new Error(readOnly);
     if (isProbablyHtml(text)) throw new Error(`${API_HINT} (HTTP ${res.status})`);
     throw new Error(trimmed || res.statusText);
   }
@@ -63,6 +77,8 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     notifyAuthExpiredIfNeeded(path, res.status);
+    const readOnly = demoReadOnlyMessage(res.status, trimmed);
+    if (readOnly) throw new Error(readOnly);
     if (isProbablyHtml(text)) {
       throw new Error(`${API_HINT} (HTTP ${res.status})`);
     }
