@@ -13,7 +13,6 @@ import {
   isValidDemoAuthEmail,
   issueSessionToken,
   readCookie,
-  recordDemoAuthLogin,
   sharedAuthPasswordFromEnv,
   verifyDemoPassword,
   verifySessionToken,
@@ -70,7 +69,6 @@ export function registerAuthRoutes(app: express.Express): void {
       res.status(401).json({ error: "invalid_credentials" });
       return;
     }
-    recordDemoAuthLogin(email);
     res.cookie(SESSION_COOKIE, issueSessionToken(email), sessionCookieOptions());
     res.json({ ok: true, email: email.toLowerCase() });
   });
