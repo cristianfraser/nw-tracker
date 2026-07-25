@@ -11,6 +11,23 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Cloudflare Web Analytics — loaded only when a site token was substituted at build
+      // time (VITE_CF_ANALYTICS_TOKEN, set on the hosted demo). Vite leaves the literal
+      // placeholder when the var is unset, so local dev and the demo rehearsal send nothing.
+      // The token is public by design: it names the site, not the account.
+      // Counts undercount by design — the beacon host is on common blocklists. The
+      // authoritative visit numbers are the server's own (server/src/demoAnalytics.ts).
+      (function () {
+        var token = "%VITE_CF_ANALYTICS_TOKEN%";
+        if (!token || token.charAt(0) === "%") return;
+        var s = document.createElement("script");
+        s.type = "module";
+        s.src = "https://static.cloudflareinsights.com/beacon.min.js";
+        s.setAttribute("data-cf-beacon", JSON.stringify({ token: token }));
+        document.head.appendChild(s);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
