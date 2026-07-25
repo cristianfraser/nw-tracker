@@ -1,7 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
-import { chileCalendarTodayYmd } from "./chileDate.js";
-import { demoAuthLogDb } from "./demoAuthLog.js";
 
 /**
  * Deployment modes share one binary and differ only by env:
@@ -88,18 +86,6 @@ export function isValidDemoAuthEmail(email: string): boolean {
   return t.length > 0 && t.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
 }
 
-/** One row per (email, Chile day); repeat requests bump `request_count` / `last_seen_at`. */
-export function recordDemoAuthLogin(email: string, day = chileCalendarTodayYmd()): void {
-  demoAuthLogDb()
-    .prepare(
-      `INSERT INTO demo_auth_logins (email, day, request_count) VALUES (?, ?, 1)
-     ON CONFLICT(email, day) DO UPDATE SET
-       request_count = request_count + 1,
-       last_seen_at = datetime('now')`
-    )
-    .run(email.trim().toLowerCase(), day);
-}
-
 // --- Stateless signed session (HttpOnly cookie) -------------------------------------
 //
 // The hosted demo regenerates its synthetic DB on every deploy / cold start, so we avoid a
@@ -181,7 +167,7 @@ function isAuthExemptPath(path: string): boolean {
  * password). Non-`/api` paths pass through so the static SPA shell can load and render the
  * in-app `/login` page; `/api/*` requires a valid `nw_session` cookie (issued by
  * POST /api/auth/login). No `WWW-Authenticate` header, so the browser never shows its
- * native Basic-auth prompt. Authenticated emails are recorded in `demo_auth_logins`.
+ * native Basic-auth prompt.
  */
 export function sharedPasswordAuthMiddleware(_password: string): RequestHandler {
   return (req, res, next) => {
@@ -196,7 +182,6 @@ export function sharedPasswordAuthMiddleware(_password: string): RequestHandler 
     }
     const session = verifySessionToken(readCookie(req.headers.cookie, SESSION_COOKIE));
     if (session) {
-      recordDemoAuthLogin(session.email);
       next();
       return;
     }

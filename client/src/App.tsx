@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { LoginPage, safeNextPath } from "./pages/LoginPage";
 import { useTranslation } from "./i18n";
+import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
@@ -107,6 +108,8 @@ function AppTree() {
   const { t } = useTranslation();
   // Tab title follows the page heading (login page included — it renders its own h1).
   useDocumentTitleFromH1();
+  // Anonymous route reporting; a no-op outside the hosted demo (endpoint exists there only).
+  useDemoPageviewBeacon();
   // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
   useEnsureFxLatestCache(!(authRequired && status === "anonymous"));
 

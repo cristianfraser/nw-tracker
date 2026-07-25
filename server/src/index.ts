@@ -14,6 +14,7 @@ import {
   sharedPasswordAuthMiddleware,
 } from "./httpSecurity.js";
 import { bootstrapDemoModeIfEnabled, demoModeEnabled } from "./demoMode.js";
+import { demoVisitLogMiddleware, registerDemoAnalyticsRoutes } from "./demoAnalytics.js";
 import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
@@ -56,8 +57,12 @@ process.on("unhandledRejection", (reason) => {
 app.use(cors({ origin: resolveCorsOrigins() }));
 app.use(httpRequestLogMiddleware);
 if (demoModeEnabled()) {
+  // Render terminates TLS: without this every visitor's req.ip is the proxy's, so the
+  // analytics visitor hash would collapse to a single id.
+  app.set("trust proxy", 1);
   app.use(demoReadOnlyMiddleware());
-  console.log("demo: /api is read-only (DEMO_MODE=1)");
+  app.use(demoVisitLogMiddleware());
+  console.log("demo: /api is read-only, anonymous visit analytics enabled (DEMO_MODE=1)");
 }
 const authPassword = sharedAuthPasswordFromEnv();
 if (authPassword) {
@@ -67,6 +72,7 @@ if (authPassword) {
 app.use(express.json({ limit: "2mb" }));
 
 /** Route registration order preserves the original monolithic file's order. */
+if (demoModeEnabled()) registerDemoAnalyticsRoutes(app);
 registerAuthRoutes(app);
 registerMetaRoutes(app);
 registerAccountsRoutes(app);
