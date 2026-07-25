@@ -1,16 +1,17 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
-/** Title when a page renders no `h1` (e.g. the dashboard) — matches index.html. */
+/** App name — the suffix, and the whole title when a page renders no `h1`. */
 export const BASE_DOCUMENT_TITLE = "NW Tracker";
 
 /**
- * Tab title for a page's `h1` text. Whitespace is collapsed because the heading may
- * wrap nested nodes; an empty/absent heading falls back to the app name.
+ * Tab title for a page's `h1` text, suffixed with the app name. Whitespace is collapsed
+ * because the heading may wrap nested nodes; an empty/absent heading leaves the app name
+ * alone rather than a bare separator.
  */
 export function documentTitleFromH1Text(raw: string | null | undefined): string {
   const text = (raw ?? "").replace(/\s+/g, " ").trim();
-  return text.length > 0 ? text : BASE_DOCUMENT_TITLE;
+  return text.length > 0 ? `${text} · ${BASE_DOCUMENT_TITLE}` : BASE_DOCUMENT_TITLE;
 }
 
 /**
