@@ -90,7 +90,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "PORT=3210 DEMO_MODE=1 NW_TRACKER_TEST_DB=nw-tracker.demo.db AUTH_PASSWORD=demo BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
+        "PORT=3210 DEMO_MODE=1 NW_TRACKER_TEST_DB=nw-tracker.demo.db DEMO_ANALYTICS_DB=data/demo-analytics.db BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
       ],
       "port": 3210
     },
