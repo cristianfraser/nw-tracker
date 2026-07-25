@@ -5,7 +5,7 @@ import { chileTodayYmd } from "./calendarMonth";
  * reach, independent of the D/M/Y granularity toggle (which keeps governing card metric
  * windows). `total` = full history (the pre-range behavior for monthly/yearly charts).
  */
-export const TIME_RANGE_OPTIONS = ["30d", "60d", "90d", "6m", "1y", "5y", "10y", "total"] as const;
+export const TIME_RANGE_OPTIONS = ["30d", "60d", "90d", "6m", "1y", "3y", "5y", "10y", "total"] as const;
 export type TimeRange = (typeof TIME_RANGE_OPTIONS)[number];
 
 export function parseTimeRange(raw: string | null): TimeRange | null {
@@ -20,6 +20,7 @@ const RANGE_DAYS: Record<TimeRange, number> = {
   "90d": 90,
   "6m": 183,
   "1y": 366,
+  "3y": 1096,
   "5y": 1827,
   "10y": 3653,
   // Server sentinel: 0 = since portfolio start.
