@@ -63,6 +63,12 @@ services:
         value: nw-tracker.demo.db
       - key: DEMO_ANALYTICS_DB
         value: /var/data/demo-analytics.db
+      # Cloudflare Web Analytics site token, read by the client build (Vite substitutes
+      # %VITE_*% in client/index.html). Public by design — it names the site, not the
+      # account — so it lives here rather than as a dashboard secret. Unset in any other
+      # environment, which is what keeps local dev from beaconing.
+      - key: VITE_CF_ANALYTICS_TOKEN
+        value: 49ed5f2421b2413c819138c50dd359e7
       # HMAC salt for the visitor hash (IP+UA → opaque id, rotated daily). Generated once
       # by Render and never printed; rotating it just starts a new visitor-id namespace.
       - key: DEMO_ANALYTICS_SALT
