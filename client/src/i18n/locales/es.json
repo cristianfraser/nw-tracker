@@ -28,6 +28,9 @@
       "unknown": "No se pudo iniciar sesión. Inténtalo de nuevo."
     }
   },
+  "demo": {
+    "readOnly": "Esta es una demo de solo lectura: los cambios no se pueden guardar."
+  },
   "reminders": {
     "mortgageUf": {
       "title": "Cuota hipoteca — UF",

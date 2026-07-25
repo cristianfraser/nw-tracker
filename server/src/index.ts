@@ -7,12 +7,13 @@ import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { ensureAccountSyncSourcesSeeded } from "./accountSyncSources.js";
 import {
+  demoReadOnlyMiddleware,
   resolveBindHost,
   resolveCorsOrigins,
   sharedAuthPasswordFromEnv,
   sharedPasswordAuthMiddleware,
 } from "./httpSecurity.js";
-import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
+import { bootstrapDemoModeIfEnabled, demoModeEnabled } from "./demoMode.js";
 import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
@@ -54,6 +55,10 @@ process.on("unhandledRejection", (reason) => {
 
 app.use(cors({ origin: resolveCorsOrigins() }));
 app.use(httpRequestLogMiddleware);
+if (demoModeEnabled()) {
+  app.use(demoReadOnlyMiddleware());
+  console.log("demo: /api is read-only (DEMO_MODE=1)");
+}
 const authPassword = sharedAuthPasswordFromEnv();
 if (authPassword) {
   app.use(sharedPasswordAuthMiddleware(authPassword));
