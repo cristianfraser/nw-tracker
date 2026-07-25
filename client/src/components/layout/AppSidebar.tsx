@@ -10,7 +10,6 @@ import {
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation } from "react-router-dom";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { useAuth } from "../../context/AuthContext";
 import { queryKeys } from "../../queries/keys";
 import { prefetchPageShapeForPath } from "../../queries/prefetchPageShape";
 import { useMessagesUnreadCount, useSidebarNav } from "../../queries/hooks";
@@ -179,7 +178,6 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
   const { displayUnit, language } = useDisplayPreferences();
-  const { authRequired, email, logout } = useAuth();
   const { data: unread } = useMessagesUnreadCount();
   const { data: navPayload } = useSidebarNav();
 
@@ -417,25 +415,6 @@ export function AppSidebar() {
                 onPrefetchShape={onPrefetchShape}
               />
             </ul>
-            {authRequired ? (
-              <>
-                <div className={styles.separator} role="separator" />
-                <div className={styles.logout}>
-                  {email ? (
-                    <span className={styles.logoutEmail} title={email}>
-                      {email}
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={styles.logoutButton}
-                    onClick={() => void logout()}
-                  >
-                    {t("auth.logout")}
-                  </button>
-                </div>
-              </>
-            ) : null}
           </div>
         </div>
       </nav>

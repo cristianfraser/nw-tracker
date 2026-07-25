@@ -12,22 +12,6 @@
       "reload": "Reload the app"
     }
   },
-  "auth": {
-    "title": "Sign in",
-    "subtitle": "Demo with synthetic data. Sign in with any email and the shared password.",
-    "emailLabel": "Email",
-    "emailPlaceholder": "you@email.com",
-    "passwordLabel": "Password",
-    "passwordHint": "Demo password: {{hint}}",
-    "submit": "Sign in",
-    "submitting": "Signing in…",
-    "logout": "Sign out",
-    "errors": {
-      "invalidEmail": "Enter a valid email address.",
-      "invalidCredentials": "Wrong email or password.",
-      "unknown": "Could not sign in. Try again."
-    }
-  },
   "demo": {
     "readOnly": "This is a read-only demo — changes can't be saved."
   },

@@ -1,14 +1,12 @@
 import { lazy, Suspense, type ReactElement } from "react";
-import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
 import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { MortgageUfReminderToast } from "./components/layout/MortgageUfReminderToast";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
-import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
-import { LoginPage, safeNextPath } from "./pages/LoginPage";
 import { useTranslation } from "./i18n";
 import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
@@ -70,57 +68,26 @@ const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"), "NotFoundPag
 
 export default function App() {
   return (
-    <AuthProvider>
-      <DisplayPreferencesProvider>
-        <AppTree />
-      </DisplayPreferencesProvider>
-    </AuthProvider>
+    <DisplayPreferencesProvider>
+      <AppTree />
+    </DisplayPreferencesProvider>
   );
-}
-
-/** Anonymous + on a gated route → bounce to /login, remembering where we were headed. */
-function RedirectToLogin() {
-  const loc = useLocation();
-  const next = encodeURIComponent(`${loc.pathname}${loc.search}`);
-  return <Navigate to={`/login?next=${next}`} replace />;
-}
-
-/** Authenticated user landing on /login → forward to the remembered `next` (or home). */
-function LoginRedirect() {
-  const [searchParams] = useSearchParams();
-  return <Navigate to={safeNextPath(searchParams.get("next"))} replace />;
 }
 
 /**
  * The whole tree lives inside a context consumer: a display-preference change
  * (e.g. decimal separator) re-renders it top-down, so plain format helpers
  * re-run everywhere without remounting anything (no loading flash, state kept).
- *
- * It also carries the demo auth gate: when auth is required but absent, only the bare
- * `/login` page renders (no app chrome, routes never mount); otherwise the normal app
- * renders. Auth state is seeded optimistically from the last resolved outcome (see
- * AuthContext), so there is no fullscreen loading state — first paint never waits on
- * `/api/auth/status`.
  */
 function AppTree() {
   useDisplayPreferences();
-  const { status, authRequired } = useAuth();
   const { t } = useTranslation();
-  // Tab title follows the page heading (login page included — it renders its own h1).
+  // Tab title follows the page heading.
   useDocumentTitleFromH1();
   // Anonymous route reporting; a no-op outside the hosted demo (endpoint exists there only).
   useDemoPageviewBeacon();
   // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
-  useEnsureFxLatestCache(!(authRequired && status === "anonymous"));
-
-  if (authRequired && status === "anonymous") {
-    return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<RedirectToLogin />} />
-      </Routes>
-    );
-  }
+  useEnsureFxLatestCache();
 
   return (
     <div className="layout layout--with-sidebar">
@@ -135,7 +102,6 @@ function AppTree() {
           <RouteErrorBoundary>
           <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
           <Routes>
-            <Route path="/login" element={<LoginRedirect />} />
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />

@@ -10,8 +10,6 @@ import {
   demoReadOnlyMiddleware,
   resolveBindHost,
   resolveCorsOrigins,
-  sharedAuthPasswordFromEnv,
-  sharedPasswordAuthMiddleware,
 } from "./httpSecurity.js";
 import { bootstrapDemoModeIfEnabled, demoModeEnabled } from "./demoMode.js";
 import { demoVisitLogMiddleware, registerDemoAnalyticsRoutes } from "./demoAnalytics.js";
@@ -19,7 +17,6 @@ import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
-import { registerAuthRoutes } from "./routes/auth.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
 import { registerMortgageRoutes } from "./routes/mortgage.js";
@@ -64,16 +61,10 @@ if (demoModeEnabled()) {
   app.use(demoVisitLogMiddleware());
   console.log("demo: /api is read-only, anonymous visit analytics enabled (DEMO_MODE=1)");
 }
-const authPassword = sharedAuthPasswordFromEnv();
-if (authPassword) {
-  app.use(sharedPasswordAuthMiddleware(authPassword));
-  console.log("auth: shared-password mode enabled (AUTH_PASSWORD set)");
-}
 app.use(express.json({ limit: "2mb" }));
 
 /** Route registration order preserves the original monolithic file's order. */
 if (demoModeEnabled()) registerDemoAnalyticsRoutes(app);
-registerAuthRoutes(app);
 registerMetaRoutes(app);
 registerAccountsRoutes(app);
 registerMortgageRoutes(app);
