@@ -26,7 +26,7 @@
     "repair:checking-cartola-missing-movements": "tsx scripts/repair-checking-cartola-missing-movements.ts",
     "repair:checking-gastos-categories": "tsx scripts/repair-checking-gastos-categories.ts",
     "db:snapshot": "tsx scripts/db-snapshot.ts",
-    "demo:logins": "tsx scripts/print-demo-auth-logins.ts",
+    "demo:visits": "tsx scripts/print-demo-visits.ts",
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
     "reconcile:cartola-partials": "tsx scripts/reconcile-cartola-partials.ts",
