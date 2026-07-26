@@ -1,7 +1,7 @@
 import type {
-  GroupAllocationPieSlice,
   GroupMonthlyPerformanceResponse,
   NavTreeNodeDto,
+  ProportionalSeriesBlockDto,
   ValuationTimeseriesResponse,
 } from "./types";
 
@@ -69,14 +69,16 @@ export function buildDisplayValuationBlock(
   return g ?? ts.accounts_in_group ?? null;
 }
 
-export function buildDisplayPieSlices(
+export function buildDisplayProportional(
   ts: ValuationTimeseriesResponse,
   ctx: GroupPageChartContext,
   grouped: boolean
-): GroupAllocationPieSlice[] {
-  if (ctx.liabilitiesGrouped) return ts.liab_grouped_pie ?? ts.group_allocation_pie ?? [];
-  const g = ts.nav_grouped_pie?.[grouped ? "grouped" : "ungrouped"];
-  return g ?? ts.group_allocation_pie ?? [];
+): ProportionalSeriesBlockDto | null {
+  if (ctx.liabilitiesGrouped) {
+    return ts.liab_grouped_proportional ?? ts.group_allocation_proportional ?? null;
+  }
+  const g = ts.nav_grouped_proportional?.[grouped ? "grouped" : "ungrouped"];
+  return g ?? ts.group_allocation_proportional ?? null;
 }
 
 export function buildDisplayGroupPerf(

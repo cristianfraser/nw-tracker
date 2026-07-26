@@ -129,7 +129,10 @@ describe("convertPortfolioGroupBundleUnit", () => {
           accounts: [{ account_id: 7, name: "G", dataKey: "7", valueSeriesType: "data" }],
           points: [{ as_of_date: "2025-01-31", "7": 950_000 }],
         },
-        group_allocation_pie: [{ name: "G", account_id: 7, value: 950_000 }],
+        group_allocation_proportional: {
+          dates: ["2026-01-31"],
+          series: [{ dataKey: "7", name: "G", account_id: 7, values: [1] }],
+        },
       },
       groupPerf: {
         unit: "clp",
@@ -141,7 +144,8 @@ describe("convertPortfolioGroupBundleUnit", () => {
     const usd = convertPortfolioGroupBundleUnit(bundle, "usd", RATE);
     expect(usd.ts.unit).toBe("usd");
     expect(usd.ts.accounts_in_group!.points[0]!["7"]).toBeCloseTo(1_000, 6);
-    expect(usd.ts.group_allocation_pie![0]!.value).toBeCloseTo(1_000, 6);
+    // Shares are unit-invariant: the proportional block passes through unscaled.
+    expect(usd.ts.group_allocation_proportional!.series[0]!.values[0]).toBe(1);
     expect(usd.groupPerf!.points[0]!.delta_total).toBeCloseTo(10, 6);
   });
 });

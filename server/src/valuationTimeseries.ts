@@ -88,6 +88,10 @@ import {
   portfolioGroupApiForValuation,
 } from "./portfolioGroupReference.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import {
+  buildProportionalFromPoints,
+  type ProportionalSeriesBlock,
+} from "./proportionalSeries.js";
 import { slugMarkTotalsAtDatesClp } from "./dashboardChartMarkTotals.js";
 import {
   applyConsolidatedTotalToGroupTabBlock,
@@ -1910,6 +1914,19 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
   const patrimonio_usd_milestones_chart =
     buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(overviewClp);
 
+  const assetKeys = new Set(["real_estate", "retirement", "brokerage", "cash"]);
+  const allocation_proportional = buildProportionalFromPoints(
+    slice.overview.points,
+    slice.overview.lines
+      .filter((l) => l.valueSeriesType === "data" && assetKeys.has(l.dataKey))
+      .map((l) => ({
+        dataKey: l.dataKey,
+        name: l.name,
+        ...(l.name_i18n_key != null ? { name_i18n_key: l.name_i18n_key } : {}),
+        ...(l.color_rgb != null ? { color_rgb: l.color_rgb } : {}),
+      }))
+  );
+
   return {
     unit,
     accounts_ex_property: applyTrailingZeroTailClipToBlock(slice.accounts_ex_property),
@@ -1917,6 +1934,7 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
     patrimonio_usd_milestones_chart: applyTrailingZeroTailClipToBlock(
       patrimonio_usd_milestones_chart
     ),
+    allocation_proportional,
   };
 }
 
@@ -2208,44 +2226,35 @@ function aggregateBlockByBuckets(
   };
 }
 
-function aggregatePieByBuckets(
-  pie: readonly GroupChartPieSlice[],
-  plan: ChartBucketPlan
-): GroupChartPieSlice[] {
-  const sums = new Map<string, number>();
-  for (const s of pie) {
-    const b = plan.idToBucket(s.account_id);
-    if (!b) continue;
-    sums.set(b, (sums.get(b) ?? 0) + s.value);
-  }
-  return plan.orderedKeys
-    .filter((k) => sums.has(k))
-    .map((k) => {
-      const m = plan.meta[k]!;
-      return {
-        name: m.name,
-        account_id: m.accountId,
-        value: sums.get(k) ?? 0,
-        ...(m.name_i18n_key ? { name_i18n_key: m.name_i18n_key } : {}),
-      };
-    });
+/** Composition shares from a valuation block's data lines (pre-clip; Total/reference excluded). */
+function buildProportionalFromBlock(block: GroupTabValuationBlock): ProportionalSeriesBlock {
+  const lines = (block.accounts ?? [])
+    .filter((a) => a.valueSeriesType === "data")
+    .map((a) => ({
+      dataKey: a.dataKey,
+      name: a.name,
+      ...(a.name_i18n_key != null ? { name_i18n_key: a.name_i18n_key } : {}),
+      ...(a.color_rgb != null ? { color_rgb: a.color_rgb } : {}),
+      account_id: a.account_id,
+    }));
+  return buildProportionalFromPoints(block.points, lines);
 }
 
 type GroupedChartPayload = {
   nav_grouped_blocks?: { grouped?: GroupTabValuationBlock; ungrouped?: GroupTabValuationBlock };
-  nav_grouped_pie?: { grouped?: GroupChartPieSlice[]; ungrouped?: GroupChartPieSlice[] };
+  nav_grouped_proportional?: { grouped?: ProportionalSeriesBlock; ungrouped?: ProportionalSeriesBlock };
   liab_grouped_block?: GroupTabValuationBlock;
-  liab_grouped_pie?: GroupChartPieSlice[];
+  liab_grouped_proportional?: ProportionalSeriesBlock;
 };
 
 /**
- * Server-side "Agrupado" blocks + pies for a group page, built from the pre-clip consolidated block
- * so grouped totals are identical to the raw view; each block is display-clipped independently.
+ * Server-side "Agrupado" blocks + composition shares for a group page, built from the pre-clip
+ * consolidated block so grouped totals are identical to the raw view; each block is
+ * display-clipped independently (shares come from the unclipped aggregate).
  */
 function buildGroupedChartPayload(
   groupSlug: string,
   preClipBase: GroupTabValuationBlock,
-  basePie: readonly GroupChartPieSlice[],
   unit: TsUnit
 ): GroupedChartPayload {
   const navNode = getNavChartGroupNodeBySlug(groupSlug);
@@ -2254,9 +2263,10 @@ function buildGroupedChartPayload(
   if (isLiabilitiesChartNavNode(navNode)) {
     if (!shouldAggregateLiabilitiesCharts(navNode)) return {};
     const plan = buildLiabilitiesChartBucketPlan(navNode);
+    const aggregated = aggregateBlockByBuckets(preClipBase, plan);
     return {
-      liab_grouped_block: applyTrailingZeroTailClipToBlock(aggregateBlockByBuckets(preClipBase, plan)),
-      liab_grouped_pie: aggregatePieByBuckets(basePie, plan),
+      liab_grouped_block: applyTrailingZeroTailClipToBlock(aggregated),
+      liab_grouped_proportional: buildProportionalFromBlock(aggregated),
     };
   }
 
@@ -2264,11 +2274,11 @@ function buildGroupedChartPayload(
   for (const grouped of [true, false] as const) {
     if (!shouldAggregateNavCharts(navNode, grouped)) continue;
     const plan = buildNavChartBucketPlan(navNode, grouped);
-    const block = applyTrailingZeroTailClipToBlock(aggregateBlockByBuckets(preClipBase, plan));
-    const pie = aggregatePieByBuckets(basePie, plan);
+    const aggregated = aggregateBlockByBuckets(preClipBase, plan);
+    const block = applyTrailingZeroTailClipToBlock(aggregated);
     const mode = grouped ? "grouped" : "ungrouped";
     (out.nav_grouped_blocks ??= {})[mode] = block;
-    (out.nav_grouped_pie ??= {})[mode] = pie;
+    (out.nav_grouped_proportional ??= {})[mode] = buildProportionalFromBlock(aggregated);
   }
   return out;
 }
@@ -2364,7 +2374,8 @@ function getGroupValuationTimeseriesInnerUncached(
       }
     }
   }
-  const group_allocation_pie = latestAllocationPieForAccounts(pieTop, unit);
+  // Composition timeseries (pie replacement): shares of the pre-clip per-account lines.
+  const group_allocation_proportional = buildProportionalFromBlock(accounts_in_group);
 
   const synthColors = syntheticGroupColorRgbMapForValuationGroup(groupSlug);
   if (Object.keys(synthColors).length > 0) {
@@ -2374,14 +2385,14 @@ function getGroupValuationTimeseriesInnerUncached(
   // Server-side "Agrupado" blocks/pies built from the pre-clip consolidated block (grouped totals
   // must equal the raw view); each grouped block is display-clipped inside the helper.
   const grouped = opts?.groupedBlocks
-    ? buildGroupedChartPayload(groupSlug, accounts_in_group, group_allocation_pie, unit)
+    ? buildGroupedChartPayload(groupSlug, accounts_in_group, unit)
     : {};
 
   return {
     unit,
     group_slug: groupSlug,
     accounts_in_group: applyTrailingZeroTailClipToBlock(accounts_in_group),
-    group_allocation_pie,
+    group_allocation_proportional,
     ...grouped,
   };
 }
