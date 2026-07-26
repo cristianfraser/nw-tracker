@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { DashboardCardBreakdown } from "./DashboardCardBreakdown";
-import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
+import { CardValueDayPl, DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { DetailedGroupCard } from "./DetailedGroupCard";
 import {
   breakdownForNavChild,
@@ -80,6 +80,15 @@ export function PortfolioNavChildDetailCards({
             animated={animated}
             placeholderPhase={placeholderPhase}
             className={cashClass}
+            valueDelta={
+              <CardValueDayPl
+                metricsByPeriod={metricsByPeriod}
+                showUsd={showUsd}
+                cardSlug={cardSlug}
+                animated={animated}
+                placeholderPhase={placeholderPhase}
+              />
+            }
             metrics={
               <DashboardCardGroupMetrics
                 metricsByPeriod={metricsByPeriod}

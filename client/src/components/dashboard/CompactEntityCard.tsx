@@ -20,6 +20,8 @@ export type CompactEntityCardProps = {
   /** Lower opacity when linked sync source(s) are stale. */
   syncStale?: boolean;
   subtitle?: ReactNode;
+  /** Day Δ rendered right-aligned on the balance row (e.g. `CardValueDayPl`). */
+  valueDelta?: ReactNode;
   /** Deposits / Δ rows (e.g. `DashboardCardGroupMetrics`). */
   metrics?: ReactNode;
   /** `main` vs `breakdown`: number-flow alignment / animation (font size is shared). */
@@ -43,6 +45,7 @@ export function CompactEntityCard({
   animated = true,
   placeholderPhase = false,
   subtitle,
+  valueDelta,
   metrics,
   valueVariant = "breakdown",
   stripInner = false,
@@ -72,6 +75,7 @@ export function CompactEntityCard({
           fxMissing={fxMissing}
           syncStale={syncStale}
         />
+        {valueDelta}
       </div>
       {metrics ? <div>{metrics}</div> : null}
       {breakdown}

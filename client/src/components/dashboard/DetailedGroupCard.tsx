@@ -13,6 +13,8 @@ export type DetailedGroupCardProps = {
   cardSlug: string;
   animated?: boolean;
   placeholderPhase?: boolean;
+  /** Day Δ rendered right-aligned on the balance row (e.g. `CardValueDayPl`). */
+  valueDelta?: ReactNode;
   /** Deposits / Δ rows (e.g. `DashboardCardGroupMetrics`). */
   metrics?: ReactNode;
   /** Breakdown list or other footer content. */
@@ -38,6 +40,7 @@ export function DetailedGroupCard({
   cardSlug,
   animated = true,
   placeholderPhase = false,
+  valueDelta,
   metrics,
   breakdown,
   className,
@@ -59,6 +62,7 @@ export function DetailedGroupCard({
           fxMissing={fxMissing}
           syncStale={syncStale}
         />
+        {valueDelta}
       </div>
       {metrics ? <div>{metrics}</div> : null}
       {breakdown}

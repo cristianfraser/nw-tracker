@@ -627,10 +627,6 @@
         "en": "Year's deposits",
         "es": "Depósitos del año"
       },
-      "periodDepositsDay": {
-        "en": "Day's deposits",
-        "es": "Depósitos del día"
-      },
       "periodDeltaMonth": {
         "en": "Month P/L",
         "es": "P/L del mes"
@@ -642,22 +638,6 @@
       "periodDeltaDay": {
         "en": "Day P/L",
         "es": "P/L del día"
-      },
-      "rowTotal": {
-        "en": "Total",
-        "es": "Total"
-      },
-      "rowDay": {
-        "en": "Day",
-        "es": "Día"
-      },
-      "rowMonth": {
-        "en": "Month",
-        "es": "Mes"
-      },
-      "rowYear": {
-        "en": "Year",
-        "es": "Año"
       },
       "summaryAria": {
         "en": "Deposits and total and period Δ",

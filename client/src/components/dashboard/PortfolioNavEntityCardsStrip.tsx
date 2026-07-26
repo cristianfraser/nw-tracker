@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
+import { CardValueDayPl, DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { CompactEntityCard } from "./CompactEntityCard";
 import { PortfolioEntityCardsStrip } from "./PortfolioEntityCardsStrip";
 import { PortfolioNavAccountCompactCards } from "./PortfolioNavAccountCompactCards";
@@ -105,6 +105,15 @@ export function PortfolioNavEntityCardsStrip({
             placeholderPhase={placeholderPhase}
             stripInner
             valueVariant="main"
+            valueDelta={
+              <CardValueDayPl
+                metricsByPeriod={parentMetricsByPeriod}
+                showUsd={showUsd}
+                cardSlug={compactCardSlug}
+                animated={animated}
+                placeholderPhase={placeholderPhase}
+              />
+            }
             metrics={
               <DashboardCardGroupMetrics
                 metricsByPeriod={parentMetricsByPeriod}
