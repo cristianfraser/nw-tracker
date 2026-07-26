@@ -87,7 +87,6 @@ import {
   listReferenceGroupsForChartHost,
   portfolioGroupApiForValuation,
 } from "./portfolioGroupReference.js";
-import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import {
   buildProportionalFromPoints,
   type ProportionalSeriesBlock,
@@ -1586,34 +1585,6 @@ function buildOverviewDisplayPointsFromPortfolioTotals(
   });
 }
 
-function latestAllocationPieForAccounts(
-  accounts: AccountLine[],
-  unit: TsUnit
-): { name: string; account_id: number; value: number }[] {
-  const out: { name: string; account_id: number; value: number }[] = [];
-  const pieIds = accounts.map((a) => a.account_id).filter((id) => id > 0);
-  const slugById = bucketSlugByAccountId(pieIds);
-  const pieMetaById = accountChartMetaById(pieIds);
-  for (const a of accounts) {
-    if (a.account_id <= 0) continue;
-    if (!accountCountsTowardGroupTotals(a.account_id)) continue;
-    const meta = pieMetaById.get(a.account_id);
-    const categorySlug = slugById.get(a.account_id) ?? meta?.slug ?? "";
-    const live = syncLatestDisplayValueClp(a.account_id, categorySlug, {
-      import_key: meta?.import_key ?? null,
-      name: meta?.name ?? a.name,
-    });
-    if (live && live.value_clp > 0) {
-      out.push({
-        name: a.name,
-        account_id: a.account_id,
-        value: convertTs(live.value_clp, live.as_of_date, unit),
-      });
-    }
-  }
-  return out;
-}
-
 /** Overview patrimonio chart: net-worth bucket totals (same as sidebar cards). */
 const DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS = [
   "real_estate",
@@ -2435,13 +2406,11 @@ export function getAccountValuationTimeseries(
   if (opts?.granularity === "daily") {
     const daily = buildDailyEquityPointsForAccount(row.account_id, row.name, unit);
     if (daily && daily.points.length > 0) {
-      const allocation_pie = latestAllocationPieForAccounts(daily.accounts, unit);
       return {
         unit,
         account_id: row.account_id,
         name: row.name,
         accounts: { accounts: daily.accounts, points: daily.points },
-        allocation_pie,
         granularity: "daily" as const,
       };
     }
@@ -2533,13 +2502,11 @@ export function getAccountValuationTimeseries(
     }
   }
 
-  const allocation_pie = latestAllocationPieForAccounts(top, unit);
   return {
     unit,
     account_id: row.account_id,
     name: row.name,
     accounts: applyTrailingZeroTailClipToBlock(accounts),
-    allocation_pie,
     granularity: "monthly" as const,
   };
 }

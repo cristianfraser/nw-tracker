@@ -13,7 +13,6 @@ export interface AccountValuationTimeseriesResponse {
   account_id: number;
   name: string;
   accounts: TimeseriesBlock;
-  allocation_pie: { name: string; account_id: number; value: number }[];
   /** `daily` only when the account supports it (SPY/VEA MTM + `equity_daily`); otherwise `monthly`. */
   granularity: "monthly" | "daily";
 }
