@@ -5,7 +5,8 @@ import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAdd
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
-import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { monthYearMetricsPeriod } from "../dashboardCardBreakdown";
 import { clipPointsToTimeRange } from "../timeRange";
 import { formatClp, formatGroupedDecimalTrimmed } from "../format";
@@ -63,7 +64,18 @@ function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => strin
 /** Gastos de arriendo / departamento (`/flows/expenses/real_estate`). */
 export function RealEstateExpensesPage() {
   const { t } = useTranslation();
-  const { metricsPeriod, timeRange } = useDisplayPreferences();
+  const chartPrefs = useSurfacePrefs("flows.re.chart", "month", "3y");
+  const metricsPeriod = chartPrefs.period;
+  const timeRange = chartPrefs.range;
+  const chartControls = (
+    <SurfaceControls
+      period={chartPrefs.period}
+      onPeriodChange={chartPrefs.setPeriod}
+      periodOptions={["month", "year"]}
+      range={chartPrefs.range}
+      onRangeChange={chartPrefs.setRange}
+    />
+  );
   // Real estate is billed-period (bill_month) → month/year only; the global Período toolbar
   // clamps Diario → Mensual here (a per-day billed view has no meaning). Rango still applies.
   const granularity = monthYearMetricsPeriod(metricsPeriod);
@@ -175,6 +187,7 @@ export function RealEstateExpensesPage() {
         style={{ marginBottom: "1.5rem" }}
       >
         <ExpensesByApartmentChart
+          controls={chartControls}
           title={t("expenses.chartTitle")}
           points={chartPoints}
           places={places}

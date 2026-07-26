@@ -2,8 +2,9 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { windowCcFinancingPoints, windowCcHistorialRows } from "../../chartRangeWindow";
+import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import { SurfaceControls } from "../ui/SurfaceControls";
 import { CcInstallmentHistoryChart } from "../charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../charts/CcBillingMonthFinancingChart";
 import { LineChartPanel } from "../charts/ValuationLineCharts";
@@ -15,7 +16,8 @@ import styles from "../../pages/AccountDetailPage.module.css";
 type Props = {
   ccLedger: AccountCcInstallmentsResponse;
   displayUnit: "clp" | "usd";
-  xAxisGranularity: "month" | "year";
+  /** Per-surface prefs id (persisted per issuer scope, e.g. `liab.cc.<slug>`). */
+  surfaceId: string;
   valuationBlockForChart?: TimeseriesBlock | null;
   showValuationChart?: boolean;
   sectionTitle?: string;
@@ -26,7 +28,7 @@ type Props = {
 export function LiabilitiesCreditCardGroupSection({
   ccLedger,
   displayUnit,
-  xAxisGranularity,
+  surfaceId,
   valuationBlockForChart,
   showValuationChart = false,
   sectionTitle,
@@ -34,8 +36,21 @@ export function LiabilitiesCreditCardGroupSection({
   linkTo,
 }: Props) {
   const { t } = useTranslation();
-  const { metricsPeriod, timeRange } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
+  // Paired M/Y control for the historial + financing charts (issuer-scope daily is a
+  // deferred stretch — plan D2 — so Diario is not offered here).
+  const prefs = useSurfacePrefs(surfaceId, "month", "3y");
+  const timeRange = prefs.range;
+  const isYearly = prefs.period === "year";
+  const xAxisGranularity = isYearly ? ("year" as const) : ("month" as const);
+  const ccControls = (
+    <SurfaceControls
+      period={prefs.period}
+      onPeriodChange={prefs.setPeriod}
+      periodOptions={["month", "year"]}
+      range={prefs.range}
+      onRangeChange={prefs.setRange}
+    />
+  );
 
   const historialChartRows = ccLedger.historial_chart ?? [];
   const financingChartPoints = ccLedger.billing_month_chart ?? [];
@@ -54,13 +69,16 @@ export function LiabilitiesCreditCardGroupSection({
 
   return (
     <section className={styles.chartBlock}>
-      {linkTo ? (
-        <h2 className={styles.sectionTitle}>
-          <Link to={linkTo}>{title}</Link>
-        </h2>
-      ) : (
-        <h2 className={styles.sectionTitle}>{title}</h2>
-      )}
+      <div className="chart-panel-title-row">
+        {linkTo ? (
+          <h2 className={styles.sectionTitle}>
+            <Link to={linkTo}>{title}</Link>
+          </h2>
+        ) : (
+          <h2 className={styles.sectionTitle}>{title}</h2>
+        )}
+        {ccControls}
+      </div>
       <p className={cn("muted", styles.proseSmTight)}>{hint}</p>
 
       <CreditCardSummaryCards ccLedger={ccLedger} />
@@ -89,7 +107,11 @@ export function LiabilitiesCreditCardGroupSection({
                 : "accountDetail.creditCard.historialHint"
             )}
           </p>
-          <CcInstallmentHistoryChart rows={windowedHistorialRows} openBillingMonth={ccLedger.open_billing_month} />
+          <CcInstallmentHistoryChart
+            rows={windowedHistorialRows}
+            openBillingMonth={ccLedger.open_billing_month}
+            period={prefs.period}
+          />
         </section>
       ) : null}
 
@@ -116,6 +138,7 @@ export function LiabilitiesCreditCardGroupSection({
           titleAs="h3"
           points={windowedFinancingPoints}
           displayUnit={displayUnit}
+          period={prefs.period}
         />
       </div>
 

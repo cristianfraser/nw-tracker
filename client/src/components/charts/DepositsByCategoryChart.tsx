@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { allocationBucketColor } from "../../chartColors";
@@ -35,11 +37,14 @@ const CATEGORY_BAR: { dataKey: DepositFlowCategory; name: string; color: string 
 
 export function DepositsByCategoryChart({
   title,
+  controls,
   points,
   xAxisGranularity = "month",
   displayUnit = "clp",
 }: {
   title: string;
+  /** Per-surface Período/Rango controls, rendered next to the title. */
+  controls?: ReactNode;
   points: FlowDepositChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
@@ -72,7 +77,7 @@ export function DepositsByCategoryChart({
   if (!points.length) {
     return (
       <div className="chart-grid__col">
-        <h2 className="chart-panel-title">{title}</h2>
+        <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
         <p className="empty muted">{t("deposits.chartEmpty")}</p>
       </div>
     );
@@ -80,7 +85,7 @@ export function DepositsByCategoryChart({
 
   return (
     <div className="chart-grid__col">
-      <h2 className="chart-panel-title">{title}</h2>
+      <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={densePoints}

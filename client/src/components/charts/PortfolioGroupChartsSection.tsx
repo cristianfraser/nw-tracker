@@ -7,6 +7,7 @@ import { cn } from "../../cn";
 import i18n from "../../i18n";
 import type { GroupTabColorMaps, PortfolioGroupChartsColorSlug } from "../../usePortfolioGroupCharts";
 import type { GroupPageChartContext } from "../../groupPageChartViews";
+import type { TimeRange } from "../../timeRange";
 import type { TimeseriesBlock } from "../../types";
 
 type PerfBarSeries = {
@@ -39,6 +40,10 @@ export function PortfolioGroupChartsSection({
   hideGroupPerf = false,
   valuationXAxisGranularity,
   perfXAxisGranularity,
+  valuationTimeRange,
+  perfTimeRange,
+  valuationControls,
+  perfControls,
 }: {
   accountsEmpty: boolean;
   accountsEmptyMessage: string;
@@ -65,6 +70,12 @@ export function PortfolioGroupChartsSection({
   valuationXAxisGranularity?: "month" | "year" | "day";
   /** P/L-combo override (daily per-account P/L bars + anchored cumulative areas). */
   perfXAxisGranularity?: "month" | "year" | "day";
+  /** Per-surface ranges (fall back to the global toolbar range when omitted). */
+  valuationTimeRange?: TimeRange;
+  perfTimeRange?: TimeRange;
+  /** Per-surface Período/Rango controls (the two P/L combos share `perfControls`). */
+  valuationControls?: ReactNode;
+  perfControls?: ReactNode;
 }) {
   if (accountsEmpty) {
     return (
@@ -89,6 +100,8 @@ export function PortfolioGroupChartsSection({
           block={valuationBlockForChart}
           displayUnit={displayUnit}
           xAxisGranularity={valuationXAxisGranularity ?? xAxisGranularity}
+          timeRange={valuationTimeRange}
+          controls={valuationControls}
           includeAccumulatedLines={includeDeposits}
           colorPlan={{
             kind: "group-tab",
@@ -140,6 +153,8 @@ export function PortfolioGroupChartsSection({
               points={groupPerfForChart.points}
               displayUnit={displayUnit}
               xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
+              timeRange={perfTimeRange}
+              controls={perfControls}
               barSeries={groupPerfBarSeries}
               areaKey="ytd_group"
               areaName={i18n.t("charts.ytdGroupSeries")}
@@ -168,6 +183,8 @@ export function PortfolioGroupChartsSection({
               points={groupPerfForChart.points}
               displayUnit={displayUnit}
               xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
+              timeRange={perfTimeRange}
+              controls={perfControls}
               barSeries={[
                 {
                   dataKey: "delta_total",

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useCallback, useMemo, useState } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -27,6 +29,7 @@ type ExpenseChartStyle = "stacked_bar" | "line";
 
 export function CreditCardGroupExpensesChart({
   title,
+  controls,
   points,
   categorySortPoints,
   categories,
@@ -34,6 +37,8 @@ export function CreditCardGroupExpensesChart({
   xAxisGranularity = "month",
 }: {
   title: string;
+  /** Per-surface Período/Rango controls, rendered next to the title. */
+  controls?: ReactNode;
   points: readonly FlowCcExpenseCategoryChartPoint[];
   /** When set, category stack order is derived from these (unfiltered) points. */
   categorySortPoints?: readonly FlowCcExpenseCategoryChartPoint[];
@@ -126,7 +131,7 @@ export function CreditCardGroupExpensesChart({
   if (points.length === 0) {
     return (
       <section className="chart-panel">
-        <h3 className="chart-panel-title">{title}</h3>
+        <ChartPanelTitleRow title={title} titleAs="h3" controls={controls} />
         <p className="empty muted">{t("expenses.creditCard.chartEmpty")}</p>
       </section>
     );
@@ -147,6 +152,7 @@ export function CreditCardGroupExpensesChart({
         <h3 className="chart-panel-title" style={{ margin: 0 }}>
           {title}
         </h3>
+        {controls}
         <div className="chart-controls">
           <span className="label-inline">{t("expenses.creditCard.chartStyleLabel")}</span>
           <label className="radio-pill">
