@@ -1,5 +1,5 @@
 import { CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
-import { useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { formatMoneyForPie } from "../../format";
 import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
@@ -12,7 +12,8 @@ import { AllocationPie } from "./AllocationPie";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { timeRangeCutoffYmd } from "../../timeRange";
+import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import {
   coerceKeptTrailingZeroMonth,
   prependInitialZeroAnchorsOnBlock,
@@ -142,6 +143,10 @@ interface BlockProps {
   xAxisGranularity?: "month" | "year" | "day";
   /** When set, Y-axis min/max uses only these series (others may render off-scale). */
   yScaleDataKeys?: readonly string[];
+  /** Per-surface range for the M/Y clip; falls back to the global toolbar range when omitted. */
+  timeRange?: TimeRange;
+  /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
+  controls?: ReactNode;
 }
 
 /** Invisible underlay stroke width — wide hit target (`pointer-events: stroke`). */
@@ -367,9 +372,11 @@ export function LineChartPanel({
   yAxisMinZero = false,
   xAxisGranularity = "month",
   yScaleDataKeys,
+  timeRange: timeRangeProp,
+  controls,
 }: BlockProps) {
-  const TitleTag = titleAs;
-  const { timeRange } = useDisplayPreferences();
+  const { timeRange: globalTimeRange } = useDisplayPreferences();
+  const timeRange = timeRangeProp ?? globalTimeRange;
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const blockPlotted = useMemo(
     () => (trimLeadingInactive ? trimLeadingInactivePoints(block, includeAccumulatedLines) : block),
@@ -461,7 +468,7 @@ export function LineChartPanel({
   if (!chartData.length || !series.length) {
     return (
       <div className="chart-grid__col">
-        {title ? <TitleTag className="chart-panel-title">{title}</TitleTag> : null}
+        {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
         <p className="empty muted">{i18n.t("charts.noValuationSeries")}</p>
       </div>
     );
@@ -474,7 +481,7 @@ export function LineChartPanel({
 
   return (
     <div className="chart-grid__col">
-      {title ? <TitleTag className="chart-panel-title">{title}</TitleTag> : null}
+      {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
       <div
         className="chart-box line-chart-focus-wrap"
         onPointerLeave={() => setHighlightedKey(null)}
@@ -682,6 +689,12 @@ interface Props {
   primaryXAxisGranularity?: "month" | "year" | "day";
   /** Override for the secondary panel only (day mode swaps «Cuentas principales» to daily). */
   secondaryXAxisGranularity?: "month" | "year" | "day";
+  /** Per-surface ranges for each panel's M/Y clip (fall back to the global toolbar range). */
+  primaryTimeRange?: TimeRange;
+  secondaryTimeRange?: TimeRange;
+  /** Per-surface Período/Rango controls per panel, rendered next to each title. */
+  primaryControls?: ReactNode;
+  secondaryControls?: ReactNode;
   /**
    * `fullWidthStack`: one chart per row (full width). Default `twoColumn` matches legacy side-by-side on wide viewports.
    */
@@ -702,6 +715,10 @@ export function ValuationLineCharts({
   xAxisGranularity = "month",
   primaryXAxisGranularity,
   secondaryXAxisGranularity,
+  primaryTimeRange,
+  secondaryTimeRange,
+  primaryControls,
+  secondaryControls,
   chartLayout = "twoColumn",
 }: Props) {
   const gridClass =
@@ -717,6 +734,8 @@ export function ValuationLineCharts({
         trimLeadingInactive={trimLeadingInactive}
         colorPlan={primaryColorPlan}
         xAxisGranularity={primaryXAxisGranularity ?? xAxisGranularity}
+        timeRange={primaryTimeRange}
+        controls={primaryControls}
       />
       <LineChartPanel
         title={secondaryTitle}
@@ -726,6 +745,8 @@ export function ValuationLineCharts({
         trimLeadingInactive={trimLeadingInactive}
         colorPlan={secondaryColorPlan}
         xAxisGranularity={secondaryXAxisGranularity ?? xAxisGranularity}
+        timeRange={secondaryTimeRange}
+        controls={secondaryControls}
       />
     </div>
   );
