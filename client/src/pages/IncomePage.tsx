@@ -21,7 +21,7 @@ import {
   formatFlowMoney,
   sumChartPointsField,
 } from "../flowsDisplay";
-import { clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
+import { clipPointsToTimeRange } from "../timeRange";
 
 export function IncomePage() {
   const { t } = useTranslation();
@@ -38,6 +38,11 @@ export function IncomePage() {
     />
   );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  // The month-detail table owns its período (month/year) and always covers full history.
+  const tablePrefs = useSurfacePrefs("flows.income.table", "month", "total");
+  const tableGranularity = flowTableGranularity(
+    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+  );
   const { data, error } = useIncome();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -62,13 +67,11 @@ export function IncomePage() {
 
   const monthTableRows = useMemo(() => {
     if (!view) return [];
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    const clipped = cutoff ? view.by_month.filter((r) => r.as_of_date >= cutoff) : view.by_month;
-    // Tables clamp to month/year even in Diario (the chart is the day surface).
-    if (chartGranularity !== "year") return clipped;
-    const asc = [...clipped].reverse();
+    // Tables include full history; the chart's Rango only scopes the chart.
+    if (tableGranularity !== "year") return view.by_month;
+    const asc = [...view.by_month].reverse();
     return [...rollupIncomeMonthRowsByYear(asc)].reverse();
-  }, [chartGranularity, view, timeRange]);
+  }, [tableGranularity, view]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -112,14 +115,21 @@ export function IncomePage() {
       </div>
 
       <section style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("income.sectionMonthly")}</h3>
+        <div className="chart-panel-title-row">
+          <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("income.sectionMonthly")}</h3>
+          <SurfaceControls
+            period={tablePrefs.period}
+            onPeriodChange={tablePrefs.setPeriod}
+            periodOptions={["month", "year"]}
+          />
+        </div>
         <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
           {t("income.monthlyDetailHint")}
         </p>
         <IncomeMonthTable
           rows={monthTableRows}
           displayUnit={displayUnit}
-          periodGranularity={flowTableGranularity(chartGranularity)}
+          periodGranularity={tableGranularity}
         />
       </section>
 
