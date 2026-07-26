@@ -46,14 +46,18 @@ describe("syncLatestDisplayValueClp", () => {
   });
 });
 
-describe("getGroupValuationTimeseries acciones pie", () => {
-  it("pie slices match accounts in leaf bucket with display values", () => {
+describe("getGroupValuationTimeseries acciones composition shares", () => {
+  it("share series match accounts in leaf bucket with display values", () => {
     const tabRows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
     const mtmRows = tabRows.filter((r) => accountUsesEquityMtm(r.account_id));
     if (mtmRows.length < 2) return;
 
     const ts = getGroupValuationTimeseries("brokerage", "clp", "acciones");
-    const pieIds = new Set((ts.group_allocation_pie ?? []).map((p) => p.account_id));
+    const shareIds = new Set(
+      (ts.group_allocation_proportional?.series ?? [])
+        .map((line) => line.account_id)
+        .filter((id): id is number => id != null && id > 0)
+    );
     let matched = 0;
     for (const r of mtmRows) {
       const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
@@ -61,11 +65,10 @@ describe("getGroupValuationTimeseries acciones pie", () => {
         name: r.name,
       });
       if (v != null && v.value_clp > 0) {
-        expect(pieIds.has(r.account_id)).toBe(true);
+        expect(shareIds.has(r.account_id)).toBe(true);
         matched += 1;
       }
     }
     expect(matched).toBeGreaterThanOrEqual(2);
-    expect(pieIds.size).toBe(matched);
   });
 });

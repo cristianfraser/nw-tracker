@@ -1,14 +1,12 @@
 import { CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { formatMoneyForPie } from "../../format";
 import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
-import { DEFAULT_LINE_COLORS, resolveLineSeriesColors } from "../../chartColors";
+import { resolveLineSeriesColors } from "../../chartColors";
 import { GROUP_TAB_DEP_TOTAL } from "../../groupTabAggregation";
 import type { TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
-import { AllocationPie } from "./AllocationPie";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
@@ -629,44 +627,6 @@ export interface PieSlice {
   account_id?: number;
   /** i18n key for server-grouped bucket slices; resolved at render (falls back to `name`). */
   name_i18n_key?: string | null;
-}
-
-interface PiePanelProps {
-  title: string;
-  slices: PieSlice[];
-  displayUnit: ChartDisplayUnit;
-  titleAs?: "h2" | "h3";
-  /** When set, overrides default cycling fills (e.g. class-tab pie aligned with lines). */
-  sliceFill?: (slice: PieSlice, index: number) => string;
-}
-
-export function AllocationPiePanel({ title, slices, displayUnit, titleAs = "h2", sliceFill }: PiePanelProps) {
-  const TitleTag = titleAs;
-  const pieData = slices
-    .filter((s) => s.value > 0)
-    .map((s) => (s.name_i18n_key ? { ...s, name: i18n.t(s.name_i18n_key) } : s));
-  if (pieData.length === 0) {
-    return (
-      <div className="chart-grid__col">
-        <TitleTag className="chart-panel-title">{title}</TitleTag>
-        <p className="empty muted">{i18n.t("charts.noRecentValuations")}</p>
-      </div>
-    );
-  }
-  return (
-    <div className="chart-grid__col">
-      <TitleTag className="chart-panel-title">{title}</TitleTag>
-      <div className="chart-box">
-        <AllocationPie
-          slices={pieData}
-          fill={(slice, i) =>
-            sliceFill ? sliceFill(slice, i) : DEFAULT_LINE_COLORS[i % DEFAULT_LINE_COLORS.length]!
-          }
-          formatValue={(v) => formatMoneyForPie(v, displayUnit)}
-        />
-      </div>
-    </div>
-  );
 }
 
 interface Props {

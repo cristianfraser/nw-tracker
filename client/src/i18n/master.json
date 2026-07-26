@@ -308,10 +308,6 @@
       "en": "No valuation series for this period.",
       "es": "Sin series de valorización para este período."
     },
-    "noRecentValuations": {
-      "en": "No recent valuations to build the chart.",
-      "es": "Sin valorizaciones recientes para armar el gráfico."
-    },
     "groupPerfTitle": {
       "en": "Monthly P/L — YTD (group)",
       "es": "P/L mensual — YTD (grupo)"
@@ -588,10 +584,6 @@
       "title": {
         "en": "Allocation (latest valuations)",
         "es": "Asignación (últimas valorizaciones)"
-      },
-      "empty": {
-        "en": "Add accounts and valuations to see the chart.",
-        "es": "Agrega cuentas y valorizaciones para ver el gráfico."
       }
     },
     "accountsTreeTitle": {

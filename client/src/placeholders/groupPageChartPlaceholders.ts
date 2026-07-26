@@ -39,15 +39,22 @@ export function buildPlaceholderGroupValuationBlock(
   };
 }
 
-/** Pie slices at 1 CLP each so the panel renders; replaced when real valuations load. */
-export function buildPlaceholderGroupAllocationPie(
-  accounts: readonly AccountListRow[]
-): ValuationTimeseriesResponse["group_allocation_pie"] {
-  return accounts.map((a) => ({
-    name: a.name,
-    account_id: a.id,
-    value: 1,
-  }));
+/** Equal shares so the composition panel renders; replaced when real valuations load. */
+export function buildPlaceholderGroupAllocationProportional(
+  accounts: readonly AccountListRow[],
+  firstMonth?: string | null
+): ValuationTimeseriesResponse["group_allocation_proportional"] {
+  const dates = monthEndYmdsForSkeleton(firstMonth);
+  const share = accounts.length > 0 ? 1 / accounts.length : 1;
+  return {
+    dates,
+    series: accounts.map((a) => ({
+      dataKey: String(a.id),
+      name: a.name,
+      account_id: a.id,
+      values: dates.map(() => share),
+    })),
+  };
 }
 
 export function buildPlaceholderGroupPerf(
@@ -89,11 +96,14 @@ export function buildPlaceholderGroupTimeseries(
   accounts: readonly AccountListRow[],
   unit: DisplayUnit,
   firstMonth?: string | null
-): Pick<ValuationTimeseriesResponse, "unit" | "accounts_in_group" | "group_allocation_pie"> {
+): Pick<
+  ValuationTimeseriesResponse,
+  "unit" | "accounts_in_group" | "group_allocation_proportional"
+> {
   return {
     unit: unitForTs(unit),
     accounts_in_group: buildPlaceholderGroupValuationBlock(accounts, firstMonth),
-    group_allocation_pie: buildPlaceholderGroupAllocationPie(accounts),
+    group_allocation_proportional: buildPlaceholderGroupAllocationProportional(accounts, firstMonth),
   };
 }
 
@@ -110,7 +120,7 @@ export function buildPlaceholderPortfolioGroupBundle(
       ts: {
         unit: unitTs,
         accounts_in_group: { lines: [], points: [] },
-        group_allocation_pie: [],
+        group_allocation_proportional: { dates: [], series: [] },
       },
       groupPerf: null,
     };

@@ -101,7 +101,6 @@
     "noMonthlyPl": "Sin datos de P/L mensual para este período.",
     "noExpensesInPeriod": "Sin gastos en este período.",
     "noValuationSeries": "Sin series de valorización para este período.",
-    "noRecentValuations": "Sin valorizaciones recientes para armar el gráfico.",
     "groupPerfTitle": "P/L mensual — YTD (grupo)",
     "groupPerfHint": "Barras por cuenta o subgrupo, área YTD (suma de Δ del mes en el año calendario), rombo = Δ total del mes. Derivado.",
     "groupPerfComboTitle": "Δ por cuenta / subgrupo, YTD combinado y Δ total",
@@ -180,8 +179,7 @@
       "ma3DepositsInversionesYearly": "MM3 depósitos del año (inversiones)"
     },
     "allocation": {
-      "title": "Asignación (últimas valorizaciones)",
-      "empty": "Agrega cuentas y valorizaciones para ver el gráfico."
+      "title": "Asignación (últimas valorizaciones)"
     },
     "accountsTreeTitle": "Cuentas",
     "accountsTreeEmpty": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts.",

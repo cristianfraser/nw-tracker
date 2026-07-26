@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { AllocationPiePanel, LineChartPanel } from "./ValuationLineCharts";
+import { LineChartPanel } from "./ValuationLineCharts";
+import { ProportionalAreaChart } from "./ProportionalAreaChart";
 import type { ChartDisplayUnit } from "./chartLayout";
 import { MonthlyPerformanceComboChart } from "./MonthlyPerformanceComboChart";
 import { groupTabPieSliceFill } from "../../chartColors";
@@ -8,7 +9,7 @@ import i18n from "../../i18n";
 import type { GroupTabColorMaps, PortfolioGroupChartsColorSlug } from "../../usePortfolioGroupCharts";
 import type { GroupPageChartContext } from "../../groupPageChartViews";
 import type { TimeRange } from "../../timeRange";
-import type { TimeseriesBlock } from "../../types";
+import type { ProportionalSeriesBlockDto, TimeseriesBlock } from "../../types";
 
 type PerfBarSeries = {
   dataKey: string;
@@ -16,14 +17,14 @@ type PerfBarSeries = {
   color: string;
 };
 
-type PieSlice = { name: string; account_id: number; value: number };
-
 export function PortfolioGroupChartsSection({
   accountsEmpty,
   accountsEmptyMessage,
   chartSeriesCount,
   valuationBlockForChart,
-  displayPieSlices,
+  proportionalBlock,
+  proportionalXAxisGranularity = "month",
+  proportionalControls,
   displayUnit,
   xAxisGranularity,
   chartColorSlug,
@@ -49,7 +50,10 @@ export function PortfolioGroupChartsSection({
   accountsEmptyMessage: string;
   chartSeriesCount: number;
   valuationBlockForChart: TimeseriesBlock | null;
-  displayPieSlices: PieSlice[];
+  /** Composition-share block (pie replacement); rendered beside the valuation chart. */
+  proportionalBlock: ProportionalSeriesBlockDto | null;
+  proportionalXAxisGranularity?: "day" | "month" | "year";
+  proportionalControls?: ReactNode;
   displayUnit: ChartDisplayUnit;
   xAxisGranularity: "month" | "year";
   chartColorSlug: PortfolioGroupChartsColorSlug;
@@ -120,14 +124,18 @@ export function PortfolioGroupChartsSection({
           }
         />
         {chartSeriesCount > 1 && (
-          <AllocationPiePanel
+          <ProportionalAreaChart
             title={i18n.t("charts.currentValueByAccount")}
-            slices={displayPieSlices}
-            displayUnit={displayUnit}
-            sliceFill={(slice) =>
-              groupTabPieSliceFill(chartColorSlug, groupColorMaps, slice.account_id, {
-                allocationBucketSlug: pieAllocationSlug,
-              })
+            block={proportionalBlock}
+            xAxisGranularity={proportionalXAxisGranularity}
+            controls={proportionalControls}
+            colorFor={(line) =>
+              groupTabPieSliceFill(
+                chartColorSlug,
+                groupColorMaps,
+                line.account_id ?? Number(line.dataKey),
+                { allocationBucketSlug: pieAllocationSlug }
+              )
             }
           />
         )}

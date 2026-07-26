@@ -91,15 +91,8 @@ function scaleValuationTs(
     ...(ts.accounts_in_group
       ? { accounts_in_group: scaleBlock(ts.accounts_in_group, factor) }
       : {}),
-    ...(ts.group_allocation_pie
-      ? {
-          group_allocation_pie: ts.group_allocation_pie.map((s) => ({
-            ...s,
-            value: Number.isFinite(s.value) ? s.value * factor : s.value,
-          })),
-        }
-      : {}),
-    // patrimonio_usd_milestones_chart is intentionally left as-is (always CLP, toggle-independent).
+    // group_allocation_proportional passes through the spread untouched — shares are
+    // unit-invariant. patrimonio_usd_milestones_chart is intentionally left as-is (always CLP).
   };
 }
 
