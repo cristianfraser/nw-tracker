@@ -695,6 +695,7 @@ export function DashboardPage() {
                 ? "year"
                 : "month"
           }
+          timeRange={allocationPrefs.range}
           controls={
             <SurfaceControls
               period={allocationPrefs.period}

@@ -407,6 +407,7 @@ export function GroupInfoPage() {
           proportionalXAxisGranularity={
             dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
           }
+          proportionalTimeRange={proportionalPrefs.range}
           proportionalControls={
             <SurfaceControls
               period={proportionalPrefs.period}

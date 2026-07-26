@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from "react";
 import i18n from "../../i18n";
 import { formatPct } from "../../format";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
+import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   AXIS_LINE_STROKE,
@@ -28,6 +29,7 @@ export function ProportionalAreaChart({
   controls,
   block,
   xAxisGranularity,
+  timeRange,
   colorFor,
 }: {
   title: string;
@@ -35,6 +37,8 @@ export function ProportionalAreaChart({
   controls?: ReactNode;
   block: ProportionalSeriesBlockDto | null | undefined;
   xAxisGranularity: "day" | "month" | "year";
+  /** Per-surface Rango for the M/Y clip (daily payloads arrive server-windowed). */
+  timeRange?: TimeRange;
   /** Series color, from the caller's existing maps (bucket palette / group color maps). */
   colorFor: (line: ProportionalSeriesLineDto, index: number) => string;
 }) {
@@ -49,6 +53,12 @@ export function ProportionalAreaChart({
     });
     // Drop dates with no base at all (every share null) — usually the leading empty months.
     out = out.filter((row) => block.series.some((s) => typeof row[s.dataKey] === "number"));
+    // Rango clip for M/Y (daily payloads arrive server-windowed to `days`); yearly samples
+    // AFTER the clip so a short range shows the partial-year composition, like the combos.
+    if (xAxisGranularity !== "day" && timeRange) {
+      const cutoff = timeRangeCutoffYmd(timeRange);
+      if (cutoff != null) out = out.filter((row) => String(row.as_of_date) >= cutoff);
+    }
     if (xAxisGranularity === "year") {
       const lastOfYear = new Map<string, Record<string, string | number | null>>();
       for (const row of out) lastOfYear.set(String(row.as_of_date).slice(0, 4), row);
@@ -59,7 +69,7 @@ export function ProportionalAreaChart({
       dateKey: "as_of_date",
       fillMissing: "null_all",
     });
-  }, [block, xAxisGranularity]);
+  }, [block, xAxisGranularity, timeRange]);
 
   const xAxis = useMemo(
     () => resolvePeriodXAxis(extractSortedAsOfDates(rows), xAxisGranularity),
