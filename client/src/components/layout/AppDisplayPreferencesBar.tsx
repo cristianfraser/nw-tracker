@@ -1,27 +1,18 @@
 import { useTranslation } from "../../i18n";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { cn } from "../../cn";
-import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
-import { parseTimeRange, TIME_RANGE_OPTIONS } from "../../timeRange";
 import type { DisplayUnit } from "../../queries/keys";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
 /**
- * Global CLP/USD + MTD/YTD controls. Default: full-width bottom dock, toolbar centered.
- * Desktop: compact toolbar at the bottom-right (not stretched).
- * The number-format (decimal separator) control lives in the settings panel
- * (`/panel/settings`), not here.
+ * Global CLP/USD control (Período/Rango moved onto each chart/table — per-surface
+ * controls, `surfaceDisplayPrefs.ts`). Default: full-width bottom dock, toolbar centered.
+ * Desktop: compact toolbar at the bottom-right (not stretched). The number-format
+ * (decimal separator) control lives in the settings panel (`/panel/settings`), not here.
  */
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();
-  const {
-    displayUnit,
-    setDisplayUnit,
-    metricsPeriod,
-    setMetricsPeriod,
-    timeRange,
-    setTimeRange,
-  } = useDisplayPreferences();
+  const { displayUnit, setDisplayUnit } = useDisplayPreferences();
 
   return (
     <div className={styles.host} data-app-display-prefs-host>
@@ -41,35 +32,6 @@ export function AppDisplayPreferencesBar() {
               >
                 <option value="clp">CLP</option>
                 <option value="usd">USD</option>
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className="muted">{t("dashboard.chartGranularityLabel")}</span>
-              <select
-                name="nw-global-mp"
-                value={metricsPeriod}
-                onChange={(e) => setMetricsPeriod(e.target.value as CardGroupMetricsPeriod)}
-              >
-                <option value="day">{t("dashboard.daily")}</option>
-                <option value="month">{t("dashboard.monthly")}</option>
-                <option value="year">{t("dashboard.yearly")}</option>
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className="muted">{t("dashboard.rangeLabel")}</span>
-              <select
-                name="nw-global-tr"
-                value={timeRange}
-                onChange={(e) => {
-                  const v = parseTimeRange(e.target.value);
-                  if (v != null) setTimeRange(v);
-                }}
-              >
-                {TIME_RANGE_OPTIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {t(`dashboard.range.${r}`)}
-                  </option>
-                ))}
               </select>
             </label>
           </div>

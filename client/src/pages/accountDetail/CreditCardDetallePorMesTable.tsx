@@ -6,7 +6,6 @@ import { cn } from "../../cn";
 import styles from "../AccountDetailPage.module.css";
 import type { CcBillingDetailMonthDto } from "../../types";
 import { rollupCcBillingDetailYearly } from "../../ccYearlyRollup";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
 import {
@@ -69,12 +68,14 @@ function CreditCardDetallePorMesMobileCard({
 
 export function CreditCardDetallePorMesTable({
   rows,
+  period,
 }: {
   rows: readonly CcBillingDetailMonthDto[];
+  /** From the page's paired CC control: `year` renders the yearly rollup view. */
+  period: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
-  const { metricsPeriod } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
+  const isYearly = period === "year";
 
   const projectedHint = isYearly
     ? t("accountDetail.creditCard.colTotalFacturadoProjectedHintYearly")

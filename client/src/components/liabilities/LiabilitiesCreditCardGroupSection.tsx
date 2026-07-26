@@ -156,6 +156,7 @@ export function LiabilitiesCreditCardGroupSection({
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}
+            period={prefs.period}
           />
         </>
       ) : null}
