@@ -11,6 +11,7 @@ import { useTranslation } from "./i18n";
 import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
+import { useFaviconFromRoute } from "./useFaviconFromRoute";
 import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
 
 // Route-level code splitting: each page (and its chart/table deps, notably recharts)
@@ -84,6 +85,8 @@ function AppTree() {
   const { t } = useTranslation();
   // Tab title follows the page heading.
   useDocumentTitleFromH1();
+  // Tab icon follows the route (bucket/account color halves, flows/settings shapes).
+  useFaviconFromRoute();
   // Anonymous route reporting; a no-op outside the hosted demo (endpoint exists there only).
   useDemoPageviewBeacon();
   // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
