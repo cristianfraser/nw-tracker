@@ -32,20 +32,10 @@ export type CardPeriodMetricsDto = {
   delta_period_usd: number | null;
 };
 
-export type CardTitleDeltaDto = {
-  month_clp: number | null;
-  month_usd: number | null;
-  year_clp: number | null;
-  year_usd: number | null;
-  day_clp: number | null;
-  day_usd: number | null;
-};
-
 export type NavCardMetricsVariantDto = {
   day: CardPeriodMetricsDto;
   month: CardPeriodMetricsDto;
   year: CardPeriodMetricsDto;
-  title_delta: CardTitleDeltaDto;
 };
 
 export type NavCardMetricsDto = {
@@ -79,27 +69,9 @@ export type CardMetricsAccountRow = Pick<
   | "delta_year_usd"
   | "delta_day_clp"
   | "delta_day_usd"
-  | "prior_month_close_clp"
-  | "prior_month_close_usd"
-  | "prior_year_close_clp"
-  | "prior_year_close_usd"
-  | "prior_day_close_clp"
-  | "prior_day_close_usd"
   | "current_value_clp"
   | "current_value_usd"
 >;
-
-/** `${bucket}_clp` / `${bucket}_usd` current totals + prior closes (buildDashboardNwBucketTotals). */
-export type BucketTotalsForCardMetrics = {
-  prior_closes: {
-    month_end?: string | null;
-    /** Prior completed NYSE session (day window anchor); null when unresolvable. */
-    day_end?: string | null;
-    month: Record<string, number | null | undefined>;
-    year: Record<string, number | null | undefined>;
-    day?: Record<string, number | null | undefined>;
-  };
-} & Record<string, unknown>;
 
 const DASHBOARD_NW_BUCKET_SLUGS = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
 type DashboardNwBucketSlug = (typeof DASHBOARD_NW_BUCKET_SLUGS)[number];
@@ -313,103 +285,8 @@ export function sumCardMetrics(parts: readonly CardPeriodMetricsDto[]): CardPeri
   };
 }
 
-/* -------------------------------- title deltas ----------------------------------- */
-
-function dashboardAccountCurrentValueClp(row: CardMetricsAccountRow): number {
-  const v = row.current_value_clp;
-  return v != null && Number.isFinite(v) ? v : 0;
-}
-
-/** Port of client `subsetPeriodBalanceDeltaFromAccounts` (Σ current − Σ prior close). */
-function subsetPeriodBalanceDelta(
-  rows: readonly CardMetricsAccountRow[],
-  period: CardMetricsPeriod,
-  unit: "clp" | "usd"
-): number | null {
-  if (!rows.length) return null;
-  let current = 0;
-  let prior = 0;
-  let counted = 0;
-  for (const r of rows) {
-    const close =
-      period === "year"
-        ? unit === "usd"
-          ? r.prior_year_close_usd
-          : r.prior_year_close_clp
-        : period === "day"
-          ? unit === "usd"
-            ? r.prior_day_close_usd
-            : r.prior_day_close_clp
-          : unit === "usd"
-            ? r.prior_month_close_usd
-            : r.prior_month_close_clp;
-    const cur =
-      unit === "usd"
-        ? r.current_value_usd != null && Number.isFinite(r.current_value_usd)
-          ? r.current_value_usd
-          : 0
-        : dashboardAccountCurrentValueClp(r);
-    if (close == null || !Number.isFinite(close)) continue;
-    current += cur;
-    prior += close;
-    counted += 1;
-  }
-  if (counted === 0) return null;
-  return current - prior;
-}
-
-function subsetTitleBalanceDeltaRounded(
-  rows: readonly CardMetricsAccountRow[],
-  period: CardMetricsPeriod,
-  unit: "clp" | "usd"
-): number | null {
-  const v = subsetPeriodBalanceDelta(rows, period, unit);
-  return v != null && Number.isFinite(v) ? Math.round(v) : null;
-}
-
-/** Port of client `bucketPeriodBalanceDeltaFromTotals` (current bucket total − prior close). */
-function bucketPeriodBalanceDeltaFromTotals(
-  totals: BucketTotalsForCardMetrics,
-  bucket: DashboardNwBucketSlug,
-  period: CardMetricsPeriod,
-  unit: "clp" | "usd"
-): number | null {
-  if (!totals.prior_closes.month_end?.trim()) return null;
-  const current = totals[`${bucket}_${unit}`];
-  const priorBlock =
-    period === "year"
-      ? totals.prior_closes.year
-      : period === "day"
-        ? totals.prior_closes.day
-        : totals.prior_closes.month;
-  const prior = priorBlock?.[`${bucket}_${unit}`];
-  if (current == null || typeof current !== "number" || !Number.isFinite(current)) return null;
-  if (prior == null || !Number.isFinite(prior)) return null;
-  return current - prior;
-}
-
-/** Port of client `resolveGroupPeriodBalanceDelta` + rounding (`cardGroupTitleBalanceDelta`). */
-function bucketTitleBalanceDelta(
-  rows: readonly CardMetricsAccountRow[],
-  totals: BucketTotalsForCardMetrics,
-  bucket: DashboardNwBucketSlug,
-  period: CardMetricsPeriod,
-  unit: "clp" | "usd",
-  filter?: (row: CardMetricsAccountRow) => boolean
-): number | null {
-  const fromTotals = bucketPeriodBalanceDeltaFromTotals(totals, bucket, period, unit);
-  const delta =
-    fromTotals != null
-      ? fromTotals
-      : subsetPeriodBalanceDelta(
-          rows.filter((a) => accountInDashboardGroupScope(a, bucket, filter)),
-          period,
-          unit
-        );
-  return delta != null && Number.isFinite(delta) ? Math.round(delta) : null;
-}
-
 /* -------------------------------- bucket metrics ---------------------------------- */
+
 
 /** Port of client `cardGroupMetricsForDashboardBucket` (incl. cash_eqs savings-P/L override). */
 function bucketCardMetrics(
@@ -622,7 +499,6 @@ export type NavCardMetricsBuildInput = {
    */
   navRoots: readonly NavTreeNodeDto[];
   rows: readonly CardMetricsAccountRow[];
-  totals: BucketTotalsForCardMetrics;
   /** Consolidated hub series for the inversiones parent card (same value the payload serves). */
   inversiones: InversionesPeriodMetrics | null;
 };
@@ -648,30 +524,17 @@ function childVariantForNode(
   node: NavTreeNodeDto,
   input: NavCardMetricsBuildInput
 ): NavCardMetricsVariantDto {
-  const { rows, totals } = input;
+  const { rows } = input;
   const metricsRows = stripMetricsRows(node, rows);
   const fullBucket = usesFullDashboardBucketTotals(node);
 
   const metricsFor = (period: CardMetricsPeriod): CardPeriodMetricsDto =>
     fullBucket ? bucketCardMetrics(rows, fullBucket, period) : cardMetricsFromRows(metricsRows, period);
 
-  const titleFor = (period: CardMetricsPeriod, unit: "clp" | "usd"): number | null =>
-    fullBucket
-      ? bucketTitleBalanceDelta(rows, totals, fullBucket, period, unit)
-      : subsetTitleBalanceDeltaRounded(metricsRows, period, unit);
-
   return {
     day: metricsFor("day"),
     month: metricsFor("month"),
     year: metricsFor("year"),
-    title_delta: {
-      month_clp: titleFor("month", "clp"),
-      month_usd: titleFor("month", "usd"),
-      year_clp: titleFor("year", "clp"),
-      year_usd: titleFor("year", "usd"),
-      day_clp: titleFor("day", "clp"),
-      day_usd: titleFor("day", "usd"),
-    },
   };
 }
 
@@ -703,7 +566,7 @@ function parentVariantForNode(
   input: NavCardMetricsBuildInput,
   childVariantBySlug: Map<string, NavCardMetricsVariantDto>
 ): NavCardMetricsVariantDto {
-  const { rows, totals, inversiones } = input;
+  const { rows, inversiones } = input;
   const mode = parentTitleModeForNavNode(node);
   const subtreeIds = navMetricsAccountIdSet(node, rows);
   const subtreeRows = rows.filter((a) => subtreeIds.has(a.account_id));
@@ -740,41 +603,10 @@ function parentVariantForNode(
     return cardMetricsFromRows(subtreeRows, period);
   };
 
-  const titleFor = (period: CardMetricsPeriod, unit: "clp" | "usd"): number | null => {
-    if (mode.kind === "dashboard_group") {
-      return bucketTitleBalanceDelta(rows, totals, mode.group, period, unit, (a) =>
-        subtreeIds.has(a.account_id)
-      );
-    }
-    if (mode.kind === "sum_dashboard_groups") {
-      let sum = 0;
-      let any = false;
-      for (const g of mode.groups) {
-        const d = bucketTitleBalanceDelta(rows, totals, g, period, unit, (a) =>
-          subtreeIds.has(a.account_id)
-        );
-        if (d != null && Number.isFinite(d)) {
-          sum += d;
-          any = true;
-        }
-      }
-      return any ? Math.round(sum) : null;
-    }
-    return subsetTitleBalanceDeltaRounded(subtreeRows, period, unit);
-  };
-
   return {
     day: metricsFor("day"),
     month: metricsFor("month"),
     year: metricsFor("year"),
-    title_delta: {
-      month_clp: titleFor("month", "clp"),
-      month_usd: titleFor("month", "usd"),
-      year_clp: titleFor("year", "clp"),
-      year_usd: titleFor("year", "usd"),
-      day_clp: titleFor("day", "clp"),
-      day_usd: titleFor("day", "usd"),
-    },
   };
 }
 

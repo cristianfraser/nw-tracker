@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mainValueAndMetricsForNavChild } from "../portfolioNavDashboardCards";
+import { mainValueForNavChild } from "../portfolioNavDashboardCards";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import {
   PERTURB_FACTOR_MAX,
@@ -493,14 +493,6 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       day: zeroPeriod,
       month: zeroPeriod,
       year: zeroPeriod,
-      title_delta: {
-        month_clp: null,
-        month_usd: null,
-        year_clp: null,
-        year_usd: null,
-        day_clp: null,
-        day_usd: null,
-      },
     };
     const zeroEntry = { child: zeroVariant, parent: zeroVariant };
     const snapshot: CachedDashboardNavSnapshot = {
@@ -539,7 +531,7 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       netWorth
     );
     const originalOrder = stripChildren.map((child) =>
-      mainValueAndMetricsForNavChild(originalDash, child, "month", false).clp
+      mainValueForNavChild(originalDash, child, false).clp
     );
 
     for (let run = 0; run < 50; run++) {
@@ -556,7 +548,7 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
         netWorth
       );
       const perturbedOrder = stripChildren.map((child) =>
-        mainValueAndMetricsForNavChild(perturbedDash, child, "month", false).clp
+        mainValueForNavChild(perturbedDash, child, false).clp
       );
 
       for (let i = 0; i < originalOrder.length - 1; i++) {

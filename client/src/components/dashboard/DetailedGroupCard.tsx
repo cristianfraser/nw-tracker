@@ -7,7 +7,6 @@ export type DetailedGroupCardProps = {
   title: string;
   /** When set, title is rendered as a `Link` (see `DashboardCardTitleRow`). */
   titleTo?: string;
-  balanceDelta: number | null;
   showUsd: boolean;
   clp: number;
   apiUsd?: number | null;
@@ -28,12 +27,11 @@ export type DetailedGroupCardProps = {
 };
 
 /**
- * Full-height dashboard / group summary card: title + period Δ, main value, optional metrics and breakdown.
+ * Full-height dashboard / group summary card: title, main value, optional metrics and breakdown.
  */
 export function DetailedGroupCard({
   title,
   titleTo,
-  balanceDelta,
   showUsd,
   clp,
   apiUsd,
@@ -49,15 +47,7 @@ export function DetailedGroupCard({
 }: DetailedGroupCardProps) {
   return (
     <div className={cn(outerClassName, className)}>
-      <DashboardCardTitleRow
-        label={title}
-        titleTo={titleTo}
-        balanceDelta={balanceDelta}
-        showUsd={showUsd}
-        cardSlug={cardSlug}
-        animated={animated}
-        placeholderPhase={placeholderPhase}
-      />
+      <DashboardCardTitleRow label={title} titleTo={titleTo} />
       <div className="value">
         <DashboardCardValue
           clp={clp}

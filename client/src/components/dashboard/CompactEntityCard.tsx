@@ -6,11 +6,10 @@ import { cn } from "../../cn";
 import styles from "./CompactEntityCard.module.css";
 
 export type CompactEntityCardProps = {
-  /** Omit to render only the Δ + value (e.g. the hero card, whose name repeats the page title). */
+  /** Omit to skip the title row (e.g. the hero card, whose name repeats the page title). */
   label?: string;
   /** When set, label is rendered as a `Link`. */
   to?: string;
-  balanceDelta?: number | null;
   showUsd: boolean;
   clp: number;
   apiUsd?: number | null;
@@ -37,7 +36,6 @@ export type CompactEntityCardProps = {
 export function CompactEntityCard({
   label,
   to,
-  balanceDelta = null,
   showUsd,
   clp,
   apiUsd,
@@ -60,15 +58,7 @@ export function CompactEntityCard({
         breakdown != null && breakdown !== false && styles.rootWithBreakdown
       )}
     >
-      <DashboardCardTitleRow
-        label={label}
-        titleTo={to}
-        balanceDelta={balanceDelta ?? null}
-        showUsd={showUsd}
-        cardSlug={cardSlug}
-        animated={animated}
-        placeholderPhase={placeholderPhase}
-      />
+      {label != null ? <DashboardCardTitleRow label={label} titleTo={to} /> : null}
       {subtitle ? <span className="muted" style={{ fontSize: "0.75rem" }}>{subtitle}</span> : null}
       <div className="value mono">
         <DashboardCardValue

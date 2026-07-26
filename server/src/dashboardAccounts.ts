@@ -637,7 +637,6 @@ export async function buildDashboardNavSnapshot(
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
-    totals: nw_bucket_totals,
     inversiones: opts?.inversiones ?? null,
   });
   return {

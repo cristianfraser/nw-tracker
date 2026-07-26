@@ -1,26 +1,38 @@
+/* Metrics block: [label | deposits | Δ] grid — total row, divider, then día/mes/año rows. */
 .root {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  column-gap: 0.6rem;
+  row-gap: 0.05rem;
+  align-items: baseline;
   margin-bottom: 0.15rem;
   font-size: var(--font-size-card-meta);
 }
 
-.row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+.rowLabel {
+  color: var(--muted);
+  min-width: 0;
+}
+
+.divider {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  margin: 0.2rem 0;
 }
 
 .deposited {
   position: relative;
   display: inline-flex;
   align-items: baseline;
+  justify-content: flex-end;
+  justify-self: end;
   min-width: 0;
   color: var(--muted);
 }
 
 .deltaWrap {
   flex-shrink: 0;
+  justify-self: end;
 }
 
 .amount {

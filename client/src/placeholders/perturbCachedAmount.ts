@@ -213,18 +213,6 @@ function synthesizeMissingUsdOnNavCardMetricsBySlug(
     day: period(v.day),
     month: period(v.month),
     year: period(v.year),
-    title_delta: {
-      ...v.title_delta,
-      month_usd:
-        v.title_delta.month_usd ??
-        (v.title_delta.month_clp != null ? Math.round(v.title_delta.month_clp / fxRate) : null),
-      year_usd:
-        v.title_delta.year_usd ??
-        (v.title_delta.year_clp != null ? Math.round(v.title_delta.year_clp / fxRate) : null),
-      day_usd:
-        v.title_delta.day_usd ??
-        (v.title_delta.day_clp != null ? Math.round(v.title_delta.day_clp / fxRate) : null),
-    },
   });
   const out: DashboardResponse["card_metrics_by_slug"] = {};
   for (const [slug, entry] of Object.entries(entries)) {
@@ -510,14 +498,6 @@ function perturbNavCardMetricsBySlug(
     day: perturbNavCardPeriodMetrics(v.day, factor),
     month: perturbNavCardPeriodMetrics(v.month, factor),
     year: perturbNavCardPeriodMetrics(v.year, factor),
-    title_delta: {
-      month_clp: perturbOptionalNumber(v.title_delta.month_clp, factor),
-      month_usd: perturbOptionalNumber(v.title_delta.month_usd, factor),
-      year_clp: perturbOptionalNumber(v.title_delta.year_clp, factor),
-      year_usd: perturbOptionalNumber(v.title_delta.year_usd, factor),
-      day_clp: perturbOptionalNumber(v.title_delta.day_clp, factor),
-      day_usd: perturbOptionalNumber(v.title_delta.day_usd, factor),
-    },
   });
   const out: DashboardResponse["card_metrics_by_slug"] = {};
   for (const [slug, entry] of Object.entries(entries)) {

@@ -91,7 +91,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
       navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,
-      totals: bucketTotals,
       inversiones: null,
     });
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);

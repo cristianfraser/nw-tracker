@@ -2,15 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
-  mainValueAndMetricsForNavChild,
-  inactiveAccountNavLeavesWithPeriodActivity,
-  navChildCardHasPeriodActivity,
+  mainValueForNavChild,
+  inactiveAccountNavLeavesWithActivity,
+  navChildCardHasActivity,
   navLeafAccountIdSet,
   navMetricsAccountIdSet,
-  parentTitleBalanceDelta,
   portfolioNavParentMainValue,
-  portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
+  requireNavCardMetrics,
 } from "./portfolioNavDashboardCards";
 import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode } from "./portfolioNavFromApi";
 import type {
@@ -82,21 +81,11 @@ function cardMetricsVariantFixture(partial?: {
   day?: Partial<NavCardPeriodMetricsDto>;
   month?: Partial<NavCardPeriodMetricsDto>;
   year?: Partial<NavCardPeriodMetricsDto>;
-  title?: Partial<NavCardMetricsVariantDto["title_delta"]>;
 }): NavCardMetricsVariantDto {
   return {
     day: { ...zeroCardPeriodMetrics, ...partial?.day },
     month: { ...zeroCardPeriodMetrics, ...partial?.month },
     year: { ...zeroCardPeriodMetrics, ...partial?.year },
-    title_delta: {
-      month_clp: null,
-      month_usd: null,
-      year_clp: null,
-      year_usd: null,
-      day_clp: null,
-      day_usd: null,
-      ...partial?.title,
-    },
   };
 }
 
@@ -475,7 +464,7 @@ describe("portfolioNavParentMainValue", () => {
     expect(clp).not.toBe(144_818_228 + 95_651_400 + 16_343_745 + 24_403_210);
   });
 
-  it("parent metrics and title Δ come from the served net_worth entry", () => {
+  it("parent metrics come from the served net_worth entry", () => {
     const netWorthNode: NavTreeNodeDto = navNodeFixture({
       slug: "net_worth",
       label: "Patrimonio neto",
@@ -487,17 +476,14 @@ describe("portfolioNavParentMainValue", () => {
         net_worth: cardMetricsEntryFixture({
           parent: {
             month: { deposits_clp: 300, delta_total_clp: 130, delta_period_clp: 30 },
-            title: { month_clp: 41 },
           },
         }),
       },
     };
-    const metrics = portfolioNavParentMetrics(dash, netWorthNode, "month");
+    const metrics = requireNavCardMetrics(dash, netWorthNode).parent.month;
     expect(metrics.deposits_clp).toBe(300);
     expect(metrics.delta_total_clp).toBe(130);
     expect(metrics.delta_period_clp).toBe(30);
-    expect(parentTitleBalanceDelta(dash, netWorthNode, "month", false)).toBe(41);
-    expect(parentTitleBalanceDelta(dash, netWorthNode, "month", true)).toBeNull();
   });
 
   it("hub parent metrics come from the served entry (consolidated period baked in server-side)", () => {
@@ -517,7 +503,7 @@ describe("portfolioNavParentMainValue", () => {
         }),
       },
     };
-    const metrics = portfolioNavParentMetrics(dash, inversionesNode, "month");
+    const metrics = requireNavCardMetrics(dash, inversionesNode).parent.month;
     expect(metrics.deposits_period_clp).toBe(5_100_000);
     expect(metrics.delta_period_clp).toBe(30);
     expect(metrics.deposits_clp).toBe(300);
@@ -525,13 +511,13 @@ describe("portfolioNavParentMainValue", () => {
 
   it("throws on a missing entry instead of re-summing rows", () => {
     const node: NavTreeNodeDto = navNodeFixture({ slug: "brokerage", label: "B", children: [] });
-    expect(() => portfolioNavParentMetrics({ card_metrics_by_slug: {} }, node, "month")).toThrow(
+    expect(() => requireNavCardMetrics({ card_metrics_by_slug: {} }, node)).toThrow(
       /no entry for nav node/
     );
   });
 });
 
-describe("mainValueAndMetricsForNavChild", () => {
+describe("mainValueForNavChild", () => {
   it("sums nav subtree for brokerage subgroup strip card, not server bucket totals alone", () => {
     const mutualFundsNode: NavTreeNodeDto = navNodeFixture({
       slug: "brokerage_mutual_funds",
@@ -572,14 +558,12 @@ describe("mainValueAndMetricsForNavChild", () => {
         cash_eqs_clp: 0,
       }),
     };
-    const { clp, metrics } = mainValueAndMetricsForNavChild(dash, mutualFundsNode, "year", false);
+    const { clp } = mainValueForNavChild(dash, mutualFundsNode, false);
     expect(clp).toBe(16_000_000);
     expect(clp).not.toBe(dash.totals.brokerage_clp);
-    expect(metrics.delta_period_clp).toBe(2_300_000);
-    expect(
-      mainValueAndMetricsForNavChild(dash, mutualFundsNode, "month", false).metrics
-        .delta_period_clp
-    ).toBeNull();
+    const variant = requireNavCardMetrics(dash, mutualFundsNode).child;
+    expect(variant.year.delta_period_clp).toBe(2_300_000);
+    expect(variant.month.delta_period_clp).toBeNull();
   });
 
   it("sums subtree accounts for brokerage subgroups, not the whole bucket", () => {
@@ -605,13 +589,13 @@ describe("mainValueAndMetricsForNavChild", () => {
         cash_eqs_clp: 0,
       }),
     };
-    const { clp } = mainValueAndMetricsForNavChild(dash, mutualFundsNode, "month", false);
+    const { clp } = mainValueForNavChild(dash, mutualFundsNode, false);
     expect(clp).toBe(10_000_000);
   });
 });
 
 
-describe("navChildCardHasPeriodActivity", () => {
+describe("navChildCardHasActivity", () => {
   /** Wound-down bucket: only account is chart-inactive at $0, activity only in the year window. */
   const inactiveMutualFundsNode: NavTreeNodeDto = navNodeFixture({
     slug: "brokerage_mutual_funds",
@@ -629,7 +613,6 @@ describe("navChildCardHasPeriodActivity", () => {
       brokerage_mutual_funds: cardMetricsEntryFixture({
         child: {
           year: { deposits_period_clp: -21_000_000, delta_period_clp: 300_000 },
-          title: { year_clp: -20_700_000 },
         },
       }),
     },
@@ -655,20 +638,28 @@ describe("navChildCardHasPeriodActivity", () => {
     }),
   };
 
-  it("reports no activity for the month view (zero balance, zero month flows)", () => {
-    expect(navChildCardHasPeriodActivity(dash, inactiveMutualFundsNode, "month", false)).toBe(
-      false
-    );
+  it("reports activity when any period slice has flows or Δ (year-only here)", () => {
+    expect(navChildCardHasActivity(dash, inactiveMutualFundsNode, false)).toBe(true);
   });
 
-  it("reports activity for the year view (year flows and Δ nonzero)", () => {
-    expect(navChildCardHasPeriodActivity(dash, inactiveMutualFundsNode, "year", false)).toBe(
-      true
-    );
+  it("reports no activity when balance and every period slice are zero", () => {
+    const quietDash = {
+      ...dash,
+      card_metrics_by_slug: {
+        brokerage_mutual_funds: cardMetricsEntryFixture(),
+      },
+      accounts: [
+        {
+          ...dashRow(45, 0, "brokerage__mutual_funds"),
+          chart_inactive: true,
+        },
+      ],
+    };
+    expect(navChildCardHasActivity(quietDash, inactiveMutualFundsNode, false)).toBe(false);
   });
 });
 
-describe("inactiveAccountNavLeavesWithPeriodActivity", () => {
+describe("inactiveAccountNavLeavesWithActivity", () => {
   const mutualFundsNode: NavTreeNodeDto = navNodeFixture({
     slug: "brokerage_mutual_funds",
     label: "Mutual funds",
@@ -689,14 +680,14 @@ describe("inactiveAccountNavLeavesWithPeriodActivity", () => {
   };
   const dash = { accounts: [inactiveRow] };
 
-  it("synthesizes a leaf card only for the period with activity", () => {
-    expect(inactiveAccountNavLeavesWithPeriodActivity(dash, mutualFundsNode, [], "month")).toEqual(
-      []
-    );
-    const year = inactiveAccountNavLeavesWithPeriodActivity(dash, mutualFundsNode, [], "year");
-    expect(year.map((n) => n.account_id)).toEqual([45]);
-    expect(year[0]!.route_path).toBe("/account/45");
-    expect(year[0]!.chart_inactive).toBe(true);
+  it("synthesizes a leaf card when any period has activity; skips fully quiet rows", () => {
+    const leaves = inactiveAccountNavLeavesWithActivity(dash, mutualFundsNode, []);
+    expect(leaves.map((n) => n.account_id)).toEqual([45]);
+    expect(leaves[0]!.route_path).toBe("/account/45");
+    expect(leaves[0]!.chart_inactive).toBe(true);
+
+    const quietRow = { ...dashRow(45, 0, "brokerage__mutual_funds", "caca daca"), chart_inactive: true };
+    expect(inactiveAccountNavLeavesWithActivity({ accounts: [quietRow] }, mutualFundsNode, [])).toEqual([]);
   });
 
   it("skips rows already covered by a group-child detail card", () => {
@@ -707,7 +698,7 @@ describe("inactiveAccountNavLeavesWithPeriodActivity", () => {
       children: [mutualFundsNode],
     });
     expect(
-      inactiveAccountNavLeavesWithPeriodActivity(dash, brokerageNode, [mutualFundsNode], "year")
+      inactiveAccountNavLeavesWithActivity(dash, brokerageNode, [mutualFundsNode])
     ).toEqual([]);
   });
 
@@ -719,7 +710,7 @@ describe("inactiveAccountNavLeavesWithPeriodActivity", () => {
       children: [leafAccount(45)],
     });
     expect(
-      inactiveAccountNavLeavesWithPeriodActivity(dash, parentWithLeaf, [], "year")
+      inactiveAccountNavLeavesWithActivity(dash, parentWithLeaf, [])
     ).toEqual([]);
   });
 });

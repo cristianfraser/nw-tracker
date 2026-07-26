@@ -1,14 +1,11 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
 import {
-  accountCardTitleBalanceDelta,
   buildCashEqsCardBreakdown,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
   dashboardBucketMainValue,
   sumCurrentValueClpUsd,
   type CardBreakdownLine,
-  type CardGroupMetrics,
-  type CardGroupMetricsPeriod,
   type DashboardGroupSlug,
   isCashSavingsCcShortfallRow,
 } from "./dashboardCardBreakdown";
@@ -30,7 +27,6 @@ import type {
   DashboardAccountRow,
   DashboardResponse,
   NavCardMetricsDto,
-  NavCardMetricsVariantDto,
   NavTreeNodeDto,
 } from "./types";
 
@@ -201,104 +197,63 @@ export function requireNavCardMetrics(
   return entry;
 }
 
-function titleDeltaFromVariant(
-  variant: NavCardMetricsVariantDto,
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean
-): number | null {
-  const t = variant.title_delta;
-  if (period === "month") return showUsd ? t.month_usd : t.month_clp;
-  if (period === "day") return showUsd ? t.day_usd : t.day_clp;
-  return showUsd ? t.year_usd : t.year_clp;
-}
-
-function periodMetricsFromVariant(
-  variant: NavCardMetricsVariantDto,
-  period: CardGroupMetricsPeriod
-): CardGroupMetrics {
-  return period === "month" ? variant.month : period === "day" ? variant.day : variant.year;
-}
-
-/** Title Δ for a nav strip child (server-computed; full bucket totals vs subtree per node). */
-export function titleBalanceDeltaForNavChild(
-  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
+/** Main balance for a nav strip child (bucket totals when the node maps to one; subtree sum otherwise). */
+export function mainValueForNavChild(
+  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout">,
   navChild: NavTreeNodeDto,
-  period: CardGroupMetricsPeriod,
   showUsd: boolean
-): number | null {
-  return titleDeltaFromVariant(requireNavCardMetrics(dash, navChild).child, period, showUsd);
-}
-
-export function mainValueAndMetricsForNavChild(
-  dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug">,
-  navChild: NavTreeNodeDto,
-  metricsPeriod: CardGroupMetricsPeriod,
-  showUsd: boolean
-): { clp: number; apiUsd: number | null; metrics: CardGroupMetrics } {
-  const entry = requireNavCardMetrics(dash, navChild);
-  const metrics = periodMetricsFromVariant(entry.child, metricsPeriod);
+): { clp: number; apiUsd: number | null } {
   const fullBucket = usesFullDashboardBucketTotals(navChild);
   if (fullBucket) {
-    return { ...dashboardBucketMainValue(dash.totals, fullBucket, showUsd), metrics };
+    return dashboardBucketMainValue(dash.totals, fullBucket, showUsd);
   }
-  const metricsRows = stripMetricsRowsForNavChild(dash, navChild);
-  return { ...sumCurrentValueClpUsd(metricsRows, showUsd), metrics };
+  return sumCurrentValueClpUsd(stripMetricsRowsForNavChild(dash, navChild), showUsd);
+}
+
+function materialAmount(v: number | null | undefined): boolean {
+  return v != null && Math.abs(v) >= 0.5;
 }
 
 /**
- * Detail card visibility for a `chart_inactive` bucket: render only when the selected period shows
- * activity — nonzero balance, period deposits, or period Δ (monthly view hides a wound-down bucket;
- * yearly view still shows the year it went to zero).
+ * Detail card visibility for a `chart_inactive` bucket: with all period rows rendered at
+ * once, the card shows when ANY period has activity — nonzero balance or any slice's
+ * deposits/Δ (a bucket wound down this year keeps its card until year-end; older ones hide).
  */
-export function navChildCardHasPeriodActivity(
+export function navChildCardHasActivity(
   dash: Pick<DashboardResponse, "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug">,
   navChild: NavTreeNodeDto,
-  period: CardGroupMetricsPeriod,
   showUsd: boolean
 ): boolean {
-  const { clp, metrics } = mainValueAndMetricsForNavChild(dash, navChild, period, showUsd);
-  const titleDelta = titleBalanceDeltaForNavChild(dash, navChild, period, showUsd);
-  const material = (v: number | null | undefined) => v != null && Math.abs(v) >= 0.5;
-  return (
-    material(clp) ||
-    material(metrics.deposits_period_clp) ||
-    material(metrics.delta_period_clp) ||
-    material(titleDelta)
+  const { clp } = mainValueForNavChild(dash, navChild, showUsd);
+  if (materialAmount(clp)) return true;
+  const variant = requireNavCardMetrics(dash, navChild).child;
+  return [variant.day, variant.month, variant.year].some(
+    (m) => materialAmount(m.deposits_period_clp) || materialAmount(m.delta_period_clp)
   );
 }
 
-/** Same period-activity rule at account-row level (compact account cards). */
-export function inactiveAccountRowHasPeriodActivity(
-  row: DashboardAccountRow,
-  period: CardGroupMetricsPeriod
-): boolean {
-  const material = (v: number | null | undefined) => v != null && Math.abs(v) >= 0.5;
-  const deposits =
-    period === "month"
-      ? row.deposits_month_clp
-      : period === "day"
-        ? row.deposits_day_clp
-        : row.deposits_year_clp;
-  const delta =
-    period === "month" ? row.delta_month_clp : period === "day" ? row.delta_day_clp : row.delta_year_clp;
+/** Same any-period activity rule at account-row level (compact account cards). */
+export function inactiveAccountRowHasActivity(row: DashboardAccountRow): boolean {
   return (
-    material(row.current_value_clp) ||
-    material(deposits) ||
-    material(delta) ||
-    material(accountCardTitleBalanceDelta(row, period, false))
+    materialAmount(row.current_value_clp) ||
+    materialAmount(row.deposits_day_clp) ||
+    materialAmount(row.deposits_month_clp) ||
+    materialAmount(row.deposits_year_clp) ||
+    materialAmount(row.delta_day_clp) ||
+    materialAmount(row.delta_month_clp) ||
+    materialAmount(row.delta_year_clp)
   );
 }
 
 /**
  * Compact cards for `chart_inactive` accounts the nav tree omits: synthesize account leaves for
- * rows in this node's bucket scope when the selected period has activity. Rows already covered by
+ * rows in this node's bucket scope when any period has activity. Rows already covered by
  * a group-child detail card are skipped (that card carries the activity).
  */
-export function inactiveAccountNavLeavesWithPeriodActivity(
+export function inactiveAccountNavLeavesWithActivity(
   dash: Pick<DashboardResponse, "accounts">,
   parentNavNode: NavTreeNodeDto,
-  stripGroupChildren: readonly NavTreeNodeDto[],
-  period: CardGroupMetricsPeriod
+  stripGroupChildren: readonly NavTreeNodeDto[]
 ): NavTreeNodeDto[] {
   const leafIds = navLeafAccountIdSet(parentNavNode);
   const coveredByGroups = new Set<number>();
@@ -310,7 +265,7 @@ export function inactiveAccountNavLeavesWithPeriodActivity(
     if (row.chart_inactive !== true) continue;
     if (leafIds.has(row.account_id) || coveredByGroups.has(row.account_id)) continue;
     if (!accountInNavMetricsScope(row, parentNavNode, leafIds)) continue;
-    if (!inactiveAccountRowHasPeriodActivity(row, period)) continue;
+    if (!inactiveAccountRowHasActivity(row)) continue;
     out.push({
       node_id: `acc.${row.account_id}`,
       slug: `account_${row.account_id}`,
@@ -358,46 +313,6 @@ export type InversionesPeriodMetricsDto = {
   year: ConsolidatedHubPeriodMetricsSlice | null;
 };
 
-/** Period row from canonical consolidated hub series; lifetime fields come from child buckets. */
-export function cardGroupMetricsFromConsolidatedHubPeriodMetrics(
-  hubMetrics: InversionesPeriodMetricsDto,
-  period: CardGroupMetricsPeriod,
-  lifetime: Pick<
-    CardGroupMetrics,
-    "deposits_clp" | "deposits_usd" | "delta_total_clp" | "delta_total_usd"
-  >
-): CardGroupMetrics {
-  // The consolidated hub series is monthly — no day slice exists (server composes day from
-  // child buckets); day renders the no-slice shape here.
-  const slice = period === "month" ? hubMetrics.month : period === "day" ? null : hubMetrics.year;
-  if (!slice) {
-    return {
-      ...lifetime,
-      deposits_period_clp: 0,
-      deposits_period_usd: null,
-      delta_period_clp: null,
-      delta_period_usd: null,
-    };
-  }
-  return {
-    ...lifetime,
-    deposits_period_clp: slice.net_capital_flow_clp,
-    deposits_period_usd: null,
-    delta_period_clp: slice.balance_delta_clp,
-    delta_period_usd: null,
-  };
-}
-
-/** Compact parent card title Δ (server-computed per node; mode logic lives server-side). */
-export function parentTitleBalanceDelta(
-  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
-  parentNavNode: NavTreeNodeDto,
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean
-): number | null {
-  return titleDeltaFromVariant(requireNavCardMetrics(dash, parentNavNode).parent, period, showUsd);
-}
-
 /**
  * Main balance for portfolio strip compact card: dashboard bucket totals when the page maps to a
  * bucket; otherwise sum of live values under the nav subtree (e.g. Pasivos subset).
@@ -426,15 +341,6 @@ export function portfolioNavParentMainValue(
     return { clp, apiUsd: anyUsd ? usd : null };
   }
   return sumCurrentValueClpUsd(navSubtreeRows, showUsd);
-}
-
-/** Deposits / period Δ metrics aligned with {@link portfolioNavParentMainValue} (server-computed). */
-export function portfolioNavParentMetrics(
-  dash: Pick<DashboardResponse, "card_metrics_by_slug">,
-  parentNavNode: NavTreeNodeDto,
-  period: CardGroupMetricsPeriod
-): CardGroupMetrics {
-  return periodMetricsFromVariant(requireNavCardMetrics(dash, parentNavNode).parent, period);
 }
 
 /** Parent title balance Δ mode from the matched nav node (`asset_group_slug`, hub children, or subtree). */
