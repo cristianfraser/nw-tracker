@@ -64,7 +64,6 @@ export function buildPlaceholderAccountDetailBundle(
       account_id: accountId,
       name: `Cuenta #${accountId}`,
       accounts: { lines: [], points: [] },
-      allocation_pie: [],
       granularity: "monthly",
     },
     depositInflows: emptyDepositInflows(accountId),
