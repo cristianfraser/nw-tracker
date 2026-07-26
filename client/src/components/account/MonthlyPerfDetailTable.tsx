@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatClp, formatInstrumentUnits, formatPct, formatUfBalance, formatUsdFine } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
 import {
@@ -180,6 +181,7 @@ export function MonthlyPerfDetailTable({
   movementUnitsKind,
   showStockInflowsColumn = true,
   serverPagination,
+  period,
 }: {
   rows: readonly PerfRow[];
   displayUnit: "clp" | "usd";
@@ -193,10 +195,12 @@ export function MonthlyPerfDetailTable({
    * metricsPeriod is "year") and pagination state is controlled by the caller.
    */
   serverPagination?: MonthlyPerfServerPagination;
+  /** Per-surface table período (month/year); falls back to the clamped global toolbar period. */
+  period?: "month" | "year";
 }) {
   const { t } = useTranslation();
   const { metricsPeriod } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
+  const isYearly = (period ?? monthYearMetricsPeriod(metricsPeriod)) === "year";
 
   const fmtPerf: FmtPerf = (n) => {
     if (n == null || !Number.isFinite(n)) return "—";

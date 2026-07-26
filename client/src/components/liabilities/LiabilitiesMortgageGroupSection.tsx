@@ -7,6 +7,7 @@ import { LineChartPanel } from "../charts/ValuationLineCharts";
 import { DeptoAccountSummaryCards } from "../../pages/accountDetail/DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "../../pages/accountDetail/MortgageTables";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
+import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
 import { rollupPerfPointsYearly } from "../../dashboardTimeseriesYearly";
 import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
@@ -65,6 +66,15 @@ export function LiabilitiesMortgageGroupSection({
       range={prefs.range}
       onRangeChange={prefs.setRange}
     />
+  );
+  // Detalle table período (independent of the combos); tables always cover full history.
+  const detallePrefs = useSurfacePrefs("liab.mortgage.detalle", "month", "total");
+  const tableIsDaily = detallePrefs.period === "day";
+  const detalleDailySeries = useDailySeries(
+    { accountId: summary.account_id },
+    displayUnit,
+    0,
+    tableIsDaily && summary.account_id > 0
   );
 
   const accountChartTheme = useMemo(
@@ -214,15 +224,37 @@ export function LiabilitiesMortgageGroupSection({
               alternateYearAreaStripes={false}
             />
           </div>
-          <h4 className={styles.subsectionTitleMid}>
-            {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
-          </h4>
-          <MonthlyPerfDetailTable
-            rows={monthlyPerfRows}
-            displayUnit={displayUnit}
-            isMortgageAccount
-            showStockInflowsColumn={false}
-          />
+          <div className="chart-panel-title-row">
+            <h4 className={styles.subsectionTitleMid} style={{ marginBottom: 0 }}>
+              {t(
+                tableIsDaily
+                  ? "accountDetail.dailyDetailTitle"
+                  : detallePrefs.period === "year"
+                    ? "accountDetail.yearlyDetailTitle"
+                    : "accountDetail.monthlyDetailTitle"
+              )}
+            </h4>
+            <SurfaceControls period={detallePrefs.period} onPeriodChange={detallePrefs.setPeriod} />
+          </div>
+          {tableIsDaily ? (
+            detalleDailySeries.data ? (
+              <DailyPerfDetailTable
+                series={detalleDailySeries.data}
+                displayUnit={displayUnit}
+                dimClosedDays
+              />
+            ) : (
+              <p className="muted">{t("common.loading")}</p>
+            )
+          ) : (
+            <MonthlyPerfDetailTable
+              rows={monthlyPerfRows}
+              displayUnit={displayUnit}
+              period={detallePrefs.period === "year" ? "year" : "month"}
+              isMortgageAccount
+              showStockInflowsColumn={false}
+            />
+          )}
         </>
       ) : null}
 
