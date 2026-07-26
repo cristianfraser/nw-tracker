@@ -41,8 +41,12 @@ export function FlowsOverviewPage() {
   );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const isDaily = chartGranularity === "day";
-  // The month-detail table stays month/year even in Diario (the chart is the day surface).
-  const tableGranularity = flowTableGranularity(chartGranularity);
+  // The detail table owns its período (month/year — the chart is the day surface) and
+  // always covers full history.
+  const tablePrefs = useSurfacePrefs("flows.overview.table", "month", "total");
+  const tableGranularity = flowTableGranularity(
+    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+  );
   const { installmentMode } = useCcInstallmentGastosMode();
 
   const income = useIncome();
@@ -79,12 +83,13 @@ export function FlowsOverviewPage() {
     );
   }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, isDaily, pl.data]);
 
+  /** Chart rows (M/Y): clipped to the chart's Rango, rolled to its granularity. */
   const rows = useMemo(() => {
     if (!monthRows) return [];
     const cutoff = timeRangeCutoffYmd(timeRange);
     const clipped = cutoff ? monthRows.filter((r) => r.as_of_date >= cutoff) : monthRows;
-    return tableGranularity === "year" ? rollupFlowsOverviewRowsByYear(clipped) : clipped;
-  }, [tableGranularity, monthRows, timeRange]);
+    return chartGranularity === "year" ? rollupFlowsOverviewRowsByYear(clipped) : clipped;
+  }, [chartGranularity, monthRows, timeRange]);
 
   /** What the chart plots: day rows in Diario (server-windowed P/L, client-clipped rest). */
   const chartRows = useMemo(() => {
@@ -113,7 +118,13 @@ export function FlowsOverviewPage() {
   );
   const rangeTotals = useMemo(() => flowsOverviewTotals(chartRows), [chartRows]);
 
-  const tableRows = useMemo(() => [...rows].reverse(), [rows]);
+  /** Table rows: FULL history (no range clip), rolled to the table's own período. */
+  const tableRows = useMemo(() => {
+    if (!monthRows) return [];
+    const rolled =
+      tableGranularity === "year" ? rollupFlowsOverviewRowsByYear(monthRows) : monthRows;
+    return [...rolled].reverse();
+  }, [monthRows, tableGranularity]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 
   if (err) {
@@ -144,9 +155,14 @@ export function FlowsOverviewPage() {
         />
       </div>
 
-      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
-        {t("flows.overview.detailTitle")}
-      </h3>
+      <div className="chart-panel-title-row">
+        <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
+        <SurfaceControls
+          period={tablePrefs.period}
+          onPeriodChange={tablePrefs.setPeriod}
+          periodOptions={["month", "year"]}
+        />
+      </div>
       <p className="muted" style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}>
         {t("flows.overview.totalsLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>

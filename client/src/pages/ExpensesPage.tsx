@@ -45,6 +45,11 @@ export function ExpensesPage() {
     />
   );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  // The month-detail table owns its período (month/year) and always covers full history.
+  const tablePrefs = useSurfacePrefs("flows.expenses.table", "month", "total");
+  const tableGranularity = flowTableGranularity(
+    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+  );
   const { data, error } = useFlowsCreditCardExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -161,29 +166,31 @@ export function ExpensesPage() {
     return monthly;
   }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view, timeRange]);
 
+  /** Table rows: FULL history (no range clip), rolled to the table's own período. */
   const monthTableRows = useMemo(() => {
     if (!view) return [];
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    const clipped = view.table.by_month.filter(
-      (r) =>
-        (latestNonEmptyMonth == null || r.period_month <= latestNonEmptyMonth) &&
-        (cutoff == null || r.as_of_date >= cutoff)
+    const bounded = view.table.by_month.filter(
+      (r) => latestNonEmptyMonth == null || r.period_month <= latestNonEmptyMonth
     );
-    if (chartGranularity === "month") return clipped;
-    const asc = [...clipped].reverse();
+    if (tableGranularity === "month") return bounded;
+    const asc = [...bounded].reverse();
     return [...rollupExpenseMonthRowsByYear(asc)].reverse();
-  }, [chartGranularity, latestNonEmptyMonth, view, timeRange]);
+  }, [tableGranularity, latestNonEmptyMonth, view]);
 
-  /** "En el rango" companion for the monthly-detail total (headline `view.total` stays full). */
+  /** "En el rango" companion follows the CHART's Rango (headline `view.total` stays full). */
   const rangeTotals = useMemo(() => {
+    if (!view) return { total: 0, total_real: 0 };
+    const cutoff = timeRangeCutoffYmd(timeRange);
     let total = 0;
     let total_real = 0;
-    for (const r of monthTableRows) {
+    for (const r of view.table.by_month) {
+      if (latestNonEmptyMonth != null && r.period_month > latestNonEmptyMonth) continue;
+      if (cutoff != null && r.as_of_date < cutoff) continue;
       total += r.gastos_mes_clp;
       total_real += r.gastos_real_mes_clp;
     }
     return { total, total_real };
-  }, [monthTableRows]);
+  }, [latestNonEmptyMonth, view, timeRange]);
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 
@@ -265,9 +272,10 @@ export function ExpensesPage() {
         toggleExcluded={toggleExcluded}
       />
 
-      <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
+      <div className="chart-panel-title-row" style={{ marginBottom: "0.5rem" }}>
+      <h3 style={{ fontSize: "1.1rem", margin: 0 }}>
         {t(
-          chartGranularity === "year"
+          tableGranularity === "year"
             ? "accountDetail.yearlyDetailTitle"
             : "accountDetail.monthlyDetailTitle"
         )}
@@ -288,6 +296,12 @@ export function ExpensesPage() {
           ) : null}
         </span>
       </h3>
+      <SurfaceControls
+        period={tablePrefs.period}
+        onPeriodChange={tablePrefs.setPeriod}
+        periodOptions={["month", "year"]}
+      />
+      </div>
       <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
         {t("expenses.creditCard.monthlyDetailHint")}
       </p>
@@ -298,7 +312,7 @@ export function ExpensesPage() {
         bigGroups={data.big_groups ?? []}
         installmentMode={installmentMode}
         displayUnit={displayUnit}
-        periodGranularity={flowTableGranularity(chartGranularity)}
+        periodGranularity={tableGranularity}
       />
 
       <CreditCardUnclassifiedExpensesTable

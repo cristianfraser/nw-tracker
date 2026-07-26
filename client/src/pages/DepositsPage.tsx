@@ -12,7 +12,7 @@ import {
   formatFlowMoney,
   sumChartPointsField,
 } from "../flowsDisplay";
-import { clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
+import { clipPointsToTimeRange } from "../timeRange";
 import { aggregateDepositChartPointsByDay } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
 
@@ -72,8 +72,6 @@ export function DepositsPage() {
     [chartPoints]
   );
 
-  /** Inclusive left cutoff for the per-category event tables; null = full history. */
-  const rowCutoff = useMemo(() => timeRangeCutoffYmd(timeRange), [timeRange]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -118,11 +116,9 @@ export function DepositsPage() {
 
       {CATEGORY_ORDER.map((cat) => {
         const block = data.by_category[cat];
-        // Rango filters the detail: clip the event rows and derive the section subtotal
-        // from what's shown (equals the server subtotal at Rango = Todo).
-        const blockRows = rowCutoff
-          ? block.rows.filter((r) => r.occurred_on >= rowCutoff)
-          : block.rows;
+        // Tables include full history (the chart's Rango only scopes the chart + its
+        // companion total); the section subtotal equals the server subtotal.
+        const blockRows = block.rows;
         const blockTotal = blockRows.reduce(
           (s, r) => s + (displayUnit === "usd" ? r.amount_usd ?? 0 : r.amount_clp),
           0

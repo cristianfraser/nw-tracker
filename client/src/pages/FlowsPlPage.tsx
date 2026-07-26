@@ -8,6 +8,7 @@ import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import {
   flowChartGranularityFromMetricsPeriod,
+  flowTableGranularity,
   flowPeriodLabel,
   formatFlowMoney,
 } from "../flowsDisplay";
@@ -50,6 +51,11 @@ export function FlowsPlPage() {
     />
   );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  // The detail table owns its período (month/year) and always covers full history.
+  const tablePrefs = useSurfacePrefs("flows.pl.table", "month", "total");
+  const tableGranularity = flowTableGranularity(
+    flowChartGranularityFromMetricsPeriod(tablePrefs.period)
+  );
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
   const { data, error } = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);
@@ -72,7 +78,19 @@ export function FlowsPlPage() {
     return clipPointsToTimeRange(base, timeRange);
   }, [chartGranularity, data, displayUnit, isDaily, timeRange]);
 
-  const tableRows = useMemo(() => [...chartPoints].reverse(), [chartPoints]);
+  /** Table rows: FULL history (no range clip), rolled to the table's own período. */
+  const tableRows = useMemo(() => {
+    if (!data) return [];
+    const base =
+      displayUnit === "usd"
+        ? tableGranularity === "year"
+          ? data.chart_yearly_usd
+          : data.chart_monthly_usd
+        : tableGranularity === "year"
+          ? data.chart_yearly
+          : data.chart_monthly;
+    return [...(base ?? [])].reverse();
+  }, [data, displayUnit, tableGranularity]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 
   if (err) {
@@ -103,9 +121,14 @@ export function FlowsPlPage() {
         />
       </div>
 
-      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
-        {t("flows.overview.detailTitle")}
-      </h3>
+      <div className="chart-panel-title-row">
+        <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
+        <SurfaceControls
+          period={tablePrefs.period}
+          onPeriodChange={tablePrefs.setPeriod}
+          periodOptions={["month", "year"]}
+        />
+      </div>
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
         <Table
           header={
@@ -126,7 +149,7 @@ export function FlowsPlPage() {
           {pageRows.map((row) => (
             <tr key={row.as_of_date}>
               <td className="mono">
-                {flowPeriodLabel(row.as_of_date, chartGranularity)}
+                {flowPeriodLabel(row.as_of_date, tableGranularity)}
               </td>
               <td className="mono">{formatFlowMoney(row.brokerage, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(row.retirement, displayUnit)}</td>

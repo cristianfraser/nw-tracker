@@ -7,7 +7,8 @@ import {
 } from "../account/MonthlyPerfDetailTable";
 import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
 import { useDailySeries } from "../../queries/hooks";
-import { timeRangeToDays } from "../../timeRange";
+import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import { SurfaceControls } from "../ui/SurfaceControls";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PeriodReturnsStrip } from "../perf/PeriodReturnsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
@@ -94,7 +95,14 @@ export function GroupInfoBase({
   serverPaginatedMonthlyDetail = false,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  // Detalle table período (persisted per page instance); tables always cover full history.
+  const detallePrefs = useSurfacePrefs(
+    `group.${portfolio?.groupSlug || "page"}.detalle`,
+    "month",
+    "total"
+  );
+  const tablePeriod = detallePrefs.period;
   const tablesEnabled =
     !hideConsolidatedTables &&
     (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
@@ -111,26 +119,26 @@ export function GroupInfoBase({
 
   // Page state is tied to the period it was set under: a month↔year toggle changes the
   // row count, so the derived page snaps back to 1 without an effect (no stale-page fetch).
-  const [monthlyPageState, setMonthlyPageState] = useState({ period: metricsPeriod, page: 1 });
-  const monthlyPage = monthlyPageState.period === metricsPeriod ? monthlyPageState.page : 1;
-  const setMonthlyPage = (page: number) => setMonthlyPageState({ period: metricsPeriod, page });
+  const [monthlyPageState, setMonthlyPageState] = useState({ period: tablePeriod, page: 1 });
+  const monthlyPage = monthlyPageState.period === tablePeriod ? monthlyPageState.page : 1;
+  const setMonthlyPage = (page: number) => setMonthlyPageState({ period: tablePeriod, page });
   const serverMonthly = useGroupConsolidatedMonthlyPage(
     portfolio?.groupSlug ?? "",
     displayUnit,
     // Detalle tables are month/year surfaces — the day toggle renders the monthly view.
-    monthYearMetricsPeriod(metricsPeriod),
+    monthYearMetricsPeriod(tablePeriod),
     monthlyPage,
     MONTHLY_PERF_DETAIL_PAGE_SIZE,
-    tablesFetchEnabled && serverPaginatedMonthlyDetail && metricsPeriod !== "day"
+    tablesFetchEnabled && serverPaginatedMonthlyDetail && tablePeriod !== "day"
   );
 
-  // Day view: the detalle table swaps to per-session rows (same query the page chart uses,
-  // so react-query dedupes the fetch).
-  const isDaily = metricsPeriod === "day";
+  // Day view: per-day rows over FULL history (tables include all; the first build of a
+  // full-history daily series is a known one-time server cost, cached after).
+  const isDaily = tablePeriod === "day";
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolio?.groupSlug || undefined },
     displayUnit,
-    timeRangeToDays(timeRange),
+    0,
     isDaily && tablesFetchEnabled
   );
 
@@ -195,15 +203,18 @@ export function GroupInfoBase({
                 <PeriodReturnsStrip data={periodReturns} displayUnit={displayUnit} />
               </>
             ) : null}
-            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>
-              {t(
-                isDaily
-                  ? "groupPage.dailyDetailTitle"
-                  : metricsPeriod === "year"
-                    ? "groupPage.yearlyDetailTitle"
-                    : "groupPage.monthlyDetailTitle"
-              )}
-            </h2>
+            <div className="chart-panel-title-row" style={{ marginTop: "2rem" }}>
+              <h2 style={{ margin: 0, fontSize: "1.15rem" }}>
+                {t(
+                  isDaily
+                    ? "groupPage.dailyDetailTitle"
+                    : tablePeriod === "year"
+                      ? "groupPage.yearlyDetailTitle"
+                      : "groupPage.monthlyDetailTitle"
+                )}
+              </h2>
+              <SurfaceControls period={tablePeriod} onPeriodChange={detallePrefs.setPeriod} />
+            </div>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
               {isDaily ? t("groupPage.dailyDetailHint") : monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
             </p>
@@ -225,6 +236,7 @@ export function GroupInfoBase({
               <MonthlyPerfDetailTable
                 rows={monthlyRows}
                 displayUnit={displayUnit}
+                period={monthYearMetricsPeriod(tablePeriod)}
                 isMortgageAccount={tableFlags.isMortgageAccount}
                 showStockInflowsColumn={false}
                 serverPagination={

@@ -8,6 +8,7 @@ import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
 import { timeRangeToDays } from "../../timeRange";
+import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../../components/ui/SurfaceControls";
 import { PeriodReturnsStrip } from "../../components/perf/PeriodReturnsStrip";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
@@ -84,8 +85,19 @@ export function StandardAccountDetailPage({ data }: Props) {
 
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
-  // Transitional until the tables phase: the detalle table follows the valuation surface.
-  const isDaily = valuationIsDaily;
+  // Detalle table período (independent of the charts); tables always cover full history.
+  const detallePrefs = useSurfacePrefs(
+    `account.${summary.account_id || "pending"}.detalle`,
+    "month",
+    "total"
+  );
+  const isDaily = detallePrefs.period === "day";
+  const detalleDailySeries = useDailySeries(
+    { accountId: summary.account_id },
+    displayUnit,
+    0,
+    isDaily && summary.account_id > 0
+  );
   // Day view: per-session line + detalle por día, fetched lazily while a D control is on.
   const dailySeries = useDailySeries(
     { accountId: summary.account_id },
@@ -455,19 +467,25 @@ export function StandardAccountDetailPage({ data }: Props) {
                   alternateYearAreaStripes={false}
                 />
               </div>
-              <h3 className={styles.subsectionTitleMid}>
-                {t(
-                  isDaily
-                    ? "accountDetail.dailyDetailTitle"
-                    : valuationPrefs.period === "year"
-                      ? "accountDetail.yearlyDetailTitle"
-                      : "accountDetail.monthlyDetailTitle"
-                )}
-              </h3>
+              <div className="chart-panel-title-row">
+                <h3 className={styles.subsectionTitleMid} style={{ marginBottom: 0 }}>
+                  {t(
+                    isDaily
+                      ? "accountDetail.dailyDetailTitle"
+                      : detallePrefs.period === "year"
+                        ? "accountDetail.yearlyDetailTitle"
+                        : "accountDetail.monthlyDetailTitle"
+                  )}
+                </h3>
+                <SurfaceControls
+                  period={detallePrefs.period}
+                  onPeriodChange={detallePrefs.setPeriod}
+                />
+              </div>
               {isDaily ? (
-                dailySeries.data ? (
+                detalleDailySeries.data ? (
                   <DailyPerfDetailTable
-                    series={dailySeries.data}
+                    series={detalleDailySeries.data}
                     displayUnit={displayUnit}
                     dimClosedDays
                   />
@@ -479,6 +497,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   key={`${id}-${displayUnit}-mp-detail`}
                   rows={monthlyPerfRows}
                   displayUnit={displayUnit}
+                  period={detallePrefs.period === "year" ? "year" : "month"}
                   isMortgageAccount={isMortgageAccount}
                   isAfpAccount={isAfpAccount}
                   movementUnitsKind={movementUnitsKind}
