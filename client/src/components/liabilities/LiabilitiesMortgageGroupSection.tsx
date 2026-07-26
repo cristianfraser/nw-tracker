@@ -10,9 +10,9 @@ import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { rollupPerfPointsYearly } from "../../dashboardTimeseriesYearly";
 import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { timeRangeToDays } from "../../timeRange";
-import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import { SurfaceControls } from "../ui/SurfaceControls";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import type {
   AccountMonthlyPerformanceRow,
@@ -26,8 +26,6 @@ import styles from "../../pages/AccountDetailPage.module.css";
 type Props = {
   mortgageLedger: AccountMortgageLedgerResponse;
   displayUnit: "clp" | "usd";
-  metricsPeriod: CardGroupMetricsPeriod;
-  xAxisGranularity: "month" | "year";
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   summary: Pick<AccountSummaryResponse, "latest_valuation_clp" | "account_id">;
   accountDashRow: DashboardAccountRow | null;
@@ -42,8 +40,6 @@ type Props = {
 export function LiabilitiesMortgageGroupSection({
   mortgageLedger,
   displayUnit,
-  metricsPeriod,
-  xAxisGranularity,
   monthlyPerfRows,
   summary,
   accountDashRow,
@@ -55,9 +51,21 @@ export function LiabilitiesMortgageGroupSection({
   linkTo,
 }: Props) {
   const { t } = useTranslation();
-  const isYearly = metricsPeriod === "year";
-  const isDaily = metricsPeriod === "day";
-  const { timeRange } = useDisplayPreferences();
+  // One control for the section's two P/L combos (shared on both root + mortgage pages —
+  // it's the same single mortgage either way).
+  const prefs = useSurfacePrefs("liab.mortgage.combos", "month", "3y");
+  const isYearly = prefs.period === "year";
+  const isDaily = prefs.period === "day";
+  const timeRange = prefs.range;
+  const xAxisGranularity = isYearly ? ("year" as const) : ("month" as const);
+  const perfControls = (
+    <SurfaceControls
+      period={prefs.period}
+      onPeriodChange={prefs.setPeriod}
+      range={prefs.range}
+      onRangeChange={prefs.setRange}
+    />
+  );
 
   const accountChartTheme = useMemo(
     () => ({
@@ -167,6 +175,8 @@ export function LiabilitiesMortgageGroupSection({
               points={dailyPerfPoints ?? ytdChartPoints}
               displayUnit={displayUnit}
               xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+              timeRange={timeRange}
+              controls={perfControls}
               barSeries={[
                 {
                   dataKey: "nominal_pl",
@@ -188,6 +198,8 @@ export function LiabilitiesMortgageGroupSection({
               points={dailyPerfPoints ?? accChartPoints}
               displayUnit={displayUnit}
               xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+              timeRange={timeRange}
+              controls={perfControls}
               barSeries={[
                 {
                   dataKey: "delta_month",

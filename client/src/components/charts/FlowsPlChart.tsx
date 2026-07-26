@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { allocationBucketColor } from "../../chartColors";
@@ -26,11 +28,14 @@ const PL_CHART_BUCKETS: { dataKey: FlowsPlBucketSlug; color: string }[] = [
 
 export function FlowsPlChart({
   title,
+  controls,
   points,
   xAxisGranularity = "month",
   displayUnit = "clp",
 }: {
   title: string;
+  /** Per-surface Período/Rango controls, rendered next to the title. */
+  controls?: ReactNode;
   points: readonly FlowsPlChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
@@ -57,7 +62,7 @@ export function FlowsPlChart({
   if (!points.length) {
     return (
       <div className="chart-grid__col">
-        <h2 className="chart-panel-title">{title}</h2>
+        <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
         <p className="empty muted">{t("flows.pl.chartEmpty")}</p>
       </div>
     );
@@ -65,7 +70,7 @@ export function FlowsPlChart({
 
   return (
     <div className="chart-grid__col">
-      <h2 className="chart-panel-title">{title}</h2>
+      <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={[...points]}

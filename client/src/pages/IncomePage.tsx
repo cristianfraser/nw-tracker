@@ -6,6 +6,8 @@ import { IncomeFilteredLinesTable } from "../components/income/IncomeFilteredLin
 import { IncomeMonthTable } from "../components/income/IncomeMonthTable";
 import { WorkEarningsTable } from "../components/income/WorkEarningsTable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
 import {
@@ -23,7 +25,18 @@ import { clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
 
 export function IncomePage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  const chartPrefs = useSurfacePrefs("flows.income.chart", "month", "3y");
+  const metricsPeriod = chartPrefs.period;
+  const timeRange = chartPrefs.range;
+  const chartControls = (
+    <SurfaceControls
+      period={chartPrefs.period}
+      onPeriodChange={chartPrefs.setPeriod}
+      range={chartPrefs.range}
+      onRangeChange={chartPrefs.setRange}
+    />
+  );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useIncome();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -90,6 +103,7 @@ export function IncomePage() {
         style={{ marginBottom: "1.5rem" }}
       >
         <IncomeMonthlyChart
+          controls={chartControls}
           title={t("income.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}

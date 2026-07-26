@@ -40,6 +40,8 @@ import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { timeRangeToDays } from "../timeRange";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import {
   useAccountMonthlyPerformance,
   useAccountsByPortfolioGroup,
@@ -63,10 +65,7 @@ export function LiabilitiesGroupPage() {
     [liabilitiesSubgroupParam]
   );
 
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
-  const isDaily = metricsPeriod === "day";
-  const xAxisGranularity = isYearly ? "year" : "month";
+  const { displayUnit } = useDisplayPreferences();
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
@@ -107,6 +106,10 @@ export function LiabilitiesGroupPage() {
     displayUnit,
     shapeEnabled
   );
+
+  // Per-surface control for the Pasivos valuation chart (persisted per liabilities scope).
+  const valuationPrefs = useSurfacePrefs(`liab.${portfolioGroup}.valuation`, "day", "3y");
+  const valuationIsDaily = valuationPrefs.period === "day";
 
   const { data: shell } = useGroupPageShell({
     portfolioGroup,
@@ -262,7 +265,9 @@ export function LiabilitiesGroupPage() {
   const charts = usePortfolioGroupCharts({
     displayValuationBlock,
     displayGroupPerf,
-    isYearly,
+    valuationIsYearly: valuationPrefs.period === "year",
+    // The main-section P/L combos are hidden on Pasivos routes (hideGroupPerf).
+    perfIsYearly: false,
     chartColorSlug: "liabilities",
     pieAllocationSlug: "liabilities",
     colorPlanGroupSlug: "inversiones",
@@ -275,11 +280,11 @@ export function LiabilitiesGroupPage() {
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
-    timeRangeToDays(timeRange),
-    isDaily && portfolioGroup !== ""
+    timeRangeToDays(valuationPrefs.range),
+    valuationIsDaily && portfolioGroup !== ""
   );
   const dailyValuationBlock = useMemo(() => {
-    if (!isDaily) return null;
+    if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
     if (!daily || !displayValuationBlock) return null;
     const useGrouped = Boolean(chartCtx?.liabilitiesGrouped && daily.grouped_accounts?.length);
@@ -287,7 +292,7 @@ export function LiabilitiesGroupPage() {
       useGrouped ? { ...daily, accounts: daily.grouped_accounts } : daily,
       displayValuationBlock
     );
-  }, [isDaily, dailySeries.data, displayValuationBlock, chartCtx?.liabilitiesGrouped]);
+  }, [valuationIsDaily, dailySeries.data, displayValuationBlock, chartCtx?.liabilitiesGrouped]);
 
   const mortgageAccount = useMemo(() => {
     if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return null;
@@ -344,8 +349,19 @@ export function LiabilitiesGroupPage() {
         valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
         displayPieSlices={displayPieSlices}
         displayUnit={displayUnit}
-        xAxisGranularity={xAxisGranularity}
-        valuationXAxisGranularity={dailyValuationBlock ? "day" : undefined}
+        xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
+        valuationXAxisGranularity={
+          dailyValuationBlock ? "day" : valuationPrefs.period === "year" ? "year" : "month"
+        }
+        valuationTimeRange={valuationPrefs.range}
+        valuationControls={
+          <SurfaceControls
+            period={valuationPrefs.period}
+            onPeriodChange={valuationPrefs.setPeriod}
+            range={valuationPrefs.range}
+            onRangeChange={valuationPrefs.setRange}
+          />
+        }
         chartColorSlug={charts.chartColorSlug}
         pieAllocationSlug={charts.pieAllocationSlug}
         colorPlanGroupSlug={charts.colorPlanGroupSlug}
@@ -362,7 +378,7 @@ export function LiabilitiesGroupPage() {
         <LiabilitiesCreditCardGroupSection
           ccLedger={ccLedger}
           displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
+          surfaceId={`liab.cc.${portfolioGroup}`}
           linkTo="/liabilities/credit-card"
         />
       ) : null}
@@ -371,8 +387,6 @@ export function LiabilitiesGroupPage() {
         <LiabilitiesMortgageGroupSection
           mortgageLedger={mortgageLedger}
           displayUnit={displayUnit}
-          metricsPeriod={metricsPeriod}
-          xAxisGranularity={xAxisGranularity}
           monthlyPerfRows={mortgagePerf?.monthly ?? []}
           summary={mortgageSummary}
           accountDashRow={mortgageDashRow}
@@ -385,7 +399,7 @@ export function LiabilitiesGroupPage() {
         <LiabilitiesCreditCardGroupSection
           ccLedger={ccLedger}
           displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
+          surfaceId={`liab.cc.${portfolioGroup}`}
         />
       ) : null}
 
@@ -393,8 +407,6 @@ export function LiabilitiesGroupPage() {
         <LiabilitiesMortgageGroupSection
           mortgageLedger={mortgageLedger}
           displayUnit={displayUnit}
-          metricsPeriod={metricsPeriod}
-          xAxisGranularity={xAxisGranularity}
           monthlyPerfRows={mortgagePerf?.monthly ?? []}
           summary={mortgageSummary}
           accountDashRow={mortgageDashRow}

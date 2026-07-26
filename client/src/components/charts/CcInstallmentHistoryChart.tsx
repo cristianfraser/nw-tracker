@@ -52,16 +52,20 @@ export function CcInstallmentHistoryChart({
   rows,
   openBillingMonth,
   dailyRows,
+  period,
 }: {
   rows: CcHistorialChartRow[];
   openBillingMonth?: string | null;
   /** Day-period rows (`month` = ISO date): lines only — the billed/paid bars are month-frame. */
   dailyRows?: CcHistorialChartRow[] | null;
+  /** Per-surface período; falls back to the global toolbar period when omitted. */
+  period?: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
-  const { metricsPeriod } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
-  const isDailyMode = metricsPeriod === "day" && (dailyRows?.length ?? 0) > 0;
+  const { metricsPeriod: globalPeriod } = useDisplayPreferences();
+  const activePeriod = period ?? globalPeriod;
+  const isYearly = activePeriod === "year";
+  const isDailyMode = activePeriod === "day" && (dailyRows?.length ?? 0) > 0;
   const displayRows = useMemo(
     () => (isDailyMode ? dailyRows! : isYearly ? rollupCcHistorialChartYearly(rows) : rows),
     [rows, isYearly, isDailyMode, dailyRows]

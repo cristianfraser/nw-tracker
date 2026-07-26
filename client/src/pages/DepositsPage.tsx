@@ -4,6 +4,8 @@ import { useFlowsDeposits } from "../queries/hooks";
 import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import {
   flowChartGranularityFromMetricsPeriod,
@@ -18,7 +20,18 @@ const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage
 
 export function DepositsPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  const chartPrefs = useSurfacePrefs("flows.deposits.chart", "month", "3y");
+  const metricsPeriod = chartPrefs.period;
+  const timeRange = chartPrefs.range;
+  const chartControls = (
+    <SurfaceControls
+      period={chartPrefs.period}
+      onPeriodChange={chartPrefs.setPeriod}
+      range={chartPrefs.range}
+      onRangeChange={chartPrefs.setRange}
+    />
+  );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsDeposits();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -95,6 +108,7 @@ export function DepositsPage() {
 
       <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack" style={{ marginBottom: "1.5rem" }}>
         <DepositsByCategoryChart
+          controls={chartControls}
           title={t("deposits.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}

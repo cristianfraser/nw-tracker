@@ -3,6 +3,8 @@ import { FlowsOverviewChart } from "../components/charts/FlowsOverviewChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import {
   aggregateFlowsOverview,
   aggregateFlowsOverviewByDay,
@@ -25,7 +27,18 @@ const PAGE_SIZE = 12;
 /** Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. */
 export function FlowsOverviewPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  const chartPrefs = useSurfacePrefs("flows.overview.chart", "month", "3y");
+  const metricsPeriod = chartPrefs.period;
+  const timeRange = chartPrefs.range;
+  const chartControls = (
+    <SurfaceControls
+      period={chartPrefs.period}
+      onPeriodChange={chartPrefs.setPeriod}
+      range={chartPrefs.range}
+      onRangeChange={chartPrefs.setRange}
+    />
+  );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const isDaily = chartGranularity === "day";
   // The month-detail table stays month/year even in Diario (the chart is the day surface).
@@ -123,6 +136,7 @@ export function FlowsOverviewPage() {
         style={{ marginBottom: "1.5rem" }}
       >
         <FlowsOverviewChart
+          controls={chartControls}
           title={t("flows.overview.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}

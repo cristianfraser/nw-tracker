@@ -7,6 +7,8 @@ import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/C
 import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
 import { CreditCardFacturadoFinancingManager } from "../components/credit-card/CreditCardFacturadoFinancingManager";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useTranslation } from "../i18n";
 import {
   aggregateGastosFromLines,
@@ -30,7 +32,18 @@ import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTot
 /** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
 export function ExpensesPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  const chartPrefs = useSurfacePrefs("flows.expenses.chart", "month", "3y");
+  const metricsPeriod = chartPrefs.period;
+  const timeRange = chartPrefs.range;
+  const chartControls = (
+    <SurfaceControls
+      period={chartPrefs.period}
+      onPeriodChange={chartPrefs.setPeriod}
+      range={chartPrefs.range}
+      onRangeChange={chartPrefs.setRange}
+    />
+  );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsCreditCardExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
@@ -228,6 +241,7 @@ export function ExpensesPage() {
         style={{ marginBottom: chartFilterActive ? "0.35rem" : "1.5rem" }}
       >
         <CreditCardGroupExpensesChart
+          controls={chartControls}
           title={t("expenses.creditCard.chartTitle")}
           points={chartPoints}
           categorySortPoints={chartSortPoints}

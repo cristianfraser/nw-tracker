@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { Bar, CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -27,11 +29,14 @@ const SERIES = [
 
 export function IncomeMonthlyChart({
   title,
+  controls,
   points,
   xAxisGranularity = "month",
   displayUnit = "clp",
 }: {
   title: string;
+  /** Per-surface Período/Rango controls, rendered next to the title. */
+  controls?: ReactNode;
   points: readonly FlowIncomeChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
@@ -71,7 +76,7 @@ export function IncomeMonthlyChart({
   if (!points.length) {
     return (
       <section className="chart-panel">
-        <h3 className="chart-panel-title">{title}</h3>
+        <ChartPanelTitleRow title={title} titleAs="h3" controls={controls} />
         <p className="empty muted">{t("income.chartEmpty")}</p>
       </section>
     );
@@ -79,7 +84,7 @@ export function IncomeMonthlyChart({
 
   return (
     <section className="chart-panel">
-      <h3 className="chart-panel-title">{title}</h3>
+      <ChartPanelTitleRow title={title} titleAs="h3" controls={controls} />
       <div className="chart-box line-chart-focus-wrap" style={{ height: 280 }}>
         <AppComposedChart
           data={densePoints}

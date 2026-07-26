@@ -3,8 +3,9 @@ import { useTranslation } from "../../i18n";
 import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
 import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
 import { useDailySeries } from "../../queries/hooks";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { timeRangeToDays } from "../../timeRange";
+import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import { SurfaceControls } from "../../components/ui/SurfaceControls";
 import {
   rangeWindowStartYmd,
   windowCcFinancingPoints,
@@ -35,20 +36,30 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     ts,
     ccLedger,
     displayUnit,
-    metricsPeriod,
     extraCcOffsets,
     setExtraCcOffsets,
   } = data;
 
   const historialChartRows = ccLedger.historial_chart ?? [];
   const financingChartPoints = ccLedger.billing_month_chart ?? [];
-  const isYearly = metricsPeriod === "year";
-  const isDaily = metricsPeriod === "day";
+  // ONE paired control for the historial + financing charts — they share the range-window
+  // design (left-edge parity across D/M/Y), so their período/rango move together.
+  const ccPrefs = useSurfacePrefs(`cc.${summary.account_id}.charts`, "month", "3y");
+  const timeRange = ccPrefs.range;
+  const isYearly = ccPrefs.period === "year";
+  const isDaily = ccPrefs.period === "day";
+  const ccControls = (
+    <SurfaceControls
+      period={ccPrefs.period}
+      onPeriodChange={ccPrefs.setPeriod}
+      range={ccPrefs.range}
+      onRangeChange={ccPrefs.setRange}
+    />
+  );
 
   // Day mode: the historial chart keeps its two lines at day grain — saldo total from the
   // per-day owed walk and deuda en cuotas from the daily plan-debt series — with the
   // month-frame billed/paid bars hidden. CLP always, matching the monthly historial.
-  const { timeRange } = useDisplayPreferences();
   const dailySeries = useDailySeries(
     { accountId: summary.account_id },
     "clp",
@@ -134,7 +145,10 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
       {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
-          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
+          <div className="chart-panel-title-row">
+            <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
+            {ccControls}
+          </div>
           <p className={cn("muted", styles.proseSmTight)}>
             {t(
               isDaily
@@ -151,6 +165,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
               rows={clippedHistorialRows}
               openBillingMonth={ccLedger.open_billing_month}
               dailyRows={dailyHistorialRows}
+              period={ccPrefs.period}
             />
           )}
         </section>
@@ -158,7 +173,10 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
       {!isDaily ? (
         <>
-          <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
+          <div className="chart-panel-title-row">
+            <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
+            {ccControls}
+          </div>
           <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
           <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
             <CcBillingMonthFinancingChart
@@ -170,6 +188,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
               titleAs="h3"
               points={clippedFinancingPoints}
               displayUnit={displayUnit}
+              period={ccPrefs.period}
             />
           </div>
         </>

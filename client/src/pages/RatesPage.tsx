@@ -5,11 +5,13 @@ import { FxBidAskGapsTable } from "../components/rates/FxBidAskGapsTable";
 import { useMarketSeries, useRatesInstruments, useSyncStatus } from "../queries/hooks";
 import type { DisplayUnit } from "../queries/keys";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
 import { RatesLineChart, type RatesLineSeries } from "../components/charts/RatesLineChart";
 import { useDailyRateTailClip } from "./ratesDailyTailClip";
-import { timeRangeCutoffYmd } from "../timeRange";
+import { timeRangeCutoffYmd, type TimeRange } from "../timeRange";
 
 const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
 const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
@@ -175,6 +177,7 @@ function mergeFxUsdDualSeries(
 }
 
 function FxUsdClpDualChart({
+  timeRange,
   yahooData,
   bcentralData,
   buyData = [],
@@ -198,8 +201,8 @@ function FxUsdClpDualChart({
   recentColDate: string;
   recentColValue: string;
   recentEmptyLabel: string;
+  timeRange: TimeRange;
 }) {
-  const { timeRange } = useDisplayPreferences();
   const merged = useMemo(
     () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
     [yahooData, bcentralData, buyData, sellData]
@@ -297,6 +300,7 @@ function FxUsdClpDualChart({
 }
 
 function MiniLineChart({
+  timeRange,
   title,
   footnote,
   data,
@@ -314,8 +318,8 @@ function MiniLineChart({
   recentColDate: string;
   recentColValue: string;
   recentEmptyLabel: string;
+  timeRange: TimeRange;
 }) {
-  const { timeRange } = useDisplayPreferences();
   const denseData = useMemo(() => {
     const cutoff = timeRangeCutoffYmd(timeRange);
     const clipped = cutoff ? data.filter((r) => r.date >= cutoff) : data;
@@ -383,6 +387,8 @@ export function RatesPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<RatesTab>("fx");
   const { displayUnit } = useDisplayPreferences();
+  // Range-only per-surface control (rates are daily-native): one Rango for every panel.
+  const rangePrefs = useSurfacePrefs("rates.range", "month", "1y");
   const { data: payload, error } = useMarketSeries();
   const { data: syncStatus } = useSyncStatus();
   const { data: ratesInstruments } = useRatesInstruments();
@@ -460,6 +466,10 @@ export function RatesPage() {
         </button>
       </nav>
 
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "0.25rem 0 0.75rem" }}>
+        <SurfaceControls range={rangePrefs.range} onRangeChange={rangePrefs.setRange} />
+      </div>
+
       {tab === "fx" ? (
         <>
           <p className="muted" style={{ marginTop: "-0.35rem", marginBottom: "1rem" }}>
@@ -469,6 +479,7 @@ export function RatesPage() {
           </p>
           <div className="rates-fx-grid">
             <FxUsdClpDualChart
+              timeRange={rangePrefs.range}
               yahooData={fxUsdClp}
               bcentralData={fxUsdClpBcentral}
               buyData={fxUsdClpBuy}
@@ -482,6 +493,7 @@ export function RatesPage() {
               recentEmptyLabel={recentEmptyLabel}
             />
             <MiniLineChart
+              timeRange={rangePrefs.range}
               title="UF / CLP"
               footnote="CLP per 1 UF"
               data={fxUfClp}
@@ -490,6 +502,7 @@ export function RatesPage() {
               {...recentTableProps}
             />
             <MiniLineChart
+              timeRange={rangePrefs.range}
               title="IPC"
               footnote="Index level (optional CSV)"
               data={fxIpc}
@@ -498,6 +511,7 @@ export function RatesPage() {
               {...recentTableProps}
             />
             <MiniLineChart
+              timeRange={rangePrefs.range}
               title="EUR / CLP"
               footnote="CLP per €1"
               data={fxEurClp}
@@ -522,6 +536,7 @@ export function RatesPage() {
               const suffix = displayUnit === "clp" ? "CLP" : "USD";
               return (
                 <MiniLineChart
+                  timeRange={rangePrefs.range}
                   key={`${slot.kind}:${slot.id}`}
                   title={`${slot.title} (${suffix})`}
                   data={data}

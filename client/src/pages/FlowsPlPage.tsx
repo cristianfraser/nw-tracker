@@ -4,6 +4,8 @@ import { FlowsPlChart } from "../components/charts/FlowsPlChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 import {
   flowChartGranularityFromMetricsPeriod,
   flowPeriodLabel,
@@ -35,7 +37,18 @@ function bucketTotal(
 /** Flows → PL: monthly market P/L of the money buckets (brokerage / retiro / efectivo). */
 export function FlowsPlPage() {
   const { t } = useTranslation();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  const chartPrefs = useSurfacePrefs("flows.pl.chart", "month", "3y");
+  const metricsPeriod = chartPrefs.period;
+  const timeRange = chartPrefs.range;
+  const chartControls = (
+    <SurfaceControls
+      period={chartPrefs.period}
+      onPeriodChange={chartPrefs.setPeriod}
+      range={chartPrefs.range}
+      onRangeChange={chartPrefs.setRange}
+    />
+  );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
@@ -82,6 +95,7 @@ export function FlowsPlPage() {
         style={{ marginBottom: "1.5rem" }}
       >
         <FlowsPlChart
+          controls={chartControls}
           title={t("flows.pl.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}
