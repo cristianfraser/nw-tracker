@@ -1,6 +1,6 @@
 # Render blueprint — hosted recruiter demo (synthetic data, open + read-only).
-# (The crfrsr.io landing page moved to Cloudflare Pages — it's a static site and needs
-# neither a Render service nor a Render custom-domain slot.)
+# (The crfrsr.io landing page lives in its own repo — github.com/cristianfraser/crfrsr-site,
+# on Cloudflare Pages — so it needs neither a Render service nor a Render custom-domain slot.)
 #
 # Deploy: Render dashboard → New → Blueprint → connect this repo (this file is picked
 # up). No secrets to set. The demo has NO login: recruiters landed on the login page and
@@ -11,13 +11,15 @@
 # The repo is safe to make public: tree and full git history are free of personal data
 # (balances/amounts/account numbers purged; card last4s scrubbed from all history
 # 2026-07-08; per-card config is gitignored; tests use synthetic cards). Author
-# name/email appear as intentional attribution + the homepage contact link.
+# name/email appear as intentional attribution (plus the extracted landing page's
+# contact link in git history).
 #
 # Custom domains (Namecheap DNS, see AGENTS.md):
 # - nw-tracker.crfrsr.io → nw-tracker-demo — only attaches when the workspace has a free
 #   custom-domain slot (Hobby caps at 2/workspace, both used by pokedex). Until then the
-#   demo is reached at its .onrender.com URL, which the homepage links to.
-# - crfrsr.io / www.crfrsr.io → the homepage on Cloudflare Pages (not Render).
+#   demo is reached at its .onrender.com URL, which the crfrsr.io homepage
+#   (crfrsr-site repo) links to.
+# - crfrsr.io / www.crfrsr.io → the crfrsr-site landing page on Cloudflare Pages (not Render).
 #
 # Notes:
 # - PORT is injected by Render; the server reads process.env.PORT.
