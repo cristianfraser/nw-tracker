@@ -18,10 +18,8 @@ import {
   resolveClpPerUsdForKeepPrev,
 } from "../../placeholders/keepPrevBundleUnit";
 import { readFxLatestCache } from "../../queries/fxLatestCache";
-import {
-  cardGroupMetricsByPeriodFromAccounts,
-  type CardGroupMetricsPeriod,
-} from "../../dashboardCardBreakdown";
+import { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
+import { useSurfacePrefs, type SurfacePrefsValue } from "../../surfaceDisplayPrefs";
 import type {
   AccountCcInstallmentsResponse,
   AccountMonthlyPerformanceResponse,
@@ -49,9 +47,9 @@ export type AccountDetailPageData = {
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
   periodReturns: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
-  metricsPeriod: CardGroupMetricsPeriod;
-  isYearly: boolean;
-  xAxisGranularity: "month" | "year";
+  /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
+  valuationPrefs: SurfacePrefsValue;
+  perfPrefs: SurfacePrefsValue;
   extraCcOffsets: Record<string, number>;
   setExtraCcOffsets: (next: Record<string, number>) => void;
   valuationTailClipEndDate: string | null;
@@ -70,12 +68,13 @@ export type AccountDetailPageData = {
 export function useAccountDetailPageData(): AccountDetailPageData {
   const { id } = useParams();
   const [extraCcOffsets, setExtraCcOffsets] = useState<Record<string, number>>({});
-  const { displayUnit, metricsPeriod } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
-  const xAxisGranularity = isYearly ? "year" : "month";
+  const { displayUnit } = useDisplayPreferences();
   const deferredCcOffsets = useDeferredValue(extraCcOffsets);
 
   const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
+  const valuationPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.valuation`, "day", "3y");
+  const perfPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.combos`, "month", "3y");
+  const perfIsYearly = perfPrefs.period === "year";
 
   const {
     data: rawDetail,
@@ -162,12 +161,12 @@ export function useAccountDetailPageData(): AccountDetailPageData {
       nominal_pl: r.nominal_pl ?? 0,
       ytd_nominal_pl: r.ytd_nominal_pl ?? 0,
     }));
-    if (!isYearly) return monthly;
+    if (!perfIsYearly) return monthly;
     return rollupPerfPointsYearly(monthly, {
       sumKeys: ["nominal_pl"],
       ytdKey: "ytd_nominal_pl",
     });
-  }, [monthlyPerfRows, isYearly]);
+  }, [monthlyPerfRows, perfIsYearly]);
 
   const accChartPoints = useMemo(() => {
     if (!monthlyPerfRows.length) return [];
@@ -176,18 +175,18 @@ export function useAccountDetailPageData(): AccountDetailPageData {
       delta_month: r.nominal_pl ?? 0,
       accumulated_earnings: r.cumulative_nominal_pl ?? 0,
     }));
-    if (!isYearly) return monthly;
+    if (!perfIsYearly) return monthly;
     return rollupPerfPointsYearly(monthly, {
       sumKeys: ["delta_month"],
       accumKey: "accumulated_earnings",
     });
-  }, [monthlyPerfRows, isYearly]);
+  }, [monthlyPerfRows, perfIsYearly]);
 
   const valuationBlockForChart = useMemo(() => {
     if (!ts?.accounts) return null;
-    if (!isYearly) return ts.accounts;
+    if (valuationPrefs.period !== "year") return ts.accounts;
     return rollupTimeseriesBlockYearEnd(ts.accounts);
-  }, [ts?.accounts, isYearly]);
+  }, [ts?.accounts, valuationPrefs.period]);
 
 
   useLayoutEffect(() => {
@@ -251,9 +250,8 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     monthlyPerf,
     periodReturns,
     displayUnit,
-    metricsPeriod,
-    isYearly,
-    xAxisGranularity,
+    valuationPrefs,
+    perfPrefs,
     extraCcOffsets,
     setExtraCcOffsets,
     valuationTailClipEndDate,

@@ -49,15 +49,18 @@ export function CcBillingMonthFinancingChart({
   titleAs = "h3",
   points,
   displayUnit,
+  period,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
   points: CcBillingMonthChartPoint[];
   displayUnit: ChartDisplayUnit;
+  /** Per-surface período (month/year framing); falls back to the global toolbar period. */
+  period?: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
-  const { metricsPeriod } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
+  const { metricsPeriod: globalPeriod } = useDisplayPreferences();
+  const isYearly = (period ?? globalPeriod) === "year";
   const TitleTag = titleAs;
   const periodLabel = (ym: string) => (isYearly ? ym.slice(0, 4) : formatYmEs(ym));
 

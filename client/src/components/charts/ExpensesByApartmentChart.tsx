@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { formatClp } from "../../format";
@@ -21,12 +23,15 @@ const PLACE_BAR_PALETTE = ["#f472b6", "#db2777", "#be185d", "#9d174d", "#831843"
 
 export function ExpensesByApartmentChart({
   title,
+  controls,
   points,
   places,
   xAxisGranularity = "month",
   accountFilter,
 }: {
   title: string;
+  /** Per-surface Período/Rango controls, rendered next to the title. */
+  controls?: ReactNode;
   points: FlowExpenseChartPoint[];
   /** Tracked places in display order (from the payload — data, not code). */
   places: readonly { slug: ExpenseApartmentSlug; label: string }[];
@@ -69,7 +74,7 @@ export function ExpensesByApartmentChart({
   if (!points.length) {
     return (
       <div className="chart-grid__col">
-        <h2 className="chart-panel-title">{title}</h2>
+        <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
         <p className="empty muted">{i18n.t("charts.noExpensesInPeriod")}</p>
       </div>
     );
@@ -77,7 +82,7 @@ export function ExpensesByApartmentChart({
 
   return (
     <div className="chart-grid__col">
-      <h2 className="chart-panel-title">{title}</h2>
+      <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={densePoints}

@@ -49,15 +49,14 @@ import {
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
 
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
-  const isYearly = metricsPeriod === "year";
-  const isDaily = metricsPeriod === "day";
-  const xAxisGranularity = isYearly ? "year" : "month";
+  const { displayUnit } = useDisplayPreferences();
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
@@ -69,6 +68,16 @@ export function GroupInfoPage() {
 
   const apiParams = navMatchNode ? resolveGroupPageApiParams(navMatchNode) : null;
   const portfolioGroup = apiParams?.portfolio_group ?? "";
+
+  // Per-surface controls (persisted per group slug): valuation chart + the two P/L combos.
+  const valuationPrefs = useSurfacePrefs(
+    `group.${portfolioGroup || "pending"}.valuation`,
+    "day",
+    "3y"
+  );
+  const perfPrefs = useSurfacePrefs(`group.${portfolioGroup || "pending"}.combos`, "month", "3y");
+  const valuationIsDaily = valuationPrefs.period === "day";
+  const perfIsDaily = perfPrefs.period === "day";
 
   const linkedCardNavChildren = useMemo(
     () => resolveLinkedCardNavChildren(navMatchNode, sidebarNav?.main),
@@ -229,11 +238,17 @@ export function GroupInfoPage() {
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
-    timeRangeToDays(timeRange),
-    isDaily && portfolioGroup !== ""
+    timeRangeToDays(valuationPrefs.range),
+    valuationIsDaily && portfolioGroup !== ""
+  );
+  const perfDailySeries = useDailySeries(
+    { portfolioGroup: portfolioGroup || undefined },
+    displayUnit,
+    timeRangeToDays(perfPrefs.range),
+    perfIsDaily && portfolioGroup !== ""
   );
   const dailyValuationBlock = useMemo(() => {
-    if (!isDaily) return null;
+    if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
     if (!daily) return null;
     // Agrupado: bucket lines share synthetic ids with the monthly grouped block, so the
@@ -245,7 +260,7 @@ export function GroupInfoPage() {
       );
     }
     return buildDailyValuationBlock(daily, ts?.accounts_in_group ?? null);
-  }, [isDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks?.grouped, ts?.accounts_in_group]);
+  }, [valuationIsDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks?.grouped, ts?.accounts_in_group]);
 
   const displayPieSlices = useMemo(() => {
     if (!ts?.group_allocation_pie || !chartCtx) return [];
@@ -260,8 +275,8 @@ export function GroupInfoPage() {
   // Day view: per-day P/L bars keyed by the monthly block's bar metadata, with the cumulative
   // areas anchored on the monthly series so month-ends read the same in both period modes.
   const dailyGroupPerfPoints = useMemo(() => {
-    if (!isDaily) return null;
-    const daily = dailySeries.data;
+    if (!perfIsDaily) return null;
+    const daily = perfDailySeries.data;
     if (!daily || !displayGroupPerf?.bar_accounts.length) return null;
     const lines =
       groupedToggleOn && daily.grouped_accounts?.length ? daily.grouped_accounts : daily.accounts;
@@ -272,7 +287,7 @@ export function GroupInfoPage() {
       barAccounts: displayGroupPerf.bar_accounts,
       monthlyPointsAsc: groupPerfRaw?.points ?? [],
     });
-  }, [isDaily, dailySeries.data, displayGroupPerf, groupedToggleOn, groupPerfRaw]);
+  }, [perfIsDaily, perfDailySeries.data, displayGroupPerf, groupedToggleOn, groupPerfRaw]);
 
   const chartSeriesCount = accounts.length;
   const chartColorSlug = (chartCtx?.chartColorSlug ?? portfolioGroup) as AssetGroupSlug | "crypto";
@@ -281,7 +296,8 @@ export function GroupInfoPage() {
   const charts = usePortfolioGroupCharts({
     displayValuationBlock,
     displayGroupPerf,
-    isYearly,
+    valuationIsYearly: valuationPrefs.period === "year",
+    perfIsYearly: perfPrefs.period === "year",
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug: chartCtx?.colorPlanGroupSlug ?? "inversiones",
@@ -368,8 +384,28 @@ export function GroupInfoPage() {
           valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
           displayPieSlices={displayPieSlices}
           displayUnit={displayUnit}
-          xAxisGranularity={xAxisGranularity}
-          valuationXAxisGranularity={dailyValuationBlock ? "day" : undefined}
+          xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
+          valuationXAxisGranularity={
+            dailyValuationBlock ? "day" : valuationPrefs.period === "year" ? "year" : "month"
+          }
+          valuationTimeRange={valuationPrefs.range}
+          perfTimeRange={perfPrefs.range}
+          valuationControls={
+            <SurfaceControls
+              period={valuationPrefs.period}
+              onPeriodChange={valuationPrefs.setPeriod}
+              range={valuationPrefs.range}
+              onRangeChange={valuationPrefs.setRange}
+            />
+          }
+          perfControls={
+            <SurfaceControls
+              period={perfPrefs.period}
+              onPeriodChange={perfPrefs.setPeriod}
+              range={perfPrefs.range}
+              onRangeChange={perfPrefs.setRange}
+            />
+          }
           chartColorSlug={charts.chartColorSlug}
           pieAllocationSlug={charts.pieAllocationSlug}
           colorPlanGroupSlug={charts.colorPlanGroupSlug}
@@ -378,7 +414,9 @@ export function GroupInfoPage() {
             dailyGroupPerfPoints ? { points: dailyGroupPerfPoints } : charts.groupPerfForChart
           }
           groupPerfBarSeries={charts.groupPerfBarSeries}
-          perfXAxisGranularity={dailyGroupPerfPoints ? "day" : undefined}
+          perfXAxisGranularity={
+            dailyGroupPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
+          }
           groupTotalStroke={charts.groupTotalStroke}
           groupColorRgb={navMatchNode.color_rgb}
           chartCtx={chartCtx}

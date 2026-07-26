@@ -6,9 +6,9 @@ import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTa
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useDailySeries } from "../../queries/hooks";
 import { timeRangeToDays } from "../../timeRange";
+import { SurfaceControls } from "../../components/ui/SurfaceControls";
 import { PeriodReturnsStrip } from "../../components/perf/PeriodReturnsStrip";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
@@ -57,8 +57,8 @@ export function StandardAccountDetailPage({ data }: Props) {
     depositInflows,
     mortgageLedger,
     displayUnit,
-    metricsPeriod,
-    xAxisGranularity,
+    valuationPrefs,
+    perfPrefs,
     monthlyPerfErr,
     monthlyPerfRows,
     periodReturns,
@@ -82,28 +82,52 @@ export function StandardAccountDetailPage({ data }: Props) {
     : null;
   const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
 
-  const { timeRange } = useDisplayPreferences();
-  const isDaily = metricsPeriod === "day";
-  // Day view: per-session line + detalle por día, fetched lazily while the D toggle is on.
+  const valuationIsDaily = valuationPrefs.period === "day";
+  const perfIsDaily = perfPrefs.period === "day";
+  // Transitional until the tables phase: the detalle table follows the valuation surface.
+  const isDaily = valuationIsDaily;
+  // Day view: per-session line + detalle por día, fetched lazily while a D control is on.
   const dailySeries = useDailySeries(
     { accountId: summary.account_id },
     displayUnit,
-    timeRangeToDays(timeRange),
-    isDaily
+    timeRangeToDays(valuationPrefs.range),
+    valuationIsDaily
+  );
+  const perfDailySeries = useDailySeries(
+    { accountId: summary.account_id },
+    displayUnit,
+    timeRangeToDays(perfPrefs.range),
+    perfIsDaily
   );
   const dailyValuationBlock = useMemo(() => {
-    if (!isDaily) return null;
+    if (!valuationIsDaily) return null;
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
-  }, [isDaily, dailySeries.data, valuationBlockForChart, ts.accounts]);
+  }, [valuationIsDaily, dailySeries.data, valuationBlockForChart, ts.accounts]);
+  const valuationControls = (
+    <SurfaceControls
+      period={valuationPrefs.period}
+      onPeriodChange={valuationPrefs.setPeriod}
+      range={valuationPrefs.range}
+      onRangeChange={valuationPrefs.setRange}
+    />
+  );
+  const perfControls = (
+    <SurfaceControls
+      period={perfPrefs.period}
+      onPeriodChange={perfPrefs.setPeriod}
+      range={perfPrefs.range}
+      onRangeChange={perfPrefs.setRange}
+    />
+  );
 
   // Day view P/L bars: one bar account (this account), so a single build serves both combos —
   // `nominal_pl`/`delta_month` are the same daily P/L and the two areas ride along.
   const dailyPerfPoints = useMemo(() => {
-    if (!isDaily || !dailySeries.data?.points.length || !monthlyPerfRows.length) return null;
-    const line = dailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
+    if (!perfIsDaily || !perfDailySeries.data?.points.length || !monthlyPerfRows.length) return null;
+    const line = perfDailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
     if (!line?.pl) return null;
     return buildDailyPerfComboPoints({
-      series: dailySeries.data,
+      series: perfDailySeries.data,
       lines: [line],
       barAccounts: [{ account_id: summary.account_id, bar_data_key: "nominal_pl" }],
       monthlyPointsAsc: [...monthlyPerfRows].reverse().map((r) => ({
@@ -114,7 +138,7 @@ export function StandardAccountDetailPage({ data }: Props) {
       ytdKey: "ytd_nominal_pl",
       totalKey: "delta_month",
     });
-  }, [isDaily, dailySeries.data, monthlyPerfRows, summary.account_id]);
+  }, [perfIsDaily, perfDailySeries.data, monthlyPerfRows, summary.account_id]);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
@@ -308,7 +332,11 @@ export function StandardAccountDetailPage({ data }: Props) {
           title={t("charts.valuationAndDeposits")}
           block={dailyValuationBlock ?? valuationBlockForChart ?? ts.accounts}
           displayUnit={displayUnit}
-          xAxisGranularity={dailyValuationBlock ? "day" : xAxisGranularity}
+          xAxisGranularity={
+            dailyValuationBlock ? "day" : valuationPrefs.period === "year" ? "year" : "month"
+          }
+          timeRange={valuationPrefs.range}
+          controls={valuationControls}
           trimLeadingInactive={!isMovementCartolaAccount}
         />
       </div>
@@ -379,7 +407,11 @@ export function StandardAccountDetailPage({ data }: Props) {
                   titleAs="h3"
                   points={dailyPerfPoints ?? ytdChartPoints}
                   displayUnit={displayUnit}
-                  xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+                  xAxisGranularity={
+                    dailyPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
+                  }
+                  timeRange={perfPrefs.range}
+                  controls={perfControls}
                   barSeries={[
                     {
                       dataKey: "nominal_pl",
@@ -402,7 +434,11 @@ export function StandardAccountDetailPage({ data }: Props) {
                   titleAs="h3"
                   points={dailyPerfPoints ?? accChartPoints}
                   displayUnit={displayUnit}
-                  xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+                  xAxisGranularity={
+                    dailyPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
+                  }
+                  timeRange={perfPrefs.range}
+                  controls={perfControls}
                   barSeries={[
                     {
                       dataKey: "delta_month",
@@ -423,7 +459,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                 {t(
                   isDaily
                     ? "accountDetail.dailyDetailTitle"
-                    : metricsPeriod === "year"
+                    : valuationPrefs.period === "year"
                       ? "accountDetail.yearlyDetailTitle"
                       : "accountDetail.monthlyDetailTitle"
                 )}

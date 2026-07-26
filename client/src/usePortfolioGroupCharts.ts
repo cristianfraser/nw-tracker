@@ -18,7 +18,9 @@ export type PortfolioGroupChartsColorSlug = AssetGroupSlug | "crypto" | "liabili
 export function usePortfolioGroupCharts(opts: {
   displayValuationBlock: TimeseriesBlock | null;
   displayGroupPerf: GroupMonthlyPerformanceResponse | null;
-  isYearly: boolean;
+  /** Per-surface periods: the valuation chart and the P/L combos roll up independently. */
+  valuationIsYearly: boolean;
+  perfIsYearly: boolean;
   chartColorSlug: PortfolioGroupChartsColorSlug;
   pieAllocationSlug: PortfolioGroupChartsColorSlug;
   colorPlanGroupSlug: "inversiones" | "brokerage" | "retirement";
@@ -30,7 +32,8 @@ export function usePortfolioGroupCharts(opts: {
   const {
     displayValuationBlock,
     displayGroupPerf,
-    isYearly,
+    valuationIsYearly,
+    perfIsYearly,
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug,
@@ -40,13 +43,13 @@ export function usePortfolioGroupCharts(opts: {
 
   const valuationBlockForChart = useMemo(() => {
     if (!displayValuationBlock) return null;
-    if (!isYearly) return displayValuationBlock;
+    if (!valuationIsYearly) return displayValuationBlock;
     return rollupTimeseriesBlockYearEnd(displayValuationBlock);
-  }, [displayValuationBlock, isYearly]);
+  }, [displayValuationBlock, valuationIsYearly]);
 
   const groupPerfForChart = useMemo(() => {
     if (!displayGroupPerf?.points.length) return displayGroupPerf;
-    if (!isYearly) return displayGroupPerf;
+    if (!perfIsYearly) return displayGroupPerf;
     const barKeys = displayGroupPerf.bar_accounts.map((a) => a.bar_data_key);
     return {
       ...displayGroupPerf,
@@ -57,7 +60,7 @@ export function usePortfolioGroupCharts(opts: {
         totalKey: "delta_total",
       }),
     };
-  }, [displayGroupPerf, isYearly]);
+  }, [displayGroupPerf, perfIsYearly]);
 
   const groupColorMaps: GroupTabColorMaps = useMemo(() => {
     const accLines = displayValuationBlock?.accounts;
