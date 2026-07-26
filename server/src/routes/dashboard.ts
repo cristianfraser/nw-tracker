@@ -37,6 +37,7 @@ import {
   buildNavChartBucketPlan,
   shouldAggregateLiabilitiesCharts,
   shouldAggregateNavCharts,
+  type ChartBucketPlan,
 } from "../groupChartBuckets.js";
 import { getNavChartGroupNodeBySlug } from "../navTree.js";
 import {
@@ -103,17 +104,32 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       res.status(404).json({ error: `no accounts for group ${portfolioGroup}` });
       return;
     }
-    // Agrupado lines when the page has bucket nodes — same plan (synthetic ids/names) as
-    // the monthly grouped blocks, so the client reuses that block's series metadata.
-    // Pasivos pages use the liabilities plan (issuer/mortgage buckets, single-mode).
+    // Bucket lines when the page has bucket nodes — same plans (synthetic ids/names) as
+    // the monthly grouped blocks, so the client reuses those blocks' series metadata.
+    // Pasivos pages use the liabilities plan (issuer/mortgage buckets, single-mode); nav
+    // pages additionally get the "Sin agrupar" plan (one nav level deeper) when it differs,
+    // so hub pages (e.g. Inversiones) show second-level buckets with Agrupado off instead
+    // of the raw per-leaf lines.
     const navNode = getNavChartGroupNodeBySlug(portfolioGroup);
+    const isLiabilities = navNode ? shouldAggregateLiabilitiesCharts(navNode) : false;
     const plan = navNode
-      ? shouldAggregateLiabilitiesCharts(navNode)
+      ? isLiabilities
         ? buildLiabilitiesChartBucketPlan(navNode)
         : shouldAggregateNavCharts(navNode, true)
           ? buildNavChartBucketPlan(navNode, true)
           : null
       : null;
+    const ungroupedCandidate =
+      navNode && !isLiabilities && shouldAggregateNavCharts(navNode, false)
+        ? buildNavChartBucketPlan(navNode, false)
+        : null;
+    // Leaf pages resolve both modes to the same buckets — skip the redundant twin payload
+    // (the client reuses `grouped_accounts` for the ungrouped view; same plan, same ids).
+    const ungroupedPlan: ChartBucketPlan | null =
+      ungroupedCandidate &&
+      ungroupedCandidate.orderedKeys.join("|") !== (plan?.orderedKeys.join("|") ?? "")
+        ? ungroupedCandidate
+        : null;
     // Chart-host overlays («Disponible» on Pasivos, «Tarjeta de crédito» on Efectivo): the
     // monthly block carries them in `lines`, so the daily view needs the same values on the
     // same grid. Values only — the client pairs them with that block's line metadata.
@@ -148,18 +164,31 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       ...(referenceLines?.length ? { ...series, reference_lines: referenceLines } : series),
       ...(proportional ? { proportional } : {}),
     };
-    if (plan) {
-      const grouped = groupDailySeriesAccounts(series, plan);
-      if (grouped?.length) {
-        res.json({
-          ...withRefs,
-          grouped_accounts: grouped,
-          grouped_proportional: buildProportionalFromValueArrays(dailyDates, shareLines(grouped)),
-        });
-        return;
-      }
-    }
-    res.json(withRefs);
+    const bucketLines = (bucketPlan: ChartBucketPlan | null) => {
+      if (!bucketPlan) return null;
+      const lines = groupDailySeriesAccounts(series, bucketPlan);
+      return lines?.length ? lines : null;
+    };
+    const grouped = bucketLines(plan);
+    const ungrouped = bucketLines(ungroupedPlan);
+    res.json({
+      ...withRefs,
+      ...(grouped
+        ? {
+            grouped_accounts: grouped,
+            grouped_proportional: buildProportionalFromValueArrays(dailyDates, shareLines(grouped)),
+          }
+        : {}),
+      ...(ungrouped
+        ? {
+            ungrouped_accounts: ungrouped,
+            ungrouped_proportional: buildProportionalFromValueArrays(
+              dailyDates,
+              shareLines(ungrouped)
+            ),
+          }
+        : {}),
+    });
     return;
   }
   const accountId = Number(accountIdRaw);

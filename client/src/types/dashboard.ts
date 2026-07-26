@@ -366,6 +366,8 @@ export interface DailySeriesResponse {
   proportional?: ProportionalSeriesBlockDto;
   /** Composition shares of the grouped bucket lines (when the page has bucket nodes). */
   grouped_proportional?: ProportionalSeriesBlockDto;
+  /** Composition shares of the "Sin agrupar" bucket lines (only when they differ from grouped). */
+  ungrouped_proportional?: ProportionalSeriesBlockDto;
   /** CC masters only: per-day plan debt («deuda en cuotas», CLP), index-aligned with points. */
   cc_installment_debt?: (number | null)[];
   /**
@@ -377,6 +379,9 @@ export interface DailySeriesResponse {
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
   grouped_accounts?: DailySeriesAccountLineDto[];
+  /** "Sin agrupar" bucket lines, keyed by the monthly ungrouped block's synthetic ids
+   * (one nav level deeper; only emitted when they differ from `grouped_accounts`). */
+  ungrouped_accounts?: DailySeriesAccountLineDto[];
   /**
    * Chart-host overlays (Pasivos «Disponible»/«Disponible total», Efectivo «Tarjeta de
    * crédito»), index-aligned with points. Values only — name/color/reference styling come
