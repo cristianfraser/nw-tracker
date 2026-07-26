@@ -1,9 +1,10 @@
 import { Area, Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { clipPointsToTimeRange } from "../../timeRange";
+import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
+import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import i18n from "../../i18n";
 import { AppComposedChart } from "./AppComposedChart";
 import {
@@ -120,6 +121,8 @@ export function MonthlyPerformanceComboChart({
   /** When true (default), YTD-style area is split into two fills by calendar year parity. Set false for a single continuous area fill (e.g. accumulated earnings). */
   alternateYearAreaStripes = true,
   xAxisGranularity = "month",
+  timeRange: timeRangeProp,
+  controls,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
@@ -135,9 +138,13 @@ export function MonthlyPerformanceComboChart({
   lineSeries?: MonthlyPlLineSeries[];
   alternateYearAreaStripes?: boolean;
   xAxisGranularity?: "month" | "year" | "day";
+  /** Per-surface range for the M/Y clip; falls back to the global toolbar range when omitted. */
+  timeRange?: TimeRange;
+  /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
+  controls?: ReactNode;
 }) {
-  const TitleTag = titleAs;
-  const { timeRange } = useDisplayPreferences();
+  const { timeRange: globalTimeRange } = useDisplayPreferences();
+  const timeRange = timeRangeProp ?? globalTimeRange;
 
   const densePoints = useMemo(() => {
     const zeroKeys = barSeries.map((b) => b.dataKey);
@@ -191,7 +198,7 @@ export function MonthlyPerformanceComboChart({
   if (!points.length) {
     return (
       <div className="chart-grid__col">
-        <TitleTag className="chart-panel-title">{title}</TitleTag>
+        <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
         <p className="empty muted">{i18n.t("charts.noMonthlyPl")}</p>
       </div>
     );
@@ -199,7 +206,7 @@ export function MonthlyPerformanceComboChart({
 
   return (
     <div className="chart-grid__col">
-      <TitleTag className="chart-panel-title">{title}</TitleTag>
+      <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={plotPoints}
