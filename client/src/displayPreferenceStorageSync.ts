@@ -1,7 +1,8 @@
 /**
  * Cross-tab sync for the global display preferences (DisplayPreferencesContext).
+ * Período/Rango are per-surface now (`surfaceDisplayPrefs.ts`, deliberately unsynced).
  *
- * All four preferences persist to localStorage, so another tab's change arrives
+ * The preferences persist to localStorage, so another tab's change arrives
  * here as a native `storage` event (fired only in *other* same-origin tabs, and
  * only when the value actually changed — no echo in the writing tab, no loops).
  * This module is the pure, node-testable half: it maps a storage event's
@@ -10,20 +11,14 @@
  * a cleared key keeps the tab's current in-memory state; the next write
  * re-seeds it).
  */
-import type { CardGroupMetricsPeriod } from "./dashboardCardBreakdown";
-import { parseTimeRange, type TimeRange } from "./timeRange";
 import { LANGUAGE_LS_KEY, type AppLanguage } from "./languagePreference";
 import { DECIMAL_SEPARATOR_LS_KEY, type DecimalSeparator } from "./numberFormatPreference";
 import type { DisplayUnit } from "./queries/keys";
 
 export const DISPLAY_UNIT_LS_KEY = "nw-tracker.displayUnit";
-export const METRICS_PERIOD_LS_KEY = "nw-tracker.metricsPeriod";
-export const TIME_RANGE_LS_KEY = "nw-tracker.timeRange";
 
 export type DisplayPreferenceStorageChange =
   | { pref: "displayUnit"; value: DisplayUnit }
-  | { pref: "metricsPeriod"; value: CardGroupMetricsPeriod }
-  | { pref: "timeRange"; value: TimeRange }
   | { pref: "decimalSeparator"; value: DecimalSeparator }
   | { pref: "language"; value: AppLanguage };
 
@@ -38,16 +33,6 @@ export function parsePreferenceStorageChange(
         return { pref: "displayUnit", value: newValue };
       }
       return null;
-    case METRICS_PERIOD_LS_KEY:
-      if (newValue === "day" || newValue === "month" || newValue === "year") {
-        return { pref: "metricsPeriod", value: newValue };
-      }
-      return null;
-    case TIME_RANGE_LS_KEY: {
-      const range = parseTimeRange(newValue);
-      if (range != null) return { pref: "timeRange", value: range };
-      return null;
-    }
     case DECIMAL_SEPARATOR_LS_KEY:
       if (newValue === "comma" || newValue === "period") {
         return { pref: "decimalSeparator", value: newValue };

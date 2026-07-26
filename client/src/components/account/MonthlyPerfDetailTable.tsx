@@ -2,8 +2,6 @@ import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatInstrumentUnits, formatPct, formatUfBalance, formatUsdFine } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
 import {
@@ -195,12 +193,11 @@ export function MonthlyPerfDetailTable({
    * metricsPeriod is "year") and pagination state is controlled by the caller.
    */
   serverPagination?: MonthlyPerfServerPagination;
-  /** Per-surface table período (month/year); falls back to the clamped global toolbar period. */
-  period?: "month" | "year";
+  /** Per-surface table período (from the table's own control). */
+  period: "month" | "year";
 }) {
   const { t } = useTranslation();
-  const { metricsPeriod } = useDisplayPreferences();
-  const isYearly = (period ?? monthYearMetricsPeriod(metricsPeriod)) === "year";
+  const isYearly = period === "year";
 
   const fmtPerf: FmtPerf = (n) => {
     if (n == null || !Number.isFinite(n)) return "—";
@@ -284,7 +281,7 @@ export function MonthlyPerfDetailTable({
       loading={serverPagination?.loading ?? false}
     >
       <Table
-        key={`monthly-detail-page-${page}-${metricsPeriod}`}
+        key={`monthly-detail-page-${page}-${period}`}
         header={header}
         tableClassName="table--parallel-mobile"
       >

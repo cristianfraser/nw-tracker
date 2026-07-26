@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  DISPLAY_UNIT_LS_KEY,
-  METRICS_PERIOD_LS_KEY,
-  parsePreferenceStorageChange,
-} from "./displayPreferenceStorageSync";
+import { DISPLAY_UNIT_LS_KEY, parsePreferenceStorageChange } from "./displayPreferenceStorageSync";
 import { LANGUAGE_LS_KEY } from "./languagePreference";
 import { DECIMAL_SEPARATOR_LS_KEY } from "./numberFormatPreference";
 
@@ -16,14 +12,6 @@ describe("parsePreferenceStorageChange", () => {
     expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "usd")).toEqual({
       pref: "displayUnit",
       value: "usd",
-    });
-    expect(parsePreferenceStorageChange(METRICS_PERIOD_LS_KEY, "month")).toEqual({
-      pref: "metricsPeriod",
-      value: "month",
-    });
-    expect(parsePreferenceStorageChange(METRICS_PERIOD_LS_KEY, "year")).toEqual({
-      pref: "metricsPeriod",
-      value: "year",
     });
     expect(parsePreferenceStorageChange(DECIMAL_SEPARATOR_LS_KEY, "comma")).toEqual({
       pref: "decimalSeparator",
@@ -45,7 +33,6 @@ describe("parsePreferenceStorageChange", () => {
 
   it("ignores invalid values for a known key", () => {
     expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "eur")).toBeNull();
-    expect(parsePreferenceStorageChange(METRICS_PERIOD_LS_KEY, "yearly")).toBeNull();
     expect(parsePreferenceStorageChange(DECIMAL_SEPARATOR_LS_KEY, "dot")).toBeNull();
     expect(parsePreferenceStorageChange(LANGUAGE_LS_KEY, "pt")).toBeNull();
     expect(parsePreferenceStorageChange(DISPLAY_UNIT_LS_KEY, "")).toBeNull();
@@ -57,7 +44,9 @@ describe("parsePreferenceStorageChange", () => {
     expect(parsePreferenceStorageChange(null, null)).toBeNull();
   });
 
-  it("ignores unrelated keys, including the legacy granularity key", () => {
+  it("ignores unrelated keys, including the retired global Período/Rango keys", () => {
+    expect(parsePreferenceStorageChange("nw-tracker.metricsPeriod", "month")).toBeNull();
+    expect(parsePreferenceStorageChange("nw-tracker.timeRange", "3y")).toBeNull();
     expect(parsePreferenceStorageChange("nw-tracker.chartGranularity", "yearly")).toBeNull();
     expect(parsePreferenceStorageChange("nw:dashboard-nav-snapshot-v5", "{}")).toBeNull();
     expect(parsePreferenceStorageChange("some-other-app.key", "usd")).toBeNull();

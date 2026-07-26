@@ -9,7 +9,6 @@ import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import {
@@ -141,7 +140,7 @@ interface BlockProps {
   xAxisGranularity?: "month" | "year" | "day";
   /** When set, Y-axis min/max uses only these series (others may render off-scale). */
   yScaleDataKeys?: readonly string[];
-  /** Per-surface range for the M/Y clip; falls back to the global toolbar range when omitted. */
+  /** Per-surface range for the M/Y clip; omitted = no clip (full history). */
   timeRange?: TimeRange;
   /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
   controls?: ReactNode;
@@ -373,8 +372,7 @@ export function LineChartPanel({
   timeRange: timeRangeProp,
   controls,
 }: BlockProps) {
-  const { timeRange: globalTimeRange } = useDisplayPreferences();
-  const timeRange = timeRangeProp ?? globalTimeRange;
+  const timeRange = timeRangeProp ?? "total";
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const blockPlotted = useMemo(
     () => (trimLeadingInactive ? trimLeadingInactivePoints(block, includeAccumulatedLines) : block),

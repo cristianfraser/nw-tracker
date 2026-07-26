@@ -3,7 +3,6 @@ import { Area, Bar, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
 import type { CcBillingMonthChartPoint } from "../../types";
 import { rollupCcBillingMonthChartYearly } from "../../ccYearlyRollup";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   buildNiceYAxis,
@@ -55,12 +54,11 @@ export function CcBillingMonthFinancingChart({
   titleAs?: "h2" | "h3";
   points: CcBillingMonthChartPoint[];
   displayUnit: ChartDisplayUnit;
-  /** Per-surface período (month/year framing); falls back to the global toolbar period. */
-  period?: "day" | "month" | "year";
+  /** Per-surface período (from the page's paired CC control). */
+  period: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
-  const { metricsPeriod: globalPeriod } = useDisplayPreferences();
-  const isYearly = (period ?? globalPeriod) === "year";
+  const isYearly = period === "year";
   const TitleTag = titleAs;
   const periodLabel = (ym: string) => (isYearly ? ym.slice(0, 4) : formatYmEs(ym));
 
