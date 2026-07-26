@@ -24,6 +24,7 @@ export function PortfolioGroupChartsSection({
   valuationBlockForChart,
   proportionalBlock,
   proportionalXAxisGranularity = "month",
+  proportionalTimeRange,
   proportionalControls,
   displayUnit,
   xAxisGranularity,
@@ -53,6 +54,7 @@ export function PortfolioGroupChartsSection({
   /** Composition-share block (pie replacement); rendered beside the valuation chart. */
   proportionalBlock: ProportionalSeriesBlockDto | null;
   proportionalXAxisGranularity?: "day" | "month" | "year";
+  proportionalTimeRange?: TimeRange;
   proportionalControls?: ReactNode;
   displayUnit: ChartDisplayUnit;
   xAxisGranularity: "month" | "year";
@@ -128,6 +130,7 @@ export function PortfolioGroupChartsSection({
             title={i18n.t("charts.currentValueByAccount")}
             block={proportionalBlock}
             xAxisGranularity={proportionalXAxisGranularity}
+            timeRange={proportionalTimeRange}
             controls={proportionalControls}
             colorFor={(line) =>
               groupTabPieSliceFill(
