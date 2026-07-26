@@ -208,6 +208,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
           </p>
           <CreditCardDetallePorMesTable
             rows={ccLedger.billing_detail_by_month ?? []}
+            period={ccPrefs.period}
           />
         </>
       ) : null}

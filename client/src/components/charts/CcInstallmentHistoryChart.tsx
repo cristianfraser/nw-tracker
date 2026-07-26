@@ -4,7 +4,6 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatClp } from "../../format";
 import { AppComposedChart } from "./AppComposedChart";
 import {
@@ -58,14 +57,12 @@ export function CcInstallmentHistoryChart({
   openBillingMonth?: string | null;
   /** Day-period rows (`month` = ISO date): lines only — the billed/paid bars are month-frame. */
   dailyRows?: CcHistorialChartRow[] | null;
-  /** Per-surface período; falls back to the global toolbar period when omitted. */
-  period?: "day" | "month" | "year";
+  /** Per-surface período (from the page's paired CC control). */
+  period: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
-  const { metricsPeriod: globalPeriod } = useDisplayPreferences();
-  const activePeriod = period ?? globalPeriod;
-  const isYearly = activePeriod === "year";
-  const isDailyMode = activePeriod === "day" && (dailyRows?.length ?? 0) > 0;
+  const isYearly = period === "year";
+  const isDailyMode = period === "day" && (dailyRows?.length ?? 0) > 0;
   const displayRows = useMemo(
     () => (isDailyMode ? dailyRows! : isYearly ? rollupCcHistorialChartYearly(rows) : rows),
     [rows, isYearly, isDailyMode, dailyRows]

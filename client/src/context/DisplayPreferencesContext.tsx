@@ -7,14 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { CardGroupMetricsPeriod } from "../dashboardCardBreakdown";
 import {
   DISPLAY_UNIT_LS_KEY,
-  METRICS_PERIOD_LS_KEY,
   parsePreferenceStorageChange,
-  TIME_RANGE_LS_KEY,
 } from "../displayPreferenceStorageSync";
-import { parseTimeRange, type TimeRange } from "../timeRange";
 import { setDecimalSeparatorForFormatting } from "../format";
 import i18n from "../i18n";
 import {
@@ -29,8 +25,20 @@ import {
 } from "../numberFormatPreference";
 import type { DisplayUnit } from "../queries/keys";
 
-/** Legacy key when period was stored as dashboard-style `monthly` | `yearly`. */
-const LS_CHART_GRANULARITY_LEGACY = "nw-tracker.chartGranularity";
+/** Retired global-pref keys (Período/Rango went per-surface); cleared once at boot. */
+const RETIRED_PREF_LS_KEYS = [
+  "nw-tracker.metricsPeriod",
+  "nw-tracker.timeRange",
+  "nw-tracker.chartGranularity",
+];
+
+function clearRetiredPrefKeys(): void {
+  try {
+    for (const k of RETIRED_PREF_LS_KEYS) localStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+}
 
 function readStoredUnit(): DisplayUnit {
   try {
@@ -42,28 +50,9 @@ function readStoredUnit(): DisplayUnit {
   return "clp";
 }
 
-function readStoredMetricsPeriod(): CardGroupMetricsPeriod {
-  try {
-    const v = localStorage.getItem(METRICS_PERIOD_LS_KEY);
-    if (v === "day" || v === "year" || v === "month") return v;
-    const legacy = localStorage.getItem(LS_CHART_GRANULARITY_LEGACY);
-    if (legacy === "yearly") return "year";
-    if (legacy === "monthly") return "month";
-  } catch {
-    /* ignore */
-  }
-  return "month";
-}
-
 type DisplayPreferencesContextValue = {
   displayUnit: DisplayUnit;
   setDisplayUnit: (u: DisplayUnit) => void;
-  /** MTD vs YTD for card metrics, title deltas, and dashboard chart rollups (`month` = MTD, `year` = YTD). */
-  metricsPeriod: CardGroupMetricsPeriod;
-  setMetricsPeriod: (p: CardGroupMetricsPeriod) => void;
-  /** Chart range from now back (daily fetch window + monthly/yearly chart clip). */
-  timeRange: TimeRange;
-  setTimeRange: (r: TimeRange) => void;
   /** Separator convention shared by every number, whatever the display currency. */
   decimalSeparator: DecimalSeparator;
   setDecimalSeparator: (s: DecimalSeparator) => void;
@@ -74,20 +63,8 @@ type DisplayPreferencesContextValue = {
 
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
 
-function readStoredTimeRange(): TimeRange {
-  try {
-    const v = parseTimeRange(localStorage.getItem(TIME_RANGE_LS_KEY));
-    if (v != null) return v;
-  } catch {
-    /* ignore */
-  }
-  return "total";
-}
-
 export function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
   const [displayUnit, setDisplayUnitState] = useState<DisplayUnit>(readStoredUnit);
-  const [metricsPeriod, setMetricsPeriodState] = useState<CardGroupMetricsPeriod>(readStoredMetricsPeriod);
-  const [timeRange, setTimeRangeState] = useState<TimeRange>(readStoredTimeRange);
   const [decimalSeparator, setDecimalSeparatorState] = useState<DecimalSeparator>(
     readInitialDecimalSeparator
   );
@@ -117,24 +94,6 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     }
   }, []);
 
-  const setMetricsPeriod = useCallback((p: CardGroupMetricsPeriod) => {
-    setMetricsPeriodState(p);
-    try {
-      localStorage.setItem(METRICS_PERIOD_LS_KEY, p);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const setTimeRange = useCallback((r: TimeRange) => {
-    setTimeRangeState(r);
-    try {
-      localStorage.setItem(TIME_RANGE_LS_KEY, r);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   const setDecimalSeparator = useCallback(
     (s: DecimalSeparator) => {
       applyDecimalSeparator(s);
@@ -154,18 +113,16 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   // Cross-tab sync: another tab's preference write lands here as a `storage`
   // event (other tabs only, value actually changed) — apply without persisting.
   useEffect(() => {
+    clearRetiredPrefKeys();
+  }, []);
+
+  useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       const change = parsePreferenceStorageChange(e.key, e.newValue);
       if (!change) return;
       switch (change.pref) {
         case "displayUnit":
           setDisplayUnitState(change.value);
-          break;
-        case "metricsPeriod":
-          setMetricsPeriodState(change.value);
-          break;
-        case "timeRange":
-          setTimeRangeState(change.value);
           break;
         case "decimalSeparator":
           applyDecimalSeparator(change.value);
@@ -183,27 +140,12 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     (): DisplayPreferencesContextValue => ({
       displayUnit,
       setDisplayUnit,
-      metricsPeriod,
-      setMetricsPeriod,
-      timeRange,
-      setTimeRange,
       decimalSeparator,
       setDecimalSeparator,
       language,
       setLanguage,
     }),
-    [
-      displayUnit,
-      setDisplayUnit,
-      metricsPeriod,
-      setMetricsPeriod,
-      timeRange,
-      setTimeRange,
-      decimalSeparator,
-      setDecimalSeparator,
-      language,
-      setLanguage,
-    ]
+    [displayUnit, setDisplayUnit, decimalSeparator, setDecimalSeparator, language, setLanguage]
   );
 
   return (

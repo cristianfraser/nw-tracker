@@ -2,7 +2,6 @@ import { Area, Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } f
 import { useMemo, type ReactNode } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import i18n from "../../i18n";
@@ -138,13 +137,12 @@ export function MonthlyPerformanceComboChart({
   lineSeries?: MonthlyPlLineSeries[];
   alternateYearAreaStripes?: boolean;
   xAxisGranularity?: "month" | "year" | "day";
-  /** Per-surface range for the M/Y clip; falls back to the global toolbar range when omitted. */
+  /** Per-surface range for the M/Y clip; omitted = no clip (full history). */
   timeRange?: TimeRange;
   /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
   controls?: ReactNode;
 }) {
-  const { timeRange: globalTimeRange } = useDisplayPreferences();
-  const timeRange = timeRangeProp ?? globalTimeRange;
+  const timeRange = timeRangeProp ?? "total";
 
   const densePoints = useMemo(() => {
     const zeroKeys = barSeries.map((b) => b.dataKey);
