@@ -36,8 +36,12 @@ services:
     name: nw-tracker-demo
     runtime: node
     plan: starter
-    domains:
-      - nw-tracker.crfrsr.io
+    # Custom domain intentionally NOT declared: the workspace has no free custom-domain
+    # slot (Hobby caps at 2, both on pokedex), so the domain add fails and Render rejects
+    # the WHOLE blueprint sync with it — which silently blocked every other render.yaml
+    # change (e.g. the version-info buildCommand) from applying. Re-add when a slot frees:
+    # domains:
+    #   - nw-tracker.crfrsr.io
     # version-info.mjs first: writes version.json (commit-stamped) at repo root while
     # .git is present, so the server can report the deployed commit at /api/health.
     buildCommand: node scripts/version-info.mjs --write version.json && npm install --include=dev && npm run build -w nw-tracker-client
