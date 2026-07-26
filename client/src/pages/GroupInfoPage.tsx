@@ -240,7 +240,7 @@ export function GroupInfoPage() {
   }, [ts, chartCtx, groupedToggleOn]);
 
   // Day view: per-session lines fetched lazily; series identities/colors reuse the
-  // ungrouped monthly block (the Agrupado toggle stays a monthly-view feature).
+  // matching monthly block (grouped/ungrouped bucket lines share its synthetic ids).
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
@@ -263,25 +263,31 @@ export function GroupInfoPage() {
     if (!proportionalIsDaily) return null;
     const daily = proportionalDailySeries.data;
     if (!daily) return null;
-    if (groupedToggleOn && daily.grouped_proportional?.series.length) {
-      return daily.grouped_proportional;
-    }
+    // `ungrouped_*` is only emitted when it differs from the grouped payload — absence with
+    // a grouped payload present means both modes resolve to the same buckets (leaf pages).
+    const bucketProportional = groupedToggleOn
+      ? daily.grouped_proportional
+      : daily.ungrouped_proportional ?? daily.grouped_proportional;
+    if (bucketProportional?.series.length) return bucketProportional;
     return daily.proportional ?? null;
   }, [proportionalIsDaily, proportionalDailySeries.data, groupedToggleOn]);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
     if (!daily) return null;
-    // Agrupado: bucket lines share synthetic ids with the monthly grouped block, so the
+    // Bucket lines share synthetic ids with the matching monthly grouped block, so the
     // same builder maps them onto that block's series metadata (names/colors/dep keys).
-    if (groupedToggleOn && daily.grouped_accounts?.length && ts?.nav_grouped_blocks?.grouped) {
-      return buildDailyValuationBlock(
-        { ...daily, accounts: daily.grouped_accounts },
-        ts.nav_grouped_blocks.grouped
-      );
+    // `ungrouped_accounts` is only emitted when it differs from `grouped_accounts` —
+    // absence with a grouped payload present means both plans resolve to the same buckets.
+    const bucketLines = groupedToggleOn
+      ? daily.grouped_accounts
+      : daily.ungrouped_accounts ?? daily.grouped_accounts;
+    const bucketBlock = ts?.nav_grouped_blocks?.[groupedToggleOn ? "grouped" : "ungrouped"];
+    if (bucketLines?.length && bucketBlock) {
+      return buildDailyValuationBlock({ ...daily, accounts: bucketLines }, bucketBlock);
     }
     return buildDailyValuationBlock(daily, ts?.accounts_in_group ?? null);
-  }, [valuationIsDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks?.grouped, ts?.accounts_in_group]);
+  }, [valuationIsDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks, ts?.accounts_in_group]);
 
   const displayProportional = useMemo(() => {
     if (!ts?.group_allocation_proportional || !chartCtx) return null;
@@ -299,8 +305,12 @@ export function GroupInfoPage() {
     if (!perfIsDaily) return null;
     const daily = perfDailySeries.data;
     if (!daily || !displayGroupPerf?.bar_accounts.length) return null;
-    const lines =
-      groupedToggleOn && daily.grouped_accounts?.length ? daily.grouped_accounts : daily.accounts;
+    // Same absence-means-identical rule as the valuation block above; the bucket lines'
+    // synthetic ids match the mode's monthly bar metadata (`nav_grouped_bars`).
+    const bucketLines = groupedToggleOn
+      ? daily.grouped_accounts
+      : daily.ungrouped_accounts ?? daily.grouped_accounts;
+    const lines = bucketLines?.length ? bucketLines : daily.accounts;
     if (!lines?.length) return null;
     return buildDailyPerfComboPoints({
       series: daily,
