@@ -163,7 +163,6 @@ describe("convertAccountDetailBundleUnit (CLP → USD)", () => {
           accounts: [{ account_id: 5, name: "A", dataKey: "5", valueSeriesType: "data" }],
           points: [{ as_of_date: "2025-01-31", "5": 950_000 }],
         },
-        allocation_pie: [{ name: "A", account_id: 5, value: 950_000 }],
       },
       monthly_performance: {
         account_id: 5,
@@ -201,7 +200,6 @@ describe("convertAccountDetailBundleUnit (CLP → USD)", () => {
     const usd = convertAccountDetailBundleUnit(clpDetail(), "usd", RATE);
     expect(usd.ts!.unit).toBe("usd");
     expect(usd.ts!.accounts.points[0]!["5"]).toBeCloseTo(1_000, 6);
-    expect(usd.ts!.allocation_pie[0]!.value).toBeCloseTo(1_000, 6);
 
     const row = usd.monthly_performance!.monthly[0]!;
     expect(row.unit).toBe("usd");

@@ -196,10 +196,6 @@ function scaleAccountValuationTs(
     ...ts,
     unit: tsUnit(targetUnit),
     accounts: scaleBlock(ts.accounts, factor),
-    allocation_pie: ts.allocation_pie.map((s) => ({
-      ...s,
-      value: Number.isFinite(s.value) ? s.value * factor : s.value,
-    })),
   };
 }
 
