@@ -334,7 +334,6 @@ export function GroupInfoPage() {
             groupSlug: portfolioGroup,
             dash: dashForStrip,
             overviewPoints,
-            metricsPeriod,
             showUsd,
             animated: true,
             linkedCardNavChildren,

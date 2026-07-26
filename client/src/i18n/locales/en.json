@@ -198,6 +198,10 @@
       "periodDeltaMonth": "Month P/L",
       "periodDeltaYear": "Year P/L",
       "periodDeltaDay": "Day P/L",
+      "rowTotal": "Total",
+      "rowDay": "Day",
+      "rowMonth": "Month",
+      "rowYear": "Year",
       "summaryAria": "Deposits and total and period Δ",
       "creditCardShortfallFromSavings": "Credit-card coverage from savings"
     }

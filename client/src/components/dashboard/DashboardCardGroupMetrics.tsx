@@ -2,7 +2,7 @@ import { cn } from "../../cn";
 import {
   roundedMetricDelta,
   roundedMetricDeposits,
-  type CardGroupMetrics,
+  type CardGroupMetricsByPeriod,
   type CardGroupMetricsPeriod,
 } from "../../dashboardCardBreakdown";
 import { accountingCurrencyNumberFlowParts, minAdaptiveUsdFractionDigits } from "../../format";
@@ -20,13 +20,39 @@ const METRIC_TIMING = {
 };
 
 type Props = {
-  metrics: CardGroupMetrics;
+  /** All three period slices; every card renders día/mes/año rows simultaneously. */
+  metricsByPeriod: CardGroupMetricsByPeriod;
   showUsd: boolean;
-  period: CardGroupMetricsPeriod;
   cardSlug: string;
   animated?: boolean;
   placeholderPhase?: boolean;
 };
+
+const PERIOD_ROWS: readonly {
+  period: CardGroupMetricsPeriod;
+  labelKey: string;
+  depositsKey: string;
+  deltaKey: string;
+}[] = [
+  {
+    period: "day",
+    labelKey: "dashboard.cardBreakdown.rowDay",
+    depositsKey: "dashboard.cardBreakdown.periodDepositsDay",
+    deltaKey: "dashboard.cardBreakdown.periodDeltaDay",
+  },
+  {
+    period: "month",
+    labelKey: "dashboard.cardBreakdown.rowMonth",
+    depositsKey: "dashboard.cardBreakdown.periodDepositsMonth",
+    deltaKey: "dashboard.cardBreakdown.periodDeltaMonth",
+  },
+  {
+    period: "year",
+    labelKey: "dashboard.cardBreakdown.rowYear",
+    depositsKey: "dashboard.cardBreakdown.periodDepositsYear",
+    deltaKey: "dashboard.cardBreakdown.periodDeltaYear",
+  },
+];
 
 function DepositedMetricFlow({
   value,
@@ -60,7 +86,9 @@ function DepositedMetricFlow({
   );
 }
 
+/** One [label | deposits | Δ] grid row (cells are direct grid items of `.root`). */
 function MetricsRow({
+  label,
   deposited,
   depositedLabel,
   delta,
@@ -72,6 +100,7 @@ function MetricsRow({
   cardSlug,
   rowKey,
 }: {
+  label: string;
   deposited: number | null;
   depositedLabel: string;
   delta: number | null;
@@ -84,8 +113,9 @@ function MetricsRow({
   rowKey: string;
 }) {
   return (
-    <div className={styles.row}>
-      <span className={styles.deposited}>
+    <>
+      <span className={styles.rowLabel}>{label}</span>
+      <span className={styles.deposited} title={depositedLabel}>
         <span className="visually-hidden">{depositedLabel}</span>
         <DepositedMetricFlow
           value={deposited}
@@ -104,45 +134,38 @@ function MetricsRow({
           fractionDigits={deltaFractionDigits}
         />
       </span>
-    </div>
+    </>
   );
 }
 
 export function DashboardCardGroupMetrics({
-  metrics,
+  metricsByPeriod,
   showUsd,
-  period,
   cardSlug,
   animated = true,
   placeholderPhase = false,
 }: Props) {
   const { t } = useTranslation();
-  const periodDepositsLabel =
-    period === "year"
-      ? t("dashboard.cardBreakdown.periodDepositsYear")
-      : period === "day"
-        ? t("dashboard.cardBreakdown.periodDepositsDay")
-        : t("dashboard.cardBreakdown.periodDepositsMonth");
-  const periodDeltaLabel =
-    period === "year"
-      ? t("dashboard.cardBreakdown.periodDeltaYear")
-      : period === "day"
-        ? t("dashboard.cardBreakdown.periodDeltaDay")
-        : t("dashboard.cardBreakdown.periodDeltaMonth");
 
-  const totalDeposited = roundedMetricDeposits(metrics, showUsd, "total");
-  const totalDelta = roundedMetricDelta(metrics, showUsd, "total");
-  const periodDeposited = roundedMetricDeposits(metrics, showUsd, "period");
-  const periodDelta = roundedMetricDelta(metrics, showUsd, "period");
-  // Both USD deltas of the card share the least adaptive decimals of the pair.
+  // Lifetime fields are identical across slices — read them from the month slice.
+  const lifetime = metricsByPeriod.month;
+  const totalDeposited = roundedMetricDeposits(lifetime, showUsd, "total");
+  const totalDelta = roundedMetricDelta(lifetime, showUsd, "total");
+  const periodRows = PERIOD_ROWS.map((row) => ({
+    ...row,
+    deposited: roundedMetricDeposits(metricsByPeriod[row.period], showUsd, "period"),
+    delta: roundedMetricDelta(metricsByPeriod[row.period], showUsd, "period"),
+  }));
+  // All USD deltas of the card share the least adaptive decimals of the set.
   const deltaFractionDigits = showUsd
-    ? minAdaptiveUsdFractionDigits([totalDelta, periodDelta])
+    ? minAdaptiveUsdFractionDigits([totalDelta, ...periodRows.map((r) => r.delta)])
     : 0;
 
   return (
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
       <DashboardCardsValueGroup>
         <MetricsRow
+          label={t("dashboard.cardBreakdown.rowTotal")}
           deposited={totalDeposited}
           depositedLabel={t("dashboard.cardBreakdown.totalDeposited")}
           delta={totalDelta}
@@ -154,18 +177,23 @@ export function DashboardCardGroupMetrics({
           cardSlug={cardSlug}
           rowKey="total"
         />
-        <MetricsRow
-          deposited={periodDeposited}
-          depositedLabel={periodDepositsLabel}
-          delta={periodDelta}
-          deltaLabel={periodDeltaLabel}
-          deltaFractionDigits={deltaFractionDigits}
-          showUsd={showUsd}
-          animated={animated}
-          placeholderPhase={placeholderPhase}
-          cardSlug={cardSlug}
-          rowKey={period}
-        />
+        <span className={styles.divider} aria-hidden="true" />
+        {periodRows.map((row) => (
+          <MetricsRow
+            key={row.period}
+            label={t(row.labelKey)}
+            deposited={row.deposited}
+            depositedLabel={t(row.depositsKey)}
+            delta={row.delta}
+            deltaLabel={t(row.deltaKey)}
+            deltaFractionDigits={deltaFractionDigits}
+            showUsd={showUsd}
+            animated={animated}
+            placeholderPhase={placeholderPhase}
+            cardSlug={cardSlug}
+            rowKey={row.period}
+          />
+        ))}
       </DashboardCardsValueGroup>
     </div>
   );

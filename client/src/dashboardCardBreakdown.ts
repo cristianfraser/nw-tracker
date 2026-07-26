@@ -256,6 +256,19 @@ export function cardGroupMetricsFromAccounts(
   };
 }
 
+export type CardGroupMetricsByPeriod = Record<CardGroupMetricsPeriod, CardGroupMetrics>;
+
+/** All three period slices from dashboard rows — cards render día/mes/año rows simultaneously. */
+export function cardGroupMetricsByPeriodFromAccounts(
+  rows: DashboardAccountRow[]
+): CardGroupMetricsByPeriod {
+  return {
+    day: cardGroupMetricsFromAccounts(rows, "day"),
+    month: cardGroupMetricsFromAccounts(rows, "month"),
+    year: cardGroupMetricsFromAccounts(rows, "year"),
+  };
+}
+
 /** Account scope for bucket card metrics and balance Δ (includes sold-out + chart_inactive). */
 export function accountInDashboardGroupScope(
   a: DashboardAccountRow,
@@ -315,69 +328,6 @@ function sortGroupsDesc<T extends { clp: number }>(items: T[]): T[] {
 }
 
 export type DashboardGroupSlug = "net_worth" | "real_estate" | "retirement" | "brokerage" | "cash_eqs";
-
-/** Balance Δ for an arbitrary account subset: Σ current − Σ prior close (same rules as bucket cards). */
-export function subsetPeriodBalanceDeltaFromAccounts(
-  accounts: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  unit: "clp" | "usd",
-  include: (a: DashboardAccountRow) => boolean
-): number | null {
-  const rows = accounts.filter((a) => include(a));
-  if (!rows.length) return null;
-
-  let current = 0;
-  let prior = 0;
-  let counted = 0;
-
-  for (const r of rows) {
-    const close =
-      period === "year"
-        ? unit === "usd"
-          ? r.prior_year_close_usd
-          : r.prior_year_close_clp
-        : period === "day"
-          ? unit === "usd"
-            ? r.prior_day_close_usd
-            : r.prior_day_close_clp
-          : unit === "usd"
-            ? r.prior_month_close_usd
-            : r.prior_month_close_clp;
-    const cur =
-      unit === "usd"
-        ? r.current_value_usd != null && Number.isFinite(r.current_value_usd)
-          ? r.current_value_usd
-          : 0
-        : dashboardAccountCurrentValueClp(r);
-    if (close == null || !Number.isFinite(close)) continue;
-    current += cur;
-    prior += close;
-    counted += 1;
-  }
-
-  if (counted === 0) return null;
-  return current - prior;
-}
-
-export function subsetTitleBalanceDeltaRounded(
-  accounts: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean,
-  include: (a: DashboardAccountRow) => boolean
-): number | null {
-  const unit = showUsd ? "usd" : "clp";
-  const v = subsetPeriodBalanceDeltaFromAccounts(accounts, period, unit, include);
-  return v != null && Number.isFinite(v) ? Math.round(v) : null;
-}
-
-/** Single-account card title Δ (prior month/year close vs live mark). */
-export function accountCardTitleBalanceDelta(
-  row: DashboardAccountRow,
-  period: CardGroupMetricsPeriod,
-  showUsd: boolean
-): number | null {
-  return subsetTitleBalanceDeltaRounded([row], period, showUsd, () => true);
-}
 
 /** Sum live dashboard current values for an account subset (CLP always; USD when `showUsd`). */
 export function sumCurrentValueClpUsd(

@@ -20,7 +20,7 @@ import {
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
-import { monthYearMetricsPeriod, type CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
+import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
 import type { InversionesPeriodMetricsDto } from "../../portfolioNavDashboardCards";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
@@ -37,7 +37,6 @@ export type GroupInfoPortfolioStrip = {
     inversiones_period_metrics?: InversionesPeriodMetricsDto;
   };
   overviewPoints: Record<string, string | number | null>[];
-  metricsPeriod: CardGroupMetricsPeriod;
   showUsd: boolean;
   animated?: boolean;
   /** When false, the strip is omitted (e.g. group page before valuation data is ready). Default true. */
@@ -178,7 +177,6 @@ export function GroupInfoBase({
             dash={portfolio.dash}
             parentNavNode={portfolio.navNode}
             showUsd={portfolio.showUsd}
-            metricsPeriod={portfolio.metricsPeriod}
             animated={portfolio.animated}
             placeholderPhase={portfolio.placeholderPhase ?? loading}
             linkedCardNavChildren={portfolio.linkedCardNavChildren}

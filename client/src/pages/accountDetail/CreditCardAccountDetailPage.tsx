@@ -107,10 +107,8 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     <AccountDetailSharedLayout
       title={ts.name}
       accountId={summary.account_id}
-      accountTitleDelta={data.accountTitleDelta}
       accountMetricsAgg={data.accountMetricsAgg}
       displayUnit={displayUnit}
-      metricsPeriod={metricsPeriod}
       heroClp={heroClp}
       heroApiUsd={displayUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null}
       dash={data.dash}

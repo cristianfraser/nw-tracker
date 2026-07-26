@@ -143,10 +143,8 @@ export function StandardAccountDetailPage({ data }: Props) {
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       title={ts.name}
       accountId={summary.account_id}
-      accountTitleDelta={data.accountTitleDelta}
       accountMetricsAgg={data.accountMetricsAgg}
       displayUnit={displayUnit}
-      metricsPeriod={metricsPeriod}
       heroClp={
         displayUnit === "usd"
           ? 0

@@ -3,11 +3,9 @@ import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { CompactEntityCard } from "./CompactEntityCard";
 import { dashboardRowsForNavSubtree } from "../../portfolioNavDashboardCards";
 import {
-  accountCardTitleBalanceDelta,
-  cardGroupMetricsFromAccounts,
+  cardGroupMetricsByPeriodFromAccounts,
   compareDashboardCardMainDesc,
   sumCurrentValueClpUsd,
-  type CardGroupMetricsPeriod,
 } from "../../dashboardCardBreakdown";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
@@ -16,7 +14,6 @@ export type PortfolioNavAccountCompactCardsProps = {
   dash: Pick<DashboardResponse, "accounts">;
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
-  metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
   placeholderPhase?: boolean;
 };
@@ -26,7 +23,6 @@ export function PortfolioNavAccountCompactCards({
   dash,
   navChildren,
   showUsd,
-  metricsPeriod,
   animated = true,
   placeholderPhase = false,
 }: PortfolioNavAccountCompactCardsProps) {
@@ -45,11 +41,8 @@ export function PortfolioNavAccountCompactCards({
     <>
       {sorted.map((child) => {
         const rows = dashboardRowsForNavSubtree(dash.accounts, child);
-        const row = rows[0] ?? null;
         const { clp, apiUsd } = sumCurrentValueClpUsd(rows, showUsd);
-        const titleDelta =
-          row != null ? accountCardTitleBalanceDelta(row, metricsPeriod, showUsd) : null;
-        const metrics = cardGroupMetricsFromAccounts(rows, metricsPeriod);
+        const metricsByPeriod = cardGroupMetricsByPeriodFromAccounts(rows);
         const fxMissing = showUsd && rows.some((r) => r.fx_missing);
         const syncStale = rows.length > 0 && rows.every((r) => r.sync_stale === true);
         const rp = child.route_path?.trim() ?? "";
@@ -63,7 +56,6 @@ export function PortfolioNavAccountCompactCards({
             <CompactEntityCard
               label={resolveNavTreeLabel(child)}
               to={rp || undefined}
-              balanceDelta={titleDelta}
               showUsd={showUsd}
               clp={clp}
               apiUsd={apiUsd}
@@ -76,9 +68,8 @@ export function PortfolioNavAccountCompactCards({
               valueVariant="main"
               metrics={
                 <DashboardCardGroupMetrics
-                  metrics={metrics}
+                  metricsByPeriod={metricsByPeriod}
                   showUsd={showUsd}
-                  period={metricsPeriod}
                   cardSlug={cardSlug}
                   animated={animated}
                   placeholderPhase={placeholderPhase}

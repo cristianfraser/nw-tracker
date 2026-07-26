@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { roundedMetricDelta } from "../dashboardCardBreakdown";
-import {
-  mainValueAndMetricsForNavChild,
-  titleBalanceDeltaForNavChild,
-} from "../portfolioNavDashboardCards";
+import { mainValueForNavChild, requireNavCardMetrics } from "../portfolioNavDashboardCards";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import type { CachedDashboardNavSnapshot, DashboardAccountRow, NavTreeNodeDto } from "../types";
 import { perturbDashboardNavSnapshot } from "./perturbCachedAmount";
@@ -120,14 +117,6 @@ describe("loading PL placeholder repro", () => {
       day: periodMetrics,
       month: periodMetrics,
       year: periodMetrics,
-      title_delta: {
-        month_clp: null,
-        month_usd: null,
-        year_clp: null,
-        year_usd: null,
-        day_clp: null,
-        day_usd: null,
-      },
     };
     const raw: CachedDashboardNavSnapshot = {
       accounts: [row({})],
@@ -136,9 +125,9 @@ describe("loading PL placeholder repro", () => {
     };
     const perturbed = perturbDashboardNavSnapshot(raw);
     const dash = dashPickForNavStrip({ ...perturbed, overviewPoints: [] }, netWorthRoot);
-    const { clp, metrics } = mainValueAndMetricsForNavChild(dash, retirementChild, "month", false);
+    const { clp } = mainValueForNavChild(dash, retirementChild, false);
+    const metrics = requireNavCardMetrics(dash, retirementChild).child.month;
     const periodPl = roundedMetricDelta(metrics, false, "period");
-    titleBalanceDeltaForNavChild(dash, retirementChild, "month", false);
     const cachedDelta = perturbed.accounts[0]!.delta_month_clp!;
 
     expect(dash.totals.prior_closes.month_end).toBe("");

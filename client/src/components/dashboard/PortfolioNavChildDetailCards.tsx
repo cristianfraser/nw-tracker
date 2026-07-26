@@ -5,14 +5,11 @@ import { DetailedGroupCard } from "./DetailedGroupCard";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
-  mainValueAndMetricsForNavChild,
-  navChildCardHasPeriodActivity,
-  titleBalanceDeltaForNavChild,
+  mainValueForNavChild,
+  navChildCardHasActivity,
+  requireNavCardMetrics,
 } from "../../portfolioNavDashboardCards";
-import {
-  compareDashboardCardMainDesc,
-  type CardGroupMetricsPeriod,
-} from "../../dashboardCardBreakdown";
+import { compareDashboardCardMainDesc } from "../../dashboardCardBreakdown";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 
@@ -23,7 +20,6 @@ export type PortfolioNavChildDetailCardsProps = {
   >;
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
-  metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
   placeholderPhase?: boolean;
 };
@@ -33,7 +29,6 @@ export function PortfolioNavChildDetailCards({
   dash,
   navChildren,
   showUsd,
-  metricsPeriod,
   animated = true,
   placeholderPhase = false,
 }: PortfolioNavChildDetailCardsProps) {
@@ -41,15 +36,14 @@ export function PortfolioNavChildDetailCards({
     const filtered = navChildren.filter(
       (c) =>
         c.route_path?.trim() &&
-        (c.chart_inactive !== true ||
-          navChildCardHasPeriodActivity(dash, c, metricsPeriod, showUsd))
+        (c.chart_inactive !== true || navChildCardHasActivity(dash, c, showUsd))
     );
     return [...filtered].sort((a, b) => {
-      const aMain = mainValueAndMetricsForNavChild(dash, a, metricsPeriod, showUsd);
-      const bMain = mainValueAndMetricsForNavChild(dash, b, metricsPeriod, showUsd);
+      const aMain = mainValueForNavChild(dash, a, showUsd);
+      const bMain = mainValueForNavChild(dash, b, showUsd);
       return compareDashboardCardMainDesc(aMain.clp, aMain.apiUsd, bMain.clp, bMain.apiUsd, showUsd);
     });
-  }, [navChildren, dash, metricsPeriod, showUsd]);
+  }, [navChildren, dash, showUsd]);
 
   if (!sorted.length) return null;
 
@@ -57,13 +51,8 @@ export function PortfolioNavChildDetailCards({
     <>
       {sorted.map((child) => {
         const childRows = dashboardRowsForNavSubtree(dash.accounts, child);
-        const { clp, apiUsd, metrics: childMetrics } = mainValueAndMetricsForNavChild(
-          dash,
-          child,
-          metricsPeriod,
-          showUsd
-        );
-        const childTitleDelta = titleBalanceDeltaForNavChild(dash, child, metricsPeriod, showUsd);
+        const { clp, apiUsd } = mainValueForNavChild(dash, child, showUsd);
+        const metricsByPeriod = requireNavCardMetrics(dash, child).child;
         const br = breakdownForNavChild(child, childRows, dash);
         const rp = child.route_path?.trim() ?? "";
         const cashClass =
@@ -82,7 +71,6 @@ export function PortfolioNavChildDetailCards({
             key={child.node_id}
             title={resolveNavTreeLabel(child)}
             titleTo={rp || undefined}
-            balanceDelta={childTitleDelta}
             showUsd={showUsd}
             clp={clp}
             apiUsd={apiUsd}
@@ -94,9 +82,8 @@ export function PortfolioNavChildDetailCards({
             className={cashClass}
             metrics={
               <DashboardCardGroupMetrics
-                metrics={childMetrics}
+                metricsByPeriod={metricsByPeriod}
                 showUsd={showUsd}
-                period={metricsPeriod}
                 cardSlug={cardSlug}
                 animated={animated}
                 placeholderPhase={placeholderPhase}

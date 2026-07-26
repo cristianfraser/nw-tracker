@@ -19,8 +19,7 @@ import {
 } from "../../placeholders/keepPrevBundleUnit";
 import { readFxLatestCache } from "../../queries/fxLatestCache";
 import {
-  accountCardTitleBalanceDelta,
-  cardGroupMetricsFromAccounts,
+  cardGroupMetricsByPeriodFromAccounts,
   type CardGroupMetricsPeriod,
 } from "../../dashboardCardBreakdown";
 import type {
@@ -63,8 +62,7 @@ export type AccountDetailPageData = {
   navSelf: ReturnType<typeof findNavTreeNodeByAccountId>;
   accountChartTheme: { bar: string; areaStroke: string; areaFill: string };
   accountDashRow: DashboardAccountRow | null;
-  accountTitleDelta: ReturnType<typeof accountCardTitleBalanceDelta>;
-  accountMetricsAgg: ReturnType<typeof cardGroupMetricsFromAccounts>;
+  accountMetricsAgg: ReturnType<typeof cardGroupMetricsByPeriodFromAccounts>;
   accountNavChildren: NonNullable<ReturnType<typeof findNavTreeNodeByAccountId>>["children"];
   chartUsdVal: number | null;
 };
@@ -234,11 +232,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     if (fromNavCtx) return fromNavCtx;
     return navSnapshot?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
   }, [detail?.dashboard_account_row, dash?.accounts, navSnapshot, summary.account_id]);
-  const accountTitleDelta =
-    accountDashRow != null
-      ? accountCardTitleBalanceDelta(accountDashRow, metricsPeriod, displayUnit === "usd")
-      : null;
-  const accountMetricsAgg = cardGroupMetricsFromAccounts(accountDashRow ? [accountDashRow] : [], metricsPeriod);
+  const accountMetricsAgg = cardGroupMetricsByPeriodFromAccounts(accountDashRow ? [accountDashRow] : []);
   const accountNavChildren = navSelf?.children?.filter((c) => c.route_path?.trim()) ?? [];
 
   return {
@@ -270,7 +264,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     navSelf,
     accountChartTheme,
     accountDashRow,
-    accountTitleDelta,
     accountMetricsAgg,
     accountNavChildren,
     chartUsdVal,

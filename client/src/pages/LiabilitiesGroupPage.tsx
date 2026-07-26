@@ -457,7 +457,6 @@ export function LiabilitiesGroupPage() {
               subgroup: categoryFilter ?? undefined,
               dash: dashForStrip,
               overviewPoints,
-              metricsPeriod,
               showUsd,
               animated: true,
               linkedCardNavChildren,
