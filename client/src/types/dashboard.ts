@@ -113,14 +113,6 @@ export interface NavCardMetricsVariantDto {
   day: NavCardPeriodMetricsDto;
   month: NavCardPeriodMetricsDto;
   year: NavCardPeriodMetricsDto;
-  title_delta: {
-    month_clp: number | null;
-    month_usd: number | null;
-    year_clp: number | null;
-    year_usd: number | null;
-    day_clp: number | null;
-    day_usd: number | null;
-  };
 }
 
 /**

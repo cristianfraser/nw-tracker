@@ -6,15 +6,13 @@ import { PortfolioNavAccountCompactCards } from "./PortfolioNavAccountCompactCar
 import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   dashboardRowsForNavSubtree,
-  inactiveAccountNavLeavesWithPeriodActivity,
-  parentTitleBalanceDelta,
+  inactiveAccountNavLeavesWithActivity,
   routableNavStripChildren,
   portfolioNavParentMainValue,
-  portfolioNavParentMetrics,
   portfolioNavParentTitleModeForNavNode,
+  requireNavCardMetrics,
   type InversionesPeriodMetricsDto,
 } from "../../portfolioNavDashboardCards";
-import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
@@ -30,7 +28,6 @@ export type PortfolioNavEntityCardsStripProps = {
   };
   parentNavNode: NavTreeNodeDto;
   showUsd: boolean;
-  metricsPeriod: CardGroupMetricsPeriod;
   animated?: boolean;
   placeholderPhase?: boolean;
   /** Nodes for `parentNavNode.linked_card_slugs`, resolved by the page against the sidebar nav. */
@@ -44,7 +41,6 @@ export function PortfolioNavEntityCardsStrip({
   dash,
   parentNavNode,
   showUsd,
-  metricsPeriod,
   animated = true,
   placeholderPhase = false,
   linkedCardNavChildren = [],
@@ -53,8 +49,7 @@ export function PortfolioNavEntityCardsStrip({
   const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
   const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
   const parentTotals = portfolioNavParentMainValue(dash, parentTitleMode, parentRows, showUsd);
-  const parentMetrics = portfolioNavParentMetrics(dash, parentNavNode, metricsPeriod);
-  const parentTitleDelta = parentTitleBalanceDelta(dash, parentNavNode, metricsPeriod, showUsd);
+  const parentMetricsByPeriod = requireNavCardMetrics(dash, parentNavNode).parent;
 
   const stripGroupChildren = useMemo(
     () => portfolioStripGroupChildren(parentNavNode),
@@ -76,18 +71,13 @@ export function PortfolioNavEntityCardsStrip({
     [stripAccountChildren]
   );
 
-  /** Accounts the nav tree hides (chart-inactive) still get a card when the period has activity. */
+  /** Accounts the nav tree hides (chart-inactive) still get a card when any period has activity. */
   const accountCardChildren = useMemo(
     () => [
       ...filteredAccountChildren,
-      ...inactiveAccountNavLeavesWithPeriodActivity(
-        dash,
-        parentNavNode,
-        stripGroupChildren,
-        metricsPeriod
-      ),
+      ...inactiveAccountNavLeavesWithActivity(dash, parentNavNode, stripGroupChildren),
     ],
-    [filteredAccountChildren, dash, parentNavNode, stripGroupChildren, metricsPeriod]
+    [filteredAccountChildren, dash, parentNavNode, stripGroupChildren]
   );
 
   /** Groups hosted from elsewhere in the tree (Efectivo ← Pasivos > tarjeta de crédito). */
@@ -107,7 +97,6 @@ export function PortfolioNavEntityCardsStrip({
         compactStripClassName={isCashParent ? "card--cash" : undefined}
         compactSlot={
           <CompactEntityCard
-            balanceDelta={parentTitleDelta}
             showUsd={showUsd}
             clp={parentTotals.clp}
             apiUsd={parentTotals.apiUsd}
@@ -118,9 +107,8 @@ export function PortfolioNavEntityCardsStrip({
             valueVariant="main"
             metrics={
               <DashboardCardGroupMetrics
-                metrics={parentMetrics}
+                metricsByPeriod={parentMetricsByPeriod}
                 showUsd={showUsd}
-                period={metricsPeriod}
                 cardSlug={compactCardSlug}
                 animated={animated}
                 placeholderPhase={placeholderPhase}
@@ -134,7 +122,6 @@ export function PortfolioNavEntityCardsStrip({
               dash={dash}
               navChildren={detailChildren}
               showUsd={showUsd}
-              metricsPeriod={metricsPeriod}
               animated={animated}
               placeholderPhase={placeholderPhase}
             />
@@ -146,7 +133,6 @@ export function PortfolioNavEntityCardsStrip({
               dash={dash}
               navChildren={accountCardChildren}
               showUsd={showUsd}
-              metricsPeriod={metricsPeriod}
               animated={animated}
               placeholderPhase={placeholderPhase}
             />

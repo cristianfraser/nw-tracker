@@ -5,19 +5,15 @@ import { DashboardCardGroupMetrics } from "../../components/dashboard/DashboardC
 import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioEntityCardsStrip";
 import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
 import { PageTitleRow } from "../../components/layout/PageTitleRow";
-import type { CardGroupMetricsPeriod } from "../../dashboardCardBreakdown";
-import type { accountCardTitleBalanceDelta } from "../../dashboardCardBreakdown";
-import type { cardGroupMetricsFromAccounts } from "../../dashboardCardBreakdown";
+import type { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
 import type { dashPickForNavStrip } from "../../queries/fetchers";
 import styles from "../AccountDetailPage.module.css";
 
 type LayoutProps = {
   title: string;
   accountId: number;
-  accountTitleDelta: ReturnType<typeof accountCardTitleBalanceDelta>;
-  accountMetricsAgg: ReturnType<typeof cardGroupMetricsFromAccounts>;
+  accountMetricsAgg: ReturnType<typeof cardGroupMetricsByPeriodFromAccounts>;
   displayUnit: "clp" | "usd";
-  metricsPeriod: CardGroupMetricsPeriod;
   heroClp: number;
   heroApiUsd: number | null;
   dash: ReturnType<typeof dashPickForNavStrip> | null;
@@ -38,10 +34,8 @@ type LayoutProps = {
 export function AccountDetailSharedLayout({
   title,
   accountId,
-  accountTitleDelta,
   accountMetricsAgg,
   displayUnit,
-  metricsPeriod,
   heroClp,
   heroApiUsd,
   dash,
@@ -59,7 +53,6 @@ export function AccountDetailSharedLayout({
         dash={dash}
         navChildren={accountNavChildren}
         showUsd={displayUnit === "usd"}
-        metricsPeriod={metricsPeriod}
         animated
         placeholderPhase={loading}
       />
@@ -80,7 +73,6 @@ export function AccountDetailSharedLayout({
         <PortfolioEntityCardsStrip
           compactSlot={
             <CompactEntityCard
-              balanceDelta={accountTitleDelta}
               showUsd={displayUnit === "usd"}
               clp={displayUnit === "usd" ? 0 : heroClp}
               apiUsd={displayUnit === "usd" ? heroApiUsd : null}
@@ -91,9 +83,8 @@ export function AccountDetailSharedLayout({
               valueVariant="main"
               metrics={
                 <DashboardCardGroupMetrics
-                  metrics={accountMetricsAgg}
+                  metricsByPeriod={accountMetricsAgg}
                   showUsd={displayUnit === "usd"}
-                  period={metricsPeriod}
                   cardSlug={`acc-${accountId}-hero`}
                   animated
                   placeholderPhase={loading}

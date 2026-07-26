@@ -646,7 +646,6 @@ export function DashboardPage() {
               groupSlug: "net_worth",
               dash: dashForStrip,
               overviewPoints,
-              metricsPeriod,
               showUsd,
               animated: !unitSwitching,
             }

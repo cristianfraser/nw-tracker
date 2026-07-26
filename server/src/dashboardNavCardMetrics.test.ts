@@ -28,10 +28,6 @@ function row(partial: Partial<CardMetricsAccountRow> & { account_id: number }): 
     delta_month_usd: null,
     delta_year_clp: null,
     delta_year_usd: null,
-    prior_month_close_clp: null,
-    prior_month_close_usd: null,
-    prior_year_close_clp: null,
-    prior_year_close_usd: null,
     current_value_clp: 0,
     current_value_usd: null,
     ...partial,
@@ -132,18 +128,6 @@ describe("sumCardMetrics", () => {
 });
 
 describe("buildNavCardMetricsBySlug", () => {
-  const totals = {
-    real_estate_clp: 0,
-    retirement_clp: 0,
-    brokerage_clp: 1100,
-    cash_eqs_clp: 500,
-    prior_closes: {
-      month_end: "2026-06-30",
-      month: { brokerage_clp: 1000, cash_eqs_clp: 490, real_estate_clp: 0, retirement_clp: 0 },
-      year: { brokerage_clp: 900, cash_eqs_clp: 450, real_estate_clp: 0, retirement_clp: 0 },
-    },
-  };
-
   const brokerageRows = [
     row({
       account_id: 11,
@@ -152,8 +136,6 @@ describe("buildNavCardMetricsBySlug", () => {
       delta_month_clp: 60,
       delta_total_clp: 300,
       current_value_clp: 1100,
-      prior_month_close_clp: 1000,
-      prior_year_close_clp: 900,
     }),
     // excluded from totals — must not count anywhere
     row({ account_id: 12, deposits_clp: 999, exclude_from_group_totals: 1, delta_month_clp: 999 }),
@@ -173,31 +155,24 @@ describe("buildNavCardMetricsBySlug", () => {
   const input: NavCardMetricsBuildInput = {
     navRoots: [tree],
     rows: brokerageRows,
-    totals,
     inversiones: null,
   };
 
-  it("full-bucket child: bucket scope excludes non-counting rows; title from totals prior closes", () => {
+  it("full-bucket child: bucket scope excludes non-counting rows; every variant carries all three period slices", () => {
     const out = buildNavCardMetricsBySlug(input);
     const brokerage = out.brokerage!;
     expect(brokerage.child.month.deposits_clp).toBe(800);
     expect(brokerage.child.month.delta_period_clp).toBe(60);
-    // totals-based title delta: 1100 − 1000
-    expect(brokerage.child.title_delta.month_clp).toBe(100);
-    expect(brokerage.child.title_delta.year_clp).toBe(200);
-    // usd side has no data anywhere → null
-    expect(brokerage.child.title_delta.month_usd).toBeNull();
+    // rows carry no day/year fields → those slices are present but empty
+    expect(brokerage.child.day.deposits_period_clp).toBe(0);
+    expect(brokerage.child.day.delta_period_clp).toBeNull();
+    expect(brokerage.child.year.delta_period_clp).toBeNull();
+    // lifetime fields are identical across slices
+    expect(brokerage.child.day.deposits_clp).toBe(800);
+    expect(brokerage.child.year.deposits_clp).toBe(800);
   });
 
-  it("day period: metrics from day row fields; title from prior_closes.day totals", () => {
-    const dayTotals = {
-      ...totals,
-      prior_closes: {
-        ...totals.prior_closes,
-        day_end: "2026-07-17",
-        day: { brokerage_clp: 1080, cash_eqs_clp: 498, real_estate_clp: 0, retirement_clp: 0 },
-      },
-    };
+  it("day period: metrics from day row fields", () => {
     const dayRows = [
       row({
         account_id: 11,
@@ -205,40 +180,25 @@ describe("buildNavCardMetricsBySlug", () => {
         deposits_day_clp: 5,
         delta_day_clp: 15,
         current_value_clp: 1100,
-        prior_day_close_clp: 1080,
       }),
       row({ account_id: 12, exclude_from_group_totals: 1, delta_day_clp: 999 }),
     ];
-    const out = buildNavCardMetricsBySlug({ ...input, rows: dayRows, totals: dayTotals });
+    const out = buildNavCardMetricsBySlug({ ...input, rows: dayRows });
     const brokerage = out.brokerage!;
     expect(brokerage.child.day.deposits_period_clp).toBe(5);
     expect(brokerage.child.day.delta_period_clp).toBe(15);
-    // totals-based day title delta: 1100 − 1080
-    expect(brokerage.child.title_delta.day_clp).toBe(20);
     const root = out.net_worth!;
     expect(root.parent.day.delta_period_clp).toBe(15);
-    expect(root.parent.title_delta.day_clp).toBe(20 + 2);
   });
 
-  it("day period without prior_closes.day: totals title falls back to subset rows (null when no prior_day_close)", () => {
-    const out = buildNavCardMetricsBySlug(input);
-    const brokerage = out.brokerage!;
-    // rows carry no day fields → day metrics are empty but present, title null
-    expect(brokerage.child.day.deposits_period_clp).toBe(0);
-    expect(brokerage.child.day.delta_period_clp).toBeNull();
-    expect(brokerage.child.title_delta.day_clp).toBeNull();
-  });
-
-  it("net_worth root parent: sums strip-children child metrics; title = Σ bucket totals deltas", () => {
+  it("net_worth root parent: sums strip-children child metrics", () => {
     const out = buildNavCardMetricsBySlug(input);
     const root = out.net_worth!;
     expect(root.parent.month.deposits_clp).toBe(800);
-    // title over the 4 NW buckets; only brokerage + cash_eqs have prior closes ≠ current
-    expect(root.parent.title_delta.month_clp).toBe(100 + 10);
-    expect(root.parent.title_delta.year_clp).toBe(200 + 50);
+    expect(root.parent.month.delta_period_clp).toBe(60);
   });
 
-  it("subtree child (no bucket mapping): metrics and title from nav-subtree rows only", () => {
+  it("subtree child (no bucket mapping): metrics from nav-subtree rows only", () => {
     const subtree = navNode({
       slug: "net_worth",
       children: [
@@ -253,8 +213,7 @@ describe("buildNavCardMetricsBySlug", () => {
     const out = buildNavCardMetricsBySlug({ ...input, navRoots: [subtree] });
     const mf = out.brokerage_mutual_funds!;
     expect(mf.child.month.deposits_clp).toBe(800);
-    // subset title: current 1100 − prior 1000 from the row itself
-    expect(mf.child.title_delta.month_clp).toBe(100);
+    expect(mf.child.month.delta_period_clp).toBe(60);
   });
 
   it("walks extra roots: liability nodes get subset entries; the shared liabilities slug uses the Pasivos root", () => {
@@ -267,7 +226,6 @@ describe("buildNavCardMetricsBySlug", () => {
       deposits_clp: 0,
       delta_month_clp: -12_000,
       current_value_clp: -500_000,
-      prior_month_close_clp: -488_000,
     });
     const liabilitiesRoot = navNode({
       slug: "liabilities",
@@ -289,7 +247,6 @@ describe("buildNavCardMetricsBySlug", () => {
     });
     const cc = out.liabilities_credit_card!;
     expect(cc.child.month.delta_period_clp).toBe(-12_000);
-    expect(cc.child.title_delta.month_clp).toBe(-12_000);
     // shared slug: the later (Pasivos) root's composition wins
     const liab = out.liabilities!;
     expect(liab.parent.month.delta_period_clp).toBe(-12_000);
