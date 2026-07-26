@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../../cn";
 import { CompactEntityCard } from "../../components/dashboard/CompactEntityCard";
-import { DashboardCardGroupMetrics } from "../../components/dashboard/DashboardCardGroupMetrics";
+import { CardValueDayPl, DashboardCardGroupMetrics } from "../../components/dashboard/DashboardCardGroupMetrics";
 import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioEntityCardsStrip";
 import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
 import { PageTitleRow } from "../../components/layout/PageTitleRow";
@@ -81,6 +81,15 @@ export function AccountDetailSharedLayout({
               placeholderPhase={loading}
               stripInner
               valueVariant="main"
+              valueDelta={
+                <CardValueDayPl
+                  metricsByPeriod={accountMetricsAgg}
+                  showUsd={displayUnit === "usd"}
+                  cardSlug={`acc-${accountId}-hero`}
+                  animated
+                  placeholderPhase={loading}
+                />
+              }
               metrics={
                 <DashboardCardGroupMetrics
                   metricsByPeriod={accountMetricsAgg}

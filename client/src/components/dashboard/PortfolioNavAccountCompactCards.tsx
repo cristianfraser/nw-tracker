@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
+import { CardValueDayPl, DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { CompactEntityCard } from "./CompactEntityCard";
 import { dashboardRowsForNavSubtree } from "../../portfolioNavDashboardCards";
 import {
@@ -66,6 +66,15 @@ export function PortfolioNavAccountCompactCards({
               placeholderPhase={placeholderPhase}
               stripInner
               valueVariant="main"
+              valueDelta={
+                <CardValueDayPl
+                  metricsByPeriod={metricsByPeriod}
+                  showUsd={showUsd}
+                  cardSlug={cardSlug}
+                  animated={animated}
+                  placeholderPhase={placeholderPhase}
+                />
+              }
               metrics={
                 <DashboardCardGroupMetrics
                   metricsByPeriod={metricsByPeriod}
