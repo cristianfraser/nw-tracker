@@ -52,7 +52,9 @@ import {
 import { timeRangeToDays } from "../timeRange";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { useDailySeries } from "../queries/hooks";
-import type { ValuationTimeseriesResponse } from "../types";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { SurfaceControls } from "../components/ui/SurfaceControls";
+import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
 
@@ -70,7 +72,11 @@ const DAILY_OVERVIEW_LINE_KEYS = new Set([
 export function DashboardPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { displayUnit, metricsPeriod, timeRange } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
+  const overviewPrefs = useSurfacePrefs("home.overview", "day", "3y");
+  const principalesPrefs = useSurfacePrefs("home.principales", "day", "3y");
+  const patrimonioPrefs = useSurfacePrefs("home.patrimonio", "day", "3y");
+  const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
@@ -168,23 +174,35 @@ export function DashboardPage() {
 
   const showUsd = displayUnit === "usd";
   const unitSwitching = isFetching && (isPlaceholderData || !bundlePending);
-  const isYearly = metricsPeriod === "year";
-  const isDaily = metricsPeriod === "day";
-  const xAxisGranularity = isYearly ? "year" : "month";
+  const overviewIsDaily = overviewPrefs.period === "day";
+  const principalesIsDaily = principalesPrefs.period === "day";
+  const patrimonioIsDaily = patrimonioPrefs.period === "day";
+  const combosIsDaily = combosPrefs.period === "day";
+  const combosIsYearly = combosPrefs.period === "year";
+  const isYearly = combosIsYearly;
 
-  // Day view: the overview, «Cuentas principales» and «Patrimonio neto vs invested» charts
-  // all swap to daily series (from the lazily-fetched overview-daily payload); the P/L combo
-  // charts below keep their monthly rendering.
-  const { data: dailyOverview } = useDashboardOverviewDaily(
+  // Day view: each of the three valuation charts swaps to daily series from its own
+  // overview-daily fetch (surfaces that agree on the range dedupe into one request).
+  const { data: overviewDailyData } = useDashboardOverviewDaily(
     displayUnit,
-    timeRangeToDays(timeRange),
-    isDaily
+    timeRangeToDays(overviewPrefs.range),
+    overviewIsDaily
+  );
+  const { data: principalesDailyData } = useDashboardOverviewDaily(
+    displayUnit,
+    timeRangeToDays(principalesPrefs.range),
+    principalesIsDaily
+  );
+  const { data: patrimonioDailyData } = useDashboardOverviewDaily(
+    displayUnit,
+    timeRangeToDays(patrimonioPrefs.range),
+    patrimonioIsDaily
   );
   const dailyOverviewBlock = useMemo(() => {
-    if (!isDaily || !dailyOverview?.points.length || !ts?.overview) return null;
+    if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
     const lines = ts.overview.lines.filter((l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)));
     if (!lines.length) return null;
-    const points = dailyOverview.points.map((p) => ({
+    const points = overviewDailyData.points.map((p) => ({
       as_of_date: p.as_of_date,
       total_nw: p.net_worth,
       real_estate: p.real_estate,
@@ -195,16 +213,17 @@ export function DashboardPage() {
       liabilities: p.liabilities,
     }));
     return { lines, points };
-  }, [isDaily, dailyOverview, ts?.overview]);
+  }, [overviewIsDaily, overviewDailyData, ts?.overview]);
 
   // Day mode: «Cuentas principales» swaps to the per-child daily lines. Borrow the monthly
   // block's account metadata (ids/colors/labels) so line identities survive the M↔D toggle,
   // and pair each account's dataKey with the daily values (index-aligned to the daily grid).
   const dailyPrimaryBlock = useMemo(() => {
     const accounts = ts?.accounts_ex_property?.accounts;
-    if (!isDaily || !dailyOverview?.primary_lines?.length || !accounts?.length) return null;
-    const valuesByKey = new Map(dailyOverview.primary_lines.map((l) => [l.dataKey, l.values]));
-    const points = dailyOverview.points.map((p, i) => {
+    if (!principalesIsDaily || !principalesDailyData?.primary_lines?.length || !accounts?.length)
+      return null;
+    const valuesByKey = new Map(principalesDailyData.primary_lines.map((l) => [l.dataKey, l.values]));
+    const points = principalesDailyData.points.map((p, i) => {
       const row: Record<string, string | number | null> = { as_of_date: p.as_of_date };
       for (const a of accounts) {
         const vals = valuesByKey.get(a.dataKey);
@@ -213,15 +232,15 @@ export function DashboardPage() {
       return row;
     });
     return { accounts, points };
-  }, [isDaily, dailyOverview, ts?.accounts_ex_property]);
+  }, [principalesIsDaily, principalesDailyData, ts?.accounts_ex_property]);
 
   // Day mode: «Patrimonio neto vs invested» swaps to daily points (always CLP). Borrow the
   // monthly block's line + milestone metadata; only the points change.
   const dailyPatrimonioBlock = useMemo(() => {
     const src = ts?.patrimonio_usd_milestones_chart;
-    if (!isDaily || !dailyOverview?.patrimonio?.length || !src) return null;
-    return { ...src, points: dailyOverview.patrimonio };
-  }, [isDaily, dailyOverview, ts?.patrimonio_usd_milestones_chart]);
+    if (!patrimonioIsDaily || !patrimonioDailyData?.patrimonio?.length || !src) return null;
+    return { ...src, points: patrimonioDailyData.patrimonio };
+  }, [patrimonioIsDaily, patrimonioDailyData, ts?.patrimonio_usd_milestones_chart]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {
@@ -288,17 +307,17 @@ export function DashboardPage() {
   const retirementDaily = useDailySeries(
     { portfolioGroup: "retirement" },
     displayUnit,
-    timeRangeToDays(timeRange),
-    isDaily
+    timeRangeToDays(combosPrefs.range),
+    combosIsDaily
   );
   const brokerageDaily = useDailySeries(
     { portfolioGroup: "brokerage" },
     displayUnit,
-    timeRangeToDays(timeRange),
-    isDaily
+    timeRangeToDays(combosPrefs.range),
+    combosIsDaily
   );
   const dailyRetirementBrokeragePoints = useMemo(() => {
-    if (!isDaily) return null;
+    if (!combosIsDaily) return null;
     const ret = retirementDaily.data;
     const brk = brokerageDaily.data;
     if (!ret?.points.length || !brk?.points.length) return null;
@@ -330,7 +349,7 @@ export function DashboardPage() {
       ...row,
       deposits_inversiones: (retDeps[i] ?? 0) + (brkDeps[i] ?? 0),
     }));
-  }, [isDaily, retirementDaily.data, brokerageDaily.data, retirementBrokeragePerfPoints]);
+  }, [combosIsDaily, retirementDaily.data, brokerageDaily.data, retirementBrokeragePerfPoints]);
 
   const retirementBrokerageAccumChart = useMemo(() => {
     const depChart = dash?.inversiones_deposits_chart;
@@ -353,23 +372,26 @@ export function DashboardPage() {
     return rows;
   }, [retirementBrokerageForCharts, dash?.inversiones_deposits_chart, isYearly, showUsd]);
 
-  const tsForCharts = useMemo((): ValuationTimeseriesResponse | null => {
-    if (!ts?.accounts_ex_property || !ts.overview) return ts;
-    if (!isYearly) return ts;
-    const overviewRolled = rollupTimeseriesBlockYearEnd({
-      points: ts.overview.points,
-      lines: ts.overview.lines,
-    });
-    const patrimonioRolled = ts.patrimonio_usd_milestones_chart
-      ? rollupTimeseriesBlockYearEnd(ts.patrimonio_usd_milestones_chart)
-      : undefined;
-    return {
-      ...ts,
-      accounts_ex_property: rollupTimeseriesBlockYearEnd(ts.accounts_ex_property),
-      overview: { lines: ts.overview.lines, points: overviewRolled.points },
-      ...(patrimonioRolled ? { patrimonio_usd_milestones_chart: patrimonioRolled } : {}),
-    };
-  }, [ts, isYearly]);
+  // Each valuation chart rolls up (or not) per its OWN period control.
+  const overviewBlock = useMemo((): TimeseriesBlock | null => {
+    if (!ts?.overview) return null;
+    const base = { lines: ts.overview.lines, points: ts.overview.points };
+    if (overviewPrefs.period !== "year") return base;
+    return { lines: ts.overview.lines, points: rollupTimeseriesBlockYearEnd(base).points };
+  }, [ts?.overview, overviewPrefs.period]);
+
+  const principalesBlock = useMemo(() => {
+    if (!ts?.accounts_ex_property) return null;
+    return principalesPrefs.period === "year"
+      ? rollupTimeseriesBlockYearEnd(ts.accounts_ex_property)
+      : ts.accounts_ex_property;
+  }, [ts?.accounts_ex_property, principalesPrefs.period]);
+
+  const patrimonioBlock = useMemo(() => {
+    const src = ts?.patrimonio_usd_milestones_chart;
+    if (!src) return null;
+    return patrimonioPrefs.period === "year" ? rollupTimeseriesBlockYearEnd(src) : src;
+  }, [ts?.patrimonio_usd_milestones_chart, patrimonioPrefs.period]);
 
   const bucketColorBySlug = useMemo(() => {
     const m = new Map<string, string>();
@@ -415,7 +437,7 @@ export function DashboardPage() {
     );
   }
 
-  if (!netWorthNav || !tsForCharts?.accounts_ex_property || !tsForCharts.overview) {
+  if (!netWorthNav || !overviewBlock || !principalesBlock) {
     return (
       <main>
         <p className="muted">{t("common.loadFailed")}</p>
@@ -439,27 +461,61 @@ export function DashboardPage() {
     ];
   });
 
+  // The three P/L combo charts share ONE control (`home.combos`) — same state, rendered on each title.
+  const combosXAxis = dailyRetirementBrokeragePoints
+    ? ("day" as const)
+    : combosIsYearly
+      ? ("year" as const)
+      : ("month" as const);
+  const combosControls = (
+    <SurfaceControls
+      period={combosPrefs.period}
+      onPeriodChange={combosPrefs.setPeriod}
+      range={combosPrefs.range}
+      onRangeChange={combosPrefs.setRange}
+    />
+  );
+
   const dashboardCharts = (
     <>
       <ValuationLineCharts
         displayUnit={displayUnit}
         primaryTitle={t("dashboard.sections.overviewTitle")}
-        primary={
-          dailyOverviewBlock ?? { lines: tsForCharts.overview.lines, points: tsForCharts.overview.points }
-        }
+        primary={dailyOverviewBlock ?? overviewBlock}
         secondaryTitle={t("dashboard.sections.primaryAccountsTitle")}
-        secondary={dailyPrimaryBlock ?? tsForCharts.accounts_ex_property}
+        secondary={dailyPrimaryBlock ?? principalesBlock}
         thickLineDataKey="total_nw"
         includeAccumulatedLines={false}
         primaryColorPlan={{ kind: "dashboard-overview" }}
         secondaryColorPlan={{ kind: "dashboard-primary" }}
-        xAxisGranularity={xAxisGranularity}
-        {...(dailyOverviewBlock ? { primaryXAxisGranularity: "day" as const } : {})}
-        {...(dailyPrimaryBlock ? { secondaryXAxisGranularity: "day" as const } : {})}
+        primaryXAxisGranularity={
+          dailyOverviewBlock ? "day" : overviewPrefs.period === "year" ? "year" : "month"
+        }
+        secondaryXAxisGranularity={
+          dailyPrimaryBlock ? "day" : principalesPrefs.period === "year" ? "year" : "month"
+        }
+        primaryTimeRange={overviewPrefs.range}
+        secondaryTimeRange={principalesPrefs.range}
+        primaryControls={
+          <SurfaceControls
+            period={overviewPrefs.period}
+            onPeriodChange={overviewPrefs.setPeriod}
+            range={overviewPrefs.range}
+            onRangeChange={overviewPrefs.setRange}
+          />
+        }
+        secondaryControls={
+          <SurfaceControls
+            period={principalesPrefs.period}
+            onPeriodChange={principalesPrefs.setPeriod}
+            range={principalesPrefs.range}
+            onRangeChange={principalesPrefs.setRange}
+          />
+        }
         chartLayout="fullWidthStack"
       />
 
-      {tsForCharts.patrimonio_usd_milestones_chart?.points.length ? (
+      {patrimonioBlock?.points.length ? (
         <>
           <h2 style={{ marginTop: "1.75rem" }}>{t("dashboard.sections.netWorthUsdSectionTitle")}</h2>
           <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
@@ -469,13 +525,24 @@ export function DashboardPage() {
             <LineChartPanel
               title={t("dashboard.sections.netWorthUsdChartTitle")}
               titleAs="h3"
-              block={dailyPatrimonioBlock ?? tsForCharts.patrimonio_usd_milestones_chart}
+              block={dailyPatrimonioBlock ?? patrimonioBlock}
               displayUnit="clp"
               includeAccumulatedLines={false}
               trimLeadingInactive={false}
               colorPlan={{ kind: "dashboard-patrimonio-usd" }}
               thickKey="total_nw"
-              xAxisGranularity={dailyPatrimonioBlock ? "day" : xAxisGranularity}
+              xAxisGranularity={
+                dailyPatrimonioBlock ? "day" : patrimonioPrefs.period === "year" ? "year" : "month"
+              }
+              timeRange={patrimonioPrefs.range}
+              controls={
+                <SurfaceControls
+                  period={patrimonioPrefs.period}
+                  onPeriodChange={patrimonioPrefs.setPeriod}
+                  range={patrimonioPrefs.range}
+                  onRangeChange={patrimonioPrefs.setRange}
+                />
+              }
               yScaleDataKeys={["total_nw", "invested"]}
             />
           </div>
@@ -498,7 +565,9 @@ export function DashboardPage() {
               titleAs="h3"
               points={dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts}
               displayUnit={displayUnit}
-              xAxisGranularity={dailyRetirementBrokeragePoints ? "day" : xAxisGranularity}
+              xAxisGranularity={combosXAxis}
+              timeRange={combosPrefs.range}
+              controls={combosControls}
               barSeries={[
                 {
                   dataKey: "delta_retirement",
@@ -539,7 +608,9 @@ export function DashboardPage() {
               titleAs="h3"
               points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
-              xAxisGranularity={dailyRetirementBrokeragePoints ? "day" : xAxisGranularity}
+              xAxisGranularity={combosXAxis}
+              timeRange={combosPrefs.range}
+              controls={combosControls}
               barSeries={[
                 {
                   dataKey: "delta_combined",
@@ -575,7 +646,9 @@ export function DashboardPage() {
               titleAs="h3"
               points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
-              xAxisGranularity={dailyRetirementBrokeragePoints ? "day" : xAxisGranularity}
+              xAxisGranularity={combosXAxis}
+              timeRange={combosPrefs.range}
+              controls={combosControls}
               barSeries={[
                 {
                   dataKey: "delta_combined",

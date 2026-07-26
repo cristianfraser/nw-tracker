@@ -57,6 +57,25 @@
   font-weight: 600;
 }
 
+/* Title + per-surface Período/Rango controls on one row (controls right-aligned, wraps on mobile). */
+.chart-panel-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.5rem;
+  flex-shrink: 0;
+}
+
+.chart-panel-title-row > .chart-panel-title,
+.chart-grid__col > .chart-panel-title-row > .chart-panel-title {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
 .chart-grid__col .chart-box {
   flex: 1;
   min-height: var(--chart-panel-min-height);
