@@ -104,6 +104,8 @@ export type BucketDailySeries = {
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
   grouped_accounts?: DailySeriesAccountLine[];
+  /** "Sin agrupar" bucket lines (one nav level deeper; only when they differ from grouped). */
+  ungrouped_accounts?: DailySeriesAccountLine[];
 };
 
 /** Ascending list of `count` Chile calendar days ending at `endYmd` inclusive. */
