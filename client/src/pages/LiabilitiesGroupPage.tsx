@@ -9,7 +9,7 @@ import { LiabilitiesMortgageGroupSection } from "../components/liabilities/Liabi
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
-  buildDisplayPieSlices,
+  buildDisplayProportional,
   buildDisplayValuationBlock,
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
@@ -110,6 +110,8 @@ export function LiabilitiesGroupPage() {
   // Per-surface control for the Pasivos valuation chart (persisted per liabilities scope).
   const valuationPrefs = useSurfacePrefs(`liab.${portfolioGroup}.valuation`, "day", "3y");
   const valuationIsDaily = valuationPrefs.period === "day";
+  const proportionalPrefs = useSurfacePrefs(`liab.${portfolioGroup}.proportional`, "month", "total");
+  const proportionalIsDaily = proportionalPrefs.period === "day";
 
   const { data: shell } = useGroupPageShell({
     portfolioGroup,
@@ -160,7 +162,7 @@ export function LiabilitiesGroupPage() {
     () => buildPlaceholderPortfolioGroupBundle(displayUnit, shell?.accounts ?? [], portfolioGroup),
     [displayUnit, shell?.accounts, portfolioGroup]
   );
-  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_pie);
+  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_proportional);
   const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
   const contentLoading = isBundleContentLoading({
     isPending: groupPending,
@@ -240,9 +242,9 @@ export function LiabilitiesGroupPage() {
     return buildDisplayValuationBlock(ts, chartCtx, false);
   }, [ts, chartCtx, navMatchNode]);
 
-  const displayPieSlices = useMemo(() => {
-    if (!ts?.group_allocation_pie || !chartCtx || !navMatchNode) return [];
-    return buildDisplayPieSlices(ts, chartCtx, false);
+  const displayProportional = useMemo(() => {
+    if (!ts?.group_allocation_proportional || !chartCtx || !navMatchNode) return null;
+    return buildDisplayProportional(ts, chartCtx, false);
   }, [ts, chartCtx, navMatchNode]);
 
   const displayGroupPerf = useMemo(() => {
@@ -283,6 +285,21 @@ export function LiabilitiesGroupPage() {
     timeRangeToDays(valuationPrefs.range),
     valuationIsDaily && portfolioGroup !== ""
   );
+  const proportionalDailySeries = useDailySeries(
+    { portfolioGroup: portfolioGroup || undefined },
+    displayUnit,
+    timeRangeToDays(proportionalPrefs.range),
+    proportionalIsDaily && portfolioGroup !== ""
+  );
+  const dailyProportionalBlock = useMemo(() => {
+    if (!proportionalIsDaily) return null;
+    const daily = proportionalDailySeries.data;
+    if (!daily) return null;
+    if (chartCtx?.liabilitiesGrouped && daily.grouped_proportional?.series.length) {
+      return daily.grouped_proportional;
+    }
+    return daily.proportional ?? null;
+  }, [proportionalIsDaily, proportionalDailySeries.data, chartCtx?.liabilitiesGrouped]);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
@@ -347,7 +364,18 @@ export function LiabilitiesGroupPage() {
         accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
         chartSeriesCount={chartSeriesCount}
         valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
-        displayPieSlices={displayPieSlices}
+        proportionalBlock={dailyProportionalBlock ?? displayProportional}
+        proportionalXAxisGranularity={
+          dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
+        }
+        proportionalControls={
+          <SurfaceControls
+            period={proportionalPrefs.period}
+            onPeriodChange={proportionalPrefs.setPeriod}
+            range={proportionalPrefs.range}
+            onRangeChange={proportionalPrefs.setRange}
+          />
+        }
         displayUnit={displayUnit}
         xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
         valuationXAxisGranularity={

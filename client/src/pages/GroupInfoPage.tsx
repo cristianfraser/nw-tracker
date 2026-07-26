@@ -9,7 +9,7 @@ import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroup
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
-  buildDisplayPieSlices,
+  buildDisplayProportional,
   buildDisplayValuationBlock,
   resolveGroupPageChartContext,
 } from "../groupPageChartViews";
@@ -76,8 +76,14 @@ export function GroupInfoPage() {
     "3y"
   );
   const perfPrefs = useSurfacePrefs(`group.${portfolioGroup || "pending"}.combos`, "month", "3y");
+  const proportionalPrefs = useSurfacePrefs(
+    `group.${portfolioGroup || "pending"}.proportional`,
+    "month",
+    "total"
+  );
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
+  const proportionalIsDaily = proportionalPrefs.period === "day";
 
   const linkedCardNavChildren = useMemo(
     () => resolveLinkedCardNavChildren(navMatchNode, sidebarNav?.main),
@@ -140,7 +146,7 @@ export function GroupInfoPage() {
       ),
     [displayUnit, shell?.accounts, portfolioGroup, placeholderFirstMonth]
   );
-  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_pie);
+  const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_proportional);
   const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
   const contentLoading = isBundleContentLoading({
     isPending: groupPending,
@@ -247,6 +253,21 @@ export function GroupInfoPage() {
     timeRangeToDays(perfPrefs.range),
     perfIsDaily && portfolioGroup !== ""
   );
+  const proportionalDailySeries = useDailySeries(
+    { portfolioGroup: portfolioGroup || undefined },
+    displayUnit,
+    timeRangeToDays(proportionalPrefs.range),
+    proportionalIsDaily && portfolioGroup !== ""
+  );
+  const dailyProportionalBlock = useMemo(() => {
+    if (!proportionalIsDaily) return null;
+    const daily = proportionalDailySeries.data;
+    if (!daily) return null;
+    if (groupedToggleOn && daily.grouped_proportional?.series.length) {
+      return daily.grouped_proportional;
+    }
+    return daily.proportional ?? null;
+  }, [proportionalIsDaily, proportionalDailySeries.data, groupedToggleOn]);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
@@ -262,9 +283,9 @@ export function GroupInfoPage() {
     return buildDailyValuationBlock(daily, ts?.accounts_in_group ?? null);
   }, [valuationIsDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks?.grouped, ts?.accounts_in_group]);
 
-  const displayPieSlices = useMemo(() => {
-    if (!ts?.group_allocation_pie || !chartCtx) return [];
-    return buildDisplayPieSlices(ts, chartCtx, groupedToggleOn);
+  const displayProportional = useMemo(() => {
+    if (!ts?.group_allocation_proportional || !chartCtx) return null;
+    return buildDisplayProportional(ts, chartCtx, groupedToggleOn);
   }, [ts, chartCtx, groupedToggleOn]);
 
   const displayGroupPerf = useMemo(() => {
@@ -382,7 +403,18 @@ export function GroupInfoPage() {
           accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
           chartSeriesCount={chartSeriesCount}
           valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
-          displayPieSlices={displayPieSlices}
+          proportionalBlock={dailyProportionalBlock ?? displayProportional}
+          proportionalXAxisGranularity={
+            dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
+          }
+          proportionalControls={
+            <SurfaceControls
+              period={proportionalPrefs.period}
+              onPeriodChange={proportionalPrefs.setPeriod}
+              range={proportionalPrefs.range}
+              onRangeChange={proportionalPrefs.setRange}
+            />
+          }
           displayUnit={displayUnit}
           xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
           valuationXAxisGranularity={

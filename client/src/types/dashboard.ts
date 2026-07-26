@@ -233,12 +233,21 @@ export interface TimeseriesAccountLine {
   color_rgb?: string;
 }
 
-/** Allocation-pie slice; `name_i18n_key` set for server-grouped bucket slices. */
-export interface GroupAllocationPieSlice {
+/** One member of a server-built composition-share block (values 0..1, aligned to `dates`). */
+export interface ProportionalSeriesLineDto {
+  dataKey: string;
   name: string;
-  account_id: number;
-  value: number;
   name_i18n_key?: string | null;
+  color_rgb?: string | null;
+  /** Member identity for client color maps (same key the old pie sliceFill used). */
+  account_id?: number;
+  values: (number | null)[];
+}
+
+/** Composition timeseries (pie replacement): per-date shares summing to 1 where a base exists. */
+export interface ProportionalSeriesBlockDto {
+  dates: string[];
+  series: ProportionalSeriesLineDto[];
 }
 
 export interface TimeseriesBlock {
@@ -271,13 +280,15 @@ export interface ValuationTimeseriesResponse {
   group_slug?: string;
   /** Whole class tab: all accounts on one line chart (+ deposit lines) */
   accounts_in_group?: TimeseriesBlock;
-  group_allocation_pie?: GroupAllocationPieSlice[];
+  group_allocation_proportional?: ProportionalSeriesBlockDto;
+  /** Home: asset-bucket composition shares (pie replacement). */
+  allocation_proportional?: ProportionalSeriesBlockDto;
   /** Server-side "Agrupado" bucket blocks (built pre-clip; totals identical to accounts_in_group). */
   nav_grouped_blocks?: { grouped?: TimeseriesBlock; ungrouped?: TimeseriesBlock };
-  nav_grouped_pie?: { grouped?: GroupAllocationPieSlice[]; ungrouped?: GroupAllocationPieSlice[] };
-  /** Pasivos grouped bucket block/pie (single mode — no Agrupado toggle). */
+  nav_grouped_proportional?: { grouped?: ProportionalSeriesBlockDto; ungrouped?: ProportionalSeriesBlockDto };
+  /** Pasivos grouped bucket block + shares (single mode — no Agrupado toggle). */
   liab_grouped_block?: TimeseriesBlock;
-  liab_grouped_pie?: GroupAllocationPieSlice[];
+  liab_grouped_proportional?: ProportionalSeriesBlockDto;
 }
 
 /** One NYSE-session point of `GET /api/dashboard/overview-daily` (values in the request unit). */
@@ -313,6 +324,8 @@ export interface DashboardOverviewDailyResponse {
   patrimonio: PatrimonioDailyPoint[];
   /** «Cuentas principales» per-child-group daily lines (request unit). */
   primary_lines: PrimaryDailyLine[];
+  /** Home composition shares at day grain (same dataKeys as the monthly block). */
+  allocation_proportional?: ProportionalSeriesBlockDto;
 }
 
 /** One calendar-day row of `GET /api/daily-series` (unit-converted; nulls = missing legs). */
@@ -349,6 +362,10 @@ export interface DailySeriesResponse {
   baseline: { as_of_date: string; value: number | null };
   points: DailySeriesPointDto[];
   accounts?: DailySeriesAccountLineDto[];
+  /** Composition shares at day grain (per account; pie replacement). */
+  proportional?: ProportionalSeriesBlockDto;
+  /** Composition shares of the grouped bucket lines (when the page has bucket nodes). */
+  grouped_proportional?: ProportionalSeriesBlockDto;
   /** CC masters only: per-day plan debt («deuda en cuotas», CLP), index-aligned with points. */
   cc_installment_debt?: (number | null)[];
   /**

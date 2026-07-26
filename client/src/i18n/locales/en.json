@@ -101,7 +101,6 @@
     "noMonthlyPl": "No monthly P/L data for this period.",
     "noExpensesInPeriod": "No expenses in this period.",
     "noValuationSeries": "No valuation series for this period.",
-    "noRecentValuations": "No recent valuations to build the chart.",
     "groupPerfTitle": "Monthly P/L — YTD (group)",
     "groupPerfHint": "Bars per account or subgroup, YTD area (sum of monthly Δ over the calendar year), diamond = total monthly Δ. Derived.",
     "groupPerfComboTitle": "Δ by account / subgroup, combined YTD and total Δ",
@@ -180,8 +179,7 @@
       "ma3DepositsInversionesYearly": "MA3 year's deposits (investments)"
     },
     "allocation": {
-      "title": "Allocation (latest valuations)",
-      "empty": "Add accounts and valuations to see the chart."
+      "title": "Allocation (latest valuations)"
     },
     "accountsTreeTitle": "Accounts",
     "accountsTreeEmpty": "No accounts yet. Open an asset tab and note the category IDs for POST /api/accounts.",

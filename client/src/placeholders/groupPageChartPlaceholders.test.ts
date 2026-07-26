@@ -35,7 +35,7 @@ describe("buildPlaceholderPortfolioGroupBundle", () => {
     const bundle = buildPlaceholderPortfolioGroupBundle("clp", sampleAccounts, "brokerage_acciones");
     expect(bundle.accounts).toHaveLength(1);
     expect(bundle.ts.accounts_in_group?.points.length).toBeGreaterThan(0);
-    expect(bundle.ts.group_allocation_pie?.length).toBe(1);
+    expect(bundle.ts.group_allocation_proportional?.series.length).toBe(1);
     expect(bundle.groupPerf?.points.length).toBeGreaterThan(0);
     expect(bundle.groupPerf?.bar_accounts[0]?.bar_data_key).toBe("pl_60");
   });

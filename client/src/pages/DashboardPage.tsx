@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { LineChartPanel, ValuationLineCharts } from "../components/charts/ValuationLineCharts";
-import { AllocationPie } from "../components/charts/AllocationPie";
 import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
+import { ProportionalAreaChart } from "../components/charts/ProportionalAreaChart";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { ExportToolbarButton } from "../components/export/ExportModal";
@@ -36,7 +36,7 @@ import {
   rollupRetirementBrokeragePerfYearly,
   rollupTimeseriesBlockYearEnd,
 } from "../dashboardTimeseriesYearly";
-import { dashboardBucketLabel, useTranslation } from "../i18n";
+import { useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import {
   buildPlaceholderDashboardBundle,
@@ -44,11 +44,7 @@ import {
 } from "../placeholders/dashboardPagePlaceholders";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
-import { formatMoneyForPie } from "../format";
-import {
-  isDashboardNwBucketSlug,
-  netWorthTableAccountsFromDash,
-} from "../portfolioDashboardBuckets";
+import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { timeRangeToDays } from "../timeRange";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { useDailySeries } from "../queries/hooks";
@@ -77,6 +73,7 @@ export function DashboardPage() {
   const principalesPrefs = useSurfacePrefs("home.principales", "day", "3y");
   const patrimonioPrefs = useSurfacePrefs("home.patrimonio", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
+  const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
@@ -197,6 +194,12 @@ export function DashboardPage() {
     displayUnit,
     timeRangeToDays(patrimonioPrefs.range),
     patrimonioIsDaily
+  );
+  const allocationIsDaily = allocationPrefs.period === "day";
+  const { data: allocationDailyData } = useDashboardOverviewDaily(
+    displayUnit,
+    timeRangeToDays(allocationPrefs.range),
+    allocationIsDaily
   );
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
@@ -445,21 +448,12 @@ export function DashboardPage() {
     );
   }
 
-  const useUsdPie =
-    showUsd &&
-    dash.allocation.some((a) => a.value_usd != null && Number.isFinite(a.value_usd) && a.value_usd > 0);
-
-  const pieData = dash.allocation.flatMap((a) => {
-    const bucketSlug = a.group_slug;
-    if (!isDashboardNwBucketSlug(bucketSlug)) return [];
-    return [
-      {
-        name: dashboardBucketLabel(bucketSlug),
-        value: useUsdPie && a.value_usd != null ? a.value_usd : a.value_clp,
-        group_slug: bucketSlug,
-      },
-    ];
-  });
+  // Composition chart (pie replacement): shares served with the bundle (monthly) or from
+  // the overview-daily payload; overview line dataKey `cash` maps to the cash_eqs bucket color.
+  const allocationBlock = allocationIsDaily
+    ? (allocationDailyData?.allocation_proportional ?? null)
+    : (ts.allocation_proportional ?? null);
+  const allocationColorSlug = (dataKey: string) => (dataKey === "cash" ? "cash_eqs" : dataKey);
 
   // The three P/L combo charts share ONE control (`home.combos`) — same state, rendered on each title.
   const combosXAxis = dailyRetirementBrokeragePoints
@@ -690,20 +684,31 @@ export function DashboardPage() {
         </>
       ) : null}
 
-      <h2>{t("dashboard.allocation.title")}</h2>
-      {pieData.length === 0 ? (
-        <p className="empty">{t("dashboard.allocation.empty")}</p>
-      ) : (
-        <div className="chart-box">
-          <AllocationPie
-            slices={pieData}
-            fill={(row) => bucketColorBySlug.get(row.group_slug) ?? allocationBucketColor(row.group_slug)}
-            formatValue={(v) => formatMoneyForPie(v, useUsdPie ? "usd" : "clp")}
-            animationActive={!contentLoading}
-            animationDuration={90}
-          />
-        </div>
-      )}
+      <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
+        <ProportionalAreaChart
+          title={t("dashboard.allocation.title")}
+          block={allocationBlock}
+          xAxisGranularity={
+            allocationIsDaily && allocationBlock
+              ? "day"
+              : allocationPrefs.period === "year"
+                ? "year"
+                : "month"
+          }
+          controls={
+            <SurfaceControls
+              period={allocationPrefs.period}
+              onPeriodChange={allocationPrefs.setPeriod}
+              range={allocationPrefs.range}
+              onRangeChange={allocationPrefs.setRange}
+            />
+          }
+          colorFor={(line) => {
+            const slug = allocationColorSlug(line.dataKey);
+            return bucketColorBySlug.get(slug) ?? allocationBucketColor(slug, line.color_rgb);
+          }}
+        />
+      </div>
     </>
   );
 

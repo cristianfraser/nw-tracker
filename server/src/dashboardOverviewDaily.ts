@@ -1,3 +1,7 @@
+import {
+  buildProportionalFromValueArrays,
+  type ProportionalSeriesBlock,
+} from "./proportionalSeries.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -54,6 +58,8 @@ export type OverviewDailyPayload = {
   points: OverviewDailyPoint[];
   /** «Patrimonio neto vs invested» daily points (CLP). */
   patrimonio: PatrimonioDailyPoint[];
+  /** Composition shares for the home pie-replacement chart (same dataKeys as the monthly block). */
+  allocation_proportional: ProportionalSeriesBlock;
   /** «Cuentas principales» per-child-group daily lines (request unit), keyed by the same
    * synthetic dataKeys as the monthly `accounts_ex_property` accounts. */
   primary_lines: PrimaryDailyLine[];
@@ -188,6 +194,35 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
   const cashNettedClpByDate = new Map(grid.map((ymd) => [ymd, byDate.get(ymd)!.cash_eqs]));
   const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate);
 
+  // Composition shares (pie-replacement chart, day grain) — same dataKeys as the monthly
+  // `allocation_proportional` block so the client pairs colors/labels identically.
+  const allocation_proportional = buildProportionalFromValueArrays(grid, [
+    {
+      dataKey: "real_estate",
+      name: "Inmuebles",
+      name_i18n_key: "dashboard.buckets.real_estate",
+      values: points.map((p) => p.real_estate),
+    },
+    {
+      dataKey: "retirement",
+      name: "Retiro",
+      name_i18n_key: "dashboard.cards.retirement",
+      values: points.map((p) => p.retirement),
+    },
+    {
+      dataKey: "brokerage",
+      name: "Brokerage",
+      name_i18n_key: "dashboard.cards.brokerage",
+      values: points.map((p) => p.brokerage),
+    },
+    {
+      dataKey: "cash",
+      name: "Ahorros y reservas",
+      name_i18n_key: "dashboard.cards.cash",
+      values: points.map((p) => p.cash_eqs),
+    },
+  ]);
+
   return {
     unit,
     days,
@@ -195,6 +230,7 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     points,
     patrimonio,
     primary_lines,
+    allocation_proportional,
   };
 }
 

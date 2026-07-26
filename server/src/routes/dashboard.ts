@@ -31,6 +31,7 @@ import {
 } from "../dailySeries.js";
 import { resolveGroupDailySeries } from "../groupDailySeries.js";
 import { db } from "../db.js";
+import { buildProportionalFromValueArrays } from "../proportionalSeries.js";
 import {
   buildLiabilitiesChartBucketPlan,
   buildNavChartBucketPlan,
@@ -125,13 +126,36 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
           series.points.map((p) => p.as_of_date)
         )
       : null;
-    const withRefs = referenceLines?.length
-      ? { ...series, reference_lines: referenceLines }
-      : series;
+    // Composition shares (pie-replacement chart, day grain): per-account and, when the
+    // page has bucket nodes, per grouped bucket line. Names/ids come from the same line
+    // metadata the valuation chart uses; the client colors by account_id like the pie did.
+    const dailyDates = series.points.map((p) => p.as_of_date);
+    const shareLines = (
+      lines: { account_id: number; name: string | null; values: (number | null)[] }[] | undefined
+    ) =>
+      (lines ?? [])
+        .filter((l) => Number.isFinite(l.account_id))
+        .map((l) => ({
+          dataKey: String(l.account_id),
+          name: l.name ?? String(l.account_id),
+          account_id: l.account_id,
+          values: l.values,
+        }));
+    const proportional = series.accounts?.length
+      ? buildProportionalFromValueArrays(dailyDates, shareLines(series.accounts))
+      : undefined;
+    const withRefs = {
+      ...(referenceLines?.length ? { ...series, reference_lines: referenceLines } : series),
+      ...(proportional ? { proportional } : {}),
+    };
     if (plan) {
       const grouped = groupDailySeriesAccounts(series, plan);
       if (grouped?.length) {
-        res.json({ ...withRefs, grouped_accounts: grouped });
+        res.json({
+          ...withRefs,
+          grouped_accounts: grouped,
+          grouped_proportional: buildProportionalFromValueArrays(dailyDates, shareLines(grouped)),
+        });
         return;
       }
     }
