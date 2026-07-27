@@ -30,6 +30,21 @@ function assignStatementToSlot(
   }
 }
 
+/**
+ * True when imported PDFs (not web-paste) closed this billing month: the CLP statement,
+ * plus the USD twin when the account's history carries a USD stream
+ * (`accountRequiresUsdStatementClose` — one twin alone must not close the month).
+ */
+export function hasPdfStatementCloseForBillingMonth(
+  slot: CcStatementSlotByCurrency | undefined,
+  requiresUsd: boolean
+): boolean {
+  if (!slot) return false;
+  const clpPdf = slot.clp != null && isPdfStatementSource(slot.clp.source_pdf);
+  const usdPdf = slot.usd != null && isPdfStatementSource(slot.usd.source_pdf);
+  return clpPdf && (!requiresUsd || usdPdf);
+}
+
 export function statementSlotsByBillingMonth(accountId: number): Map<string, CcStatementSlotByCurrency> {
   const byMonth = new Map<string, CcStatementSlotByCurrency>();
   for (const st of listCcStatementsForAccount(accountId)) {

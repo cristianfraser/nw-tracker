@@ -23,13 +23,40 @@ function isoFromPeriodField(raw: string | null | undefined): string | null {
   return parseDdMmYyToIso(t);
 }
 
-/** Latest billing month (YYYY-MM) with an imported PDF statement on this master account. */
+/**
+ * True when this account's imported PDF history carries a USD statement stream — closing a
+ * facturación then requires the USD twin too. The requirement follows the imported stream,
+ * not the card's nominal facilities: a card with a dormant, never-billed USD side keeps
+ * closing on CLP alone until its first USD statement lands.
+ */
+export function accountRequiresUsdStatementClose(accountId: number): boolean {
+  for (const st of listCcStatementsForAccount(accountId)) {
+    if (st.currency === "usd" && isPdfStatementSource(st.source_pdf)) return true;
+  }
+  return false;
+}
+
+/**
+ * Latest fully-imported facturación month (YYYY-MM) on this master account. A month only
+ * counts as closed once every statement currency the card's PDF history carries is
+ * imported for it — CLP always, plus USD when {@link accountRequiresUsdStatementClose}
+ * (one twin arriving alone must not advance the open month).
+ */
 export function lastPdfBillingMonthForAccount(accountId: number): string | null {
-  let max: string | null = null;
+  const requiresUsd = accountRequiresUsdStatementClose(accountId);
+  const currenciesByMonth = new Map<string, Set<string>>();
   for (const st of listCcStatementsForAccount(accountId)) {
     if (!isPdfStatementSource(st.source_pdf)) continue;
     const bm = st.billing_month;
     if (!bm) continue;
+    let currencies = currenciesByMonth.get(bm);
+    if (!currencies) currenciesByMonth.set(bm, (currencies = new Set()));
+    currencies.add(st.currency);
+  }
+  let max: string | null = null;
+  for (const [bm, currencies] of currenciesByMonth) {
+    if (!currencies.has("clp")) continue;
+    if (requiresUsd && !currencies.has("usd")) continue;
     if (!max || ymCompare(bm, max) > 0) max = bm;
   }
   return max;

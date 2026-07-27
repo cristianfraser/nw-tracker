@@ -2,7 +2,14 @@ import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { isPdfStatementSource } from "./ccManualBillingMonth.js";
+import {
+  hasPdfStatementCloseForBillingMonth,
+  statementSlotsByBillingMonth,
+} from "./ccBillingStatementSlots.js";
+import {
+  accountRequiresUsdStatementClose,
+  isPdfStatementSource,
+} from "./ccManualBillingMonth.js";
 import {
   openWebPasteSourcePdf,
   parseOpenWebPasteBillingMonth,
@@ -110,6 +117,22 @@ export function reconcileOpenWebPasteAfterPdfClose(
       deleted_line_ids: [],
       skipped: true,
       skip_reason: "no_pdf_lines_for_billing_month",
+    };
+  }
+  // One twin alone (e.g. the USD statement arriving before the CLP one) must not supersede
+  // the open bucket — the month's web-paste lines are mostly CLP pre-auths that only the CLP
+  // PDF represents. Wait until every statement currency the account carries is imported.
+  const fullyClosed = hasPdfStatementCloseForBillingMonth(
+    statementSlotsByBillingMonth(accountId).get(billingMonth),
+    accountRequiresUsdStatementClose(accountId)
+  );
+  if (!fullyClosed) {
+    return {
+      billing_month: billingMonth,
+      deleted_count: 0,
+      deleted_line_ids: [],
+      skipped: true,
+      skip_reason: "billing_month_not_fully_closed",
     };
   }
 
