@@ -3,7 +3,10 @@ import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { billingMonthForLedgerPurchase } from "./ccManualBillingMonth.js";
+import {
+  billingMonthForLedgerPurchase,
+  lastPdfBillingMonthForAccount,
+} from "./ccManualBillingMonth.js";
 import { billingMonthForPurchaseDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
   isInstallmentContractSummaryMerchant,
@@ -182,7 +185,6 @@ export function purchaseFirstDueYm(
   // cuota evidence above, so a later PDF cuota-01 line always overrides it — but above the
   // manual same-cycle guess below, which is only a heuristic for the yet-unbilled case.
   const storedFirstDue = parseYearMonth(String(pr.first_due_month ?? "").slice(0, 7));
-  if (storedFirstDue) return storedFirstDue;
 
   if (pr.source === "manual" && accountId != null) {
     // Default guess: the first cuota bills at the close of the facturación the purchase
@@ -192,9 +194,21 @@ export function purchaseFirstDueYm(
     // anchor to statement + 1. Date-based (not "the open month at read time") so the guess
     // does not drift forward as cycles roll while the statement is pending.
     const cfg = loadCreditCardBillingConfig(accountId);
-    const purchaseBm = billingMonthForPurchaseDate(pr.purchase_date, cfg);
-    if (purchaseBm) return purchaseBm;
+    const base = storedFirstDue ?? billingMonthForPurchaseDate(pr.purchase_date, cfg);
+    if (base) {
+      // A manual plan with no statement evidence cannot first-bill inside an already
+      // fully-imported facturación — that statement exists and did not bill it (reaching
+      // this branch means no cuota line matched). Advance to the first month whose
+      // statement is still pending. Statement-driven (last closed + 1, never the calendar),
+      // so a lagging import queue keeps the date-based guess and nothing drifts; with
+      // statements current this is the open month, and each later close without evidence
+      // rolls the leftover forward with it.
+      const lastClosed = lastPdfBillingMonthForAccount(accountId);
+      const firstPending = lastClosed ? addCalendarMonths(lastClosed, 1) : null;
+      return firstPending && ymCompare(firstPending, base) > 0 ? firstPending : base;
+    }
   }
+  if (storedFirstDue) return storedFirstDue;
   return parseYearMonth(pr.purchase_date.slice(0, 7)) ?? "1970-01";
 }
 

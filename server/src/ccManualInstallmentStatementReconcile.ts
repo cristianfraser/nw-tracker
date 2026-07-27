@@ -12,6 +12,7 @@ import {
 } from "./ccCrossImportDedupe.js";
 import { isInstallmentContractSummaryMerchant } from "./ccInstallmentLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { statementKeyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
@@ -118,12 +119,21 @@ function manualMatchesInstallmentLine(
   const contractAmt = contractAmountClpFromLine(line);
   if (!purchaseAmountsMatch(manual.total_amount_clp, contractAmt)) return false;
 
+  // Manual entry vs statement posting skews by a day or two (weekend/posting lag), so with
+  // merchant, contract amount and cuota count already matched above, tolerate ±2 days.
   const lineIso = purchaseIsoFromLineFields(line.transaction_date, line.posting_date);
-  if (lineIso && lineIso === manual.purchase_date) return true;
+  if (lineIso && isoDaysApart(lineIso, manual.purchase_date) <= 2) return true;
 
   const cur = line.nro_cuota_current;
   const isContractResumen = cur == null || cur === 0;
   return isContractResumen && purchaseAmountsMatch(manual.total_amount_clp, contractAmt);
+}
+
+function isoDaysApart(aIso: string, bIso: string): number {
+  const a = Date.parse(`${aIso}T00:00:00Z`);
+  const b = Date.parse(`${bIso}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.POSITIVE_INFINITY;
+  return Math.abs(a - b) / 86_400_000;
 }
 
 function resolveCategoryIdForManualPurchase(accountId: number, manualId: number, manualKey: string | null): number | null {
@@ -162,11 +172,24 @@ function deleteManualPurchaseExpenseKeys(accountId: number, manualId: number, ma
   delUniqueByKey.run(accountId, `installment:${manualId}`);
 }
 
+export type CcManualInstallmentReconcileMatch = {
+  manual_id: number;
+  manual_merchant: string | null;
+  manual_purchase_date: string;
+  total_amount_clp: number;
+  cuotas_totales: number;
+  statement_id: number;
+  statement_source_pdf: string;
+  line_id: number;
+  line_merchant: string | null;
+};
+
 export type CcManualInstallmentReconcileResult = {
   statements_considered: number;
   matched: number;
   deleted: number;
   categories_transferred: number;
+  matches: CcManualInstallmentReconcileMatch[];
 };
 
 /**
@@ -203,15 +226,23 @@ export function collectStatementIdsFromImportRecords(
  */
 export function reconcileManualInstallmentPurchasesForStatements(
   accountId: number,
-  statementIds: readonly number[]
+  statementIds: readonly number[],
+  opts?: { dryRun?: boolean }
 ): CcManualInstallmentReconcileResult {
+  const dryRun = opts?.dryRun === true;
   if (statementIds.length === 0) {
-    return { statements_considered: 0, matched: 0, deleted: 0, categories_transferred: 0 };
+    return { statements_considered: 0, matched: 0, deleted: 0, categories_transferred: 0, matches: [] };
   }
 
   let matched = 0;
   let deleted = 0;
   let categoriesTransferred = 0;
+  const matches: CcManualInstallmentReconcileMatch[] = [];
+  // Plans converted from web-pasted lines inherit the web-paste statement's issuer-derived
+  // card_group (e.g. 'santander'), while PDF statements keep the legacy parser groups
+  // ('A'/'B'/'INTL') — those rows must still reconcile against any of the account's PDF
+  // statements, or every web-paste-converted plan survives its PDF close as a duplicate.
+  const webPasteGroup = creditCardMasterMetaForAccount(accountId)?.cardGroup ?? null;
 
   const run = db.transaction(() => {
     const manuals = listManualPurchases.all(accountId) as {
@@ -254,7 +285,11 @@ export function reconcileManualInstallmentPurchasesForStatements(
 
       for (const manual of manuals) {
         if (consumedManualIds.has(manual.id)) continue;
-        if (String(manual.card_group ?? "A").trim() !== String(st.card_group ?? "A").trim()) continue;
+        const manualGroup = String(manual.card_group ?? "A").trim();
+        const groupCompatible =
+          manualGroup === String(st.card_group ?? "A").trim() ||
+          (webPasteGroup != null && manualGroup === webPasteGroup);
+        if (!groupCompatible) continue;
         if (!isIsoInInclusivePeriod(manual.purchase_date, st.period_from, st.period_to)) continue;
 
         const manualKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
@@ -265,23 +300,35 @@ export function reconcileManualInstallmentPurchasesForStatements(
           merchant: manual.merchant,
         });
 
-        let hitLineId: number | null = null;
+        let hitLineId: { id: number; merchant: string | null } | null = null;
         for (const line of lines) {
           if (consumedLineIds.has(line.id)) continue;
           if (isInstallmentContractSummaryMerchant(String(line.merchant ?? ""))) continue;
           if (!manualMatchesInstallmentLine(manual, line)) continue;
-          hitLineId = line.id;
+          hitLineId = { id: line.id, merchant: line.merchant };
           break;
         }
         if (hitLineId == null) continue;
 
-        consumedLineIds.add(hitLineId);
+        consumedLineIds.add(hitLineId.id);
         consumedManualIds.add(manual.id);
         matched += 1;
+        matches.push({
+          manual_id: manual.id,
+          manual_merchant: manual.merchant,
+          manual_purchase_date: manual.purchase_date,
+          total_amount_clp: manual.total_amount_clp,
+          cuotas_totales: manual.cuotas_totales,
+          statement_id: st.id,
+          statement_source_pdf: st.source_pdf,
+          line_id: hitLineId.id,
+          line_merchant: hitLineId.merchant,
+        });
+        if (dryRun) continue;
 
         const categoryId = resolveCategoryIdForManualPurchase(accountId, manual.id, manualKey);
         if (categoryId != null) {
-          applyCategoryToMatchedLines(accountId, hitLineId, categoryId);
+          applyCategoryToMatchedLines(accountId, hitLineId.id, categoryId);
           categoriesTransferred += 1;
         }
 
@@ -295,7 +342,16 @@ export function reconcileManualInstallmentPurchasesForStatements(
   run();
 
   if (deleted > 0) {
-    upsertCreditCardValuationsFromLedger(accountId);
+    // Deleting a twin removes dated evidence (its purchase-date ramp in the daily owed
+    // walk), so today-stamps written while it existed must self-purge from its purchase
+    // date onward — same contract as manual installment delete.
+    const earliestDeletedYmd = matches.reduce<string | null>(
+      (min, m) => (min == null || m.manual_purchase_date < min ? m.manual_purchase_date : min),
+      null
+    );
+    upsertCreditCardValuationsFromLedger(accountId, {
+      affectedEvidenceFromYmd: earliestDeletedYmd ?? undefined,
+    });
     recomputeCcBillingMonthBalances(accountId);
   }
 
@@ -304,6 +360,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
     matched,
     deleted,
     categories_transferred: categoriesTransferred,
+    matches,
   };
 }
 

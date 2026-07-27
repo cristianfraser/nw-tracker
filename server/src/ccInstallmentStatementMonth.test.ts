@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { db } from "./db.js";
 import {
   ledgerInstallmentsPaid,
   planInstallmentsConsumed,
@@ -174,6 +175,88 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
     ];
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-05")).toBe(2);
     expect(ledgerInstallmentsPaid(purchase, payList, "2026-06")).toBe(2);
+  });
+});
+
+describe("purchaseFirstDueYm closed-month clamp (manual plans)", () => {
+  const accountIds: number[] = [];
+
+  afterEach(() => {
+    for (const id of accountIds) {
+      db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    }
+    accountIds.length = 0;
+  });
+
+  function makeAccountWithClosedMonths(periodsTo: string[]): number {
+    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    const id = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
+        .run(group.id, "Vitest · first-due clamp", `vitest-first-due-clamp|${periodsTo.join(",")}`)
+        .lastInsertRowid
+    );
+    accountIds.push(id);
+    for (const periodTo of periodsTo) {
+      db.prepare(
+        `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_to, layout, currency)
+         VALUES (?, 'A', ?, ?, ?, 'compact', 'clp')`
+      ).run(id, `vitest clamp ${periodTo}.pdf`, periodTo, periodTo);
+    }
+    return id;
+  }
+
+  const manualPurchase = (overrides: Partial<{ purchase_date: string; first_due_month: string | null }>) => ({
+    id: 1,
+    canonical_row_id: "clamp-test",
+    card_group: "santander",
+    purchase_date: "2026-06-30",
+    total_amount_clp: 1_200_000,
+    cuotas_totales: 3,
+    merchant: "EXPRESS PLAZA L",
+    description_merged: "EXPRESS PLAZA L",
+    matched_baseline_purchase_id: null,
+    source: "manual",
+    first_due_month: null,
+    ...overrides,
+  });
+
+  it("advances an evidence-less manual plan out of a fully-closed month to the first pending one", () => {
+    // Default cycle 21→20: purchase 2026-06-30 → own cycle 2026-07; July's statement is imported.
+    const accountId = makeAccountWithClosedMonths(["20/06/2026", "20/07/2026"]);
+    expect(purchaseFirstDueYm(manualPurchase({}), [], accountId)).toBe("2026-08");
+  });
+
+  it("keeps the date-based guess while that month's statement is still pending (no drift)", () => {
+    const accountId = makeAccountWithClosedMonths(["20/06/2026"]);
+    expect(purchaseFirstDueYm(manualPurchase({}), [], accountId)).toBe("2026-07");
+  });
+
+  it("clamps a stored web-paste first_due_month once its month closes without evidence", () => {
+    const accountId = makeAccountWithClosedMonths(["20/06/2026", "20/07/2026"]);
+    expect(purchaseFirstDueYm(manualPurchase({ first_due_month: "2026-07" }), [], accountId)).toBe(
+      "2026-08"
+    );
+  });
+
+  it("never clamps statement cuota evidence", () => {
+    const accountId = makeAccountWithClosedMonths(["20/06/2026", "20/07/2026"]);
+    const payList = [
+      {
+        id: 1,
+        purchase_id: 1,
+        pay_by_date: "2026-08-10",
+        statement_date: "20/07/2026",
+        statement_period_month: "2026-07",
+        period_to_join: null,
+        source_pdf: "vitest clamp 20/07/2026.pdf",
+        amount_clp: 400_000,
+        cuota_current: 1,
+        cuota_total: null,
+      },
+    ];
+    expect(purchaseFirstDueYm(manualPurchase({}), payList, accountId)).toBe("2026-07");
   });
 });
 
