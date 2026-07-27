@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { getCcExpenseCategoryBySlug, stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import {
@@ -166,5 +166,96 @@ describe("reconcileManualInstallmentPurchasesForStatements", () => {
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
     db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(purchaseId);
+  });
+});
+
+/**
+ * The web-paste↔PDF twin scenario from 2026-07 (·7817): a plan converted from a pasted
+ * line carries the issuer-derived card_group ('santander') and a purchase date one day
+ * off the statement line's date. The reconcile must still collapse it onto the PDF line
+ * (web-paste group compatibility + ±2d tolerance), and dry-run must report only.
+ */
+describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins", () => {
+  const accountIds: number[] = [];
+
+  afterEach(() => {
+    for (const id of accountIds) {
+      db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    }
+    accountIds.length = 0;
+  });
+
+  function makeFixture(): { accountId: number; statementId: number; manualId: number } {
+    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    const accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`)
+        .run(
+          group.id,
+          "Vitest · web-paste twin reconcile",
+          "credit_card_master|santander|4747",
+          "vitest-webpaste-twin-reconcile"
+        ).lastInsertRowid
+    );
+    accountIds.push(accountId);
+
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, layout, currency)
+           VALUES (?, 'A', 'vitest twin jul.pdf', '23/07/2026', '23/06/2026', '23/07/2026', 'compact', 'clp')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO cc_statement_lines (
+         statement_id, transaction_date, merchant, amount_clp, installment_flag,
+         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, dedupe_key, parser_row_id, raw_line
+       ) VALUES (?, '25/06/26', 'MP     *MERCADO LIBRE', 544574, 1, 1, 12, 45381, 'vitest-twin-line', 'vitest-twin-line', 'raw')`
+    ).run(statementId);
+
+    const manualId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_installment_purchases (
+             account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
+             cuotas_totales, merchant, source
+           ) VALUES (?, 'santander', 'vitest-manual-twin', '2026-06-26', 544574, 12, 'MP *MERCADO', 'manual')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    return { accountId, statementId, manualId };
+  }
+
+  it("dry-run reports the web-paste-group twin (±1d date skew) without deleting", () => {
+    const { accountId, statementId, manualId } = makeFixture();
+    const report = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId], {
+      dryRun: true,
+    });
+    expect(report.matched).toBe(1);
+    expect(report.deleted).toBe(0);
+    expect(report.matches[0]!.manual_id).toBe(manualId);
+    expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeTruthy();
+  });
+
+  it("apply deletes the twin", () => {
+    const { accountId, statementId, manualId } = makeFixture();
+    const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
+    expect(result.matched).toBe(1);
+    expect(result.deleted).toBe(1);
+    expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeFalsy();
+  });
+
+  it("does not match across a 4-day date gap on an indexed cuota line", () => {
+    const { accountId, statementId, manualId } = makeFixture();
+    db.prepare(`UPDATE cc_installment_purchases SET purchase_date = '2026-06-29' WHERE id = ?`).run(
+      manualId
+    );
+    const report = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId], {
+      dryRun: true,
+    });
+    expect(report.matched).toBe(0);
   });
 });
