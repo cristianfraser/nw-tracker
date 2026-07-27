@@ -9,7 +9,11 @@ import {
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
 import { withCcOneShotScanCache } from "./ccCrossImportDedupe.js";
-import { statementSlotsByBillingMonth, type CcStatementSlotByCurrency } from "./ccBillingStatementSlots.js";
+import {
+  hasPdfStatementCloseForBillingMonth,
+  statementSlotsByBillingMonth,
+  type CcStatementSlotByCurrency,
+} from "./ccBillingStatementSlots.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   ccInstallmentLedgerRowCount,
@@ -20,7 +24,10 @@ import {
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
-import { billingMonthForManualLedgerPurchase, isPdfStatementSource } from "./ccManualBillingMonth.js";
+import {
+  accountRequiresUsdStatementClose,
+  billingMonthForManualLedgerPurchase,
+} from "./ccManualBillingMonth.js";
 import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
@@ -162,17 +169,6 @@ export function facturadoTotalClpForStatementSlot(
   return total > 0 ? total : null;
 }
 
-/** True when an imported PDF (not web-paste) closed this billing month. */
-export function hasPdfStatementCloseForBillingMonth(
-  slot: CcStatementSlotByCurrency | undefined
-): boolean {
-  if (!slot) return false;
-  for (const st of [slot.clp, slot.usd]) {
-    if (st && isPdfStatementSource(st.source_pdf)) return true;
-  }
-  return false;
-}
-
 const stmtPaymentLinesForStatement = db.prepare(`
   SELECT merchant, amount_clp FROM cc_statement_lines WHERE statement_id = ?
 `);
@@ -280,6 +276,7 @@ function buildBillingDetailByMonthInner(
   );
   const cupoLive = liveCreditCardOutstandingClp(accountId) ?? 0;
   const slots = statementSlotsByBillingMonth(accountId);
+  const requiresUsd = accountRequiresUsdStatementClose(accountId);
   const months = new Set<string>();
   for (const r of balances) {
     months.add(r.billing_month);
@@ -319,7 +316,7 @@ function buildBillingDetailByMonthInner(
         : null;
     let totalFacturado = fromStatement ?? fromBalance;
 
-    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
+    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot, requiresUsd);
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     if (!hasPdfClose && !inactive) {
       // Open month: facturado is what is billed this cycle (matches Facturaciones), not the
@@ -528,6 +525,7 @@ function buildFacturacionesInner(
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {
   const byMonth = statementSlotsByBillingMonth(accountId);
+  const requiresUsd = accountRequiresUsdStatementClose(accountId);
 
   const out: CcFacturacionRow[] = [];
   for (const [billingMonth, slot] of byMonth) {
@@ -568,7 +566,7 @@ function buildFacturacionesInner(
     const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
     let facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
-    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot);
+    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot, requiresUsd);
     if (!hasPdfClose) {
       // Open month: "facturado" is what is billed in THIS cycle — únicos billed so far plus
       // the cuota a pagar — not the prior unpaid balance rolled forward. Detalle por mes uses
