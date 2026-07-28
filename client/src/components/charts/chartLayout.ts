@@ -84,11 +84,34 @@ function buildTickList(y0: number, y1: number, step: number): number[] {
 }
 
 /**
+ * Inserts ticks at multiples of `unit` inside the (0, 5·unit) low band, keeping the coarse ticks.
+ * Applied only when the coarse step lies in [unit, 5·unit]: a coarser axis (yearly rollups) would
+ * squeeze the band into the plot floor, and a finer one already resolves it.
+ */
+function withFineLowBandTicks(ticks: number[], step: number, y1: number, unit: number): number[] {
+  if (step < unit || step > 5 * unit) return ticks;
+  const merged = new Set(ticks);
+  for (let k = 1; k < 5; k++) {
+    const t = unit * k;
+    if (t <= y1) merged.add(t);
+  }
+  return [...merged].sort((a, b) => a - b);
+}
+
+/**
  * Y domain and explicit ticks with round steps; non-negative data uses domain `[0, y1]`.
  * Renders a horizontal reference at **y = 0** when that value lies on the scale: always for the `[0, y1]`
  * branch, and when the scale crosses zero for mixed-sign data (same stroke as axes; see `LineChartPanel`).
+ *
+ * `fineUnit` adds fine ticks at multiples of a fixed unit inside the (0, 5·unit) low band on top
+ * of the sparse range-derived steps (see `withFineLowBandTicks`) — e.g. 1M CLP on the expenses
+ * chart, where typical monthly spend clusters under 4M: −5M, 0, 1M, 2M, 3M, 4M, 5M, 10M.
  */
-export function buildNiceYAxis(minData: number, maxData: number): {
+export function buildNiceYAxis(
+  minData: number,
+  maxData: number,
+  options?: { fineUnit?: number }
+): {
   domain: [number, number];
   ticks: number[];
   showZeroReference: boolean;
@@ -104,8 +127,8 @@ export function buildNiceYAxis(minData: number, maxData: number): {
   }
   if (lo === hi) {
     const pad = Math.abs(hi) * 0.08 || 1;
-    if (hi > 0) return buildNiceYAxis(0, hi + pad);
-    if (hi < 0) return buildNiceYAxis(hi - pad, 0);
+    if (hi > 0) return buildNiceYAxis(0, hi + pad, options);
+    if (hi < 0) return buildNiceYAxis(hi - pad, 0, options);
     return { domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], showZeroReference: false };
   }
 
@@ -114,7 +137,8 @@ export function buildNiceYAxis(minData: number, maxData: number): {
   if (lo >= 0) {
     const step = niceYStep(hi / targetDivisions || 1);
     const y1 = Math.max(step, Math.ceil(hi / step) * step);
-    const ticks = buildTickList(0, y1, step);
+    let ticks = buildTickList(0, y1, step);
+    if (options?.fineUnit) ticks = withFineLowBandTicks(ticks, step, y1, options.fineUnit);
     /** Domain is anchored at 0; draw a baseline at y=0 (with X-axis) so the floor is visible on all-positive series. */
     return { domain: [0, y1], ticks, showZeroReference: true };
   }
@@ -129,7 +153,8 @@ export function buildNiceYAxis(minData: number, maxData: number): {
   // ticks on nice multiples ≥ y0, so below-zero ticks appear only where the data actually reaches them.
   const niceFloor = Math.floor(lo / step) * step;
   const y0 = Math.max(niceFloor, lo - Math.abs(lo) * 0.08);
-  const ticks = buildTickList(y0, y1, step);
+  let ticks = buildTickList(y0, y1, step);
+  if (options?.fineUnit) ticks = withFineLowBandTicks(ticks, step, y1, options.fineUnit);
   const showZeroReference = y0 < 0 && y1 > 0;
   return { domain: [y0, y1], ticks, showZeroReference };
 }

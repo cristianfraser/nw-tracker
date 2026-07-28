@@ -44,3 +44,40 @@ describe("buildNiceYAxis mixed-sign", () => {
     expect(showZeroReference).toBe(true);
   });
 });
+
+describe("buildNiceYAxis fineUnit", () => {
+  it("fills the 0–4M low band on an expenses-style monthly range, sparse elsewhere", () => {
+    // −5.2M mortgage dip, ~10M peak → coarse step 5M; the band where spend clusters gets 1M ticks.
+    const { ticks, showZeroReference } = buildNiceYAxis(-5_200_000, 9_950_000, {
+      fineUnit: 1_000_000,
+    });
+    expect(ticks).toEqual([
+      -5_000_000, 0, 1_000_000, 2_000_000, 3_000_000, 4_000_000, 5_000_000, 10_000_000,
+    ]);
+    expect(showZeroReference).toBe(true);
+  });
+
+  it("completes the band to uniform 1M when the coarse step is 2M (daily-style range)", () => {
+    const { ticks } = buildNiceYAxis(-2_500_000, 6_000_000, { fineUnit: 1_000_000 });
+    for (const t of [1_000_000, 2_000_000, 3_000_000, 4_000_000]) {
+      expect(ticks).toContain(t);
+    }
+    expect(ticks).not.toContain(5_000_000); // above the band; next coarse tick is 6M
+    expect(ticks).toContain(6_000_000);
+  });
+
+  it("skips the band on yearly-scale axes (coarse step above 5× the unit)", () => {
+    // ~55M span → coarse step 10M; fine 1M ticks would squeeze into the plot floor.
+    const { ticks } = buildNiceYAxis(-15_000_000, 40_000_000, { fineUnit: 1_000_000 });
+    expect(ticks).not.toContain(1_000_000);
+    for (const t of ticks) {
+      expect(Math.abs(t % 10_000_000)).toBe(0);
+    }
+  });
+
+  it("skips the band when the axis is already finer than the unit", () => {
+    const { ticks } = buildNiceYAxis(0, 600_000, { fineUnit: 1_000_000 });
+    expect(ticks[ticks.length - 1]!).toBeLessThanOrEqual(600_000);
+    expect(ticks).not.toContain(1_000_000);
+  });
+});
