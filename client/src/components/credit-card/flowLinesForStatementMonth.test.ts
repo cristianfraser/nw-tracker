@@ -116,6 +116,58 @@ describe("flowLinesForFacturacionMonth", () => {
     expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([-2_000_000_042, 200]);
   });
 
+  it("open month excludes facturado-financing split_only slices (foreign display derivations)", () => {
+    const statements: CcStatementDto[] = [
+      {
+        id: 30,
+        billing_month: "2026-08",
+        statement_date: "20/08/2026",
+        currency: "clp",
+        source_pdf: "import:web-paste|open|2026-08",
+        lines: [],
+      } as unknown as CcStatementDto,
+    ];
+    const flows = [
+      // The card's own scheduled cuota — stays.
+      line({
+        statement_line_id: -3_000_160_000,
+        line_role: "installment_cuota",
+        billing_month: "2026-08",
+        amount_clp: 400_000,
+        nro_cuota_current: 1,
+        nro_cuota_total: 3,
+      }),
+      // Financing-projection slice of a financed purchase: same account_id/month/role, but a
+      // display-only Expenses derivation — must not appear as this card's cuota.
+      line({
+        statement_line_id: -1_000_000_001,
+        line_role: "installment_cuota",
+        billing_month: "2026-08",
+        amount_clp: 112_727,
+        nro_cuota_current: 1,
+        nro_cuota_total: 3,
+        gastos_scope: "split_only",
+      }),
+      // The financing card's own plan cuota is scope `excluded` in gastos — still real card data.
+      line({
+        statement_line_id: -3_000_161_000,
+        line_role: "installment_cuota",
+        billing_month: "2026-08",
+        amount_clp: 422_345,
+        nro_cuota_current: 1,
+        nro_cuota_total: 3,
+        gastos_scope: "excluded",
+      }),
+    ];
+    const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
+      billing_month: "2026-08",
+      is_open_month: true,
+    });
+    expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([
+      -3_000_160_000, -3_000_161_000,
+    ]);
+  });
+
   it("closed month excludes deduced installment cuotas", () => {
     const statements: CcStatementDto[] = [
       {
