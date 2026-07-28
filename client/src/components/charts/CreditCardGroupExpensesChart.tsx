@@ -125,8 +125,10 @@ export function CreditCardGroupExpensesChart({
         minV = Math.min(minV, negStack);
       }
     }
-    return buildNiceYAxis(minV, maxV);
-  }, [densePoints, barKeys, chartStyle]);
+    // Fine 1M-CLP (1k-USD) ticks in the 0–4M band where monthly spend clusters; the
+    // range-derived coarse steps stay sparse elsewhere (and on yearly-scale axes entirely).
+    return buildNiceYAxis(minV, maxV, { fineUnit: displayUnit === "usd" ? 1_000 : 1_000_000 });
+  }, [densePoints, barKeys, chartStyle, displayUnit]);
 
   if (points.length === 0) {
     return (
