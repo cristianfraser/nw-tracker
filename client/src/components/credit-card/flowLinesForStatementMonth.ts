@@ -27,6 +27,11 @@ function deducedInstallmentCuotaLines(
   return flowsLines.filter((ln) => {
     if (ln.account_id !== accountId) return false;
     if (ln.line_role !== "installment_cuota") return false;
+    // Facturado-financing `split_only` slices carry the FINANCED card's account_id and the
+    // projected month, but they are Expenses-tab display derivations (a Lider facturado paid
+    // in Santander cuotas re-framed as installments) — never this card's own schedule.
+    // Scope `excluded` stays visible: the financing card's own plan cuotas are real rows.
+    if (ln.gastos_scope === "split_only") return false;
     return ln.billing_month === billingMonth;
   });
 }
