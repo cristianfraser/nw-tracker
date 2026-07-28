@@ -3,6 +3,7 @@ import {
   legacyInstallmentHPurchaseKey,
   listInstallmentPurchaseSiblingStatementLineIds,
   loadCcStatementLineExpenseCtx,
+  normalizeCcExpenseMerchantKey,
   stableCcExpensePurchaseKeyFromCtx,
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
@@ -47,6 +48,154 @@ const delManualPurchase = db.prepare(
 const delUniqueByKey = db.prepare(
   `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
 );
+
+// Purchase-key references that must follow the surviving PDF purchase when a manual twin is
+// deleted (facturado-financing links, purchase notes, big-group assignments). UPDATE OR IGNORE
+// + DELETE: when a row already exists under the PDF key, the PDF-side value wins and the stale
+// manual-key row is dropped.
+const updFinancingKey = db.prepare(
+  `UPDATE OR IGNORE cc_facturado_financing_link_purchases SET financing_purchase_key = ?
+   WHERE financing_account_id = ? AND financing_purchase_key = ?`
+);
+const delFinancingKey = db.prepare(
+  `DELETE FROM cc_facturado_financing_link_purchases
+   WHERE financing_account_id = ? AND financing_purchase_key = ?`
+);
+const updNoteKey = db.prepare(
+  `UPDATE OR IGNORE cc_expense_purchase_notes SET purchase_key = ?
+   WHERE account_id = ? AND purchase_key = ?`
+);
+const delNoteKey = db.prepare(
+  `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
+);
+const updBigGroupKey = db.prepare(
+  `UPDATE OR IGNORE cc_expense_purchase_big_groups SET purchase_key = ?
+   WHERE account_id = ? AND purchase_key = ?`
+);
+const delBigGroupKey = db.prepare(
+  `DELETE FROM cc_expense_purchase_big_groups WHERE account_id = ? AND purchase_key = ?`
+);
+
+const findPdfPlansForLineIdentity = db.prepare(
+  `SELECT id, source, purchase_date, total_amount_clp, cuotas_totales, merchant
+   FROM cc_installment_purchases
+   WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ? AND total_amount_clp = ?`
+);
+
+const convertManualPurchaseToPdf = db.prepare(
+  `UPDATE cc_installment_purchases
+   SET source = 'pdf', source_pdf_sample = COALESCE(source_pdf_sample, ?)
+   WHERE id = ? AND account_id = ? AND source = 'manual'`
+);
+
+/**
+ * True when a DISTINCT pdf-source plan matches the statement line's contract identity —
+ * i.e. deleting the matched manual row leaves the contract represented in the ledger.
+ * When the ledger merge fingerprint-matched the incoming PDF contract INTO the manual row
+ * (identical merchant/date/amount, e.g. a nudged web-paste plan), no separate pdf plan
+ * exists and the manual row IS the contract — it must be converted, never deleted.
+ */
+function separatePdfPlanExistsForLine(
+  accountId: number,
+  manualId: number,
+  line: {
+    merchant: string | null;
+    transaction_date: string | null;
+    posting_date: string | null;
+    nro_cuota_total: number | null;
+    amount_clp: number | null;
+    valor_cuota_mensual_clp: number | null;
+  }
+): boolean {
+  const lineIso = purchaseIsoFromLineFields(line.transaction_date, line.posting_date);
+  const contractAmt = contractAmountClpFromLine(line);
+  if (!lineIso || line.nro_cuota_total == null || line.nro_cuota_total <= 0 || contractAmt <= 0) {
+    return false;
+  }
+  const merchantKey = normalizeCcExpenseMerchantKey(line.merchant);
+  return (
+    findPdfPlansForLineIdentity.all(accountId, lineIso, line.nro_cuota_total, contractAmt) as {
+      id: number;
+      source: string;
+      merchant: string | null;
+    }[]
+  ).some(
+    (p) =>
+      p.id !== manualId &&
+      p.source === "pdf" &&
+      normalizeCcExpenseMerchantKey(p.merchant) === merchantKey
+  );
+}
+
+/**
+ * Purchase key the surviving PDF side's gastos lines will carry. Prefer the ledger plan row
+ * matched by the line's full identity + contract amount — plan-projected cuota lines build
+ * their key from plan fields WITH the total, while a statement line's ctx key drops the total
+ * on same-identity collisions (e.g. two same-day same-merchant contracts differing only in
+ * amount), and the facturado-financing projection matches key strings exactly. Fall back to
+ * the ctx key when no unique plan exists (statement lines with no ledger row).
+ */
+function pdfPurchaseKeyForMatchedLine(
+  accountId: number,
+  line: {
+    id: number;
+    merchant: string | null;
+    transaction_date: string | null;
+    posting_date: string | null;
+    nro_cuota_total: number | null;
+    amount_clp: number | null;
+    valor_cuota_mensual_clp: number | null;
+  }
+): string | null {
+  const lineIso = purchaseIsoFromLineFields(line.transaction_date, line.posting_date);
+  const contractAmt = contractAmountClpFromLine(line);
+  if (lineIso && line.nro_cuota_total != null && line.nro_cuota_total > 0 && contractAmt > 0) {
+    const merchantKey = normalizeCcExpenseMerchantKey(line.merchant);
+    const plans = (
+      findPdfPlansForLineIdentity.all(accountId, lineIso, line.nro_cuota_total, contractAmt) as {
+        purchase_date: string;
+        total_amount_clp: number;
+        cuotas_totales: number;
+        merchant: string | null;
+      }[]
+    ).filter((p) => normalizeCcExpenseMerchantKey(p.merchant) === merchantKey);
+    if (plans.length === 1) {
+      const plan = plans[0]!;
+      const key = stableInstallmentHPurchaseKeyFromLedgerArgs({
+        accountId,
+        purchaseDateIso: plan.purchase_date,
+        cuotasTotales: plan.cuotas_totales,
+        totalAmountClp: plan.total_amount_clp,
+        merchant: plan.merchant,
+      });
+      if (key) return key;
+    }
+  }
+  const ctx = loadCcStatementLineExpenseCtx(line.id);
+  if (!ctx || ctx.account_id !== accountId) return null;
+  return stableCcExpensePurchaseKeyFromCtx(ctx);
+}
+
+/** Repoint every purchase_key reference from the deleted manual's keys to the PDF key. */
+function migrateManualPurchaseKeyRefs(
+  accountId: number,
+  manualKeys: readonly string[],
+  pdfKey: string
+): number {
+  let rewritten = 0;
+  for (const manualKey of manualKeys) {
+    if (!manualKey || manualKey === pdfKey) continue;
+    for (const [upd, del] of [
+      [updFinancingKey, delFinancingKey],
+      [updNoteKey, delNoteKey],
+      [updBigGroupKey, delBigGroupKey],
+    ] as const) {
+      rewritten += upd.run(pdfKey, accountId, manualKey).changes;
+      del.run(accountId, manualKey);
+    }
+  }
+  return rewritten;
+}
 
 const selUniqueCat = db.prepare(
   `SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
@@ -168,7 +317,11 @@ function applyCategoryToMatchedLines(accountId: number, matchedLineId: number, c
 }
 
 function deleteManualPurchaseExpenseKeys(accountId: number, manualId: number, manualKey: string | null): void {
-  if (manualKey) delUniqueByKey.run(accountId, manualKey);
+  if (manualKey) {
+    delUniqueByKey.run(accountId, manualKey);
+    const legacy = legacyInstallmentHPurchaseKey(manualKey);
+    if (legacy) delUniqueByKey.run(accountId, legacy);
+  }
   delUniqueByKey.run(accountId, `installment:${manualId}`);
 }
 
@@ -182,13 +335,18 @@ export type CcManualInstallmentReconcileMatch = {
   statement_source_pdf: string;
   line_id: number;
   line_merchant: string | null;
+  /** `deleted` = a separate pdf plan represents the contract; `converted` = this row became it. */
+  action: "deleted" | "converted";
 };
 
 export type CcManualInstallmentReconcileResult = {
   statements_considered: number;
   matched: number;
   deleted: number;
+  /** Manual rows flipped to source='pdf' because no separate pdf plan existed for the contract. */
+  converted: number;
   categories_transferred: number;
+  purchase_key_refs_rewritten: number;
   matches: CcManualInstallmentReconcileMatch[];
 };
 
@@ -231,12 +389,22 @@ export function reconcileManualInstallmentPurchasesForStatements(
 ): CcManualInstallmentReconcileResult {
   const dryRun = opts?.dryRun === true;
   if (statementIds.length === 0) {
-    return { statements_considered: 0, matched: 0, deleted: 0, categories_transferred: 0, matches: [] };
+    return {
+      statements_considered: 0,
+      matched: 0,
+      deleted: 0,
+      converted: 0,
+      categories_transferred: 0,
+      purchase_key_refs_rewritten: 0,
+      matches: [],
+    };
   }
 
   let matched = 0;
   let deleted = 0;
+  let converted = 0;
   let categoriesTransferred = 0;
+  let purchaseKeyRefsRewritten = 0;
   const matches: CcManualInstallmentReconcileMatch[] = [];
   // Plans converted from web-pasted lines inherit the web-paste statement's issuer-derived
   // card_group (e.g. 'santander'), while PDF statements keep the legacy parser groups
@@ -300,19 +468,20 @@ export function reconcileManualInstallmentPurchasesForStatements(
           merchant: manual.merchant,
         });
 
-        let hitLineId: { id: number; merchant: string | null } | null = null;
+        let hitLine: (typeof lines)[number] | null = null;
         for (const line of lines) {
           if (consumedLineIds.has(line.id)) continue;
           if (isInstallmentContractSummaryMerchant(String(line.merchant ?? ""))) continue;
           if (!manualMatchesInstallmentLine(manual, line)) continue;
-          hitLineId = { id: line.id, merchant: line.merchant };
+          hitLine = line;
           break;
         }
-        if (hitLineId == null) continue;
+        if (hitLine == null) continue;
 
-        consumedLineIds.add(hitLineId.id);
+        consumedLineIds.add(hitLine.id);
         consumedManualIds.add(manual.id);
         matched += 1;
+        const hasSeparatePdfPlan = separatePdfPlanExistsForLine(accountId, manual.id, hitLine);
         matches.push({
           manual_id: manual.id,
           manual_merchant: manual.merchant,
@@ -321,32 +490,58 @@ export function reconcileManualInstallmentPurchasesForStatements(
           cuotas_totales: manual.cuotas_totales,
           statement_id: st.id,
           statement_source_pdf: st.source_pdf,
-          line_id: hitLineId.id,
-          line_merchant: hitLineId.merchant,
+          line_id: hitLine.id,
+          line_merchant: hitLine.merchant,
+          action: hasSeparatePdfPlan ? "deleted" : "converted",
         });
         if (dryRun) continue;
 
+        if (!hasSeparatePdfPlan) {
+          // The ledger merge fingerprint-matched the statement contract into this manual row
+          // (identical merchant/date/amount), so it is the contract's only ledger row — its
+          // payments, categories, notes and financing-link keys are live. Adopt it as the
+          // statement-backed plan instead of deleting real data.
+          convertManualPurchaseToPdf.run(st.source_pdf, manual.id, accountId);
+          converted += 1;
+          continue;
+        }
+
         const categoryId = resolveCategoryIdForManualPurchase(accountId, manual.id, manualKey);
         if (categoryId != null) {
-          applyCategoryToMatchedLines(accountId, hitLineId.id, categoryId);
+          applyCategoryToMatchedLines(accountId, hitLine.id, categoryId);
           categoriesTransferred += 1;
         }
 
         deleteManualPurchaseExpenseKeys(accountId, manual.id, manualKey);
         delManualPurchase.run(manual.id, accountId);
         deleted += 1;
+
+        // Facturado-financing links, notes and big-group assignments reference the plan by
+        // purchase_key (which embeds the manual's merchant text) — repoint them at the key the
+        // surviving PDF side's gastos rows will carry, or e.g. a financing link silently stops
+        // projecting its financed facturación the moment the twin collapses.
+        const pdfKey = pdfPurchaseKeyForMatchedLine(accountId, hitLine);
+        if (pdfKey) {
+          const manualKeys = [manualKey, manualKey ? legacyInstallmentHPurchaseKey(manualKey) : null]
+            .filter((k): k is string => k != null);
+          purchaseKeyRefsRewritten += migrateManualPurchaseKeyRefs(accountId, manualKeys, pdfKey);
+        }
       }
     }
   });
 
   run();
 
-  if (deleted > 0) {
+  if (deleted > 0 || converted > 0) {
     // Deleting a twin removes dated evidence (its purchase-date ramp in the daily owed
     // walk), so today-stamps written while it existed must self-purge from its purchase
-    // date onward — same contract as manual installment delete.
+    // date onward — same contract as manual installment delete. Conversions keep the row
+    // (no evidence removed), so they don't widen the purge window.
     const earliestDeletedYmd = matches.reduce<string | null>(
-      (min, m) => (min == null || m.manual_purchase_date < min ? m.manual_purchase_date : min),
+      (min, m) =>
+        m.action === "deleted" && (min == null || m.manual_purchase_date < min)
+          ? m.manual_purchase_date
+          : min,
       null
     );
     upsertCreditCardValuationsFromLedger(accountId, {
@@ -359,7 +554,9 @@ export function reconcileManualInstallmentPurchasesForStatements(
     statements_considered: statementIds.length,
     matched,
     deleted,
+    converted,
     categories_transferred: categoriesTransferred,
+    purchase_key_refs_rewritten: purchaseKeyRefsRewritten,
     matches,
   };
 }
