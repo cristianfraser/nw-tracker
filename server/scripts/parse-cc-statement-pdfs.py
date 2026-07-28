@@ -1443,7 +1443,13 @@ def _bci_row_from_charge_line(line: str, section: str) -> Optional[Dict[str, Any
     if not merchant:
         return None
     if re.match(r"^PAGO\b", merchant, re.I):
-        return None
+        # Section-3 PAGO rows are the previous facturación's payment WITH its date — the
+        # only dated payment evidence BCI prints (the header abono is undated, and a month
+        # can carry several payment legs, e.g. two Plaza Lyon batches). The daily owed walk
+        # needs them as real negative lines; without them it climbs uncorrected until the
+        # next month-end anchor. Operaciones-section matches stay dropped (defensive).
+        if section != "cargos" or amt >= 0:
+            return None
     layout = (
         "bci_lider_cargos"
         if section == "cargos"

@@ -1050,7 +1050,9 @@ def reconcile_statement(
         )
     cargos_required = pdf_totals.get("pdf_total_cargos_abonos") is not None
     if is_bci_lider_statement(full):
-        # PAGO lines in section 3 are not emitted as rows; PDF total still includes them.
+        # Section-3 PAGO rows ARE emitted since 2026-07 (the walk needs their dates), but the
+        # printed section total mixes them with comisiones/impuestos across format variants —
+        # keep the row-level cargos check off for BCI; operaciones stays the hard anchor.
         cargos_required = False
     if (
         currency == "usd"
