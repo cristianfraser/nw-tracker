@@ -28,6 +28,18 @@ import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups"
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
 import { chartCategorySlugsForFlowsExpenses } from "../expenseDepositLinks";
 import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTotals";
+import type { FlowCcExpenseCategoryChartPoint, FlowCcExpenseMonthRow } from "../types";
+
+/** Latest month (YYYY-MM) with any real spend in the given rows. */
+function latestRealSpendMonth(rows: readonly FlowCcExpenseMonthRow[]): string | null {
+  let latest: string | null = null;
+  for (const row of rows) {
+    if (row.gastos_real_mes_clp !== 0 && (latest == null || row.period_month > latest)) {
+      latest = row.period_month;
+    }
+  }
+  return latest;
+}
 
 /** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
 export function ExpensesPage() {
@@ -101,27 +113,36 @@ export function ExpensesPage() {
   }, [chartCategorySlugs, data, displayUnit, excludedBigGroups, installmentMode]);
 
   /**
-   * Latest month (YYYY-MM) with any real spend. Trailing months beyond this are dropped so the
-   * table/chart don't show an empty future tail — installment cuota lines create future month
-   * buckets that are $0 in Total mode; Cuotas mode keeps them because they carry real gastos.
+   * Latest month (YYYY-MM) with any real spend in the CURRENT mode. Table rows beyond this are
+   * dropped so the table doesn't show an empty future tail — installment cuota lines create
+   * future month buckets that are $0 in Total mode; Cuotas mode keeps them (real gastos).
    */
-  const latestNonEmptyMonth = useMemo(() => {
-    if (!view) return null;
-    let latest: string | null = null;
-    for (const row of view.table.by_month) {
-      if (row.gastos_real_mes_clp !== 0 && (latest == null || row.period_month > latest)) {
-        latest = row.period_month;
-      }
-    }
-    return latest;
-  }, [view]);
+  const latestNonEmptyMonth = useMemo(
+    () => (view ? latestRealSpendMonth(view.table.by_month) : null),
+    [view]
+  );
+
+  /**
+   * Chart x-axis end month is mode-INDEPENDENT: Total mode keeps the split-mode tail (future
+   * months that only carry projected cuotas — $0 buckets under Total) so toggling
+   * Total ↔ Por cuota never shrinks the x-axis range.
+   */
+  const chartEndMonth = useMemo(() => {
+    if (!data || installmentMode === "split") return latestNonEmptyMonth;
+    const splitEnd = latestRealSpendMonth(
+      aggregateGastosFromLines(data.lines, [], "split", undefined, displayUnit).by_month
+    );
+    return splitEnd != null && (latestNonEmptyMonth == null || splitEnd > latestNonEmptyMonth)
+      ? splitEnd
+      : latestNonEmptyMonth;
+  }, [data, displayUnit, installmentMode, latestNonEmptyMonth]);
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
     const cutoff = timeRangeCutoffYmd(timeRange);
     if (chartGranularity === "day") {
       if (!data) return [];
-      return aggregateGastosChartPointsByDay(
+      const daily = aggregateGastosChartPointsByDay(
         data.lines,
         chartCategorySlugs,
         installmentMode,
@@ -129,10 +150,35 @@ export function ExpensesPage() {
         displayUnit,
         data.cuota_pay_by_iso
       ).filter((p) => cutoff == null || p.as_of_date >= cutoff);
+      if (installmentMode === "total") {
+        // Total mode has no cuota day buckets; a $0 tail point at the split-mode end day keeps
+        // the x-axis range identical to Por cuota (the densifier zero-fills the gap).
+        const splitPoints = aggregateGastosChartPointsByDay(
+          data.lines,
+          chartCategorySlugs,
+          "split",
+          excludedBigGroups,
+          displayUnit,
+          data.cuota_pay_by_iso
+        );
+        const splitEndDay =
+          splitPoints.length > 0 ? splitPoints[splitPoints.length - 1].as_of_date : null;
+        const lastDay = daily.length > 0 ? daily[daily.length - 1].as_of_date : null;
+        if (
+          splitEndDay != null &&
+          (cutoff == null || splitEndDay >= cutoff) &&
+          (lastDay == null || splitEndDay > lastDay)
+        ) {
+          const zeroTail: FlowCcExpenseCategoryChartPoint = { as_of_date: splitEndDay };
+          for (const slug of chartCategorySlugs) zeroTail[slug] = 0;
+          daily.push(zeroTail);
+        }
+      }
+      return daily;
     }
     const monthly = view.chart.chart_monthly_by_category.filter(
       (p) =>
-        (latestNonEmptyMonth == null || p.as_of_date.slice(0, 7) <= latestNonEmptyMonth) &&
+        (chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth) &&
         (cutoff == null || p.as_of_date >= cutoff)
     );
     if (chartGranularity === "year") {
@@ -141,12 +187,12 @@ export function ExpensesPage() {
     return monthly;
   }, [
     chartCategorySlugs,
+    chartEndMonth,
     chartGranularity,
     data,
     displayUnit,
     excludedBigGroups,
     installmentMode,
-    latestNonEmptyMonth,
     view,
     timeRange,
   ]);
@@ -157,14 +203,14 @@ export function ExpensesPage() {
     const cutoff = timeRangeCutoffYmd(timeRange);
     const monthly = view.table.chart_monthly_by_category.filter(
       (p) =>
-        (latestNonEmptyMonth == null || p.as_of_date.slice(0, 7) <= latestNonEmptyMonth) &&
+        (chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth) &&
         (cutoff == null || p.as_of_date >= cutoff)
     );
     if (chartGranularity === "year") {
       return rollupChartPointsByYear(monthly, chartCategorySlugs);
     }
     return monthly;
-  }, [chartCategorySlugs, chartGranularity, latestNonEmptyMonth, view, timeRange]);
+  }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
 
   /** Table rows: FULL history (no range clip), rolled to the table's own período. */
   const monthTableRows = useMemo(() => {
