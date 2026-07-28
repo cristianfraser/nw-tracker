@@ -216,6 +216,15 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
        ) VALUES (?, '25/06/26', 'MP     *MERCADO LIBRE', 544574, 1, 1, 12, 45381, 'vitest-twin-line', 'vitest-twin-line', 'raw')`
     ).run(statementId);
 
+    // The surviving PDF twin plan (created by the statement import in production) — the
+    // purchase-key migration derives its modern key from this row.
+    db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
+         cuotas_totales, merchant, source
+       ) VALUES (?, 'A', 'vitest-pdf-twin', '2026-06-25', 544574, 12, 'MP     *MERCADO LIBRE', 'pdf')`
+    ).run(accountId);
+
     const manualId = Number(
       db
         .prepare(
@@ -246,6 +255,75 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
     expect(result.matched).toBe(1);
     expect(result.deleted).toBe(1);
     expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeFalsy();
+  });
+
+  it("repoints financing-link and note purchase_key refs at the surviving PDF key", () => {
+    const { accountId, statementId } = makeFixture();
+    // Keys embed the manual's merchant («MP *MERCADO») — as stored by the financing-link UI.
+    const manualKey = `installment-h:${accountId}:2026-06-26:12:544574:MP *MERCADO`;
+    const linkId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_facturado_financing_links (financed_account_id, financed_billing_month) VALUES (?, '2026-06')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO cc_facturado_financing_link_purchases (link_id, financing_account_id, financing_purchase_key)
+       VALUES (?, ?, ?)`
+    ).run(linkId, accountId, manualKey);
+    db.prepare(
+      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'vitest twin note')`
+    ).run(accountId, manualKey);
+
+    try {
+      const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
+      expect(result.deleted).toBe(1);
+      expect(result.purchase_key_refs_rewritten).toBe(2);
+
+      const pdfKey = `installment-h:${accountId}:2026-06-25:12:544574:MP *MERCADO LIBRE`;
+      const linkRow = db
+        .prepare(`SELECT financing_purchase_key FROM cc_facturado_financing_link_purchases WHERE link_id = ?`)
+        .get(linkId) as { financing_purchase_key: string };
+      expect(linkRow.financing_purchase_key).toBe(pdfKey);
+      const noteRow = db
+        .prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
+        .get(accountId, pdfKey) as { notes: string } | undefined;
+      expect(noteRow?.notes).toBe("vitest twin note");
+    } finally {
+      db.prepare(`DELETE FROM cc_facturado_financing_link_purchases WHERE link_id = ?`).run(linkId);
+      db.prepare(`DELETE FROM cc_facturado_financing_links WHERE id = ?`).run(linkId);
+      db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
+    }
+  });
+
+  it("converts (not deletes) a manual plan when no separate pdf plan represents the contract", () => {
+    // The TGR scenario: the ledger merge fingerprint-matched the statement contract INTO the
+    // manual row, so the fixture's pdf twin does not exist — deleting would erase the contract.
+    const { accountId, statementId, manualId } = makeFixture();
+    db.prepare(
+      `DELETE FROM cc_installment_purchases WHERE account_id = ? AND canonical_row_id = 'vitest-pdf-twin'`
+    ).run(accountId);
+
+    const dry = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId], {
+      dryRun: true,
+    });
+    expect(dry.matches[0]!.action).toBe("converted");
+    expect(
+      (db.prepare(`SELECT source FROM cc_installment_purchases WHERE id = ?`).get(manualId) as {
+        source: string;
+      }).source
+    ).toBe("manual");
+
+    const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
+    expect(result.matched).toBe(1);
+    expect(result.converted).toBe(1);
+    expect(result.deleted).toBe(0);
+    const row = db
+      .prepare(`SELECT source, source_pdf_sample FROM cc_installment_purchases WHERE id = ?`)
+      .get(manualId) as { source: string; source_pdf_sample: string | null };
+    expect(row.source).toBe("pdf");
+    expect(row.source_pdf_sample).toBe("vitest twin jul.pdf");
   });
 
   it("does not match across a 4-day date gap on an indexed cuota line", () => {

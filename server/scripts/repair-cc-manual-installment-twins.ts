@@ -27,13 +27,13 @@ for (const m of masters) {
   const res = reconcileManualInstallmentPurchasesForStatements(m.account_id, statementIds, {
     dryRun: !APPLY,
   });
-  const tag = APPLY ? "deleted" : "would delete";
   console.log(
-    `account ${m.account_id} (${m.name}): statements=${statementIds.length} matched=${res.matched} ${tag}=${APPLY ? res.deleted : res.matched}`
+    `account ${m.account_id} (${m.name}): statements=${statementIds.length} matched=${res.matched}` +
+      ` deleted=${res.deleted} converted=${res.converted}${APPLY ? "" : " (dry run)"}`
   );
   for (const match of res.matches) {
     console.log(
-      `  manual #${match.manual_id} ${match.manual_purchase_date} ${match.total_amount_clp} x${match.cuotas_totales} «${match.manual_merchant}»` +
+      `  [${match.action}] manual #${match.manual_id} ${match.manual_purchase_date} ${match.total_amount_clp} x${match.cuotas_totales} «${match.manual_merchant}»` +
         ` ↔ line #${match.line_id} «${match.line_merchant}» (${match.statement_source_pdf})`
     );
   }
