@@ -1,30 +1,48 @@
 import { useCallback, useState } from "react";
 import { api } from "../../api";
-import { formatClp } from "../../format";
+import { formatCcExpenseLineAmount, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
 import { Button } from "@crfrsr/ui";
 
-type ImportFlowItem = { occurred_on: string; description: string; amount_clp: number };
+type ImportFlowItem = {
+  occurred_on: string;
+  description: string;
+  /** Null for lines with no CLP amount (CC USD-pasted / foreign lines). */
+  amount_clp: number | null;
+  amount_usd?: number | null;
+  /** CC extras — absent on checking flows. */
+  cuota?: string | null;
+  statement?: string;
+};
 type SkippedImportFlowItem = ImportFlowItem & { reason: string };
 
 const SKIP_REASON_KEY: Record<string, string> = {
   duplicate: "accountDetail.import.resultSkipReasonDuplicate",
   fuzzy_duplicate: "accountDetail.import.resultSkipReasonDuplicateApprox",
   installment_overlap: "accountDetail.import.resultSkipReasonInstallmentOverlap",
+  duplicate_in_paste: "accountDetail.import.resultSkipReasonDuplicateInPaste",
   already_present: "accountDetail.import.resultSkipReasonAlreadyPresent",
   superseded_by_cartola: "accountDetail.import.resultSkipReasonSupersededByCartola",
   superseded_by_transfer: "accountDetail.import.resultSkipReasonSupersededByTransfer",
 };
 
 function isFlowItem(v: unknown): v is ImportFlowItem {
+  if (typeof v !== "object" || v === null) return false;
+  const f = v as ImportFlowItem;
   return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as ImportFlowItem).occurred_on === "string" &&
-    typeof (v as ImportFlowItem).amount_clp === "number"
+    typeof f.occurred_on === "string" &&
+    (typeof f.amount_clp === "number" || f.amount_clp === null)
   );
+}
+
+function flowAmountLabel(flow: ImportFlowItem): string {
+  if (typeof flow.amount_clp === "number") {
+    return formatCcExpenseLineAmount(flow.amount_clp, flow.amount_usd ?? null);
+  }
+  if (typeof flow.amount_usd === "number") return formatUsdFine(flow.amount_usd);
+  return "—";
 }
 
 function flowArray(data: Record<string, unknown>, key: string): ImportFlowItem[] | null {
@@ -69,64 +87,100 @@ type Props = {
   slots: ImportSlot[];
 };
 
-function formatResult(data: Record<string, unknown>): string {
-  // Web-paste responses use snake_case; the statement-merge response uses camelCase. Read either
-  // so every skip bucket is surfaced — otherwise "insertados: 0" looks unexplained when lines were
-  // actually skipped as installment-overlap or fuzzy-duplicate (both previously hidden here).
-  const num = (...keys: string[]): number | undefined => {
-    for (const k of keys) {
-      if (typeof data[k] === "number") return data[k] as number;
-    }
-    return undefined;
-  };
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
 
+function numField(data: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const k of keys) {
+    if (typeof data[k] === "number") return data[k] as number;
+  }
+  return undefined;
+}
+
+/**
+ * Count summary — only shown when the response carries no per-flow arrays (document imports,
+ * older shapes). Web-paste responses use snake_case; the statement-merge response uses camelCase.
+ */
+function summaryCountParts(data: Record<string, unknown>, t: TFn): string[] {
   const parts: string[] = [];
-  const parsed = num("lines_parsed", "lineCount");
-  if (parsed != null) parts.push(`parseados: ${parsed}`);
+  const push = (key: string, n: number | undefined, alwaysWhenPresent = false) => {
+    if (n != null && (alwaysWhenPresent || n > 0)) {
+      parts.push(t(`accountDetail.import.${key}`, { n }));
+    }
+  };
+  push("summaryParsed", numField(data, "lines_parsed", "lineCount"), true);
+  push("summaryInserted", numField(data, "inserted", "linesInserted"), true);
+  push("summarySkippedDuplicate", numField(data, "skipped_duplicate", "linesSkippedDuplicate"), true);
+  push("summarySkippedFuzzyDuplicate", numField(data, "skipped_fuzzy_duplicate", "linesSkippedFuzzyDuplicate"));
+  push("summarySkippedInstallmentOverlap", numField(data, "skipped_installment_overlap", "linesSkippedInstallmentOverlap"));
+  push("summarySkippedDuplicateInPaste", numField(data, "skipped_duplicate_in_paste"));
+  push("summarySkippedSupersededByCartola", numField(data, "skipped_superseded_by_cartola"));
+  push("summarySkippedSupersededByTransfer", numField(data, "skipped_superseded_by_transfer"));
+  return parts;
+}
 
-  const inserted = num("inserted", "linesInserted");
-  if (inserted != null) parts.push(`insertados: ${inserted}`);
+/** Result info the per-flow arrays don't carry — shown above the detail groups too. */
+function summaryExtraParts(data: Record<string, unknown>, t: TFn): string[] {
+  const parts: string[] = [];
 
-  const dup = num("skipped_duplicate", "linesSkippedDuplicate");
-  if (dup != null) parts.push(`omitidos (duplicado): ${dup}`);
+  const statements = numField(data, "statement_count");
+  if (statements != null && statements > 1) {
+    parts.push(t("accountDetail.import.summaryStatements", { n: statements }));
+  }
 
-  const fuzzy = num("skipped_fuzzy_duplicate", "linesSkippedFuzzyDuplicate");
-  if (fuzzy) parts.push(`omitidos (duplicado aprox.): ${fuzzy}`);
+  const ledger =
+    typeof data.ledger === "object" && data.ledger !== null
+      ? (data.ledger as Record<string, unknown>)
+      : null;
+  if (ledger) {
+    const plans = numField(ledger, "purchaseUpserts");
+    if (plans) parts.push(t("accountDetail.import.summaryInstallmentPlans", { n: plans }));
+    const payments = numField(ledger, "paymentUpserts");
+    if (payments) parts.push(t("accountDetail.import.summaryInstallmentPayments", { n: payments }));
+  }
 
-  const overlap = num("skipped_installment_overlap", "linesSkippedInstallmentOverlap");
-  if (overlap) parts.push(`omitidos (ya en cuotas): ${overlap}`);
-
-  const removed = num("overlap_removed");
-  if (removed) parts.push(`removidos (cuotas): ${removed}`);
+  const removed = numField(data, "overlap_removed");
+  if (removed) parts.push(t("accountDetail.import.summaryOverlapRemoved", { n: removed }));
 
   const nudges = data.installment_first_due_nudges;
   if (Array.isArray(nudges) && nudges.length > 0) {
     const labels = (nudges as { merchant?: string | null; to?: string }[])
       .map((n) => `${n.merchant || "—"} → ${n.to ?? ""}`)
       .join(", ");
-    parts.push(`1er mes cuotas ajustado: ${labels}`);
+    parts.push(t("accountDetail.import.summaryFirstDueNudges", { labels }));
   }
 
-  const cartola = num("skipped_superseded_by_cartola");
-  if (cartola) parts.push(`omitidos (ya en cartola): ${cartola}`);
-
-  const transfer = num("skipped_superseded_by_transfer");
-  if (transfer) parts.push(`omitidos (ya como traspaso interno): ${transfer}`);
-
-  if (Array.isArray(data.parse_errors) && data.parse_errors.length > 0) {
-    parts.push(`avisos: ${(data.parse_errors as string[]).slice(0, 3).join("; ")}`);
+  const warnings = Array.isArray(data.parse_errors)
+    ? (data.parse_errors as string[])
+    : Array.isArray(data.errors)
+      ? (data.errors as string[])
+      : [];
+  if (warnings.length > 0) {
+    parts.push(
+      t("accountDetail.import.summaryWarnings", { msgs: warnings.slice(0, 3).join("; ") })
+    );
   }
-  if (parts.length === 0) return JSON.stringify(data, null, 2);
-  return parts.join(" · ");
+  return parts;
 }
 
-function FlowLine({ flow, reason }: { flow: ImportFlowItem; reason?: string }) {
+function FlowLine({
+  flow,
+  reason,
+  showStatement,
+}: {
+  flow: ImportFlowItem;
+  reason?: string;
+  showStatement?: boolean;
+}) {
   const { t } = useTranslation();
   const reasonKey = reason ? SKIP_REASON_KEY[reason] : undefined;
   return (
     <li className={styles.resultFlow}>
       {flow.occurred_on} · {flow.description || "—"} ·{" "}
-      <span className={styles.resultFlowAmount}>{formatClp(flow.amount_clp)}</span>
+      <span className={styles.resultFlowAmount}>{flowAmountLabel(flow)}</span>
+      {flow.cuota && <> · {t("accountDetail.import.resultCuotaTag", { cuota: flow.cuota })}</>}
+      {showStatement && flow.statement && (
+        <span className={styles.resultFlowReason}> · {flow.statement}</span>
+      )}
       {reasonKey && <span className={styles.resultFlowReason}> ({t(reasonKey)})</span>}
     </li>
   );
@@ -134,49 +188,64 @@ function FlowLine({ flow, reason }: { flow: ImportFlowItem; reason?: string }) {
 
 /**
  * Renders the import result as a two-group bulleted list (inserted / skipped flows) when the
- * response carries per-flow arrays (checking recent + cartola imports). Other import types (CC
- * paste/PDF, cuenta vista, documents) return counts only, so those fall back to the count summary.
+ * response carries per-flow arrays (checking recent/cartola, cuenta vista and CC paste/PDF
+ * imports), with a summary line above for info the arrays don't carry (removed overlaps,
+ * first-due nudges, warnings). Responses without arrays fall back to the count summary.
  */
 function ImportResultView({ data }: { data: Record<string, unknown> }) {
   const { t } = useTranslation();
   const inserted = flowArray(data, "inserted_flows");
   const skipped = flowArray(data, "skipped_flows") as SkippedImportFlowItem[] | null;
+  const extras = summaryExtraParts(data, t);
   if (!inserted && !skipped) {
-    return <p className={styles.ok}>{formatResult(data)}</p>;
+    const parts = [...summaryCountParts(data, t), ...extras];
+    return (
+      <p className={styles.ok}>
+        {parts.length > 0 ? parts.join(" · ") : JSON.stringify(data, null, 2)}
+      </p>
+    );
   }
   const insertedFlows = inserted ?? [];
   const skippedFlows = skipped ?? [];
+  // Statement tags matter only when one upload touched several statements (e.g. CLP + USD PDFs).
+  const showStatement =
+    new Set(
+      [...insertedFlows, ...skippedFlows].map((f) => f.statement).filter(Boolean)
+    ).size > 1;
   return (
-    <ul className={styles.resultList}>
-      <li className={styles.resultGroup}>
-        {t("accountDetail.import.resultInsertedFlows", { n: insertedFlows.length })}:
-        {insertedFlows.length === 0 ? (
-          <ul>
-            <li className={styles.resultFlowNone}>{t("accountDetail.import.resultFlowNone")}</li>
-          </ul>
-        ) : (
-          <ul>
-            {insertedFlows.map((flow, i) => (
-              <FlowLine key={i} flow={flow} />
-            ))}
-          </ul>
-        )}
-      </li>
-      <li className={styles.resultGroup}>
-        {t("accountDetail.import.resultSkippedFlows", { n: skippedFlows.length })}:
-        {skippedFlows.length === 0 ? (
-          <ul>
-            <li className={styles.resultFlowNone}>{t("accountDetail.import.resultFlowNone")}</li>
-          </ul>
-        ) : (
-          <ul>
-            {skippedFlows.map((flow, i) => (
-              <FlowLine key={i} flow={flow} reason={flow.reason} />
-            ))}
-          </ul>
-        )}
-      </li>
-    </ul>
+    <>
+      {extras.length > 0 && <p className={styles.ok}>{extras.join(" · ")}</p>}
+      <ul className={styles.resultList}>
+        <li className={styles.resultGroup}>
+          {t("accountDetail.import.resultInsertedFlows", { n: insertedFlows.length })}:
+          {insertedFlows.length === 0 ? (
+            <ul>
+              <li className={styles.resultFlowNone}>{t("accountDetail.import.resultFlowNone")}</li>
+            </ul>
+          ) : (
+            <ul>
+              {insertedFlows.map((flow, i) => (
+                <FlowLine key={i} flow={flow} showStatement={showStatement} />
+              ))}
+            </ul>
+          )}
+        </li>
+        <li className={styles.resultGroup}>
+          {t("accountDetail.import.resultSkippedFlows", { n: skippedFlows.length })}:
+          {skippedFlows.length === 0 ? (
+            <ul>
+              <li className={styles.resultFlowNone}>{t("accountDetail.import.resultFlowNone")}</li>
+            </ul>
+          ) : (
+            <ul>
+              {skippedFlows.map((flow, i) => (
+                <FlowLine key={i} flow={flow} reason={flow.reason} showStatement={showStatement} />
+              ))}
+            </ul>
+          )}
+        </li>
+      </ul>
+    </>
   );
 }
 

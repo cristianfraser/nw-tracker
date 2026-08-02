@@ -14,7 +14,12 @@ import {
   mergeCcAccountFromParsedRows,
   replaceStatementKeysFromRecords,
 } from "./ccInstallmentLedgerMerge.js";
-import { currencyFromRow, type CcStatementCsvRecord } from "./ccStatementsImport.js";
+import {
+  currencyFromRow,
+  type CcImportFlowItem,
+  type CcStatementCsvRecord,
+  type SkippedCcImportFlowItem,
+} from "./ccStatementsImport.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardLast4FromParsedRow } from "./ccParsedImportAccounts.js";
 
@@ -34,6 +39,17 @@ export type CcStatementPdfImportResult = {
   /** Basenames written under `cfraser/credit-card-statements/<card>/clp|usd/` (may differ after rename). */
   saved_pdfs: string[];
   csv_rows: number;
+  /** Flat counters + per-line arrays — the shape the import panel reads (parity with checking). */
+  lines_parsed: number;
+  inserted: number;
+  skipped_duplicate: number;
+  skipped_fuzzy_duplicate: number;
+  skipped_installment_overlap: number;
+  overlap_removed: number;
+  statement_count: number;
+  inserted_flows: CcImportFlowItem[];
+  skipped_flows: SkippedCcImportFlowItem[];
+  parse_errors: string[];
   statements: {
     statementCount: number;
     linesInserted: number;
@@ -203,6 +219,16 @@ export function importCcStatementPdfsForAccount(
       files: uploadedNames,
       saved_pdfs: savedPdfs,
       csv_rows: records.length,
+      lines_parsed: records.length,
+      inserted: merged.statements.linesInserted,
+      skipped_duplicate: merged.statements.linesSkippedDuplicate,
+      skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
+      skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
+      overlap_removed: merged.overlap_removed,
+      statement_count: merged.statements.statementCount,
+      inserted_flows: merged.statements.inserted_flows,
+      skipped_flows: merged.statements.skipped_flows,
+      parse_errors: parseFailures,
       statements: {
         statementCount: merged.statements.statementCount,
         linesInserted: merged.statements.linesInserted,
