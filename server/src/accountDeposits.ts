@@ -293,19 +293,26 @@ export function totalStateContributionsClpForAccount(accountId: number): number 
   return getStateContributionInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 
+/** Sum events dated ≤ Chile-today: totals are as-of-today like balances, so a future-dated
+ *  movement (bank-scheduled giro from a partial cartola) doesn't read as phantom P/L. */
+function sumDepositEventsThroughToday(events: DepositInflowEvent[]): number {
+  const today = chileCalendarTodayYmd();
+  return events.reduce((s, e) => (e.occurred_on > today ? s : s + e.amt), 0);
+}
+
 /** Net external CLP capital (movements); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
   if (isUsdCashAccount(accountId)) {
     return usdCashDepositedClpToday(accountId);
   }
-  return getMergedDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
+  return sumDepositEventsThroughToday(getMergedDepositInflowEventsForAccount(accountId));
 }
 
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
   if (isUsdCashAccount(accountId)) {
     return usdCashDepositedClpToday(accountId);
   }
-  return getMergedDisplayDepositInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
+  return sumDepositEventsThroughToday(getMergedDisplayDepositInflowEventsForAccount(accountId));
 }
 
 /** Summary “Depositado”: personal capital for equity MTM stocks, full external capital otherwise. */
@@ -323,9 +330,10 @@ function usdCashDepositedClpToday(accountId: number): number {
 }
 
 const wdwSumStmt = db.prepare(
-  `SELECT COALESCE(SUM(ABS(amount_clp)), 0) AS s FROM movements WHERE account_id = ? AND amount_clp < 0`
+  `SELECT COALESCE(SUM(ABS(amount_clp)), 0) AS s FROM movements
+   WHERE account_id = ? AND amount_clp < 0 AND occurred_on <= ?`
 );
 
 export function totalWithdrawalsClpForAccount(accountId: number): number {
-  return (wdwSumStmt.get(accountId) as { s: number }).s;
+  return (wdwSumStmt.get(accountId, chileCalendarTodayYmd()) as { s: number }).s;
 }
