@@ -178,9 +178,11 @@ function flowsDepositsNetTotalsByAccount(opts?: {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
       if (opts?.period === "month" && monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
       if (opts?.period === "year" && e.occurred_on.slice(0, 4) !== currentY) continue;
-      // Period windows end at Chile-today: a future-dated event inside the current
-      // month/year must not count until its date arrives (closings are as-of-today).
-      if (opts?.period != null && e.occurred_on > today) continue;
+      // Every window ends at Chile-today, lifetime totals included: a future-dated event
+      // (e.g. a bank-scheduled giro in a partial cartola) must not count until its date
+      // arrives — balances walk movements ≤ today, so counting it early surfaces as
+      // phantom lifetime P/L (delta_total = value − deposits).
+      if (e.occurred_on > today) continue;
       const amount_clp = Math.round(e.amt);
       sumClp += amount_clp;
       const amount_usd = depositInflowEventUsd(e);
@@ -274,6 +276,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
   const accounts = listDepositFlowAccounts(false);
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
+  const today = chileCalendarTodayYmd();
 
   const rows: FlowDepositRow[] = [];
   for (const acc of accounts) {
@@ -282,6 +285,9 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     const events = eventsByAccount.get(acc.account_id) ?? [];
     for (const e of events) {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+      // Same as-of-today convention as the net totals: a future-dated event counts
+      // once its date arrives (keeps rows, chart, and per-account totals in agreement).
+      if (e.occurred_on > today) continue;
       const amount_clp = Math.round(e.amt);
       const amount_usd = depositInflowEventUsd(e);
       rows.push({
