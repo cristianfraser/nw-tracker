@@ -25,7 +25,7 @@ import {
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
 import { CounterpartAccountSelect } from "../account/CounterpartAccountSelect";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 export function brokerageMovementFieldLabelStyle(): CSSProperties {
   return { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem" };
@@ -89,20 +89,14 @@ export function BrokerageMovementRowFields({
         borderRadius: 6,
       }}
     >
-      <label style={brokerageMovementFieldRowStyle()}>
-        <span style={brokerageMovementFieldLabelStyle()}>
-          {t("panelAccounts.addAccount.movementDate")}
-        </span>
-        <input
+      <Field label={t("panelAccounts.addAccount.movementDate")}>
+        <Input
           type="date"
           value={row.occurredOn}
           onChange={(e) => onChange({ ...row, occurredOn: e.target.value })}
         />
-      </label>
-      <label style={brokerageMovementFieldRowStyle()}>
-        <span style={brokerageMovementFieldLabelStyle()}>
-          {t("panelAccounts.addAccount.movementType")}
-        </span>
+      </Field>
+      <Field label={t("panelAccounts.addAccount.movementType")}>
         <select
           value={row.flowKind}
           onChange={(e) =>
@@ -115,48 +109,39 @@ export function BrokerageMovementRowFields({
             </option>
           ))}
         </select>
-      </label>
+      </Field>
       {showClp ? (
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("panelAccounts.addAccount.amountClp")}
-          </span>
-          <input
+        <Field label={t("panelAccounts.addAccount.amountClp")}>
+          <Input
             type="text"
             inputMode="decimal"
             value={row.amountClp}
             placeholder={row.flowKind === "deposit_clp" ? "3000000" : ""}
             onChange={(e) => onChange({ ...row, amountClp: e.target.value })}
           />
-        </label>
+        </Field>
       ) : null}
       {showUsd ? (
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("panelAccounts.addAccount.amountUsd")}
-          </span>
-          <input
+        <Field label={t("panelAccounts.addAccount.amountUsd")}>
+          <Input
             type="text"
             inputMode="decimal"
             value={row.amountUsd}
             placeholder={row.flowKind === "compra_usd_venta_clp" ? "3353.07" : ""}
             onChange={(e) => onChange({ ...row, amountUsd: e.target.value })}
           />
-        </label>
+        </Field>
       ) : null}
       {showUnits ? (
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("panelAccounts.addAccount.unitsDelta")}
-          </span>
-          <input
+        <Field label={t("panelAccounts.addAccount.unitsDelta")}>
+          <Input
             type="text"
             inputMode="decimal"
             value={row.unitsDelta}
             placeholder="59.760886574"
             onChange={(e) => onChange({ ...row, unitsDelta: e.target.value })}
           />
-        </label>
+        </Field>
       ) : null}
       {brokerageFlowKindShowsCounterpart(row.flowKind) || clpTransferCounterpart ? (
         <div style={{ gridColumn: "1 / -1" }}>

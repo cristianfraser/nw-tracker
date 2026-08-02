@@ -6,7 +6,7 @@ import { useTranslation } from "../../i18n";
 import { queryKeys } from "../../queries/keys";
 import type { FxBidAskGapRow } from "../../types";
 import { Table } from "../ui/Table";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 type RowDraft = {
   buy: string;
@@ -145,8 +145,8 @@ export function FxBidAskGapsTable() {
                 {gap.mid_clp_per_usd != null ? formatClp(gap.mid_clp_per_usd) : "—"}
               </td>
               <td style={{ textAlign: "right" }}>
-                <input
-                  className="mono"
+                <Input
+                  size="sm"
                   type="number"
                   step="0.01"
                   min="0"
@@ -160,12 +160,11 @@ export function FxBidAskGapsTable() {
                       [gap.date]: { ...draft, buy: e.target.value, error: null },
                     }))
                   }
-                  style={{ width: "6.5rem", textAlign: "right" }}
                 />
               </td>
               <td style={{ textAlign: "right" }}>
-                <input
-                  className="mono"
+                <Input
+                  size="sm"
                   type="number"
                   step="0.01"
                   min="0"
@@ -179,7 +178,6 @@ export function FxBidAskGapsTable() {
                       [gap.date]: { ...draft, sell: e.target.value, error: null },
                     }))
                   }
-                  style={{ width: "6.5rem", textAlign: "right" }}
                 />
               </td>
               <td className="muted" style={{ fontSize: "0.85rem" }}>

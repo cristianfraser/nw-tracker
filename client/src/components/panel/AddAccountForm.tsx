@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
@@ -13,7 +13,7 @@ import {
   type PanelAccountType,
 } from "../../panelAccounts/panelAccountFormTypes";
 import type { NavTreeNodeDto } from "../../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 const ACCOUNT_TYPE_LABEL_KEYS: Record<PanelAccountType, string> = {
   equity: "panelAccounts.addAccount.accountType.equity",
@@ -25,14 +25,6 @@ const ACCOUNT_TYPE_LABEL_KEYS: Record<PanelAccountType, string> = {
 type Props = {
   netWorthRoot: NavTreeNodeDto | null;
 };
-
-function fieldLabelStyle(): CSSProperties {
-  return { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem" };
-}
-
-function fieldRowStyle(): CSSProperties {
-  return { marginBottom: "0.75rem" };
-}
 
 export function AddAccountForm({ netWorthRoot }: Props) {
   const { t } = useTranslation();
@@ -111,8 +103,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
 
   return (
     <form onSubmit={onCreateSubmit} style={{ maxWidth: "52rem", marginBottom: "2rem" }}>
-      <label style={fieldRowStyle()}>
-        <span style={fieldLabelStyle()}>{t("panelAccounts.addAccount.accountType")}</span>
+      <Field label={t("panelAccounts.addAccount.accountType")}>
         <select
           value={draft.accountType}
           onChange={(e) => onAccountTypeChange(e.target.value as PanelAccountType)}
@@ -123,35 +114,31 @@ export function AddAccountForm({ netWorthRoot }: Props) {
             </option>
           ))}
         </select>
-      </label>
+      </Field>
 
-      <label style={fieldRowStyle()}>
-        <span style={fieldLabelStyle()}>{t("panelAccounts.addAccount.displayName")}</span>
-        <input
+      <Field label={t("panelAccounts.addAccount.displayName")}>
+        <Input
           type="text"
           value={draft.displayName}
           onChange={(e) => updateDraft({ displayName: e.target.value })}
           placeholder={displayNamePlaceholder}
           required
         />
-      </label>
+      </Field>
 
       {isEquity ? (
-        <label style={fieldRowStyle()}>
-          <span style={fieldLabelStyle()}>{t("panelAccounts.addAccount.tickerSymbol")}</span>
-          <input
+        <Field label={t("panelAccounts.addAccount.tickerSymbol")}>
+          <Input
             type="text"
-            className="mono"
             value={draft.tickerSymbol}
             onChange={(e) => onTickerChange(e.target.value)}
             placeholder="QQQ"
             required
           />
-        </label>
+        </Field>
       ) : null}
 
-      <label style={fieldRowStyle()}>
-        <span style={fieldLabelStyle()}>{t("panelAccounts.addAccount.bucket")}</span>
+      <Field label={t("panelAccounts.addAccount.bucket")}>
         <select
           value={draft.bucketSlug}
           onChange={(e) => updateDraft({ bucketSlug: e.target.value })}
@@ -162,9 +149,9 @@ export function AddAccountForm({ netWorthRoot }: Props) {
             </option>
           ))}
         </select>
-      </label>
+      </Field>
 
-      <label style={{ ...fieldRowStyle(), display: "flex", alignItems: "center", gap: 8 }}>
+      <label style={{ marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: 8 }}>
         <input
           type="checkbox"
           checked={draft.excludeFromGroupTotals}

@@ -5,7 +5,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency } from "../format";
 import { useProjections } from "../queries/hooks";
 import type { ProjectionParams } from "../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 const LS_KEY = "nw-tracker.projections.overrides";
 
@@ -30,19 +30,19 @@ function isInBounds(key: keyof ProjectionParams, v: number): boolean {
   return v >= min && v <= max;
 }
 
-/** Assumption fields in display order; CLP-amount fields get a wider input. */
-const PARAM_FIELDS: { key: keyof ProjectionParams; amount?: boolean; step?: number }[] = [
+/** Assumption fields in display order. */
+const PARAM_FIELDS: { key: keyof ProjectionParams; step?: number }[] = [
   { key: "real_return_pct", step: 0.5 },
-  { key: "monthly_aporte_clp", amount: true },
+  { key: "monthly_aporte_clp" },
   { key: "inflation_clp_pct", step: 0.5 },
   { key: "inflation_usd_pct", step: 0.5 },
   { key: "retire_return_pct", step: 0.5 },
   { key: "end_age", step: 1 },
   { key: "swr_pct", step: 0.5 },
   { key: "pct_balance_pct", step: 0.5 },
-  { key: "monthly_income_clp", amount: true },
+  { key: "monthly_income_clp" },
   { key: "liquidate_other_pct", step: 5 },
-  { key: "monthly_rent_clp", amount: true },
+  { key: "monthly_rent_clp" },
 ];
 
 function readStoredOverrides(): Partial<ProjectionParams> {
@@ -128,35 +128,27 @@ export function ProjectionsPage() {
       <p className="muted">{t("projections.intro", { age: data.retire_age })}</p>
 
       <div className="flows-filters" style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-        {PARAM_FIELDS.map(({ key, amount, step }) => {
+        {PARAM_FIELDS.map(({ key, step }) => {
           const raw = overrides[key];
           const invalid = raw != null && !isInBounds(key, raw);
           const [min, max] = PARAM_BOUNDS[key];
           return (
-            <label key={key} style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
-              <span className="muted" style={{ fontSize: "0.8em" }}>
-                {t(`projections.params.${key}`)}
-              </span>
-              <input
+            <Field
+              key={key}
+              label={t(`projections.params.${key}`)}
+              error={invalid ? t("projections.invalidRange", { min, max }) : undefined}
+            >
+              <Input
                 type="number"
                 step={step ?? 1}
                 min={min}
                 max={max}
-                size={amount ? 12 : 6}
-                style={{
-                  width: amount ? "9rem" : "5rem",
-                  ...(invalid ? { borderColor: "var(--negative, #ef4444)" } : {}),
-                }}
+                aria-invalid={invalid || undefined}
                 value={drafts[key] ?? String(raw ?? data.params[key])}
                 onChange={(e) => setParam(key, e.target.value)}
                 onBlur={() => commitParam(key)}
               />
-              {invalid ? (
-                <span className="error" style={{ fontSize: "0.75em" }}>
-                  {t("projections.invalidRange", { min, max })}
-                </span>
-              ) : null}
-            </label>
+            </Field>
           );
         })}
         <div style={{ alignSelf: "flex-end" }}>

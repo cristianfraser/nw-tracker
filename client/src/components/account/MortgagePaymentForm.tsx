@@ -14,7 +14,7 @@ import {
 } from "../panel/BrokerageMovementsSection";
 import styles from "../../pages/AccountDetailPage.module.css";
 import { cn } from "../../cn";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
@@ -201,47 +201,39 @@ export function MortgagePaymentForm({
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem", maxWidth: "28rem" }}>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.cuotaLabel")}</span>
-          <input className="mono" value={cuota} onChange={(e) => setCuota(e.target.value)} />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.dateLabel")}</span>
-          <input type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.pagoClpLabel")}</span>
-          <input className="mono" value={pagoClp} onChange={(e) => setPagoClp(e.target.value)} inputMode="numeric" />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.interesClpLabel")}</span>
-          <input className="mono" value={interesClp} onChange={(e) => setInteresClp(e.target.value)} inputMode="numeric" />
-        </label>
-        <label style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.minUfLabel")}</span>
-          <span style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
-            <input
-              className="mono"
-              value={minUf}
-              onChange={(e) => setMinUf(e.target.value)}
-              inputMode="decimal"
-              disabled={useAmortExtOverride}
-              placeholder="11,0333"
-            />
-            <span className="muted" style={{ fontSize: "0.8rem" }}>
-              {t("accountDetail.mortgagePayment.minUfHint")}
-            </span>
+        <Field label={t("accountDetail.mortgagePayment.cuotaLabel")}>
+          <Input value={cuota} onChange={(e) => setCuota(e.target.value)} />
+        </Field>
+        <Field label={t("accountDetail.bookLedger.dateLabel")}>
+          <Input type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />
+        </Field>
+        <Field label={t("accountDetail.mortgagePayment.pagoClpLabel")}>
+          <Input value={pagoClp} onChange={(e) => setPagoClp(e.target.value)} inputMode="numeric" />
+        </Field>
+        <Field label={t("accountDetail.mortgagePayment.interesClpLabel")}>
+          <Input value={interesClp} onChange={(e) => setInteresClp(e.target.value)} inputMode="numeric" />
+        </Field>
+        <Field label={t("accountDetail.mortgagePayment.minUfLabel")}>
+          <Input
+            value={minUf}
+            onChange={(e) => setMinUf(e.target.value)}
+            inputMode="decimal"
+            disabled={useAmortExtOverride}
+            placeholder="11,0333"
+          />
+          <span className="muted" style={{ fontSize: "0.8rem" }}>
+            {t("accountDetail.mortgagePayment.minUfHint")}
           </span>
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.incendioClpLabel")}</span>
-          <input className="mono" value={incendioClp} onChange={(e) => setIncendioClp(e.target.value)} inputMode="numeric" />
-        </label>
-        <label style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
+        </Field>
+        <Field label={t("accountDetail.mortgagePayment.incendioClpLabel")}>
+          <Input value={incendioClp} onChange={(e) => setIncendioClp(e.target.value)} inputMode="numeric" />
+        </Field>
+        {/* Not a Field: the override checkbox brings its own <label>, which may
+            not nest inside the field's wrapping label. */}
+        <div style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
           <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.desgravamenClpLabel")}</span>
           <span style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
-            <input
-              className="mono"
+            <Input
               value={desgravamenClp}
               onChange={(e) => setDesgravamenClp(e.target.value)}
               inputMode="numeric"
@@ -256,12 +248,11 @@ export function MortgagePaymentForm({
               {t("accountDetail.mortgagePayment.desgravamenOverride")}
             </label>
           </span>
-        </label>
-        <label style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
+        </div>
+        <div style={{ ...brokerageMovementFieldRowStyle(), alignItems: "flex-start" }}>
           <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.mortgagePayment.amortExtClpLabel")}</span>
           <span style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
-            <input
-              className="mono"
+            <Input
               value={amortExtClp}
               onChange={(e) => setAmortExtClp(e.target.value)}
               inputMode="numeric"
@@ -276,7 +267,7 @@ export function MortgagePaymentForm({
               {t("accountDetail.mortgagePayment.amortExtOverride")}
             </label>
           </span>
-        </label>
+        </div>
       </div>
 
       {previewError ? (

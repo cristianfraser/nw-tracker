@@ -9,7 +9,7 @@ import {
 } from "../../panelAccounts/portfolioNavBuckets";
 import { Modal } from "../ui/Modal";
 import type { AccountListRow, NavTreeNodeDto } from "../../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 type Props = {
   account: AccountListRow;
@@ -80,7 +80,7 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
       <p>
         <label>
           {t("panelAccounts.addAccount.displayName")}{" "}
-          <input
+          <Input
             type="text"
             value={name}
             onChange={(e) => {

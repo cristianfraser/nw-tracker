@@ -23,7 +23,7 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 function CreditCardInstallmentsSection({
   ledger,
@@ -189,10 +189,10 @@ function CreditCardInstallmentsSection({
             {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
             {!hasLedger ? (
               <td className="desktop-only">
-                <input
+                <Input
+                  size="sm"
                   type="number"
                   step={1}
-                  className={cn("mono", styles.offsetInput)}
                   value={extraOffsets[p.purchase_id] ?? 0}
                   onChange={(e) => {
                     const raw = e.target.value;

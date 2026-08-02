@@ -6,7 +6,7 @@ import { formatClp } from "../../format";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateUnlinkedPurchases } from "../../queries/hooks";
 import { useAssignRealEstatePurchaseMutation } from "../../queries/mutations";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 /** Kinds a purchase can be assigned to (mirrors REAL_ESTATE_LINKABLE_KINDS server-side). */
 const ASSIGNABLE_KINDS = [
@@ -136,12 +136,11 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
           />
           {t("expenses.realEstate.billPreviousMonthToggle")}
         </label>
-        <input
+        <Input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("expenses.realEstate.assignSearchPlaceholder")}
-          style={{ flex: 1, minWidth: "10rem" }}
         />
         <Button variant="secondary" size="sm"
           disabled={busy || selected.size === 0}

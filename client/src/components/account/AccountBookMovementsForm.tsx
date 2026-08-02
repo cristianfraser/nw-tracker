@@ -9,7 +9,7 @@ import {
 } from "../panel/BrokerageMovementsSection";
 import { CounterpartAccountSelect } from "./CounterpartAccountSelect";
 import { FlowDirectionToggle, type FlowDirection } from "./FlowDirectionToggle";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 type BookMovementDraft = {
   id: string;
@@ -137,9 +137,8 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
               borderRadius: 6,
             }}
           >
-            <label style={brokerageMovementFieldRowStyle()}>
-              <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.dateLabel")}</span>
-              <input
+            <Field label={t("accountDetail.bookLedger.dateLabel")}>
+              <Input
                 type="date"
                 value={row.occurredOn}
                 onChange={(e) =>
@@ -148,7 +147,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
                   )
                 }
               />
-            </label>
+            </Field>
             <div style={brokerageMovementFieldRowStyle()}>
               <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.flowDirection.label")}</span>
               <FlowDirectionToggle
@@ -160,9 +159,8 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
                 }
               />
             </div>
-            <label style={brokerageMovementFieldRowStyle()}>
-              <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.amountClpLabel")}</span>
-              <input
+            <Field label={t("accountDetail.bookLedger.amountClpLabel")}>
+              <Input
                 type="text"
                 inputMode="decimal"
                 value={row.amountClp}
@@ -173,10 +171,9 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
                   )
                 }
               />
-            </label>
-            <label style={brokerageMovementFieldRowStyle()}>
-              <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.noteLabel")}</span>
-              <input
+            </Field>
+            <Field label={t("accountDetail.bookLedger.noteLabel")}>
+              <Input
                 type="text"
                 value={row.note}
                 onChange={(e) =>
@@ -185,7 +182,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
                   )
                 }
               />
-            </label>
+            </Field>
             <div style={{ gridColumn: "1 / -1" }}>
               <CounterpartAccountSelect
                 label={t("accountDetail.movements.counterpartAccount")}

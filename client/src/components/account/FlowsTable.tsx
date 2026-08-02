@@ -1,3 +1,4 @@
+import { Input } from "@crfrsr/ui";
 import { useTranslation } from "../../i18n";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatClp, formatInstrumentUnits, formatOrDash, formatUsdFine } from "../../format";
@@ -291,51 +292,47 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        <input
+        <Input
           type="search"
           value={filterState.q}
           onChange={(e) => onFilterChange({ q: e.target.value })}
           placeholder={t("flows.filters.notePlaceholder")}
-          style={{ minWidth: "10rem", maxWidth: "16rem" }}
         />
 
-        <input
+        <Input
           type="date"
           value={filterState.date_from}
           onChange={(e) => onFilterChange({ date_from: e.target.value })}
           aria-label={t("flows.filters.dateFrom")}
         />
-        <input
+        <Input
           type="date"
           value={filterState.date_to}
           onChange={(e) => onFilterChange({ date_to: e.target.value })}
           aria-label={t("flows.filters.dateTo")}
         />
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           value={filterState.amount_exact}
           onChange={(e) => onFilterChange({ amount_exact: e.target.value })}
           placeholder={t("flows.filters.amountExact")}
-          style={{ width: "7rem" }}
         />
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           value={filterState.amount_min}
           disabled={Boolean(filterState.amount_exact.trim())}
           onChange={(e) => onFilterChange({ amount_min: e.target.value })}
           placeholder={t("flows.filters.amountMin")}
-          style={{ width: "6.5rem" }}
         />
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           value={filterState.amount_max}
           disabled={Boolean(filterState.amount_exact.trim())}
           onChange={(e) => onFilterChange({ amount_max: e.target.value })}
           placeholder={t("flows.filters.amountMax")}
-          style={{ width: "6.5rem" }}
         />
 
         {filterState.personal_only !== undefined ? (
