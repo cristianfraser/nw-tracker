@@ -1,11 +1,12 @@
 import { useMemo } from "react";
-import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
 import { formatClp } from "../../format";
 import { AppComposedChart } from "./AppComposedChart";
+import { renderPeriodRefLine } from "./PeriodRefLine";
 import {
   buildNiceYAxis,
   computeRegularMonthXAxisTicks,
@@ -45,8 +46,6 @@ const FACTURADO_FILL = "#d97706";
 const CUPO_STROKE = "#f472b6";
 const BALANCE_TOTAL_STROKE = "#38bdf8";
 
-const CURRENT_MONTH_STROKE = "#94a3b8";
-
 export function CcInstallmentHistoryChart({
   rows,
   openBillingMonth,
@@ -84,10 +83,15 @@ export function CcInstallmentHistoryChart({
   const refMonth = isYearly
     ? `${(openBillingMonth ?? currentYm).slice(0, 4)}-12`
     : openBillingMonth ?? currentYm;
-  const showCurrentMonthLine = !isDailyMode && displayRows.some((r) => r.month === refMonth);
+  // Either marker hides when its x is the LAST plotted point — a line hugging the right edge
+  // conveys nothing; it only informs when future (projected) buckets extend the axis past it.
+  const lastX = displayRows.length > 0 ? displayRows[displayRows.length - 1].month : null;
+  const showCurrentMonthLine =
+    !isDailyMode && refMonth !== lastX && displayRows.some((r) => r.month === refMonth);
   // Daily view: mark today, where the real owed walk ends and the plan projection begins.
   const todayYmd = chileTodayYmd();
-  const showDailyTodayLine = isDailyMode && displayRows.some((r) => r.month === todayYmd);
+  const showDailyTodayLine =
+    isDailyMode && todayYmd !== lastX && displayRows.some((r) => r.month === todayYmd);
   const yScale = useMemo(() => {
     const { min, max } = unifiedMinMax(displayRows);
     return buildNiceYAxis(min, max);
@@ -164,40 +168,24 @@ export function CcInstallmentHistoryChart({
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 6 }}
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />
-          {showCurrentMonthLine ? (
-            <ReferenceLine
-              x={refMonth}
-              stroke={CURRENT_MONTH_STROKE}
-              strokeDasharray="4 4"
-              strokeWidth={1.5}
-              label={{
-                value: t(
+          {showCurrentMonthLine
+            ? renderPeriodRefLine({
+                x: refMonth,
+                label: t(
                   isYearly
                     ? "accountDetail.creditCard.historialCurrentYear"
                     : openBillingMonth
                       ? "accountDetail.creditCard.historialOpenMonth"
                       : "accountDetail.creditCard.historialCurrentMonth"
                 ),
-                position: "insideTopRight",
-                fill: CURRENT_MONTH_STROKE,
-                fontSize: 10,
-              }}
-            />
-          ) : null}
-          {showDailyTodayLine ? (
-            <ReferenceLine
-              x={todayYmd}
-              stroke={CURRENT_MONTH_STROKE}
-              strokeDasharray="4 4"
-              strokeWidth={1.5}
-              label={{
-                value: t("accountDetail.creditCard.historialProjectionStart"),
-                position: "insideTopRight",
-                fill: CURRENT_MONTH_STROKE,
-                fontSize: 10,
-              }}
-            />
-          ) : null}
+              })
+            : null}
+          {showDailyTodayLine
+            ? renderPeriodRefLine({
+                x: todayYmd,
+                label: t("accountDetail.creditCard.historialProjectionStart"),
+              })
+            : null}
           {!isDailyMode ? (
             <Bar
               dataKey="facturado_clp"

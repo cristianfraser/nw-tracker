@@ -14,10 +14,12 @@ import {
   expenseCategoryChartPointTotal,
 } from "../../expenseDepositLinks";
 import { AppComposedChart } from "./AppComposedChart";
+import { renderPeriodRefLine } from "./PeriodRefLine";
 import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
   CHART_TICK_STYLE,
+  currentPeriodRefX,
   extractSortedAsOfDates,
   rechartsMoneyYAxisWidth,
   resolvePeriodXAxis,
@@ -95,6 +97,12 @@ export function CreditCardGroupExpensesChart({
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);
   const xAxis = useMemo(() => resolvePeriodXAxis(dates, xAxisGranularity), [dates, xAxisGranularity]);
   const xTicks = xAxis.ticks;
+  // Current-period marker (bare dotted line); null when the current bucket is the last one, so it
+  // only shows when future buckets (e.g. Por-cuota months) extend the axis past it.
+  const currentPeriodX = useMemo(
+    () => currentPeriodRefX(dates, xAxisGranularity, chileTodayYmd()),
+    [dates, xAxisGranularity]
+  );
 
   const yScale = useMemo(() => {
     let minV = 0;
@@ -221,6 +229,7 @@ export function CreditCardGroupExpensesChart({
               tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
             />
             <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
+            {currentPeriodX != null ? renderPeriodRefLine({ x: currentPeriodX }) : null}
             <Legend
               wrapperStyle={{
                 fontSize: 12,
