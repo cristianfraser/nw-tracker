@@ -77,7 +77,9 @@ describe("movementTransfer", () => {
     expect(unitsDeltaForAccountMovement(row, fromId)).toBe(0);
   });
 
-  it("skips USD debit for migration:usd-cash stock_buy mirror legs", () => {
+  it("stock_buy transfer debits USD from the cash from-leg regardless of provenance notes", () => {
+    // The migration:usd-cash zero-debit gate was removed with tranche B (2026-08): every
+    // funding wire is a real transfer credit now, so buys must debit the cash ledger for real.
     const row = {
       account_id: null,
       from_account_id: fromId,
@@ -90,11 +92,11 @@ describe("movementTransfer", () => {
       amount_usd: 612.36,
       ticker: "SPY",
     };
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
+    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(-612.36);
     expect(signedUsdDeltaForAccountMovement(row, toId)).toBe(0);
   });
 
-  it("skips USD credit for migration:fx-merge compra mirror legs", () => {
+  it("single-leg compra credits USD regardless of provenance notes (gates removed with tranche B)", () => {
     const row = {
       account_id: fromId,
       from_account_id: null,
@@ -107,21 +109,21 @@ describe("movementTransfer", () => {
       amount_usd: 3353.07,
       ticker: null,
     };
-    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
+    expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(3353.07);
   });
 
-  it("skips USD credit for clp-wire-link compra mirror legs (migration 129 SPY/VEA)", () => {
+  it("legacy compra_usd rows carrying share units stay off the USD cash ledger", () => {
     const row = {
       account_id: fromId,
       from_account_id: null,
       to_account_id: null,
       amount_clp: 50_000,
       occurred_on: "2026-03-03",
-      note: "migration:129|vea-clp-wire-link|leg=50k-initial",
-      units_delta: null,
-      flow_kind: "compra_usd_venta_clp",
+      note: null,
+      units_delta: 0.5,
+      flow_kind: "compra_usd",
       amount_usd: 54.35,
-      ticker: null,
+      ticker: "SPY",
     };
     expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
   });
