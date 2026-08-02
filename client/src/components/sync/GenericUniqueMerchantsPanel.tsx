@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Table } from "../ui/Table";
 import type { CcExpenseGenericUniqueMerchantRow } from "../../types";
+import { Button } from "@crfrsr/ui";
 import {
   useCreateGenericUniqueMerchantMutation,
   useDeleteGenericUniqueMerchantMutation,
@@ -116,40 +117,34 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
               <td>
                 {editingId === row.id ? (
                   <>
-                    <button
-                      type="button"
-                      className="btn"
+                    <Button size="sm"
                       onClick={() => saveEdit(row.id)}
                       disabled={busy || !editDraft.trim()}
                     >
                       {updateMutation.isPending
                         ? t("importSync.genericUniqueMerchants.saving")
                         : t("importSync.genericUniqueMerchants.save")}
-                    </button>{" "}
-                    <button type="button" className="btn" onClick={cancelEdit} disabled={busy}>
+                    </Button>{" "}
+                    <Button size="sm" onClick={cancelEdit} disabled={busy}>
                       {t("importSync.genericUniqueMerchants.cancel")}
-                    </button>
+                    </Button>
                   </>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className="btn"
+                    <Button size="sm"
                       onClick={() => startEdit(row)}
                       disabled={busy || editingId != null}
                     >
                       {t("importSync.genericUniqueMerchants.edit")}
-                    </button>{" "}
-                    <button
-                      type="button"
-                      className="btn"
+                    </Button>{" "}
+                    <Button size="sm"
                       onClick={() => onDelete(row.id, row.merchant_key)}
                       disabled={busy || editingId != null}
                     >
                       {deleteMutation.isPending
                         ? t("importSync.genericUniqueMerchants.removing")
                         : t("importSync.genericUniqueMerchants.remove")}
-                    </button>
+                    </Button>
                   </>
                 )}
               </td>
@@ -168,15 +163,14 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
           style={{ flex: "1 1 16rem", maxWidth: "28rem" }}
           aria-label={t("importSync.genericUniqueMerchants.addPlaceholder")}
         />
-        <button
+        <Button size="sm"
           type="submit"
-          className="btn"
           disabled={busy || editingId != null || !newMerchant.trim()}
         >
           {createMutation.isPending
             ? t("importSync.genericUniqueMerchants.adding")
             : t("importSync.genericUniqueMerchants.add")}
-        </button>
+        </Button>
       </form>
     </>
   );

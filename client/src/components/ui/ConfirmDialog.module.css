@@ -10,17 +10,3 @@
   justify-content: flex-end;
   gap: var(--space-sm);
 }
-
-.confirmBtn {
-  border-color: var(--danger, #b91c1c);
-  color: var(--danger, #b91c1c);
-}
-
-.confirmBtn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger, #b91c1c) 12%, transparent);
-}
-
-.confirmBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}

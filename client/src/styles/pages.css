@@ -5,8 +5,7 @@
   margin-bottom: 1rem;
 }
 
-.flow-subnav a,
-.flow-subnav button {
+.flow-subnav a {
   color: var(--muted);
   font-size: 0.875rem;
   font-weight: 500;
@@ -18,15 +17,13 @@
   font-family: inherit;
 }
 
-.flow-subnav a:hover,
-.flow-subnav button:hover {
+.flow-subnav a:hover {
   color: var(--text);
   background: var(--surface2);
   text-decoration: none;
 }
 
-.flow-subnav a.active,
-.flow-subnav button.active {
+.flow-subnav a.active {
   color: var(--text);
   background: var(--accent-dim);
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "../../cn";
 import styles from "./Modal.module.css";
+import { Button } from "@crfrsr/ui";
 
 export type ModalTitleNav = {
   /** Go to the older period; null = already at oldest (button disabled). */
@@ -95,10 +96,8 @@ export function Modal({
         <div>
           {titleNav ? (
             <div className={styles.titleRow}>
-              <button
+              <Button variant="outline" size="icon"
                 ref={prevBtnRef}
-                type="button"
-                className={styles.navBtn}
                 aria-label={titleNav.prevAriaLabel}
                 disabled={!titleNav.onPrev}
                 onClick={() => {
@@ -107,12 +106,10 @@ export function Modal({
                 }}
               >
                 ‹
-              </button>
+              </Button>
               {heading}
-              <button
+              <Button variant="outline" size="icon"
                 ref={nextBtnRef}
-                type="button"
-                className={styles.navBtn}
                 aria-label={titleNav.nextAriaLabel}
                 disabled={!titleNav.onNext}
                 onClick={() => {
@@ -121,23 +118,21 @@ export function Modal({
                 }}
               >
                 ›
-              </button>
+              </Button>
             </div>
           ) : (
             heading
           )}
           {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
         </div>
-        <button
+        <Button variant="outline" size="icon"
           ref={closeBtnRef}
-          type="button"
-          className={styles.closeBtn}
           aria-label={closeAriaLabel}
           autoFocus
           onClick={() => ref.current?.close()}
         >
           ×
-        </button>
+        </Button>
       </header>
       <div className={styles.body}>{children}</div>
       {footer ? <footer className={styles.footer}>{footer}</footer> : null}

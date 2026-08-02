@@ -23,7 +23,6 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
-import linkStyles from "../../pages/accountDetail/CreditCardFacturacionesTable.module.css";
 
 const periodKeyOf = (row: FlowCcExpenseMonthRow) => row.period_month;
 
@@ -60,7 +59,7 @@ function GroupExpensesMonthMobileCard({
 }) {
   const title = (
     <>
-      <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
+      <button type="button" onClick={() => onOpen(row)}>
         {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
       </button>
       {isCurrentPeriod ? (
@@ -228,7 +227,6 @@ export function GroupExpensesMonthTable({
               <td className="mono desktop-only">
                 <button
                   type="button"
-                  className={linkStyles.dateLink}
                   onClick={() => openMonth(row)}
                 >
                   {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})

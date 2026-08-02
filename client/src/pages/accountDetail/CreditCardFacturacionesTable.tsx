@@ -23,7 +23,6 @@ import {
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
 import styles from "../AccountDetailPage.module.css";
-import linkStyles from "./CreditCardFacturacionesTable.module.css";
 
 function fmtUsd(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -64,7 +63,7 @@ function FacturacionMobileCard({
   onOpen: (row: CcFacturacionDto) => void;
 }) {
   const title = (
-    <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
+    <button type="button" onClick={() => onOpen(row)}>
       {formatYmEs(row.billing_month)}
     </button>
   );
@@ -253,7 +252,6 @@ export function CreditCardFacturacionesTable({
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>
                   <button
                     type="button"
-                    className={linkStyles.dateLink}
                     onClick={() => openFacturacion(row)}
                   >
                     {formatYmEs(row.billing_month)}

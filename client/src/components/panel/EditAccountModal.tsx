@@ -9,6 +9,7 @@ import {
 } from "../../panelAccounts/portfolioNavBuckets";
 import { Modal } from "../ui/Modal";
 import type { AccountListRow, NavTreeNodeDto } from "../../types";
+import { Button } from "@crfrsr/ui";
 
 type Props = {
   account: AccountListRow;
@@ -63,16 +64,15 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
       subtitle={account.name}
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={saveMutation.isPending}>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={saveMutation.isPending}>
             {t("common.cancel")}
-          </button>{" "}
-          <button
-            type="button"
+          </Button>{" "}
+          <Button size="sm"
             onClick={() => saveMutation.mutate()}
             disabled={!canSave || saveMutation.isPending}
           >
             {saveMutation.isPending ? t("common.saving") : t("common.save")}
-          </button>
+          </Button>
         </>
       }
     >

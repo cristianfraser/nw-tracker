@@ -26,12 +26,6 @@
   width: 1%;
 }
 
-.forceStaleBtn {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.45rem;
-  line-height: 1.3;
-}
-
 .badgeOk {
   color: var(--positive, #4ade80);
   white-space: nowrap;

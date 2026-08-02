@@ -9,6 +9,7 @@ import {
 } from "../panel/BrokerageMovementsSection";
 import { CounterpartAccountSelect } from "./CounterpartAccountSelect";
 import { FlowDirectionToggle, type FlowDirection } from "./FlowDirectionToggle";
+import { Button } from "@crfrsr/ui";
 
 type BookMovementDraft = {
   id: string;
@@ -199,20 +200,18 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
               />
             </div>
             <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-              <button
-                type="button"
+              <Button variant="secondary" size="sm"
                 onClick={() => setMovements((prev) => prev.filter((r) => r.id !== row.id))}
               >
                 {t("accountDetail.bookLedger.removeRow")}
-              </button>
+              </Button>
             </div>
           </div>
         ))
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <button
-          type="button"
+        <Button size="sm"
           onClick={() => {
             setMovements((prev) => [...prev, emptyRow()]);
             setFormError(null);
@@ -220,20 +219,19 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
           }}
         >
           {t("accountDetail.bookLedger.addMovementRow")}
-        </button>
+        </Button>
       </div>
 
       {movements.length > 0 ? (
         <div style={{ marginTop: "0.75rem" }}>
-          <button
-            type="button"
+          <Button size="sm"
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
           >
             {saveMutation.isPending
               ? t("common.loading")
               : t("accountDetail.bookLedger.movementSaveBtn")}
-          </button>
+          </Button>
         </div>
       ) : null}
 

@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
+import { Button } from "@crfrsr/ui";
 
 /**
  * Client-side pagination state + page slice. Pass the full sorted array; get back the current page's rows.
@@ -84,15 +85,12 @@ export function PaginatedTable({
             flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            className="muted"
+          <Button variant="ghost" size="sm"
             disabled={safePage <= 1}
             onClick={() => onPageChange(safePage - 1)}
-            style={{ padding: "0.15rem 0.35rem" }}
           >
             {t("table.paginationPrev")}
-          </button>
+          </Button>
 
           <label className="muted" style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}>
             {t("table.paginationPageAria")}
@@ -109,15 +107,12 @@ export function PaginatedTable({
             </select>
           </label>
 
-          <button
-            type="button"
-            className="muted"
+          <Button variant="ghost" size="sm"
             disabled={safePage >= totalPages}
             onClick={() => onPageChange(safePage + 1)}
-            style={{ padding: "0.15rem 0.35rem" }}
           >
             {t("table.paginationNext")}
-          </button>
+          </Button>
 
           <span className="muted" style={{ fontSize: "0.85rem" }}>
             {t("table.paginationPageOf", { page: safePage, total: totalPages })}

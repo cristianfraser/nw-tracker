@@ -6,6 +6,7 @@ import type { DisplayUnit } from "../../queries/keys";
 import type { FlowExcludedCheckingIncomeLine } from "../../types";
 import { useRestoreIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { Button } from "@crfrsr/ui";
 
 function excludedLineAmount(line: FlowExcludedCheckingIncomeLine, unit: DisplayUnit): number {
   if (unit === "usd") {
@@ -62,9 +63,7 @@ export function IncomeExcludedLinesTable({
               </td>
               <td className="muted">{row.note ?? "—"}</td>
               <td>
-                <button
-                  type="button"
-                  className="btn"
+                <Button variant="secondary" size="sm"
                   disabled={restoreIncomeMovement.isPending}
                   onClick={() =>
                     setRestoreTarget({
@@ -75,7 +74,7 @@ export function IncomeExcludedLinesTable({
                   }
                 >
                   {t("income.restoreLine")}
-                </button>
+                </Button>
               </td>
             </tr>
           ))}

@@ -7,6 +7,7 @@ import { buildClpCashMovementPostBody } from "../../panelAccounts/clpCashAccount
 import { type InitialMovementDraft } from "../../panelAccounts/stockAccountFormTypes";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { BrokerageMovementsSection } from "../panel/BrokerageMovementsSection";
+import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
@@ -73,15 +74,14 @@ export function AccountClpCashMovementsForm({ accountId, displayUnit, extraCcOff
 
       {movements.length > 0 ? (
         <div style={{ marginTop: "0.75rem" }}>
-          <button
-            type="button"
+          <Button size="sm"
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
           >
             {saveMutation.isPending
               ? t("common.loading")
               : t("accountDetail.clpCashMovements.saveBtn")}
-          </button>
+          </Button>
         </div>
       ) : null}
 

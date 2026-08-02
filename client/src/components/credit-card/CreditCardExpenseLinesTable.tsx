@@ -14,6 +14,7 @@ import { ExpenseBigGroupSelect } from "./ExpenseBigGroupSelect";
 import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
 import tableStyles from "../../pages/AccountDetailPage.module.css";
 import categoryStyles from "./CreditCardExpenseLinesTable.module.css";
+import { Button } from "@crfrsr/ui";
 
 function pillHoverColor(hex: string): string {
   return `color-mix(in srgb, ${hex} 78%, black)`;
@@ -434,26 +435,21 @@ export function CreditCardExpenseLinesTable({
             {showDeleteAction ? (
               <td>
                 {canMakeInstallment ? (
-                  <button
-                    type="button"
-                    className="muted"
+                  <Button variant="ghost" size="sm"
                     disabled={makeInstallmentBusy || deleteBusy}
                     onClick={() => onMakeInstallmentLine?.(ln)}
-                    style={{ marginRight: "0.5rem" }}
                   >
                     {t("accountDetail.creditCard.makeInstallmentAction")}
-                  </button>
+                  </Button>
                 ) : null}
                 {canDelete ? (
-                  <button
-                    type="button"
-                    className="muted"
+                  <Button variant="ghost" size="sm"
                     disabled={deleteBusy || makeInstallmentBusy}
                     aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
                     onClick={() => onDeleteLine?.(ln)}
                   >
                     {t("accountDetail.creditCard.facturacionDeleteLine")}
-                  </button>
+                  </Button>
                 ) : (!canMakeInstallment ? "—" : null)}
               </td>
             ) : null}

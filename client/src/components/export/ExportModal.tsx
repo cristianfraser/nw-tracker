@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../downloadFile";
 import { Modal } from "../ui/Modal";
+import { Button } from "@crfrsr/ui";
 
 const SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -87,21 +88,21 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>
+      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         {t("export.button")}
-      </button>
+      </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
         title={t("export.title")}
         footer={
           <>
-            <button type="button" onClick={() => setOpen(false)} disabled={busy}>
+            <Button variant="secondary" size="sm" onClick={() => setOpen(false)} disabled={busy}>
               {t("export.cancel")}
-            </button>{" "}
-            <button type="button" onClick={download} disabled={busy || sections.size === 0}>
+            </Button>{" "}
+            <Button size="sm" onClick={download} disabled={busy || sections.size === 0}>
               {busy ? t("export.downloading") : t("export.download")}
-            </button>
+            </Button>
           </>
         }
       >

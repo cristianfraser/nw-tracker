@@ -6,6 +6,7 @@ import type { DisplayUnit } from "../../queries/keys";
 import type { FlowFilteredCheckingIncomeLine, IncomeAutoFilterReason } from "../../types";
 import { useForceIncludeIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { Button } from "@crfrsr/ui";
 
 function excludedLineAmount(line: FlowFilteredCheckingIncomeLine, unit: DisplayUnit): number {
   if (unit === "usd") {
@@ -69,9 +70,7 @@ export function IncomeFilteredLinesTable({
               </td>
               <td className="muted">{filterReasonLabel(t, row.filter_reason)}</td>
               <td>
-                <button
-                  type="button"
-                  className="btn"
+                <Button variant="secondary" size="sm"
                   disabled={forceInclude.isPending}
                   onClick={() =>
                     setIncludeTarget({
@@ -82,7 +81,7 @@ export function IncomeFilteredLinesTable({
                   }
                 >
                   {t("income.includeLine")}
-                </button>
+                </Button>
               </td>
             </tr>
           ))}

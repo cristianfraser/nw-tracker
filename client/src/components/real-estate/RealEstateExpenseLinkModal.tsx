@@ -6,6 +6,7 @@ import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateLinkCandidates } from "../../queries/hooks";
 import { useLinkRealEstateExpenseMutation } from "../../queries/mutations";
 import type { RealEstateBillSlot } from "../../types";
+import { Button } from "@crfrsr/ui";
 
 type Props = {
   slot: RealEstateBillSlot | null;
@@ -109,16 +110,14 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
                 </td>
                 <td className="mono">{formatClp(c.amount_clp)}</td>
                 <td>
-                  <button
-                    type="button"
-                    className="btn"
+                  <Button variant="secondary" size="sm"
                     disabled={pendingKey != null}
                     onClick={() => void handleLink(c.purchase_key)}
                   >
                     {pendingKey === c.purchase_key
                       ? t("common.loading")
                       : t("expenses.realEstate.linkAction")}
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}

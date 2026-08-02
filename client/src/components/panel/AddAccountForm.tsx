@@ -13,6 +13,7 @@ import {
   type PanelAccountType,
 } from "../../panelAccounts/panelAccountFormTypes";
 import type { NavTreeNodeDto } from "../../types";
+import { Button } from "@crfrsr/ui";
 
 const ACCOUNT_TYPE_LABEL_KEYS: Record<PanelAccountType, string> = {
   equity: "panelAccounts.addAccount.accountType.equity",
@@ -173,14 +174,14 @@ export function AddAccountForm({ netWorthRoot }: Props) {
       </label>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1.25rem" }}>
-        <button type="submit" disabled={createMutation.isPending}>
+        <Button size="sm" type="submit" disabled={createMutation.isPending}>
           {createMutation.isPending
             ? t("common.loading")
             : t("panelAccounts.addAccount.createBtn")}
-        </button>
-        <button type="button" onClick={resetForm} disabled={createMutation.isPending}>
+        </Button>
+        <Button size="sm" onClick={resetForm} disabled={createMutation.isPending}>
           {t("panelAccounts.addAccount.resetBtn")}
-        </button>
+        </Button>
       </div>
 
       {formError ? (

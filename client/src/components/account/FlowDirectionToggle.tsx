@@ -30,16 +30,6 @@ export function FlowDirectionToggle({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(opt.key)}
-            style={{
-              flex: 1,
-              padding: "0.4rem 0.5rem",
-              borderRadius: 6,
-              border: "1px solid var(--border-subtle, #333)",
-              background: active ? "var(--accent-soft, #2b3a55)" : "transparent",
-              color: active ? "var(--text, #fff)" : "var(--text-muted, #aaa)",
-              fontWeight: active ? 600 : 400,
-              cursor: "pointer",
-            }}
           >
             {opt.label}
           </button>

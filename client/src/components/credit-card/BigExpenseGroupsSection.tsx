@@ -9,6 +9,7 @@ import {
   useRenameCcExpenseBigGroupMutation,
 } from "../../queries/hooks";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
+import { Button } from "@crfrsr/ui";
 
 function BigGroupBlock({
   slug,
@@ -71,10 +72,7 @@ function BigGroupBlock({
           marginBottom: open ? "0.5rem" : 0,
         }}
       >
-        <button
-          type="button"
-          className="muted"
-          style={{ fontWeight: 600, fontSize: "1rem" }}
+        <Button variant="ghost" size="sm"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
         >
@@ -82,13 +80,11 @@ function BigGroupBlock({
           <span className="mono muted" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {formatClp(totalClp)} · {t("expenses.creditCard.bigGroups.purchaseCount", { count: purchaseCount })}
           </span>
-        </button>
-        <button type="button" className="muted" disabled={rename.isPending} onClick={onRename}>
+        </Button>
+        <Button variant="ghost" size="sm" disabled={rename.isPending} onClick={onRename}>
           {t("expenses.creditCard.bigGroups.renameAction")}
-        </button>
-        <button
-          type="button"
-          className="muted"
+        </Button>
+        <Button variant="ghost" size="sm"
           disabled={del.isPending || purchaseCount > 0}
           title={
             purchaseCount > 0
@@ -98,7 +94,7 @@ function BigGroupBlock({
           onClick={onDelete}
         >
           {t("expenses.creditCard.bigGroups.deleteAction")}
-        </button>
+        </Button>
         <label className="radio-pill" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={excludedFromChart} onChange={onToggleExcluded} />
           {t("expenses.creditCard.bigGroups.chartFilterLabel")}
