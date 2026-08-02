@@ -103,6 +103,8 @@ function SidebarNavItem({
     <li className={styles.item} style={{ "--sidebar-depth": depth } as CSSProperties}>
       <div className={styles.itemBody}>
         {hasChildren ? (
+          // Intentionally custom-styled: bespoke tree-disclosure control (caret + rail)
+          // with no @crfrsr/ui counterpart — exempt from the plain-button/Button rule.
           <button
             type="button"
             className={styles.expand}

@@ -14,6 +14,7 @@ import {
 } from "../panel/BrokerageMovementsSection";
 import styles from "../../pages/AccountDetailPage.module.css";
 import { cn } from "../../cn";
+import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
@@ -330,13 +331,12 @@ export function MortgagePaymentForm({
       ) : null}
 
       <div style={{ marginTop: "0.75rem" }}>
-        <button
-          type="button"
+        <Button size="sm"
           disabled={saveMutation.isPending || !previewBody || preview == null}
           onClick={() => saveMutation.mutate()}
         >
           {saveMutation.isPending ? t("common.loading") : t("accountDetail.mortgagePayment.saveBtn")}
-        </button>
+        </Button>
       </div>
 
       {formError ? (

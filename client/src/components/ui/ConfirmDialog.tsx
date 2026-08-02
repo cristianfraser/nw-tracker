@@ -1,5 +1,6 @@
 import { Modal } from "./Modal";
 import styles from "./ConfirmDialog.module.css";
+import { Button } from "@crfrsr/ui";
 
 export type ConfirmDialogProps = {
   open: boolean;
@@ -26,17 +27,15 @@ export function ConfirmDialog({
     <Modal open={open} onClose={onCancel} title={title} closeAriaLabel={cancelLabel}>
       <p className={styles.message}>{message}</p>
       <div className={styles.actions}>
-        <button type="button" onClick={onCancel}>
+        <Button variant="secondary" size="sm" onClick={onCancel}>
           {cancelLabel}
-        </button>
-        <button
-          type="button"
-          className={styles.confirmBtn}
+        </Button>
+        <Button size="sm"
           disabled={confirmDisabled}
           onClick={onConfirm}
         >
           {confirmLabel}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

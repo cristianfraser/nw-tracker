@@ -36,23 +36,6 @@ th[data-sort-key]:hover {
   color: var(--text);
 }
 
-/* Sort control is a real <button> (keyboard/AT access); visually identical to the bare th text. */
-.table-sort-button {
-  all: unset;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  text-transform: inherit;
-  letter-spacing: inherit;
-  white-space: inherit;
-  display: inline;
-}
-
-.table-sort-button:focus-visible {
-  outline: 2px solid var(--accent, currentColor);
-  outline-offset: 2px;
-}
-
 th.table-th--sort-asc,
 th.table-th--sort-desc {
   color: var(--text);
@@ -136,13 +119,6 @@ tr:hover td {
   margin-bottom: 0.55rem;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.table--parallel-mobile .table-mobile-card__title .dateLink,
-.table--parallel-mobile .table-mobile-card__title button {
-  font-family: inherit;
-  text-align: left;
-  max-width: 100%;
 }
 
 .table--parallel-mobile .table-mobile-card__section {

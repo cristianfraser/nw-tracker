@@ -12,6 +12,7 @@ import { useAccountsAll, usePanelNetWorthTree } from "../../queries/hooks";
 import { countAccountsInNavSubtree } from "../../panelAccounts/portfolioNavBuckets";
 import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
 import type { AccountListRow, NavTreeNodeDto } from "../../types";
+import { Button } from "@crfrsr/ui";
 
 function PortfolioGroupTableRows({
   node,
@@ -163,16 +164,15 @@ export function AccountsPanelPage() {
                     colorTarget={{ kind: "account", accountId: a.id }}
                     size="compact"
                   />
-                  <button type="button" onClick={() => setEditingAccount(a)}>
+                  <Button variant="secondary" size="sm" onClick={() => setEditingAccount(a)}>
                     {t("panelAccounts.editBtn")}
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button variant="secondary" size="sm"
                     onClick={() => void onDeleteAccount(a.id, a.name)}
                     disabled={deletingId === a.id}
                   >
                     {deletingId === a.id ? t("common.loading") : t("panelAccounts.deleteBtn")}
-                  </button>
+                  </Button>
                 </span>
               </td>
             </tr>

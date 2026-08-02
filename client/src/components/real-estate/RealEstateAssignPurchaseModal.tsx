@@ -6,6 +6,7 @@ import { formatClp } from "../../format";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateUnlinkedPurchases } from "../../queries/hooks";
 import { useAssignRealEstatePurchaseMutation } from "../../queries/mutations";
+import { Button } from "@crfrsr/ui";
 
 /** Kinds a purchase can be assigned to (mirrors REAL_ESTATE_LINKABLE_KINDS server-side). */
 const ASSIGNABLE_KINDS = [
@@ -142,16 +143,14 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
           placeholder={t("expenses.realEstate.assignSearchPlaceholder")}
           style={{ flex: 1, minWidth: "10rem" }}
         />
-        <button
-          type="button"
-          className="btn"
+        <Button variant="secondary" size="sm"
           disabled={busy || selected.size === 0}
           onClick={() => void assignKeys([...selected])}
         >
           {busy
             ? t("common.loading")
             : t("expenses.realEstate.assignSelected", { count: selected.size })}
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -202,14 +201,12 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
               </td>
               <td className="mono">{formatClp(p.amount_clp)}</td>
               <td>
-                <button
-                  type="button"
-                  className="btn"
+                <Button size="sm"
                   disabled={busy}
                   onClick={() => void assignKeys([p.purchase_key])}
                 >
                   {t("expenses.realEstate.assignConfirm")}
-                </button>
+                </Button>
               </td>
             </tr>
           ))}

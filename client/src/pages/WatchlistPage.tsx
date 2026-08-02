@@ -11,6 +11,7 @@ import {
   useWatchlist,
 } from "../queries/hooks";
 import type { WatchlistRow } from "../types";
+import { Button } from "@crfrsr/ui";
 
 function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
   if (row.label_i18n_key) {
@@ -183,14 +184,12 @@ function WatchlistTable({
             sortSeed: `wl-${row.id}`,
             showActionsColumn: showActions,
             actions: showActions ? (
-              <button
-                type="button"
-                className="btn btn--ghost"
+              <Button variant="ghost" size="sm"
                 disabled={deleteRow.isPending}
                 onClick={() => deleteRow.mutate(row.id)}
               >
                 {t("watchlist.removeTicker")}
-              </button>
+              </Button>
             ) : undefined,
             marquee: (
               <label style={{ display: "inline-flex", alignItems: "center" }}>
@@ -298,9 +297,9 @@ export function WatchlistPage() {
               spellCheck={false}
             />
           </label>
-          <button type="submit" className="btn" disabled={addTicker.isPending || !tickerInput.trim()}>
+          <Button size="sm" type="submit" disabled={addTicker.isPending || !tickerInput.trim()}>
             {t("watchlist.addTickerSubmit")}
-          </button>
+          </Button>
         </form>
         {addTicker.isError ? (
           <p className="error" role="alert">

@@ -19,26 +19,6 @@
   gap: var(--space-sm);
 }
 
-.clearBtn {
-  padding: var(--space-2xs) var(--space-sm);
-  border: 1px solid var(--border);
-  border-radius: var(--card-radius);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--font-size-ui);
-  cursor: pointer;
-}
-
-.clearBtn:hover:not(:disabled) {
-  border-color: var(--accent-dim);
-  color: var(--accent);
-}
-
-.clearBtn:disabled {
-  cursor: wait;
-  opacity: 0.6;
-}
-
 .categorySelect {
   min-width: 12rem;
   font-size: var(--font-size-ui);

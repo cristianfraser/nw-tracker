@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import i18n from "../../i18n";
+import { Button } from "@crfrsr/ui";
 
 type Props = { children: ReactNode; routeKey: string };
 type State = { error: Error | null };
@@ -38,14 +39,13 @@ class RouteErrorBoundaryInner extends Component<Props, State> {
         <p className="error">{i18n.t("routeError.title")}</p>
         <p className="muted">{error.message}</p>
         <p>
-          <button
-            type="button"
+          <Button variant="secondary" size="sm"
             onClick={() =>
               isChunkLoadError(error) ? window.location.reload() : this.setState({ error: null })
             }
           >
             {i18n.t("routeError.retry")}
-          </button>
+          </Button>
         </p>
       </main>
     );

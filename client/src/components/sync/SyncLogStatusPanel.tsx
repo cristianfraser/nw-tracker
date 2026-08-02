@@ -8,6 +8,7 @@ import { formatDateTimeLabel } from "../../formatDateLabel";
 import { Table } from "../ui/Table";
 import { formatDayKindLabel, formatNextSyncLabel } from "./formatSyncSchedule";
 import styles from "./SyncLogStatusPanel.module.css";
+import { Button } from "@crfrsr/ui";
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);
@@ -126,16 +127,14 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
               </td>
               <td className={styles.colActions}>
                 {row.status === "ok" ? (
-                  <button
-                    type="button"
-                    className={cn("btn", styles.forceStaleBtn)}
+                  <Button size="sm"
                     disabled={forceStale.isPending}
                     onClick={() => forceStale.mutate(row.source)}
                   >
                     {forceStale.isPending && forceStale.variables === row.source
                       ? t("importSync.sync.forceStalePending")
                       : t("importSync.sync.forceStale")}
-                  </button>
+                  </Button>
                 ) : null}
               </td>
             </tr>

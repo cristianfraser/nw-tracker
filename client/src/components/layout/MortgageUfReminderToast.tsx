@@ -4,6 +4,7 @@ import { useTranslation } from "../../i18n";
 import { useMortgageUfReminder } from "../../queries/hooks";
 import { formatClpUfDay } from "../../format";
 import styles from "./MortgageUfReminderToast.module.css";
+import { Button } from "@crfrsr/ui";
 
 /**
  * Global reminder for the CC-paid mortgage cuota in months where waiting past the cierre is
@@ -49,14 +50,12 @@ export function MortgageUfReminderToast() {
       <div className={styles.toast} role="status" aria-live="polite">
         <div className={styles.header}>
           <strong className={styles.title}>{t("reminders.mortgageUf.title")}</strong>
-          <button
-            type="button"
-            className={styles.dismiss}
+          <Button variant="ghost" size="icon"
             onClick={() => setDismissed(true)}
             aria-label={t("reminders.mortgageUf.dismiss")}
           >
             ×
-          </button>
+          </Button>
         </div>
         <p className={styles.message}>{message}</p>
         {data.mode === "wait" && data.horizon_limited ? (
@@ -64,9 +63,9 @@ export function MortgageUfReminderToast() {
             {t("reminders.mortgageUf.horizonNote", { horizon: data.best_pay_date })}
           </p>
         ) : null}
-        <button type="button" className={styles.action} onClick={() => setDismissed(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setDismissed(true)}>
           {t("reminders.mortgageUf.dismiss")}
-        </button>
+        </Button>
       </div>
     </div>
   );

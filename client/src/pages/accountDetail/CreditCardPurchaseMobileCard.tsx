@@ -10,6 +10,7 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { formatYmEs } from "./shared";
 import styles from "../AccountDetailPage.module.css";
+import { Button } from "@crfrsr/ui";
 
 function PurchaseMeta({ children }: { children: ReactNode }) {
   return <div className={cn("muted", styles.purchaseMeta)}>{children}</div>;
@@ -54,14 +55,12 @@ export function CreditCardPurchaseMobileCard({
         <PurchaseMeta>{originLabel}</PurchaseMeta>
         {purchase.note ? <PurchaseMeta>{purchase.note}</PurchaseMeta> : null}
         {hasLedger && purchase.origin === "manual" && purchase.purchase_db_id != null && onDeleteManual ? (
-          <button
-            type="button"
-            className={cn("muted", styles.purchaseMeta)}
+          <Button variant="ghost" size="sm"
             disabled={manualBusy}
             onClick={onDeleteManual}
           >
             {manualDeleteLabel}
-          </button>
+          </Button>
         ) : null}
       </TableMobileCardSection>
 

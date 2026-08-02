@@ -5,17 +5,6 @@
   padding: 0.5rem 0.75rem;
 }
 
-.toggle {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-weight: 600;
-  padding: 0.25rem 0;
-  text-align: left;
-  width: 100%;
-}
-
 .body {
   margin-top: 0.75rem;
   display: flex;

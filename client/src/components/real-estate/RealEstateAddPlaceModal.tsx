@@ -3,6 +3,7 @@ import { Modal } from "../ui/Modal";
 import { useTranslation } from "../../i18n";
 import { useRealEstatePropertyAccounts } from "../../queries/hooks";
 import { useCreateRealEstatePlaceMutation } from "../../queries/mutations";
+import { Button } from "@crfrsr/ui";
 
 function slugFromLabel(label: string): string {
   return label
@@ -118,16 +119,14 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
         </label>
         {err ? <p className="error">{err}</p> : null}
         <div>
-          <button
-            type="button"
-            className="btn"
+          <Button size="sm"
             disabled={createMutation.isPending || !label.trim() || !slug.trim()}
             onClick={() => void handleCreate()}
           >
             {createMutation.isPending
               ? t("common.loading")
               : t("expenses.realEstate.placeCreate")}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

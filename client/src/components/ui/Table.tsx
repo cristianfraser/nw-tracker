@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import i18n from "../../i18n";
+import { Button } from "@crfrsr/ui";
 
 export type TableSortDirection = "asc" | "desc";
 
@@ -153,7 +154,6 @@ function enhanceHeader(
         children: (
           <button
             type="button"
-            className="table-sort-button"
             onClick={() => onToggleSort(key)}
           >
             {props.children}
@@ -306,24 +306,11 @@ export function Table({
         </table>
       </div>
       {hasHiddenRows ? (
-        <button
-          type="button"
-          className="muted"
+        <Button variant="ghost" size="sm"
           onClick={() => setExpanded((e) => !e)}
-          style={{
-            margin: 0,
-            padding: "0.15rem 0",
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            font: "inherit",
-            fontSize: "0.82rem",
-            textDecoration: "underline",
-            textUnderlineOffset: "2px",
-          }}
         >
           {expanded ? resolvedShowLessLabel : resolvedShowMoreLabel}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

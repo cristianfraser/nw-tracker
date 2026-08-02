@@ -6,6 +6,7 @@ import { useTranslation } from "../../i18n";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
 import { formatYmEs } from "../../pages/accountDetail/shared";
+import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
@@ -136,21 +137,19 @@ export function CheckingLedgerAnchorForm({
             }}
           />
         </label>
-        <button
-          type="button"
+        <Button size="sm"
           disabled={saveMutation.isPending || clearMutation.isPending}
           onClick={() => saveMutation.mutate()}
         >
           {t("accountDetail.checking.ledgerAnchorSave")}
-        </button>
+        </Button>
         {ledgerAnchor ? (
-          <button
-            type="button"
+          <Button variant="secondary" size="sm"
             disabled={saveMutation.isPending || clearMutation.isPending}
             onClick={() => clearMutation.mutate()}
           >
             {t("accountDetail.checking.ledgerAnchorClear")}
-          </button>
+          </Button>
         ) : null}
       </div>
       {status ? (

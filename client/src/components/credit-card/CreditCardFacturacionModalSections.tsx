@@ -14,6 +14,7 @@ import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import type { FacturacionModalBucket } from "./buildFacturacionModalBucket";
 import { isFacturacionModalBucketEmpty } from "./buildFacturacionModalBucket";
 import { formatClp } from "../../format";
+import { Button } from "@crfrsr/ui";
 
 export function CreditCardFacturacionModalSections({
   bucket,
@@ -214,20 +215,18 @@ export function CreditCardFacturacionModalSections({
               />
             </label>
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-              <button
-                type="button"
+              <Button variant="secondary" size="sm"
                 onClick={() => setPendingMakeInstallment(null)}
                 disabled={makeInstallment.isPending}
               >
                 {t("accountDetail.creditCard.makeInstallmentDialogCancel")}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button size="sm"
                 onClick={handleConfirmMakeInstallment}
                 disabled={!cuotasValid || makeInstallment.isPending}
               >
                 {t("accountDetail.creditCard.makeInstallmentDialogConfirm")}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
