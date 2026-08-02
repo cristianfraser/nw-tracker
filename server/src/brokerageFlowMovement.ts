@@ -11,24 +11,26 @@ export const BROKERAGE_FLOW_KINDS = [
   "compra_usd_venta_clp",
   "stock_buy",
   "stock_sell",
-  "dividend_usd",
   "dividend_payout",
   "savings_earnings",
   "withdrawal_clp",
   "withdrawal_usd",
   "other",
 ] as const;
+// `dividend_usd` (single-leg DRIP: dividend + reinvested units on one row) was retired
+// 2026-08-02 — every dividend is a `dividend_payout` transfer, reinvestments are separate
+// `stock_buy` transfers (repair-drip-dividend-splits.ts). Zero rows remain; the loader
+// fail-fasts if one reappears (`assertNoDividendUsdRows` in equityBrokerageCapitalFlows).
 
 export type BrokerageFlowKind = (typeof BROKERAGE_FLOW_KINDS)[number];
 
-export const BROKERAGE_UNITS_REQUIRED_FLOW_KINDS = ["stock_buy", "dividend_usd"] as const;
+export const BROKERAGE_UNITS_REQUIRED_FLOW_KINDS = ["stock_buy"] as const;
 
 /** Flow kinds whose `units_delta` counts toward SPY/VEA share MTM (excludes CLP wires). */
 export const BROKERAGE_SHARE_UNITS_FLOW_KINDS = [
   "compra_usd",
   "stock_buy",
   "stock_sell",
-  "dividend_usd",
 ] as const;
 
 export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
@@ -38,7 +40,6 @@ export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
   compra_usd_venta_clp: "Compra USD / Venta CLP",
   stock_buy: "Compra acciones",
   stock_sell: "Venta acciones",
-  dividend_usd: "Dividendo USD",
   dividend_payout: "Dividendo",
   savings_earnings: "Interés / rentabilidad",
   withdrawal_usd: "Retiro USD",
@@ -88,7 +89,6 @@ export function accountHasBrokerageShareUnits(accountId: number): boolean {
 export function intraDayFlowRank(flowKind: string | null | undefined): number {
   switch (flowKind) {
     case "deposit_clp":
-    case "dividend_usd":
     case "dividend_payout":
     case "savings_earnings":
       return 0;

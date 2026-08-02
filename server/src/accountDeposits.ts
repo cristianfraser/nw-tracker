@@ -21,8 +21,8 @@ import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
  * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit_clp`** / **`withdrawal_clp`**
  * on `account_id` when present.
  *
- * Dividends: `dividend_payout` counts as a negative capital flow on the stock; `dividend_usd`
- * (DRIP — dividend + reinvested units on one row) nets to zero and emits nothing.
+ * Dividends: `dividend_payout` counts as a negative capital flow on the stock; a
+ * reinvestment is a separate `stock_buy` transfer that nets it out.
  * For the personal-capital series (excludes APV-A state bonus), use
  * {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
  */
@@ -50,7 +50,6 @@ const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
   "compra_usd_venta_clp",
   "stock_buy",
   "stock_sell",
-  "dividend_usd",
   "dividend_payout",
 ]);
 

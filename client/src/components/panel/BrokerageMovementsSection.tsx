@@ -12,6 +12,7 @@ import {
   clpCashFlowKindAllowsCounterpart,
   isInterestFlowKind,
   type BrokerageFlowKind,
+  type BrokerageFormContext,
   type StockQuoteCurrency,
 } from "../../panelAccounts/brokerageFlowKinds";
 
@@ -55,6 +56,12 @@ export function BrokerageMovementRowFields({
   stockQuoteCurrency?: StockQuoteCurrency;
 }) {
   const { t } = useTranslation();
+  // Cash ledger forms pass `cashCurrency`; the stock account form does not. dividend_payout
+  // counterpart semantics flip with this: cash form picks the paying stock, stock form picks
+  // the receiving USD cash account.
+  const formContext: BrokerageFormContext = cashCurrency != null ? "cash" : "stock";
+  const counterpartIsEquity = brokerageFlowKindCounterpartIsEquity(row.flowKind, formContext);
+  const counterpartIsUsdCash = brokerageFlowKindCounterpartIsUsdCash(row.flowKind, formContext);
   const interestInClp = isInterestFlowKind(row.flowKind) && cashCurrency === "clp";
   const interestInUsd = isInterestFlowKind(row.flowKind) && cashCurrency === "usd";
   const showClp = brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency) || interestInClp;
@@ -62,8 +69,11 @@ export function BrokerageMovementRowFields({
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
   const clpTransferCounterpart =
     cashCurrency === "clp" && clpCashFlowKindAllowsCounterpart(row.flowKind);
-  const tradeSettlesInClp =
-    stockQuoteCurrency === "clp" && brokerageFlowKindCounterpartIsUsdCash(row.flowKind);
+  const tradeSettlesInClp = stockQuoteCurrency === "clp" && counterpartIsUsdCash;
+  // dividend_payout is USD-only today (movementUnitsPolicy rejects CLP-quoted stocks).
+  const availableKinds = flowKinds.filter(
+    (k) => !(k === "dividend_payout" && stockQuoteCurrency === "clp")
+  );
 
   return (
     <div
@@ -99,7 +109,7 @@ export function BrokerageMovementRowFields({
             onChange({ ...row, flowKind: e.target.value as BrokerageFlowKind })
           }
         >
-          {flowKinds.map((k) => (
+          {availableKinds.map((k) => (
             <option key={k} value={k}>
               {t(`panelAccounts.flowKinds.${k}`)}
             </option>
@@ -152,19 +162,21 @@ export function BrokerageMovementRowFields({
         <div style={{ gridColumn: "1 / -1" }}>
           <CounterpartAccountSelect
             label={
-              brokerageFlowKindCounterpartIsEquity(row.flowKind)
+              counterpartIsEquity
                 ? t("accountDetail.movements.dividendOriginAccount")
-                : brokerageFlowKindCounterpartIsCash(row.flowKind)
-                  ? t("accountDetail.movements.compraSourceAccount")
-                  : t("accountDetail.movements.counterpartAccount")
+                : row.flowKind === "dividend_payout"
+                  ? t("accountDetail.movements.dividendCashAccount")
+                  : brokerageFlowKindCounterpartIsCash(row.flowKind)
+                    ? t("accountDetail.movements.compraSourceAccount")
+                    : t("accountDetail.movements.counterpartAccount")
             }
             value={row.counterpartAccountId}
             excludeAccountId={currentAccountId}
-            equityBrokerageOnly={brokerageFlowKindCounterpartIsEquity(row.flowKind)}
+            equityBrokerageOnly={counterpartIsEquity}
             cashAndCheckingOnly={
               brokerageFlowKindCounterpartIsCash(row.flowKind) || clpTransferCounterpart
             }
-            usdCashOnly={brokerageFlowKindCounterpartIsUsdCash(row.flowKind) && !tradeSettlesInClp}
+            usdCashOnly={counterpartIsUsdCash && !tradeSettlesInClp}
             clpCashOnly={tradeSettlesInClp}
             onChange={(counterpartAccountId) => onChange({ ...row, counterpartAccountId })}
           />

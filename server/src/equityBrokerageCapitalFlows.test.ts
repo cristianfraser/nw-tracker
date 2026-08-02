@@ -123,42 +123,43 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(buyId);
   });
 
-  it("DRIP dividend_usd (units on the row) contributes no capital flow", () => {
-    if (!stockId) return;
-    db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}|drip%`);
+  it("dividend_payout transfer is a negative capital flow and informational dividend income", () => {
+    if (!usdId || !stockId) return;
 
     const divId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd, units_delta)
-           VALUES (?, 0, '2026-02-05', ?, 'dividend_usd', 1.7, 0.01)`
+          `INSERT INTO movements (
+             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+             units_delta, flow_kind, amount_usd, ticker
+           ) VALUES (NULL, ?, ?, 0, '2026-03-26', ?, NULL, 'dividend_payout', 1.7, 'VITEST')`
         )
-        .run(stockId, `${FIXTURE_NOTE}|drip-div`).lastInsertRowid
+        .run(stockId, usdId, `${FIXTURE_NOTE}|payout-div`).lastInsertRowid
     );
 
-    const events = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
-    expect(events.filter((e) => monthKeyFromYmd(e.occurred_on) === "2026-02")).toHaveLength(0);
-    // The dividend still counts as informational return income.
+    const events = marchEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.amt).toBe(-usdToClpReferenceRounded(1.7, "2026-03-26")!);
     expect(totalDividendsClpForAccount(stockId)).toBeCloseTo(
-      usdToClpReferenceRounded(1.7, "2026-02-05")!,
+      usdToClpReferenceRounded(1.7, "2026-03-26")!,
       0
     );
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(divId);
   });
 
-  it("throws on unitless dividend_usd (cash dividends must be dividend_payout)", () => {
+  it("throws on any row using the retired dividend_usd kind", () => {
     if (!stockId) return;
     const divId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
-           VALUES (?, 0, '2026-03-24', ?, 'dividend_usd', 0.54)`
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd, units_delta)
+           VALUES (?, 0, '2026-02-05', ?, 'dividend_usd', 1.7, 0.01)`
         )
-        .run(stockId, `${FIXTURE_NOTE}|unitless-div`).lastInsertRowid
+        .run(stockId, `${FIXTURE_NOTE}|retired-drip`).lastInsertRowid
     );
 
-    expect(() => loadEquityBrokerageCapitalInflowEvents([stockId])).toThrow(/units_delta/);
+    expect(() => loadEquityBrokerageCapitalInflowEvents([stockId])).toThrow(/retired dividend_usd/);
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(divId);
   });
