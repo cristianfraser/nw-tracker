@@ -218,7 +218,7 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     {
       dataKey: "cash",
       name: "Ahorros y reservas",
-      name_i18n_key: "dashboard.cards.cash",
+      name_i18n_key: "dashboard.buckets.cash_eqs",
       values: points.map((p) => p.cash_eqs),
     },
   ]);
