@@ -4,6 +4,7 @@ import { formatClp } from "../../format";
 import type { CheckingCartolaMonthRowDto } from "../../types";
 import { Table } from "../../components/ui/Table";
 import { Modal } from "../../components/ui/Modal";
+import { Button } from "@crfrsr/ui";
 import { FlowsTable } from "../../components/account/FlowsTable";
 import { useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
 import { useModalPeriodNav } from "../../periodModalNav";
@@ -57,9 +58,9 @@ function CheckingCartolaMonthMobileCard({
 }) {
   const diff = cartolaBalanceDiff(row);
   const title = (
-    <button type="button" onClick={() => onOpen(row)}>
+    <Button variant="link" onClick={() => onOpen(row)}>
       {row.as_of_date} ({formatYmEs(row.period_month)})
-    </button>
+    </Button>
   );
 
   return (
@@ -215,12 +216,9 @@ export function CheckingCartolaMonthTable({
           return (
             <tr key={row.period_month}>
               <td className="mono desktop-only">
-                <button
-                  type="button"
-                  onClick={() => openMonth(row)}
-                >
+                <Button variant="link" onClick={() => openMonth(row)}>
                   {row.as_of_date} ({formatYmEs(row.period_month)})
-                </button>
+                </Button>
               </td>
               <td className="mono desktop-only">{fmtMoney(row.deposits_clp, row.has_cartola)}</td>
               <td className="mono desktop-only">{fmtMoney(row.withdrawals_clp, row.has_cartola)}</td>
