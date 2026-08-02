@@ -257,17 +257,19 @@ export function RealEstateExpensesPage() {
                             flexWrap: "wrap",
                           }}
                         >
-                          <Input
-                            type="month"
-                            value={editingBillMonth.value}
-                            onChange={(e) =>
-                              setEditingBillMonth({
-                                ...editingBillMonth,
-                                value: e.target.value,
-                                error: null,
-                              })
-                            }
-                          />
+                          <span style={{ width: "10rem" }}>
+                            <Input
+                              type="month"
+                              value={editingBillMonth.value}
+                              onChange={(e) =>
+                                setEditingBillMonth({
+                                  ...editingBillMonth,
+                                  value: e.target.value,
+                                  error: null,
+                                })
+                              }
+                            />
+                          </span>
                           <Button size="sm"
                             disabled={billMonthMutation.isPending}
                             onClick={() => void saveBillMonth()}
@@ -329,22 +331,26 @@ export function RealEstateExpensesPage() {
                           }}
                         >
                           {slot.kind !== "gas" ? (
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={editing.kwh}
-                              placeholder="kWh"
-                              onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
-                            />
+                            <span style={{ width: "6rem" }}>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={editing.kwh}
+                                placeholder="kWh"
+                                onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
+                              />
+                            </span>
                           ) : null}
                           {slot.kind === "gas" ? (
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={editing.m3}
-                              placeholder="m³"
-                              onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
-                            />
+                            <span style={{ width: "6rem" }}>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={editing.m3}
+                                placeholder="m³"
+                                onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
+                              />
+                            </span>
                           ) : null}
                           <Button size="sm"
                             disabled={consumptionMutation.isPending}

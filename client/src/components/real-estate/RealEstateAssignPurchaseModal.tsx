@@ -136,12 +136,14 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
           />
           {t("expenses.realEstate.billPreviousMonthToggle")}
         </label>
-        <Input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t("expenses.realEstate.assignSearchPlaceholder")}
-        />
+        <div style={{ flex: 1, minWidth: "10rem" }}>
+          <Input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("expenses.realEstate.assignSearchPlaceholder")}
+          />
+        </div>
         <Button variant="secondary" size="sm"
           disabled={busy || selected.size === 0}
           onClick={() => void assignKeys([...selected])}

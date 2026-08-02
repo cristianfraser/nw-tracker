@@ -154,15 +154,17 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
       </Table>
 
       <form onSubmit={onAdd} style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <Input
-          size="sm"
-          type="text"
-          value={newMerchant}
-          onChange={(e) => setNewMerchant(e.target.value)}
-          placeholder={t("importSync.genericUniqueMerchants.addPlaceholder")}
-          disabled={busy || editingId != null}
-          aria-label={t("importSync.genericUniqueMerchants.addPlaceholder")}
-        />
+        <div style={{ width: "18rem" }}>
+          <Input
+            size="sm"
+            type="text"
+            value={newMerchant}
+            onChange={(e) => setNewMerchant(e.target.value)}
+            placeholder={t("importSync.genericUniqueMerchants.addPlaceholder")}
+            disabled={busy || editingId != null}
+            aria-label={t("importSync.genericUniqueMerchants.addPlaceholder")}
+          />
+        </div>
         <Button size="sm"
           type="submit"
           disabled={busy || editingId != null || !newMerchant.trim()}
