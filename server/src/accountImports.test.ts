@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCcWebPaste } from "./accountImports.js";
 
-const BCI_PASTE = `11/06/2026\tVITEST BCI WEB PASTE\t$9.999`;
+const BCI_PASTE = `11/06/2026\tVITEST BCI WEB PASTE\t$9.999
+11/06/2026\tVITEST BCI WEB PASTE\t$9.999`;
 
 describe("importCcWebPaste", () => {
   let insertedLineId: number | null = null;
@@ -46,6 +47,24 @@ describe("importCcWebPaste", () => {
 
     const result = importCcWebPaste(master.id, BCI_PASTE);
     expect(result.inserted).toBeGreaterThanOrEqual(1);
+    // Per-line outcome arrays (parity with checking imports): the inserted line plus the
+    // in-paste repeat of the same line, each with date/description/amount detail.
+    expect(result.inserted_flows).toContainEqual(
+      expect.objectContaining({
+        occurred_on: "2026-06-11",
+        description: "VITEST BCI WEB PASTE",
+        amount_clp: 9999,
+      })
+    );
+    expect(result.skipped_flows).toContainEqual(
+      expect.objectContaining({
+        occurred_on: "2026-06-11",
+        description: "VITEST BCI WEB PASTE",
+        amount_clp: 9999,
+        reason: "duplicate_in_paste",
+      })
+    );
+    expect(result.skipped_duplicate_in_paste).toBe(1);
 
     const line = db
       .prepare(

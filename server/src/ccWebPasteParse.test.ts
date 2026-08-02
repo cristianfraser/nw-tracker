@@ -52,7 +52,7 @@ describe("parseCcWebPasteText", () => {
     const { lines } = parseCcWebPasteText("19/05/2026\tSHOP\t-$10.000");
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
-    const records = ccWebPasteToCsvRecords(master.id, "santander", "4242", "test", lines);
+    const { records } = ccWebPasteToCsvRecords(master.id, "santander", "4242", "test", lines);
     expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
     expect(records[0]?.statement_date).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
   });
@@ -66,7 +66,7 @@ describe("parseCcWebPasteText", () => {
 
   it("stores charges positive and payments negative in CSV records", () => {
     const { lines } = parseCcWebPasteText(SAMPLE);
-    const records = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
+    const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
     const charge = records.find((r) => r.merchant === "ARAMCO");
     const pago = records.find((r) => r.merchant === "PAGO");
     expect(charge?.amount_clp).toBe("1990");
@@ -101,7 +101,7 @@ describe("parseCcWebPasteText", () => {
 
   it("emits USD charges as amount_usd (charge positive) with amount_clp empty and orig_currency usd", () => {
     const { lines } = parseCcWebPasteText("30/06/2026\tANTHROPIC* CLAU\t-USD99,28");
-    const records = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
+    const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
     const r = records.find((x) => x.merchant === "ANTHROPIC* CLAU");
     expect(r?.amount_clp).toBe(""); // no bogus CLP value
     expect(r?.amount_usd).toBe("99.28"); // Santander charge → positive
@@ -129,7 +129,7 @@ describe("parseCcWebPasteText", () => {
     const { lines } = parseCcWebPasteText("11/06/2026\tENTEL HOGAR\t$21.249");
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
-    const records = ccWebPasteToCsvRecords(
+    const { records } = ccWebPasteToCsvRecords(
       master.id,
       meta.cardGroup,
       meta.cardLast4,
