@@ -25,9 +25,25 @@ function monthEndTwoMonthsBack(): string {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 0)).toISOString().slice(0, 10);
 }
 
+function isMonthEndYmd(ymd: string): boolean {
+  return addDaysIso(ymd, 1).endsWith("-01");
+}
+
+/**
+ * The daily-stamp fixtures must NOT land on a month-end: month-end stamps are
+ * statement-derived and deliberately survive the purge, so a STALE_STAMP of `today − 2`
+ * falling on one (every 1st/2nd of a month) made the purge assertion fail by calendar.
+ * Nudge one day earlier in that case — the orderings OLDER < EVIDENCE < STALE < TODAY
+ * hold either way, and two consecutive days can never both be month-ends.
+ */
+function dailyStampYmd(daysAgo: number): string {
+  const candidate = addDaysIso(TODAY, -daysAgo);
+  return isMonthEndYmd(candidate) ? addDaysIso(TODAY, -(daysAgo + 1)) : candidate;
+}
+
 const MONTH_END = monthEndTwoMonthsBack();
-const STALE_STAMP = addDaysIso(TODAY, -2);
-const OLDER_STAMP = addDaysIso(TODAY, -9);
+const STALE_STAMP = dailyStampYmd(2);
+const OLDER_STAMP = dailyStampYmd(9);
 const EVIDENCE_DATE = addDaysIso(TODAY, -5);
 
 let ccId: number | null = null;
