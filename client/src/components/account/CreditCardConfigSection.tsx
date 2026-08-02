@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCreditCardConfig, usePatchCreditCardConfigMutation } from "../../queries/hooks";
 import type { CcCupoEntry, CreditCardConfigPatchBody } from "../../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 import {
-  brokerageMovementFieldLabelStyle,
   brokerageMovementFieldRowStyle,
 } from "../panel/BrokerageMovementsSection";
 
@@ -122,54 +121,42 @@ export function CreditCardConfigSection({ accountId }: Props) {
           maxWidth: "40rem",
         }}
       >
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("accountDetail.creditCard.configCupoClpLabel")}
-          </span>
-          <input
+        <Field label={t("accountDetail.creditCard.configCupoClpLabel")}>
+          <Input
             type="text"
             inputMode="decimal"
             value={cupoClp}
             placeholder="5000000"
             onChange={(e) => onFieldChange(setCupoClp)(e.target.value)}
           />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("accountDetail.creditCard.configCupoUsdLabel")}
-          </span>
-          <input
+        </Field>
+        <Field label={t("accountDetail.creditCard.configCupoUsdLabel")}>
+          <Input
             type="text"
             inputMode="decimal"
             value={cupoUsd}
             placeholder="3000"
             onChange={(e) => onFieldChange(setCupoUsd)(e.target.value)}
           />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("accountDetail.creditCard.configCycleStartLabel")}
-          </span>
-          <input
+        </Field>
+        <Field label={t("accountDetail.creditCard.configCycleStartLabel")}>
+          <Input
             type="text"
             inputMode="numeric"
             value={cycleStart}
             placeholder="21"
             onChange={(e) => onFieldChange(setCycleStart)(e.target.value)}
           />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>
-            {t("accountDetail.creditCard.configCycleEndLabel")}
-          </span>
-          <input
+        </Field>
+        <Field label={t("accountDetail.creditCard.configCycleEndLabel")}>
+          <Input
             type="text"
             inputMode="numeric"
             value={cycleEnd}
             placeholder="20"
             onChange={(e) => onFieldChange(setCycleEnd)(e.target.value)}
           />
-        </label>
+        </Field>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
           <Button size="sm" disabled={patchMutation.isPending} onClick={onSave}>
             {patchMutation.isPending

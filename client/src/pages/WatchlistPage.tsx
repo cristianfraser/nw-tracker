@@ -11,7 +11,7 @@ import {
   useWatchlist,
 } from "../queries/hooks";
 import type { WatchlistRow } from "../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
   if (row.label_i18n_key) {
@@ -287,12 +287,11 @@ export function WatchlistPage() {
         <form className="watchlist-add-form" onSubmit={onAdd}>
           <label>
             <span>{t("watchlist.addTickerLabel")}</span>
-            <input
+            <Input
               type="text"
               value={tickerInput}
               onChange={(e) => setTickerInput(e.target.value)}
               placeholder={t("watchlist.addTickerPlaceholder")}
-              className="mono"
               autoCapitalize="characters"
               spellCheck={false}
             />

@@ -4,7 +4,7 @@ import { formatCcExpenseLineAmount, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
-import { Button } from "@crfrsr/ui";
+import { Button, Textarea } from "@crfrsr/ui";
 
 type ImportFlowItem = {
   occurred_on: string;
@@ -297,8 +297,7 @@ export function AccountImportPanel({
               {slot.hint && <p className="muted">{slot.hint}</p>}
               {slot.kind === "textarea" && (
                 <>
-                  <textarea
-                    className={styles.textarea}
+                  <Textarea
                     rows={8}
                     value={pasteText}
                     onChange={(e) => setPasteText(e.target.value)}

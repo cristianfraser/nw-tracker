@@ -14,7 +14,7 @@ import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import type { FacturacionModalBucket } from "./buildFacturacionModalBucket";
 import { isFacturacionModalBucketEmpty } from "./buildFacturacionModalBucket";
 import { formatClp } from "../../format";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 export function CreditCardFacturacionModalSections({
   bucket,
@@ -200,14 +200,13 @@ export function CreditCardFacturacionModalSections({
               <span style={{ fontSize: "0.9rem" }}>
                 {t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
               </span>
-              <input
+              <Input
                 type="number"
                 min={2}
                 step={1}
                 value={cuotasInput}
                 onChange={(e) => setCuotasInput(e.target.value)}
                 disabled={makeInstallment.isPending}
-                style={{ width: "6rem" }}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && cuotasValid) handleConfirmMakeInstallment();

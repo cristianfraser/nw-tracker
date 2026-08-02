@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../downloadFile";
 import { Modal } from "../ui/Modal";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 const SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -128,7 +128,7 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
           <p>
             <label>
               {t("export.customFrom")}{" "}
-              <input
+              <Input
                 type="month"
                 value={custom.from}
                 onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))}
@@ -136,7 +136,7 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
             </label>{" "}
             <label>
               {t("export.customTo")}{" "}
-              <input
+              <Input
                 type="month"
                 value={custom.to}
                 onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))}

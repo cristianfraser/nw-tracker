@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Table } from "../ui/Table";
 import type { CcExpenseGenericUniqueMerchantRow } from "../../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 import {
   useCreateGenericUniqueMerchantMutation,
   useDeleteGenericUniqueMerchantMutation,
@@ -102,12 +102,12 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
             <tr key={row.id}>
               <td>
                 {editingId === row.id ? (
-                  <input
+                  <Input
+                    size="sm"
                     type="text"
                     value={editDraft}
                     onChange={(e) => setEditDraft(e.target.value)}
                     disabled={busy}
-                    style={{ width: "100%", maxWidth: "28rem" }}
                     aria-label={t("importSync.genericUniqueMerchants.colMerchant")}
                   />
                 ) : (
@@ -154,13 +154,13 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
       </Table>
 
       <form onSubmit={onAdd} style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <input
+        <Input
+          size="sm"
           type="text"
           value={newMerchant}
           onChange={(e) => setNewMerchant(e.target.value)}
           placeholder={t("importSync.genericUniqueMerchants.addPlaceholder")}
           disabled={busy || editingId != null}
-          style={{ flex: "1 1 16rem", maxWidth: "28rem" }}
           aria-label={t("importSync.genericUniqueMerchants.addPlaceholder")}
         />
         <Button size="sm"

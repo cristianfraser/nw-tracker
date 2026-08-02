@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Input } from "@crfrsr/ui";
 import { useTranslation } from "../../i18n";
 import { usePatchCcExpensePurchaseNoteMutation } from "../../queries/hooks";
-import styles from "./CreditCardExpenseLinesTable.module.css";
 
 export function ExpensePurchaseNoteInput({
   accountId,
@@ -63,9 +63,9 @@ export function ExpensePurchaseNoteInput({
       patch.variables?.statement_line_id === statementLineId);
 
   return (
-    <input
+    <Input
       type="text"
-      className={styles.noteInput}
+      size="sm"
       value={draft}
       disabled={disabled || (!purchaseKey && (statementLineId == null || statementLineId <= 0))}
       aria-busy={rowPending || undefined}

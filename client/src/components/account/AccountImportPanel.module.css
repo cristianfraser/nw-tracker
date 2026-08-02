@@ -1,6 +1,6 @@
 .panel {
   margin: 1rem 0;
-  border: 1px solid var(--border-subtle, #333);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
 }
@@ -15,14 +15,6 @@
 .slotTitle {
   margin: 0 0 0.35rem;
   font-size: 0.95rem;
-}
-
-.textarea {
-  width: 100%;
-  min-height: 8rem;
-  font-family: ui-monospace, monospace;
-  font-size: 0.8rem;
-  margin-bottom: 0.5rem;
 }
 
 .fileLabel {
@@ -60,11 +52,11 @@
 
 .resultFlowNone {
   font-weight: 400;
-  color: var(--text-muted, #9aa0a6);
+  color: var(--muted);
 }
 
 .resultFlowReason {
-  color: var(--text-muted, #9aa0a6);
+  color: var(--muted);
 }
 
 .resultFlowAmount {

@@ -6,7 +6,7 @@ import { useTranslation } from "../../i18n";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
 import { formatYmEs } from "../../pages/accountDetail/shared";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
@@ -112,24 +112,21 @@ export function CheckingLedgerAnchorForm({
           <span className="muted" style={{ fontSize: "var(--font-size-ui)" }}>
             {t("accountDetail.checking.ledgerAnchorAmount")}
           </span>
-          <input
+          <Input
             type="number"
-            className="mono"
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
               setStatus(null);
             }}
-            style={{ width: "10rem" }}
           />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
           <span className="muted" style={{ fontSize: "var(--font-size-ui)" }}>
             {t("accountDetail.checking.ledgerAnchorDate")}
           </span>
-          <input
+          <Input
             type="date"
-            className="mono"
             value={occurredOn}
             onChange={(e) => {
               setOccurredOn(e.target.value);
