@@ -660,6 +660,8 @@
       "resultSkipReasonSupersededByTransfer": "ya como traspaso interno"
     },
     "checking": {
+      "monthModalTitle": "Movimientos {{month}}",
+      "monthModalClose": "Cerrar",
       "cartolaMonthHint": "Una fila por cada mes del historial. Abonos y cargos solo con cartola importada. Saldo fin de mes = suma de movimientos (ledger). Saldo cartola = cierre impreso en el estado (solo referencia). Diferencia = saldo fin de mes − saldo cartola.",
       "cartolaMonthEmpty": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas en el servidor.",
       "cartolaMonthImportedCount": "{{imported}} de {{total}} mes(es) con cartola importada",
@@ -849,7 +851,9 @@
     "save": "Guardar",
     "saving": "Guardando…",
     "cancel": "Cancelar",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "modalPrevPeriod": "Período anterior",
+    "modalNextPeriod": "Período siguiente"
   },
   "flows": {
     "layoutTitle": "Flujos",
