@@ -194,8 +194,9 @@ export interface CcProxyCuotaResult {
   billing_month: string;
   cuota_amount_clp: number;
   realized_gain_clp: number;
-  accumulated_gain_clp: number;
-  accumulated_return_pct: number;
+  /** The whole purchase's proxy P/L at this cuota's pay-by (withdrawn + still invested). */
+  total_gain_so_far_clp: number;
+  total_return_so_far_pct: number;
   projected: boolean;
 }
 
