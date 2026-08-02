@@ -29,14 +29,6 @@
   cursor: pointer;
 }
 
-.noteInput {
-  width: 100%;
-  min-width: 8rem;
-  max-width: 16rem;
-  font-size: 0.85rem;
-  padding: 0.2rem 0.4rem;
-}
-
 .selectCol {
   width: 2.25rem;
   text-align: center;

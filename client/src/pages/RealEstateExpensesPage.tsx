@@ -19,7 +19,7 @@ import {
   useUpdateRealEstateConsumptionMutation,
 } from "../queries/mutations";
 import type { ExpenseApartmentSlug, RealEstateBillSlot } from "../types";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 /** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
 const CONSUMPTION_KINDS = new Set(["electricidad", "gas", "kwh"]);
@@ -257,7 +257,7 @@ export function RealEstateExpensesPage() {
                             flexWrap: "wrap",
                           }}
                         >
-                          <input
+                          <Input
                             type="month"
                             value={editingBillMonth.value}
                             onChange={(e) =>
@@ -329,22 +329,20 @@ export function RealEstateExpensesPage() {
                           }}
                         >
                           {slot.kind !== "gas" ? (
-                            <input
+                            <Input
                               type="text"
                               inputMode="decimal"
                               value={editing.kwh}
                               placeholder="kWh"
-                              style={{ width: "5rem" }}
                               onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
                             />
                           ) : null}
                           {slot.kind === "gas" ? (
-                            <input
+                            <Input
                               type="text"
                               inputMode="decimal"
                               value={editing.m3}
                               placeholder="m³"
-                              style={{ width: "5rem" }}
                               onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
                             />
                           ) : null}

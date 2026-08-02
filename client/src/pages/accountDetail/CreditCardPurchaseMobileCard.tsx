@@ -10,7 +10,7 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { formatYmEs } from "./shared";
 import styles from "../AccountDetailPage.module.css";
-import { Button } from "@crfrsr/ui";
+import { Button, Input } from "@crfrsr/ui";
 
 function PurchaseMeta({ children }: { children: ReactNode }) {
   return <div className={cn("muted", styles.purchaseMeta)}>{children}</div>;
@@ -104,10 +104,10 @@ export function CreditCardPurchaseMobileCard({
           <TableMobileCardRow
             label={t("account.creditCard.colOffsetUi")}
             value={
-              <input
+              <Input
+                size="sm"
                 type="number"
                 step={1}
-                className={cn("mono", styles.offsetInput)}
                 value={extraOffsets[purchase.purchase_id] ?? 0}
                 onChange={(e) => {
                   const raw = e.target.value;

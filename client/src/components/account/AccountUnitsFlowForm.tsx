@@ -9,7 +9,7 @@ import {
 } from "../panel/BrokerageMovementsSection";
 import { CounterpartAccountSelect } from "./CounterpartAccountSelect";
 import { FlowDirectionToggle, type FlowDirection } from "./FlowDirectionToggle";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 type UnitsFlowDraft = {
   id: string;
@@ -151,14 +151,13 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
               borderRadius: 6,
             }}
           >
-            <label style={brokerageMovementFieldRowStyle()}>
-              <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.dateLabel")}</span>
-              <input
+            <Field label={t("accountDetail.bookLedger.dateLabel")}>
+              <Input
                 type="date"
                 value={row.occurredOn}
                 onChange={(e) => patchRow(row.id, { occurredOn: e.target.value })}
               />
-            </label>
+            </Field>
             <div style={brokerageMovementFieldRowStyle()}>
               <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.flowDirection.label")}</span>
               <FlowDirectionToggle
@@ -166,26 +165,24 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
                 onChange={(direction) => patchRow(row.id, { direction })}
               />
             </div>
-            <label style={brokerageMovementFieldRowStyle()}>
-              <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.amountClpLabel")}</span>
-              <input
+            <Field label={t("accountDetail.bookLedger.amountClpLabel")}>
+              <Input
                 type="text"
                 inputMode="decimal"
                 value={row.amountClp}
                 placeholder="3000000"
                 onChange={(e) => patchRow(row.id, { amountClp: e.target.value })}
               />
-            </label>
-            <label style={brokerageMovementFieldRowStyle()}>
-              <span style={brokerageMovementFieldLabelStyle()}>{unitLabel}</span>
-              <input
+            </Field>
+            <Field label={unitLabel}>
+              <Input
                 type="text"
                 inputMode="decimal"
                 value={row.unitsDelta}
                 placeholder="59.760886574"
                 onChange={(e) => patchRow(row.id, { unitsDelta: e.target.value })}
               />
-            </label>
+            </Field>
             <div style={{ gridColumn: "1 / -1" }}>
               <CounterpartAccountSelect
                 label={t("accountDetail.movements.counterpartAccount")}
@@ -197,7 +194,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
             </div>
             <div style={{ ...brokerageMovementFieldRowStyle(), gridColumn: "1 / -1" }}>
               <label style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.noteLabel")}</label>
-              <input
+              <Input
                 type="text"
                 value={row.note}
                 onChange={(e) => patchRow(row.id, { note: e.target.value })}

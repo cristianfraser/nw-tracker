@@ -32,16 +32,6 @@ h2.flow-section-title {
   margin-top: 0;
 }
 
-select.rates-series-select {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.4rem 0.65rem;
-  font: inherit;
-  min-width: min(22rem, 100%);
-  max-width: 100%;
-}
 
 .rates-fx-grid {
   display: grid;

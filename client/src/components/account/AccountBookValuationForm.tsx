@@ -5,9 +5,8 @@ import { api } from "../../api";
 import { formatClp } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { Table } from "../ui/Table";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 import {
-  brokerageMovementFieldLabelStyle,
   brokerageMovementFieldRowStyle,
 } from "../panel/BrokerageMovementsSection";
 
@@ -85,20 +84,18 @@ export function AccountBookValuationForm({ accountId, displayUnit, extraCcOffset
           maxWidth: "28rem",
         }}
       >
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.dateLabel")}</span>
-          <input type="date" value={asOfDate} onChange={(e) => { setAsOfDate(e.target.value); setSaved(false); }} />
-        </label>
-        <label style={brokerageMovementFieldRowStyle()}>
-          <span style={brokerageMovementFieldLabelStyle()}>{t("accountDetail.bookLedger.valueClpLabel")}</span>
-          <input
+        <Field label={t("accountDetail.bookLedger.dateLabel")}>
+          <Input type="date" value={asOfDate} onChange={(e) => { setAsOfDate(e.target.value); setSaved(false); }} />
+        </Field>
+        <Field label={t("accountDetail.bookLedger.valueClpLabel")}>
+          <Input
             type="text"
             inputMode="decimal"
             value={valueClp}
             placeholder="1325724"
             onChange={(e) => { setValueClp(e.target.value); setSaved(false); }}
           />
-        </label>
+        </Field>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
           <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
             {saveMutation.isPending ? t("common.loading") : t("accountDetail.bookLedger.valuationSaveBtn")}

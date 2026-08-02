@@ -3,7 +3,7 @@ import { Modal } from "../ui/Modal";
 import { useTranslation } from "../../i18n";
 import { useRealEstatePropertyAccounts } from "../../queries/hooks";
 import { useCreateRealEstatePlaceMutation } from "../../queries/mutations";
-import { Button } from "@crfrsr/ui";
+import { Button, Field, Input } from "@crfrsr/ui";
 
 function slugFromLabel(label: string): string {
   return label
@@ -58,7 +58,6 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
     onClose();
   };
 
-  const fieldStyle = { display: "flex", flexDirection: "column" as const, gap: "0.2rem" };
 
   return (
     <Modal
@@ -68,46 +67,40 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
       closeAriaLabel={t("expenses.realEstate.linkModalClose")}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: "26rem" }}>
-        <label style={fieldStyle}>
-          <span className="label-inline">{t("expenses.realEstate.placeLabelField")}</span>
-          <input type="text" value={label} onChange={(e) => handleLabelChange(e.target.value)} />
-        </label>
-        <label style={fieldStyle}>
-          <span className="label-inline">{t("expenses.realEstate.placeSlugField")}</span>
-          <input
+        <Field label={t("expenses.realEstate.placeLabelField")}>
+          <Input type="text" value={label} onChange={(e) => handleLabelChange(e.target.value)} />
+        </Field>
+        <Field label={t("expenses.realEstate.placeSlugField")}>
+          <Input
             type="text"
             value={slug}
-            className="mono"
             onChange={(e) => {
               setSlugTouched(true);
               setSlug(e.target.value);
             }}
           />
-        </label>
+        </Field>
         <div style={{ display: "flex", gap: "0.75rem" }}>
-          <label style={{ ...fieldStyle, flex: 1 }}>
-            <span className="label-inline">{t("expenses.realEstate.placeFromField")}</span>
-            <input
+          <Field label={t("expenses.realEstate.placeFromField")} style={{ flex: 1 }}>
+            <Input
               type="text"
               inputMode="numeric"
               placeholder="2026-01"
               value={activeFrom}
               onChange={(e) => setActiveFrom(e.target.value)}
             />
-          </label>
-          <label style={{ ...fieldStyle, flex: 1 }}>
-            <span className="label-inline">{t("expenses.realEstate.placeToField")}</span>
-            <input
+          </Field>
+          <Field label={t("expenses.realEstate.placeToField")} style={{ flex: 1 }}>
+            <Input
               type="text"
               inputMode="numeric"
               placeholder=""
               value={activeTo}
               onChange={(e) => setActiveTo(e.target.value)}
             />
-          </label>
+          </Field>
         </div>
-        <label style={fieldStyle}>
-          <span className="label-inline">{t("expenses.realEstate.placePropertyField")}</span>
+        <Field label={t("expenses.realEstate.placePropertyField")}>
           <select value={propertyAccountId} onChange={(e) => setPropertyAccountId(e.target.value)}>
             <option value="">{t("expenses.realEstate.placePropertyNone")}</option>
             {(propertyData?.accounts ?? []).map((a) => (
@@ -116,7 +109,7 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
               </option>
             ))}
           </select>
-        </label>
+        </Field>
         {err ? <p className="error">{err}</p> : null}
         <div>
           <Button size="sm"
