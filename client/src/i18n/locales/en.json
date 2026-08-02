@@ -288,7 +288,6 @@
       "compra_usd_venta_clp": "USD purchase / CLP sale",
       "stock_buy": "Stock buy",
       "stock_sell": "Stock sell",
-      "dividend_usd": "USD dividend",
       "dividend_payout": "Dividend",
       "savings_earnings": "Interest / returns",
       "withdrawal_clp": "CLP withdrawal",
@@ -493,6 +492,7 @@
     "movements": {
       "counterpartAccount": "Counterpart account",
       "dividendOriginAccount": "Stock paying the dividend",
+      "dividendCashAccount": "USD cash account receiving the dividend",
       "compraSourceAccount": "Source CLP account (optional)"
     },
     "flowDirection": {

@@ -10,8 +10,8 @@
  * reference rate (`usd_reference`). Guarded to the unambiguous one-wire/one-buy case.
  *
  * Dividends reduce cost basis: `dividend_payout` is a negative capital flow on the stock;
- * `dividend_usd` (DRIP — the row carries both the dividend and the reinvested units) nets
- * to zero capital and emits nothing.
+ * a reinvestment is a separate `stock_buy` (+X) that nets it out. The retired single-leg
+ * `dividend_usd` DRIP kind must not reappear (fail-fast below).
  */
 
 import type { DepositInflowEvent } from "./accountDeposits.js";
@@ -114,24 +114,24 @@ function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
 }
 
 /**
- * `dividend_usd` must carry the reinvested units (DRIP) — that's what makes it capital-neutral.
- * A unitless row would be dividend cash this model can't place; record those as `dividend_payout`.
+ * The single-leg `dividend_usd` DRIP kind was retired 2026-08-02 (every row was split into
+ * dividend_payout + stock_buy transfers by repair-drip-dividend-splits.ts). A reappearing
+ * row would silently distort units and capital flows, so fail fast instead.
  */
-function assertNoUnitlessDividendUsd(accountIds: number[]): void {
+function assertNoDividendUsdRows(accountIds: number[]): void {
   if (accountIds.length === 0) return;
   const ph = accountIds.map(() => "?").join(",");
   const bad = db
     .prepare(
       `SELECT id FROM movements
-       WHERE account_id IN (${ph})
+       WHERE (account_id IN (${ph}) OR from_account_id IN (${ph}) OR to_account_id IN (${ph}))
          AND flow_kind = 'dividend_usd'
-         AND ABS(COALESCE(units_delta, 0)) < 1e-12
        LIMIT 1`
     )
-    .get(...accountIds) as { id: number } | undefined;
+    .get(...accountIds, ...accountIds, ...accountIds) as { id: number } | undefined;
   if (bad) {
     throw new Error(
-      `dividend_usd movement ${bad.id} has no units_delta — a DRIP row must carry the reinvested units; record cash dividends as dividend_payout`
+      `movement ${bad.id} uses the retired dividend_usd kind — record the dividend as a dividend_payout transfer (stock → USD cash) plus a stock_buy for any reinvestment`
     );
   }
 }
@@ -297,7 +297,7 @@ export function loadEquityBrokerageCapitalSortFlows(
   const mtmIds = equityMtmAccountIds(accountIds);
   const out = new Map<number, EquityCapitalSortFlow[]>();
   if (mtmIds.length === 0) return out;
-  assertNoUnitlessDividendUsd(mtmIds);
+  assertNoDividendUsdRows(mtmIds);
 
   const buys = loadStockBuyCapitalRows(mtmIds);
   const sells = loadStockSellCapitalRows(mtmIds);

@@ -25,6 +25,20 @@ describe("stockAccountFormTypes", () => {
     expect(body).not.toHaveProperty("amount_clp");
   });
 
+  it("dividend_payout on the stock form: counterpart is the receiving USD cash (to), no units", () => {
+    const row = {
+      ...emptyMovementRow("dividend_payout"),
+      occurredOn: "2026-03-24",
+      amountUsd: "0,54",
+      unitsDelta: "9", // stale hidden-field value must not be sent
+      counterpartAccountId: 90 as const,
+    };
+    const body = buildBrokerageMovementPostBody(row, "VEA");
+    expect(body?.counterpart_role).toBe("to");
+    expect(body?.amount_usd).toBe(0.54);
+    expect(body).not.toHaveProperty("units_delta");
+  });
+
   it("stock_buy for a .SN (CLP-quoted) stock sends amount_clp and never amount_usd", () => {
     const row = {
       ...emptyMovementRow("stock_buy"),

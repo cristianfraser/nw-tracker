@@ -120,7 +120,6 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
   "compra_usd_venta_clp",
   "stock_buy",
   "stock_sell",
-  "dividend_usd",
   // Cash dividend paid from a stock to USD cash — return of capital, not a checking-funded deposit.
   "dividend_payout",
   // Bank-paid yield on cuenta_ahorro_vivienda (Abonos / Intereses) — P/L, not a funded deposit.

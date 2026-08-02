@@ -612,7 +612,7 @@ function monthEndCloseForMortgagePerformance(
 
 /** Month-end `YYYY-MM-DD` → Σ positive units_delta on equity brokerage movements in that calendar month. */
 function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
-  const shareKinds = ["compra_usd", "stock_buy", "stock_sell", "dividend_usd"];
+  const shareKinds = ["compra_usd", "stock_buy", "stock_sell"];
   const ph = shareKinds.map(() => "?").join(", ");
   const rows = db
     .prepare(

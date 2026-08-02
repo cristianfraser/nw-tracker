@@ -969,10 +969,6 @@
         "en": "Stock sell",
         "es": "Venta acciones"
       },
-      "dividend_usd": {
-        "en": "USD dividend",
-        "es": "Dividendo USD"
-      },
       "dividend_payout": {
         "en": "Dividend",
         "es": "Dividendo"
@@ -1674,6 +1670,10 @@
       "dividendOriginAccount": {
         "en": "Stock paying the dividend",
         "es": "Acción que paga el dividendo"
+      },
+      "dividendCashAccount": {
+        "en": "USD cash account receiving the dividend",
+        "es": "Cuenta USD que recibe el dividendo"
       },
       "compraSourceAccount": {
         "en": "Source CLP account (optional)",
