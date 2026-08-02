@@ -1,27 +1,15 @@
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppMessageRow } from "../../api";
 import { formatDateTimeLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
+import { Button } from "@crfrsr/ui";
 
 /** Legacy log titles appended ` YYYY-MM-DD HH:MM:SS UTC` (now stored in `created_at` only). */
 const LEGACY_LOG_TITLE_TIMESTAMP = / \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/;
 
 const MAX_DETAIL_LINES = 5;
-
-const showMoreDetailBtnStyle: CSSProperties = {
-  margin: "0.25rem 0 0",
-  padding: "0.15rem 0",
-  border: "none",
-  background: "none",
-  cursor: "pointer",
-  font: "inherit",
-  fontSize: "0.82rem",
-  color: "var(--muted)",
-  textDecoration: "underline",
-  textUnderlineOffset: "2px",
-};
 
 function logTitleForDisplay(title: string): string {
   return title.replace(LEGACY_LOG_TITLE_TIMESTAMP, "");
@@ -68,14 +56,11 @@ function MessageDetailCell({
     <>
       <MessageBodyPre body={displayBody} />
       {truncated ? (
-        <button
-          type="button"
-          className="muted"
-          style={showMoreDetailBtnStyle}
+        <Button variant="ghost" size="sm"
           onClick={() => setModalOpen(true)}
         >
           {t("messages.showMoreDetail")}
-        </button>
+        </Button>
       ) : null}
       <Modal
         open={modalOpen}

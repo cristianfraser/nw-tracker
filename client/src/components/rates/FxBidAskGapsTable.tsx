@@ -6,6 +6,7 @@ import { useTranslation } from "../../i18n";
 import { queryKeys } from "../../queries/keys";
 import type { FxBidAskGapRow } from "../../types";
 import { Table } from "../ui/Table";
+import { Button } from "@crfrsr/ui";
 
 type RowDraft = {
   buy: string;
@@ -190,9 +191,9 @@ export function FxBidAskGapsTable() {
                 ) : null}
               </td>
               <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                <button type="button" disabled={draft.saving} onClick={() => void saveRow(gap)}>
+                <Button size="sm" disabled={draft.saving} onClick={() => void saveRow(gap)}>
                   {draft.saving ? t("common.saving") : t("common.save")}
-                </button>
+                </Button>
                 {draft.error ? (
                   <div className="error" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
                     {draft.error}

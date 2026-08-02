@@ -14,6 +14,7 @@ import { usePatchIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
+import { Button } from "@crfrsr/ui";
 
 const PAGE_SIZE = 15;
 
@@ -108,9 +109,7 @@ export function IncomeAllLinesTable({
                   </td>
                   <td>{t("income.originChecking")}</td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn"
+                    <Button variant="secondary" size="sm"
                       disabled={patchIncomeMovement.isPending}
                       onClick={() =>
                         setExcludeTarget({
@@ -121,7 +120,7 @@ export function IncomeAllLinesTable({
                       }
                     >
                       {t("income.excludeLine")}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               );

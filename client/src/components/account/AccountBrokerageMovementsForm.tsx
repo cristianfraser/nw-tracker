@@ -9,6 +9,7 @@ import {
 } from "../../panelAccounts/stockAccountFormTypes";
 import { type StockQuoteCurrency } from "../../panelAccounts/brokerageFlowKinds";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
@@ -81,15 +82,14 @@ export function AccountBrokerageMovementsForm({
 
       {movements.length > 0 ? (
         <div style={{ marginTop: "0.75rem" }}>
-          <button
-            type="button"
+          <Button size="sm"
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
           >
             {saveMutation.isPending
               ? t("common.loading")
               : t("accountDetail.brokerageMovements.saveBtn")}
-          </button>
+          </Button>
         </div>
       ) : null}
 

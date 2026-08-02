@@ -53,38 +53,6 @@
   color: var(--muted);
 }
 
-.dismiss {
-  flex: none;
-  margin: -0.2rem -0.2rem 0 0;
-  padding: 0 0.35rem;
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  font-size: 1.15rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.dismiss:hover {
-  color: var(--text);
-}
-
-.action {
-  margin-top: 0.6rem;
-  padding: 0.3rem 0.7rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-
-.action:hover {
-  border-color: var(--accent);
-}
-
 @media (min-width: 880px) {
   .dock {
     left: auto;

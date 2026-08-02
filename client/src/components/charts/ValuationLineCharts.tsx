@@ -306,22 +306,8 @@ function InteractiveLegend({
           <button
             key={s.dataKey}
             type="button"
-            className="line-chart-legend__item"
             onPointerEnter={() => onHighlight(s.dataKey)}
-            style={{
-              cursor: "default",
-              border: "none",
-              background: "none",
-              padding: "2px 4px",
-              margin: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              opacity: faded ? DIM_LEGEND_OPACITY : 1,
-              color: "inherit",
-              font: "inherit",
-              transition: "opacity 0.12s ease-out",
-            }}
+            style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
           >
             <svg width={18} height={10} aria-hidden style={{ flexShrink: 0 }}>
               <line

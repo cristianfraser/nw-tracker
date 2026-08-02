@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { formatClp } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { Table } from "../ui/Table";
+import { Button } from "@crfrsr/ui";
 import {
   brokerageMovementFieldLabelStyle,
   brokerageMovementFieldRowStyle,
@@ -99,9 +100,9 @@ export function AccountBookValuationForm({ accountId, displayUnit, extraCcOffset
           />
         </label>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-          <button type="button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+          <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
             {saveMutation.isPending ? t("common.loading") : t("accountDetail.bookLedger.valuationSaveBtn")}
-          </button>
+          </Button>
         </div>
       </div>
 

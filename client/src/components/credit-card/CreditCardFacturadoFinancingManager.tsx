@@ -4,6 +4,7 @@ import type { FlowCcExpenseLineRow } from "../../types";
 import { formatClp } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
+import { Button } from "@crfrsr/ui";
 import {
   useCcFacturadoFinancingLinks,
   useDeleteCcFacturadoFinancingLinkMutation,
@@ -116,9 +117,9 @@ export function CreditCardFacturadoFinancingManager({
 
   return (
     <>
-      <button type="button" className="muted" onClick={() => setOpen(true)}>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
         {t("expenses.creditCard.financing.openButton")}
-      </button>
+      </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
@@ -149,14 +150,12 @@ export function CreditCardFacturadoFinancingManager({
                     {link.financing.length}× {t("expenses.creditCard.financing.financingShort")}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  className="muted"
+                <Button variant="ghost" size="sm"
                   disabled={del.isPending}
                   onClick={() => del.mutate(link.id)}
                 >
                   {t("expenses.creditCard.financing.remove")}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -229,9 +228,9 @@ export function CreditCardFacturadoFinancingManager({
           ))}
         </ul>
 
-        <button type="button" disabled={!canSave} onClick={save}>
+        <Button size="sm" disabled={!canSave} onClick={save}>
           {t("expenses.creditCard.financing.save")}
-        </button>
+        </Button>
         {upsert.isError ? (
           <p className="error" style={{ marginTop: "0.5rem" }}>
             {upsert.error instanceof Error ? upsert.error.message : t("common.loadFailed")}

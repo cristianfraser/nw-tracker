@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCreditCardConfig, usePatchCreditCardConfigMutation } from "../../queries/hooks";
 import type { CcCupoEntry, CreditCardConfigPatchBody } from "../../types";
+import { Button } from "@crfrsr/ui";
 import {
   brokerageMovementFieldLabelStyle,
   brokerageMovementFieldRowStyle,
@@ -170,11 +171,11 @@ export function CreditCardConfigSection({ accountId }: Props) {
           />
         </label>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-          <button type="button" disabled={patchMutation.isPending} onClick={onSave}>
+          <Button size="sm" disabled={patchMutation.isPending} onClick={onSave}>
             {patchMutation.isPending
               ? t("common.loading")
               : t("accountDetail.creditCard.configSaveBtn")}
-          </button>
+          </Button>
         </div>
       </div>
 

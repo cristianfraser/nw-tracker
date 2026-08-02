@@ -8,6 +8,7 @@ import { useMovementMirrorCandidates } from "../../queries/hooks";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Table } from "../../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../../components/ui/TableMobileCard";
+import { Button } from "@crfrsr/ui";
 import type {
   CcPaymentMirrorCandidateDto,
   CcPaymentMirrorRefDto,
@@ -171,16 +172,15 @@ export function MirrorPairsPanelPage() {
 
   const rowActions = (p: MirrorPairCandidate) => (
     <>
-      <button
-        type="button"
+      <Button size="sm"
         disabled={busy}
         onClick={() => setConfirmSingle(p)}
       >
         {t("mirrorPairs.approve")}
-      </button>{" "}
-      <button type="button" disabled={busy} onClick={() => reject.mutate([pairRef(p)])}>
+      </Button>{" "}
+      <Button variant="secondary" size="sm" disabled={busy} onClick={() => reject.mutate([pairRef(p)])}>
         {t("mirrorPairs.reject")}
-      </button>
+      </Button>
     </>
   );
 
@@ -267,13 +267,12 @@ export function MirrorPairsPanelPage() {
             })}
           </Table>
           <p>
-            <button
-              type="button"
+            <Button size="sm"
               disabled={busy || selectedHigh.length === 0}
               onClick={() => setConfirmBatch(true)}
             >
               {t("mirrorPairs.convertSelected", { n: selectedHigh.length })}
-            </button>
+            </Button>
           </p>
         </>
       )}
@@ -450,13 +449,12 @@ export function MirrorPairsPanelPage() {
             })}
           </Table>
           <p>
-            <button
-              type="button"
+            <Button size="sm"
               disabled={busy || selectedCc.length === 0}
               onClick={() => setConfirmCcBatch(true)}
             >
               {t("mirrorPairs.convertSelected", { n: selectedCc.length })}
-            </button>
+            </Button>
           </p>
         </>
       )}
@@ -485,9 +483,9 @@ export function MirrorPairsPanelPage() {
               <li key={pairKey(p)} className="muted">
                 {p.out.occurred_on} — {p.out.account_name} → {p.in.account_name},{" "}
                 {formatClp(Math.round(Math.abs(p.out.amount_clp)))}{" "}
-                <button type="button" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
                   {t("mirrorPairs.restore")}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

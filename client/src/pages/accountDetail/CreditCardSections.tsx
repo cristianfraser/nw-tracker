@@ -23,6 +23,7 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
+import { Button } from "@crfrsr/ui";
 
 function CreditCardInstallmentsSection({
   ledger,
@@ -165,16 +166,14 @@ function CreditCardInstallmentsSection({
               <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
               {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
               {hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
-                <button
-                  type="button"
-                  className={cn("muted", styles.purchaseMeta)}
+                <Button variant="ghost" size="sm"
                   disabled={manualBusy}
                   onClick={() => {
                     deletePurchase.mutate(p.purchase_db_id!);
                   }}
                 >
                   {t("account.creditCard.manualDelete")}
-                </button>
+                </Button>
               ) : null}
             </td>
             <td className="mono desktop-only">{p.installment_count}</td>

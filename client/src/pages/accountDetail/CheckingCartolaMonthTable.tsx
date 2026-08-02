@@ -14,7 +14,6 @@ import {
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
 import { formatYmEs } from "./shared";
-import linkStyles from "./CreditCardFacturacionesTable.module.css";
 
 const MODAL_PAGE_SIZE = 20;
 
@@ -58,7 +57,7 @@ function CheckingCartolaMonthMobileCard({
 }) {
   const diff = cartolaBalanceDiff(row);
   const title = (
-    <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
+    <button type="button" onClick={() => onOpen(row)}>
       {row.as_of_date} ({formatYmEs(row.period_month)})
     </button>
   );
@@ -218,7 +217,6 @@ export function CheckingCartolaMonthTable({
               <td className="mono desktop-only">
                 <button
                   type="button"
-                  className={linkStyles.dateLink}
                   onClick={() => openMonth(row)}
                 >
                   {row.as_of_date} ({formatYmEs(row.period_month)})

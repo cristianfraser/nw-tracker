@@ -24,6 +24,7 @@ import {
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
 import { CounterpartAccountSelect } from "../account/CounterpartAccountSelect";
+import { Button } from "@crfrsr/ui";
 
 export function brokerageMovementFieldLabelStyle(): CSSProperties {
   return { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem" };
@@ -176,9 +177,9 @@ export function BrokerageMovementRowFields({
           alignItems: "flex-end",
         }}
       >
-        <button type="button" onClick={onRemove} disabled={!canRemove}>
+        <Button size="sm" onClick={onRemove} disabled={!canRemove}>
           {t("panelAccounts.addAccount.removeMovement")}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -256,9 +257,9 @@ export function BrokerageMovementsSection({
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <button type="button" onClick={() => addMovement()}>
+        <Button size="sm" onClick={() => addMovement()}>
           {t("panelAccounts.addAccount.addMovement")}
-        </button>
+        </Button>
       </div>
     </fieldset>
   );

@@ -5,6 +5,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency } from "../format";
 import { useProjections } from "../queries/hooks";
 import type { ProjectionParams } from "../types";
+import { Button } from "@crfrsr/ui";
 
 const LS_KEY = "nw-tracker.projections.overrides";
 
@@ -158,17 +159,17 @@ export function ProjectionsPage() {
             </label>
           );
         })}
-        <button
-          type="button"
-          style={{ alignSelf: "flex-end" }}
-          disabled={Object.keys(overrides).length === 0}
-          onClick={() => {
-            setOverrides({});
-            setDrafts({});
-          }}
-        >
-          {t("projections.reset")}
-        </button>
+        <div style={{ alignSelf: "flex-end" }}>
+          <Button variant="secondary" size="sm"
+            disabled={Object.keys(overrides).length === 0}
+            onClick={() => {
+              setOverrides({});
+              setDrafts({});
+            }}
+          >
+            {t("projections.reset")}
+          </Button>
+        </div>
       </div>
 
       <section style={{ margin: "1rem 0" }}>

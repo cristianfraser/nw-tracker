@@ -6,6 +6,7 @@ import type {
   FlowCcExpenseLineRow,
 } from "../../types";
 import { isUnclassifiedPendingGasto } from "../../ccExpenseLineBuckets";
+import { Button } from "@crfrsr/ui";
 import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByAmountDesc,
@@ -75,15 +76,12 @@ export function CreditCardUnclassifiedExpensesTable({
             flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            className="muted"
+          <Button variant="ghost" size="sm"
             disabled={currentPageIndex === 0}
             onClick={() => setCurrentPageIndex((idx) => Math.max(0, idx - 1))}
-            style={{ padding: "0.15rem 0.35rem" }}
           >
             {t("table.paginationPrev")}
-          </button>
+          </Button>
           <label className="muted" style={{ fontSize: "0.9rem" }}>
             {t("table.paginationPageAria")}
             <select
@@ -98,15 +96,12 @@ export function CreditCardUnclassifiedExpensesTable({
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            className="muted"
+          <Button variant="ghost" size="sm"
             disabled={currentPageIndex === paged.length - 1}
             onClick={() => setCurrentPageIndex((idx) => Math.min(paged.length - 1, idx + 1))}
-            style={{ padding: "0.15rem 0.35rem" }}
           >
             {t("table.paginationNext")}
-          </button>
+          </Button>
         </div>
       ) : null}
       <CreditCardExpenseLinesSelectionProvider lines={currentLines}>

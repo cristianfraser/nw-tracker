@@ -16,6 +16,7 @@ import {
   usePutCcExpensePurchaseBigGroupMutation,
 } from "../../queries/hooks";
 import styles from "./CreditCardExpenseLinesSelection.module.css";
+import { Button } from "@crfrsr/ui";
 
 export function expenseLineRowKey(line: FlowCcExpenseLineRow): string {
   return `${line.source}-${line.statement_line_id}-${line.purchase_key}`;
@@ -221,14 +222,12 @@ export function CreditCardExpenseLinesBulkFooter({
         {t("expenses.creditCard.bulkSelectedCount", { count: selectedLines.length })}
       </span>
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.clearBtn}
+        <Button variant="secondary" size="sm"
           disabled={busy}
           onClick={() => selection.clearSelection()}
         >
           {t("expenses.creditCard.bulkClearSelection")}
-        </button>
+        </Button>
         <select
           className={styles.categorySelect}
           value=""

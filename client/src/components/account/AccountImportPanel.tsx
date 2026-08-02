@@ -4,6 +4,7 @@ import { formatClp } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
+import { Button } from "@crfrsr/ui";
 
 type ImportFlowItem = { occurred_on: string; description: string; amount_clp: number };
 type SkippedImportFlowItem = ImportFlowItem & { reason: string };
@@ -216,9 +217,9 @@ export function AccountImportPanel({
 
   return (
     <section className={styles.panel}>
-      <button type="button" className={styles.toggle} onClick={() => setOpen((o) => !o)}>
+      <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
         {open ? "▾" : "▸"} {t("accountDetail.import.sectionTitle")}
-      </button>
+      </Button>
       {open && (
         <div className={styles.body}>
           {slots.map((slot, idx) => (
@@ -234,14 +235,12 @@ export function AccountImportPanel({
                     onChange={(e) => setPasteText(e.target.value)}
                     placeholder={t("accountDetail.import.pastePlaceholder")}
                   />
-                  <button
-                    type="button"
-                    className="btn"
+                  <Button size="sm"
                     disabled={busy || !pasteText.trim()}
                     onClick={() => run(() => slot.onSubmit(pasteText))}
                   >
                     {busy ? t("accountDetail.import.busy") : slot.submitLabel}
-                  </button>
+                  </Button>
                 </>
               )}
               {slot.kind === "file" && (
@@ -255,9 +254,7 @@ export function AccountImportPanel({
                       setFileMap((m) => ({ ...m, [slot.label]: f }));
                     }}
                   />
-                  <button
-                    type="button"
-                    className="btn"
+                  <Button size="sm"
                     disabled={busy || !fileMap[slot.label]}
                     onClick={() => {
                       const f = fileMap[slot.label];
@@ -266,7 +263,7 @@ export function AccountImportPanel({
                     }}
                   >
                     {busy ? t("accountDetail.import.busy") : slot.submitLabel}
-                  </button>
+                  </Button>
                 </>
               )}
               {slot.kind === "multi-file" && (
@@ -285,14 +282,12 @@ export function AccountImportPanel({
                       />
                     </label>
                   ))}
-                  <button
-                    type="button"
-                    className="btn"
+                  <Button size="sm"
                     disabled={busy || !Object.values(fileMap).some(Boolean)}
                     onClick={() => run(() => slot.onSubmit(fileMap))}
                   >
                     {busy ? t("accountDetail.import.busy") : slot.submitLabel}
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
