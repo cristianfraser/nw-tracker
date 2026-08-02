@@ -6,6 +6,7 @@ import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow, 
 import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
 import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../ui/PaginatedTable";
 import { chileTodayYmd } from "../../calendarMonth";
+import { useModalPeriodNav } from "../../periodModalNav";
 import { Table } from "../ui/Table";
 import { Modal } from "../ui/Modal";
 import {
@@ -23,6 +24,8 @@ import {
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
 import linkStyles from "../../pages/accountDetail/CreditCardFacturacionesTable.module.css";
+
+const periodKeyOf = (row: FlowCcExpenseMonthRow) => row.period_month;
 
 /** True when the row's period is the current Chile month (or current year in year-rollup mode). */
 function isCurrentPeriodRow(
@@ -173,6 +176,14 @@ export function GroupExpensesMonthTable({
 
   const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE, defaultPage);
 
+  const titleNav = useModalPeriodNav({
+    rows: sortedRows,
+    selectedKey: selected?.period_month ?? null,
+    keyOf: periodKeyOf,
+    onSelect: setSelected,
+    labels: { prev: t("common.modalPrevPeriod"), next: t("common.modalNextPeriod") },
+  });
+
   if (rows.length === 0) {
     return <p className="muted">{t("expenses.creditCard.emptyMonths")}</p>;
   }
@@ -262,6 +273,7 @@ export function GroupExpensesMonthTable({
           open={modalOpen}
           onClose={closeModal}
           closeAriaLabel={t("expenses.creditCard.monthModalClose")}
+          titleNav={titleNav}
           footer={
             <CreditCardExpenseLinesBulkFooter categories={categories} bigGroups={bigGroups} />
           }

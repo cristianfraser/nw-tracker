@@ -368,6 +368,7 @@ export function StandardAccountDetailPage({ data }: Props) {
           />
           <CheckingCartolaMonthTable
             rows={checkingCartolaMonths?.rows ?? []}
+            accountId={summary.account_id}
             importedMonthCount={checkingCartolaMonths?.imported_months.length ?? 0}
             collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
           />
