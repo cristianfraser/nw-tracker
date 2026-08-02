@@ -292,48 +292,62 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        <Input
-          type="search"
-          value={filterState.q}
-          onChange={(e) => onFilterChange({ q: e.target.value })}
-          placeholder={t("flows.filters.notePlaceholder")}
-        />
+        {/* Inputs fill their container, so each control is sized by the wrapper
+            it sits in — otherwise every filter would claim a whole row. */}
+        <div style={{ width: "14rem" }}>
+          <Input
+            type="search"
+            value={filterState.q}
+            onChange={(e) => onFilterChange({ q: e.target.value })}
+            placeholder={t("flows.filters.notePlaceholder")}
+          />
+        </div>
 
-        <Input
-          type="date"
-          value={filterState.date_from}
-          onChange={(e) => onFilterChange({ date_from: e.target.value })}
-          aria-label={t("flows.filters.dateFrom")}
-        />
-        <Input
-          type="date"
-          value={filterState.date_to}
-          onChange={(e) => onFilterChange({ date_to: e.target.value })}
-          aria-label={t("flows.filters.dateTo")}
-        />
-        <Input
-          type="text"
-          inputMode="numeric"
-          value={filterState.amount_exact}
-          onChange={(e) => onFilterChange({ amount_exact: e.target.value })}
-          placeholder={t("flows.filters.amountExact")}
-        />
-        <Input
-          type="text"
-          inputMode="numeric"
-          value={filterState.amount_min}
-          disabled={Boolean(filterState.amount_exact.trim())}
-          onChange={(e) => onFilterChange({ amount_min: e.target.value })}
-          placeholder={t("flows.filters.amountMin")}
-        />
-        <Input
-          type="text"
-          inputMode="numeric"
-          value={filterState.amount_max}
-          disabled={Boolean(filterState.amount_exact.trim())}
-          onChange={(e) => onFilterChange({ amount_max: e.target.value })}
-          placeholder={t("flows.filters.amountMax")}
-        />
+        <div style={{ width: "10rem" }}>
+          <Input
+            type="date"
+            value={filterState.date_from}
+            onChange={(e) => onFilterChange({ date_from: e.target.value })}
+            aria-label={t("flows.filters.dateFrom")}
+          />
+        </div>
+        <div style={{ width: "10rem" }}>
+          <Input
+            type="date"
+            value={filterState.date_to}
+            onChange={(e) => onFilterChange({ date_to: e.target.value })}
+            aria-label={t("flows.filters.dateTo")}
+          />
+        </div>
+        <div style={{ width: "7rem" }}>
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={filterState.amount_exact}
+            onChange={(e) => onFilterChange({ amount_exact: e.target.value })}
+            placeholder={t("flows.filters.amountExact")}
+          />
+        </div>
+        <div style={{ width: "6.5rem" }}>
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={filterState.amount_min}
+            disabled={Boolean(filterState.amount_exact.trim())}
+            onChange={(e) => onFilterChange({ amount_min: e.target.value })}
+            placeholder={t("flows.filters.amountMin")}
+          />
+        </div>
+        <div style={{ width: "6.5rem" }}>
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={filterState.amount_max}
+            disabled={Boolean(filterState.amount_exact.trim())}
+            onChange={(e) => onFilterChange({ amount_max: e.target.value })}
+            placeholder={t("flows.filters.amountMax")}
+          />
+        </div>
 
         {filterState.personal_only !== undefined ? (
           <label style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
