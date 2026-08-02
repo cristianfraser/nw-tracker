@@ -373,7 +373,7 @@ function validateBrokerageMovementCreate(
     flow_kind === "compra_usd" && unitsProvidedEarly && !unitsValueInvalid(unitsRawEarly!);
 
   if ((amount_clp == null || amount_clp === 0) && (amount_usd == null || amount_usd === 0)) {
-    if (!sharePurchaseStockBuy && !legacySharePurchaseCompraUsd && flow_kind !== "dividend_usd") {
+    if (!sharePurchaseStockBuy && !legacySharePurchaseCompraUsd) {
       return { ok: false, status: 400, error: "amount_clp or amount_usd is required." };
     }
   }
@@ -388,7 +388,6 @@ function validateBrokerageMovementCreate(
   const unitsRaw = parseUnitsDeltaField(body);
   const unitsProvided = unitsRaw !== undefined;
   const unitsRequired =
-    flow_kind === "dividend_usd" ||
     flow_kind === "stock_buy" ||
     (flow_kind === "compra_usd" && unitsProvided && unitsRaw !== null);
 

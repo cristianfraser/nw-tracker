@@ -8,7 +8,7 @@ export const BROKERAGE_FLOW_KINDS = [
 
   "stock_sell",
 
-  "dividend_usd",
+  "dividend_payout",
 
   "withdrawal_clp",
 
@@ -17,6 +17,10 @@ export const BROKERAGE_FLOW_KINDS = [
   "other",
 
 ] as const;
+// `dividend_usd` (single-leg DRIP) was retired 2026-08-02: dividends are `dividend_payout`
+// transfers (stock → USD cash) and reinvestments separate `stock_buy` rows. On this stock
+// form the payout counterpart is the RECEIVING USD cash account (role "to"); on the USD
+// cash form it is the paying stock (role "from") — see the form-context params below.
 
 
 
@@ -73,15 +77,15 @@ export function isInterestFlowKind(kind: BrokerageFlowKind): boolean {
 
 
 
-export const BROKERAGE_UNITS_REQUIRED_FLOW_KINDS = ["stock_buy", "dividend_usd"] as const;
+export const BROKERAGE_UNITS_REQUIRED_FLOW_KINDS = ["stock_buy"] as const;
 
 
 
-/** Show shares input (required for stock_buy / dividend_usd). */
+/** Show shares input (required for stock_buy). */
 
 export function brokerageFlowKindShowsUnits(kind: BrokerageFlowKind): boolean {
 
-  return kind === "stock_buy" || kind === "stock_sell" || kind === "dividend_usd" || kind === "compra_usd";
+  return kind === "stock_buy" || kind === "stock_sell" || kind === "compra_usd";
 
 }
 
@@ -89,7 +93,7 @@ export function brokerageFlowKindShowsUnits(kind: BrokerageFlowKind): boolean {
 
 export function brokerageFlowKindUnitsRequired(kind: BrokerageFlowKind): boolean {
 
-  return kind === "stock_buy" || kind === "dividend_usd";
+  return kind === "stock_buy";
 
 }
 
@@ -104,9 +108,15 @@ export function brokerageFlowKindShowsCounterpart(kind: BrokerageFlowKind): bool
   );
 }
 
-/** Counterpart is an equity stock account (dividend payout origin), not cash/checking. */
-export function brokerageFlowKindCounterpartIsEquity(kind: BrokerageFlowKind): boolean {
-  return kind === "dividend_payout";
+/** Which form hosts the movement row: the stock account's or a cash ledger's. */
+export type BrokerageFormContext = "stock" | "cash";
+
+/** Counterpart is an equity stock account (dividend payout origin on the CASH form). */
+export function brokerageFlowKindCounterpartIsEquity(
+  kind: BrokerageFlowKind,
+  form: BrokerageFormContext
+): boolean {
+  return kind === "dividend_payout" && form === "cash";
 }
 
 /** Counterpart is a CLP cash / checking source (compra USD / venta CLP funding account). */
@@ -114,9 +124,13 @@ export function brokerageFlowKindCounterpartIsCash(kind: BrokerageFlowKind): boo
   return kind === "compra_usd_venta_clp";
 }
 
-/** Counterpart is the USD cash account (stock buys fund from / sells settle to USD cash). */
-export function brokerageFlowKindCounterpartIsUsdCash(kind: BrokerageFlowKind): boolean {
-  return kind === "stock_buy" || kind === "stock_sell";
+/** Counterpart is the USD cash account (trades settle there; stock-form dividends credit it). */
+export function brokerageFlowKindCounterpartIsUsdCash(
+  kind: BrokerageFlowKind,
+  form: BrokerageFormContext
+): boolean {
+  if (kind === "stock_buy" || kind === "stock_sell") return true;
+  return kind === "dividend_payout" && form === "stock";
 }
 
 /** Quote currency of the stock behind a brokerage form (`.SN` = Bolsa de Santiago = clp). */
@@ -157,12 +171,16 @@ export function clpCashFlowKindAllowsCounterpart(kind: BrokerageFlowKind): boole
   return kind === "deposit_clp" || kind === "withdrawal_clp";
 }
 
-/** Counterpart on stock account form: USD cash source for buys, destination for sells. */
-export function counterpartRoleForBrokerageFlowKind(kind: BrokerageFlowKind): "from" | "to" {
+/** Role of the COUNTERPART account in the transfer, relative to the hosting form. */
+export function counterpartRoleForBrokerageFlowKind(
+  kind: BrokerageFlowKind,
+  form: BrokerageFormContext
+): "from" | "to" {
   if (kind === "stock_buy") return "from";
   if (kind === "stock_sell") return "to";
-  // dividend_payout: the stock (counterpart) is the source of the cash dividend.
-  if (kind === "dividend_payout") return "from";
+  // dividend_payout: cash form → the stock counterpart PAYS ("from");
+  // stock form → the USD cash counterpart RECEIVES ("to").
+  if (kind === "dividend_payout") return form === "cash" ? "from" : "to";
   // compra_usd_venta_clp: the counterpart CLP account is the source of the pesos spent.
   if (kind === "compra_usd_venta_clp") return "from";
   return "to";
@@ -195,8 +213,6 @@ export function brokerageFlowKindNeedsUsd(kind: BrokerageFlowKind): boolean {
     kind === "stock_buy" ||
 
     kind === "stock_sell" ||
-
-    kind === "dividend_usd" ||
 
     kind === "dividend_payout" ||
 

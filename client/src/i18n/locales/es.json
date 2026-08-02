@@ -288,7 +288,6 @@
       "compra_usd_venta_clp": "Compra USD / Venta CLP",
       "stock_buy": "Compra acciones",
       "stock_sell": "Venta acciones",
-      "dividend_usd": "Dividendo USD",
       "dividend_payout": "Dividendo",
       "savings_earnings": "Interés / rentabilidad",
       "withdrawal_clp": "Retiro CLP",
@@ -493,6 +492,7 @@
     "movements": {
       "counterpartAccount": "Cuenta contraparte",
       "dividendOriginAccount": "Acción que paga el dividendo",
+      "dividendCashAccount": "Cuenta USD que recibe el dividendo",
       "compraSourceAccount": "Cuenta CLP de origen (opcional)"
     },
     "flowDirection": {

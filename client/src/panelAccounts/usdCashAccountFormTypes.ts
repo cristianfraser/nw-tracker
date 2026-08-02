@@ -24,7 +24,7 @@ export function buildUsdCashMovementPostBody(
     ...(row.counterpartAccountId !== ""
       ? {
           counterpart_account_id: row.counterpartAccountId,
-          counterpart_role: counterpartRoleForBrokerageFlowKind(row.flowKind),
+          counterpart_role: counterpartRoleForBrokerageFlowKind(row.flowKind, "cash"),
         }
       : {}),
   };
