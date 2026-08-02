@@ -69,10 +69,30 @@ describe("importCcStatementsMerge", () => {
     try {
       const first = importCcStatementsMerge(accountId, records, { replaceAll: false });
       expect(first.linesInserted).toBe(1);
+      expect(first.inserted_flows).toEqual([
+        {
+          occurred_on: "2026-05-19",
+          description: "Merge dedupe fixture row",
+          amount_clp: 12345,
+          amount_usd: null,
+          installment: false,
+          cuota: null,
+          statement: "2026-05-20 · CLP",
+        },
+      ]);
+      expect(first.skipped_flows).toEqual([]);
 
       const second = importCcStatementsMerge(accountId, records, { replaceAll: false });
       expect(second.linesInserted).toBe(0);
       expect(second.linesSkippedDuplicate).toBe(1);
+      expect(second.inserted_flows).toEqual([]);
+      expect(second.skipped_flows).toHaveLength(1);
+      expect(second.skipped_flows[0]).toMatchObject({
+        occurred_on: "2026-05-19",
+        description: "Merge dedupe fixture row",
+        amount_clp: 12345,
+        reason: "duplicate",
+      });
     } finally {
       cleanupVitestCcMergeRows();
     }
@@ -116,6 +136,12 @@ describe("importCcStatementsMerge", () => {
       const r = importCcStatementsMerge(accountId, records, { replaceAll: false });
       expect(r.linesInserted).toBe(0);
       expect(r.linesSkippedInstallmentOverlap).toBe(1);
+      expect(r.skipped_flows).toHaveLength(1);
+      expect(r.skipped_flows[0]).toMatchObject({
+        description: "Overlap fixture merchant",
+        amount_clp: 492000,
+        reason: "installment_overlap",
+      });
     } finally {
       if (purchaseId > 0) {
         db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(purchaseId);

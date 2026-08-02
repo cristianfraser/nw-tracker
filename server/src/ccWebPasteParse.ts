@@ -7,7 +7,12 @@ import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines.js";
 import { db } from "./db.js";
-import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import {
+  ccImportFlowItemFromRow,
+  ccStatementLabel,
+  type CcImportFlowItem,
+  type CcStatementCsvRecord,
+} from "./ccStatementsImport.js";
 
 export type CcWebPasteLine = {
   transaction_date: string;
@@ -134,7 +139,7 @@ export function ccWebPasteToCsvRecords(
   cardLast4: string,
   batchId: string,
   parsed: CcWebPasteLine[]
-): CcStatementCsvRecord[] {
+): { records: CcStatementCsvRecord[]; skipped_in_paste: CcImportFlowItem[] } {
   const billingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
   const statementDate = statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth);
   /** One open-period bucket per billing month (append on re-import via dedupe_key). */
@@ -142,6 +147,7 @@ export function ccWebPasteToCsvRecords(
 
   const seen = new Set<string>();
   const records: CcStatementCsvRecord[] = [];
+  const skipped_in_paste: CcImportFlowItem[] = [];
 
   for (const line of parsed) {
     const isUsd = line.currency === "usd";
@@ -155,7 +161,7 @@ export function ccWebPasteToCsvRecords(
       dedupeAmount,
       line.transaction_date
     );
-    if (seen.has(dedupe_key)) continue;
+    const isRepeatInPaste = seen.has(dedupe_key);
     seen.add(dedupe_key);
 
     const ddMm = (() => {
@@ -169,7 +175,7 @@ export function ccWebPasteToCsvRecords(
       ? webPasteAmountUsdForDb(line.amount_usd ?? 0, line.merchant, cardGroup)
       : 0;
 
-    records.push({
+    const record: CcStatementCsvRecord = {
       card_group: cardGroup,
       source_pdf: sourcePdf,
       statement_date: statementDate,
@@ -190,10 +196,17 @@ export function ccWebPasteToCsvRecords(
       statement_compras_cargos: "",
       statement_deuda_total: "",
       statement_monto_facturado: "",
-    });
+    };
+    // A line repeated within one paste imports once; report the drop instead of hiding it
+    // (the terse summary otherwise reads parsed > inserted + skipped with no explanation).
+    if (isRepeatInPaste) {
+      skipped_in_paste.push(ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp")));
+    } else {
+      records.push(record);
+    }
   }
 
-  return records;
+  return { records, skipped_in_paste };
 }
 
 export function newWebPasteBatchId(): string {

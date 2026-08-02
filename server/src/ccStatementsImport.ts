@@ -82,6 +82,61 @@ export function currencyFromRow(row: CcStatementCsvRecord): string {
   return "clp";
 }
 
+/** Per-line import outcome, rendered by the account-page import panel (parity with checking imports). */
+export type CcImportFlowItem = {
+  /** ISO transaction (fallback posting) date; raw text when unparseable. */
+  occurred_on: string;
+  description: string;
+  /** Null when the line carries no CLP amount (e.g. USD-pasted / foreign lines). */
+  amount_clp: number | null;
+  amount_usd: number | null;
+  installment: boolean;
+  /** `NN/MM` tag when the line is an indexed cuota. */
+  cuota: string | null;
+  /** Statement the line belongs to (ISO close date + currency) — disambiguates multi-statement uploads. */
+  statement: string;
+};
+
+export type CcImportSkipReason =
+  | "duplicate"
+  | "fuzzy_duplicate"
+  | "installment_overlap"
+  /** Dropped before the merge: same line repeated within one web paste. */
+  | "duplicate_in_paste";
+
+export type SkippedCcImportFlowItem = CcImportFlowItem & { reason: CcImportSkipReason };
+
+export function ccImportFlowItemFromRow(
+  row: CcStatementCsvRecord,
+  statementLabel: string
+): CcImportFlowItem {
+  const amountClpRaw = String(row.amount_clp ?? "").trim();
+  const amountUsdRaw = String(row.amount_usd ?? "").trim();
+  const cuotaCur = parseInt10(String(row.nro_cuota_current ?? "").trim() || "x");
+  const cuotaTot = parseInt10(String(row.nro_cuota_total ?? "").trim() || "x");
+  const txRaw = String(row.transaction_date ?? "").trim();
+  const postRaw = String(row.posting_date ?? "").trim();
+  return {
+    occurred_on: parseDdMmYyToIso(txRaw) ?? parseDdMmYyToIso(postRaw) ?? (txRaw || postRaw),
+    description:
+      String(row.merchant ?? "").trim() || String(row.description_merged ?? "").trim() || "—",
+    amount_clp: amountClpRaw ? parseInt10(amountClpRaw) : null,
+    amount_usd: amountUsdRaw ? parseUsdAmount(amountUsdRaw) : null,
+    installment: String(row.installment_flag ?? "").toLowerCase() === "true",
+    cuota:
+      cuotaCur != null && cuotaTot != null
+        ? `${String(cuotaCur).padStart(2, "0")}/${String(cuotaTot).padStart(2, "0")}`
+        : null,
+    statement: statementLabel,
+  };
+}
+
+/** `2026-06-23 · CLP` — the per-line statement tag shown on multi-statement uploads. */
+export function ccStatementLabel(statementDate: string, currency: string): string {
+  const iso = parseDdMmYyToIso(statementDate) ?? statementDate;
+  return `${iso} · ${currency.toUpperCase()}`;
+}
+
 export type CcStatementsMergeResult = {
   statementCount: number;
   lineCount: number;
@@ -102,6 +157,9 @@ export type CcStatementsMergeResult = {
    * added for a past day invalidates the frozen stamps written after it.
    */
   earliestInsertedTxDate: string | null;
+  /** Per-line outcomes for the import panel — strip from `createImportBatch` payloads. */
+  inserted_flows: CcImportFlowItem[];
+  skipped_flows: SkippedCcImportFlowItem[];
 };
 
 export type CcStatementsMergeOpts = {
@@ -233,6 +291,8 @@ export function importCcStatementsMerge(
   let linesOriginCardPatched = 0;
   let additionalCardCategoriesApplied = 0;
   let earliestInsertedTxDate: string | null = null;
+  const inserted_flows: CcImportFlowItem[] = [];
+  const skipped_flows: SkippedCcImportFlowItem[] = [];
 
   for (const [key, rows] of byStmt) {
     const first = rows[0]!;
@@ -322,11 +382,13 @@ export function importCcStatementsMerge(
     statementCount += 1;
 
     const seenDedupeInBatch = new Set<string>();
+    const statementLabel = ccStatementLabel(statementDate, currency);
 
     for (const row of rows) {
       const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
       const amountClp = parseInt10(String(row.amount_clp ?? ""));
       const amountUsd = parseUsdAmount(String(row.amount_usd ?? ""));
+      const flowItem = ccImportFlowItemFromRow(row, statementLabel);
       let dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
 
       if (dedupeKeys.length > 0) {
@@ -337,6 +399,7 @@ export function importCcStatementsMerge(
         // stay idempotent.
         if (dedupeKeys.every((k) => seenDedupeInBatch.has(k))) {
           linesSkippedDuplicate += 1;
+          skipped_flows.push({ ...flowItem, reason: "duplicate" });
           continue;
         }
         dedupeKeys = dedupeKeys.map((k) => {
@@ -363,6 +426,7 @@ export function importCcStatementsMerge(
             }
           }
           linesSkippedDuplicate += 1;
+          skipped_flows.push({ ...flowItem, reason: "duplicate" });
           continue;
         }
       }
@@ -374,6 +438,7 @@ export function importCcStatementsMerge(
         const merchant = String(row.merchant ?? "").trim() || null;
         if (shouldSkipOneShotStatementImport(accountId, merchant, purchaseDateIso, amountClp)) {
           linesSkippedInstallmentOverlap += 1;
+          skipped_flows.push({ ...flowItem, reason: "installment_overlap" });
           continue;
         }
         // A #dup-keyed row is a parser-affirmed same-statement twin — its sibling in
@@ -384,6 +449,7 @@ export function importCcStatementsMerge(
           oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp)
         ) {
           linesSkippedFuzzyDuplicate += 1;
+          skipped_flows.push({ ...flowItem, reason: "fuzzy_duplicate" });
           continue;
         }
       }
@@ -430,6 +496,7 @@ export function importCcStatementsMerge(
       }
       lineCount += 1;
       linesInserted += 1;
+      inserted_flows.push(flowItem);
     }
   }
 
@@ -446,6 +513,8 @@ export function importCcStatementsMerge(
     additionalCardCategoriesApplied,
     categoriesRestored: restored.lineCategories + restored.uniquePurchases,
     earliestInsertedTxDate,
+    inserted_flows,
+    skipped_flows,
   };
 }
 

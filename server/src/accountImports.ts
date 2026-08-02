@@ -19,6 +19,10 @@ import { importCheckingPartialMovements } from "./checkingPartialMovementsImport
 import { parseCuentaVistaWebPasteText } from "./cuentaVistaWebPasteParse.js";
 import { isUltimosMovimientosWorkbook, parseUltimosMovimientosRows } from "./checkingUltimosMovimientosParse.js";
 import { createImportBatch } from "./importBatches.js";
+import type {
+  CcImportFlowItem,
+  SkippedCcImportFlowItem,
+} from "./ccStatementsImport.js";
 import type { DocumentImportType } from "./accountDocumentRegistry.js";
 import XLSX from "xlsx";
 
@@ -42,14 +46,18 @@ export function importCcWebPaste(accountId: number, text: string) {
   if (parsed.lines.length === 0) {
     return {
       batch_id: null,
+      lines_parsed: 0,
       inserted: 0,
       skipped_duplicate: 0,
+      skipped_duplicate_in_paste: 0,
+      inserted_flows: [] as CcImportFlowItem[],
+      skipped_flows: [] as SkippedCcImportFlowItem[],
       parse_errors: parsed.errors,
     };
   }
 
   const batchId = newWebPasteBatchId();
-  const records = ccWebPasteToCsvRecords(
+  const { records, skipped_in_paste } = ccWebPasteToCsvRecords(
     accountId,
     meta.cardGroup,
     meta.cardLast4,
@@ -63,10 +71,13 @@ export function importCcWebPaste(accountId: number, text: string) {
   // facturación and the projected months bill the cuota in the right cycle.
   const firstDueNudges = applyWebPasteInstallmentFirstDueNudges(accountId, parsed.lines);
 
+  // Per-line arrays stay out of the batch log — counters only.
+  const { inserted_flows, skipped_flows, ...statementCounters } = merged.statements;
   const batch_id = createImportBatch("cc_web_paste", `web-paste|${batchId}`, {
     account_id: accountId,
     lines_parsed: parsed.lines.length,
-    ...merged.statements,
+    ...statementCounters,
+    skipped_duplicate_in_paste: skipped_in_paste.length,
     ledger: merged.ledger,
     installment_first_due_nudges: firstDueNudges,
     parse_errors: parsed.errors,
@@ -79,8 +90,14 @@ export function importCcWebPaste(accountId: number, text: string) {
     skipped_duplicate: merged.statements.linesSkippedDuplicate,
     skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
     skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
+    skipped_duplicate_in_paste: skipped_in_paste.length,
     overlap_removed: merged.overlap_removed ?? 0,
     installment_first_due_nudges: firstDueNudges,
+    inserted_flows,
+    skipped_flows: [
+      ...skipped_flows,
+      ...skipped_in_paste.map((f) => ({ ...f, reason: "duplicate_in_paste" as const })),
+    ],
     parse_errors: parsed.errors,
   };
 }
@@ -135,10 +152,12 @@ export function importCcStatementPdfUpload(
 ) {
   assertCreditCardAccount(accountId);
   const result = importCcStatementPdfsForAccount(accountId, files);
+  // Per-line arrays stay out of the batch log — counters only.
+  const { inserted_flows: _if, skipped_flows: _sf, ...batchMeta } = result;
   const batch_id = createImportBatch(
     "cc_statement_pdf",
     result.files.join(", "),
-    result
+    batchMeta
   );
   return { batch_id, ...result };
 }
