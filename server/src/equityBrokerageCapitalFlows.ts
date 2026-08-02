@@ -4,6 +4,11 @@
  * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries amount_clp
  * (no amount_usd) and counts as a `clp_wire` capital flow at face value.
  *
+ * A buy funded by a same-day CLP wire SMALLER than the buy (wire + USD already sitting in
+ * the cash account, e.g. a received dividend swept into the next purchase) splits into a
+ * composite: the wire pesos count at face (`clp_wire`) and only the residual USD uses the
+ * reference rate (`usd_reference`). Guarded to the unambiguous one-wire/one-buy case.
+ *
  * Dividends reduce cost basis: `dividend_payout` is a negative capital flow on the stock;
  * `dividend_usd` (DRIP — the row carries both the dividend and the reinvested units) nets
  * to zero capital and emits nothing.
@@ -131,6 +136,26 @@ function assertNoUnitlessDividendUsd(accountIds: number[]): void {
   }
 }
 
+/**
+ * CLP→USD conversion wires on `accountId` dated `occurredOn`: single-leg `compra_usd*`
+ * rows plus compra transfer legs ARRIVING at the account (the post-mirror-conversion
+ * shape — e.g. checking → USD cash or CLP wallet → USD cash conversions).
+ */
+function sameDayWireLegs(accountId: number, occurredOn: string): ClpWireLeg[] {
+  const rows = db
+    .prepare(
+      `SELECT amount_clp, amount_usd FROM movements
+       WHERE (account_id = ? OR (account_id IS NULL AND to_account_id = ?))
+         AND occurred_on = ?
+         AND flow_kind IN ('compra_usd_venta_clp', 'compra_usd')
+         AND amount_clp > 0
+         AND amount_usd IS NOT NULL
+         AND ABS(COALESCE(units_delta, 0)) < 1e-12`
+    )
+    .all(accountId, accountId, occurredOn) as { amount_clp: number; amount_usd: number }[];
+  return rows.map((r) => ({ clp: Math.abs(r.amount_clp), usd: Math.abs(r.amount_usd) }));
+}
+
 function findClpWireForStockBuy(
   stockAccountId: number,
   fromAccountId: number | null,
@@ -142,26 +167,66 @@ function findClpWireForStockBuy(
   if (fromAccountId != null && fromAccountId > 0) searchAccounts.add(fromAccountId);
   searchAccounts.add(stockAccountId);
 
-  const stmt = db.prepare(
-    `SELECT amount_clp, amount_usd FROM movements
-     WHERE account_id = ?
-       AND occurred_on = ?
-       AND flow_kind IN ('compra_usd_venta_clp', 'compra_usd')
-       AND amount_clp > 0
-       AND amount_usd IS NOT NULL
-       AND ABS(COALESCE(units_delta, 0)) < 1e-12`
-  );
-
   for (const accId of searchAccounts) {
-    const rows = stmt.all(accId, occurredOn) as { amount_clp: number; amount_usd: number }[];
-    for (const r of rows) {
-      const rowUsd = Math.abs(r.amount_usd);
-      if (Math.abs(rowUsd - usdMag) <= FX_WIRE_USD_TOLERANCE) {
-        return { clp: Math.abs(r.amount_clp), usd: rowUsd };
-      }
+    for (const wire of sameDayWireLegs(accId, occurredOn)) {
+      if (Math.abs(wire.usd - usdMag) <= FX_WIRE_USD_TOLERANCE) return wire;
     }
   }
   return null;
+}
+
+/**
+ * Buy funded by a same-day wire plus USD already in the cash account (e.g. a dividend
+ * received earlier and swept into the next purchase): wire pesos at face + residual at
+ * the reference rate. Fires only in the unambiguous case — the buy is a transfer, its
+ * cash account has exactly ONE same-day wire, the wire is genuinely smaller than the
+ * buy, and it is the only same-day buy from that cash account (a shared wire cannot be
+ * attributed without guessing, so ambiguity falls back to the full reference conversion).
+ */
+function partialWireCompositeFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | null {
+  const fromId = row.from_account_id;
+  if (fromId == null || fromId <= 0) return null;
+  if (row.amount_usd == null || row.amount_usd === 0) return null;
+  const buyUsd = Math.abs(row.amount_usd);
+
+  const wires = sameDayWireLegs(fromId, row.occurred_on);
+  if (wires.length !== 1) return null;
+  const wire = wires[0]!;
+  if (!(wire.usd < buyUsd - FX_WIRE_USD_TOLERANCE)) return null;
+
+  const sameDayBuys = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM movements
+       WHERE account_id IS NULL
+         AND from_account_id = ?
+         AND occurred_on = ?
+         AND flow_kind = 'stock_buy'
+         AND amount_usd IS NOT NULL
+         AND amount_usd != 0`
+    )
+    .get(fromId, row.occurred_on) as { n: number };
+  if (sameDayBuys.n !== 1) return null;
+
+  const residUsd = buyUsd - wire.usd;
+  const residClp = usdToClpReferenceRounded(residUsd, row.occurred_on);
+  if (residClp == null || !Number.isFinite(residClp) || residClp === 0) return null;
+
+  return [
+    {
+      occurred_on: row.occurred_on,
+      amt: wire.clp,
+      amt_usd: wire.usd,
+      capital_kind: "clp_wire",
+      tie: `t:${row.id}:wire`,
+    },
+    {
+      occurred_on: row.occurred_on,
+      amt: residClp,
+      amt_usd: residUsd,
+      capital_kind: "usd_reference",
+      tie: `t:${row.id}:resid`,
+    },
+  ];
 }
 
 /** CLP-quoted trade: capital = the CLP that actually moved (no fx reference). */
@@ -194,8 +259,11 @@ function usdReferenceFlow(
   };
 }
 
-function stockBuyCapitalFlow(row: TransferCapitalRow): EquityCapitalSortFlow | null {
-  if (row.amount_usd == null || row.amount_usd === 0) return clpDirectFlow(row, 1);
+function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] {
+  if (row.amount_usd == null || row.amount_usd === 0) {
+    const flow = clpDirectFlow(row, 1);
+    return flow ? [flow] : [];
+  }
   const wire = findClpWireForStockBuy(
     row.account_id,
     row.from_account_id,
@@ -203,15 +271,20 @@ function stockBuyCapitalFlow(row: TransferCapitalRow): EquityCapitalSortFlow | n
     row.amount_usd
   );
   if (wire) {
-    return {
-      occurred_on: row.occurred_on,
-      amt: wire.clp,
-      amt_usd: wire.usd,
-      capital_kind: "clp_wire",
-      tie: `t:${row.id}`,
-    };
+    return [
+      {
+        occurred_on: row.occurred_on,
+        amt: wire.clp,
+        amt_usd: wire.usd,
+        capital_kind: "clp_wire",
+        tie: `t:${row.id}`,
+      },
+    ];
   }
-  return usdReferenceFlow(row, 1);
+  const composite = partialWireCompositeFlows(row);
+  if (composite) return composite;
+  const flow = usdReferenceFlow(row, 1);
+  return flow ? [flow] : [];
 }
 
 /**
@@ -230,10 +303,11 @@ export function loadEquityBrokerageCapitalSortFlows(
   const sells = loadStockSellCapitalRows(mtmIds);
 
   for (const row of buys) {
-    const flow = stockBuyCapitalFlow(row);
-    if (!flow || flow.amt === 0 || !Number.isFinite(flow.amt)) continue;
-    if (!out.has(row.account_id)) out.set(row.account_id, []);
-    out.get(row.account_id)!.push(flow);
+    for (const flow of stockBuyCapitalFlows(row)) {
+      if (flow.amt === 0 || !Number.isFinite(flow.amt)) continue;
+      if (!out.has(row.account_id)) out.set(row.account_id, []);
+      out.get(row.account_id)!.push(flow);
+    }
   }
 
   for (const row of sells) {

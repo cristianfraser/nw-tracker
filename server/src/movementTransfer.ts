@@ -102,8 +102,6 @@ export function signedUsdDeltaForAccountMovement(
     if (row.from_account_id === accountId) {
       // stock_sell USD proceeds land on USD cash (to_account), not the equity from leg.
       if (fk === "stock_sell") return 0;
-      // migration:usd-cash stock_buy legs mirror equity funding; USD cash was not debited at import.
-      if (fk === "stock_buy" && row.note?.includes("migration:usd-cash")) return 0;
       return -mag;
     }
     if (row.to_account_id === accountId) {
@@ -118,8 +116,6 @@ export function signedUsdDeltaForAccountMovement(
   if (fk === "compra_usd" || fk === "compra_usd_venta_clp") {
     const units = row.units_delta;
     if (units != null && Number.isFinite(units) && units !== 0) return 0;
-    // Mirror compra legs (historical import / CLP-wire link); USD cash was not credited at import.
-    if (row.note?.includes("migration:fx-merge") || row.note?.includes("clp-wire-link")) return 0;
     return absAmount(row.amount_usd);
   }
   if (fk === "withdrawal_usd") return -absAmount(row.amount_usd);
