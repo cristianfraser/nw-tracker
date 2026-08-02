@@ -127,7 +127,12 @@ export function ProjectionsPage() {
       <h1>{t("projections.title")}</h1>
       <p className="muted">{t("projections.intro", { age: data.retire_age })}</p>
 
-      <div className="flows-filters" style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+      {/* Row gap leaves room for a Field's error, which overlays rather than
+          reflowing the form when a value goes out of bounds. */}
+      <div
+        className="flows-filters"
+        style={{ display: "flex", flexWrap: "wrap", columnGap: "0.75rem", rowGap: "2.5rem" }}
+      >
         {PARAM_FIELDS.map(({ key, step }) => {
           const raw = overrides[key];
           const invalid = raw != null && !isInBounds(key, raw);
