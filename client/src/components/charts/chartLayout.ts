@@ -476,3 +476,21 @@ export function resolvePeriodXAxis(
     formatTooltipTitle: (d) => formatLineChartXTick(d, granularity),
   };
 }
+
+/**
+ * X value for the "current period" dotted reference line: the plotted date whose calendar
+ * day/month/year (per `granularity`) contains `todayYmd`. Returns null when the current period
+ * has no plotted date — or when it is the LAST one: a marker hugging the right edge conveys
+ * nothing, the line is only informative when future buckets extend the axis past it.
+ */
+export function currentPeriodRefX(
+  sortedDatesAsc: readonly string[],
+  granularity: "month" | "year" | "day",
+  todayYmd: string
+): string | null {
+  const prefixLen = granularity === "day" ? 10 : granularity === "month" ? 7 : 4;
+  const target = todayYmd.slice(0, prefixLen);
+  const idx = sortedDatesAsc.findIndex((d) => d.slice(0, prefixLen) === target);
+  if (idx < 0 || idx === sortedDatesAsc.length - 1) return null;
+  return sortedDatesAsc[idx]!;
+}
