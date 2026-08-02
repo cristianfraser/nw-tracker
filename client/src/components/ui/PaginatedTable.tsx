@@ -85,11 +85,13 @@ export function PaginatedTable({
             flexWrap: "wrap",
           }}
         >
-          <Button variant="ghost" size="sm"
+          <Button variant="ghost" size="icon"
+            aria-label={t("table.paginationPrev")}
+            title={t("table.paginationPrev")}
             disabled={safePage <= 1}
             onClick={() => onPageChange(safePage - 1)}
           >
-            {t("table.paginationPrev")}
+            ‹
           </Button>
 
           <label className="muted" style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}>
@@ -107,11 +109,13 @@ export function PaginatedTable({
             </select>
           </label>
 
-          <Button variant="ghost" size="sm"
+          <Button variant="ghost" size="icon"
+            aria-label={t("table.paginationNext")}
+            title={t("table.paginationNext")}
             disabled={safePage >= totalPages}
             onClick={() => onPageChange(safePage + 1)}
           >
-            {t("table.paginationNext")}
+            ›
           </Button>
 
           <span className="muted" style={{ fontSize: "0.85rem" }}>
