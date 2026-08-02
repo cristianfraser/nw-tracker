@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFlowsDepositsPayload, flowsDepositsNetTotalByAccount } from "./flowsDeposits.js";
+import {
+  totalDisplayDepositsClpForAccount,
+  totalWithdrawalsClpForAccount,
+} from "./accountDeposits.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 
 describe("buildFlowsDepositsPayload", () => {
@@ -58,6 +63,44 @@ describe("state contributions are P/L, not deposits", () => {
     const rows = payload.rows.filter((r) => r.account_id === accountId);
     expect(rows.map((r) => r.amount_clp)).toEqual([100_000]);
     expect(flowsDepositsNetTotalByAccount().get(accountId)).toBe(100_000);
+  });
+});
+
+describe("future-dated movements do not count until their date arrives", () => {
+  let accountId: number | null = null;
+
+  beforeAll(() => {
+    const group = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_cash__clp'`)
+      .get() as { id: number } | undefined;
+    if (!group) return;
+    accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, account_kind) VALUES (?, ?, 'master')`)
+        .run(group.id, "vitest-flows-deposits-future-dated").lastInsertRowid
+    );
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
+       VALUES (?, ?, ?, ?, ?)`
+    );
+    ins.run(accountId, 100_000, "2024-05-10", "vitest past deposit", null);
+    // Bank-scheduled giro imported from a partial cartola before its value date.
+    ins.run(accountId, -130_000, chileCalendarAddDays(chileCalendarTodayYmd(), 2), "vitest future giro", null);
+  });
+
+  afterAll(() => {
+    if (accountId == null) return;
+    db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+  });
+
+  it("excludes the future event from lifetime totals, payload rows, and withdrawals", () => {
+    if (accountId == null) return;
+    expect(flowsDepositsNetTotalByAccount().get(accountId)).toBe(100_000);
+    expect(totalDisplayDepositsClpForAccount(accountId)).toBe(100_000);
+    expect(totalWithdrawalsClpForAccount(accountId)).toBe(0);
+    const rows = buildFlowsDepositsPayload().rows.filter((r) => r.account_id === accountId);
+    expect(rows.map((r) => r.amount_clp)).toEqual([100_000]);
   });
 });
 
