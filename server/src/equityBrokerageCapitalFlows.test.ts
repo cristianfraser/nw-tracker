@@ -14,6 +14,7 @@ import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
 
 const FIXTURE_USD = "vitest-equity-cap-usd";
+const FIXTURE_CLP = "vitest-equity-cap-clp";
 const FIXTURE_STOCK = "vitest-equity-cap-stock";
 const FIXTURE_NOTE = "vitest-equity-capital-flows";
 
@@ -39,6 +40,7 @@ let restoreFx: (() => void) | null = null;
 
 describe("equityBrokerageCapitalFlows fixture", () => {
   let usdId = 0;
+  let clpId = 0;
   let stockId = 0;
   let transferId = 0;
 
@@ -54,10 +56,11 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     if (!leaf || !usdLeaf) return;
 
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
-    db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_STOCK);
+    db.prepare(`DELETE FROM accounts WHERE name IN (?, ?, ?)`).run(FIXTURE_USD, FIXTURE_CLP, FIXTURE_STOCK);
 
     const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name, equity_ticker) VALUES (?, ?, ?)`);
     usdId = Number(ins.run(usdLeaf.id, FIXTURE_USD, null).lastInsertRowid);
+    clpId = Number(ins.run(usdLeaf.id, FIXTURE_CLP, null).lastInsertRowid);
     stockId = Number(ins.run(leaf.id, FIXTURE_STOCK, "VITEST").lastInsertRowid);
 
     transferId = Number(
@@ -81,7 +84,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
   afterAll(() => {
     restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
-    db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_STOCK);
+    db.prepare(`DELETE FROM accounts WHERE name IN (?, ?, ?)`).run(FIXTURE_USD, FIXTURE_CLP, FIXTURE_STOCK);
   });
 
   it("loads stock_buy transfer as CLP capital inflow", () => {
@@ -158,6 +161,153 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(() => loadEquityBrokerageCapitalInflowEvents([stockId])).toThrow(/units_delta/);
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(divId);
+  });
+
+  function insertWire(clp: number, usd: number, note: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
+           VALUES (?, ?, '2026-03-26', ?, 'compra_usd_venta_clp', ?)`
+        )
+        .run(usdId, clp, note, usd).lastInsertRowid
+    );
+  }
+
+  function insertBuy(usd: number, units: number, note: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO movements (
+             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+             units_delta, flow_kind, amount_usd, ticker
+           ) VALUES (NULL, ?, ?, 0, '2026-03-26', ?, ?, 'stock_buy', ?, 'VITEST')`
+        )
+        .run(usdId, stockId, note, units, usd).lastInsertRowid
+    );
+  }
+
+  function marchEvents() {
+    const all = loadEquityBrokerageCapitalInflowEvents([stockId]).get(stockId) ?? [];
+    return all.filter((e) => e.occurred_on === "2026-03-26");
+  }
+
+  it("stock_buy with exact same-day wire counts the wire CLP at face (clp_wire)", () => {
+    if (!usdId || !stockId) return;
+    const ids = [
+      insertWire(50_000, 54.68, `${FIXTURE_NOTE}|wire-exact`),
+      insertBuy(54.68, 0.865069, `${FIXTURE_NOTE}|wire-exact`),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.capital_kind).toBe("clp_wire");
+    expect(events[0]!.amt).toBe(50_000);
+    expect(events[0]!.amt_usd).toBeCloseTo(54.68, 6);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("wire smaller than the buy splits capital: wire CLP at face + residual at reference", () => {
+    if (!usdId || !stockId) return;
+    const ids = [
+      insertWire(50_000, 54.68, `${FIXTURE_NOTE}|wire-partial`),
+      insertBuy(55.22, 0.873613, `${FIXTURE_NOTE}|wire-partial`),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(2);
+    const wire = events.find((e) => e.capital_kind === "clp_wire");
+    const resid = events.find((e) => e.capital_kind === "usd_reference");
+    expect(wire).toBeDefined();
+    expect(wire!.amt).toBe(50_000);
+    expect(wire!.amt_usd).toBeCloseTo(54.68, 6);
+    expect(resid).toBeDefined();
+    expect(resid!.amt).toBe(usdToClpReferenceRounded(55.22 - 54.68, "2026-03-26")!);
+    expect(resid!.amt_usd).toBeCloseTo(0.54, 6);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  function insertWireTransfer(clp: number, usd: number, note: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO movements (
+             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
+             units_delta, flow_kind, amount_usd, ticker
+           ) VALUES (NULL, ?, ?, ?, '2026-03-26', ?, NULL, 'compra_usd_venta_clp', ?, NULL)`
+        )
+        .run(clpId, usdId, clp, note, usd).lastInsertRowid
+    );
+  }
+
+  it("compra TRANSFER leg into the cash account counts as an exact wire (clp_wire)", () => {
+    if (!usdId || !clpId || !stockId) return;
+    const ids = [
+      insertWireTransfer(50_000, 54.68, `${FIXTURE_NOTE}|twire-exact`),
+      insertBuy(54.68, 0.865069, `${FIXTURE_NOTE}|twire-exact`),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.capital_kind).toBe("clp_wire");
+    expect(events[0]!.amt).toBe(50_000);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("compra TRANSFER wire smaller than the buy drives the composite split", () => {
+    if (!usdId || !clpId || !stockId) return;
+    const ids = [
+      insertWireTransfer(50_000, 54.68, `${FIXTURE_NOTE}|twire-partial`),
+      insertBuy(55.22, 0.873613, `${FIXTURE_NOTE}|twire-partial`),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(2);
+    const wire = events.find((e) => e.capital_kind === "clp_wire");
+    const resid = events.find((e) => e.capital_kind === "usd_reference");
+    expect(wire?.amt).toBe(50_000);
+    expect(resid?.amt).toBe(usdToClpReferenceRounded(55.22 - 54.68, "2026-03-26")!);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("single-leg + transfer wires on one day = ambiguous → full reference for a partial buy", () => {
+    if (!usdId || !clpId || !stockId) return;
+    const ids = [
+      insertWire(50_000, 54.68, `${FIXTURE_NOTE}|mixed-wires`),
+      insertWireTransfer(20_000, 21.87, `${FIXTURE_NOTE}|mixed-wires`),
+      insertBuy(55.22, 0.873613, `${FIXTURE_NOTE}|mixed-wires`),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.capital_kind).toBe("usd_reference");
+    expect(events[0]!.amt).toBe(usdToClpReferenceRounded(55.22, "2026-03-26")!);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("shared wire across two same-day buys falls back to full reference (no guessing)", () => {
+    if (!usdId || !stockId) return;
+    const ids = [
+      insertWire(50_000, 54.68, `${FIXTURE_NOTE}|wire-shared`),
+      insertBuy(55.22, 0.873613, `${FIXTURE_NOTE}|wire-shared`),
+      insertBuy(30, 0.5, `${FIXTURE_NOTE}|wire-shared`),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(2);
+    expect(events.every((e) => e.capital_kind === "usd_reference")).toBe(true);
+    const amts = events.map((e) => e.amt).sort((a, b) => a - b);
+    expect(amts).toEqual([
+      usdToClpReferenceRounded(30, "2026-03-26")!,
+      usdToClpReferenceRounded(55.22, "2026-03-26")!,
+    ]);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
 });
 
