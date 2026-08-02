@@ -159,6 +159,34 @@ function stockTransfer(m: {
   );
 }
 
+/**
+ * Cash-side transfer (no units): CLP→USD conversions (checking → USD cash), sale
+ * proceeds wired back (USD cash → checking), and dividend payouts (stock → USD cash) —
+ * the post-2026-08 convention where no brokerage flow lacks a counterpart account.
+ */
+function cashTransfer(m: {
+  from_account_id: number;
+  to_account_id: number;
+  occurred_on: string;
+  note: string;
+  flow_kind: "compra_usd_venta_clp" | "withdrawal_usd" | "dividend_payout";
+  amount_clp: number;
+  amount_usd: number;
+  ticker?: string | null;
+}): void {
+  insTransferFull.run(
+    m.from_account_id,
+    m.to_account_id,
+    Math.round(m.amount_clp),
+    m.occurred_on,
+    m.note,
+    null,
+    m.flow_kind,
+    m.amount_usd,
+    m.ticker ?? null
+  );
+}
+
 const insMovement = db.prepare(
   `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
    VALUES (?, ?, ?, ?, ?)`
@@ -666,8 +694,9 @@ export function writeCheckingMonth(
       const priceUsd = demoEquityCloseUsd(state.equitySeries, ticker, sellYmd);
       const usd = Math.round(units * priceUsd * 100) / 100;
       const clp = Math.round(usd * fxSell);
+      // Proceeds reach checking via a USD-cash → checking transfer (posted in the stocks
+      // block below) — no single-leg ABONO row.
       tradeFlows.stockSells.push({ ticker, units, usd, clp });
-      checkingMove(clp, sellDay, "ABONO VENTA CORREDORA DEMO");
     } else {
       if (fxSell == null) throw new Error(`demo: no fx on/before ${sellYmd}`);
       const units = state.cryptoUnits * (tr.fraction ?? 0);
@@ -681,9 +710,9 @@ export function writeCheckingMonth(
   if (tradeFlows.fondoBuy > 0) {
     checkingMove(-tradeFlows.fondoBuy, 26, "TRANSFERENCIA FONDO DEMO");
   }
-  for (const lot of tradeFlows.stockBuys) {
-    checkingMove(-lot.clp, 26, "TRANSFERENCIA CORREDORA DEMO");
-  }
+  // Stock-lot funding leaves checking as a checking → USD-cash compra TRANSFER (posted in
+  // the stocks block below), not a single-leg cartola wire — same shape as the real data
+  // after the 2026-08 wire-transfer conversion.
   if (tradeFlows.cryptoBuy > 0) {
     checkingMove(-tradeFlows.cryptoBuy, 17, "TRANSFERENCIA EXCHANGE DEMO");
   }
@@ -838,12 +867,24 @@ export function writeCheckingMonth(
       )
       .get(accounts.checkingId, dayInMonth(month, 1), monthEndUtcYmd(month)) as { c: number }
   ).c;
+  // Saldo includes transfer legs (stock wires / sale proceeds are transfers now), so the
+  // cartola saldo chain matches the app's checking balance at every month end.
   const saldoFinal = (
     db
       .prepare(
-        `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`
+        `SELECT
+           COALESCE((SELECT SUM(amount_clp) FROM movements WHERE account_id = ? AND occurred_on <= ?), 0)
+         + COALESCE((SELECT SUM(amount_clp) FROM movements WHERE to_account_id = ? AND occurred_on <= ?), 0)
+         - COALESCE((SELECT SUM(amount_clp) FROM movements WHERE from_account_id = ? AND occurred_on <= ?), 0) AS t`
       )
-      .get(accounts.checkingId, monthEndUtcYmd(month)) as { t: number }
+      .get(
+        accounts.checkingId,
+        monthEndUtcYmd(month),
+        accounts.checkingId,
+        monthEndUtcYmd(month),
+        accounts.checkingId,
+        monthEndUtcYmd(month)
+      ) as { t: number }
   ).t;
   db.prepare(
     `INSERT INTO checking_cartola_imports (
@@ -909,9 +950,9 @@ export function writeCheckingMonth(
 
 export type DemoMonthFlows = {
   /**
-   * One lot per ticker per month: each lot is its own checking wire + CLP→USD conversion
-   * + stock_buy with IDENTICAL USD on both rows, so the funding pairing and the
-   * deposit-matcher line up exactly (pooled wires never match per-buy capital flows).
+   * One lot per ticker per month: each lot is a checking → USD-cash compra TRANSFER plus
+   * a stock_buy with IDENTICAL USD, so the per-buy wire pairing lines up exactly (pooled
+   * wires never match per-buy capital flows) and no brokerage flow lacks a counterpart.
    */
   stockBuys: { ticker: string; clp: number }[];
   stockSells: { ticker: string; units: number; usd: number; clp: number }[];
@@ -1213,9 +1254,10 @@ export function writeInvestmentMonth(
     valuation(accounts.fondoId, monthEnd, Math.round(state.fondoUnits * cuotaEnd));
   }
 
-  // Stocks: per lot, CLP→USD conversion on the corredora cash account + a stock_buy
-  // transfer with the SAME USD amount (funding pairing + deposit matching line up), then
-  // units × close × fx MTM — no book valuations; equity_daily carries the prices.
+  // Stocks: per lot, a checking → corredora-USD compra TRANSFER (CLP leg out of checking,
+  // USD credited to cash — one row, both counterparts) + a stock_buy transfer with the
+  // SAME USD amount so the per-buy wire pairing lines up, then units × close × fx MTM —
+  // no book valuations; equity_daily carries the prices.
   if (narrative.stocks && accounts.usdCashId != null && accounts.stockIdByTicker.size > 0) {
     for (const lot of flows.stockBuys) {
       const fx = fxRowOnOrBefore(buyYmd)?.clp_per_usd;
@@ -1224,11 +1266,13 @@ export function writeInvestmentMonth(
       if (stockId == null) throw new Error(`demo: no account for ticker ${lot.ticker}`);
       const usd = Math.round((lot.clp / fx) * 100) / 100;
       if (usd <= 0) continue;
-      movementWithUnits(accounts.usdCashId, {
-        amount_clp: lot.clp,
+      cashTransfer({
+        from_account_id: accounts.checkingId,
+        to_account_id: accounts.usdCashId,
         occurred_on: buyYmd,
         note: "import:panel|demo|compra-usd",
         flow_kind: "compra_usd_venta_clp",
+        amount_clp: lot.clp,
         amount_usd: usd,
       });
       const price = demoEquityCloseUsd(state.equitySeries, lot.ticker, buyYmd);
@@ -1262,14 +1306,55 @@ export function writeInvestmentMonth(
         units_delta: Math.round(sale.units * 1e6) / 1e6,
         ticker: sale.ticker,
       });
-      // Proceeds leave USD cash the same day (wired back to checking as the ABONO leg).
-      movementWithUnits(accounts.usdCashId, {
-        amount_clp: -sale.clp,
+      // Proceeds leave USD cash the same day, wired back to checking as ONE transfer
+      // (USD leg out of cash, CLP credited to checking).
+      cashTransfer({
+        from_account_id: accounts.usdCashId,
+        to_account_id: accounts.checkingId,
         occurred_on: sellYmd,
         note: "import:panel|demo|venta-usd",
         flow_kind: "withdrawal_usd",
-        amount_usd: -sale.usd,
+        amount_clp: sale.clp,
+        amount_usd: sale.usd,
       });
+    }
+
+    // Quarterly SPY dividend: cash payout into corredora USD (dividend_payout transfer)
+    // + same-day reinvestment stock_buy — the post-2026-08 convention (the retired
+    // single-leg dividend_usd DRIP kind must not reappear; the loader fail-fasts on it).
+    const divTicker = "SPY";
+    const divStockId = accounts.stockIdByTicker.get(divTicker);
+    const divUnitsHeld = state.stockUnits.get(divTicker) ?? 0;
+    if (divStockId != null && divUnitsHeld > 0 && Number(month.slice(5, 7)) % 3 === 0) {
+      const payYmd = dayInMonth(month, 20);
+      const divUsd = Math.round(divUnitsHeld * 1.6 * 100) / 100; // ≈ SPY quarterly per share
+      if (divUsd >= 0.01) {
+        cashTransfer({
+          from_account_id: divStockId,
+          to_account_id: accounts.usdCashId,
+          occurred_on: payYmd,
+          note: "import:panel|demo|dividend",
+          flow_kind: "dividend_payout",
+          amount_clp: 0,
+          amount_usd: divUsd,
+          ticker: divTicker,
+        });
+        const price = demoEquityCloseUsd(state.equitySeries, divTicker, payYmd);
+        const reinvestUnits = Math.round((divUsd / price) * 1e6) / 1e6;
+        if (reinvestUnits > 0) {
+          stockTransfer({
+            from_account_id: accounts.usdCashId,
+            to_account_id: divStockId,
+            occurred_on: payYmd,
+            note: "import:panel|demo|dividend-reinvest",
+            flow_kind: "stock_buy",
+            amount_usd: divUsd,
+            units_delta: reinvestUnits,
+            ticker: divTicker,
+          });
+          state.stockUnits.set(divTicker, divUnitsHeld + reinvestUnits);
+        }
+      }
     }
   }
 

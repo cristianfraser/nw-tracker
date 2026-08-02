@@ -10,6 +10,7 @@ import { seedCreditCardTree } from "../seedCreditCardTree.js";
 import { ensureAccountSyncSourcesSeeded } from "../accountSyncSources.js";
 import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
 import { expandYearMonthsInclusive } from "../calendarMonth.js";
+import { chileCalendarTodayYmd } from "../chileDate.js";
 import { demoNarrativeForPreset, demoRng, type DemoPreset } from "./demoNarrative.js";
 import {
   DEMO_FONDO_FUND_SERIES_KEY,
@@ -271,6 +272,18 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
     writeCreditCardMonth(narrative, accounts, month, state, rng);
     writeInvestmentMonth(narrative, accounts, month, state, flows, afpContribClp, rng);
   }
+
+  // A demo generated mid-month must read like real data as of TODAY: the future salary,
+  // AFP quota, and bill rows the month writers fabricate for the rest of the current
+  // month have not happened yet (they also break the chart ≡ card deposits identity —
+  // consolidated chart events count future-dated deposits while lifetime card totals cut
+  // at today). Same for future valuations and the cartola registry row of the unfinished
+  // month (real cartolas exist only once the month closes). FKs cascade the paired rows
+  // (depto_payments, links).
+  const todayYmd = chileCalendarTodayYmd();
+  db.prepare(`DELETE FROM movements WHERE occurred_on > ?`).run(todayYmd);
+  db.prepare(`DELETE FROM valuations WHERE as_of_date > ?`).run(todayYmd);
+  db.prepare(`DELETE FROM checking_cartola_imports WHERE period_to > ?`).run(todayYmd);
   for (const id of ccMasterIdByLast4.values()) {
     recomputeCcBillingMonthBalances(id);
   }
