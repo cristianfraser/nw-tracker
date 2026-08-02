@@ -9,6 +9,7 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { useModalPeriodNav } from "../../periodModalNav";
 import { Table } from "../ui/Table";
 import { Modal } from "../ui/Modal";
+import { Button } from "@crfrsr/ui";
 import {
   buildCreditCardExpenseMonthBucket,
   CreditCardExpenseMonthModalSections,
@@ -59,9 +60,9 @@ function GroupExpensesMonthMobileCard({
 }) {
   const title = (
     <>
-      <button type="button" onClick={() => onOpen(row)}>
+      <Button variant="link" onClick={() => onOpen(row)}>
         {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
-      </button>
+      </Button>
       {isCurrentPeriod ? (
         <span className="muted" title={labels.currentMonthHint}>
           {" "}
@@ -225,12 +226,9 @@ export function GroupExpensesMonthTable({
               data-sort-lines={row.line_count}
             >
               <td className="mono desktop-only">
-                <button
-                  type="button"
-                  onClick={() => openMonth(row)}
-                >
+                <Button variant="link" onClick={() => openMonth(row)}>
                   {row.as_of_date} ({flowPeriodLabel(row.period_month, periodGranularity)})
-                </button>
+                </Button>
                 {isCurrentPeriodRow(row.period_month, periodGranularity, currentYm) ? (
                   <span className="muted" title={mobileLabels.currentMonthHint}>
                     {" "}
