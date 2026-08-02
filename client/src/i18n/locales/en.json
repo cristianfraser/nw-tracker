@@ -1289,7 +1289,7 @@
       "mergeReason": "Merge reason: {{reason}}",
       "heuristics": "Heuristics: {{hints}}",
       "statementNoDate": "no statement date",
-      "statementNoSourcePdf": "no source_pdf",
+      "proxyCuotaReturn": "{{ticker}} · this installment: {{cuota}} · purchase total: {{total}} ({{pct}})",
       "monthCuotasTitle": "Installments by billing cycle",
       "colMonthCuotaTotal": "Installment due",
       "colDebtAfterPayment": "Debt after payment",

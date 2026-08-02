@@ -7,10 +7,11 @@ import type {
   CcInstallmentPurchaseComputed,
   CcProxyLotResult,
 } from "../../types";
-import { formatClp, formatGroupedDecimal, formatPct } from "../../format";
+import { formatClp, formatGroupedDecimal } from "../../format";
 import { cn } from "../../cn";
 import { Trans, useTranslation } from "../../i18n";
 import { formatYmEs, persistExtraCcOffsets } from "./shared";
+import { proxyCuotaLine } from "./creditCardProxyLine";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
 import {
   CreditCardPurchaseMobileCard,
@@ -119,15 +120,7 @@ function CreditCardInstallmentsSection({
   const formatProxyForCuota = (
     proxy: CcProxyLotResult | undefined,
     payByDate: string
-  ): string | null => {
-    if (!proxy) return null;
-    const r = proxy.by_ticker[inlineTicker];
-    if (!r || !r.cuotas) return null;
-    const cuota = r.cuotas.find((c) => c.pay_by_date === payByDate);
-    if (!cuota) return null;
-    const sign = cuota.accumulated_gain_clp >= 0 ? "+" : "";
-    return `ret. acum. ${inlineTicker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${formatPct(cuota.accumulated_return_pct)})`;
-  };
+  ): string | null => proxyCuotaLine(proxy, inlineTicker, payByDate);
 
   const purchaseTableHeader = (dueColumn: "last" | "none") => (
     <thead>
@@ -261,8 +254,7 @@ function CreditCardInstallmentsSection({
                   const proxyInline = formatProxyForCuota(purchaseProxy, st.pay_by_date);
                   return (
                     <div key={`${p.purchase_id}:st:${idx}`} className="mono">
-                      {st.statement_date ?? t("account.creditCard.statementNoDate")} ·{" "}
-                      {st.source_pdf ?? t("account.creditCard.statementNoSourcePdf")} · pay_by{" "}
+                      {st.statement_date ?? t("account.creditCard.statementNoDate")} · pay_by{" "}
                       {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
                       {proxyInline ? <span className="muted"> · {proxyInline}</span> : null}
                     </div>

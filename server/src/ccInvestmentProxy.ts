@@ -187,26 +187,31 @@ export type ProxyLot = {
 };
 
 /**
- * Per-cuota realized gain result.
+ * Per-cuota gain result.
  *
- * realized_gain_clp  = cuota_amount × (price_at_pay_by / depositPrice − 1)
- *   = appreciation earned on that cuota's float from deposit date to pay_by.
- * accumulated_*      = running sum across all cuotas up to and including this one.
- * projected          = true if depositPrice or this cuota's price was projected (UF-YoY).
+ * realized_gain_clp     = cuota_amount × (price_at_pay_by / depositPrice − 1)
+ *   = appreciation withdrawn with that cuota (its own slice's float, deposit → pay_by).
+ * total_gain_so_far_clp = the whole purchase's P/L at this cuota's date: gains already
+ *   withdrawn by cuotas ≤ i, plus the open gain on the principal still invested after
+ *   this withdrawal. At cuota 1 of an unbilled plan that is the full purchase amount's
+ *   appreciation; at the last cuota nothing is left invested, so it converges to Σ realized.
+ * total_return_so_far_pct = total_gain_so_far_clp / purchase principal.
+ * projected             = true if depositPrice or this cuota's price was projected (UF-YoY).
  */
 export type ProxyCuotaResult = {
   pay_by_date: string;
   billing_month: string;
   cuota_amount_clp: number;
   realized_gain_clp: number;
-  accumulated_gain_clp: number;
-  accumulated_return_pct: number;
+  total_gain_so_far_clp: number;
+  total_return_so_far_pct: number;
   projected: boolean;
 };
 
 export type ProxyTickerResult = {
-  /** Total realized gain across all cuotas computed so far (past) + open gain on future ones. */
+  /** The purchase's proxy P/L so far = the last cuota's `total_gain_so_far_clp`. */
   gain_clp: number;
+  /** `gain_clp` over the deposited principal. */
   return_pct: number;
   projected: boolean;
   cuotas: ProxyCuotaResult[];
@@ -217,24 +222,31 @@ export type ProxyLotResult = {
 };
 
 /**
- * Pure helper: compute per-cuota realized gains given a depositPrice and a price
- * lookup function. DB-free so it can be unit-tested with a price map.
+ * Pure helper: compute per-cuota gains given the deposited principal, a depositPrice
+ * and a price lookup function. DB-free so it can be unit-tested with a price map.
  *
- * Model: each cuota earns the fund's appreciation over the float from deposit to pay_by.
- *   realized_gain_i = cuota_amount_i × (price_i / depositPrice − 1)
+ * Model: the whole purchase amount is deposited on the purchase date and each cuota
+ * withdraws its slice at its pay-by, so
+ *   realized_i = cuota_amount_i × (price_i / depositPrice − 1)
+ *   total_i    = Σ_{j≤i} realized_j + (principal − Σ_{j≤i} cuota_amount_j) × (price_i/depositPrice − 1)
+ * i.e. earmarked accounting: each slice keeps the appreciation of its own float and the
+ * unwithdrawn remainder is marked at the same date. Gains are not reinvested (the
+ * compounding that would add is second-order over a few weeks, and keeping the split
+ * additive is what makes per-cuota attribution sum to the purchase total).
  *
  * Past cuotas (pay_by ≤ today): use actual price at pay_by.
- * Future cuotas (pay_by > today): use today's price as proxy → gain = cuota × (today_price/deposit − 1).
- *   projected = true.
+ * Future cuotas (pay_by > today): use today's price as proxy. projected = true.
  */
 export function realizedCuotaGains(
+  principalClp: number,
   depositPrice: number,
   depositProjected: boolean,
   withdrawals: ProxyLot["withdrawals"],
   priceLookup: (ymd: string) => { priceClp: number; projected: boolean },
   today: string
 ): ProxyCuotaResult[] {
-  let accumulated = 0;
+  let realizedTotal = 0;
+  let withdrawnTotal = 0;
   return withdrawals.map((w) => {
     const isPast = w.date <= today;
     const { priceClp, projected: priceProjected } = isPast
@@ -242,16 +254,19 @@ export function realizedCuotaGains(
       : priceLookup(today); // use today's price for future cuotas
     // Future cuotas are always projected (we're substituting today's price)
     const isProjected = depositProjected || priceProjected || !isPast;
-    const realized = w.amount_clp * (priceClp / depositPrice - 1);
-    accumulated += realized;
-    const principal = withdrawals.reduce((s, x) => s + x.amount_clp, 0);
+    const growth = priceClp / depositPrice - 1;
+    const realized = w.amount_clp * growth;
+    realizedTotal += realized;
+    withdrawnTotal += w.amount_clp;
+    const stillInvested = Math.max(0, principalClp - withdrawnTotal);
+    const totalSoFar = realizedTotal + stillInvested * growth;
     return {
       pay_by_date: w.date,
       billing_month: w.billing_month,
       cuota_amount_clp: w.amount_clp,
       realized_gain_clp: realized,
-      accumulated_gain_clp: accumulated,
-      accumulated_return_pct: principal > 0 ? (accumulated / principal) * 100 : 0,
+      total_gain_so_far_clp: totalSoFar,
+      total_return_so_far_pct: principalClp > 0 ? (totalSoFar / principalClp) * 100 : 0,
       projected: isProjected,
     };
   });
@@ -271,6 +286,7 @@ export function computeProxyLot(
   for (const ticker of tickers) {
     const depositPriceResult = priceClpForTickerAt(ticker, lot.deposit.date);
     const cuotas = realizedCuotaGains(
+      lot.deposit.amount_clp,
       depositPriceResult.priceClp,
       depositPriceResult.projected,
       lot.withdrawals,
@@ -281,8 +297,10 @@ export function computeProxyLot(
       today
     );
 
-    const gain_clp = cuotas.reduce((s, c) => s + c.realized_gain_clp, 0);
-    const principal = lot.withdrawals.reduce((s, w) => s + w.amount_clp, 0);
+    // The purchase's P/L at its latest cuota — already carries both the withdrawn slices'
+    // realized gains and the open gain on principal not yet billed.
+    const gain_clp = cuotas.length > 0 ? cuotas[cuotas.length - 1]!.total_gain_so_far_clp : 0;
+    const principal = lot.deposit.amount_clp;
     const return_pct = principal > 0 ? (gain_clp / principal) * 100 : 0;
     const projected = cuotas.some((c) => c.projected);
 
@@ -301,11 +319,15 @@ function ymFromIso(ymd: string): string {
 
 /**
  * Build a proxy lot for a DB-source installment purchase.
- * deposit date = first pay_by_date among payment_statements.
+ * deposit date = purchase_date (the money is float from the moment you buy, same framing
+ *   as normalPurchaseToLot). Depositing at the first pay_by instead made cuota 1 a
+ *   zero-length float — always exactly 0 gain — and dropped the purchase → first-pay-by
+ *   stretch, the longest float in the lot, from every later cuota too.
  * withdrawals = each payment statement entry, sorted by date.
  * Each withdrawal carries its billing_month (= YYYY-MM of pay_by_date).
  */
 export function installmentPurchaseToLot(purchase: {
+  purchase_date?: string;
   payment_statements?: {
     pay_by_date: string;
     amount_clp: number;
@@ -314,10 +336,15 @@ export function installmentPurchaseToLot(purchase: {
 }): ProxyLot | null {
   const stmts = purchase.payment_statements;
   if (!stmts || stmts.length === 0) return null;
+  // cc_installment_purchases.purchase_date is NOT NULL — a missing one is a broken lot,
+  // not a case to guess a deposit date for.
+  const purchaseDate = purchase.purchase_date;
+  if (!purchaseDate) {
+    throw new Error("ccInvestmentProxy: installment purchase has no purchase_date");
+  }
   const sorted = [...stmts].sort((a, b) => a.pay_by_date.localeCompare(b.pay_by_date));
-  const firstPayBy = sorted[0]!.pay_by_date;
   return {
-    deposit: { amount_clp: purchase.principal_clp, date: firstPayBy },
+    deposit: { amount_clp: purchase.principal_clp, date: purchaseDate },
     withdrawals: sorted.map((s) => ({
       amount_clp: s.amount_clp,
       date: s.pay_by_date,

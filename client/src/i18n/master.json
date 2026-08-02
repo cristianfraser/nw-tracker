@@ -4595,9 +4595,9 @@
         "en": "no statement date",
         "es": "sin fecha estado"
       },
-      "statementNoSourcePdf": {
-        "en": "no source_pdf",
-        "es": "sin source_pdf"
+      "proxyCuotaReturn": {
+        "en": "{{ticker}} · this installment: {{cuota}} · purchase total: {{total}} ({{pct}})",
+        "es": "{{ticker}} · esta cuota: {{cuota}} · total compra: {{total}} ({{pct}})"
       },
       "monthCuotasTitle": {
         "en": "Installments by billing cycle",
