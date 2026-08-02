@@ -9,6 +9,7 @@ import { formatYmEs } from "./shared";
 import type { CcFacturacionDto, CcProxyFacturacionAggregate, CcStatementDto } from "../../types";
 import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
+import { Button } from "@crfrsr/ui";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
 import {
   buildFacturacionModalBucket,
@@ -63,9 +64,9 @@ function FacturacionMobileCard({
   onOpen: (row: CcFacturacionDto) => void;
 }) {
   const title = (
-    <button type="button" onClick={() => onOpen(row)}>
+    <Button variant="link" onClick={() => onOpen(row)}>
       {formatYmEs(row.billing_month)}
-    </button>
+    </Button>
   );
 
   return (
@@ -250,12 +251,9 @@ export function CreditCardFacturacionesTable({
             return (
               <tr key={row.billing_month}>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>
-                  <button
-                    type="button"
-                    onClick={() => openFacturacion(row)}
-                  >
+                  <Button variant="link" onClick={() => openFacturacion(row)}>
                     {formatYmEs(row.billing_month)}
-                  </button>
+                  </Button>
                 </td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.close_date}</td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.pay_by ?? "—"}</td>

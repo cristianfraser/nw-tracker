@@ -127,7 +127,7 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
               </td>
               <td className={styles.colActions}>
                 {row.status === "ok" ? (
-                  <Button size="sm"
+                  <Button variant="secondary" size="sm"
                     disabled={forceStale.isPending}
                     onClick={() => forceStale.mutate(row.source)}
                   >

@@ -30,7 +30,7 @@ export function ConfirmDialog({
         <Button variant="secondary" size="sm" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button size="sm"
+        <Button variant="danger" size="sm"
           disabled={confirmDisabled}
           onClick={onConfirm}
         >
