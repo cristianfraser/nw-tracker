@@ -7,9 +7,9 @@ import type { ThemeOverrides } from "@crfrsr/core";
  * nw-tracker is a single dark theme, so the same palette is used for both modes.
  */
 const palette = {
-  primary: "#3d9cf9", // --accent
+  primary: "#2b74c7", // darker than --accent so white text keeps ≥4.5:1 contrast
   primaryDark: "#2563a8", // --accent-dim (hover)
-  textOnPrimary: "#0c0f14", // dark text on the bright accent (readable)
+  textOnPrimary: "#ffffff",
   secondary: "#8b98a8", // --muted
   background: "#0c0f14", // --bg
   surface: "#141a22", // --surface
