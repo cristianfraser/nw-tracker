@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatClp, formatOrDash, formatPct, formatUsdFine } from "../../format";
 import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
+import { useModalPeriodNav } from "../../periodModalNav";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
 import type { CcFacturacionDto, CcProxyFacturacionAggregate, CcStatementDto } from "../../types";
@@ -102,6 +103,8 @@ function FacturacionMobileCard({
 }
 
 const PAGE_SIZE = 12;
+
+const billingMonthKeyOf = (row: CcFacturacionDto) => row.billing_month;
 
 export function CreditCardFacturacionesTable({
   rows,
@@ -205,6 +208,14 @@ export function CreditCardFacturacionesTable({
 
   const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
 
+  const titleNav = useModalPeriodNav({
+    rows: sortedRows,
+    selectedKey: selected?.billing_month ?? null,
+    keyOf: billingMonthKeyOf,
+    onSelect: setSelected,
+    labels: { prev: t("common.modalPrevPeriod"), next: t("common.modalNextPeriod") },
+  });
+
   return (
     <>
       <PaginatedTable
@@ -275,6 +286,7 @@ export function CreditCardFacturacionesTable({
         open={modalOpen}
         onClose={closeModal}
         closeAriaLabel={t("accountDetail.creditCard.facturacionModalClose")}
+        titleNav={titleNav}
         title={
           selected
             ? t("accountDetail.creditCard.facturacionModalTitle", {

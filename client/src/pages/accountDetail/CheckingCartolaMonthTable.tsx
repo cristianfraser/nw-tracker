@@ -1,13 +1,24 @@
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CheckingCartolaMonthRowDto } from "../../types";
 import { Table } from "../../components/ui/Table";
+import { Modal } from "../../components/ui/Modal";
+import { FlowsTable } from "../../components/account/FlowsTable";
+import { useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
+import { useModalPeriodNav } from "../../periodModalNav";
+import { monthEndUtcYmd } from "../../calendarMonth";
 import {
   TableMobileCard,
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
 import { formatYmEs } from "./shared";
+import linkStyles from "./CreditCardFacturacionesTable.module.css";
+
+const MODAL_PAGE_SIZE = 20;
+
+const periodKeyOf = (row: CheckingCartolaMonthRowDto) => row.period_month;
 
 function fmtMoney(n: number, hasCartola: boolean): string {
   if (!hasCartola && n === 0) return "—";
@@ -28,6 +39,7 @@ function CheckingCartolaMonthMobileCard({
   row,
   labels,
   emptyImportTitle,
+  onOpen,
 }: {
   row: CheckingCartolaMonthRowDto;
   labels: {
@@ -42,11 +54,17 @@ function CheckingCartolaMonthMobileCard({
     cartolaNo: string;
   };
   emptyImportTitle?: string;
+  onOpen: (row: CheckingCartolaMonthRowDto) => void;
 }) {
   const diff = cartolaBalanceDiff(row);
+  const title = (
+    <button type="button" className={linkStyles.dateLink} onClick={() => onOpen(row)}>
+      {row.as_of_date} ({formatYmEs(row.period_month)})
+    </button>
+  );
 
   return (
-    <TableMobileCard title={`${row.as_of_date} (${formatYmEs(row.period_month)})`}>
+    <TableMobileCard title={title}>
       <TableMobileCardSection>
         <TableMobileCardRow label={labels.deposits} value={fmtMoney(row.deposits_clp, row.has_cartola)} />
         <TableMobileCardRow label={labels.withdrawals} value={fmtMoney(row.withdrawals_clp, row.has_cartola)} />
@@ -90,15 +108,62 @@ function CheckingCartolaMonthMobileCard({
 
 export function CheckingCartolaMonthTable({
   rows,
+  accountId,
   importedMonthCount,
   collapsedVisibleRows = 12,
 }: {
   rows: readonly CheckingCartolaMonthRowDto[];
+  accountId: number;
   importedMonthCount: number;
   collapsedVisibleRows?: number;
 }) {
   const { t } = useTranslation();
   const hidden = Math.max(0, rows.length - collapsedVisibleRows);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selected, setSelected] = useState<CheckingCartolaMonthRowDto | null>(null);
+  const [modalPage, setModalPage] = useState(1);
+
+  const openMonth = useCallback((row: CheckingCartolaMonthRowDto) => {
+    setSelected(row);
+    setModalPage(1);
+    setModalOpen(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
+    setSelected(null);
+  }, []);
+
+  const selectMonth = useCallback((row: CheckingCartolaMonthRowDto) => {
+    setSelected(row);
+    setModalPage(1);
+  }, []);
+
+  const titleNav = useModalPeriodNav({
+    rows,
+    selectedKey: selected?.period_month ?? null,
+    keyOf: periodKeyOf,
+    onSelect: selectMonth,
+    labels: { prev: t("common.modalPrevPeriod"), next: t("common.modalNextPeriod") },
+  });
+
+  const flowFilters = useMemo(
+    (): FlowsQueryFilters => ({
+      page: modalPage,
+      pageSize: MODAL_PAGE_SIZE,
+      date_from: selected ? `${selected.period_month}-01` : undefined,
+      date_to: selected ? monthEndUtcYmd(selected.period_month) : undefined,
+    }),
+    [modalPage, selected]
+  );
+  const { data: flows, isFetching: flowsFetching } = useAccountFlows(
+    String(accountId),
+    flowFilters,
+    modalOpen && selected != null && accountId > 0
+  );
+
+  const selectedDiff = selected ? cartolaBalanceDiff(selected) : null;
 
   const mobileLabels = {
     deposits: t("accountDetail.checking.colDeposits"),
@@ -151,7 +216,13 @@ export function CheckingCartolaMonthTable({
           return (
             <tr key={row.period_month}>
               <td className="mono desktop-only">
-                {row.as_of_date} ({formatYmEs(row.period_month)})
+                <button
+                  type="button"
+                  className={linkStyles.dateLink}
+                  onClick={() => openMonth(row)}
+                >
+                  {row.as_of_date} ({formatYmEs(row.period_month)})
+                </button>
               </td>
               <td className="mono desktop-only">{fmtMoney(row.deposits_clp, row.has_cartola)}</td>
               <td className="mono desktop-only">{fmtMoney(row.withdrawals_clp, row.has_cartola)}</td>
@@ -182,12 +253,57 @@ export function CheckingCartolaMonthTable({
                   emptyImportTitle={
                     emptyImport ? t("accountDetail.checking.cartolaRegisteredNoMovements") : undefined
                   }
+                  onOpen={openMonth}
                 />
               </td>
             </tr>
           );
         })}
       </Table>
+
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        closeAriaLabel={t("accountDetail.checking.monthModalClose")}
+        titleNav={titleNav}
+        title={
+          selected
+            ? t("accountDetail.checking.monthModalTitle", {
+                month: formatYmEs(selected.period_month),
+              })
+            : ""
+        }
+        subtitle={
+          selected ? (
+            <>
+              <span className="mono">{selected.as_of_date}</span>
+              {" · "}
+              {mobileLabels.deposits}: {fmtMoney(selected.deposits_clp, selected.has_cartola)}
+              {" · "}
+              {mobileLabels.withdrawals}: {fmtMoney(selected.withdrawals_clp, selected.has_cartola)}
+              {" · "}
+              {mobileLabels.balanceEnd}:{" "}
+              {selected.balance_end_clp != null ? formatClp(selected.balance_end_clp) : "—"}
+              {selectedDiff != null ? (
+                <>
+                  {" · "}
+                  {mobileLabels.diff}: {formatClp(selectedDiff)}
+                </>
+              ) : null}
+            </>
+          ) : null
+        }
+      >
+        <FlowsTable
+          rows={flows?.rows ?? []}
+          total={flows?.total ?? 0}
+          page={flows?.page ?? modalPage}
+          pageSize={MODAL_PAGE_SIZE}
+          onPageChange={setModalPage}
+          loading={flowsFetching}
+          showUnitsColumn={false}
+        />
+      </Modal>
     </>
   );
 }

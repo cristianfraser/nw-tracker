@@ -2259,6 +2259,14 @@
       }
     },
     "checking": {
+      "monthModalTitle": {
+        "en": "Movements {{month}}",
+        "es": "Movimientos {{month}}"
+      },
+      "monthModalClose": {
+        "en": "Close",
+        "es": "Cerrar"
+      },
       "cartolaMonthHint": {
         "en": "One row per month of history. Deposits and charges only with an imported statement. Month-end balance = sum of movements (ledger). Statement balance = the closing printed on the statement (reference only). Difference = month-end balance − statement balance.",
         "es": "Una fila por cada mes del historial. Abonos y cargos solo con cartola importada. Saldo fin de mes = suma de movimientos (ledger). Saldo cartola = cierre impreso en el estado (solo referencia). Diferencia = saldo fin de mes − saldo cartola."
@@ -2973,6 +2981,14 @@
     "close": {
       "en": "Close",
       "es": "Cerrar"
+    },
+    "modalPrevPeriod": {
+      "en": "Previous period",
+      "es": "Período anterior"
+    },
+    "modalNextPeriod": {
+      "en": "Next period",
+      "es": "Período siguiente"
     }
   },
   "flows": {
