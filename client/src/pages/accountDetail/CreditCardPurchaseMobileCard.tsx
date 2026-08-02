@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { CcInstallmentPurchaseComputed, CcProxyLotResult } from "../../types";
-import { formatClp, formatGroupedDecimal, formatPct } from "../../format";
+import { formatClp, formatGroupedDecimal } from "../../format";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import {
@@ -9,6 +9,7 @@ import {
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
 import { formatYmEs } from "./shared";
+import { proxyCuotaLine } from "./creditCardProxyLine";
 import styles from "../AccountDetailPage.module.css";
 import { Button, Input } from "@crfrsr/ui";
 
@@ -148,17 +149,10 @@ export function CreditCardPurchaseMobileCard({
           ) : null}
           {purchase.payment_statements.map((st) => {
             const ticker = inlineTicker ?? "fintual_cert_reserva2";
-            const r = purchaseProxy?.by_ticker[ticker];
-            const cuota = r?.cuotas?.find((c) => c.pay_by_date === st.pay_by_date);
-            let proxyInline: string | null = null;
-            if (cuota) {
-              const sign = cuota.accumulated_gain_clp >= 0 ? "+" : "";
-              proxyInline = `ret. acum. ${ticker}: ${sign}${formatClp(Math.round(cuota.accumulated_gain_clp))} (${cuota.accumulated_return_pct >= 0 ? "+" : ""}${formatPct(cuota.accumulated_return_pct)})`;
-            }
+            const proxyInline = proxyCuotaLine(purchaseProxy, ticker, st.pay_by_date);
             return (
               <div key={`${purchase.purchase_id}:st:${st.pay_by_date}`} className={cn("mono", "muted", styles.purchaseMeta)}>
-                {st.statement_date ?? t("account.creditCard.statementNoDate")} ·{" "}
-                {st.source_pdf ?? t("account.creditCard.statementNoSourcePdf")} · pay_by{" "}
+                {st.statement_date ?? t("account.creditCard.statementNoDate")} · pay_by{" "}
                 {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
                 {proxyInline ? ` · ${proxyInline}` : null}
               </div>

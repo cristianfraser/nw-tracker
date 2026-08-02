@@ -39,14 +39,15 @@ function computeProxyLotWithPrices(
     const priceLookup = makePriceLookup(prices[ticker] ?? {});
     const depositPriceResult = priceLookup(lot.deposit.date);
     const cuotas = realizedCuotaGains(
+      lot.deposit.amount_clp,
       depositPriceResult.priceClp,
       depositPriceResult.projected,
       lot.withdrawals,
       priceLookup,
       today
     );
-    const gain_clp = cuotas.reduce((s, c) => s + c.realized_gain_clp, 0);
-    const principal = lot.withdrawals.reduce((s, w) => s + w.amount_clp, 0);
+    const principal = lot.deposit.amount_clp;
+    const gain_clp = cuotas.length > 0 ? cuotas[cuotas.length - 1]!.total_gain_so_far_clp : 0;
     by_ticker[ticker] = {
       gain_clp,
       return_pct: principal > 0 ? (gain_clp / principal) * 100 : 0,
@@ -61,13 +62,29 @@ function computeProxyLotWithPrices(
 
 describe("installmentPurchaseToLot", () => {
   it("returns null when no payment_statements", () => {
-    expect(installmentPurchaseToLot({ principal_clp: 100_000, payment_statements: [] })).toBeNull();
-    expect(installmentPurchaseToLot({ principal_clp: 100_000 })).toBeNull();
+    expect(
+      installmentPurchaseToLot({
+        principal_clp: 100_000,
+        purchase_date: "2025-07-15",
+        payment_statements: [],
+      })
+    ).toBeNull();
+    expect(installmentPurchaseToLot({ principal_clp: 100_000, purchase_date: "2025-07-15" })).toBeNull();
   });
 
-  it("sets deposit to first pay_by_date, withdrawals sorted, billing_month from pay_by_date", () => {
+  it("throws when the purchase has no purchase_date", () => {
+    expect(() =>
+      installmentPurchaseToLot({
+        principal_clp: 90_000,
+        payment_statements: [{ pay_by_date: "2025-08-08", amount_clp: 30_000 }],
+      })
+    ).toThrow(/purchase_date/);
+  });
+
+  it("sets deposit to purchase_date, withdrawals sorted, billing_month from pay_by_date", () => {
     const lot = installmentPurchaseToLot({
       principal_clp: 90_000,
+      purchase_date: "2025-07-15",
       payment_statements: [
         { pay_by_date: "2025-09-08", amount_clp: 30_000 },
         { pay_by_date: "2025-08-08", amount_clp: 30_000 },
@@ -75,7 +92,8 @@ describe("installmentPurchaseToLot", () => {
       ],
     });
     expect(lot).not.toBeNull();
-    expect(lot!.deposit).toEqual({ amount_clp: 90_000, date: "2025-08-08" });
+    // The purchase date, NOT the first pay-by — the float starts when you buy.
+    expect(lot!.deposit).toEqual({ amount_clp: 90_000, date: "2025-07-15" });
     expect(lot!.withdrawals).toEqual([
       { amount_clp: 30_000, date: "2025-08-08", billing_month: "2025-08" },
       { amount_clp: 30_000, date: "2025-09-08", billing_month: "2025-09" },
@@ -116,7 +134,7 @@ describe("realizedCuotaGains", () => {
       "2025-09-08": 1020,
       "2025-10-08": 1030,
     };
-    const cuotas = realizedCuotaGains(1000, false, withdrawals, makePriceLookup(prices), "2025-11-01");
+    const cuotas = realizedCuotaGains(90_000, 1000, false, withdrawals, makePriceLookup(prices), "2025-11-01");
 
     expect(cuotas).toHaveLength(3);
 
@@ -128,13 +146,14 @@ describe("realizedCuotaGains", () => {
     expect(cuotas[1]!.realized_gain_clp).toBeCloseTo(g1, 2);
     expect(cuotas[2]!.realized_gain_clp).toBeCloseTo(g2, 2);
 
-    // accumulated_gain is monotone
-    expect(cuotas[0]!.accumulated_gain_clp).toBeCloseTo(g0, 2);
-    expect(cuotas[1]!.accumulated_gain_clp).toBeCloseTo(g0 + g1, 2);
-    expect(cuotas[2]!.accumulated_gain_clp).toBeCloseTo(g0 + g1 + g2, 2);
+    // total so far = withdrawn slices + the principal still invested, marked at that date
+    expect(cuotas[0]!.total_gain_so_far_clp).toBeCloseTo(g0 + 60_000 * 0.01, 2); // 900
+    expect(cuotas[1]!.total_gain_so_far_clp).toBeCloseTo(g0 + g1 + 30_000 * 0.02, 2); // 1500
+    // last cuota leaves nothing invested → converges to Σ realized
+    expect(cuotas[2]!.total_gain_so_far_clp).toBeCloseTo(g0 + g1 + g2, 2); // 1800
 
-    // return% relative to total principal (90k)
-    expect(cuotas[2]!.accumulated_return_pct).toBeCloseTo(((g0 + g1 + g2) / 90_000) * 100, 4);
+    // return% relative to the purchase principal (90k)
+    expect(cuotas[2]!.total_return_so_far_pct).toBeCloseTo(((g0 + g1 + g2) / 90_000) * 100, 4);
 
     // all <1% individually
     expect(cuotas[0]!.realized_gain_clp / 30_000).toBeLessThan(0.01 * 1.5); // 1% × fund ≈ 0.01 growth
@@ -143,11 +162,11 @@ describe("realizedCuotaGains", () => {
 
   it("flat price: all gains are zero", () => {
     const prices: PriceMap = { "2025-08-08": 1000, "2025-09-08": 1000, "2025-10-08": 1000 };
-    const cuotas = realizedCuotaGains(1000, false, withdrawals, makePriceLookup(prices), "2025-11-01");
+    const cuotas = realizedCuotaGains(90_000, 1000, false, withdrawals, makePriceLookup(prices), "2025-11-01");
     for (const c of cuotas) {
       expect(c.realized_gain_clp).toBeCloseTo(0, 6);
+      expect(c.total_gain_so_far_clp).toBeCloseTo(0, 6);
     }
-    expect(cuotas[2]!.accumulated_gain_clp).toBeCloseTo(0, 6);
   });
 
   it("future cuota uses today's price and marks projected=true", () => {
@@ -156,7 +175,7 @@ describe("realizedCuotaGains", () => {
       "2025-09-01": 1050, // "today"
     };
     // cuota[0] is past (2025-08-08 ≤ today), cuota[1] and [2] are future
-    const cuotas = realizedCuotaGains(1000, false, withdrawals, makePriceLookup(prices), "2025-09-01");
+    const cuotas = realizedCuotaGains(90_000, 1000, false, withdrawals, makePriceLookup(prices), "2025-09-01");
 
     expect(cuotas[0]!.projected).toBe(false);
     // cuota[1] date 2025-09-08 > today 2025-09-01 → uses today price 1050
@@ -168,10 +187,31 @@ describe("realizedCuotaGains", () => {
 
   it("depositProjected=true propagates to all cuotas", () => {
     const prices: PriceMap = { "2025-08-08": 1010, "2025-09-08": 1020, "2025-10-08": 1030 };
-    const cuotas = realizedCuotaGains(1000, true, withdrawals, makePriceLookup(prices), "2025-11-01");
+    const cuotas = realizedCuotaGains(90_000, 1000, true, withdrawals, makePriceLookup(prices), "2025-11-01");
     for (const c of cuotas) {
       expect(c.projected).toBe(true);
     }
+  });
+
+  it("only the first of 3 cuotas billed: total so far marks the whole purchase", () => {
+    // BLUNDSTONE regression: bought 2026-06-03 for 189.900 in 3 cuotas; only cuota 1
+    // (pay-by 2026-08-10) is on an imported statement, and its pay-by is still ahead of
+    // today, so it prices at today. Depositing at the first pay-by used to make this
+    // exactly +$0 — deposit and withdrawal shared a date, a zero-length float.
+    const prices: PriceMap = { "2026-06-03": 1000, "2026-08-02": 1010 };
+    const cuotas = realizedCuotaGains(
+      189_900,
+      1000,
+      false,
+      [{ amount_clp: 63_300, date: "2026-08-10", billing_month: "2026-08" }],
+      makePriceLookup(prices),
+      "2026-08-02"
+    );
+
+    expect(cuotas[0]!.realized_gain_clp).toBeCloseTo(63_300 * 0.01, 2); // 633 — this cuota's slice
+    expect(cuotas[0]!.total_gain_so_far_clp).toBeCloseTo(189_900 * 0.01, 2); // 1899 — whole purchase
+    expect(cuotas[0]!.total_return_so_far_pct).toBeCloseTo(1, 6);
+    expect(cuotas[0]!.projected).toBe(true);
   });
 });
 
@@ -180,15 +220,16 @@ describe("realizedCuotaGains", () => {
 describe("computeProxyLot via price-map helper", () => {
   const prices = {
     reserva: {
+      "2025-07-15": 1000,
       "2025-08-08": 1010,
       "2025-09-08": 1020,
       "2025-10-08": 1030,
     },
   };
 
-  it("3-cuota: gain_clp = sum of realized_gain per cuota", () => {
+  it("3-cuota: gain_clp = sum of realized_gain per cuota, floats run from the purchase date", () => {
     const lot: ProxyLot = {
-      deposit: { amount_clp: 90_000, date: "2025-08-08" },
+      deposit: { amount_clp: 90_000, date: "2025-07-15" },
       withdrawals: [
         { amount_clp: 30_000, date: "2025-08-08", billing_month: "2025-08" },
         { amount_clp: 30_000, date: "2025-09-08", billing_month: "2025-09" },
@@ -198,12 +239,17 @@ describe("computeProxyLot via price-map helper", () => {
     const result = computeProxyLotWithPrices(lot, ["reserva"], "2025-11-01", prices);
     const r = result.by_ticker["reserva"]!;
 
+    // Every cuota earns from 2025-07-15 — the first one included (it is no longer a
+    // zero-length float), and the later ones now carry the purchase → first-pay-by stretch.
     const expectedGain =
-      30_000 * (1010 / 1010 - 1) + // deposit = first cuota date → 0 gain on first
-      30_000 * (1020 / 1010 - 1) +
-      30_000 * (1030 / 1010 - 1);
+      30_000 * (1010 / 1000 - 1) +
+      30_000 * (1020 / 1000 - 1) +
+      30_000 * (1030 / 1000 - 1);
 
+    expect(r.cuotas[0]!.realized_gain_clp).toBeCloseTo(30_000 * 0.01, 2);
+    // Fully billed → the lot's P/L is the realized total.
     expect(r.gain_clp).toBeCloseTo(expectedGain, 2);
+    expect(r.return_pct).toBeCloseTo((expectedGain / 90_000) * 100, 4);
     expect(r.cuotas).toHaveLength(3);
     expect(r.projected).toBe(false);
   });
@@ -243,8 +289,8 @@ describe("aggregateProxyByFacturacion", () => {
               billing_month,
               cuota_amount_clp: amount,
               realized_gain_clp: gain,
-              accumulated_gain_clp: accumulated,
-              accumulated_return_pct: principal > 0 ? (accumulated / principal) * 100 : 0,
+              total_gain_so_far_clp: accumulated,
+              total_return_so_far_pct: principal > 0 ? (accumulated / principal) * 100 : 0,
               projected: false,
             };
           }),

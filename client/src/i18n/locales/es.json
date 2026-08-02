@@ -1289,7 +1289,7 @@
       "mergeReason": "Motivo de fusión: {{reason}}",
       "heuristics": "Heurísticas: {{hints}}",
       "statementNoDate": "sin fecha estado",
-      "statementNoSourcePdf": "sin source_pdf",
+      "proxyCuotaReturn": "{{ticker}} · esta cuota: {{cuota}} · total compra: {{total}} ({{pct}})",
       "monthCuotasTitle": "Cuotas por facturación",
       "colMonthCuotaTotal": "Cuota a pagar",
       "colDebtAfterPayment": "Deuda tras pago",
