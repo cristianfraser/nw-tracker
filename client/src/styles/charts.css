@@ -16,6 +16,11 @@
   pointer-events: none;
 }
 
+/** Alternating band per bar group, in place of the vertical grid lines (see chartBands.tsx). */
+.recharts-wrapper .recharts-x-band {
+  fill: var(--chart-band-fill);
+}
+
 .chart-grid {
   display: grid;
   grid-template-columns: 1fr;

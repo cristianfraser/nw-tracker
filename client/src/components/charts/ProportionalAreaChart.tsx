@@ -1,4 +1,4 @@
-import { Area, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
+import { Area, Legend, XAxis, YAxis } from "recharts";
 import { useMemo, type ReactNode } from "react";
 import i18n from "../../i18n";
 import { formatPct } from "../../format";
@@ -96,8 +96,8 @@ export function ProportionalAreaChart({
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             cursor: true,
           }}
+          grid={{ stroke: "rgba(148, 163, 184, 0.15)", opacity: 1 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
           <XAxis
             dataKey="as_of_date"
             type="category"

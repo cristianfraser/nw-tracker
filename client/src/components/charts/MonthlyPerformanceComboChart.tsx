@@ -1,4 +1,4 @@
-import { Area, Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Area, Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo, type ReactNode } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -6,6 +6,7 @@ import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import i18n from "../../i18n";
 import { AppComposedChart } from "./AppComposedChart";
+import { hasBandableBarGroups } from "./chartBandEdges";
 import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
@@ -209,6 +210,7 @@ export function MonthlyPerformanceComboChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={plotPoints}
+          groupedBars={hasBandableBarGroups(barSeries.length, densePoints.length)}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
@@ -237,7 +239,6 @@ export function MonthlyPerformanceComboChart({
             cursor: true,
           }}
         >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
             ) : null}
