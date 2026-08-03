@@ -40,8 +40,11 @@ describe("openMonthUsdFacturado", () => {
         )
         .run(sid, merchant, clp, usd, usd != null ? "usd" : null, `vitest-openusd-${merchant}`);
 
-    addLine("ANTHROPIC USD", null, 100); // foreign USD charge
-    addLine("APPLE USD", null, 50); // foreign USD charge
+    // `amount_clp = 0` is what the importer actually stores for a foreign line (the CSV cell is
+    // empty and `Number("") === 0`); NULL only arises from the one-off web-paste USD backfill.
+    // Both shapes mean "no CLP amount" and must count toward the US$ split.
+    addLine("ANTHROPIC USD", 0, 100); // foreign USD charge, importer shape
+    addLine("APPLE USD", null, 50); // foreign USD charge, backfill shape
     addLine("JUMBO CLP", 30_000, null); // domestic CLP charge → excluded
 
     const res = openMonthUsdFacturado(master.id, billingMonth);
