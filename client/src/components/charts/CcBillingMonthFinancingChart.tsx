@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Area, Bar, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
+import { Area, Bar, Legend, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CcBillingMonthChartPoint } from "../../types";
@@ -118,7 +118,6 @@ export function CcBillingMonthFinancingChart({
             cursor: true,
           }}
         >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             <XAxis
               dataKey="billing_month"
               type="category"

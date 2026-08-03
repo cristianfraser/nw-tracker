@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
-import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { allocationBucketColor } from "../../chartColors";
 import { formatFlowMoney } from "../../flowsDisplay";
@@ -8,6 +8,7 @@ import type { DisplayUnit } from "../../queries/keys";
 import { depositFlowCategoryLabel, useTranslation } from "../../i18n";
 import type { DepositFlowCategory, FlowDepositChartPoint } from "../../types";
 import { AppComposedChart } from "./AppComposedChart";
+import { hasBandableBarGroups } from "./chartBandEdges";
 import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
@@ -91,13 +92,13 @@ export function DepositsByCategoryChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={densePoints}
+          groupedBars={hasBandableBarGroups(CATEGORY_BAR.length, densePoints.length)}
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             cursor: true,
           }}
         >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
             ) : null}

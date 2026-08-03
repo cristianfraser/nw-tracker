@@ -34,6 +34,8 @@
   --negative: #f87171;
   --chart-panel-min-height: 420px;
   --chart-panel-height: clamp(390px, 54vh, 600px);
+  /** Alternating x-axis band behind grouped bars — same visual weight as the dashed grid. */
+  --chart-band-fill: rgba(148, 163, 184, 0.05);
   /** Primary currency figure on dashboard / group cards (compact strip + detailed buckets). */
   --dashboard-card-primary-value-font-size: 1.05rem;
   --dashboard-card-primary-value-font-weight: 600;
