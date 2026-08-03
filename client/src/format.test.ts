@@ -4,6 +4,7 @@ import {
   adaptiveUsdFractionDigits,
   formatClp,
   formatClpUfDay,
+  formatCompactMoney,
   formatCcExpenseLineAmount,
   formatGroupedDecimal,
   formatPct,
@@ -27,6 +28,46 @@ describe("formatClp", () => {
 
   it("returns em dash for non-finite values", () => {
     expect(formatClp(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatCompactMoney", () => {
+  it("drops the currency qualifier — USD and CLP both read as a bare symbol", () => {
+    expect(formatCompactMoney(10_000_000, "clp")).toBe("$10M");
+    expect(formatCompactMoney(10_000_000, "usd")).toBe("$10M");
+    expect(formatCompactMoney(350_000, "usd")).toBe("$350k");
+    // The full `US$` form must never leak back in for a space-constrained surface.
+    expect(formatCompactMoney(350_000, "usd")).not.toContain("US$");
+  });
+
+  it("switches k → M at a million and stays in M above a billion", () => {
+    expect(formatCompactMoney(999, "clp")).toBe("$999");
+    expect(formatCompactMoney(1_000, "clp")).toBe("$1k");
+    expect(formatCompactMoney(999_999, "clp")).toBe("$1M");
+    expect(formatCompactMoney(1_000_000, "clp")).toBe("$1M");
+    // One suffix per magnitude: `MM` next to `M` reads as a typo at axis size.
+    expect(formatCompactMoney(1_400_000_000, "clp")).toBe("$1.400M");
+  });
+
+  it("carries one decimal below 100 and none above, trailing zeros trimmed", () => {
+    expect(formatCompactMoney(2_500_000, "clp")).toBe("$2,5M");
+    expect(formatCompactMoney(2_000_000, "clp")).toBe("$2M");
+    expect(formatCompactMoney(95_817_344, "clp")).toBe("$95,8M");
+    expect(formatCompactMoney(248_000_000, "clp")).toBe("$248M");
+    expect(formatCompactMoney(1_500, "clp")).toBe("$1,5k");
+  });
+
+  it("follows the separator preference", () => {
+    setDecimalSeparatorForFormatting("period");
+    expect(formatCompactMoney(2_500_000, "clp")).toBe("$2.5M");
+    expect(formatCompactMoney(1_400_000_000, "clp")).toBe("$1,400M");
+  });
+
+  it("keeps accounting parentheses for negatives and an em dash for non-finite", () => {
+    expect(formatCompactMoney(-5_000_000, "clp")).toBe("($5M)");
+    expect(formatCompactMoney(-350_000, "usd")).toBe("($350k)");
+    expect(formatCompactMoney(0, "clp")).toBe("$0");
+    expect(formatCompactMoney(Number.NaN, "clp")).toBe("—");
   });
 });
 
@@ -98,46 +139,46 @@ describe("adaptive USD decimals (summary-card balances / deltas)", () => {
   });
 
   it("number-flow parts carry the adaptive fraction digits, min 0 for trimming", () => {
-    const small = adaptiveUsdAccountingNumberFlowParts(4.567, "$");
+    const small = adaptiveUsdAccountingNumberFlowParts(4.567, "bare");
     expect(small.value).toBe(4.57);
     expect(small.format.maximumFractionDigits).toBe(2);
     expect(small.format.minimumFractionDigits).toBe(0);
     expect(small.prefix).toBe("$");
 
-    const mid = adaptiveUsdAccountingNumberFlowParts(-54.327, "$");
+    const mid = adaptiveUsdAccountingNumberFlowParts(-54.327, "bare");
     expect(mid.value).toBe(54.33);
     expect(mid.format.maximumFractionDigits).toBe(2);
     expect(mid.prefix).toBe("($");
     expect(mid.suffix).toBe(")");
 
-    const trimmed = adaptiveUsdAccountingNumberFlowParts(55.004, "$");
+    const trimmed = adaptiveUsdAccountingNumberFlowParts(55.004, "bare");
     expect(trimmed.value).toBe(55);
     expect(trimmed.format.minimumFractionDigits).toBe(0);
 
-    const big = adaptiveUsdAccountingNumberFlowParts(4478.4, "$");
+    const big = adaptiveUsdAccountingNumberFlowParts(4478.4, "bare");
     expect(big.value).toBe(4478);
     expect(big.format.maximumFractionDigits).toBe(0);
   });
 
   it("fixed fraction digits pin sub-balance decimals (no trimming)", () => {
-    const padded = adaptiveUsdAccountingNumberFlowParts(55.004, "$", 2);
+    const padded = adaptiveUsdAccountingNumberFlowParts(55.004, "bare", 2);
     expect(padded.value).toBe(55);
     expect(padded.format.minimumFractionDigits).toBe(2);
     expect(padded.format.maximumFractionDigits).toBe(2);
 
     // Fixed digits override the magnitude band (large sibling aligned to a small one).
-    const large = adaptiveUsdAccountingNumberFlowParts(16512.345, "$", 2);
+    const large = adaptiveUsdAccountingNumberFlowParts(16512.345, "bare", 2);
     expect(large.value).toBe(16512.35);
     expect(large.format.minimumFractionDigits).toBe(2);
 
-    const whole = adaptiveUsdAccountingNumberFlowParts(-42.518, "$", 0);
+    const whole = adaptiveUsdAccountingNumberFlowParts(-42.518, "bare", 0);
     expect(whole.value).toBe(43);
     expect(whole.prefix).toBe("($");
     expect(whole.format.maximumFractionDigits).toBe(0);
   });
 
   it("negatives that round to zero lose the accounting parentheses", () => {
-    const parts = adaptiveUsdAccountingNumberFlowParts(-0.004, "$");
+    const parts = adaptiveUsdAccountingNumberFlowParts(-0.004, "bare");
     expect(parts.value).toBe(0);
     expect(parts.prefix).toBe("$");
     expect(parts.suffix).toBe("");
@@ -146,15 +187,15 @@ describe("adaptive USD decimals (summary-card balances / deltas)", () => {
 
 describe("titleBalanceDeltaNumberFlowParts", () => {
   it("uses + prefix for gains and parentheses for losses", () => {
-    expect(titleBalanceDeltaNumberFlowParts(4_822_484, "clp", "$").prefix).toBe("+$");
-    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "$").prefix).toBe("($");
-    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "$").suffix).toBe(")");
+    expect(titleBalanceDeltaNumberFlowParts(4_822_484, "clp", "bare").prefix).toBe("+$");
+    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "bare").prefix).toBe("($");
+    expect(titleBalanceDeltaNumberFlowParts(-100, "clp", "bare").suffix).toBe(")");
   });
 
   it("locales follow the separator preference", () => {
-    expect(titleBalanceDeltaNumberFlowParts(100, "clp", "$").locales).toBe("es-CL");
+    expect(titleBalanceDeltaNumberFlowParts(100, "clp", "bare").locales).toBe("es-CL");
     setDecimalSeparatorForFormatting("period");
-    expect(titleBalanceDeltaNumberFlowParts(100, "clp", "$").locales).toBe("en-US");
+    expect(titleBalanceDeltaNumberFlowParts(100, "clp", "bare").locales).toBe("en-US");
   });
 });
 

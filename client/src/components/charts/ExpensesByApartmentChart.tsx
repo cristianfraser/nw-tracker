@@ -12,9 +12,10 @@ import {
   CHART_TICK_STYLE,
   extractSortedAsOfDates,
   minMaxForKeys,
-  rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
   resolvePeriodXAxis,
 } from "./chartLayout";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
 
@@ -39,6 +40,7 @@ export function ExpensesByApartmentChart({
   /** When set, only these places contribute to stacked bars (total line still full). */
   accountFilter?: readonly ExpenseApartmentSlug[];
 }) {
+  const compactAxis = useIsNarrowViewport();
   const bars = useMemo(() => {
     const all = places.map((p, i) => ({
       dataKey: p.slug,
@@ -106,11 +108,7 @@ export function ExpensesByApartmentChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth("clp")}
-              tick={CHART_TICK_STYLE}
-              axisLine={{ stroke: AXIS_LINE_STROKE }}
-              tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v: number) => formatClp(v)}
+              {...moneyYAxisProps("clp", compactAxis)}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}

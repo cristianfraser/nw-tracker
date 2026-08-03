@@ -49,9 +49,20 @@ export const NUMBER_FLOW_INT_FORMAT = {
 
 export type CurrencyDisplayUnit = "clp" | "usd" | "usd-fine";
 
-const CURRENCY_SYMBOL: Record<Exclude<CurrencyDisplayUnit, "usd-fine">, string> = {
-  clp: "$",
-  usd: "US$",
+/**
+ * `full` spells the currency out where there is room (desktop, cards, tables);
+ * `bare` keeps only the symbol for space-constrained surfaces (mobile chart axes,
+ * dashboard card values). A new currency adds both forms in one place — `bare`
+ * is what mobile drops the qualifier to, so it can never drift per-surface.
+ */
+export type CurrencySymbolVariant = "full" | "bare";
+
+const CURRENCY_SYMBOL: Record<
+  Exclude<CurrencyDisplayUnit, "usd-fine">,
+  Record<CurrencySymbolVariant, string>
+> = {
+  clp: { full: "$", bare: "$" },
+  usd: { full: "US$", bare: "$" },
 };
 
 function intlFormatter(unit: CurrencyDisplayUnit): Intl.NumberFormat {
@@ -78,7 +89,8 @@ export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): st
   if (!Number.isFinite(n)) return "—";
   const rounded = unit === "usd-fine" ? n : Math.round(n);
   const abs = Math.abs(rounded);
-  const sym = unit === "usd-fine" ? CURRENCY_SYMBOL.usd : CURRENCY_SYMBOL[unit];
+  const sym =
+    unit === "usd-fine" ? CURRENCY_SYMBOL.usd.full : CURRENCY_SYMBOL[unit].full;
   const digits = normalizeIntlNum(intlFormatter(unit).format(abs));
   const body = `${sym}${digits}`;
   if (rounded < 0) return `(${body})`;
@@ -99,6 +111,50 @@ export function formatClpUfDay(n: number | null | undefined): string {
 /** Whole USD: `US$` + grouped thousands (e.g. `US$123.456`; negative `(US$1.234)`). */
 export function formatUsd(n: number): string {
   return formatCurrency(n, "usd");
+}
+
+/**
+ * Short-notation money for space-constrained surfaces — today the mobile chart Y axes
+ * ({@link import("./components/charts/chartLayout").moneyYAxisProps}). Two things shrink at
+ * once: the magnitude (`$10.000.000` → `$10M`) and the symbol, which drops to its `bare`
+ * form so a USD axis reads `$350k`, not `US$350k` (the CLP/USD toolbar toggle carries the
+ * unit on those screens).
+ *
+ * Thresholds: below 1.000 stays whole (`$950`); 1.000–999.999 → `k`; 1M and up → `M` all
+ * the way (`$1.400M`) — one suffix per magnitude keeps an axis unambiguous at 11px, where
+ * `M` next to `MM` reads as a typo. Mantissa carries 1 decimal below 100 and none above
+ * (`$2,5M`, `$350k`), trailing zeros trimmed, separator per the app-wide convention.
+ * Negatives keep the accounting parentheses every other money surface uses: `($5M)`.
+ *
+ * NOT `Intl` `notation: "compact"`: es-CL renders locale words there (`10 M`, `350 mil`),
+ * which breaks both the bilingual contract and the separator convention.
+ */
+export function formatCompactMoney(n: number, unit: Exclude<CurrencyDisplayUnit, "usd-fine">): string {
+  if (!Number.isFinite(n)) return "—";
+  const rounded = Math.round(n);
+  const abs = Math.abs(rounded);
+  const sym = CURRENCY_SYMBOL[unit].bare;
+  const { mantissa, suffix, frac } = compactMagnitude(abs);
+  const body = `${sym}${normalizeIntlNum(numFmt(0, frac).format(mantissa))}${suffix}`;
+  return rounded < 0 ? `(${body})` : body;
+}
+
+/** Magnitude split for {@link formatCompactMoney}; `frac` is the max (trimmed) decimal count. */
+function compactMagnitude(abs: number): { mantissa: number; suffix: string; frac: 0 | 1 } {
+  if (abs < 1_000) return { mantissa: abs, suffix: "", frac: 0 };
+  if (abs < 1_000_000) {
+    const thousands = abs / 1_000;
+    const frac: 0 | 1 = thousands >= 100 ? 0 : 1;
+    // 999.999 → "1.000k" would be a lie about the magnitude; promote it to the M band.
+    if (roundTo(thousands, frac) < 1_000) return { mantissa: thousands, suffix: "k", frac };
+  }
+  const millions = abs / 1_000_000;
+  return { mantissa: millions, suffix: "M", frac: millions >= 100 ? 0 : 1 };
+}
+
+function roundTo(n: number, frac: number): number {
+  const factor = 10 ** frac;
+  return Math.round(n * factor) / factor;
 }
 
 /**
@@ -163,8 +219,8 @@ export function formatPct(n: number | null | undefined, frac = 2): string {
 export function accountingCurrencyNumberFlowParts(
   n: number,
   unit: Exclude<CurrencyDisplayUnit, "usd-fine">,
-  /** Dashboard card values use `$` for both CLP and USD. */
-  symbolOverride?: string
+  /** Dashboard card values pass `"bare"` — `$` for both CLP and USD. */
+  variant: CurrencySymbolVariant = "full"
 ): {
   value: number;
   prefix: string;
@@ -174,7 +230,7 @@ export function accountingCurrencyNumberFlowParts(
 } {
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const symbol = symbolOverride ?? CURRENCY_SYMBOL[unit];
+  const symbol = CURRENCY_SYMBOL[unit][variant];
   if (rounded < 0) {
     return {
       value: abs,
@@ -204,8 +260,8 @@ export function accountingCurrencyNumberFlowParts(
  */
 export function adaptiveUsdAccountingNumberFlowParts(
   n: number,
-  /** Dashboard card values use `$` for both CLP and USD. */
-  symbolOverride?: string,
+  /** Dashboard card values pass `"bare"` — `$` for both CLP and USD. */
+  variant: CurrencySymbolVariant = "full",
   fixedFractionDigits?: 0 | 1 | 2
 ): {
   value: number;
@@ -218,7 +274,7 @@ export function adaptiveUsdAccountingNumberFlowParts(
   const factor = 10 ** fd;
   const rounded = Math.round(n * factor) / factor;
   const abs = Math.abs(rounded);
-  const symbol = symbolOverride ?? CURRENCY_SYMBOL.usd;
+  const symbol = CURRENCY_SYMBOL.usd[variant];
   // Adaptive (min 0) trims trailing decimal zeros (55,00 → 55; 42,40 → 42,4);
   // fixed keeps them so sibling rows align.
   const format = {
@@ -236,13 +292,13 @@ export function adaptiveUsdAccountingNumberFlowParts(
 export function titleBalanceDeltaNumberFlowParts(
   n: number,
   unit: Exclude<CurrencyDisplayUnit, "usd-fine"> = "clp",
-  symbolOverride?: string
+  variant: CurrencySymbolVariant = "full"
 ): ReturnType<typeof accountingCurrencyNumberFlowParts> {
   const rounded = Math.round(n);
   if (rounded < 0) {
-    return accountingCurrencyNumberFlowParts(rounded, unit, symbolOverride);
+    return accountingCurrencyNumberFlowParts(rounded, unit, variant);
   }
-  const base = accountingCurrencyNumberFlowParts(rounded, unit, symbolOverride);
+  const base = accountingCurrencyNumberFlowParts(rounded, unit, variant);
   if (rounded > 0) {
     return { ...base, prefix: `+${base.prefix}` };
   }

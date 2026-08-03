@@ -11,9 +11,10 @@ import {
   buildNiceYAxis,
   CHART_TICK_STYLE,
   extractSortedAsOfDates,
-  rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
   resolvePeriodXAxis,
 } from "./chartLayout";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
 
@@ -46,6 +47,7 @@ export function FlowsOverviewChart({
   displayUnit?: DisplayUnit;
 }) {
   const { t } = useTranslation();
+  const compactAxis = useIsNarrowViewport();
 
   // stackOffset="sign": positive segments stack above zero, negatives below.
   const yScale = useMemo(() => {
@@ -109,11 +111,7 @@ export function FlowsOverviewChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={CHART_TICK_STYLE}
-              axisLine={{ stroke: AXIS_LINE_STROKE }}
-              tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
+              {...moneyYAxisProps(displayUnit, compactAxis)}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
