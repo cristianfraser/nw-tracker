@@ -1,16 +1,15 @@
 import { useMemo } from "react";
 import { Area, Bar, CartesianGrid, Legend, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
+import { formatClp } from "../../format";
 import type { CcBillingMonthChartPoint } from "../../types";
 import { rollupCcBillingMonthChartYearly } from "../../ccYearlyRollup";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   buildNiceYAxis,
   CHART_TICK_STYLE,
-  formatAxisValue,
   moneyYAxisProps,
   AXIS_LINE_STROKE as AXIS_STROKE,
-  type ChartDisplayUnit,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
@@ -44,17 +43,23 @@ function minMaxForKeys(points: CcBillingMonthChartPoint[], keys: (keyof CcBillin
   return { min: minV, max: Math.max(maxV, 1) };
 }
 
+/**
+ * CLP-only by construction, so it takes no display unit — every series it plots is a `_clp`
+ * field, and `facturado_usd_clp` is the USD-billed leg already converted INTO CLP (the legend
+ * says «Facturado US$ (CLP)»). Threading the global CLP/USD toggle in here relabelled those
+ * same CLP amounts `US$` without converting anything — `US$10.000.000` of card debt. Its
+ * sibling {@link import("./CcInstallmentHistoryChart").CcInstallmentHistoryChart} plots the
+ * same data and has always been CLP-only; this now matches it.
+ */
 export function CcBillingMonthFinancingChart({
   title,
   titleAs = "h3",
   points,
-  displayUnit,
   period,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
   points: CcBillingMonthChartPoint[];
-  displayUnit: ChartDisplayUnit;
   /** Per-surface período (from the page's paired CC control). */
   period: "day" | "month" | "year";
 }) {
@@ -101,7 +106,7 @@ export function CcBillingMonthFinancingChart({
         <AppComposedChart
           data={plotPoints}
           tooltip={{
-            formatValue: (v) => formatAxisValue(v, displayUnit),
+            formatValue: (v) => formatClp(v),
             formatLabel: (l) => periodLabel(String(l)),
             mapPayload: (payload) =>
               payload.filter((e) => typeof e.value === "number" && Number.isFinite(e.value)),
@@ -126,7 +131,7 @@ export function CcBillingMonthFinancingChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              {...moneyYAxisProps(displayUnit, compactAxis)}
+              {...moneyYAxisProps("clp", compactAxis)}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
