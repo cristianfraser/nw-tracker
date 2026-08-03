@@ -1,7 +1,8 @@
 import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { AppLineChart } from "./AppLineChart";
-import { rechartsMoneyYAxisWidth, type ChartDisplayUnit } from "./chartLayout";
+import { moneyYAxisProps, type ChartDisplayUnit } from "./chartLayout";
 import { formatCurrency } from "../../format";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 export type ProjectionChartLine = {
   dataKey: string;
@@ -35,6 +36,7 @@ export function ProjectionsChart({
   milestoneLines: readonly ProjectionChartLine[];
   displayUnit: ChartDisplayUnit;
 }) {
+  const compactAxis = useIsNarrowViewport();
   return (
     <AppLineChart
       data={points}
@@ -50,11 +52,10 @@ export function ProjectionsChart({
         tickFormatter={(d) => String(d).slice(0, 4)}
         minTickGap={40}
       />
-      <YAxis
-        tick={PROJECTIONS_TICK_STYLE}
-        tickFormatter={(v) => formatCurrency(Number(v), displayUnit)}
-        width={rechartsMoneyYAxisWidth(displayUnit)}
-      />
+      {/* Retirement balances run to seven USD figures — `(US$2.500.000)` overflows the
+          standard USD gutter (this axis was already clipping by ~2px before the shared
+          styling). Compact mobile ticks need no extra room. */}
+      <YAxis {...moneyYAxisProps(displayUnit, compactAxis, { width: 104 })} />
       <Legend />
       {namedLines.map((l) => {
         const style = LINE_STYLE[l.dataKey] ?? { stroke: "var(--muted)", width: 1 };

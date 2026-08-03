@@ -1,4 +1,4 @@
-import { formatClp, formatUsd } from "../../format";
+import { formatClp, formatCompactMoney, formatUsd } from "../../format";
 import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 
 export type ChartDisplayUnit = "clp" | "usd";
@@ -9,8 +9,13 @@ export type ChartDisplayUnit = "clp" | "usd";
  */
 export const RECHARTS_MONEY_CHART_MARGIN = { top: 8, right: 8, left: 2, bottom: 0 } as const;
 
-/** Width reserved for Y-axis ticks (CLP `$·` + es-CL grouping is wider than Recharts’ default ~60px). */
-export function rechartsMoneyYAxisWidth(unit: ChartDisplayUnit): number {
+/**
+ * Width reserved for Y-axis ticks (CLP `$·` + es-CL grouping is wider than Recharts’ default ~60px).
+ * `compact` ticks are short notation with a bare symbol (`$10M`), so both units fit the same
+ * narrow gutter — worth ~55px of plot area back on a phone.
+ */
+export function rechartsMoneyYAxisWidth(unit: ChartDisplayUnit, compact = false): number {
+  if (compact) return 44;
   return unit === "usd" ? 78 : 104;
 }
 
@@ -25,8 +30,36 @@ export const CHART_ANIM_MS = 300;
 /** When a series is focused, other legend/tooltip rows fade to this opacity. */
 export const DIM_LEGEND_OPACITY = 0.32;
 
-export function formatAxisValue(v: number, unit: ChartDisplayUnit) {
+export function formatAxisValue(v: number, unit: ChartDisplayUnit, compact = false) {
+  if (compact) return formatCompactMoney(v, unit);
   return unit === "usd" ? formatUsd(v) : formatClp(v);
+}
+
+/**
+ * Every money Y axis in the app. Charts spread this and add only what genuinely differs
+ * (`domain`, `ticks`, `allowDataOverflow`) — the tick styling, axis stroke, gutter width and
+ * the compact/desktop formatting rule live here, so a currency, breakpoint or style change
+ * touches one function instead of eleven charts.
+ *
+ * Deliberately a props factory, not a `<MoneyYAxis>` component: Recharts discovers axes by
+ * inspecting `child.type` against its own components, so a wrapper that returns `<YAxis>` is
+ * silently dropped and the axis never renders.
+ *
+ * `compact` comes from `useIsNarrowViewport()` at the call site — this module stays hook-free
+ * so it remains plain unit-testable functions.
+ *
+ * `width` overrides the gutter for a chart whose values are orders of magnitude off the norm
+ * (Projections plots USD in the millions, where the standard USD gutter clips). Style is never
+ * overridable — that is the drift this factory exists to prevent.
+ */
+export function moneyYAxisProps(unit: ChartDisplayUnit, compact = false, opts?: { width?: number }) {
+  return {
+    width: opts?.width != null && !compact ? opts.width : rechartsMoneyYAxisWidth(unit, compact),
+    tick: CHART_TICK_STYLE,
+    axisLine: { stroke: AXIS_LINE_STROKE },
+    tickLine: { stroke: AXIS_LINE_STROKE },
+    tickFormatter: (v: number) => formatAxisValue(v, unit, compact),
+  } as const;
 }
 
 export function formatTooltipValue(v: number, unit: ChartDisplayUnit) {

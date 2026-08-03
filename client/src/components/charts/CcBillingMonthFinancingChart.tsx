@@ -8,10 +8,11 @@ import {
   buildNiceYAxis,
   CHART_TICK_STYLE,
   formatAxisValue,
-  rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
   AXIS_LINE_STROKE as AXIS_STROKE,
   type ChartDisplayUnit,
 } from "./chartLayout";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
 const FACTURADO_CLP_FILL = "#d97706";
@@ -58,6 +59,7 @@ export function CcBillingMonthFinancingChart({
   period: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
+  const compactAxis = useIsNarrowViewport();
   const isYearly = period === "year";
   const TitleTag = titleAs;
   const periodLabel = (ym: string) => (isYearly ? ym.slice(0, 4) : formatYmEs(ym));
@@ -124,11 +126,7 @@ export function CcBillingMonthFinancingChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={CHART_TICK_STYLE}
-              axisLine={{ stroke: AXIS_STROKE }}
-              tickLine={{ stroke: AXIS_STROKE }}
-              tickFormatter={(v: number) => formatAxisValue(v, displayUnit)}
+              {...moneyYAxisProps(displayUnit, compactAxis)}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}

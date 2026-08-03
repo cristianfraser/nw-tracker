@@ -180,8 +180,8 @@ export function DashboardCardValue({
       {...mountProps}
       mapDisplayValue={(n) =>
         showUsd
-          ? adaptiveUsdAccountingNumberFlowParts(n, "$", usdFractionDigits)
-          : accountingCurrencyNumberFlowParts(n, "clp", "$")
+          ? adaptiveUsdAccountingNumberFlowParts(n, "bare", usdFractionDigits)
+          : accountingCurrencyNumberFlowParts(n, "clp", "bare")
       }
       wrapClassName={wrapClass}
       className={valueClass}

@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { buildNiceYAxis } from "./chartLayout";
+import { buildNiceYAxis, moneyYAxisProps, rechartsMoneyYAxisWidth } from "./chartLayout";
+
+describe("moneyYAxisProps", () => {
+  it("pairs the narrow gutter with compact ticks, and the wide one with full ticks", () => {
+    const desktop = moneyYAxisProps("usd");
+    expect(desktop.width).toBe(rechartsMoneyYAxisWidth("usd"));
+    expect(desktop.tickFormatter(350_000)).toBe("US$350.000");
+
+    const mobile = moneyYAxisProps("usd", true);
+    expect(mobile.tickFormatter(350_000)).toBe("$350k");
+    // Short notation with a bare symbol is what earns the narrow gutter — the two
+    // must move together, or ticks clip (or the axis wastes plot area).
+    expect(mobile.width).toBeLessThan(desktop.width);
+  });
+
+  it("gives both units the same compact width (the `US$` qualifier is gone)", () => {
+    expect(moneyYAxisProps("clp", true).width).toBe(moneyYAxisProps("usd", true).width);
+    expect(rechartsMoneyYAxisWidth("clp")).toBeGreaterThan(rechartsMoneyYAxisWidth("usd"));
+  });
+});
 
 describe("buildNiceYAxis mixed-sign", () => {
   it("hugs a shallow negative dip instead of snapping to a full −step gap", () => {

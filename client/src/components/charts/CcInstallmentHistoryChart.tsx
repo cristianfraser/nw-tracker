@@ -12,8 +12,10 @@ import {
   computeRegularMonthXAxisTicks,
   formatLineChartXTick,
   RECHARTS_MONEY_CHART_MARGIN,
+  moneyYAxisProps,
   AXIS_LINE_STROKE as AXIS_STROKE,
 } from "./chartLayout";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 function formatYmEs(ym: string): string {
   const [ys, ms] = ym.split("-");
@@ -60,6 +62,7 @@ export function CcInstallmentHistoryChart({
   period: "day" | "month" | "year";
 }) {
   const { t } = useTranslation();
+  const compactAxis = useIsNarrowViewport();
   const isYearly = period === "year";
   const isDailyMode = period === "day" && (dailyRows?.length ?? 0) > 0;
   const displayRows = useMemo(
@@ -158,11 +161,7 @@ export function CcInstallmentHistoryChart({
           <YAxis
             domain={yScale.domain}
             ticks={yScale.ticks}
-            width={56}
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
-            tickFormatter={(v: number) => formatClp(v)}
-            axisLine={{ stroke: AXIS_STROKE }}
-            tickLine={{ stroke: AXIS_STROKE }}
+            {...moneyYAxisProps("clp", compactAxis)}
           />
           <Legend
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 6 }}
