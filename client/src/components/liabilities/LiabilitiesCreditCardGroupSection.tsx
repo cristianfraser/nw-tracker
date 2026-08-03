@@ -137,7 +137,6 @@ export function LiabilitiesCreditCardGroupSection({
           )}
           titleAs="h3"
           points={windowedFinancingPoints}
-          displayUnit={displayUnit}
           period={prefs.period}
         />
       </div>

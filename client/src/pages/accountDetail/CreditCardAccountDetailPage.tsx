@@ -187,7 +187,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
               )}
               titleAs="h3"
               points={clippedFinancingPoints}
-              displayUnit={displayUnit}
               period={ccPrefs.period}
             />
           </div>
