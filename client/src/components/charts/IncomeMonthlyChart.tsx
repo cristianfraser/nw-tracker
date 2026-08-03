@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
-import { Bar, CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
+import { Bar, Legend, Line, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
@@ -107,7 +107,6 @@ export function IncomeMonthlyChart({
             cursor: true,
           }}
         >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             <XAxis
               dataKey="as_of_date"
               type="category"

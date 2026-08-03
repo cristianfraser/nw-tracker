@@ -1,11 +1,12 @@
 import { useMemo } from "react";
-import { Bar, CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
+import { Bar, Legend, Line, XAxis, YAxis } from "recharts";
 import { chileTodayYmd } from "../../calendarMonth";
 import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
 import { formatClp } from "../../format";
 import { AppComposedChart } from "./AppComposedChart";
+import { hasBandableBarGroups } from "./chartBandEdges";
 import { renderPeriodRefLine } from "./PeriodRefLine";
 import {
   buildNiceYAxis,
@@ -109,6 +110,8 @@ export function CcInstallmentHistoryChart({
         <AppComposedChart
           data={displayRows}
           margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 8, bottom: 4 }}
+          // Day mode drops both bars for lines; only the period modes draw a side-by-side pair.
+          groupedBars={hasBandableBarGroups(isDailyMode ? 0 : 2, displayRows.length)}
           tooltip={{
             formatValue: (v) => formatClp(v),
             renderContent: ({ label, payload }) => {
@@ -146,7 +149,6 @@ export function CcInstallmentHistoryChart({
             cursor: true,
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
           <XAxis
             dataKey="month"
             type="category"

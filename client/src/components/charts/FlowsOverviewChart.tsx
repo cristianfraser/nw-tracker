@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
-import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
@@ -95,7 +95,6 @@ export function FlowsOverviewChart({
             cursor: true,
           }}
         >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
               <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
             ) : null}

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
-import { Bar, CartesianGrid, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { formatClp } from "../../format";
 import i18n from "../../i18n";
@@ -94,7 +94,6 @@ export function ExpensesByApartmentChart({
             cursor: true,
           }}
         >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
             <XAxis
               dataKey="as_of_date"
