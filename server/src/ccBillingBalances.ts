@@ -3,7 +3,10 @@ import {
   getAggregationCached,
   invalidateCcBillingDetail,
 } from "./aggregationCache.js";
-import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
+import {
+  effectiveCcExpenseLineAmountClp,
+  effectiveCcExpenseLineAmountUsd,
+} from "./ccExpenseAmountClp.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
   isInstallmentContractSummaryMerchant,
@@ -390,6 +393,13 @@ export function incrementalChargesClpForBillingMonth(
  * {@link incrementalChargesClpForBillingMonth} but keeps only USD-denominated lines (foreign charges
  * that carry `amount_usd` with no CLP amount, or lines on a USD statement). Payments/abonos net in
  * via their negative amounts.
+ *
+ * "No CLP amount" must accept **0 as well as NULL**: the importer parses an empty `amount_clp`
+ * CSV cell through `Number("")` → 0, so every stored foreign web-paste line carries 0, never NULL
+ * (0-means-absent is the corpus convention — 1361 lines store 0, none store NULL). A NULL-only test
+ * matched no real row, so the open cycle's US$ leg silently collapsed into `facturado_clp`.
+ * `effectiveCcExpenseLineAmountUsd` is the same null-vs-0 rule the CLP helper below applies, so the
+ * two legs of the split can't drift.
  */
 export function openMonthUsdFacturado(
   accountId: number,
@@ -404,15 +414,16 @@ export function openMonthUsdFacturado(
     for (const r of listRevolvingLineRowsForStatementDate(accountId, statementDate)) {
       if (superseded.has(r.id)) continue;
       if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
-      const isUsdLine =
-        (r.amount_clp == null && r.amount_usd != null) ||
-        String(r.statement_currency).toLowerCase() === "usd";
-      if (!isUsdLine) continue;
-      if (r.amount_usd != null && Number.isFinite(r.amount_usd)) usd += r.amount_usd;
-      const c = effectiveCcExpenseLineAmountClp(
-        { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
-        fxDateIso
-      );
+      const oneShot = {
+        ...r,
+        installment_flag: 0,
+        valor_cuota_mensual_clp: null,
+        valor_cuota_mensual_usd: null,
+      };
+      const u = effectiveCcExpenseLineAmountUsd(oneShot);
+      if (u == null) continue; // CLP-denominated line — not part of the US$ split
+      usd += u;
+      const c = effectiveCcExpenseLineAmountClp(oneShot, fxDateIso);
       if (c != null && Number.isFinite(c)) clp += c;
     }
   };
