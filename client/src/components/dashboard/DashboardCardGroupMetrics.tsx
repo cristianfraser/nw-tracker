@@ -93,7 +93,7 @@ function DepositedMetricFlow({
       placeholderPhase={placeholderPhase}
       mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
       mountSeedId={mountSeedId}
-      mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "$")}
+      mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "bare")}
       className={cn(styles.amount, "mono")}
       transformTiming={METRIC_TIMING.transformTiming}
       spinTiming={METRIC_TIMING.spinTiming}

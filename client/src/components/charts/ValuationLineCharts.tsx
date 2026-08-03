@@ -25,12 +25,11 @@ import {
   computeRegularMonthXAxisTicks,
   computeRegularYearXAxisTicks,
   extractSortedAsOfDates,
-  formatAxisValue,
   formatLineChartXTick,
   formatTooltipValue,
   minMaxForKeys,
   RECHARTS_MONEY_CHART_MARGIN,
-  rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
   DIM_LEGEND_OPACITY,
   type ChartDisplayUnit,
 } from "./chartLayout";
@@ -40,6 +39,7 @@ import {
   tooltipColorIsVisible,
   type AppTooltipSpec,
 } from "./ChartTooltip";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 function numericCell(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -364,6 +364,7 @@ export function LineChartPanel({
     () => (trimLeadingInactive ? trimLeadingInactivePoints(block, includeAccumulatedLines) : block),
     [block, includeAccumulatedLines, trimLeadingInactive]
   );
+  const compactAxis = useIsNarrowViewport();
   // Global range clip (M/Y views; daily payloads arrive range-sized from the server). When the
   // clip removes leading history, the zero anchors are skipped — a left-edge dive to 0 would
   // misread as "the account started here".
@@ -500,11 +501,7 @@ export function LineChartPanel({
               domain={yScale.domain}
               ticks={yScale.ticks}
               allowDataOverflow={!clipPlotToYDomain}
-              tick={CHART_TICK_STYLE}
-              axisLine={{ stroke: AXIS_LINE_STROKE }}
-              tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v) => formatAxisValue(typeof v === "number" ? v : Number(v), displayUnit)}
-              width={rechartsMoneyYAxisWidth(displayUnit)}
+              {...moneyYAxisProps(displayUnit, compactAxis)}
             />
             <Legend
               content={() => (

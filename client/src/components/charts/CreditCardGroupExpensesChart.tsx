@@ -21,9 +21,10 @@ import {
   CHART_TICK_STYLE,
   currentPeriodRefX,
   extractSortedAsOfDates,
-  rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
   resolvePeriodXAxis,
 } from "./chartLayout";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
 
@@ -49,6 +50,7 @@ export function CreditCardGroupExpensesChart({
   xAxisGranularity?: "month" | "year" | "day";
 }) {
   const { t } = useTranslation();
+  const compactAxis = useIsNarrowViewport();
   const bars = useMemo(
     () => chartCcExpenseCategories(categories, categorySortPoints ?? points),
     [categories, categorySortPoints, points]
@@ -222,11 +224,7 @@ export function CreditCardGroupExpensesChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={CHART_TICK_STYLE}
-              axisLine={{ stroke: AXIS_LINE_STROKE }}
-              tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v: number) => formatFlowMoney(v, displayUnit)}
+              {...moneyYAxisProps(displayUnit, compactAxis)}
             />
             <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
             {currentPeriodX != null ? renderPeriodRefLine({ x: currentPeriodX }) : null}

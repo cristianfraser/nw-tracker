@@ -11,13 +11,13 @@ import {
   buildNiceYAxis,
   CHART_TICK_STYLE,
   extractSortedAsOfDates,
-  formatAxisValue,
   formatTooltipValue,
   minMaxForKeys,
-  rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
   resolvePeriodXAxis,
   type ChartDisplayUnit,
 } from "./chartLayout";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
 
@@ -142,6 +142,7 @@ export function MonthlyPerformanceComboChart({
   /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
   controls?: ReactNode;
 }) {
+  const compactAxis = useIsNarrowViewport();
   const timeRange = timeRangeProp ?? "total";
 
   const densePoints = useMemo(() => {
@@ -252,11 +253,7 @@ export function MonthlyPerformanceComboChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={rechartsMoneyYAxisWidth(displayUnit)}
-              tick={CHART_TICK_STYLE}
-              axisLine={{ stroke: AXIS_LINE_STROKE }}
-              tickLine={{ stroke: AXIS_LINE_STROKE }}
-              tickFormatter={(v: number) => formatAxisValue(v, displayUnit)}
+              {...moneyYAxisProps(displayUnit, compactAxis)}
             />
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}

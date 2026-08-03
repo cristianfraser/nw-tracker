@@ -9,6 +9,7 @@ export {
   buildNiceYAxisPositiveBand,
   RECHARTS_MONEY_CHART_MARGIN,
   rechartsMoneyYAxisWidth,
+  moneyYAxisProps,
 } from "./chartLayout";
 export { filterPointsThroughAsOfDate, resolveMonthlyPerfClipEndDate } from "./chartData";
 export { MonthlyPerformanceComboChart } from "./MonthlyPerformanceComboChart";
