@@ -58,7 +58,7 @@ function GroupFlowsPanel({
       year: filterState.year || undefined,
       type: filterState.type || undefined,
       account_id: filterState.account_id ? Number(filterState.account_id) : undefined,
-      category: filterState.category || undefined,
+      bucket: filterState.bucket || undefined,
       q: filterState.q || undefined,
       ...extraFiltersFromState(filterState),
     }),

@@ -369,7 +369,7 @@ app.get("/api/groups/:slug/flows", (req, res) => {
     const aid = Number(req.query.account_id);
     if (Number.isFinite(aid) && aid > 0) filters.account_id = aid;
   }
-  if (typeof req.query.category === "string" && req.query.category.trim()) filters.category = req.query.category.trim();
+  if (typeof req.query.bucket === "string" && req.query.bucket.trim()) filters.bucket = req.query.bucket.trim();
   if (typeof req.query.q === "string" && req.query.q.trim()) filters.q = req.query.q.trim();
   const extra = parseExtraFlowsFilterParams(req.query as Record<string, unknown>);
   if (!extra.ok) {

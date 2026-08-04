@@ -174,7 +174,8 @@ export type FlowsApiRow = {
   key: string;
   account_id: number;
   account_name: string;
-  category_slug: string;
+  /** Portfolio bucket (nav leaf) the account files under; null when it has no tree link. */
+  bucket_slug: string | null;
   amount_clp: number;
   occurred_on: string;
   note: string | null;
@@ -193,7 +194,8 @@ export type FlowsFilterOptions = {
   years: string[];
   types: { value: string; label: string }[];
   accounts: { id: number; name: string }[];
-  categories: string[];
+  /** Portfolio buckets present in the rows; labels resolve like sidebar nav nodes. */
+  buckets: { slug: string; label: string; label_i18n_key: string | null }[];
 };
 
 export type FlowsPageResponse = Paginated<FlowsApiRow> & {

@@ -693,7 +693,7 @@ export type FlowsQueryFilters = {
   year?: string;
   type?: string;
   account_id?: number;
-  category?: string;
+  bucket?: string;
   q?: string;
   personal_only?: boolean;
   date_from?: string;
@@ -710,7 +710,7 @@ function serializeFlowFilters(f: FlowsQueryFilters): string {
     y: f.year ?? "",
     t: f.type ?? "",
     a: f.account_id ?? "",
-    c: f.category ?? "",
+    b: f.bucket ?? "",
     q: f.q ?? "",
     po: f.personal_only ?? false,
     df: f.date_from ?? "",
@@ -732,7 +732,7 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         year: filters.year,
         type: filters.type,
         account_id: filters.account_id,
-        category: filters.category,
+        bucket: filters.bucket,
         q: filters.q,
         date_from: filters.date_from,
         date_to: filters.date_to,

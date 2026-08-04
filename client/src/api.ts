@@ -396,7 +396,7 @@ export const api = {
       year?: string;
       type?: string;
       account_id?: number;
-      category?: string;
+      bucket?: string;
       q?: string;
       date_from?: string;
       date_to?: string;
@@ -411,7 +411,7 @@ export const api = {
     if (opts.year) qu.set("year", opts.year);
     if (opts.type) qu.set("type", opts.type);
     if (opts.account_id != null) qu.set("account_id", String(opts.account_id));
-    if (opts.category) qu.set("category", opts.category);
+    if (opts.bucket) qu.set("bucket", opts.bucket);
     if (opts.q) qu.set("q", opts.q);
     for (const key of ["date_from", "date_to"] as const) {
       if (opts[key]) qu.set(key, opts[key]!);
