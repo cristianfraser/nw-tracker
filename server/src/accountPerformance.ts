@@ -9,6 +9,7 @@ import {
 } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 import { MONTH_ROW_EPS, pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import { flowAdjustedPctMonth } from "./periodReturns.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -238,14 +239,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
         ? liabilityPctMonth(nominal_pl, prior)
         : ccPerf
           ? ccPerf.pct
-          : (() => {
-            const denom = prior + netFlow;
-            return nominal_pl != null &&
-              Math.abs(denom) > MONTH_ROW_EPS &&
-              Number.isFinite(nominal_pl / denom)
-              ? nominal_pl / denom
-              : null;
-          })();
+          : flowAdjustedPctMonth(nominal_pl, prior, netFlow, MONTH_ROW_EPS);
     }
 
     out.push({

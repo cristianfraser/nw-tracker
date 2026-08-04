@@ -388,4 +388,10 @@ export interface DailySeriesResponse {
    * from the monthly block's matching `lines` entry.
    */
   reference_lines?: { dataKey: string; values: (number | null)[] }[];
+  /**
+   * Mirror of the monthly block's `chart_end_ymd`: set when every account line ends before
+   * the grid does (all sold out). The valuation chart trims points past it so the axis stops
+   * at the last visible day; `points` stay full-length for the P/L bars and detalle table.
+   */
+  chart_end_ymd?: string;
 }

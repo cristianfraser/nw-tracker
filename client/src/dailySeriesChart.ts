@@ -76,7 +76,15 @@ export function buildDailyValuationBlock(
     return row;
   });
 
+  // Every account line ended before the grid (all sold out): stop the x-axis at the last
+  // visible day — same as the monthly block's `chart_end_ymd` point trim — instead of the
+  // unclipped Total (raw `p.value`, true zeros) hugging 0 through today.
+  const chartEnd = daily.chart_end_ymd;
+  const trimmed = chartEnd
+    ? points.filter((r) => String(r.as_of_date ?? "").localeCompare(chartEnd) <= 0)
+    : points;
+
   return refLines.length
-    ? { accounts, lines: refLines.map((r) => r.meta), points }
-    : { accounts, points };
+    ? { accounts, lines: refLines.map((r) => r.meta), points: trimmed }
+    : { accounts, points: trimmed };
 }

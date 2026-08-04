@@ -3,7 +3,10 @@ import { accountIsMonthPrecisionDated } from "./accountBucket.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
+import {
+  loadEquityBrokerageCapitalSortFlows,
+  loadUsdCashCapitalSortFlows,
+} from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
 import {
   isUsdCashAccount,
@@ -16,8 +19,6 @@ import {
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
-import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
-import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 
 /**
  * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
@@ -92,7 +93,8 @@ function loadMovementSignedFlowEvents(
   const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
-    // CLP deposit_clp wires on USD cash are FX staging legs; capital lives on equity accounts.
+    // USD-cash rows are emitted by loadUsdCashCapitalSortFlows (native USD legs) — skip here
+    // so each row is counted exactly once.
     if (usdCashIds.has(r.account_id)) continue;
     if (equityMtmIds.has(r.account_id) && r.flow_kind == null) continue;
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
@@ -149,10 +151,11 @@ function loadTransferLegSignedFlowEvents(
   for (const r of rows) {
     // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
     // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
-    // together (the USD `to` leg is dropped below via usdCashIds). stock_buy/stock_sell also pass
-    // the row-level skip: the equity and USD-cash endpoints are dropped below (equityMtmIds /
-    // usdCashIds — the equity capital-flow path counts those), so only a CLP-cash funding leg
-    // contributes its ±CLP leg here (CLP-quoted stocks; USD trades have no CLP leg → 0).
+    // together (the USD `to` leg is emitted by loadUsdCashCapitalSortFlows — dropped below via
+    // usdCashIds). stock_buy/stock_sell also pass the row-level skip: the equity and USD-cash
+    // endpoints are dropped below (equityMtmIds / usdCashIds — the equity and USD-cash capital-flow
+    // paths count those), so only a CLP-cash funding leg contributes its ±CLP leg here
+    // (CLP-quoted stocks; USD trades have no CLP leg → 0).
     if (
       r.flow_kind != null &&
       r.flow_kind !== "compra_usd_venta_clp" &&
@@ -200,10 +203,15 @@ function buildMergedDepositMap(
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
   const transfers = loadTransferLegSignedFlowEvents(accountIds, personalOnly);
   const equityCap = loadEquityBrokerageCapitalSortFlows(accountIds);
+  // USD-cash accounts (event-based since 2026-08-04): all their legs come from this one
+  // loader — the generic movement/transfer paths above skip usd-cash endpoints, so each
+  // (row, endpoint) is counted exactly once.
+  const usdCashCap = loadUsdCashCapitalSortFlows(accountIds);
   const ids = new Set<number>([
     ...mov.keys(),
     ...transfers.keys(),
     ...equityCap.keys(),
+    ...usdCashCap.keys(),
     ...requested,
   ]);
   const out = new Map<number, DepositInflowEvent[]>();
@@ -211,7 +219,10 @@ function buildMergedDepositMap(
     const movFlows: MergedSortFlow[] = [...(mov.get(id) ?? []), ...(transfers.get(id) ?? [])].map(
       (f) => ({ ...f })
     );
-    const eqFlows: MergedSortFlow[] = (equityCap.get(id) ?? []).map((f) => ({
+    const eqFlows: MergedSortFlow[] = [
+      ...(equityCap.get(id) ?? []),
+      ...(usdCashCap.get(id) ?? []),
+    ].map((f) => ({
       occurred_on: f.occurred_on,
       amt: f.amt,
       tie: f.tie,
@@ -305,16 +316,10 @@ function sumDepositEventsThroughToday(events: DepositInflowEvent[]): number {
 
 /** Net external CLP capital (movements); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
-  if (isUsdCashAccount(accountId)) {
-    return usdCashDepositedClpToday(accountId);
-  }
   return sumDepositEventsThroughToday(getMergedDepositInflowEventsForAccount(accountId));
 }
 
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
-  if (isUsdCashAccount(accountId)) {
-    return usdCashDepositedClpToday(accountId);
-  }
   return sumDepositEventsThroughToday(getMergedDisplayDepositInflowEventsForAccount(accountId));
 }
 
@@ -324,12 +329,6 @@ export function pocketDepositsClpForAccount(accountId: number): number {
     return totalDisplayDepositsClpForAccount(accountId);
   }
   return totalDepositsClpForAccount(accountId);
-}
-
-/** USD cash deposited (own capital) in CLP today = balance − interest (interest is P/L, not capital). */
-function usdCashDepositedClpToday(accountId: number): number {
-  const today = chileCalendarTodayYmd();
-  return usdCashBalanceClpAt(accountId, today) - cashInterestClpThroughDate(accountId, today);
 }
 
 const wdwSumStmt = db.prepare(

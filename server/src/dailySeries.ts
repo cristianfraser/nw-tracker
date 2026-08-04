@@ -4,7 +4,6 @@ import {
 } from "./accountDeposits.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
 import { getAggregationCached } from "./aggregationCache.js";
-import { cashInterestClpThroughDate, cashInterestUsdThroughDate } from "./cashAccountInterest.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
@@ -12,7 +11,6 @@ import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
 import { depositClpToUsdAtDate, depositInflowEventUsd } from "./flowsDeposits.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
 import {
@@ -21,7 +19,6 @@ import {
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
-import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
 
@@ -106,6 +103,14 @@ export type BucketDailySeries = {
   grouped_accounts?: DailySeriesAccountLine[];
   /** "Sin agrupar" bucket lines (one nav level deeper; only when they differ from grouped). */
   ungrouped_accounts?: DailySeriesAccountLine[];
+  /**
+   * Mirror of the monthly block's `chart_end_ymd`: set when every account line ends before
+   * the grid does (all sold out / wound down), so the valuation chart's x-axis stops at the
+   * last visible day instead of the unclipped Total hugging 0 through today. `points` stay
+   * full-length (the P/L bars and daily detalle table keep full history); the client
+   * valuation-chart builder trims by this field.
+   */
+  chart_end_ymd?: string;
 };
 
 /** Ascending list of `count` Chile calendar days ending at `endYmd` inclusive. */
@@ -119,11 +124,10 @@ function chileCalendarDaysListEndingAt(endYmd: string, count: number): string[] 
 
 /**
  * Per-day net capital flows for one grid. Same event source and window semantics as
- * `netDepositFlowBetween` — regular accounts bucket merged display deposit events into
- * `(grid[i-1], grid[i]]`; USD-cash accounts telescope `balance − interest` at each
- * date (identical sums by construction, one evaluation per date instead of per pair).
- * Returns CLP flows for clp/uf units and native USD flows for usd (events without USD skip,
- * as in `netDepositFlowBetween`).
+ * `netDepositFlowBetween` — merged display deposit events bucketed into `(grid[i-1], grid[i]]`
+ * (USD-cash accounts included since 2026-08-04, via `loadUsdCashCapitalSortFlows`). Returns
+ * CLP flows for clp/uf units and native USD flows for usd (events without USD skip, as in
+ * `netDepositFlowBetween`).
  *
  * Liability accounts have no movement-based deposit events (the mortgage's cash is the depto
  * ledger, a card's is its statements), so they carry their own sources — positive when money
@@ -151,15 +155,14 @@ function gridFlows(
   const last = sessions[sessions.length - 1]!;
 
   const regularIds: number[] = [];
-  const usdCashIds: number[] = [];
   const mortgageIds: number[] = [];
   for (const a of accounts) {
     if (!includeShortHorizonAccount(a)) continue;
     // Cards are handled by the caller (their flows need the value legs); other liabilities
-    // (mortgage) carry ledger-truth payment events.
+    // (mortgage) carry ledger-truth payment events. USD-cash accounts are regular since
+    // 2026-08-04 — their merged events come from loadUsdCashCapitalSortFlows.
     if (isCreditCardAccountId(a.account_id)) continue;
     if (isLiabilityAccountId(a.account_id)) mortgageIds.push(a.account_id);
-    else if (isUsdCashAccount(a.account_id)) usdCashIds.push(a.account_id);
     else regularIds.push(a.account_id);
   }
 
@@ -184,20 +187,6 @@ function gridFlows(
       const row = rowIndexForEvent(e.occurred_on);
       flows[row] += amt;
       addFor(id, row, amt);
-    }
-  }
-
-  for (const id of usdCashIds) {
-    const depAt =
-      flowUnit === "usd"
-        ? (ymd: string) => usdCashBalanceUsdAt(id, ymd) - cashInterestUsdThroughDate(id, ymd)
-        : (ymd: string) => usdCashBalanceClpAt(id, ymd) - cashInterestClpThroughDate(id, ymd);
-    let prev = depAt(first);
-    for (let i = 1; i < sessions.length; i++) {
-      const cur = depAt(sessions[i]!);
-      flows[i - 1] += cur - prev;
-      addFor(id, i - 1, cur - prev);
-      prev = cur;
     }
   }
 
@@ -250,10 +239,10 @@ function usdFlowForEvent(e: DepositInflowEvent): number | null {
 
 /**
  * Full-history cumulative personal deposits through each grid date, per account — the
- * "aportes acum." chart companion. Same event source as {@link sessionFlows} (regular
- * accounts: merged display deposit events; USD-cash: `balance − interest` at the date), so
- * the line's step on a deposit day equals that day's flow leg. CLP for clp/uf units, native
- * USD for usd (uf conversion happens at emit time, per session date).
+ * "aportes acum." chart companion. Same event source as {@link sessionFlows} (merged display
+ * deposit events — USD-cash included since 2026-08-04), so the line's step on a deposit day
+ * equals that day's flow leg. CLP for clp/uf units, native USD for usd (uf conversion happens
+ * at emit time, per session date).
  */
 function accountDepositCumsOnGrid(
   accounts: readonly ShortHorizonAccountRef[],
@@ -261,24 +250,10 @@ function accountDepositCumsOnGrid(
   flowUnit: "clp" | "usd"
 ): Map<number, number[]> {
   const out = new Map<number, number[]>();
-  const regularIds = accounts
-    .map((a) => a.account_id)
-    .filter((id) => !isUsdCashAccount(id));
-  const eventsById = loadMergedDisplayDepositInflowEvents(regularIds);
+  const eventsById = loadMergedDisplayDepositInflowEvents(accounts.map((a) => a.account_id));
 
   for (const a of accounts) {
     const id = a.account_id;
-    if (isUsdCashAccount(id)) {
-      const depAt =
-        flowUnit === "usd"
-          ? (ymd: string) => usdCashBalanceUsdAt(id, ymd) - cashInterestUsdThroughDate(id, ymd)
-          : (ymd: string) => usdCashBalanceClpAt(id, ymd) - cashInterestClpThroughDate(id, ymd);
-      out.set(
-        id,
-        grid.map((ymd) => depAt(ymd))
-      );
-      continue;
-    }
     const events = eventsById.get(id) ?? [];
     const cums = new Array<number>(grid.length).fill(0);
     let cum = 0;
@@ -464,18 +439,23 @@ export function getBucketDailySeries(
   //    zeros (`TS_TRAILING_ZERO_MONTHS_KEPT` — one DAY at this grain) then null, and clip each
   //    line's `deposits_acum` with its value exactly as the monthly bundles the two (a sold-out
   //    account's aportes line ends with its value line rather than lingering flat).
+  let chartEndYmd: string | null = null;
   if (perAccount) {
+    for (const line of perAccount) trimDailyLineEdges(line);
+    // All lines ended before the grid does → the chart axis should stop there (see the
+    // `chart_end_ymd` field doc). `lastVisible` indexes `values`, which aligns with
+    // `grid[i + 1]`; the last values index (grid.length − 2) is today.
+    let lastVisible = -1;
     for (const line of perAccount) {
-      let firstHeld = line.values.findIndex((v) => v != null && v !== 0);
-      if (firstHeld < 0) firstHeld = line.values.length; // never held: whole line absent
-      for (let k = 0; k < firstHeld; k++) line.values[k] = null;
-      if (firstHeld >= line.values.length) continue;
-      const startNullAt = trailingZeroRunClipStartIndex(line.values);
-      if (startNullAt == null) continue;
-      for (let k = startNullAt; k < line.values.length; k++) {
-        line.values[k] = null;
-        if (line.deposits_acum) line.deposits_acum[k] = null;
+      for (let i = line.values.length - 1; i > lastVisible; i--) {
+        if (line.values[i] != null) {
+          lastVisible = i;
+          break;
+        }
       }
+    }
+    if (lastVisible >= 0 && lastVisible < grid.length - 2) {
+      chartEndYmd = grid[lastVisible + 1]!;
     }
   }
 
@@ -518,6 +498,7 @@ export function getBucketDailySeries(
     points,
     ...(perAccount ? { accounts: perAccount } : {}),
     ...(depsAcumTotal ? { deposits_acum_total: depsAcumTotal } : {}),
+    ...(chartEndYmd ? { chart_end_ymd: chartEndYmd } : {}),
   };
 }
 
@@ -528,6 +509,39 @@ export function getBucketDailySeries(
  * Accounts the plan leaves ungrouped pass through as their own lines. Pure transform over
  * an already-built series (values and aportes both sum; null + null stays null).
  */
+/**
+ * Display-only edge trims on one chart line (per-account or aggregated bucket), mirroring the
+ * monthly block clip so a line covers the same span in both grains:
+ *  - Leading: null the run of 0/null before the first holding (an equity/crypto account marks
+ *    to a finite 0 before its first buy; the monthly line starts at the first holding).
+ *  - Never held in-window: the whole line is absent — its `deposits_acum` companion must null
+ *    too, or a long-wound-down account draws an orphan flat aportes line with no value line
+ *    (and keeps polluting grouped-bucket sums after an active sibling's tail clip).
+ *  - Trailing: a sold-out line keeps `TS_TRAILING_ZERO_MONTHS_KEPT` plotted zeros (one DAY at
+ *    this grain) then nulls, bundling `deposits_acum` with the value exactly as the monthly
+ *    `applyTrailingZeroTailClipToBlock` bundles the two.
+ * P/L legs are untouched — they read the unclipped wealth legs (display shaping only, never
+ * arithmetic).
+ */
+function trimDailyLineEdges(line: {
+  values: (number | null)[];
+  deposits_acum?: (number | null)[];
+}): void {
+  let firstHeld = line.values.findIndex((v) => v != null && v !== 0);
+  if (firstHeld < 0) firstHeld = line.values.length; // never held: whole line absent
+  for (let k = 0; k < firstHeld; k++) line.values[k] = null;
+  if (firstHeld >= line.values.length) {
+    if (line.deposits_acum) line.deposits_acum.fill(null);
+    return;
+  }
+  const startNullAt = trailingZeroRunClipStartIndex(line.values);
+  if (startNullAt == null) return;
+  for (let k = startNullAt; k < line.values.length; k++) {
+    line.values[k] = null;
+    if (line.deposits_acum) line.deposits_acum[k] = null;
+  }
+}
+
 export function groupDailySeriesAccounts(
   series: BucketDailySeries,
   plan: ChartBucketPlan
@@ -568,6 +582,12 @@ export function groupDailySeriesAccounts(
       }
     }
   }
+  // Re-trim each aggregated line as a unit: member lines were clipped individually, so after
+  // one member's tail clip the summed `deposits_acum` (zero-filled where no member contributes)
+  // would snap to the surviving members' constant — e.g. a sold-out bucket's aportes jumping
+  // from its true final total to a wound-down predecessor's small residual. The values-driven
+  // trim bundles the aggregate's deposits with its own value span instead.
+  for (const agg of byBucketKey.values()) trimDailyLineEdges(agg);
   return out;
 }
 
