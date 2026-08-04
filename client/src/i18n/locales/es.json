@@ -810,7 +810,6 @@
     "y5": "5A",
     "total": "Total",
     "annualized": "anualizado",
-    "liveSuffix": "en curso",
     "insufficientHistory": "Historial insuficiente para este período",
     "windowTitle": "Desde {{start}} · {{months}} meses",
     "windowTitleDate": "Desde {{start}}"

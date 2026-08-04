@@ -10,7 +10,7 @@ import { useDailySeries } from "../../queries/hooks";
 import { timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../../components/ui/SurfaceControls";
-import { PeriodReturnsStrip } from "../../components/perf/PeriodReturnsStrip";
+import { PeriodReturnsTable } from "../../components/perf/PeriodReturnsTable";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
@@ -404,7 +404,7 @@ export function StandardAccountDetailPage({ data }: Props) {
             <>
               <h3 className={styles.subsectionTitleTight}>{t("periodReturns.title")}</h3>
               <p className={cn("muted", styles.proseMutedXs)}>{t("periodReturns.hint")}</p>
-              <PeriodReturnsStrip data={periodReturns} displayUnit={displayUnit} />
+              <PeriodReturnsTable data={periodReturns} displayUnit={displayUnit} />
             </>
           ) : null}
           {monthlyPerfErr ? (

@@ -10,7 +10,7 @@ import { useDailySeries } from "../../queries/hooks";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { PageTitleRow } from "../layout/PageTitleRow";
-import { PeriodReturnsStrip } from "../perf/PeriodReturnsStrip";
+import { PeriodReturnsTable } from "../perf/PeriodReturnsTable";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
@@ -200,7 +200,7 @@ export function GroupInfoBase({
                 <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
                   {t("periodReturns.hint")}
                 </p>
-                <PeriodReturnsStrip data={periodReturns} displayUnit={displayUnit} />
+                <PeriodReturnsTable data={periodReturns} displayUnit={displayUnit} />
               </>
             ) : null}
             <div className="chart-panel-title-row" style={{ marginTop: "2rem" }}>
