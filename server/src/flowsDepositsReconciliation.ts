@@ -9,6 +9,12 @@ import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsCreditCardExpen
 import { depositFlowCategoryFromGroupSlug, listDepositFlowAccounts, type DepositFlowCategory } from "./flowsDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
@@ -162,11 +168,10 @@ function loadCuentaCorrienteMonthsWithData(): Set<string> {
   return months;
 }
 
-type RawMovementRow = {
+type RawMovementRow = MovementAmountFields & {
   id: number;
   account_id: number;
   occurred_on: string;
-  amount_clp: number;
   flow_kind: string | null;
   note: string | null;
 };
@@ -183,10 +188,10 @@ function loadPositiveInflowMovements(
     budaBufferId != null ? ` AND NOT (m.account_id = ${budaBufferId} AND m.note IS NOT 'import:buda|abono')` : "";
   return db
     .prepare(
-      `SELECT m.id, m.account_id, m.occurred_on, m.amount_clp, m.flow_kind, m.note
+      `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind, m.note
        FROM movements m
        WHERE m.account_id IN (${ph})
-         AND m.amount_clp > 0
+         AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) > 0
          AND ${NON_DEPOSIT_NOTE_SQL}${budaFilter}
        ORDER BY m.occurred_on, m.id`
     )
@@ -259,22 +264,21 @@ export function loadInternalNetWorthTransferOutflowKeys(
 ): Set<string> {
   const rows = db
     .prepare(
-      `SELECT m.id, m.from_account_id, m.to_account_id, m.occurred_on, m.amount_clp,
+      `SELECT m.id, m.from_account_id, m.to_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency,
               EXISTS (SELECT 1 FROM movement_mirror_merges mm WHERE mm.transfer_movement_id = m.id) AS is_mirror_merge
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.from_account_id IS NOT NULL
          AND m.to_account_id IS NOT NULL
-         AND m.amount_clp != 0`
+         AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) != 0`
     )
-    .all() as {
+    .all() as (MovementAmountFields & {
     id: number;
     from_account_id: number;
     to_account_id: number;
     occurred_on: string;
-    amount_clp: number;
     is_mirror_merge: number;
-  }[];
+  })[];
   const out = new Set<string>();
   for (const r of rows) {
     if (!netWorthAccountIds.has(r.from_account_id)) continue;
@@ -283,7 +287,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
       if (!netWorthAccountIds.has(r.to_account_id)) continue;
       if (checkingBucketIds.has(r.from_account_id) || checkingBucketIds.has(r.to_account_id)) continue;
     }
-    out.add(`${r.from_account_id}|${r.occurred_on}|${Math.round(Math.abs(r.amount_clp))}`);
+    out.add(`${r.from_account_id}|${r.occurred_on}|${Math.round(Math.abs(movementClpLegOrZero(r)))}`);
   }
   return out;
 }
@@ -333,7 +337,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
     if (!category) continue;
 
-    const amount_clp = Math.round(m.amount_clp);
+    const amount_clp = Math.round(movementClpLegOrZero(m));
     const amount_usd_raw = clpToUsdAtDate(amount_clp, m.occurred_on);
     if (amount_usd_raw == null || !Number.isFinite(amount_usd_raw)) {
       if (amount_clp !== 0) fxError = true;
@@ -393,12 +397,12 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
   if (budaBufferId != null) {
     const retiros = db
       .prepare(
-        `SELECT occurred_on, amount_clp FROM movements
-         WHERE account_id = ? AND note = 'import:buda|retiro' AND amount_clp < 0`
+        `SELECT occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
+         WHERE account_id = ? AND note = 'import:buda|retiro' AND ${MOVEMENT_CLP_LEG_SQL} < 0`
       )
-      .all(budaBufferId) as { occurred_on: string; amount_clp: number }[];
+      .all(budaBufferId) as ({ occurred_on: string } & MovementAmountFields)[];
     for (const r of retiros) {
-      budaRetiroKeys.add(`${budaBufferId}|${r.occurred_on}|${Math.round(Math.abs(r.amount_clp))}`);
+      budaRetiroKeys.add(`${budaBufferId}|${r.occurred_on}|${Math.round(Math.abs(movementClpLegOrZero(r)))}`);
     }
   }
   const redemptions: DepositRedemptionRow[] = [];

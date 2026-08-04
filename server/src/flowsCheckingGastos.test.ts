@@ -60,8 +60,8 @@ function insertCheckingCartolaWithdrawal(
     `${docPart}|on:${occurredOn}|amt:${amountClp}|idx:${opts.idx}`;
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
   return Number(ins.lastInsertRowid);
@@ -1152,7 +1152,7 @@ describe("flowsCheckingGastos", () => {
     if (lines.length === 0) return;
     const movId = (
       db.prepare(
-        `SELECT id FROM movements WHERE account_id = ? AND occurred_on = '2024-12-10' AND amount_clp = -4600000 LIMIT 1`
+        `SELECT id FROM movements WHERE account_id = ? AND occurred_on = '2024-12-10' AND currency = 'clp' AND amount = -4600000 LIMIT 1`
       ).get(checkingAccountId()) as { id: number } | undefined
     )?.id;
     if (movId == null) return;
@@ -1243,8 +1243,8 @@ describe("flowsCheckingGastos", () => {
     const legacyId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, occurred_on, amount_clp, note)
-           VALUES (?, '2024-03-01', -1000, 'manual|stable-key-test')`
+          `INSERT INTO movements (account_id, occurred_on, amount, currency, note)
+           VALUES (?, '2024-03-01', -1000, 'clp', 'manual|stable-key-test')`
         )
         .run(acctId).lastInsertRowid
     );
@@ -1323,15 +1323,15 @@ describe("flowsCheckingGastos", () => {
 
     const depositId = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, 583_492, "2099-01-01", checkingLedgerAnchorNote("2099-02")).lastInsertRowid as number;
 
     const withdrawalId = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, -583_492, "2099-01-02", checkingLedgerAnchorNote("2099-02")).lastInsertRowid as number;
 

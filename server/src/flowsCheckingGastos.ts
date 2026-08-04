@@ -7,6 +7,7 @@ import {
   parseLegacyCheckingGastosPurchaseKey,
 } from "./checkingGastosCategoryPersist.js";
 import { isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { db } from "./db.js";
 import {
   getCcExpenseCategoryBySlug,
@@ -95,16 +96,24 @@ export function checkingGastosMovementBelongs(movementId: number): {
   const checkingIds = new Set(listMovementBalanceCashAccountIds());
   if (checkingIds.size === 0) return { ok: false };
 
-  const row = db
+  const rawRow = db
     .prepare(
-      `SELECT account_id, occurred_on, amount_clp, note
+      `SELECT account_id, occurred_on, amount, currency, counter_amount, counter_currency, note
        FROM movements
        WHERE id = ?`
     )
     .get(movementId) as
-    | { account_id: number; occurred_on: string; amount_clp: number; note: string | null }
+    | (MovementAmountFields & { account_id: number; occurred_on: string; note: string | null })
     | undefined;
 
+  const row = rawRow
+    ? {
+        account_id: rawRow.account_id,
+        occurred_on: rawRow.occurred_on,
+        amount_clp: movementClpLegOrZero(rawRow),
+        note: rawRow.note,
+      }
+    : undefined;
   if (!row || !checkingIds.has(row.account_id) || row.amount_clp >= 0) {
     return { ok: false };
   }

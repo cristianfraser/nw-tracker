@@ -101,13 +101,13 @@ type EligibleLegRow = {
 function loadEligibleLegs(): EligibleLegRow[] {
   return db
     .prepare(
-      `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount_clp, m.units_delta, m.note
+      `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
        FROM movements m
        JOIN accounts a ON a.id = m.account_id
        WHERE m.account_id IS NOT NULL
-         AND m.amount_clp != 0
+         AND m.currency = 'clp'
+         AND m.amount != 0
          AND m.flow_kind IS NULL
-         AND m.amount_usd IS NULL
          AND (m.note IS NULL OR (
                m.note NOT LIKE 'import:cartola|anchor|%'
            AND m.note NOT LIKE 'import:cartola|opening|%'
@@ -248,10 +248,10 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
     byDeposit.set(r.deposit_movement_id, (byDeposit.get(r.deposit_movement_id) ?? 0) + 1);
   }
   const depositStmt = db.prepare(
-    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount_clp, m.units_delta, m.note
+    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
      FROM movements m JOIN accounts a ON a.id = m.account_id
      WHERE m.id = ? AND m.account_id IS NOT NULL
-       AND m.flow_kind IS NULL AND m.amount_usd IS NULL AND m.amount_clp > 0
+       AND m.flow_kind IS NULL AND m.currency = 'clp' AND m.amount > 0
        AND (m.note IS NULL OR (
              m.note NOT LIKE 'import:buda|%'
          AND m.note NOT LIKE 'buda-abono|%'
@@ -259,9 +259,9 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
        AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)`
   );
   const outMetaStmt = db.prepare(
-    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount_clp, m.units_delta, m.note
+    `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
      FROM movements m JOIN accounts a ON a.id = m.account_id
-     WHERE m.id = ? AND m.flow_kind IS NULL AND m.amount_usd IS NULL AND m.amount_clp < 0`
+     WHERE m.id = ? AND m.flow_kind IS NULL AND m.currency = 'clp' AND m.amount < 0`
   );
   const pairs: LinkedLegPair[] = [];
   for (const r of rows) {
@@ -425,10 +425,10 @@ export function listRejectedMirrorPairs(): RejectedMirrorPair[] {
     .prepare(
       `SELECT r.out_movement_id, r.in_movement_id, r.created_at,
               mo.account_id AS out_account_id, ao.name AS out_account_name,
-              mo.occurred_on AS out_occurred_on, mo.amount_clp AS out_amount_clp,
+              mo.occurred_on AS out_occurred_on, mo.amount AS out_amount_clp,
               mo.units_delta AS out_units_delta, mo.note AS out_note,
               mi.account_id AS in_account_id, ai.name AS in_account_name,
-              mi.occurred_on AS in_occurred_on, mi.amount_clp AS in_amount_clp,
+              mi.occurred_on AS in_occurred_on, mi.amount AS in_amount_clp,
               mi.units_delta AS in_units_delta, mi.note AS in_note
        FROM movement_mirror_pair_rejections r
        JOIN movements mo ON mo.id = r.out_movement_id

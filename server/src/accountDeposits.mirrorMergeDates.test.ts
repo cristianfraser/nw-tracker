@@ -37,8 +37,8 @@ function insertTransfer(fromId: number, toId: number, amount: number, ymd: strin
   return Number(
     db
       .prepare(
-        `INSERT INTO movements (from_account_id, to_account_id, amount_clp, occurred_on, note)
-         VALUES (?,?,?,?,?)`
+        `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note)
+         VALUES (?,?,?,'clp',?,?)`
       )
       .run(fromId, toId, amount, ymd, `${PREFIX}|transfer`).lastInsertRowid
   );

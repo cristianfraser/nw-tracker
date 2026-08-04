@@ -32,8 +32,8 @@ describe("CLP-quoted equity MTM (.SN)", () => {
     const movId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta)
-           VALUES (?, 2_966_600, '2026-01-15', 'vitest-clp-equity-buy', 'stock_buy', 2282)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+           VALUES (?, 2_966_600, 'clp', '2026-01-15', 'vitest-clp-equity-buy', 'stock_buy', 2282)`
         )
         .run(accountId).lastInsertRowid
     );
@@ -85,8 +85,8 @@ describe("CLP-quoted equity MTM (.SN)", () => {
     const movId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta)
-           VALUES (?, 2_985_000, '2099-07-03', 'vitest-clp-display-buy', 'stock_buy', 2282)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+           VALUES (?, 2_985_000, 'clp', '2099-07-03', 'vitest-clp-display-buy', 'stock_buy', 2282)`
         )
         .run(accountId).lastInsertRowid
     );

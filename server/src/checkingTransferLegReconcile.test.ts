@@ -34,8 +34,8 @@ describe("checking import dedup against manual internal transfer legs", () => {
     //   brokerage → checking  +6,000,000 (abono)
     //   checking  → brokerage −5,000,000 (cargo)
     const insT = db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note)
-       VALUES (NULL, ?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+       VALUES (NULL, ?, ?, ?, 'clp', ?, ?)`
     );
     insT.run(brokerageId, checkingId, 6_000_000, DATE, NOTE);
     insT.run(checkingId, brokerageId, 5_000_000, DATE, NOTE);
@@ -65,8 +65,8 @@ describe("checking import dedup against manual internal transfer legs", () => {
     const FRIDAY = "2026-07-03";
     const MONDAY = "2026-07-06"; // priorChileBusinessDay(Mon) = Fri (Sat/Sun between)
     db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note)
-       VALUES (NULL, ?, ?, 3333333, ?, ?)`
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+       VALUES (NULL, ?, ?, 3333333, 'clp', ?, ?)`
     ).run(brokerageId, checkingId, FRIDAY, NOTE); // brokerage → checking, +3,333,333 abono
 
     // Bank posts it on Monday; the Friday leg must still be found within the window.
@@ -130,7 +130,7 @@ describe("reverse dedup: transfer created after the bank row was imported", () =
     const bankId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, 6000000, '2026-07-06', ?)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 6000000, 'clp', '2026-07-06', ?)`
         )
         .run(checkingId, "import:cartola-partial|2026-07-06|6000000|TRASPASO").lastInsertRowid
     );
@@ -145,7 +145,7 @@ describe("reverse dedup: transfer created after the bank row was imported", () =
     if (!checkingId || !brokerageId) return;
     const bankId = Number(
       db
-        .prepare(`INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, 1234567, '2026-07-15', ?)`)
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 1234567, 'clp', '2026-07-15', ?)`)
         .run(checkingId, "import:cartola-partial|2026-07-15|1234567|OTRO").lastInsertRowid
     );
     const res = supersedeImportedCheckingRowsForTransfer(brokerageId, checkingId, 1_234_567, "2026-07-03");

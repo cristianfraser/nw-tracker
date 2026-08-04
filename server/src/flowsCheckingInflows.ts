@@ -1,6 +1,7 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import { db } from "./db.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
   checkingCreditMatchesAfpRetiroReturn,
@@ -103,10 +104,10 @@ type CheckingCartolaCreditWithId = {
 function loadCheckingCartolaCreditsWithId(accountId: number): CheckingCartolaCreditWithId[] {
   return db
     .prepare(
-      `SELECT id AS movement_id, account_id, occurred_on, amount_clp, note
+      `SELECT id AS movement_id, account_id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
        FROM movements
        WHERE account_id = ?
-         AND amount_clp > 0
+         AND ${MOVEMENT_CLP_LEG_SQL} > 0
          AND note LIKE 'import:cartola|%'
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`

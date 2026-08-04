@@ -36,8 +36,8 @@ describe("shouldRecordFintualCertFundUnit", () => {
     const r = ins.run(bucket!.id, notes, notes);
     const accountId = Number(r.lastInsertRowid);
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, 1000, '2025-01-10', 'vitest', 10)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, 1000, 'clp', '2025-01-10', 'vitest', 10)`
     ).run(accountId);
     upsertFundUnitSpotPreservingHistory({
       seriesKey: "fintual_cert_risky_norris",

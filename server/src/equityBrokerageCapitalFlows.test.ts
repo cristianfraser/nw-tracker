@@ -12,6 +12,7 @@ import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapital
 import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
+import { MOVEMENT_USD_LEG_SQL } from "./movementAmounts.js";
 
 const FIXTURE_USD = "vitest-equity-cap-usd";
 const FIXTURE_CLP = "vitest-equity-cap-clp";
@@ -67,9 +68,9 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (
-             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-             units_delta, flow_kind, amount_usd, ticker
-           ) VALUES (NULL, ?, ?, 0, '2026-05-28', ?, 1.5, 'stock_buy', 100, 'VITEST')`
+             account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
+             units_delta, flow_kind, ticker
+           ) VALUES (NULL, ?, ?, 100, 'usd', '2026-05-28', ?, 1.5, 'stock_buy', 'VITEST')`
         )
         .run(usdId, stockId, FIXTURE_NOTE).lastInsertRowid
     );
@@ -108,8 +109,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (
-             account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker
-           ) VALUES (?, 0, '2026-06-16', ?, 2, 'stock_buy', 50, 'VITEST')`
+             account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker
+           ) VALUES (?, 50, 'usd', '2026-06-16', ?, 2, 'stock_buy', 'VITEST')`
         )
         .run(stockId, `${FIXTURE_NOTE}|account-id-buy`).lastInsertRowid
     );
@@ -130,9 +131,9 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (
-             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-             units_delta, flow_kind, amount_usd, ticker
-           ) VALUES (NULL, ?, ?, 0, '2026-03-26', ?, NULL, 'dividend_payout', 1.7, 'VITEST')`
+             account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
+             units_delta, flow_kind, ticker
+           ) VALUES (NULL, ?, ?, 1.7, 'usd', '2026-03-26', ?, NULL, 'dividend_payout', 'VITEST')`
         )
         .run(stockId, usdId, `${FIXTURE_NOTE}|payout-div`).lastInsertRowid
     );
@@ -153,8 +154,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const divId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd, units_delta)
-           VALUES (?, 0, '2026-02-05', ?, 'dividend_usd', 1.7, 0.01)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+           VALUES (?, 1.7, 'usd', '2026-02-05', ?, 'dividend_usd', 0.01)`
         )
         .run(stockId, `${FIXTURE_NOTE}|retired-drip`).lastInsertRowid
     );
@@ -165,13 +166,17 @@ describe("equityBrokerageCapitalFlows fixture", () => {
   });
 
   function insertWire(clp: number, usd: number, note: string): number {
+    // Legacy shape was a single-leg compra row on the USD account carrying both legs; the
+    // new schema CHECK forbids the counter pair on single-leg rows (and migration 169
+    // asserted no such row exists), so the wire is written as a cross-currency transfer
+    // arriving at the USD account — the same evidence `sameDayWireLegs` reads either way.
     return Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
-           VALUES (?, ?, '2026-03-26', ?, 'compra_usd_venta_clp', ?)`
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
+           VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, 'compra_usd_venta_clp')`
         )
-        .run(usdId, clp, note, usd).lastInsertRowid
+        .run(clpId, usdId, clp, usd, note).lastInsertRowid
     );
   }
 
@@ -180,11 +185,11 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (
-             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-             units_delta, flow_kind, amount_usd, ticker
-           ) VALUES (NULL, ?, ?, 0, '2026-03-26', ?, ?, 'stock_buy', ?, 'VITEST')`
+             account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
+             units_delta, flow_kind, ticker
+           ) VALUES (NULL, ?, ?, ?, 'usd', '2026-03-26', ?, ?, 'stock_buy', 'VITEST')`
         )
-        .run(usdId, stockId, note, units, usd).lastInsertRowid
+        .run(usdId, stockId, usd, note, units).lastInsertRowid
     );
   }
 
@@ -235,11 +240,11 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (
-             account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-             units_delta, flow_kind, amount_usd, ticker
-           ) VALUES (NULL, ?, ?, ?, '2026-03-26', ?, NULL, 'compra_usd_venta_clp', ?, NULL)`
+             account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note,
+             units_delta, flow_kind, ticker
+           ) VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, NULL, 'compra_usd_venta_clp', NULL)`
         )
-        .run(clpId, usdId, clp, note, usd).lastInsertRowid
+        .run(clpId, usdId, clp, usd, note).lastInsertRowid
     );
   }
 
@@ -322,7 +327,7 @@ describe("equityBrokerageCapitalFlows dev data", () => {
 
     const mayBuy = db
       .prepare(
-        `SELECT occurred_on, amount_usd FROM movements
+        `SELECT occurred_on, ${MOVEMENT_USD_LEG_SQL} AS amount_usd FROM movements
          WHERE to_account_id = ? AND flow_kind = 'stock_buy'
            AND occurred_on LIKE '2026-05%'
          LIMIT 1`

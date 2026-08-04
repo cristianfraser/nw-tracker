@@ -21,6 +21,7 @@ import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { CC_PAYMENT_DESC_RE } from "./checkingDescriptionPredicates.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
+import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 
 const MATCH_WINDOW_DAYS = 4;
@@ -171,21 +172,22 @@ function convertedEvidenceRefs(): { lineIds: Set<number>; statementIds: Set<numb
 export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const movements = db
     .prepare(
-      `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount_clp, m.note
+      `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on,
+              m.amount, m.currency, m.counter_amount, m.counter_currency, m.note
        FROM movements m
        JOIN accounts a ON a.id = m.account_id
        WHERE m.account_id IS NOT NULL AND m.from_account_id IS NULL AND m.to_account_id IS NULL
-         AND m.flow_kind IS NULL AND m.amount_clp < 0
+         AND m.flow_kind IS NULL
+         AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) < 0
        ORDER BY m.occurred_on, m.id`
     )
-    .all() as {
+    .all() as ({
     id: number;
     account_id: number;
     account_name: string;
     occurred_on: string;
-    amount_clp: number;
     note: string | null;
-  }[];
+  } & MovementAmountFields)[];
   const outs = movements.filter(
     (m) =>
       accountKindSlugForAccountId(m.account_id) === "cuenta_corriente" &&
@@ -211,7 +213,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const picked: { out: (typeof outs)[number]; ev: CcPaymentEvidence; skew: number }[] = [];
   const ambiguous = new Set<number>();
   for (const out of outs) {
-    const amount = Math.round(Math.abs(out.amount_clp));
+    const amount = Math.round(Math.abs(movementClpLegOrZero(out)));
     const near = (byAmount.get(amount) ?? [])
       .map((e) => ({ e, d: Math.abs(dayDiff(out.occurred_on, e.pago_iso)) }))
       .filter((x) => x.d <= MATCH_WINDOW_DAYS)
@@ -239,7 +241,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
         account_id: p.out.account_id,
         account_name: p.out.account_name,
         occurred_on: p.out.occurred_on,
-        amount_clp: p.out.amount_clp,
+        amount_clp: movementClpLegOrZero(p.out),
         note: p.out.note,
       },
       evidence: p.ev,
@@ -268,8 +270,8 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
 } {
   if (refs.length === 0) return { converted: [] };
   const insTransfer = db.prepare(
-    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, flow_kind)
-     VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
+     VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
   );
   const insMerge = db.prepare(
     `INSERT INTO movement_mirror_merges (

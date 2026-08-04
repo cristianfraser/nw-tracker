@@ -124,8 +124,8 @@ describe("fintualCertV2Reconcile", () => {
       accountId = Number(r.lastInsertRowid);
     }
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, 1000, ?, 'vitest', 10)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, 1000, 'clp', ?, 'vitest', 10)`
     ).run(accountId, day);
     db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day = ?`).run(seriesKey, day);
     upsertFundUnitSpotPreservingHistory({

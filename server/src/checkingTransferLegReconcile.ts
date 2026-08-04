@@ -16,6 +16,12 @@
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { priorChileBusinessDayYmd } from "./marketHolidays.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 import { bucketSlugForAccountId } from "./accountBucket.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
@@ -25,12 +31,11 @@ type TransferLegRow = {
   id: number;
   from_account_id: number | null;
   to_account_id: number | null;
-  amount_clp: number;
-};
+} & MovementAmountFields;
 
 /** Signed CLP impact of an internal transfer leg on `accountId` (to = +, from = −). */
 function signedTransferLegDelta(row: TransferLegRow, accountId: number): number {
-  const mag = Math.abs(row.amount_clp);
+  const mag = Math.abs(movementClpLegOrZero(row));
   if (row.to_account_id === accountId) return mag;
   if (row.from_account_id === accountId) return -mag;
   return 0;
@@ -54,7 +59,7 @@ export function findMatchingInternalTransferLegId(
   const windowStart = priorChileBusinessDayYmd(bankDateYmd) ?? bankDateYmd;
   const rows = dbHandle
     .prepare(
-      `SELECT id, from_account_id, to_account_id, amount_clp
+      `SELECT id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}
        FROM movements
        WHERE account_id IS NULL
          AND (from_account_id = ? OR to_account_id = ?)
@@ -111,7 +116,7 @@ export function supersedeImportedCheckingRowsForTransfer(
       .prepare(
         `SELECT id, occurred_on FROM movements
          WHERE account_id = ?
-           AND ABS(amount_clp - ?) < 0.5
+           AND ABS(${MOVEMENT_CLP_LEG_SQL} - ?) < 0.5
            AND occurred_on >= ?
            AND occurred_on <= date(?, '+10 days')
            AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%')

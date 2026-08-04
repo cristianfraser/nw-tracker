@@ -22,6 +22,7 @@ import { equityQuoteCurrency } from "./equityQuote.js";
 import { isClpCashAccount } from "./clpCashAccounts.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
 import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
+import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
 export type AccountRow = {
   bucket_slug: string;
   group_slug: string;
@@ -117,23 +118,27 @@ export type MovementCreateValidation =
   | {
       ok: true;
       mode: "standard";
-      amount_clp: number;
+      amount: number;
+      currency: MovementCurrency;
       occurred_on: string;
       note: string | null;
       units_delta: number | null;
       flow_kind: null;
-      amount_usd: null;
+      counter_amount: null;
+      counter_currency: null;
       ticker: null;
     }
   | {
       ok: true;
       mode: "brokerage";
-      amount_clp: number;
+      amount: number;
+      currency: MovementCurrency;
       occurred_on: string;
       note: string | null;
       units_delta: number | null;
       flow_kind: string;
-      amount_usd: number | null;
+      counter_amount: number | null;
+      counter_currency: MovementCurrency | null;
       ticker: string | null;
     }
   | {
@@ -141,15 +146,66 @@ export type MovementCreateValidation =
       mode: "transfer";
       from_account_id: number;
       to_account_id: number;
-      amount_clp: number;
+      amount: number;
+      currency: MovementCurrency;
+      counter_amount: number | null;
+      counter_currency: MovementCurrency | null;
       occurred_on: string;
       note: string | null;
       units_delta: number | null;
       flow_kind: string | null;
-      amount_usd: number | null;
       ticker: string | null;
     }
   | { ok: false; status: number; error: string };
+
+/**
+ * Native amount fields on create requests: `amount` + `currency`, plus the optional
+ * `counter_amount`/`counter_currency` to-leg on cross-currency conversions. Numbers are
+ * coerced like the legacy fields were; a malformed currency is a 400, never a guess.
+ */
+type ParsedAmountFields = {
+  amount: number | null;
+  currency: MovementCurrency | null;
+  counter_amount: number | null;
+  counter_currency: MovementCurrency | null;
+};
+
+function parseAmountFields(body: Record<string, unknown>): ParsedAmountFields | { error: string } {
+  const num = (v: unknown): number | null =>
+    v === undefined || v === null ? null : typeof v === "number" ? v : Number(v);
+  const amount = num(body.amount);
+  const counter_amount = num(body.counter_amount);
+  const currencyRaw = body.currency ?? null;
+  const counterCurrencyRaw = body.counter_currency ?? null;
+  if (currencyRaw != null && !isMovementCurrency(currencyRaw)) {
+    return { error: `currency must be one of clp/usd/eur.` };
+  }
+  if (counterCurrencyRaw != null && !isMovementCurrency(counterCurrencyRaw)) {
+    return { error: `counter_currency must be one of clp/usd/eur.` };
+  }
+  if (currencyRaw === "eur" || counterCurrencyRaw === "eur") {
+    return { error: "eur movements are not supported yet." };
+  }
+  if (amount != null && currencyRaw == null) {
+    return { error: "currency is required when amount is set." };
+  }
+  if ((counter_amount != null) !== (counterCurrencyRaw != null)) {
+    return { error: "counter_amount and counter_currency must be set together." };
+  }
+  return {
+    amount,
+    currency: (currencyRaw as MovementCurrency | null) ?? null,
+    counter_amount,
+    counter_currency: (counterCurrencyRaw as MovementCurrency | null) ?? null,
+  };
+}
+
+/** The request's leg in `currency`, or null — mirrors movementAmounts.legOf for parsed input. */
+function parsedLeg(fields: ParsedAmountFields, currency: MovementCurrency): number | null {
+  if (fields.currency === currency) return fields.amount;
+  if (fields.counter_currency === currency) return fields.counter_amount;
+  return null;
+}
 
 /** Quote currency of the stock leg on a trade transfer (buy: to_account, sell/dividend: from_account). */
 function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" {
@@ -160,29 +216,37 @@ function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" {
   return equityQuoteCurrency(ticker);
 }
 
+function transferInputLeg(input: TransferCreateInput, currency: MovementCurrency): number | null {
+  if (input.currency === currency) return input.amount;
+  if (input.counter_currency === currency) return input.counter_amount;
+  return null;
+}
+
 function validateBrokerageTransferEndpoints(
   input: TransferCreateInput
 ): MovementCreateValidation | null {
   const fk = input.flow_kind;
+  const inputClpLeg = transferInputLeg(input, "clp");
+  const inputUsdLeg = transferInputLeg(input, "usd");
   const tradeQuoteCurrency =
     fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout"
       ? stockTradeQuoteCurrency(input)
       : null;
-  // Fail fast on stray fields that don't belong to the flow kind (e.g. a stale value left in a
+  // Fail fast on a leg that doesn't belong to the flow kind (e.g. a stale value left in a
   // hidden input on the client): the amount must be in the stock's quote currency, never both.
   if (fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout") {
-    if (tradeQuoteCurrency === "usd" && input.amount_clp != null && input.amount_clp !== 0) {
+    if (tradeQuoteCurrency === "usd" && inputClpLeg != null && inputClpLeg !== 0) {
       return {
         ok: false,
         status: 400,
-        error: `amount_clp is not allowed on ${fk} for a USD-quoted stock (a CLP wire is a separate compra_usd_venta_clp movement).`,
+        error: `a CLP amount is not allowed on ${fk} for a USD-quoted stock (a CLP wire is a separate compra_usd_venta_clp movement).`,
       };
     }
-    if (tradeQuoteCurrency === "clp" && input.amount_usd != null && input.amount_usd !== 0) {
+    if (tradeQuoteCurrency === "clp" && inputUsdLeg != null && inputUsdLeg !== 0) {
       return {
         ok: false,
         status: 400,
-        error: `amount_usd is not allowed on ${fk} for a CLP-quoted stock (trade settles in CLP).`,
+        error: `a USD amount is not allowed on ${fk} for a CLP-quoted stock (trade settles in CLP).`,
       };
     }
   }
@@ -210,11 +274,19 @@ function validateBrokerageTransferEndpoints(
         error: "compra_usd_venta_clp from_account must be the CLP source account, not USD cash.",
       };
     }
-    if (input.amount_clp == null || input.amount_clp === 0) {
-      return { ok: false, status: 400, error: "amount_clp (CLP spent) is required for compra_usd_venta_clp." };
+    if (input.currency !== "clp" || input.amount === 0) {
+      return {
+        ok: false,
+        status: 400,
+        error: "compra_usd_venta_clp requires amount in CLP (the CLP spent, the from-leg).",
+      };
     }
-    if (input.amount_usd == null || input.amount_usd === 0) {
-      return { ok: false, status: 400, error: "amount_usd (USD bought) is required for compra_usd_venta_clp." };
+    if (input.counter_currency !== "usd" || input.counter_amount == null || input.counter_amount === 0) {
+      return {
+        ok: false,
+        status: 400,
+        error: "compra_usd_venta_clp requires counter_amount in USD (the USD bought, the to-leg).",
+      };
     }
     return null;
   }
@@ -228,11 +300,11 @@ function validateBrokerageTransferEndpoints(
             "stock_buy for a CLP-quoted stock must transfer from CLP cash (from_account) to the stock account (to_account).",
         };
       }
-      if (input.amount_clp == null || input.amount_clp === 0) {
+      if (inputClpLeg == null || inputClpLeg === 0) {
         return {
           ok: false,
           status: 400,
-          error: "amount_clp (CLP spent) is required for a CLP-quoted stock_buy.",
+          error: "a CLP amount (CLP spent) is required for a CLP-quoted stock_buy.",
         };
       }
     } else if (!isUsdCashAccount(input.from_account_id)) {
@@ -260,11 +332,11 @@ function validateBrokerageTransferEndpoints(
           error: "stock_sell for a CLP-quoted stock must transfer proceeds to CLP cash (to_account).",
         };
       }
-      if (input.amount_clp == null || input.amount_clp === 0) {
+      if (inputClpLeg == null || inputClpLeg === 0) {
         return {
           ok: false,
           status: 400,
-          error: "amount_clp (CLP proceeds) is required for a CLP-quoted stock_sell.",
+          error: "a CLP amount (CLP proceeds) is required for a CLP-quoted stock_sell.",
         };
       }
     } else if (!isUsdCashAccount(input.to_account_id)) {
@@ -307,8 +379,8 @@ function validateBrokerageTransferEndpoints(
         error: "dividend_payout from_account must be an equity brokerage account (the paying stock).",
       };
     }
-    if (input.amount_usd == null || input.amount_usd === 0) {
-      return { ok: false, status: 400, error: "amount_usd is required for dividend_payout." };
+    if (inputUsdLeg == null || inputUsdLeg === 0) {
+      return { ok: false, status: 400, error: "a USD amount is required for dividend_payout." };
     }
   }
   return null;
@@ -351,19 +423,23 @@ function validateBrokerageMovementCreate(
       error: "dividend_payout requires counterpart_account_id (stock → USD cash transfer).",
     };
   }
+  if (flow_kind === "compra_usd_venta_clp") {
+    // A cross-currency conversion always moves money between two accounts; the single-leg
+    // form cannot carry the counter leg (schema CHECK) and no such rows exist.
+    return {
+      ok: false,
+      status: 400,
+      error: "compra_usd_venta_clp requires counterpart_account_id (CLP cash → USD cash transfer).",
+    };
+  }
 
-  const amount_clp =
-    body.amount_clp === undefined || body.amount_clp === null
-      ? null
-      : typeof body.amount_clp === "number"
-        ? body.amount_clp
-        : Number(body.amount_clp);
-  const amount_usd =
-    body.amount_usd === undefined || body.amount_usd === null
-      ? null
-      : typeof body.amount_usd === "number"
-        ? body.amount_usd
-        : Number(body.amount_usd);
+  const parsed = parseAmountFields(body);
+  if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
+  if (parsed.counter_amount != null) {
+    return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
+  }
+  const amount_clp = parsedLeg(parsed, "clp");
+  const amount_usd = parsedLeg(parsed, "usd");
 
   const unitsRawEarly = parseUnitsDeltaField(body);
   const unitsProvidedEarly = unitsRawEarly !== undefined && unitsRawEarly !== null;
@@ -372,9 +448,9 @@ function validateBrokerageMovementCreate(
   const legacySharePurchaseCompraUsd =
     flow_kind === "compra_usd" && unitsProvidedEarly && !unitsValueInvalid(unitsRawEarly!);
 
-  if ((amount_clp == null || amount_clp === 0) && (amount_usd == null || amount_usd === 0)) {
+  if (parsed.amount == null || parsed.amount === 0) {
     if (!sharePurchaseStockBuy && !legacySharePurchaseCompraUsd) {
-      return { ok: false, status: 400, error: "amount_clp or amount_usd is required." };
+      return { ok: false, status: 400, error: "amount (with currency) is required." };
     }
   }
 
@@ -411,8 +487,9 @@ function validateBrokerageMovementCreate(
       mode: "brokerage",
       occurred_on,
       flow_kind,
-      amount_clp: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, amount_usd),
-      amount_usd,
+      ...brokerageNativeAmount(flow_kind, parsed, amount_clp, amount_usd),
+      counter_amount: null,
+      counter_currency: null,
       ticker,
       note,
       units_delta: unitsRaw,
@@ -432,12 +509,31 @@ function validateBrokerageMovementCreate(
     mode: "brokerage",
     occurred_on,
     flow_kind,
-    amount_clp: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, amount_usd),
-    amount_usd,
+    ...brokerageNativeAmount(flow_kind, parsed, amount_clp, amount_usd),
+    counter_amount: null,
+    counter_currency: null,
     ticker,
     note,
     units_delta: unitsProvided && unitsRaw !== null ? unitsRaw : null,
   };
+}
+
+/**
+ * Native single-leg amount for a brokerage/cash flow row. USD rows store the request
+ * amount as passed; CLP rows keep the legacy sign convention baked at create
+ * (deposit +, withdrawal −, conversion −). A row with no amount (share-only purchase)
+ * stores a 0-CLP amount, matching the legacy amount_clp NOT NULL DEFAULT 0.
+ */
+function brokerageNativeAmount(
+  flow_kind: string,
+  parsed: ParsedAmountFields,
+  clpLeg: number | null,
+  usdLeg: number | null
+): { amount: number; currency: MovementCurrency } {
+  if (parsed.currency === "usd" && parsed.amount != null) {
+    return { amount: parsed.amount, currency: "usd" };
+  }
+  return { amount: signedAmountClpForBrokerageFlow(flow_kind, clpLeg, usdLeg), currency: "clp" };
 }
 
 function validateUsdCashMovementCreate(
@@ -456,43 +552,40 @@ function validateUsdCashMovementCreate(
   if (!flow_kind || !(schema.brokerage_flow_kinds as readonly string[]).includes(flow_kind)) {
     return { ok: false, status: 400, error: "occurred_on and valid flow_kind are required." };
   }
-  const amount_clp =
-    body.amount_clp === undefined || body.amount_clp === null
-      ? null
-      : typeof body.amount_clp === "number"
-        ? body.amount_clp
-        : Number(body.amount_clp);
-  const amount_usd =
-    body.amount_usd === undefined || body.amount_usd === null
-      ? null
-      : typeof body.amount_usd === "number"
-        ? body.amount_usd
-        : Number(body.amount_usd);
+  const parsed = parseAmountFields(body);
+  if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
+  if (parsed.counter_amount != null) {
+    return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
+  }
+  const amount_clp = parsedLeg(parsed, "clp");
+  const amount_usd = parsedLeg(parsed, "usd");
   const unitsRaw = parseUnitsDeltaField(body);
   if (unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw)) {
     return { ok: false, status: 400, error: "units_delta is not supported on USD cash accounts." };
   }
+  if (flow_kind === "compra_usd_venta_clp") {
+    // A conversion always moves money between two accounts; the single-leg form cannot
+    // carry the counter leg (schema CHECK) and no such rows exist.
+    return {
+      ok: false,
+      status: 400,
+      error: "compra_usd_venta_clp requires counterpart_account_id (CLP cash → USD cash transfer).",
+    };
+  }
   if (flow_kind === "withdrawal_usd" && (amount_usd == null || amount_usd === 0)) {
-    return { ok: false, status: 400, error: "amount_usd is required for withdrawal_usd." };
+    return { ok: false, status: 400, error: "a USD amount is required for withdrawal_usd." };
   }
   if (flow_kind === "savings_earnings" && (amount_usd == null || amount_usd === 0)) {
-    return { ok: false, status: 400, error: "amount_usd is required for savings_earnings (interest received in USD)." };
+    return { ok: false, status: 400, error: "a USD amount is required for savings_earnings (interest received in USD)." };
   }
-  if (flow_kind === "compra_usd_venta_clp") {
-    if (amount_usd == null || amount_usd === 0) {
-      return { ok: false, status: 400, error: "amount_usd is required for compra_usd_venta_clp." };
-    }
-    if (amount_clp == null || amount_clp === 0) {
-      return { ok: false, status: 400, error: "amount_clp is required for compra_usd_venta_clp." };
-    }
-  } else if (flow_kind === "compra_usd" && (amount_usd == null || amount_usd === 0)) {
-    return { ok: false, status: 400, error: "amount_usd is required for compra_usd." };
+  if (flow_kind === "compra_usd" && (amount_usd == null || amount_usd === 0)) {
+    return { ok: false, status: 400, error: "a USD amount is required for compra_usd." };
   }
   if (
     (flow_kind === "deposit_clp" || flow_kind === "withdrawal_clp") &&
     (amount_clp == null || amount_clp === 0)
   ) {
-    return { ok: false, status: 400, error: "amount_clp is required." };
+    return { ok: false, status: 400, error: "a CLP amount is required." };
   }
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
   return {
@@ -500,8 +593,11 @@ function validateUsdCashMovementCreate(
     mode: "brokerage",
     occurred_on,
     flow_kind,
-    amount_clp: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, amount_usd),
-    amount_usd: amount_usd != null ? Math.abs(amount_usd) : null,
+    ...(parsed.currency === "usd" && parsed.amount != null
+      ? { amount: Math.abs(parsed.amount), currency: "usd" as const }
+      : { amount: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, amount_usd), currency: "clp" as const }),
+    counter_amount: null,
+    counter_currency: null,
     ticker: null,
     note,
     units_delta: null,
@@ -524,18 +620,21 @@ function validateClpCashMovementCreate(
   if (!flow_kind || !(schema.brokerage_flow_kinds as readonly string[]).includes(flow_kind)) {
     return { ok: false, status: 400, error: "occurred_on and valid flow_kind are required." };
   }
-  const amount_clp =
-    body.amount_clp === undefined || body.amount_clp === null
-      ? null
-      : typeof body.amount_clp === "number"
-        ? body.amount_clp
-        : Number(body.amount_clp);
+  const parsed = parseAmountFields(body);
+  if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
+  if (parsed.counter_amount != null) {
+    return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
+  }
+  if (parsed.currency != null && parsed.currency !== "clp") {
+    return { ok: false, status: 400, error: "CLP cash movements must be denominated in CLP." };
+  }
+  const amount_clp = parsedLeg(parsed, "clp");
   const unitsRaw = parseUnitsDeltaField(body);
   if (unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw)) {
     return { ok: false, status: 400, error: "units_delta is not supported on CLP cash accounts." };
   }
   if (amount_clp == null || amount_clp === 0 || !Number.isFinite(amount_clp)) {
-    return { ok: false, status: 400, error: "amount_clp is required." };
+    return { ok: false, status: 400, error: "a CLP amount is required." };
   }
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
   return {
@@ -543,8 +642,10 @@ function validateClpCashMovementCreate(
     mode: "brokerage",
     occurred_on,
     flow_kind,
-    amount_clp: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, null),
-    amount_usd: null,
+    amount: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, null),
+    currency: "clp",
+    counter_amount: null,
+    counter_currency: null,
     ticker: null,
     note,
     units_delta: null,
@@ -577,18 +678,9 @@ function validateTransferMovementCreate(
   }
 
   const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
-  const amount_clp_raw =
-    body.amount_clp === undefined || body.amount_clp === null
-      ? 0
-      : typeof body.amount_clp === "number"
-        ? body.amount_clp
-        : Number(body.amount_clp);
-  const amount_usd_raw =
-    body.amount_usd === undefined || body.amount_usd === null
-      ? null
-      : typeof body.amount_usd === "number"
-        ? body.amount_usd
-        : Number(body.amount_usd);
+  const parsed = parseAmountFields(body);
+  if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
+  const clpLegRaw = parsedLeg(parsed, "clp");
   const unitsRaw = parseUnitsDeltaField(body);
   const flow_kind_raw = typeof body.flow_kind === "string" && body.flow_kind.trim() ? body.flow_kind.trim() : null;
   const unitsProvided = unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw);
@@ -606,14 +698,14 @@ function validateTransferMovementCreate(
         error: `units_delta is required for this account (${currentSchema!.unit_label}).`,
       };
     }
-    if (!Number.isFinite(amount_clp_raw) || amount_clp_raw === 0) {
-      return { ok: false, status: 400, error: "amount_clp is required." };
+    if (clpLegRaw == null || !Number.isFinite(clpLegRaw) || clpLegRaw === 0) {
+      return { ok: false, status: 400, error: "a CLP amount is required." };
     }
     try {
       assertManualUnitsClpReconcile({
         accountId: currentAccountId,
         ymd: occurred_on,
-        amountClpAbs: Math.abs(amount_clp_raw),
+        amountClpAbs: Math.abs(clpLegRaw),
         unitsAbs: Math.abs(unitsRaw!),
       });
     } catch (e) {
@@ -635,14 +727,20 @@ function validateTransferMovementCreate(
   }
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
 
+  // Transfers store positive amounts (direction lives in from/to); units-only transfers
+  // keep the legacy 0-CLP amount.
   const input: TransferCreateInput = {
     from_account_id: endpoints.from_account_id,
     to_account_id: endpoints.to_account_id,
     occurred_on,
     note,
-    amount_clp: Number.isFinite(amount_clp_raw) ? Math.abs(amount_clp_raw) : 0,
-    amount_usd:
-      amount_usd_raw != null && Number.isFinite(amount_usd_raw) ? Math.abs(amount_usd_raw) : null,
+    amount: parsed.amount != null && Number.isFinite(parsed.amount) ? Math.abs(parsed.amount) : 0,
+    currency: parsed.currency ?? "clp",
+    counter_amount:
+      parsed.counter_amount != null && Number.isFinite(parsed.counter_amount)
+        ? Math.abs(parsed.counter_amount)
+        : null,
+    counter_currency: parsed.counter_amount != null ? parsed.counter_currency : null,
     units_delta:
       unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw)
         ? isManualUnitsAccount
@@ -667,12 +765,14 @@ function validateTransferMovementCreate(
     mode: "transfer",
     from_account_id: input.from_account_id,
     to_account_id: input.to_account_id,
-    amount_clp: input.amount_clp,
+    amount: input.amount,
+    currency: input.currency,
+    counter_amount: input.counter_amount,
+    counter_currency: input.counter_currency,
     occurred_on: input.occurred_on,
     note: input.note,
     units_delta: input.units_delta,
     flow_kind: input.flow_kind,
-    amount_usd: input.amount_usd,
     ticker: input.ticker,
   };
 }
@@ -699,20 +799,23 @@ export function validateMovementCreate(
     return validateClpCashMovementCreate(account, body);
   }
 
-  const amount_clp = typeof body.amount_clp === "number" ? body.amount_clp : Number(body.amount_clp);
+  const parsed = parseAmountFields(body);
+  if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
+  if (parsed.counter_amount != null) {
+    return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
+  }
+  if (parsed.currency != null && parsed.currency !== "clp") {
+    return { ok: false, status: 400, error: "This account's movements must be denominated in CLP." };
+  }
+  const amount_clp = parsed.amount;
   const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
 
-  if (
-    body.amount_clp === undefined ||
-    body.amount_clp === null ||
-    !Number.isFinite(amount_clp) ||
-    amount_clp === 0
-  ) {
+  if (amount_clp == null || !Number.isFinite(amount_clp) || amount_clp === 0) {
     return {
       ok: false,
       status: 400,
-      error: "amount_clp must be a non-zero number (positive = deposit, negative = withdrawal).",
+      error: "amount must be a non-zero number (positive = deposit, negative = withdrawal).",
     };
   }
   if (!occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
@@ -741,12 +844,14 @@ export function validateMovementCreate(
     return {
       ok: true,
       mode: "standard",
-      amount_clp,
+      amount: amount_clp,
+      currency: "clp",
       occurred_on,
       note,
       units_delta: unitsRaw,
       flow_kind: null,
-      amount_usd: null,
+      counter_amount: null,
+      counter_currency: null,
       ticker: null,
     };
   }
@@ -762,12 +867,14 @@ export function validateMovementCreate(
   return {
     ok: true,
     mode: "standard",
-    amount_clp,
+    amount: amount_clp,
+    currency: "clp",
     occurred_on,
     note,
     units_delta: unitsProvided && unitsRaw !== null ? unitsRaw : null,
     flow_kind: null,
-    amount_usd: null,
+    counter_amount: null,
+    counter_currency: null,
     ticker: null,
   };
 }

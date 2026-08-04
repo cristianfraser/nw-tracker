@@ -64,8 +64,8 @@ beforeAll(() => {
       .run(leaf.id, importKey, importKey, TICKER).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta)
-     VALUES (?, 100000, '2026-02-02', 'vitest-mark-cache-buy', 'stock_buy', ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+     VALUES (?, 100000, 'clp', '2026-02-02', 'vitest-mark-cache-buy', 'stock_buy', ?)`
   ).run(accountId, UNITS);
 
   const insBar = db.prepare(

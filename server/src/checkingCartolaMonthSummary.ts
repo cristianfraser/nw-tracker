@@ -9,6 +9,11 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
+import {
   expandYearMonthsInclusive,
   isCartolaDesdeBoundaryPhantomMonth,
   monthEndUtcYmd,
@@ -48,15 +53,15 @@ function movementTotalsForCartolaMonth(
   const prefix = `import:cartola|${periodMonth}|%`;
   const rows = db
     .prepare(
-      `SELECT amount_clp FROM movements
+      `SELECT ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
        WHERE account_id = ? AND note LIKE ?`
     )
-    .all(accountId, prefix) as { amount_clp: number }[];
+    .all(accountId, prefix) as MovementAmountFields[];
 
   let deposits_clp = 0;
   let withdrawals_clp = 0;
   for (const r of rows) {
-    const a = Number(r.amount_clp);
+    const a = Number(movementClpLegOrZero(r));
     if (!Number.isFinite(a) || a === 0) continue;
     if (a > 0) deposits_clp += a;
     else withdrawals_clp += Math.abs(a);

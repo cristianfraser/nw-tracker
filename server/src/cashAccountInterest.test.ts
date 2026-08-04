@@ -16,18 +16,18 @@ const NOTE = "vitest-cash-interest";
 
 function insertAccountIdMovement(v: {
   account_id: number;
-  amount_clp: number;
-  amount_usd: number | null;
+  amount: number;
+  currency: "clp" | "usd";
   occurred_on: string;
   flow_kind: string;
 }): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, amount_usd)
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
          VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(v.account_id, v.amount_clp, v.occurred_on, NOTE, v.flow_kind, v.amount_usd)
+      .run(v.account_id, v.amount, v.currency, v.occurred_on, NOTE, v.flow_kind)
       .lastInsertRowid
   );
 }
@@ -69,12 +69,14 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     ]);
 
     // USD cash: buy 1000 USD of capital in May, earn 10 USD interest in June.
-    insertAccountIdMovement({ account_id: usdId, amount_clp: -900_000, amount_usd: 1000, occurred_on: "2026-05-15", flow_kind: "compra_usd_venta_clp" });
-    insertAccountIdMovement({ account_id: usdId, amount_clp: 0, amount_usd: 10, occurred_on: "2026-06-15", flow_kind: "savings_earnings" });
+    // Single-leg rows can't carry a counter pair (schema CHECK); the USD leg is the one this
+    // account's balance/deposited assertions read (deposited = balance − interest).
+    insertAccountIdMovement({ account_id: usdId, amount: 1000, currency: "usd", occurred_on: "2026-05-15", flow_kind: "compra_usd_venta_clp" });
+    insertAccountIdMovement({ account_id: usdId, amount: 10, currency: "usd", occurred_on: "2026-06-15", flow_kind: "savings_earnings" });
 
     // CLP cash: deposit 2,000,000 in May, earn 5,000 interest in June.
-    insertAccountIdMovement({ account_id: clpId, amount_clp: 2_000_000, amount_usd: null, occurred_on: "2026-05-15", flow_kind: "deposit_clp" });
-    insertAccountIdMovement({ account_id: clpId, amount_clp: 5_000, amount_usd: null, occurred_on: "2026-06-15", flow_kind: "savings_earnings" });
+    insertAccountIdMovement({ account_id: clpId, amount: 2_000_000, currency: "clp", occurred_on: "2026-05-15", flow_kind: "deposit_clp" });
+    insertAccountIdMovement({ account_id: clpId, amount: 5_000, currency: "clp", occurred_on: "2026-06-15", flow_kind: "savings_earnings" });
   });
 
   afterAll(() => {
@@ -83,19 +85,20 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
   });
 
-  it("validates savings_earnings on USD cash (amount_usd) and CLP cash (amount_clp)", () => {
+  it("validates savings_earnings on USD cash (USD amount) and CLP cash (CLP amount)", () => {
     if (!usdId || !clpId) return;
-    const vUsd = validateMovementCreate(usdRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings", amount_usd: 10 }, usdId);
+    const vUsd = validateMovementCreate(usdRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings", amount: 10, currency: "usd" }, usdId);
     expect(vUsd.ok).toBe(true);
     if (vUsd.ok) {
       expect(vUsd.flow_kind).toBe("savings_earnings");
-      expect(vUsd.amount_usd).toBe(10);
+      expect(vUsd.amount).toBe(10);
+      expect(vUsd.currency).toBe("usd");
     }
-    const vClp = validateMovementCreate(clpRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings", amount_clp: 5000 }, clpId);
+    const vClp = validateMovementCreate(clpRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings", amount: 5000, currency: "clp" }, clpId);
     expect(vClp.ok).toBe(true);
     if (vClp.ok) expect(vClp.flow_kind).toBe("savings_earnings");
 
-    // USD cash requires amount_usd for interest; CLP cash requires amount_clp.
+    // USD cash requires a USD amount for interest; CLP cash requires a CLP amount.
     expect(validateMovementCreate(usdRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings" }, usdId).ok).toBe(false);
     expect(validateMovementCreate(clpRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings" }, clpId).ok).toBe(false);
   });

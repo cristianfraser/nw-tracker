@@ -16,8 +16,8 @@ describe("AFP cuotas ledger", () => {
     const accountId = Number(insAcc.run(bucket!.id).lastInsertRowid);
 
     const insMov = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, ?)`
     );
     insMov.run(accountId, 1, "2017-05-31", "import:excel|cumulative-depositado|Table1-3|AFP|afp-cert:period=2017-05|cuotas=100", 100);
     // A small website-reconcile correction is a normal ledger movement — summed like any other.

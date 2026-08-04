@@ -40,8 +40,11 @@ describe("equity brokerage position meta", () => {
     const movId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta, amount_usd)
-           VALUES (?, 1_000_000, '2026-01-15', 'vitest-equity-buy', 'stock_buy', 10, 1050)`
+          // Legacy fixture carried both legs (amount_clp 1.000.000 + amount_usd 1050) on a
+          // single-leg row — the new CHECK forbids that pair, and no assertion reads the
+          // amounts, so only the USD leg (the primary one for a USD-quoted buy) is kept.
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+           VALUES (?, 1050, 'usd', '2026-01-15', 'vitest-equity-buy', 'stock_buy', 10)`
         )
         .run(accountId).lastInsertRowid
     );

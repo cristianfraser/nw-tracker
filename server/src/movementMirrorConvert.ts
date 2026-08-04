@@ -19,6 +19,7 @@ import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
+import { requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
 
 export type MirrorMergeLegSnapshot = {
   movement_id: number;
@@ -53,11 +54,10 @@ export type ConvertedMirrorPair = {
   earliest_affected_on: string;
 };
 
-type LegRow = {
+type LegRow = MovementAmountFields & {
   id: number;
   account_id: number;
   occurred_on: string;
-  amount_clp: number;
   units_delta: number | null;
   note: string | null;
 };
@@ -70,12 +70,12 @@ type LegRow = {
 export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[] } {
   if (pairs.length === 0) return { converted: [] };
   const legStmt = db.prepare(
-    `SELECT id, account_id, occurred_on, amount_clp, units_delta, note
+    `SELECT id, account_id, occurred_on, amount, currency, counter_amount, counter_currency, units_delta, note
      FROM movements WHERE id = ? AND account_id IS NOT NULL`
   );
   const insTransfer = db.prepare(
-    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta)
-     VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
+     VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
   );
   const delLeg = db.prepare(`DELETE FROM movements WHERE id = ?`);
   const insMirrorMerge = db.prepare(
@@ -104,6 +104,9 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const out = legStmt.get(ref.out_movement_id) as LegRow | undefined;
       const inn = legStmt.get(ref.in_movement_id) as LegRow | undefined;
       if (!out || !inn) throw new MirrorConvertStaleError(ref, "leg no longer exists");
+      // Mirror candidates are CLP-only by construction (USD legs excluded upstream) — throw, don't 0.
+      const outAmountClp = requireMovementClp(out, "mirror out leg");
+      const innAmountClp = requireMovementClp(inn, "mirror in leg");
 
       const note = mirrorMergeHumanNote(out.occurred_on, inn.occurred_on);
       const unitsSource = out.units_delta ?? inn.units_delta;
@@ -120,7 +123,7 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const r = insTransfer.run(
         out.account_id,
         inn.account_id,
-        Math.round(Math.abs(out.amount_clp)),
+        Math.round(Math.abs(outAmountClp)),
         transferDate,
         note,
         transferUnits
@@ -129,12 +132,12 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         Number(r.lastInsertRowid),
         out.id,
         out.occurred_on,
-        out.amount_clp,
+        outAmountClp,
         out.units_delta,
         out.note,
         inn.id,
         inn.occurred_on,
-        inn.amount_clp,
+        innAmountClp,
         inn.units_delta,
         inn.note
       );
@@ -212,7 +215,7 @@ export function undoMirrorConversion(transferMovementId: number): {
   // never deleted — undo restores only the checking leg.
   if (merge.in_movement_id == null) {
     const insOut = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, units_delta, note) VALUES (?,?,?,?,?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`
     );
     const restored = db.transaction(() => {
       const outId = Number(
@@ -252,7 +255,7 @@ export function undoMirrorConversion(transferMovementId: number): {
   const toId = row.to_account_id;
 
   const insLeg = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, units_delta, note) VALUES (?,?,?,?,?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`
   );
   const run = db.transaction(() => {
     const outId = Number(

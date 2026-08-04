@@ -56,15 +56,16 @@ function parseAbs(raw: string): number | null {
 }
 
 function buildPostBody(row: UnitsFlowDraft): Record<string, unknown> | null {
-  const amount_clp = parseAbs(row.amountClp);
+  const amount = parseAbs(row.amountClp);
   const units_delta = parseAbs(row.unitsDelta);
-  if (amount_clp == null || units_delta == null) return null;
+  if (amount == null || units_delta == null) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn.trim())) return null;
   if (row.counterpartAccountId === "") return null;
   const note = row.note.trim();
   return {
     occurred_on: row.occurredOn.trim(),
-    amount_clp,
+    amount,
+    currency: "clp",
     units_delta,
     counterpart_account_id: row.counterpartAccountId,
     counterpart_role: row.direction === "in" ? "from" : "to",

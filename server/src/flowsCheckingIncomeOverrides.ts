@@ -3,6 +3,7 @@ import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
 
 export type CheckingIncomeKind = "salary" | "severance" | "other" | "parent_gift";
@@ -70,7 +71,7 @@ export function assertCheckingCartolaCreditMovement(movementId: number): void {
     .prepare(
       `SELECT id FROM movements
        WHERE id = ?
-         AND amount_clp > 0
+         AND ${MOVEMENT_CLP_LEG_SQL} > 0
          AND note LIKE 'import:cartola|%'
          AND note NOT LIKE 'import:cartola|anchor|%'`
     )
@@ -207,7 +208,7 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
          m.id AS movement_id,
          m.account_id,
          m.occurred_on AS received_on,
-         m.amount_clp,
+         (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) AS amount_clp,
          m.note AS cartola_note,
          o.note AS override_note,
          a.name AS account_label

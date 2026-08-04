@@ -4,12 +4,14 @@ import { applyFlowFilters, type FlowsApiRow } from "./flowsApi.js";
 function row(overrides: Partial<FlowsApiRow>): FlowsApiRow {
   return {
     id: 1,
-    amount_clp: 0,
+    amount: 0,
+    currency: "clp",
+    counter_amount: null,
+    counter_currency: null,
     occurred_on: "2026-01-01",
     note: null,
     units_delta: null,
     flow_kind: null,
-    amount_usd: null,
     ticker: null,
     flow_type: "deposit",
     flow_type_label: "Depósito CLP",
@@ -25,12 +27,12 @@ function row(overrides: Partial<FlowsApiRow>): FlowsApiRow {
 }
 
 const ROWS: FlowsApiRow[] = [
-  row({ id: 1, occurred_on: "2026-05-01", amount_clp: 111_003, note: "PANADERIA SAN CAMILO" }),
-  row({ id: 2, occurred_on: "2026-05-15", amount_clp: -222_007, note: "FARMACIA" }),
+  row({ id: 1, occurred_on: "2026-05-01", amount: 111_003, note: "PANADERIA SAN CAMILO" }),
+  row({ id: 2, occurred_on: "2026-05-15", amount: -222_007, note: "FARMACIA" }),
   row({
     id: 3,
     occurred_on: "2026-06-01",
-    amount_clp: 333_009,
+    amount: 333_009,
     note: "sueldo",
     account_id: 2,
     account_name: "Cuenta Beta",
@@ -38,7 +40,7 @@ const ROWS: FlowsApiRow[] = [
   row({
     id: 4,
     occurred_on: "2026-06-10",
-    amount_clp: 444_011,
+    amount: 444_011,
     note: "traspaso",
     counterpart_account_name: "Cuenta Beta",
     transfer_direction: "in",

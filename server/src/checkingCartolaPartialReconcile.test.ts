@@ -139,8 +139,8 @@ describe("checkingCartolaPartialReconcile", () => {
     );
 
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, partialNote);
 
     const cartola: ParsedCheckingCartola = {
@@ -218,8 +218,8 @@ describe("checkingCartolaPartialReconcile", () => {
     );
 
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL), (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL), (?, ?, 'clp', ?, ?, NULL)`
     ).run(
       accountId,
       amountClp,
@@ -283,8 +283,8 @@ describe("checkingCartolaPartialReconcile", () => {
       officialNote
     );
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, officialNote);
 
     const result = importCheckingPartialMovements(accountId, [
@@ -319,8 +319,8 @@ describe("checkingCartolaPartialReconcile", () => {
       unrelatedNote
     );
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, -1000, '2099-09-01', ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, -1000, 'clp', '2099-09-01', ?, NULL)`
     ).run(accountId, unrelatedNote);
 
     const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
@@ -375,15 +375,15 @@ describe("checkingCartolaPartialReconcile", () => {
 
     const partialInsert = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, amountClp, occurredOn, partialNote);
     const partialId = Number(partialInsert.lastInsertRowid);
 
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, officialNote);
 
     db.prepare(
@@ -447,8 +447,8 @@ describe("checkingCartolaPartialReconcile", () => {
       partialNote
     );
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, partialNote);
 
     const lines = buildCheckingGastosLines({ accountId });
