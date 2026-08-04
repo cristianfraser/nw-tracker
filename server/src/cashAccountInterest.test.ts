@@ -57,10 +57,12 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     usdRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
     clpRow = { bucket_slug: clpLeaf.slug, group_slug: clpLeaf.slug };
 
-    // Pin fx for every date the assertions resolve: the fixture month-ends, the 2026-12-31
-    // as-of valuation, and *today* (deposited-capital display converts at the latest on-or-
-    // before-today row). Without these the test drifts with every daily fx sync.
+    // Pin fx for every date the assertions resolve: the compra EVENT date (deposited capital
+    // converts per event at its own date since 2026-08-04), the fixture month-ends, the
+    // 2026-12-31 as-of valuation, and *today*. Flat fx across the fixture means the CLP
+    // identities below hold exactly (no fx revaluation leg to account for).
     restoreFx = overrideFxDaily([
+      ["2026-05-15", 900],
       ["2026-05-31", 900],
       ["2026-06-30", 900],
       ["2026-07-31", 900],
@@ -109,7 +111,8 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     expect(usdCashBalanceUsdAt(usdId, "2026-12-31")).toBeCloseTo(1010, 6);
     const usdValueClp = usdCashBalanceClpAt(usdId, "2026-12-31");
     const usdDepClp = totalDepositsClpForAccount(usdId);
-    // P/L = value − deposited = the 10 USD interest converted at the same (sell) rate as the balance.
+    // Deposited = the 1.000 USD compra converted at ITS date's sell rate (event-based); with
+    // fx pinned flat, P/L = value − deposited = exactly the 10 USD interest at that rate.
     const impliedRate = usdValueClp / 1010;
     expect(usdValueClp - usdDepClp).toBeCloseTo(10 * impliedRate, 0);
 
@@ -130,6 +133,7 @@ describe("cash-account interest (savings_earnings): balance up, deposits flat, P
     // Deposited USD = 1000 capital (the 10 USD interest is excluded).
     expect(depUsd!).toBeCloseTo(1000, 6);
     expect(usdCashBalanceUsdAt(usdId, "2026-12-31") - depUsd!).toBeCloseTo(10, 6);
+    // Flat fx across the fixture → CLP total P/L is the interest alone (no fx revaluation).
     expect(usdCashBalanceClpAt(usdId, "2026-12-31") - depClp!).toBeGreaterThan(0);
   });
 

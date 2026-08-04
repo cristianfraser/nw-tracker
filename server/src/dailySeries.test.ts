@@ -454,6 +454,56 @@ describe("groupDailySeriesAccounts", () => {
     expect(bucket.deposits_acum).toEqual([12, 13]);
     expect(grouped.find((l) => l.account_id === 3)!.values).toEqual([20, 10]);
   });
+
+  it("clips a sold-out bucket as a unit: aportes end with the bucket value, never snapping to a wound-down member's residual", () => {
+    // Member 1 = the active account: sold out on day 2 (kept zero), clipped nulls after.
+    // Member 2 = a wound-down predecessor: never held in-window, but its deposits_acum
+    // survived the per-account pass (pre-fix) — the summed line must not fall back to it.
+    const mkPoint = (d: string) =>
+      ({ as_of_date: d, value: 0, flow: 0, delta: null, pl: null, pct: null, market_day: true });
+    const series: BucketDailySeries = {
+      unit: "clp",
+      end_ymd: "2026-03-27",
+      baseline: { as_of_date: "2026-03-22", value: 0 },
+      points: ["2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27"].map(mkPoint),
+      accounts: [
+        {
+          account_id: 1,
+          name: "active",
+          values: [100, 110, 0, null, null],
+          deposits_acum: [-10, -10, -21, null, null],
+        },
+        {
+          account_id: 2,
+          name: "predecessor",
+          values: [null, null, null, null, null],
+          deposits_acum: [-4, -4, -4, -4, -4],
+        },
+      ],
+    };
+    const plan = {
+      orderedKeys: ["b"],
+      meta: {
+        b: {
+          key: "b",
+          accountId: -900,
+          dataKey: "-900",
+          depKey: "dep_-900",
+          barDataKey: "bar_-900",
+          name: "Bucket",
+          name_i18n_key: null,
+          color_rgb: null,
+        },
+      },
+      idToBucket: (id: number) => (id === 1 || id === 2 ? "b" : null),
+    };
+    const grouped = groupDailySeriesAccounts(series, plan)!;
+    const bucket = grouped.find((l) => l.account_id === -900)!;
+    // Value: sum, then unit-level trailing clip (one kept zero on the sell-out day).
+    expect(bucket.values).toEqual([100, 110, 0, null, null]);
+    // Aportes: −25 at the kept zero (both members), then null — NOT [−25, −4, −4].
+    expect(bucket.deposits_acum).toEqual([-14, -14, -25, null, null]);
+  });
 });
 
 describe("getBucketDailySeriesCached", () => {

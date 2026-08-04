@@ -19,6 +19,12 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
 import {
+  isUsdCashAccount,
+  signedUsdDeltaForAccountMovement,
+  type MovementTransferRow,
+} from "./movementTransfer.js";
+import { usdCashUsdToClpAt } from "./usdCashAccounts.js";
+import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
   MOVEMENT_USD_LEG_SQL,
@@ -347,6 +353,99 @@ export function loadEquityBrokerageCapitalSortFlows(
     out.get(row.account_id)!.push(flow);
   }
 
+  return out;
+}
+
+/**
+ * Deposit-inflow flows for USD-cash accounts (event-based, native-frame — 2026-08-04).
+ *
+ * Every balance-affecting non-interest movement is a capital event (the USD sign comes from
+ * `signedUsdDeltaForAccountMovement`, the same walk the balance uses, so the USD-frame event
+ * sum ≡ balance − interest by construction). `savings_earnings` is the account's own P/L and
+ * never a deposit. The CLP frame is per-event, never a re-priced aggregate — a window with no
+ * events reads 0 deposits in both frames (no fx drift):
+ *  - equity-linked legs (`stock_buy` / `stock_sell` / `dividend_payout`) mirror the stock
+ *    side's attribution exactly (wire pesos / composite / reference rate), negated — so the
+ *    two legs of every internal brokerage move cancel to the peso at bucket level;
+ *  - rows carrying a real CLP leg (compra conversions' counter pair) use those actual pesos;
+ *  - anything else converts the USD magnitude at the event date's sell rate (same rate family
+ *    as the balance valuation).
+ */
+export function loadUsdCashCapitalSortFlows(
+  accountIds: number[]
+): Map<number, EquityCapitalSortFlow[]> {
+  const ids = [...new Set(accountIds.filter((id) => id > 0 && isUsdCashAccount(id)))];
+  const out = new Map<number, EquityCapitalSortFlow[]>();
+  if (ids.length === 0) return out;
+  const ph = ids.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT id, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
+              occurred_on, note, units_delta, flow_kind, ticker
+       FROM movements
+       WHERE account_id IN (${ph}) OR from_account_id IN (${ph}) OR to_account_id IN (${ph})
+       ORDER BY occurred_on, id`
+    )
+    .all(...ids, ...ids, ...ids) as MovementTransferRow[];
+  const requested = new Set(ids);
+  const push = (id: number, flow: EquityCapitalSortFlow): void => {
+    if (flow.amt === 0 || !Number.isFinite(flow.amt)) return;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push(flow);
+  };
+  for (const r of rows) {
+    if (r.flow_kind === "savings_earnings") continue; // interest = P/L, not capital
+    for (const id of new Set([r.account_id, r.from_account_id, r.to_account_id])) {
+      if (id == null || !requested.has(id)) continue;
+      const usdSigned = signedUsdDeltaForAccountMovement(r, id);
+      if (usdSigned === 0 || !Number.isFinite(usdSigned)) continue;
+      const sign = usdSigned > 0 ? 1 : -1;
+      const capitalRow: TransferCapitalRow = {
+        id: r.id!,
+        account_id: r.to_account_id ?? id,
+        from_account_id: r.from_account_id,
+        occurred_on: r.occurred_on,
+        amount: r.amount,
+        currency: r.currency,
+        counter_amount: r.counter_amount,
+        counter_currency: r.counter_currency,
+        flow_kind: r.flow_kind ?? "",
+      };
+      if (r.flow_kind === "stock_buy") {
+        for (const f of stockBuyCapitalFlows(capitalRow)) {
+          push(id, {
+            ...f,
+            amt: -f.amt,
+            amt_usd: f.amt_usd != null ? -f.amt_usd : null,
+            tie: `${f.tie}:cash:${id}`,
+          });
+        }
+        continue;
+      }
+      if (r.flow_kind === "stock_sell" || r.flow_kind === "dividend_payout") {
+        const usdLeg = movementUsdLeg(r);
+        const f =
+          usdLeg != null && usdLeg !== 0
+            ? usdReferenceFlow(capitalRow, 1)
+            : clpDirectFlow(capitalRow, 1);
+        if (f) push(id, { ...f, tie: `${f.tie}:cash:${id}` });
+        continue;
+      }
+      const clpLeg = Math.abs(movementClpLegOrZero(r));
+      const amt =
+        clpLeg !== 0
+          ? sign * clpLeg
+          : sign *
+            usdCashUsdToClpAt(Math.abs(usdSigned), r.occurred_on, `usdCashDeposit:${r.id}`);
+      push(id, {
+        occurred_on: r.occurred_on,
+        amt,
+        amt_usd: usdSigned,
+        capital_kind: clpLeg !== 0 ? "clp_wire" : "usd_reference",
+        tie: `u:${r.id}:${id}`,
+      });
+    }
+  }
   return out;
 }
 

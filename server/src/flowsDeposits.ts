@@ -6,9 +6,6 @@ import { loadMergedDisplayDepositInflowEvents, type DepositInflowEvent } from ".
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
-import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
-import { cashInterestClpThroughDate, cashInterestUsdThroughDate } from "./cashAccountInterest.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
   clearFxConversionWarnings,
@@ -149,27 +146,6 @@ function flowsDepositsNetTotalsByAccount(opts?: {
   const clp = new Map<number, number>();
   const usd = new Map<number, number | null>();
   for (const acc of accounts) {
-    if (isUsdCashAccount(acc.account_id)) {
-      // Deposited capital = balance − cumulative interest (interest is rentabilidad/P/L, not a deposit),
-      // so delta = value − deposited = interest earned in the window.
-      const depClp = (ymd: string) =>
-        usdCashBalanceClpAt(acc.account_id, ymd) - cashInterestClpThroughDate(acc.account_id, ymd);
-      const depUsd = (ymd: string) =>
-        usdCashBalanceUsdAt(acc.account_id, ymd) - cashInterestUsdThroughDate(acc.account_id, ymd);
-      if (opts?.period === "month") {
-        const prior = priorPeriodEndYmd("mtd", today);
-        clp.set(acc.account_id, depClp(today) - depClp(prior));
-        usd.set(acc.account_id, depUsd(today) - depUsd(prior));
-      } else if (opts?.period === "year") {
-        const prior = priorPeriodEndYmd("ytd", today);
-        clp.set(acc.account_id, depClp(today) - depClp(prior));
-        usd.set(acc.account_id, depUsd(today) - depUsd(prior));
-      } else {
-        clp.set(acc.account_id, depClp(today));
-        usd.set(acc.account_id, depUsd(today));
-      }
-      continue;
-    }
     const events = eventsByAccount.get(acc.account_id) ?? [];
     let sumClp = 0;
     let sumUsd = 0;
@@ -200,11 +176,12 @@ function flowsDepositsNetTotalsByAccount(opts?: {
 
 /**
  * Net capital flow for one account over the half-open window `(startYmd, endYmd]`, in `unit`.
- * USD-cash accounts have no deposit events, so their window flow is the balance−interest delta
- * across the two dates; every other account sums merged deposit-inflow events in the window
- * (same event source as the monthly builder, so short-horizon returns flow-adjust identically
- * to MTD). Callers pass the window's prior anchor as `startYmd` (exclusive) and the reference
- * date as `endYmd` (inclusive).
+ * Sums merged deposit-inflow events in the window (same event source as the monthly builder,
+ * so short-horizon returns flow-adjust identically to MTD) — USD-cash accounts included since
+ * 2026-08-04: their events come from `loadUsdCashCapitalSortFlows` (native USD legs, per-event
+ * CLP conversion), so a window with no events reads 0 in both frames instead of leaking fx
+ * drift on the standing balance. Callers pass the window's prior anchor as `startYmd`
+ * (exclusive) and the reference date as `endYmd` (inclusive).
  */
 export function netDepositFlowBetween(
   accountId: number,
@@ -212,16 +189,6 @@ export function netDepositFlowBetween(
   endYmd: string,
   unit: "clp" | "usd"
 ): number {
-  if (isUsdCashAccount(accountId)) {
-    if (unit === "usd") {
-      const dep = (ymd: string) =>
-        usdCashBalanceUsdAt(accountId, ymd) - cashInterestUsdThroughDate(accountId, ymd);
-      return dep(endYmd) - dep(startYmd);
-    }
-    const dep = (ymd: string) =>
-      usdCashBalanceClpAt(accountId, ymd) - cashInterestClpThroughDate(accountId, ymd);
-    return dep(endYmd) - dep(startYmd);
-  }
   const events = loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
   let sum = 0;
   for (const e of events) {

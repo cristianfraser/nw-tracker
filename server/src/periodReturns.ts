@@ -17,6 +17,30 @@ import type { TsUnit } from "./valuationTimeseries.js";
 
 export type PeriodReturnKey = "d1" | "w1" | "mtd" | "ytd" | "y1" | "y3" | "y5" | "total";
 
+/**
+ * Flow-adjusted monthly return: nominal P/L over the capital at work. The default frame
+ * charges flows at month START (`denom = prior + netFlow`); when a net withdrawal exceeds
+ * the prior close — a liquidation withdraws intra-month gains too — that denominator goes
+ * ≤ 0 and the ratio is meaningless (a month closing at 0 would read exactly −100% by the
+ * identity `nominal = −(prior + netFlow)`, poisoning every chained window). Such months
+ * fall back to charging flows at month END (`denom = prior`). Null when no positive
+ * capital base exists in either frame.
+ */
+export function flowAdjustedPctMonth(
+  nominal: number | null,
+  prior: number | null,
+  netFlow: number,
+  eps: number
+): number | null {
+  if (nominal == null || !Number.isFinite(nominal)) return null;
+  const priorBase = prior != null && Number.isFinite(prior) ? prior : 0;
+  const startFrameDenom = priorBase + netFlow;
+  const denom = startFrameDenom > eps ? startFrameDenom : priorBase > eps ? priorBase : null;
+  if (denom == null) return null;
+  const pct = nominal / denom;
+  return Number.isFinite(pct) ? pct : null;
+}
+
 export const PERIOD_RETURN_ORDER: readonly PeriodReturnKey[] = [
   "mtd",
   "ytd",
