@@ -277,7 +277,6 @@ describe("convertPeriodReturnsUnit", () => {
   const clpPayload = (): PeriodReturnsPayload => ({
     unit: "clp",
     as_of_date: "2025-01-31",
-    mtd_is_live: false,
     first_month: "2020-01",
     periods: [
       {

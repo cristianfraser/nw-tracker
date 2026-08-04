@@ -45,9 +45,8 @@ describe("computePeriodReturns", () => {
     expect(payload.first_month).toBe("2026-01");
   });
 
-  it("MTD reads the current-month row and marks it live", () => {
+  it("MTD reads the current-month row", () => {
     const payload = computePeriodReturns(series("2026-01", [0.01, 0.02, 0.03]), "clp", "2026-03-15")!;
-    expect(payload.mtd_is_live).toBe(true);
     expect(cell(payload, "mtd").pct).toBeCloseTo(0.03, 12);
     expect(cell(payload, "mtd").months).toBe(1);
   });
@@ -102,9 +101,8 @@ describe("computePeriodReturns", () => {
     expect(ytd.pct).toBeCloseTo(1.01 * 1.02 - 1, 12);
   });
 
-  it("marks MTD not-live when no row exists for the current month", () => {
+  it("leaves MTD empty when no row exists for the current month", () => {
     const payload = computePeriodReturns(series("2026-01", [0.01, 0.02, 0.03]), "clp", "2026-07-07")!;
-    expect(payload.mtd_is_live).toBe(false);
     expect(cell(payload, "mtd").pct).toBeNull();
     expect(cell(payload, "mtd").months).toBe(0);
     // Other windows still anchor at the current month and chain the existing rows.

@@ -46,8 +46,6 @@ export type PeriodReturnsPayload = {
   unit: TsUnit;
   /** Newest contributing row's `as_of_date`. */
   as_of_date: string;
-  /** A row exists for the current Chile calendar month (MTD reflects an in-progress month). */
-  mtd_is_live: boolean;
   /** Series start month key (`YYYY-MM`). */
   first_month: string;
   /** Fixed order: d1, w1, mtd, ytd, y1, y3, y5, total. */
@@ -219,7 +217,6 @@ export function computePeriodReturns(
   return {
     unit,
     as_of_date: asOfByMonth.get(lastMonth)!,
-    mtd_is_live: mtdLive,
     first_month: firstMonth,
     periods,
   };

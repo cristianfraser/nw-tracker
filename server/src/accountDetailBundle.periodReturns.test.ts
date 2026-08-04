@@ -33,7 +33,6 @@ describe("accountDetailBundle period_returns", () => {
     // The monthly tail is exactly the pure chained builder over the same monthly rows.
     const expected = computePeriodReturns(bundle!.monthly_performance!.monthly, "clp")!;
     expect(bundle!.period_returns!.periods.slice(2)).toEqual(expected.periods);
-    expect(bundle!.period_returns!.mtd_is_live).toBe(expected.mtd_is_live);
   });
 
   it("returns null period_returns for a non-investment account", async () => {
