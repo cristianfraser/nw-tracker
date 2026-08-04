@@ -21,9 +21,7 @@ export interface PeriodReturnCell {
 export interface PeriodReturnsPayload {
   unit: "clp" | "usd" | "uf";
   as_of_date: string;
-  /** A row exists for the current Chile calendar month (MTD is an in-progress month). */
-  mtd_is_live: boolean;
-  /** The 1D end leg is the live NYSE session (1D is an in-progress session). */
+  /** Series start month key (`YYYY-MM`). */
   first_month: string;
   /** Fixed order: d1, w1, mtd, ytd, y1, y3, y5, total. */
   periods: PeriodReturnCell[];
