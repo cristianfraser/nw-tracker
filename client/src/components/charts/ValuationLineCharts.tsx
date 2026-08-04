@@ -10,6 +10,7 @@ import { AppLineChart } from "./AppLineChart";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
+import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import {
   coerceKeptTrailingZeroMonth,
@@ -402,9 +403,17 @@ export function LineChartPanel({
     [blockWithAnchors, includeAccumulatedLines, colorPlan, i18n.language]
   );
 
+  // Series that ended before the window starts arrive all-null and draw nothing — drop them from
+  // the render so the legend and tooltip only list what is actually plotted. Presence is read from
+  // the range-clipped points BEFORE the zero anchors, which are synthetic left-edge padding.
+  const visibleSeries = useMemo(
+    () => seriesWithWindowData(series, blockRanged.points),
+    [series, blockRanged.points]
+  );
+
   const seriesByDataKey = useMemo(
-    () => new Map(series.map((s) => [s.dataKey, s] as const)),
-    [series]
+    () => new Map(visibleSeries.map((s) => [s.dataKey, s] as const)),
+    [visibleSeries]
   );
 
   const tailClippedKeys = block.tail_clipped_keys;
@@ -412,8 +421,8 @@ export function LineChartPanel({
   const yScale = useMemo(() => {
     const scaleSeries =
       yScaleDataKeys?.length && yScaleDataKeys.length > 0
-        ? series.filter((s) => yScaleDataKeys.includes(s.dataKey))
-        : series;
+        ? visibleSeries.filter((s) => yScaleDataKeys.includes(s.dataKey))
+        : visibleSeries;
     const { min, max } = minMaxForKeys(chartData, scaleSeries.map((s) => s.dataKey));
     if (yAxisMinZero) {
       return buildNiceYAxis(0, Math.max(max, 0));
@@ -426,7 +435,7 @@ export function LineChartPanel({
       };
     }
     return buildNiceYAxis(min, max);
-  }, [chartData, series, yAxisMinZero, yScaleDataKeys]);
+  }, [chartData, visibleSeries, yAxisMinZero, yScaleDataKeys]);
 
   const clipPlotToYDomain = Boolean(yScaleDataKeys?.length);
   const lineCurveType = clipPlotToYDomain ? "linear" : "monotone";
@@ -435,10 +444,10 @@ export function LineChartPanel({
     if (!clipPlotToYDomain) return chartData;
     return clipChartDataToYDomain(
       chartData,
-      series.map((s) => s.dataKey),
+      visibleSeries.map((s) => s.dataKey),
       yScale.domain
     );
-  }, [chartData, series, yScale.domain, clipPlotToYDomain]);
+  }, [chartData, visibleSeries, yScale.domain, clipPlotToYDomain]);
 
   const xAxisTicks = useMemo(() => {
     const dates = extractSortedAsOfDates(chartData);
@@ -448,7 +457,7 @@ export function LineChartPanel({
     return computeRegularMonthXAxisTicks(dates, { includeLastDataPoint: false });
   }, [chartData, xAxisGranularity]);
 
-  if (!chartData.length || !series.length) {
+  if (!chartData.length || !visibleSeries.length) {
     return (
       <div className="chart-grid__col">
         {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
@@ -458,7 +467,9 @@ export function LineChartPanel({
   }
 
   const focusColorIndex =
-    highlightedKey == null ? null : (series.find((x) => x.dataKey === highlightedKey)?.colorIndex ?? null);
+    highlightedKey == null
+      ? null
+      : (visibleSeries.find((x) => x.dataKey === highlightedKey)?.colorIndex ?? null);
 
   const chartMargin = RECHARTS_MONEY_CHART_MARGIN;
 
@@ -506,14 +517,14 @@ export function LineChartPanel({
             <Legend
               content={() => (
                 <InteractiveLegend
-                  series={series}
+                  series={visibleSeries}
                   focusColorIndex={focusColorIndex}
                   onHighlight={setHighlightedKey}
                 />
               )}
             />
             {(() => {
-              const hitLines = series.map((s) => (
+              const hitLines = visibleSeries.map((s) => (
                 <Line
                   key={`${s.dataKey}__hit`}
                   type={lineCurveType}
@@ -539,7 +550,7 @@ export function LineChartPanel({
                   }}
                 />
               ));
-              const visLines = series.map((s) => {
+              const visLines = visibleSeries.map((s) => {
                 const stroke = s.stroke;
                 const isDep = Boolean(s.isDeposit);
                 const dimOthers = focusColorIndex != null && s.colorIndex !== focusColorIndex;
