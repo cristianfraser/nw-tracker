@@ -29,8 +29,8 @@ describe("AFP position units", () => {
     ).run(AFP_UNO_CUOTA_SERIES_KEY, asOf, px, "vitest:px");
 
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, ?)`
     ).run(accountId, 1, asOf, "AFP cotizacion vitest", 500);
 
     // A disagreeing stored valuation must NOT override the certificate-backed ledger.

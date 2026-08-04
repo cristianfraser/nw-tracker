@@ -28,31 +28,37 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     const r = db
       .prepare(
         `INSERT INTO movements (
-           account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-           units_delta, flow_kind, amount_usd, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
+           occurred_on, note, units_delta, flow_kind, ticker
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         validated.from_account_id,
         validated.to_account_id,
-        validated.amount_clp,
+        validated.amount,
+        validated.currency,
+        validated.counter_amount,
+        validated.counter_currency,
         validated.occurred_on,
         validated.note,
         validated.units_delta,
         validated.flow_kind,
-        validated.amount_usd,
         validated.ticker
       );
     const id = Number(r.lastInsertRowid);
     invalidateAggregationForAccountDate(validated.from_account_id, validated.occurred_on);
     invalidateAggregationForAccountDate(validated.to_account_id, validated.occurred_on);
     // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
-    const superseded = supersedeImportedCheckingRowsForTransfer(
-      validated.from_account_id,
-      validated.to_account_id,
-      validated.amount_clp,
-      validated.occurred_on
-    );
+    // Checking rows are CLP; a non-CLP transfer has no CLP leg to supersede.
+    const superseded =
+      validated.currency === "clp"
+        ? supersedeImportedCheckingRowsForTransfer(
+            validated.from_account_id,
+            validated.to_account_id,
+            validated.amount,
+            validated.occurred_on
+          )
+        : { removed_ids: [] as number[] };
     res.status(201).json({
       id,
       from_account_id: validated.from_account_id,
@@ -66,17 +72,17 @@ app.post("/api/accounts/:id/movements", (req, res) => {
   if (validated.mode === "brokerage") {
     const r = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         accountId,
-        validated.amount_clp,
+        validated.amount,
+        validated.currency,
         validated.occurred_on,
         validated.note,
         validated.units_delta,
         validated.flow_kind,
-        validated.amount_usd,
         validated.ticker
       );
     invalidateAggregationForAccountDate(accountId, validated.occurred_on);
@@ -87,12 +93,12 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     });
     return;
   }
-  const { amount_clp, occurred_on, note, units_delta } = validated;
+  const { amount, currency, occurred_on, note, units_delta } = validated;
   const r = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta) VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta) VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(accountId, amount_clp, occurred_on, note, units_delta);
+    .run(accountId, amount, currency, occurred_on, note, units_delta);
   const bucketKind = accountBucketKindSlug(account.bucket_slug);
   if (!isCheckingLedgerAnchorNote(note)) {
     maybeSyncCheckingLedgerAnchor(accountId, bucketKind);

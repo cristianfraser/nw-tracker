@@ -189,7 +189,7 @@ beforeAll(() => {
     },
   ];
   const ins = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
   );
   for (const { r, onMortgage } of rows) {
     const cols = deptoPaymentColumnsFromPaymentRow(r);

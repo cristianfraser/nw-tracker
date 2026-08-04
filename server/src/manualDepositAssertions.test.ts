@@ -39,8 +39,8 @@ function insertAssertedWithdrawal(
   const note = cartolaNoteFor(occurredOn, amountClp, description, idx);
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(checkingId, amountClp, occurredOn, note);
   const purchaseKey = checkingCartolaStablePurchaseKey(checkingId, note, "gastos");
@@ -63,8 +63,8 @@ function insertCartolaWithdrawal(
   const note = cartolaNoteFor(occurredOn, amountClp, description, idx);
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(checkingId, amountClp, occurredOn, note);
   const purchaseKey = checkingCartolaStablePurchaseKey(checkingId, note, "gastos");
@@ -75,8 +75,8 @@ function insertCartolaWithdrawal(
 function insertFundDeposit(occurredOn: string, amountClp: number): number {
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(fundId, amountClp, occurredOn, FIXTURE_NOTE);
   return Number(ins.lastInsertRowid);

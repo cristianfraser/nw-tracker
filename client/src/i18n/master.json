@@ -1986,13 +1986,9 @@
       "en": "Ticker",
       "es": "Ticker"
     },
-    "flowAmountClpColumn": {
-      "en": "CLP amount",
-      "es": "Monto CLP"
-    },
-    "flowAmountUsdColumn": {
-      "en": "USD amount",
-      "es": "Monto USD"
+    "flowAmountColumn": {
+      "en": "Amount",
+      "es": "Monto"
     },
     "flowUnitsColumn": {
       "en": "Units",
@@ -3220,6 +3216,10 @@
       "amountMax": {
         "en": "Max amount",
         "es": "Monto máx."
+      },
+      "amountCurrency": {
+        "en": "Amount currency",
+        "es": "Moneda del monto"
       }
     }
   },

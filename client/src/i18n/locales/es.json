@@ -579,8 +579,7 @@
     "flowTypeColumn": "Tipo",
     "flowDateColumn": "Fecha",
     "flowTickerColumn": "Ticker",
-    "flowAmountClpColumn": "Monto CLP",
-    "flowAmountUsdColumn": "Monto USD",
+    "flowAmountColumn": "Monto",
     "flowUnitsColumn": "Unidades",
     "flowNoteColumn": "Nota",
     "flowsEmpty": "No hay flujos.",
@@ -916,7 +915,8 @@
       "dateTo": "Hasta",
       "amountExact": "Monto exacto",
       "amountMin": "Monto mín.",
-      "amountMax": "Monto máx."
+      "amountMax": "Monto máx.",
+      "amountCurrency": "Moneda del monto"
     }
   },
   "income": {

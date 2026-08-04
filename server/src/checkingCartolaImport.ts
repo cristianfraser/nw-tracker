@@ -34,6 +34,7 @@ import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 import { preserveCheckingGastosCategoriesForCartolaNotes } from "./checkingGastosCategoryPersist.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
 import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
@@ -284,8 +285,8 @@ export function importCheckingCartola(
   }
 
   const insMov = dbHandle.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-     VALUES (?, ?, ?, ?, NULL)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+     VALUES (?, ?, 'clp', ?, ?, NULL)`
   );
   const markImported = dbHandle.prepare(
     `INSERT INTO checking_cartola_imports (
@@ -311,7 +312,7 @@ export function importCheckingCartola(
     const rows = dbHandle
       .prepare(
         `SELECT note FROM movements
-         WHERE account_id = ? AND occurred_on = ? AND amount_clp = ?
+         WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
            AND note LIKE ?`
       )
       .all(accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${periodMonth}|%`) as {
@@ -847,8 +848,8 @@ export function backfillMissingCheckingCartolaMovements(opts?: {
   const byMonth: { period_month: string; inserted: number; missing_before: number }[] = [];
 
   const insMov = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-     VALUES (?, ?, ?, ?, NULL)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+     VALUES (?, ?, 'clp', ?, ?, NULL)`
   );
   const updateImportCount = db.prepare(
     `UPDATE checking_cartola_imports
@@ -882,7 +883,7 @@ export function backfillMissingCheckingCartolaMovements(opts?: {
         const rows = db
           .prepare(
             `SELECT note FROM movements
-             WHERE account_id = ? AND occurred_on = ? AND amount_clp = ?
+             WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
                AND note LIKE ?`
           )
           .all(accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${pm}|%`) as {

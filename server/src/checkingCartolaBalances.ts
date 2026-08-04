@@ -6,6 +6,12 @@ import { parseCheckingCartolaFile } from "./checkingCartolaParse.js";
 import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { sumClpThroughDate } from "./movementTransfer.js";
 
@@ -255,7 +261,7 @@ function sumNonAnchorMovementsClpAt(
 ): number {
   const row = dbHandle
     .prepare(
-      `SELECT COALESCE(SUM(amount_clp), 0) AS total
+      `SELECT COALESCE(SUM(${MOVEMENT_CLP_LEG_SQL}), 0) AS total
        FROM movements
        WHERE account_id = ? AND occurred_on <= ?
          AND (note IS NULL OR (
@@ -304,12 +310,12 @@ export function getCheckingLedgerAnchor(
 
   const existing = dbHandle
     .prepare(
-      `SELECT id, amount_clp, occurred_on FROM movements
+      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on FROM movements
        WHERE account_id = ? AND note LIKE ?
        LIMIT 1`
     )
     .get(accountId, `${ANCHOR_NOTE_PREFIX}%`) as
-    | { id: number; amount_clp: number; occurred_on: string }
+    | ({ id: number; occurred_on: string } & MovementAmountFields)
     | undefined;
   if (!existing) return null;
 
@@ -323,7 +329,7 @@ export function getCheckingLedgerAnchor(
 
   return {
     movement_id: existing.id,
-    amount_clp: Math.round(existing.amount_clp),
+    amount_clp: Math.round(movementClpLegOrZero(existing)),
     occurred_on: existing.occurred_on,
     anchor_period_month: latest.period_month,
     cartola_saldo_final_clp: latest.saldo_final_clp,
@@ -360,13 +366,13 @@ export function upsertCheckingLedgerAnchor(
 
   if (existing) {
     dbHandle
-      .prepare(`UPDATE movements SET amount_clp = ?, occurred_on = ?, note = ? WHERE id = ?`)
+      .prepare(`UPDATE movements SET amount = ?, currency = 'clp', occurred_on = ?, note = ? WHERE id = ?`)
       .run(amount, occurredOn, note, existing.id);
   } else {
     dbHandle
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, amount, occurredOn, note);
   }
@@ -423,17 +429,17 @@ export function ensureCheckingLedgerAnchor(
 
   const existing = dbHandle
     .prepare(
-      `SELECT id, amount_clp, occurred_on, note FROM movements
+      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on, note FROM movements
        WHERE account_id = ? AND note LIKE ?
        LIMIT 1`
     )
     .get(accountId, `${ANCHOR_NOTE_PREFIX}%`) as
-    | { id: number; amount_clp: number; occurred_on: string; note: string }
+    | ({ id: number; occurred_on: string; note: string } & MovementAmountFields)
     | undefined;
 
   if (existing) {
     if (
-      Math.round(existing.amount_clp) === amount &&
+      Math.round(movementClpLegOrZero(existing)) === amount &&
       existing.occurred_on === occurredOn &&
       existing.note === note
     ) {
@@ -447,7 +453,7 @@ export function ensureCheckingLedgerAnchor(
       };
     }
     dbHandle
-      .prepare(`UPDATE movements SET amount_clp = ?, occurred_on = ?, note = ? WHERE id = ?`)
+      .prepare(`UPDATE movements SET amount = ?, currency = 'clp', occurred_on = ?, note = ? WHERE id = ?`)
       .run(amount, occurredOn, note, existing.id);
     clearCheckingBalanceCache(accountId);
     return {
@@ -462,8 +468,8 @@ export function ensureCheckingLedgerAnchor(
 
   dbHandle
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amount, occurredOn, note);
 

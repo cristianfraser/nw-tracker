@@ -28,7 +28,7 @@ beforeAll(() => {
       .lastInsertRowid
   );
   const mov = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?,?,?,?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?,?,'clp',?,?)`
   );
   mov.run(accountId, 1_000_000, "2025-01-10", `${NOTE}|dep1`);
   mov.run(accountId, 500_000, "2025-02-12", `${NOTE}|dep2`);

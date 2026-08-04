@@ -14,6 +14,7 @@ import {
 } from "./checkingCartolaPartialReconcile.js";
 import { CHECKING_GASTOS_CASH_GROUP } from "./checkingDescriptionPredicates.js";
 import { db } from "./db.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import {
   cartolaCashAccountIdOptional,
   isMovementBalanceCashCategory,
@@ -41,10 +42,10 @@ export type DepositMatchCandidate = {
 export function loadCheckingCartolaCredits(accountId: number): CheckingCartolaCredit[] {
   return db
     .prepare(
-      `SELECT occurred_on, amount_clp, note
+      `SELECT occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
        FROM movements
        WHERE account_id = ?
-         AND amount_clp > 0
+         AND ${MOVEMENT_CLP_LEG_SQL} > 0
          AND note LIKE 'import:cartola|%'
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
@@ -70,10 +71,10 @@ export function loadMovementBalanceCashCartolaCredits(
 export function loadCheckingCartolaWithdrawals(accountId: number): CheckingCartolaWithdrawal[] {
   return db
     .prepare(
-      `SELECT occurred_on, amount_clp, note
+      `SELECT occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
        FROM movements
        WHERE account_id = ?
-         AND amount_clp < 0
+         AND ${MOVEMENT_CLP_LEG_SQL} < 0
          AND note LIKE 'import:cartola|%'
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
@@ -102,10 +103,10 @@ export type CheckingGastosWithdrawalRow = {
 export function loadCheckingGastosWithdrawalRows(accountId: number): CheckingGastosWithdrawalRow[] {
   const rows = db
     .prepare(
-      `SELECT id, occurred_on, amount_clp, note
+      `SELECT id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
        FROM movements
        WHERE account_id = ?
-         AND amount_clp < 0
+         AND ${MOVEMENT_CLP_LEG_SQL} < 0
          AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%')
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on DESC, id DESC`

@@ -46,12 +46,14 @@ describe("movementTransfer", () => {
       account_id: null,
       from_account_id: fromId,
       to_account_id: toId,
-      amount_clp: 100_000,
+      amount: 100_000,
+      currency: "clp",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2026-01-01",
       note: null,
       units_delta: null,
       flow_kind: null,
-      amount_usd: null,
       ticker: null,
     };
     expect(signedClpDeltaForAccountMovement(row, fromId)).toBe(-100_000);
@@ -63,12 +65,14 @@ describe("movementTransfer", () => {
       account_id: null,
       from_account_id: fromId,
       to_account_id: toId,
-      amount_clp: 0,
+      amount: 264.35,
+      currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2026-01-02",
       note: null,
       units_delta: 4,
       flow_kind: "stock_buy",
-      amount_usd: 264.35,
       ticker: "SPY",
     };
     expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(-264.35);
@@ -84,12 +88,14 @@ describe("movementTransfer", () => {
       account_id: null,
       from_account_id: fromId,
       to_account_id: toId,
-      amount_clp: 0,
+      amount: 612.36,
+      currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2024-12-10",
       note: "migration:usd-cash|from=85|migration:stock-flow-kind",
       units_delta: 1,
       flow_kind: "stock_buy",
-      amount_usd: 612.36,
       ticker: "SPY",
     };
     expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(-612.36);
@@ -101,12 +107,16 @@ describe("movementTransfer", () => {
       account_id: fromId,
       from_account_id: null,
       to_account_id: null,
-      amount_clp: 3_000_000,
+      // Post-169 a single-leg row carries one native leg (the CHECK forbids a counter pair);
+      // the USD leg is the one this flow kind credits.
+      amount: 3353.07,
+      currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2026-05-28",
       note: "migration:fx-merge|dep=1448|compra=1449",
       units_delta: null,
       flow_kind: "compra_usd_venta_clp",
-      amount_usd: 3353.07,
       ticker: null,
     };
     expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(3353.07);
@@ -117,12 +127,14 @@ describe("movementTransfer", () => {
       account_id: fromId,
       from_account_id: null,
       to_account_id: null,
-      amount_clp: 50_000,
+      amount: 54.35,
+      currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2026-03-03",
       note: null,
       units_delta: 0.5,
       flow_kind: "compra_usd",
-      amount_usd: 54.35,
       ticker: "SPY",
     };
     expect(signedUsdDeltaForAccountMovement(row, fromId)).toBe(0);
@@ -133,12 +145,14 @@ describe("movementTransfer", () => {
       account_id: null,
       from_account_id: fromId,
       to_account_id: toId,
-      amount_clp: 0,
+      amount: 3072.48,
+      currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2026-06-16",
       note: null,
       units_delta: 61.056979521,
       flow_kind: "stock_sell",
-      amount_usd: 3072.48,
       ticker: "OILK",
     };
     expect(unitsDeltaForAccountMovement(row, fromId)).toBeCloseTo(-61.056979521, 8);
@@ -150,13 +164,13 @@ describe("movementTransfer", () => {
   it("sums CLP through date with transfer + legacy rows", () => {
     if (!fromId || !toId) return;
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note)
-       VALUES (?, 50000, '2026-03-01', 'vitest-single')`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, 50000, 'clp', '2026-03-01', 'vitest-single')`
     ).run(fromId);
     db.prepare(
       `INSERT INTO movements (
-         account_id, from_account_id, to_account_id, amount_clp, occurred_on, note
-       ) VALUES (NULL, ?, ?, 25000, '2026-03-02', 'vitest-transfer')`
+         account_id, from_account_id, to_account_id, amount, currency, occurred_on, note
+       ) VALUES (NULL, ?, ?, 25000, 'clp', '2026-03-02', 'vitest-transfer')`
     ).run(fromId, toId);
 
     const fromBal = sumClpThroughDate(fromId, "2026-03-31");

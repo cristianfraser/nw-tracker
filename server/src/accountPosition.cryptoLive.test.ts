@@ -39,8 +39,8 @@ beforeAll(() => {
       .run(leaf.id, TICKER).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-     VALUES (?, 1000, '2026-01-10', 'vitest-crypto-live-pos-buy', ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+     VALUES (?, 1000, 'clp', '2026-01-10', 'vitest-crypto-live-pos-buy', ?)`
   ).run(accountId, UNITS);
 
   const eodDate = yesterdayUtcYmd();

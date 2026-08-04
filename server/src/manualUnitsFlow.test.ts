@@ -53,8 +53,8 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     const baseline = fintualGoalUnitsFromMovementsThroughDate(fund, today) ?? 0;
 
     const ins = db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
     );
     const aporteId = Number(ins.run(other, fund, 100000, "2020-01-01", "test:manual-units", 10).lastInsertRowid);
     const retiroId = Number(ins.run(fund, other, 40000, "2020-02-01", "test:manual-units", 4).lastInsertRowid);
@@ -78,7 +78,7 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     // Missing units → rejected.
     const missing = validateMovementCreate(
       account,
-      { occurred_on: "1990-01-01", amount_clp: 100000, counterpart_account_id: other },
+      { occurred_on: "1990-01-01", amount: 100000, currency: "clp", counterpart_account_id: other },
       fund
     );
     expect(missing.ok).toBe(false);
@@ -86,7 +86,7 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     // Valid aporte on a date with no valor cuota → reconcile is skipped; flow_kind stays null.
     const ok = validateMovementCreate(
       account,
-      { occurred_on: "1990-01-01", amount_clp: 100000, units_delta: 10, counterpart_account_id: other },
+      { occurred_on: "1990-01-01", amount: 100000, currency: "clp", units_delta: 10, counterpart_account_id: other },
       fund
     );
     expect(ok.ok).toBe(true);
@@ -111,8 +111,8 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
         )
         .run(checking, fund, amt, "2024-03-10", "manual aporte", 25)
         .lastInsertRowid
@@ -150,7 +150,7 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
       // 10 cuotas × 1000 = 10 000 CLP; entering 500 000 is a mismatch → reject.
       const bad = validateMovementCreate(
         account,
-        { occurred_on: testDay, amount_clp: 500000, units_delta: 10, counterpart_account_id: other },
+        { occurred_on: testDay, amount: 500000, currency: "clp", units_delta: 10, counterpart_account_id: other },
         fund
       );
       expect(bad.ok).toBe(false);
@@ -158,7 +158,7 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
       // Matching amount reconciles → accepted.
       const good = validateMovementCreate(
         account,
-        { occurred_on: testDay, amount_clp: 10000, units_delta: 10, counterpart_account_id: other },
+        { occurred_on: testDay, amount: 10000, currency: "clp", units_delta: 10, counterpart_account_id: other },
         fund
       );
       expect(good.ok).toBe(true);
@@ -183,8 +183,8 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (NULL, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
         )
         .run(fund, other, 1, "2999-12-30", "test:full-withdrawal", cuotas)
         .lastInsertRowid

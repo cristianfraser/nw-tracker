@@ -8,6 +8,7 @@ import {
   type ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
 import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
 export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
@@ -101,7 +102,7 @@ export function partialMovementSupersededByCartola(
   const rows = dbHandle
     .prepare(
       `SELECT note FROM movements
-       WHERE account_id = ? AND occurred_on = ? AND amount_clp = ?
+       WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
          AND note LIKE 'import:cartola|%'`
     )
     .all(accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
@@ -123,7 +124,7 @@ export function findMatchingCartolaMovementNoteInDb(
   const rows = dbHandle
     .prepare(
       `SELECT note FROM movements
-       WHERE account_id = ? AND occurred_on = ? AND amount_clp = ?
+       WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
          AND note LIKE 'import:cartola|%' AND note NOT LIKE 'import:cartola|anchor|%'`
     )
     .all(accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];

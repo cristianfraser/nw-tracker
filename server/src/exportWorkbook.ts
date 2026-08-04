@@ -116,12 +116,17 @@ function aportesRows(accounts: readonly MemberAccount[], opts: ExportOptions, wi
 }
 
 function movementRow(m: AccountMovementApiRow, accountName: string | null): SheetRow {
+  // Sheet keeps split CLP/USD columns (SUM-friendly), derived from the native amount+currency.
+  const montoClp =
+    m.currency === "clp" ? m.amount : m.counter_currency === "clp" ? m.counter_amount : 0;
+  const montoUsd =
+    m.currency === "usd" ? m.amount : m.counter_currency === "usd" ? m.counter_amount : null;
   return {
     ...(accountName != null ? { cuenta: accountName } : {}),
     fecha: m.occurred_on,
     tipo: m.flow_type_label,
-    monto_clp: m.amount_clp,
-    monto_usd: m.amount_usd,
+    monto_clp: montoClp,
+    monto_usd: montoUsd,
     unidades: m.units_delta,
     ticker: m.ticker,
     contraparte: m.counterpart_account_name,
