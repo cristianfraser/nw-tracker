@@ -4,6 +4,7 @@ import i18n from "../../i18n";
 import { formatPct } from "../../format";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
+import { dataKeysWithWindowData } from "../../chartSeriesWindowPresence";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   AXIS_LINE_STROKE,
@@ -42,7 +43,7 @@ export function ProportionalAreaChart({
   /** Series color, from the caller's existing maps (bucket palette / group color maps). */
   colorFor: (line: ProportionalSeriesLineDto, index: number) => string;
 }) {
-  const series = block?.series ?? [];
+  const allSeries = block?.series ?? [];
 
   const rows = useMemo(() => {
     if (!block) return [];
@@ -76,7 +77,21 @@ export function ProportionalAreaChart({
     [rows, xAxisGranularity]
   );
 
-  if (!rows.length || !series.length) {
+  // A member with no band in the visible window — all null, or the constant 0 the builder emits
+  // for missing members — draws nothing, so drop it from the areas, the legend and the tooltip.
+  // Each survivor keeps its original index for `colorFor`, so colors don't shift with the window.
+  const visibleSeries = useMemo(() => {
+    const present = dataKeysWithWindowData(
+      rows,
+      allSeries.map((s) => s.dataKey),
+      { treatZeroAsEmpty: true }
+    );
+    return allSeries
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => present.has(line.dataKey));
+  }, [rows, allSeries]);
+
+  if (!rows.length || !visibleSeries.length) {
     return (
       <div className="chart-grid__col">
         <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
@@ -120,8 +135,8 @@ export function ProportionalAreaChart({
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />
-          {series.map((s, idx) => {
-            const color = colorFor(s, idx);
+          {visibleSeries.map(({ line: s, index }) => {
+            const color = colorFor(s, index);
             return (
               <Area
                 key={s.dataKey}

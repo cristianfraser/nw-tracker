@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
+import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import i18n from "../../i18n";
 import { AppComposedChart } from "./AppComposedChart";
@@ -146,19 +147,14 @@ export function MonthlyPerformanceComboChart({
   const compactAxis = useIsNarrowViewport();
   const timeRange = timeRangeProp ?? "total";
 
-  const densePoints = useMemo(() => {
-    const zeroKeys = barSeries.map((b) => b.dataKey);
-    // Day mode arrives server-windowed to the range (like the daily valuation charts), so the
-    // client clip would only re-cut an already-cut window.
-    const ranged = xAxisGranularity === "day" ? points : clipPointsToTimeRange(points, timeRange);
-    return densifyRecordsByCalendarPeriod(ranged, {
-      granularity: xAxisGranularity,
-      dateKey: "as_of_date",
-      fillMissing: { zeroKeys },
-    });
-  }, [points, timeRange, xAxisGranularity, barSeries]);
+  // Day mode arrives server-windowed to the range (like the daily valuation charts), so the
+  // client clip would only re-cut an already-cut window.
+  const rangedPoints = useMemo(
+    () => (xAxisGranularity === "day" ? points : clipPointsToTimeRange(points, timeRange)),
+    [points, timeRange, xAxisGranularity]
+  );
 
-  const resolvedLineSeries = useMemo((): MonthlyPlLineSeries[] => {
+  const allLineSeries = useMemo((): MonthlyPlLineSeries[] => {
     if (lineSeries?.length) return lineSeries;
     if (lineKey && lineName) {
       return [{ dataKey: lineKey, name: lineName, stroke: "#38bdf8", showDot: true }];
@@ -166,11 +162,37 @@ export function MonthlyPerformanceComboChart({
     return [];
   }, [lineSeries, lineKey, lineName]);
 
+  // Series that draw nothing in the visible window still claimed a legend entry. Presence is read
+  // BEFORE densify, whose `zeroKeys` fabricate 0s for the missing periods. A bar of height 0 has no
+  // geometry — and the payload gives an inactive account 0, not null — so zeros don't count for
+  // bars; the Δ line keeps them, since its dots and stroke are drawn at 0.
+  const visibleBarSeries = useMemo(
+    () => seriesWithWindowData(barSeries, rangedPoints, { treatZeroAsEmpty: true }),
+    [barSeries, rangedPoints]
+  );
+  const resolvedLineSeries = useMemo(
+    () => seriesWithWindowData(allLineSeries, rangedPoints),
+    [allLineSeries, rangedPoints]
+  );
+
+  const densePoints = useMemo(
+    () =>
+      densifyRecordsByCalendarPeriod(rangedPoints, {
+        granularity: xAxisGranularity,
+        dateKey: "as_of_date",
+        fillMissing: { zeroKeys: visibleBarSeries.map((b) => b.dataKey) },
+      }),
+    [rangedPoints, xAxisGranularity, visibleBarSeries]
+  );
+
   const yKeys = useMemo(() => {
-    const k = [...barSeries.map((b) => b.dataKey), ...resolvedLineSeries.map((l) => l.dataKey)];
+    const k = [
+      ...visibleBarSeries.map((b) => b.dataKey),
+      ...resolvedLineSeries.map((l) => l.dataKey),
+    ];
     if (areaKey) k.push(areaKey);
     return k;
-  }, [barSeries, areaKey, resolvedLineSeries]);
+  }, [visibleBarSeries, areaKey, resolvedLineSeries]);
 
   const yScale = useMemo(() => {
     const { min, max } = minMaxForKeys(densePoints, yKeys);
@@ -210,7 +232,7 @@ export function MonthlyPerformanceComboChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={plotPoints}
-          groupedBars={hasBandableBarGroups(barSeries.length, densePoints.length)}
+          groupedBars={hasBandableBarGroups(visibleBarSeries.length, densePoints.length)}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
@@ -306,7 +328,7 @@ export function MonthlyPerformanceComboChart({
                 />
               )
             ) : null}
-            {barSeries.map((b) => (
+            {visibleBarSeries.map((b) => (
               <Bar
                 key={b.dataKey}
                 dataKey={b.dataKey}
