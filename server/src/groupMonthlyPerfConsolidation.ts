@@ -18,6 +18,7 @@ import {
 import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import { flowAdjustedPctMonth } from "./periodReturns.js";
 import {
   monthEndCloseClpForAccount,
   monthEndCloseFromPerfRows,
@@ -25,6 +26,7 @@ import {
 } from "./accountPeriodMarks.js";
 import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -103,11 +105,21 @@ function balanceOnlyMonthlyRowsAsc(
   categorySlug: string,
   unit: TsUnit,
   monthEndsAsc: string[],
-  closeAt: (asOf: string) => number
+  closeAt: (asOf: string) => number,
+  /**
+   * Event-based month flow over `(prevEvalYmd, evalYmd]` (null prev = cumulative through the
+   * first month, the builder convention). USD-cash passes the merged-event window sum so its
+   * CLP flows convert per event at each event's own fx date — the deposited-delta default
+   * would re-price the standing USD deposited capital at each month-end and leak fx drift
+   * into the aportes column. Single-currency accounts keep the default (identical by ledger
+   * identity, no fx involved).
+   */
+  netFlowBetween?: (prevEvalYmd: string | null, evalYmd: string) => number
 ): AccountMonthlyPerformanceRow[] {
   const outAsc: AccountMonthlyPerformanceRow[] = [];
   let prevClose: number | null = null;
   let prevDeposited: number | null = null;
+  let prevEvalAt: string | null = null;
   let ytdYear = 0;
   let ytdRun = 0;
   let cumPl = 0;
@@ -134,7 +146,11 @@ function balanceOnlyMonthlyRowsAsc(
     const deposited = depositedAt(evalAt);
     // First month: flow = cumulative aportes at this date (vs 0) — same convention as
     // the equity/AFP monthly perf builder.
-    const netFlow = prevDeposited != null ? deposited - prevDeposited : deposited;
+    const netFlow = netFlowBetween
+      ? netFlowBetween(prevEvalAt, evalAt)
+      : prevDeposited != null
+        ? deposited - prevDeposited
+        : deposited;
     const nominal = prevClose != null ? close - prevClose - netFlow : null;
     const y = Number(asOf.slice(0, 4));
     if (Number.isFinite(y) && y !== ytdYear) {
@@ -159,6 +175,7 @@ function balanceOnlyMonthlyRowsAsc(
     });
     prevClose = close;
     prevDeposited = deposited;
+    prevEvalAt = evalAt;
   }
 
   if (isMovementBalanceCashCategory(categorySlug)) {
@@ -182,10 +199,21 @@ function usdCashMonthlyPerfRows(
   const today = chileCalendarTodayYmd();
   const maxD = bounds.max_d > today ? bounds.max_d : today;
   const monthEndsAsc = monthEndsBetweenInclusive(bounds.min_d, maxD);
-  const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
-    const clp = usdCashBalanceClpAt(accountId, asOf);
-    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-  });
+  const asc = balanceOnlyMonthlyRowsAsc(
+    accountId,
+    categorySlug,
+    unit,
+    monthEndsAsc,
+    (asOf) => {
+      const clp = usdCashBalanceClpAt(accountId, asOf);
+      return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
+    },
+    (prevEvalYmd, evalYmd) => {
+      const flowUnit = unit === "usd" ? "usd" : "clp";
+      const raw = netDepositFlowBetween(accountId, prevEvalYmd ?? "0000-01-01", evalYmd, flowUnit);
+      return unit === "uf" ? convertTs(raw, evalYmd, "uf") : raw;
+    }
+  );
   return [...asc].reverse();
 }
 
@@ -404,14 +432,7 @@ export function consolidateGroupMonthlyPerf(
       const net = bucket.net_capital_flow;
       /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
       const nominal = bucket.nominal_pl;
-      const denom = (prior ?? 0) + net;
-      const pct =
-        nominal != null &&
-        Number.isFinite(nominal) &&
-        Math.abs(denom) > MONTH_ROW_EPS &&
-        Number.isFinite(nominal / denom)
-          ? nominal / denom
-          : null;
+      const pct = flowAdjustedPctMonth(nominal, prior ?? null, net, MONTH_ROW_EPS);
       return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 

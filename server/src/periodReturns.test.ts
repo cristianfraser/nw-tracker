@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computePeriodReturns,
+  flowAdjustedPctMonth,
   PERIOD_RETURN_ORDER,
   type PeriodReturnInputRow,
   type PeriodReturnKey,
@@ -131,5 +132,42 @@ describe("computePeriodReturns", () => {
     expect(cell(short, "total").annualized_pct).toBeNull(); // exactly 12 elapsed
     const long = computePeriodReturns(series("2025-07", Array(13).fill(0.01)), "clp", "2026-07-07")!;
     expect(cell(long, "total").annualized_pct).not.toBeNull(); // 13 elapsed
+  });
+});
+
+describe("flowAdjustedPctMonth", () => {
+  const EPS = 0.01;
+
+  it("ordinary months keep the flows-at-month-start frame", () => {
+    // prior 1.000, deposit 500, P/L 150 → 150 / 1.500 = 10%.
+    expect(flowAdjustedPctMonth(150, 1_000, 500, EPS)).toBeCloseTo(0.1, 12);
+    // No flows: plain nominal / prior.
+    expect(flowAdjustedPctMonth(-50, 1_000, 0, EPS)).toBeCloseTo(-0.05, 12);
+  });
+
+  it("a full-liquidation month falls back to prior instead of reading exactly −100%", () => {
+    // caca daca June 2026: prior 10.746.626, withdrawal −11.081.441 (gains withdrawn too),
+    // close 0 → nominal +334.815. Old formula: 334.815 / −334.815 ≡ −100% (poisons every
+    // chained window). Sign-guarded: +334.815 / 10.746.626 ≈ +3,12%.
+    const pct = flowAdjustedPctMonth(334_815, 10_746_626, -11_081_441, EPS)!;
+    expect(pct).toBeCloseTo(334_815 / 10_746_626, 12);
+    expect(pct).toBeGreaterThan(0);
+  });
+
+  it("null when no positive capital base exists in either frame", () => {
+    expect(flowAdjustedPctMonth(0, 0, 0, EPS)).toBeNull(); // dormant month
+    expect(flowAdjustedPctMonth(5, null, 0, EPS)).toBeNull(); // no prior, no flow
+    expect(flowAdjustedPctMonth(null, 1_000, 0, EPS)).toBeNull(); // no nominal
+  });
+
+  it("a liquidation month chained does not collapse the window to −100%", () => {
+    const rows = [
+      row("2026-05", 0.0839, 831_711),
+      row("2026-06", flowAdjustedPctMonth(334_815, 10_746_626, -11_081_441, EPS), 334_815),
+    ];
+    const p = computePeriodReturns(rows, "clp", "2026-06-30")!;
+    const ytd = cell(p, "ytd");
+    expect(ytd.pct).not.toBeCloseTo(-1, 6);
+    expect(ytd.pct!).toBeGreaterThan(0.1); // ≈ 1,0839 × 1,0312 − 1
   });
 });

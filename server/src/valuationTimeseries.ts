@@ -377,8 +377,8 @@ function attachDepositSeriesKeys(
       const kind = slug ? accountBucketKindSlug(slug) : "";
       if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
       if (kind && CATEGORY_NO_CHART_DEPOSIT_LINE.has(kind)) return { ...t };
-      // Ledger cash (USD / CLP): always draw the deposited line (= balance − interest), computed
-      // directly below rather than from deposit events, so interest shows as P/L.
+      // Ledger cash: always draw the deposited line so interest shows as P/L — CLP cash from
+      // balance − interest, USD cash from its merged deposit events (see the dep-map builder).
       if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {
         return { ...t, depositDataKey: `${t.dataKey}__dep` };
       }
@@ -918,16 +918,17 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const depUsdByAccAndDate = new Map<number, Map<string, number>>();
   for (const id of allIds) {
     const kind = accountBucketKindSlug(slugById.get(id) ?? "");
-    // Ledger cash (USD / CLP): deposited = balance − cumulative interest, per snapshot date, so the
-    // value/deposit gap is exactly the interest earned (P/L). Converted to the display unit like values.
-    if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {
+    // CLP ledger cash: deposited = balance − cumulative interest, per snapshot date, so the
+    // value/deposit gap is exactly the interest earned (P/L) — a single-currency identity equal
+    // to the event sum. USD cash goes through the generic event cums below instead (2026-08-04):
+    // re-pricing its balance−interest at each snapshot's fx leaked fx drift into the aportes
+    // line and the monthly net flows; per-event conversion keeps a no-event month at flow 0.
+    if (isClpCashKindSlug(kind)) {
       const clpMap = new Map<string, number>();
       const usdMap = new Map<string, number>();
       const ufMap = new Map<string, number>();
       for (const d of dateStrs) {
-        const valClp = isUsdCashKindSlug(kind)
-          ? usdCashBalanceClpAt(id, d)
-          : clpCashBalanceClpAt(id, d);
+        const valClp = clpCashBalanceClpAt(id, d);
         const depClp = valClp - cashInterestClpThroughDate(id, d);
         clpMap.set(d, depClp);
         if (unit === "usd") usdMap.set(d, convertTs(depClp, d, "usd"));
