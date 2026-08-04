@@ -44,7 +44,6 @@ describe("withShortHorizonCells (assembler)", () => {
   const monthly: PeriodReturnsPayload = {
     unit: "clp",
     as_of_date: "2026-07-07",
-    mtd_is_live: true,
     first_month: "2020-01",
     periods: [
       { period: "mtd", pct: 0.01, nominal_pl: 10, annualized_pct: null, months: 1, window_start_month: "2026-07" },
