@@ -38,15 +38,17 @@ describe("USD cash account balance (synthetic)", () => {
     );
     const movIds: number[] = [];
     const ins = db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, amount_usd, occurred_on, note, flow_kind, units_delta)
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    // Two conversions into USD cash (single-leg compra rows on the account).
-    movIds.push(Number(ins.run(usdId, null, null, 900_000, 1_000, "2026-02-10", "vitest-compra-1", "compra_usd_venta_clp", null).lastInsertRowid));
-    movIds.push(Number(ins.run(usdId, null, null, 450_000, 500, "2026-03-05", "vitest-compra-2", "compra_usd_venta_clp", null).lastInsertRowid));
-    // Buys funded from USD cash: transfer legs usd -> equity.
-    movIds.push(Number(ins.run(null, usdId, eqId, 0, 900, "2026-03-10", "vitest-buy-1", "stock_buy", 5).lastInsertRowid));
-    movIds.push(Number(ins.run(null, usdId, eqId, 0, 600, "2026-04-02", "vitest-buy-2", "stock_buy", 3).lastInsertRowid));
+    // Two conversions into USD cash (single-leg compra rows on the account). The legacy
+    // fixture also carried the CLP-spent leg (amount_clp 900_000 / 450_000); the CHECK
+    // forbids a counter pair on single-leg rows and the assertions only read the USD leg.
+    movIds.push(Number(ins.run(usdId, null, null, 1_000, "usd", "2026-02-10", "vitest-compra-1", "compra_usd_venta_clp", null).lastInsertRowid));
+    movIds.push(Number(ins.run(usdId, null, null, 500, "usd", "2026-03-05", "vitest-compra-2", "compra_usd_venta_clp", null).lastInsertRowid));
+    // Buys funded from USD cash: transfer legs usd -> equity (legacy amount_clp was 0).
+    movIds.push(Number(ins.run(null, usdId, eqId, 900, "usd", "2026-03-10", "vitest-buy-1", "stock_buy", 5).lastInsertRowid));
+    movIds.push(Number(ins.run(null, usdId, eqId, 600, "usd", "2026-04-02", "vitest-buy-2", "stock_buy", 3).lastInsertRowid));
 
     try {
       // Running balance: +1000, +500, −900, −600.

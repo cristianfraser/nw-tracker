@@ -21,8 +21,9 @@ describe("stockAccountFormTypes", () => {
     const body = buildBrokerageMovementPostBody(row, "LIN");
     expect(body?.counterpart_role).toBe("from");
     expect(body?.counterpart_account_id).toBe(90);
-    expect(body).toHaveProperty("amount_usd");
-    expect(body).not.toHaveProperty("amount_clp");
+    expect(body?.amount).toBe(100);
+    expect(body?.currency).toBe("usd");
+    expect(body).not.toHaveProperty("counter_amount");
   });
 
   it("dividend_payout on the stock form: counterpart is the receiving USD cash (to), no units", () => {
@@ -35,11 +36,12 @@ describe("stockAccountFormTypes", () => {
     };
     const body = buildBrokerageMovementPostBody(row, "VEA");
     expect(body?.counterpart_role).toBe("to");
-    expect(body?.amount_usd).toBe(0.54);
+    expect(body?.amount).toBe(0.54);
+    expect(body?.currency).toBe("usd");
     expect(body).not.toHaveProperty("units_delta");
   });
 
-  it("stock_buy for a .SN (CLP-quoted) stock sends amount_clp and never amount_usd", () => {
+  it("stock_buy for a .SN (CLP-quoted) stock sends a CLP amount and never a USD leg", () => {
     const row = {
       ...emptyMovementRow("stock_buy"),
       occurredOn: "2026-07-03",
@@ -49,8 +51,9 @@ describe("stockAccountFormTypes", () => {
       counterpartAccountId: 96 as const,
     };
     const body = buildBrokerageMovementPostBody(row, "CFIETFIPSA.SN");
-    expect(body?.amount_clp).toBe(2_985_000);
-    expect(body).not.toHaveProperty("amount_usd");
+    expect(body?.amount).toBe(2_985_000);
+    expect(body?.currency).toBe("clp");
+    expect(body).not.toHaveProperty("counter_amount");
     expect(body?.counterpart_role).toBe("from");
     expect(body?.units_delta).toBe(2282);
     expect(body?.ticker).toBe("CFIETFIPSA.SN");

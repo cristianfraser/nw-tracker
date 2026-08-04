@@ -2,6 +2,7 @@ import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import {
   fxBidAskRowOnDate,
   inferBidAskFromMid,
@@ -65,7 +66,7 @@ export function collectDirectionalFxPaymentDates(): string[] {
       `SELECT DISTINCT spent_on AS d FROM expense_entries WHERE amount_clp != 0
        UNION
        SELECT DISTINCT occurred_on AS d FROM movements
-       WHERE flow_kind IN ('compra_usd', 'compra_usd_venta_clp') AND amount_clp > 0`
+       WHERE flow_kind IN ('compra_usd', 'compra_usd_venta_clp') AND ${MOVEMENT_CLP_LEG_SQL} > 0`
     )
     .all() as { d: string }[];
   for (const { d } of expenseDates) {

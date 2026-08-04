@@ -12,6 +12,7 @@ import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
 import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
 /**
@@ -73,7 +74,7 @@ export function backfillGenericTransferUniquePurchases(): {
     const movements = db
       .prepare(
         `SELECT id, note FROM movements
-         WHERE account_id = ? AND amount_clp < 0`
+         WHERE account_id = ? AND ${MOVEMENT_CLP_LEG_SQL} < 0`
       )
       .all(checkingId) as { id: number; note: string | null }[];
 

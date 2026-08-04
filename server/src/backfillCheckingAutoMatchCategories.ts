@@ -6,6 +6,7 @@ import {
   getCcExpenseCategoryBySlug,
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import {
   resolveAutoMatchCategorySlugForCheckingWithdrawal,
 } from "./flowsCheckingGastos.js";
@@ -40,7 +41,7 @@ function movementFromLegacyPurchaseKey(
   return (
     dbHandle
       .prepare(
-        `SELECT id, account_id, occurred_on, amount_clp, note
+        `SELECT id, account_id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
          FROM movements WHERE id = ? AND account_id = ?`
       )
       .get(parsed.movementId, accountId) as MovementRow | undefined
@@ -66,11 +67,11 @@ function movementFromStablePurchaseKey(
   return (
     dbHandle
       .prepare(
-        `SELECT id, account_id, occurred_on, amount_clp, note
+        `SELECT id, account_id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
          FROM movements
          WHERE account_id = ?
            AND occurred_on = ?
-           AND amount_clp = ?
+           AND ${MOVEMENT_CLP_LEG_SQL} = ?
            AND note LIKE 'import:cartola|%'
            AND note LIKE ?
          ORDER BY id DESC

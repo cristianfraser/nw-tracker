@@ -143,8 +143,8 @@ describe("buildDepositsReconciliationPayload", () => {
       if (!fromAcc || !toAcc) return;
 
       db.prepare(
-        `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note)
-         VALUES (NULL, ?, ?, ?, ?, 'vitest-internal-transfer-row')`
+        `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+         VALUES (NULL, ?, ?, ?, 'clp', ?, 'vitest-internal-transfer-row')`
       ).run(fromAcc.id, toAcc.id, 7_777_333, "2025-06-16");
 
       const after = buildDepositsReconciliationPayload();

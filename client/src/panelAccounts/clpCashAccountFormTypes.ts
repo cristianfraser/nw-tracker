@@ -7,14 +7,15 @@ export function buildClpCashMovementPostBody(
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
-  const amount_clp = parseOptionalNumber(row.amountClp);
+  const amount = parseOptionalNumber(row.amountClp);
   if (row.counterpartAccountId !== "" && clpCashFlowKindAllowsCounterpart(row.flowKind)) {
-    if (amount_clp == null) return null;
+    if (amount == null) return null;
     // Internal transfer leg: single from/to row, direction from the flow kind
     // (deposit = money arrives from the counterpart, withdrawal = money leaves to it).
     return {
       occurred_on,
-      amount_clp: Math.abs(amount_clp),
+      amount: Math.abs(amount),
+      currency: "clp",
       counterpart_account_id: row.counterpartAccountId,
       counterpart_role: row.flowKind === "deposit_clp" ? "from" : "to",
     };
@@ -22,6 +23,6 @@ export function buildClpCashMovementPostBody(
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    amount_clp,
+    ...(amount != null ? { amount, currency: "clp" } : {}),
   };
 }

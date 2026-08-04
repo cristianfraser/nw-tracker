@@ -17,27 +17,32 @@ const USD_BOUGHT = 5344.04;
 function insertTransfer(v: {
   from_account_id: number;
   to_account_id: number;
-  amount_clp: number;
+  amount: number;
+  currency: string;
+  counter_amount: number | null;
+  counter_currency: string | null;
   occurred_on: string;
   flow_kind: string | null;
-  amount_usd: number | null;
 }): number {
   return Number(
     db
       .prepare(
         `INSERT INTO movements (
-           account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-           units_delta, flow_kind, amount_usd, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`
+           account_id, from_account_id, to_account_id, amount, currency,
+           counter_amount, counter_currency, occurred_on, note,
+           units_delta, flow_kind, ticker
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`
       )
       .run(
         v.from_account_id,
         v.to_account_id,
-        v.amount_clp,
+        v.amount,
+        v.currency,
+        v.counter_amount,
+        v.counter_currency,
         v.occurred_on,
         FIXTURE_NOTE,
-        v.flow_kind,
-        v.amount_usd
+        v.flow_kind
       ).lastInsertRowid
   );
 }
@@ -70,7 +75,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
 
     // Seed the CLP account with an opening balance so it has funds to spend.
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, '2026-06-01', ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '2026-06-01', ?)`
     ).run(clpId, 8_000_000, FIXTURE_NOTE);
   });
 
@@ -87,8 +92,10 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
       {
         occurred_on: DATE,
         flow_kind: "compra_usd_venta_clp",
-        amount_clp: -CLP_SPENT,
-        amount_usd: USD_BOUGHT,
+        amount: -CLP_SPENT,
+        currency: "clp",
+        counter_amount: USD_BOUGHT,
+        counter_currency: "usd",
         counterpart_account_id: clpId,
         counterpart_role: "from",
       },
@@ -99,8 +106,10 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     expect(v.from_account_id).toBe(clpId);
     expect(v.to_account_id).toBe(usdId);
     expect(v.flow_kind).toBe("compra_usd_venta_clp");
-    expect(v.amount_clp).toBe(CLP_SPENT);
-    expect(v.amount_usd).toBe(USD_BOUGHT);
+    expect(v.amount).toBe(CLP_SPENT);
+    expect(v.currency).toBe("clp");
+    expect(v.counter_amount).toBe(USD_BOUGHT);
+    expect(v.counter_currency).toBe("usd");
   });
 
   it("rejects when the destination is not a USD cash account", () => {
@@ -111,8 +120,10 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
       {
         occurred_on: DATE,
         flow_kind: "compra_usd_venta_clp",
-        amount_clp: -CLP_SPENT,
-        amount_usd: USD_BOUGHT,
+        amount: -CLP_SPENT,
+        currency: "clp",
+        counter_amount: USD_BOUGHT,
+        counter_currency: "usd",
         counterpart_account_id: usdId,
         counterpart_role: "from",
       },
@@ -133,8 +144,10 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
       {
         occurred_on: DATE,
         flow_kind: "compra_usd_venta_clp",
-        amount_clp: -CLP_SPENT,
-        amount_usd: USD_BOUGHT,
+        amount: -CLP_SPENT,
+        currency: "clp",
+        counter_amount: USD_BOUGHT,
+        counter_currency: "usd",
         counterpart_account_id: clpId,
         counterpart_role: "from",
       },
@@ -145,10 +158,12 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     insertTransfer({
       from_account_id: v.from_account_id,
       to_account_id: v.to_account_id,
-      amount_clp: v.amount_clp,
+      amount: v.amount,
+      currency: v.currency,
+      counter_amount: v.counter_amount,
+      counter_currency: v.counter_currency,
       occurred_on: v.occurred_on,
       flow_kind: v.flow_kind,
-      amount_usd: v.amount_usd,
     });
 
     // CLP source balance drops by the pesos spent.

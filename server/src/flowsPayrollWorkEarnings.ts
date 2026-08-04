@@ -88,7 +88,11 @@ export function loadPayrollWorkEarnings(): FlowWorkEarningRow[] {
          p.uf_mes, p.utm_mes, p.tope_previsional_uf, p.tope_cesantia_uf,
          p.source_pdf, p.movement_id, p.link_source,
          m.occurred_on AS linked_received_on,
-         m.amount_clp AS linked_amount_clp,
+         -- CLP leg of the linked movement; the LEFT JOIN miss must stay NULL (not 0).
+         (CASE WHEN m.id IS NULL THEN NULL
+               WHEN m.currency = 'clp' THEN m.amount
+               WHEN m.counter_currency = 'clp' THEN m.counter_amount
+               ELSE 0 END) AS linked_amount_clp,
          a.name AS linked_account_label
        FROM payroll_work_earnings p
        LEFT JOIN movements m ON m.id = p.movement_id

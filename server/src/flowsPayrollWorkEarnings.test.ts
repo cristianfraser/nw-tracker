@@ -67,7 +67,7 @@ beforeAll(() => {
       .lastInsertRowid
   );
   const insMovement = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
   );
   movementId = Number(insMovement.run(accountId, 1_500_000, "2031-02-05", MOVEMENT_NOTE).lastInsertRowid);
   otherMovementId = Number(

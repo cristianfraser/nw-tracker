@@ -42,8 +42,8 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
       ...notes
     );
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, existing.amount_clp, existing.occurred_on, notes[0]);
 
     const result = importCheckingPartialMovements(accountId, [existing, fresh]);
@@ -88,8 +88,8 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
       officialNote
     );
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, mv.amount_clp, mv.occurred_on, officialNote);
 
     const result = importCheckingPartialMovements(accountId, [mv]);

@@ -403,6 +403,7 @@ export const api = {
       amount_min?: number;
       amount_max?: number;
       amount_exact?: number;
+      amount_currency?: string;
     }
   ) => {
     const qu = new URLSearchParams();
@@ -419,6 +420,7 @@ export const api = {
     for (const key of ["amount_min", "amount_max", "amount_exact"] as const) {
       if (opts[key] != null) qu.set(key, String(opts[key]));
     }
+    if (opts.amount_currency) qu.set("amount_currency", opts.amount_currency);
     const qs = qu.toString();
     return j<import("./types").FlowsPageResponse>(
       `/api/groups/${encodeURIComponent(slug)}/flows${qs ? `?${qs}` : ""}`
@@ -438,6 +440,7 @@ export const api = {
       amount_min?: number;
       amount_max?: number;
       amount_exact?: number;
+      amount_currency?: string;
     }
   ) => {
     const qu = new URLSearchParams();
@@ -453,6 +456,7 @@ export const api = {
     for (const key of ["amount_min", "amount_max", "amount_exact"] as const) {
       if (opts[key] != null) qu.set(key, String(opts[key]));
     }
+    if (opts.amount_currency) qu.set("amount_currency", opts.amount_currency);
     const qs = qu.toString();
     return j<import("./types").FlowsPageResponse>(
       `/api/accounts/${id}/flows${qs ? `?${qs}` : ""}`
@@ -471,12 +475,14 @@ export const api = {
     j<{
       movements: {
         id: number;
-        amount_clp: number;
+        amount: number;
+        currency: string;
+        counter_amount: number | null;
+        counter_currency: string | null;
         occurred_on: string;
         note: string | null;
         units_delta: number | null;
         flow_kind: string | null;
-        amount_usd: number | null;
         ticker: string | null;
         flow_type: string;
         flow_type_label: string;

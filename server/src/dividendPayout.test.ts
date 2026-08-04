@@ -18,31 +18,36 @@ const DIV_USD = 20;
 function insertValidatedTransfer(v: {
   from_account_id: number;
   to_account_id: number;
-  amount_clp: number;
+  amount: number;
+  currency: string;
+  counter_amount: number | null;
+  counter_currency: string | null;
   occurred_on: string;
   note: string | null;
   units_delta: number | null;
   flow_kind: string | null;
-  amount_usd: number | null;
   ticker: string | null;
 }): number {
   return Number(
     db
       .prepare(
         `INSERT INTO movements (
-           account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-           units_delta, flow_kind, amount_usd, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           account_id, from_account_id, to_account_id, amount, currency,
+           counter_amount, counter_currency, occurred_on, note,
+           units_delta, flow_kind, ticker
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         v.from_account_id,
         v.to_account_id,
-        v.amount_clp,
+        v.amount,
+        v.currency,
+        v.counter_amount,
+        v.counter_currency,
         v.occurred_on,
         v.note ?? FIXTURE_NOTE,
         v.units_delta,
         v.flow_kind,
-        v.amount_usd,
         v.ticker
       ).lastInsertRowid
   );
@@ -81,12 +86,14 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     insertValidatedTransfer({
       from_account_id: usdId,
       to_account_id: stockId,
-      amount_clp: 0,
+      amount: 300,
+      currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
       occurred_on: "2026-05-05",
       note: FIXTURE_NOTE,
       units_delta: 3,
       flow_kind: "stock_buy",
-      amount_usd: 300,
       ticker: "VITEST",
     });
   });
@@ -97,14 +104,15 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_STOCK);
   });
 
-  it("validates as a from-stock → to-usd-cash transfer with amount_usd", () => {
+  it("validates as a from-stock → to-usd-cash transfer with a USD amount", () => {
     if (!usdId || !stockId) return;
     const v = validateMovementCreate(
       usdAccountRow,
       {
         occurred_on: DIV_DATE,
         flow_kind: "dividend_payout",
-        amount_usd: DIV_USD,
+        amount: DIV_USD,
+        currency: "usd",
         counterpart_account_id: stockId,
         counterpart_role: "from",
       },
@@ -117,7 +125,8 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
     expect(v.from_account_id).toBe(stockId);
     expect(v.to_account_id).toBe(usdId);
     expect(v.flow_kind).toBe("dividend_payout");
-    expect(v.amount_usd).toBe(DIV_USD);
+    expect(v.amount).toBe(DIV_USD);
+    expect(v.currency).toBe("usd");
     expect(v.units_delta).toBeNull();
   });
 
@@ -129,7 +138,8 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
       {
         occurred_on: DIV_DATE,
         flow_kind: "dividend_payout",
-        amount_usd: DIV_USD,
+        amount: DIV_USD,
+        currency: "usd",
         counterpart_account_id: usdId,
         counterpart_role: "from",
       },
@@ -154,7 +164,8 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
       {
         occurred_on: DIV_DATE,
         flow_kind: "dividend_payout",
-        amount_usd: DIV_USD,
+        amount: DIV_USD,
+        currency: "usd",
         counterpart_account_id: stockId,
         counterpart_role: "from",
       },

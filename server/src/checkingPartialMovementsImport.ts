@@ -42,8 +42,8 @@ export function importCheckingPartialMovements(
   movements: UltimosMovimientoRow[]
 ): PartialMovementsImportResult {
   const ins = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-     VALUES (?, ?, ?, ?, NULL)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+     VALUES (?, ?, 'clp', ?, ?, NULL)`
   );
 
   let inserted = 0;

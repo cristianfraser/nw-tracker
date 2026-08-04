@@ -11,6 +11,12 @@ import {
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 
 const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 
@@ -57,10 +63,10 @@ export function syncBudaAbonoDepositMirrors(): void {
   if (budaId == null) return;
   const abonos = db
     .prepare(
-      `SELECT id, amount_clp, occurred_on FROM movements
-       WHERE account_id = ? AND note = 'import:buda|abono' AND amount_clp > 0`
+      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on FROM movements
+       WHERE account_id = ? AND note = 'import:buda|abono' AND ${MOVEMENT_CLP_LEG_SQL} > 0`
     )
-    .all(budaId) as { id: number; amount_clp: number; occurred_on: string }[];
+    .all(budaId) as ({ id: number; occurred_on: string } & MovementAmountFields)[];
   if (abonos.length === 0) return;
 
   const corrienteId = cartolaCashAccountId("cuenta_corriente");
@@ -72,7 +78,7 @@ export function syncBudaAbonoDepositMirrors(): void {
   const tx = db.transaction(() => {
     for (const a of abonos) {
       del.run(a.id);
-      ins.run(corrienteId, a.id, Math.round(a.amount_clp), a.occurred_on, "buda-abono|self_funded");
+      ins.run(corrienteId, a.id, Math.round(movementClpLegOrZero(a)), a.occurred_on, "buda-abono|self_funded");
     }
   });
   tx();

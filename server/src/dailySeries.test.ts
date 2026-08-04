@@ -68,8 +68,8 @@ beforeAll(() => {
       .run(leaf.id, TICKER).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta)
-     VALUES (?, 100000, '2026-03-10', 'vitest-daily-series-buy', 'stock_buy', ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+     VALUES (?, 100000, 'clp', '2026-03-10', 'vitest-daily-series-buy', 'stock_buy', ?)`
   ).run(equityAccountId, UNITS);
   const insBar = db.prepare(
     `INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'clp')`
@@ -94,8 +94,8 @@ beforeAll(() => {
   insVal.run(manualAccountId, "2026-03-18", 500000);
   insVal.run(manualAccountId, "2026-03-25", 520000);
   db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note)
-     VALUES (?, 50000, '2026-03-24', 'vitest-daily-series-deposit')`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+     VALUES (?, 50000, 'clp', '2026-03-24', 'vitest-daily-series-deposit')`
   ).run(manualAccountId);
 
   // Fixture rows were written on this connection (no data_version bump) — drop anything a
@@ -211,8 +211,8 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     insVal.run(accountId, "2026-03-18", 560000);
     insVal.run(accountId, "2026-03-24", 600000);
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note)
-       VALUES (?, 50000, '2026-03-24', 'vitest-daily-series-same-day-deposit')`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, 50000, 'clp', '2026-03-24', 'vitest-daily-series-same-day-deposit')`
     ).run(accountId);
 
     try {
