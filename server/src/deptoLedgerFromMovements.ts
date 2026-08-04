@@ -27,6 +27,7 @@ import {
   type DeptoMortgageSheetRow,
   type DeptoPaymentTableRow,
 } from "./deptoDividendosLedger.js";
+import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import {
   computeMortgagePaymentAnalytics,
   mortgageAnalyticsMetaFromLedger,
@@ -39,9 +40,8 @@ function roundUf5(v: number): number {
   return Math.round(v * 1e5) / 1e5;
 }
 
-type PropertyPaymentJoinRow = DeptoPaymentTableRow & {
+type PropertyPaymentJoinRow = DeptoPaymentTableRow & MovementAmountFields & {
   occurred_on: string;
-  amount_clp: number;
 };
 
 function deptoPropertyAccountId(): number | null {
@@ -83,7 +83,7 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
 
   const movements = db
     .prepare(
-      `SELECT p.*, m.occurred_on, m.amount_clp FROM movements m
+      `SELECT p.*, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency FROM movements m
        JOIN depto_payments p ON p.movement_id = m.id
        WHERE m.account_id = ? ORDER BY m.occurred_on, m.id`
     )
@@ -118,7 +118,7 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
     return {
       cuota: p.cuota,
       occurred_on: m.occurred_on,
-      pago_clp: Math.abs(m.amount_clp),
+      pago_clp: Math.abs(movementClpLegOrZero(m)),
       pago_uf: p.amount_uf ?? null,
       pct_dividendo: null,
       uf_clp_day: ufDay,

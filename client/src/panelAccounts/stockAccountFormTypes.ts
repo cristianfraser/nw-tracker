@@ -91,16 +91,26 @@ export function buildBrokerageMovementPostBody(
   if (!occurred_on) return null;
   const quote = quoteCurrency ?? stockQuoteCurrencyForTicker(ticker);
   // Only submit the fields that the flow kind actually shows — a value left behind in a now-hidden
-  // input (e.g. CLP typed before switching to "compra acciones") must not be sent.
+  // input (e.g. CLP typed before switching to "compra acciones") must not be sent. A kind that
+  // shows both fields (compra_usd_venta_clp) sends CLP as the amount and USD as the counter leg.
+  const clp = brokerageFlowKindNeedsClpForQuote(row.flowKind, quote)
+    ? parseOptionalNumber(row.amountClp)
+    : null;
+  const usd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, quote)
+    ? parseOptionalNumber(row.amountUsd)
+    : null;
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    ...(brokerageFlowKindNeedsClpForQuote(row.flowKind, quote)
-      ? { amount_clp: parseOptionalNumber(row.amountClp) }
-      : {}),
-    ...(brokerageFlowKindNeedsUsdForQuote(row.flowKind, quote)
-      ? { amount_usd: parseOptionalNumber(row.amountUsd) }
-      : {}),
+    ...(clp != null
+      ? {
+          amount: clp,
+          currency: "clp",
+          ...(usd != null ? { counter_amount: usd, counter_currency: "usd" } : {}),
+        }
+      : usd != null
+        ? { amount: usd, currency: "usd" }
+        : {}),
     ...(brokerageFlowKindShowsUnits(row.flowKind)
       ? { units_delta: parseOptionalNumber(row.unitsDelta) }
       : {}),

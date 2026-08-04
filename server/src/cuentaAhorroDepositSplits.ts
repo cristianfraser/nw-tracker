@@ -1,4 +1,9 @@
 import { db } from "./db.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 
 /** A user-declared split of a cuenta_ahorro_vivienda Depósito into self-funded vs family-funded. */
@@ -23,12 +28,12 @@ export function upsertCuentaAhorroDepositSplit(
   note: string | null = null
 ): void {
   const movement = db
-    .prepare(`SELECT amount_clp FROM movements WHERE id = ?`)
-    .get(depositMovementId) as { amount_clp: number } | undefined;
+    .prepare(`SELECT ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements WHERE id = ?`)
+    .get(depositMovementId) as MovementAmountFields | undefined;
   if (!movement) {
     throw new Error(`cuenta_ahorro split: movement ${depositMovementId} not found`);
   }
-  const deposit = Math.round(movement.amount_clp);
+  const deposit = Math.round(movementClpLegOrZero(movement));
   const self = Math.round(selfFundedClp);
   if (self < 0 || self > deposit) {
     throw new Error(

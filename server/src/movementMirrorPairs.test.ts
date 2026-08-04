@@ -48,7 +48,7 @@ function insLeg(accountId: number, amount: number, ymd: string, units: number | 
   return Number(
     db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, units_delta, note) VALUES (?,?,?,?,?)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`
       )
       .run(accountId, amount, ymd, units, note).lastInsertRowid
   );
@@ -171,17 +171,18 @@ describe("listMirrorPairCandidates", () => {
     const fk = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, flow_kind, note) VALUES (?,?,?,?,?)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, flow_kind, note) VALUES (?,?,'clp',?,?,?)`
         )
         .run(ids.generic, -AMT.flowKind, "2026-03-25", "withdrawal_clp", NOTE).lastInsertRowid
     );
     insLeg(ids.generic2, AMT.flowKind, "2026-03-25");
+    // USD-denominated leg (legacy amount_usd row): currency filter excludes it from the pool.
     const usd = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, amount_usd, note) VALUES (?,?,?,?,?)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?,?,'usd',?,?)`
         )
-        .run(ids.generic, -AMT.usd, "2026-03-26", 1700, NOTE).lastInsertRowid
+        .run(ids.generic, 1700, "2026-03-26", NOTE).lastInsertRowid
     );
     insLeg(ids.generic2, AMT.usd, "2026-03-26");
     const dapOut = insLeg(ids.dap, -AMT.dap, "2026-03-27");

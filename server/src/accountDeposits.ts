@@ -10,12 +10,18 @@ import {
   signedClpDeltaForAccountMovement,
   type MovementTransferRow,
 } from "./movementTransfer.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 
 /**
  * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
- * signed `amount_clp` on `movements` (all external flows, including APV-A state bonus).
+ * the signed CLP leg on `movements` (all external flows, including APV-A state bonus).
  *
  * Equity MTM stock accounts (post USD-cash migration): **`stock_buy` / `stock_sell`** transfer USD legs
  * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit_clp`** / **`withdrawal_clp`**
@@ -70,19 +76,18 @@ function loadMovementSignedFlowEvents(
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id, note, flow_kind
+      `SELECT account_id, occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, id, note, flow_kind
        FROM movements
        WHERE account_id IN (${ph})
        ORDER BY account_id, occurred_on, id`
     )
-    .all(...uniq) as {
+    .all(...uniq) as (MovementAmountFields & {
     account_id: number;
     occurred_on: string;
-    amount_clp: number;
     id: number;
     note: string | null;
     flow_kind: string | null;
-  }[];
+  })[];
   const equityMtmIds = equityMtmAccountIdsSet(uniq);
   const usdCashIds = new Set(uniq.filter((id) => isUsdCashAccount(id)));
   const map = new Map<number, SortFlow[]>();
@@ -98,7 +103,7 @@ function loadMovementSignedFlowEvents(
       if (!brokerageDeposit && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
     }
     if (r.note?.includes("cripto-coin-only-wdw")) continue;
-    const amt = r.amount_clp;
+    const amt = movementClpLegOrZero(r);
     if (amt === 0 || !Number.isFinite(amt)) continue;
     if (!map.has(r.account_id)) map.set(r.account_id, []);
     map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt, tie: `m:${r.id}` });
@@ -121,8 +126,8 @@ function loadTransferLegSignedFlowEvents(
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT m.id, m.account_id, m.from_account_id, m.to_account_id, m.amount_clp, m.occurred_on,
-              m.note, m.flow_kind, m.amount_usd, m.units_delta,
+      `SELECT m.id, m.account_id, m.from_account_id, m.to_account_id, m.amount, m.currency,
+              m.counter_amount, m.counter_currency, m.occurred_on, m.note, m.flow_kind, m.units_delta,
               mm.out_occurred_on AS merge_out_occurred_on, mm.in_occurred_on AS merge_in_occurred_on
        FROM movements m
        LEFT JOIN movement_mirror_merges mm ON mm.transfer_movement_id = m.id
@@ -147,7 +152,7 @@ function loadTransferLegSignedFlowEvents(
     // together (the USD `to` leg is dropped below via usdCashIds). stock_buy/stock_sell also pass
     // the row-level skip: the equity and USD-cash endpoints are dropped below (equityMtmIds /
     // usdCashIds — the equity capital-flow path counts those), so only a CLP-cash funding leg
-    // contributes ±amount_clp here (CLP-quoted stocks; legacy USD trades carry amount_clp = 0).
+    // contributes its ±CLP leg here (CLP-quoted stocks; USD trades have no CLP leg → 0).
     if (
       r.flow_kind != null &&
       r.flow_kind !== "compra_usd_venta_clp" &&
@@ -257,25 +262,24 @@ function loadStateContributionMovementEvents(accountIds: number[]): Map<number, 
   const ph = uniq.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT account_id, occurred_on, amount_clp, id, note, flow_kind
+      `SELECT account_id, occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, id, note, flow_kind
        FROM movements
        WHERE account_id IN (${ph})
-         AND amount_clp > 0
+         AND ${MOVEMENT_CLP_LEG_SQL} > 0
        ORDER BY account_id, occurred_on, id`
     )
-    .all(...uniq) as {
+    .all(...uniq) as (MovementAmountFields & {
     account_id: number;
     occurred_on: string;
-    amount_clp: number;
     id: number;
     note: string | null;
     flow_kind: string | null;
-  }[];
+  })[];
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
     if (!movementIsStateContribution(r.flow_kind)) continue;
     if (!map.has(r.account_id)) map.set(r.account_id, []);
-    map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt: r.amount_clp, tie: `m:${r.id}` });
+    map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt: movementClpLegOrZero(r), tie: `m:${r.id}` });
   }
   return map;
 }
@@ -329,8 +333,8 @@ function usdCashDepositedClpToday(accountId: number): number {
 }
 
 const wdwSumStmt = db.prepare(
-  `SELECT COALESCE(SUM(ABS(amount_clp)), 0) AS s FROM movements
-   WHERE account_id = ? AND amount_clp < 0 AND occurred_on <= ?`
+  `SELECT COALESCE(SUM(ABS(${MOVEMENT_CLP_LEG_SQL})), 0) AS s FROM movements
+   WHERE account_id = ? AND ${MOVEMENT_CLP_LEG_SQL} < 0 AND occurred_on <= ?`
 );
 
 export function totalWithdrawalsClpForAccount(accountId: number): number {

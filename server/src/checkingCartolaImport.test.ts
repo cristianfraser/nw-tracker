@@ -46,8 +46,8 @@ describe("checkingCartolaImport", () => {
       `import:cartola|2099-%`
     );
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, 100, '2099-01-15', ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, 100, 'clp', '2099-01-15', ?, NULL)`
     ).run(accountId, `import:cartola|${oldMonth}|Agustinas|Test|on:2099-01-15|amt:100|idx:0`);
 
     const changed = rewriteCartolaMovementNotesPeriodMonth(accountId, oldMonth, newMonth);
@@ -308,8 +308,8 @@ describe("checkingCartolaImport", () => {
        ) VALUES (?, ?, ?, 1, NULL, NULL, ?, ?)`
     ).run(accountId, staleMonth, sourceFile, "2099-06-30", "2099-08-31");
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, -100, '2099-07-15', ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, -100, 'clp', '2099-07-15', ?, NULL)`
     ).run(accountId, `import:cartola|${staleMonth}|401|Stale|on:2099-07-15|amt:-100|idx:0`);
 
     db.prepare(
@@ -319,8 +319,8 @@ describe("checkingCartolaImport", () => {
        ) VALUES (?, ?, ?, 1, NULL, NULL, ?, ?)`
     ).run(accountId, keepMonth, sourceFile, "2099-06-30", "2099-08-31");
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, 200, '2099-08-10', ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, 200, 'clp', '2099-08-10', ?, NULL)`
     ).run(accountId, `import:cartola|${keepMonth}|401|Keep|on:2099-08-10|amt:200|idx:0`);
 
     const { pruned } = pruneStaleCartolaMonthImportsForSourceFile(accountId, sourceFile, [keepMonth]);

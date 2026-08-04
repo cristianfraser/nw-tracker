@@ -210,7 +210,7 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
 
     // A prepago in the window must NOT count as paid.
     const prepagoMov = db
-      .prepare(`INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, '2099-06-12', NULL)`)
+      .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '2099-06-12', NULL)`)
       .run(paidAccountId, 1_000_000);
     insertDeptoPaymentRow({
       movement_id: Number(prepagoMov.lastInsertRowid),
@@ -238,7 +238,7 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
 
     // A regular numeric cuota → already_paid.
     const paidMov = db
-      .prepare(`INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, '2099-06-11', NULL)`)
+      .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '2099-06-11', NULL)`)
       .run(paidAccountId, 1_200_000);
     paidMovementId = Number(paidMov.lastInsertRowid);
     insertDeptoPaymentRow({

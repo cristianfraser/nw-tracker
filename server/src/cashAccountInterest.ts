@@ -9,11 +9,12 @@
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { isClpCashAccount } from "./clpCashAccounts.js";
+import { MOVEMENT_CLP_LEG_SQL, MOVEMENT_USD_LEG_SQL } from "./movementAmounts.js";
 import { isUsdCashAccount, usdCashUsdToClpAt } from "./usdCashAccounts.js";
 
 export const SAVINGS_EARNINGS_FLOW_KIND = "savings_earnings";
 
-/** Σ interest `amount_usd` credited to a USD cash account through `asOfYmd`. */
+/** Σ interest USD credited to a USD cash account through `asOfYmd`. */
 export function usdCashInterestUsdThroughDate(
   accountId: number,
   asOfYmd: string,
@@ -21,18 +22,18 @@ export function usdCashInterestUsdThroughDate(
 ): number {
   const row = dbHandle
     .prepare(
-      `SELECT COALESCE(SUM(ABS(amount_usd)), 0) AS s
+      `SELECT COALESCE(SUM(ABS(${MOVEMENT_USD_LEG_SQL})), 0) AS s
        FROM movements
        WHERE account_id = ?
          AND flow_kind = '${SAVINGS_EARNINGS_FLOW_KIND}'
-         AND amount_usd IS NOT NULL
+         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
          AND occurred_on <= ?`
     )
     .get(accountId, asOfYmd) as { s: number };
   return row.s;
 }
 
-/** Σ interest `amount_clp` credited to a CLP cash account through `asOfYmd`. */
+/** Σ interest CLP credited to a CLP cash account through `asOfYmd`. */
 export function clpCashInterestClpThroughDate(
   accountId: number,
   asOfYmd: string,
@@ -40,7 +41,7 @@ export function clpCashInterestClpThroughDate(
 ): number {
   const row = dbHandle
     .prepare(
-      `SELECT COALESCE(SUM(ABS(amount_clp)), 0) AS s
+      `SELECT COALESCE(SUM(ABS(${MOVEMENT_CLP_LEG_SQL})), 0) AS s
        FROM movements
        WHERE account_id = ?
          AND flow_kind = '${SAVINGS_EARNINGS_FLOW_KIND}'

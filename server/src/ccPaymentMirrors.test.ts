@@ -80,7 +80,7 @@ beforeAll(() => {
 
   // Checking debits, cartola-dated one day after each card credit (the classic skew).
   const insMov = db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
   );
   cleanupMovementIds.push(
     Number(
@@ -161,14 +161,16 @@ describe("convertCcPaymentMirrors", () => {
       account_id: number | null;
       from_account_id: number;
       to_account_id: number;
-      amount_clp: number;
+      amount: number;
+      currency: string;
       occurred_on: string;
       flow_kind: string;
     };
     expect(transfer.account_id).toBeNull();
     expect(transfer.from_account_id).toBe(checkingId);
     expect(transfer.to_account_id).toBe(ccId);
-    expect(transfer.amount_clp).toBe(487331);
+    expect(transfer.amount).toBe(487331);
+    expect(transfer.currency).toBe("clp");
     expect(transfer.occurred_on).toBe("2037-04-09"); // card credit date, not the cartola date
     expect(transfer.flow_kind).toBe("pago_tarjeta");
 
@@ -203,16 +205,18 @@ describe("convertCcPaymentMirrors", () => {
     // Undo: the checking leg comes back exactly; the transfer disappears.
     const restored = undoMirrorConversion(converted[0]!.transfer_movement_id);
     const back = db
-      .prepare(`SELECT account_id, amount_clp, occurred_on, note FROM movements WHERE id = ?`)
+      .prepare(`SELECT account_id, amount, currency, occurred_on, note FROM movements WHERE id = ?`)
       .get(restored.restored_out_id) as {
       account_id: number;
-      amount_clp: number;
+      amount: number;
+      currency: string;
       occurred_on: string;
       note: string;
     };
     cleanupMovementIds.push(restored.restored_out_id);
     expect(back.account_id).toBe(checkingId);
-    expect(back.amount_clp).toBe(-487331);
+    expect(back.amount).toBe(-487331);
+    expect(back.currency).toBe("clp");
     expect(back.occurred_on).toBe("2037-04-10");
     expect(
       db.prepare(`SELECT 1 FROM movements WHERE id = ?`).get(converted[0]!.transfer_movement_id)

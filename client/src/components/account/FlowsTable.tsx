@@ -2,7 +2,7 @@ import { Input } from "@crfrsr/ui";
 import { useTranslation } from "../../i18n";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
-import { formatClp, formatInstrumentUnits, formatOrDash, formatUsdFine } from "../../format";
+import { formatClp, formatInstrumentUnits, formatUsdFine } from "../../format";
 import { PaginatedTable } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
 import {
@@ -33,18 +33,29 @@ function showTickerColumn(rows: readonly FlowsApiRow[]): boolean {
   return rows.some((r) => r.ticker != null && String(r.ticker).trim() !== "");
 }
 
-function showUsdColumn(rows: readonly FlowsApiRow[]): boolean {
-  return rows.some((r) => r.amount_usd != null && Number.isFinite(r.amount_usd));
-}
-
 function showCounterpartColumn(rows: readonly FlowsApiRow[]): boolean {
   return rows.some((r) => r.counterpart_account_name != null && r.counterpart_account_name.trim() !== "");
+}
+
+function formatMovementLeg(amount: number, currency: string): string {
+  if (currency === "usd") return formatUsdFine(amount);
+  if (currency === "clp") return formatClp(amount);
+  // eur is schema-reserved; no movements carry it yet — surface raw rather than mislabel.
+  return `${amount} ${currency.toUpperCase()}`;
+}
+
+/** Single Monto cell: native amount; fx conversions show both legs («$X → US$Y»). */
+function formatMovementAmount(row: FlowsApiRow): string {
+  const primary = formatMovementLeg(row.amount, row.currency);
+  if (row.counter_amount != null && row.counter_currency != null) {
+    return `${primary} → ${formatMovementLeg(row.counter_amount, row.counter_currency)}`;
+  }
+  return primary;
 }
 
 function flowsColumnCount(
   showAccountColumn: boolean,
   showFlowTickerCol: boolean,
-  showFlowUsdCol: boolean,
   showUnitsColumn: boolean,
   showCounterpartCol: boolean
 ): number {
@@ -52,7 +63,6 @@ function flowsColumnCount(
     4 +
     (showAccountColumn ? 1 : 0) +
     (showFlowTickerCol ? 1 : 0) +
-    (showFlowUsdCol ? 1 : 0) +
     (showUnitsColumn ? 1 : 0) +
     (showCounterpartCol ? 1 : 0) +
     1
@@ -64,7 +74,6 @@ function FlowsMobileCard({
   labels,
   showAccountColumn,
   showFlowTickerCol,
-  showFlowUsdCol,
   showUnitsColumn,
   movementUnitsKind,
 }: {
@@ -74,14 +83,12 @@ function FlowsMobileCard({
     type: string;
     date: string;
     ticker: string;
-    amountClp: string;
-    amountUsd: string;
+    amount: string;
     units: string;
     note: string;
   };
   showAccountColumn: boolean;
   showFlowTickerCol: boolean;
-  showFlowUsdCol: boolean;
   showUnitsColumn: boolean;
   movementUnitsKind?: (slug: string) => "shares" | "coin";
 }) {
@@ -105,10 +112,7 @@ function FlowsMobileCard({
       </TableMobileCardSection>
 
       <TableMobileCardSection>
-        <TableMobileCardRow label={labels.amountClp} value={formatOrDash(row.amount_clp, formatClp)} />
-        {showFlowUsdCol ? (
-          <TableMobileCardRow label={labels.amountUsd} value={formatOrDash(row.amount_usd, formatUsdFine)} />
-        ) : null}
+        <TableMobileCardRow label={labels.amount} value={formatMovementAmount(row)} />
         {showUnitsColumn ? (
           <TableMobileCardRow
             label={labels.units}
@@ -143,6 +147,8 @@ export type FlowsFilterState = {
   amount_exact: string;
   amount_min: string;
   amount_max: string;
+  /** Currency the amount filters compare against. */
+  amount_currency: string;
 };
 
 export const DEFAULT_FLOWS_FILTER_STATE: FlowsFilterState = {
@@ -157,6 +163,7 @@ export const DEFAULT_FLOWS_FILTER_STATE: FlowsFilterState = {
   amount_exact: "",
   amount_min: "",
   amount_max: "",
+  amount_currency: "clp",
 };
 
 export function FlowsTable({
@@ -193,7 +200,6 @@ export function FlowsTable({
 }) {
   const { t } = useTranslation();
   const showFlowTickerCol = showTickerColumn(rows);
-  const showFlowUsdCol = showUsdColumn(rows);
   const showCounterpartCol = showCounterpartColumn(rows);
 
   const mobileLabels = {
@@ -201,8 +207,7 @@ export function FlowsTable({
     type: t("accountDetail.flowTypeColumn"),
     date: t("accountDetail.flowDateColumn"),
     ticker: t("accountDetail.flowTickerColumn"),
-    amountClp: t("accountDetail.flowAmountClpColumn"),
-    amountUsd: t("accountDetail.flowAmountUsdColumn"),
+    amount: t("accountDetail.flowAmountColumn"),
     units: t("accountDetail.flowUnitsColumn"),
     note: t("accountDetail.flowNoteColumn"),
     counterpart: t("accountDetail.movements.counterpartAccount"),
@@ -211,7 +216,6 @@ export function FlowsTable({
   const colSpan = flowsColumnCount(
     showAccountColumn,
     showFlowTickerCol,
-    showFlowUsdCol,
     showUnitsColumn,
     showCounterpartCol
   );
@@ -320,6 +324,14 @@ export function FlowsTable({
             aria-label={t("flows.filters.dateTo")}
           />
         </div>
+        <select
+          value={filterState.amount_currency || "clp"}
+          onChange={(e) => onFilterChange({ amount_currency: e.target.value })}
+          aria-label={t("flows.filters.amountCurrency")}
+        >
+          <option value="clp">CLP</option>
+          <option value="usd">USD</option>
+        </select>
         <div style={{ width: "7rem" }}>
           <Input
             type="text"
@@ -376,10 +388,7 @@ export function FlowsTable({
         {showFlowTickerCol ? (
           <th className="desktop-only">{t("accountDetail.flowTickerColumn")}</th>
         ) : null}
-        <th className="desktop-only">{t("accountDetail.flowAmountClpColumn")}</th>
-        {showFlowUsdCol ? (
-          <th className="desktop-only">{t("accountDetail.flowAmountUsdColumn")}</th>
-        ) : null}
+        <th className="desktop-only">{t("accountDetail.flowAmountColumn")}</th>
         {showUnitsColumn ? (
           <th className="desktop-only">{t("accountDetail.flowUnitsColumn")}</th>
         ) : null}
@@ -431,10 +440,7 @@ export function FlowsTable({
               {showFlowTickerCol ? (
                 <td className="desktop-only">{row.ticker ?? "—"}</td>
               ) : null}
-              <td className="mono desktop-only">{formatOrDash(row.amount_clp, formatClp)}</td>
-              {showFlowUsdCol ? (
-                <td className="mono desktop-only">{formatOrDash(row.amount_usd, formatUsdFine)}</td>
-              ) : null}
+              <td className="mono desktop-only">{formatMovementAmount(row)}</td>
               {showUnitsColumn ? (
                 <td className="mono desktop-only">
                   {formatFlowUnits(row, movementUnitsKind)}
@@ -457,7 +463,6 @@ export function FlowsTable({
                   labels={mobileLabels}
                   showAccountColumn={showAccountColumn}
                   showFlowTickerCol={showFlowTickerCol}
-                  showFlowUsdCol={showFlowUsdCol}
                   showUnitsColumn={showUnitsColumn}
                   movementUnitsKind={movementUnitsKind}
                 />

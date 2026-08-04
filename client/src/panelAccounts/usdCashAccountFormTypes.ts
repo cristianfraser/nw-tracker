@@ -16,11 +16,21 @@ export function buildUsdCashMovementPostBody(
   // stale value in a hidden input isn't sent.
   const showClp = brokerageFlowKindNeedsClp(row.flowKind);
   const showUsd = brokerageFlowKindNeedsUsd(row.flowKind) || isInterestFlowKind(row.flowKind);
+  const clp = showClp ? parseOptionalNumber(row.amountClp) : null;
+  const usd = showUsd ? parseOptionalNumber(row.amountUsd) : null;
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    ...(showClp ? { amount_clp: parseOptionalNumber(row.amountClp) } : {}),
-    ...(showUsd ? { amount_usd: parseOptionalNumber(row.amountUsd) } : {}),
+    // A kind showing both fields (compra_usd_venta_clp) sends CLP as the amount, USD as counter.
+    ...(clp != null
+      ? {
+          amount: clp,
+          currency: "clp",
+          ...(usd != null ? { counter_amount: usd, counter_currency: "usd" } : {}),
+        }
+      : usd != null
+        ? { amount: usd, currency: "usd" }
+        : {}),
     ...(row.counterpartAccountId !== ""
       ? {
           counterpart_account_id: row.counterpartAccountId,

@@ -121,10 +121,10 @@ describe("importFintualCertificado", () => {
       db.prepare("SELECT id FROM accounts WHERE id != ? ORDER BY id LIMIT 1").get(reservaId) as { id: number }
     ).id;
     db.prepare(
-      "INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 5000000, '2025-01-06', 'mirror-merge|test', 100)"
+      "INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 5000000, 'clp', '2025-01-06', 'mirror-merge|test', 100)"
     ).run(counterpartId, reservaId);
     db.prepare(
-      "INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 2000000, '2025-02-21', 'manual rescate', 40)"
+      "INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 2000000, 'clp', '2025-02-21', 'manual rescate', 40)"
     ).run(reservaId, counterpartId);
 
     const res = importFintualCertificado({ maxMonth: "2099-12" });
@@ -144,13 +144,13 @@ describe("importFintualCertificado", () => {
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     const curatedId = (db.prepare("SELECT id FROM movements WHERE account_id = ?").get(reservaId) as { id: number }).id;
     // The user edits the curated amount (correcting the cert).
-    db.prepare("UPDATE movements SET amount_clp = 5100000 WHERE id = ?").run(curatedId);
+    db.prepare("UPDATE movements SET amount = 5100000 WHERE id = ?").run(curatedId);
 
     // Report-only: both sides of the disagreement are surfaced, nothing is written.
     const res = importFintualCertificado({ maxMonth: "2099-12" });
     expect(res.missing.some((m) => m.amountClp === 5000000)).toBe(true);
     expect(res.dbOnly.some((d) => d.amountClp === 5100000)).toBe(true);
-    const edited = db.prepare("SELECT amount_clp FROM movements WHERE id = ?").get(curatedId) as { amount_clp: number };
-    expect(edited.amount_clp).toBe(5100000);
+    const edited = db.prepare("SELECT amount FROM movements WHERE id = ?").get(curatedId) as { amount: number };
+    expect(edited.amount).toBe(5100000);
   });
 });

@@ -579,8 +579,7 @@
     "flowTypeColumn": "Type",
     "flowDateColumn": "Date",
     "flowTickerColumn": "Ticker",
-    "flowAmountClpColumn": "CLP amount",
-    "flowAmountUsdColumn": "USD amount",
+    "flowAmountColumn": "Amount",
     "flowUnitsColumn": "Units",
     "flowNoteColumn": "Note",
     "flowsEmpty": "No flows.",
@@ -916,7 +915,8 @@
       "dateTo": "To",
       "amountExact": "Exact amount",
       "amountMin": "Min amount",
-      "amountMax": "Max amount"
+      "amountMax": "Max amount",
+      "amountCurrency": "Amount currency"
     }
   },
   "income": {

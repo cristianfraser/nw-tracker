@@ -10,25 +10,31 @@
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_USD_LEG_SQL,
+  movementUsdLeg,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 
 /** Σ reference CLP of all dividends received (`dividend_payout` transfers). Informational. */
 export function totalDividendsClpForAccount(accountId: number): number {
   if (!Number.isFinite(accountId) || accountId <= 0 || !accountUsesEquityMtm(accountId)) return 0;
   const rows = db
     .prepare(
-      `SELECT occurred_on, amount_usd
+      `SELECT occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}
        FROM movements
        WHERE account_id IS NULL
          AND from_account_id = ?
          AND flow_kind = 'dividend_payout'
-         AND amount_usd IS NOT NULL
-         AND amount_usd != 0
+         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
+         AND ${MOVEMENT_USD_LEG_SQL} != 0
        ORDER BY occurred_on, id`
     )
-    .all(accountId) as { occurred_on: string; amount_usd: number }[];
+    .all(accountId) as ({ occurred_on: string } & MovementAmountFields)[];
   let sum = 0;
   for (const r of rows) {
-    const clp = usdToClpReferenceRounded(Math.abs(r.amount_usd), r.occurred_on);
+    const clp = usdToClpReferenceRounded(Math.abs(movementUsdLeg(r) ?? 0), r.occurred_on);
     if (clp != null && Number.isFinite(clp)) sum += clp;
   }
   return sum;
