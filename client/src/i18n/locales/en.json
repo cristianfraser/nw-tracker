@@ -810,7 +810,6 @@
     "y5": "5Y",
     "total": "Total",
     "annualized": "annualized",
-    "liveSuffix": "live",
     "insufficientHistory": "Not enough history for this period",
     "windowTitle": "From {{start}} · {{months}} months",
     "windowTitleDate": "From {{start}}"

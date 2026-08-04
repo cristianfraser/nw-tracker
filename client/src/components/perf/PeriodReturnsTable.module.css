@@ -1,0 +1,35 @@
+/* Equal-width period columns; the row scrolls inside `.table-wrap` when they don't fit. */
+.table {
+  table-layout: fixed;
+  min-width: 44rem;
+}
+
+.head {
+  white-space: nowrap;
+}
+
+.pct {
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nominal {
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.annualized {
+  font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.up {
+  color: var(--positive);
+}
+
+.down {
+  color: var(--negative);
+}
