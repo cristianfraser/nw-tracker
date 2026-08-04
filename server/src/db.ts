@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
 import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
+import { runMovementsAmountCurrency169 } from "./movementsAmountCurrency169.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -230,7 +231,17 @@ function execMigrationSql(sql: string): void {
 const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "157_depto_payments_and_mirror_merges.sql": runLegacyNoteBackfill157,
   "161_expense_consumption_columns.sql": runExpenseConsumptionBackfill161,
+  "169_movements_amount_currency.sql": runMovementsAmountCurrency169,
 };
+
+/**
+ * Migrations that rebuild a table referenced by ON DELETE CASCADE children. With
+ * foreign_keys=ON, DROP TABLE performs an implicit DELETE whose cascade actions wipe the
+ * child tables, and the pragma is a no-op inside the migration transaction — so these
+ * run with foreign keys off around the transaction. Their hooks must finish with a
+ * PRAGMA foreign_key_check before committing.
+ */
+const FOREIGN_KEYS_OFF_MIGRATIONS = new Set(["169_movements_amount_currency.sql"]);
 
 export function runMigrations() {
   if (!fs.existsSync(migrationsDir)) {
@@ -266,7 +277,15 @@ export function runMigrations() {
     }
     const full = path.join(migrationsDir, file);
     const sql = fs.readFileSync(full, "utf8");
-    if (!applyOne.immediate(file, sql)) {
+    const fkOff = FOREIGN_KEYS_OFF_MIGRATIONS.has(file);
+    if (fkOff) dbInternal.pragma("foreign_keys = OFF");
+    let applied: boolean;
+    try {
+      applied = applyOne.immediate(file, sql);
+    } finally {
+      if (fkOff) dbInternal.pragma("foreign_keys = ON");
+    }
+    if (!applied) {
       continue; // another process applied it between our snapshot and the lock
     }
     appliedCount += 1;

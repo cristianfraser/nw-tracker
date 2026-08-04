@@ -6,18 +6,26 @@ import type { Database } from "better-sqlite3";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { signedAmountClpForBrokerageFlow } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  movementClpLegOrZero,
+  movementUsdLeg,
+  type MovementCurrency,
+} from "./movementAmounts.js";
 
 export type MovementTransferRow = {
   id?: number;
   account_id: number | null;
   from_account_id: number | null;
   to_account_id: number | null;
-  amount_clp: number;
+  amount: number;
+  currency: string;
+  counter_amount: number | null;
+  counter_currency: string | null;
   occurred_on: string;
   note: string | null;
   units_delta: number | null;
   flow_kind: string | null;
-  amount_usd: number | null;
   ticker: string | null;
 };
 
@@ -75,17 +83,18 @@ export function signedClpDeltaForAccountMovement(
   row: MovementTransferRow,
   accountId: number
 ): number {
+  const clpLeg = movementClpLegOrZero(row);
   if (isMovementTransferRow(row)) {
-    const mag = absAmount(row.amount_clp);
+    const mag = absAmount(clpLeg);
     if (row.from_account_id === accountId) return -mag;
     if (row.to_account_id === accountId) return mag;
     return 0;
   }
   if (row.account_id !== accountId) return 0;
   if (row.flow_kind != null) {
-    return signedAmountClpForBrokerageFlow(row.flow_kind, row.amount_clp, row.amount_usd);
+    return signedAmountClpForBrokerageFlow(row.flow_kind, clpLeg, movementUsdLeg(row));
   }
-  return row.amount_clp;
+  return clpLeg;
 }
 
 /** Signed USD cash impact (USD-cash accounts and transfer legs). */
@@ -93,8 +102,9 @@ export function signedUsdDeltaForAccountMovement(
   row: MovementTransferRow,
   accountId: number
 ): number {
+  const usdLeg = movementUsdLeg(row);
   if (isMovementTransferRow(row)) {
-    const mag = absAmount(row.amount_usd);
+    const mag = absAmount(usdLeg);
     if (mag === 0) return 0;
     const fk = row.flow_kind;
     const units = row.units_delta;
@@ -116,12 +126,12 @@ export function signedUsdDeltaForAccountMovement(
   if (fk === "compra_usd" || fk === "compra_usd_venta_clp") {
     const units = row.units_delta;
     if (units != null && Number.isFinite(units) && units !== 0) return 0;
-    return absAmount(row.amount_usd);
+    return absAmount(usdLeg);
   }
-  if (fk === "withdrawal_usd") return -absAmount(row.amount_usd);
+  if (fk === "withdrawal_usd") return -absAmount(usdLeg);
   // Interest / bank-paid yield credited in USD raises the cash balance (P/L, not capital — the
   // deposited line excludes it, see accountDeposits / cash interest helpers).
-  if (fk === "savings_earnings") return absAmount(row.amount_usd);
+  if (fk === "savings_earnings") return absAmount(usdLeg);
   return 0;
 }
 
@@ -193,8 +203,8 @@ export function isUsdCashAccount(accountId: number): boolean {
 }
 
 const MOVEMENTS_FOR_ACCOUNT_SQL = `
-  SELECT id, account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-         units_delta, flow_kind, amount_usd, ticker
+  SELECT id, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
+         occurred_on, note, units_delta, flow_kind, ticker
   FROM movements
   WHERE account_id = ?
      OR from_account_id = ?
@@ -208,7 +218,7 @@ export function listMovementRowsForAccount(accountId: number): MovementTransferR
 export function sumClpThroughDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
   const rows = dbHandle
     .prepare(
-      `SELECT account_id, from_account_id, to_account_id, amount_clp, flow_kind, amount_usd
+      `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, flow_kind
        FROM movements
        WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
          AND occurred_on <= ?`
@@ -224,7 +234,7 @@ export function sumClpThroughDate(accountId: number, asOfYmd: string, dbHandle: 
 export function sumUsdThroughDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
   const rows = dbHandle
     .prepare(
-      `SELECT account_id, from_account_id, to_account_id, amount_usd, units_delta, flow_kind, note
+      `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, units_delta, flow_kind, note
        FROM movements
        WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
          AND occurred_on <= ?`
@@ -266,8 +276,10 @@ export type TransferCreateInput = {
   to_account_id: number;
   occurred_on: string;
   note: string | null;
-  amount_clp: number;
-  amount_usd: number | null;
+  amount: number;
+  currency: MovementCurrency;
+  counter_amount: number | null;
+  counter_currency: MovementCurrency | null;
   units_delta: number | null;
   flow_kind: string | null;
   ticker: string | null;
@@ -295,12 +307,17 @@ export function validateTransferCreate(input: TransferCreateInput): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurred_on)) {
     throw new Error("occurred_on is required (YYYY-MM-DD).");
   }
-  const clp = absAmount(input.amount_clp);
-  const usd = absAmount(input.amount_usd);
+  const amount = absAmount(input.amount);
   const units = input.units_delta;
   const hasUnits = units != null && Number.isFinite(units) && units !== 0;
-  if (clp === 0 && usd === 0 && !hasUnits) {
-    throw new Error("Transfer requires amount_clp, amount_usd, or units_delta.");
+  if (amount === 0 && !hasUnits) {
+    throw new Error("Transfer requires an amount or units_delta.");
+  }
+  if ((input.counter_amount == null) !== (input.counter_currency == null)) {
+    throw new Error("counter_amount and counter_currency must be set together.");
+  }
+  if (input.counter_currency != null && input.counter_currency === input.currency) {
+    throw new Error("counter_currency must differ from currency.");
   }
 }
 
