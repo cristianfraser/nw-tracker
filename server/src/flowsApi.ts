@@ -13,6 +13,10 @@ import {
   listAccountsForGroupTab,
   type GroupTabAccountRow,
 } from "./valuationTimeseries.js";
+import {
+  kindSlugForAccount,
+  leafPortfolioGroupSlugByAccountIds,
+} from "./portfolioGroupTree.js";
 import { paginate, type Paginated } from "./pagination.js";
 
 // Mirrors client `isPersonalCapitalFlowType` in `depositFlowKind.ts`
@@ -25,7 +29,15 @@ export type FlowsApiRow = AccountMovementApiRow & {
   key: string;
   account_id: number;
   account_name: string;
-  category_slug: string;
+  /** Portfolio bucket (nav leaf) the account files under; null when it has no tree link. */
+  bucket_slug: string | null;
+};
+
+/** Dropdown option for the portfolio-bucket filter; label resolution mirrors the sidebar. */
+export type FlowsBucketOption = {
+  slug: string;
+  label: string;
+  label_i18n_key: string | null;
 };
 
 export type FlowsFilterOptions = {
@@ -33,8 +45,8 @@ export type FlowsFilterOptions = {
   types: { value: string; label: string }[];
   /** Non-empty only for multi-account (group) flows. */
   accounts: { id: number; name: string }[];
-  /** Non-empty only for multi-account (group) flows. */
-  categories: string[];
+  /** Portfolio buckets present in the rows; non-empty only for multi-account (group) flows. */
+  buckets: FlowsBucketOption[];
 };
 
 export type FlowsPageResponse = Paginated<FlowsApiRow> & {
@@ -45,7 +57,7 @@ export type FlowsFilters = {
   year?: string;
   type?: string;
   account_id?: number;
-  category?: string;
+  bucket?: string;
   q?: string;
   personal_only?: boolean;
   /** Inclusive YYYY-MM-DD bounds. */
@@ -57,8 +69,39 @@ export type FlowsFilters = {
   amount_exact?: number;
 };
 
+/**
+ * Deepest portfolio-bucket slug per account — the nav leaf the sidebar files it under.
+ * Liability accounts are not `portfolio_group_items`; they resolve via their kind to the
+ * same `liabilities_*` bucket nodes the Pasivos pages use.
+ */
+function bucketSlugByAccountIds(ids: readonly number[]): Map<number, string> {
+  const out = leafPortfolioGroupSlugByAccountIds(ids);
+  for (const id of ids) {
+    if (out.has(id)) continue;
+    const kind = kindSlugForAccount(id);
+    if (kind === "credit_card") out.set(id, "liabilities_credit_card");
+    else if (kind === "mortgage") out.set(id, "liabilities_mortgage");
+  }
+  return out;
+}
+
+function bucketFilterOptions(slugs: ReadonlySet<string>): FlowsBucketOption[] {
+  if (!slugs.size) return [];
+  const list = [...slugs];
+  const ph = list.map(() => "?").join(",");
+  const rows = db
+    .prepare(`SELECT slug, label, label_i18n_key FROM portfolio_groups WHERE slug IN (${ph})`)
+    .all(...list) as FlowsBucketOption[];
+  if (rows.length !== slugs.size) {
+    const found = new Set(rows.map((r) => r.slug));
+    const missing = list.filter((s) => !found.has(s));
+    throw new Error(`flows bucket options: unknown portfolio_groups slugs: ${missing.join(", ")}`);
+  }
+  return rows.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 function assembleFlowRows(
-  accountEntries: readonly { account_id: number; name: string; category_slug: string }[],
+  accountEntries: readonly { account_id: number; name: string; bucket_slug: string | null }[],
   movementsByAccount: Map<number, AccountMovementApiRow[]>
 ): FlowsApiRow[] {
   const rows: FlowsApiRow[] = [];
@@ -70,7 +113,7 @@ function assembleFlowRows(
         key: `${entry.account_id}:movement:${m.id}`,
         account_id: entry.account_id,
         account_name: entry.name,
-        category_slug: entry.category_slug,
+        bucket_slug: entry.bucket_slug,
       });
     }
   }
@@ -92,14 +135,14 @@ function buildFilterOptions(all: FlowsApiRow[], isMultiAccount: boolean): FlowsF
   const yearsSet = new Set<string>();
   const typesMap = new Map<string, string>(); // flow_type → label
   const accountsMap = new Map<number, string>(); // id → name
-  const categoriesSet = new Set<string>();
+  const bucketSlugsSet = new Set<string>();
 
   for (const r of all) {
     yearsSet.add(r.occurred_on.slice(0, 4));
     typesMap.set(r.flow_type, r.flow_type_label);
     if (isMultiAccount) {
       accountsMap.set(r.account_id, r.account_name);
-      categoriesSet.add(r.category_slug);
+      if (r.bucket_slug != null) bucketSlugsSet.add(r.bucket_slug);
     }
   }
 
@@ -113,7 +156,7 @@ function buildFilterOptions(all: FlowsApiRow[], isMultiAccount: boolean): FlowsF
           .map(([id, name]) => ({ id, name }))
           .sort((a, b) => a.name.localeCompare(b.name))
       : [],
-    categories: isMultiAccount ? [...categoriesSet].sort() : [],
+    buckets: bucketFilterOptions(bucketSlugsSet),
   };
 }
 
@@ -122,7 +165,7 @@ export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): Fl
     if (filters.year && !r.occurred_on.startsWith(filters.year)) return false;
     if (filters.type && r.flow_type !== filters.type) return false;
     if (filters.account_id != null && r.account_id !== filters.account_id) return false;
-    if (filters.category && r.category_slug !== filters.category) return false;
+    if (filters.bucket && r.bucket_slug !== filters.bucket) return false;
     if (filters.q) {
       const q = filters.q.toLowerCase();
       const haystack = [r.note, r.account_name, r.counterpart_account_name, r.flow_type_label]
@@ -183,10 +226,11 @@ export function buildGroupFlows(
   pageSize: number
 ): FlowsPageResponse {
   const accountRows: GroupTabAccountRow[] = listAccountsForGroupTab(groupSlug, undefined);
+  const bucketByAccount = bucketSlugByAccountIds(accountRows.map((r) => r.account_id));
   const accountEntries = accountRows.map((r) => ({
     account_id: r.account_id,
     name: r.name,
-    category_slug: r.bucket_slug,
+    bucket_slug: bucketByAccount.get(r.account_id) ?? null,
   }));
   const movementsByAccount = listAccountMovementsForApiBulk(
     accountEntries.map((e) => e.account_id)
@@ -197,18 +241,11 @@ export function buildGroupFlows(
   return { ...paginate(filtered, page, pageSize), filter_options };
 }
 
-function lookupAccountMeta(
-  accountId: number
-): { name: string; category_slug: string } | null {
-  const row = db
-    .prepare(
-      `SELECT a.name, g.slug AS category_slug
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id = ?`
-    )
-    .get(accountId) as { name: string; category_slug: string } | undefined;
-  return row ?? null;
+function lookupAccountName(accountId: number): string | null {
+  const row = db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(accountId) as
+    | { name: string }
+    | undefined;
+  return row?.name ?? null;
 }
 
 export function buildAccountFlows(
@@ -217,12 +254,13 @@ export function buildAccountFlows(
   page: number,
   pageSize: number
 ): FlowsPageResponse | null {
-  const meta = lookupAccountMeta(accountId);
-  if (!meta) return null;
+  const name = lookupAccountName(accountId);
+  if (name == null) return null;
 
   const movements = listAccountMovementsForApi(accountId);
+  const bucketByAccount = bucketSlugByAccountIds([accountId]);
   const allRows = assembleFlowRows(
-    [{ account_id: accountId, name: meta.name, category_slug: meta.category_slug }],
+    [{ account_id: accountId, name, bucket_slug: bucketByAccount.get(accountId) ?? null }],
     new Map([[accountId, movements]])
   );
   const filter_options = buildFilterOptions(allRows, false);
