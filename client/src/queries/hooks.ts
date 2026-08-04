@@ -701,6 +701,8 @@ export type FlowsQueryFilters = {
   amount_min?: number;
   amount_max?: number;
   amount_exact?: number;
+  /** Currency the amount filters compare against (server default: clp). */
+  amount_currency?: string;
 };
 
 function serializeFlowFilters(f: FlowsQueryFilters): string {
@@ -718,6 +720,7 @@ function serializeFlowFilters(f: FlowsQueryFilters): string {
     mn: f.amount_min ?? "",
     mx: f.amount_max ?? "",
     ex: f.amount_exact ?? "",
+    ac: f.amount_currency ?? "",
   });
 }
 
@@ -739,6 +742,7 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         amount_min: filters.amount_min,
         amount_max: filters.amount_max,
         amount_exact: filters.amount_exact,
+        amount_currency: filters.amount_currency,
       }),
     enabled: enabled && Boolean(slug),
     ...displayUnitQueryBehavior,
@@ -762,6 +766,7 @@ export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilte
         amount_min: filters.amount_min,
         amount_max: filters.amount_max,
         amount_exact: filters.amount_exact,
+        amount_currency: filters.amount_currency,
       }),
     enabled: enabled && Boolean(id),
     ...displayUnitQueryBehavior,

@@ -35,8 +35,8 @@ beforeAll(() => {
   );
   // First holding on 2026-04-02 — before that the equity has 0 units (marks to 0).
   db.prepare(
-    `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta)
-     VALUES (?, 10000, '2026-04-02', 'vitest-marktot-buy', 'stock_buy', ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+     VALUES (?, 10000, 'clp', '2026-04-02', 'vitest-marktot-buy', 'stock_buy', ?)`
   ).run(equityId, UNITS);
   const insBar = db.prepare(
     `INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'clp')`

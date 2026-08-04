@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import {
   checkingLedgerAnchorNote,
@@ -106,9 +107,9 @@ describe("checkingCartolaBalances", () => {
     const sqlSum = db
       .prepare(
         `SELECT COALESCE(SUM(CASE
-             WHEN account_id = @id THEN amount_clp
-             WHEN to_account_id = @id THEN amount_clp
-             WHEN from_account_id = @id THEN -amount_clp
+             WHEN account_id = @id THEN ${MOVEMENT_CLP_LEG_SQL}
+             WHEN to_account_id = @id THEN ${MOVEMENT_CLP_LEG_SQL}
+             WHEN from_account_id = @id THEN -${MOVEMENT_CLP_LEG_SQL}
            END), 0) AS t
          FROM movements
          WHERE (account_id = @id OR from_account_id = @id OR to_account_id = @id)
@@ -164,8 +165,8 @@ describe("checkingCartolaBalances", () => {
         seedCartolaImport(accountId, TEST_MONTH_LATE, 900, 500);
 
         db.prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (?, -100, ?, ?, NULL)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (?, -100, 'clp', ?, ?, NULL)`
         ).run(
           accountId,
           `${TEST_MONTH_LATE}-10`,
@@ -173,8 +174,8 @@ describe("checkingCartolaBalances", () => {
         );
 
         db.prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (?, 811098, '2017-07-31', 'import:cartola|opening|2017-07|saldo inicial', NULL)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (?, 811098, 'clp', '2017-07-31', 'import:cartola|opening|2017-07|saldo inicial', NULL)`
         ).run(accountId);
 
         const anchor = ensureCheckingLedgerAnchor(accountId);
@@ -211,8 +212,8 @@ describe("checkingCartolaBalances", () => {
         expect(before?.amount_clp).toBe(900);
 
         db.prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (?, 50, ?, 'manual gap-fill', NULL)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (?, 50, 'clp', ?, 'manual gap-fill', NULL)`
         ).run(accountId, `${TEST_MONTH_LATE}-15`);
 
         const resync = ensureCheckingLedgerAnchor(accountId);

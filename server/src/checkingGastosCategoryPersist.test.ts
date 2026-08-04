@@ -63,8 +63,8 @@ describe("checkingGastosCategoryPersist", () => {
 
     const ins = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, -50_000, "2099-05-10", note);
     const oldId = Number(ins.lastInsertRowid);
@@ -79,8 +79,8 @@ describe("checkingGastosCategoryPersist", () => {
 
     const ins2 = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, -50_000, "2099-05-10", note);
     const newId = Number(ins2.lastInsertRowid);
@@ -118,8 +118,8 @@ describe("checkingGastosCategoryPersist", () => {
     });
     const ins = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(accountId, -1, "2099-06-01", note);
     const id = Number(ins.lastInsertRowid);

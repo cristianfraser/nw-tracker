@@ -62,15 +62,17 @@ describe("stock_buy transfer field validation + ticker default", () => {
     );
   });
 
-  it("rejects a stray amount_clp on stock_buy (stale hidden-field value)", () => {
+  it("rejects a stray CLP leg on stock_buy (stale hidden-field value)", () => {
     if (!usdId || !stockId) return;
     const v = validateMovementCreate(
       stockRow,
       {
         occurred_on: "2026-07-01",
         flow_kind: "stock_buy",
-        amount_clp: 24.741861, // leftover from a CLP field before switching flow type
-        amount_usd: 1346.17,
+        amount: 1346.17,
+        currency: "usd",
+        counter_amount: 24.741861, // leftover from a CLP field before switching flow type
+        counter_currency: "clp",
         units_delta: 24.741861,
         counterpart_account_id: usdId,
         counterpart_role: "from",
@@ -78,7 +80,7 @@ describe("stock_buy transfer field validation + ticker default", () => {
       stockId
     );
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.error).toMatch(/amount_clp is not allowed/);
+    if (!v.ok) expect(v.error).toMatch(/CLP amount is not allowed/);
   });
 
   it("defaults the ticker from the equity account when the client omits it", () => {
@@ -88,7 +90,8 @@ describe("stock_buy transfer field validation + ticker default", () => {
       {
         occurred_on: "2026-07-01",
         flow_kind: "stock_buy",
-        amount_usd: 1346.17,
+        amount: 1346.17,
+        currency: "usd",
         units_delta: 24.741861,
         counterpart_account_id: usdId,
         counterpart_role: "from",
@@ -98,7 +101,9 @@ describe("stock_buy transfer field validation + ticker default", () => {
     expect(v.ok).toBe(true);
     if (v.ok && v.mode === "transfer") {
       expect(v.ticker).toBe("VITEST");
-      expect(v.amount_clp).toBe(0);
+      expect(v.amount).toBe(1346.17);
+      expect(v.currency).toBe("usd");
+      expect(v.counter_amount).toBeNull();
       expect(v.units_delta).toBeCloseTo(24.741861, 6);
     }
   });
@@ -110,7 +115,8 @@ describe("stock_buy transfer field validation + ticker default", () => {
       {
         occurred_on: "2026-07-03",
         flow_kind: "stock_buy",
-        amount_clp: 2_985_000,
+        amount: 2_985_000,
+        currency: "clp",
         units_delta: 2282,
         counterpart_account_id: clpId,
         counterpart_role: "from",
@@ -120,23 +126,27 @@ describe("stock_buy transfer field validation + ticker default", () => {
     expect(v.ok).toBe(true);
     if (v.ok && v.mode === "transfer") {
       expect(v.ticker).toBe("VITEST.SN");
-      expect(v.amount_clp).toBe(2_985_000);
-      expect(v.amount_usd).toBeNull();
+      expect(v.amount).toBe(2_985_000);
+      expect(v.currency).toBe("clp");
+      expect(v.counter_amount).toBeNull();
+      expect(v.counter_currency).toBeNull();
       expect(v.from_account_id).toBe(clpId);
       expect(v.to_account_id).toBe(stockSnId);
       expect(v.units_delta).toBeCloseTo(2282, 9);
     }
   });
 
-  it("rejects a stray amount_usd on a CLP-quoted stock_buy", () => {
+  it("rejects a stray USD leg on a CLP-quoted stock_buy", () => {
     if (!clpId || !stockSnId) return;
     const v = validateMovementCreate(
       stockSnRow,
       {
         occurred_on: "2026-07-03",
         flow_kind: "stock_buy",
-        amount_clp: 2_985_000,
-        amount_usd: 3210.5,
+        amount: 2_985_000,
+        currency: "clp",
+        counter_amount: 3210.5,
+        counter_currency: "usd",
         units_delta: 2282,
         counterpart_account_id: clpId,
         counterpart_role: "from",
@@ -144,7 +154,7 @@ describe("stock_buy transfer field validation + ticker default", () => {
       stockSnId
     );
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.error).toMatch(/amount_usd is not allowed/);
+    if (!v.ok) expect(v.error).toMatch(/USD amount is not allowed/);
   });
 
   it("rejects a CLP-quoted stock_buy funded from USD cash", () => {
@@ -154,7 +164,8 @@ describe("stock_buy transfer field validation + ticker default", () => {
       {
         occurred_on: "2026-07-03",
         flow_kind: "stock_buy",
-        amount_clp: 2_985_000,
+        amount: 2_985_000,
+        currency: "clp",
         units_delta: 2282,
         counterpart_account_id: usdId,
         counterpart_role: "from",
@@ -172,7 +183,8 @@ describe("stock_buy transfer field validation + ticker default", () => {
       {
         occurred_on: "2026-07-03",
         flow_kind: "stock_buy",
-        amount_usd: 1000,
+        amount: 1000,
+        currency: "usd",
         units_delta: 2,
         counterpart_account_id: clpId,
         counterpart_role: "from",
@@ -190,7 +202,8 @@ describe("stock_buy transfer field validation + ticker default", () => {
       {
         occurred_on: "2026-07-03",
         flow_kind: "stock_sell",
-        amount_clp: 500_000,
+        amount: 500_000,
+        currency: "clp",
         units_delta: -380,
         counterpart_account_id: clpId,
         counterpart_role: "to",
@@ -201,7 +214,8 @@ describe("stock_buy transfer field validation + ticker default", () => {
     if (v.ok && v.mode === "transfer") {
       expect(v.from_account_id).toBe(stockSnId);
       expect(v.to_account_id).toBe(clpId);
-      expect(v.amount_clp).toBe(500_000);
+      expect(v.amount).toBe(500_000);
+      expect(v.currency).toBe("clp");
     }
   });
 });

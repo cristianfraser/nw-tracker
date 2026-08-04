@@ -51,7 +51,8 @@ function buildPostBody(row: BookMovementDraft): Record<string, unknown> | null {
   if (row.counterpartAccountId !== "") {
     // Transfer: absolute amount, direction picks which side the current account is on.
     return {
-      amount_clp: magnitude,
+      amount: magnitude,
+      currency: "clp",
       occurred_on: row.occurredOn.trim(),
       ...(note ? { note } : {}),
       counterpart_account_id: row.counterpartAccountId,
@@ -60,7 +61,8 @@ function buildPostBody(row: BookMovementDraft): Record<string, unknown> | null {
   }
   // Plain movement on this account: In = deposit (+), Out = withdrawal (−).
   return {
-    amount_clp: row.direction === "in" ? magnitude : -magnitude,
+    amount: row.direction === "in" ? magnitude : -magnitude,
+    currency: "clp",
     occurred_on: row.occurredOn.trim(),
     ...(note ? { note } : {}),
   };

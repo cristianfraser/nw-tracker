@@ -23,8 +23,8 @@ function insertCheckingCartolaCredit(
     `${docPart}|on:${occurredOn}|amt:${amountClp}|idx:${opts.idx}`;
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
   return Number(ins.lastInsertRowid);
@@ -44,8 +44,8 @@ function insertCheckingCartolaWithdrawal(
     `${docPart}|on:${occurredOn}|amt:${amountClp}|idx:${opts.idx}`;
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
   return Number(ins.lastInsertRowid);
@@ -122,8 +122,8 @@ describe("flowsCheckingInflows", () => {
     const retiroId = Number(
       db
         .prepare(
-          `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-           VALUES (?, ?, ?, ?, NULL)`
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (?, ?, 'clp', ?, ?, NULL)`
         )
         .run(
           afpId.id,

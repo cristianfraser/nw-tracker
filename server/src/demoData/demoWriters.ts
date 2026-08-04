@@ -29,6 +29,7 @@ import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { invalidateCcExpenseGenericUniqueMerchantCache } from "../ccExpenseGenericUniqueMerchants.js";
 import { expandYearMonthsInclusive, monthEndUtcYmd } from "../calendarMonth.js";
+import { MOVEMENT_CLP_LEG_SQL } from "../movementAmounts.js";
 import {
   chapterForMonth,
   type DemoCard,
@@ -102,7 +103,7 @@ function pickMerchant(
 /* ------------------------------- movement helpers -------------------------------- */
 
 const insMovementFull = db.prepare(
-  `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
+  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
@@ -118,21 +119,24 @@ function movementWithUnits(
     ticker?: string | null;
   }
 ): void {
+  // Single-leg row: native amount is the CLP leg when present, else the USD leg
+  // (same mapping migration 169 applied — single-leg rows never carry both).
+  const usd = m.amount_usd ?? null;
   insMovementFull.run(
     accountId,
-    m.amount_clp,
+    m.amount_clp !== 0 ? m.amount_clp : usd,
+    m.amount_clp !== 0 ? "clp" : "usd",
     m.occurred_on,
     m.note,
     m.units_delta ?? null,
     m.flow_kind ?? null,
-    m.amount_usd ?? null,
     m.ticker ?? null
   );
 }
 
 const insTransferFull = db.prepare(
-  `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note, units_delta, flow_kind, amount_usd, ticker)
-   VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind, ticker)
+   VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 /** Transfer row (account_id NULL, from/to set) — the manual stock_buy/stock_sell shape. */
@@ -149,12 +153,14 @@ function stockTransfer(m: {
   insTransferFull.run(
     m.from_account_id,
     m.to_account_id,
-    0,
+    m.amount_usd,
+    "usd",
+    null,
+    null,
     m.occurred_on,
     m.note,
     m.units_delta,
     m.flow_kind,
-    m.amount_usd,
     m.ticker
   );
 }
@@ -174,22 +180,28 @@ function cashTransfer(m: {
   amount_usd: number;
   ticker?: string | null;
 }): void {
+  // Cross-currency transfer: CLP from-leg is the native amount, USD to-leg the counter
+  // (migration-169 mapping). A CLP-less payout (dividend_payout) is a plain USD row.
+  const clp = Math.round(m.amount_clp);
+  const both = clp !== 0 && m.amount_usd !== 0;
   insTransferFull.run(
     m.from_account_id,
     m.to_account_id,
-    Math.round(m.amount_clp),
+    clp !== 0 ? clp : m.amount_usd,
+    clp !== 0 ? "clp" : "usd",
+    both ? m.amount_usd : null,
+    both ? "usd" : null,
     m.occurred_on,
     m.note,
     null,
     m.flow_kind,
-    m.amount_usd,
     m.ticker ?? null
   );
 }
 
 const insMovement = db.prepare(
-  `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
-   VALUES (?, ?, ?, ?, ?)`
+  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+   VALUES (?, ?, 'clp', ?, ?, ?)`
 );
 
 function movement(
@@ -736,7 +748,7 @@ export function writeCheckingMonth(
       const balance = (
         db
           .prepare(
-            `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ?`
+            `SELECT COALESCE(SUM(${MOVEMENT_CLP_LEG_SQL}), 0) AS t FROM movements WHERE account_id = ?`
           )
           .get(accounts.savingsId) as { t: number }
       ).t;
@@ -759,7 +771,7 @@ export function writeCheckingMonth(
   {
     const balanceClp = (
       db
-        .prepare(`SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ?`)
+        .prepare(`SELECT COALESCE(SUM(${MOVEMENT_CLP_LEG_SQL}), 0) AS t FROM movements WHERE account_id = ?`)
         .get(accounts.checkingId) as { t: number }
     ).t;
     const monthsToHouseForCash =
@@ -873,9 +885,9 @@ export function writeCheckingMonth(
     db
       .prepare(
         `SELECT
-           COALESCE((SELECT SUM(amount_clp) FROM movements WHERE account_id = ? AND occurred_on <= ?), 0)
-         + COALESCE((SELECT SUM(amount_clp) FROM movements WHERE to_account_id = ? AND occurred_on <= ?), 0)
-         - COALESCE((SELECT SUM(amount_clp) FROM movements WHERE from_account_id = ? AND occurred_on <= ?), 0) AS t`
+           COALESCE((SELECT SUM(${MOVEMENT_CLP_LEG_SQL}) FROM movements WHERE account_id = ? AND occurred_on <= ?), 0)
+         + COALESCE((SELECT SUM(${MOVEMENT_CLP_LEG_SQL}) FROM movements WHERE to_account_id = ? AND occurred_on <= ?), 0)
+         - COALESCE((SELECT SUM(${MOVEMENT_CLP_LEG_SQL}) FROM movements WHERE from_account_id = ? AND occurred_on <= ?), 0) AS t`
       )
       .get(
         accounts.checkingId,
@@ -924,7 +936,7 @@ export function writeCheckingMonth(
     const vistaSaldo = (
       db
         .prepare(
-          `SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`
+          `SELECT COALESCE(SUM(${MOVEMENT_CLP_LEG_SQL}), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`
         )
         .get(accounts.vistaId, monthEndUtcYmd(month)) as { t: number }
     ).t;
@@ -1403,7 +1415,7 @@ export function writeInvestmentMonth(
   if (accounts.savingsId != null) {
     const deposited = (
       db
-        .prepare(`SELECT COALESCE(SUM(amount_clp), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`)
+        .prepare(`SELECT COALESCE(SUM(${MOVEMENT_CLP_LEG_SQL}), 0) AS t FROM movements WHERE account_id = ? AND occurred_on <= ?`)
         .get(accounts.savingsId, monthEnd) as { t: number }
     ).t;
     if (deposited > 0) {

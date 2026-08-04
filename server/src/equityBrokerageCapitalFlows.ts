@@ -1,8 +1,8 @@
 /**
  * Equity MTM stock accounts: capital flows from cash→stock `stock_buy` transfers
  * (post USD-cash migration). CLP equivalents at payment date feed chart aportes + P/L.
- * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries amount_clp
- * (no amount_usd) and counts as a `clp_wire` capital flow at face value.
+ * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries a CLP
+ * amount (no USD leg) and counts as a `clp_wire` capital flow at face value.
  *
  * A buy funded by a same-day CLP wire SMALLER than the buy (wire + USD already sitting in
  * the cash account, e.g. a received dividend swept into the next purchase) splits into a
@@ -18,8 +18,22 @@ import type { DepositInflowEvent } from "./accountDeposits.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  MOVEMENT_USD_LEG_SQL,
+  movementClpLegOrZero,
+  movementUsdLeg,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 
 const FX_WIRE_USD_TOLERANCE = 0.02;
+
+// Alias-qualified legs for the queries below that alias movements as `m`.
+const M_CLP_LEG_SQL =
+  "(CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END)";
+const M_USD_LEG_SQL =
+  "(CASE WHEN m.currency = 'usd' THEN m.amount WHEN m.counter_currency = 'usd' THEN m.counter_amount END)";
 
 export type EquityCapitalKind = "clp_wire" | "usd_reference";
 
@@ -31,13 +45,11 @@ export type EquityCapitalSortFlow = {
   tie: string;
 };
 
-type TransferCapitalRow = {
+type TransferCapitalRow = MovementAmountFields & {
   id: number;
   account_id: number;
   from_account_id: number | null;
   occurred_on: string;
-  amount_usd: number | null;
-  amount_clp: number | null;
   flow_kind: string;
 };
 
@@ -52,18 +64,18 @@ function loadStockBuyCapitalRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.to_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
+      `SELECT m.id AS id, m.to_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.to_account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
+         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
        UNION ALL
-       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
+       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
+         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -74,18 +86,18 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
+      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
+         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
        UNION ALL
-       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
+       SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND ((m.amount_usd IS NOT NULL AND m.amount_usd != 0) OR COALESCE(m.amount_clp, 0) != 0)
+         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -101,13 +113,13 @@ function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
   const ph = accountIds.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount_usd, m.amount_clp, m.flow_kind
+      `SELECT m.id AS id, m.from_account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'dividend_payout'
-         AND m.amount_usd IS NOT NULL
-         AND m.amount_usd != 0
+         AND ${M_USD_LEG_SQL} IS NOT NULL
+         AND ${M_USD_LEG_SQL} != 0
        ORDER BY m.occurred_on, m.id`
     )
     .all(...accountIds) as TransferCapitalRow[];
@@ -144,16 +156,19 @@ function assertNoDividendUsdRows(accountIds: number[]): void {
 function sameDayWireLegs(accountId: number, occurredOn: string): ClpWireLeg[] {
   const rows = db
     .prepare(
-      `SELECT amount_clp, amount_usd FROM movements
+      `SELECT ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
        WHERE (account_id = ? OR (account_id IS NULL AND to_account_id = ?))
          AND occurred_on = ?
          AND flow_kind IN ('compra_usd_venta_clp', 'compra_usd')
-         AND amount_clp > 0
-         AND amount_usd IS NOT NULL
+         AND ${MOVEMENT_CLP_LEG_SQL} > 0
+         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
          AND ABS(COALESCE(units_delta, 0)) < 1e-12`
     )
-    .all(accountId, accountId, occurredOn) as { amount_clp: number; amount_usd: number }[];
-  return rows.map((r) => ({ clp: Math.abs(r.amount_clp), usd: Math.abs(r.amount_usd) }));
+    .all(accountId, accountId, occurredOn) as MovementAmountFields[];
+  return rows.map((r) => ({
+    clp: Math.abs(movementClpLegOrZero(r)),
+    usd: Math.abs(movementUsdLeg(r) ?? 0),
+  }));
 }
 
 function findClpWireForStockBuy(
@@ -186,8 +201,9 @@ function findClpWireForStockBuy(
 function partialWireCompositeFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | null {
   const fromId = row.from_account_id;
   if (fromId == null || fromId <= 0) return null;
-  if (row.amount_usd == null || row.amount_usd === 0) return null;
-  const buyUsd = Math.abs(row.amount_usd);
+  const usdLeg = movementUsdLeg(row);
+  if (usdLeg == null || usdLeg === 0) return null;
+  const buyUsd = Math.abs(usdLeg);
 
   const wires = sameDayWireLegs(fromId, row.occurred_on);
   if (wires.length !== 1) return null;
@@ -201,8 +217,8 @@ function partialWireCompositeFlows(row: TransferCapitalRow): EquityCapitalSortFl
          AND from_account_id = ?
          AND occurred_on = ?
          AND flow_kind = 'stock_buy'
-         AND amount_usd IS NOT NULL
-         AND amount_usd != 0`
+         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
+         AND ${MOVEMENT_USD_LEG_SQL} != 0`
     )
     .get(fromId, row.occurred_on) as { n: number };
   if (sameDayBuys.n !== 1) return null;
@@ -231,7 +247,7 @@ function partialWireCompositeFlows(row: TransferCapitalRow): EquityCapitalSortFl
 
 /** CLP-quoted trade: capital = the CLP that actually moved (no fx reference). */
 function clpDirectFlow(row: TransferCapitalRow, sign: 1 | -1): EquityCapitalSortFlow | null {
-  const clpMag = Math.abs(row.amount_clp ?? 0);
+  const clpMag = Math.abs(movementClpLegOrZero(row));
   if (clpMag === 0 || !Number.isFinite(clpMag)) return null;
   return {
     occurred_on: row.occurred_on,
@@ -246,8 +262,9 @@ function usdReferenceFlow(
   row: TransferCapitalRow,
   sign: 1 | -1
 ): EquityCapitalSortFlow | null {
-  if (row.amount_usd == null || row.amount_usd === 0) return null;
-  const usdMag = Math.abs(row.amount_usd);
+  const usdLeg = movementUsdLeg(row);
+  if (usdLeg == null || usdLeg === 0) return null;
+  const usdMag = Math.abs(usdLeg);
   const refClp = usdToClpReferenceRounded(usdMag, row.occurred_on);
   if (refClp == null || !Number.isFinite(refClp) || refClp === 0) return null;
   return {
@@ -260,7 +277,8 @@ function usdReferenceFlow(
 }
 
 function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] {
-  if (row.amount_usd == null || row.amount_usd === 0) {
+  const usdLeg = movementUsdLeg(row);
+  if (usdLeg == null || usdLeg === 0) {
     const flow = clpDirectFlow(row, 1);
     return flow ? [flow] : [];
   }
@@ -268,7 +286,7 @@ function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] 
     row.account_id,
     row.from_account_id,
     row.occurred_on,
-    row.amount_usd
+    usdLeg
   );
   if (wire) {
     return [
@@ -311,8 +329,9 @@ export function loadEquityBrokerageCapitalSortFlows(
   }
 
   for (const row of sells) {
+    const usdLeg = movementUsdLeg(row);
     const flow =
-      row.amount_usd != null && row.amount_usd !== 0
+      usdLeg != null && usdLeg !== 0
         ? usdReferenceFlow(row, -1)
         : clpDirectFlow(row, -1);
     if (!flow) continue;

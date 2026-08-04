@@ -47,8 +47,8 @@ function insertCartolaMovement(
     `|on:${occurredOn}|amt:${amountClp}|idx:${idx}`;
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-       VALUES (?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
   cartolaFixtures.push({ accountId, occurredOn, amountClp, idx, month });
@@ -63,8 +63,8 @@ function insertLedgerMovement(
 ): number {
   const ins = db
     .prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind, units_delta)
-       VALUES (?, ?, ?, ?, ?, NULL)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, FIXTURE_NOTE, flowKind);
   return Number(ins.lastInsertRowid);
@@ -159,8 +159,8 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
 
   it("resolves fund → buffer recorded as a transfer row without creating a deposit to link", () => {
     db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note)
-       VALUES (NULL, ?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+       VALUES (NULL, ?, ?, ?, 'clp', ?, ?)`
     ).run(fundId, bufferId, 13_000_000, "2099-05-02", FIXTURE_NOTE);
 
     const payload = buildDepositsReconciliationPayload();

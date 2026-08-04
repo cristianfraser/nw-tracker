@@ -18,6 +18,7 @@ import {
   leafPortfolioGroupSlugByAccountIds,
 } from "./portfolioGroupTree.js";
 import { paginate, type Paginated } from "./pagination.js";
+import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
 
 // Mirrors client `isPersonalCapitalFlowType` in `depositFlowKind.ts`
 const PERSONAL_FLOW_TYPES = new Set<string>([
@@ -63,10 +64,15 @@ export type FlowsFilters = {
   /** Inclusive YYYY-MM-DD bounds. */
   date_from?: string;
   date_to?: string;
-  /** Compared against rounded |amount_clp|. `amount_exact` excludes min/max (validated at the route). */
+  /**
+   * Compared against the rounded |leg| of `amount_currency` (default clp): a row without a
+   * leg in that currency never matches an amount filter. `amount_exact` excludes min/max
+   * (validated at the route).
+   */
   amount_min?: number;
   amount_max?: number;
   amount_exact?: number;
+  amount_currency?: MovementCurrency;
 };
 
 /**
@@ -176,10 +182,22 @@ export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): Fl
     }
     if (filters.date_from && r.occurred_on < filters.date_from) return false;
     if (filters.date_to && r.occurred_on > filters.date_to) return false;
-    const absAmount = Math.round(Math.abs(r.amount_clp));
-    if (filters.amount_exact != null && absAmount !== Math.round(filters.amount_exact)) return false;
-    if (filters.amount_min != null && absAmount < filters.amount_min) return false;
-    if (filters.amount_max != null && absAmount > filters.amount_max) return false;
+    const hasAmountFilter =
+      filters.amount_exact != null || filters.amount_min != null || filters.amount_max != null;
+    if (hasAmountFilter) {
+      const filterCurrency = filters.amount_currency ?? "clp";
+      const leg =
+        r.currency === filterCurrency
+          ? r.amount
+          : r.counter_currency === filterCurrency
+            ? r.counter_amount
+            : null;
+      if (leg == null) return false;
+      const absAmount = Math.round(Math.abs(leg));
+      if (filters.amount_exact != null && absAmount !== Math.round(filters.amount_exact)) return false;
+      if (filters.amount_min != null && absAmount < filters.amount_min) return false;
+      if (filters.amount_max != null && absAmount > filters.amount_max) return false;
+    }
     if (filters.personal_only) {
       if (!PERSONAL_FLOW_TYPES.has(r.flow_type)) return false;
       if (r.note?.includes("cripto-coin-only-wdw")) return false;
@@ -215,6 +233,13 @@ export function parseExtraFlowsFilterParams(
   }
   if (filters.amount_exact != null && (filters.amount_min != null || filters.amount_max != null)) {
     return { ok: false, error: "amount_exact cannot be combined with amount_min/amount_max" };
+  }
+  const currencyRaw = qp.amount_currency;
+  if (currencyRaw != null && currencyRaw !== "") {
+    if (!isMovementCurrency(currencyRaw)) {
+      return { ok: false, error: "amount_currency must be one of clp/usd/eur" };
+    }
+    filters.amount_currency = currencyRaw;
   }
   return { ok: true, filters };
 }

@@ -151,7 +151,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
       }),
     ];
     const ins = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note) VALUES (?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
     );
     for (const r of rows) {
       const mov = ins.run(

@@ -176,12 +176,19 @@ export type FlowsApiRow = {
   account_name: string;
   /** Portfolio bucket (nav leaf) the account files under; null when it has no tree link. */
   bucket_slug: string | null;
-  amount_clp: number;
+  /**
+   * Native amount in `currency`. CLP rows are the signed per-account delta; non-CLP rows
+   * carry the stored amount unsigned (direction lives in `transfer_direction`/`flow_type`).
+   * Cross-currency conversions add the to-leg as `counter_amount`/`counter_currency`.
+   */
+  amount: number;
+  currency: string;
+  counter_amount: number | null;
+  counter_currency: string | null;
   occurred_on: string;
   note: string | null;
   units_delta: number | null;
   flow_kind: string | null;
-  amount_usd: number | null;
   ticker: string | null;
   flow_type: string;
   flow_type_label: string;

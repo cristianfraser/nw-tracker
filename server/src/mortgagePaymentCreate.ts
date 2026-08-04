@@ -141,8 +141,8 @@ export function commitMortgagePayment(
   const tx = db.transaction(() => {
     const mortgageMov = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind)
-         VALUES (?, ?, ?, ?, NULL, ?)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+         VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
       )
       .run(
         mortgageId,
@@ -153,8 +153,8 @@ export function commitMortgagePayment(
       );
     const propertyMov = db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta)
-         VALUES (?, ?, ?, ?, NULL)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+         VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
       .run(propertyId, sheet.pago_clp, occurred_on, deptoPaymentHumanNote("dividendos", cuota, true));
     insertDeptoPaymentRow({
@@ -193,7 +193,8 @@ export function recomputeStoredMortgagePaymentRow(
 ): DeptoMortgageSheetRow {
   const target = db
     .prepare(
-      `SELECT p.*, m.amount_clp FROM depto_payments p JOIN movements m ON m.id = p.movement_id
+      `SELECT p.*, (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) AS amount_clp
+       FROM depto_payments p JOIN movements m ON m.id = p.movement_id
        WHERE p.cuota = ? AND m.occurred_on = ? AND p.origin = 'manual' AND p.kind = 'dividendos'`
     )
     .get(cuota, occurredOn) as

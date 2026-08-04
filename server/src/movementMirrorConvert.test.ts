@@ -23,7 +23,7 @@ function insLeg(accountId: number, amount: number, ymd: string, units: number | 
   return Number(
     db
       .prepare(
-        `INSERT INTO movements (account_id, amount_clp, occurred_on, units_delta, note) VALUES (?,?,?,?,?)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`
       )
       .run(accountId, amount, ymd, units, note).lastInsertRowid
   );
@@ -32,7 +32,7 @@ function insLeg(accountId: number, amount: number, ymd: string, units: number | 
 function movement(id: number) {
   return db
     .prepare(
-      `SELECT id, account_id, from_account_id, to_account_id, amount_clp, occurred_on, units_delta, note
+      `SELECT id, account_id, from_account_id, to_account_id, amount, currency, occurred_on, units_delta, note
        FROM movements WHERE id = ?`
     )
     .get(id) as
@@ -41,7 +41,8 @@ function movement(id: number) {
         account_id: number | null;
         from_account_id: number | null;
         to_account_id: number | null;
-        amount_clp: number;
+        amount: number;
+        currency: string;
         occurred_on: string;
         units_delta: number | null;
         note: string | null;
@@ -101,7 +102,8 @@ describe("convertMirrorPairs", () => {
     expect(t.from_account_id).toBe(genericId);
     expect(t.to_account_id).toBe(generic2Id);
     expect(t.occurred_on).toBe(OUT_D);
-    expect(t.amount_clp).toBe(4_040_403);
+    expect(t.amount).toBe(4_040_403);
+    expect(t.currency).toBe("clp");
     expect(movement(outId)).toBeUndefined();
     expect(movement(inId)).toBeUndefined();
 
@@ -231,12 +233,14 @@ describe("undoMirrorConversion", () => {
     const inn = movement(undone.restored_in_id)!;
     expect(out.account_id).toBe(fundId);
     expect(out.occurred_on).toBe("2026-04-20");
-    expect(out.amount_clp).toBe(-5_050_507);
+    expect(out.amount).toBe(-5_050_507);
+    expect(out.currency).toBe("clp");
     expect(out.units_delta).toBe(-3.25);
     expect(out.note).toBe(`${NOTE}|con|pipes`);
     expect(inn.account_id).toBe(checkingId);
     expect(inn.occurred_on).toBe("2026-04-21");
-    expect(inn.amount_clp).toBe(5_050_507);
+    expect(inn.amount).toBe(5_050_507);
+    expect(inn.currency).toBe("clp");
     expect(inn.note).toBe(NOTE);
     // The restored pair is a candidate again.
     const again = listMirrorPairCandidates().find((p) => p.out.movement_id === out.id);
@@ -289,8 +293,8 @@ describe("reconciliation outflow keys for mirror-merge transfers", () => {
     convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
 
     db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount_clp, occurred_on, note)
-       VALUES (NULL, ?, ?, 303031, '2026-04-28', ?)`
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+       VALUES (NULL, ?, ?, 303031, 'clp', '2026-04-28', ?)`
     ).run(generic2Id, checkingId, `${NOTE}|plain-transfer`);
 
     const nw = new Set([genericId, generic2Id]);

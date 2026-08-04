@@ -44,8 +44,8 @@ describe("state contributions are P/L, not deposits", () => {
         .run(group.id, "vitest-flows-deposits-state-bonus").lastInsertRowid
     );
     const ins = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+       VALUES (?, ?, 'clp', ?, ?, ?)`
     );
     ins.run(accountId, 100_000, "2024-05-10", "vitest personal deposit", null);
     ins.run(accountId, 50_000, "2024-05-20", "vitest state bonus", "aporte_estatal_clp");
@@ -80,8 +80,8 @@ describe("future-dated movements do not count until their date arrives", () => {
         .run(group.id, "vitest-flows-deposits-future-dated").lastInsertRowid
     );
     const ins = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+       VALUES (?, ?, 'clp', ?, ?, ?)`
     );
     ins.run(accountId, 100_000, "2024-05-10", "vitest past deposit", null);
     // Bank-scheduled giro imported from a partial cartola before its value date.
