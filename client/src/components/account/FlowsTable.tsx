@@ -1,5 +1,6 @@
 import { Input } from "@crfrsr/ui";
 import { useTranslation } from "../../i18n";
+import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatClp, formatInstrumentUnits, formatOrDash, formatUsdFine } from "../../format";
 import { PaginatedTable } from "../ui/PaginatedTable";
@@ -23,7 +24,7 @@ function formatFlowUnits(
   }
   return formatInstrumentUnits(
     row.units_delta,
-    row.ticker != null ? "shares" : (movementUnitsKind?.(row.category_slug ?? "") ?? "shares")
+    row.ticker != null ? "shares" : (movementUnitsKind?.(row.bucket_slug ?? "") ?? "shares")
   );
 }
 
@@ -132,7 +133,7 @@ export type FlowsFilterState = {
   year: string;
   type: string;
   account_id: string;
-  category: string;
+  bucket: string;
   q: string;
   personal_only: boolean;
   /** Inclusive YYYY-MM-DD bounds (raw input values). */
@@ -148,7 +149,7 @@ export const DEFAULT_FLOWS_FILTER_STATE: FlowsFilterState = {
   year: "",
   type: "",
   account_id: "",
-  category: "",
+  bucket: "",
   q: "",
   personal_only: false,
   date_from: "",
@@ -216,7 +217,7 @@ export function FlowsTable({
   );
 
   const hasActiveFilter = filterState
-    ? filterState.year || filterState.type || filterState.account_id || filterState.category ||
+    ? filterState.year || filterState.type || filterState.account_id || filterState.bucket ||
       filterState.q || filterState.personal_only || filterState.date_from || filterState.date_to ||
       filterState.amount_exact || filterState.amount_min || filterState.amount_max
     : false;
@@ -277,16 +278,16 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        {showAccountColumn && filterOptions.categories.length > 0 ? (
+        {showAccountColumn && filterOptions.buckets.length > 0 ? (
           <select
-            value={filterState.category}
-            onChange={(e) => onFilterChange({ category: e.target.value })}
-            aria-label={t("flows.filters.category")}
+            value={filterState.bucket}
+            onChange={(e) => onFilterChange({ bucket: e.target.value })}
+            aria-label={t("flows.filters.bucket")}
           >
-            <option value="">{t("flows.filters.allCategories")}</option>
-            {filterOptions.categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            <option value="">{t("flows.filters.allBuckets")}</option>
+            {filterOptions.buckets.map((b) => (
+              <option key={b.slug} value={b.slug}>
+                {resolveNavTreeLabel(b)}
               </option>
             ))}
           </select>

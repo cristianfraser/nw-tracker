@@ -41,7 +41,7 @@ export const SERVER_NAV_LABEL_I18N_KEYS = [
   "watchlist.riskyNorrisProxy",
 ] as const;
 
-export function resolveNavTreeLabel(dto: NavTreeNodeDto): string {
+export function resolveNavTreeLabel(dto: Pick<NavTreeNodeDto, "label" | "label_i18n_key">): string {
   if (dto.label_i18n_key) {
     const translated = i18n.t(dto.label_i18n_key);
     if (translated !== dto.label_i18n_key) return translated;

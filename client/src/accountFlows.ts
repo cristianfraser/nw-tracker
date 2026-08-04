@@ -76,34 +76,3 @@ export function accountFlowsShowCounterpartColumn(
   return rows.some((r) => r.counterpart_account_name != null && r.counterpart_account_name.trim() !== "");
 }
 
-export type FlowsTableRow = AccountFlowRow & {
-  account_name?: string;
-  category_slug?: string;
-};
-
-/** Merge child account movements into one flows table (newest first). */
-export function consolidateAccountFlowRows(
-  byAccount: readonly {
-    id: number;
-    name: string;
-    category_slug: string;
-    movements: AccountMovementDto[];
-  }[]
-): FlowsTableRow[] {
-  const rows: FlowsTableRow[] = [];
-  for (const acc of byAccount) {
-    for (const row of accountMovementsToFlowRows(acc.movements)) {
-      rows.push({
-        ...row,
-        key: `${acc.id}:${row.key}`,
-        account_name: acc.name,
-        category_slug: acc.category_slug,
-      });
-    }
-  }
-  return rows.sort((a, b) => {
-    const byDate = b.occurred_on.localeCompare(a.occurred_on);
-    if (byDate !== 0) return byDate;
-    return b.key.localeCompare(a.key);
-  });
-}
