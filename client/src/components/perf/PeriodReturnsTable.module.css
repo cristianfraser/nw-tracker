@@ -1,7 +1,11 @@
-/* Equal-width period columns; the row scrolls inside `.table-wrap` when they don't fit. */
+/*
+ * Equal-width period columns. The floor is what 8 columns need to stay readable and is kept
+ * under the content width at the flip breakpoint below (~582px at a 880px viewport), so the
+ * wide layout never has to scroll: narrower than that and the flipped one takes over.
+ */
 .table {
   table-layout: fixed;
-  min-width: 44rem;
+  min-width: 34rem;
 }
 
 .head {
@@ -32,4 +36,93 @@
 
 .down {
   color: var(--negative);
+}
+
+/*
+ * Mobile: the same markup, flipped — one row per period (label | values) instead of one wide
+ * row that scrolls. The table becomes a two-column grid and thead/tbody/tr collapse away
+ * (`display: contents`), so every cell is a grid item; explicit `grid-row` then pairs the
+ * header cell and the body cell that share an index. One rule per `PeriodReturnKey` (8) —
+ * a new period needs a rule here, or its cells land in an auto row at the end.
+ * Same breakpoint as the parallel-mobile tables in styles/tables.css.
+ */
+@media (max-width: 879px) {
+  .table {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table thead,
+  .table tbody,
+  .table tr {
+    display: contents;
+  }
+
+  /* The label cell must fill the row (not shrink to its text) or its bottom border sits at a
+     different height than the value cell's and the rule breaks in two; flex centers the text. */
+  .table th {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  .table td {
+    grid-column: 2;
+    text-align: right;
+  }
+
+  /* The single body `tr` is also the last one, so `tr:last-child td` (styles/tables.css) would
+     strip every value cell's border and leave the rule drawn under the labels only — hence the
+     deliberately heavier selector. Borders are per pair, cleared on the last period below. */
+  .table th,
+  .table tbody tr td {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table th:nth-child(1),
+  .table td:nth-child(1) {
+    grid-row: 1;
+  }
+
+  .table th:nth-child(2),
+  .table td:nth-child(2) {
+    grid-row: 2;
+  }
+
+  .table th:nth-child(3),
+  .table td:nth-child(3) {
+    grid-row: 3;
+  }
+
+  .table th:nth-child(4),
+  .table td:nth-child(4) {
+    grid-row: 4;
+  }
+
+  .table th:nth-child(5),
+  .table td:nth-child(5) {
+    grid-row: 5;
+  }
+
+  .table th:nth-child(6),
+  .table td:nth-child(6) {
+    grid-row: 6;
+  }
+
+  .table th:nth-child(7),
+  .table td:nth-child(7) {
+    grid-row: 7;
+  }
+
+  .table th:nth-child(8),
+  .table td:nth-child(8) {
+    grid-row: 8;
+  }
+
+  .table th:last-child,
+  .table tbody tr td:last-child {
+    border-bottom: none;
+  }
 }
