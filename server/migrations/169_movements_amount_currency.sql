@@ -1,0 +1,8 @@
+-- movements: drop the parallel amount_clp/amount_usd pair for native `amount` + `currency`
+-- (+ `counter_amount`/`counter_currency` on cross-currency transfers).
+--
+-- The whole rebuild lives in the paired POST_MIGRATION_HOOKS entry
+-- (server/src/movementsAmountCurrency169.ts) so every data invariant can throw and roll
+-- the transaction back. This migration also runs with foreign_keys=OFF (db.ts,
+-- FOREIGN_KEYS_OFF_MIGRATIONS): with FKs on, DROP TABLE movements cascade-deletes every
+-- child row (depto_payments, movement_mirror_merges, expense_deposit_links, ...).
