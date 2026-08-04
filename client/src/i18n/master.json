@@ -2838,10 +2838,6 @@
       "en": "annualized",
       "es": "anualizado"
     },
-    "liveSuffix": {
-      "en": "live",
-      "es": "en curso"
-    },
     "insufficientHistory": {
       "en": "Not enough history for this period",
       "es": "Historial insuficiente para este período"
