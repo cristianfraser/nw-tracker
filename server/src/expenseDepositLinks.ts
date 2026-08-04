@@ -17,6 +17,12 @@ import {
 } from "./checkingCartolaLoaders.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  MOVEMENT_CLP_LEG_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
+import {
   deptoPaymentRowForMovementId,
   isDeptoPieCuota,
   type DeptoMortgageSheetRow,
@@ -174,27 +180,28 @@ function depositAccountDashboardGroup(accountId: number): string | null {
   return dashboardBucketForAssetGroupSlug(row.bucket_slug);
 }
 
+type DepositMovementRow = MovementAmountFields & {
+  id: number;
+  note: string | null;
+  occurred_on: string;
+};
+
 function findDepositMovement(
   accountId: number,
   occurredOn: string,
   amountClp: number
-): { id: number; note: string | null; amount_clp: number; occurred_on: string } | null {
+): DepositMovementRow | null {
   const want = Math.round(amountClp);
   const rows = db
     .prepare(
-      `SELECT id, note, amount_clp, occurred_on
+      `SELECT id, note, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on
        FROM movements
-       WHERE account_id = ? AND occurred_on = ? AND amount_clp > 0
+       WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} > 0
        ORDER BY id`
     )
-    .all(accountId, occurredOn) as {
-    id: number;
-    note: string | null;
-    amount_clp: number;
-    occurred_on: string;
-  }[];
+    .all(accountId, occurredOn) as DepositMovementRow[];
 
-  const exact = rows.filter((r) => Math.round(r.amount_clp) === want);
+  const exact = rows.filter((r) => Math.round(movementClpLegOrZero(r)) === want);
   if (exact.length === 0) return null;
   if (exact.length === 1) return exact[0]!;
 
@@ -212,15 +219,9 @@ function findDepositMovement(
 
 function findPropertyDepositForSheetRow(
   sheet: DeptoMortgageSheetRow
-): { id: number; note: string | null; amount_clp: number; occurred_on: string; account_id: number } | null {
+): (DepositMovementRow & { account_id: number }) | null {
   const sheetPago = Math.round(sheet.pago_clp);
-  let match: {
-    id: number;
-    note: string | null;
-    amount_clp: number;
-    occurred_on: string;
-    account_id: number;
-  } | null = null;
+  let match: (DepositMovementRow & { account_id: number }) | null = null;
 
   for (const accountId of listRealEstatePropertyAccountIds()) {
     const movement = findDepositMovement(accountId, sheet.occurred_on, sheetPago);
@@ -270,7 +271,7 @@ export function findUniqueCcLineForMortgageSheetRow(
 }
 
 function resolveAmortizationForDepositMovement(
-  movement: { id: number; note: string | null; amount_clp: number; occurred_on: string },
+  movement: DepositMovementRow,
   sheetRow?: DeptoMortgageSheetRow
 ): { amortization_clp: number; depto_cuota: string | null; depto_occurred_on: string } | null {
   const payment = deptoPaymentRowForMovementId(movement.id);
@@ -278,7 +279,7 @@ function resolveAmortizationForDepositMovement(
 
   if (sheetRow != null) {
     const amort = amortizationClpFromSheetRow(sheetRow);
-    const paymentRef = Math.max(Math.round(movement.amount_clp), Math.round(sheetRow.pago_clp));
+    const paymentRef = Math.max(Math.round(movementClpLegOrZero(movement)), Math.round(sheetRow.pago_clp));
     if (amort > paymentRef && sheetRow.cuota !== "9") {
       throw new Error(
         `depto cuota ${sheetRow.cuota} amortization ${amort} exceeds payment ${paymentRef}`
@@ -295,7 +296,7 @@ function resolveAmortizationForDepositMovement(
     const fromRow =
       Math.round(payment.amortizacion_clp ?? 0) + Math.round(payment.amortizacion_ext_clp ?? 0);
     if (fromRow > 0) {
-      const paymentRef = Math.round(movement.amount_clp);
+      const paymentRef = Math.round(movementClpLegOrZero(movement));
       if (fromRow > paymentRef) {
         throw new Error(
           `depto movement ${movement.id} amortization ${fromRow} exceeds payment ${paymentRef}`
@@ -634,12 +635,12 @@ function listDepositMovementIdsAt(
   const want = Math.round(amountClp);
   const rows = db
     .prepare(
-      `SELECT id, amount_clp FROM movements
-       WHERE account_id = ? AND occurred_on = ? AND amount_clp > 0
+      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
+       WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} > 0
        ORDER BY id`
     )
-    .all(accountId, occurredOn) as { id: number; amount_clp: number }[];
-  return rows.filter((r) => Math.round(r.amount_clp) === want).map((r) => r.id);
+    .all(accountId, occurredOn) as ({ id: number } & MovementAmountFields)[];
+  return rows.filter((r) => Math.round(movementClpLegOrZero(r)) === want).map((r) => r.id);
 }
 
 /**

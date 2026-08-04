@@ -30,6 +30,11 @@ import {
   matchFintualCertGoalV2,
 } from "./fintualCertV2.js";
 import { backfillFintualCertValorCuotaFromScan } from "./fintualFundUnitDaily.js";
+import {
+  MOVEMENT_AMOUNT_COLUMNS_SQL,
+  movementClpLegOrZero,
+  type MovementAmountFields,
+} from "./movementAmounts.js";
 
 function excludeFromGroupTotalsForCategory(categorySlug: string): number {
   return categorySlug === "cuenta_corriente" || categorySlug === "cuenta_vista" ? 1 : 0;
@@ -133,38 +138,37 @@ function loadExistingFlows(accountIds: number[]): ExistingFlow[] {
   const out: ExistingFlow[] = [];
   const singles = db
     .prepare(
-      `SELECT id, account_id, occurred_on, amount_clp, note FROM movements
+      `SELECT id, account_id, occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, note FROM movements
        WHERE account_id IN (${ph})`
     )
-    .all(...accountIds) as { id: number; account_id: number; occurred_on: string; amount_clp: number; note: string | null }[];
+    .all(...accountIds) as ({ id: number; account_id: number; occurred_on: string; note: string | null } & MovementAmountFields)[];
   for (const r of singles) {
     out.push({
       movementId: r.id,
       accountId: r.account_id,
       ymd: r.occurred_on,
-      signedClp: r.amount_clp,
+      signedClp: movementClpLegOrZero(r),
       kind: r.note?.startsWith(FINTUAL_CERT_MOVEMENT_NOTE_PREFIX) ? "cert" : "single",
     });
   }
   const transfers = db
     .prepare(
-      `SELECT id, from_account_id, to_account_id, occurred_on, amount_clp FROM movements
+      `SELECT id, from_account_id, to_account_id, occurred_on, ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
        WHERE account_id IS NULL AND (from_account_id IN (${ph}) OR to_account_id IN (${ph}))`
     )
-    .all(...accountIds, ...accountIds) as {
+    .all(...accountIds, ...accountIds) as ({
     id: number;
     from_account_id: number | null;
     to_account_id: number | null;
     occurred_on: string;
-    amount_clp: number;
-  }[];
+  } & MovementAmountFields)[];
   const idSet = new Set(accountIds);
   for (const r of transfers) {
     if (r.to_account_id != null && idSet.has(r.to_account_id)) {
-      out.push({ movementId: r.id, accountId: r.to_account_id, ymd: r.occurred_on, signedClp: Math.abs(r.amount_clp), kind: "transfer" });
+      out.push({ movementId: r.id, accountId: r.to_account_id, ymd: r.occurred_on, signedClp: Math.abs(movementClpLegOrZero(r)), kind: "transfer" });
     }
     if (r.from_account_id != null && idSet.has(r.from_account_id)) {
-      out.push({ movementId: r.id, accountId: r.from_account_id, ymd: r.occurred_on, signedClp: -Math.abs(r.amount_clp), kind: "transfer" });
+      out.push({ movementId: r.id, accountId: r.from_account_id, ymd: r.occurred_on, signedClp: -Math.abs(movementClpLegOrZero(r)), kind: "transfer" });
     }
   }
   return out;
@@ -247,8 +251,8 @@ export function importFintualCertificado(opts?: {
     };
 
     const insMov = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, units_delta, flow_kind)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+       VALUES (?, ?, 'clp', ?, ?, ?, ?)`
     );
 
     let matched = 0;

@@ -35,14 +35,14 @@ describe("CLP-funded stock_buy capital flows", () => {
 
     // Fund the CLP cash account, then buy the .SN stock from it.
     db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind)
-       VALUES (?, 3_000_000, '2026-07-02', ?, 'deposit_clp')`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+       VALUES (?, 3_000_000, 'clp', '2026-07-02', ?, 'deposit_clp')`
     ).run(clpId, `${FIXTURE_NOTE}|deposit`);
     db.prepare(
       `INSERT INTO movements (
-         account_id, from_account_id, to_account_id, amount_clp, occurred_on, note,
-         units_delta, flow_kind, amount_usd, ticker
-       ) VALUES (NULL, ?, ?, 2_985_000, '2026-07-03', ?, 2282, 'stock_buy', NULL, 'VITEST.SN')`
+         account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
+         units_delta, flow_kind, ticker
+       ) VALUES (NULL, ?, ?, 2_985_000, 'clp', '2026-07-03', ?, 2282, 'stock_buy', 'VITEST.SN')`
     ).run(clpId, stockId, `${FIXTURE_NOTE}|buy`);
   });
 

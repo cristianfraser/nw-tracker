@@ -16,12 +16,20 @@ function parseAmountFilter(raw: string): number | undefined {
 /** Extended filters shared by both panel variants (exact wins over min/max, like the server). */
 function extraFiltersFromState(fs: FlowsFilterState): Partial<FlowsQueryFilters> {
   const exact = parseAmountFilter(fs.amount_exact);
+  const min = exact == null ? parseAmountFilter(fs.amount_min) : undefined;
+  const max = exact == null ? parseAmountFilter(fs.amount_max) : undefined;
+  const hasAmountFilter = exact != null || min != null || max != null;
   return {
     date_from: fs.date_from || undefined,
     date_to: fs.date_to || undefined,
     amount_exact: exact,
-    amount_min: exact == null ? parseAmountFilter(fs.amount_min) : undefined,
-    amount_max: exact == null ? parseAmountFilter(fs.amount_max) : undefined,
+    amount_min: min,
+    amount_max: max,
+    // Only meaningful alongside an amount filter; omitted otherwise so query keys stay stable.
+    amount_currency:
+      hasAmountFilter && fs.amount_currency && fs.amount_currency !== "clp"
+        ? fs.amount_currency
+        : undefined,
   };
 }
 

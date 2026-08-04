@@ -33,7 +33,7 @@ describe("monthEndCloseClpForAccount with future-dated movements", () => {
     vi.setSystemTime(new Date("2099-07-15T12:00:00-04:00"));
 
     const ins = db.prepare(
-      `INSERT INTO movements (account_id, amount_clp, occurred_on, note, flow_kind) VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`
     );
     // Closed prior month: deposit that must keep counting at its month-end.
     ins.run(clpId, 1_000_000, "2099-06-20", `${FIXTURE}|jun-deposit`, "deposit_clp");
