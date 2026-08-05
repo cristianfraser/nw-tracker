@@ -76,7 +76,7 @@ export function CreditCardUnclassifiedExpensesTable({
             flexWrap: "wrap",
           }}
         >
-          <Button variant="ghost" size="sm"
+          <Button variant="ghost"
             disabled={currentPageIndex === 0}
             onClick={() => setCurrentPageIndex((idx) => Math.max(0, idx - 1))}
           >
@@ -96,7 +96,7 @@ export function CreditCardUnclassifiedExpensesTable({
               ))}
             </select>
           </label>
-          <Button variant="ghost" size="sm"
+          <Button variant="ghost"
             disabled={currentPageIndex === paged.length - 1}
             onClick={() => setCurrentPageIndex((idx) => Math.min(paged.length - 1, idx + 1))}
           >

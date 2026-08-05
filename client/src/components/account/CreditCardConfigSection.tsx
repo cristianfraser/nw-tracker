@@ -158,7 +158,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
           />
         </Field>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-          <Button size="sm" disabled={patchMutation.isPending} onClick={onSave}>
+          <Button disabled={patchMutation.isPending} onClick={onSave}>
             {patchMutation.isPending
               ? t("common.loading")
               : t("accountDetail.creditCard.configSaveBtn")}

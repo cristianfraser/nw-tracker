@@ -88,7 +88,7 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
 
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
         {t("export.button")}
       </Button>
       <Modal
@@ -97,10 +97,10 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
         title={t("export.title")}
         footer={
           <>
-            <Button variant="secondary" size="sm" onClick={() => setOpen(false)} disabled={busy}>
+            <Button variant="secondary" onClick={() => setOpen(false)} disabled={busy}>
               {t("export.cancel")}
             </Button>{" "}
-            <Button size="sm" onClick={download} disabled={busy || sections.size === 0}>
+            <Button onClick={download} disabled={busy || sections.size === 0}>
               {busy ? t("export.downloading") : t("export.download")}
             </Button>
           </>

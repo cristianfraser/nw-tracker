@@ -174,7 +174,7 @@ export function BrokerageMovementRowFields({
           alignItems: "flex-end",
         }}
       >
-        <Button variant="danger" size="sm" onClick={onRemove} disabled={!canRemove}>
+        <Button variant="danger" onClick={onRemove} disabled={!canRemove}>
           {t("panelAccounts.addAccount.removeMovement")}
         </Button>
       </div>
@@ -254,7 +254,7 @@ export function BrokerageMovementsSection({
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <Button variant="secondary" size="sm" onClick={() => addMovement()}>
+        <Button variant="secondary" onClick={() => addMovement()}>
           {t("panelAccounts.addAccount.addMovement")}
         </Button>
       </div>

@@ -286,7 +286,7 @@ export function AccountImportPanel({
 
   return (
     <section className={styles.panel}>
-      <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
+      <Button variant="ghost" onClick={() => setOpen((o) => !o)}>
         {open ? "▾" : "▸"} {t("accountDetail.import.sectionTitle")}
       </Button>
       {open && (
@@ -303,7 +303,7 @@ export function AccountImportPanel({
                     onChange={(e) => setPasteText(e.target.value)}
                     placeholder={t("accountDetail.import.pastePlaceholder")}
                   />
-                  <Button size="sm"
+                  <Button
                     disabled={busy || !pasteText.trim()}
                     onClick={() => run(() => slot.onSubmit(pasteText))}
                   >
@@ -322,7 +322,7 @@ export function AccountImportPanel({
                       setFileMap((m) => ({ ...m, [slot.label]: f }));
                     }}
                   />
-                  <Button size="sm"
+                  <Button
                     disabled={busy || !fileMap[slot.label]}
                     onClick={() => {
                       const f = fileMap[slot.label];
@@ -350,7 +350,7 @@ export function AccountImportPanel({
                       />
                     </label>
                   ))}
-                  <Button size="sm"
+                  <Button
                     disabled={busy || !Object.values(fileMap).some(Boolean)}
                     onClick={() => run(() => slot.onSubmit(fileMap))}
                   >

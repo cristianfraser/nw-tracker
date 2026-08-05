@@ -184,7 +184,7 @@ function WatchlistTable({
             sortSeed: `wl-${row.id}`,
             showActionsColumn: showActions,
             actions: showActions ? (
-              <Button variant="ghost" size="sm"
+              <Button variant="ghost"
                 disabled={deleteRow.isPending}
                 onClick={() => deleteRow.mutate(row.id)}
               >
@@ -296,7 +296,7 @@ export function WatchlistPage() {
               spellCheck={false}
             />
           </label>
-          <Button size="sm" type="submit" disabled={addTicker.isPending || !tickerInput.trim()}>
+          <Button type="submit" disabled={addTicker.isPending || !tickerInput.trim()}>
             {t("watchlist.addTickerSubmit")}
           </Button>
         </form>

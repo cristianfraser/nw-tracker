@@ -70,7 +70,7 @@ export function IncomeFilteredLinesTable({
               </td>
               <td className="muted">{filterReasonLabel(t, row.filter_reason)}</td>
               <td>
-                <Button variant="secondary" size="sm"
+                <Button variant="secondary"
                   disabled={forceInclude.isPending}
                   onClick={() =>
                     setIncludeTarget({

@@ -202,7 +202,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
               />
             </div>
             <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-              <Button variant="secondary" size="sm"
+              <Button variant="secondary"
                 onClick={() => setMovements((prev) => prev.filter((r) => r.id !== row.id))}
               >
                 {t("accountDetail.bookLedger.removeRow")}
@@ -213,7 +213,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <Button size="sm"
+        <Button
           onClick={() => {
             setMovements((prev) => [...prev, emptyRow()]);
             setFormError(null);
@@ -226,7 +226,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
 
       {movements.length > 0 ? (
         <div style={{ marginTop: "0.75rem" }}>
-          <Button size="sm"
+          <Button
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
           >

@@ -76,7 +76,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit, extraCcOff
 
       {movements.length > 0 ? (
         <div style={{ marginTop: "0.75rem" }}>
-          <Button size="sm"
+          <Button
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
           >

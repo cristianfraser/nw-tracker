@@ -39,7 +39,7 @@ class RouteErrorBoundaryInner extends Component<Props, State> {
         <p className="error">{i18n.t("routeError.title")}</p>
         <p className="muted">{error.message}</p>
         <p>
-          <Button variant="secondary" size="sm"
+          <Button variant="secondary"
             onClick={() =>
               isChunkLoadError(error) ? window.location.reload() : this.setState({ error: null })
             }

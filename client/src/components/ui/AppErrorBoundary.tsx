@@ -31,7 +31,7 @@ export class AppErrorBoundary extends Component<Props, State> {
         <p style={{ color: "var(--text-muted, #888)", fontSize: "0.85rem" }}>
           {i18n.t("app.errorBoundary.detailLabel")}: {error.message}
         </p>
-        <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+        <Button variant="secondary" onClick={() => window.location.reload()}>
           {i18n.t("app.errorBoundary.reload")}
         </Button>
       </div>

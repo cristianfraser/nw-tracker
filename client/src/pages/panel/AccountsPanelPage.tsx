@@ -164,10 +164,10 @@ export function AccountsPanelPage() {
                     colorTarget={{ kind: "account", accountId: a.id }}
                     size="compact"
                   />
-                  <Button variant="secondary" size="sm" onClick={() => setEditingAccount(a)}>
+                  <Button variant="secondary" onClick={() => setEditingAccount(a)}>
                     {t("panelAccounts.editBtn")}
                   </Button>
-                  <Button variant="secondary" size="sm"
+                  <Button variant="secondary"
                     onClick={() => void onDeleteAccount(a.id, a.name)}
                     disabled={deletingId === a.id}
                   >

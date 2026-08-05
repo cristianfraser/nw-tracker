@@ -109,7 +109,7 @@ export function IncomeAllLinesTable({
                   </td>
                   <td>{t("income.originChecking")}</td>
                   <td>
-                    <Button variant="secondary" size="sm"
+                    <Button variant="secondary"
                       disabled={patchIncomeMovement.isPending}
                       onClick={() =>
                         setExcludeTarget({

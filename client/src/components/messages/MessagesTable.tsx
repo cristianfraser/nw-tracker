@@ -56,7 +56,7 @@ function MessageDetailCell({
     <>
       <MessageBodyPre body={displayBody} />
       {truncated ? (
-        <Button variant="ghost" size="sm"
+        <Button variant="ghost"
           onClick={() => setModalOpen(true)}
         >
           {t("messages.showMoreDetail")}

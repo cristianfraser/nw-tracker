@@ -117,7 +117,7 @@ export function CreditCardFacturadoFinancingManager({
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="ghost" onClick={() => setOpen(true)}>
         {t("expenses.creditCard.financing.openButton")}
       </Button>
       <Modal
@@ -150,7 +150,7 @@ export function CreditCardFacturadoFinancingManager({
                     {link.financing.length}× {t("expenses.creditCard.financing.financingShort")}
                   </span>
                 </span>
-                <Button variant="ghost" size="sm"
+                <Button variant="ghost"
                   disabled={del.isPending}
                   onClick={() => del.mutate(link.id)}
                 >
@@ -228,7 +228,7 @@ export function CreditCardFacturadoFinancingManager({
           ))}
         </ul>
 
-        <Button size="sm" disabled={!canSave} onClick={save}>
+        <Button disabled={!canSave} onClick={save}>
           {t("expenses.creditCard.financing.save")}
         </Button>
         {upsert.isError ? (

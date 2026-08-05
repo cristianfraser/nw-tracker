@@ -222,7 +222,7 @@ export function CreditCardExpenseLinesBulkFooter({
         {t("expenses.creditCard.bulkSelectedCount", { count: selectedLines.length })}
       </span>
       <div className={styles.actions}>
-        <Button variant="secondary" size="sm"
+        <Button variant="secondary"
           disabled={busy}
           onClick={() => selection.clearSelection()}
         >

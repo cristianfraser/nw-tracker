@@ -110,7 +110,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
                 </td>
                 <td className="mono">{formatClp(c.amount_clp)}</td>
                 <td>
-                  <Button variant="secondary" size="sm"
+                  <Button variant="secondary"
                     disabled={pendingKey != null}
                     onClick={() => void handleLink(c.purchase_key)}
                   >

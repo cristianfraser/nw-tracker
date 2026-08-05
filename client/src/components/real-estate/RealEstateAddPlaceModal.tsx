@@ -112,7 +112,7 @@ export function RealEstateAddPlaceModal({ open, onClose }: Props) {
         </Field>
         {err ? <p className="error">{err}</p> : null}
         <div>
-          <Button size="sm"
+          <Button
             disabled={createMutation.isPending || !label.trim() || !slug.trim()}
             onClick={() => void handleCreate()}
           >

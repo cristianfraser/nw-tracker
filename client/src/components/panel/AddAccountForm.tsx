@@ -161,12 +161,12 @@ export function AddAccountForm({ netWorthRoot }: Props) {
       </label>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1.25rem" }}>
-        <Button size="sm" type="submit" disabled={createMutation.isPending}>
+        <Button type="submit" disabled={createMutation.isPending}>
           {createMutation.isPending
             ? t("common.loading")
             : t("panelAccounts.addAccount.createBtn")}
         </Button>
-        <Button size="sm" onClick={resetForm} disabled={createMutation.isPending}>
+        <Button onClick={resetForm} disabled={createMutation.isPending}>
           {t("panelAccounts.addAccount.resetBtn")}
         </Button>
       </div>

@@ -27,10 +27,10 @@ export function ConfirmDialog({
     <Modal open={open} onClose={onCancel} title={title} closeAriaLabel={cancelLabel}>
       <p className={styles.message}>{message}</p>
       <div className={styles.actions}>
-        <Button variant="secondary" size="sm" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button variant="danger" size="sm"
+        <Button variant="danger"
           disabled={confirmDisabled}
           onClick={onConfirm}
         >

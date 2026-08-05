@@ -435,7 +435,7 @@ export function CreditCardExpenseLinesTable({
             {showDeleteAction ? (
               <td>
                 {canMakeInstallment ? (
-                  <Button variant="ghost" size="sm"
+                  <Button variant="ghost"
                     disabled={makeInstallmentBusy || deleteBusy}
                     onClick={() => onMakeInstallmentLine?.(ln)}
                   >
@@ -443,7 +443,7 @@ export function CreditCardExpenseLinesTable({
                   </Button>
                 ) : null}
                 {canDelete ? (
-                  <Button variant="ghost" size="sm"
+                  <Button variant="ghost"
                     disabled={deleteBusy || makeInstallmentBusy}
                     aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
                     onClick={() => onDeleteLine?.(ln)}
