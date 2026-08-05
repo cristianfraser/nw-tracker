@@ -322,7 +322,7 @@ export function MortgagePaymentForm({
       ) : null}
 
       <div style={{ marginTop: "0.75rem" }}>
-        <Button size="sm"
+        <Button
           disabled={saveMutation.isPending || !previewBody || preview == null}
           onClick={() => saveMutation.mutate()}
         >

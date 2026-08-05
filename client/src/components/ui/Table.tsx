@@ -306,7 +306,7 @@ export function Table({
         </table>
       </div>
       {hasHiddenRows ? (
-        <Button variant="ghost" size="sm"
+        <Button variant="ghost"
           onClick={() => setExpanded((e) => !e)}
         >
           {expanded ? resolvedShowLessLabel : resolvedShowMoreLabel}

@@ -134,14 +134,14 @@ export function CheckingLedgerAnchorForm({
             }}
           />
         </label>
-        <Button size="sm"
+        <Button
           disabled={saveMutation.isPending || clearMutation.isPending}
           onClick={() => saveMutation.mutate()}
         >
           {t("accountDetail.checking.ledgerAnchorSave")}
         </Button>
         {ledgerAnchor ? (
-          <Button variant="secondary" size="sm"
+          <Button variant="secondary"
             disabled={saveMutation.isPending || clearMutation.isPending}
             onClick={() => clearMutation.mutate()}
           >

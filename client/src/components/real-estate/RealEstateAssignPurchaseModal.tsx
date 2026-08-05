@@ -144,7 +144,7 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
             placeholder={t("expenses.realEstate.assignSearchPlaceholder")}
           />
         </div>
-        <Button variant="secondary" size="sm"
+        <Button variant="secondary"
           disabled={busy || selected.size === 0}
           onClick={() => void assignKeys([...selected])}
         >
@@ -202,7 +202,7 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
               </td>
               <td className="mono">{formatClp(p.amount_clp)}</td>
               <td>
-                <Button size="sm"
+                <Button
                   disabled={busy}
                   onClick={() => void assignKeys([p.purchase_key])}
                 >

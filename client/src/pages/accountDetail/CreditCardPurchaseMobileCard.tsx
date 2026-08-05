@@ -56,7 +56,7 @@ export function CreditCardPurchaseMobileCard({
         <PurchaseMeta>{originLabel}</PurchaseMeta>
         {purchase.note ? <PurchaseMeta>{purchase.note}</PurchaseMeta> : null}
         {hasLedger && purchase.origin === "manual" && purchase.purchase_db_id != null && onDeleteManual ? (
-          <Button variant="ghost" size="sm"
+          <Button variant="ghost"
             disabled={manualBusy}
             onClick={onDeleteManual}
           >

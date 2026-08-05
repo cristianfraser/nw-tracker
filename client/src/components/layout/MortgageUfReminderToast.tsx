@@ -63,7 +63,7 @@ export function MortgageUfReminderToast() {
             {t("reminders.mortgageUf.horizonNote", { horizon: data.best_pay_date })}
           </p>
         ) : null}
-        <Button variant="secondary" size="sm" onClick={() => setDismissed(true)}>
+        <Button variant="secondary" onClick={() => setDismissed(true)}>
           {t("reminders.mortgageUf.dismiss")}
         </Button>
       </div>

@@ -159,7 +159,7 @@ function CreditCardInstallmentsSection({
               <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
               {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
               {hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
-                <Button variant="ghost" size="sm"
+                <Button variant="ghost"
                   disabled={manualBusy}
                   onClick={() => {
                     deletePurchase.mutate(p.purchase_db_id!);

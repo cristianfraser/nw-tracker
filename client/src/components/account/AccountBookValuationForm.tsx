@@ -97,7 +97,7 @@ export function AccountBookValuationForm({ accountId, displayUnit, extraCcOffset
           />
         </Field>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-          <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+          <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
             {saveMutation.isPending ? t("common.loading") : t("accountDetail.bookLedger.valuationSaveBtn")}
           </Button>
         </div>

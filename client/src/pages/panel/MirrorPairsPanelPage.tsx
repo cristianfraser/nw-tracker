@@ -172,13 +172,13 @@ export function MirrorPairsPanelPage() {
 
   const rowActions = (p: MirrorPairCandidate) => (
     <>
-      <Button size="sm"
+      <Button
         disabled={busy}
         onClick={() => setConfirmSingle(p)}
       >
         {t("mirrorPairs.approve")}
       </Button>{" "}
-      <Button variant="secondary" size="sm" disabled={busy} onClick={() => reject.mutate([pairRef(p)])}>
+      <Button variant="secondary" disabled={busy} onClick={() => reject.mutate([pairRef(p)])}>
         {t("mirrorPairs.reject")}
       </Button>
     </>
@@ -267,7 +267,7 @@ export function MirrorPairsPanelPage() {
             })}
           </Table>
           <p>
-            <Button size="sm"
+            <Button
               disabled={busy || selectedHigh.length === 0}
               onClick={() => setConfirmBatch(true)}
             >
@@ -449,7 +449,7 @@ export function MirrorPairsPanelPage() {
             })}
           </Table>
           <p>
-            <Button size="sm"
+            <Button
               disabled={busy || selectedCc.length === 0}
               onClick={() => setConfirmCcBatch(true)}
             >
@@ -483,7 +483,7 @@ export function MirrorPairsPanelPage() {
               <li key={pairKey(p)} className="muted">
                 {p.out.occurred_on} — {p.out.account_name} → {p.in.account_name},{" "}
                 {formatClp(Math.round(Math.abs(p.out.amount_clp)))}{" "}
-                <Button variant="secondary" size="sm" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
+                <Button variant="secondary" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
                   {t("mirrorPairs.restore")}
                 </Button>
               </li>

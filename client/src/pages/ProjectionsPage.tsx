@@ -157,7 +157,7 @@ export function ProjectionsPage() {
           );
         })}
         <div style={{ alignSelf: "flex-end" }}>
-          <Button variant="secondary" size="sm"
+          <Button variant="secondary"
             disabled={Object.keys(overrides).length === 0}
             onClick={() => {
               setOverrides({});

@@ -214,13 +214,13 @@ export function CreditCardFacturacionModalSections({
               />
             </label>
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-              <Button variant="secondary" size="sm"
+              <Button variant="secondary"
                 onClick={() => setPendingMakeInstallment(null)}
                 disabled={makeInstallment.isPending}
               >
                 {t("accountDetail.creditCard.makeInstallmentDialogCancel")}
               </Button>
-              <Button size="sm"
+              <Button
                 onClick={handleConfirmMakeInstallment}
                 disabled={!cuotasValid || makeInstallment.isPending}
               >

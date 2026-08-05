@@ -204,7 +204,7 @@ export function RealEstateExpensesPage() {
             {formatClp(groupTotal)}
           </span>
           {!accountSlug ? (
-            <Button size="sm"
+            <Button
               onClick={() => setAddPlaceOpen(true)}
             >
               {t("expenses.realEstate.addPlaceAction")}
@@ -218,7 +218,7 @@ export function RealEstateExpensesPage() {
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatClp(acc.total_clp)}
               </span>
-              <Button variant="secondary" size="sm"
+              <Button variant="secondary"
                 onClick={() => setAssignPlace({ slug: acc.account_slug, label: acc.label })}
               >
                 {t("expenses.realEstate.assignAction")}
@@ -270,13 +270,13 @@ export function RealEstateExpensesPage() {
                               }
                             />
                           </span>
-                          <Button size="sm"
+                          <Button
                             disabled={billMonthMutation.isPending}
                             onClick={() => void saveBillMonth()}
                           >
                             {t("common.save")}
                           </Button>
-                          <Button variant="secondary" size="sm"
+                          <Button variant="secondary"
                             onClick={() => setEditingBillMonth(null)}
                           >
                             {t("common.cancel")}
@@ -288,7 +288,7 @@ export function RealEstateExpensesPage() {
                           ) : null}
                         </span>
                       ) : slot.expense_entry_id != null ? (
-                        <Button variant="secondary" size="sm"
+                        <Button variant="secondary"
                           title={t("expenses.realEstate.billMonthEditAction")}
                           onClick={() =>
                             setEditingBillMonth({
@@ -352,13 +352,13 @@ export function RealEstateExpensesPage() {
                               />
                             </span>
                           ) : null}
-                          <Button size="sm"
+                          <Button
                             disabled={consumptionMutation.isPending}
                             onClick={() => void saveConsumption()}
                           >
                             {t("common.save")}
                           </Button>
-                          <Button variant="secondary" size="sm" onClick={() => setEditing(null)}>
+                          <Button variant="secondary" onClick={() => setEditing(null)}>
                             {t("common.cancel")}
                           </Button>
                         </span>
@@ -390,7 +390,7 @@ export function RealEstateExpensesPage() {
                         <span style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
                           {slot.can_link ? (
                             slot.link ? (
-                              <Button variant="secondary" size="sm"
+                              <Button variant="secondary"
                                 disabled={unmatchMutation.isPending}
                                 onClick={() =>
                                   void unmatchMutation.mutateAsync(slot.expense_entry_id!)
@@ -399,7 +399,7 @@ export function RealEstateExpensesPage() {
                                 {t("expenses.realEstate.unlinkAction")}
                               </Button>
                             ) : (
-                              <Button variant="secondary" size="sm"
+                              <Button variant="secondary"
                                 onClick={() => setLinkSlot(slot)}
                               >
                                 {t("expenses.realEstate.linkAction")}
@@ -407,7 +407,7 @@ export function RealEstateExpensesPage() {
                             )
                           ) : null}
                           {CONSUMPTION_KINDS.has(slot.kind) ? (
-                            <Button variant="secondary" size="sm"
+                            <Button variant="secondary"
                               onClick={() =>
                                 setEditing({
                                   id: slot.expense_entry_id!,
@@ -419,7 +419,7 @@ export function RealEstateExpensesPage() {
                               {t("expenses.realEstate.consumptionEditAction")}
                             </Button>
                           ) : null}
-                          <Button variant="secondary" size="sm"
+                          <Button variant="secondary"
                             disabled={deleteEntryMutation.isPending}
                             onClick={() => {
                               if (window.confirm(t("expenses.realEstate.deleteEntryConfirm"))) {

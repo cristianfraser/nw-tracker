@@ -103,7 +103,6 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
               <td>
                 {editingId === row.id ? (
                   <Input
-                    size="sm"
                     type="text"
                     value={editDraft}
                     onChange={(e) => setEditDraft(e.target.value)}
@@ -117,7 +116,7 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
               <td>
                 {editingId === row.id ? (
                   <>
-                    <Button size="sm"
+                    <Button
                       onClick={() => saveEdit(row.id)}
                       disabled={busy || !editDraft.trim()}
                     >
@@ -125,19 +124,19 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
                         ? t("importSync.genericUniqueMerchants.saving")
                         : t("importSync.genericUniqueMerchants.save")}
                     </Button>{" "}
-                    <Button size="sm" onClick={cancelEdit} disabled={busy}>
+                    <Button onClick={cancelEdit} disabled={busy}>
                       {t("importSync.genericUniqueMerchants.cancel")}
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button size="sm"
+                    <Button
                       onClick={() => startEdit(row)}
                       disabled={busy || editingId != null}
                     >
                       {t("importSync.genericUniqueMerchants.edit")}
                     </Button>{" "}
-                    <Button size="sm"
+                    <Button
                       onClick={() => onDelete(row.id, row.merchant_key)}
                       disabled={busy || editingId != null}
                     >
@@ -156,7 +155,6 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
       <form onSubmit={onAdd} style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
         <div style={{ width: "18rem" }}>
           <Input
-            size="sm"
             type="text"
             value={newMerchant}
             onChange={(e) => setNewMerchant(e.target.value)}
@@ -165,7 +163,7 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
             aria-label={t("importSync.genericUniqueMerchants.addPlaceholder")}
           />
         </div>
-        <Button size="sm"
+        <Button
           type="submit"
           disabled={busy || editingId != null || !newMerchant.trim()}
         >
