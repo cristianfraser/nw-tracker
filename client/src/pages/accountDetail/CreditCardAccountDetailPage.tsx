@@ -129,19 +129,11 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       loading={data.contentLoading}
       showNavChildCards={false}
     >
-      {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
-        <section className={styles.chartBlock}>
-          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.associatedCardsTitle")}</h2>
-          <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.associatedCardsHint")}</p>
-          <ul className={styles.proseSmTight}>
-            {ccLedger.associated_card_last4s!.map((last4) => (
-              <li key={last4} className="mono">
-                ·{last4}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <AccountImportSection
+        accountId={summary.account_id}
+        displayUnit={displayUnit}
+        extraCcOffsetsKey={JSON.stringify(extraCcOffsets)}
+      />
 
       {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
         <section className={styles.chartBlock}>
@@ -214,11 +206,19 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
       <CreditCardConfigSection accountId={summary.account_id} />
 
-      <AccountImportSection
-        accountId={summary.account_id}
-        displayUnit={displayUnit}
-        extraCcOffsetsKey={JSON.stringify(extraCcOffsets)}
-      />
+      {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
+        <section className={styles.chartBlock}>
+          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.associatedCardsTitle")}</h2>
+          <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.associatedCardsHint")}</p>
+          <ul className={styles.proseSmTight}>
+            {ccLedger.associated_card_last4s!.map((last4) => (
+              <li key={last4} className="mono">
+                ·{last4}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <CreditCardDetailSections
         ledger={ccLedger}
