@@ -72,7 +72,7 @@ function BigGroupBlock({
           marginBottom: open ? "0.5rem" : 0,
         }}
       >
-        <Button variant="ghost" size="sm"
+        <Button variant="ghost"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
         >
@@ -81,10 +81,10 @@ function BigGroupBlock({
             {formatClp(totalClp)} · {t("expenses.creditCard.bigGroups.purchaseCount", { count: purchaseCount })}
           </span>
         </Button>
-        <Button variant="ghost" size="sm" disabled={rename.isPending} onClick={onRename}>
+        <Button variant="ghost" disabled={rename.isPending} onClick={onRename}>
           {t("expenses.creditCard.bigGroups.renameAction")}
         </Button>
-        <Button variant="ghost" size="sm"
+        <Button variant="ghost"
           disabled={del.isPending || purchaseCount > 0}
           title={
             purchaseCount > 0

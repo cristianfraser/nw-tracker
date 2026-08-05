@@ -64,10 +64,10 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
       subtitle={account.name}
       footer={
         <>
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={saveMutation.isPending}>
+          <Button variant="secondary" onClick={onClose} disabled={saveMutation.isPending}>
             {t("common.cancel")}
           </Button>{" "}
-          <Button size="sm"
+          <Button
             onClick={() => saveMutation.mutate()}
             disabled={!canSave || saveMutation.isPending}
           >

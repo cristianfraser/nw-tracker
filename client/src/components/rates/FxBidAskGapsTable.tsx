@@ -146,7 +146,6 @@ export function FxBidAskGapsTable() {
               </td>
               <td style={{ textAlign: "right" }}>
                 <Input
-                  size="sm"
                   type="number"
                   step="0.01"
                   min="0"
@@ -164,7 +163,6 @@ export function FxBidAskGapsTable() {
               </td>
               <td style={{ textAlign: "right" }}>
                 <Input
-                  size="sm"
                   type="number"
                   step="0.01"
                   min="0"
@@ -189,7 +187,7 @@ export function FxBidAskGapsTable() {
                 ) : null}
               </td>
               <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                <Button size="sm" disabled={draft.saving} onClick={() => void saveRow(gap)}>
+                <Button disabled={draft.saving} onClick={() => void saveRow(gap)}>
                   {draft.saving ? t("common.saving") : t("common.save")}
                 </Button>
                 {draft.error ? (

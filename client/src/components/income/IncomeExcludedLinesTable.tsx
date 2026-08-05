@@ -63,7 +63,7 @@ export function IncomeExcludedLinesTable({
               </td>
               <td className="muted">{row.note ?? "—"}</td>
               <td>
-                <Button variant="secondary" size="sm"
+                <Button variant="secondary"
                   disabled={restoreIncomeMovement.isPending}
                   onClick={() =>
                     setRestoreTarget({
