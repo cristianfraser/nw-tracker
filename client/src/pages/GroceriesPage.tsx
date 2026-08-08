@@ -199,9 +199,20 @@ export function GroceriesPage() {
   );
   const baseUnit = productDetail?.base_unit ?? "un";
   const baseUnitLabel = t(`groceries.config.unit.${baseUnit}`);
+  // The per-unit mode is offered whenever it says something the package price doesn't: any
+  // physical base unit, or a count-dimension product with a multipack configured (x3 ≠ x1).
+  const normalizedAvailable =
+    baseUnit !== "un" ||
+    mixedPackages ||
+    (historyRows?.some(
+      (r) =>
+        r.normalized_unit_price_clp != null &&
+        r.normalized_unit_price_clp !== r.effective_unit_price_clp
+    ) ??
+      false);
   // Mixed package sizes make per-package prices incomparable (1 L at $1.300 vs 200 mL at
-  // $600): once the product is configured, only the per-base-unit mode is offered.
-  const normalizedOnly = mixedPackages && baseUnit !== "un";
+  // $600, or a x1 beside a x3 multipack): only the per-unit mode is offered then.
+  const normalizedOnly = mixedPackages;
   const effectivePriceMode = normalizedOnly ? "normalized" : priceMode;
   const chartData = useMemo(
     () =>
@@ -450,7 +461,7 @@ export function GroceriesPage() {
                 >
                   <option value="effective">{t("groceries.history.priceEffective")}</option>
                   <option value="list">{t("groceries.history.priceList")}</option>
-                  {baseUnit !== "un" ? (
+                  {normalizedAvailable ? (
                     <option value="normalized">
                       {t("groceries.history.priceNormalized", { unit: baseUnitLabel })}
                     </option>
@@ -525,7 +536,7 @@ export function GroceriesPage() {
                   <th className="num">{t("groceries.history.colUnitPrice")}</th>
                   <th className="num">{t("groceries.history.colDiscount")}</th>
                   <th className="num">{t("groceries.history.colEffective")}</th>
-                  {baseUnit !== "un" ? (
+                  {normalizedAvailable ? (
                     <th className="num">{t("groceries.history.colNormalized", { unit: baseUnitLabel })}</th>
                   ) : null}
                   <th className="num">{t("groceries.history.colTotal")}</th>
@@ -545,7 +556,7 @@ export function GroceriesPage() {
                       {r.discount_clp > 0 ? formatClp(-r.discount_clp) : "—"}
                     </td>
                     <td className="desktop-only num">{formatClp(r.effective_unit_price_clp)}</td>
-                    {baseUnit !== "un" ? (
+                    {normalizedAvailable ? (
                       <td className="desktop-only num">
                         {r.normalized_unit_price_clp != null ? (
                           formatClp(r.normalized_unit_price_clp)
@@ -576,7 +587,7 @@ export function GroceriesPage() {
                           label={t("groceries.history.colEffective")}
                           value={formatClp(r.effective_unit_price_clp)}
                         />
-                        {baseUnit !== "un" ? (
+                        {normalizedAvailable ? (
                           <TableMobileCardRow
                             label={t("groceries.history.colNormalized", { unit: baseUnitLabel })}
                             value={
