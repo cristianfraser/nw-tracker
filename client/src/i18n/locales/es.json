@@ -1519,7 +1519,6 @@
       "colEffective": "Efectivo",
       "colTotal": "Total",
       "colDiscount": "Descuento",
-      "perKg": "/kg",
       "pickProduct": "Elige un producto para ver su historial de precios.",
       "priceNormalized": "Por {{unit}}",
       "colNormalized": "$/{{unit}}",

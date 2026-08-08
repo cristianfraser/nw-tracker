@@ -6,6 +6,7 @@ import { db } from "./db.js";
 import { importStagedBoletas, resolveAliasProductId } from "./liderBoletasImport.js";
 import {
   canonicalContent,
+  groceryProductHistory,
   deleteGroceryBrand,
   ensureGroceryBrand,
   mergeGroceryProducts,
@@ -268,5 +269,42 @@ describe("grocery product config", () => {
     updateGroceryAliasConfig(aliasId, { brand_id: null });
     deleteGroceryBrand(brandId);
     cleanup.pop();
+  });
+});
+
+describe("weighed items price through the product config", () => {
+  it("package modes show the paid amount; per-kg exists only when base_unit is mass", () => {
+    db.prepare(`INSERT INTO grocery_products (name, base_unit) VALUES ('vitest pan', 'un')`).run();
+    const productId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    db.prepare(
+      `INSERT INTO grocery_receipts (source, source_key, receipt_number, store_chain, branch, purchased_at, total_clp, payments_json)
+       VALUES ('vitest', '<vitest-kg@x>', '8', 'lider', 'VITEST', '2037-03-01 12:00:00', 347, '[]')`
+    ).run();
+    const receiptId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    // 0.116 kg at $2.991/kg → paid $347.
+    db.prepare(
+      `INSERT INTO grocery_receipt_items (receipt_id, position, barcode, description, qty, qty_unit, unit_price_clp, total_clp, product_id, product_source)
+       VALUES (?, 0, '2038280000005', 'PAN HAM KG', '0.116', 'kg', 2991, 347, ?, 'manual')`
+    ).run(receiptId, productId);
+    try {
+      // Unconfigured ('un'): only the paid price exists — no per-kg rate anywhere.
+      let rows = groceryProductHistory(productId);
+      expect(rows[0]!.unit_price_clp).toBe(347);
+      expect(rows[0]!.effective_unit_price_clp).toBe(347);
+      expect(rows[0]!.normalized_unit_price_clp).toBeNull();
+
+      // Configured as kg: the per-kg rate appears in the normalized layer, from the weight.
+      updateGroceryProductBaseUnit(productId, "kg");
+      rows = groceryProductHistory(productId);
+      expect(rows[0]!.effective_unit_price_clp).toBe(347);
+      expect(rows[0]!.normalized_unit_price_clp).toBe(2991);
+
+      updateGroceryProductBaseUnit(productId, "g");
+      rows = groceryProductHistory(productId);
+      expect(rows[0]!.normalized_unit_price_clp).toBe(3);
+    } finally {
+      db.prepare(`DELETE FROM grocery_receipts WHERE id = ?`).run(receiptId);
+      db.prepare(`DELETE FROM grocery_products WHERE id = ?`).run(productId);
+    }
   });
 });
