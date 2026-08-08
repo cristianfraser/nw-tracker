@@ -4,10 +4,13 @@ import { Button, Input } from "@crfrsr/ui";
 import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { AppLineChart } from "../components/charts/AppLineChart";
+import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { formatClp } from "../format";
 import type {
   GroceriesSummary,
+  GroceryBrandRow,
+  GroceryProductDetail,
   GroceryReceiptItemRow,
   ProductHistoryRow,
   UnclassifiedGroup,
@@ -39,9 +42,12 @@ export function GroceriesPage() {
 
   const [historyProductId, setHistoryProductId] = useState<number | null>(null);
   const [historyRows, setHistoryRows] = useState<ProductHistoryRow[] | null>(null);
-  const [priceMode, setPriceMode] = useState<"effective" | "list">("effective");
+  const [productDetail, setProductDetail] = useState<GroceryProductDetail | null>(null);
+  const [brands, setBrands] = useState<GroceryBrandRow[]>([]);
+  const [priceMode, setPriceMode] = useState<"effective" | "list" | "normalized">("effective");
   const [branchFilter, setBranchFilter] = useState<string>("");
   const [cityFilter, setCityFilter] = useState<string>("");
+  const [brandFilter, setBrandFilter] = useState<string>("");
 
   const [openReceiptId, setOpenReceiptId] = useState<number | null>(null);
   const [receiptItems, setReceiptItems] = useState<Record<number, GroceryReceiptItemRow[]>>({});
@@ -102,13 +108,39 @@ export function GroceriesPage() {
   const openHistory = useCallback((productId: number) => {
     setHistoryProductId(productId);
     setHistoryRows(null);
+    setProductDetail(null);
     setBranchFilter("");
     setCityFilter("");
+    setBrandFilter("");
     api
       .groceriesProductHistory(productId)
       .then((h) => setHistoryRows(h.rows))
       .catch(() => setHistoryRows([]));
+    api.groceriesProductDetail(productId).then(setProductDetail).catch(() => setProductDetail(null));
+    api
+      .groceriesBrands()
+      .then((b) => setBrands(b.brands))
+      .catch(() => setBrands([]));
   }, []);
+
+  /** After a config/merge change: config, brands, history and the products list all shift. */
+  const refreshProductConfig = useCallback(() => {
+    reload();
+    api.groceriesBrands().then((b) => setBrands(b.brands)).catch(() => undefined);
+    if (historyProductId == null) return;
+    api
+      .groceriesProductDetail(historyProductId)
+      .then((d) => {
+        setProductDetail(d);
+        api.groceriesProductHistory(historyProductId).then((h) => setHistoryRows(h.rows));
+      })
+      .catch(() => {
+        // Merged away: the product no longer exists — close the detail view.
+        setHistoryProductId(null);
+        setProductDetail(null);
+        setHistoryRows(null);
+      });
+  }, [historyProductId, reload]);
 
   const toggleReceipt = useCallback(
     (receiptId: number) => {
@@ -144,19 +176,32 @@ export function GroceriesPage() {
     () => [...new Set((historyRows ?? []).map((r) => r.city ?? ""))].filter(Boolean).sort(),
     [historyRows]
   );
+  const historyBrands = useMemo(
+    () => [...new Set((historyRows ?? []).map((r) => r.brand_name ?? ""))].filter(Boolean).sort(),
+    [historyRows]
+  );
   const filteredHistory = useMemo(
     () =>
       (historyRows ?? []).filter(
         (r) =>
-          (!branchFilter || r.branch === branchFilter) && (!cityFilter || r.city === cityFilter)
+          (!branchFilter || r.branch === branchFilter) &&
+          (!cityFilter || r.city === cityFilter) &&
+          (!brandFilter || r.brand_name === brandFilter)
       ),
-    [branchFilter, cityFilter, historyRows]
+    [branchFilter, brandFilter, cityFilter, historyRows]
   );
+  const baseUnit = productDetail?.base_unit ?? "un";
+  const baseUnitLabel = t(`groceries.config.unit.${baseUnit}`);
   const chartData = useMemo(
     () =>
       filteredHistory.map((r) => ({
         date: isoDay(r.purchased_at),
-        price: priceMode === "effective" ? r.effective_unit_price_clp : r.unit_price_clp,
+        price:
+          priceMode === "normalized"
+            ? r.normalized_unit_price_clp
+            : priceMode === "effective"
+              ? r.effective_unit_price_clp
+              : r.unit_price_clp,
       })),
     [filteredHistory, priceMode]
   );
@@ -378,13 +423,42 @@ export function GroceriesPage() {
           <p className="muted">{t("groceries.history.pickProduct")}</p>
         ) : historyRows == null ? null : (
           <>
+            {productDetail ? (
+              <ProductConfigPanel
+                detail={productDetail}
+                products={summary?.products ?? []}
+                brands={brands}
+                onChanged={refreshProductConfig}
+              />
+            ) : null}
             <div
               style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", margin: "0.5rem 0" }}
             >
-              <select value={priceMode} onChange={(e) => setPriceMode(e.target.value as "effective" | "list")}>
+              <select
+                value={priceMode}
+                onChange={(e) => setPriceMode(e.target.value as "effective" | "list" | "normalized")}
+              >
                 <option value="effective">{t("groceries.history.priceEffective")}</option>
                 <option value="list">{t("groceries.history.priceList")}</option>
+                {baseUnit !== "un" ? (
+                  <option value="normalized">
+                    {t("groceries.history.priceNormalized", { unit: baseUnitLabel })}
+                  </option>
+                ) : null}
               </select>
+              {historyBrands.length > 0 ? (
+                <label>
+                  {t("groceries.history.filterBrand")}{" "}
+                  <select value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+                    <option value="">{t("groceries.history.all")}</option>
+                    {historyBrands.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label>
                 {t("groceries.history.filterBranch")}{" "}
                 <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
@@ -440,6 +514,9 @@ export function GroceriesPage() {
                   <th className="num">{t("groceries.history.colUnitPrice")}</th>
                   <th className="num">{t("groceries.history.colDiscount")}</th>
                   <th className="num">{t("groceries.history.colEffective")}</th>
+                  {baseUnit !== "un" ? (
+                    <th className="num">{t("groceries.history.colNormalized", { unit: baseUnitLabel })}</th>
+                  ) : null}
                   <th className="num">{t("groceries.history.colTotal")}</th>
                 </tr>
               </thead>
@@ -457,6 +534,15 @@ export function GroceriesPage() {
                       {r.discount_clp > 0 ? formatClp(-r.discount_clp) : "—"}
                     </td>
                     <td className="desktop-only num">{formatClp(r.effective_unit_price_clp)}</td>
+                    {baseUnit !== "un" ? (
+                      <td className="desktop-only num">
+                        {r.normalized_unit_price_clp != null ? (
+                          formatClp(r.normalized_unit_price_clp)
+                        ) : (
+                          <span className="muted">{t("groceries.history.noContent")}</span>
+                        )}
+                      </td>
+                    ) : null}
                     <td className="desktop-only num">{formatClp(r.total_clp - r.discount_clp)}</td>
                     <td className="mobile-only">
                       <TableMobileCard title={isoMinute(r.purchased_at)}>
@@ -479,6 +565,16 @@ export function GroceriesPage() {
                           label={t("groceries.history.colEffective")}
                           value={formatClp(r.effective_unit_price_clp)}
                         />
+                        {baseUnit !== "un" ? (
+                          <TableMobileCardRow
+                            label={t("groceries.history.colNormalized", { unit: baseUnitLabel })}
+                            value={
+                              r.normalized_unit_price_clp != null
+                                ? formatClp(r.normalized_unit_price_clp)
+                                : t("groceries.history.noContent")
+                            }
+                          />
+                        ) : null}
                         <TableMobileCardRow
                           label={t("groceries.history.colTotal")}
                           value={formatClp(r.total_clp - r.discount_clp)}

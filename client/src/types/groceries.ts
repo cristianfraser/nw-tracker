@@ -15,6 +15,7 @@ export type UnclassifiedGroup = {
 export type GroceryProductRow = {
   id: number;
   name: string;
+  base_unit: string;
   alias_count: number;
   purchase_count: number;
   last_purchased_at: string | null;
@@ -61,6 +62,8 @@ export type ProductHistoryRow = {
   effective_unit_price_clp: number;
   total_clp: number;
   discount_clp: number;
+  brand_name: string | null;
+  normalized_unit_price_clp: number | null;
 };
 
 export type GroceriesSummary = {
@@ -68,3 +71,28 @@ export type GroceriesSummary = {
   products: GroceryProductRow[];
   receipts: GroceryReceiptRow[];
 };
+
+export type GroceryBaseUnit = "un" | "g" | "kg" | "ml" | "l" | "m";
+
+export type GroceryProductAliasConfigRow = {
+  id: number;
+  store_chain: string;
+  barcode: string | null;
+  description: string | null;
+  sample_description: string | null;
+  last_seen: string | null;
+  purchase_count: number;
+  brand_id: number | null;
+  brand_name: string | null;
+  /** Canonical small-unit content (g/ml/m); null = unconfigured. */
+  content: number | null;
+};
+
+export type GroceryProductDetail = {
+  id: number;
+  name: string;
+  base_unit: GroceryBaseUnit;
+  aliases: GroceryProductAliasConfigRow[];
+};
+
+export type GroceryBrandRow = { id: number; name: string; alias_count: number };
