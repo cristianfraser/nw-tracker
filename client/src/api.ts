@@ -804,9 +804,10 @@ export const api = {
     }),
   groceriesSummary: () => j<import("./types/groceries").GroceriesSummary>("/api/groceries/summary"),
   groceriesProductHistory: (productId: number) =>
-    j<{ rows: import("./types/groceries").ProductHistoryRow[] }>(
-      `/api/groceries/products/${productId}/history`
-    ),
+    j<{
+      rows: import("./types/groceries").ProductHistoryRow[];
+      heterogeneous_packages: boolean;
+    }>(`/api/groceries/products/${productId}/history`),
   groceriesReceiptItems: (receiptId: number) =>
     j<{ items: import("./types/groceries").GroceryReceiptItemRow[] }>(
       `/api/groceries/receipts/${receiptId}/items`

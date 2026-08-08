@@ -130,7 +130,7 @@ export function registerGroceriesRoutes(app: express.Express): void {
       res.status(400).json({ error: "invalid product id" });
       return;
     }
-    res.json({ rows: groceryProductHistory(id) });
+    res.json(groceryProductHistory(id));
   });
 
   app.get("/api/groceries/receipts/:id/items", (req, res) => {

@@ -288,19 +288,22 @@ describe("weighed items price through the product config", () => {
     ).run(receiptId, productId);
     try {
       // Unconfigured ('un'): only the paid price exists — no per-kg rate anywhere.
-      let rows = groceryProductHistory(productId);
+      let rows = groceryProductHistory(productId).rows;
       expect(rows[0]!.unit_price_clp).toBe(347);
       expect(rows[0]!.effective_unit_price_clp).toBe(347);
       expect(rows[0]!.normalized_unit_price_clp).toBeNull();
 
       // Configured as kg: the per-kg rate appears in the normalized layer, from the weight.
       updateGroceryProductBaseUnit(productId, "kg");
-      rows = groceryProductHistory(productId);
+      const history = groceryProductHistory(productId);
+      // Every weighed purchase is its own package size — per-package modes are meaningless.
+      expect(history.heterogeneous_packages).toBe(true);
+      rows = history.rows;
       expect(rows[0]!.effective_unit_price_clp).toBe(347);
       expect(rows[0]!.normalized_unit_price_clp).toBe(2991);
 
       updateGroceryProductBaseUnit(productId, "g");
-      rows = groceryProductHistory(productId);
+      rows = groceryProductHistory(productId).rows;
       expect(rows[0]!.normalized_unit_price_clp).toBe(3);
     } finally {
       db.prepare(`DELETE FROM grocery_receipts WHERE id = ?`).run(receiptId);

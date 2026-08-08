@@ -261,7 +261,18 @@ export type ProductHistoryRow = {
   normalized_unit_price_clp: number | null;
 };
 
-export function groceryProductHistory(productId: number): ProductHistoryRow[] {
+export type GroceryProductHistory = {
+  rows: ProductHistoryRow[];
+  /**
+   * True when the purchases span different package sizes (distinct alias contents, or weighed
+   * rows mixed in — every weighed purchase is its own "package"). Per-package price modes are
+   * meaningless then (1 L at $1.300 vs 200 mL at $600 breaks the chart); the client shows only
+   * the per-base-unit mode when the product is configured.
+   */
+  heterogeneous_packages: boolean;
+};
+
+export function groceryProductHistory(productId: number): GroceryProductHistory {
   const product = db
     .prepare(`SELECT base_unit FROM grocery_products WHERE id = ?`)
     .get(productId) as { base_unit: GroceryBaseUnit } | undefined;
@@ -284,7 +295,14 @@ export function groceryProductHistory(productId: number): ProductHistoryRow[] {
     ProductHistoryRow,
     "effective_unit_price_clp" | "normalized_unit_price_clp"
   > & { alias_content: number | null })[];
-  return rows.map(({ alias_content, ...r }) => {
+  let kgSeen = false;
+  const contents = new Set<number>();
+  for (const r of rows) {
+    if (r.qty_unit === "kg") kgSeen = true;
+    else if (r.alias_content != null) contents.add(r.alias_content);
+  }
+  const heterogeneous = (kgSeen && rows.length > 0) || contents.size > 1;
+  const mapped = rows.map(({ alias_content, ...r }) => {
     if (r.qty_unit === "kg") {
       // A weighed purchase has no fixed package: its "price" is what was paid for that weight,
       // and the per-kg rate exists ONLY through the product config (base_unit kg/g) — the
@@ -307,6 +325,7 @@ export function groceryProductHistory(productId: number): ProductHistoryRow[] {
       normalized_unit_price_clp: normalizedUnitPrice(effective, baseUnit, alias_content),
     };
   });
+  return { rows: mapped, heterogeneous_packages: heterogeneous };
 }
 
 export class GroceryAliasConflictError extends Error {}

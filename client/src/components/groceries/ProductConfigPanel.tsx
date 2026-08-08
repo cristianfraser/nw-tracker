@@ -205,16 +205,17 @@ export function ProductConfigPanel({
   };
 
   const merge = async () => {
-    const target = mergeTargets.find((p) => p.id === Number(mergeTarget));
-    if (!target) return;
+    // The OPEN product survives; the selected one is absorbed into it and deleted.
+    const source = mergeTargets.find((p) => p.id === Number(mergeTarget));
+    if (!source) return;
     const confirmed = window.confirm(
-      t("groceries.config.mergeConfirm", { source: detail.name, target: target.name })
+      t("groceries.config.mergeConfirm", { source: source.name, target: detail.name })
     );
     if (!confirmed) return;
     setBusy(true);
     setNote(null);
     try {
-      const res = await api.groceriesMergeProduct(detail.id, target.id);
+      const res = await api.groceriesMergeProduct(source.id, detail.id);
       setNote(t("groceries.config.mergeDone", { items: res.items_restamped }));
       onChanged();
     } catch (e) {

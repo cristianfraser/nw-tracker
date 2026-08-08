@@ -1523,7 +1523,8 @@
       "priceNormalized": "Per {{unit}}",
       "colNormalized": "$/{{unit}}",
       "filterBrand": "Brand",
-      "noContent": "content not set"
+      "noContent": "content not set",
+      "mixedPackages": "Package sizes differ across purchases — only the per-{{unit}} price is comparable."
     },
     "receipts": {
       "title": "Receipts",
@@ -1557,9 +1558,9 @@
       "brandPlaceholder": "Brand (pick or create)",
       "save": "Save",
       "saved": "Saved.",
-      "mergeInto": "Merge this product into",
+      "mergeInto": "Merge another product into this one",
       "merge": "Merge",
-      "mergeConfirm": "Merge \"{{source}}\" into \"{{target}}\"? All its names and purchase history move over; this cannot be undone.",
+      "mergeConfirm": "Merge \"{{source}}\" into \"{{target}}\"? All of its names and purchase history move here and \"{{source}}\" is deleted; this cannot be undone.",
       "mergeDone": "Merged: {{items}} purchase(s) moved."
     }
   }
