@@ -83,7 +83,8 @@
     "import:racional-movements": "tsx scripts/import-racional-movements.ts",
     "check:broker-emails": "tsx scripts/check-broker-emails.ts",
     "import:fintual-emails": "tsx scripts/import-fintual-emails.ts",
-    "check:daily-run-today": "tsx scripts/daily-run-ran-today.ts"
+    "check:daily-run-today": "tsx scripts/daily-run-ran-today.ts",
+    "import:lider-boletas": "tsx scripts/import-lider-boletas.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",

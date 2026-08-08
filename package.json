@@ -50,6 +50,8 @@
     "fetch:emails": "npm --prefix scraper run fetch:emails --",
     "check:broker-emails": "npm run check:broker-emails -w nw-tracker-server --",
     "import:fintual-emails": "npm run import:fintual-emails -w nw-tracker-server --",
-    "daily-run": "scraper/daily-run.sh"
+    "daily-run": "scraper/daily-run.sh",
+    "fetch:lider-boletas": "npm --prefix scraper run fetch:lider-boletas --",
+    "import:lider-boletas": "npm run import:lider-boletas -w nw-tracker-server --"
   }
 }
