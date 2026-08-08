@@ -9,6 +9,7 @@ import { backfillMissingInstallmentPaymentsForAccount } from "./ccInstallmentPay
 import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import {
+  currencyFromRow,
   importCcStatementsMerge,
   statementKeyFromRow,
   type CcStatementCsvRecord,
@@ -21,6 +22,15 @@ import {
   type CcOpenWebPastePdfReconcileResult,
 } from "./ccOpenWebPastePdfReconcile.js";
 import { assertCcImportReconcilesOrThrow } from "./ccStatementImportReconcile.js";
+import {
+  isSantanderJsonSource,
+  deleteJsonStatementsByIds,
+  jsonOwnedClosesForAccount,
+  listJsonOwnedStatementsForAccount,
+  statementReplaceKey,
+  padCcStatementDate,
+} from "./ccStatementJsonSource.js";
+import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 
@@ -352,6 +362,10 @@ export type CcAccountImportMergeResult = {
   manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
   web_paste_repair: ReturnType<typeof repairMisplacedOpenWebPasteBuckets>;
   web_paste_pdf_reconcile: CcOpenWebPastePdfReconcileResult[];
+  /** PDF records dropped because the JSON importer owns their (close, currency) — the PDF is
+   * the archive/cross-check there, never a second writer. */
+  /** (close, currency) pairs where an incoming PDF replaced the JSON-written statement. */
+  json_closes_superseded_by_pdf: string[];
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
@@ -375,17 +389,64 @@ export function mergeCcAccountFromParsedRows(
   }
 ): CcAccountImportMergeResult {
   const replaceKeys = opts?.replaceStatementKeys;
+
+  // **The PDF outranks the JSON** (2026-08-06). The JSON importer is the fast first writer — it
+  // can publish a facturación the day it closes — but it is not the authoritative document: the
+  // international endpoint is dateless and serves all-NULL headers, so a JSON USD statement
+  // carries lines only. The real statement PDF now arrives by e-mail a day or two later, and when
+  // it does it TAKES OVER its (close, currency): the JSON rows are deleted and the PDF is written
+  // in their place. Previously the PDF was dropped here, which under mail delivery would have
+  // meant the richer document never reached the ledger at all.
+  //
+  // Two things make the takeover safe: the JSON statement keys go into `replaceStatementKeys`, so
+  // the reconcile does not count their lines against the incoming PDF (otherwise every superseded
+  // close would double and throw), and the delete runs inside the same transaction as the write.
+  // Web-paste and JSON-source records pass through untouched.
+  const jsonOwned = jsonOwnedClosesForAccount(accountId);
+  const json_closes_superseded_by_pdf: string[] = [];
+  const supersededJsonStatementIds: number[] = [];
+  const supersededReplaceKeys = new Set<string>();
+  if (jsonOwned.size > 0) {
+    const incomingPdfCloses = new Set<string>();
+    for (const rec of records) {
+      const src = String(rec.source_pdf ?? "").trim();
+      const isRealPdf = !src.startsWith("import:web-paste") && !isSantanderJsonSource(src);
+      if (!isRealPdf) continue;
+      const closeKey = `${padCcStatementDate(String(rec.statement_date ?? ""))}\t${currencyFromRow(rec)}`;
+      if (jsonOwned.has(closeKey)) incomingPdfCloses.add(closeKey);
+    }
+    if (incomingPdfCloses.size > 0) {
+      for (const st of listJsonOwnedStatementsForAccount(accountId)) {
+        const closeKey = `${padCcStatementDate(st.statement_date)}\t${st.currency}`;
+        if (!incomingPdfCloses.has(closeKey)) continue;
+        supersededJsonStatementIds.push(st.id);
+        supersededReplaceKeys.add(statementReplaceKey(st));
+        json_closes_superseded_by_pdf.push(closeKey.replace("\t", " "));
+      }
+      json_closes_superseded_by_pdf.sort();
+    }
+  }
+  // Only widen the caller's set when there is something to supersede, so a caller that passed
+  // `undefined` keeps passing `undefined` in the ordinary case.
+  const effectiveReplaceKeys =
+    supersededReplaceKeys.size > 0
+      ? new Set<string>([...(replaceKeys ?? []), ...supersededReplaceKeys])
+      : replaceKeys;
+
   // Validate before writing anything — throws if reconcile pre-checks fail.
   assertCcImportReconcilesOrThrow(accountId, records, {
-    replaceStatementKeys: replaceKeys,
+    replaceStatementKeys: effectiveReplaceKeys,
   });
 
   // All writes in one transaction so a mid-merge error (e.g. missing import) leaves
   // no partial state and a retry is a true no-op.
   const result = db.transaction((): CcAccountImportMergeResult => {
+    // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
+    // lands on a close with no competing statement row (lines cascade via the FK).
+    deleteJsonStatementsByIds(supersededJsonStatementIds);
     const statements = importCcStatementsMerge(accountId, records, {
       replaceAll: false,
-      replaceStatementKeys: replaceKeys,
+      replaceStatementKeys: effectiveReplaceKeys,
       skipGlobalDedupeKeys: true,
       ...opts?.statements,
     });
@@ -403,6 +464,9 @@ export function mergeCcAccountFromParsedRows(
     const web_paste_pdf_reconcile = reconcileOpenWebPasteAfterPdfImports(accountId, records, {
       skipRecompute: true,
     });
+    // Statement replacement above cascaded any existing traspaso links away; rebuild them
+    // from the final line set (throws on an unpairable leg, aborting the whole merge).
+    relinkCcTraspasoDeudaLinksForAccount(accountId);
     return {
       statements,
       ledger,
@@ -410,6 +474,7 @@ export function mergeCcAccountFromParsedRows(
       manual_installment_reconcile,
       web_paste_repair,
       web_paste_pdf_reconcile,
+      json_closes_superseded_by_pdf,
     };
   })();
 

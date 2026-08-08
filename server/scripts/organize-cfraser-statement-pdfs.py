@@ -39,6 +39,7 @@ from cc_statement_pdf_paths import (
     UNREADABLE_DIR,
     cc_dest_path,
     clean_numbered_copy_filenames,
+    is_excluded_cc_pdf_path,
     is_organized_cc_pdf_name,
     pdf_already_in_card_slot,
     relocate_all_cc_pdfs_to_card_slots,
@@ -46,6 +47,7 @@ from cc_statement_pdf_paths import (
 
 from cartola_pdf_kind import (
     incoming_vista_cartola_replaces_dest,
+    peek_cartola_pdf_account,
     is_checking_cartola_text,
     is_cuenta_vista_cartola_text,
     is_linea_credito_cartola_text,
@@ -79,6 +81,10 @@ CC_DIR = CFRASER / "credit-card-statements"
 CART_DIR = CFRASER / "cartolas-cuenta-corriente"
 VISTA_DIR = CFRASER / "cartolas-cuenta-vista"
 LINEA_DIR = CFRASER / "cartolas-linea-credito"
+# Cartolas for bank accounts this tracker does not model. They are filed out of the way rather
+# than dropped, so the inbox stays clear and the documents are still on disk, but no importer
+# ever scans this directory.
+OTHER_ACCOUNTS_DIR = CFRASER / "cartolas-otras-cuentas"
 CSV_PATH = CFRASER / "cc-statements-parsed-all.csv"
 
 _INBOX_MANIFEST: dict[str, list[str]] = {
@@ -121,7 +127,8 @@ RE_SANTANDER_157_DATE = re.compile(r"^157_\d+_\d+_(\d{8})\.pdf$", re.I)
 #   {
 #     "santander_80_account_to_card_last4": {"<80_* account id>": "<card last4>", ...},
 #     "santander_checking_cartola_account": "<cuenta corriente account id>",
-#     "santander_linea_credito_account": "<línea de crédito account id>"
+#     "santander_linea_credito_account": "<línea de crédito account id>",
+#     "santander_ignored_cartola_accounts": ["0-000-00-00000-0", ...]   // optional
 #   }
 # Tests point NW_TRACKER_ORGANIZE_IDENTIFIERS at a synthetic copy.
 ORGANIZE_IDENTIFIERS_PATH = Path(
@@ -165,6 +172,15 @@ RE_INBOX_CHECKING_CARTOLA = re.compile(
 RE_INBOX_VISTA_CM = re.compile(r"^1_(\d+)_(\d+)_(\d{8})_CM\.pdf$", re.I)
 # Santander email attachment: `1_<seq>_<lc account>_<date>_LC.pdf` = línea de crédito cartola.
 SANTANDER_LINEA_CREDITO_ACCOUNT: str = _ORGANIZE_IDENTIFIERS["santander_linea_credito_account"]
+# Optional: printed account numbers (`0-000-00-00002-2` form) whose cartolas must NOT be imported.
+# Santander keeps mailing a monthly cartola for a dormant account forever, and the cuenta vista
+# importer would file those under the tracked account — a second cuenta vista shared the tracked
+# one's filename space for years this way. Absent key = ignore nothing.
+IGNORED_CARTOLA_ACCOUNTS: set[str] = {
+    str(a).strip()
+    for a in _ORGANIZE_IDENTIFIERS.get("santander_ignored_cartola_accounts", [])
+    if str(a).strip()
+}
 RE_INBOX_LINEA_CREDITO = re.compile(
     rf"^1_(\d+)_{SANTANDER_LINEA_CREDITO_ACCOUNT}_(\d{{8}})_LC\.pdf$",
     re.I,
@@ -416,7 +432,9 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
     if inbox.is_dir():
         sources.extend(sorted(inbox.glob("*.pdf")))
     for p in sorted(CC_DIR.rglob("*.pdf")):
-        if UNREADABLE_DIR in p.parts:
+        # Quarantined folders are not re-filed: organizing a pending-review statement back into
+        # its card slot would undo the quarantine and the nightly import would fail again.
+        if is_excluded_cc_pdf_path(p):
             continue
         if pdf_already_in_card_slot(CC_DIR, p):
             continue
@@ -515,8 +533,10 @@ def cartola_no_suffix(cartola_no: str | None) -> str:
 
 def peek_cuenta_vista_meta(path: Path) -> tuple[str | None, str | None]:
     try:
+        # `-layout` for the same reason as the checking cartola peek: the DESDE/HASTA header is a
+        # column table and collapses into neighbouring values without it.
         text = subprocess.check_output(
-            ["pdftotext", str(path), "-"],
+            ["pdftotext", "-layout", str(path), "-"],
             text=True,
             stderr=subprocess.DEVNULL,
         )
@@ -560,8 +580,44 @@ def move_inbox_duplicate(p: Path, *, dry_run: bool, reason: str = "") -> Path:
     return dest
 
 
+def file_ignored_account_cartola(
+    p: Path, hasta: str, account: str, *, dry_run: bool
+) -> int:
+    """Park a cartola belonging to an untracked bank account outside every importer's scan."""
+    tail = account.rsplit("-", 2)[1] if "-" in account else account
+    dest = unique_dest(OTHER_ACCOUNTS_DIR, f"{hasta} cartola cuenta {tail}")
+    if p.resolve() == dest.resolve():
+        return 0
+    print(f"{p.name} -> {dest.relative_to(CFRASER)} (untracked account {account})")
+    if not dry_run:
+        OTHER_ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(p), str(dest))
+    return 1
+
+
+def relocate_ignored_account_cartolas(dry_run: bool) -> int:
+    """
+    Evict already-filed cartolas belonging to an untracked account.
+
+    The main loop only reconsiders files whose names are not yet canonical, so without this pass
+    an ignored account's cartolas would keep sitting in the tracked account's corpus (and keep
+    being importable) purely because they were filed before the account was ignored.
+    """
+    if not IGNORED_CARTOLA_ACCOUNTS or not VISTA_DIR.is_dir():
+        return 0
+    moved = 0
+    for p in sorted(VISTA_DIR.glob("*.pdf")):
+        account = peek_cartola_pdf_account(p)
+        if not account or account not in IGNORED_CARTOLA_ACCOUNTS:
+            continue
+        hasta, _no = peek_cuenta_vista_meta(p)
+        moved += file_ignored_account_cartola(p, hasta or p.stem[:10], account, dry_run=dry_run)
+    return moved
+
+
 def organize_cuenta_vista(dry_run: bool) -> int:
     VISTA_DIR.mkdir(parents=True, exist_ok=True)
+    relocate_ignored_account_cartolas(dry_run)
     sources: list[Path] = []
     inbox = resolve_inbox_dir()
     if inbox.is_dir():
@@ -580,8 +636,23 @@ def organize_cuenta_vista(dry_run: bool) -> int:
         hasta, cartola_no = peek_cuenta_vista_meta(p)
         if not hasta:
             continue
+        if IGNORED_CARTOLA_ACCOUNTS:
+            pdf_account = peek_cartola_pdf_account(p)
+            if pdf_account and pdf_account in IGNORED_CARTOLA_ACCOUNTS:
+                moved += file_ignored_account_cartola(p, hasta, pdf_account, dry_run=dry_run)
+                continue
         stem = f"{hasta} cartola cuenta vista{cartola_no_suffix(cartola_no)}"
         canonical = VISTA_DIR / f"{stem}.pdf"
+        # Two cuenta vista accounts mail a cartola for the same period, and Santander leaves the
+        # cartola number blank on both — so period alone does not name a document, and the second
+        # to arrive used to be archived as a "duplicate" of the first. When the occupant belongs to
+        # a different account, the incoming one gets its own name instead of being displaced.
+        if canonical.exists() and p.resolve() != canonical.resolve():
+            incoming_account = peek_cartola_pdf_account(p)
+            occupant_account = peek_cartola_pdf_account(canonical)
+            if incoming_account and occupant_account and incoming_account != occupant_account:
+                stem = f"{stem} cuenta {incoming_account.rsplit('-', 2)[1]}"
+                canonical = VISTA_DIR / f"{stem}.pdf"
         if canonical.exists() and p.resolve() != canonical.resolve():
             if incoming_vista_cartola_replaces_dest(canonical, p):
                 print(
@@ -715,8 +786,12 @@ def organize_checking_cartolas_inbox(dry_run: bool) -> int:
         hasta: str | None = None
         cartola_no: str | None = None
         try:
+            # `-layout` is required, not cosmetic: the DESDE/HASTA header is a column table, and
+            # without it the columns interleave so the header regex misses and the last-resort
+            # "last date in the document" fallback picks up the línea de crédito's FECHA
+            # VENCIMIENTO instead — 2027-02-28 for a cartola whose period ends 2026-06-30.
             text = subprocess.check_output(
-                ["pdftotext", str(p), "-"],
+                ["pdftotext", "-layout", str(p), "-"],
                 text=True,
                 stderr=subprocess.DEVNULL,
             )

@@ -70,7 +70,17 @@ export function ccStatementPdfSearchDirs(cardLast4: string, usd: boolean): strin
   }
   const legacy = path.join(resolveCfraserPdfsDir(), "legacy", usd ? "usd" : "clp");
   dirs.push(legacy);
+  // Quarantined statements (`credit-card-statements/pending-review/`) are excluded from organize,
+  // parse and import — but their rows are already in the ledger, so anything resolving a stored
+  // statement back to its file must still find them. Without this the import-sync page throws
+  // "CC statement PDFs not resolvable" for every quarantined statement and fails to load.
+  dirs.push(resolveCcStatementPendingReviewDir());
   return dirs;
+}
+
+/** Quarantine for statements whose parse disagrees with the printed header (see PARSERS.md). */
+export function resolveCcStatementPendingReviewDir(): string {
+  return path.join(resolveCfraserPdfsDir(), "pending-review");
 }
 
 /** Drop zone for new PDFs, cartola xlsx, etc. (`cfraser/inbox/`; legacy `cfraser/pdfs/`). */

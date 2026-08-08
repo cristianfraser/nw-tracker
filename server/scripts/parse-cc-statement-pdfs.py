@@ -83,7 +83,10 @@ from cc_pdf_ocr import (  # noqa: E402
     parse_santander_clp_ocr_flat,
 )
 import cc_cards  # noqa: E402
-from cc_statement_pdf_paths import pdf_already_in_card_slot  # noqa: E402
+from cc_statement_pdf_paths import (  # noqa: E402
+    is_excluded_cc_pdf_path,
+    pdf_already_in_card_slot,
+)
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
     reconcile_statement,
@@ -1110,27 +1113,42 @@ def _merge_intl_parsed_rows(
     vertical_rows: List[Dict[str, Any]],
     layout_rows: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Layout table wins on ties (correct orig/US$ columns); vertical fills rows layout missed."""
-    merged: Dict[str, Dict[str, Any]] = {}
-    for r in vertical_rows:
-        if _vertical_intl_row_superseded_by_layout(r, layout_rows):
-            continue
-        if _vertical_intl_usd_amount_owned_by_layout(r, layout_rows):
-            continue
-        k = _intl_row_merge_key(r)
-        prev = merged.get(k)
-        if prev is None or _intl_row_parse_quality(r) > _intl_row_parse_quality(prev):
-            merged[k] = r
-    for r in layout_rows:
-        k = _intl_row_merge_key(r)
-        prev = merged.get(k)
-        if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev):
-            merged[k] = r
-    by_loose_usd: Dict[str, Dict[str, Any]] = {}
-    for r in merged.values():
+    """Layout table wins on ties (correct orig/US$ columns); vertical fills rows layout missed.
+
+    Both merge levels key with an occurrence index WITHIN each input list (same
+    rule as _merge_santander_clp_row_lists) so genuine duplicate purchases —
+    identical date+merchant+amount twice on one statement, e.g. twin
+    APPLE.COM/BILL subscriptions billed the same day — survive: the Nth twin in
+    one body merges with the Nth twin in the other, never with its sibling.
+    The loose (date+country+US$) level exists only to collapse the SAME printed
+    line rendered differently by the two extractors (vertical glues city into
+    merchant), so it too must never merge two rows from the same extractor —
+    those are distinct printed lines that happen to share a day and an amount
+    (two same-price rides, consecutive airline tickets).
+    """
+    kept_vertical = [
+        r
+        for r in vertical_rows
+        if not _vertical_intl_row_superseded_by_layout(r, layout_rows)
+        and not _vertical_intl_usd_amount_owned_by_layout(r, layout_rows)
+    ]
+    merged: Dict[str, Tuple[int, Dict[str, Any]]] = {}
+    for source_idx, rows in ((0, kept_vertical), (1, layout_rows)):
+        occurrence: Dict[str, int] = {}
+        for r in rows:
+            base = _intl_row_merge_key(r)
+            n = occurrence.get(base, 0)
+            occurrence[base] = n + 1
+            key = f"{base}|#{n}"
+            prev = merged.get(key)
+            if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev[1]):
+                merged[key] = (source_idx, r)
+    by_loose_usd: Dict[str, Tuple[int, Dict[str, Any]]] = {}
+    bucket_occurrence: Tuple[Dict[str, int], Dict[str, int]] = ({}, {})
+    for source_idx, r in merged.values():
         usd = float(r.get("amount_usd") or 0)
         if usd > 0:
-            bucket = "|".join(
+            base = "|".join(
                 [
                     str(r.get("transaction_date", "")),
                     str(r.get("country", "")).upper().strip(),
@@ -1147,11 +1165,15 @@ def _merge_intl_parsed_rows(
                 pay = "TRASPASO DEUDA"
             else:
                 pay = m[:40]
-            bucket = f"{r.get('transaction_date')}|{usd:.4f}|{pay}"
+            base = f"{r.get('transaction_date')}|{usd:.4f}|{pay}"
+        occ = bucket_occurrence[source_idx]
+        n = occ.get(base, 0)
+        occ[base] = n + 1
+        bucket = f"{base}|#{n}"
         prev = by_loose_usd.get(bucket)
-        if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev):
-            by_loose_usd[bucket] = r
-    return list(by_loose_usd.values())
+        if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev[1]):
+            by_loose_usd[bucket] = (source_idx, r)
+    return [r for _source_idx, r in by_loose_usd.values()]
 
 
 def parse_international_usd_document(
@@ -3427,7 +3449,9 @@ def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
         return jobs
     clp_numeric: List[Tuple[int, Path]] = []
     for entry in sorted(pdfs_dir.rglob("*.pdf")):
-        if "unreadable" in entry.parts:
+        # Quarantined by folder: unreadable scans, and readable statements whose parse does not
+        # reconcile against the printed header (see credit-card-statements/pending-review/).
+        if is_excluded_cc_pdf_path(entry):
             continue
         if not entry.is_file():
             continue
