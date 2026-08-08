@@ -215,7 +215,8 @@
     "projections": "Proyecciones",
     "wealthPercentile": "Percentil de riqueza",
     "rates": "Tipos de cambio",
-    "watchlist": "Watchlist"
+    "watchlist": "Watchlist",
+    "flowsExpensesGroceries": "Supermercado"
   },
   "panel": {
     "layoutTitle": "Panel de control",
@@ -1474,5 +1475,65 @@
   "retirement": {
     "afpAfc": "AFP + AFC",
     "apv": "APV"
+  },
+  "groceries": {
+    "title": "Supermercado",
+    "intro": "Boletas de los correos Boleta Digital, ítem por ítem. Clasifica los nombres impresos en productos una vez; el historial de precios se construye sobre el catálogo limpio.",
+    "cleaning": {
+      "title": "Nombres sin clasificar",
+      "intro": "Cada fila es un nombre impreso (o código de barras) aún sin producto. Selecciona filas y asígnalas a un producto existente, o crea uno.",
+      "colName": "Nombre impreso",
+      "colBarcode": "Código",
+      "colOccurrences": "Compras",
+      "colLastSeen": "Última vez",
+      "colLastPrice": "Último precio",
+      "colSuggestions": "Sugerencias",
+      "assignSelected": "Asignar {{count}} seleccionadas a",
+      "existingProduct": "Producto existente…",
+      "newProductPlaceholder": "Nombre del producto nuevo",
+      "assign": "Asignar",
+      "create": "Crear + asignar",
+      "allClassified": "Todo está clasificado.",
+      "assignedResult": "{{stamped}} compra(s) clasificadas."
+    },
+    "products": {
+      "title": "Productos",
+      "colProduct": "Producto",
+      "colAliases": "Nombres",
+      "colPurchases": "Compras",
+      "colLastPurchased": "Última compra",
+      "colLastPrice": "Último precio",
+      "none": "Aún no hay productos — clasifica nombres arriba."
+    },
+    "history": {
+      "title": "Historial de precios",
+      "priceEffective": "Precio efectivo",
+      "priceList": "Precio de lista",
+      "filterBranch": "Sucursal",
+      "filterCity": "Ciudad",
+      "all": "Todas",
+      "colDate": "Fecha",
+      "colBranch": "Sucursal",
+      "colQty": "Cant.",
+      "colUnitPrice": "Precio unitario",
+      "colEffective": "Efectivo",
+      "colTotal": "Total",
+      "colDiscount": "Descuento",
+      "perKg": "/kg",
+      "pickProduct": "Elige un producto para ver su historial de precios."
+    },
+    "receipts": {
+      "title": "Boletas",
+      "colDate": "Fecha",
+      "colBranch": "Sucursal",
+      "colCity": "Ciudad",
+      "colTotal": "Total",
+      "colCardPaid": "Tarjeta",
+      "colItems": "Ítems",
+      "colClassified": "Clasificados",
+      "showItems": "Ver ítems",
+      "hideItems": "Ocultar ítems",
+      "none": "Aún no hay boletas importadas."
+    }
   }
 }

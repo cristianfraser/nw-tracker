@@ -802,6 +802,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pairs }),
     }),
+  groceriesSummary: () => j<import("./types/groceries").GroceriesSummary>("/api/groceries/summary"),
+  groceriesProductHistory: (productId: number) =>
+    j<{ rows: import("./types/groceries").ProductHistoryRow[] }>(
+      `/api/groceries/products/${productId}/history`
+    ),
+  groceriesReceiptItems: (receiptId: number) =>
+    j<{ items: import("./types/groceries").GroceryReceiptItemRow[] }>(
+      `/api/groceries/receipts/${receiptId}/items`
+    ),
+  groceriesClassify: (body: {
+    store_chain: string;
+    targets: { barcode: string | null; description: string }[];
+    product_id?: number;
+    new_product_name?: string;
+  }) =>
+    j<{ product_id: number; aliases: number; stamped: number }>("/api/groceries/classify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export type AppMessageRow = {
