@@ -64,6 +64,26 @@ tr:hover td {
   background: var(--surface2);
 }
 
+/* Leaf-bucket accounts summary table: compact like the summary card's metric rows —
+ * card-meta font size and minimal cell padding. */
+.table--accounts-summary {
+  font-size: var(--font-size-card-meta);
+}
+
+.table--accounts-summary th,
+.table--accounts-summary td {
+  padding: 0.3rem 0.55rem;
+}
+
+.table--accounts-summary th {
+  font-size: 0.68rem;
+}
+
+/* Center the ▲/▼ against the digits (baseline-aligned reads bottom-heavy at this size). */
+.table--accounts-summary .accounts-summary-delta {
+  align-items: center;
+}
+
 /* Parallel-column responsive tables: desktop cells + mobile card cell */
 .mobile-only {
   display: none;

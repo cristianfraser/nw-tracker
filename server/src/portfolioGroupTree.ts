@@ -389,3 +389,64 @@ export function portfolioGroupIdForAccount(accountId: number): number | null {
     .get(accountId) as { id: number } | undefined;
   return row?.id ?? null;
 }
+
+/** True when the portfolio group holds any group-like item (sub-buckets / linked groups). */
+export function portfolioGroupHasChildGroupItems(groupId: number): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM portfolio_group_items
+       WHERE group_id = ? AND item_kind IN ('group', 'linked_group')`
+    )
+    .get(groupId) as { c: number };
+  return row.c > 0;
+}
+
+const HOMOGENEITY_CHECKS = [
+  {
+    table: "portfolio_group_items",
+    groupTable: "portfolio_groups",
+    groupKinds: ["group", "linked_group"],
+    leafKinds: ["account", "expense_account"],
+  },
+  {
+    table: "credit_card_group_items",
+    groupTable: "credit_card_groups",
+    groupKinds: ["group"],
+    leafKinds: ["account"],
+  },
+  {
+    table: "liability_group_items",
+    groupTable: "liability_groups",
+    groupKinds: ["group", "credit_card_group"],
+    leafKinds: ["account"],
+  },
+] as const;
+
+/**
+ * Invariant: a group's items are all group-like (sub-buckets / linked groups) XOR all
+ * leaf-like (accounts / expense accounts) — never a mix. The nav seeds are the only
+ * writers of these tables, so this runs at the end of every seed (boot included) and
+ * throws on the first structural regression instead of letting a mixed bucket render.
+ */
+export function assertHomogeneousGroupItems(): void {
+  for (const check of HOMOGENEITY_CHECKS) {
+    const groupPh = check.groupKinds.map(() => "?").join(",");
+    const leafPh = check.leafKinds.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT g.slug AS slug
+         FROM ${check.groupTable} g
+         JOIN ${check.table} i ON i.group_id = g.id
+         GROUP BY g.id
+         HAVING SUM(CASE WHEN i.item_kind IN (${groupPh}) THEN 1 ELSE 0 END) > 0
+            AND SUM(CASE WHEN i.item_kind IN (${leafPh}) THEN 1 ELSE 0 END) > 0`
+      )
+      .all(...check.groupKinds, ...check.leafKinds) as { slug: string }[];
+    if (rows.length > 0) {
+      throw new Error(
+        `${check.table}: groups mix sub-group and account items (must be one or the other): ` +
+          rows.map((r) => r.slug).join(", ")
+      );
+    }
+  }
+}

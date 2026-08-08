@@ -69,7 +69,8 @@ export function CardValueDayPl({
   );
 }
 
-function DepositedMetricFlow({
+/** Bare deposits/amount cell (also used by the leaf-bucket accounts summary table). */
+export function DepositedMetricFlow({
   value,
   showUsd,
   animated,

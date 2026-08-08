@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPanelAccount, updatePanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { seedNavTree } from "./seedNavTree.js";
+import { assertHomogeneousGroupItems } from "./portfolioGroupTree.js";
 
 describe("seedNavTree cash_eqs hub", () => {
   it("creates nav_bucket with cash_savings and checking_accounts children", () => {
@@ -199,5 +200,32 @@ describe("seedNavTree brokerage sub-bucket move-out", () => {
     } finally {
       for (const fn of cleanup.reverse()) fn();
     }
+  });
+});
+
+describe("assertHomogeneousGroupItems", () => {
+  it("throws when a group mixes sub-group and account items", () => {
+    seedNavTree();
+    expect(() => assertHomogeneousGroupItems()).not.toThrow();
+
+    const brokerage = db
+      .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'brokerage'`)
+      .get() as { id: number };
+    const anyAccount = db
+      .prepare(`SELECT id FROM accounts WHERE account_kind != 'liability_view' ORDER BY id LIMIT 1`)
+      .get() as { id: number };
+    db.prepare(
+      `INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order)
+       VALUES (?, 'account', ?, 9999)`
+    ).run(brokerage.id, anyAccount.id);
+    try {
+      expect(() => assertHomogeneousGroupItems()).toThrow(/brokerage/);
+    } finally {
+      db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ? AND account_id = ?`).run(
+        brokerage.id,
+        anyAccount.id
+      );
+    }
+    expect(() => assertHomogeneousGroupItems()).not.toThrow();
   });
 });

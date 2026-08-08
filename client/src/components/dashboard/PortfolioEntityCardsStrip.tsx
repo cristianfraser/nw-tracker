@@ -7,8 +7,8 @@ export type PortfolioEntityCardsStripProps = {
   compactSlot: ReactNode;
   /** Row 2: detailed group cards. Omitted when empty — no spacer for this row. */
   detailSlots?: ReactNode;
-  /** Row 3: compact account-leaf cards. */
-  accountCompactSlots?: ReactNode;
+  /** Full-width accounts summary table under the cards (leaf-bucket pages). */
+  accountsTableSlot?: ReactNode;
   /** When true, wraps in `DashboardCardsValueGroup` for shared number-flow context. */
   wrapValueGroup?: boolean;
   /** Extra classes on the compact strip shell (e.g. `card--cash`). */
@@ -17,19 +17,17 @@ export type PortfolioEntityCardsStripProps = {
 
 /**
  * Dashboard-style card strip: compact parent (row 1), optional detailed group children (row 2),
- * optional compact account leaves (row 3). Same CSS grid as the home dashboard.
+ * optional full-width per-account summary table below. Same CSS grid as the home dashboard.
  */
 export function PortfolioEntityCardsStrip({
   compactSlot,
   detailSlots,
-  accountCompactSlots,
+  accountsTableSlot,
   wrapValueGroup = true,
   compactStripClassName,
 }: PortfolioEntityCardsStripProps) {
   const hasDetails = detailSlots != null && detailSlots !== false;
-  const hasAccountCompacts =
-    accountCompactSlots != null && accountCompactSlots !== false;
-  const showRow1Spacer = hasDetails || hasAccountCompacts;
+  const hasAccountsTable = accountsTableSlot != null && accountsTableSlot !== false;
   const compactShell = cn(
     "portfolio-strip-compact",
     "card",
@@ -39,17 +37,31 @@ export function PortfolioEntityCardsStrip({
     "card--dashboard-net-worth",
     compactStripClassName,
   );
-  const inner = (
+  const cards = (
     <div className="cards">
       <div className={compactShell}>{compactSlot}</div>
-      {showRow1Spacer ? <div className="row-spacer" aria-hidden="true" /> : null}
+      {hasDetails ? <div className="row-spacer" aria-hidden="true" /> : null}
       {hasDetails ? detailSlots : null}
-      {hasDetails && hasAccountCompacts ? (
-        <div className="portfolio-strip-section-break" aria-hidden="true" />
-      ) : null}
-      {hasAccountCompacts ? accountCompactSlots : null}
     </div>
   );
-  if (wrapValueGroup) return <DashboardCardsValueGroup>{inner}</DashboardCardsValueGroup>;
-  return inner;
+  // The table stays OUTSIDE the number-flow group: grouped flows animate in lockstep, and
+  // the table's hidden parallel rendering (mobile twin) measures 0-width while coupled,
+  // which collapsed zero-valued visible cells to empty digits.
+  const table = hasAccountsTable ? (
+    <div style={{ marginTop: "0.85rem" }}>{accountsTableSlot}</div>
+  ) : null;
+  if (wrapValueGroup) {
+    return (
+      <>
+        <DashboardCardsValueGroup>{cards}</DashboardCardsValueGroup>
+        {table}
+      </>
+    );
+  }
+  return (
+    <>
+      {cards}
+      {table}
+    </>
+  );
 }

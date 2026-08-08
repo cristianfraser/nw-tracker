@@ -20,16 +20,6 @@
   visibility: hidden;
 }
 
-/** Forces account compact row below detailed group cards in portfolio strips. */
-.portfolio-strip-section-break {
-  grid-column: 1 / -1;
-  height: 0;
-  margin: 0;
-  padding: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

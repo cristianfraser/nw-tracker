@@ -52,6 +52,15 @@ export interface DashboardAccountRow {
   exclude_from_group_totals?: number;
   /** True when any linked global sync source is currently stale. */
   sync_stale?: boolean;
+  /** Flow-adjusted period returns (server-computed ratios; total = P/L ÷ lifetime deposits). */
+  pct_day_clp?: number | null;
+  pct_month_clp?: number | null;
+  pct_year_clp?: number | null;
+  pct_total_clp?: number | null;
+  pct_day_usd?: number | null;
+  pct_month_usd?: number | null;
+  pct_year_usd?: number | null;
+  pct_total_usd?: number | null;
 }
 
 export interface DashboardLinkedBalanceRow {

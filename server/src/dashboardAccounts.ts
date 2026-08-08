@@ -30,6 +30,8 @@ import {
   liveFintualCertDisplayValueClp,
   type AccountPositionMeta,
 } from "./accountPosition.js";
+import { flowAdjustedPctMonth } from "./periodReturns.js";
+import { MONTH_ROW_EPS } from "./accountPerformanceMonthPick.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
@@ -280,6 +282,36 @@ function computeMortgageCardDeposits(
     }
   }
   return { total_clp, total_usd, month_clp, month_usd, year_clp, year_usd, day_clp, day_usd };
+}
+
+/**
+ * Flow-adjusted period returns from the row's FINAL legs (after the CC/mortgage P/L
+ * overrides), via the shared `flowAdjustedPctMonth`. Total has no prior close, so it
+ * reads P/L acumulado ÷ lifetime deposits (the helper's prior-less frame).
+ */
+function dashboardRowPeriodPcts(
+  row: DashboardAccountStats,
+  includeUsd: boolean
+): Partial<DashboardAccountStats> {
+  const pct = (
+    delta: number | null | undefined,
+    prior: number | null | undefined,
+    flow: number | null | undefined
+  ) => flowAdjustedPctMonth(delta ?? null, prior ?? null, flow ?? 0, MONTH_ROW_EPS);
+  return {
+    pct_day_clp: pct(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp),
+    pct_month_clp: pct(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp),
+    pct_year_clp: pct(row.delta_year_clp, row.prior_year_close_clp, row.deposits_year_clp),
+    pct_total_clp: pct(row.delta_total_clp, null, row.deposits_clp),
+    ...(includeUsd
+      ? {
+          pct_day_usd: pct(row.delta_day_usd, row.prior_day_close_usd, row.deposits_day_usd),
+          pct_month_usd: pct(row.delta_month_usd, row.prior_month_close_usd, row.deposits_month_usd),
+          pct_year_usd: pct(row.delta_year_usd, row.prior_year_close_usd, row.deposits_year_usd),
+          pct_total_usd: pct(row.delta_total_usd, null, row.deposits_usd),
+        }
+      : {}),
+  };
 }
 
 /** Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit). */
@@ -586,7 +618,8 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         }
       }
 
-      return { ...rowBeforeReconcile, ...reconciled } as DashboardAccountStats;
+      const merged = { ...rowBeforeReconcile, ...reconciled } as DashboardAccountStats;
+      return { ...merged, ...dashboardRowPeriodPcts(merged, includeUsd) };
     })
   );
   return applyCashSavingsShortfallToDashboardRows(

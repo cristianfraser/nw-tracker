@@ -67,7 +67,7 @@ export function DeltaMetricFlow({
       }}
     >
       <span className={styles.deltaIcon} aria-hidden>
-        {sign >= 0 ? "▲" : "▼"}
+        {sign > 0 ? "▲" : sign < 0 ? "▼" : "◆"}
       </span>
       <AnimatedNumberFlow
         value={delta}

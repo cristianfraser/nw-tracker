@@ -143,4 +143,16 @@ describe("updatePanelAccount", () => {
       /credit-card accounts cannot move/
     );
   });
+
+  it("rejects moving an account to a bucket that contains sub-buckets", () => {
+    const slug = `vitest_edit_mix_${Date.now()}`;
+    const created = createFixtureAccount(slug, "cash_savings");
+    try {
+      expect(() => updatePanelAccount(created.account_id, { bucket_slug: "brokerage" })).toThrow(
+        /contains sub-buckets/
+      );
+    } finally {
+      cleanup(created.account_id, created.created_leaf_bucket ? [created.asset_group_id] : []);
+    }
+  });
 });

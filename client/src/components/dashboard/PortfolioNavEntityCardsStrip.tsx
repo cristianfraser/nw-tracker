@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { CardValueDayPl, DashboardCardGroupMetrics } from "./DashboardCardGroupMetrics";
 import { CompactEntityCard } from "./CompactEntityCard";
 import { PortfolioEntityCardsStrip } from "./PortfolioEntityCardsStrip";
-import { PortfolioNavAccountCompactCards } from "./PortfolioNavAccountCompactCards";
+import { PortfolioNavAccountsSummaryTable } from "./PortfolioNavAccountsSummaryTable";
 import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   dashboardRowsForNavSubtree,
@@ -35,7 +35,8 @@ export type PortfolioNavEntityCardsStripProps = {
 };
 
 /**
- * Portfolio strip: compact parent, optional detailed group children, optional compact account leaves.
+ * Portfolio strip: compact parent, optional detailed group children, and — on leaf buckets —
+ * one accounts summary table for the account leaves (replaced the per-account compact cards).
  */
 export function PortfolioNavEntityCardsStrip({
   dash,
@@ -87,7 +88,7 @@ export function PortfolioNavEntityCardsStrip({
   );
 
   const showDetailSlots = detailChildren.length > 0;
-  const showAccountCompactSlots = accountCardChildren.length > 0;
+  const showAccountsTable = accountCardChildren.length > 0;
 
   const isCashParent = parentNavNode.slug === "cash_eqs" || parentNavNode.slug === "cash_savings";
 
@@ -136,9 +137,9 @@ export function PortfolioNavEntityCardsStrip({
             />
           ) : null
         }
-        accountCompactSlots={
-          showAccountCompactSlots ? (
-            <PortfolioNavAccountCompactCards
+        accountsTableSlot={
+          showAccountsTable ? (
+            <PortfolioNavAccountsSummaryTable
               dash={dash}
               navChildren={accountCardChildren}
               showUsd={showUsd}
