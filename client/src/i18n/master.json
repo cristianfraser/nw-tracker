@@ -5377,10 +5377,6 @@
         "en": "Discount",
         "es": "Descuento"
       },
-      "perKg": {
-        "en": "/kg",
-        "es": "/kg"
-      },
       "pickProduct": {
         "en": "Pick a product to see its price history.",
         "es": "Elige un producto para ver su historial de precios."

@@ -308,10 +308,7 @@ export function GroceriesPage() {
                       <td className="desktop-only muted">{g.barcode ?? "—"}</td>
                       <td className="desktop-only num">{g.occurrences}</td>
                       <td className="desktop-only">{isoDay(g.last_seen)}</td>
-                      <td className="desktop-only num">
-                        {formatClp(g.last_unit_price_clp)}
-                        {g.qty_unit === "kg" ? t("groceries.history.perKg") : ""}
-                      </td>
+                      <td className="desktop-only num">{formatClp(g.last_unit_price_clp)}</td>
                       <td className="desktop-only">{suggestionButtons}</td>
                       <td className="mobile-only">
                         <TableMobileCard
@@ -332,10 +329,7 @@ export function GroceriesPage() {
                           />
                           <TableMobileCardRow
                             label={t("groceries.cleaning.colLastPrice")}
-                            value={
-                              formatClp(g.last_unit_price_clp) +
-                              (g.qty_unit === "kg" ? t("groceries.history.perKg") : "")
-                            }
+                            value={formatClp(g.last_unit_price_clp)}
                           />
                           {g.suggestions.length > 0 ? (
                             <TableMobileCardRow

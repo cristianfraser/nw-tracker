@@ -127,7 +127,10 @@ export function listUnclassifiedGroups(): UnclassifiedGroup[] {
         occurrences: 1,
         last_seen: row.purchased_at,
         qty_unit: row.qty_unit,
-        last_unit_price_clp: row.unit_price_clp,
+        // Weighed rows: the paid amount, not the per-kg rate — per-unit pricing is the
+        // product config's job, not the raw feed's.
+        last_unit_price_clp:
+          row.qty_unit === "kg" ? row.total_clp - row.discount_clp : row.unit_price_clp,
         total_spent_clp: row.total_clp - row.discount_clp,
         suggestions: [],
       });
@@ -138,7 +141,8 @@ export function listUnclassifiedGroups(): UnclassifiedGroup[] {
         existing.last_seen = row.purchased_at;
         existing.description = row.description;
         existing.qty_unit = row.qty_unit;
-        existing.last_unit_price_clp = row.unit_price_clp;
+        existing.last_unit_price_clp =
+          row.qty_unit === "kg" ? row.total_clp - row.discount_clp : row.unit_price_clp;
       }
     }
   }
@@ -177,7 +181,8 @@ export function listGroceryProducts(): GroceryProductRow[] {
               (SELECT MAX(r.purchased_at) FROM grocery_receipt_items i
                 JOIN grocery_receipts r ON r.id = i.receipt_id
                 WHERE i.product_id = p.id) AS last_purchased_at,
-              (SELECT CAST(ROUND((i.total_clp - i.discount_clp) / CAST(i.qty AS REAL)) AS INTEGER)
+              (SELECT CASE WHEN i.qty_unit = 'kg' THEN i.total_clp - i.discount_clp
+                           ELSE CAST(ROUND((i.total_clp - i.discount_clp) / CAST(i.qty AS REAL)) AS INTEGER) END
                  FROM grocery_receipt_items i
                  JOIN grocery_receipts r ON r.id = i.receipt_id
                  WHERE i.product_id = p.id
@@ -280,17 +285,27 @@ export function groceryProductHistory(productId: number): ProductHistoryRow[] {
     "effective_unit_price_clp" | "normalized_unit_price_clp"
   > & { alias_content: number | null })[];
   return rows.map(({ alias_content, ...r }) => {
-    const effective = Math.round((r.total_clp - r.discount_clp) / Number(r.qty));
-    let normalized: number | null;
     if (r.qty_unit === "kg") {
-      // Weighed rows are already per-kg — mass products convert by scale, other dimensions
-      // can't be derived from a weight.
-      normalized =
-        baseUnit === "kg" ? effective : baseUnit === "g" ? Math.round(effective / 1000) : null;
-    } else {
-      normalized = normalizedUnitPrice(effective, baseUnit, alias_content);
+      // A weighed purchase has no fixed package: its "price" is what was paid for that weight,
+      // and the per-kg rate exists ONLY through the product config (base_unit kg/g) — the
+      // weight itself plays the content role, so no alias content is needed.
+      const paid = r.total_clp - r.discount_clp;
+      const perKg = Math.round(paid / Number(r.qty));
+      const normalized =
+        baseUnit === "kg" ? perKg : baseUnit === "g" ? Math.round(perKg / 1000) : null;
+      return {
+        ...r,
+        unit_price_clp: r.total_clp,
+        effective_unit_price_clp: paid,
+        normalized_unit_price_clp: normalized,
+      };
     }
-    return { ...r, effective_unit_price_clp: effective, normalized_unit_price_clp: normalized };
+    const effective = Math.round((r.total_clp - r.discount_clp) / Number(r.qty));
+    return {
+      ...r,
+      effective_unit_price_clp: effective,
+      normalized_unit_price_clp: normalizedUnitPrice(effective, baseUnit, alias_content),
+    };
   });
 }
 
