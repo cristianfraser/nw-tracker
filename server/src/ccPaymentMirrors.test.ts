@@ -245,4 +245,115 @@ describe("convertCcPaymentMirrors", () => {
     expect(merge.in_statement_line_id).toBeNull();
     expect(merge.in_occurred_on).toBe("2037-05-07");
   });
+
+  it("converts a divisas debit against USD ABONO evidence as a cross-currency transfer", () => {
+    if (checkingId == null || ccId == null) return;
+    // USD statement with the card's abono; the checking leg is the compra de divisas in pesos.
+    const usdStatementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+           VALUES (?, 'santander', 'vitest-ccpago-usd.pdf', '22/06/2037', '25/05/2037', '22/06/2037', 'usd')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const abonoLineId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_usd, installment_flag, dedupe_key)
+           VALUES (?, '09/06/2037', 'ABONO DE DIVISAS', -123.45, 0, 'vitest-ccpago-usd-1')`
+        )
+        .run(usdStatementId).lastInsertRowid
+    );
+    const outId = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+           VALUES (?, -115733, 'clp', '2037-06-10', 'vitest|Egreso por Compra de Divisas|z')`
+        )
+        .run(checkingId).lastInsertRowid
+    );
+    cleanupMovementIds.push(outId);
+    clearAggregationCache();
+
+    try {
+      const cand = myCandidates().find((c) => c.out.movement_id === outId)!;
+      expect(cand).toBeTruthy();
+      expect(cand.evidence.currency).toBe("usd");
+      expect(cand.evidence.amount_usd).toBe(123.45);
+      expect(cand.evidence.statement_line_id).toBe(abonoLineId);
+      expect(cand.blocked).toBe(false);
+
+      const { converted } = convertCcPaymentMirrors([
+        { out_movement_id: outId, statement_line_id: abonoLineId },
+      ]);
+      const transfer = db
+        .prepare(`SELECT * FROM movements WHERE id = ?`)
+        .get(converted[0]!.transfer_movement_id) as {
+        from_account_id: number;
+        to_account_id: number;
+        amount: number;
+        currency: string;
+        counter_amount: number;
+        counter_currency: string;
+        occurred_on: string;
+        flow_kind: string;
+      };
+      // Migration-169 cross-currency shape: CLP from-leg = the exact pesos that left checking,
+      // USD counter leg = the card's abono; dated at the card's credit date.
+      expect(transfer.from_account_id).toBe(checkingId);
+      expect(transfer.to_account_id).toBe(ccId);
+      expect(transfer.amount).toBe(115733);
+      expect(transfer.currency).toBe("clp");
+      expect(transfer.counter_amount).toBe(123.45);
+      expect(transfer.counter_currency).toBe("usd");
+      expect(transfer.occurred_on).toBe("2037-06-09");
+      expect(transfer.flow_kind).toBe("pago_tarjeta");
+
+      const restored = undoMirrorConversion(converted[0]!.transfer_movement_id);
+      cleanupMovementIds.push(restored.restored_out_id);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(abonoLineId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(usdStatementId);
+      clearAggregationCache();
+    }
+  });
+
+  it("never pairs a divisas debit whose implied fx is out of band", () => {
+    if (checkingId == null || ccId == null) return;
+    const usdStatementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+           VALUES (?, 'santander', 'vitest-ccpago-usd2.pdf', '22/07/2037', '22/06/2037', '22/07/2037', 'usd')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const abonoLineId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_usd, installment_flag, dedupe_key)
+           VALUES (?, '09/07/2037', 'ABONO DE DIVISAS', -900.00, 0, 'vitest-ccpago-usd-2')`
+        )
+        .run(usdStatementId).lastInsertRowid
+    );
+    // 2x.xxx CLP against US$xxx implies fx ~24 — an unrelated small fx purchase, not this abono.
+    const outId = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+           VALUES (?, -21930, 'clp', '2037-07-10', 'vitest|Egreso por Compra de Divisas|w')`
+        )
+        .run(checkingId).lastInsertRowid
+    );
+    cleanupMovementIds.push(outId);
+    clearAggregationCache();
+    try {
+      expect(myCandidates().find((c) => c.out.movement_id === outId)).toBeUndefined();
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(abonoLineId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(usdStatementId);
+      clearAggregationCache();
+    }
+  });
 });

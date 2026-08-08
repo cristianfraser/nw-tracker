@@ -9,7 +9,12 @@
  * 6. Optionally import checking / cuenta vista / sync (see flags below)
  *
  * A Fintual certificado dropped in the inbox is installed (step 0) and imported into its
- * cert accounts via `import:fintual-cert` at the end of the run.
+ * cert accounts via `import:fintual-cert` at the end of the run. A Lider BCI «últimos
+ * movimientos» CSV (`lider-bci-movimientos-*.csv`, dropped by its own scheduled fetch) is
+ * imported through the web-paste path at the end of the run and archived. The daily checking
+ * «ultimos movimientos-Cuenta Corriente.xlsx» (dropped by fetch:santander) is imported into the
+ * cuenta corriente via `importCheckingRecentXlsx` and archived under
+ * `cfraser/checking-ultimos-movimientos/imported/`.
  *
  * Default (credit-card inbox only): steps 1–5; skips checking, cuenta vista, sync.
  * Checking / cuenta vista run only when inbox filed PDFs or xlsx this run, unless forced.
@@ -38,8 +43,14 @@ import {
   resolveCfraserOrganizeManifestPath,
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
+import { listStagedReceiptFiles } from "../src/santanderCcPaymentReceipts.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
+import {
+  importUltimosMovimientosInboxFiles,
+  listUltimosMovimientosInboxFiles,
+} from "../src/checkingUltimosMovimientosInbox.js";
 import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
+import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -191,6 +202,9 @@ function main(): void {
   if (!skipCcImport) {
     const importArgs = ["run", "import:cc-parsed", "-w", "nw-tracker-server", "--"];
     if (dryRun) importArgs.push("--dry-run");
+    // The CC import is incremental by default; `--full` forces the from-scratch pass that
+    // re-reconciles every statement in history (slow, but the periodic sanity check).
+    if (hasFlag("full")) importArgs.push("--full");
     const csv = argValue("csv");
     if (csv) importArgs.push(`--csv=${csv}`);
     if (accountId) importArgs.push(`--account-id=${accountId}`);
@@ -244,6 +258,74 @@ function main(): void {
     }
   } else {
     console.log("\n=== Import checking cartolas (skipped; pass --checking or drop cartola in inbox) ===");
+  }
+
+  // Daily checking «últimos movimientos» xlsx from the web session (fetchCheckingMovements).
+  // Rows dated after today are real: Santander's bank day ends at 14:00, so wires after the
+  // cutoff post on the next workday — the monthly cartola carries the same posting date, so
+  // the incremental row dedupes against it.
+  if (!hasFlag("skip-checking") && listUltimosMovimientosInboxFiles().length > 0) {
+    console.log(`\n=== Import checking ultimos movimientos xlsx${dryRun ? " (dry run)" : ""} ===`);
+    try {
+      for (const r of importUltimosMovimientosInboxFiles({ dryRun })) {
+        console.log(
+          `  ${r.file}: ${r.rows_parsed} row(s) parsed, ${r.inserted} inserted, ` +
+            `${r.skipped_duplicate} duplicate(s)${r.archived_to ? `; archived ${r.archived_to}` : ""}`
+        );
+        if (r.parse_errors.length) {
+          console.error(r.parse_errors.map((e) => `  ${r.file}: ${e}`).join("\n"));
+          process.exit(1);
+        }
+      }
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
+  } else {
+    console.log("\n=== Checking ultimos movimientos xlsx (none in inbox) ===");
+  }
+
+  // Santander CC payment receipts (staged by fetch:santander-docs): re-date checking payment
+  // debits from the bank's next-workday posting date to the receipt's real payment date. Runs
+  // AFTER the xlsx import so a same-run debit is re-dated in the same night.
+  if (!hasFlag("skip-checking") && listStagedReceiptFiles().length > 0) {
+    const code = runStep(
+      `Re-date CC payments from Santander receipts${dryRun ? " (dry run)" : ""}`,
+      "npm",
+      [
+        "run",
+        "import:santander-receipts",
+        "-w",
+        "nw-tracker-server",
+        ...(dryRun ? ["--", "--dry-run"] : []),
+      ]
+    );
+    if (code !== 0) process.exit(code);
+  } else {
+    console.log("\n=== Santander payment receipts (none staged) ===");
+  }
+
+  // Checking↔CC payment mirrors: convert same-month unblocked pairs into pago_tarjeta
+  // transfers dated at the card's credit date. Runs after the receipts step so a re-dated
+  // debit converts as a same-day pair in the same night.
+  if (!hasFlag("skip-checking") && !dryRun) {
+    const code = runStep("Convert CC payment mirrors", "npm", [
+      "run",
+      "convert:cc-payment-mirrors",
+      "-w",
+      "nw-tracker-server",
+    ]);
+    if (code !== 0) process.exit(code);
+  } else if (dryRun) {
+    const code = runStep("Convert CC payment mirrors (dry run)", "npm", [
+      "run",
+      "convert:cc-payment-mirrors",
+      "-w",
+      "nw-tracker-server",
+      "--",
+      "--dry-run",
+    ]);
+    if (code !== 0) process.exit(code);
   }
 
   const inboxVistaPdfs = basenamesFromCfraserOrganizePaths(organizeManifest.cuenta_vista_pdfs);
@@ -305,6 +387,26 @@ function main(): void {
       ["run", "import:fintual-cert", "-w", "nw-tracker-server"]
     );
     if (code !== 0) process.exit(code);
+  }
+
+  // Lider BCI «últimos movimientos» CSV, dropped in the inbox by its own scheduled fetch.
+  // Same shape as a manual web paste, so it goes through the web-paste import path; the file is
+  // archived to cfraser/lider-movements/imported/ once read.
+  if (listLiderMovementInboxFiles().length > 0) {
+    const code = runStep(
+      `Import Lider movements CSV${dryRun ? " (dry run)" : ""}`,
+      "npm",
+      [
+        "run",
+        "import:lider-movements",
+        "-w",
+        "nw-tracker-server",
+        ...(dryRun ? ["--", "--dry-run"] : []),
+      ]
+    );
+    if (code !== 0) process.exit(code);
+  } else {
+    console.log("\n=== Lider movements CSV (none in inbox) ===");
   }
 
   console.log("\n=== import:cfraser-inbox done ===");
