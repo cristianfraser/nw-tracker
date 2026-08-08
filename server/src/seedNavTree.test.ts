@@ -229,3 +229,34 @@ describe("assertHomogeneousGroupItems", () => {
     expect(() => assertHomogeneousGroupItems()).not.toThrow();
   });
 });
+
+describe("seedNavTree gated sidebar child pages", () => {
+  it("a gated page node is linked as a group ITEM, not just a parent_id child", () => {
+    // The nav payload walks portfolio_group_items — a group row with only parent_id set is
+    // an invisible orphan (the flows_expenses_groceries bug, 2026-08-08). Seed with a
+    // synthetic receipt present and assert the EDGE exists for every gated page that is on.
+    db.prepare(
+      `INSERT OR IGNORE INTO grocery_receipts
+         (source, source_key, receipt_number, store_chain, branch, city, purchased_at,
+          total_clp, discount_total_clp, payments_json, card_paid_clp)
+       VALUES ('vitest', '<vitest-nav@x>', '1', 'lider', 'VITEST', NULL, '2037-01-01 10:00:00',
+               1000, 0, '[]', 0)`
+    ).run();
+    try {
+      seedNavTree();
+      const edge = db
+        .prepare(
+          `SELECT 1 AS x FROM portfolio_group_items i
+           JOIN portfolio_groups p ON p.id = i.group_id
+           JOIN portfolio_groups c ON c.id = i.child_group_id
+           WHERE p.slug = 'flows_expenses' AND c.slug = 'flows_expenses_groceries'
+             AND i.item_kind = 'group'`
+        )
+        .get();
+      expect(edge).toBeTruthy();
+    } finally {
+      db.prepare(`DELETE FROM grocery_receipts WHERE source_key = '<vitest-nav@x>'`).run();
+      seedNavTree();
+    }
+  });
+});

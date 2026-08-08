@@ -146,6 +146,27 @@ function linkGroup(parentSlug: string, childSlug: string, sort: number) {
   insertGroupChild.run(pid, cid, sort);
 }
 
+/**
+ * A (possibly gated) sidebar page node in ONE call: the group row AND the
+ * `portfolio_group_items` edge. The nav payload renders children from group ITEMS —
+ * `parent_id` alone is not walked — so an upsert without the link is an invisible orphan
+ * that still looks correct in `portfolio_groups`. This helper exists so that half-added
+ * state cannot be expressed: gate true seeds row + edge together, gate false deletes the
+ * node (items cascade).
+ */
+function seedSidebarChildPage(
+  gate: boolean,
+  g: GroupUpsert & { parent_slug: string; route_path: string }
+): void {
+  if (!gate) {
+    const stale = groupIdBySlug.get(g.slug) as { id: number } | undefined;
+    if (stale) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(stale.id);
+    return;
+  }
+  upsert({ active_prefix: g.route_path, ...g });
+  linkGroup(g.parent_slug, g.slug, g.sort_order);
+}
+
 /** Link accounts on leaf asset groups under `bucketSlug` (handles reparented sub-buckets). */
 function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortStart = 0) {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
@@ -571,39 +592,26 @@ export function seedNavTree(): void {
           )
           .get(...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS) as { c: number }
       ).c > 0;
-    if (hasRealEstateExpenseAccounts) {
-      upsert({
-        slug: "flows_expenses_real_estate",
-        label: "Inmuebles",
-        label_i18n_key: "sidebar.flowsExpensesRealEstate",
-        parent_slug: "flows_expenses",
-        sort_order: 0,
-        route_path: "/flows/expenses/real_estate",
-        active_prefix: "/flows/expenses/real_estate",
-      });
-    } else {
-      // Items cascade on group delete (parent link + expense children).
-      const stale = groupIdBySlug.get("flows_expenses_real_estate") as { id: number } | undefined;
-      if (stale) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(stale.id);
-    }
+    seedSidebarChildPage(hasRealEstateExpenseAccounts, {
+      slug: "flows_expenses_real_estate",
+      label: "Inmuebles",
+      label_i18n_key: "sidebar.flowsExpensesRealEstate",
+      parent_slug: "flows_expenses",
+      sort_order: 0,
+      route_path: "/flows/expenses/real_estate",
+    });
     // "Supermercado" (grocery receipts + product catalog) only exists once boletas have been
     // imported — same data-driven rule as the real-estate node above.
     const hasGroceryReceipts =
       (db.prepare(`SELECT COUNT(*) AS c FROM grocery_receipts`).get() as { c: number }).c > 0;
-    if (hasGroceryReceipts) {
-      upsert({
-        slug: "flows_expenses_groceries",
-        label: "Supermercado",
-        label_i18n_key: "sidebar.flowsExpensesGroceries",
-        parent_slug: "flows_expenses",
-        sort_order: 5,
-        route_path: "/flows/expenses/groceries",
-        active_prefix: "/flows/expenses/groceries",
-      });
-    } else {
-      const staleGroceries = groupIdBySlug.get("flows_expenses_groceries") as { id: number } | undefined;
-      if (staleGroceries) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(staleGroceries.id);
-    }
+    seedSidebarChildPage(hasGroceryReceipts, {
+      slug: "flows_expenses_groceries",
+      label: "Supermercado",
+      label_i18n_key: "sidebar.flowsExpensesGroceries",
+      parent_slug: "flows_expenses",
+      sort_order: 5,
+      route_path: "/flows/expenses/groceries",
+    });
     upsert({
       slug: "flows_deposits",
       label: "Depósitos",
@@ -630,7 +638,6 @@ export function seedNavTree(): void {
     linkGroup("flows", "flows_deposits", 20);
     linkGroup("flows", "flows_pl", 30);
     if (hasRealEstateExpenseAccounts) {
-      linkGroup("flows_expenses", "flows_expenses_real_estate", 0);
       linkExpenseAccounts("flows_expenses_real_estate", [...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS]);
     }
 
