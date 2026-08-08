@@ -14,6 +14,13 @@
  *
  * flow_kind `pago_tarjeta`: the transfer is internal to the CC-netted cash bucket (paying
  * your own card moves no wealth), so deposit/aportes readers skip it (accountDeposits.ts).
+ *
+ * USD-debt payments (2026-08-07): a checking «Egreso por Compra de Divisas» debit pairs with
+ * the card's ABONO DE DIVISAS line on the USD statement. Cross-currency, so the match is date
+ * window + one-to-one uniqueness + an implied-fx sanity band instead of amount equality, and
+ * the converted transfer is the migration-169 cross-currency shape: CLP from-leg = the exact
+ * pesos that left checking, USD counter leg = the card's abono. Traspaso-linked abonos are
+ * excluded (debt reclassification, no cash).
  */
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
@@ -26,6 +33,16 @@ import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 
 const MATCH_WINDOW_DAYS = 4;
 
+/**
+ * Checking legs of USD-debt payments («Egreso por Compra de Divisas»). Cross-currency, so the
+ * pairing to the card's ABONO DE DIVISAS cannot be amount-exact: it is date-window + one-to-one
+ * uniqueness, plus an implied-fx sanity band so a coincidental unrelated fx purchase cannot pair
+ * with a card abono of a very different size.
+ */
+const DIVISAS_DESC_RE = /COMPRA\s+DE\s+DIVISAS/i;
+const DIVISAS_IMPLIED_FX_MIN = 300;
+const DIVISAS_IMPLIED_FX_MAX = 2000;
+
 export type CcPaymentEvidence = {
   cc_account_id: number;
   cc_account_name: string;
@@ -33,8 +50,15 @@ export type CcPaymentEvidence = {
   statement_line_id: number | null;
   statement_id: number | null;
   pago_iso: string;
-  /** Positive CLP amount of the payment. */
+  /**
+   * Positive CLP amount of the payment. Zero for USD evidence — an ABONO DE DIVISAS carries no
+   * peso amount; the transfer's pesos come from the checking «Egreso por Compra de Divisas» leg.
+   */
   amount_clp: number;
+  /** 'usd' = ABONO DE DIVISAS on the USD statement (the divisas payment's card leg). */
+  currency: "clp" | "usd";
+  /** Positive USD amount for usd evidence; null for clp. */
+  amount_usd: number | null;
   label: string;
 };
 
@@ -108,6 +132,32 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
     pago_iso: string;
   }[];
 
+  // USD-debt payments: the card leg is an ABONO DE DIVISAS line. Matched by the LINE's currency
+  // (amount_usd set), not the statement's — the open web-paste bucket is a CLP statement that
+  // carries the USD lines too, and the abono must be pairable the day the feed delivers it, not
+  // only after the USD PDF arrives. Traspaso-linked abonos are excluded — those reclassify USD
+  // debt onto the CLP side of the same card, no cash moved, so pairing one with a checking debit
+  // would fabricate a payment.
+  const usdRows = db
+    .prepare(
+      `SELECT l.id AS line_id, s.account_id, a.name AS account_name,
+              l.transaction_date, l.amount_usd, l.merchant
+       FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       JOIN accounts a ON a.id = s.account_id
+       WHERE l.installment_flag = 0 AND l.amount_usd < 0
+         AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
+         AND l.id NOT IN (SELECT usd_line_id FROM cc_traspaso_deuda_links)`
+    )
+    .all() as {
+    line_id: number;
+    account_id: number;
+    account_name: string;
+    transaction_date: string | null;
+    amount_usd: number;
+    merchant: string | null;
+  }[];
+
   // One evidence entry per real-world payment: duplicate statement versions carry the same
   // line, and legacy statements describe the same payment as BOTH a line and a header —
   // dedupe by (account, date, amount) with lines preferred (the walk consumes them directly).
@@ -126,6 +176,8 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
       statement_id: null,
       pago_iso: iso,
       amount_clp: amount,
+      currency: "clp",
+      amount_usd: null,
       label: (r.merchant ?? "PAGO").trim(),
     });
   }
@@ -141,7 +193,28 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
       statement_id: r.statement_id,
       pago_iso: r.pago_iso,
       amount_clp: amount,
+      currency: "clp",
+      amount_usd: null,
       label: "MONTO CANCELADO",
+    });
+  }
+  for (const r of usdRows) {
+    const iso = isoFromStatementDate(r.transaction_date);
+    if (!iso) continue;
+    const usd = Math.abs(r.amount_usd);
+    if (usd === 0) continue;
+    const key = `${r.account_id}|${iso}|usd|${Math.round(usd * 100)}`;
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      cc_account_id: r.account_id,
+      cc_account_name: r.account_name,
+      statement_line_id: r.line_id,
+      statement_id: null,
+      pago_iso: iso,
+      amount_clp: 0,
+      currency: "usd",
+      amount_usd: usd,
+      label: `${(r.merchant ?? "ABONO DE DIVISAS").trim()} US$${usd.toFixed(2)}`,
     });
   }
   return [...byKey.values()];
@@ -202,7 +275,12 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
       (e.statement_id == null || !converted.statementIds.has(e.statement_id))
   );
   const byAmount = new Map<number, CcPaymentEvidence[]>();
+  const usdEvidence: CcPaymentEvidence[] = [];
   for (const e of evidence) {
+    if (e.currency === "usd") {
+      usdEvidence.push(e);
+      continue;
+    }
     const list = byAmount.get(e.amount_clp) ?? [];
     list.push(e);
     byAmount.set(e.amount_clp, list);
@@ -210,11 +288,21 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
 
   // Nearest-date matching, then bijectivity check: an evidence entry claimed by two
   // movements (or a movement with two equally-near evidence entries) blocks the pair.
+  // A divisas debit pairs against USD evidence only (cross-currency, so no amount equality —
+  // date window + fx band + uniqueness carry the match); every other payment debit pairs
+  // against CLP evidence by exact amount.
   const picked: { out: (typeof outs)[number]; ev: CcPaymentEvidence; skew: number }[] = [];
   const ambiguous = new Set<number>();
   for (const out of outs) {
     const amount = Math.round(Math.abs(movementClpLegOrZero(out)));
-    const near = (byAmount.get(amount) ?? [])
+    const isDivisas = DIVISAS_DESC_RE.test(out.note ?? "");
+    const pool = isDivisas
+      ? usdEvidence.filter((e) => {
+          const fx = amount / (e.amount_usd ?? Number.NaN);
+          return fx >= DIVISAS_IMPLIED_FX_MIN && fx <= DIVISAS_IMPLIED_FX_MAX;
+        })
+      : byAmount.get(amount) ?? [];
+    const near = pool
       .map((e) => ({ e, d: Math.abs(dayDiff(out.occurred_on, e.pago_iso)) }))
       .filter((x) => x.d <= MATCH_WINDOW_DAYS)
       .sort((a, b) => a.d - b.d);
@@ -270,8 +358,8 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
 } {
   if (refs.length === 0) return { converted: [] };
   const insTransfer = db.prepare(
-    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
-     VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`
+    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
+     VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?, ?, ?)`
   );
   const insMerge = db.prepare(
     `INSERT INTO movement_mirror_merges (
@@ -299,11 +387,20 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
       if (!cand) throw new Error(`cc payment mirror ${key}: not a current candidate`);
       if (cand.blocked) throw new Error(`cc payment mirror ${key}: ${cand.blocked_reason}`);
 
-      const note = `Pago tarjeta espejo (cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${cand.evidence.pago_iso})`;
+      // USD evidence has no peso amount: the transfer's CLP leg is the checking debit itself
+      // (the exact pesos that left the account), and the card side rides as the USD counter
+      // leg — the migration-169 cross-currency transfer shape.
+      const isUsd = cand.evidence.currency === "usd";
+      const transferClp = isUsd ? Math.round(Math.abs(cand.out.amount_clp)) : cand.evidence.amount_clp;
+      const note = isUsd
+        ? `Pago tarjeta espejo (divisas: cargo cuenta ${cand.out.occurred_on} → abono tarjeta US$${cand.evidence.amount_usd!.toFixed(2)} ${cand.evidence.pago_iso})`
+        : `Pago tarjeta espejo (cargo cuenta ${cand.out.occurred_on} → abono tarjeta ${cand.evidence.pago_iso})`;
       const r = insTransfer.run(
         cand.out.account_id,
         cand.evidence.cc_account_id,
-        cand.evidence.amount_clp,
+        transferClp,
+        isUsd ? cand.evidence.amount_usd : null,
+        isUsd ? "usd" : null,
         cand.evidence.pago_iso,
         note,
         FLOW_KIND_PAGO_TARJETA
@@ -318,7 +415,7 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
         cand.evidence.statement_line_id,
         cand.evidence.statement_id,
         cand.evidence.pago_iso,
-        -cand.evidence.amount_clp,
+        -transferClp,
         cand.evidence.label
       );
       delIncomeOverride.run(cand.out.movement_id);

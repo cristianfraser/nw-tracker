@@ -144,10 +144,10 @@ export function prunePartialMovementsSupersededByCartola(
 
   const partialRows = dbHandle
     .prepare(
-      `SELECT id, note FROM movements
+      `SELECT id, note, occurred_on FROM movements
        WHERE account_id = ? AND note LIKE ?`
     )
-    .all(accountId, `${PARTIAL_NOTE_PREFIX}%`) as { id: number; note: string }[];
+    .all(accountId, `${PARTIAL_NOTE_PREFIX}%`) as { id: number; note: string; occurred_on: string }[];
 
   const del = dbHandle.prepare(`DELETE FROM movements WHERE id = ?`);
   const removed_ids: number[] = [];
@@ -165,6 +165,23 @@ export function prunePartialMovementsSupersededByCartola(
         cartolaNote,
         dbHandle
       );
+      // A partial row whose occurred_on differs from its note's bank date was deliberately
+      // re-dated (payment-receipt evidence: the real payment day, not the bank's next-workday
+      // posting). The cartola prints the bank date, so the official row it just inserted must
+      // inherit the corrected date or the receipt evidence is silently lost every month.
+      if (partial.occurred_on !== parsed.occurred_on) {
+        const official = dbHandle
+          .prepare(
+            `SELECT id FROM movements
+             WHERE account_id = ? AND note = ? AND occurred_on = ? LIMIT 1`
+          )
+          .get(accountId, cartolaNote, matchingMv.occurred_on) as { id: number } | undefined;
+        if (official) {
+          dbHandle
+            .prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`)
+            .run(partial.occurred_on, official.id);
+        }
+      }
     }
     del.run(partial.id);
     removed_ids.push(partial.id);
