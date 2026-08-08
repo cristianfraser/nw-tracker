@@ -42,6 +42,7 @@ export function GroceriesPage() {
 
   const [historyProductId, setHistoryProductId] = useState<number | null>(null);
   const [historyRows, setHistoryRows] = useState<ProductHistoryRow[] | null>(null);
+  const [mixedPackages, setMixedPackages] = useState(false);
   const [productDetail, setProductDetail] = useState<GroceryProductDetail | null>(null);
   const [brands, setBrands] = useState<GroceryBrandRow[]>([]);
   const [priceMode, setPriceMode] = useState<"effective" | "list" | "normalized">("effective");
@@ -114,7 +115,10 @@ export function GroceriesPage() {
     setBrandFilter("");
     api
       .groceriesProductHistory(productId)
-      .then((h) => setHistoryRows(h.rows))
+      .then((h) => {
+        setHistoryRows(h.rows);
+        setMixedPackages(h.heterogeneous_packages);
+      })
       .catch(() => setHistoryRows([]));
     api.groceriesProductDetail(productId).then(setProductDetail).catch(() => setProductDetail(null));
     api
@@ -132,7 +136,10 @@ export function GroceriesPage() {
       .groceriesProductDetail(historyProductId)
       .then((d) => {
         setProductDetail(d);
-        api.groceriesProductHistory(historyProductId).then((h) => setHistoryRows(h.rows));
+        api.groceriesProductHistory(historyProductId).then((h) => {
+          setHistoryRows(h.rows);
+          setMixedPackages(h.heterogeneous_packages);
+        });
       })
       .catch(() => {
         // Merged away: the product no longer exists — close the detail view.
@@ -192,18 +199,22 @@ export function GroceriesPage() {
   );
   const baseUnit = productDetail?.base_unit ?? "un";
   const baseUnitLabel = t(`groceries.config.unit.${baseUnit}`);
+  // Mixed package sizes make per-package prices incomparable (1 L at $1.300 vs 200 mL at
+  // $600): once the product is configured, only the per-base-unit mode is offered.
+  const normalizedOnly = mixedPackages && baseUnit !== "un";
+  const effectivePriceMode = normalizedOnly ? "normalized" : priceMode;
   const chartData = useMemo(
     () =>
       filteredHistory.map((r) => ({
         date: isoDay(r.purchased_at),
         price:
-          priceMode === "normalized"
+          effectivePriceMode === "normalized"
             ? r.normalized_unit_price_clp
-            : priceMode === "effective"
+            : effectivePriceMode === "effective"
               ? r.effective_unit_price_clp
               : r.unit_price_clp,
       })),
-    [filteredHistory, priceMode]
+    [effectivePriceMode, filteredHistory]
   );
 
   if (error) {
@@ -428,18 +439,24 @@ export function GroceriesPage() {
             <div
               style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", margin: "0.5rem 0" }}
             >
-              <select
-                value={priceMode}
-                onChange={(e) => setPriceMode(e.target.value as "effective" | "list" | "normalized")}
-              >
-                <option value="effective">{t("groceries.history.priceEffective")}</option>
-                <option value="list">{t("groceries.history.priceList")}</option>
-                {baseUnit !== "un" ? (
-                  <option value="normalized">
-                    {t("groceries.history.priceNormalized", { unit: baseUnitLabel })}
-                  </option>
-                ) : null}
-              </select>
+              {normalizedOnly ? (
+                <span className="muted">
+                  {t("groceries.history.mixedPackages", { unit: baseUnitLabel })}
+                </span>
+              ) : (
+                <select
+                  value={effectivePriceMode}
+                  onChange={(e) => setPriceMode(e.target.value as "effective" | "list" | "normalized")}
+                >
+                  <option value="effective">{t("groceries.history.priceEffective")}</option>
+                  <option value="list">{t("groceries.history.priceList")}</option>
+                  {baseUnit !== "un" ? (
+                    <option value="normalized">
+                      {t("groceries.history.priceNormalized", { unit: baseUnitLabel })}
+                    </option>
+                  ) : null}
+                </select>
+              )}
               {historyBrands.length > 0 ? (
                 <label>
                   {t("groceries.history.filterBrand")}{" "}

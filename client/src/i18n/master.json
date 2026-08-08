@@ -5396,6 +5396,10 @@
       "noContent": {
         "en": "content not set",
         "es": "sin contenido"
+      },
+      "mixedPackages": {
+        "en": "Package sizes differ across purchases — only the per-{{unit}} price is comparable.",
+        "es": "Los formatos difieren entre compras — solo el precio por {{unit}} es comparable."
       }
     },
     "receipts": {
@@ -5512,16 +5516,16 @@
         "es": "Guardado."
       },
       "mergeInto": {
-        "en": "Merge this product into",
-        "es": "Fusionar este producto con"
+        "en": "Merge another product into this one",
+        "es": "Fusionar otro producto con este"
       },
       "merge": {
         "en": "Merge",
         "es": "Fusionar"
       },
       "mergeConfirm": {
-        "en": "Merge \"{{source}}\" into \"{{target}}\"? All its names and purchase history move over; this cannot be undone.",
-        "es": "¿Fusionar «{{source}}» con «{{target}}»? Todos sus nombres e historial de compras se traspasan; no se puede deshacer."
+        "en": "Merge \"{{source}}\" into \"{{target}}\"? All of its names and purchase history move here and \"{{source}}\" is deleted; this cannot be undone.",
+        "es": "¿Fusionar «{{source}}» con «{{target}}»? Todos sus nombres e historial de compras se traspasan aquí y «{{source}}» se elimina; no se puede deshacer."
       },
       "mergeDone": {
         "en": "Merged: {{items}} purchase(s) moved.",
