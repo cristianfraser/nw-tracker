@@ -1,0 +1,28 @@
+{
+  "name": "nw-tracker-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bank navigator/parser: fetches Santander movements and statements into cfraser/inbox.",
+  "engines": {
+    "node": "24.18.0"
+  },
+  "scripts": {
+    "fetch:santander": "tsx src/main.ts santander",
+    "typecheck": "tsc --noEmit",
+    "fetch": "tsx src/main.ts",
+    "fetch:lider": "tsx src/main.ts lider",
+    "fetch:racional": "tsx src/main.ts racional",
+    "fetch:emails": "tsx src/email/main.ts",
+    "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts"
+  },
+  "dependencies": {
+    "imapflow": "^1.6.5",
+    "playwright-core": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

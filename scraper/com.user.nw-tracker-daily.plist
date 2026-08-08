@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily bank fetch + import. Install with:
+
+      cp scraper/com.user.nw-tracker-daily.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-daily.plist
+
+  It MUST be a LaunchAgent (gui/<uid> domain), not a LaunchDaemon: Santander's edge blocks
+  headless Chrome, so the fetcher parks a real window off-screen and needs a window server —
+  which only exists in the logged-in GUI session.
+
+  22:00 Chile deliberately: late enough for the day's movements to have posted, early enough to
+  miss the bank's nightly maintenance window (statement endpoints returned Codigo 16 timeouts
+  around 23:00–23:40 in testing).
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.user.nw-tracker-daily</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/crfrsr/Projects/nw-tracker/scraper/daily-run.sh</string>
+		<string>--scheduled</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/crfrsr/Projects/nw-tracker</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>22</integer>
+		<key>Minute</key>
+		<integer>0</integer>
+	</dict>
+	<!-- Never at load: a login should not fire a bank run, and the scraper's 30-minute
+	     debounce would reject it anyway. -->
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/daily-run.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/daily-run.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- launchd starts with a minimal PATH; node lives under nvm, and the parse step
+		     needs poppler/qpdf from Homebrew. -->
+		<key>PATH</key>
+		<string>/Users/crfrsr/.nvm/versions/node/v24.18.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<!-- The statement JSON is the FALLBACK source for a card facturación, not the primary
+		     one: since 2026-08-06 the real statement PDFs arrive by e-mail and are fetched and
+		     imported earlier in the same run, so they own their closes and the JSON only fills
+		     months whose mail has not landed yet. (Santander's own PDF endpoint has never once
+		     succeeded — Codigo 16 on every attempt — which is why mail replaced it.) The JSON
+		     write still passes the full reconcile gate. -->
+		<key>NW_TRACKER_STATEMENT_JSON_APPLY</key>
+		<string>1</string>
+		<!-- Fintual e-mail movements write for real: the notifications are complete (amounts,
+		     share counts, retiro cuota counts), duplicates resolve within the ±5-day cert
+		     window, and anything ambiguous stays requires_manual. Enabled 2026-08-07 so a
+		     «Pagamos tu retiro» promotes its checking credit into the goal→checking transfer
+		     (with cuotas) unattended. -->
+		<key>NW_TRACKER_FINTUAL_APPLY</key>
+		<string>1</string>
+	</dict>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>
