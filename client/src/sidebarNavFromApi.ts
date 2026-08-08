@@ -30,6 +30,7 @@ export const SERVER_NAV_LABEL_I18N_KEYS = [
   "sidebar.flows",
   "sidebar.flowsDeposits",
   "sidebar.flowsExpenses",
+  "sidebar.flowsExpensesGroceries",
   "sidebar.flowsExpensesRealEstate",
   "sidebar.flowsIncome",
   "sidebar.flowsPl",
