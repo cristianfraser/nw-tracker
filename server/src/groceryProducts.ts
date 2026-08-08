@@ -299,6 +299,10 @@ export function groceryProductHistory(productId: number): GroceryProductHistory 
   const contents = new Set<number>();
   for (const r of rows) {
     if (r.qty_unit === "kg") kgSeen = true;
+    // Count dimension: a null content IS a known size (1), so a bare item mixed with a
+    // configured x3 multipack counts as heterogeneous. Physical dimensions keep null =
+    // unknown (excluded — unconfigured must not fake homogeneity or heterogeneity).
+    else if (baseUnit === "un") contents.add(r.alias_content ?? 1);
     else if (r.alias_content != null) contents.add(r.alias_content);
   }
   const heterogeneous = (kgSeen && rows.length > 0) || contents.size > 1;
@@ -439,14 +443,18 @@ export function isGroceryBaseUnit(u: unknown): u is GroceryBaseUnit {
   return typeof u === "string" && u in UNIT_DIMENSION;
 }
 
-/** Content entered as value+unit → canonical amount, validated against the product's dimension. */
+/**
+ * Content entered as value+unit → canonical amount, validated against the product's dimension.
+ * 'un' is the COUNT dimension: a multipack («CRACKELET x3») has content 3 with no physical
+ * unit attached; unconfigured aliases default to 1 (a product is one of itself).
+ */
 export function canonicalContent(
   value: number,
   unit: GroceryBaseUnit,
   baseUnit: GroceryBaseUnit
 ): number {
   if (!Number.isFinite(value) || value <= 0) throw new Error(`invalid content value ${value}`);
-  if (UNIT_DIMENSION[unit] !== UNIT_DIMENSION[baseUnit] || baseUnit === "un") {
+  if (UNIT_DIMENSION[unit] !== UNIT_DIMENSION[baseUnit]) {
     throw new Error(`content unit ${unit} does not match the product's base unit ${baseUnit}`);
   }
   return value * CANONICAL_FACTOR[unit];
@@ -458,7 +466,10 @@ export function normalizedUnitPrice(
   baseUnit: GroceryBaseUnit,
   contentCanonical: number | null
 ): number | null {
-  if (baseUnit === "un") return effectivePackagePriceClp;
+  if (baseUnit === "un") {
+    // Count dimension: unconfigured = a package of 1 (the product is one of itself).
+    return Math.round(effectivePackagePriceClp / (contentCanonical ?? 1));
+  }
   if (contentCanonical == null || contentCanonical <= 0) return null;
   return Math.round((effectivePackagePriceClp / contentCanonical) * CANONICAL_FACTOR[baseUnit]);
 }

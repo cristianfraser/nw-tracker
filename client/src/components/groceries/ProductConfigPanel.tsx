@@ -27,7 +27,8 @@ const DIMENSION: Record<GroceryBaseUnit, string> = {
 
 /** Units offered for content entry on a product of this base unit (same dimension only). */
 export function contentUnitsFor(baseUnit: GroceryBaseUnit): GroceryBaseUnit[] {
-  if (baseUnit === "un") return [];
+  // 'un' is the count dimension: a multipack is N of the product, no physical unit attached.
+  if (baseUnit === "un") return ["un"];
   return GROCERY_BASE_UNITS.filter((u) => u !== "un" && DIMENSION[u] === DIMENSION[baseUnit]);
 }
 
@@ -45,22 +46,16 @@ function AliasConfigRow({
   const { t } = useTranslation();
   const [brandName, setBrandName] = useState(alias.brand_name ?? "");
   const [contentValue, setContentValue] = useState(
-    alias.content != null && baseUnit !== "un"
-      ? String(alias.content / CANONICAL_FACTOR[baseUnit])
-      : ""
+    alias.content != null ? String(alias.content / CANONICAL_FACTOR[baseUnit]) : ""
   );
-  const [contentUnit, setContentUnit] = useState<GroceryBaseUnit>(baseUnit === "un" ? "un" : baseUnit);
+  const [contentUnit, setContentUnit] = useState<GroceryBaseUnit>(baseUnit);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   // The base unit changing re-frames the prefill (content is canonical; display scale moved).
   useEffect(() => {
-    setContentUnit(baseUnit === "un" ? "un" : baseUnit);
-    setContentValue(
-      alias.content != null && baseUnit !== "un"
-        ? String(alias.content / CANONICAL_FACTOR[baseUnit])
-        : ""
-    );
+    setContentUnit(baseUnit);
+    setContentValue(alias.content != null ? String(alias.content / CANONICAL_FACTOR[baseUnit]) : "");
   }, [alias.content, baseUnit]);
 
   const save = async () => {
@@ -73,7 +68,7 @@ function AliasConfigRow({
         if (trimmedBrand === "") body.brand_id = null;
         else body.brand_name = trimmedBrand;
       }
-      if (baseUnit !== "un") {
+      {
         const raw = contentValue.trim().replace(",", ".");
         if (raw === "") {
           if (alias.content != null) body.content_value = null;
@@ -112,10 +107,7 @@ function AliasConfigRow({
       </datalist>
     </>
   );
-  const contentInput =
-    baseUnit === "un" ? (
-      <span className="muted">—</span>
-    ) : (
+  const contentInput = (
       <span style={{ display: "inline-flex", gap: "0.25rem", alignItems: "center" }}>
         <Input
           value={contentValue}
@@ -135,7 +127,7 @@ function AliasConfigRow({
           ))}
         </select>
       </span>
-    );
+  );
   const saveButton = (
     <Button onClick={() => void save()} disabled={busy}>
       {t("groceries.config.save")}

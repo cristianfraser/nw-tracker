@@ -197,8 +197,10 @@ describe("grocery product config", () => {
     expect(canonicalContent(1.5, "kg", "g")).toBe(1500);
     expect(canonicalContent(0.2, "l", "ml")).toBe(200);
     expect(canonicalContent(180, "m", "m")).toBe(180);
+    // 'un' is the count dimension: a multipack is N of the product.
+    expect(canonicalContent(3, "un", "un")).toBe(3);
     expect(() => canonicalContent(180, "m", "kg")).toThrow(/does not match/);
-    expect(() => canonicalContent(1, "un", "un")).toThrow(/does not match/);
+    expect(() => canonicalContent(3, "un", "kg")).toThrow(/does not match/);
   });
 
   it("normalized price scales to the display base unit", () => {
@@ -207,7 +209,35 @@ describe("grocery product config", () => {
     expect(normalizedUnitPrice(500, "l", 200)).toBe(2500);
     expect(normalizedUnitPrice(500, "ml", 200)).toBe(3);
     expect(normalizedUnitPrice(500, "l", null)).toBeNull();
+    // Count dimension: unconfigured = a package of 1; a x3 multipack divides.
     expect(normalizedUnitPrice(990, "un", null)).toBe(990);
+    expect(normalizedUnitPrice(2490, "un", 3)).toBe(830);
+  });
+
+  it("count-dimension multipacks: per-unit price via content, x1-vs-x3 is heterogeneous", () => {
+    const productId = mkProduct("vitest crackelet", "un");
+    const singleAlias = mkAlias(productId, "780vitest-x1");
+    const packAlias = mkAlias(productId, "780vitest-x3");
+    updateGroceryAliasConfig(packAlias, { content_value: 3, content_unit: "un" });
+    void singleAlias; // stays unconfigured: content defaults to 1
+    db.prepare(
+      `INSERT INTO grocery_receipts (source, source_key, receipt_number, store_chain, branch, purchased_at, total_clp, payments_json)
+       VALUES ('vitest', '<vitest-pack@x>', '7', 'lider', 'VITEST', '2037-04-01 10:00:00', 3320, '[]')`
+    ).run();
+    const receiptId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    cleanup.push({ table: "grocery_receipts", id: receiptId });
+    const insItem = db.prepare(
+      `INSERT INTO grocery_receipt_items (receipt_id, position, barcode, description, qty, qty_unit, unit_price_clp, total_clp, product_id, product_source)
+       VALUES (?, ?, ?, ?, '1', 'un', ?, ?, ?, 'manual')`
+    );
+    insItem.run(receiptId, 0, "780vitest-x1", "CRACKELET X1", 830, 830, productId);
+    insItem.run(receiptId, 1, "780vitest-x3", "CRACKELET X3", 2490, 2490, productId);
+
+    const history = groceryProductHistory(productId);
+    expect(history.heterogeneous_packages).toBe(true);
+    const byDesc = new Map(history.rows.map((r) => [r.description, r]));
+    expect(byDesc.get("CRACKELET X1")!.normalized_unit_price_clp).toBe(830);
+    expect(byDesc.get("CRACKELET X3")!.normalized_unit_price_clp).toBe(830);
   });
 
   it("changing base-unit dimension clears alias contents; scale change keeps them", () => {
