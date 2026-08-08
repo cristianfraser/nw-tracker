@@ -20,6 +20,8 @@ function parseInt10(s: string): number | null {
   return Math.trunc(n);
 }
 
+import { ccStatementRecordsFingerprint } from "./ccStatementFingerprint.js";
+
 function parseUsdAmount(s: string): number | null {
   let t = String(s ?? "").trim().replace(/US\$/gi, "").replace(/\$/g, "").trim();
   if (!t) return null;
@@ -245,12 +247,12 @@ export function importCcStatementsMerge(
       account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
       card_last4, card_product, layout, currency,
       saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
-      monto_pagado_anterior, monto_pagado_anterior_date
+      monto_pagado_anterior, monto_pagado_anterior_date, import_fingerprint
     ) VALUES (
       @account_id, @card_group, @source_pdf, @statement_date, @period_from, @period_to, @pay_by,
       @card_last4, @card_product, @layout, @currency,
       @saldo_anterior, @abono, @compras_cargos, @deuda_total, @monto_facturado,
-      @monto_pagado_anterior, @monto_pagado_anterior_date
+      @monto_pagado_anterior, @monto_pagado_anterior_date, @import_fingerprint
     )
   `);
 
@@ -262,7 +264,8 @@ export function importCcStatementsMerge(
       saldo_anterior = @saldo_anterior, abono = @abono, compras_cargos = @compras_cargos,
       deuda_total = @deuda_total, monto_facturado = @monto_facturado,
       monto_pagado_anterior = @monto_pagado_anterior,
-      monto_pagado_anterior_date = @monto_pagado_anterior_date
+      monto_pagado_anterior_date = @monto_pagado_anterior_date,
+      import_fingerprint = @import_fingerprint
     WHERE id = @id
   `);
 
@@ -351,6 +354,11 @@ export function importCcStatementsMerge(
       card_product: String(first.card_product ?? "").trim() || null,
       layout: layoutFromRow(first),
       currency,
+      // Written here rather than by the caller because only this loop knows which row the
+      // statement actually resolved to: the close-date fallback below can match a row filed
+      // under a DIFFERENT source_pdf (a re-downloaded statement), and a fingerprint keyed by
+      // the CSV's own tuple would silently never land — leaving it re-importing forever.
+      import_fingerprint: ccStatementRecordsFingerprint(rows),
       ...header,
     };
 

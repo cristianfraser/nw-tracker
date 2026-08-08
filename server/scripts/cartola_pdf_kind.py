@@ -46,8 +46,13 @@ def is_linea_credito_cartola_text(text: str) -> bool:
     upper = text.upper()
     if "CTA CTE CREDITO" in upper or "CUENTA CORRIENTE CREDITO" in upper:
         return True
-    if "LINEA DE CREDITO" in upper or "LÍNEA DE CRÉDITO" in upper:
-        return True
+    # NOT a bare "LINEA DE CREDITO" test: every cuenta corriente cartola prints an
+    # "INFORMACION DE LA LINEA DE CREDITO" summary block, so that substring matched the ML
+    # cartolas too — and because `is_checking_cartola_text` rejects anything this returns True
+    # for, it silently disqualified them from the header peek and they were filed under the
+    # constant date in the attachment filename (a July-2026 cartola landed as 2021-12-24).
+    # A genuine línea de crédito cartola always carries "CTA CTE CREDITO" (verified across the
+    # corpus), so the strong markers alone are sufficient.
     if "0-010-12-57000-3" in upper:
         return True
     return False
@@ -121,3 +126,32 @@ def incoming_vista_cartola_replaces_dest(existing: Path, incoming: Path) -> bool
     return peek_cartola_pdf_sin_movimientos(existing) and not peek_cartola_pdf_sin_movimientos(
         incoming
     )
+
+
+RE_CARTOLA_ACCOUNT = re.compile(r"\b(\d-\d{3}-\d{2}-\d{5}-\d)\b")
+
+
+def peek_cartola_account(text: str) -> Optional[str]:
+    """
+    The account a cartola belongs to, as printed in its header (`0-000-00-00001-1`).
+
+    Two different accounts can produce cartolas for the same period with the same cartola number
+    (Santander leaves it blank on cuenta vista), so the period alone does not identify a document.
+    Without this the second one to arrive was archived as a duplicate of the first — the two
+    cuenta vista accounts in the corpus have been sharing one filename space.
+    """
+    m = RE_CARTOLA_ACCOUNT.search(text)
+    return m.group(1) if m else None
+
+
+def peek_cartola_pdf_account(path) -> Optional[str]:
+    """`peek_cartola_account` over a PDF on disk; None when the text cannot be extracted."""
+    try:
+        raw = subprocess.check_output(
+            ["pdftotext", "-layout", str(path), "-"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        return None
+    return peek_cartola_account(raw)

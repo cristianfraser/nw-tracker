@@ -18,6 +18,7 @@ import {
   parseDdMmYyToIso,
   resolveInstallmentPayByIso,
 } from "./ccInstallmentPayBy.js";
+import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForStatementDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -240,6 +241,12 @@ export function normalizedPostCloseLines(
       return fxDateByStatementDate.get(statementDate) ?? null;
     };
 
+    // A linked traspaso-de-deuda USD abono carries minus its CLP twin's booked pesos — the
+    // pair is one debt reclassification and must net to exactly zero, never an fx estimate.
+    // Unlinked traspaso legs (web-paste pastes, twin statement not imported) keep the fx
+    // conversion below until the PDF import links the real pair.
+    const traspasoClpByUsdLineId = ccTraspasoLinkedClpByUsdLineId(accountId);
+
     // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
     // inside a window (same as the single-window loop did).
     const lines: { iso: string; key: string; clp: number | null; financing?: boolean }[] = [];
@@ -249,10 +256,15 @@ export function normalizedPostCloseLines(
       const iso = normalizeTransactionDateIso(r.transaction_date);
       if (!iso) continue;
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
-      const clp = effectiveCcExpenseLineAmountClp(
-        { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
-        fxDateFor(r.statement_date)
-      );
+      const linkedTraspasoClp =
+        r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined;
+      const clp =
+        linkedTraspasoClp != null
+          ? -linkedTraspasoClp
+          : effectiveCcExpenseLineAmountClp(
+              { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
+              fxDateFor(r.statement_date)
+            );
       lines.push({
         iso,
         key,

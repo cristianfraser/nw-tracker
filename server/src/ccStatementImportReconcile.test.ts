@@ -53,6 +53,33 @@ describe("ccStatementImportReconcile", () => {
     expect(result.checks.some((c) => c.code === "monto_facturado" && !c.ok)).toBe(true);
   });
 
+  /**
+   * Regression for a real drop: statement ·0781 23/07/2026 imported 691.43 against a printed
+   * TOTAL OPERACIONES of 705,50, losing a 14,07 charge (one of a same-day twin pair). The old USD
+   * band — 15% or a flat US$35 — passed it silently.
+   */
+  it("fails a USD statement whose operaciones fall short of the printed total", () => {
+    const rows = [line({ currency: "usd", amount_clp: 0, amount_usd: 691.43, merchant: "APPLE.COM/BILL" })];
+    const result = reconcileBillingMonthMovements("2026-07", rows, {
+      monto_facturado: null,
+      compras_cargos: 705.5,
+      source_pdf: "test-usd.pdf",
+    });
+    const check = result.checks.find((c) => c.code === "header_compras_vs_operaciones");
+    expect(check?.ok).toBe(false);
+    expect(check?.delta).toBeCloseTo(14.07, 2);
+  });
+
+  it("tolerates only cent-level rounding on a USD statement", () => {
+    const rows = [line({ currency: "usd", amount_clp: 0, amount_usd: 705.49, merchant: "APPLE.COM/BILL" })];
+    const result = reconcileBillingMonthMovements("2026-07", rows, {
+      monto_facturado: null,
+      compras_cargos: 705.5,
+      source_pdf: "test-usd.pdf",
+    });
+    expect(result.checks.find((c) => c.code === "header_compras_vs_operaciones")?.ok).toBe(true);
+  });
+
   it("counts duplicate merchant lines on the same statement toward monto", () => {
     const rows = [
       line({

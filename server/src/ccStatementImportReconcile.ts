@@ -231,9 +231,23 @@ function closeEnough(a: number, b: number, tol: number): boolean {
   return Math.abs(a - b) <= tol;
 }
 
+/**
+ * Does the sum of parsed operaciones match the statement's own printed total?
+ *
+ * USD is held to the cent. Its line amounts are exact two-decimal values, so the sum must equal the
+ * printed total — there is nothing to accumulate rounding from. The previous band allowed the larger
+ * of 15% or a flat US$35 (and reached for `TOL_CLP`, one *peso*, as a dollar floor), which is wide
+ * enough to swallow an entire line: statement ·0781 23/07/2026 imported 691.43 against a printed
+ * TOTAL OPERACIONES of 705,50, silently missing a 14,07 charge — one of a same-day twin pair. On a
+ * card whose USD side is mostly small subscriptions, almost any dropped line fell inside that band.
+ *
+ * CLP keeps its wider band: those amounts are whole pesos in the millions and the legacy layouts
+ * genuinely round.
+ */
 function closeEnoughOperaciones(actual: number, expected: number, currency: "clp" | "usd"): boolean {
-  const pct = currency === "usd" ? 0.15 : 0.03;
-  const floor = currency === "usd" ? 35 : Math.min(5000, Math.max(500, Math.abs(expected) * pct));
+  if (currency === "usd") return Math.abs(actual - expected) <= TOL_USD;
+  const pct = 0.03;
+  const floor = Math.min(5000, Math.max(500, Math.abs(expected) * pct));
   const band = Math.max(TOL_CLP, floor, Math.abs(expected) * pct);
   return Math.abs(actual - expected) <= band;
 }
@@ -416,6 +430,44 @@ export function reconcileBillingMonthMovements(
       actual: parsed.parsed_operaciones,
       delta,
       detail: "parsed operaciones vs header compras/cargos",
+    });
+  }
+
+  /**
+   * USD equivalent of the CLP `monto_facturado` check.
+   *
+   * Two shapes occur across the corpus and neither is wrong, so this accepts either rather than
+   * forcing one identity: sometimes the billed total is just the period's charges (·0781 23/06/2026:
+   * monto 258.13 = compras 258.13, with a 176.70 saldo NOT carried), and sometimes it is those
+   * charges plus the prior balance and its payment (·0161 24/01/2024: 7.59 = 28.87 + 1701.85 −
+   * 1723.13), and sometimes it nets a traspaso de deuda internacional (248.99 − 79.37 = 169.62) —
+   * an abono that moves the USD debt onto the CLP side of the same card, so no cash leaves the
+   * checking account and the card's total debt is unchanged.
+   * Forcing a single formula would fail legitimate statements — and because
+   * `assertCcImportReconcilesOrThrow` gates writes, a false failure blocks a real import.
+   *
+   * This is a header-consistency check; the line-level guard is `header_compras_vs_operaciones`
+   * above, which is what actually catches a dropped charge.
+   */
+  if (currency === "usd" && monto != null && monto > 0) {
+    const saldo = header.saldo_anterior ?? 0;
+    const abono = header.abono ?? 0;
+    const comprasForMonto = compras ?? parsed.parsed_operaciones;
+    const traspaso = parsed.parsed_traspaso_nacional;
+    const candidates = [
+      comprasForMonto,
+      comprasForMonto + saldo + abono,
+      comprasForMonto + traspaso,
+      comprasForMonto + saldo + abono + traspaso,
+    ];
+    const best = candidates.reduce((a, b) => (Math.abs(b - monto) < Math.abs(a - monto) ? b : a));
+    checks.push({
+      code: "monto_facturado",
+      ok: candidates.some((c) => closeEnough(c, monto, TOL_USD)),
+      expected: monto,
+      actual: best,
+      delta: monto - best,
+      detail: "compras, or compras+saldo+abono, vs monto facturado",
     });
   }
 

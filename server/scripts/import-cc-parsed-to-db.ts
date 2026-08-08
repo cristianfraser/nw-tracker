@@ -10,6 +10,11 @@
  * (e.g. `… tarjeta <last4>.pdf`). No account id is required when the CSV only contains known cards.
  *
  * Default: **merge** — upsert statements/lines and installment ledger without wiping existing months.
+ * **Incremental by default**: a statement whose parsed rows are unchanged since its last import
+ * is skipped entirely — no re-import, no re-reconcile (`ccStatementFingerprint.ts`). Pass
+ * `--full` to force every statement through again, which is the periodic from-scratch
+ * reconciliation and is worth running deliberately after any parser change.
+ *
  * Pass `--wipe` to delete all statements and reload the installment ledger for the account(s).
  * Pass `--replace-ledger` to refresh installment purchases/payments only (statements kept).
  *
@@ -35,6 +40,11 @@ import {
   replaceStatementKeysFromRecords,
 } from "../src/ccInstallmentLedgerMerge.js";
 import { isInstallmentContractSummaryMerchant } from "../src/ccInstallmentLineDedupe.js";
+import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
+import {
+  filterUnchangedStatementRecords,
+  groupRecordsByStatement,
+} from "../src/ccStatementFingerprint.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { cardLast4FromParsedRow, resolveImportAccountIds } from "../src/ccParsedImportAccounts.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
@@ -44,6 +54,10 @@ import {
   type CcStatementImportAccountLog,
 } from "../src/ccStatementImportLog.js";
 
+
+function byStatementCount(records: readonly Record<string, string>[]): number {
+  return groupRecordsByStatement(records as never).size;
+}
 
 function arg(name: string): string | undefined {
   const p = `--${name}=`;
@@ -180,6 +194,8 @@ function main() {
   const accountIdArg = Number(arg("account-id"));
   const dry = process.argv.includes("--dry-run");
   const wipe = process.argv.includes("--wipe");
+  /** Re-import and re-reconcile every statement, ignoring fingerprints (periodic sanity check). */
+  const fullReimport = process.argv.includes("--full");
   const replaceLedgerOnly = process.argv.includes("--replace-ledger");
   if (process.argv.includes("--merge")) {
     console.warn("# --merge is the default since 2026-05; flag is optional.");
@@ -260,10 +276,12 @@ function main() {
     let billingSnapshots = 0;
     let linesSkippedDuplicate = 0;
     let linesSkippedInstallmentOverlap = 0;
+    let statementsSkippedUnchanged = 0;
 
     if (!dry) {
       if (replaceAccount) {
         const st = importCcStatementsFromCsvRecords(accountId, accountRecords);
+        relinkCcTraspasoDeudaLinksForAccount(accountId);
         statementCount = st.statementCount;
         statementLineCount = st.linesInserted;
         linesSkippedDuplicate = st.linesSkippedDuplicate;
@@ -287,9 +305,27 @@ function main() {
         valuationMonthsSynced = ledger.valuationMonthsSynced;
         billingSnapshots = ledger.billingSnapshots;
       } else {
-        const merged = mergeCcAccountFromParsedRows(accountId, accountRecords, {
+        // Incremental by default: only statements whose parse changed are re-imported (and
+        // therefore re-reconciled). `--full` restores the from-scratch pass, which is worth
+        // running deliberately — it is what surfaced the 8 statements now in pending-review.
+        const filtered = fullReimport
+          ? { changed: accountRecords, skippedKeys: [], fingerprintByKey: new Map<string, string>() }
+          : filterUnchangedStatementRecords(accountId, accountRecords);
+        statementsSkippedUnchanged = filtered.skippedKeys.length;
+        if (filtered.changed.length === 0) {
+          console.log(
+            `# account ${accountId}: all ${statementsSkippedUnchanged} statement(s) unchanged — skipped`
+          );
+          continue;
+        }
+        if (statementsSkippedUnchanged > 0) {
+          console.log(
+            `# account ${accountId}: ${statementsSkippedUnchanged} statement(s) unchanged, importing ${byStatementCount(filtered.changed)}`
+          );
+        }
+        const merged = mergeCcAccountFromParsedRows(accountId, filtered.changed, {
           replaceLedger: false,
-          replaceStatementKeys: replaceStatementKeysFromRecords(accountRecords),
+          replaceStatementKeys: replaceStatementKeysFromRecords(filtered.changed),
         });
         statementCount = merged.statements.statementCount;
         statementLineCount = merged.statements.linesInserted;

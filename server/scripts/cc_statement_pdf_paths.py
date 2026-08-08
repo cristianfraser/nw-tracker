@@ -11,6 +11,11 @@ from cc_cards import IMPORT_REDIRECT_LAST4
 CLP_SLOT = "clp"
 USD_SLOT = "usd"
 UNREADABLE_DIR = "unreadable"
+#: Readable statements withheld from organize + parse + import pending a human decision — their
+#: parse does not reconcile against the printed header and the paper statement has to settle it.
+#: Without this the nightly run fails on the same statement every night; rows already imported
+#: for it stay untouched. See credit-card-statements/pending-review/README.txt.
+PENDING_REVIEW_DIR = "pending-review"
 # Folder under credit-card-statements/ (successor master); PDF stem may keep predecessor
 # last4. Real card last4s live in gitignored cfraser/cc-cards.json (see cc_cards.py).
 SANTANDER_CC_SLOT_REDIRECT = IMPORT_REDIRECT_LAST4
@@ -88,11 +93,16 @@ def pdf_already_in_card_slot(cc_root: Path, pdf: Path) -> bool:
     return slot in (CLP_SLOT, USD_SLOT)
 
 
+def is_excluded_cc_pdf_path(path: Path) -> bool:
+    """Quarantined by folder: unreadable scans, or statements pending human review."""
+    return UNREADABLE_DIR in path.parts or PENDING_REVIEW_DIR in path.parts
+
+
 def iter_cc_statement_pdfs(cc_root: Path) -> Iterator[Path]:
     if not cc_root.is_dir():
         return
     for path in sorted(cc_root.rglob("*.pdf")):
-        if UNREADABLE_DIR in path.parts:
+        if is_excluded_cc_pdf_path(path):
             continue
         yield path
 
