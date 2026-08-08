@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { clearAggregationCache } from "./aggregationCache.js";
+import { assertHomogeneousGroupItems } from "./portfolioGroupTree.js";
 import { seedCreditCardTree } from "./seedCreditCardTree.js";
 import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
@@ -683,6 +684,7 @@ export function seedNavTree(): void {
   tx();
   seedCreditCardTree();
   seedLiabilitiesTree();
+  assertHomogeneousGroupItems();
   clearAggregationCache();
   console.log("nav tree: seeded sidebar portfolio_groups + liability_groups");
 }

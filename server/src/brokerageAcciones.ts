@@ -72,4 +72,16 @@ export interface DashboardAccountStats {
   } | null;
   /** True when any linked global sync source is currently stale. */
   sync_stale: boolean;
+  /**
+   * Flow-adjusted period returns from the row's own final legs (shared
+   * `flowAdjustedPctMonth`; ratios, not %). Total = P/L acumulado ÷ lifetime deposits.
+   */
+  pct_day_clp?: number | null;
+  pct_month_clp?: number | null;
+  pct_year_clp?: number | null;
+  pct_total_clp?: number | null;
+  pct_day_usd?: number | null;
+  pct_month_usd?: number | null;
+  pct_year_usd?: number | null;
+  pct_total_usd?: number | null;
 }

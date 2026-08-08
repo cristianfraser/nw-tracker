@@ -124,4 +124,17 @@ describe("createPanelAccount", () => {
       })
     ).toThrow(/unsupported account_type/);
   });
+
+  it("rejects creating an account under a bucket that contains sub-buckets", () => {
+    expect(() =>
+      createPanelAccount({
+        account: {
+          account_type: "clp_cash",
+          name: `Vitest mixed ${Date.now()}`,
+          bucket_slug: "brokerage",
+          exclude_from_group_totals: false,
+        },
+      })
+    ).toThrow(/contains sub-buckets/);
+  });
 });

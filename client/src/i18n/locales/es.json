@@ -844,6 +844,14 @@
       "mortgageYtdChartTitle": "P/L mensual vs YTD (coste financiero)",
       "mortgageAccChartTitle": "Coste financiero mensual y acumulado",
       "mortgageBarMonthlyCost": "Coste financiero mes"
+    },
+    "accountsTable": {
+      "account": "Cuenta",
+      "balance": "Balance",
+      "month": "Mes",
+      "year": "Año",
+      "total": "Total",
+      "pctTooltip": "% del período (ajustado por aportes)"
     }
   },
   "table": {

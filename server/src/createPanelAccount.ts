@@ -7,7 +7,7 @@ import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "./panelAccountNotes.js";
-import { portfolioGroupBySlug } from "./portfolioGroupTree.js";
+import { portfolioGroupBySlug, portfolioGroupHasChildGroupItems } from "./portfolioGroupTree.js";
 import { prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { reseedAccountSyncSources } from "./accountSyncSources.js";
 import { seedNavTree } from "./seedNavTree.js";
@@ -61,6 +61,13 @@ function resolveBucketParentAssetSlug(bucketSlug: string, verb: "create" | "move
   if (!pg) fail(400, `unknown bucket ${bucketSlug}`);
   if (pg.group_kind === "liability_group") {
     fail(400, `cannot ${verb} accounts under a liability bucket`);
+  }
+  // Buckets hold sub-buckets XOR accounts: only leaf buckets (no group-like items) take
+  // accounts. The client picker already filters to leaves; this closes the API path (an
+  // account filed under e.g. `brokerage` would never be linked into the nav and would be
+  // silently missing from bucket totals).
+  if (portfolioGroupHasChildGroupItems(pg.id)) {
+    fail(400, `cannot ${verb} accounts under bucket ${bucketSlug}: it contains sub-buckets`);
   }
   const parentAssetSlug = (pg.asset_group_slug ?? "").trim() || bucketSlug;
   if (!assetGroupBySlug(parentAssetSlug)) {

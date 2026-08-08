@@ -844,6 +844,14 @@
       "mortgageYtdChartTitle": "Monthly P/L vs YTD (financing cost)",
       "mortgageAccChartTitle": "Monthly and accumulated financing cost",
       "mortgageBarMonthlyCost": "Month financing cost"
+    },
+    "accountsTable": {
+      "account": "Account",
+      "balance": "Balance",
+      "month": "Month",
+      "year": "Year",
+      "total": "Total",
+      "pctTooltip": "Period % (flow-adjusted)"
     }
   },
   "table": {

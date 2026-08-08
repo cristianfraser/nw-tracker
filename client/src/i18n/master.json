@@ -2965,6 +2965,32 @@
         "en": "Month financing cost",
         "es": "Coste financiero mes"
       }
+    },
+    "accountsTable": {
+      "account": {
+        "en": "Account",
+        "es": "Cuenta"
+      },
+      "balance": {
+        "en": "Balance",
+        "es": "Balance"
+      },
+      "month": {
+        "en": "Month",
+        "es": "Mes"
+      },
+      "year": {
+        "en": "Year",
+        "es": "Año"
+      },
+      "total": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "pctTooltip": {
+        "en": "Period % (flow-adjusted)",
+        "es": "% del período (ajustado por aportes)"
+      }
     }
   },
   "table": {
