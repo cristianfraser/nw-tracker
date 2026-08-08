@@ -28,6 +28,7 @@ export type UnclassifiedGroup = {
 export type GroceryProductRow = {
   id: number;
   name: string;
+  base_unit: string;
   alias_count: number;
   purchase_count: number;
   last_purchased_at: string | null;
@@ -170,7 +171,7 @@ export function listUnclassifiedGroups(): UnclassifiedGroup[] {
 export function listGroceryProducts(): GroceryProductRow[] {
   return db
     .prepare(
-      `SELECT p.id, p.name,
+      `SELECT p.id, p.name, p.base_unit,
               (SELECT COUNT(*) FROM grocery_product_aliases a WHERE a.product_id = p.id) AS alias_count,
               (SELECT COUNT(*) FROM grocery_receipt_items i WHERE i.product_id = p.id) AS purchase_count,
               (SELECT MAX(r.purchased_at) FROM grocery_receipt_items i
@@ -247,23 +248,50 @@ export type ProductHistoryRow = {
   effective_unit_price_clp: number;
   total_clp: number;
   discount_clp: number;
+  brand_name: string | null;
+  /**
+   * Effective price per the product's base unit ($/kg, $/L, $/m …); null when the row's alias
+   * has no content configured (never guessed) or the row's shape doesn't map to the dimension.
+   */
+  normalized_unit_price_clp: number | null;
 };
 
 export function groceryProductHistory(productId: number): ProductHistoryRow[] {
+  const product = db
+    .prepare(`SELECT base_unit FROM grocery_products WHERE id = ?`)
+    .get(productId) as { base_unit: GroceryBaseUnit } | undefined;
+  const baseUnit = product?.base_unit ?? "un";
   const rows = db
     .prepare(
       `SELECT r.purchased_at, r.store_chain, r.branch, r.city, i.description, i.qty, i.qty_unit,
-              i.unit_price_clp, i.total_clp, i.discount_clp
+              i.unit_price_clp, i.total_clp, i.discount_clp,
+              b.name AS brand_name, a.content AS alias_content
        FROM grocery_receipt_items i
        JOIN grocery_receipts r ON r.id = i.receipt_id
+       LEFT JOIN grocery_product_aliases a ON a.store_chain = r.store_chain
+         AND ((i.barcode IS NOT NULL AND a.barcode = i.barcode)
+           OR (i.barcode IS NULL AND a.barcode IS NULL AND a.description = i.description))
+       LEFT JOIN grocery_brands b ON b.id = a.brand_id
        WHERE i.product_id = ?
        ORDER BY r.purchased_at`
     )
-    .all(productId) as Omit<ProductHistoryRow, "effective_unit_price_clp">[];
-  return rows.map((r) => ({
-    ...r,
-    effective_unit_price_clp: Math.round((r.total_clp - r.discount_clp) / Number(r.qty)),
-  }));
+    .all(productId) as (Omit<
+    ProductHistoryRow,
+    "effective_unit_price_clp" | "normalized_unit_price_clp"
+  > & { alias_content: number | null })[];
+  return rows.map(({ alias_content, ...r }) => {
+    const effective = Math.round((r.total_clp - r.discount_clp) / Number(r.qty));
+    let normalized: number | null;
+    if (r.qty_unit === "kg") {
+      // Weighed rows are already per-kg — mass products convert by scale, other dimensions
+      // can't be derived from a weight.
+      normalized =
+        baseUnit === "kg" ? effective : baseUnit === "g" ? Math.round(effective / 1000) : null;
+    } else {
+      normalized = normalizedUnitPrice(effective, baseUnit, alias_content);
+    }
+    return { ...r, effective_unit_price_clp: effective, normalized_unit_price_clp: normalized };
+  });
 }
 
 export class GroceryAliasConflictError extends Error {}
@@ -344,6 +372,247 @@ export function classifyGroceryGroups(input: {
       stamped += res.changes;
     }
     return { product_id: productId, aliases, stamped };
+  });
+  return run();
+}
+
+// ── Product config: base units, global brands, alias contents, merge ──────────────────────────
+
+export type GroceryBaseUnit = "un" | "g" | "kg" | "ml" | "l" | "m";
+
+type UnitDimension = "count" | "mass" | "volume" | "length";
+
+const UNIT_DIMENSION: Record<GroceryBaseUnit, UnitDimension> = {
+  un: "count",
+  g: "mass",
+  kg: "mass",
+  ml: "volume",
+  l: "volume",
+  m: "length",
+};
+
+/** Factor from a unit to its dimension's CANONICAL small unit (g / ml / m / un). */
+const CANONICAL_FACTOR: Record<GroceryBaseUnit, number> = {
+  un: 1,
+  g: 1,
+  kg: 1000,
+  ml: 1,
+  l: 1000,
+  m: 1,
+};
+
+export function isGroceryBaseUnit(u: unknown): u is GroceryBaseUnit {
+  return typeof u === "string" && u in UNIT_DIMENSION;
+}
+
+/** Content entered as value+unit → canonical amount, validated against the product's dimension. */
+export function canonicalContent(
+  value: number,
+  unit: GroceryBaseUnit,
+  baseUnit: GroceryBaseUnit
+): number {
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`invalid content value ${value}`);
+  if (UNIT_DIMENSION[unit] !== UNIT_DIMENSION[baseUnit] || baseUnit === "un") {
+    throw new Error(`content unit ${unit} does not match the product's base unit ${baseUnit}`);
+  }
+  return value * CANONICAL_FACTOR[unit];
+}
+
+/** Effective package price → price per the product's display base unit; null when unknowable. */
+export function normalizedUnitPrice(
+  effectivePackagePriceClp: number,
+  baseUnit: GroceryBaseUnit,
+  contentCanonical: number | null
+): number | null {
+  if (baseUnit === "un") return effectivePackagePriceClp;
+  if (contentCanonical == null || contentCanonical <= 0) return null;
+  return Math.round((effectivePackagePriceClp / contentCanonical) * CANONICAL_FACTOR[baseUnit]);
+}
+
+export type GroceryBrandRow = { id: number; name: string; alias_count: number };
+
+export function listGroceryBrands(): GroceryBrandRow[] {
+  return db
+    .prepare(
+      `SELECT b.id, b.name,
+              (SELECT COUNT(*) FROM grocery_product_aliases a WHERE a.brand_id = b.id) AS alias_count
+       FROM grocery_brands b ORDER BY b.name`
+    )
+    .all() as GroceryBrandRow[];
+}
+
+/** Global catalog pick-or-create: names are unique, «Soprole» is one entity everywhere. */
+export function ensureGroceryBrand(name: string): number {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("brand name required");
+  const existing = db.prepare(`SELECT id FROM grocery_brands WHERE name = ?`).get(trimmed) as
+    | { id: number }
+    | undefined;
+  if (existing) return existing.id;
+  return Number(db.prepare(`INSERT INTO grocery_brands (name) VALUES (?)`).run(trimmed).lastInsertRowid);
+}
+
+export function renameGroceryBrand(id: number, name: string): void {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("brand name required");
+  const res = db.prepare(`UPDATE grocery_brands SET name = ? WHERE id = ?`).run(trimmed, id);
+  if (res.changes !== 1) throw new Error(`no brand ${id}`);
+}
+
+export function deleteGroceryBrand(id: number): void {
+  const used = db
+    .prepare(`SELECT COUNT(*) AS c FROM grocery_product_aliases WHERE brand_id = ?`)
+    .get(id) as { c: number };
+  if (used.c > 0) throw new Error(`brand ${id} is referenced by ${used.c} alias(es)`);
+  const res = db.prepare(`DELETE FROM grocery_brands WHERE id = ?`).run(id);
+  if (res.changes !== 1) throw new Error(`no brand ${id}`);
+}
+
+export type GroceryProductAliasConfigRow = {
+  id: number;
+  store_chain: string;
+  barcode: string | null;
+  description: string | null;
+  /** Latest printed description covered by this alias (barcode aliases carry name variants). */
+  sample_description: string | null;
+  last_seen: string | null;
+  purchase_count: number;
+  brand_id: number | null;
+  brand_name: string | null;
+  /** Canonical small-unit content (g/ml/m); null = unconfigured. */
+  content: number | null;
+};
+
+export type GroceryProductDetail = {
+  id: number;
+  name: string;
+  base_unit: GroceryBaseUnit;
+  aliases: GroceryProductAliasConfigRow[];
+};
+
+export function groceryProductDetail(productId: number): GroceryProductDetail {
+  const product = db
+    .prepare(`SELECT id, name, base_unit FROM grocery_products WHERE id = ?`)
+    .get(productId) as { id: number; name: string; base_unit: GroceryBaseUnit } | undefined;
+  if (!product) throw new Error(`no product ${productId}`);
+  const aliases = db
+    .prepare(
+      `SELECT a.id, a.store_chain, a.barcode, a.description, a.brand_id, b.name AS brand_name, a.content,
+              (SELECT i.description FROM grocery_receipt_items i
+                 JOIN grocery_receipts r ON r.id = i.receipt_id
+                 WHERE r.store_chain = a.store_chain
+                   AND ((a.barcode IS NOT NULL AND i.barcode = a.barcode)
+                     OR (a.barcode IS NULL AND i.barcode IS NULL AND i.description = a.description))
+                 ORDER BY r.purchased_at DESC LIMIT 1) AS sample_description,
+              (SELECT MAX(r.purchased_at) FROM grocery_receipt_items i
+                 JOIN grocery_receipts r ON r.id = i.receipt_id
+                 WHERE r.store_chain = a.store_chain
+                   AND ((a.barcode IS NOT NULL AND i.barcode = a.barcode)
+                     OR (a.barcode IS NULL AND i.barcode IS NULL AND i.description = a.description))) AS last_seen,
+              (SELECT COUNT(*) FROM grocery_receipt_items i
+                 JOIN grocery_receipts r ON r.id = i.receipt_id
+                 WHERE r.store_chain = a.store_chain
+                   AND ((a.barcode IS NOT NULL AND i.barcode = a.barcode)
+                     OR (a.barcode IS NULL AND i.barcode IS NULL AND i.description = a.description))) AS purchase_count
+       FROM grocery_product_aliases a
+       LEFT JOIN grocery_brands b ON b.id = a.brand_id
+       WHERE a.product_id = ?
+       ORDER BY a.store_chain, COALESCE(a.barcode, a.description)`
+    )
+    .all(productId) as GroceryProductAliasConfigRow[];
+  return { ...product, aliases };
+}
+
+export function updateGroceryProductBaseUnit(productId: number, baseUnit: GroceryBaseUnit): void {
+  const current = db
+    .prepare(`SELECT base_unit FROM grocery_products WHERE id = ?`)
+    .get(productId) as { base_unit: GroceryBaseUnit } | undefined;
+  if (!current) throw new Error(`no product ${productId}`);
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE grocery_products SET base_unit = ? WHERE id = ?`).run(baseUnit, productId);
+    // A dimension change makes stored contents meaningless (720 m is not 720 g) — clear them
+    // rather than silently reinterpreting. Same-dimension scale changes keep contents (canonical).
+    if (UNIT_DIMENSION[current.base_unit] !== UNIT_DIMENSION[baseUnit]) {
+      db.prepare(`UPDATE grocery_product_aliases SET content = NULL WHERE product_id = ?`).run(productId);
+    }
+  });
+  tx();
+}
+
+export function updateGroceryAliasConfig(
+  aliasId: number,
+  input: {
+    /** Explicit brand id, a new/global brand name, or null to clear. */
+    brand_id?: number | null;
+    brand_name?: string;
+    /** Content as entered (value + unit of the product's dimension), or null to clear. */
+    content_value?: number | null;
+    content_unit?: GroceryBaseUnit;
+  }
+): void {
+  const alias = db
+    .prepare(
+      `SELECT a.id, p.base_unit FROM grocery_product_aliases a
+       JOIN grocery_products p ON p.id = a.product_id WHERE a.id = ?`
+    )
+    .get(aliasId) as { id: number; base_unit: GroceryBaseUnit } | undefined;
+  if (!alias) throw new Error(`no alias ${aliasId}`);
+
+  const tx = db.transaction(() => {
+    if (input.brand_name !== undefined) {
+      db.prepare(`UPDATE grocery_product_aliases SET brand_id = ? WHERE id = ?`).run(
+        ensureGroceryBrand(input.brand_name),
+        aliasId
+      );
+    } else if (input.brand_id !== undefined) {
+      if (input.brand_id != null) {
+        const exists = db.prepare(`SELECT 1 AS x FROM grocery_brands WHERE id = ?`).get(input.brand_id);
+        if (!exists) throw new Error(`no brand ${input.brand_id}`);
+      }
+      db.prepare(`UPDATE grocery_product_aliases SET brand_id = ? WHERE id = ?`).run(
+        input.brand_id,
+        aliasId
+      );
+    }
+    if (input.content_value !== undefined) {
+      if (input.content_value == null) {
+        db.prepare(`UPDATE grocery_product_aliases SET content = NULL WHERE id = ?`).run(aliasId);
+      } else {
+        const unit = input.content_unit;
+        if (!unit || !isGroceryBaseUnit(unit)) throw new Error("content_unit required with content_value");
+        const canonical = canonicalContent(input.content_value, unit, alias.base_unit);
+        db.prepare(`UPDATE grocery_product_aliases SET content = ? WHERE id = ?`).run(canonical, aliasId);
+      }
+    }
+  });
+  tx();
+}
+
+/**
+ * Merge `sourceId` into `targetId`: aliases re-point wholesale — the global (chain, identity)
+ * uniqueness means a source alias can never collide with a target one — ALL of the source's
+ * stamped items restamp to the target (a merge is an identity statement, manual stamps
+ * included), source product deleted.
+ */
+export function mergeGroceryProducts(
+  sourceId: number,
+  targetId: number
+): { aliases_moved: number; items_restamped: number } {
+  if (sourceId === targetId) throw new Error("cannot merge a product into itself");
+  const run = db.transaction(() => {
+    for (const id of [sourceId, targetId]) {
+      if (!db.prepare(`SELECT 1 AS x FROM grocery_products WHERE id = ?`).get(id)) {
+        throw new Error(`no product ${id}`);
+      }
+    }
+    const moved = db
+      .prepare(`UPDATE grocery_product_aliases SET product_id = ? WHERE product_id = ?`)
+      .run(targetId, sourceId).changes;
+    const restamped = db
+      .prepare(`UPDATE grocery_receipt_items SET product_id = ? WHERE product_id = ?`)
+      .run(targetId, sourceId).changes;
+    db.prepare(`DELETE FROM grocery_products WHERE id = ?`).run(sourceId);
+    return { aliases_moved: moved, items_restamped: restamped };
   });
   return run();
 }

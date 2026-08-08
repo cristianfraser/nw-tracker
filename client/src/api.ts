@@ -811,6 +811,33 @@ export const api = {
     j<{ items: import("./types/groceries").GroceryReceiptItemRow[] }>(
       `/api/groceries/receipts/${receiptId}/items`
     ),
+  groceriesProductDetail: (productId: number) =>
+    j<import("./types/groceries").GroceryProductDetail>(`/api/groceries/products/${productId}`),
+  groceriesUpdateProduct: (productId: number, body: { base_unit: string }) =>
+    j<import("./types/groceries").GroceryProductDetail>(`/api/groceries/products/${productId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  groceriesMergeProduct: (productId: number, intoProductId: number) =>
+    j<{ aliases_moved: number; items_restamped: number }>(
+      `/api/groceries/products/${productId}/merge`,
+      { method: "POST", body: JSON.stringify({ into_product_id: intoProductId }) }
+    ),
+  groceriesBrands: () =>
+    j<{ brands: import("./types/groceries").GroceryBrandRow[] }>("/api/groceries/brands"),
+  groceriesUpdateAlias: (
+    aliasId: number,
+    body: {
+      brand_name?: string;
+      brand_id?: number | null;
+      content_value?: number | null;
+      content_unit?: string;
+    }
+  ) =>
+    j<{ ok: boolean }>(`/api/groceries/aliases/${aliasId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   groceriesClassify: (body: {
     store_chain: string;
     targets: { barcode: string | null; description: string }[];

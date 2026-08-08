@@ -1520,7 +1520,11 @@
       "colTotal": "Total",
       "colDiscount": "Descuento",
       "perKg": "/kg",
-      "pickProduct": "Elige un producto para ver su historial de precios."
+      "pickProduct": "Elige un producto para ver su historial de precios.",
+      "priceNormalized": "Por {{unit}}",
+      "colNormalized": "$/{{unit}}",
+      "filterBrand": "Marca",
+      "noContent": "sin contenido"
     },
     "receipts": {
       "title": "Boletas",
@@ -1533,6 +1537,31 @@
       "showItems": "Ver ítems",
       "hideItems": "Ocultar ítems",
       "none": "Aún no hay boletas importadas."
+    },
+    "config": {
+      "title": "Configuración del producto",
+      "baseUnit": "Unidad base",
+      "baseUnitHint": "Por defecto el producto es una unidad de sí mismo. Elige g/kg, mL/L o m para comparar precios por unidad entre formatos; cada código necesita su contenido abajo.",
+      "unit": {
+        "un": "unidad",
+        "g": "g",
+        "kg": "kg",
+        "ml": "mL",
+        "l": "L",
+        "m": "m"
+      },
+      "colAlias": "Código / nombre",
+      "colSample": "Último nombre impreso",
+      "colPurchases": "Compras",
+      "colBrand": "Marca",
+      "colContent": "Contenido",
+      "brandPlaceholder": "Marca (elige o crea)",
+      "save": "Guardar",
+      "saved": "Guardado.",
+      "mergeInto": "Fusionar este producto con",
+      "merge": "Fusionar",
+      "mergeConfirm": "¿Fusionar «{{source}}» con «{{target}}»? Todos sus nombres e historial de compras se traspasan; no se puede deshacer.",
+      "mergeDone": "Fusionado: {{items}} compra(s) traspasadas."
     }
   }
 }

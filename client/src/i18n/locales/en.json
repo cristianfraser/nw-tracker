@@ -1520,7 +1520,11 @@
       "colTotal": "Total",
       "colDiscount": "Discount",
       "perKg": "/kg",
-      "pickProduct": "Pick a product to see its price history."
+      "pickProduct": "Pick a product to see its price history.",
+      "priceNormalized": "Per {{unit}}",
+      "colNormalized": "$/{{unit}}",
+      "filterBrand": "Brand",
+      "noContent": "content not set"
     },
     "receipts": {
       "title": "Receipts",
@@ -1533,6 +1537,31 @@
       "showItems": "View items",
       "hideItems": "Hide items",
       "none": "No receipts imported yet."
+    },
+    "config": {
+      "title": "Product configuration",
+      "baseUnit": "Base unit",
+      "baseUnitHint": "Default: the product is one of itself. Pick g/kg, mL/L or m to compare prices per unit across package sizes; each barcode then needs its content set below.",
+      "unit": {
+        "un": "unit",
+        "g": "g",
+        "kg": "kg",
+        "ml": "mL",
+        "l": "L",
+        "m": "m"
+      },
+      "colAlias": "Barcode / name",
+      "colSample": "Latest printed name",
+      "colPurchases": "Purchases",
+      "colBrand": "Brand",
+      "colContent": "Content",
+      "brandPlaceholder": "Brand (pick or create)",
+      "save": "Save",
+      "saved": "Saved.",
+      "mergeInto": "Merge this product into",
+      "merge": "Merge",
+      "mergeConfirm": "Merge \"{{source}}\" into \"{{target}}\"? All its names and purchase history move over; this cannot be undone.",
+      "mergeDone": "Merged: {{items}} purchase(s) moved."
     }
   }
 }

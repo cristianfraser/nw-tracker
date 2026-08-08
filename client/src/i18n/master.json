@@ -5384,6 +5384,22 @@
       "pickProduct": {
         "en": "Pick a product to see its price history.",
         "es": "Elige un producto para ver su historial de precios."
+      },
+      "priceNormalized": {
+        "en": "Per {{unit}}",
+        "es": "Por {{unit}}"
+      },
+      "colNormalized": {
+        "en": "$/{{unit}}",
+        "es": "$/{{unit}}"
+      },
+      "filterBrand": {
+        "en": "Brand",
+        "es": "Marca"
+      },
+      "noContent": {
+        "en": "content not set",
+        "es": "sin contenido"
       }
     },
     "receipts": {
@@ -5426,6 +5442,94 @@
       "none": {
         "en": "No receipts imported yet.",
         "es": "Aún no hay boletas importadas."
+      }
+    },
+    "config": {
+      "title": {
+        "en": "Product configuration",
+        "es": "Configuración del producto"
+      },
+      "baseUnit": {
+        "en": "Base unit",
+        "es": "Unidad base"
+      },
+      "baseUnitHint": {
+        "en": "Default: the product is one of itself. Pick g/kg, mL/L or m to compare prices per unit across package sizes; each barcode then needs its content set below.",
+        "es": "Por defecto el producto es una unidad de sí mismo. Elige g/kg, mL/L o m para comparar precios por unidad entre formatos; cada código necesita su contenido abajo."
+      },
+      "unit": {
+        "un": {
+          "en": "unit",
+          "es": "unidad"
+        },
+        "g": {
+          "en": "g",
+          "es": "g"
+        },
+        "kg": {
+          "en": "kg",
+          "es": "kg"
+        },
+        "ml": {
+          "en": "mL",
+          "es": "mL"
+        },
+        "l": {
+          "en": "L",
+          "es": "L"
+        },
+        "m": {
+          "en": "m",
+          "es": "m"
+        }
+      },
+      "colAlias": {
+        "en": "Barcode / name",
+        "es": "Código / nombre"
+      },
+      "colSample": {
+        "en": "Latest printed name",
+        "es": "Último nombre impreso"
+      },
+      "colPurchases": {
+        "en": "Purchases",
+        "es": "Compras"
+      },
+      "colBrand": {
+        "en": "Brand",
+        "es": "Marca"
+      },
+      "colContent": {
+        "en": "Content",
+        "es": "Contenido"
+      },
+      "brandPlaceholder": {
+        "en": "Brand (pick or create)",
+        "es": "Marca (elige o crea)"
+      },
+      "save": {
+        "en": "Save",
+        "es": "Guardar"
+      },
+      "saved": {
+        "en": "Saved.",
+        "es": "Guardado."
+      },
+      "mergeInto": {
+        "en": "Merge this product into",
+        "es": "Fusionar este producto con"
+      },
+      "merge": {
+        "en": "Merge",
+        "es": "Fusionar"
+      },
+      "mergeConfirm": {
+        "en": "Merge \"{{source}}\" into \"{{target}}\"? All its names and purchase history move over; this cannot be undone.",
+        "es": "¿Fusionar «{{source}}» con «{{target}}»? Todos sus nombres e historial de compras se traspasan; no se puede deshacer."
+      },
+      "mergeDone": {
+        "en": "Merged: {{items}} purchase(s) moved.",
+        "es": "Fusionado: {{items}} compra(s) traspasadas."
       }
     }
   }
