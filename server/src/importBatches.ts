@@ -2,6 +2,10 @@ import { db } from "./db.js";
 
 export type ImportBatchKind =
   | "cc_web_paste"
+  /** Same lines as a web paste, but fetched from the bank's own API by `scraper/`. */
+  | "cc_santander_fetch"
+  /** Same lines as a web paste, from the scheduled Lider «últimos movimientos» CSV drop. */
+  | "cc_lider_fetch"
   | "cuenta_vista_web_paste"
   | "cc_statement_pdf"
   | "checking_recent_xlsx"

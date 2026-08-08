@@ -20,6 +20,10 @@ function cell(row: unknown[], i: number): string {
   return String(v).trim();
 }
 
+// dd-mm-yyyy, and the date may be AFTER today: Santander's bank day ends at 14:00, so a wire
+// received or sent after the cutoff posts on the NEXT WORKDAY (Friday 15:00 → Monday). Keep the
+// bank's date as-is — it is the canonical posting date the monthly cartola will repeat, which is
+// what lets the cartola import dedupe against these incremental rows.
 function parseDdMmYyyyDash(raw: string): string | null {
   const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(String(raw ?? "").trim());
   if (!m) return null;
