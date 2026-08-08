@@ -4,7 +4,10 @@
   "engines": {
     "node": "24.18.0"
   },
-  "workspaces": ["server", "client"],
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "devDependencies": {
     "tsx": "^4.19.2"
   },
@@ -17,7 +20,7 @@
     "demo:visits": "npm run demo:visits -w nw-tracker-server",
     "migrate": "npm run migrate -w nw-tracker-server",
     "import:excel": "npm run import:excel -w nw-tracker-server",
-    "import:cfraser-inbox": "npm run import:cfraser-inbox -w nw-tracker-server",
+    "import:cfraser-inbox": "npm run import:cfraser-inbox -w nw-tracker-server --",
     "repair:cc-metadata": "npm run repair:cc-metadata -w nw-tracker-server",
     "repair:cc-web-paste-pdf-reconcile": "npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server",
     "repair:cc-pdfs-qpdf": "python3 server/scripts/repair-cc-statement-pdfs-qpdf.py --inbox",
@@ -28,11 +31,25 @@
     "export:checking-cartola-screenshots-csv": "npm run export:checking-cartola-screenshots-csv -w nw-tracker-server",
     "import:checking-cartola-screenshots": "npm run import:checking-cartola-screenshots -w nw-tracker-server",
     "clear:checking-persisted-valuations": "npm run clear:checking-persisted-valuations -w nw-tracker-server",
-    "import:cc-parsed": "npm run import:cc-parsed -w nw-tracker-server",
+    "import:cc-parsed": "npm run import:cc-parsed -w nw-tracker-server --",
     "backfill:cc-valuations-from-ledger": "npm run backfill:cc-valuations-from-ledger -w nw-tracker-server",
     "backfill:cc-cuota-gaps": "npm run backfill:cc-cuota-gaps -w nw-tracker-server",
     "fetch-uf": "npm run fetch-uf -w nw-tracker-server",
     "parse:payroll-liquidaciones": "PYTHONPATH=server/scripts/.pdf_deps python3 server/scripts/parse-payroll-liquidaciones.py",
-    "import:payroll-liquidaciones": "npm run import:payroll-liquidaciones -w nw-tracker-server"
+    "import:payroll-liquidaciones": "npm run import:payroll-liquidaciones -w nw-tracker-server",
+    "fetch:santander": "npm --prefix scraper run fetch:santander --",
+    "fetch:santander-docs": "npm --prefix scraper run fetch:santander-docs --",
+    "fetch:lider": "npm --prefix scraper run fetch:lider --",
+    "import:santander-movements": "npm run import:santander-movements -w nw-tracker-server --",
+    "import:santander-statements": "npm run import:santander-statements -w nw-tracker-server --",
+    "import:lider-movements": "npm run import:lider-movements -w nw-tracker-server --",
+    "import:santander-receipts": "npm run import:santander-receipts -w nw-tracker-server --",
+    "convert:cc-payment-mirrors": "npm run convert:cc-payment-mirrors -w nw-tracker-server --",
+    "fetch:racional": "npm --prefix scraper run fetch:racional --",
+    "import:racional-movements": "npm run import:racional-movements -w nw-tracker-server --",
+    "fetch:emails": "npm --prefix scraper run fetch:emails --",
+    "check:broker-emails": "npm run check:broker-emails -w nw-tracker-server --",
+    "import:fintual-emails": "npm run import:fintual-emails -w nw-tracker-server --",
+    "daily-run": "scraper/daily-run.sh"
   }
 }
