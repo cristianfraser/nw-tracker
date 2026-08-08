@@ -215,7 +215,8 @@
     "projections": "Projections",
     "wealthPercentile": "Wealth percentile",
     "rates": "Exchange rates",
-    "watchlist": "Watchlist"
+    "watchlist": "Watchlist",
+    "flowsExpensesGroceries": "Groceries"
   },
   "panel": {
     "layoutTitle": "Control panel",
@@ -1474,5 +1475,65 @@
   "retirement": {
     "afpAfc": "AFP + AFC",
     "apv": "APV"
+  },
+  "groceries": {
+    "title": "Groceries",
+    "intro": "Receipts from the Boleta Digital e-mails, item by item. Classify printed names into products once; price history builds on the cleaned catalog.",
+    "cleaning": {
+      "title": "Unclassified names",
+      "intro": "Each row is a printed name (or barcode) not yet linked to a product. Select rows and assign them to an existing product, or create one.",
+      "colName": "Printed name",
+      "colBarcode": "Barcode",
+      "colOccurrences": "Purchases",
+      "colLastSeen": "Last seen",
+      "colLastPrice": "Last price",
+      "colSuggestions": "Suggestions",
+      "assignSelected": "Assign {{count}} selected to",
+      "existingProduct": "Existing product…",
+      "newProductPlaceholder": "New product name",
+      "assign": "Assign",
+      "create": "Create + assign",
+      "allClassified": "Everything is classified.",
+      "assignedResult": "{{stamped}} purchase(s) classified."
+    },
+    "products": {
+      "title": "Products",
+      "colProduct": "Product",
+      "colAliases": "Names",
+      "colPurchases": "Purchases",
+      "colLastPurchased": "Last purchase",
+      "colLastPrice": "Last price",
+      "none": "No products yet — classify names above."
+    },
+    "history": {
+      "title": "Price history",
+      "priceEffective": "Effective price",
+      "priceList": "List price",
+      "filterBranch": "Branch",
+      "filterCity": "City",
+      "all": "All",
+      "colDate": "Date",
+      "colBranch": "Branch",
+      "colQty": "Qty",
+      "colUnitPrice": "Unit price",
+      "colEffective": "Effective",
+      "colTotal": "Total",
+      "colDiscount": "Discount",
+      "perKg": "/kg",
+      "pickProduct": "Pick a product to see its price history."
+    },
+    "receipts": {
+      "title": "Receipts",
+      "colDate": "Date",
+      "colBranch": "Branch",
+      "colCity": "City",
+      "colTotal": "Total",
+      "colCardPaid": "Card",
+      "colItems": "Items",
+      "colClassified": "Classified",
+      "showItems": "View items",
+      "hideItems": "Hide items",
+      "none": "No receipts imported yet."
+    }
   }
 }

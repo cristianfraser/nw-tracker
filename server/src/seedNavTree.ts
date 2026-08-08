@@ -586,6 +586,24 @@ export function seedNavTree(): void {
       const stale = groupIdBySlug.get("flows_expenses_real_estate") as { id: number } | undefined;
       if (stale) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(stale.id);
     }
+    // "Supermercado" (grocery receipts + product catalog) only exists once boletas have been
+    // imported — same data-driven rule as the real-estate node above.
+    const hasGroceryReceipts =
+      (db.prepare(`SELECT COUNT(*) AS c FROM grocery_receipts`).get() as { c: number }).c > 0;
+    if (hasGroceryReceipts) {
+      upsert({
+        slug: "flows_expenses_groceries",
+        label: "Supermercado",
+        label_i18n_key: "sidebar.flowsExpensesGroceries",
+        parent_slug: "flows_expenses",
+        sort_order: 5,
+        route_path: "/flows/expenses/groceries",
+        active_prefix: "/flows/expenses/groceries",
+      });
+    } else {
+      const staleGroceries = groupIdBySlug.get("flows_expenses_groceries") as { id: number } | undefined;
+      if (staleGroceries) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(staleGroceries.id);
+    }
     upsert({
       slug: "flows_deposits",
       label: "Depósitos",

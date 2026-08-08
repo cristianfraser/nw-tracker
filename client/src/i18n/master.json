@@ -713,6 +713,10 @@
     "watchlist": {
       "en": "Watchlist",
       "es": "Watchlist"
+    },
+    "flowsExpensesGroceries": {
+      "en": "Groceries",
+      "es": "Supermercado"
     }
   },
   "panel": {
@@ -5217,6 +5221,216 @@
     "apv": {
       "en": "APV",
       "es": "APV"
+    }
+  },
+  "groceries": {
+    "title": {
+      "en": "Groceries",
+      "es": "Supermercado"
+    },
+    "intro": {
+      "en": "Receipts from the Boleta Digital e-mails, item by item. Classify printed names into products once; price history builds on the cleaned catalog.",
+      "es": "Boletas de los correos Boleta Digital, ítem por ítem. Clasifica los nombres impresos en productos una vez; el historial de precios se construye sobre el catálogo limpio."
+    },
+    "cleaning": {
+      "title": {
+        "en": "Unclassified names",
+        "es": "Nombres sin clasificar"
+      },
+      "intro": {
+        "en": "Each row is a printed name (or barcode) not yet linked to a product. Select rows and assign them to an existing product, or create one.",
+        "es": "Cada fila es un nombre impreso (o código de barras) aún sin producto. Selecciona filas y asígnalas a un producto existente, o crea uno."
+      },
+      "colName": {
+        "en": "Printed name",
+        "es": "Nombre impreso"
+      },
+      "colBarcode": {
+        "en": "Barcode",
+        "es": "Código"
+      },
+      "colOccurrences": {
+        "en": "Purchases",
+        "es": "Compras"
+      },
+      "colLastSeen": {
+        "en": "Last seen",
+        "es": "Última vez"
+      },
+      "colLastPrice": {
+        "en": "Last price",
+        "es": "Último precio"
+      },
+      "colSuggestions": {
+        "en": "Suggestions",
+        "es": "Sugerencias"
+      },
+      "assignSelected": {
+        "en": "Assign {{count}} selected to",
+        "es": "Asignar {{count}} seleccionadas a"
+      },
+      "existingProduct": {
+        "en": "Existing product…",
+        "es": "Producto existente…"
+      },
+      "newProductPlaceholder": {
+        "en": "New product name",
+        "es": "Nombre del producto nuevo"
+      },
+      "assign": {
+        "en": "Assign",
+        "es": "Asignar"
+      },
+      "create": {
+        "en": "Create + assign",
+        "es": "Crear + asignar"
+      },
+      "allClassified": {
+        "en": "Everything is classified.",
+        "es": "Todo está clasificado."
+      },
+      "assignedResult": {
+        "en": "{{stamped}} purchase(s) classified.",
+        "es": "{{stamped}} compra(s) clasificadas."
+      }
+    },
+    "products": {
+      "title": {
+        "en": "Products",
+        "es": "Productos"
+      },
+      "colProduct": {
+        "en": "Product",
+        "es": "Producto"
+      },
+      "colAliases": {
+        "en": "Names",
+        "es": "Nombres"
+      },
+      "colPurchases": {
+        "en": "Purchases",
+        "es": "Compras"
+      },
+      "colLastPurchased": {
+        "en": "Last purchase",
+        "es": "Última compra"
+      },
+      "colLastPrice": {
+        "en": "Last price",
+        "es": "Último precio"
+      },
+      "none": {
+        "en": "No products yet — classify names above.",
+        "es": "Aún no hay productos — clasifica nombres arriba."
+      }
+    },
+    "history": {
+      "title": {
+        "en": "Price history",
+        "es": "Historial de precios"
+      },
+      "priceEffective": {
+        "en": "Effective price",
+        "es": "Precio efectivo"
+      },
+      "priceList": {
+        "en": "List price",
+        "es": "Precio de lista"
+      },
+      "filterBranch": {
+        "en": "Branch",
+        "es": "Sucursal"
+      },
+      "filterCity": {
+        "en": "City",
+        "es": "Ciudad"
+      },
+      "all": {
+        "en": "All",
+        "es": "Todas"
+      },
+      "colDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colBranch": {
+        "en": "Branch",
+        "es": "Sucursal"
+      },
+      "colQty": {
+        "en": "Qty",
+        "es": "Cant."
+      },
+      "colUnitPrice": {
+        "en": "Unit price",
+        "es": "Precio unitario"
+      },
+      "colEffective": {
+        "en": "Effective",
+        "es": "Efectivo"
+      },
+      "colTotal": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "colDiscount": {
+        "en": "Discount",
+        "es": "Descuento"
+      },
+      "perKg": {
+        "en": "/kg",
+        "es": "/kg"
+      },
+      "pickProduct": {
+        "en": "Pick a product to see its price history.",
+        "es": "Elige un producto para ver su historial de precios."
+      }
+    },
+    "receipts": {
+      "title": {
+        "en": "Receipts",
+        "es": "Boletas"
+      },
+      "colDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colBranch": {
+        "en": "Branch",
+        "es": "Sucursal"
+      },
+      "colCity": {
+        "en": "City",
+        "es": "Ciudad"
+      },
+      "colTotal": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "colCardPaid": {
+        "en": "Card",
+        "es": "Tarjeta"
+      },
+      "colItems": {
+        "en": "Items",
+        "es": "Ítems"
+      },
+      "colClassified": {
+        "en": "Classified",
+        "es": "Clasificados"
+      },
+      "showItems": {
+        "en": "View items",
+        "es": "Ver ítems"
+      },
+      "hideItems": {
+        "en": "Hide items",
+        "es": "Ocultar ítems"
+      },
+      "none": {
+        "en": "No receipts imported yet.",
+        "es": "Aún no hay boletas importadas."
+      }
     }
   }
 }
