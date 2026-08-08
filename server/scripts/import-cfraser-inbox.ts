@@ -43,6 +43,7 @@ import {
   resolveCfraserOrganizeManifestPath,
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
+import { hasStagedBoletaPdfs } from "../src/liderBoletasImport.js";
 import { listStagedReceiptFiles } from "../src/santanderCcPaymentReceipts.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
 import {
@@ -387,6 +388,18 @@ function main(): void {
       ["run", "import:fintual-cert", "-w", "nw-tracker-server"]
     );
     if (code !== 0) process.exit(code);
+  }
+
+  // Lider «Boleta Digital» receipts staged by fetch:lider-boletas: parse the PDFs (fail-fast)
+  // and import — grocery receipt+items always, an open-month card line when paid with the
+  // Lider card. The staged dirs are the permanent corpus; import is idempotent.
+  if (hasStagedBoletaPdfs()) {
+    const boletaArgs = ["run", "import:lider-boletas", "-w", "nw-tracker-server"];
+    if (dryRun) boletaArgs.push("--", "--dry-run");
+    const code = runStep(`Import Lider boletas${dryRun ? " (dry run)" : ""}`, "npm", boletaArgs);
+    if (code !== 0) process.exit(code);
+  } else {
+    console.log("\n=== Lider boletas (none staged) ===");
   }
 
   // Lider BCI «últimos movimientos» CSV, dropped in the inbox by its own scheduled fetch.

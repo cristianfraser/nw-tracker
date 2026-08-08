@@ -4,6 +4,8 @@ export type ImportBatchKind =
   | "cc_web_paste"
   /** Same lines as a web paste, but fetched from the bank's own API by `scraper/`. */
   | "cc_santander_fetch"
+  /** One line per card-paid Lider boleta e-mail (the grocery-receipt importer). */
+  | "cc_lider_boleta"
   /** Same lines as a web paste, from the scheduled Lider «últimos movimientos» CSV drop. */
   | "cc_lider_fetch"
   | "cuenta_vista_web_paste"
