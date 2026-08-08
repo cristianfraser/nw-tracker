@@ -13,8 +13,9 @@
     />
     <script>
       // Cloudflare Web Analytics — loaded only when a site token was substituted at build
-      // time (VITE_CF_ANALYTICS_TOKEN, set on the hosted demo). Vite leaves the literal
-      // placeholder when the var is unset, so local dev and the demo rehearsal send nothing.
+      // time (VITE_CF_ANALYTICS_TOKEN, set on the hosted demo; vite.config defaults it to
+      // "" elsewhere), so local dev and the demo rehearsal send nothing. The %-guard covers
+      // any context that serves this file without Vite's env substitution.
       // The token is public by design: it names the site, not the account.
       // Counts undercount by design — the beacon host is on common blocklists. The
       // authoritative visit numbers are the server's own (server/src/demoAnalytics.ts).
