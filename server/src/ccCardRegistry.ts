@@ -32,6 +32,12 @@ export type CcCardRegistry = {
    * statements and must NOT trip the tag.
    */
   additional_card_last4s: readonly string[];
+  /**
+   * Boleta «SUC:» header → the bank's merchant string for that store (statement convention,
+   * without the `(T)` suffix). Lets a boleta-derived open-month line carry the exact dedupe
+   * key the card feed/statement will print. Unknown sucursales are reported, never guessed.
+   */
+  boleta_sucursal_merchants: Readonly<Record<string, string>>;
 };
 
 const EMPTY_REGISTRY: CcCardRegistry = {
@@ -43,6 +49,7 @@ const EMPTY_REGISTRY: CcCardRegistry = {
   reconcile_skip_last4s: [],
   reconcile_primary_last4s: [],
   additional_card_last4s: [],
+  boleta_sucursal_merchants: {},
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

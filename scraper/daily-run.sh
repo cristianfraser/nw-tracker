@@ -138,6 +138,16 @@ else
   step "Santander e-mail documents" npm run fetch:santander-docs
 fi
 
+# 1b. Lider «Boleta Digital» receipt PDFs from Gmail — the daily source for Lider purchases
+#     (the 08:00 CSV scrape is retired 2026-08-07; non-Lider charges on the card arrive with
+#     the monthly statement, or by hand-paste). Staged per message id; the inbox pipeline
+#     parses and imports them right after.
+if [[ "$DRY_RUN" == "1" ]]; then
+  step "Lider boletas (dry run)" npm run fetch:lider-boletas -- --dry-run
+else
+  step "Lider boletas" npm run fetch:lider-boletas
+fi
+
 # 2. Inbox pipeline: organizes + parses + imports Santander statement PDFs, checking cartolas,
 #    a Fintual certificado, AND the Lider «últimos movimientos» CSV that the separate ~08:00
 #    scheduled task drops in cfraser/inbox/.

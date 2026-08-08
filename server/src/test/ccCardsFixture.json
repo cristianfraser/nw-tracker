@@ -29,5 +29,8 @@
   ],
   "additional_card_last4s": [
     "4999"
-  ]
+  ],
+  "boleta_sucursal_merchants": {
+    "CALLE FICTICIA #123": "EXPRESS FICTICIA, SANTIAGO"
+  }
 }
