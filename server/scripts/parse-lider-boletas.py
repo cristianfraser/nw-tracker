@@ -12,10 +12,16 @@ Two templates exist in the corpus (2025-07 → today):
   * delivery (lider.cl domicilio): columnar — EAN alone on a line, then `4x3.290  DESC $1x.xxx`;
     totals TOTAL NETO / TOTAL IVA; may pay partially with «PESOS MICLUB CANJEADOS».
 
-Discount lines (`RF …  -520`, `DESCUENTO …  -3.990`) attach to the preceding item. Payments are
-collected as legs (TARJETA LIDER BCI / LIDERBCI, EFECTIVO net of VUELTO, MICLUB canjeados) and
-the parse FAILS unless sum(items) - sum(discounts) == sum(payments) — a boleta that does not
-balance must surface, not import.
+Discounts come in two scopes and MUST not be conflated (a receipt-level rebate folded into
+the last item corrupts that product's effective price): a discount line printed DIRECTLY under
+an item (no blank line) is product info and attaches to it (`RF Precio Antes Ahora`, `RF Lleve
+N x $`, per-unit `DESCUENTO RNR`, a fee's own `DESCUENTO DESPACHO`); a discount separated from
+the last item by a blank line — `RF CANJE PESOS MCL` (Mi Club points redeemed), `RF 10% DSCTO
+BCI CUPON` — is receipt-level and lands in `receipt_discounts`. `CANJE PESOS MCL` is forced
+receipt-level regardless of position (points are never product info). Payments are collected
+as legs (TARJETA LIDER BCI / LIDERBCI, EFECTIVO net of VUELTO, MICLUB canjeados) and the parse
+FAILS unless sum(items) - item discounts - receipt discounts == sum(payments) — a boleta that
+does not balance must surface, not import.
 """
 from __future__ import annotations
 
@@ -30,7 +36,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STAGED_DIR = REPO_ROOT / "cfraser" / "lider-boletas" / "staged"
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2
 
 RE_SUC = re.compile(r"^\s*SUC:\s*(.+?)\s*$")
 RE_CITY = re.compile(r"^\s*([A-ZÑÁÉÍÓÚ .]+?)(?:\s*-\s*([A-ZÑÁÉÍÓÚ .]+?))?\s*$")
@@ -85,6 +91,7 @@ class Parsed:
     purchased_at: str
     template: str
     items: list[Item]
+    receipt_discounts: list[dict]
     payments: list[dict]
     total_printed_clp: int | None
     articles_declared: int | None
@@ -122,7 +129,9 @@ def parse_boleta_text(text: str) -> Parsed:
     # Items: from the Fecha line to the first totals marker.
     fecha_idx = next(i for i, l in enumerate(lines) if RE_FECHA.search(l))
     items: list[Item] = []
+    receipt_discounts: list[dict] = []
     pending_barcode: str | None = None
+    blank_since_entry = True
     end_idx = len(lines)
     for i in range(fecha_idx + 1, len(lines)):
         line = lines[i]
@@ -131,7 +140,10 @@ def parse_boleta_text(text: str) -> Parsed:
             break
         stripped = line.strip()
         if not stripped or RE_COLUMN_HEADER.match(line):
+            blank_since_entry = True
             continue
+        was_blank = blank_since_entry
+        blank_since_entry = False
         m = RE_CODIGO.match(line) or (RE_EAN_ALONE.match(line) if template == "delivery" else None)
         if m:
             pending_barcode = m.group(1)
@@ -163,10 +175,15 @@ def parse_boleta_text(text: str) -> Parsed:
         m = RE_DISCOUNT.match(line)
         if m:
             label, amount = m.group(1).strip(), clp(m.group(2))
-            if not items:
-                raise BoletaParseError(f"discount line with no preceding item: {stripped!r}")
-            items[-1].discount_clp += amount
-            items[-1].discount_labels.append(label)
+            # Receipt scope: blank-line-separated from the last item (both templates print
+            # product promos directly under their item), no item yet, or a Mi Club canje —
+            # points redemptions are never product info, wherever they print.
+            receipt_scope = was_blank or not items or "CANJE PESOS MCL" in label.upper()
+            if receipt_scope:
+                receipt_discounts.append({"label": label, "amount_clp": amount})
+            else:
+                items[-1].discount_clp += amount
+                items[-1].discount_labels.append(label)
             continue
         raise BoletaParseError(f"unrecognised line in item section: {stripped!r}")
 
@@ -222,7 +239,11 @@ def parse_boleta_text(text: str) -> Parsed:
     artic = RE_ARTIC.search(text)
     points = RE_MI_CLUB_POINTS.search(text)
 
-    items_sum = sum(i.total_clp for i in items) - sum(i.discount_clp for i in items)
+    items_sum = (
+        sum(i.total_clp for i in items)
+        - sum(i.discount_clp for i in items)
+        - sum(d["amount_clp"] for d in receipt_discounts)
+    )
     pay_sum = sum(p["amount_clp"] for p in payments)
     if items_sum != pay_sum:
         raise BoletaParseError(f"does not balance: items-discounts={items_sum} vs payments={pay_sum}")
@@ -238,6 +259,7 @@ def parse_boleta_text(text: str) -> Parsed:
         purchased_at=purchased_at,
         template=template,
         items=items,
+        receipt_discounts=receipt_discounts,
         payments=payments,
         total_printed_clp=total_printed,
         articles_declared=int(artic.group(1)) if artic else None,

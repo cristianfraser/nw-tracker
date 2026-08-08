@@ -67,6 +67,8 @@ type ParsedBoleta = {
   purchased_at: string;
   template: string;
   items: ParsedBoletaItem[];
+  /** Receipt-scope rebates (Mi Club canje, whole-receipt coupons) — never product info. */
+  receipt_discounts?: { label: string; amount_clp: number }[];
   payments: { method: string; amount_clp: number }[];
   total_printed_clp: number | null;
   articles_declared: number | null;
@@ -107,13 +109,17 @@ function totalClp(parsed: ParsedBoleta): number {
 const upsertReceipt = db.prepare(
   `INSERT INTO grocery_receipts (
      source, source_key, receipt_number, store_chain, branch, city, purchased_at,
-     total_clp, discount_total_clp, payments_json, card_paid_clp, mi_club_points
+     total_clp, discount_total_clp, receipt_discount_clp, receipt_discounts_json,
+     payments_json, card_paid_clp, mi_club_points
    ) VALUES (@source, @source_key, @receipt_number, @store_chain, @branch, @city, @purchased_at,
-     @total_clp, @discount_total_clp, @payments_json, @card_paid_clp, @mi_club_points)
+     @total_clp, @discount_total_clp, @receipt_discount_clp, @receipt_discounts_json,
+     @payments_json, @card_paid_clp, @mi_club_points)
    ON CONFLICT(source_key) DO UPDATE SET
      receipt_number = excluded.receipt_number, store_chain = excluded.store_chain,
      branch = excluded.branch, city = excluded.city, purchased_at = excluded.purchased_at,
      total_clp = excluded.total_clp, discount_total_clp = excluded.discount_total_clp,
+     receipt_discount_clp = excluded.receipt_discount_clp,
+     receipt_discounts_json = excluded.receipt_discounts_json,
      payments_json = excluded.payments_json, card_paid_clp = excluded.card_paid_clp,
      mi_club_points = excluded.mi_club_points`
 );
@@ -187,6 +193,10 @@ function upsertBoletaReceipt(staged: StagedBoleta): { receiptId: number; classif
     purchased_at: parsed.purchased_at,
     total_clp: totalClp(parsed),
     discount_total_clp: parsed.items.reduce((s, i) => s + i.discount_clp, 0),
+    receipt_discount_clp: (parsed.receipt_discounts ?? []).reduce((s, d) => s + d.amount_clp, 0),
+    receipt_discounts_json: parsed.receipt_discounts?.length
+      ? JSON.stringify(parsed.receipt_discounts)
+      : null,
     payments_json: JSON.stringify(parsed.payments),
     card_paid_clp: cardPaidClp(parsed),
     mi_club_points: parsed.mi_club_points,
