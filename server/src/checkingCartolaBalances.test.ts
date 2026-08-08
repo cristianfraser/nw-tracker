@@ -12,6 +12,7 @@ import {
   clearCheckingLedgerAnchor,
   defaultCheckingLedgerAnchorDate,
   ensureCheckingLedgerAnchor,
+  getCartolaDerivedAnchor,
   getCheckingLedgerAnchor,
   upsertCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
@@ -272,5 +273,47 @@ describe("checkingCartolaBalances", () => {
 
       cleanupAnchorFixture(accountId);
     });
+  });
+});
+
+describe("cartola-derived anchor with transfer legs", () => {
+  // Regression (2026-08-06): the derivation summed `MOVEMENT_CLP_LEG_SQL` over
+  // `WHERE account_id = ?`, so it missed every transfer leg — a transfer row carries the account
+  // in from_/to_account_id with account_id NULL, and `NULL = ?` never matches. On the real cuenta
+  // vista that hid 260 legs worth −1x.xxx.xxx: the anchor derived to −1x.xxx.xxx instead of
+  // +1.074 and the account's balance read −1x.xxx.xxx instead of 0. It only surfaced when a newly
+  // imported cartola advanced the latest period month and triggered a re-derivation.
+  it("derives an anchor that makes the balance equal the cartola saldo final", () => {
+    const accountId = createSyntheticAnchorAccount();
+    const counterpartId = createSyntheticAnchorAccount();
+    try {
+      // One single-leg credit and one OUTBOUND transfer leg (account_id NULL — the shape the
+      // broken query dropped). Net movement effect: +5x.xxx − 3x.xxx = +20.000.
+      db.prepare(
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+         VALUES (?, 50000, 'clp', ?, 'import:cartola|2099-01|1|abono')`
+      ).run(accountId, `${TEST_MONTH_EARLY}-15`);
+      db.prepare(
+        `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note)
+         VALUES (?, ?, 30000, 'clp', ?, 'vitest transfer leg')`
+      ).run(accountId, counterpartId, `${TEST_MONTH_EARLY}-20`);
+
+      seedCartolaImport(accountId, TEST_MONTH_EARLY, 75000);
+      const derived = getCartolaDerivedAnchor(accountId);
+      expect(derived).not.toBeNull();
+      // saldo final 7x.xxx − net movements 2x.xxx = 5x.xxx (a query blind to the transfer leg
+      // would have said 7x.xxx − 5x.xxx = 2x.xxx).
+      expect(derived!.amount_clp).toBe(55000);
+
+      upsertCheckingLedgerAnchor(accountId, {
+        amount_clp: derived!.amount_clp,
+        occurred_on: derived!.occurred_on,
+      });
+      clearCheckingBalanceCache(accountId);
+      expect(checkingMovementBalanceClpAt(accountId, monthEndUtcYmd(TEST_MONTH_EARLY))).toBe(75000);
+    } finally {
+      destroySyntheticAnchorAccount(accountId);
+      destroySyntheticAnchorAccount(counterpartId);
+    }
   });
 });

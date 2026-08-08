@@ -8,12 +8,12 @@ import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ym
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
-  MOVEMENT_CLP_LEG_SQL,
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { sumClpThroughDate } from "./movementTransfer.js";
+import { signedClpDeltaForAccountMovement, sumClpThroughDate } from "./movementTransfer.js";
+import type { MovementTransferRow } from "./movementTransfer.js";
 
 const BALANCE_CACHE_TTL_MS = 30_000;
 const balanceCache = new Map<string, { balance: number; expiresAt: number }>();
@@ -253,24 +253,43 @@ function getLatestCartolaSaldoFinal(
   return { period_month: row.period_month, saldo_final_clp: Math.round(row.saldo_final_clp) };
 }
 
-/** Sum movements excluding anchor and legacy opening rows (through `asOfYmd` inclusive). */
+/**
+ * Sum movements excluding anchor and legacy opening rows (through `asOfYmd` inclusive).
+ *
+ * MUST use the same transfer-aware, signed accounting as the balance reader
+ * (`sumClpThroughDate` → `signedClpDeltaForAccountMovement`), because the anchor exists precisely
+ * to make that reader land on the cartola's saldo final. The previous implementation summed
+ * `MOVEMENT_CLP_LEG_SQL` over `WHERE account_id = ?`, which is wrong twice over: a transfer row
+ * carries the account in `from_account_id`/`to_account_id` with `account_id` **NULL** (and
+ * `NULL <> 41` is not true in SQL, so those rows vanished from the filter entirely), and the CLP
+ * leg is unsigned so an outbound transfer would have counted as an inflow anyway.
+ *
+ * On the cuenta vista that was the whole ledger: 260 transfer legs summing −1x.xxx.xxx were
+ * invisible, so the derived anchor came out −1x.xxx.xxx instead of +1.074 and the account's final
+ * balance read −1x.xxx.xxx instead of 0. It only surfaced when a newly imported cartola advanced
+ * the latest period month and triggered a re-derivation over an anchor that had been correct for
+ * months.
+ */
 function sumNonAnchorMovementsClpAt(
   accountId: number,
   asOfYmd: string,
   dbHandle: Database = db
 ): number {
-  const row = dbHandle
+  const rows = dbHandle
     .prepare(
-      `SELECT COALESCE(SUM(${MOVEMENT_CLP_LEG_SQL}), 0) AS total
+      `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, flow_kind
        FROM movements
-       WHERE account_id = ? AND occurred_on <= ?
+       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
+         AND occurred_on <= ?
          AND (note IS NULL OR (
            note NOT LIKE 'import:cartola|anchor|%'
            AND note NOT LIKE 'import:cartola|opening|%'
          ))`
     )
-    .get(accountId, asOfYmd) as { total: number };
-  return Math.round(Number(row.total));
+    .all(accountId, accountId, accountId, asOfYmd) as MovementTransferRow[];
+  let total = 0;
+  for (const row of rows) total += signedClpDeltaForAccountMovement(row, accountId);
+  return Math.round(total);
 }
 
 function computeDerivedAnchorAmount(
