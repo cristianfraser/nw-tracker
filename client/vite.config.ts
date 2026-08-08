@@ -2,6 +2,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { resolveVersionInfo } from "../scripts/version-info.mjs";
 
+// Cloudflare Web Analytics token, substituted into %VITE_CF_ANALYTICS_TOKEN% in
+// index.html. Default to "" so Vite doesn't warn about an undefined var on every
+// index.html transform in local dev/build; the hosted demo's real env var (render.yaml)
+// takes precedence over this default.
+process.env.VITE_CF_ANALYTICS_TOKEN ??= "";
+
 const apiProxy = {
   "/api": {
     target: process.env.NW_TRACKER_API_PROXY_TARGET ?? "http://localhost:3001",
