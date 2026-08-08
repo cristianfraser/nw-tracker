@@ -6,9 +6,13 @@ import {
   newWebPasteBatchId,
   parseCcWebPasteText,
   creditCardMasterMetaForAccount,
+  type CcWebPasteParseResult,
 } from "./ccWebPasteParse.js";
 import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import { applyWebPasteInstallmentFirstDueNudges } from "./ccWebPasteInstallmentNudge.js";
+import { removeTruncatedMerchantDuplicateLines } from "./ccTruncatedMerchantDedupe.js";
+import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
   checkingAccountId,
   importCheckingCartola,
@@ -18,7 +22,7 @@ import { parseCheckingCartolaBuffer, periodMonthFromCartolaFileName } from "./ch
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { parseCuentaVistaWebPasteText } from "./cuentaVistaWebPasteParse.js";
 import { isUltimosMovimientosWorkbook, parseUltimosMovimientosRows } from "./checkingUltimosMovimientosParse.js";
-import { createImportBatch } from "./importBatches.js";
+import { createImportBatch, type ImportBatchKind } from "./importBatches.js";
 import type {
   CcImportFlowItem,
   SkippedCcImportFlowItem,
@@ -37,12 +41,24 @@ function assertCreditCardAccount(accountId: number): void {
   }
 }
 
-export function importCcWebPaste(accountId: number, text: string) {
+/**
+ * Import already-parsed web-paste lines.
+ *
+ * Shared by the manual paste and the Santander fetcher: both produce `CcWebPasteLine[]`, and every
+ * behaviour that matters downstream — dedupe keys, installment overlap, first-due nudges, the batch
+ * log — lives here so the two entry points cannot drift apart.
+ *
+ * @param batchKind `import_batches` kind, so a fetched import is distinguishable from a pasted one.
+ */
+export function importCcWebPasteLines(
+  accountId: number,
+  parsed: CcWebPasteParseResult,
+  batchKind: ImportBatchKind = "cc_web_paste"
+) {
   assertCreditCardAccount(accountId);
   const meta = creditCardMasterMetaForAccount(accountId);
   if (!meta) throw new Error("Not a credit card master account");
 
-  const parsed = parseCcWebPasteText(text);
   if (parsed.lines.length === 0) {
     return {
       batch_id: null,
@@ -71,15 +87,27 @@ export function importCcWebPaste(accountId: number, text: string) {
   // facturación and the projected months bill the cuota in the right cycle.
   const firstDueNudges = applyWebPasteInstallmentFirstDueNudges(accountId, parsed.lines);
 
+  // The scraper feed and a manual web paste describe the same transaction with different merchant
+  // widths, so the one-shot key cannot collapse them; this runs after every write (either source)
+  // and drops the truncated re-listing once its fuller twin exists.
+  const truncatedDedupe = removeTruncatedMerchantDuplicateLines(accountId);
+  if (truncatedDedupe.removed_count > 0) {
+    upsertCreditCardValuationsFromLedger(accountId, {
+      affectedEvidenceFromYmd: truncatedDedupe.removed_from_date,
+    });
+    recomputeCcBillingMonthBalances(accountId);
+  }
+
   // Per-line arrays stay out of the batch log — counters only.
   const { inserted_flows, skipped_flows, ...statementCounters } = merged.statements;
-  const batch_id = createImportBatch("cc_web_paste", `web-paste|${batchId}`, {
+  const batch_id = createImportBatch(batchKind, `web-paste|${batchId}`, {
     account_id: accountId,
     lines_parsed: parsed.lines.length,
     ...statementCounters,
     skipped_duplicate_in_paste: skipped_in_paste.length,
     ledger: merged.ledger,
     installment_first_due_nudges: firstDueNudges,
+    truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
     parse_errors: parsed.errors,
   });
 
@@ -93,6 +121,7 @@ export function importCcWebPaste(accountId: number, text: string) {
     skipped_duplicate_in_paste: skipped_in_paste.length,
     overlap_removed: merged.overlap_removed ?? 0,
     installment_first_due_nudges: firstDueNudges,
+    truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
     inserted_flows,
     skipped_flows: [
       ...skipped_flows,
@@ -100,6 +129,11 @@ export function importCcWebPaste(accountId: number, text: string) {
     ],
     parse_errors: parsed.errors,
   };
+}
+
+/** Manual paste from the account page: parse the pasted text, then import it. */
+export function importCcWebPaste(accountId: number, text: string) {
+  return importCcWebPasteLines(accountId, parseCcWebPasteText(text));
 }
 
 function assertCuentaVistaAccount(accountId: number): void {
