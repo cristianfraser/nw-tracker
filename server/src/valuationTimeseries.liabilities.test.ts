@@ -30,10 +30,7 @@ describe("listLiabilitiesTabAccountRows", () => {
     const ccRows = listLiabilitiesTabAccountRows("credit_card");
     if (!ccRows.length) return;
     for (const r of ccRows) {
-      const kind = db
-        .prepare(`SELECT account_kind FROM accounts WHERE id = ?`)
-        .get(r.account_id) as { account_kind: string } | undefined;
-      expect(kind?.account_kind).toBe("master");
+      expect(String(r.import_key ?? "")).toMatch(/^credit_card_master\|/);
     }
   });
 
@@ -49,32 +46,19 @@ describe("listLiabilitiesTabAccountRows", () => {
     if (!legacyMaster) return;
 
     const ccRows = listLiabilitiesTabAccountRows("credit_card");
-    const seriesIds = new Set(
-      ccRows.map((r) => {
-        const src = db
-          .prepare(`SELECT source_account_id FROM accounts WHERE id = ?`)
-          .get(r.account_id) as { source_account_id: number | null } | undefined;
-        return src?.source_account_id ?? r.account_id;
-      })
-    );
+    const seriesIds = new Set(ccRows.map((r) => r.account_id));
     expect(seriesIds.has(legacyMaster.id)).toBe(false);
     expect(ccRows.length).toBeGreaterThan(0);
   });
 
-  it("includes mortgage liability_view for hipoteca tab", () => {
+  it("includes the mortgage master for the hipoteca tab", () => {
     const mtgRows = listLiabilitiesTabAccountRows("mortgage");
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`)
       .get() as { id: number } | undefined;
     if (!master) return;
     expect(mtgRows.length).toBeGreaterThan(0);
-    const view = db
-      .prepare(
-        `SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`
-      )
-      .get(master.id) as { id: number } | undefined;
-    if (!view) return;
-    expect(mtgRows.some((r) => r.account_id === view.id)).toBe(true);
+    expect(mtgRows.some((r) => r.account_id === master.id)).toBe(true);
   });
 
   it("breakdown total matches sum of Pasivos tab account rows at a snapshot date", () => {
@@ -255,13 +239,7 @@ describe("listLiabilitiesTabAccountRows", () => {
   it("returns at most one row per operational credit card series", () => {
     const ccRows = listLiabilitiesTabAccountRows("credit_card");
     if (ccRows.length < 2) return;
-    const seriesIds: number[] = [];
-    for (const r of ccRows) {
-      const src = db
-        .prepare(`SELECT source_account_id FROM accounts WHERE id = ?`)
-        .get(r.account_id) as { source_account_id: number | null } | undefined;
-      seriesIds.push(src?.source_account_id ?? r.account_id);
-    }
+    const seriesIds = ccRows.map((r) => r.account_id);
     expect(new Set(seriesIds).size).toBe(seriesIds.length);
   });
 });

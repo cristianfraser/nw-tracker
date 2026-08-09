@@ -36,16 +36,16 @@ beforeAll(() => {
   checkingId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-         VALUES (?, 'Vitest · cc-pago checking', 'vitest-ccpago-chk', 'vitest-ccpago-chk', 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · cc-pago checking', 'vitest-ccpago-chk', 'vitest-ccpago-chk')`
       )
       .run(checkingLeaf.id).lastInsertRowid
   );
   ccId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-         VALUES (?, 'Vitest · cc-pago card', 'vitest-ccpago-card', 'vitest-ccpago-card', 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · cc-pago card', 'vitest-ccpago-card', 'vitest-ccpago-card')`
       )
       .run(ccLeaf.id).lastInsertRowid
   );

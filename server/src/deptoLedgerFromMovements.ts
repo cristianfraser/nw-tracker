@@ -47,7 +47,7 @@ type PropertyPaymentJoinRow = DeptoPaymentTableRow & MovementAmountFields & {
 function deptoPropertyAccountId(): number | null {
   const row = db
     .prepare(
-      `SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' ORDER BY id LIMIT 1`
+      `SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`
     )
     .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
   return row?.id ?? null;

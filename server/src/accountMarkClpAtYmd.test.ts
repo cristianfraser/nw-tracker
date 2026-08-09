@@ -90,7 +90,7 @@ let fixtureMortgageId: number | null = null;
 
 beforeAll(() => {
   const existing = db
-    .prepare(`SELECT 1 FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
+    .prepare(`SELECT 1 FROM accounts WHERE import_key = ?`)
     .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY);
   if (existing) return; // real depto tracked — tests run against it
 
@@ -105,21 +105,21 @@ beforeAll(() => {
   fixturePropertyId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-         VALUES (?, 'depto fixture', ?, ?, 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'depto fixture', ?, ?)`
       )
       .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY).lastInsertRowid
   );
   const hadMortgage = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
     .get(MORTGAGE_ACCOUNT_NOTES) as { id: number } | undefined;
   fixtureMortgageId = hadMortgage
     ? null
     : Number(
         db
           .prepare(
-            `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-             VALUES (?, 'depto fixture', ?, ?, 'master')`
+            `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+             VALUES (?, 'depto fixture', ?, ?)`
           )
           .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
       );
@@ -249,7 +249,7 @@ afterAll(() => {
 
 function propertyAccountRow(): { id: number } | undefined {
   return db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' LIMIT 1`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? LIMIT 1`)
     .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
 }
 
@@ -390,7 +390,7 @@ describe("depto mortgage live perf row", () => {
       .prepare(
         `SELECT a.id FROM accounts a
          JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage') AND a.account_kind = 'master'
+         WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage')
          ORDER BY (a.notes = 'import:excel|key=mortgage') DESC
          LIMIT 1`
       )
@@ -419,7 +419,7 @@ function mortgageMasterRow(): { id: number } | undefined {
     .prepare(
       `SELECT a.id FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage') AND a.account_kind = 'master'
+       WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage')
        ORDER BY (a.import_key = 'import:excel|key=mortgage') DESC
        LIMIT 1`
     )
@@ -471,16 +471,10 @@ describe("mortgage dashboard card metrics", () => {
     const perf = getAccountMonthlyPerformance(master.id, "clp");
     const cum = perf?.monthly[0]?.cumulative_nominal_pl ?? null;
 
-    const view = db
-      .prepare(
-        `SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`
-      )
-      .get(master.id) as { id: number } | undefined;
     const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
 
     let checked = 0;
-    for (const id of [master.id, view?.id]) {
-      if (id == null) continue;
+    for (const id of [master.id]) {
       const dash = rows.find((r) => r.account_id === id);
       if (!dash) continue;
       checked += 1;

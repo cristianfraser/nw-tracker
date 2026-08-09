@@ -55,16 +55,6 @@ export function seedLiabilitiesTree(): void {
     deleteGroupItems.run(ccGroupId);
     deleteGroupItems.run(mtgGroupId);
 
-    // Transitional (migration 175 companion): a pre-175 server still running during the
-    // cutover re-creates a data-less `liability_view` alias row on its next Pasivos read;
-    // sweep any such resurrected rows so the retirement is stable regardless of restart
-    // order. Views never carry movements/valuations, so the delete is always safe.
-    db.prepare(
-      `DELETE FROM liability_group_items
-       WHERE account_id IN (SELECT id FROM accounts WHERE account_kind = 'liability_view')`
-    ).run();
-    db.prepare(`DELETE FROM accounts WHERE account_kind = 'liability_view'`).run();
-
     const ccIssuerGroups = db
       .prepare(`SELECT id, slug FROM credit_card_groups ORDER BY sort_order, id`)
       .all() as { id: number; slug: string }[];

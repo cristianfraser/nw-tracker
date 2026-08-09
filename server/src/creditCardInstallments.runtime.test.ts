@@ -37,8 +37,8 @@ describe("creditCardInstallmentsResponse runtime", () => {
     const masterId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-           VALUES (?, 'Vitest · last4s fixture', ?, 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes)
+           VALUES (?, 'Vitest · last4s fixture', ?)`
         )
         .run(bucket.id, "credit_card_master|santander|9977").lastInsertRowid
     );

@@ -23,8 +23,8 @@ beforeAll(() => {
   ccId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-         VALUES (?, 'Vitest · cc-financing card', 'vitest-ccfin', 'vitest-ccfin', 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · cc-financing card', 'vitest-ccfin', 'vitest-ccfin')`
       )
       .run(ccLeaf.id).lastInsertRowid
   );

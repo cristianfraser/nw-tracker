@@ -85,8 +85,8 @@ describe("ccExpenseCategoryPersist", () => {
     const legacyId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-           VALUES (?, 'vitest-legacy-rules', 'vitest:legacy-rules', 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes)
+           VALUES (?, 'vitest-legacy-rules', 'vitest:legacy-rules')`
         )
         .run(group.id).lastInsertRowid
     );

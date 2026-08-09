@@ -43,8 +43,8 @@ describe("fintualEmailImport", () => {
     if (!group) return null;
     const mk = (name: string, ticker: string | null, importKey: string | null): number => {
       db.prepare(
-        `INSERT INTO accounts (asset_group_id, name, account_kind, exclude_from_group_totals, created_at, equity_ticker, import_key)
-         VALUES (?, ?, 'master', 0, datetime('now'), ?, ?)`
+        `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, equity_ticker, import_key)
+         VALUES (?, ?, 0, datetime('now'), ?, ?)`
       ).run(group.id, name, ticker, importKey);
       const id = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
       createdAccounts.push(id);
@@ -172,8 +172,8 @@ describe("fintualEmailImport", () => {
       | undefined;
     if (!group) return;
     db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, account_kind, exclude_from_group_totals, created_at, import_key)
-       VALUES (?, 'vitest Reserva', 'master', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva')`
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Reserva', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva')`
     ).run(group.id);
     createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
     const goalId = createdAccounts[createdAccounts.length - 1]!;
@@ -240,8 +240,8 @@ describe("fintualEmailImport", () => {
       | undefined;
     if (!group) return;
     db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, account_kind, exclude_from_group_totals, created_at, import_key)
-       VALUES (?, 'vitest Reserva3', 'master', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva3')`
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Reserva3', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva3')`
     ).run(group.id);
     createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
     db.prepare(
@@ -276,8 +276,8 @@ describe("fintualEmailImport", () => {
       | undefined;
     if (!group) return;
     db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, account_kind, exclude_from_group_totals, created_at, import_key)
-       VALUES (?, 'vitest Reserva2', 'master', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva2')`
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Reserva2', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva2')`
     ).run(group.id);
     createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
     db.prepare(

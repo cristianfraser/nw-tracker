@@ -397,7 +397,7 @@ app.get("/api/flows/expenses/real-estate/property-accounts", (_req, res) => {
       `SELECT a.id, a.name FROM accounts a
        JOIN portfolio_group_items i ON i.account_id = a.id
        JOIN portfolio_groups g ON g.id = i.portfolio_group_id
-       WHERE g.slug = 'real_estate' AND a.account_kind = 'master'
+       WHERE g.slug = 'real_estate'
        ORDER BY a.name`
     )
     .all();

@@ -25,8 +25,7 @@ function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
        FROM accounts m
        JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
        JOIN asset_groups g ON g.id = m.asset_group_id
-       WHERE m.account_kind = 'master'
-         AND m.import_key LIKE 'credit_card_master|%'
+       WHERE m.import_key LIKE 'credit_card_master|%'
          AND (m.import_key IS NULL OR m.import_key != ?)
        ORDER BY m.id, m.name`
     )
@@ -66,7 +65,6 @@ export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAcc
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (g.slug = 'mortgage' OR g.slug LIKE '%__mortgage')
-         AND a.account_kind = 'master'
          AND (a.import_key IS NULL OR a.import_key != ?)
        ORDER BY g.slug, a.id, a.name`
     )
