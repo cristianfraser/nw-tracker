@@ -1,6 +1,5 @@
 import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
@@ -53,7 +52,7 @@ function buildCreditCardGroupNode(
   group: CreditCardGroupRow,
   itemsByGroup: Map<number, CreditCardGroupItemRow[]>,
   groupsById: Map<number, CreditCardGroupRow>,
-  accountMeta: Map<number, { name: string; color_rgb: string; source_account_id: number | null }>
+  accountMeta: Map<number, { name: string; color_rgb: string }>
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
   const children: NavTreeNodeDto[] = [];
@@ -68,20 +67,18 @@ function buildCreditCardGroupNode(
       if (isSupersededSantanderCcMaster(item.account_id)) continue;
       if (isNavRetiredCcMaster(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
-      const operationalId = resolveOperationalAccountId(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
         node_id: `cc-acc.${item.account_id}`,
         slug: `credit_card_account_${item.account_id}`,
         label: meta?.name ?? `Card ${item.account_id}`,
         label_i18n_key: null,
-        route_path: `/account/${operationalId}`,
+        route_path: `/account/${item.account_id}`,
         active_prefix: null,
         nav_end: true,
         show_leaf_hyphen: true,
         account_id: item.account_id,
         portfolio_group_id: null,
-        source_account_id: meta?.source_account_id ?? null,
         expense_account_id: null,
         expense_account_slug: null,
         asset_group_slug: "credit_cards",
@@ -109,7 +106,6 @@ function buildCreditCardGroupNode(
     show_leaf_hyphen: true,
     account_id: null,
     portfolio_group_id: null,
-    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: "credit_cards",
@@ -171,7 +167,7 @@ export function listCreditCardGroupMasterAccountIds(groupSlug: string): number[]
       if (item.item_kind === "group" && item.child_group_id != null) {
         walk(item.child_group_id);
       } else if (item.item_kind === "account" && item.account_id != null) {
-        out.add(resolveOperationalAccountId(item.account_id));
+        out.add(item.account_id);
       }
     }
   }
@@ -202,25 +198,23 @@ export function getCreditCardGroupNavChildren(groupSlug: string): NavTreeNodeDto
 
   const accountMeta = new Map<
     number,
-    { name: string; color_rgb: string; source_account_id: number | null }
+    { name: string; color_rgb: string }
   >();
   if (accountIds.size > 0) {
     const ph = [...accountIds].map(() => "?").join(",");
     const rows = db
       .prepare(
-        `SELECT id, name, color_rgb, source_account_id FROM accounts WHERE id IN (${ph})`
+        `SELECT id, name, color_rgb FROM accounts WHERE id IN (${ph})`
       )
       .all(...accountIds) as {
       id: number;
       name: string;
       color_rgb: string | null;
-      source_account_id: number | null;
     }[];
     for (const r of rows) {
       accountMeta.set(r.id, {
         name: r.name,
         color_rgb: r.color_rgb ?? getAccountColorRgb(r.id),
-        source_account_id: r.source_account_id,
       });
     }
   }

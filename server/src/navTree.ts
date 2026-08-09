@@ -21,7 +21,6 @@ export type NavTreeNodeDto = {
   show_leaf_hyphen: boolean;
   account_id: number | null;
   /** Operational account when `account_id` is a liability snapshot row. */
-  source_account_id: number | null;
   portfolio_group_id: number | null;
   expense_account_id: number | null;
   expense_account_slug: string | null;
@@ -182,7 +181,6 @@ function buildNode(
         show_leaf_hyphen: true,
         account_id: item.account_id,
         portfolio_group_id: null,
-        source_account_id: null,
         expense_account_id: null,
         expense_account_slug: null,
         asset_group_slug: null,
@@ -210,7 +208,6 @@ function buildNode(
         show_leaf_hyphen: true,
         account_id: null,
         portfolio_group_id: null,
-        source_account_id: null,
         expense_account_id: item.expense_account_id,
         expense_account_slug: slug,
         asset_group_slug: null,
@@ -255,7 +252,6 @@ function buildNode(
     show_leaf_hyphen: group.show_leaf_hyphen === 1,
     account_id: null,
     portfolio_group_id: group.id,
-    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: group.asset_group_slug,

@@ -8,13 +8,11 @@ import { parseExtraOffsetsJson } from "../creditCardInstallments.js";
 import { equityReturnSnapshot } from "../equityReturns.js";
 import { type DashboardAccountStats } from "../brokerageAcciones.js";
 import { db } from "../db.js";
-import { resolveOperationalAccountId } from "../accountSource.js";
 import type { AccountPositionMeta } from "../accountPosition.js";
 
-export function operationalAccountIdFromReq(req: { params: { id?: string } }): number {
+export function accountIdFromReq(req: { params: { id?: string } }): number {
   const raw = Number(req.params.id);
-  if (!Number.isFinite(raw)) return NaN;
-  return resolveOperationalAccountId(raw);
+  return Number.isFinite(raw) ? raw : NaN;
 }
 
 /** Parses `req.query.extraOffsets`; on malformed input sends the 400 and returns null. */

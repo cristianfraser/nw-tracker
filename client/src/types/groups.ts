@@ -221,7 +221,6 @@ export interface NavTreeNodeDto {
   account_id: number | null;
   portfolio_group_id: number | null;
   /** Master account when `account_id` is a liability-view leaf (CC purchases, cupo, ledger). */
-  source_account_id: number | null;
   expense_account_id: number | null;
   expense_account_slug: string | null;
   asset_group_slug: string | null;

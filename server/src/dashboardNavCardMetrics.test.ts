@@ -44,7 +44,6 @@ function navNode(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNo
     nav_end: false,
     show_leaf_hyphen: true,
     account_id: null,
-    source_account_id: null,
     portfolio_group_id: 1,
     expense_account_id: null,
     expense_account_slug: null,

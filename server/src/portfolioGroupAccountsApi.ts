@@ -19,7 +19,7 @@ export async function listPortfolioGroupAccountsForApi(
   const rows = db
     .prepare(
       `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
-              a.source_account_id, g.slug AS bucket_slug, g.label AS bucket_label
+              g.slug AS bucket_slug, g.label AS bucket_label
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE a.id IN (${ph})

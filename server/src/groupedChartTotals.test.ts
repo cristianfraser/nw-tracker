@@ -109,7 +109,6 @@ function node(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNodeD
     nav_end: false,
     show_leaf_hyphen: false,
     account_id: partial.account_id ?? null,
-    source_account_id: partial.source_account_id ?? null,
     portfolio_group_id: partial.portfolio_group_id ?? 1,
     expense_account_id: null,
     expense_account_slug: null,

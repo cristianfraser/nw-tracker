@@ -147,28 +147,20 @@ function mortgageAccountForPropertyRow(
   allAccounts: DashboardAccountRow[],
   propertyRow: DashboardAccountRow | undefined
 ): DashboardAccountRow | undefined {
-  // Page-bundle rows carry group/bucket slugs but not category_slug; match either. The
-  // master and its liability_view both appear — dedupe by name keeping the lowest id.
-  const mortgages = allAccounts
-    .filter(
-      (a) =>
-        (a.category_slug === "mortgage" || a.group_slug === "liabilities__mortgage") &&
-        a.current_value_clp != null
-    )
-    .sort((a, b) => a.account_id - b.account_id);
-  const byNameFirst = new Map<string, DashboardAccountRow>();
-  for (const m of mortgages) {
-    const key = m.name.trim().toLowerCase();
-    if (!byNameFirst.has(key)) byNameFirst.set(key, m);
-  }
-  const unique = [...byNameFirst.values()];
-  if (!unique.length) return undefined;
+  // Page-bundle rows carry group/bucket slugs but not category_slug; match either. Prefer
+  // the mortgage sharing the property's name (e.g. both «depto»).
+  const mortgages = allAccounts.filter(
+    (a) =>
+      (a.category_slug === "mortgage" || a.group_slug === "liabilities__mortgage") &&
+      a.current_value_clp != null
+  );
+  if (!mortgages.length) return undefined;
   if (propertyRow) {
     const key = propertyRow.name.trim().toLowerCase();
-    const byName = byNameFirst.get(key);
+    const byName = mortgages.find((m) => m.name.trim().toLowerCase() === key);
     if (byName) return byName;
   }
-  return unique.length === 1 ? unique[0] : undefined;
+  return mortgages.length === 1 ? mortgages[0] : undefined;
 }
 
 function cashAccountPath(row: DashboardAccountRow): string {

@@ -1,5 +1,4 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
@@ -122,10 +121,9 @@ export function latestMortgageDisplayedBalance(
   asOfYmd: string = chileCalendarTodayYmd()
 ): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
-  const effectiveId = resolveOperationalAccountId(accountId);
-  const cat = stmtCategorySlug.get(effectiveId) as { bucket_slug: string } | undefined;
+  const cat = stmtCategorySlug.get(accountId) as { bucket_slug: string } | undefined;
   if (!cat || accountBucketKindSlug(cat.bucket_slug) !== "mortgage") {
-    return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
+    return latestValuationRowOnOrBefore(accountId, asOfYmd);
   }
   const ledger = loadDeptoLedgerFromMovements();
   if (ledger.length > 0) {
@@ -138,7 +136,7 @@ export function latestMortgageDisplayedBalance(
       }
     }
   }
-  return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
+  return latestValuationRowOnOrBefore(accountId, asOfYmd);
 }
 
 /** Pasivos snapshot for dashboard / breakdown (credit card uses live ledger when current). */
@@ -147,27 +145,25 @@ export function latestLiabilityValuationRowForSnapshot(
   categorySlug: string,
   asOfYmd: string
 ): LatestValuationRow | undefined {
-  const effectiveId = resolveOperationalAccountId(accountId);
   if (categorySlug === "credit_card") {
-    return latestCreditCardDisplayedBalance(effectiveId, asOfYmd);
+    return latestCreditCardDisplayedBalance(accountId, asOfYmd);
   }
   if (categorySlug === "mortgage") {
-    return latestMortgageDisplayedBalance(effectiveId, asOfYmd);
+    return latestMortgageDisplayedBalance(accountId, asOfYmd);
   }
-  return latestValuationRowOnOrBefore(effectiveId, asOfYmd);
+  return latestValuationRowOnOrBefore(accountId, asOfYmd);
 }
 
 /** Latest displayed balance respecting account category (credit card → live ledger, mortgage → sheet). */
 export function latestDisplayedBalanceForAccount(accountId: number): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
-  const effectiveId = resolveOperationalAccountId(accountId);
-  const cat = stmtCategorySlug.get(effectiveId) as { bucket_slug: string } | undefined;
+  const cat = stmtCategorySlug.get(accountId) as { bucket_slug: string } | undefined;
   const kind = cat ? accountBucketKindSlug(cat.bucket_slug) : "";
   if (kind === "credit_card") {
-    return latestCreditCardDisplayedBalance(effectiveId, chileCalendarTodayYmd());
+    return latestCreditCardDisplayedBalance(accountId, chileCalendarTodayYmd());
   }
   if (kind === "mortgage") {
-    return latestMortgageDisplayedBalance(effectiveId, chileCalendarTodayYmd());
+    return latestMortgageDisplayedBalance(accountId, chileCalendarTodayYmd());
   }
-  return latestValuationRowOnOrBeforeChileToday(effectiveId);
+  return latestValuationRowOnOrBeforeChileToday(accountId);
 }

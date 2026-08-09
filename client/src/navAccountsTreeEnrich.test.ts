@@ -15,7 +15,6 @@ function groupNode(slug: string, children: NavTreeNodeDto[] = []): NavTreeNodeDt
     show_leaf_hyphen: false,
     account_id: null,
     portfolio_group_id: 1,
-    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: slug,
@@ -42,7 +41,6 @@ function accountLeaf(id: number): NavTreeNodeDto {
     show_leaf_hyphen: true,
     account_id: id,
     portfolio_group_id: null,
-    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: null,
@@ -60,7 +58,7 @@ function accountLeaf(id: number): NavTreeNodeDto {
 function listRow(
   id: number,
   bucketSlug: string,
-  opts?: { source_account_id?: number; name?: string; groupSlug?: string }
+  opts?: { name?: string; groupSlug?: string }
 ): AccountListRow {
   return {
     id,
@@ -73,7 +71,6 @@ function listRow(
     group_label: bucketSlug,
     bucket_slug: bucketSlug,
     chart_inactive: true,
-    source_account_id: opts?.source_account_id,
   };
 }
 

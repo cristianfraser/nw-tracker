@@ -1,4 +1,3 @@
-import { resolveOperationalAccountId } from "./accountSource.js";
 import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
 import type { CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
@@ -23,7 +22,7 @@ function resolveCcMasterAccountIds(portfolioGroupSlug: string): number[] {
   }
   if (portfolioGroupSlug === "liabilities_credit_card" || portfolioGroupSlug === "liabilities") {
     return listLiabilitiesTabAccountRows("credit_card").map((r) =>
-      resolveOperationalAccountId(r.account_id)
+      r.account_id
     );
   }
   return [];

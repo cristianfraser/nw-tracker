@@ -10,7 +10,7 @@ import { isDeptoMortgagePaymentCuota, mortgageMetaFromSheetRows } from "../depto
 import { buildDeptoPaymentScenarioRows } from "../mortgageScenarioPayments.js";
 import { accountKindSlugForAccountId } from "../accountBucket.js";
 import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
-import { operationalAccountIdFromReq } from "./shared.js";
+import { accountIdFromReq } from "./shared.js";
 
 export function registerMortgageRoutes(app: express.Express): void {
   // UF-timing reminder for the CC-paid Depto mortgage cuota (global toast). Cheap indexed
@@ -20,7 +20,7 @@ export function registerMortgageRoutes(app: express.Express): void {
   });
 
 app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -57,7 +57,7 @@ app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
 });
 
 app.post("/api/accounts/:id/mortgage-payments/preview", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   try {
     const input = parseMortgagePaymentBody(req.body as Record<string, unknown>);
     const preview = previewMortgagePayment(id, input);
@@ -68,7 +68,7 @@ app.post("/api/accounts/:id/mortgage-payments/preview", (req, res) => {
 });
 
 app.post("/api/accounts/:id/mortgage-payments", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   try {
     const input = parseMortgagePaymentBody(req.body as Record<string, unknown>);
     const result = commitMortgagePayment(id, input);
