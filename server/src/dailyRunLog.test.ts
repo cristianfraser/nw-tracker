@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   DAILY_RUN_FAILED_TITLE,
@@ -62,7 +63,10 @@ describe("dailyRunLog", () => {
     recordDailyRun([{ label: "fetch Santander", ok: true }]);
     const at = lastDailyRunAt({ successOnly: true });
     expect(at).not.toBeNull();
-    const ymd = String(at).slice(0, 10);
+    // `created_at` is stored UTC; the implementation compares Chile days, so derive the same
+    // Chile day here — slicing the raw timestamp reads the NEXT day once it is past UTC
+    // midnight (21:00 Chile at -4), which made this assertion fail late in the evening.
+    const ymd = chileWallClockAt(new Date(`${String(at).replace(" ", "T")}Z`)).ymd;
 
     // Same day → not stale; four days later → four missed nights, and the body says so.
     expect(staleDailyRunDays(ymd)).toBe(0);
