@@ -157,6 +157,21 @@ const GROUP_TAB_DEP_TOTAL = "__group_dep_total";
 /** Liability categories: balance is debt, not equity — no cumulative “aportes” line on charts. */
 const CATEGORY_NO_CHART_DEPOSIT_LINE = new Set(["credit_card", "mortgage", "other_debt"]);
 
+/**
+ * Synthetic account ids of the «hipoteca» (mortgage balance) and «valor» (gross property
+ * value = equity + mortgage) reference lines the property account page and the real_estate
+ * group chart append beside the property line. The daily payloads emit their twins under the
+ * same ids (`deptoPropertyChartOverlayDailyLines`) so the client's borrow-the-monthly-metadata
+ * rule keeps one series identity across the M↔D toggle. Labels resolve client-side from the
+ * i18n keys (the plain names are non-i18n fallbacks).
+ */
+export const DEPTO_HIPOTECA_CHART_ACCOUNT_ID = -4;
+export const DEPTO_HIPOTECA_CHART_LINE_NAME = "Hipoteca";
+export const DEPTO_HIPOTECA_CHART_I18N_KEY = "realEstate.mortgage";
+export const DEPTO_VALOR_CHART_ACCOUNT_ID = -5;
+export const DEPTO_VALOR_CHART_LINE_NAME = "Valor";
+export const DEPTO_VALOR_CHART_I18N_KEY = "realEstate.propertyValue";
+
 /** Per-row sum of all class-tab valuation lines and of all cumulative deposit lines. */
 function appendGroupTabTotals(block: GroupTabValuationBlock): GroupTabValuationBlock {
   const src = block.accounts;
@@ -2329,17 +2344,38 @@ function getGroupValuationTimeseriesInnerUncached(
         const ufClpByDate = ufClpBySnapshotDatesAsc(dateStrsAsc);
         const mortgageClpByDate = deptoMortgageBalanceClpBySnapshotDates(dateStrsAsc, ledger, ufClpByDate);
         const dk = "depto_hipoteca_saldo_clp";
+        const valorDk = "depto_valor_total_clp";
+        // Gross value = the property line's own point (equity, live today included) + the
+        // mortgage balance — computed from the plotted values so the identity holds on every
+        // chart date regardless of how either side valued the day.
+        const propDk = String(seriesAccountIdForGroupTab(propertyRows[0]!, groupSlug));
         accounts_in_group = {
           accounts: [
             ...accounts_in_group.accounts,
-            { account_id: -4, name: "Hipoteca (saldo CLP)", dataKey: dk, valueSeriesType: "reference" },
+            {
+              account_id: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
+              name: DEPTO_HIPOTECA_CHART_LINE_NAME,
+              name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY,
+              dataKey: dk,
+              valueSeriesType: "reference",
+            },
+            {
+              account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
+              name: DEPTO_VALOR_CHART_LINE_NAME,
+              name_i18n_key: DEPTO_VALOR_CHART_I18N_KEY,
+              dataKey: valorDk,
+              valueSeriesType: "reference",
+            },
           ],
           points: accounts_in_group.points.map((row) => {
             const d = String(row.as_of_date);
             const raw = mortgageClpByDate.get(d);
+            const hipoteca = raw != null && Number.isFinite(raw) ? convertTs(raw, d, unit) : null;
+            const eq = row[propDk];
             return {
               ...row,
-              [dk]: raw != null && Number.isFinite(raw) ? convertTs(raw, d, unit) : null,
+              [dk]: hipoteca,
+              [valorDk]: hipoteca != null && typeof eq === "number" ? eq + hipoteca : null,
             };
           }),
         };
@@ -2472,7 +2508,13 @@ export function getAccountValuationTimeseries(
       accounts = {
         accounts: [
           ...accounts.accounts,
-          { account_id: -4, name: "Hipoteca (saldo CLP)", dataKey: hipotecaDk, valueSeriesType: "reference" },
+          {
+            account_id: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
+            name: DEPTO_HIPOTECA_CHART_LINE_NAME,
+            name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY,
+            dataKey: hipotecaDk,
+            valueSeriesType: "reference",
+          },
         ],
         points: accounts.points.map((pt) => {
           const d = String(pt.as_of_date);
@@ -2500,6 +2542,38 @@ export function getAccountValuationTimeseries(
     }
     if (points !== accounts.points) {
       accounts = { ...accounts, points };
+    }
+  }
+
+  // Property page: «valor» (gross value) = the property line's plotted equity + the hipoteca
+  // line, computed AFTER the live last-point patch so the identity valor = equity + hipoteca
+  // holds on every chart date, today included.
+  if (bucketKind === "property" && accounts.points.length > 0) {
+    const dk = String(row.account_id);
+    const hipotecaDk = "depto_hipoteca_saldo_clp";
+    if (accounts.accounts.some((a) => a.dataKey === hipotecaDk)) {
+      const valorDk = "depto_valor_total_clp";
+      accounts = {
+        accounts: [
+          ...accounts.accounts,
+          {
+            account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
+            name: DEPTO_VALOR_CHART_LINE_NAME,
+            name_i18n_key: DEPTO_VALOR_CHART_I18N_KEY,
+            dataKey: valorDk,
+            valueSeriesType: "reference",
+          },
+        ],
+        points: accounts.points.map((pt) => {
+          const eq = pt[dk];
+          const hipoteca = pt[hipotecaDk];
+          return {
+            ...pt,
+            [valorDk]:
+              typeof eq === "number" && typeof hipoteca === "number" ? eq + hipoteca : null,
+          };
+        }),
+      };
     }
   }
 
