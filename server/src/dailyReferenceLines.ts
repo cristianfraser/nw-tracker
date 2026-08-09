@@ -14,16 +14,26 @@
  * where a private values-only build would pay for identical marks twice (marks dominate the
  * cost of a daily series; the flow legs this would skip are the cheap part).
  */
+import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
-import { getBucketDailySeriesCached } from "./dailySeries.js";
+import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
+import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
 import { convertLegToUnit } from "./periodReturnsShortHorizon.js";
 import {
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
 } from "./portfolioGroupReference.js";
-import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
+import {
+  DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
+  DEPTO_HIPOTECA_CHART_LINE_NAME,
+  DEPTO_VALOR_CHART_ACCOUNT_ID,
+  DEPTO_VALOR_CHART_LINE_NAME,
+  listAccountsForGroupTab,
+  type TsUnit,
+} from "./valuationTimeseries.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 
 /** One overlay line, aligned index-for-index with the daily series' `points`. */
 export type DailyReferenceLine = {
@@ -72,6 +82,76 @@ function sourceGroupDailyValues(
     }
     return out;
   });
+}
+
+/**
+ * Daily twins of the monthly synthetic property-chart overlays the property account page and
+ * the real_estate group chart append (`valuationTimeseries.ts`, same account ids): «hipoteca»
+ * (the linked mortgage's balance per calendar day) and «valor» (gross property value =
+ * equity + mortgage). Emitted as extra `accounts` entries so the client's
+ * borrow-the-monthly-metadata rule (`buildDailyValuationBlock` matches by `account_id`)
+ * keeps the lines across the M↔D toggle — without this the overlays silently vanished in
+ * day mode. Values come from the accounts' daily marks (`accountMarkClpSeriesOnGrid`,
+ * already cached per account): the mortgage mark is the same depto-ledger balance the
+ * monthly `deptoMortgageBalanceClpBySnapshotDates` reads, and the property mark is exactly
+ * the equity the payload's own property line plots, so valor = equity + hipoteca holds
+ * point-for-point.
+ *
+ * Empty when there is not exactly one mortgage tab account (the depto ledger models one
+ * mortgage — the monthly overlays rest on the same assumption); «valor» additionally needs
+ * exactly one property account.
+ */
+export function deptoPropertyChartOverlayDailyLines(
+  datesAsc: readonly string[],
+  unit: TsUnit
+): DailySeriesAccountLine[] {
+  if (!datesAsc.length) return [];
+  const mortgageRows = listLiabilitiesTabAccountRows("mortgage");
+  if (mortgageRows.length !== 1) return [];
+  const now = new Date();
+  const markValues = (r: {
+    account_id: number;
+    bucket_slug: string;
+    import_key?: string | null;
+    name?: string | null;
+  }): (number | null)[] =>
+    accountMarkClpSeriesOnGrid(
+      {
+        account_id: r.account_id,
+        bucket_slug: r.bucket_slug,
+        import_key: r.import_key ?? null,
+        name: r.name ?? null,
+      },
+      datesAsc
+    ).map((clp, i) =>
+      clp != null && Number.isFinite(clp) ? convertLegToUnit(clp, datesAsc[i]!, unit, now) : null
+    );
+
+  const hipoteca = markValues(mortgageRows[0]!);
+  if (!hipoteca.some((v) => v != null)) return [];
+  const lines: DailySeriesAccountLine[] = [
+    {
+      account_id: DEPTO_HIPOTECA_CHART_ACCOUNT_ID,
+      name: DEPTO_HIPOTECA_CHART_LINE_NAME,
+      values: hipoteca,
+    },
+  ];
+
+  const propertyRows = listAccountsForGroupTab("real_estate").filter(
+    (r) => r.account_id > 0 && accountBucketKindSlug(r.bucket_slug) === "property"
+  );
+  if (propertyRows.length === 1) {
+    const equity = markValues(propertyRows[0]!);
+    lines.push({
+      account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
+      name: DEPTO_VALOR_CHART_LINE_NAME,
+      values: equity.map((eq, i) => {
+        const hip = hipoteca[i];
+        return eq != null && hip != null ? eq + hip : null;
+      }),
+    });
+  }
+  return lines;
 }
 
 /**

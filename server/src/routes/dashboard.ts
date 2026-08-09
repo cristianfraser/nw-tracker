@@ -22,7 +22,10 @@ import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
 import { ccInstallmentDebtDailyClp, ccInstallmentPlanTailClp } from "../ccInstallmentDebtDaily.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
-import { dailyReferenceLinesForChartHost } from "../dailyReferenceLines.js";
+import {
+  dailyReferenceLinesForChartHost,
+  deptoPropertyChartOverlayDailyLines,
+} from "../dailyReferenceLines.js";
 import { chartHostSlugForValuationGroup } from "../portfolioGroupReference.js";
 import {
   DAILY_SERIES_MAX_DAYS,
@@ -174,8 +177,18 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     };
     const grouped = bucketLines(plan);
     const ungrouped = bucketLines(ungroupedPlan);
+    // Real-estate chart: the monthly block appends synthetic «hipoteca»/«valor» lines —
+    // emit their daily twins so the M↔D toggle keeps them. Appended AFTER the proportional
+    // shares and bucket plans are built: reference overlays are not holdings, so they must
+    // not enter composition shares or bucket sums (the monthly path excludes them the same
+    // way, via the `valueSeriesType === "data"` filter).
+    const groupOverlays =
+      portfolioGroup === "real_estate" && withRefs.accounts?.length
+        ? deptoPropertyChartOverlayDailyLines(dailyDates, unit)
+        : [];
     res.json({
       ...withRefs,
+      ...(groupOverlays.length ? { accounts: [...withRefs.accounts!, ...groupOverlays] } : {}),
       ...(grouped
         ? {
             grouped_accounts: grouped,
@@ -214,6 +227,21 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     { unit, days, includeAccounts: true }
   );
   const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesPayload } = series;
+  // Property account page: the monthly block carries synthetic «hipoteca»/«valor» reference
+  // lines beside the property line — emit their daily twins (matched by account id in the
+  // client's metadata borrow) or the overlays vanish in day mode.
+  if (
+    accountBucketKindSlug(row.bucket_slug) === "property" &&
+    accountSeriesPayload.accounts?.length
+  ) {
+    const overlays = deptoPropertyChartOverlayDailyLines(
+      series.points.map((p) => p.as_of_date),
+      unit
+    );
+    if (overlays.length) {
+      accountSeriesPayload.accounts = [...accountSeriesPayload.accounts, ...overlays];
+    }
+  }
   // CC masters: attach the daily plan debt («deuda en cuotas», CLP like the historial
   // chart) plus the future plan tail (today+1 .. plan end) so the account page's daily
   // historial has both lines and covers the same window as its monthly/yearly forms.
