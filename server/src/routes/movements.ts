@@ -9,11 +9,11 @@ import { clearAggregationCache, invalidateAggregationForAccountDate } from "../a
 import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLegReconcile.js";
 import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { isFiniteNumber, isYmdString } from "../requestValidation.js";
-import { operationalAccountIdFromReq } from "./shared.js";
+import { accountIdFromReq } from "./shared.js";
 
 export function registerMovementsRoutes(app: express.Express): void {
 app.post("/api/accounts/:id/movements", (req, res) => {
-  const accountId = operationalAccountIdFromReq(req);
+  const accountId = accountIdFromReq(req);
   const account = accountRowForId(accountId);
   if (!account) {
     res.status(404).json({ error: "Account not found." });
@@ -108,7 +108,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
 });
 
 app.get("/api/accounts/:id/valuations", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const rows = db
     .prepare(
       `SELECT id, as_of_date, value AS value_clp, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date DESC`
@@ -119,7 +119,7 @@ app.get("/api/accounts/:id/valuations", (req, res) => {
 });
 
 app.post("/api/accounts/:id/valuations", (req, res) => {
-  const accountId = operationalAccountIdFromReq(req);
+  const accountId = accountIdFromReq(req);
   const { as_of_date, value_clp } = req.body as { as_of_date?: unknown; value_clp?: unknown };
   // Validate BEFORE the write: dates are compared lexically everywhere, so one malformed
   // as_of_date row poisons every on-or-before lookup for this account.

@@ -31,11 +31,11 @@ import {
   importCheckingRecentXlsx,
 } from "../accountImports.js";
 import { uploadFields, uploadSingle } from "../uploadMiddleware.js";
-import { extraOffsetsFromReq, operationalAccountIdFromReq, parseProxyTickersParam } from "./shared.js";
+import { extraOffsetsFromReq, accountIdFromReq, parseProxyTickersParam } from "./shared.js";
 
 export function registerCreditCardRoutes(app: express.Express): void {
 app.get("/api/accounts/:id/cc-installments", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -88,7 +88,7 @@ app.put("/api/cc-proxy-tickers", (req, res) => {
 });
 
 app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const purchaseId = Number(req.params.purchaseId);
   if (!Number.isFinite(purchaseId) || purchaseId <= 0) {
     res.status(400).json({ error: "invalid purchase id" });
@@ -111,7 +111,7 @@ app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
 });
 
 app.delete("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const purchaseId = Number(req.params.purchaseId);
   if (!Number.isFinite(purchaseId) || purchaseId <= 0) {
     res.status(400).json({ error: "invalid purchase id" });
@@ -126,7 +126,7 @@ app.delete("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
 });
 
 app.delete("/api/accounts/:id/cc-statement-lines/:lineId", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId <= 0) {
     res.status(400).json({ error: "invalid statement line id" });
@@ -141,7 +141,7 @@ app.delete("/api/accounts/:id/cc-statement-lines/:lineId", (req, res) => {
 });
 
 app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const lineId = Number(req.params.lineId);
   if (!Number.isFinite(lineId) || lineId <= 0) {
     res.status(400).json({ error: "invalid statement line id" });
@@ -161,7 +161,7 @@ app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", (req, 
 });
 
 app.get("/api/accounts/:id/import-specs", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -181,7 +181,7 @@ app.get("/api/accounts/:id/import-specs", (req, res) => {
 });
 
 app.post("/api/accounts/:id/imports/cc-web-paste", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const text = typeof req.body?.text === "string" ? req.body.text : "";
   if (!text.trim()) {
     res.status(400).json({ error: "text is required" });
@@ -195,7 +195,7 @@ app.post("/api/accounts/:id/imports/cc-web-paste", (req, res) => {
 });
 
 app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const text = typeof req.body?.text === "string" ? req.body.text : "";
   if (!text.trim()) {
     res.status(400).json({ error: "text is required" });
@@ -216,7 +216,7 @@ app.post(
     { name: "file", maxCount: 2 },
   ]) as unknown as express.RequestHandler,
   (req, res) => {
-    const id = operationalAccountIdFromReq(req);
+    const id = accountIdFromReq(req);
     const files = req.files as Record<string, { originalname: string; buffer: Buffer }[]> | undefined;
     const uploads: { originalname: string; buffer: Buffer }[] = [];
     for (const key of ["clp", "usd", "file"] as const) {
@@ -240,7 +240,7 @@ app.post(
   "/api/accounts/:id/imports/checking-recent-xlsx",
   uploadSingle("file") as unknown as express.RequestHandler,
   (req, res) => {
-    const id = operationalAccountIdFromReq(req);
+    const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
       res.status(400).json({ error: "file is required" });
@@ -258,7 +258,7 @@ app.post(
   "/api/accounts/:id/imports/checking-cartola-xlsx",
   uploadSingle("file") as unknown as express.RequestHandler,
   (req, res) => {
-    const id = operationalAccountIdFromReq(req);
+    const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
       res.status(400).json({ error: "file is required" });
@@ -278,7 +278,7 @@ app.post(
   "/api/accounts/:id/imports/document",
   uploadSingle("file") as unknown as express.RequestHandler,
   (req, res) => {
-    const id = operationalAccountIdFromReq(req);
+    const id = accountIdFromReq(req);
     const f = req.file;
     const type = typeof req.body?.type === "string" ? req.body.type : "";
     if (!f) {
@@ -300,7 +300,7 @@ app.post(
 );
 
 app.get("/api/accounts/:id/credit-card-config", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!isCreditCardAccountId(id)) {
     res.status(404).json({ error: "not a credit-card account" });
     return;
@@ -309,7 +309,7 @@ app.get("/api/accounts/:id/credit-card-config", (req, res) => {
 });
 
 app.patch("/api/accounts/:id/credit-card-config", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!isCreditCardAccountId(id)) {
     res.status(404).json({ error: "not a credit-card account" });
     return;

@@ -17,7 +17,6 @@ export function navNodeFixture(
     show_leaf_hyphen: false,
     account_id: null,
     portfolio_group_id: null,
-    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: null,

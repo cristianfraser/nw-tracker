@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  accountChartInactive,
-  accountIdForInactiveCheck,
-  navBucketChartInactive,
-} from "./accountChartInactive.js";
+import { accountChartInactive, navBucketChartInactive } from "./accountChartInactive.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 
 describe("accountChartInactive", () => {
@@ -20,7 +16,7 @@ describe("accountChartInactive", () => {
     expect(isSupersededSantanderCcMaster(row.id)).toBe(true);
   });
 
-  it("CC masters are used directly for inactivity (no liability_view duplicate)", () => {
+  it("CC masters are never tail-inactive", () => {
     const row = db
       .prepare(
         `SELECT id FROM accounts
@@ -29,7 +25,6 @@ describe("accountChartInactive", () => {
       )
       .get() as { id: number } | undefined;
     if (!row) return;
-    expect(accountIdForInactiveCheck(row.id)).toBe(row.id);
     expect(accountChartInactive(row.id)).toBe(false);
   });
 

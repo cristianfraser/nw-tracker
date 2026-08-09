@@ -6,7 +6,6 @@ import {
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountBucketKindSlug, accountKindSlugForAccountId } from "./accountBucket.js";
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import {
@@ -75,13 +74,12 @@ export function syncLatestDisplayValueClp(
     // Book-value carry for manual-marked accounts: stale mark + net personal flows since its
     // date, so a deposit entered today moves today's value (daily/monthly pl 0, not −flow).
     // CC/mortgage displayed balances are their own derivations — never carried.
-    const effectiveId = resolveOperationalAccountId(accountId);
-    const kind = accountKindSlugForAccountId(effectiveId) ?? "";
+    const kind = accountKindSlugForAccountId(accountId) ?? "";
     const value_clp =
       kind === "credit_card" || kind === "mortgage"
         ? stored.value_clp
         : storedMarkValueWithFlowCarry(
-            effectiveId,
+            accountId,
             stored.value_clp,
             stored.as_of_date,
             chileCalendarTodayYmd()

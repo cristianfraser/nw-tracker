@@ -7,9 +7,6 @@ export function collectNavAccountDataKeys(node: NavTreeNodeDto): string[] {
   const visit = (n: NavTreeNodeDto) => {
     if (n.account_id != null && n.account_id > 0) {
       keys.push(String(n.account_id));
-      if (n.source_account_id != null && n.source_account_id > 0) {
-        keys.push(String(n.source_account_id));
-      }
     }
     for (const c of n.children ?? []) visit(c);
   };
@@ -24,14 +21,14 @@ export function findNavTreeNodeByAccountId(
 ): NavTreeNodeDto | null {
   if (!nodes?.length) return null;
   for (const n of nodes) {
-    if (n.account_id === accountId || n.source_account_id === accountId) return n;
+    if (n.account_id === accountId) return n;
     const hit = findNavTreeNodeByAccountId(n.children, accountId);
     if (hit) return hit;
   }
   return null;
 }
 
-/** Credit-card master / liability-view leaves in the CC nav subtree. */
+/** Credit-card master leaves in the CC nav subtree. */
 export function isCreditCardAccountNavNode(node: NavTreeNodeDto | null | undefined): boolean {
   if (!node) return false;
   return node.api_subgroup === "credit_card" || node.asset_group_slug === "credit_cards";

@@ -50,7 +50,6 @@ function accountListRowFromNavLeaf(leaf: NavAccountLeaf): AccountListRow {
     group_label: groupLabel,
     exclude_from_group_totals: node.exclude_from_parent_total ? 1 : undefined,
     color_rgb: node.color_rgb,
-    source_account_id: node.source_account_id,
   };
 }
 

@@ -23,7 +23,6 @@ function accountNavLeafFromListRow(acc: AccountListRow): NavTreeNodeDto {
     nav_end: true,
     show_leaf_hyphen: true,
     account_id: acc.id,
-    source_account_id: acc.source_account_id ?? null,
     portfolio_group_id: null,
     expense_account_id: null,
     expense_account_slug: null,

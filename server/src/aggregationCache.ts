@@ -1,4 +1,3 @@
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -165,10 +164,8 @@ export function invalidateCcBillingDetail(accountId?: number): void {
   } else {
     // Exact key + `<key>|`-prefixed satellites (e.g. the normalized post-close line memo);
     // the delimiter keeps account 16 from clobbering 0161.
-    for (const id of new Set([accountId, resolveOperationalAccountId(accountId)])) {
-      cache.delete(cacheKeyCcBillingDetail(id));
-      deleteKeysMatchingPrefix(`${cacheKeyCcBillingDetail(id)}|`);
-    }
+    cache.delete(cacheKeyCcBillingDetail(accountId));
+    deleteKeysMatchingPrefix(`${cacheKeyCcBillingDetail(accountId)}|`);
   }
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
   // invalidateLinkedCreditCardAggregationCache both call this) — the bundle, the daily
@@ -227,12 +224,7 @@ function buildRollupSlugsByAccountId(): Map<number, Set<string>> {
 
 function rollupSlugsForAccount(accountId: number): Set<string> {
   if (!rollupSlugsByAccountId) rollupSlugsByAccountId = buildRollupSlugsByAccountId();
-  const operational = resolveOperationalAccountId(accountId);
-  const slugs = new Set<string>();
-  for (const id of [accountId, operational]) {
-    for (const s of rollupSlugsByAccountId.get(id) ?? []) slugs.add(s);
-  }
-  return slugs;
+  return new Set(rollupSlugsByAccountId.get(accountId) ?? []);
 }
 
 /** Invalidate derived aggregations when movements or valuations change for an account/date. */
@@ -243,22 +235,14 @@ export function invalidateAggregationForAccountDate(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOrAsOfYmd)) {
     throw new Error(`invalidateAggregationForAccountDate: invalid date ${occurredOrAsOfYmd}`);
   }
-  const operationalId = resolveOperationalAccountId(accountId);
-  clearCheckingBalanceCache(operationalId);
-  if (operationalId !== accountId) clearCheckingBalanceCache(accountId);
+  clearCheckingBalanceCache(accountId);
   invalidateCcBillingDetail(accountId);
 
   const monthKeysToInvalidate = forwardMonthKeysFrom(occurredOrAsOfYmd);
   for (const unit of ["clp", "usd", "uf"] as const) {
-    deleteKeysMatchingPrefix(`account.monthly_perf|${operationalId}|${unit}`);
-    if (operationalId !== accountId) {
-      deleteKeysMatchingPrefix(`account.monthly_perf|${accountId}|${unit}`);
-    }
+    deleteKeysMatchingPrefix(`account.monthly_perf|${accountId}|${unit}`);
     for (const mk of monthKeysToInvalidate) {
-      cache.delete(`account.month_close|${operationalId}|${unit}|${mk}`);
-      if (operationalId !== accountId) {
-        cache.delete(`account.month_close|${accountId}|${unit}|${mk}`);
-      }
+      cache.delete(`account.month_close|${accountId}|${unit}|${mk}`);
     }
   }
 

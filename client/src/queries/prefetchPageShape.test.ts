@@ -35,7 +35,6 @@ const minimalPayload: SidebarNavResponse = {
       color_rgb: null,
       chart_inactive: false,
       exclude_from_parent_total: false,
-      source_account_id: null,
       children: [],
     },
   ],

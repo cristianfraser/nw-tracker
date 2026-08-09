@@ -1,6 +1,6 @@
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import { getAccountSourceRow } from "./accountSource.js";
+import { db } from "./db.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
   chartInactiveFromMonthlyClosingAsc,
@@ -22,21 +22,13 @@ function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
   return loadBookValuationsAsc(accountId).map((r) => r.value_clp);
 }
 
-/** Operational master id for inactivity (liability_view CC rows use master valuations). */
-export function accountIdForInactiveCheck(accountId: number): number {
-  const row = getAccountSourceRow(accountId);
-  if (row?.account_kind === "liability_view" && row.source_account_id != null) {
-    return row.source_account_id;
-  }
-  return accountId;
-}
-
-/** Credit-card masters/views: never tail-inactive (installment projections + retired cards). */
+/** Credit-card masters: never tail-inactive (installment projections + retired cards). */
 function isCreditCardChartAccount(accountId: number): boolean {
-  const effectiveId = accountIdForInactiveCheck(accountId);
-  const slug = bucketSlugForAccountId(effectiveId);
+  const slug = bucketSlugForAccountId(accountId);
   if (slug != null && accountBucketKindSlug(slug) === "credit_card") return true;
-  const row = getAccountSourceRow(effectiveId);
+  const row = db
+    .prepare(`SELECT import_key FROM accounts WHERE id = ?`)
+    .get(accountId) as { import_key: string | null } | undefined;
   return String(row?.import_key ?? "").startsWith("credit_card_master|");
 }
 
@@ -46,8 +38,7 @@ function isCreditCardChartAccount(accountId: number): boolean {
  */
 export function accountChartInactive(accountId: number): boolean {
   if (isCreditCardChartAccount(accountId)) return false;
-  const effectiveId = accountIdForInactiveCheck(accountId);
-  const closing = monthEndClosingAscForInactiveCheck(effectiveId);
+  const closing = monthEndClosingAscForInactiveCheck(accountId);
   if (!closing.length) return false;
   return chartInactiveFromMonthlyClosingAsc(closing, CHART_TRAILING_ZERO_MONTHS_KEPT);
 }

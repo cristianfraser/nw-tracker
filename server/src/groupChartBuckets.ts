@@ -1,4 +1,3 @@
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
@@ -152,9 +151,6 @@ function collectSubtreeAccountIds(node: NavTreeNodeDto): number[] {
   const visit = (n: NavTreeNodeDto) => {
     if (n.account_id != null && n.account_id > 0) {
       ids.push(n.account_id);
-      const op = resolveOperationalAccountId(n.account_id);
-      if (op > 0) ids.push(op);
-      if (n.source_account_id != null && n.source_account_id > 0) ids.push(n.source_account_id);
     }
     for (const c of n.children ?? []) visit(c);
   };

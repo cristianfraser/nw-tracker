@@ -1,4 +1,3 @@
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { getCreditCardGroupBySlug } from "./creditCardTree.js";
 
 /** Pasivos liability leaves resolve to master account ids. */
@@ -12,7 +11,7 @@ export function seriesAccountIdForGroupTab(
     groupSlug === "liabilities_mortgage" ||
     getCreditCardGroupBySlug(groupSlug)
   ) {
-    return resolveOperationalAccountId(row.account_id);
+    return row.account_id;
   }
   return row.account_id;
 }

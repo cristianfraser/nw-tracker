@@ -1,6 +1,5 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { accountChartInactive } from "./accountChartInactive.js";
-import { resolveOperationalAccountId } from "./accountSource.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
 import { db } from "./db.js";
@@ -63,7 +62,7 @@ function buildLiabilityNode(
   group: LiabilityGroupRow,
   itemsByGroup: Map<number, LiabilityItemRow[]>,
   groupsById: Map<number, LiabilityGroupRow>,
-  accountMeta: Map<number, { name: string; color_rgb: string; source_account_id: number | null }>
+  accountMeta: Map<number, { name: string; color_rgb: string }>
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
   const children: NavTreeNodeDto[] = [];
@@ -80,20 +79,18 @@ function buildLiabilityNode(
     } else if (item.item_kind === "account" && item.account_id != null) {
       if (accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
-      const operationalId = resolveOperationalAccountId(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
         node_id: `liab-acc.${item.account_id}`,
         slug: `liability_account_${item.account_id}`,
         label: meta?.name ?? `Account ${item.account_id}`,
         label_i18n_key: null,
-        route_path: `/account/${operationalId}`,
+        route_path: `/account/${item.account_id}`,
         active_prefix: null,
         nav_end: true,
         show_leaf_hyphen: true,
         account_id: item.account_id,
         portfolio_group_id: null,
-        source_account_id: meta?.source_account_id ?? null,
         expense_account_id: null,
         expense_account_slug: null,
         asset_group_slug: "liabilities",
@@ -121,7 +118,6 @@ function buildLiabilityNode(
     show_leaf_hyphen: true,
     account_id: null,
     portfolio_group_id: null,
-    source_account_id: null,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: "liabilities",
@@ -156,25 +152,23 @@ export function getLiabilitiesNavChildren(): NavTreeNodeDto[] {
 
   const accountMeta = new Map<
     number,
-    { name: string; color_rgb: string; source_account_id: number | null }
+    { name: string; color_rgb: string }
   >();
   if (accountIds.size > 0) {
     const ph = [...accountIds].map(() => "?").join(",");
     const rows = db
       .prepare(
-        `SELECT id, name, color_rgb, source_account_id FROM accounts WHERE id IN (${ph})`
+        `SELECT id, name, color_rgb FROM accounts WHERE id IN (${ph})`
       )
       .all(...accountIds) as {
       id: number;
       name: string;
       color_rgb: string | null;
-      source_account_id: number | null;
     }[];
     for (const r of rows) {
       accountMeta.set(r.id, {
         name: r.name,
         color_rgb: r.color_rgb ?? getAccountColorRgb(r.id),
-        source_account_id: r.source_account_id,
       });
     }
   }

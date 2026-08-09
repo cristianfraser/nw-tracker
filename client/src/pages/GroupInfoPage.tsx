@@ -217,7 +217,7 @@ export function GroupInfoPage() {
   const tableAccountsForPerf = useMemo(
     () =>
       tableAccounts.map((a) => ({
-        id: a.source_account_id ?? a.id,
+        id: a.id,
         name: a.name,
         category_slug: a.category_slug ?? a.bucket_slug ?? "",
       })),

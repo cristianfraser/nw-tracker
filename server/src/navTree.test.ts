@@ -26,7 +26,6 @@ function navChildStub(overrides: Partial<NavTreeNodeDto>): NavTreeNodeDto {
     nav_end: true,
     show_leaf_hyphen: true,
     account_id: null,
-    source_account_id: null,
     portfolio_group_id: null,
     expense_account_id: null,
     expense_account_slug: null,

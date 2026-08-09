@@ -250,7 +250,7 @@ export function updatePanelAccount(
 ): PanelAccountUpdateResult {
   const acc = db
     .prepare(
-      `SELECT a.id, a.name, a.account_kind, a.asset_group_id,
+      `SELECT a.id, a.name, a.asset_group_id,
               g.slug AS leaf_slug, g.parent_id AS leaf_parent_id
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
@@ -260,16 +260,12 @@ export function updatePanelAccount(
     | {
         id: number;
         name: string;
-        account_kind: string;
         asset_group_id: number;
         leaf_slug: string;
         leaf_parent_id: number | null;
       }
     | undefined;
   if (!acc) fail(404, "account not found");
-  if (acc.account_kind === "liability_view") {
-    fail(400, "liability-view accounts are edited via their master account");
-  }
 
   const hasName = body.name !== undefined;
   const hasBucket = body.bucket_slug !== undefined;

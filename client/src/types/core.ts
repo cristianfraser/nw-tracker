@@ -23,8 +23,6 @@ export interface AccountListRow {
   exclude_from_group_totals?: number;
   /** Chart line color as `r,g,b` (0–255). */
   color_rgb?: string | null;
-  /** Pasivos liability_view → master account for valuations / P/L. */
-  source_account_id?: number | null;
   /** Long trailing-zero tail; hidden from nav child cards, kept in group charts/tables. */
   chart_inactive?: boolean;
 }

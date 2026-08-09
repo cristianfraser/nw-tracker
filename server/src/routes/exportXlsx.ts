@@ -8,7 +8,7 @@ import {
   type ExportOptions,
   type ExportSection,
 } from "../exportWorkbook.js";
-import { isKnownClassTabGroup, operationalAccountIdFromReq } from "./shared.js";
+import { isKnownClassTabGroup, accountIdFromReq } from "./shared.js";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -57,7 +57,7 @@ function sendWorkbook(
 
 export function registerExportXlsxRoutes(app: express.Express): void {
   app.get("/api/accounts/:id/export.xlsx", (req, res) => {
-    const id = operationalAccountIdFromReq(req);
+    const id = accountIdFromReq(req);
     if (!Number.isFinite(id) || id <= 0) {
       res.status(400).json({ error: "invalid account id" });
       return;

@@ -222,7 +222,7 @@ export function LiabilitiesGroupPage() {
   const tableAccountsForPerf = useMemo(
     () =>
       accounts.map((a) => ({
-        id: a.source_account_id ?? a.id,
+        id: a.id,
         name: a.name,
         category_slug: a.category_slug,
       })),
@@ -323,7 +323,7 @@ export function LiabilitiesGroupPage() {
 
   const mortgageOperationalId = useMemo(() => {
     if (mortgageAccount) {
-      return String(mortgageAccount.source_account_id ?? mortgageAccount.id);
+      return String(mortgageAccount.id);
     }
     if (mortgageLedger?.account_id) return String(mortgageLedger.account_id);
     return undefined;
@@ -350,7 +350,7 @@ export function LiabilitiesGroupPage() {
     if (!mortgageAccount) return navMatchNode?.color_rgb ?? null;
     return (
       ts?.accounts_in_group?.accounts?.find(
-        (a) => a.account_id === (mortgageAccount.source_account_id ?? mortgageAccount.id)
+        (a) => a.account_id === mortgageAccount.id
       )?.color_rgb ??
       navMatchNode?.color_rgb ??
       null

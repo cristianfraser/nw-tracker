@@ -104,15 +104,12 @@ export function listDashboardSourceAccounts(): {
   exclude_from_group_totals: number;
   bucket_slug: string;
   bucket_label: string;
-  account_kind: string | null;
-  source_account_id: number | null;
 }[] {
   return db
     .prepare(
       `
       SELECT a.id, a.name, a.notes, a.import_key, a.exclude_from_group_totals,
-             g.slug AS bucket_slug, g.label AS bucket_label,
-             a.account_kind, a.source_account_id
+             g.slug AS bucket_slug, g.label AS bucket_label
       FROM accounts a
       INNER JOIN asset_groups g ON g.id = a.asset_group_id
       WHERE (a.import_key IS NULL OR a.import_key != ?)
@@ -128,8 +125,6 @@ export function listDashboardSourceAccounts(): {
     exclude_from_group_totals: number;
     bucket_slug: string;
     bucket_label: string;
-    account_kind: string | null;
-    source_account_id: number | null;
   }[];
 }
 
@@ -564,7 +559,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       });
 
       if (kindSlug === "credit_card") {
-        const masterAccountId = a.source_account_id ?? a.id;
+        const masterAccountId = a.id;
         const todayYm = today.slice(0, 7);
         const plSummary = creditCardFinancingPlSummaryForDashboard(masterAccountId, todayYm);
         if (plSummary !== null) {
@@ -592,7 +587,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       if (kindSlug === "mortgage") {
         // Card P/L = financing cost from the monthly perf series (negative = losing money),
         // never the generic balance − deposits reconcile: the balance is debt, not return.
-        const masterAccountId = a.source_account_id ?? a.id;
+        const masterAccountId = a.id;
         const perfMetricsFor = (unit: TsUnit): AccountCardPerformanceMetrics | null => {
           if (mortgagePayments == null) return null;
           const perf = getAccountMonthlyPerformance(masterAccountId, unit);

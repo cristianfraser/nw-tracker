@@ -253,7 +253,7 @@ describe("breakdownForNavChild real_estate", () => {
       bucket_slug: "real_estate__property",
       current_value_clp: 27_110_948,
     } as DashboardAccountRow;
-    // Page-bundle rows have no category_slug; master + liability_view both appear.
+    // Page-bundle rows have no category_slug; the group_slug match finds the mortgage.
     const demoMortgage = {
       account_id: 13,
       name: "Casa propia · Demo",
@@ -265,10 +265,9 @@ describe("breakdownForNavChild real_estate", () => {
       deposits_clp: 0,
       exclude_from_group_totals: 0,
     } as DashboardAccountRow;
-    const demoMortgageView = { ...demoMortgage, account_id: 14 } as DashboardAccountRow;
     const br = breakdownForNavChild(realEstateNode, [demoProperty], {
       liabilities_breakdown: undefined,
-      accounts: [demoProperty, demoMortgage, demoMortgageView],
+      accounts: [demoProperty, demoMortgage],
     });
     const lines = br?.lines ?? [];
     expect(lines).toHaveLength(3);

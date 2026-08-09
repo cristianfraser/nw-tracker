@@ -59,7 +59,7 @@ import { isPositiveInteger } from "../requestValidation.js";
 import {
   asyncHandler,
   extraOffsetsFromReq,
-  operationalAccountIdFromReq,
+  accountIdFromReq,
   positionSnapshotFromMeta,
 } from "./shared.js";
 
@@ -165,7 +165,7 @@ app.post("/api/accounts", asyncHandler(async (req, res) => {
 }));
 
 app.delete("/api/accounts/:id", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -192,7 +192,7 @@ app.delete("/api/accounts/:id", (req, res) => {
 });
 
 app.patch("/api/accounts/:id", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -208,7 +208,7 @@ app.patch("/api/accounts/:id", (req, res) => {
 });
 
 app.patch("/api/accounts/:id/color", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -228,7 +228,7 @@ app.patch("/api/accounts/:id/color", (req, res) => {
 });
 
 app.patch("/api/accounts/:id/exclude-from-group-totals", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -292,7 +292,7 @@ app.get("/api/portfolio-groups/:slug/mortgage-ledger", (req, res) => {
 });
 
 app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -309,7 +309,7 @@ app.get("/api/accounts/:id/valuation-timeseries", (req, res) => {
 });
 
 app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -329,7 +329,7 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
 
 /** Month-on-month P/L from valuations + merged capital flows (not persisted). Empty for `cuenta_corriente`. */
 app.get("/api/accounts/:id/performance-monthly", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -346,7 +346,7 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
 
 /** Cuenta corriente: per-cartola month totals from `checking_cartola_imports` + movements. */
 app.get("/api/accounts/:id/checking-cartola-months", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -360,7 +360,7 @@ app.get("/api/accounts/:id/checking-cartola-months", (req, res) => {
 });
 
 app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
-  const accountId = operationalAccountIdFromReq(req);
+  const accountId = accountIdFromReq(req);
   if (!Number.isFinite(accountId) || accountId <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -404,7 +404,7 @@ app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
 });
 
 app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
@@ -446,7 +446,7 @@ app.get("/api/accounts/:id/deposit-inflows", (req, res) => {
 });
 
 app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const withdrawals_clp = totalWithdrawalsClpForAccount(id);
   const metaRow = db
     .prepare(
@@ -538,7 +538,7 @@ app.get("/api/accounts/:id/summary", asyncHandler(async (req, res) => {
 }));
 
 app.get("/api/accounts/:id/movements", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   const rows = listAccountMovementsForApi(id);
   res.json({ movements: rows });
 });

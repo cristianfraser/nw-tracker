@@ -90,9 +90,6 @@ export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
 }
 
 /**
- * Nav leaf `account_id` values only (not `source_account_id`).
- * Use for dashboard row sums so Pasivos liability_view + master are not double-counted.
- */
 /** Account ids under `navNode` marked `chart_inactive` (history charts only). */
 export function navChartInactiveAccountIds(navNode: NavTreeNodeDto): Set<number> {
   const ids = new Set<number>();
@@ -277,7 +274,6 @@ export function inactiveAccountNavLeavesWithActivity(
       show_leaf_hyphen: true,
       account_id: row.account_id,
       portfolio_group_id: null,
-      source_account_id: null,
       expense_account_id: null,
       expense_account_slug: null,
       asset_group_slug: null,

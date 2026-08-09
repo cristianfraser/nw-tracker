@@ -58,7 +58,7 @@ import { parsePageParams } from "../pagination.js";
 import {
   asyncHandler,
   isKnownClassTabGroup,
-  operationalAccountIdFromReq,
+  accountIdFromReq,
 } from "./shared.js";
 
 export function registerDashboardRoutes(app: express.Express): void {
@@ -414,7 +414,7 @@ app.get("/api/groups/:slug/flows", (req, res) => {
 
 /** Paginated + filtered flows for a single account (server-side). */
 app.get("/api/accounts/:id/flows", (req, res) => {
-  const id = operationalAccountIdFromReq(req);
+  const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
