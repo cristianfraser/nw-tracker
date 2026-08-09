@@ -160,8 +160,11 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     const proportional = series.accounts?.length
       ? buildProportionalFromValueArrays(dailyDates, shareLines(series.accounts))
       : undefined;
+    // `deposit_cums_raw` is builder-internal (feeds the grouped-bucket aportes below) —
+    // never serialized.
+    const { deposit_cums_raw: _rawDeps, ...seriesPayload } = series;
     const withRefs = {
-      ...(referenceLines?.length ? { ...series, reference_lines: referenceLines } : series),
+      ...(referenceLines?.length ? { ...seriesPayload, reference_lines: referenceLines } : seriesPayload),
       ...(proportional ? { proportional } : {}),
     };
     const bucketLines = (bucketPlan: ChartBucketPlan | null) => {
@@ -210,6 +213,7 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     [{ ...row, exclude_from_group_totals: 0 }],
     { unit, days, includeAccounts: true }
   );
+  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesPayload } = series;
   // CC masters: attach the daily plan debt («deuda en cuotas», CLP like the historial
   // chart) plus the future plan tail (today+1 .. plan end) so the account page's daily
   // historial has both lines and covers the same window as its monthly/yearly forms.
@@ -221,11 +225,11 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     if (debt) {
       const todayYmd = series.points.at(-1)?.as_of_date ?? chileCalendarTodayYmd();
       const planTail = ccInstallmentPlanTailClp(accountId, todayYmd);
-      res.json({ ...series, cc_installment_debt: debt, ...(planTail ? { cc_plan_tail: planTail } : {}) });
+      res.json({ ...accountSeriesPayload, cc_installment_debt: debt, ...(planTail ? { cc_plan_tail: planTail } : {}) });
       return;
     }
   }
-  res.json(series);
+  res.json(accountSeriesPayload);
 }));
 
 /** Daily net-worth series (one point per NYSE session) for the day period view. */
