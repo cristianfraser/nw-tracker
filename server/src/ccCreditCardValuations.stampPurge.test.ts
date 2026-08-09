@@ -68,8 +68,8 @@ beforeAll(() => {
   ccId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-         VALUES (?, 'Vitest · stamp purge card', 'vitest-stamp-purge', 'vitest-stamp-purge', 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · stamp purge card', 'vitest-stamp-purge', 'vitest-stamp-purge')`
       )
       .run(leaf.id).lastInsertRowid
   );

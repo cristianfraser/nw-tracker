@@ -52,18 +52,14 @@ describe("valuationLatest", () => {
   });
 
   it("mortgage liability snapshot uses depto sheet crédito restante at today", () => {
-    const view = db
-      .prepare(
-        `SELECT v.id, v.source_account_id FROM accounts v
-         WHERE v.account_kind = 'liability_view'
-           AND v.notes = 'liability_view|mortgage' LIMIT 1`
-      )
-      .get() as { id: number; source_account_id: number | null } | undefined;
-    if (!view?.source_account_id) return;
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`)
+      .get() as { id: number } | undefined;
+    if (!master) return;
 
     const today = chileCalendarTodayYmd();
-    const snap = latestLiabilityValuationRowForSnapshot(view.id, "mortgage", today);
-    const fromSheet = latestMortgageDisplayedBalance(view.source_account_id, today);
+    const snap = latestLiabilityValuationRowForSnapshot(master.id, "mortgage", today);
+    const fromSheet = latestMortgageDisplayedBalance(master.id, today);
     if (!fromSheet) return;
 
     expect(snap?.value_clp).toBeCloseTo(fromSheet.value_clp, 0);

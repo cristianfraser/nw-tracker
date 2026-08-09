@@ -35,8 +35,8 @@ describe("seedCreditCardTree", () => {
         Number(
           db
             .prepare(
-              `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind, exclude_from_group_totals)
-               VALUES (?, ?, ?, ?, 'master', ?)`
+              `INSERT INTO accounts (asset_group_id, name, notes, import_key, exclude_from_group_totals)
+               VALUES (?, ?, ?, ?, ?)`
             )
             .run(group.id, `CC fixture ${n.slice(-4)}`, n, n, superseded ? 1 : 0).lastInsertRowid
         )

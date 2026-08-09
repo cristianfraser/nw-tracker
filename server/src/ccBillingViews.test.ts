@@ -349,8 +349,8 @@ describe("buildBillingDetailByMonth", () => {
     const acctId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-           VALUES (?, 'Vitest · inactive fixture', ?, 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes)
+           VALUES (?, 'Vitest · inactive fixture', ?)`
         )
         .run(bucket.id, notes).lastInsertRowid
     );

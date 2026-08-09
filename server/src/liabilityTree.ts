@@ -200,8 +200,7 @@ function linkedCreditCardMasters(): LinkedCreditCardMasterRow[] {
        JOIN liability_group_items lgi
          ON lgi.child_credit_card_group_id = g.id AND lgi.item_kind = 'credit_card_group'
        JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
-       WHERE m.account_kind = 'master'
-         AND m.exclude_from_group_totals = 0
+       WHERE m.exclude_from_group_totals = 0
        ORDER BY m.name, m.id`
     )
     .all() as LinkedCreditCardMasterRow[];

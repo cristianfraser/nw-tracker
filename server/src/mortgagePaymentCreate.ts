@@ -69,7 +69,7 @@ function propertyAccountId(): number {
 
 function mortgageAccountId(): number {
   const row = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ? AND account_kind = 'master' ORDER BY id LIMIT 1`)
+    .prepare(`SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`)
     .get(MORTGAGE_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
   if (!row) throw new Error(`Mortgage account not found (${MORTGAGE_ACCOUNT_IMPORT_KEY})`);
   return row.id;

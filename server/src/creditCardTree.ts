@@ -138,7 +138,6 @@ export function listCreditCardMasterAccountIds(): number[] {
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (g.slug = 'credit_card' OR g.slug LIKE '%__credit_card')
-         AND a.account_kind = 'master'
          AND a.import_key LIKE 'credit_card_master|%'
        ORDER BY a.import_key`
     )

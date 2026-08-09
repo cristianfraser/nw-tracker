@@ -34,8 +34,8 @@ export function ensureVitestCreditCardFixtures(): void {
       );
     }
     db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-       VALUES (?, 'Vitest · santander · fixture', ?, ?, 'master')`
+      `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+       VALUES (?, 'Vitest · santander · fixture', ?, ?)`
     ).run(bucket.id, VITEST_SANTANDER_CC_MASTER_NOTES, VITEST_SANTANDER_CC_MASTER_NOTES);
   }
 

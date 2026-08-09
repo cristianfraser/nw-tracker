@@ -134,7 +134,7 @@ describe("updatePanelAccount", () => {
       .prepare(
         `SELECT a.id FROM accounts a
          JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE g.slug = 'credit_cards__credit_card' AND a.account_kind != 'liability_view'
+         WHERE g.slug = 'credit_cards__credit_card'
          LIMIT 1`
       )
       .get() as { id: number } | undefined;

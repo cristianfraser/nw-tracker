@@ -27,8 +27,8 @@ beforeAll(() => {
   accountId = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-         VALUES (?, 'Vitest · daily owed cc', 'vitest-daily-owed-cc', 'vitest-daily-owed-cc', 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · daily owed cc', 'vitest-daily-owed-cc', 'vitest-daily-owed-cc')`
       )
       .run(leaf.id).lastInsertRowid
   );

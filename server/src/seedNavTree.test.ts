@@ -212,7 +212,7 @@ describe("assertHomogeneousGroupItems", () => {
       .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'brokerage'`)
       .get() as { id: number };
     const anyAccount = db
-      .prepare(`SELECT id FROM accounts WHERE account_kind != 'liability_view' ORDER BY id LIMIT 1`)
+      .prepare(`SELECT id FROM accounts ORDER BY id LIMIT 1`)
       .get() as { id: number };
     db.prepare(
       `INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order)

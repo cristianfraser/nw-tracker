@@ -70,8 +70,8 @@ function createSyntheticAnchorAccount(): number {
   const id = Number(
     db
       .prepare(
-        `INSERT INTO accounts (asset_group_id, name, notes, account_kind)
-         VALUES (?, 'Vitest · anchor fixture', 'vitest:cartola-anchor', 'master')`
+        `INSERT INTO accounts (asset_group_id, name, notes)
+         VALUES (?, 'Vitest · anchor fixture', 'vitest:cartola-anchor')`
       )
       .run(bucket.id).lastInsertRowid
   );

@@ -94,8 +94,8 @@ describe("racionalMovementsImport duplicate detection", () => {
       | undefined;
     if (!group) return;
     db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, account_kind, exclude_from_group_totals, created_at, import_key)
-       VALUES (?, 'vitest Racional CLP', 'master', 0, datetime('now'), 'import:panel|kind=clp|key=clp')`
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Racional CLP', 0, datetime('now'), 'import:panel|kind=clp|key=clp')`
     ).run(group.id);
     const accountId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
 

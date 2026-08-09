@@ -202,8 +202,8 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
     paidAccountId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-           VALUES (?, 'Vitest mortgage payer', NULL, 'vitest|mortgage-uf|payer', 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest mortgage payer', NULL, 'vitest|mortgage-uf|payer')`
         )
         .run(group.id).lastInsertRowid
     );

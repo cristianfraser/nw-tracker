@@ -13,7 +13,7 @@ describe("mortgage payment create API layer", () => {
   it("preview and commit update ledger balances", () => {
     const mortgage = db
       .prepare(
-        `SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' AND account_kind = 'master' LIMIT 1`
+        `SELECT id FROM accounts WHERE notes = 'import:excel|key=mortgage' LIMIT 1`
       )
       .get() as { id: number } | undefined;
     if (!mortgage) return;

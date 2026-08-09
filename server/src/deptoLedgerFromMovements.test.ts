@@ -61,7 +61,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     // synthetic block only runs on DBs without one (the generated lean test DB).
     preexistingProperty =
       db
-        .prepare(`SELECT 1 FROM accounts WHERE import_key = ? AND account_kind = 'master'`)
+        .prepare(`SELECT 1 FROM accounts WHERE import_key = ?`)
         .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) != null;
     if (preexistingProperty) return;
 
@@ -79,8 +79,8 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     accountId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind)
-           VALUES (?, 'Depto fixture', ?, ?, 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Depto fixture', ?, ?)`
         )
         .run(group.id, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY).lastInsertRowid
     );

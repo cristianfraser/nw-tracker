@@ -151,7 +151,7 @@ function applyDemoColors(accounts: DemoAccounts): void {
   if (ccj != null) updAccount.run("80,184,176", ccj);
   // Card colors by group (santander blue-gray / bci amber, like the real masters).
   const updByNotes = db.prepare(
-    `UPDATE accounts SET color_rgb = ? WHERE import_key LIKE ? AND account_kind = 'master'`
+    `UPDATE accounts SET color_rgb = ? WHERE import_key LIKE ?`
   );
   updByNotes.run("75,153,189", "credit_card_master|santander|%");
   updByNotes.run("180,120,60", "credit_card_master|bci|%");
@@ -171,7 +171,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, account_kind) VALUES (?, ?, ?, 'master')`
+          `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`
         )
         .run(
           assetGroupId("credit_cards__credit_card"),

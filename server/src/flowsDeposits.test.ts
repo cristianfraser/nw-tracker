@@ -40,7 +40,7 @@ describe("state contributions are P/L, not deposits", () => {
     if (!group) return;
     accountId = Number(
       db
-        .prepare(`INSERT INTO accounts (asset_group_id, name, account_kind) VALUES (?, ?, 'master')`)
+        .prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`)
         .run(group.id, "vitest-flows-deposits-state-bonus").lastInsertRowid
     );
     const ins = db.prepare(
@@ -76,7 +76,7 @@ describe("future-dated movements do not count until their date arrives", () => {
     if (!group) return;
     accountId = Number(
       db
-        .prepare(`INSERT INTO accounts (asset_group_id, name, account_kind) VALUES (?, ?, 'master')`)
+        .prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`)
         .run(group.id, "vitest-flows-deposits-future-dated").lastInsertRowid
     );
     const ins = db.prepare(
