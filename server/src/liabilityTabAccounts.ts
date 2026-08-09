@@ -35,36 +35,6 @@ function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
   return rows.filter((r) => !isSupersededSantanderCcMaster(r.account_id));
 }
 
-/** Idempotent: Pasivos hipoteca leaf for the Excel mortgage master (if present). */
-export function ensureMortgageLiabilityView(): number {
-  const leaf = db
-    .prepare(`SELECT id FROM asset_groups WHERE slug = 'liabilities__mortgage' LIMIT 1`)
-    .get() as { id: number } | undefined;
-  if (!leaf) return 0;
-
-  const master = db
-    .prepare(
-      `SELECT id, name, color_rgb FROM accounts
-       WHERE import_key = 'import:excel|key=mortgage' AND account_kind = 'master'
-       ORDER BY id LIMIT 1`
-    )
-    .get() as { id: number; name: string; color_rgb: string | null } | undefined;
-  if (!master) return 0;
-
-  const exists = db
-    .prepare(
-      `SELECT 1 AS o FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`
-    )
-    .get(master.id) as { o: number } | undefined;
-  if (exists) return 0;
-
-  db.prepare(
-    `INSERT INTO accounts (asset_group_id, name, notes, import_key, account_kind, source_account_id, color_rgb)
-     VALUES (?, ?, 'liability_view|mortgage', 'liability_view|mortgage', 'liability_view', ?, ?)`
-  ).run(leaf.id, master.name, master.id, master.color_rgb);
-  return 1;
-}
-
 /** One `credit_card_groups` issuer page (e.g. Santander, BCI) — master rows for that issuer. */
 export function listCreditCardIssuerTabAccountRows(issuerSlug: string): GroupTabAccountRow[] | null {
   if (!getCreditCardGroupBySlug(issuerSlug)) return null;
@@ -85,29 +55,26 @@ export function listCreditCardIssuerTabAccountRows(issuerSlug: string): GroupTab
     .all(...masterIds, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
 }
 
-/** Pasivos tab: CC masters + mortgage liability_view rows. */
+/** Pasivos tab: CC masters + mortgage masters (liability_view rows were retired, migration 175). */
 export function listLiabilitiesTabAccountRows(tabSubgroup?: string): GroupTabAccountRow[] {
-  ensureMortgageLiabilityView();
-
   const ccRows = listCreditCardPasivosTabAccountRows();
 
   const mortgageRows = db
     .prepare(
       `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug,
-              a.notes AS notes, a.import_key, a.exclude_from_group_totals AS exclude_from_group_totals,
-              a.source_account_id AS source_account_id
+              a.notes AS notes, a.import_key, a.exclude_from_group_totals AS exclude_from_group_totals
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE (g.slug = 'mortgage' OR g.slug LIKE '%__mortgage')
-         AND a.account_kind = 'liability_view'
+         AND a.account_kind = 'master'
          AND (a.import_key IS NULL OR a.import_key != ?)
        ORDER BY g.slug, a.id, a.name`
     )
-    .all(NOTE_STOCKS_LEGACY) as (GroupTabAccountRow & { source_account_id: number | null })[];
+    .all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
 
-  let kept = [...ccRows, ...mortgageRows.map(({ source_account_id: _src, ...row }) => row)];
+  let kept = [...ccRows, ...mortgageRows];
 
-  // Non-CC liability views excluded from totals stay off the tab. (The legacy combined
+  // Non-CC liability accounts excluded from totals stay off the tab. (The legacy combined
   // worldmember filter died with the excel importer and its account.)
   kept = kept.filter(
     (r) =>

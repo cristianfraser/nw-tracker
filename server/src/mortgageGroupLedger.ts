@@ -1,10 +1,9 @@
-import { resolveOperationalAccountId } from "./accountSource.js";
 import {
   isDeptoMortgagePaymentCuota,
   mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { ensureMortgageLiabilityView, listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
+import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 
 export type MortgageGroupLedgerResponse = {
@@ -42,11 +41,9 @@ export function mortgageGroupLedgerResponse(portfolioGroupSlug: string): Mortgag
   if (portfolioGroupSlug !== "liabilities_mortgage" && portfolioGroupSlug !== "liabilities") {
     return emptyMortgageGroupLedger();
   }
-  ensureMortgageLiabilityView();
   const mortgageRows = listLiabilitiesTabAccountRows("mortgage");
   if (mortgageRows.length === 0) {
     return emptyMortgageGroupLedger();
   }
-  const operationalId = resolveOperationalAccountId(mortgageRows[0]!.account_id);
-  return mortgageLedgerForOperationalAccount(operationalId);
+  return mortgageLedgerForOperationalAccount(mortgageRows[0]!.account_id);
 }

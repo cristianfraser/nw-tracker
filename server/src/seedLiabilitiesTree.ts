@@ -1,5 +1,4 @@
 import { db } from "./db.js";
-import { ensureMortgageLiabilityView } from "./liabilityTabAccounts.js";
 
 const upsertGroup = db.prepare(`
   INSERT INTO liability_groups (parent_id, slug, label, sort_order, label_i18n_key, route_path, liability_kind)
@@ -29,7 +28,7 @@ const insertCreditCardGroupChild = db.prepare(`
   ON CONFLICT(group_id, child_credit_card_group_id) DO UPDATE SET sort_order = excluded.sort_order
 `);
 
-/** Idempotent Pasivos subtree: CC issuer groups; mortgage leaf → liability_view or master. */
+/** Idempotent Pasivos subtree: CC issuer groups; mortgage leaf → the mortgage master account. */
 export function seedLiabilitiesTree(): void {
   const tx = db.transaction(() => {
     upsertGroup.run({
@@ -56,6 +55,16 @@ export function seedLiabilitiesTree(): void {
     deleteGroupItems.run(ccGroupId);
     deleteGroupItems.run(mtgGroupId);
 
+    // Transitional (migration 175 companion): a pre-175 server still running during the
+    // cutover re-creates a data-less `liability_view` alias row on its next Pasivos read;
+    // sweep any such resurrected rows so the retirement is stable regardless of restart
+    // order. Views never carry movements/valuations, so the delete is always safe.
+    db.prepare(
+      `DELETE FROM liability_group_items
+       WHERE account_id IN (SELECT id FROM accounts WHERE account_kind = 'liability_view')`
+    ).run();
+    db.prepare(`DELETE FROM accounts WHERE account_kind = 'liability_view'`).run();
+
     const ccIssuerGroups = db
       .prepare(`SELECT id, slug FROM credit_card_groups ORDER BY sort_order, id`)
       .all() as { id: number; slug: string }[];
@@ -67,15 +76,8 @@ export function seedLiabilitiesTree(): void {
     const mtgMaster = db
       .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=mortgage' ORDER BY id LIMIT 1`)
       .get() as { id: number } | undefined;
-    ensureMortgageLiabilityView();
     if (mtgMaster) {
-      const mtgLeaf = db
-        .prepare(
-          `SELECT v.id FROM accounts v
-           WHERE v.source_account_id = ? AND v.account_kind = 'liability_view'`
-        )
-        .get(mtgMaster.id) as { id: number } | undefined;
-      insertAccountChild.run(mtgGroupId, mtgLeaf?.id ?? mtgMaster.id, 0);
+      insertAccountChild.run(mtgGroupId, mtgMaster.id, 0);
     }
   });
   tx();

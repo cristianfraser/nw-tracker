@@ -44,7 +44,6 @@ function accountIdsOnCheckingAssetLeaves(dbHandle: Database): number[] {
       .prepare(
         `SELECT a.id FROM accounts a
          WHERE a.asset_group_id IN (${ph})
-           AND (a.account_kind IS NULL OR a.account_kind != 'liability_view')
            AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
          ORDER BY a.id`
       )
@@ -59,7 +58,6 @@ function accountIdsLinkedToCheckingNav(dbHandle: Database): number[] {
         `SELECT DISTINCT a.id FROM accounts a
          INNER JOIN portfolio_group_items i ON i.account_id = a.id AND i.item_kind = 'account'
          INNER JOIN portfolio_groups pg ON pg.id = i.group_id AND pg.slug = ?
-         WHERE (a.account_kind IS NULL OR a.account_kind != 'liability_view')
          ORDER BY a.id`
       )
       .all(CHECKING_ACCOUNTS_NAV_SLUG) as { id: number }[]

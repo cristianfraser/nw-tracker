@@ -39,12 +39,7 @@ export function mortgagePaymentCreateSchemaForAccount(
   const account = accountRowForId(accountId);
   if (!account) return null;
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") return null;
-  if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY && account.import_key !== "liability_view|mortgage") {
-    const master = db
-      .prepare(`SELECT import_key FROM accounts WHERE id = ?`)
-      .get(accountId) as { import_key: string | null } | undefined;
-    if (master?.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) return null;
-  }
+  if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) return null;
   const ledger = loadDeptoLedgerFromMovements();
   if (ledger.length === 0) return null;
   return {

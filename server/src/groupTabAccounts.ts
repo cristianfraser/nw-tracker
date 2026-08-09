@@ -1,7 +1,7 @@
 import { resolveOperationalAccountId } from "./accountSource.js";
 import { getCreditCardGroupBySlug } from "./creditCardTree.js";
 
-/** Pasivos liability leaves: CC uses master id; mortgage may still use liability_view. */
+/** Pasivos liability leaves resolve to master account ids. */
 export function seriesAccountIdForGroupTab(
   row: { account_id: number },
   groupSlug: string

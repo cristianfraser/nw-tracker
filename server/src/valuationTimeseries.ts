@@ -172,6 +172,16 @@ export const DEPTO_VALOR_CHART_ACCOUNT_ID = -5;
 export const DEPTO_VALOR_CHART_LINE_NAME = "Valor";
 export const DEPTO_VALOR_CHART_I18N_KEY = "realEstate.propertyValue";
 
+/**
+ * The «hipoteca» overlay draws in the mortgage account's own configured color (the same color
+ * its Pasivos line uses), so the user controls it from that account's params. Undefined when
+ * the mortgage is not exactly one account — the overlay itself is gated the same way.
+ */
+function deptoHipotecaChartColorRgb(): string | undefined {
+  const rows = listLiabilitiesTabAccountRows("mortgage");
+  return rows.length === 1 ? getAccountColorRgb(rows[0]!.account_id) : undefined;
+}
+
 /** Per-row sum of all class-tab valuation lines and of all cumulative deposit lines. */
 function appendGroupTabTotals(block: GroupTabValuationBlock): GroupTabValuationBlock {
   const src = block.accounts;
@@ -2358,6 +2368,7 @@ function getGroupValuationTimeseriesInnerUncached(
               name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY,
               dataKey: dk,
               valueSeriesType: "reference",
+              color_rgb: deptoHipotecaChartColorRgb(),
             },
             {
               account_id: DEPTO_VALOR_CHART_ACCOUNT_ID,
@@ -2514,6 +2525,7 @@ export function getAccountValuationTimeseries(
             name_i18n_key: DEPTO_HIPOTECA_CHART_I18N_KEY,
             dataKey: hipotecaDk,
             valueSeriesType: "reference",
+            color_rgb: deptoHipotecaChartColorRgb(),
           },
         ],
         points: accounts.points.map((pt) => {
