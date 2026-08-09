@@ -104,12 +104,6 @@ export function purgeCcImportedDataForAccount(accountId: number): {
       .prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`)
       .run(accountId).changes;
     valuations_cleared = db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId).changes;
-    const viewIds = db
-      .prepare(`SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`)
-      .all(accountId) as { id: number }[];
-    for (const { id } of viewIds) {
-      valuations_cleared += db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id).changes;
-    }
   });
   tx();
 
@@ -126,12 +120,6 @@ export function markSantanderCcSuperseded(last4: string, targetLast4: string): v
     `UPDATE credit_card_account_config SET superseded_target_last4 = ? WHERE account_id = ?`
   ).run(targetLast4, master);
   db.prepare(`UPDATE accounts SET exclude_from_group_totals = 1 WHERE id = ?`).run(master);
-  const views = db
-    .prepare(`SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`)
-    .all(master) as { id: number }[];
-  for (const { id } of views) {
-    db.prepare(`UPDATE accounts SET exclude_from_group_totals = 1 WHERE id = ?`).run(id);
-  }
 }
 
 export function unmarkSantanderCcSuperseded(last4: string): void {
@@ -139,10 +127,4 @@ export function unmarkSantanderCcSuperseded(last4: string): void {
   if (master == null) return;
   db.prepare(`UPDATE credit_card_account_config SET superseded_target_last4 = NULL WHERE account_id = ?`).run(master);
   db.prepare(`UPDATE accounts SET exclude_from_group_totals = 0 WHERE id = ?`).run(master);
-  const views = db
-    .prepare(`SELECT id FROM accounts WHERE source_account_id = ? AND account_kind = 'liability_view'`)
-    .all(master) as { id: number }[];
-  for (const { id } of views) {
-    db.prepare(`UPDATE accounts SET exclude_from_group_totals = 0 WHERE id = ?`).run(id);
-  }
 }

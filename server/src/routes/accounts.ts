@@ -88,7 +88,6 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
          INNER JOIN asset_groups g ON g.id = a.asset_group_id
          WHERE (a.import_key IS NULL OR a.import_key != ?)
            AND g.slug != 'individual_stocks'
-           AND a.notes != 'liability_view|credit_card'
          ORDER BY g.sort_order, a.id, a.name`
       )
       .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];

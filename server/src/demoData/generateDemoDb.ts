@@ -243,7 +243,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
           "import:excel|key=property"
         )
       : null,
-    // Mortgage master: notes are the canonical identity ensureMortgageLiabilityView keys on.
+    // Mortgage master: notes carry the canonical import_key identity (seedLiabilitiesTree keys on it).
     mortgageId:
       narrative.withProperty && narrative.house
         ? createAccount(

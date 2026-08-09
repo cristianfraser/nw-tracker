@@ -136,7 +136,7 @@ function liabilityBreakdownForDate(
   return out;
 }
 
-/** Per-category pasivos for dashboard / breakdown (liability_view series; depto mortgage from the movement ledger). */
+/** Per-category pasivos for dashboard / breakdown (master-account series; depto mortgage from the movement ledger). */
 export function liabilitiesBreakdownClpAsOf(
   asOfYmd: string
 ): { mortgage_clp: number; credit_card_clp: number } {

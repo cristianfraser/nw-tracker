@@ -115,7 +115,6 @@ export type CcFinancingPlSummary = {
 
 /**
  * Lightweight dashboard summary of CC financing costs (intereses + installment interest).
- * Pass the master account ID (not the liability_view account id).
  * Returns null when no statement data exists for the account.
  */
 export function creditCardFinancingPlSummaryForDashboard(

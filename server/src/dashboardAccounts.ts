@@ -117,14 +117,6 @@ export function listDashboardSourceAccounts(): {
       INNER JOIN asset_groups g ON g.id = a.asset_group_id
       WHERE (a.import_key IS NULL OR a.import_key != ?)
         AND g.slug != 'individual_stocks'
-        AND NOT (
-          g.slug IN ('liabilities', 'credit_cards')
-          AND COALESCE(a.account_kind, 'master') = 'master'
-          AND EXISTS (
-            SELECT 1 FROM accounts v
-            WHERE v.source_account_id = a.id AND v.account_kind = 'liability_view'
-          )
-        )
       ORDER BY g.sort_order, a.id, a.name
     `
     )
@@ -338,7 +330,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   const priorDayYmd = chileCalendarAddDays(today, -1);
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
 
-  /** Shared by the master and its liability_view row (never both in one summed scope). */
+  /** Memoized once per listing — the mortgage master appears in one summed scope. */
   let mortgageDepositsMemo: MortgageCardDeposits | null | undefined;
   const mortgageCardDeposits = (): MortgageCardDeposits | null => {
     if (mortgageDepositsMemo === undefined) {

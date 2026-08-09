@@ -178,7 +178,6 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
       `SELECT a.id
        FROM accounts a
        WHERE a.asset_group_id IN (${ph})
-         AND a.account_kind != 'liability_view'
          AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
        ORDER BY a.name COLLATE NOCASE`
     )
@@ -238,7 +237,7 @@ function assetGroupSubtreeHasAccounts(bucketSlug: string): boolean {
   const row = db
     .prepare(
       `SELECT COUNT(*) AS c FROM accounts
-       WHERE asset_group_id IN (${ph}) AND account_kind != 'liability_view'`
+       WHERE asset_group_id IN (${ph})`
     )
     .get(...leafIds) as { c: number };
   return row.c > 0;
