@@ -99,6 +99,15 @@ export type BucketDailySeries = {
   accounts?: DailySeriesAccountLine[];
   /** Σ of account `deposits_acum` per session (`__group_dep_total` line), same presence. */
   deposits_acum_total?: number[];
+  /**
+   * Internal (stripped from HTTP payloads): per-account PRE-TRIM cumulative deposits in the
+   * request unit, index-aligned with `points`, for every included account — never-held and
+   * wound-down members too. `groupDailySeriesAccounts` sums bucket aportes from these, never
+   * from the display-trimmed `deposits_acum` lines: a trimmed member's terminal deposits must
+   * not vanish from an active bucket's aggregate (same rule as `deposits_acum_total`, which
+   * is the whole-group sum of exactly these arrays).
+   */
+  deposit_cums_raw?: Map<number, number[]>;
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
   grouped_accounts?: DailySeriesAccountLine[];
   /** "Sin agrupar" bucket lines (one nav level deeper; only when they differ from grouped). */
@@ -388,21 +397,26 @@ export function getBucketDailySeries(
   // Aportes acum. companion lines (parity with the monthly chart's deposit series): full-
   // history cumulative deposits at each day, per account plus the group total.
   let depsAcumTotal: number[] | null = null;
+  let depositCumsRaw: Map<number, number[]> | null = null;
   if (perAccount) {
     const cumsById = accountDepositCumsOnGrid(included, grid, flowUnit);
     const emit = (cumRaw: number, ymd: string): number =>
       unit === "uf" ? convertTs(cumRaw, ymd, "uf") : cumRaw;
     depsAcumTotal = new Array<number>(grid.length - 1).fill(0);
+    depositCumsRaw = new Map();
     included.forEach((a, ai) => {
       const cums = cumsById.get(a.account_id);
       if (!cums) return;
-      const line = perAccount[ai]!;
-      line.deposits_acum = [];
+      const raw: number[] = [];
       for (let i = 1; i < grid.length; i++) {
         const v = emit(cums[i]!, grid[i]!);
-        line.deposits_acum.push(v);
+        raw.push(v);
         depsAcumTotal![i - 1]! += v;
       }
+      // The line's copy gets display-trimmed below; the raw array must survive for the
+      // grouped-bucket aggregation (`deposit_cums_raw`).
+      perAccount[ai]!.deposits_acum = raw.slice();
+      depositCumsRaw!.set(a.account_id, raw);
     });
   }
 
@@ -498,6 +512,7 @@ export function getBucketDailySeries(
     points,
     ...(perAccount ? { accounts: perAccount } : {}),
     ...(depsAcumTotal ? { deposits_acum_total: depsAcumTotal } : {}),
+    ...(depositCumsRaw ? { deposit_cums_raw: depositCumsRaw } : {}),
     ...(chartEndYmd ? { chart_end_ymd: chartEndYmd } : {}),
   };
 }
@@ -507,7 +522,8 @@ export function getBucketDailySeries(
  * (synthetic bucket ids/names from {@link ChartBucketPlan} — the same plan the monthly
  * grouped blocks use, so the client can reuse the grouped block's series metadata).
  * Accounts the plan leaves ungrouped pass through as their own lines. Pure transform over
- * an already-built series (values and aportes both sum; null + null stays null).
+ * an already-built series: values/P-L sum from the member lines, aportes from the pre-trim
+ * `deposit_cums_raw`, and each aggregate is edge-trimmed as a unit.
  */
 /**
  * Display-only edge trims on one chart line (per-account or aggregated bucket), mirroring the
@@ -515,8 +531,9 @@ export function getBucketDailySeries(
  *  - Leading: null the run of 0/null before the first holding (an equity/crypto account marks
  *    to a finite 0 before its first buy; the monthly line starts at the first holding).
  *  - Never held in-window: the whole line is absent — its `deposits_acum` companion must null
- *    too, or a long-wound-down account draws an orphan flat aportes line with no value line
- *    (and keeps polluting grouped-bucket sums after an active sibling's tail clip).
+ *    too, or a long-wound-down account draws an orphan flat aportes line with no value line.
+ *    (Its raw cums still count in bucket aggregates, via `deposit_cums_raw` — display trim
+ *    only shapes this account's own line.)
  *  - Trailing: a sold-out line keeps `TS_TRAILING_ZERO_MONTHS_KEPT` plotted zeros (one DAY at
  *    this grain) then nulls, bundling `deposits_acum` with the value exactly as the monthly
  *    `applyTrailingZeroTailClipToBlock` bundles the two.
@@ -549,6 +566,7 @@ export function groupDailySeriesAccounts(
   if (!series.accounts?.length) return null;
   const pointCount = series.points.length;
   const byBucketKey = new Map<string, DailySeriesAccountLine>();
+  const memberIdsByBucketKey = new Map<string, number[]>();
   const out: DailySeriesAccountLine[] = [];
   for (const line of series.accounts) {
     const bucketKey = plan.idToBucket(line.account_id);
@@ -565,16 +583,18 @@ export function groupDailySeriesAccounts(
         values: new Array<number | null>(pointCount).fill(null),
       };
       byBucketKey.set(bucketKey, agg);
+      memberIdsByBucketKey.set(bucketKey, []);
       out.push(agg);
     }
+    memberIdsByBucketKey.get(bucketKey)!.push(line.account_id);
+    // Values and P/L sum from the member lines: a trimmed value was a true 0 (leading
+    // pre-holding or trailing sold-out run), so skipping the null contributes the same
+    // amount, and `pl` legs are never trimmed. Deposits are NOT summed here — a trimmed
+    // member's terminal cums are nonzero and must not vanish from the aggregate; they come
+    // from the pre-trim `deposit_cums_raw` below.
     for (let i = 0; i < pointCount; i++) {
       const v = line.values[i];
       if (v != null) agg.values[i] = (agg.values[i] ?? 0) + v;
-      const d = line.deposits_acum?.[i];
-      if (d != null) {
-        agg.deposits_acum ??= new Array<number>(pointCount).fill(0);
-        agg.deposits_acum[i] = (agg.deposits_acum[i] ?? 0) + d;
-      }
       const p = line.pl?.[i];
       if (p != null) {
         agg.pl ??= new Array<number | null>(pointCount).fill(null);
@@ -582,12 +602,26 @@ export function groupDailySeriesAccounts(
       }
     }
   }
-  // Re-trim each aggregated line as a unit: member lines were clipped individually, so after
-  // one member's tail clip the summed `deposits_acum` (zero-filled where no member contributes)
-  // would snap to the surviving members' constant — e.g. a sold-out bucket's aportes jumping
-  // from its true final total to a wound-down predecessor's small residual. The values-driven
-  // trim bundles the aggregate's deposits with its own value span instead.
-  for (const agg of byBucketKey.values()) trimDailyLineEdges(agg);
+  // Bucket aportes = Σ raw (pre-trim) member cums — every member counts, wound-down and
+  // never-held-in-window alike, so a bucket line's terminal deposits equal that bucket's own
+  // leaf-page `deposits_acum_total` by construction. Then trim each aggregate as a unit,
+  // bundling its deposits with its own value span (a fully sold-out bucket's aportes end
+  // with its value line instead of lingering flat).
+  const rawCums = series.deposit_cums_raw;
+  for (const [bucketKey, agg] of byBucketKey) {
+    if (rawCums) {
+      const dep = new Array<number>(pointCount).fill(0);
+      let any = false;
+      for (const id of memberIdsByBucketKey.get(bucketKey)!) {
+        const cums = rawCums.get(id);
+        if (!cums) continue;
+        any = true;
+        for (let i = 0; i < pointCount; i++) dep[i] = dep[i]! + (cums[i] ?? 0);
+      }
+      if (any) agg.deposits_acum = dep;
+    }
+    trimDailyLineEdges(agg);
+  }
   return out;
 }
 

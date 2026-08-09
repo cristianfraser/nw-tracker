@@ -430,6 +430,10 @@ describe("groupDailySeriesAccounts", () => {
         { account_id: 2, name: "b", values: [null, 12], deposits_acum: [7, 8] },
         { account_id: 3, name: "solo", values: [20, 10] },
       ],
+      deposit_cums_raw: new Map([
+        [1, [5, 5]],
+        [2, [7, 8]],
+      ]),
     };
     const plan = {
       orderedKeys: ["bucket1"],
@@ -457,8 +461,9 @@ describe("groupDailySeriesAccounts", () => {
 
   it("clips a sold-out bucket as a unit: aportes end with the bucket value, never snapping to a wound-down member's residual", () => {
     // Member 1 = the active account: sold out on day 2 (kept zero), clipped nulls after.
-    // Member 2 = a wound-down predecessor: never held in-window, but its deposits_acum
-    // survived the per-account pass (pre-fix) — the summed line must not fall back to it.
+    // Member 2 = a wound-down predecessor: never held in-window (line fully nulled), but its
+    // raw cums still count toward the bucket aportes — and the summed line must end with the
+    // bucket's value span, never linger flat on the predecessor's residual.
     const mkPoint = (d: string) =>
       ({ as_of_date: d, value: 0, flow: 0, delta: null, pl: null, pct: null, market_day: true });
     const series: BucketDailySeries = {
@@ -477,9 +482,13 @@ describe("groupDailySeriesAccounts", () => {
           account_id: 2,
           name: "predecessor",
           values: [null, null, null, null, null],
-          deposits_acum: [-4, -4, -4, -4, -4],
+          deposits_acum: [null, null, null, null, null],
         },
       ],
+      deposit_cums_raw: new Map([
+        [1, [-10, -10, -21, -21, -21]],
+        [2, [-4, -4, -4, -4, -4]],
+      ]),
     };
     const plan = {
       orderedKeys: ["b"],
@@ -503,6 +512,61 @@ describe("groupDailySeriesAccounts", () => {
     expect(bucket.values).toEqual([100, 110, 0, null, null]);
     // Aportes: −25 at the kept zero (both members), then null — NOT [−25, −4, −4].
     expect(bucket.deposits_acum).toEqual([-14, -14, -25, null, null]);
+  });
+
+  it("an ACTIVE bucket keeps a wound-down member's terminal deposits in its aportes line", () => {
+    // The /inversiones hub bug (2026-08-08): brokerage stayed active while a liquidated
+    // member (net deposits −300) got its line trailing-clipped — summing the trimmed
+    // per-account `deposits_acum` dropped the −300 from the clip day forward, jumping the
+    // bucket aportes up by the dead member's withdrawals. The aggregate must sum the raw
+    // pre-trim cums instead, matching the member set's `deposits_acum_total`.
+    const mkPoint = (d: string) =>
+      ({ as_of_date: d, value: 0, flow: 0, delta: null, pl: null, pct: null, market_day: true });
+    const series: BucketDailySeries = {
+      unit: "clp",
+      end_ymd: "2026-03-27",
+      baseline: { as_of_date: "2026-03-22", value: 0 },
+      points: ["2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27"].map(mkPoint),
+      accounts: [
+        {
+          account_id: 1,
+          name: "alive",
+          values: [100, 110, 120, 130, 140],
+          deposits_acum: [50, 50, 50, 50, 50],
+        },
+        {
+          account_id: 2,
+          name: "liquidated",
+          values: [200, 0, null, null, null],
+          deposits_acum: [-300, -300, null, null, null],
+        },
+      ],
+      deposit_cums_raw: new Map([
+        [1, [50, 50, 50, 50, 50]],
+        [2, [-300, -300, -300, -300, -300]],
+      ]),
+    };
+    const plan = {
+      orderedKeys: ["b"],
+      meta: {
+        b: {
+          key: "b",
+          accountId: -900,
+          dataKey: "-900",
+          depKey: "dep_-900",
+          barDataKey: "bar_-900",
+          name: "Bucket",
+          name_i18n_key: null,
+          color_rgb: null,
+        },
+      },
+      idToBucket: (id: number) => (id === 1 || id === 2 ? "b" : null),
+    };
+    const grouped = groupDailySeriesAccounts(series, plan)!;
+    const bucket = grouped.find((l) => l.account_id === -900)!;
+    expect(bucket.values).toEqual([300, 110, 120, 130, 140]);
+    // Pre-fix this read [−250, −250, 50, 50, 50] — the dead member's −300 vanished mid-line.
+    expect(bucket.deposits_acum).toEqual([-250, -250, -250, -250, -250]);
   });
 });
 
