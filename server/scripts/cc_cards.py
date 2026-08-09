@@ -31,6 +31,9 @@ _DEFAULTS: dict = {
     # Additional-cardholder plastics (read by the TS expense auto-tagger; listed
     # here only so the shared JSON passes the unknown-key check).
     "additional_card_last4s": [],
+    # Lider boleta sucursal → bank merchant strings (read by the TS boleta importer;
+    # listed here only so the shared JSON passes the unknown-key check).
+    "boleta_sucursal_merchants": {},
 }
 
 
