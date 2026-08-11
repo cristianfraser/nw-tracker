@@ -192,6 +192,41 @@ export function densifyRecordsByCalendarPeriod<T extends ChartSparseRow>(
   return out;
 }
 
+const CARRY_VALUE_EPS = 1e-9;
+
+/**
+ * Fill the trailing synthetic rows `densifyRecordsByCalendarPeriod` created past the block's
+ * last real data row: when the Chile day/month/year turns before fresh data loads, the
+ * extend-through-today bucket exists with no data, and rendering it null (a gap) or letting
+ * the trailing-zero coercion flip it to 0 plunges every line at the right edge. Carrying the
+ * last real row forward draws the pending bucket flat until the refetch lands.
+ *
+ * Only keys with a finite NON-ZERO value at the last real row carry: the server tail clip
+ * ends a sold-out series in one kept 0 (or nulls), so an ended line is never resurrected —
+ * its null/zero end stays a line end. Cumulative companions (deposits acum.) carry flat too,
+ * which is exact: no new events are known yet.
+ */
+export function carryForwardTrailingPendingRows<T extends ChartSparseRow>(
+  points: readonly T[],
+  lastRealYmd: string,
+  dateKey = "as_of_date"
+): T[] {
+  const lastReal = points.find((r) => String(r[dateKey] ?? "").trim() === lastRealYmd);
+  if (!lastReal) return [...points];
+  return points.map((r) => {
+    const d = String(r[dateKey] ?? "").trim();
+    if (!(/^\d{4}-\d{2}-\d{2}$/.test(d) && d > lastRealYmd)) return r;
+    const filled: ChartSparseRow = { ...r };
+    for (const [k, v] of Object.entries(lastReal)) {
+      if (k === dateKey || filled[k] != null) continue;
+      if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) > CARRY_VALUE_EPS) {
+        filled[k] = v;
+      }
+    }
+    return filled as T;
+  });
+}
+
 function addCalendarDaysIso(ymd: string, delta: number): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
   if (!m) return ymd;

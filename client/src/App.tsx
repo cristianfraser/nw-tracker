@@ -10,6 +10,7 @@ import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { useTranslation } from "./i18n";
 import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
+import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverInvalidation";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
 import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
@@ -92,6 +93,8 @@ function AppTree() {
   useDemoPageviewBeacon();
   // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
   useEnsureFxLatestCache();
+  // Refetch day-baked payloads right after Chile midnight instead of waiting out staleTime.
+  useChileDayRolloverInvalidation();
 
   return (
     <div className="layout layout--with-sidebar">
