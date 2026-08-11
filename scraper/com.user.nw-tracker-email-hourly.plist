@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hourly Gmail/IMAP poll (fetch + cheap e-mail-native imports). Install with:
+
+      cp scraper/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-email-hourly.plist
+
+  LaunchAgent (gui/<uid>), not a LaunchDaemon: no window server needed (pure IMAP), but the
+  Gmail app password lives in the user's login Keychain, which only the GUI session can read.
+
+  :30 past every hour, deliberately offset from the 22:00 daily run — the two share the
+  document ledger, the broker-mail watermark and the SQLite file, and nothing locks them.
+  email-run.sh additionally skips itself while daily-run.sh is running. launchd never starts
+  a second instance of this job while one is still running, and runs missed during sleep
+  coalesce into a single run at wake.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.user.nw-tracker-email-hourly</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/crfrsr/Projects/nw-tracker/scraper/email-run.sh</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/crfrsr/Projects/nw-tracker</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Minute</key>
+		<integer>30</integer>
+	</dict>
+	<!-- Not at load: the next :30 is never more than an hour away, and a login-triggered
+	     run would just be noise. -->
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/email-run.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/email-run.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- launchd starts with a minimal PATH; node lives under nvm. Kept verbatim in sync
+		     with com.user.nw-tracker-daily.plist. -->
+		<key>PATH</key>
+		<string>/Users/crfrsr/.nvm/versions/node/v24.18.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<!-- Same gate as the nightly plist: Fintual e-mail movements write for real. -->
+		<key>NW_TRACKER_FINTUAL_APPLY</key>
+		<string>1</string>
+	</dict>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

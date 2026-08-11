@@ -4,9 +4,13 @@ import { db } from "./db.js";
 import {
   DAILY_RUN_FAILED_TITLE,
   DAILY_RUN_MESSAGE_TITLE,
+  HOURLY_EMAIL_RUN_FAILED_TITLE,
+  HOURLY_EMAIL_RUN_MESSAGE_TITLE,
+  dailyRunAlreadyRanToday,
   formatDailyRunBody,
   lastDailyRunAt,
   recordDailyRun,
+  recordHourlyEmailRun,
   staleDailyRunDays,
 } from "./dailyRunLog.js";
 
@@ -16,9 +20,11 @@ import {
  */
 describe("dailyRunLog", () => {
   afterEach(() => {
-    db.prepare(`DELETE FROM app_messages WHERE title IN (?, ?)`).run(
+    db.prepare(`DELETE FROM app_messages WHERE title IN (?, ?, ?, ?)`).run(
       DAILY_RUN_MESSAGE_TITLE,
-      DAILY_RUN_FAILED_TITLE
+      DAILY_RUN_FAILED_TITLE,
+      HOURLY_EMAIL_RUN_MESSAGE_TITLE,
+      HOURLY_EMAIL_RUN_FAILED_TITLE
     );
   });
 
@@ -83,5 +89,74 @@ describe("dailyRunLog", () => {
     recordDailyRun([{ label: "fetch Santander", ok: false }]);
     expect(lastDailyRunAt({ successOnly: true })).toBeNull();
     expect(lastDailyRunAt()).not.toBeNull();
+  });
+});
+
+/**
+ * The hourly e-mail poll records under its own titles. The one property that must never
+ * break: hourly rows are invisible to the daily run's same-day skip and staleness reads —
+ * an hourly row matching the daily titles would make the 22:00 scheduled bank run skip
+ * itself every day.
+ */
+describe("recordHourlyEmailRun", () => {
+  afterEach(() => {
+    db.prepare(`DELETE FROM app_messages WHERE title IN (?, ?)`).run(
+      HOURLY_EMAIL_RUN_MESSAGE_TITLE,
+      HOURLY_EMAIL_RUN_FAILED_TITLE
+    );
+  });
+
+  it("records nothing for a quiet success", () => {
+    const r = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
+      activity: false,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.recorded).toBe(false);
+    expect(r.message_id).toBeNull();
+    const count = db
+      .prepare(`SELECT COUNT(*) AS c FROM app_messages WHERE title IN (?, ?)`)
+      .get(HOURLY_EMAIL_RUN_MESSAGE_TITLE, HOURLY_EMAIL_RUN_FAILED_TITLE) as { c: number };
+    expect(count.c).toBe(0);
+  });
+
+  it("records a log row when the run had activity", () => {
+    const r = recordHourlyEmailRun([{ label: "Lider boletas import", ok: true, seconds: 2 }], {
+      activity: true,
+    });
+    expect(r.recorded).toBe(true);
+    const row = db
+      .prepare(`SELECT kind, title FROM app_messages WHERE id = ?`)
+      .get(r.message_id) as { kind: string; title: string };
+    expect(row.kind).toBe("log");
+    expect(row.title).toBe(HOURLY_EMAIL_RUN_MESSAGE_TITLE);
+  });
+
+  it("badges only the first failure of the Chile day", () => {
+    const first = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], {
+      activity: false,
+    });
+    expect(first.recorded).toBe(true);
+    expect(first.kind).toBe("notification");
+
+    const repeat = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], {
+      activity: false,
+    });
+    expect(repeat.recorded).toBe(true);
+    expect(repeat.kind).toBe("log");
+
+    // A new Chile day badges again.
+    const nextDay = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], {
+      activity: false,
+      nowYmd: "2099-01-01",
+    });
+    expect(nextDay.kind).toBe("notification");
+  });
+
+  it("stays invisible to the daily run's same-day skip and staleness reads", () => {
+    recordHourlyEmailRun([{ label: "Lider boletas import", ok: true }], { activity: true });
+    recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    expect(lastDailyRunAt()).toBeNull();
+    expect(dailyRunAlreadyRanToday()).toBe(false);
+    expect(staleDailyRunDays()).toBeNull();
   });
 });
