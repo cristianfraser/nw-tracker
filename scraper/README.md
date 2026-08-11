@@ -82,6 +82,29 @@ unread in the app) plus a macOS alert when any step failed. The message body nam
 duration, and — this is the part a per-run status cannot tell you — how long it has been since the
 last *successful* run, so a night the agent never fired is visible too.
 
+## Hourly e-mail poll (LaunchAgent)
+
+`email-run.sh` polls Gmail at **:30 past every hour** — `fetch:santander-docs`,
+`fetch:lider-boletas`, `fetch:emails` — and applies the cheap e-mail-native imports when a fetch
+staged something new that hour (`import:lider-boletas`, `import:santander-receipts`,
+`import:fintual-emails`). Everything else stays nightly: the bank web session, the inbox/CC
+pipeline, Racional, statement JSONs. The nightly run is also the retry backstop for anything
+staged here but not imported.
+
+```bash
+cp scraper/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-email-hourly.plist
+launchctl kickstart -p gui/$(id -u)/com.user.nw-tracker-email-hourly   # run once, now
+launchctl bootout gui/$(id -u)/com.user.nw-tracker-email-hourly        # remove
+```
+
+Log: `cfraser/email-run.log` (self-rotates at 5 MB). A quiet hour records nothing; a run with
+activity or a failure writes an «Hourly e-mail poll» app message via `record:email-run` — never
+the daily titles, whose presence would make the 22:00 scheduled run skip itself for the day. Only
+the first failure of the Chile day badges as a notification; there is no macOS alert (the nightly
+run executes the same e-mail steps and remains the alerting authority). The script skips the hour
+outright while `daily-run.sh` is running (shared document ledger / watermark / DB, no locks).
+
 ## Broker e-mail (the change detector)
 
 ```bash

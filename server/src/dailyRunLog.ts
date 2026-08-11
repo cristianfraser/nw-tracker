@@ -19,6 +19,13 @@ import { db } from "./db.js";
 export const DAILY_RUN_MESSAGE_TITLE = "Daily bank run";
 export const DAILY_RUN_FAILED_TITLE = "Daily bank run failed";
 
+// The hourly e-mail poll (`scraper/email-run.sh`) records under its OWN titles: the daily
+// titles drive `dailyRunAlreadyRanToday` (the 22:00 run's same-day skip) and
+// `staleDailyRunDays`, so an hourly row under them would silently disable the nightly bank
+// run for the day and mask a dead one.
+export const HOURLY_EMAIL_RUN_MESSAGE_TITLE = "Hourly e-mail poll";
+export const HOURLY_EMAIL_RUN_FAILED_TITLE = "Hourly e-mail poll failed";
+
 export type DailyRunStep = {
   label: string;
   ok: boolean;
@@ -88,7 +95,7 @@ export function staleDailyRunDays(nowYmd = chileCalendarTodayYmd()): number | nu
   return daysBetweenYmd(chileYmdFromStoredUtc(last), nowYmd);
 }
 
-export function formatDailyRunBody(steps: readonly DailyRunStep[], nowYmd?: string): string {
+function formatRunStepLines(steps: readonly DailyRunStep[]): string[] {
   const failed = steps.filter((s) => !s.ok);
   const lines: string[] = [];
   lines.push(
@@ -100,6 +107,11 @@ export function formatDailyRunBody(steps: readonly DailyRunStep[], nowYmd?: stri
     const secs = s.seconds != null && Number.isFinite(s.seconds) ? ` (${Math.round(s.seconds)}s)` : "";
     lines.push(`${s.ok ? "ok  " : "FAIL"}  ${s.label}${secs}`);
   }
+  return lines;
+}
+
+export function formatDailyRunBody(steps: readonly DailyRunStep[], nowYmd?: string): string {
+  const lines = formatRunStepLines(steps);
   const stale = staleDailyRunDays(nowYmd);
   if (stale == null) {
     lines.push("");
@@ -134,4 +146,54 @@ export function recordDailyRun(
     opts?.dryRun ?? false
   );
   return { ok, message_id, body };
+}
+
+export type RecordHourlyEmailRunResult = {
+  ok: boolean;
+  /** False for a quiet success — nothing fetched, nothing imported, nothing written. */
+  recorded: boolean;
+  message_id: number | null;
+  kind: "log" | "notification" | null;
+  body: string;
+};
+
+function lastHourlyEmailFailureAt(): string | null {
+  const row = db
+    .prepare(`SELECT created_at FROM app_messages WHERE title = ? ORDER BY created_at DESC LIMIT 1`)
+    .get(HOURLY_EMAIL_RUN_FAILED_TITLE) as { created_at: string } | undefined;
+  return row?.created_at ?? null;
+}
+
+/**
+ * Record one hourly e-mail poll (`scraper/email-run.sh`).
+ *
+ * Quiet successes are not recorded — 24 no-op rows a day is noise, and the runner's log
+ * file keeps the trace. A run with activity records a `log`. Failures always record, but
+ * only the FIRST failure of the Chile day is a `notification` (unread badge): a persistent
+ * outage badges once per day instead of hourly, and the nightly run — which executes the
+ * same e-mail steps — still raises the macOS alert for anything that keeps failing.
+ */
+export function recordHourlyEmailRun(
+  steps: readonly DailyRunStep[],
+  opts: { activity: boolean; dryRun?: boolean; nowYmd?: string }
+): RecordHourlyEmailRunResult {
+  const ok = steps.every((s) => s.ok);
+  const body = formatRunStepLines(steps).join("\n");
+  if (ok && !opts.activity) {
+    return { ok, recorded: false, message_id: null, kind: null, body };
+  }
+  let kind: "log" | "notification" = "log";
+  if (!ok) {
+    const lastFailure = lastHourlyEmailFailureAt();
+    const nowYmd = opts.nowYmd ?? chileCalendarTodayYmd();
+    const alreadyFailedToday = lastFailure != null && chileYmdFromStoredUtc(lastFailure) === nowYmd;
+    kind = alreadyFailedToday ? "log" : "notification";
+  }
+  const message_id = insertAppMessage(
+    kind,
+    ok ? HOURLY_EMAIL_RUN_MESSAGE_TITLE : HOURLY_EMAIL_RUN_FAILED_TITLE,
+    body,
+    opts.dryRun ?? false
+  );
+  return { ok, recorded: true, message_id, kind, body };
 }
