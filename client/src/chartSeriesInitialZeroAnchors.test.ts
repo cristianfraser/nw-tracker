@@ -6,7 +6,10 @@ import {
   priorCalendarPeriodEndYmd,
   valuationDataKeysForInitialZeroAnchors,
 } from "./chartSeriesInitialZeroAnchors";
-import { densifyRecordsByCalendarPeriod } from "./chartDensifyTimeSeries";
+import {
+  carryForwardTrailingPendingRows,
+  densifyRecordsByCalendarPeriod,
+} from "./chartDensifyTimeSeries";
 
 describe("priorCalendarPeriodEndYmd", () => {
   it("returns prior month-end", () => {
@@ -113,21 +116,41 @@ describe("coerceKeptTrailingZeroMonth", () => {
   });
 });
 
-describe("OILK-style short equity position", () => {
-  it("plots [0, x, 0] with anchor, densify-through-today, and one kept trailing zero", () => {
-    // Trailing-zero tail clip runs server-side now; the client pipeline is anchor → densify → coerce.
-    const raw = [{ as_of_date: "2026-05-31", oilk: 900_000 }];
+describe("LineChartPanel point pipeline (anchor → densify → carry → coerce)", () => {
+  const run = (raw: { as_of_date: string; oilk: number | null }[], lastRealYmd: string) => {
     const anchored = prependInitialZeroAnchors(raw, ["oilk"], { granularity: "month" });
     const dense = densifyRecordsByCalendarPeriod(anchored, {
       granularity: "month",
       fillMissing: "null_all",
       extendThroughYmd: "2026-06-24",
     });
-    const points = coerceKeptTrailingZeroMonth(dense, ["oilk"]);
+    const carried = carryForwardTrailingPendingRows(dense, lastRealYmd);
+    return coerceKeptTrailingZeroMonth(carried, ["oilk"]);
+  };
+
+  it("carries an alive series flat into the pending current bucket", () => {
+    // Data ends on a positive value = alive at the last known date (server tail clip ends a
+    // sold-out series in a kept 0). The month turned before fresh data loaded: extend flat.
+    const points = run([{ as_of_date: "2026-05-31", oilk: 900_000 }], "2026-05-31");
     const oilk = points.map((r) => r.oilk);
-    expect(oilk).toContain(0);
+    expect(oilk).toContain(0); // leading anchor
+    const lastNonNull = [...oilk].reverse().find((v) => v != null);
+    expect(lastNonNull).toBe(900_000);
+  });
+
+  it("plots [0, x, 0] for a sold-out series (server kept zero) without resurrecting it", () => {
+    const points = run(
+      [
+        { as_of_date: "2026-04-30", oilk: 900_000 },
+        { as_of_date: "2026-05-31", oilk: 0 },
+      ],
+      "2026-05-31"
+    );
+    const oilk = points.map((r) => r.oilk);
     expect(oilk).toContain(900_000);
     const lastNonNull = [...oilk].reverse().find((v) => v != null);
     expect(lastNonNull).toBe(0);
+    // The pending June bucket stays null — the line ends at the kept zero.
+    expect(points[points.length - 1]!.oilk).toBeNull();
   });
 });

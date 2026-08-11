@@ -7,7 +7,10 @@ import { GROUP_TAB_DEP_TOTAL } from "../../groupTabAggregation";
 import type { TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
-import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
+import {
+  carryForwardTrailingPendingRows,
+  densifyRecordsByCalendarPeriod,
+} from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
 import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
@@ -389,13 +392,25 @@ export function LineChartPanel({
   // Tail clip lives in the server payload build (`timeseriesTailClip.ts`): sold-out series
   // arrive pre-nulled and `chart_end_ymd` bounds the x-axis when everything ends early.
   const chartData = useMemo(() => {
-    const densified = densifyRecordsByCalendarPeriod(blockWithAnchors.points, {
+    const points = blockWithAnchors.points;
+    const densified = densifyRecordsByCalendarPeriod(points, {
       granularity: xAxisGranularity,
       dateKey: "as_of_date",
       fillMissing: "null_all",
       extendThroughYmd: block.chart_end_ymd ?? chileTodayYmd(),
     });
-    return coerceKeptTrailingZeroMonth(densified, valuationKeys);
+    // Day/month/year turned before fresh data loaded: the extension bucket past the last
+    // real row carries that row forward (flat pending tail) instead of plunging to a
+    // fabricated 0 — the coercion below only flips nulls, so carried keys are untouched
+    // and ended series (null/kept-zero at the last row) still end.
+    const lastRealYmd = points.length
+      ? String(points[points.length - 1]!.as_of_date ?? "").trim()
+      : "";
+    const carried =
+      block.chart_end_ymd || !lastRealYmd
+        ? densified
+        : carryForwardTrailingPendingRows(densified, lastRealYmd);
+    return coerceKeptTrailingZeroMonth(carried, valuationKeys);
   }, [blockWithAnchors.points, xAxisGranularity, valuationKeys, block.chart_end_ymd]);
   const series = useMemo(
     () => resolveLineSeriesColors(buildRawLineSeries(blockWithAnchors, includeAccumulatedLines), colorPlan),
