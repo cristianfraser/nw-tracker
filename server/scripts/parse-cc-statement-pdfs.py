@@ -74,7 +74,6 @@ from cc_pdf_qpdf import (  # noqa: E402
     load_repo_dotenv,
     peek_pdf_text,
     qpdf_available,
-    repair_unreadable_pdfs_in_dir,
 )
 from cc_pdf_ocr import (  # noqa: E402
     extract_cc_pdf_ocr_flat,
@@ -125,11 +124,14 @@ def parse_cache_file_path(pdf_hash: str) -> Path:
 def load_parse_cache(
     pdf_path: Path, parser_version: str, *, force: bool = False
 ) -> Optional[Dict[str, Any]]:
+    """
+    Cache identity is (PDF bytes sha256, parser version) — nothing else. mtime/size must not
+    participate: backup/copy round-trips drift mtimes by nanoseconds without changing a byte,
+    which turned into permanent false misses (4 statements re-parsed every night).
+    """
     if force:
         return None
-    try:
-        st = pdf_path.stat()
-    except OSError:
+    if not pdf_path.is_file():
         return None
     pdf_hash = pdf_content_sha256(pdf_path)
     cache_path = parse_cache_file_path(pdf_hash)
@@ -143,21 +145,14 @@ def load_parse_cache(
         return None
     if str(payload.get("pdf_sha256") or "") != pdf_hash:
         return None
-    if int(payload.get("pdf_mtime_ns") or 0) != int(st.st_mtime_ns):
-        return None
-    if int(payload.get("pdf_size") or 0) != int(st.st_size):
-        return None
     return payload
 
 
 def save_parse_cache(pdf_path: Path, parser_version: str, payload: Dict[str, Any]) -> None:
-    st = pdf_path.stat()
     pdf_hash = pdf_content_sha256(pdf_path)
     out = {
         "parser_version": parser_version,
         "pdf_sha256": pdf_hash,
-        "pdf_mtime_ns": st.st_mtime_ns,
-        "pdf_size": st.st_size,
         **payload,
     }
     cache_path = parse_cache_file_path(pdf_hash)
@@ -3578,10 +3573,11 @@ def main() -> int:
         if force_reparse:
             print("# parse cache: --force-reparse (ignore hits)")
 
-    if qpdf_available():
-        for name, note in repair_unreadable_pdfs_in_dir(pdfs_dir):
-            print(f"# qpdf\t{name}\t{note}")
-    else:
+    # Repair moved into the per-file loop below: only cache-miss files get the readability
+    # peek + qpdf attempt. A whole-corpus pre-pass here re-peeked all 301 PDFs every run
+    # (full OCR for image-only scans) to look for damage that, for a cached file, cannot
+    # matter — a valid cache entry proves the bytes parsed.
+    if not qpdf_available():
         print("# WARN qpdf not installed — skip PDF repair (brew install qpdf)")
 
     baseline = load_baseline_rows(BASELINE_CSV)
@@ -3597,28 +3593,41 @@ def main() -> int:
         if not p.is_file():
             failures.append(f"missing:{p}")
             continue
-        if not is_readable_cc_statement_text(peek_pdf_text(p)):
-            if pdf_already_in_card_slot(pdfs_dir, p):
-                failures.append(f"unreadable_organized:{p}")
-                print(
-                    f"# skip unreadable (organized in slot, not quarantined)\t{p}",
-                    file=sys.stderr,
-                )
-                continue
-            skip_unreadable_pdf(
-                p, "still unreadable after qpdf (image-only scan?)", cc_root=pdfs_dir
-            )
-            continue
         cached: Optional[Dict[str, Any]] = None
         if not no_cache:
             cached = load_parse_cache(
                 p, parser_version, force=force_reparse
             )
+        if cached is None:
+            # Readability gate + one-shot qpdf repair, cache-miss files only. This is the
+            # ONLY place that reads the PDF outside parse_one_pdf; for image-only scans the
+            # peek falls back to full OCR, so it must never run for files a cache entry
+            # already covers.
+            if not is_readable_cc_statement_text(peek_pdf_text(p)):
+                note = ensure_readable_for_parse(p)
+                if note is not None:
+                    print(f"# qpdf\t{p.name}\t{note}")
+                if not is_readable_cc_statement_text(peek_pdf_text(p)):
+                    if pdf_already_in_card_slot(pdfs_dir, p):
+                        failures.append(f"unreadable_organized:{p}")
+                        print(
+                            f"# skip unreadable (organized in slot, not quarantined)\t{p}",
+                            file=sys.stderr,
+                        )
+                        continue
+                    skip_unreadable_pdf(
+                        p, "still unreadable after qpdf (image-only scan?)", cc_root=pdfs_dir
+                    )
+                    continue
         try:
             if cached is not None:
                 cache_hits += 1
                 meta = dict(cached.get("meta") or {})
-                finalize_statement_meta(meta, p)
+                # Cached meta was finalized by parse_one_pdf under this same parser version
+                # (finalize logic is part of the version hash), so re-deriving it here would
+                # re-read the PDF — pdftotext -layout per file, full OCR for scans — on every
+                # hit. Validate instead of re-derive.
+                require_statement_meta(meta, p.name)
                 parsed = list(cached.get("parsed") or [])
                 effective_group = str(cached.get("effective_group") or card_group)
                 parser = str(cached.get("parser") or "")

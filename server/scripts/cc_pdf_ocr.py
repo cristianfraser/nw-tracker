@@ -94,14 +94,6 @@ def peek_pdf_text_pdftotext(path: Path) -> str:
         return ""
 
 
-def peek_pdf_text_with_ocr_fallback(path: Path) -> str:
-    """pdftotext first; OCR flat text when the PDF has no text layer."""
-    text = peek_pdf_text_pdftotext(path).strip()
-    if text:
-        return text
-    return extract_cc_pdf_ocr_flat(path)
-
-
 def fill_meta_billing_from_ocr_flat(meta: Dict[str, object], flat: str) -> None:
     """Fill period_from / period_to / pay_by when OCR glues tokens on one line."""
     if not str(meta.get("period_from") or "").strip() or not str(meta.get("period_to") or "").strip():

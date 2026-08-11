@@ -16,6 +16,11 @@ UNREADABLE_DIR = "unreadable"
 #: Without this the nightly run fails on the same statement every night; rows already imported
 #: for it stay untouched. See credit-card-statements/pending-review/README.txt.
 PENDING_REVIEW_DIR = "pending-review"
+#: Exact duplicate downloads of a statement already in its slot under another filename (row-for-row
+#: identical parse, same close). Two copies of one close make the incremental import ping-pong the
+#: statement row between the two source names on every run — one copy stays filed, the other lives
+#: here. The qpdf repair walker skips this folder name too.
+DUPLICATES_DIR = "duplicates"
 # Folder under credit-card-statements/ (successor master); PDF stem may keep predecessor
 # last4. Real card last4s live in gitignored cfraser/cc-cards.json (see cc_cards.py).
 SANTANDER_CC_SLOT_REDIRECT = IMPORT_REDIRECT_LAST4
@@ -94,8 +99,12 @@ def pdf_already_in_card_slot(cc_root: Path, pdf: Path) -> bool:
 
 
 def is_excluded_cc_pdf_path(path: Path) -> bool:
-    """Quarantined by folder: unreadable scans, or statements pending human review."""
-    return UNREADABLE_DIR in path.parts or PENDING_REVIEW_DIR in path.parts
+    """Quarantined by folder: unreadable scans, pending human review, or duplicate downloads."""
+    return (
+        UNREADABLE_DIR in path.parts
+        or PENDING_REVIEW_DIR in path.parts
+        or DUPLICATES_DIR in path.parts
+    )
 
 
 def iter_cc_statement_pdfs(cc_root: Path) -> Iterator[Path]:
