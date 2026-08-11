@@ -1,7 +1,9 @@
 import {
   checkingMovementBalanceAtMonthEnd,
+  checkingTimelineMonthKeys,
   getCartolaDerivedAnchor,
   getCheckingLedgerAnchor,
+  nonAnchorClpFlowTotals,
   type CartolaDerivedAnchorDto,
   type CheckingLedgerAnchorDto,
 } from "./checkingCartolaBalances.js";
@@ -9,15 +11,9 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import {
-  MOVEMENT_AMOUNT_COLUMNS_SQL,
-  movementClpLegOrZero,
-  type MovementAmountFields,
-} from "./movementAmounts.js";
-import {
   expandYearMonthsInclusive,
   isCartolaDesdeBoundaryPhantomMonth,
   monthEndUtcYmd,
-  monthKeyFromYmd,
   ymCompare,
 } from "./calendarMonth.js";
 
@@ -45,83 +41,6 @@ export type CheckingCartolaMonthsResponse = {
   ledger_anchor: CheckingLedgerAnchorDto | null;
   cartola_derived_anchor: CartolaDerivedAnchorDto | null;
 };
-
-function movementTotalsForCartolaMonth(
-  accountId: number,
-  periodMonth: string
-): { deposits_clp: number; withdrawals_clp: number; movement_count: number } {
-  const prefix = `import:cartola|${periodMonth}|%`;
-  const rows = db
-    .prepare(
-      `SELECT ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
-       WHERE account_id = ? AND note LIKE ?`
-    )
-    .all(accountId, prefix) as MovementAmountFields[];
-
-  let deposits_clp = 0;
-  let withdrawals_clp = 0;
-  for (const r of rows) {
-    const a = Number(movementClpLegOrZero(r));
-    if (!Number.isFinite(a) || a === 0) continue;
-    if (a > 0) deposits_clp += a;
-    else withdrawals_clp += Math.abs(a);
-  }
-  return { deposits_clp, withdrawals_clp, movement_count: rows.length };
-}
-
-function collectTimelineMonthKeys(accountId: number): string[] {
-  const keys = new Set<string>();
-
-  try {
-    const imports = db
-      .prepare(
-        `SELECT period_month, period_from, period_to, movement_count
-         FROM checking_cartola_imports WHERE account_id = ?`
-      )
-      .all(accountId) as {
-      period_month: string;
-      period_from: string | null;
-      period_to: string | null;
-      movement_count: number;
-    }[];
-    for (const r of imports) {
-      if (
-        isCartolaDesdeBoundaryPhantomMonth({
-          period_month: r.period_month,
-          period_from: r.period_from,
-          period_to: r.period_to,
-          movement_count: Number(r.movement_count) || 0,
-        })
-      ) {
-        continue;
-      }
-      keys.add(r.period_month);
-    }
-  } catch {
-    /* migration not applied */
-  }
-
-  for (const r of db
-    .prepare(`SELECT occurred_on FROM movements WHERE account_id = ?`)
-    .all(accountId) as { occurred_on: string }[]) {
-    const mk = monthKeyFromYmd(r.occurred_on);
-    if (mk) keys.add(mk);
-  }
-
-  const hasMov = db
-    .prepare(`SELECT 1 FROM movements WHERE account_id = ? LIMIT 1`)
-    .get(accountId);
-  if (hasMov) {
-    for (const r of db
-      .prepare(`SELECT occurred_on FROM movements WHERE account_id = ?`)
-      .all(accountId) as { occurred_on: string }[]) {
-      const mk = monthKeyFromYmd(r.occurred_on);
-      if (mk) keys.add(mk);
-    }
-  }
-
-  return [...keys].sort(ymCompare);
-}
 
 export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMonthsResponse | null {
   const cat = db
@@ -177,7 +96,7 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
     /* no registry yet */
   }
 
-  const monthKeys = collectTimelineMonthKeys(accountId);
+  const monthKeys = checkingTimelineMonthKeys(accountId);
   if (monthKeys.length === 0) {
     return {
       account_id: accountId,
@@ -196,11 +115,13 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
   for (const periodMonth of expandYearMonthsInclusive(minYm, maxYm)) {
     const imp = importByMonth.get(periodMonth);
     const asOf = monthEndUtcYmd(periodMonth);
-    const totals = imp ? movementTotalsForCartolaMonth(accountId, periodMonth) : {
-      deposits_clp: 0,
-      withdrawals_clp: 0,
-      movement_count: 0,
-    };
+    // Ledger-derived (transfer legs included) for every month, cartola imported or not —
+    // same accounting as balance_end_clp, so balance_end(M) − balance_end(M−1)
+    // = deposits(M) − withdrawals(M) except in the anchor's own month.
+    const totals = nonAnchorClpFlowTotals(accountId, {
+      fromYmd: `${periodMonth}-01`,
+      toYmd: asOf,
+    });
     const balanceEnd = checkingMovementBalanceAtMonthEnd(accountId, periodMonth);
     const cartolaSaldo =
       imp?.saldo_final_clp != null && Number.isFinite(imp.saldo_final_clp)
@@ -220,7 +141,7 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
       balance_end_clp: balanceEnd,
       cartola_saldo_final_clp: cartolaSaldo,
       cartola_saldo_inicial_clp: cartolaSaldoInicial,
-      movement_count: totals.movement_count || imp?.movement_count || 0,
+      movement_count: totals.movement_count,
       imported_at: imp?.imported_at ?? null,
     });
   }

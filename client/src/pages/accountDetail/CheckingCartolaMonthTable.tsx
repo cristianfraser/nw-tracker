@@ -20,8 +20,9 @@ const MODAL_PAGE_SIZE = 20;
 
 const periodKeyOf = (row: CheckingCartolaMonthRowDto) => row.period_month;
 
-function fmtMoney(n: number, hasCartola: boolean): string {
-  if (!hasCartola && n === 0) return "—";
+/** Abonos/cargos are ledger-derived for every month; dash only when the month has no movements at all. */
+function fmtMoney(n: number, hasMovements: boolean): string {
+  if (!hasMovements && n === 0) return "—";
   return formatClp(n);
 }
 
@@ -57,6 +58,7 @@ function CheckingCartolaMonthMobileCard({
   onOpen: (row: CheckingCartolaMonthRowDto) => void;
 }) {
   const diff = cartolaBalanceDiff(row);
+  const hasMovements = row.movement_count > 0;
   const title = (
     <Button variant="link" onClick={() => onOpen(row)}>
       {row.as_of_date} ({formatYmEs(row.period_month)})
@@ -66,13 +68,13 @@ function CheckingCartolaMonthMobileCard({
   return (
     <TableMobileCard title={title}>
       <TableMobileCardSection>
-        <TableMobileCardRow label={labels.deposits} value={fmtMoney(row.deposits_clp, row.has_cartola)} />
-        <TableMobileCardRow label={labels.withdrawals} value={fmtMoney(row.withdrawals_clp, row.has_cartola)} />
+        <TableMobileCardRow label={labels.deposits} value={fmtMoney(row.deposits_clp, hasMovements)} />
+        <TableMobileCardRow label={labels.withdrawals} value={fmtMoney(row.withdrawals_clp, hasMovements)} />
         <TableMobileCardRow
           label={labels.movements}
           value={
             <span title={emptyImportTitle}>
-              {row.has_cartola ? row.movement_count : "—"}
+              {hasMovements || row.has_cartola ? row.movement_count : "—"}
             </span>
           }
         />
@@ -213,6 +215,7 @@ export function CheckingCartolaMonthTable({
         {rows.map((row) => {
           const diff = cartolaBalanceDiff(row);
           const emptyImport = cartolaMonthHasEmptyImport(row);
+          const hasMovements = row.movement_count > 0;
           return (
             <tr key={row.period_month}>
               <td className="mono desktop-only">
@@ -220,13 +223,13 @@ export function CheckingCartolaMonthTable({
                   {row.as_of_date} ({formatYmEs(row.period_month)})
                 </Button>
               </td>
-              <td className="mono desktop-only">{fmtMoney(row.deposits_clp, row.has_cartola)}</td>
-              <td className="mono desktop-only">{fmtMoney(row.withdrawals_clp, row.has_cartola)}</td>
+              <td className="mono desktop-only">{fmtMoney(row.deposits_clp, hasMovements)}</td>
+              <td className="mono desktop-only">{fmtMoney(row.withdrawals_clp, hasMovements)}</td>
               <td
                 className="mono desktop-only"
                 title={emptyImport ? t("accountDetail.checking.cartolaRegisteredNoMovements") : undefined}
               >
-                {row.has_cartola ? row.movement_count : "—"}
+                {hasMovements || row.has_cartola ? row.movement_count : "—"}
               </td>
               <td className="mono desktop-only">
                 {row.balance_end_clp != null ? formatClp(row.balance_end_clp) : "—"}
@@ -274,9 +277,9 @@ export function CheckingCartolaMonthTable({
             <>
               <span className="mono">{selected.as_of_date}</span>
               {" · "}
-              {mobileLabels.deposits}: {fmtMoney(selected.deposits_clp, selected.has_cartola)}
+              {mobileLabels.deposits}: {fmtMoney(selected.deposits_clp, selected.movement_count > 0)}
               {" · "}
-              {mobileLabels.withdrawals}: {fmtMoney(selected.withdrawals_clp, selected.has_cartola)}
+              {mobileLabels.withdrawals}: {fmtMoney(selected.withdrawals_clp, selected.movement_count > 0)}
               {" · "}
               {mobileLabels.balanceEnd}:{" "}
               {selected.balance_end_clp != null ? formatClp(selected.balance_end_clp) : "—"}

@@ -172,11 +172,23 @@ export function defaultCheckingLedgerAnchorDate(startMonth: string): string {
   return monthEndUtcYmd(priorMonthYm(startMonth));
 }
 
-/** Earliest month from cartola imports or movement dates (same sources as month table timeline). */
-export function getCheckingTimelineStartMonth(
+/**
+ * Every month with data for the account, sorted ascending: cartola import periods
+ * (DESDE-boundary phantom months skipped) plus the calendar months of the account's
+ * movements — transfer legs included (a transfer row carries the account in
+ * `from_account_id`/`to_account_id` with `account_id` NULL, so a `WHERE account_id = ?`
+ * scan misses it; see `nonAnchorClpFlowTotals`). Shared by the month-summary table grid
+ * and the anchor placement so the two can't disagree on where history starts.
+ *
+ * Synthetic anchor/opening rows are excluded: the anchor is dated the month-end BEFORE
+ * the first timeline month, so counting its own month made the timeline self-referential
+ * and every re-derivation walked the anchor one month further into the past (found
+ * 2026-08: the real cuenta vista anchor had drifted 2016-10-31 → 2016-04-30).
+ */
+export function checkingTimelineMonthKeys(
   accountId: number,
   dbHandle: Database = db
-): string | null {
+): string[] {
   const keys = new Set<string>();
 
   try {
@@ -209,14 +221,29 @@ export function getCheckingTimelineStartMonth(
   }
 
   for (const r of dbHandle
-    .prepare(`SELECT occurred_on FROM movements WHERE account_id = ?`)
-    .all(accountId) as { occurred_on: string }[]) {
+    .prepare(
+      `SELECT occurred_on FROM movements
+       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
+         AND (note IS NULL OR (
+           note NOT LIKE 'import:cartola|anchor|%'
+           AND note NOT LIKE 'import:cartola|opening|%'
+         ))`
+    )
+    .all(accountId, accountId, accountId) as { occurred_on: string }[]) {
     const mk = monthKeyFromYmd(r.occurred_on);
     if (mk) keys.add(mk);
   }
 
-  if (keys.size === 0) return null;
-  return [...keys].sort(ymCompare)[0]!;
+  return [...keys].sort(ymCompare);
+}
+
+/** Earliest month from cartola imports or movement dates (same sources as month table timeline). */
+export function getCheckingTimelineStartMonth(
+  accountId: number,
+  dbHandle: Database = db
+): string | null {
+  const keys = checkingTimelineMonthKeys(accountId, dbHandle);
+  return keys.length > 0 ? keys[0]! : null;
 }
 
 function defaultAnchorPlacementDate(
@@ -253,43 +280,72 @@ function getLatestCartolaSaldoFinal(
   return { period_month: row.period_month, saldo_final_clp: Math.round(row.saldo_final_clp) };
 }
 
+export type NonAnchorClpFlowTotals = {
+  deposits_clp: number;
+  withdrawals_clp: number;
+  net_clp: number;
+  movement_count: number;
+};
+
 /**
- * Sum movements excluding anchor and legacy opening rows (through `asOfYmd` inclusive).
+ * Signed CLP flow totals over the account's non-anchor movements in an inclusive date
+ * window (`fromYmd` omitted = from the beginning of history).
  *
- * MUST use the same transfer-aware, signed accounting as the balance reader
- * (`sumClpThroughDate` → `signedClpDeltaForAccountMovement`), because the anchor exists precisely
- * to make that reader land on the cartola's saldo final. The previous implementation summed
- * `MOVEMENT_CLP_LEG_SQL` over `WHERE account_id = ?`, which is wrong twice over: a transfer row
- * carries the account in `from_account_id`/`to_account_id` with `account_id` **NULL** (and
- * `NULL <> 41` is not true in SQL, so those rows vanished from the filter entirely), and the CLP
- * leg is unsigned so an outbound transfer would have counted as an inflow anyway.
+ * Single source of the abonos/cargos accounting: the anchor derivation reads `net_clp`
+ * (through `toYmd`) and the cartola month table reads deposits/withdrawals/count per
+ * calendar month, so the two can never drift apart — and both MUST use the same
+ * transfer-aware, signed accounting as the balance reader (`sumClpThroughDate` →
+ * `signedClpDeltaForAccountMovement`), because the anchor exists precisely to make that
+ * reader land on the cartola's saldo final.
  *
- * On the cuenta vista that was the whole ledger: 260 transfer legs summing −1x.xxx.xxx were
- * invisible, so the derived anchor came out −1x.xxx.xxx instead of +1.074 and the account's final
- * balance read −1x.xxx.xxx instead of 0. It only surfaced when a newly imported cartola advanced
- * the latest period month and triggered a re-derivation over an anchor that had been correct for
- * months.
+ * A previous implementation summed `MOVEMENT_CLP_LEG_SQL` over `WHERE account_id = ?`,
+ * which is wrong twice over: a transfer row carries the account in
+ * `from_account_id`/`to_account_id` with `account_id` **NULL** (and `NULL = ?` never
+ * matches, so those rows vanished from the filter entirely), and the CLP leg is unsigned
+ * so an outbound transfer would have counted as an inflow anyway. On the real cuenta
+ * vista that was the whole ledger: 260 transfer legs summing −1x.xxx.xxx were invisible,
+ * so the derived anchor came out −1x.xxx.xxx instead of +1.074 and the account's final
+ * balance read −1x.xxx.xxx instead of 0. The month table had the same bug plus a
+ * `note LIKE 'import:cartola|<month>|%'` filter that also hid mirror-converted transfers
+ * (human notes), daily-xlsx rows (`import:cartola-partial|…`), and manual movements —
+ * fixed 2026-08-11 by routing it through this helper.
  */
-function sumNonAnchorMovementsClpAt(
+export function nonAnchorClpFlowTotals(
   accountId: number,
-  asOfYmd: string,
+  window: { fromYmd?: string; toYmd: string },
   dbHandle: Database = db
-): number {
+): NonAnchorClpFlowTotals {
+  const dateSql =
+    window.fromYmd != null ? `occurred_on >= ? AND occurred_on <= ?` : `occurred_on <= ?`;
+  const dateParams =
+    window.fromYmd != null ? [window.fromYmd, window.toYmd] : [window.toYmd];
   const rows = dbHandle
     .prepare(
       `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, flow_kind
        FROM movements
        WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
-         AND occurred_on <= ?
+         AND ${dateSql}
          AND (note IS NULL OR (
            note NOT LIKE 'import:cartola|anchor|%'
            AND note NOT LIKE 'import:cartola|opening|%'
          ))`
     )
-    .all(accountId, accountId, accountId, asOfYmd) as MovementTransferRow[];
-  let total = 0;
-  for (const row of rows) total += signedClpDeltaForAccountMovement(row, accountId);
-  return Math.round(total);
+    .all(accountId, accountId, accountId, ...dateParams) as MovementTransferRow[];
+  let deposits = 0;
+  let withdrawals = 0;
+  let net = 0;
+  for (const row of rows) {
+    const delta = signedClpDeltaForAccountMovement(row, accountId);
+    net += delta;
+    if (delta > 0) deposits += delta;
+    else if (delta < 0) withdrawals += -delta;
+  }
+  return {
+    deposits_clp: Math.round(deposits),
+    withdrawals_clp: Math.round(withdrawals),
+    net_clp: Math.round(net),
+    movement_count: rows.length,
+  };
 }
 
 function computeDerivedAnchorAmount(
@@ -298,7 +354,7 @@ function computeDerivedAnchorAmount(
   anchorDate: string,
   dbHandle: Database = db
 ): number {
-  const sum = sumNonAnchorMovementsClpAt(accountId, anchorDate, dbHandle);
+  const sum = nonAnchorClpFlowTotals(accountId, { toYmd: anchorDate }, dbHandle).net_clp;
   return Math.round(saldoFinal - sum);
 }
 
