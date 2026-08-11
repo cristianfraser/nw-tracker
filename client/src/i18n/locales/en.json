@@ -678,7 +678,7 @@
     "checking": {
       "monthModalTitle": "Movements {{month}}",
       "monthModalClose": "Close",
-      "cartolaMonthHint": "One row per month of history. Deposits and charges only with an imported statement. Month-end balance = sum of movements (ledger). Statement balance = the closing printed on the statement (reference only). Difference = month-end balance − statement balance.",
+      "cartolaMonthHint": "One row per month of history. Deposits and charges = sum of ledger movements for the month (transfer legs included). Month-end balance = sum of movements (ledger). Statement balance = the closing printed on the statement (reference only). Difference = month-end balance − statement balance.",
       "cartolaMonthEmpty": "No months in movements or valuations. Run npm run import:checking-cartolas on the server.",
       "cartolaMonthImportedCount": "{{imported}} of {{total}} month(s) with an imported statement",
       "cartolaNo": "No statement",
