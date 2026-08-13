@@ -235,16 +235,25 @@ export function openMonthFacturadoTotalClp(
 }
 
 
-/** Same balance rule as Detalle por mes / historial (closed statement months subtract next cuota). */
+/**
+ * Balance total for a billing month (Detalle por mes / historial / month-end valuation
+ * anchors): facturado (which carries the cuotas billed at that close) + the plan remainder.
+ *
+ * The cupo term here is `cupoEnCuotasClpForCalendarMonth` — cuotas with due month strictly
+ * AFTER the billing month (`scheduledRemainingPrincipalAfterYm`) — so the just-billed cuota
+ * appears exactly once, inside facturado. The pre-2026-08 form additionally subtracted
+ * `cuota_a_pagar_next_mes`, a netting that assumes a cupo figure which still CONTAINS the
+ * billed cuota (the bank's live «cupo utilizado en cuotas», which only frees it when the
+ * payment posts); with the post-close remainder actually fed here it removed the billed
+ * cuota twice, sinking every closed month-end anchor one cuota below true owed. Provably
+ * wrong at the floor: after the 2025-01 facturación was paid in full (2025-01-31) the ·0781
+ * anchor read $2.xxx.xxx — below the $3.xxx.xxx still owed in unbilled cuotas alone.
+ */
 export function billingDetailBalanceClp(
   facturadoClp: number | null,
-  cupoEnCuotasClp: number,
-  cuotaAPagarNextMesClp: number,
-  hasPdfClose: boolean
+  cupoEnCuotasClp: number
 ): number {
-  return hasPdfClose
-    ? (facturadoClp ?? 0) + cupoEnCuotasClp - cuotaAPagarNextMesClp
-    : (facturadoClp ?? 0) + cupoEnCuotasClp;
+  return (facturadoClp ?? 0) + cupoEnCuotasClp;
 }
 
 function cuotaAPagarNextMesClp(
@@ -336,12 +345,7 @@ function buildBillingDetailByMonthInner(
       primary?.statement_date_iso ?? snap?.as_of_date ?? `${billingMonth}-01`;
 
     const cupo = cupoEnCuotasForBillingMonth(accountId, billingMonth, cupoLive);
-    const balanceTotal = billingDetailBalanceClp(
-      totalFacturado,
-      cupo,
-      cuotaNext,
-      hasPdfClose || inactive
-    );
+    const balanceTotal = billingDetailBalanceClp(totalFacturado, cupo);
     out.push({
       billing_month: billingMonth,
       as_of_date: asOfDate,
@@ -469,7 +473,7 @@ function appendProjectedBillingDetailRows(
       total_facturado_clp: null,
       cupo_en_cuotas_clp: cupo,
       cuota_a_pagar_next_mes_clp: cuotaNext,
-      balance_total_clp: billingDetailBalanceClp(null, cupo, cuotaNext, false),
+      balance_total_clp: billingDetailBalanceClp(null, cupo),
       projected: true,
     });
   }
