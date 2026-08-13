@@ -1,13 +1,20 @@
 /**
  * Daily «deuda en cuotas» for a CC master: +full contract value on each schedule purchase's
- * date, −each facturación's billed cuotas on their pay-by date (`facturaciones.pay_by_iso`;
- * ~10th of the following month when a closed statement never printed one). Serves the
- * account page's daily historial chart alongside the per-day owed walk. CLP only — the
- * historial chart is CLP-native like its monthly form.
+ * date, −each facturación's billed cuotas when that facturación is actually PAID (real CLP
+ * payment evidence, cuotas-first — see `ccCuotaRetirement.ts`), falling back to the pay-by
+ * date (`facturaciones.pay_by_iso`; ~10th of the following month when a closed statement
+ * never printed one) for evidence-less months and future cycles. Serves the account page's
+ * daily historial chart alongside the per-day owed walk. CLP only — the historial chart is
+ * CLP-native like its monthly form.
  */
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import type { CcFacturacionRow } from "./ccBillingViews.js";
+import {
+  computeCuotaRetirements,
+  listClpCcPaymentEventsForAccount,
+  type CuotaRetirementMonth,
+} from "./ccCuotaRetirement.js";
 import { listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { buildCcInstallmentDebtDailySeries } from "./creditCardChartSeries.js";
@@ -37,19 +44,35 @@ function ccInstallmentDebtEvents(
   const purchases = listSchedulePurchaseEvents(accountId);
   if (purchases.length === 0) return null;
   const { detail, facturaciones } = billingDetailCacheForAccount(accountId);
-  const payByMonth = new Map(
-    facturaciones
-      .filter((f) => f.pay_by_iso != null)
-      .map((f) => [f.billing_month, f.pay_by_iso!] as const)
-  );
-  const events: { iso: string; clp: number }[] = purchases.map((p) => ({ ...p }));
+  const factByMonth = new Map(facturaciones.map((f) => [f.billing_month, f] as const));
+
+  // Retirement months: every detail month (cuota drops) plus facturación-only months
+  // (payment capacity — a zero-cuota facturado still absorbs its own payment so the
+  // attribution cannot spill it onto a later month's cuotas).
+  const months: CuotaRetirementMonth[] = [];
+  const seen = new Set<string>();
+  const monthInput = (billingMonth: string, cuotaClp: number): CuotaRetirementMonth => {
+    const f = factByMonth.get(billingMonth);
+    const closed = f != null && !f.is_open_month;
+    return {
+      month: billingMonth,
+      cuota_clp: Number.isFinite(cuotaClp) && cuotaClp > 0 ? Math.round(cuotaClp) : 0,
+      pay_by_iso: f?.pay_by_iso ?? tenthOfNextMonthIso(billingMonth),
+      close_iso: closed ? (f.close_date_iso ?? null) : null,
+      facturado_clp: closed ? (f.facturado_clp ?? null) : null,
+    };
+  };
   for (const d of detail) {
-    const amt = d.cuota_a_pagar_next_mes_clp;
-    if (!Number.isFinite(amt) || amt <= 0) continue;
-    const iso = payByMonth.get(d.billing_month) ?? tenthOfNextMonthIso(d.billing_month);
-    if (!iso) continue;
-    events.push({ iso, clp: -Math.round(amt) });
+    months.push(monthInput(d.billing_month, d.cuota_a_pagar_next_mes_clp));
+    seen.add(d.billing_month);
   }
+  for (const f of facturaciones) {
+    if (!seen.has(f.billing_month)) months.push(monthInput(f.billing_month, 0));
+  }
+
+  const { drops } = computeCuotaRetirements(months, listClpCcPaymentEventsForAccount(accountId));
+  const events: { iso: string; clp: number }[] = purchases.map((p) => ({ ...p }));
+  for (const d of drops) events.push({ iso: d.iso, clp: -d.clp });
   return { events, facturaciones };
 }
 

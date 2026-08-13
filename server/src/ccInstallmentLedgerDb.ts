@@ -1,5 +1,10 @@
 import { db } from "./db.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import {
+  clpFacturadoByCloseIso,
+  computeCuotaRetirements,
+  listClpCcPaymentEventsForAccount,
+} from "./ccCuotaRetirement.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -123,10 +128,12 @@ export function lastInstallmentPaymentPayByYmd(payList: PaymentRow[]): string | 
 }
 
 /**
- * Active purchases table: keep a fully settled contract visible until its final cuota's
- * `PAGAR HASTA` (pay-by) date, then drop it to completed. On the pay-by date the money
- * has left the account and the contract is genuinely closed, so completion is a property
- * of the data already in the DB (independent of when the next statement is imported).
+ * Active purchases table: keep a fully settled contract visible until the day its final
+ * cuota is actually paid — the facturación's real payment date when evidence exists
+ * (`finalCuotaRetiredOnYmd`), else the final cuota's `PAGAR HASTA` (pay-by) date — then
+ * drop it to completed. On that date the money has left the account and the contract is
+ * genuinely closed, so completion is a property of the data already in the DB
+ * (independent of when the next statement is imported).
  */
 export function installmentPurchaseShowsActive(
   summary: {
@@ -136,13 +143,31 @@ export function installmentPurchaseShowsActive(
     installment_count: number;
   },
   payList: PaymentRow[],
-  todayYmd: string
+  todayYmd: string,
+  finalCuotaRetiredOnYmd?: string | null
 ): boolean {
   if (summary.remaining_installments > 0 || summary.remaining_principal_clp > 0) return true;
   if (summary.installments_paid < summary.installment_count) return false;
-  const finalPayByYmd = lastInstallmentPaymentPayByYmd(payList);
-  if (finalPayByYmd == null) return false;
-  return todayYmd < finalPayByYmd;
+  const settledYmd = finalCuotaRetiredOnYmd ?? lastInstallmentPaymentPayByYmd(payList);
+  if (settledYmd == null) return false;
+  return todayYmd < settledYmd;
+}
+
+/** Billing month (YYYY-MM) of the highest-index installment payment row (final cuota when indexed). */
+export function finalInstallmentPaymentBillingMonth(payList: PaymentRow[]): string | null {
+  let bestCuota = 0;
+  let bestYm: string | null = null;
+  for (const p of payList) {
+    const cuota = p.cuota_current ?? 0;
+    if (cuota <= 0) continue;
+    const ym = paymentStatementMonthYm(p);
+    if (!ym) continue;
+    if (cuota > bestCuota || (cuota === bestCuota && bestYm != null && ym > bestYm)) {
+      bestCuota = cuota;
+      bestYm = ym;
+    }
+  }
+  return bestYm;
 }
 
 /** First installment month (YYYY-MM): cuota 1 statement month, else month after 00/N preamble, else purchase month. */
@@ -1096,6 +1121,22 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     }
   }
 
+  // Real payment dates per facturación: when CLP payment evidence covers a month's billed
+  // cuotas, its row rolls off (and its final-cuota purchases complete) on the payment day
+  // instead of the pay-by — same convention as the daily deuda-en-cuotas walk. Capacity
+  // (CLP facturado) and close dates come from statement headers keyed by close date: the
+  // billing-detail views are built ON TOP of this payload, so they cannot be read here.
+  const closeIsoByMonth = new Map<string, string>();
+  for (const pays of paymentsByPurchase.values()) {
+    for (const p of pays) {
+      const ym = paymentBillingMonth(p);
+      const closeIso = parseDateLikeToIso(p.statement_date);
+      if (!ym || !closeIso) continue;
+      const cur = closeIsoByMonth.get(ym);
+      if (cur == null || closeIso > cur) closeIsoByMonth.set(ym, closeIso);
+    }
+  }
+
   // Suffix sums over the full plan: debt left after each facturación's cuotas are paid.
   const allPlanMonths = [...payByMonth.keys()].sort(ymCompare);
   const debtAfterByMonth = new Map<string, number>();
@@ -1107,6 +1148,21 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       acc += payByMonth.get(m) ?? 0;
     }
   }
+
+  const facturadoByClose = clpFacturadoByCloseIso(accountId);
+  const { retired_on_by_month } = computeCuotaRetirements(
+    allPlanMonths.map((month) => {
+      const closeIso = closeIsoByMonth.get(month) ?? null;
+      return {
+        month,
+        cuota_clp: payByMonth.get(month) ?? 0,
+        pay_by_iso: payByEvidenceByMonth.get(month) ?? `${addCalendarMonths(month, 1)}-10`,
+        close_iso: closeIso,
+        facturado_clp: closeIso != null ? (facturadoByClose.get(closeIso) ?? null) : null,
+      };
+    }),
+    listClpCcPaymentEventsForAccount(accountId)
+  );
 
   const months: CcInstallmentCalendarMonthRow[] = allPlanMonths
     .map((month) => {
@@ -1128,9 +1184,10 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
         debt_after_clp: debtAfterByMonth.get(month) ?? 0,
       };
     })
-    // A facturación row stays visible through its pay-by date, then rolls off — the same
-    // clock that flips its final-cuota purchases to completed.
-    .filter((row) => row.pay_by_date >= todayYmd);
+    // A facturación row stays visible through the day its cuotas are actually paid (real
+    // payment date when evidence exists, else its pay-by), then rolls off — the same clock
+    // that flips its final-cuota purchases to completed.
+    .filter((row) => (retired_on_by_month.get(row.month) ?? row.pay_by_date) >= todayYmd);
 
   const installment_history_months = installmentHistoryMonthsFromLedgerData(
     schedulePurchases,
@@ -1142,6 +1199,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   const purchaseIsActive = (c: CcInstallmentPurchaseComputed): boolean => {
     if (cancelledPurchaseIds.has(c.purchase_db_id ?? -1)) return false;
     const payList = paymentsByPurchase.get(c.purchase_db_id ?? -1) ?? [];
+    const finalYm = finalInstallmentPaymentBillingMonth(payList);
     return installmentPurchaseShowsActive(
       {
         remaining_installments: c.remaining_installments,
@@ -1150,7 +1208,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
         installment_count: c.installment_count,
       },
       payList,
-      todayYmd
+      todayYmd,
+      finalYm != null ? (retired_on_by_month.get(finalYm) ?? null) : null
     );
   };
   const purchases_active = computed.filter(purchaseIsActive);

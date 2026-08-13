@@ -44,16 +44,14 @@ const restoreValuations = snapshotTables(["valuations"]);
 afterAll(() => restoreValuations());
 
 describe("billingDetailBalanceClp", () => {
-  it("closed statement subtracts cuota a pagar del mes siguiente", () => {
-    expect(billingDetailBalanceClp(100, 5_000_000, 561_728, true)).toBe(4_438_372);
+  it("balance = facturado + post-close plan remainder (billed cuota rides inside facturado only)", () => {
+    // The pre-2026-08 form subtracted cuota_a_pagar_next_mes again, sinking every closed
+    // month-end anchor one billed cuota below true owed (see the function doc).
+    expect(billingDetailBalanceClp(5_561_828, 5_000_000)).toBe(10_561_828);
   });
 
-  it("open month does not subtract next cuota", () => {
-    expect(billingDetailBalanceClp(100, 5_000_000, 561_728, false)).toBe(5_000_100);
-  });
-
-  it("projected plan month with no facturado uses open rule (saldo equals cupo)", () => {
-    expect(billingDetailBalanceClp(null, 4_200_000, 300_000, false)).toBe(4_200_000);
+  it("projected plan month with no facturado: saldo equals cupo", () => {
+    expect(billingDetailBalanceClp(null, 4_200_000)).toBe(4_200_000);
   });
 });
 
