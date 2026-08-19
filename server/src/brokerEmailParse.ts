@@ -33,6 +33,8 @@ export type BrokerEmailKind =
   | "other";
 
 export type BrokerEmailInput = {
+  /** IMAP Message-ID of the staged mail; carried onto the event as synthesis provenance. */
+  message_id?: string | null;
   sender: string;
   subject: string;
   /** Gmail's short preview; carries Racional's units/price line. */
@@ -63,6 +65,8 @@ export type BrokerEmailEvent = {
   price: number | null;
   occurred_at: string;
   subject: string;
+  /** IMAP Message-ID of the source mail (null for hand-built inputs). */
+  message_id: string | null;
 };
 
 /** Fields each kind needs before it can be turned into a ledger movement. */
@@ -291,6 +295,7 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     price: null,
     occurred_at: input.date,
     subject,
+    message_id: input.message_id ?? null,
   };
   if (!broker) return base;
 

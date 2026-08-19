@@ -19,6 +19,8 @@ import { accountIdForEquityTicker } from "./accountEquityTicker.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
+import { nextChileBusinessDayYmd } from "./marketHolidays.js";
+import { recordSyntheticRetiroTransfer } from "./fintualSyntheticRetiros.js";
 import {
   findUnpairedCheckingCredit,
   fintualGoalAccountId,
@@ -78,6 +80,13 @@ export type FintualPlannedMovement = {
    * Set only for withdrawal e-mails that found their bank leg.
    */
   promote_movement_id?: number;
+  /**
+   * Transfer written from the mail alone — the checking credit is not in the ledger yet (the
+   * daily xlsx only arrives with the nightly bank session). Recorded in
+   * `fintual_synthetic_retiro_transfers`; the checking importers skip the bank's later listing
+   * as `superseded_by_transfer` and stamp it confirmed.
+   */
+  synthesized?: boolean;
   source: BrokerEmailEvent;
   occurred_on: string;
   from_account_id: number | null;
@@ -188,9 +197,10 @@ export function planFintualEmailMovement(
     }
     case "withdrawal_paid":
     case "cash_returned": {
-      // Money leaving Fintual for a bank account. Writing this half alone would double-count it,
-      // so it is only written once the checking credit it produced is already in the ledger — and
-      // then by PROMOTING that credit into the transfer, never by adding a second row.
+      // Money leaving Fintual for a bank account: exactly ONE ledger row, whichever side lands
+      // first. Credit already imported → it is PROMOTED into the transfer (never a second row).
+      // Credit not imported yet → the transfer is SYNTHESIZED from the mail below, and the
+      // checking importers skip the bank's later listing as `superseded_by_transfer`.
       const goal = fintualGoalFromWithdrawalSubject(event.subject);
       const goalAccountId = goal ? fintualGoalAccountId(goal) : null;
       if (!goalAccountId) {
@@ -234,9 +244,38 @@ export function planFintualEmailMovement(
         };
       }
       if (!match) {
+        // No bank leg yet — the daily «últimos movimientos» xlsx only arrives with the nightly
+        // 22:00 bank session, so a retiro paid in the morning has no credit to promote for
+        // hours and its NAV drop would strand in the day's P/L. The mail alone is stronger
+        // evidence than the generic matchers ever get (exact amount, payment date, goal AND
+        // cuota count), so the transfer is SYNTHESIZED from it, dated the payment day. No
+        // second row can appear later: both checking importers skip a bank credit represented
+        // by a transfer leg (`findMatchingInternalTransferLegId`, signed amount + posting
+        // window) — the same rule that absorbs the nightly re-listing of a PROMOTED credit —
+        // and that skip stamps the confirmation row this synthesis records.
+        //
+        // Exception: when the bank could post the credit NEXT month (the payment date's next
+        // business day crosses the boundary), a transfer dated this month would sit in a
+        // cartola period whose saldo_final excludes the money, corrupting the checking-anchor
+        // derivation — the same reason mirror-pairs hard-block month-straddle checking
+        // inflows. Those rare retiros wait for the credit and pair on a later run, as before.
+        const nextBusinessDay = nextChileBusinessDayYmd(base.occurred_on);
+        if (
+          nextBusinessDay == null ||
+          nextBusinessDay.slice(0, 7) !== base.occurred_on.slice(0, 7)
+        ) {
+          return {
+            ...base,
+            requires_manual:
+              "the bank may post this credit next month — waiting for it instead of synthesizing (checking-anchor rule)",
+          };
+        }
         return {
           ...base,
-          requires_manual: "waiting for the checking credit — will pair on a later run",
+          from_account_id: goalAccountId,
+          to_account_id: checkingAccountId(),
+          units_delta: event.units,
+          synthesized: true,
         };
       }
       // The e-mail's payment date is when the money ACTUALLY moved (cuotas sold, cash paid);
@@ -316,7 +355,7 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
         );
         continue;
       }
-      insTransfer.run({
+      const info = insTransfer.run({
         from_account_id: p.from_account_id,
         to_account_id: p.to_account_id,
         amount: p.amount,
@@ -326,6 +365,16 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
         units_delta: p.units_delta,
         flow_kind: p.flow_kind,
       });
+      if (p.synthesized) {
+        // Provenance + confirmation state. `message_id` is UNIQUE, so even a duplicate-guard
+        // miss cannot synthesize the same mail twice — this insert would abort the transaction.
+        recordSyntheticRetiroTransfer(
+          Number(info.lastInsertRowid),
+          p.source.message_id ?? `no-message-id|${p.occurred_on}|${p.amount}`,
+          p.amount,
+          p.occurred_on
+        );
+      }
     }
   })();
   return writable.length;

@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
 export function partialMovementNote(mv: UltimosMovimientoRow): string {
@@ -80,6 +81,9 @@ export function importCheckingPartialMovements(
       );
       if (transferLegId != null) {
         consumedTransferLegs.add(transferLegId);
+        // The bank listed the money a synthesized retiro transfer promised — stamp it
+        // confirmed (no-op for ordinary manual transfer legs).
+        confirmSyntheticRetiroForTransferLeg(transferLegId, mv.occurred_on, "ultimos_xlsx");
         skipped_superseded_by_transfer += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });
         continue;

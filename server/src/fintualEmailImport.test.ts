@@ -137,11 +137,11 @@ describe("fintualEmailImport", () => {
   });
 
   /**
-   * A withdrawal is only written once its bank leg exists, and then by promoting that row rather
-   * than inserting a second one. With no matching checking credit — the case here — nothing is
-   * written, which is what keeps the money from being counted twice.
+   * Synthesis and promotion both need the retiro fully resolved first: an unrecognised goal (or
+   * a body without a single cuota count, as here) refuses rather than guessing which account
+   * paid or how many cuotas it sold.
    */
-  it("does not write cash leaving Fintual until its checking credit exists", () => {
+  it("refuses a retiro it cannot fully resolve instead of synthesizing", () => {
     const planned = planFintualEmailBatch([
       classifyBrokerEmail({
         sender: FINTUAL,
@@ -153,6 +153,7 @@ describe("fintualEmailImport", () => {
     expect(planned[0]!.requires_manual).not.toBeNull();
     expect(planned[0]!.from_account_id).toBeNull();
     expect(planned[0]!.promote_movement_id).toBeUndefined();
+    expect(planned[0]!.synthesized).toBeUndefined();
   });
 
   /**
@@ -335,5 +336,162 @@ describe("fintualEmailImport", () => {
     expect(
       markFintualDuplicates([{ ...planned, occurred_on: "2026-08-12" }])[0]!.duplicate_of
     ).toBeNull();
+  });
+
+  /**
+   * A retiro paid in the morning has no checking credit to promote until the nightly xlsx
+   * import — the mail alone (exact amount, payment date, goal, cuota count) is enough to write
+   * the transfer, so the goal's cuotas drop the day they were sold instead of the NAV drop
+   * stranding in the day's P/L. The checking importers later skip the bank's listing as
+   * superseded_by_transfer and stamp the confirmation row this synthesis records.
+   */
+  it("synthesizes the transfer from the mail when the checking credit is not imported yet", () => {
+    let checkingId: number;
+    try {
+      checkingId = checkingAccountId();
+    } catch {
+      return; // synthetic DB without a cuenta corriente
+    }
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
+      | { id: number }
+      | undefined;
+    if (!group) return;
+    db.prepare(
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Reserva Synth', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva-synth')`
+    ).run(group.id);
+    const goalId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    createdAccounts.push(goalId);
+
+    const email = classifyBrokerEmail({
+      message_id: `vitest-synth-${Date.now()}`,
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 vitest Reserva Synth",
+      snippet:
+        "Se pagó a tu cuenta de banco. Hola Cristian Pagamos tu retiro de $654.321 El viernes 07 " +
+        "de agosto a las 11:17 pagamos tu retiro desde 🏦 vitest Reserva Synth. Monto $654.321 " +
+        "Destino Cuenta 11111111 de Banco Santander El retiro se hizo desde el Fondo Mutuo Very " +
+        "Conservative Streep Serie A (452,7789 cuotas).",
+      date: "2026-08-07T15:17:53Z",
+    });
+    const planned = planFintualEmailBatch([email]);
+    expect(planned[0]).toMatchObject({
+      from_account_id: goalId,
+      to_account_id: checkingId,
+      units_delta: "452.7789",
+      occurred_on: "2026-08-07",
+      synthesized: true,
+      requires_manual: null,
+      duplicate_of: null,
+    });
+    expect(planned[0]!.promote_movement_id).toBeUndefined();
+
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+    const mov = db
+      .prepare(
+        `SELECT id, to_account_id, amount, units_delta, occurred_on FROM movements WHERE from_account_id = ?`
+      )
+      .get(goalId) as {
+      id: number;
+      to_account_id: number;
+      amount: number;
+      units_delta: number;
+      occurred_on: string;
+    };
+    created.push(mov.id);
+    expect(mov.to_account_id).toBe(checkingId);
+    expect(mov.amount).toBe(654321);
+    expect(mov.units_delta).toBeCloseTo(452.7789, 4);
+    expect(mov.occurred_on).toBe("2026-08-07");
+
+    const expectation = db
+      .prepare(
+        `SELECT message_id, amount_clp, paid_on, confirmed_on FROM fintual_synthetic_retiro_transfers
+         WHERE movement_id = ?`
+      )
+      .get(mov.id) as { message_id: string; amount_clp: number; paid_on: string; confirmed_on: string | null };
+    expect(expectation).toMatchObject({
+      message_id: email.message_id,
+      amount_clp: 654321,
+      paid_on: "2026-08-07",
+      confirmed_on: null,
+    });
+
+    // A later run sees its own synthesis as the ledger row for this mail — nothing doubles.
+    const again = planFintualEmailBatch([email]);
+    expect(again[0]!.duplicate_of).toBe(mov.id);
+    expect(applyFintualEmailMovements(again)).toBe(0);
+  });
+
+  it("refuses to synthesize when several unpaired credits match", () => {
+    let checkingId: number;
+    try {
+      checkingId = checkingAccountId();
+    } catch {
+      return;
+    }
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
+      | { id: number }
+      | undefined;
+    if (!group) return;
+    db.prepare(
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Reserva Amb', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva-amb')`
+    ).run(group.id);
+    createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
+    for (const ymd of ["2026-08-05", "2026-08-09"]) {
+      db.prepare(
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+         VALUES (?, 444555, 'clp', ?, 'vitest-ambiguous-credit')`
+      ).run(checkingId, ymd);
+      created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
+    }
+
+    const planned = planFintualEmailBatch([
+      classifyBrokerEmail({
+        sender: FINTUAL,
+        subject: "Pagamos tu retiro de 🏦 vitest Reserva Amb",
+        snippet:
+          "Pagamos tu retiro de $444.555 desde 🏦 vitest Reserva Amb. El retiro se hizo desde el " +
+          "Fondo Mutuo Very Conservative Streep Serie A (300,1 cuotas).",
+        date: "2026-08-07T15:00:00Z",
+      }),
+    ]);
+    expect(planned[0]!.requires_manual).toMatch(/several unpaired/);
+    expect(planned[0]!.synthesized).toBeUndefined();
+    expect(planned[0]!.from_account_id).toBeNull();
+  });
+
+  it("defers synthesis when the bank could post the credit next month", () => {
+    try {
+      checkingAccountId();
+    } catch {
+      return;
+    }
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
+      | { id: number }
+      | undefined;
+    if (!group) return;
+    db.prepare(
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, 'vitest Reserva EOM', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva-eom')`
+    ).run(group.id);
+    createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
+
+    // Paid Monday the 31st: the bank may post the credit on September 1st, and a transfer dated
+    // August would sit in a cartola period whose saldo_final excludes the money.
+    const planned = planFintualEmailBatch([
+      classifyBrokerEmail({
+        sender: FINTUAL,
+        subject: "Pagamos tu retiro de 🏦 vitest Reserva EOM",
+        snippet:
+          "Pagamos tu retiro de $123.456 desde 🏦 vitest Reserva EOM. El retiro se hizo desde el " +
+          "Fondo Mutuo Very Conservative Streep Serie A (80,5 cuotas).",
+        date: "2026-08-31T14:00:00Z",
+      }),
+    ]);
+    expect(planned[0]!.requires_manual).toMatch(/next month/);
+    expect(planned[0]!.synthesized).toBeUndefined();
+    expect(planned[0]!.from_account_id).toBeNull();
   });
 });
