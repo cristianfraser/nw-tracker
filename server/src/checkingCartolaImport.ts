@@ -37,6 +37,7 @@ import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
 import { resolveCartolaFilePath } from "./importSyncDocumentFilePath.js";
@@ -368,6 +369,9 @@ export function importCheckingCartola(
       );
       if (transferLegId != null) {
         consumedTransferLegs.add(transferLegId);
+        // The bank listed the money a synthesized retiro transfer promised — stamp it
+        // confirmed (no-op for ordinary manual transfer legs).
+        confirmSyntheticRetiroForTransferLeg(transferLegId, mv.occurred_on, "cartola", dbHandle);
         movementsSkipped += 1;
         movementsSupersededByTransfer += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });

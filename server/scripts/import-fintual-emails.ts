@@ -4,8 +4,16 @@
  *   npm run import:fintual-emails -w nw-tracker-server              # report only
  *   npm run import:fintual-emails -w nw-tracker-server -- --apply   # write
  *
- * Report-first: these become real ledger rows carrying share counts. Cash leaving Fintual for a
- * bank account is never written — its other leg arrives through the checking importer.
+ * Report-first: these become real ledger rows carrying share counts. Cash leaving Fintual is
+ * written exactly once per event — the checking credit is promoted in place when it is already
+ * imported, else the transfer is synthesized from the mail and the checking importers skip the
+ * bank's later listing as `superseded_by_transfer`.
+ *
+ * Every run mode also checks the synthesized retiros' confirmations and exits non-zero when one
+ * has no bank listing past its posting window: the wire its mail promised never appeared in any
+ * bank feed, and a phantom credit left in place would be silently absorbed into the next
+ * checking-anchor derivation. The non-zero exit fails the nightly/hourly step, which is what
+ * badges a notification.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -15,7 +23,22 @@ import {
   applyFintualEmailMovements,
   planFintualEmailBatch,
 } from "../src/fintualEmailImport.js";
+import { listOverdueUnconfirmedSyntheticRetiros } from "../src/fintualSyntheticRetiros.js";
+import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { invalidateAggregationForAccountDate } from "../src/aggregationCache.js";
+
+/** Overdue synthesized retiros are a data alarm on every exit path, quiet runs included. */
+function finish(code: number): never {
+  const overdue = listOverdueUnconfirmedSyntheticRetiros(chileCalendarTodayYmd());
+  for (const o of overdue) {
+    console.error(
+      `⚠ synthesized retiro movement ${o.movement_id} (paid ${o.paid_on}, $${o.amount_clp}) has no bank ` +
+        `listing by ${o.deadline ?? o.paid_on} — the wire its mail promised never appeared in any bank ` +
+        `feed; verify the checking credit and delete the transfer if the money never arrived`
+    );
+  }
+  process.exit(overdue.length > 0 ? 1 : code);
+}
 
 const apply = process.argv.includes("--apply");
 const dir = path.join(resolveCfraserCsvDir(), "broker-emails");
@@ -25,7 +48,7 @@ const files = fs.existsSync(dir)
 
 if (files.length === 0) {
   console.log(`No staged broker e-mail scans in ${dir}. Run: npm run fetch:emails`);
-  process.exit(0);
+  finish(0);
 }
 
 const inputs: BrokerEmailInput[] = files.flatMap(
@@ -35,7 +58,7 @@ const planned = planFintualEmailBatch(scanBrokerEmails(inputs).events);
 
 if (planned.length === 0) {
   console.log("No complete Fintual movements in the staged e-mail.");
-  process.exit(0);
+  finish(0);
 }
 
 for (const p of planned) {
@@ -49,7 +72,9 @@ for (const p of planned) {
       ? `  [already in ledger as movement ${p.duplicate_of}]`
       : p.requires_manual
         ? `  [NOT written: ${p.requires_manual}]`
-        : "  [NEW]";
+        : p.synthesized
+          ? "  [NEW — synthesized from the mail; the checking credit is not imported yet and the bank's listing will dedupe as superseded_by_transfer]"
+          : "  [NEW]";
   console.log(
     `  ${p.occurred_on}  ${String(p.source.kind).padEnd(16)} ${String(p.amount).padStart(12)} ${p.currency}  ${legs}${units}${state}`
   );
@@ -58,7 +83,7 @@ for (const p of planned) {
 const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
 if (!apply) {
   console.log(`\nReport only — ${writable.length} would be written. Re-run with --apply.`);
-  process.exit(0);
+  finish(0);
 }
 
 const inserted = applyFintualEmailMovements(planned);
@@ -68,3 +93,4 @@ for (const p of writable) {
   }
 }
 console.log(`\nImported ${inserted} movement(s).`);
+finish(0);

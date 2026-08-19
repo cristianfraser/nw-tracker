@@ -5,16 +5,18 @@ import { chileCalendarAddDays } from "./chileDate.js";
 /**
  * Pair a Fintual «Pagamos tu retiro» e-mail with the checking credit it produced.
  *
- * The e-mail confirms one side of a wire and the checking importer brings the other. Writing the
- * Fintual side on its own would double-count the money, which is why it used to be withheld for
- * manual linking. But the e-mail carries an exact amount, an exact date and the goal it came from —
- * stronger evidence than the generic mirror-pair matcher usually has — so when the matching credit
- * is already in the ledger the transfer can be written straight away.
+ * The e-mail confirms one side of a wire and the checking importer brings the other; exactly ONE
+ * ledger row must ever exist for the event. The e-mail carries an exact amount, an exact date and
+ * the goal it came from — stronger evidence than the generic mirror-pair matcher usually has — so
+ * both arrival orders resolve unattended (fintualEmailImport):
  *
- * The credit is PROMOTED IN PLACE rather than duplicated: the existing single-leg row becomes the
- * transfer (`account_id` cleared, `from`/`to` set). That keeps the movement id — and anything
- * referencing it — and makes double-counting structurally impossible, since no second row is ever
- * created.
+ *   - Credit first (mail fetched after the nightly import): the credit is PROMOTED IN PLACE into
+ *     the transfer — `account_id` cleared, `from`/`to` set — keeping the movement id and making a
+ *     second row structurally impossible.
+ *   - Mail first (retiro paid in the morning; the daily xlsx only arrives at 22:00): the transfer
+ *     is SYNTHESIZED from the mail, and the checking importers skip the bank's later listing of
+ *     the credit as `superseded_by_transfer` (`findMatchingInternalTransferLegId`), stamping the
+ *     confirmation in `fintual_synthetic_retiro_transfers` (see fintualSyntheticRetiros.ts).
  */
 
 /** How far the bank credit may sit from the e-mail's payment date. */
