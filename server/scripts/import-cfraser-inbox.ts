@@ -49,6 +49,7 @@ import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImpo
 import {
   importUltimosMovimientosInboxFiles,
   listUltimosMovimientosInboxFiles,
+  formatUltimosInboxFileSummary,
 } from "../src/checkingUltimosMovimientosInbox.js";
 import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
 import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
@@ -269,10 +270,7 @@ function main(): void {
     console.log(`\n=== Import checking ultimos movimientos xlsx${dryRun ? " (dry run)" : ""} ===`);
     try {
       for (const r of importUltimosMovimientosInboxFiles({ dryRun })) {
-        console.log(
-          `  ${r.file}: ${r.rows_parsed} row(s) parsed, ${r.inserted} inserted, ` +
-            `${r.skipped_duplicate} duplicate(s)${r.archived_to ? `; archived ${r.archived_to}` : ""}`
-        );
+        console.log(`  ${formatUltimosInboxFileSummary(r)}`);
         if (r.parse_errors.length) {
           console.error(r.parse_errors.map((e) => `  ${r.file}: ${e}`).join("\n"));
           process.exit(1);

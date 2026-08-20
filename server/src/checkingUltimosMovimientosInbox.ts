@@ -36,9 +36,29 @@ export type UltimosMovimientosInboxFileResult = {
   rows_parsed: number;
   inserted: number;
   skipped_duplicate: number;
+  skipped_superseded_by_cartola: number;
+  skipped_superseded_by_transfer: number;
   parse_errors: string[];
   archived_to: string | null;
 };
+
+/**
+ * One log line per imported file with every skip reason visible — a bank row absorbed by an
+ * internal transfer leg (e.g. a synthesized Fintual retiro) must be readable in the nightly
+ * summary, not silently missing from the arithmetic. Zero-count superseded reasons are omitted
+ * so the ordinary all-duplicates night keeps its familiar short shape.
+ */
+export function formatUltimosInboxFileSummary(r: UltimosMovimientosInboxFileResult): string {
+  const parts = [`${r.inserted} inserted`, `${r.skipped_duplicate} duplicate(s)`];
+  if (r.skipped_superseded_by_cartola > 0) {
+    parts.push(`${r.skipped_superseded_by_cartola} superseded by cartola`);
+  }
+  if (r.skipped_superseded_by_transfer > 0) {
+    parts.push(`${r.skipped_superseded_by_transfer} superseded by transfer`);
+  }
+  const archived = r.archived_to ? `; archived ${r.archived_to}` : "";
+  return `${r.file}: ${r.rows_parsed} row(s) parsed, ${parts.join(", ")}${archived}`;
+}
 
 /**
  * Import one staged «últimos movimientos» xlsx into the cuenta corriente and archive it.
@@ -59,6 +79,8 @@ export function importUltimosMovimientosInboxFile(
       rows_parsed: parsed.movements.length,
       inserted: 0,
       skipped_duplicate: 0,
+      skipped_superseded_by_cartola: 0,
+      skipped_superseded_by_transfer: 0,
       parse_errors: parsed.errors,
       archived_to: null,
     };
@@ -80,9 +102,15 @@ export function importUltimosMovimientosInboxFile(
 
   return {
     file: basename,
-    rows_parsed: result.inserted + result.skipped_duplicate,
+    rows_parsed:
+      result.inserted +
+      result.skipped_duplicate +
+      result.skipped_superseded_by_cartola +
+      result.skipped_superseded_by_transfer,
     inserted: result.inserted,
     skipped_duplicate: result.skipped_duplicate,
+    skipped_superseded_by_cartola: result.skipped_superseded_by_cartola,
+    skipped_superseded_by_transfer: result.skipped_superseded_by_transfer,
     parse_errors: result.parse_errors,
     archived_to: archivedTo,
   };

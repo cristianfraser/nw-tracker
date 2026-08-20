@@ -245,12 +245,20 @@ export function importCheckingRecentXlsx(
     parsed = parseUltimosMovimientosRows(rows, filename);
   }
 
-  const { inserted, skipped_duplicate, inserted_flows, skipped_flows } =
-    importCheckingPartialMovements(effectiveId, parsed.movements);
+  const {
+    inserted,
+    skipped_duplicate,
+    skipped_superseded_by_cartola,
+    skipped_superseded_by_transfer,
+    inserted_flows,
+    skipped_flows,
+  } = importCheckingPartialMovements(effectiveId, parsed.movements);
   const batch_id = createImportBatch("checking_recent_xlsx", filename, {
     format: "ultimos_movimientos",
     inserted,
     skipped_duplicate,
+    skipped_superseded_by_cartola,
+    skipped_superseded_by_transfer,
     errors: parsed.errors,
   });
   return {
@@ -258,6 +266,8 @@ export function importCheckingRecentXlsx(
     format: "ultimos_movimientos" as const,
     inserted,
     skipped_duplicate,
+    skipped_superseded_by_cartola,
+    skipped_superseded_by_transfer,
     inserted_flows,
     skipped_flows,
     parse_errors: parsed.errors,
