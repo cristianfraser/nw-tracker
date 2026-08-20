@@ -7,6 +7,9 @@ import {
   importCheckingPartialMovements,
   partialMovementNote,
 } from "./checkingPartialMovementsImport.js";
+import XLSX from "xlsx";
+import { importCheckingRecentXlsx } from "./accountImports.js";
+import { formatUltimosInboxFileSummary } from "./checkingUltimosMovimientosInbox.js";
 
 function testCheckingAccountId(): number | null {
   const row = db
@@ -173,5 +176,83 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
     );
 
     cleanup();
+  });
+
+  it("recent-xlsx import counts superseded-by-transfer rows separately", () => {
+    const accountId = testCheckingAccountId();
+    if (accountId == null) return;
+
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
+      | { id: number }
+      | undefined;
+    if (!group) return;
+    db.prepare(
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at)
+       VALUES (?, 'vitest-flow synth goal', 0, datetime('now'))`
+    ).run(group.id);
+    const goalId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+
+    db.prepare(
+      `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note)
+       VALUES (?, ?, 87654, 'clp', '1799-06-10', 'vitest-flow absorbing transfer')`
+    ).run(goalId, accountId);
+    const transferId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+
+    const freshNote = partialMovementNote({
+      occurred_on: "1799-06-11",
+      description: "vitest-flow fresh cargo",
+      amount_clp: -33333,
+      document_no: "",
+    });
+    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(accountId, freshNote);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["Fecha", "Detalle", "Cargo", "Abono"],
+        ["10-06-1799", "vitest-flow transf fintual", "", 87654],
+        ["11-06-1799", "vitest-flow fresh cargo", 33333, ""],
+      ])
+    );
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+    const result = importCheckingRecentXlsx(accountId, buffer, "vitest-ultimos.xlsx");
+    try {
+      if (result.format !== "ultimos_movimientos") throw new Error(`wrong format ${result.format}`);
+      expect(result.inserted).toBe(1);
+      expect(result.skipped_duplicate).toBe(0);
+      expect(result.skipped_superseded_by_transfer).toBe(1);
+      expect(result.skipped_flows.map((f) => f.reason)).toEqual(["superseded_by_transfer"]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(accountId, freshNote);
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(goalId);
+      db.prepare(`DELETE FROM import_batches WHERE id = ?`).run(result.batch_id);
+    }
+  });
+
+  it("inbox summary line prints every non-zero skip reason", () => {
+    const base = {
+      file: "ultimos.xlsx",
+      rows_parsed: 8,
+      inserted: 1,
+      skipped_duplicate: 6,
+      skipped_superseded_by_cartola: 0,
+      skipped_superseded_by_transfer: 1,
+      parse_errors: [],
+      archived_to: null,
+    };
+    expect(formatUltimosInboxFileSummary(base)).toBe(
+      "ultimos.xlsx: 8 row(s) parsed, 1 inserted, 6 duplicate(s), 1 superseded by transfer"
+    );
+    expect(
+      formatUltimosInboxFileSummary({
+        ...base,
+        rows_parsed: 7,
+        skipped_superseded_by_transfer: 0,
+        archived_to: "/tmp/a.xlsx",
+      })
+    ).toBe("ultimos.xlsx: 7 row(s) parsed, 1 inserted, 6 duplicate(s); archived /tmp/a.xlsx");
   });
 });
