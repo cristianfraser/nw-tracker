@@ -224,6 +224,7 @@ export async function syncRiskyNorrisComposition(
   }
 
   const fundUnit = fundUnitClpOnOrBefore(compositionDate);
+  // Informational snapshot only — valuation uses per-ticker relative prices (basketReturnForHoldings).
   const anchor_basket_usd = basketUsdForHoldings(holdings, compositionDate, { preferLive: false });
   const anchor_fx_clp = fxClpOnOrBefore(compositionDate);
   const last_sync_ymd = cl.ymd;

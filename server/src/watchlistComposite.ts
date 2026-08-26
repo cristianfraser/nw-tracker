@@ -25,6 +25,7 @@ export type CompositeMeta = {
   anchor_fund_unit_clp: number;
   /** APV régimen valor cuota at composition_date; null when APV ≈ taxable RN. */
   anchor_apv_fund_unit_clp: number | null;
+  /** Σ weight·px snapshot at composition_date — informational; valuation uses per-ticker relative prices. */
   anchor_basket_usd: number;
   anchor_fx_clp: number;
   last_sync_ymd: string;
@@ -153,7 +154,12 @@ function priceUsdForTickerOnYmd(
   return null;
 }
 
-/** Weighted USD basket for holdings on a given date. Throws if any ticker price is missing. */
+/**
+ * Σ weight·price level (USD). Informational only — stored as `anchor_basket_usd` by the
+ * composition sync. Its ratio between two dates is price-weighted (weights act as share
+ * counts, so a US$xxx SPY at 6% weight out-votes a US$46 IAUM at 8%); day-over-day
+ * valuation goes through {@link basketReturnForHoldings} instead.
+ */
 export function basketUsdForHoldings(
   holdings: CompositeHolding[],
   ymd: string,
@@ -178,32 +184,66 @@ export function basketUsdForHoldings(
   return total;
 }
 
+/**
+ * Value-weighted basket return factor vs the composition anchor:
+ * Σ w·(px(ymd)/px(anchorYmd)) / Σ w. Fintual's weights are portfolio value fractions, so
+ * each ticker moves the basket by weight × its own return, independent of share-price
+ * magnitude. Anchor closes are read from equity_daily at call time (EOD on-or-before —
+ * the same resolution the composition sync validated) rather than stored, so a
+ * retroactive close adjustment moves both legs of each ratio together. Throws when any
+ * price is missing; per-day gaps are nulled by callers via tryProxyClp.
+ */
+export function basketReturnForHoldings(
+  holdings: CompositeHolding[],
+  anchorYmd: string,
+  ymd: string,
+  opts: { preferLive?: boolean; now?: Date } = {}
+): number {
+  if (!holdings.length) {
+    throw new Error(`composite basket ${ymd}: no holdings`);
+  }
+  const preferLive = opts.preferLive ?? false;
+  const now = opts.now ?? new Date();
+  let weightSum = 0;
+  let factor = 0;
+  for (const h of holdings) {
+    const anchorPx = priceUsdForTickerOnYmd(h.ticker, anchorYmd, { preferLive: false, now });
+    if (anchorPx == null) {
+      throw new Error(`composite basket ${anchorYmd}: missing anchor price for ${h.ticker}`);
+    }
+    const px = priceUsdForTickerOnYmd(h.ticker, ymd, { preferLive, now });
+    if (px == null) {
+      throw new Error(`composite basket ${ymd}: missing price for ${h.ticker}`);
+    }
+    factor += h.weight * (px / anchorPx);
+    weightSum += h.weight;
+  }
+  if (!Number.isFinite(factor) || factor <= 0 || weightSum <= 0) {
+    throw new Error(`composite basket ${ymd}: invalid basket return ${factor}`);
+  }
+  return factor / weightSum;
+}
+
 export function proxyClpFromMeta(
   meta: CompositeMeta,
   holdings: CompositeHolding[],
   ymd: string,
   opts: { preferLive?: boolean; now?: Date } = {}
 ): number {
-  const basketUsd = basketUsdForHoldings(holdings, ymd, opts);
-  const fx = fxClpOnOrBefore(ymd, opts.now ?? new Date());
-  if (fx == null) {
-    throw new Error(`composite proxy ${ymd}: missing FX`);
-  }
   if (
     !Number.isFinite(meta.anchor_fund_unit_clp) ||
     meta.anchor_fund_unit_clp <= 0 ||
-    !Number.isFinite(meta.anchor_basket_usd) ||
-    meta.anchor_basket_usd <= 0 ||
     !Number.isFinite(meta.anchor_fx_clp) ||
     meta.anchor_fx_clp <= 0
   ) {
     throw new Error(`composite proxy ${ymd}: invalid anchor metadata`);
   }
-  return (
-    meta.anchor_fund_unit_clp *
-    (basketUsd / meta.anchor_basket_usd) *
-    (fx / meta.anchor_fx_clp)
-  );
+  const basketReturn = basketReturnForHoldings(holdings, meta.composition_date, ymd, opts);
+  const fx = fxClpOnOrBefore(ymd, opts.now ?? new Date());
+  if (fx == null) {
+    throw new Error(`composite proxy ${ymd}: missing FX`);
+  }
+  return meta.anchor_fund_unit_clp * basketReturn * (fx / meta.anchor_fx_clp);
 }
 
 function calendarMonthsPriorYmd(ymd: string, months: number): string {

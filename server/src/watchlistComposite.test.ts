@@ -174,6 +174,95 @@ describe("compositeLiveStats session anchoring", () => {
   });
 });
 
+const VALUE_WEIGHT_BUCKET = "vitest_rn_proxy_value_weights";
+const VW_TICKERS = ["VITESTRNC", "VITESTRND"] as const;
+/** Mon/Tue NYSE trading days in the past so live-quote paths never engage. */
+const VW_DAYS = ["2026-07-06", "2026-07-07"] as const;
+const vwInsertedFxDates: string[] = [];
+
+/**
+ * Divergent price magnitudes AND returns: C US$xxx→110 (+10%), D US$10→10 (0%), both at
+ * weight 0.5. Value-weighted the basket moves +5%; the old Σ w·px level ratio read
+ * (55+5)/55 = +9.09% because C's share price out-voted its weight.
+ */
+function seedValueWeightFixture(): void {
+  const closes: Record<(typeof VW_TICKERS)[number], number[]> = {
+    VITESTRNC: [100, 110],
+    VITESTRND: [10, 10],
+  };
+  for (const ticker of VW_TICKERS) {
+    VW_DAYS.forEach((day, i) => {
+      db.prepare(
+        `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'usd')
+         ON CONFLICT(ticker, trade_date) DO UPDATE SET close = excluded.close, currency = excluded.currency`
+      ).run(ticker, day, closes[ticker][i]);
+    });
+  }
+  for (const day of VW_DAYS) {
+    const res = db
+      .prepare(`INSERT OR IGNORE INTO fx_daily (date, clp_per_usd) VALUES (?, 950)`)
+      .run(day);
+    if (res.changes > 0) vwInsertedFxDates.push(day);
+  }
+
+  const holdings: CompositeHolding[] = [
+    { ticker: "VITESTRNC", weight: 0.5, synced_at: VW_DAYS[0] },
+    { ticker: "VITESTRND", weight: 0.5, synced_at: VW_DAYS[0] },
+  ];
+  const anchorBasket = basketUsdForHoldings(holdings, VW_DAYS[0], { preferLive: false });
+  const fxRow = db
+    .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+    .get(VW_DAYS[0]) as { clp_per_usd: number };
+  db.prepare(
+    `INSERT INTO watchlist_composite_meta (
+       bucket_slug, fintual_managed_fund_id, composition_date,
+       anchor_fund_unit_clp, anchor_apv_fund_unit_clp, anchor_basket_usd, anchor_fx_clp, last_sync_ymd
+     ) VALUES (?, 4, ?, 4000, NULL, ?, ?, ?)`
+  ).run(VALUE_WEIGHT_BUCKET, VW_DAYS[0], anchorBasket, fxRow.clp_per_usd, VW_DAYS[0]);
+  for (const h of holdings) {
+    db.prepare(
+      `INSERT INTO watchlist_composite_holdings (bucket_slug, ticker, weight, synced_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(VALUE_WEIGHT_BUCKET, h.ticker, h.weight, h.synced_at);
+  }
+}
+
+afterEach(() => {
+  db.prepare(`DELETE FROM watchlist_composite_holdings WHERE bucket_slug = ?`).run(VALUE_WEIGHT_BUCKET);
+  db.prepare(`DELETE FROM watchlist_composite_meta WHERE bucket_slug = ?`).run(VALUE_WEIGHT_BUCKET);
+  for (const ticker of VW_TICKERS) {
+    db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(ticker);
+  }
+  while (vwInsertedFxDates.length > 0) {
+    db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run(vwInsertedFxDates.pop());
+  }
+});
+
+describe("proxyClpFromMeta value weighting", () => {
+  it("weights are value fractions, not share counts", () => {
+    seedValueWeightFixture();
+    const meta = loadCompositeMeta(VALUE_WEIGHT_BUCKET)!;
+    const holdings = loadCompositeHoldings(VALUE_WEIGHT_BUCKET);
+
+    const atAnchor = proxyClpFromMeta(meta, holdings, VW_DAYS[0], { preferLive: false });
+    expect(atAnchor).toBeCloseTo(4000, 6);
+
+    const fx = (day: string) =>
+      (
+        db
+          .prepare(`SELECT clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
+          .get(day) as { clp_per_usd: number }
+      ).clp_per_usd;
+    const fxRatio = fx(VW_DAYS[1]) / fx(VW_DAYS[0]);
+
+    const next = proxyClpFromMeta(meta, holdings, VW_DAYS[1], { preferLive: false });
+    // 0.5×(110/100) + 0.5×(10/10) = 1.05 — the fund's value-weighted move.
+    expect(next / atAnchor).toBeCloseTo(1.05 * fxRatio, 8);
+    // The share-count reading Σ w·px(d)/Σ w·px(0) = 60/55 would land ~4% higher.
+    expect(next / atAnchor).not.toBeCloseTo((60 / 55) * fxRatio, 2);
+  });
+});
+
 describe("watchlistStatsForRow composite", () => {
   it("returns CLP stats for composite row when meta exists", () => {
     seedCompositeFixture();
