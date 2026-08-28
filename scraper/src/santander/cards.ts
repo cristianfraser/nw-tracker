@@ -288,7 +288,9 @@ async function fetchUsdForCurrentCard(page: Page, recorder: Recorder, slide: num
 
 /** Parse "Pagar hasta: 10/MM/YYYY" into the YYYY-MM facturación it settles (month − 1). */
 async function readBillingMonth(page: Page): Promise<string | null> {
-  const body = await page.locator("body").innerText();
+  // The billed view renders two <body> elements, so a strict single-element innerText() throws
+  // ("resolved to 2 elements") — read them all; the pay-by text lives in whichever is real.
+  const body = (await page.locator("body").allInnerTexts()).join("\n");
   const match = TEXT.payBy.exec(body);
   if (!match) return null;
   const month = Number(match[2]);

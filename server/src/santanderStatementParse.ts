@@ -52,6 +52,10 @@ export const NATIONAL_COD_TXS = {
   PAYMENT: "067",
   INSURANCE: "002",
   STAMP_TAX: "203",
+  /** NOTA DE CREDITO — a refund/reversal the bank nets NEGATIVE into DeudaTotalFact (its amount
+   * rides in TotalCargos with a trailing '-'; verified on the 25/08/2026 close: 3.xxx.xxx compras
+   * + 2x.xxx cargos aut − 2.140 nota = 3.xxx.xxx facturado exact). */
+  CREDIT_NOTE: "510",
 } as const;
 
 /**

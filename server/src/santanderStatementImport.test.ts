@@ -147,6 +147,24 @@ describe("santanderStatementImport", () => {
     expect(records[0]!.statement_monto_pagado_anterior).toBe("-2368");
   });
 
+  it("imports a NOTA DE CREDITO (CodTxs 510) as a negative line, not a payment", () => {
+    const id = masterId();
+    if (id == null) return;
+    const records = buildSantanderStatementRecords(
+      "clp",
+      [
+        line({}),
+        line({ merchant: "NOTA DE CREDITO", amount_clp: 2_140, cod_txs: "510", transaction_date: "5/9/2026" }),
+      ],
+      header({ deuda_total: 21_130 }),
+      { ...CTX, accountId: id }
+    );
+    expect(records).toHaveLength(2);
+    const nota = records.find((r) => r.merchant === "NOTA DE CREDITO")!;
+    expect(nota.amount_clp).toBe("-2140");
+    expect(nota.statement_monto_pagado_anterior).toBe("");
+  });
+
   it("occurrence-suffixes same-statement twins", () => {
     const id = masterId();
     if (id == null) return;
