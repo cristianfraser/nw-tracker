@@ -171,9 +171,15 @@ export function buildSantanderStatementRecords(
   const records: CcStatementCsvRecord[] = [];
   for (const line of lineRows) {
     const isPaymentLine = currency === "clp" && line.cod_txs === NATIONAL_COD_TXS.PAYMENT;
-    // National amounts arrive unsigned; the payment is the only known-negative code.
+    const isCreditNote = currency === "clp" && line.cod_txs === NATIONAL_COD_TXS.CREDIT_NOTE;
+    // National amounts arrive unsigned; payments and credit notas are the known-negative codes
+    // (the nota's sign is proven by the header identity — see NATIONAL_COD_TXS.CREDIT_NOTE).
     const amountClp =
-      line.amount_clp == null ? null : isPaymentLine ? -Math.abs(line.amount_clp) : line.amount_clp;
+      line.amount_clp == null
+        ? null
+        : isPaymentLine || isCreditNote
+          ? -Math.abs(line.amount_clp)
+          : line.amount_clp;
 
     const dateIso =
       parseDdMmYyToIso(line.transaction_date) ?? parseDdMmYyToIso(line.posting_date ?? "");
