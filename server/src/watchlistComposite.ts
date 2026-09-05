@@ -101,9 +101,25 @@ export function officialApvFundUnitOnOrBefore(ymd: string): {
   return null;
 }
 
-const stmtFxOnOrBefore = db.prepare(
-  `SELECT clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
+const stmtFxWeekdayEodOnOrBefore = db.prepare(
+  `SELECT clp_per_usd FROM fx_daily
+   WHERE date <= ? AND strftime('%w', date) NOT IN ('0', '6')
+   ORDER BY date DESC LIMIT 1`
 );
+
+/**
+ * Latest WEEKDAY-dated fx_daily bar on or before ymd — the composite frame's EOD fx.
+ * Yahoo CLP=X writes Sunday-dated week-open bars that no official cuota ever embeds
+ * (the Chilean fx market is closed; Fintual's weekend cuotas carry Friday's dólar), so
+ * a weekend valuation date — or a weekend composition anchor — must read Friday's bar,
+ * not the week-open spike. Weekday bars on NYSE holidays stay eligible: a cuota
+ * published that day embeds that day's dólar even though the basket closes are Friday's.
+ */
+export function fxClpWeekdayEodOnOrBefore(ymd: string): number | null {
+  const row = stmtFxWeekdayEodOnOrBefore.get(ymd) as { clp_per_usd: number } | undefined;
+  if (row == null || !Number.isFinite(row.clp_per_usd) || row.clp_per_usd <= 0) return null;
+  return row.clp_per_usd;
+}
 
 export function loadCompositeMeta(bucketSlug: string): CompositeMeta | null {
   const row = stmtMeta.get(bucketSlug) as CompositeMeta | undefined;
@@ -127,9 +143,7 @@ function fxClpOnOrBefore(ymd: string, now: Date): number | null {
       return live.clp_per_usd;
     }
   }
-  const row = stmtFxOnOrBefore.get(ymd) as { clp_per_usd: number } | undefined;
-  if (row == null || !Number.isFinite(row.clp_per_usd) || row.clp_per_usd <= 0) return null;
-  return row.clp_per_usd;
+  return fxClpWeekdayEodOnOrBefore(ymd);
 }
 
 function priceUsdForTickerOnYmd(

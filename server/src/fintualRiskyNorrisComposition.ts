@@ -10,6 +10,7 @@ import {
 import {
   APV_PROXY_NEGLIGIBLE_REL_DIFF,
   basketUsdForHoldings,
+  fxClpWeekdayEodOnOrBefore,
   officialApvFundUnitOnOrBefore,
   officialRiskyNorrisFundUnitOnOrBefore,
   RISKY_NORRIS_PROXY_BUCKET,
@@ -44,10 +45,6 @@ export type FintualManagedFundPositionsResponse = {
 const stmtFundUnitOnDate = db.prepare(
   `SELECT unit_value_clp FROM fund_unit_daily
    WHERE series_key = ? AND day = ? LIMIT 1`
-);
-
-const stmtFxOnOrBefore = db.prepare(
-  `SELECT clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
 );
 
 const stmtDeleteHoldings = db.prepare(
@@ -179,12 +176,17 @@ function fundUnitClpOnOrBefore(compositionDate: string): { day: string; unit_val
   return { day: resolved.day, unit_value_clp: resolved.unit_value_clp };
 }
 
+/**
+ * Anchor fx must describe the same moment the anchor cuota embeds — the weekday rule
+ * (see fxClpWeekdayEodOnOrBefore) keeps a weekend composition_date from anchoring on
+ * Yahoo's Sunday week-open bar while the anchor equity closes resolve to Friday's.
+ */
 function fxClpOnOrBefore(ymd: string): number {
-  const row = stmtFxOnOrBefore.get(ymd) as { clp_per_usd: number } | undefined;
-  if (row == null || !Number.isFinite(row.clp_per_usd) || row.clp_per_usd <= 0) {
-    throw new Error(`Risky Norris composition sync: no fx_daily on or before ${ymd}`);
+  const fx = fxClpWeekdayEodOnOrBefore(ymd);
+  if (fx == null) {
+    throw new Error(`Risky Norris composition sync: no weekday fx_daily on or before ${ymd}`);
   }
-  return row.clp_per_usd;
+  return fx;
 }
 
 export type SyncRiskyNorrisCompositionResult = {
