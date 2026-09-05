@@ -82,6 +82,7 @@
     "record:daily-run": "tsx scripts/record-daily-run.ts",
     "record:email-run": "tsx scripts/record-email-run.ts",
     "import:racional-movements": "tsx scripts/import-racional-movements.ts",
+    "import:racional-emails": "tsx scripts/import-racional-emails.ts",
     "check:broker-emails": "tsx scripts/check-broker-emails.ts",
     "import:fintual-emails": "tsx scripts/import-fintual-emails.ts",
     "check:daily-run-today": "tsx scripts/daily-run-ran-today.ts",

@@ -72,6 +72,7 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
         "deposit_clp",
         "compra_usd_venta_clp",
         "savings_earnings",
+        "cash_fee",
         "withdrawal_usd",
         "withdrawal_clp",
         "other",
@@ -84,7 +85,7 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
       ledger: "movements",
       units_delta: "optional",
       unit_label: "CLP",
-      brokerage_flow_kinds: ["deposit_clp", "savings_earnings", "withdrawal_clp", "other"],
+      brokerage_flow_kinds: ["deposit_clp", "savings_earnings", "cash_fee", "withdrawal_clp", "other"],
       units_required_for_flow_kinds: [],
     };
   }
@@ -577,6 +578,9 @@ function validateUsdCashMovementCreate(
   }
   if (flow_kind === "savings_earnings" && (amount_usd == null || amount_usd === 0)) {
     return { ok: false, status: 400, error: "a USD amount is required for savings_earnings (interest received in USD)." };
+  }
+  if (flow_kind === "cash_fee" && (amount_usd == null || amount_usd === 0)) {
+    return { ok: false, status: 400, error: "a USD amount is required for cash_fee (commission charged in USD)." };
   }
   if (flow_kind === "compra_usd" && (amount_usd == null || amount_usd === 0)) {
     return { ok: false, status: 400, error: "a USD amount is required for compra_usd." };

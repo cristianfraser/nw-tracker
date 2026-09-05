@@ -62,6 +62,10 @@
 		     (with cuotas) unattended. -->
 		<key>NW_TRACKER_FINTUAL_APPLY</key>
 		<string>1</string>
+		<!-- Racional imports write for real: the e-mail movements step (deposits, conversions,
+		     buys) and the nudge-triggered crawl import both honor this gate. -->
+		<key>NW_TRACKER_RACIONAL_APPLY</key>
+		<string>1</string>
 	</dict>
 	<key>ProcessType</key>
 	<string>Background</string>

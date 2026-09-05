@@ -394,7 +394,7 @@ export function loadUsdCashCapitalSortFlows(
     out.get(id)!.push(flow);
   };
   for (const r of rows) {
-    if (r.flow_kind === "savings_earnings") continue; // interest = P/L, not capital
+    if (r.flow_kind === "savings_earnings" || r.flow_kind === "cash_fee") continue; // interest/fees = P/L, not capital
     for (const id of new Set([r.account_id, r.from_account_id, r.to_account_id])) {
       if (id == null || !requested.has(id)) continue;
       const usdSigned = signedUsdDeltaForAccountMovement(r, id);

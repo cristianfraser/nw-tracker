@@ -15,6 +15,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { accountIdForEquityTicker } from "./accountEquityTicker.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { db } from "./db.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import {
@@ -79,6 +81,21 @@ function accountIdByImportKey(importKey: string): number {
 
 export function racionalCashAccountId(currency: "clp" | "usd"): number {
   return accountIdByImportKey(RACIONAL_CASH_IMPORT_KEYS[currency]);
+}
+
+/**
+ * The CLP portafolio caja (`brokerage_cash__caja_*` leaf) — where Racional charges portfolio
+ * commissions. Exactly one such account, else null (never guess which caja to charge).
+ */
+export function portfolioCajaClpAccountId(): number | null {
+  const rows = db
+    .prepare(
+      `SELECT a.id FROM accounts a
+       JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE g.slug GLOB 'brokerage_cash__caja_*'`
+    )
+    .all() as { id: number }[];
+  return rows.length === 1 ? rows[0]!.id : null;
 }
 
 export type RacionalPlannedMovement = {
@@ -195,13 +212,37 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
         account_id: racionalCashAccountId(movement.currency),
         flow_kind: "savings_earnings",
       };
-    case "fee":
+    case "fee": {
+      // Racional's monthly comisión is charged to the PORTAFOLIO caja (the app's fee detail says
+      // «Distribución por portafolios»), not the Stocks wallet — and it is a P/L cost, so it
+      // carries `cash_fee` (nets against interest; never reads as a capital withdrawal).
+      if (movement.currency === "clp") {
+        const caja = portfolioCajaClpAccountId();
+        if (caja == null) {
+          return {
+            ...base,
+            account_id: racionalCashAccountId("clp"),
+            amount: -Math.abs(movement.amount),
+            flow_kind: "cash_fee",
+            requires_manual:
+              "no single portafolio caja account to charge the comisión to — route it by hand",
+          };
+        }
+        return {
+          ...base,
+          account_id: caja,
+          amount: -Math.abs(movement.amount),
+          flow_kind: "cash_fee",
+        };
+      }
+      // USD single-leg rows are stored positive with direction in flow_kind.
       return {
         ...base,
-        account_id: racionalCashAccountId(movement.currency),
-        amount: -Math.abs(movement.amount),
-        flow_kind: null,
+        account_id: racionalCashAccountId("usd"),
+        amount: Math.abs(movement.amount),
+        flow_kind: "cash_fee",
       };
+    }
     case "deposit":
       return {
         ...base,
@@ -228,9 +269,27 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
 /** USD line amounts are exact 2-decimal values; a cent of slack absorbs float noise only. */
 const AMOUNT_TOLERANCE = 0.005;
 
+const findSingleLegOnDay = db.prepare(
+  `SELECT id, amount FROM movements
+   WHERE occurred_on = ? AND account_id = ? AND currency = ?
+     AND COALESCE(flow_kind, '') = COALESCE(?, '')`
+);
+
 export function markDuplicates(planned: RacionalPlannedMovement[]): RacionalPlannedMovement[] {
   return planned.map((p) => {
-    if (p.from_account_id == null || p.to_account_id == null) return p;
+    // Single-leg rows (interest, fees): staged files are never archived and re-runs re-plan
+    // them, so an exact same-day twin in the ledger is this row already imported.
+    if (p.from_account_id == null || p.to_account_id == null) {
+      if (p.account_id == null || p.requires_manual != null) return p;
+      const existing = findSingleLegOnDay.all(
+        p.source.occurred_on,
+        p.account_id,
+        p.currency,
+        p.flow_kind
+      ) as { id: number; amount: number }[];
+      const twin = existing.find((r) => Math.abs(Number(r.amount) - p.amount) <= AMOUNT_TOLERANCE);
+      return twin ? { ...p, duplicate_of: twin.id } : p;
+    }
     const existing = findTransfersOnDay.all(
       p.source.occurred_on,
       p.from_account_id,
@@ -328,6 +387,39 @@ export function applyRacionalMovements(
   if (newest) writeRacionalImportState(newest.source, nowIso);
 
   return { ...result, inserted: toWrite.length };
+}
+
+/** From this day of the month, a missing comisión row means the crawl should run. */
+export const RACIONAL_COMISION_NUDGE_FROM_DAY = 20;
+
+/**
+ * Racional charges its portafolio comisión monthly (~the 18th) to the caja — and sends NO
+ * e-mail for it, so the mail-driven nudge system can never see it. Calendar rule instead: from
+ * the 20th, if the caja still holds money but has no `cash_fee` row this month, the nightly
+ * broker-email check names racional for a crawl. Self-limiting: once the fee imports (or the
+ * portafolio winds down and the caja empties), the nudge stops.
+ */
+export function racionalComisionCrawlDue(
+  todayYmd = chileCalendarTodayYmd()
+): { due: boolean; reason: string | null } {
+  const dayOfMonth = Number(todayYmd.slice(8, 10));
+  if (dayOfMonth < RACIONAL_COMISION_NUDGE_FROM_DAY) return { due: false, reason: null };
+  const caja = portfolioCajaClpAccountId();
+  if (caja == null) return { due: false, reason: null };
+  if (clpCashBalanceLive(caja).value_clp <= 0) return { due: false, reason: null };
+  const monthKey = todayYmd.slice(0, 7);
+  const hasFee = db
+    .prepare(
+      `SELECT 1 FROM movements
+       WHERE account_id = ? AND flow_kind = 'cash_fee' AND substr(occurred_on, 1, 7) = ?
+       LIMIT 1`
+    )
+    .get(caja, monthKey);
+  if (hasFee) return { due: false, reason: null };
+  return {
+    due: true,
+    reason: `no portafolio comisión recorded for ${monthKey} on the caja (account ${caja})`,
+  };
 }
 
 export function listRacionalMovementFiles(dir = resolveRacionalMovementsDir()): string[] {

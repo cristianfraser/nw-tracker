@@ -34,6 +34,8 @@ export const USD_CASH_FLOW_KINDS = [
 
   "savings_earnings",
 
+  "cash_fee",
+
   "withdrawal_usd",
 
   "withdrawal_clp",
@@ -49,6 +51,8 @@ export const CLP_CASH_FLOW_KINDS = [
   "deposit_clp",
 
   "savings_earnings",
+
+  "cash_fee",
 
   "withdrawal_clp",
 
@@ -70,9 +74,9 @@ export type BrokerageFlowKind =
 
 
 
-/** Interest / bank-paid yield (`savings_earnings`) — amount is in the account's own currency. */
+/** Own-currency P/L rows (interest, commissions) — amount is in the account's own currency. */
 export function isInterestFlowKind(kind: BrokerageFlowKind): boolean {
-  return kind === "savings_earnings";
+  return kind === "savings_earnings" || kind === "cash_fee";
 }
 
 

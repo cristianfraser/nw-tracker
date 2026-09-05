@@ -132,6 +132,8 @@ export function signedUsdDeltaForAccountMovement(
   // Interest / bank-paid yield credited in USD raises the cash balance (P/L, not capital — the
   // deposited line excludes it, see accountDeposits / cash interest helpers).
   if (fk === "savings_earnings") return absAmount(usdLeg);
+  // Commission charged in USD lowers it — the fee twin of interest (P/L cost, not capital).
+  if (fk === "cash_fee") return -absAmount(usdLeg);
   return 0;
 }
 

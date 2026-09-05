@@ -48,6 +48,10 @@
 		<!-- Same gate as the nightly plist: Fintual e-mail movements write for real. -->
 		<key>NW_TRACKER_FINTUAL_APPLY</key>
 		<string>1</string>
+		<!-- Racional e-mail movements write for real too: deposits, CLP→USD conversions (the
+		     mail is their ONLY source), and stock buys with share counts. -->
+		<key>NW_TRACKER_RACIONAL_APPLY</key>
+		<string>1</string>
 	</dict>
 	<key>ProcessType</key>
 	<string>Background</string>

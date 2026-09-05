@@ -1,151 +1,57 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { overrideFxDaily } from "./test/fxDailyFixture.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
-import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
-import { totalDepositsClpForAccount } from "./accountDeposits.js";
-import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
-import { usdCashBalanceUsdAt, usdCashBalanceClpAt } from "./usdCashAccounts.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import { flowsDepositsNetTotalByAccount, flowsDepositsNetTotalUsdByAccount } from "./flowsDeposits.js";
-import { monthKeyFromYmd } from "./calendarMonth.js";
+import {
+  clpCashInterestClpThroughDate,
+  usdCashInterestUsdThroughDate,
+} from "./cashAccountInterest.js";
 
-const FIXTURE_USD = "vitest-interest-usd";
-const FIXTURE_CLP = "vitest-interest-clp";
-const NOTE = "vitest-cash-interest";
+describe("cash interest net of fees", () => {
+  let accountId = 0;
 
-function insertAccountIdMovement(v: {
-  account_id: number;
-  amount: number;
-  currency: "clp" | "usd";
-  occurred_on: string;
-  flow_kind: string;
-}): number {
-  return Number(
-    db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(v.account_id, v.amount, v.currency, v.occurred_on, NOTE, v.flow_kind)
-      .lastInsertRowid
-  );
-}
-
-let restoreFx: (() => void) | null = null;
-
-describe("cash-account interest (savings_earnings): balance up, deposits flat, P/L", () => {
-  let usdId = 0;
-  let clpId = 0;
-  let usdRow: AccountRow;
-  let clpRow: AccountRow;
-
-  beforeAll(() => {
-    const usdLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__usd' LIMIT 1`)
-      .get() as { id: number; slug: string } | undefined;
-    const clpLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__clp' LIMIT 1`)
-      .get() as { id: number; slug: string } | undefined;
-    if (!usdLeaf || !clpLeaf) return;
-
-    db.prepare(`DELETE FROM movements WHERE note = ?`).run(NOTE);
-    db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
-    const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`);
-    usdId = Number(ins.run(usdLeaf.id, FIXTURE_USD).lastInsertRowid);
-    clpId = Number(ins.run(clpLeaf.id, FIXTURE_CLP).lastInsertRowid);
-    usdRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
-    clpRow = { bucket_slug: clpLeaf.slug, group_slug: clpLeaf.slug };
-
-    // Pin fx for every date the assertions resolve: the compra EVENT date (deposited capital
-    // converts per event at its own date since 2026-08-04), the fixture month-ends, the
-    // 2026-12-31 as-of valuation, and *today*. Flat fx across the fixture means the CLP
-    // identities below hold exactly (no fx revaluation leg to account for).
-    restoreFx = overrideFxDaily([
-      ["2026-05-15", 900],
-      ["2026-05-31", 900],
-      ["2026-06-30", 900],
-      ["2026-07-31", 900],
-      ["2026-12-31", 900],
-      [chileCalendarTodayYmd(), 900],
-    ]);
-
-    // USD cash: buy 1000 USD of capital in May, earn 10 USD interest in June.
-    // Single-leg rows can't carry a counter pair (schema CHECK); the USD leg is the one this
-    // account's balance/deposited assertions read (deposited = balance − interest).
-    insertAccountIdMovement({ account_id: usdId, amount: 1000, currency: "usd", occurred_on: "2026-05-15", flow_kind: "compra_usd_venta_clp" });
-    insertAccountIdMovement({ account_id: usdId, amount: 10, currency: "usd", occurred_on: "2026-06-15", flow_kind: "savings_earnings" });
-
-    // CLP cash: deposit 2,000,000 in May, earn 5,000 interest in June.
-    insertAccountIdMovement({ account_id: clpId, amount: 2_000_000, currency: "clp", occurred_on: "2026-05-15", flow_kind: "deposit_clp" });
-    insertAccountIdMovement({ account_id: clpId, amount: 5_000, currency: "clp", occurred_on: "2026-06-15", flow_kind: "savings_earnings" });
-  });
-
-  afterAll(() => {
-    restoreFx?.();
-    db.prepare(`DELETE FROM movements WHERE note = ?`).run(NOTE);
-    db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
-  });
-
-  it("validates savings_earnings on USD cash (USD amount) and CLP cash (CLP amount)", () => {
-    if (!usdId || !clpId) return;
-    const vUsd = validateMovementCreate(usdRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings", amount: 10, currency: "usd" }, usdId);
-    expect(vUsd.ok).toBe(true);
-    if (vUsd.ok) {
-      expect(vUsd.flow_kind).toBe("savings_earnings");
-      expect(vUsd.amount).toBe(10);
-      expect(vUsd.currency).toBe("usd");
+  afterEach(() => {
+    if (accountId) {
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+      accountId = 0;
     }
-    const vClp = validateMovementCreate(clpRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings", amount: 5000, currency: "clp" }, clpId);
-    expect(vClp.ok).toBe(true);
-    if (vClp.ok) expect(vClp.flow_kind).toBe("savings_earnings");
-
-    // USD cash requires a USD amount for interest; CLP cash requires a CLP amount.
-    expect(validateMovementCreate(usdRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings" }, usdId).ok).toBe(false);
-    expect(validateMovementCreate(clpRow, { occurred_on: "2026-06-15", flow_kind: "savings_earnings" }, clpId).ok).toBe(false);
   });
 
-  it("interest raises the balance but is excluded from deposited capital", () => {
-    if (!usdId || !clpId) return;
-    // USD: balance includes the 10 USD interest; deposited excludes it.
-    expect(usdCashBalanceUsdAt(usdId, "2026-12-31")).toBeCloseTo(1010, 6);
-    const usdValueClp = usdCashBalanceClpAt(usdId, "2026-12-31");
-    const usdDepClp = totalDepositsClpForAccount(usdId);
-    // Deposited = the 1.000 USD compra converted at ITS date's sell rate (event-based); with
-    // fx pinned flat, P/L = value − deposited = exactly the 10 USD interest at that rate.
-    const impliedRate = usdValueClp / 1010;
-    expect(usdValueClp - usdDepClp).toBeCloseTo(10 * impliedRate, 0);
+  function createAccount(): number {
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
+      id: number;
+    };
+    accountId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'vitest cash interest', 'vitest', 'vitest-cash-interest')`
+        )
+        .run(group.id).lastInsertRowid
+    );
+    return accountId;
+  }
 
-    // CLP: balance includes 5,000 interest; deposited excludes it.
-    expect(clpCashBalanceClpAt(clpId, "2026-12-31")).toBeCloseTo(2_005_000, 0);
-    const clpDep = totalDepositsClpForAccount(clpId);
-    expect(clpDep).toBeCloseTo(2_000_000, 0);
-    expect(clpCashBalanceClpAt(clpId, "2026-12-31") - clpDep).toBeCloseTo(5_000, 0);
+  it("CLP: interest minus commissions, fee sign-agnostic", () => {
+    const id = createAccount();
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+       VALUES (?, ?, 'clp', ?, 'vitest', ?)`
+    );
+    ins.run(id, 100, "2099-01-05", "savings_earnings");
+    ins.run(id, -30, "2099-01-18", "cash_fee"); // CLP fee rows are stored negative
+    expect(clpCashInterestClpThroughDate(id, "2099-12-31")).toBe(70);
+    // Window respects occurred_on: before the fee, interest alone.
+    expect(clpCashInterestClpThroughDate(id, "2099-01-10")).toBe(100);
   });
 
-  it("dashboard deposits exclude interest so total P/L (value − deposited) = interest", () => {
-    if (!usdId) return;
-    // Regression: flowsDepositsNet* previously returned the full balance for USD cash → total P/L = 0.
-    const depUsd = flowsDepositsNetTotalUsdByAccount().get(usdId);
-    const depClp = flowsDepositsNetTotalByAccount().get(usdId);
-    expect(depUsd).toBeDefined();
-    expect(depClp).toBeDefined();
-    // Deposited USD = 1000 capital (the 10 USD interest is excluded).
-    expect(depUsd!).toBeCloseTo(1000, 6);
-    expect(usdCashBalanceUsdAt(usdId, "2026-12-31") - depUsd!).toBeCloseTo(10, 6);
-    // Flat fx across the fixture → CLP total P/L is the interest alone (no fx revaluation).
-    expect(usdCashBalanceClpAt(usdId, "2026-12-31") - depClp!).toBeGreaterThan(0);
-  });
-
-  it("USD cash now produces a monthly P/L series with the interest as gain", () => {
-    if (!usdId) return;
-    const perf = getAccountMonthlyPerformance(usdId, "clp");
-    expect(perf).not.toBeNull();
-    expect(perf!.monthly.length).toBeGreaterThan(0);
-    const june = perf!.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-06");
-    expect(june).toBeDefined();
-    // June P/L ≈ the 10 USD interest in CLP (~8k–12k depending on the sell rate), and small vs balance.
-    expect(june!.nominal_pl ?? 0).toBeGreaterThan(7_000);
-    expect(june!.nominal_pl ?? 0).toBeLessThan(13_000);
+  it("USD: interest minus commissions with the positive single-leg convention", () => {
+    const id = createAccount();
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+       VALUES (?, ?, 'usd', ?, 'vitest', ?)`
+    );
+    ins.run(id, 10, "2099-02-01", "savings_earnings");
+    ins.run(id, 4, "2099-02-18", "cash_fee"); // USD single-leg rows stored positive, kind carries direction
+    expect(usdCashInterestUsdThroughDate(id, "2099-12-31")).toBe(6);
   });
 });

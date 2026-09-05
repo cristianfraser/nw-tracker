@@ -23,6 +23,14 @@ const stmtAccountsByTicker = db.prepare(
   `SELECT id FROM accounts WHERE UPPER(TRIM(equity_ticker)) = ?`
 );
 
+/** Every account holding a symbol — for callers that handle 0/many themselves (auto-create). */
+export function accountsWithEquityTicker(ticker: string): number[] {
+  const symbol = String(ticker ?? "").trim().toUpperCase();
+  if (!symbol) return [];
+  const rows = stmtAccountsByTicker.all(symbol) as { id: number }[];
+  return rows.map((r) => r.id);
+}
+
 /**
  * The account holding a symbol — the reverse of {@link equityTickerForAccount}, and the only
  * sanctioned way for an importer to turn a broker's ticker into an account.

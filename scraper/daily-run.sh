@@ -145,6 +145,7 @@ fi
 if [[ "$DRY_RUN" == "1" ]]; then
   step "broker e-mail check (dry run)" npm run check:broker-emails
   step "Fintual e-mail movements (dry run)" npm run import:fintual-emails
+  step "Racional e-mail movements (dry run)" npm run import:racional-emails
 else
   step "fetch broker e-mail" npm run fetch:emails
   step "broker e-mail check" npm run check:broker-emails
@@ -152,6 +153,13 @@ else
     step "Fintual e-mail movements (apply)" npm run import:fintual-emails -- --apply
   else
     step "Fintual e-mail movements (report only)" npm run import:fintual-emails
+  fi
+  # Deposits, CLP→USD conversions, and stock buys import straight from the mail (the
+  # conversion appears nowhere else); the crawl below stays for dividends/history.
+  if [[ "${NW_TRACKER_RACIONAL_APPLY:-0}" == "1" ]]; then
+    step "Racional e-mail movements (apply)" npm run import:racional-emails -- --apply
+  else
+    step "Racional e-mail movements (report only)" npm run import:racional-emails
   fi
 fi
 

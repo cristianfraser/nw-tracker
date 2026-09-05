@@ -291,6 +291,7 @@
       "stock_sell": "Stock sell",
       "dividend_payout": "Dividend",
       "savings_earnings": "Interest / returns",
+      "cash_fee": "Fee / commission",
       "withdrawal_clp": "CLP withdrawal",
       "withdrawal_usd": "USD withdrawal",
       "other": "Other"

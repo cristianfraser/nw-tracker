@@ -13,6 +13,7 @@ export const BROKERAGE_FLOW_KINDS = [
   "stock_sell",
   "dividend_payout",
   "savings_earnings",
+  "cash_fee",
   "withdrawal_clp",
   "withdrawal_usd",
   "other",
@@ -42,6 +43,7 @@ export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
   stock_sell: "Venta acciones",
   dividend_payout: "Dividendo",
   savings_earnings: "Interés / rentabilidad",
+  cash_fee: "Comisión",
   withdrawal_usd: "Retiro USD",
   other: "Otro",
 };
@@ -101,6 +103,7 @@ export function intraDayFlowRank(flowKind: string | null | undefined): number {
       return 4;
     case "withdrawal_clp":
     case "withdrawal_usd":
+    case "cash_fee":
       return 5;
     default:
       return 1;
@@ -133,6 +136,9 @@ export function signedAmountClpForBrokerageFlow(
     case "withdrawal_usd":
       return 0;
     case "compra_usd_venta_clp":
+      return amount_clp != null && Number.isFinite(amount_clp) ? -Math.abs(amount_clp) : 0;
+    // Commission charged to the cash balance — always a debit (P/L cost, not capital).
+    case "cash_fee":
       return amount_clp != null && Number.isFinite(amount_clp) ? -Math.abs(amount_clp) : 0;
     default:
       return amount_clp != null && Number.isFinite(amount_clp) ? amount_clp : 0;
