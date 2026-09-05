@@ -27,7 +27,10 @@ import {
   fintualPublishLagsPollCalendarDay,
   isFintualFundPublishDay,
 } from "./fintualPublishDate.js";
-import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
+import {
+  fintualCertV2PollReconciled,
+  fintualMorningCarryPerFundUnresolved,
+} from "./fintualCertV2Reconcile.js";
 import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
@@ -103,6 +106,14 @@ export function clearUserForcedStale(state: GlobalSyncStateFile, source: GlobalS
   if (next.length === list.length) return;
   if (next.length === 0) delete state.userForcedStale;
   else state.userForcedStale = next;
+}
+
+/** User marked this source stale from the UI (flag not yet cleared by a successful sync). */
+export function isUserForcedSyncSourceStale(
+  state: GlobalSyncStateFile,
+  source: GlobalSyncSource
+): boolean {
+  return userForcedStaleSet(state).has(source);
 }
 
 /** Mark a source stale from the UI until the next successful sync for that source. */
@@ -183,6 +194,10 @@ export function isAfpUnoSpotStale(
  */
 export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
   if (fintualPriorEveningUnresolved(cl, state)) return true;
+  // Sig/publish-date "caught up" is blind to a single late-publishing fund (global hints are the
+  // max across funds): a held v2 fund whose publish-day bar is still missing keeps the source
+  // stale so the morning carry lands the value the fund published overnight.
+  if (fintualMorningCarryPerFundUnresolved(cl, state)) return true;
   if (cl.hour < 18) return false;
   if (!isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) return false;
   if (

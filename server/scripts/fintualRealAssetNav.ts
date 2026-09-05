@@ -33,6 +33,8 @@ export type FintualGoalNavResolution = {
   appliedNavClp: number;
   units: number | null;
   fundPriceClp: number | null;
+  /** Recent published cuotas by day for this goal's fund (backfills days a poll missed). */
+  recentNavByDay: Map<string, number> | null;
   mismatch: boolean;
 };
 
@@ -234,17 +236,26 @@ async function resolveRealAssetsNav(
   token: string,
   row: FintualGoalRowWithMatch,
   publishYmd: string
-): Promise<{ navClp: number | null; units: number | null; fundPriceClp: number | null }> {
+): Promise<{
+  navClp: number | null;
+  units: number | null;
+  fundPriceClp: number | null;
+  recentNavByDay: Map<string, number> | null;
+}> {
   const inv = primaryInvestment(row.investments);
-  if (!inv || !row.matchedNotes) return { navClp: null, units: null, fundPriceClp: null };
+  if (!inv || !row.matchedNotes) {
+    return { navClp: null, units: null, fundPriceClp: null, recentNavByDay: null };
+  }
 
   const lastDay = await fetchRealAssetLastDay(email, token, inv.asset_id);
-  if (!lastDay || lastDay.date < publishYmd) return { navClp: null, units: null, fundPriceClp: null };
+  if (!lastDay || lastDay.date < publishYmd) {
+    return { navClp: null, units: null, fundPriceClp: null, recentNavByDay: null };
+  }
 
   const recentNav = await recentNavByDate(email, token, inv.asset_id);
   const publishPrice = recentNav.get(publishYmd) ?? lastDay.netAssetValue;
   if (!Number.isFinite(publishPrice) || publishPrice <= 0) {
-    return { navClp: null, units: null, fundPriceClp: null };
+    return { navClp: null, units: null, fundPriceClp: null, recentNavByDay: recentNav };
   }
 
   const accountId = accountIdForNotes(row.matchedNotes);
@@ -255,21 +266,23 @@ async function resolveRealAssetsNav(
       navClp: Math.round(units * publishPrice * 100) / 100,
       units,
       fundPriceClp: publishPrice,
+      recentNavByDay: recentNav,
     };
   }
 
   const priorPrice = priorFundNav(recentNav, publishYmd);
   if (priorPrice == null || priorPrice <= 0) {
-    return { navClp: null, units: null, fundPriceClp: publishPrice };
+    return { navClp: null, units: null, fundPriceClp: publishPrice, recentNavByDay: recentNav };
   }
   const impliedUnits = row.navClp / priorPrice;
   if (!Number.isFinite(impliedUnits) || impliedUnits <= 0) {
-    return { navClp: null, units: null, fundPriceClp: publishPrice };
+    return { navClp: null, units: null, fundPriceClp: publishPrice, recentNavByDay: recentNav };
   }
   return {
     navClp: Math.round(impliedUnits * publishPrice * 100) / 100,
     units: Math.round(impliedUnits * 1e4) / 1e4,
     fundPriceClp: publishPrice,
+    recentNavByDay: recentNav,
   };
 }
 
@@ -314,12 +327,14 @@ export async function resolveFintualGoalNavs(
     let realAssetsNavClp: number | null = null;
     let units: number | null = null;
     let fundPriceClp: number | null = null;
+    let recentNavByDay: Map<string, number> | null = null;
 
     if (useRealAssets) {
       const ra = await resolveRealAssetsNav(email, token, row, publishYmd);
       realAssetsNavClp = ra.navClp;
       units = ra.units;
       fundPriceClp = ra.fundPriceClp;
+      recentNavByDay = ra.recentNavByDay;
     }
 
     const appliedNavClp =
@@ -339,6 +354,7 @@ export async function resolveFintualGoalNavs(
       appliedNavClp,
       units,
       fundPriceClp,
+      recentNavByDay,
       mismatch,
     });
   }
