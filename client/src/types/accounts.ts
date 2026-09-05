@@ -59,9 +59,12 @@ export interface MortgagePaymentPreviewResponse {
     desgravamen_clp?: number | null;
     cuota?: string | null;
     amortizacion_ext_clp?: number | null;
+    credito_restante_uf?: number | null;
   };
   desgravamen_default_clp: number;
   desgravamen_used_override: boolean;
+  credito_restante_derived_uf: number;
+  credito_restante_used_override: boolean;
   property_net_clp: number;
   mortgage_balance_clp: number;
 }

@@ -1843,6 +1843,14 @@
         "en": "From the statement — used to split scheduled amortization from any prepayment.",
         "es": "Del estado de cuenta — separa la amortización programada del prepago."
       },
+      "creditoRestanteUfLabel": {
+        "en": "Remaining credit UF (bank)",
+        "es": "Crédito restante UF (banco)"
+      },
+      "creditoRestanteUfHint": {
+        "en": "Optional — the statement's balance after this payment. Overrides the derived value (rounding can differ by ±0.0001 UF).",
+        "es": "Opcional — saldo del estado de cuenta tras este pago. Reemplaza el valor derivado (el redondeo puede diferir en ±0,0001 UF)."
+      },
       "incendioClpLabel": {
         "en": "Fire insurance CLP",
         "es": "Seguro incendio CLP"
@@ -1878,6 +1886,10 @@
       "previewCreditoUf": {
         "en": "Remaining credit UF",
         "es": "Crédito restante UF"
+      },
+      "previewCreditoDerived": {
+        "en": "derived: {{value}}",
+        "es": "derivado: {{value}}"
       },
       "previewMortgageClp": {
         "en": "Mortgage balance CLP",

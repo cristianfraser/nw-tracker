@@ -193,7 +193,7 @@ export function recomputeStoredMortgagePaymentRow(
        WHERE p.cuota = ? AND m.occurred_on = ? AND p.origin = 'manual' AND p.kind = 'dividendos'`
     )
     .get(cuota, occurredOn) as
-    | { amount_clp: number; interes_clp: number | null; incendio_clp: number | null; desgravamen_clp: number | null; min_uf: number | null; amortizacion_ext_clp: number | null }
+    | { amount_clp: number; interes_clp: number | null; incendio_clp: number | null; desgravamen_clp: number | null; min_uf: number | null; amortizacion_ext_clp: number | null; credito_restante_uf: number | null }
     | undefined;
   if (!target) {
     throw new Error(`No stored manual input for cuota ${cuota} on ${occurredOn}`);
@@ -201,6 +201,9 @@ export function recomputeStoredMortgagePaymentRow(
   // Carry the stored min_uf through unchanged — it is a bank statement figure, not a
   // derived value. Recompute reproduces the amort/ext split from the stored
   // amortizacion_ext_clp (the explicit-ext path), so this only preserves display.
+  // The stored crédito restante is carried as the statement override too: once written it
+  // is balance data (possibly bank-stated), and the compute's tolerance guard surfaces a
+  // recompute that would move it materially instead of silently rewriting it.
   const input: MortgagePaymentInput = {
     occurred_on: occurredOn,
     pago_clp: Math.abs(target.amount_clp),
@@ -210,6 +213,7 @@ export function recomputeStoredMortgagePaymentRow(
     cuota,
     min_uf: target.min_uf,
     amortizacion_ext_clp: target.amortizacion_ext_clp,
+    credito_restante_uf: target.credito_restante_uf,
   };
   const ledger = loadDeptoLedgerFromMovements().filter(
     (r) => !(r.cuota === cuota && r.occurred_on === occurredOn)
@@ -256,6 +260,10 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
     body.amortizacion_ext_clp === undefined || body.amortizacion_ext_clp === null
       ? null
       : Number(body.amortizacion_ext_clp);
+  const credito_restante_uf =
+    body.credito_restante_uf === undefined || body.credito_restante_uf === null
+      ? null
+      : Number(body.credito_restante_uf);
 
   if (!occurred_on) throw new Error("occurred_on is required");
   if (!Number.isFinite(pago_clp)) throw new Error("pago_clp is required");
@@ -270,6 +278,9 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
   if (amortizacion_ext_clp != null && !Number.isFinite(amortizacion_ext_clp)) {
     throw new Error("amortizacion_ext_clp must be a number when provided");
   }
+  if (credito_restante_uf != null && !Number.isFinite(credito_restante_uf)) {
+    throw new Error("credito_restante_uf must be a number when provided");
+  }
 
   return {
     occurred_on,
@@ -280,5 +291,6 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
     cuota,
     min_uf,
     amortizacion_ext_clp,
+    credito_restante_uf,
   };
 }
