@@ -16,4 +16,12 @@ export type MortgagePaymentInput = {
    */
   min_uf?: number | null;
   amortizacion_ext_clp?: number | null;
+  /**
+   * Bank-stated «crédito restante» after this payment, in UF. The derived balance
+   * (prior − amortización UF legs) can miss the statement by ±0,0001–0,0002 UF because the
+   * bank amortizes in UF at higher precision than the CLP components can express; when
+   * provided, the stated figure wins so the ledger re-syncs to statement truth each month.
+   * Guarded: a stated value farther than a small tolerance from the derived one throws.
+   */
+  credito_restante_uf?: number | null;
 };

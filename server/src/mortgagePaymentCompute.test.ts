@@ -166,6 +166,67 @@ describe("mortgagePaymentCompute", () => {
     ).toThrow(/UF rate/);
   });
 
+  it("bank-stated crédito restante overrides the derived balance within tolerance", () => {
+    // The 2026-08-11 cuota 30 case: the bank amortizes in UF at higher precision than the
+    // CLP components can express, so its printed balance sits 0,0001 UF above the derived
+    // one. The stated figure wins; downstream fields (restante_clp, valor neto) use it.
+    const prior = basePrior({
+      cuota: "29",
+      occurred_on: "2026-07-11",
+      credito_restante_uf: 1790.058,
+      valor_vivienda_uf: 5400,
+      uf_clp_day: TEST_UF_CLP,
+    });
+    const input = {
+      occurred_on: TEST_UF_YMD,
+      pago_clp: 753_333,
+      interes_clp: 297_349,
+      incendio_clp: 42_244,
+      desgravamen_clp: 2896,
+      min_uf: 10.9928,
+      cuota: "30",
+    };
+    const derived = computeMortgagePaymentRow([prior], input);
+    expect(derived.credito_restante_used_override).toBe(false);
+    expect(derived.sheet.credito_restante_uf).toBe(derived.credito_restante_derived_uf);
+
+    const stated = derived.credito_restante_derived_uf + 0.0001;
+    const result = computeMortgagePaymentRow([prior], {
+      ...input,
+      credito_restante_uf: stated,
+    });
+    expect(result.credito_restante_used_override).toBe(true);
+    expect(result.credito_restante_derived_uf).toBe(derived.credito_restante_derived_uf);
+    expect(result.sheet.credito_restante_uf).toBeCloseTo(stated, 8);
+    expect(result.sheet.restante_clp).toBe(Math.round(stated * TEST_UF_CLP));
+    expect(result.sheet.valor_neto_uf).toBeCloseTo(5400 - stated, 4);
+    // The split itself is untouched — only the balance re-syncs to the statement.
+    expect(result.sheet.amortizacion_clp).toBe(derived.sheet.amortizacion_clp);
+    expect(result.sheet.amortizacion_ext_clp).toBe(derived.sheet.amortizacion_ext_clp);
+  });
+
+  it("throws when the stated crédito restante is too far from the derived balance", () => {
+    const prior = basePrior({
+      cuota: "29",
+      occurred_on: "2026-07-11",
+      credito_restante_uf: 1790.058,
+      valor_vivienda_uf: 5400,
+      uf_clp_day: TEST_UF_CLP,
+    });
+    expect(() =>
+      computeMortgagePaymentRow([prior], {
+        occurred_on: TEST_UF_YMD,
+        pago_clp: 753_333,
+        interes_clp: 297_349,
+        incendio_clp: 42_244,
+        desgravamen_clp: 2896,
+        min_uf: 10.9928,
+        cuota: "30",
+        credito_restante_uf: 1781.01,
+      })
+    ).toThrow(/away from the derived/);
+  });
+
   it("throws when payment is too small for scheduled cuota split", () => {
     const ledger = [basePrior()];
     expect(() =>

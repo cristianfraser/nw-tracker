@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatClp, formatClpUfDay, formatUfUnits, formatUfUnitsFine } from "../../format";
+import { formatClp, formatClpUfDay, formatUfUnitsFine } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type {
   AccountSummaryResponse,
@@ -38,6 +38,14 @@ function parseUfInput(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Bank-stated remaining balance UF — non-negative (a final payment can land on 0). */
+function parseUfBalanceInput(raw: string): number | null {
+  const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
+  if (!normalized) return null;
+  const n = Number(normalized);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 function buildBody(
   occurredOn: string,
   pagoClp: string,
@@ -46,6 +54,7 @@ function buildBody(
   desgravamenClp: string,
   minUf: string,
   amortExtClp: string,
+  creditoRestanteUf: string,
   cuota: string,
   useDesgravamenOverride: boolean,
   useAmortExtOverride: boolean
@@ -77,6 +86,12 @@ function buildBody(
     if (min_uf == null) return null;
     body.min_uf = min_uf;
   }
+  // Optional bank-stated balance: empty = derive; a non-empty unparsable value blocks.
+  if (creditoRestanteUf.trim()) {
+    const credito_restante_uf = parseUfBalanceInput(creditoRestanteUf);
+    if (credito_restante_uf == null) return null;
+    body.credito_restante_uf = credito_restante_uf;
+  }
   return body;
 }
 
@@ -98,6 +113,7 @@ export function MortgagePaymentForm({
   const [useDesgravamenOverride, setUseDesgravamenOverride] = useState(false);
   const [minUf, setMinUf] = useState("");
   const [amortExtClp, setAmortExtClp] = useState("");
+  const [creditoRestanteUf, setCreditoRestanteUf] = useState("");
   const [useAmortExtOverride, setUseAmortExtOverride] = useState(false);
   const [cuota, setCuota] = useState(schema.next_cuota);
   const [preview, setPreview] = useState<MortgagePaymentPreviewResponse | null>(null);
@@ -115,6 +131,7 @@ export function MortgagePaymentForm({
         desgravamenClp,
         minUf,
         amortExtClp,
+        creditoRestanteUf,
         cuota,
         useDesgravamenOverride,
         useAmortExtOverride
@@ -127,6 +144,7 @@ export function MortgagePaymentForm({
       desgravamenClp,
       minUf,
       amortExtClp,
+      creditoRestanteUf,
       cuota,
       useDesgravamenOverride,
       useAmortExtOverride,
@@ -178,6 +196,7 @@ export function MortgagePaymentForm({
       setInteresClp("");
       setMinUf("");
       setAmortExtClp("");
+      setCreditoRestanteUf("");
       setPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({
@@ -223,6 +242,17 @@ export function MortgagePaymentForm({
           />
           <span className="muted" style={{ fontSize: "0.8rem" }}>
             {t("accountDetail.mortgagePayment.minUfHint")}
+          </span>
+        </Field>
+        <Field label={t("accountDetail.mortgagePayment.creditoRestanteUfLabel")}>
+          <Input
+            value={creditoRestanteUf}
+            onChange={(e) => setCreditoRestanteUf(e.target.value)}
+            inputMode="decimal"
+            placeholder="1780,0001"
+          />
+          <span className="muted" style={{ fontSize: "0.8rem" }}>
+            {t("accountDetail.mortgagePayment.creditoRestanteUfHint")}
           </span>
         </Field>
         <Field label={t("accountDetail.mortgagePayment.incendioClpLabel")}>
@@ -300,9 +330,17 @@ export function MortgagePaymentForm({
             <div className="label">{t("accountDetail.mortgagePayment.previewCreditoUf")}</div>
             <div className="value mono">
               {preview.sheet.credito_restante_uf != null
-                ? formatUfUnits(preview.sheet.credito_restante_uf)
+                ? formatUfUnitsFine(preview.sheet.credito_restante_uf)
                 : "—"}
             </div>
+            {preview.credito_restante_used_override &&
+            preview.credito_restante_derived_uf !== preview.sheet.credito_restante_uf ? (
+              <div className="muted" style={{ fontSize: "0.75rem" }}>
+                {t("accountDetail.mortgagePayment.previewCreditoDerived", {
+                  value: formatUfUnitsFine(preview.credito_restante_derived_uf),
+                })}
+              </div>
+            ) : null}
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewMortgageClp")}</div>

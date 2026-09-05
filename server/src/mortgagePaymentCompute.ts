@@ -14,11 +14,20 @@ export const DESGRAVAMEN_CLP_PER_CLP_BALANCE = 0.00003961;
 
 const PAYMENT_RECONCILE_TOLERANCE_CLP = 1;
 
+/**
+ * Max distance between the derived «crédito restante» and a bank-stated one. Rounding
+ * noise from 4-decimal CLP→UF conversion is ±0,0002 UF; anything larger is a typo or a
+ * misread statement and must fail fast, not silently rewrite the balance.
+ */
+const CREDITO_RESTANTE_OVERRIDE_TOLERANCE_UF = 0.005;
+
 export type MortgagePaymentComputeResult = {
   sheet: DeptoMortgageSheetRow;
   input: MortgagePaymentInput;
   desgravamen_default_clp: number;
   desgravamen_used_override: boolean;
+  credito_restante_derived_uf: number;
+  credito_restante_used_override: boolean;
 };
 
 function roundUf5(v: number): number {
@@ -240,9 +249,28 @@ export function computeMortgagePaymentRow(
     amortizacion_ext_clp > 0 ? clpToUf(amortizacion_ext_clp, uf_clp_day) : null;
   const pago_uf = clpToUfPago(pago_clp, uf_clp_day);
 
-  const credito_restante_uf = roundUf4(
+  const credito_restante_derived_uf = roundUf4(
     balanceBeforeUf - amortizacion_uf - (amortizacion_ext_uf ?? 0)
   );
+  // The bank's printed «crédito restante» wins over the derivation: the bank amortizes in
+  // UF at higher precision than 4-decimal CLP→UF conversion can reproduce, and without the
+  // override the ±0,0001 residue becomes next month's balance-before and drifts.
+  const statedCreditoRestanteUf =
+    rawInput.credito_restante_uf != null && Number.isFinite(rawInput.credito_restante_uf)
+      ? rawInput.credito_restante_uf
+      : null;
+  if (statedCreditoRestanteUf != null) {
+    if (statedCreditoRestanteUf < 0) {
+      throw new Error("credito_restante_uf must be non-negative when provided");
+    }
+    const gap = Math.abs(statedCreditoRestanteUf - credito_restante_derived_uf);
+    if (gap > CREDITO_RESTANTE_OVERRIDE_TOLERANCE_UF) {
+      throw new Error(
+        `Stated crédito restante ${statedCreditoRestanteUf} UF is ${gap.toFixed(4)} UF away from the derived ${credito_restante_derived_uf} UF (max ${CREDITO_RESTANTE_OVERRIDE_TOLERANCE_UF})`
+      );
+    }
+  }
+  const credito_restante_uf = statedCreditoRestanteUf ?? credito_restante_derived_uf;
   if (credito_restante_uf < 0) {
     throw new Error(`Negative crédito restante UF after payment: ${credito_restante_uf}`);
   }
@@ -282,6 +310,7 @@ export function computeMortgagePaymentRow(
     desgravamen_clp,
     cuota,
     amortizacion_ext_clp: amortizacion_ext_clp > 0 ? amortizacion_ext_clp : null,
+    credito_restante_uf: statedCreditoRestanteUf,
   };
 
   const sheetBase: DeptoMortgageSheetRow = {
@@ -344,5 +373,7 @@ export function computeMortgagePaymentRow(
     input,
     desgravamen_default_clp,
     desgravamen_used_override,
+    credito_restante_derived_uf,
+    credito_restante_used_override: statedCreditoRestanteUf != null,
   };
 }
