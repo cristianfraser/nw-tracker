@@ -8,6 +8,22 @@ export function isCcPaymentMerchant(merchant: string | null | undefined): boolea
   return m.length > 0 && CC_PAYMENT_MERCHANTS.has(m);
 }
 
+/**
+ * Payment-of-billed-debt lines including the USD side's «ABONO DE DIVISAS» (substring match —
+ * some formats suffix it). A traspaso-linked abono is debt reclassification, not a payment, but
+ * links only exist on PDF statement lines — open-cycle (web-paste / feed) lines never carry
+ * them, so a merchant-only test is safe in open-month scope. Deliberately NOT folded into
+ * CC_PAYMENT_MERCHANTS: that exact set also drives web-paste signing, the import reconcile and
+ * checking predicates, and widening it would change the derived facturado of legacy header-less
+ * USD statements (which feeds their month-end valuation anchors).
+ */
+export function isCcPaymentOrUsdDebtAbonoMerchant(
+  merchant: string | null | undefined
+): boolean {
+  if (isCcPaymentMerchant(merchant)) return true;
+  return normCcMerchant(String(merchant ?? "")).includes("ABONO DE DIVISAS");
+}
+
 /** Santander web UI shows charges negative / payments positive — the opposite of BCI. */
 function isSantanderWebPasteGroup(cardGroup?: string | null): boolean {
   return String(cardGroup ?? "").trim().toLowerCase() === "santander";

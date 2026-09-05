@@ -1,6 +1,7 @@
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import {
+  balanceUsdFxDateIso,
   incrementalChargesClpForBillingMonth,
   listCcBillingMonthBalances,
   facturadoFromStatement,
@@ -8,6 +9,7 @@ import {
   postCloseLiveBalanceAdjustmentsClp,
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
+import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { withCcOneShotScanCache } from "./ccCrossImportDedupe.js";
 import {
   hasPdfStatementCloseForBillingMonth,
@@ -29,7 +31,7 @@ import {
   billingMonthForManualLedgerPurchase,
 } from "./ccManualBillingMonth.js";
 import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { db } from "./db.js";
 import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
@@ -170,10 +172,16 @@ export function facturadoTotalClpForStatementSlot(
 }
 
 const stmtPaymentLinesForStatement = db.prepare(`
-  SELECT merchant, amount_clp FROM cc_statement_lines WHERE statement_id = ?
+  SELECT merchant, amount_clp, amount_usd FROM cc_statement_lines WHERE statement_id = ?
 `);
 
-/** Sum PAGO / ABONO lines in a billing month (DB stores payments as negative CLP). */
+/**
+ * Sum PAGO / ABONO / ABONO DE DIVISAS lines in a billing month, in CLP (DB stores payments as
+ * negative). The divisas abono is a USD-only line (`amount_clp` 0) — it is valued through
+ * `effectiveCcExpenseLineAmountClp` at `balanceUsdFxDateIso`, the exact helper + FX date the
+ * open-cycle charge sums use, so the open-month balance roll (charges − payments) is unchanged
+ * by classifying it as a payment instead of a negative charge.
+ */
 export function paymentAbonosClpForBillingMonth(
   accountId: number,
   billingMonth: string
@@ -188,15 +196,27 @@ export function paymentAbonosClpForBillingMonth(
   for (const st of listCcStatementsForAccount(accountId)) {
     const staleCarry = staleDates?.has(st.statement_date) === true;
     if (!staleCarry && st.billing_month !== billingMonth) continue;
+    const fxDateIso = balanceUsdFxDateIso(accountId, st.statement_date);
     const rows = stmtPaymentLinesForStatement.all(st.id) as {
       merchant: string | null;
       amount_clp: number | null;
+      amount_usd: number | null;
     }[];
     for (const r of rows) {
-      if (!isCcPaymentMerchant(r.merchant)) continue;
-      const amt = r.amount_clp;
-      if (amt == null || !Number.isFinite(amt)) continue;
-      sum += Math.round(Math.abs(amt));
+      if (!isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
+      const clp = effectiveCcExpenseLineAmountClp(
+        {
+          installment_flag: 0,
+          amount_clp: r.amount_clp,
+          amount_usd: r.amount_usd,
+          valor_cuota_mensual_clp: null,
+          valor_cuota_mensual_usd: null,
+          statement_currency: st.currency,
+        },
+        fxDateIso
+      );
+      if (clp == null || !Number.isFinite(clp)) continue;
+      sum += Math.abs(clp);
     }
   }
   return sum;

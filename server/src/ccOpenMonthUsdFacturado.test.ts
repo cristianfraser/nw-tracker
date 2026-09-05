@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { openMonthUsdFacturado } from "./ccBillingBalances.js";
+import {
+  balanceUsdFxDateIso,
+  incrementalChargesClpForBillingMonth,
+  openMonthUsdFacturado,
+} from "./ccBillingBalances.js";
+import { paymentAbonosClpForBillingMonth } from "./ccBillingViews.js";
+import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -51,5 +57,58 @@ describe("openMonthUsdFacturado", () => {
     // Only the two foreign lines (100 + 50), never the CLP 3x.xxx, count toward the USD split.
     expect(res.usd).toBe(150);
     expect(res.clp).toBeGreaterThan(0); // 150 USD × FX
+  });
+
+  it("excludes PAGO / ABONO DE DIVISAS from the split; the balance roll (charges − payments) still nets them", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+      .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+    if (!master) return;
+
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+       VALUES (?, 'santander', 'import:web-paste|open|2026-10', '20/10/2026', '21/09/2026', '20/10/2026', 'clp')`
+    ).run(master.id);
+    const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    stmts.push(sid);
+    const billingMonth = listCcStatementsForAccount(master.id).find((s) => s.id === sid)?.billing_month;
+    if (!billingMonth) return;
+
+    const addLine = (merchant: string, clp: number | null, usd: number | null) =>
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, amount_usd, orig_currency, installment_flag, transaction_date, dedupe_key)
+           VALUES (?, ?, ?, ?, ?, 0, '25/09/2026', ?)`
+        )
+        .run(sid, merchant, clp, usd, usd != null ? "usd" : null, `vitest-openusd2-${merchant}`);
+
+    addLine("ANTHROPIC USD", 0, 100); // foreign charge → in the split
+    addLine("APPLE REFUND USD", 0, -10); // refund = negative consumption → nets in the split
+    addLine("ABONO DE DIVISAS", 0, -697.63); // payment of the PRIOR USD facturación → excluded
+    addLine("JUMBO CLP", 30_000, null); // domestic charge → CLP side only
+    addLine("PAGO", -923_815, null); // payment of the PRIOR CLP facturación → excluded
+
+    const fx = fxMonthEndForBalanceUsd(
+      balanceUsdFxDateIso(master.id, "20/10/2026")
+    )?.clp_per_usd;
+    expect(fx).toBeGreaterThan(0);
+    const usdClp = (usd: number) => Math.round(usd * fx!);
+
+    // USD split: charges + refunds only — never the divisas abono (was −US$xxx,xx on ·0781 2026-08).
+    const res = openMonthUsdFacturado(master.id, billingMonth);
+    expect(res.usd).toBeCloseTo(90, 6);
+    expect(res.clp).toBe(usdClp(100) + usdClp(-10));
+
+    // Charges side of the roll: CLP + USD consumption, no payment lines.
+    const charges = incrementalChargesClpForBillingMonth(master.id, billingMonth);
+    expect(charges).toBe(30_000 + usdClp(100) + usdClp(-10));
+
+    // Payments side: the CLP PAGO plus the divisas abono at the SAME per-line FX valuation,
+    // so charges − payments equals the signed sum of every line (the roll is preserved).
+    const payments = paymentAbonosClpForBillingMonth(master.id, billingMonth);
+    expect(payments).toBe(923_815 + Math.abs(usdClp(-697.63)));
+    expect(charges - payments).toBe(
+      30_000 - 923_815 + usdClp(100) + usdClp(-10) + usdClp(-697.63)
+    );
   });
 });
