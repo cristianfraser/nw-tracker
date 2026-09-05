@@ -1,14 +1,10 @@
-/** Mortgage ledger + payment preview/commit. Split verbatim from index.ts; paths unchanged. */
-import { loadDeptoLedgerFromMovements } from "../deptoLedgerFromMovements.js";
+/** Mortgage payment preview/commit + UF reminder. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
 import {
   commitMortgagePayment,
   parseMortgagePaymentBody,
   previewMortgagePayment,
 } from "../mortgagePaymentCreate.js";
-import { isDeptoMortgagePaymentCuota, mortgageMetaFromSheetRows } from "../deptoDividendosLedger.js";
-import { buildDeptoPaymentScenarioRows } from "../mortgageScenarioPayments.js";
-import { accountKindSlugForAccountId } from "../accountBucket.js";
 import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
 import { accountIdFromReq } from "./shared.js";
 
@@ -18,43 +14,6 @@ export function registerMortgageRoutes(app: express.Express): void {
   app.get("/api/reminders/mortgage-uf", (_req, res) => {
     res.json(buildMortgageUfReminder());
   });
-
-app.get("/api/accounts/:id/mortgage-ledger", (req, res) => {
-  const id = accountIdFromReq(req);
-  if (!Number.isFinite(id) || id <= 0) {
-    res.status(400).json({ error: "invalid account id" });
-    return;
-  }
-  // Behavior kind, not raw asset-group slug — generated DBs use the legacy
-  // `parent__kind` slug form (`real_estate__property`) for the same accounts.
-  const kindSlug = accountKindSlugForAccountId(id);
-  if (!kindSlug) {
-    res.status(404).json({ error: "account not found" });
-    return;
-  }
-  if (kindSlug === "property" || kindSlug === "mortgage") {
-    const sheetRowsAll = loadDeptoLedgerFromMovements();
-    const sheetRows =
-      kindSlug === "mortgage"
-        ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
-        : sheetRowsAll;
-    const payment_scenarios = buildDeptoPaymentScenarioRows(sheetRowsAll);
-    res.json({
-      account_id: id,
-      has_sheet_rows: sheetRowsAll.length > 0,
-      meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
-      rows: sheetRows,
-      payment_scenarios,
-    });
-    return;
-  }
-  res.json({
-    account_id: id,
-    has_sheet_rows: false,
-    meta: null,
-    rows: [] as unknown[],
-  });
-});
 
 app.post("/api/accounts/:id/mortgage-payments/preview", (req, res) => {
   const id = accountIdFromReq(req);

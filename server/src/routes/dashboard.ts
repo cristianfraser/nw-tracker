@@ -18,7 +18,6 @@ import {
 } from "../accountPerformance.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
-import { buildDashboardPagePayload } from "../dashboardPagePayload.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
 import { ccInstallmentDebtDailyClp, ccInstallmentPlanTailClp } from "../ccInstallmentDebtDaily.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
@@ -269,11 +268,6 @@ app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
     return;
   }
   res.json(getDashboardOverviewDaily(includeUsd ? "usd" : "clp", days));
-}));
-
-app.get("/api/dashboard", asyncHandler(async (req, res) => {
-  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
-  res.json(await buildDashboardPagePayload(includeUsd));
 }));
 
 /**

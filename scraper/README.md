@@ -14,8 +14,8 @@ npm install --prefix scraper
 
 ## Setup (once per bank)
 
-Banks: **santander**, **lider**, **racional**. Each has its own config file, Keychain item, and
-Chrome profile. Santander and Lider sign in with a **RUT**; Racional signs in with an **e-mail**
+Banks: **santander**, **racional**. Each has its own config file, Keychain item, and
+Chrome profile. Santander signs in with a **RUT**; Racional signs in with an **e-mail**
 (`"email"` instead of `"rut"` in its config, and that same value is the Keychain account).
 
 1. **Config** — personal identifiers stay in gitignored `cfraser/`, never in the repo
@@ -39,7 +39,6 @@ Chrome profile. Santander and Lider sign in with a **RUT**; Racional signs in wi
 
 ```bash
 npm run fetch:santander -- --capture           # first, supervised run
-npm run fetch:lider -- --capture
 npm run fetch:santander                        # normal run → cfraser/inbox/
 npm run import:cfraser-inbox                   # existing pipeline takes it from there
 
@@ -47,7 +46,7 @@ npm run fetch:santander -- --only=cartola      # re-test one path, no extra requ
 ```
 
 `--only=` narrows a run to named steps (`card-movements`, `checking-movements`, `card-statements`,
-`cartola`; Lider: `movements`, `statement`). Unknown names are rejected rather than silently running
+`cartola`; Racional: `movements`, `positions`). Unknown names are rejected rather than silently running
 nothing. Use it when iterating on one failing path — every request costs reputation with these
 banks, so a re-test should not re-fetch what already works. `--force` additionally re-fetches
 documents the ledger has already recorded.
@@ -74,8 +73,10 @@ nightly maintenance window. It **must** be a LaunchAgent in the logged-in GUI se
 LaunchDaemon has no window server, and headless Chrome is blocked). Log: `cfraser/daily-run.log`.
 Rehearse without touching the banks: `scraper/daily-run.sh --dry-run`.
 
-A separate scheduled task drops the Lider BCI «últimos movimientos» CSV into `cfraser/inbox/`
-around 08:00; the inbox step picks it up (`npm run import:lider-movements` standalone).
+The Lider BCI «últimos movimientos» CSV importer (`npm run import:lider-movements`, also run by the
+inbox step) still accepts a hand-dropped `lider-bci-movimientos-*.csv` in `cfraser/inbox/`; the scrape
+that used to drop it retired on 2026-08-07 — the Boleta Digital and statement e-mails replaced it, and
+the Lider web fetcher was removed from this package on 2026-09-05.
 
 Every run writes an app message: a plain `log` when all steps passed, a **`notification`** (badged
 unread in the app) plus a macOS alert when any step failed. The message body names each step, its
@@ -244,19 +245,6 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
 - The fetcher does **not** parse amounts. It stores `MatrizMovimientos` rows verbatim (minus the
   `SALDO INICIAL` row, which is the previous period's billed total) in
   `cfraser/santander-movements/`; normalization belongs to the importer, against real captured data.
-
-## Lider BCI
-
-Login is RUT + "Clave de internet" behind a **Cloudflare Turnstile** check. The login waits for the
-hidden `cf-turnstile-response` input to receive a token rather than waiting on the submit button —
-that distinguishes "the bot check failed" from "the form is incomplete", and the former is this
-bank's most likely failure. The persistent per-bank Chrome profile is what lets Cloudflare recognise
-a returning browser; if Turnstile ever refuses, run once with a visible window (no `--background`).
-
-Its API hosts are not known yet, so the recorder captures **every XHR/fetch** for this bank instead
-of one host, and the steps navigate and record rather than parse — the first capture run is what
-reveals the endpoints. Click path: homepage "últimos movimientos" → "Ver más movimientos" →
-`Nacionales` (CLP) / `Internacionales` (USD) tabs → "Descargar estado de cuenta".
 
 ## Layout
 

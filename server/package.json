@@ -10,7 +10,6 @@
     "start": "node dist/src/index.js",
     "migrate": "tsx -e \"import './src/db.ts'\"",
     "backfill:generic-transfer-unique": "tsx -e \"import { backfillGenericTransferUniquePurchases } from './src/ccExpenseGenericTransferBackfill.ts'; console.log(backfillGenericTransferUniquePurchases())\"",
-    "backfill:deposit-match-notes": "tsx -e \"import { backfillDepositMatchNotes } from './src/ccExpenseDepositMatchNotesBackfill.ts'; console.log(backfillDepositMatchNotes())\"",
     "backfill:checking-auto-match-categories": "tsx -e \"import { backfillCheckingAutoMatchCategories } from './src/backfillCheckingAutoMatchCategories.ts'; console.log(backfillCheckingAutoMatchCategories())\"",
     "backfill:additional-card-no-cuenta": "tsx -e \"import { backfillAdditionalCardNoCuenta } from './src/backfillAdditionalCardNoCuenta.ts'; console.log(backfillAdditionalCardNoCuenta())\"",
     "backfill:web-paste-usd": "tsx -e \"import { backfillWebPasteUsdLines } from './src/ccWebPasteUsdBackfill.ts'; console.log(backfillWebPasteUsdLines())\"",

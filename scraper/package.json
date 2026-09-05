@@ -11,7 +11,6 @@
     "fetch:santander": "tsx src/main.ts santander",
     "typecheck": "tsc --noEmit",
     "fetch": "tsx src/main.ts",
-    "fetch:lider": "tsx src/main.ts lider",
     "fetch:racional": "tsx src/main.ts racional",
     "fetch:emails": "tsx src/email/main.ts",
     "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts",

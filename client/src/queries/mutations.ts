@@ -239,11 +239,6 @@ export function useAssignCcExpenseLineCategory() {
   return usePatchCcExpenseLineCategoryMutation();
 }
 
-/** Alias for toggling the «Único» flag on a credit-card expense line. */
-export function useMarkCcExpenseLineUniqueMutation() {
-  return usePatchCcExpenseLineCategoryMutation();
-}
-
 export type PutCcExpensePurchaseBigGroupVars = {
   account_id: number;
   purchase_key: string;

@@ -34,7 +34,6 @@ import {
   assertMovementEligibleForPayrollLink,
   listPayrollLinkCandidates,
 } from "../payrollWorkEarningsLinking.js";
-import { normalizeManualExpenseNote, validateManualExpenseCategorySlug } from "../flowsManualExpenses.js";
 import {
   buildRealEstateExpensesPayload,
   createRealEstatePlace,
@@ -49,11 +48,6 @@ import {
   updateRealEstateExpenseBillMonth,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
-import {
-  isFiniteNumber,
-  isPositiveFiniteNumber,
-  isYmdString,
-} from "../requestValidation.js";
 import { parseProxyTickersParam } from "./shared.js";
 
 export function registerFlowsRoutes(app: express.Express): void {
@@ -81,29 +75,6 @@ app.get("/api/flows/deposits/reconciliation", (_req, res) => {
 
 app.get("/api/income", (_req, res) => {
   res.json(buildFlowsCheckingIncomePayload());
-});
-
-app.post("/api/income", (req, res) => {
-  const { amount_clp, received_on, source, note } = req.body as {
-    amount_clp?: unknown;
-    received_on?: unknown;
-    source?: string;
-    note?: string;
-  };
-  if (!isFiniteNumber(amount_clp)) {
-    res.status(400).json({ error: "amount_clp must be a finite number" });
-    return;
-  }
-  if (!isYmdString(received_on)) {
-    res.status(400).json({ error: "received_on must be YYYY-MM-DD" });
-    return;
-  }
-  const r = db
-    .prepare(
-      `INSERT INTO income_entries (amount_clp, received_on, source, note) VALUES (?, ?, ?, ?)`
-    )
-    .run(amount_clp, received_on, source ?? null, note ?? null);
-  res.status(201).json({ id: Number(r.lastInsertRowid) });
 });
 
 app.patch("/api/work-earnings/:id", (req, res) => {
@@ -666,36 +637,6 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
       error: msg,
       stack: e instanceof Error ? e.stack : undefined,
     });
-    res.status(400).json({ error: msg });
-  }
-});
-
-app.post("/api/expenses", (req, res) => {
-  const { amount_clp, spent_on, category, note } = req.body as {
-    amount_clp?: unknown;
-    spent_on?: unknown;
-    category?: string;
-    note?: string;
-  };
-  if (!isPositiveFiniteNumber(amount_clp)) {
-    res.status(400).json({ error: "positive amount_clp required" });
-    return;
-  }
-  if (!isYmdString(spent_on)) {
-    res.status(400).json({ error: "spent_on must be YYYY-MM-DD" });
-    return;
-  }
-  try {
-    const categorySlug = validateManualExpenseCategorySlug(category);
-    const normalizedNote = normalizeManualExpenseNote(note);
-    const r = db
-      .prepare(
-        `INSERT INTO expense_entries (amount_clp, spent_on, category, note) VALUES (?, ?, ?, ?)`
-      )
-      .run(amount_clp, spent_on, categorySlug, normalizedNote);
-    res.status(201).json({ id: Number(r.lastInsertRowid) });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "invalid expense";
     res.status(400).json({ error: msg });
   }
 });

@@ -423,28 +423,3 @@ export function getNavChartGroupNodeBySlug(slug: string): NavTreeNodeDto | null 
   return inLiab ?? inNw;
 }
 
-/** Inversiones portfolio subtree only (chart grouping). */
-export function getPortfolioTreeForCharts(): NavTreeNodeDto[] {
-  const groups = loadGroups();
-  const inv = groups.find((g) => g.slug === "inversiones");
-  if (!inv) return [];
-  const items = loadItems();
-  const groupsById = new Map(groups.map((g) => [g.id, g]));
-  const itemsByGroup = new Map<number, ItemRow[]>();
-  for (const item of items) {
-    const arr = itemsByGroup.get(item.group_id) ?? [];
-    arr.push(item);
-    itemsByGroup.set(item.group_id, arr);
-  }
-  const { accountMeta, expenseMeta } = loadMetaMaps(items);
-  return [
-    buildNode(
-      inv,
-      itemsByGroup,
-      groupsById,
-      accountMeta,
-      expenseMeta,
-      listSingleSourceReferenceSlugsByChartHost()
-    ),
-  ];
-}

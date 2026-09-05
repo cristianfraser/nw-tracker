@@ -2,7 +2,6 @@ import { db } from "./db.js";
 import {
   ensureBidAskForPaymentDate,
   fxBuyClpPerUsdOnOrBefore,
-  fxSellClpPerUsdOnOrBefore,
 } from "./fxBidAsk.js";
 import { recordFxConversionWarning } from "./fxConversionWarnings.js";
 
@@ -69,25 +68,6 @@ const DEPOSIT_CROSS_RATE_DECIMALS = 5;
 function roundPaymentClp(clp: number): number {
   const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
   return Math.round(clp * f) / f;
-}
-
-/** USD → CLP at sell rate on or before `paymentDate`; falls back to mid with warning. */
-export function usdToClpAtPaymentRounded(usd: number, paymentDate: string): number | null {
-  if (!Number.isFinite(usd) || usd === 0) return 0;
-  const sign = Math.sign(usd);
-  ensureBidAskForPaymentDate(paymentDate);
-  const sell = fxSellClpPerUsdOnOrBefore(paymentDate);
-  if (sell != null && sell > 0) {
-    return sign * roundPaymentClp(Math.abs(usd) * sell);
-  }
-  const fx = fxRowOnOrBefore(paymentDate);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  recordFxConversionWarning({
-    code: "sell_rate_missing",
-    date: paymentDate,
-    context: "usdToClpAtPaymentRounded",
-  });
-  return sign * roundPaymentClp(Math.abs(usd) * fx.clp_per_usd);
 }
 
 /** USD → reference CLP at mid (DRIP, internal USD rotation); records usd_reference_clp warning. */

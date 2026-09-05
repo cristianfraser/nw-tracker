@@ -1,10 +1,9 @@
-/** Mirror-pair admin: candidates, batch conversion, rejection, undo (/panel/mirror-pairs). */
+/** Mirror-pair admin: candidates, batch conversion, rejection (/panel/mirror-pairs). */
 import express from "express";
 import {
   convertMirrorPairs,
   MirrorConvertStaleError,
   rejectMirrorPairs,
-  undoMirrorConversion,
   unrejectMirrorPairs,
   type MirrorPairRef,
 } from "../movementMirrorConvert.js";
@@ -100,12 +99,4 @@ export function registerMovementMirrorsRoutes(app: express.Express): void {
     res.json(unrejectMirrorPairs(pairs));
   });
 
-  app.post("/api/movement-mirrors/undo", (req, res) => {
-    const movementId = Number((req.body as { movement_id?: unknown } | null)?.movement_id);
-    if (!Number.isInteger(movementId) || movementId <= 0) {
-      res.status(400).json({ error: "movement_id required" });
-      return;
-    }
-    res.json(undoMirrorConversion(movementId));
-  });
 }

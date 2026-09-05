@@ -22,12 +22,10 @@ export const queryKeys = {
   accountsAll: () => ["accountsAll"] as const,
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
     ["accounts", "portfolioGroup", portfolioGroup, unit] as const,
-  portfolioTree: () => ["portfolioTree"] as const,
   ratesInstruments: () => ["ratesInstruments"] as const,
   marketTicker: () => ["marketTicker"] as const,
   watchlist: () => ["watchlist"] as const,
   marketSeries: () => ["marketSeries"] as const,
-  fxCoverage: () => ["fxCoverage"] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
   fxLatest: () => ["fxLatest"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,
@@ -63,7 +61,6 @@ export const queryKeys = {
   portfolioGroupCcLedger: (slug: string, ccOffsetsKey: string) =>
     ["portfolioGroupCcLedger", slug, ccOffsetsKey] as const,
   portfolioGroupMortgageLedger: (slug: string) => ["portfolioGroupMortgageLedger", slug] as const,
-  accountMovements: (id: number) => ["accountMovements", id] as const,
   groupFlows: (slug: string, filtersKey: string) => ["groupFlows", slug, filtersKey] as const,
   accountFlows: (id: string, filtersKey: string) => ["accountFlows", id, filtersKey] as const,
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,

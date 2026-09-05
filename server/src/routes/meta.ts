@@ -1,13 +1,9 @@
-/** Health check + nav/meta trees (sidebar, portfolio, market display series). Split verbatim from index.ts; paths unchanged. */
+/** Health check + nav/meta trees (sidebar nav, rates instruments). Split verbatim from index.ts; paths unchanged. */
 import express from "express";
 import { getAppVersion } from "../appVersion.js";
 import { demoModeEnabled } from "../demoMode.js";
-import { listRatesInstrumentSeries, listMarketDisplaySeries } from "../marketDisplaySeries.js";
-import {
-  getNetWorthNavGroupNode,
-  getPortfolioTreeForCharts,
-  getSidebarNavPayload,
-} from "../navTree.js";
+import { listRatesInstrumentSeries } from "../marketDisplaySeries.js";
+import { getNetWorthNavGroupNode, getSidebarNavPayload } from "../navTree.js";
 import { annotateSidebarNavChartBuckets } from "../sidebarNavChartBuckets.js";
 
 export function registerMetaRoutes(app: express.Express): void {
@@ -16,10 +12,6 @@ app.get("/api/health", (_req, res) => {
 });
 
 /** Recursive portfolio groups (accounts + nested groups) with resolved colors. */
-app.get("/api/meta/portfolio-tree", (_req, res) => {
-  res.json({ roots: getPortfolioTreeForCharts() });
-});
-
 /** Sidebar navigation tree (DB-driven; matches legacy layout). `main` nodes carry `chart_buckets`.
  * The hosted demo hides the wealth-percentile link (personal-context page; its API 404s there too). */
 app.get("/api/meta/sidebar-nav", (_req, res) => {
@@ -37,10 +29,6 @@ app.get("/api/meta/panel-net-worth-tree", (_req, res) => {
 });
 
 /** Market instruments for rates charts and marquee configuration. */
-app.get("/api/meta/market-display-series", (_req, res) => {
-  res.json({ series: listMarketDisplaySeries() });
-});
-
 app.get("/api/meta/rates-instruments", (_req, res) => {
   res.json({ instruments: listRatesInstrumentSeries() });
 });

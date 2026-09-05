@@ -25,7 +25,3 @@ export function isPositiveInteger(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v > 0;
 }
 
-/** Optional string field: absent/null or a string (rejects numbers/objects). */
-export function isOptionalString(v: unknown): v is string | null | undefined {
-  return v == null || typeof v === "string";
-}

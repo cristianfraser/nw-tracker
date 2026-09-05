@@ -1,10 +1,6 @@
 /** Credit-card installments, purchases, statement lines, web-paste/PDF imports, config. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
-import {
-  accountBucketKindSlug,
-  accountKindSlugForAccountId,
-  bucketSlugForAccountId,
-} from "../accountBucket.js";
+import { accountBucketKindSlug, bucketSlugForAccountId } from "../accountBucket.js";
 import {
   convertStatementLineToInstallmentPurchase,
   deleteManualCcInstallmentPurchase,
@@ -19,8 +15,6 @@ import {
   parseCreditCardConfigPatch,
 } from "../ccAccountConfig.js";
 import { loadCreditCardBillingConfig } from "../ccBillingMonth.js";
-import { creditCardInstallmentsResponse } from "../creditCardInstallments.js";
-import { getCcProxyTickers, setCcProxyTickers } from "../ccInvestmentProxy.js";
 import { documentImportSpecsForAccount } from "../accountDocumentRegistry.js";
 import {
   importAccountDocument,
@@ -31,62 +25,9 @@ import {
   importCheckingRecentXlsx,
 } from "../accountImports.js";
 import { uploadFields, uploadSingle } from "../uploadMiddleware.js";
-import { extraOffsetsFromReq, accountIdFromReq, parseProxyTickersParam } from "./shared.js";
+import { accountIdFromReq } from "./shared.js";
 
 export function registerCreditCardRoutes(app: express.Express): void {
-app.get("/api/accounts/:id/cc-installments", (req, res) => {
-  const id = accountIdFromReq(req);
-  if (!Number.isFinite(id) || id <= 0) {
-    res.status(400).json({ error: "invalid account id" });
-    return;
-  }
-  const bucketSlug = bucketSlugForAccountId(id);
-  if (!bucketSlug) {
-    res.status(404).json({ error: "account not found" });
-    return;
-  }
-  if (accountKindSlugForAccountId(id) !== "credit_card") {
-    res.json({
-      account_id: id,
-      has_installment_ledger: false,
-      has_imported_statements: false,
-      meta: null,
-      purchases: [],
-      purchases_completed: [],
-      months: [],
-      totals: {
-        total_remaining_principal_clp: 0,
-        next_calendar_month_total_clp: null,
-        next_calendar_month: null,
-      },
-    });
-    return;
-  }
-  const extra = extraOffsetsFromReq(req, res);
-  if (extra == null) return;
-  const proxyTickers = parseProxyTickersParam(req.query.proxy_tickers);
-  res.json(creditCardInstallmentsResponse(id, extra, proxyTickers ?? undefined));
-});
-
-app.get("/api/cc-proxy-tickers", (_req, res) => {
-  res.json({ tickers: getCcProxyTickers() });
-});
-
-app.put("/api/cc-proxy-tickers", (req, res) => {
-  const body = req.body as Record<string, unknown>;
-  if (!Array.isArray(body.tickers) || !body.tickers.every((t) => typeof t === "string")) {
-    res.status(400).json({ error: "tickers must be an array of strings" });
-    return;
-  }
-  const tickers = (body.tickers as string[]).map((t) => t.trim()).filter(Boolean);
-  if (tickers.length === 0) {
-    res.status(400).json({ error: "tickers must not be empty" });
-    return;
-  }
-  setCcProxyTickers(tickers);
-  res.json({ tickers });
-});
-
 app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
   const id = accountIdFromReq(req);
   const purchaseId = Number(req.params.purchaseId);

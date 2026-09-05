@@ -1,6 +1,5 @@
-/** FX (mid + bid/ask), UF, market series/ticker, watchlist. Split verbatim from index.ts; paths unchanged. */
+/** FX (mid + bid/ask), market series/ticker, watchlist. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
-import { buildFxCoverage } from "../fxCoverage.js";
 import { listFxBidAskGaps, upsertManualFxBidAskRow } from "../fxBidAskGaps.js";
 import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
@@ -20,10 +19,6 @@ app.get("/api/fx/latest", (_req, res) => {
     .prepare(`SELECT date, clp_per_usd FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
     .get(chileCalendarTodayYmd()) as { date: string; clp_per_usd: number } | undefined;
   res.json(row ?? null);
-});
-
-app.get("/api/fx/coverage", (_req, res) => {
-  res.json(buildFxCoverage());
 });
 
 app.get("/api/fx/bid-ask/gaps", (_req, res) => {
@@ -89,36 +84,7 @@ app.post("/api/fx", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/uf/latest", (_req, res) => {
-  const row = db
-    .prepare(`SELECT date, clp_per_uf FROM uf_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`)
-    .get(chileCalendarTodayYmd()) as { date: string; clp_per_uf: number } | undefined;
-  res.json(row ?? null);
-});
-
-app.get("/api/uf", (_req, res) => {
-  const rows = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date DESC LIMIT 500`).all();
-  res.json({ rates: rows });
-});
-
 /** Upsert UF (CLF): body { date: 'YYYY-MM-DD', clp_per_uf: number } CLP per 1 UF */
-app.post("/api/uf", (req, res) => {
-  const { date, clp_per_uf } = req.body as { date?: unknown; clp_per_uf?: unknown };
-  if (!isYmdString(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
-  }
-  if (!isPositiveFiniteNumber(clp_per_uf)) {
-    res.status(400).json({ error: "positive clp_per_uf required" });
-    return;
-  }
-  db.prepare(
-    `INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)
-     ON CONFLICT(date) DO UPDATE SET clp_per_uf = excluded.clp_per_uf`
-  ).run(date, clp_per_uf);
-  res.json({ ok: true });
-});
-
 app.get("/api/market-series", (_req, res) => {
   res.json(getMarketSeriesPayload());
 });

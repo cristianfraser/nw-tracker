@@ -11,7 +11,6 @@ export const STEP_NAMES: Record<BankName, readonly string[]> = {
   // (`fetch:santander-docs`); the web session is scoped to daily movements plus the facturación
   // JSON that `card-statements` reads.
   santander: ["card-movements", "checking-movements", "card-statements"],
-  lider: ["movements", "statement"],
   racional: ["movements", "positions"],
 } as const;
 

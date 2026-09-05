@@ -14,7 +14,14 @@ import type { BankName } from "./config.js";
  * The intended rhythm: a period becomes due the day after it closes, is retried once a day until
  * the bank actually publishes it, and is never asked for again afterwards.
  */
-type Ledger = Partial<Record<BankName, Record<string, string[]>>>;
+/**
+ * Ledger namespaces: the web-session banks plus e-mail-only sources. Lider has no web
+ * session any more (its statement and boletas arrive by mail), but its documents keep
+ * their own namespace so the keys never collide with a bank's.
+ */
+export type DocumentSource = BankName | "lider";
+
+type Ledger = Partial<Record<DocumentSource, Record<string, string[]>>>;
 
 function ledgerFile(): string {
   return path.join(ensureDir(resolveCfraserDir()), ".scraper-documents.json");
@@ -43,12 +50,12 @@ export function setForceRefetch(force: boolean): void {
   forceRefetch = force;
 }
 
-export function hasDocument(bank: BankName, kind: string, key: string): boolean {
+export function hasDocument(bank: DocumentSource, kind: string, key: string): boolean {
   if (forceRefetch) return false;
   return (readLedger()[bank]?.[kind] ?? []).includes(key);
 }
 
-export function recordDocument(bank: BankName, kind: string, key: string): void {
+export function recordDocument(bank: DocumentSource, kind: string, key: string): void {
   const ledger = readLedger();
   const forBank = (ledger[bank] ??= {});
   const keys = (forBank[kind] ??= []);

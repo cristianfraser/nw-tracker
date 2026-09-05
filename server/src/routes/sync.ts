@@ -1,6 +1,5 @@
-/** Global sync status/force, import-sync admin, messages, bank-statement stub. Split verbatim from index.ts; paths unchanged. */
+/** Global sync status/force, import-sync admin, messages. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
-import { db } from "../db.js";
 import {
   listAppMessages,
   markAllNotificationsRead,
@@ -23,7 +22,6 @@ import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot, notifyGlobalSyncScheduler } from "../globalSyncScheduler.js";
-import { isOptionalString } from "../requestValidation.js";
 
 export function registerSyncRoutes(app: express.Express): void {
 app.get("/api/sync/status", (_req, res) => {
@@ -136,21 +134,6 @@ app.get("/api/messages", (req, res) => {
 app.post("/api/messages/mark-read", (_req, res) => {
   const marked = markAllNotificationsRead();
   res.json({ marked });
-});
-
-/** Placeholder for future bank CSV / PDF pipeline */
-app.post("/api/imports/bank-statement", (req, res) => {
-  const { filename, raw_text } = req.body as { filename?: unknown; raw_text?: unknown };
-  if (!isOptionalString(filename) || !isOptionalString(raw_text)) {
-    res.status(400).json({ error: "filename and raw_text must be strings" });
-    return;
-  }
-  const r = db
-    .prepare(
-      `INSERT INTO import_batches (kind, filename, status, raw_text) VALUES ('bank_statement', ?, 'pending', ?)`
-    )
-    .run(filename ?? null, raw_text ?? null);
-  res.status(201).json({ id: Number(r.lastInsertRowid), status: "pending" });
 });
 
 /**
