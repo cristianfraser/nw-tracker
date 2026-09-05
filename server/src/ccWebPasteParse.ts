@@ -133,13 +133,30 @@ export function parseCcWebPasteText(text: string): CcWebPasteParseResult {
   return { lines, errors };
 }
 
+/**
+ * The bank's per-cuota billing re-listing, not a purchase. At a facturación close Santander's
+ * movement feed (and the web table) lists each cuota billing that cycle as a row whose merchant is
+ * the reference `CUOT: <cuota №>OPER: <plan №>` — e.g. `CUOT: 000000009OPER: 000032` — valued at
+ * the monthly cuota. The installment schedule already bills those months, so importing the row
+ * double-counts the cuota (billing moves debt between facturado/por-facturar; it never changes
+ * owed). A manual web paste truncates merchants at 15 chars, which cuts the OPER half — hence the
+ * optional group. No real merchant is named like this, so the match is safe to apply unconditionally.
+ */
+export function isCcCuotaBillingReferenceMerchant(merchant: string | null | undefined): boolean {
+  return /^CUOT:\s*\d+\s*(?:OPER:\s*\d+)?$/i.test(String(merchant ?? "").trim());
+}
+
 export function ccWebPasteToCsvRecords(
   accountId: number,
   cardGroup: string,
   cardLast4: string,
   batchId: string,
   parsed: CcWebPasteLine[]
-): { records: CcStatementCsvRecord[]; skipped_in_paste: CcImportFlowItem[] } {
+): {
+  records: CcStatementCsvRecord[];
+  skipped_in_paste: CcImportFlowItem[];
+  skipped_cuota_billing: CcImportFlowItem[];
+} {
   const billingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
   const statementDate = statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth);
   /** One open-period bucket per billing month (append on re-import via dedupe_key). */
@@ -148,6 +165,7 @@ export function ccWebPasteToCsvRecords(
   const seen = new Set<string>();
   const records: CcStatementCsvRecord[] = [];
   const skipped_in_paste: CcImportFlowItem[] = [];
+  const skipped_cuota_billing: CcImportFlowItem[] = [];
 
   for (const line of parsed) {
     const isUsd = line.currency === "usd";
@@ -197,6 +215,14 @@ export function ccWebPasteToCsvRecords(
       statement_deuda_total: "",
       statement_monto_facturado: "",
     };
+    // Cuota-billing reference rows never import — the installment schedule already bills them.
+    // Reported, not silent, so the batch summary explains parsed > inserted + skipped.
+    if (isCcCuotaBillingReferenceMerchant(line.merchant)) {
+      skipped_cuota_billing.push(
+        ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp"))
+      );
+      continue;
+    }
     // A line repeated within one paste imports once; report the drop instead of hiding it
     // (the terse summary otherwise reads parsed > inserted + skipped with no explanation).
     if (isRepeatInPaste) {
@@ -206,7 +232,7 @@ export function ccWebPasteToCsvRecords(
     }
   }
 
-  return { records, skipped_in_paste };
+  return { records, skipped_in_paste, skipped_cuota_billing };
 }
 
 export function newWebPasteBatchId(): string {

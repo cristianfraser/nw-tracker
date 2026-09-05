@@ -23,6 +23,7 @@ const SKIP_REASON_KEY: Record<string, string> = {
   fuzzy_duplicate: "accountDetail.import.resultSkipReasonDuplicateApprox",
   installment_overlap: "accountDetail.import.resultSkipReasonInstallmentOverlap",
   duplicate_in_paste: "accountDetail.import.resultSkipReasonDuplicateInPaste",
+  cuota_billing: "accountDetail.import.resultSkipReasonCuotaBilling",
   already_present: "accountDetail.import.resultSkipReasonAlreadyPresent",
   superseded_by_cartola: "accountDetail.import.resultSkipReasonSupersededByCartola",
   superseded_by_transfer: "accountDetail.import.resultSkipReasonSupersededByTransfer",

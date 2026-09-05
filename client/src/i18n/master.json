@@ -2245,6 +2245,10 @@
         "en": "already in installments",
         "es": "ya en cuotas"
       },
+      "resultSkipReasonCuotaBilling": {
+        "en": "cuota billing, already scheduled",
+        "es": "cobro de cuota, ya agendado"
+      },
       "resultSkipReasonAlreadyPresent": {
         "en": "already in the statement",
         "es": "ya en cartola"
