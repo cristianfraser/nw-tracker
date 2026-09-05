@@ -104,7 +104,9 @@ export type CcImportSkipReason =
   | "fuzzy_duplicate"
   | "installment_overlap"
   /** Dropped before the merge: same line repeated within one web paste. */
-  | "duplicate_in_paste";
+  | "duplicate_in_paste"
+  /** Dropped before the merge: bank's «CUOT: N OPER: M» re-listing of a cuota being billed. */
+  | "cuota_billing";
 
 export type SkippedCcImportFlowItem = CcImportFlowItem & { reason: CcImportSkipReason };
 
@@ -304,6 +306,12 @@ export function importCcStatementsMerge(
     const cardGroup = String(first.card_group ?? "A").trim() || "A";
     const sourcePdf = String(first.source_pdf ?? "").trim();
     const statementDate = String(first.statement_date ?? "").trim();
+    // A PDF/JSON statement import must not count open web-paste bucket lines as existing
+    // evidence: `reconcileOpenWebPasteAfterPdfImports` deletes the bucket's in-period lines
+    // right after this loop, so a skip against one destroys the purchase from both places
+    // (2026-08 ·0101: 9 lines / 1.xxx.xxx CLP vanished). Web-paste imports keep full scans —
+    // deduping a re-paste against its own bucket and against PDF lines is their whole point.
+    const dedupeScanOpts = { excludeWebPasteSources: !sourcePdf.startsWith("import:web-paste") };
 
     const header = {
       saldo_anterior:
@@ -417,9 +425,14 @@ export function importCcStatementsMerge(
           return `${k}#dup${n}`;
         });
         for (const k of dedupeKeys) seenDedupeInBatch.add(k);
-        if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys)) {
+        if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys, dedupeScanOpts)) {
           const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
-          const patch = patchCcLineOriginCardOnDedupeHit(accountId, dedupeKeys, originCardLast4);
+          const patch = patchCcLineOriginCardOnDedupeHit(
+            accountId,
+            dedupeKeys,
+            originCardLast4,
+            dedupeScanOpts
+          );
           if (patch.patched) linesOriginCardPatched += 1;
           if (patch.lineId != null) {
             if (
@@ -454,7 +467,7 @@ export function importCcStatementsMerge(
         const isSameStatementTwin = dedupeKeys.some((k) => k.includes("#dup"));
         if (
           !isSameStatementTwin &&
-          oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp)
+          oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp, dedupeScanOpts)
         ) {
           linesSkippedFuzzyDuplicate += 1;
           skipped_flows.push({ ...flowItem, reason: "fuzzy_duplicate" });

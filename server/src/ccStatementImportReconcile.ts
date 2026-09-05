@@ -161,6 +161,19 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
       cargos_abonos += row.amount_clp;
       continue;
     }
+    // BCI section-3 rows carry their own parser layout; the merchant regex below is
+    // Santander-shaped and misses BCI's forms — «IMPUESTO DL 3475» (singular) and
+    // merchant-named abonos like the 2026-06 «GLASS LIDER.CL» -3x.xxx nota. The bank nets
+    // these into Monto Total Facturado (2026-06: 2.xxx.xxx − 3x.xxx + 811 = 2.xxx.xxx
+    // exactly), so they must land in cargos_abonos; PAGOs never do.
+    if (layout === "bci_lider_cargos") {
+      if (isCcPaymentMerchant(String(row.merchant ?? ""))) {
+        midPeriodPayments += row.amount_clp;
+      } else {
+        cargos_abonos += row.amount_clp;
+      }
+      continue;
+    }
 
     if (isClpSection3Merchant(row.merchant)) {
       cargos_abonos += row.amount_clp;
@@ -256,19 +269,6 @@ function isBciLiderReconcileRows(rows: readonly CcReconcileRow[]): boolean {
   return rows.some((r) => String(r.parser_layout ?? "").startsWith("bci_lider"));
 }
 
-function bciLiderIncompleteParse(
-  rows: readonly CcReconcileRow[],
-  parsed: CcParsedSectionSums,
-  header: CcReconcileHeader
-): boolean {
-  const opPdf = header.pdf_total_operaciones;
-  if (opPdf == null || opPdf <= 0) return false;
-  if (rows.length < 12) return true;
-  const opParsed = parsed.parsed_operaciones;
-  if (opParsed <= 0) return false;
-  return Math.abs(opParsed - opPdf) / Math.max(opPdf, 1) > 0.08;
-}
-
 export type CcReconcileHeader = {
   monto_facturado: number | null;
   compras_cargos: number | null;
@@ -299,18 +299,13 @@ export function reconcileBillingMonthMovements(
   const compras = header.compras_cargos;
   const bciLider = isBciLiderReconcileRows(facturadoRows);
 
-  if (bciLider && currency === "clp" && bciLiderIncompleteParse(facturadoRows, parsed, header)) {
-    return {
-      billing_month: billingMonth,
-      source_pdf: header.source_pdf,
-      ok: true,
-      skipped: true,
-      skip_reason: "bci_incomplete_parse",
-      checks: [],
-      parsed_sums: parsed,
-      row_count: facturadoRows.length,
-    };
-  }
+  // The BCI `bci_incomplete_parse` hatch (<12 rows, or >8% gap vs pdf_total_operaciones) was
+  // removed 2026-08-28: genuinely incomplete BCI parses already fail loudly at PARSE level
+  // (the operaciones subtotal is a required check in cc_statement_reconcile.py), so at import
+  // level the hatch only ever disarmed the monto_facturado gate — which is exactly what let
+  // the 2026-08 ·0101 facturación import with 9 of 16 lines silently missing (the doubled
+  // pdf_total_operaciones from the concat-text collection tripped the 8% arm). The BCI
+  // monto_facturado check below is a hard gate now.
 
   if (currency === "clp" && monto != null && monto > 0) {
     if (bciLider) {

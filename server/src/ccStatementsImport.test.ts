@@ -125,6 +125,107 @@ describe("importCcStatementsMerge fuzzy dedup", () => {
   });
 });
 
+describe("importCcStatementsMerge vs open web-paste bucket", () => {
+  // Regression for the 2026-08 ·0101 facturación: 9 statement rows were skipped as
+  // duplicates of open web-paste bucket lines, and the merge's supersede then deleted
+  // those bucket lines — the purchases vanished from both places. A PDF import must
+  // never count web-paste lines as existing evidence.
+  function wipe(accountId: number): void {
+    db.prepare(
+      `DELETE FROM cc_statement_lines WHERE statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`
+    ).run(accountId);
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+  }
+
+  it("imports the PDF row over a fuzzy web-paste twin (truncated merchant)", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    wipe(accountId);
+
+    const paste = row({
+      source_pdf: "import:web-paste|open|2025-06",
+      statement_date: "20/06/2025",
+      merchant: "TOKU *METLIFE HIPOTE",
+      amount_clp: "753333",
+      transaction_date: "11/06/2025",
+      statement_monto_facturado: "",
+      row_id: "wp-fuzzy-1",
+    });
+    const rPaste = importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
+    expect(rPaste.linesInserted).toBe(1);
+
+    const pdf = row({
+      source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
+      statement_date: "23/06/2025",
+      merchant: "TOKU *METLIFE HIPOTECAR,SANTIAGO",
+      amount_clp: "753333",
+      transaction_date: "11/06/2025",
+      row_id: "pdf-fuzzy-1",
+    });
+    const rPdf = importCcStatementsMerge(accountId, [pdf], { skipGlobalDedupeKeys: true });
+    expect(rPdf.linesSkippedFuzzyDuplicate).toBe(0);
+    expect(rPdf.linesInserted).toBe(1);
+  });
+
+  it("imports the PDF row over an identical-key web-paste twin", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    wipe(accountId);
+
+    const paste = row({
+      source_pdf: "import:web-paste|open|2025-06",
+      statement_date: "20/06/2025",
+      merchant: "EXPRESS LYON, SANTIAGO",
+      amount_clp: "19310",
+      transaction_date: "06/06/2025",
+      statement_monto_facturado: "",
+      row_id: "wp-key-1",
+    });
+    importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
+
+    const pdf = row({
+      source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
+      statement_date: "23/06/2025",
+      merchant: "EXPRESS LYON, SANTIAGO",
+      amount_clp: "19310",
+      transaction_date: "06/06/2025",
+      row_id: "pdf-key-1",
+    });
+    const rPdf = importCcStatementsMerge(accountId, [pdf], { skipGlobalDedupeKeys: true });
+    expect(rPdf.linesSkippedDuplicate).toBe(0);
+    expect(rPdf.linesInserted).toBe(1);
+  });
+
+  it("web-paste imports still dedupe against PDF statement lines (reverse direction)", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    wipe(accountId);
+
+    const pdf = row({
+      source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
+      statement_date: "23/06/2025",
+      merchant: "EXPRESS LYON, SANTIAGO",
+      amount_clp: "19310",
+      transaction_date: "06/06/2025",
+      row_id: "pdf-rev-1",
+    });
+    importCcStatementsMerge(accountId, [pdf], { skipGlobalDedupeKeys: true });
+
+    const paste = row({
+      source_pdf: "import:web-paste|open|2025-06",
+      statement_date: "20/06/2025",
+      merchant: "EXPRESS LYON, SANTIAGO",
+      amount_clp: "19310",
+      transaction_date: "06/06/2025",
+      statement_monto_facturado: "",
+      row_id: "wp-rev-1",
+    });
+    const rPaste = importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
+    expect(rPaste.linesInserted).toBe(0);
+    expect(rPaste.linesSkippedDuplicate).toBe(1);
+  });
+});
+
 afterAll(() => {
   wipeVitestCcFixtureData();
 });
