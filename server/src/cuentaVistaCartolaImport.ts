@@ -2,7 +2,6 @@ import {
   deleteCheckingCartolaImportsForSourceFile,
   finishCartolaImportRun,
   importCartolaList,
-  isCheckingCartolaMonthImported,
   prunePhantomBoundaryMonthCartolaImports,
   pruneStaleCartolaMonthImportsForSourceFile,
   type ImportCheckingCartolasResult,
@@ -131,9 +130,3 @@ export function importCuentaVistaCartolasFromPdfs(opts?: {
   return finishCartolaImportRun(accountId, opts ?? {}, fileLogs, "cuenta vista");
 }
 
-export function cuentaVistaCartolaMonthImported(
-  periodMonth: string,
-  accountId = cuentaVistaAccountId()
-): boolean {
-  return isCheckingCartolaMonthImported(accountId, periodMonth);
-}

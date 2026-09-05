@@ -141,10 +141,3 @@ export function statementCloseDdMmYyyyForBillingMonth(
   return `${pad(d!)}/${pad(mo!)}/${y}`;
 }
 
-export function statementCloseIsoForBillingMonth(
-  accountId: number,
-  billingMonth: string
-): string {
-  const ddMm = statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth);
-  return parseDdMmYyToIso(ddMm) ?? `${billingMonth}-20`;
-}

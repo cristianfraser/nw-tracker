@@ -32,22 +32,6 @@ function strokeFromAccountColorRgb(colorRgb: string | null | undefined): string 
   return rgbTripletToCss(colorRgb);
 }
 
-/** RGB average of `r,g,b` triplets (group lines from child accounts). */
-export function averageRgbTriplets(triplets: (string | null | undefined)[]): string | undefined {
-  const parsed = triplets.map(parseRgbTriplet).filter((p): p is [number, number, number] => p != null);
-  if (parsed.length === 0) return undefined;
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [pr, pg, pb] of parsed) {
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  const n = parsed.length;
-  return `${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)}`;
-}
-
 /** Mix stroke toward white so “aportes acum.” reads as the same hue as valorización, one step lighter. */
 export function lightenStrokeForAccumulated(baseStroke: string, mixTowardWhite = 0.42): string {
   const s = baseStroke.trim();

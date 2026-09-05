@@ -20,13 +20,6 @@ export function isMovementCurrency(value: unknown): value is MovementCurrency {
   return (MOVEMENT_CURRENCIES as readonly unknown[]).includes(value);
 }
 
-export function requireMovementCurrency(value: unknown, context?: string): MovementCurrency {
-  if (!isMovementCurrency(value)) {
-    throw new Error(`Invalid movement currency ${JSON.stringify(value)}${context ? ` (${context})` : ""}`);
-  }
-  return value;
-}
-
 /** The amount columns as stored on `movements` (currency widened for raw SQLite rows). */
 export type MovementAmountFields = {
   amount: number;

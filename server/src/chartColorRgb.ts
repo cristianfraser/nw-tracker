@@ -1,9 +1,6 @@
 import { db } from "./db.js";
 import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
 
-/** Stored as `r,g,b` integers 0–255. */
-export type RgbTriplet = `${number},${number},${number}` | string;
-
 export function parseRgbTriplet(raw: string | null | undefined): [number, number, number] | null {
   if (!raw?.trim()) return null;
   const parts = raw.split(",").map((s) => parseInt(s.trim(), 10));

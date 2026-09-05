@@ -377,36 +377,3 @@ export function aggregateIncomeChartPointsByDay(
     });
 }
 
-export function paginateRowsByYear<T extends { received_on: string }>(
-  rows: readonly T[]
-): { pageNumber: number; data: T[] }[] {
-  const byYear = new Map<string, T[]>();
-  for (const row of rows) {
-    const year = row.received_on.slice(0, 4);
-    const bucket = byYear.get(year) ?? [];
-    bucket.push(row);
-    byYear.set(year, bucket);
-  }
-  const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
-  return yearsAsc.map((year, pageNumber) => ({
-    pageNumber,
-    data: byYear.get(year) ?? [],
-  }));
-}
-
-export function paginateMonthRowsByYear(
-  rows: readonly FlowIncomeMonthRow[]
-): { pageNumber: number; data: FlowIncomeMonthRow[] }[] {
-  const byYear = new Map<string, FlowIncomeMonthRow[]>();
-  for (const row of rows) {
-    const year = row.period_month.slice(0, 4);
-    const bucket = byYear.get(year) ?? [];
-    bucket.push(row);
-    byYear.set(year, bucket);
-  }
-  const yearsAsc = [...byYear.keys()].sort((a, b) => Number(a) - Number(b));
-  return yearsAsc.map((year, pageNumber) => ({
-    pageNumber,
-    data: byYear.get(year) ?? [],
-  }));
-}

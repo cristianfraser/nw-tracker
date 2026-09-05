@@ -1,7 +1,5 @@
 import { db } from "./db.js";
 
-export const EXCEL_GAP_SPLIT_NOTE_PREFIX = "split:excel-gap|";
-
 export type CcExpenseLineSplit = {
   source: "cc" | "checking";
   line_id: number;
@@ -84,17 +82,3 @@ export function insertLineSplits(opts: {
   tx();
 }
 
-/** Delete all excel-gap splits. Returns rows deleted. */
-export function deleteAllExcelGapSplits(): number {
-  return db
-    .prepare(`DELETE FROM cc_expense_line_splits WHERE note LIKE ?`)
-    .run(`${EXCEL_GAP_SPLIT_NOTE_PREFIX}%`).changes;
-}
-
-/** Count excel-gap splits (for dry-run reporting). */
-export function countExcelGapSplits(): number {
-  const row = db
-    .prepare(`SELECT COUNT(*) AS n FROM cc_expense_line_splits WHERE note LIKE ?`)
-    .get(`${EXCEL_GAP_SPLIT_NOTE_PREFIX}%`) as { n: number };
-  return row.n;
-}

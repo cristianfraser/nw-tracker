@@ -11,11 +11,6 @@ export function buildPanelCashAccountNotes(kind: "clp" | "usd", categoryKey: str
   return `import:panel|kind=${kind}|key=${key}`;
 }
 
-/** USD cash accounts created from Panel (no equity ticker). */
-export function buildPanelUsdCashAccountNotes(categoryKey: string): string {
-  return buildPanelCashAccountNotes("usd", categoryKey);
-}
-
 /** Parse panel provenance notes (dedupe on create only — ticker lives in `accounts.equity_ticker`). */
 export function parsePanelAccountNotes(
   notes: string | null | undefined
@@ -29,13 +24,3 @@ export function parsePanelAccountNotes(
   return { ticker, key };
 }
 
-export function parsePanelUsdCashAccountNotes(
-  notes: string | null | undefined
-): { key: string } | null {
-  if (!notes?.trim()) return null;
-  const m = /^import:panel\|kind=usd\|key=([^|]+)$/.exec(notes.trim());
-  if (!m) return null;
-  const key = m[1]!.trim().toLowerCase();
-  if (!key) return null;
-  return { key };
-}

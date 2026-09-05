@@ -2,7 +2,7 @@ import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { listYahooFxRejectedAsc } from "./fxYahooRejectedDb.js";
-import { fxMonthEndForBalanceUsd, fxRowOnOrBefore } from "./fxRates.js";
+import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import type { FxConversionWarning } from "./fxConversionWarnings.js";
 import { takeFxConversionWarnings } from "./fxConversionWarnings.js";
@@ -125,12 +125,3 @@ function listYahooFxRejectedForCoverage(): { date: string; raw_clp_per_usd: numb
   }));
 }
 
-/** True when any non-zero deposit event lacks FX on or before its date. */
-export function depositEventsMissingFx(eventDatesWithClp: readonly { occurred_on: string; clp: number }[]): boolean {
-  for (const e of eventDatesWithClp) {
-    if (!Number.isFinite(e.clp) || e.clp === 0) continue;
-    const fx = fxRowOnOrBefore(e.occurred_on);
-    if (!fx || fx.clp_per_usd <= 0) return true;
-  }
-  return false;
-}

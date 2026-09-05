@@ -103,13 +103,3 @@ export function startDashboardCacheWarmer(): void {
   scheduleWarm("boot", BOOT_DELAY_MS);
 }
 
-export function stopDashboardCacheWarmer(): void {
-  setAggregationInvalidationListener(null);
-  if (debounceTimer != null) clearTimeout(debounceTimer);
-  if (midnightTimer != null) clearTimeout(midnightTimer);
-  if (pollTimer != null) clearInterval(pollTimer);
-  debounceTimer = null;
-  midnightTimer = null;
-  pollTimer = null;
-  started = false;
-}

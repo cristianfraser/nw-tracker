@@ -1,6 +1,5 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
-import type { BrokeragePortfolioGroup } from "../brokerageGroupedAggregation";
 import { readInitialLanguage } from "../languagePreference";
 import type { DepositFlowCategory, ExpenseApartmentSlug, FlowsPlBucketSlug } from "../types";
 import en from "./locales/en.json";
@@ -27,6 +26,8 @@ if (typeof document !== "undefined") {
 export default i18n;
 
 export { Trans, useTranslation } from "react-i18next";
+
+export type BrokeragePortfolioGroup = "mutual_funds" | "acciones" | "cripto";
 
 /** User-visible label for a brokerage portfolio subgroup (sidebar, cards, charts). */
 export function brokerageGroupLabel(group: BrokeragePortfolioGroup): string {

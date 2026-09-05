@@ -1,7 +1,5 @@
 import type { TimeseriesBlock } from "./types";
 
-export type DashboardChartGranularity = "monthly" | "yearly";
-
 function calendarYearFromAsOf(d: string): number | null {
   const y = Number(String(d).slice(0, 4));
   return Number.isFinite(y) ? y : null;

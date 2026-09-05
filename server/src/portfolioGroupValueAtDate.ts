@@ -8,7 +8,6 @@ import {
   getGroupConsolidatedMonthlyPerfForRows,
 } from "./groupMonthlyPerfConsolidation.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
-import type { TsUnit } from "./groupMonthlyPerfConsolidation.js";
 import { accountIdsInPortfolioGroupForTotals } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import { db } from "./db.js";
@@ -159,23 +158,6 @@ export function portfolioGroupValueClpAt(
   asOfYmd: string
 ): number {
   return apportionedBucketClpAt(asOfYmd).buckets[bucket];
-}
-
-export function portfolioGroupValueAt(
-  bucket: NwDashboardBucketSlug,
-  asOfYmd: string,
-  unit: TsUnit
-): number {
-  const clp = portfolioGroupValueClpAt(bucket, asOfYmd);
-  if (unit === "clp") return clp;
-  const usd = clpToUsdForBalanceAt(clp, asOfYmd);
-  if (usd == null || !Number.isFinite(usd)) return Number.NaN;
-  return usd;
-}
-
-/** Patrimonio neto (asset buckets only; liabilities excluded from headline NW). */
-export function netWorthValueClpAt(asOfYmd: string): number {
-  return apportionedBucketClpAt(asOfYmd).total;
 }
 
 export type DashboardBucketValueTotals = {

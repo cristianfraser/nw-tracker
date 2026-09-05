@@ -114,7 +114,6 @@ export function trimLeadingInactivePoints(
   return { ...block, points: points.slice(start) };
 }
 
-
 /** Clear line focus when the pointer leaves a hit target, unless it moves to another hit line. */
 function clearLineHighlightUnlessMovingToHitLine(e: ReactMouseEvent, clear: () => void) {
   const related = e.relatedTarget;
@@ -626,14 +625,6 @@ export function LineChartPanel({
       </div>
     </div>
   );
-}
-
-export interface PieSlice {
-  name: string;
-  value: number;
-  account_id?: number;
-  /** i18n key for server-grouped bucket slices; resolved at render (falls back to `name`). */
-  name_i18n_key?: string | null;
 }
 
 interface Props {

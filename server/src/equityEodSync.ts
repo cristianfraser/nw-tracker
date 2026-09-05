@@ -17,17 +17,10 @@ import { clearEquityLiveQuoteCache } from "./equityQuote.js";
 export const CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE = 23;
 export const CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE = 55;
 
-/** Stock EOD buckets by exchange calendar (extend when adding exchanges). */
-export const STOCK_EOD_EXCHANGES = ["nyse", "santiago"] as const;
-export type StockEodExchange = (typeof STOCK_EOD_EXCHANGES)[number];
-
 const stmtLatestEodTradeDate = db.prepare(
   `SELECT trade_date FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
 );
 
-export const EQUITY_NYSE_TICKERS = EQUITY_DAILY_IMPORT_TICKERS.filter(
-  (t) => equityMarketKind(t) === "nyse"
-);
 export const EQUITY_CRYPTO_TICKERS = EQUITY_DAILY_IMPORT_TICKERS.filter(
   (t) => equityMarketKind(t) === "crypto24"
 );
@@ -251,18 +244,6 @@ export async function syncCryptoEodFromCoinGecko(
 
   if (!dryRun) clearEquityLiveQuoteCache();
   return out;
-}
-
-/** NYSE session date to record in sync state after a successful NYSE EOD pull. */
-export function equityEodSyncSessionLabel(now = new Date()): {
-  nyseSession: string | null;
-  cryptoUtcDay: string;
-} {
-  const ny = nyseWallClock(now);
-  return {
-    nyseSession: isNyseTradingDay(ny.ymd) ? nyseSessionYmd(now) : null,
-    cryptoUtcDay: cryptoCompletedUtcYmd(now),
-  };
 }
 
 /** Persisted NYSE session marker: only when all NYSE account tickers are caught up through that session. */

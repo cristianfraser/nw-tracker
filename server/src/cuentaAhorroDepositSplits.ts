@@ -6,13 +6,6 @@ import {
 } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 
-/** A user-declared split of a cuenta_ahorro_vivienda Depósito into self-funded vs family-funded. */
-export type CuentaAhorroDepositSplitRow = {
-  deposit_movement_id: number;
-  self_funded_clp: number;
-  note: string | null;
-};
-
 /** Deposit movement ids whose split is pure-family (self_funded_clp = 0) → reconciled with no mirror. */
 export function loadPureFamilyAhorroDepositMovementIds(): Set<number> {
   const rows = db

@@ -1,7 +1,6 @@
 import {
   cacheKeyCcBillingDetail,
   getAggregationCached,
-  invalidateCcBillingDetail,
 } from "./aggregationCache.js";
 import {
   buildBillingDetailByMonth,
@@ -20,15 +19,6 @@ export type CcLedgerBillingBundle = {
   detail: CcBillingDetailMonthRow[];
   facturaciones: CcFacturacionRow[];
 };
-
-/**
- * Drop every cached ledger + detalle por mes entry. Entries live in the aggregation cache
- * (fresh per Chile day + external `data_version` bumps); same-connection CC writes invalidate
- * per account via `invalidateCcBillingDetail` — this full clear is for tests/tools only.
- */
-export function clearCreditCardBillingDetailCache(): void {
-  invalidateCcBillingDetail();
-}
 
 /**
  * One ledger scan + billing-detail/facturaciones build per account per cache generation.
@@ -64,11 +54,3 @@ export function billingDetailCacheForAccount(accountId: number): CcLedgerBilling
   });
 }
 
-/** Ledger payload from the cached bundle; throws when the account has no installment ledger. */
-export function requireLedgerPayloadForAccount(accountId: number): CcInstallmentsDbPayload {
-  const { payload } = billingDetailCacheForAccount(accountId);
-  if (payload == null) {
-    throw new Error(`account ${accountId}: no installment ledger — caller must guard on ledger row count`);
-  }
-  return payload;
-}

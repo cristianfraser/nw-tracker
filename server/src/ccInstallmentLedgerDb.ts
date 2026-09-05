@@ -355,21 +355,6 @@ export function planInstallmentsConsumed(
   return ledgerInstallmentsPaid(pr, payList, referenceYm);
 }
 
-/** Unpaid installments from the plan with due month ≥ reference month. */
-export function remainingInstallmentsOnPlan(
-  sched: Pick<PurchaseInstallmentSchedule, "firstDueYm" | "cuotaAmounts" | "planSlotsConsumed">,
-  installmentCount: number,
-  referenceYm?: string
-): number {
-  const nowYm = referenceYm ?? currentCalendarYm();
-  const consumed = sched.planSlotsConsumed;
-  let remaining = 0;
-  for (let i = consumed; i < installmentCount; i++) {
-    if (ymCompare(installmentDueYm(sched.firstDueYm, i), nowYm) >= 0) remaining++;
-  }
-  return remaining;
-}
-
 /** Per-cuota amounts: indexed PDF payment rows when present, else equal split of principal. */
 export function cuotaAmountsForPurchase(pr: PurchaseRow, payList: PaymentRow[]): number[] {
   const n = pr.cuotas_totales;

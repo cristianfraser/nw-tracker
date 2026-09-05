@@ -9,29 +9,8 @@ import { syncAllLiveMarketQuotes } from "./liveMarketQuotesSync.js";
 import { ensureWatchlistEquityHistoryDepth } from "./watchlist.js";
 
 let inFlight = false;
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let schedulerEnabled = false;
 let intervalMs = 5 * 60 * 1000;
-let nextTickAtMs: number | null = null;
-
-export type LiveMarketQuotesSchedulerSnapshot = {
-  enabled: boolean;
-  interval_ms: number;
-  in_flight: boolean;
-  next_tick_at: string | null;
-};
-
-export function getLiveMarketQuotesSchedulerSnapshot(): LiveMarketQuotesSchedulerSnapshot {
-  return {
-    enabled: schedulerEnabled,
-    interval_ms: intervalMs,
-    in_flight: inFlight,
-    next_tick_at:
-      nextTickAtMs != null && Number.isFinite(nextTickAtMs)
-        ? new Date(nextTickAtMs).toISOString()
-        : null,
-  };
-}
 
 async function schedulerTick(): Promise<void> {
   if (inFlight) {
@@ -59,9 +38,6 @@ async function schedulerTick(): Promise<void> {
     );
   } finally {
     inFlight = false;
-    if (schedulerEnabled) {
-      nextTickAtMs = Date.now() + intervalMs;
-    }
   }
 }
 
@@ -69,7 +45,6 @@ export function startLiveMarketQuotesScheduler(): void {
   schedulerEnabled = liveQuotesSyncEnabled();
   if (!schedulerEnabled) {
     console.log("live-quotes:scheduler — disabled (LIVE_QUOTES_SYNC_ENABLED=0).");
-    nextTickAtMs = null;
     return;
   }
   intervalMs = liveQuotesIntervalMs();
@@ -77,17 +52,8 @@ export function startLiveMarketQuotesScheduler(): void {
     `live-quotes:scheduler — enabled; polling every ${Math.round(intervalMs / 1000)}s`
   );
   void schedulerTick();
-  intervalHandle = setInterval(() => {
+  setInterval(() => {
     void schedulerTick();
   }, intervalMs);
-  nextTickAtMs = Date.now() + intervalMs;
 }
 
-export function stopLiveMarketQuotesScheduler(): void {
-  if (intervalHandle != null) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
-  }
-  schedulerEnabled = false;
-  nextTickAtMs = null;
-}

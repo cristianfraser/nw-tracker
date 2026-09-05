@@ -7,7 +7,6 @@ import type {
   ParsedCheckingCartola,
   ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
-import { resolveCfraserCheckingCartolaPdfsDir } from "./cfraserPaths.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -86,40 +85,3 @@ export function pdfEntryToParsedCartola(entry: CheckingCartolaPdfEntry): ParsedC
   };
 }
 
-export function listCheckingCartolaPdfFiles(dir: string): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.toLowerCase().endsWith(".pdf"))
-    .sort()
-    .map((f) => path.join(dir, f));
-}
-
-export function loadParsedCheckingCartolasFromPdfJson(
-  jsonPath = resolveCheckingCartolasFromPdfJsonPath()
-): ParsedCheckingCartola[] {
-  const data = loadCheckingCartolasFromPdfJson(jsonPath);
-  const out: ParsedCheckingCartola[] = [];
-  for (const entry of data.cartolas) {
-    if (entry.parse_status !== "ok") continue;
-    out.push(pdfEntryToParsedCartola(entry));
-  }
-  return out;
-}
-
-export function parseAndLoadCheckingCartolasFromPdfs(opts?: {
-  pdfsDir?: string;
-  skipParse?: boolean;
-}): ParsedCheckingCartola[] {
-  if (!opts?.skipParse) {
-    if (opts?.pdfsDir) {
-      process.env.CFRASER_CHECKING_CARTOLA_PDFS_DIR = opts.pdfsDir;
-    }
-    runParseCheckingCartolaPdfs();
-  }
-  return loadParsedCheckingCartolasFromPdfJson();
-}
-
-export function resolveCfraserCheckingCartolaPdfsDirForImport(): string {
-  return resolveCfraserCheckingCartolaPdfsDir();
-}

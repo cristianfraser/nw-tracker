@@ -2,13 +2,6 @@ import type { FlowCcExpenseLineRow } from "./types";
 
 export type CcInstallmentGastosMode = "split" | "total";
 
-/**
- * Per-line override of which installment mode(s) a line counts in. Default `both`.
- * `total_only` / `split_only` place a line in one mode only (facturado-financing projection);
- * `excluded` drops it from both. Keep in sync with server/src/ccExpensePeriodMonth.ts.
- */
-export type CcExpenseGastosScope = "both" | "total_only" | "split_only" | "excluded";
-
 /** Keep in sync with server/src/ccExpensePeriodMonth.ts */
 export function gastosPeriodMonthForLine(
   line: Pick<
@@ -23,13 +16,6 @@ export function gastosPeriodMonthForLine(
 
 export function periodMonthsForGastosLine(line: FlowCcExpenseLineRow): string[] {
   return [gastosPeriodMonthForLine(line)];
-}
-
-export function lineMatchesGastosPeriodMonth(
-  line: FlowCcExpenseLineRow,
-  periodMonth: string
-): boolean {
-  return gastosPeriodMonthForLine(line) === periodMonth;
 }
 
 /** Whether a line participates in the given installment mode (`gastos_scope` gate). */

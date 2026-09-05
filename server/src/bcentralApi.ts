@@ -43,12 +43,6 @@ type GetSeriesBody = {
   SeriesInfos?: unknown;
 };
 
-export type BcentralSeriesInfo = {
-  seriesId: string;
-  frequencyCode: string;
-  spanishTitle: string;
-};
-
 /**
  * BCentral observation values: usually Chilean (`1.234,56`), but USD/EUR sometimes arrive
  * with a dot decimal (`899.68`). Treating that dot as thousands inflates ~900 → ~90000.
@@ -170,33 +164,6 @@ export async function fetchBcentralSeries(
   return [...m.entries()]
     .map(([date, value]) => ({ date, value }))
     .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-export async function fetchBcentralSearchSeries(
-  creds: BcentralCredentials,
-  frequency: "DAILY" | "MONTHLY" | "QUARTERLY" | "ANNUAL"
-): Promise<BcentralSeriesInfo[]> {
-  const url = buildUrl(creds, { function: "SearchSeries", frequency });
-  const body = (await fetchBcentralJson(url)) as {
-    Codigo?: number;
-    Descripcion?: string;
-    SeriesInfos?: Array<{
-      seriesId?: string;
-      frequencyCode?: string;
-      spanishTitle?: string;
-    }>;
-  };
-  if (body.Codigo != null && body.Codigo !== 0) {
-    throw new Error(`BCentral SearchSeries error ${body.Codigo}: ${body.Descripcion ?? "unknown"}`);
-  }
-  const infos = body.SeriesInfos ?? [];
-  return infos
-    .filter((x) => typeof x.seriesId === "string" && x.seriesId.length > 0)
-    .map((x) => ({
-      seriesId: x.seriesId!,
-      frequencyCode: String(x.frequencyCode ?? ""),
-      spanishTitle: String(x.spanishTitle ?? ""),
-    }));
 }
 
 async function fetchSeriesAfterYmd(

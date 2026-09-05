@@ -57,14 +57,6 @@ export function portfolioGroupById(id: number): PortfolioGroupRow | null {
   return (groupByIdStmt.get(id) as PortfolioGroupRow | undefined) ?? null;
 }
 
-export function isNavBucketKind(groupKind: string): boolean {
-  return groupKind === "nav_bucket" || groupKind === "nav_hub";
-}
-
-export function isBucketKind(groupKind: string): boolean {
-  return groupKind === "bucket" || groupKind === "normal";
-}
-
 function loadAllItems(): ItemRow[] {
   const idx = getPortfolioGroupIndex();
   if (idx) return idx.items as ItemRow[];
@@ -152,33 +144,6 @@ export function accountIdsInPortfolioGroupForTotals(slugOrId: string | number): 
 
   visitGroup(root.id);
   return [...out].sort((a, b) => a - b);
-}
-
-export type DashboardRowForPortfolioSum = {
-  account_id: number;
-  current_value_clp: number | null;
-  current_value_usd?: number | null;
-  exclude_from_group_totals: number;
-};
-
-/** Sum live dashboard row balances for all accounts in a portfolio group subtree (tree rollup). */
-export function sumDashboardRowsForPortfolioGroup(
-  portfolioGroupSlug: string,
-  rows: DashboardRowForPortfolioSum[],
-  includeUsd: boolean
-): { clp: number; usd: number } {
-  const ids = new Set(accountIdsInPortfolioGroupForTotals(portfolioGroupSlug));
-  let clp = 0;
-  let usd = 0;
-  for (const r of rows) {
-    if (!ids.has(r.account_id)) continue;
-    if (r.exclude_from_group_totals === 1) continue;
-    clp += r.current_value_clp != null && Number.isFinite(r.current_value_clp) ? r.current_value_clp : 0;
-    if (includeUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
-      usd += r.current_value_usd;
-    }
-  }
-  return { clp, usd };
 }
 
 /** Deepest portfolio group slug per account (one query for dashboard batching). */

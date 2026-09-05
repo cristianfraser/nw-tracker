@@ -68,62 +68,12 @@ async function fetchCoinGeckoMarketChart(coinId: string, query: string): Promise
   return j;
 }
 
-async function fetchCoinGeckoMarketChartRange(
-  coinId: string,
-  fromSec: number,
-  toSec: number
-): Promise<CoinGeckoMarketChart> {
-  const url =
-    `${COINGECKO_BASE}/coins/${encodeURIComponent(coinId)}/market_chart/range` +
-    `?vs_currency=usd&from=${fromSec}&to=${toSec}`;
-  const res = await fetchOut(`coingecko:${coinId}`, url, { headers: coingeckoApiHeaders() });
-  if (!res.ok) {
-    throw new Error(`CoinGecko chart range HTTP ${res.status} for ${coinId}`);
-  }
-  const j = (await res.json()) as CoinGeckoMarketChart;
-  const err = parseCoinGeckoChartError(j, coinId);
-  if (err) throw new Error(err);
-  if (!j.prices?.length) throw new Error(`CoinGecko chart range missing prices for ${coinId}`);
-  return j;
-}
-
 /** Recent daily bars (`days` calendar lookback, max 365 on public API). */
 export async function fetchCoinGeckoRecentDailyCloses(ticker: string, days = 30): Promise<EodCloseSeries> {
   const coinId = coingeckoIdForCryptoTicker(ticker);
   const clamped = Math.min(Math.max(days, 1), 365);
   const j = await fetchCoinGeckoMarketChart(coinId, `vs_currency=usd&days=${clamped}`);
   return aggregateCoinGeckoPricesToUtcDaily(j.prices!);
-}
-
-/** Daily closes between `startYmd` and `endYmd` inclusive (public API: within past 365 days). */
-export async function fetchCoinGeckoDailyClosesBetween(
-  ticker: string,
-  startYmd: string,
-  endYmd: string
-): Promise<EodCloseSeries> {
-  const coinId = coingeckoIdForCryptoTicker(ticker);
-  const [y1, m1, d1] = startYmd.split("-").map(Number);
-  const [y2, m2, d2] = endYmd.split("-").map(Number);
-  const fromSec = Math.floor(Date.UTC(y1!, m1! - 1, d1!) / 1000);
-  const toSec = Math.floor((Date.UTC(y2!, m2! - 1, d2!) + 864e5 - 1) / 1000);
-  const spanDays = Math.ceil((toSec - fromSec) / 86400);
-  const j =
-    spanDays <= 90
-      ? await fetchCoinGeckoMarketChartRange(coinId, fromSec, toSec)
-      : await fetchCoinGeckoMarketChart(coinId, `vs_currency=usd&days=${Math.min(spanDays + 2, 365)}`);
-  const series = aggregateCoinGeckoPricesToUtcDaily(j.prices!);
-  const dates: string[] = [];
-  const closes: number[] = [];
-  for (let i = 0; i < series.dates.length; i++) {
-    const d = series.dates[i]!;
-    if (d < startYmd || d > endYmd) continue;
-    dates.push(d);
-    closes.push(series.closes[i]!);
-  }
-  if (dates.length === 0) {
-    throw new Error(`CoinGecko chart empty closes for ${ticker} between ${startYmd} and ${endYmd}`);
-  }
-  return { dates, closes };
 }
 
 export function mergeEodCloseSeriesPreferPrimary(

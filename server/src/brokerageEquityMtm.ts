@@ -183,21 +183,6 @@ export function computeEquityMtmClpDisplaySync(
   return null;
 }
 
-/** MTM from scheduler-persisted live quote (no Yahoo on HTTP). */
-export function computeEquityMtmClpLive(
-  accountId: number,
-  now: Date = new Date()
-): { value_clp: number; as_of_date: string; source: string } | null {
-  if (!accountUsesEquityMtm(accountId)) return null;
-  const ticker = requireEquityTicker(accountId);
-  const session = equitySessionYmdForTicker(ticker, now);
-  const quote = getLiveEquityQuoteFromDb(ticker);
-  if (!quote) return null;
-  const clp = computeEquityMtmClp(accountId, session, quote.price, now);
-  if (clp == null || !Number.isFinite(clp) || clp <= 0) return null;
-  return { value_clp: clp, as_of_date: quote.trade_date, source: quote.source };
-}
-
 const stmtMaxEqDate = db.prepare(
   `SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`
 );
@@ -223,11 +208,6 @@ export function computeLatestDisplayedEquityClp(
   }
 
   return null;
-}
-
-export function deleteEquityDailyForImportTickers(): void {
-  const ph = EQUITY_DAILY_IMPORT_TICKERS.map(() => "?").join(",");
-  db.prepare(`DELETE FROM equity_daily WHERE ticker IN (${ph})`).run(...EQUITY_DAILY_IMPORT_TICKERS);
 }
 
 /** Merge timeline keys with month-ends covered by `equity_daily` for MTM brokerage accounts. */

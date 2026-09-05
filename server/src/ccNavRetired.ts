@@ -8,14 +8,3 @@ export function isNavRetiredCcMaster(accountId: number): boolean {
   return row?.nav_retired === 1;
 }
 
-export function markCcNavRetired(masterAccountId: number): void {
-  db.prepare(`UPDATE credit_card_account_config SET nav_retired = 1 WHERE account_id = ?`).run(
-    masterAccountId
-  );
-}
-
-export function unmarkCcNavRetired(masterAccountId: number): void {
-  db.prepare(`UPDATE credit_card_account_config SET nav_retired = 0 WHERE account_id = ?`).run(
-    masterAccountId
-  );
-}

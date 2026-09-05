@@ -42,17 +42,6 @@ export function isMovementTransferRow(row: {
   );
 }
 
-export function movementInvolvesAccount(
-  row: Pick<MovementTransferRow, "account_id" | "from_account_id" | "to_account_id">,
-  accountId: number
-): boolean {
-  return (
-    row.account_id === accountId ||
-    row.from_account_id === accountId ||
-    row.to_account_id === accountId
-  );
-}
-
 export function counterpartAccountIdFor(
   row: Pick<MovementTransferRow, "account_id" | "from_account_id" | "to_account_id">,
   viewedAccountId: number
@@ -321,10 +310,6 @@ export function validateTransferCreate(input: TransferCreateInput): void {
   if (input.counter_currency != null && input.counter_currency === input.currency) {
     throw new Error("counter_currency must differ from currency.");
   }
-}
-
-export function isInternalTransferMovement(row: MovementTransferRow): boolean {
-  return isMovementTransferRow(row);
 }
 
 export function accountNameForId(accountId: number): string | null {

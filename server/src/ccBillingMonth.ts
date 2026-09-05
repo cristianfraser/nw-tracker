@@ -43,12 +43,6 @@ export function billingMonthForStatementDate(statementDateIso: string): string |
   return `${m[1]}-${m[2]}`;
 }
 
-export function billingMonthForStatementDdMmYyyy(statementDate: string): string | null {
-  const iso = parseDdMmYyToIso(statementDate);
-  if (!iso) return null;
-  return billingMonthForStatementDate(iso);
-}
-
 /**
  * Facturación month (YYYY-MM) for an imported statement.
  * Prefer `period_to` (cycle end: Mar 21–Apr 20 → April); else statement close/print date.

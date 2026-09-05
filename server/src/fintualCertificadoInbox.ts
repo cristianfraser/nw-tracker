@@ -3,12 +3,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
 import { resolveCfraserCsvDir, resolveCfraserInboxDir } from "./cfraserPaths.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "../..");
 
 export const FINTUAL_CERTIFICADO_CANONICAL_NAME = "fintual-certificado-de-transacciones.csv";
 
@@ -113,6 +109,3 @@ export function processFintualCertificadoInboxCsv(opts?: {
   return { inboxPath, csvPath, rows, archivedTo: dryRun ? null : archivedTo };
 }
 
-export function repoRootFromServerSrc(): string {
-  return REPO_ROOT;
-}

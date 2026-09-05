@@ -21,14 +21,6 @@ import { listMirrorPairCandidates, mirrorLegIsMonthPrecision } from "./movementM
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
 
-export type MirrorMergeLegSnapshot = {
-  movement_id: number;
-  occurred_on: string;
-  amount_clp: number;
-  units_delta: number | null;
-  note: string | null;
-};
-
 function mirrorMergeHumanNote(outYmd: string, inYmd: string): string {
   return `Traspaso espejo (retiro ${outYmd} → depósito ${inYmd})`;
 }

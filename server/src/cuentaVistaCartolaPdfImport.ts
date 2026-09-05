@@ -2,9 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import type { CheckingCartolaPdfEntry } from "./checkingCartolaPdfImport.js";
-import { pdfEntryToParsedCartola } from "./checkingCartolaPdfImport.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -55,27 +53,3 @@ export function loadCuentaVistaCartolasFromPdfJson(
   return JSON.parse(raw) as CuentaVistaCartolaPdfJson;
 }
 
-export function loadParsedCuentaVistaCartolasFromPdfJson(
-  jsonPath = resolveCuentaVistaCartolasFromPdfJsonPath()
-): ParsedCheckingCartola[] {
-  const data = loadCuentaVistaCartolasFromPdfJson(jsonPath);
-  const out: ParsedCheckingCartola[] = [];
-  for (const entry of data.cartolas) {
-    if (entry.parse_status !== "ok") continue;
-    out.push(pdfEntryToParsedCartola(entry));
-  }
-  return out;
-}
-
-export function parseAndLoadCuentaVistaCartolasFromPdfs(opts?: {
-  pdfsDir?: string;
-  skipParse?: boolean;
-}): ParsedCheckingCartola[] {
-  if (!opts?.skipParse) {
-    if (opts?.pdfsDir) {
-      process.env.CFRASER_CUENTA_VISTA_PDFS_DIR = opts.pdfsDir;
-    }
-    runParseCuentaVistaCartolaPdfs();
-  }
-  return loadParsedCuentaVistaCartolasFromPdfJson();
-}

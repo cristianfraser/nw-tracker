@@ -455,39 +455,9 @@ const CASH_CATEGORY_KEYS: Record<string, string> = {
 };
 
 export const CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG = "credit_card_shortfall_from_savings";
-const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
 
 export function isCashSavingsCcShortfallRow(row: { category_slug?: string | null }): boolean {
   return row.category_slug === CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG;
-}
-
-export function isCheckingPlacementRow(row: {
-  bucket_slug?: string | null;
-  category_slug?: string | null;
-}): boolean {
-  const slug = row.bucket_slug ?? "";
-  if (slug === CHECKING_ACCOUNTS_BUCKET || slug.startsWith(`${CHECKING_ACCOUNTS_BUCKET}__`)) {
-    return true;
-  }
-  return row.category_slug === "cuenta_corriente" || row.category_slug === "cuenta_vista";
-}
-
-/** Exclude synthetic CC shortfall row; caller scopes accounts to the cash_savings nav subtree. */
-export function isCashSavingsAccountRow(row: { category_slug?: string | null }): boolean {
-  return !isCashSavingsCcShortfallRow(row);
-}
-
-/** Savings rows whose period P/L feeds the cash_eqs bucket card (excludes checking + CC shortfall). */
-export function isCashSavingsBucketPeriodPlRow(row: {
-  category_slug?: string | null;
-  bucket_slug?: string | null;
-  dashboard_bucket_slug?: string | null;
-}): boolean {
-  return (
-    accountBelongsToDashboardBucket(row as DashboardAccountRow, "cash_eqs") &&
-    !isCheckingPlacementRow(row) &&
-    !isCashSavingsCcShortfallRow(row)
-  );
 }
 
 function cashBreakdownLabel(row: DashboardAccountRow): string {
@@ -615,26 +585,3 @@ export function cardMainBalanceFromMetrics(metrics: CardGroupMetrics, showUsd: b
   return deposited + delta;
 }
 
-/**
- * Title row: period deposits + period P/L when closes and performance reconcile on the server.
- */
-export function cardPeriodChangeFromMetrics(metrics: CardGroupMetrics, showUsd: boolean): number | null {
-  const deposited = roundedMetricDeposits(metrics, showUsd, "period");
-  const delta = roundedMetricDelta(metrics, showUsd, "period");
-  if (deposited == null || delta == null) return null;
-  return deposited + delta;
-}
-
-/** Difference between headline balance and deposits + Δ from metrics (0 = identity holds). */
-export function cardMetricsMainBalanceDiff(
-  metrics: CardGroupMetrics,
-  mainClp: number,
-  showUsd: boolean,
-  tolerance = 0
-): number | null {
-  const fromMetrics = cardMainBalanceFromMetrics(metrics, showUsd);
-  if (fromMetrics == null) return null;
-  const main = showUsd ? mainClp : Math.round(mainClp);
-  const diff = main - fromMetrics;
-  return Math.abs(diff) <= tolerance ? 0 : diff;
-}

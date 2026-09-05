@@ -137,12 +137,3 @@ export function accountIdsWithAnyStaleSyncSource(
   return new Set(rows.map((r) => r.account_id));
 }
 
-export function isAccountSyncStale(
-  accountId: number,
-  staleSources: readonly GlobalSyncSource[]
-): boolean {
-  const sources = syncSourcesForAccountId(accountId);
-  if (sources.length === 0) return false;
-  const staleSet = new Set(staleSources);
-  return sources.some((source) => staleSet.has(source));
-}

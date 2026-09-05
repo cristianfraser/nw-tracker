@@ -22,8 +22,6 @@ export const BROKERAGE_FLOW_KINDS = [
 // form the payout counterpart is the RECEIVING USD cash account (role "to"); on the USD
 // cash form it is the paying stock (role "from") — see the form-context params below.
 
-
-
 export const USD_CASH_FLOW_KINDS = [
 
   "deposit_clp",
@@ -44,8 +42,6 @@ export const USD_CASH_FLOW_KINDS = [
 
 ] as const;
 
-
-
 export const CLP_CASH_FLOW_KINDS = [
 
   "deposit_clp",
@@ -60,8 +56,6 @@ export const CLP_CASH_FLOW_KINDS = [
 
 ] as const;
 
-
-
 export type BrokerageFlowKind =
 
   | (typeof BROKERAGE_FLOW_KINDS)[number]
@@ -72,18 +66,10 @@ export type BrokerageFlowKind =
 
   | "compra_usd";
 
-
-
 /** Own-currency P/L rows (interest, commissions) — amount is in the account's own currency. */
 export function isInterestFlowKind(kind: BrokerageFlowKind): boolean {
   return kind === "savings_earnings" || kind === "cash_fee";
 }
-
-
-
-export const BROKERAGE_UNITS_REQUIRED_FLOW_KINDS = ["stock_buy"] as const;
-
-
 
 /** Show shares input (required for stock_buy). */
 
@@ -92,16 +78,6 @@ export function brokerageFlowKindShowsUnits(kind: BrokerageFlowKind): boolean {
   return kind === "stock_buy" || kind === "stock_sell" || kind === "compra_usd";
 
 }
-
-
-
-export function brokerageFlowKindUnitsRequired(kind: BrokerageFlowKind): boolean {
-
-  return kind === "stock_buy";
-
-}
-
-
 
 export function brokerageFlowKindShowsCounterpart(kind: BrokerageFlowKind): boolean {
   return (
@@ -205,8 +181,6 @@ export function brokerageFlowKindNeedsClp(kind: BrokerageFlowKind): boolean {
   );
 
 }
-
-
 
 export function brokerageFlowKindNeedsUsd(kind: BrokerageFlowKind): boolean {
 

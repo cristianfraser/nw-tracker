@@ -13,8 +13,6 @@ import { ufYoyAnnualRate } from "./watchlistStats.js";
 
 export const CC_PROXY_TICKERS_KEY = "cc_proxy_tickers";
 export const CC_PROXY_DEFAULT_TICKERS = ["fintual_cert_reserva2"] as const;
-/** The ticker shown inline in each row (must be in the tracked list). */
-export const CC_PROXY_INLINE_TICKER = "fintual_cert_reserva2";
 
 const stmtGetSetting = db.prepare(`SELECT value FROM app_settings WHERE key = ?`);
 
