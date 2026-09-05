@@ -29,6 +29,8 @@ export type SantanderAccountImportResult = {
   lines_parsed: number;
   inserted: number;
   skipped_duplicate: number;
+  /** Cuota-billing reference rows (`CUOT: N OPER: M`) the feed lists at a facturación close. */
+  skipped_cuota_billing: number;
   batch_id: number | null;
 };
 
@@ -62,6 +64,7 @@ export function importSantanderMovementsFile(file: string): SantanderMovementsIm
       lines_parsed: result.lines_parsed,
       inserted: result.inserted,
       skipped_duplicate: result.skipped_duplicate,
+      skipped_cuota_billing: result.skipped_cuota_billing,
       batch_id: result.batch_id,
     });
   }

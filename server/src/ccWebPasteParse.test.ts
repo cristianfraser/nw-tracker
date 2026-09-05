@@ -6,6 +6,7 @@ import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import {
   ccWebPasteToCsvRecords,
   creditCardMasterMetaForAccount,
+  isCcCuotaBillingReferenceMerchant,
   parseCcWebPasteText,
 } from "./ccWebPasteParse.js";
 
@@ -140,5 +141,57 @@ describe("parseCcWebPasteText", () => {
     expect(records[0]?.card_last4).toBe("4343");
     expect(records[0]?.amount_clp).toBe("21249");
     expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
+  });
+});
+
+describe("isCcCuotaBillingReferenceMerchant", () => {
+  it("matches the feed's cuota-billing reference rendering", () => {
+    expect(isCcCuotaBillingReferenceMerchant("CUOT: 000000009OPER: 000032")).toBe(true);
+    expect(isCcCuotaBillingReferenceMerchant("CUOT: 000000001OPER: 000054")).toBe(true);
+    // Spacing variants and lowercase survive normalization differences between paths.
+    expect(isCcCuotaBillingReferenceMerchant("CUOT:000000002 OPER: 000043")).toBe(true);
+    expect(isCcCuotaBillingReferenceMerchant("cuot: 000000002oper: 000043")).toBe(true);
+  });
+
+  it("matches the manual paste's 15-char truncation (OPER half cut off)", () => {
+    expect(isCcCuotaBillingReferenceMerchant("CUOT: 000000009")).toBe(true);
+  });
+
+  it("never matches real merchants or cuota-type descriptions", () => {
+    expect(isCcCuotaBillingReferenceMerchant("TRES CUOTAS CONTADO")).toBe(false);
+    expect(isCcCuotaBillingReferenceMerchant("CUOTAS COMERCIO")).toBe(false);
+    expect(isCcCuotaBillingReferenceMerchant("8 BITS TRES CUOTAS PREC")).toBe(false);
+    expect(isCcCuotaBillingReferenceMerchant("MERCADO PAGO 4 TCOM")).toBe(false);
+    expect(isCcCuotaBillingReferenceMerchant("CUOTAS: RESTAURANT")).toBe(false);
+    expect(isCcCuotaBillingReferenceMerchant("")).toBe(false);
+    expect(isCcCuotaBillingReferenceMerchant(null)).toBe(false);
+  });
+});
+
+describe("cuota-billing rows in ccWebPasteToCsvRecords", () => {
+  it("routes CUOT reference rows to skipped_cuota_billing, keeps real purchases", () => {
+    const { lines } = parseCcWebPasteText(
+      [
+        "25/08/2026\tCUOT: 000000009OPER: 000032\t-$139.583",
+        "25/08/2026\tCUOT: 000000001OPER: 000053\t-$400.000",
+        "25/08/2026\tJUMBO COSTANERA CENTER\t-$32.399",
+      ].join("\n")
+    );
+    expect(lines).toHaveLength(3);
+    const { records, skipped_cuota_billing } = ccWebPasteToCsvRecords(
+      0,
+      "santander",
+      "4242",
+      "test",
+      lines
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]?.merchant).toBe("JUMBO COSTANERA CENTER");
+    expect(skipped_cuota_billing).toHaveLength(2);
+    expect(skipped_cuota_billing.map((f) => f.description)).toEqual([
+      "CUOT: 000000009OPER: 000032",
+      "CUOT: 000000001OPER: 000053",
+    ]);
+    expect(skipped_cuota_billing[0]?.amount_clp).toBe(139583);
   });
 });

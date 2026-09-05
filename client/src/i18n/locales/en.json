@@ -655,6 +655,7 @@
       "resultSkipReasonDuplicate": "duplicate",
       "resultSkipReasonDuplicateApprox": "approx. duplicate",
       "resultSkipReasonInstallmentOverlap": "already in installments",
+      "resultSkipReasonCuotaBilling": "cuota billing, already scheduled",
       "resultSkipReasonAlreadyPresent": "already in the statement",
       "resultSkipReasonSupersededByCartola": "already covered by the statement",
       "resultSkipReasonSupersededByTransfer": "already an internal transfer",

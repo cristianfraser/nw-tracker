@@ -655,6 +655,7 @@
       "resultSkipReasonDuplicate": "duplicado",
       "resultSkipReasonDuplicateApprox": "duplicado aprox.",
       "resultSkipReasonInstallmentOverlap": "ya en cuotas",
+      "resultSkipReasonCuotaBilling": "cobro de cuota, ya agendado",
       "resultSkipReasonAlreadyPresent": "ya en cartola",
       "resultSkipReasonSupersededByCartola": "ya cubierto por cartola",
       "resultSkipReasonSupersededByTransfer": "ya como traspaso interno",
