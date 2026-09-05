@@ -178,7 +178,7 @@ export function PortfolioNavAccountsSummaryTable({
             syncStale={row.syncStale}
           />
         );
-        /** Aportes with an inflow/outflow arrow (→ net in, ← net out; none at 0). */
+        /** Aportes with an inflow/outflow arrow (→ net in, 0 included; ← net out). */
         const depositsLine = (slice: Exclude<PeriodSlice, "day">, variant: CellVariant) => {
           const value = roundedMetricDeposits(
             slice === "total" ? lifetime : metricsByPeriod[slice],
@@ -190,8 +190,8 @@ export function PortfolioNavAccountsSummaryTable({
               title={labels.deposits[slice]}
               style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
             >
-              {value != null && value !== 0 ? (
-                <span aria-hidden>{value > 0 ? "\u2192" : "\u2190"}</span>
+              {value != null ? (
+                <span aria-hidden>{value >= 0 ? "\u2192" : "\u2190"}</span>
               ) : null}
               <DepositedMetricFlow
                 value={value}
