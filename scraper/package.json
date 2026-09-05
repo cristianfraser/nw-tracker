@@ -15,7 +15,8 @@
     "fetch:racional": "tsx src/main.ts racional",
     "fetch:emails": "tsx src/email/main.ts",
     "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts",
-    "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts"
+    "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts",
+    "fetch:lider-statements": "tsx src/email/liderStatementsMain.ts"
   },
   "dependencies": {
     "imapflow": "^1.6.5",

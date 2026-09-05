@@ -85,11 +85,14 @@ last *successful* run, so a night the agent never fired is visible too.
 ## Hourly e-mail poll (LaunchAgent)
 
 `email-run.sh` polls Gmail at **:30 past every hour** — `fetch:santander-docs`,
-`fetch:lider-boletas`, `fetch:emails` — and applies the cheap e-mail-native imports when a fetch
-staged something new that hour (`import:lider-boletas`, `import:santander-receipts`,
-`import:fintual-emails`). Everything else stays nightly: the bank web session, the inbox/CC
-pipeline, Racional, statement JSONs. The nightly run is also the retry backstop for anything
-staged here but not imported.
+`fetch:lider-statements` (the BCI Lider «Estado de Cuenta»), `fetch:lider-boletas`,
+`fetch:emails` — and, when a fetch staged something new that hour, runs the inbox pipeline
+(`import:cfraser-inbox`, the same one the nightly runs; with `--skip-lider-boletas` on hours
+that staged no new boleta, since the boleta stage re-upserts its whole staged corpus) plus the
+broker e-mail imports (`import:fintual-emails`, `import:racional-emails`). A monthly facturación
+therefore imports the hour its mail lands. Everything else stays nightly: the bank web session,
+Racional, statement JSONs. The nightly run is also the retry backstop for anything staged here
+but not imported.
 
 ```bash
 cp scraper/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/

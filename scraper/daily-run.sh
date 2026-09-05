@@ -117,6 +117,16 @@ else
   step "Lider boletas" npm run fetch:lider-boletas
 fi
 
+# 1c. BCI Lider «Estado de Cuenta» statement PDF from Gmail (close ~26th, mail a day or two
+#     later, encrypted with the RUT's last 4 digits — the inbox pipeline decrypts it via
+#     LIDER_CC_STATEMENT_PDF_PASSWORD, organizes and imports it next). Ledger-keyed per mail;
+#     the hourly poll usually gets it first — this is the retry backstop.
+if [[ "$DRY_RUN" == "1" ]]; then
+  step "Lider statement e-mail (dry run)" npm run fetch:lider-statements -- --dry-run
+else
+  step "Lider statement e-mail" npm run fetch:lider-statements
+fi
+
 # 2. Inbox pipeline: organizes + parses + imports Santander statement PDFs, checking cartolas,
 #    a Fintual certificado, AND the Lider «últimos movimientos» CSV that the separate ~08:00
 #    scheduled task drops in cfraser/inbox/.
