@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Table } from "../ui/Table";
-import type { CcExpenseGenericUniqueMerchantRow } from "../../types";
+import type { ExpenseGenericUniqueMerchantRow } from "../../types";
 import { Button, Input } from "@crfrsr/ui";
 import {
   useCreateGenericUniqueMerchantMutation,
@@ -10,7 +10,7 @@ import {
 } from "../../queries/hooks";
 
 type Props = {
-  merchants: CcExpenseGenericUniqueMerchantRow[];
+  merchants: ExpenseGenericUniqueMerchantRow[];
 };
 
 export function GenericUniqueMerchantsPanel({ merchants }: Props) {
@@ -35,7 +35,7 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
     });
   }
 
-  function startEdit(row: CcExpenseGenericUniqueMerchantRow) {
+  function startEdit(row: ExpenseGenericUniqueMerchantRow) {
     setEditingId(row.id);
     setEditDraft(row.merchant_key);
     setFormError(null);
