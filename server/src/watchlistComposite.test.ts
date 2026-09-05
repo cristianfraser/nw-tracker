@@ -8,6 +8,7 @@ import { db } from "./db.js";
 import {
   basketUsdForHoldings,
   compositeLiveStats,
+  fxClpWeekdayEodOnOrBefore,
   loadCompositeHoldings,
   loadCompositeMeta,
   proxyClpFromMeta,
@@ -260,6 +261,132 @@ describe("proxyClpFromMeta value weighting", () => {
     expect(next / atAnchor).toBeCloseTo(1.05 * fxRatio, 8);
     // The share-count reading Σ w·px(d)/Σ w·px(0) = 60/55 would land ~4% higher.
     expect(next / atAnchor).not.toBeCloseTo((60 / 55) * fxRatio, 2);
+  });
+});
+
+const WEEKEND_ANCHOR_BUCKET = "vitest_rn_proxy_weekend_anchor";
+const WA_TICKERS = ["VITESTRNE", "VITESTRNF"] as const;
+/** Fri / Sat / Sun / Mon around a weekend composition date. */
+const WA_FRI = "2026-07-10";
+const WA_SAT = "2026-07-11";
+const WA_SUN = "2026-07-12";
+const WA_MON = "2026-07-13";
+/** date → pre-test clp_per_usd (null = row absent) so shared fx_daily rows are restored. */
+const waFxBackup = new Map<string, number | null>();
+
+function waSetFx(date: string, value: number): void {
+  if (!waFxBackup.has(date)) {
+    const prior = db.prepare(`SELECT clp_per_usd FROM fx_daily WHERE date = ?`).get(date) as
+      | { clp_per_usd: number }
+      | undefined;
+    waFxBackup.set(date, prior?.clp_per_usd ?? null);
+  }
+  db.prepare(
+    `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
+  ).run(date, value);
+}
+
+/**
+ * Weekend composition anchor: equity closes exist Friday and Monday only, while fx_daily
+ * carries Yahoo's Sunday week-open spike (950 vs Friday's 900). The anchor and every
+ * weekend valuation date must read Friday's bar; Monday's genuine weekday bar stays
+ * eligible even though the market convention documents fx_daily as NYSE trade dates.
+ */
+function seedWeekendAnchorFixture(): void {
+  const closes: Record<(typeof WA_TICKERS)[number], Record<string, number>> = {
+    VITESTRNE: { [WA_FRI]: 100, [WA_MON]: 110 },
+    VITESTRNF: { [WA_FRI]: 10, [WA_MON]: 10 },
+  };
+  for (const ticker of WA_TICKERS) {
+    for (const [day, close] of Object.entries(closes[ticker])) {
+      db.prepare(
+        `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'usd')
+         ON CONFLICT(ticker, trade_date) DO UPDATE SET close = excluded.close, currency = excluded.currency`
+      ).run(ticker, day, close);
+    }
+  }
+  waSetFx(WA_FRI, 900);
+  waSetFx(WA_SUN, 950); // Yahoo's week-open spike — must never be read
+  waSetFx(WA_MON, 905);
+
+  const holdings: CompositeHolding[] = [
+    { ticker: "VITESTRNE", weight: 0.5, synced_at: WA_SUN },
+    { ticker: "VITESTRNF", weight: 0.5, synced_at: WA_SUN },
+  ];
+  // Anchor fx exactly as the composition sync resolves it for a Sunday composition_date.
+  const anchorFx = fxClpWeekdayEodOnOrBefore(WA_SUN);
+  db.prepare(
+    `INSERT INTO watchlist_composite_meta (
+       bucket_slug, fintual_managed_fund_id, composition_date,
+       anchor_fund_unit_clp, anchor_apv_fund_unit_clp, anchor_basket_usd, anchor_fx_clp, last_sync_ymd
+     ) VALUES (?, 4, ?, 4000, NULL, ?, ?, ?)`
+  ).run(
+    WEEKEND_ANCHOR_BUCKET,
+    WA_SUN,
+    basketUsdForHoldings(holdings, WA_SUN, { preferLive: false }),
+    anchorFx,
+    WA_SUN
+  );
+  for (const h of holdings) {
+    db.prepare(
+      `INSERT INTO watchlist_composite_holdings (bucket_slug, ticker, weight, synced_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(WEEKEND_ANCHOR_BUCKET, h.ticker, h.weight, h.synced_at);
+  }
+}
+
+afterEach(() => {
+  db.prepare(`DELETE FROM watchlist_composite_holdings WHERE bucket_slug = ?`).run(WEEKEND_ANCHOR_BUCKET);
+  db.prepare(`DELETE FROM watchlist_composite_meta WHERE bucket_slug = ?`).run(WEEKEND_ANCHOR_BUCKET);
+  for (const ticker of WA_TICKERS) {
+    db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(ticker);
+  }
+  for (const [date, prior] of waFxBackup) {
+    if (prior == null) {
+      db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run(date);
+    } else {
+      db.prepare(`UPDATE fx_daily SET clp_per_usd = ? WHERE date = ?`).run(prior, date);
+    }
+  }
+  waFxBackup.clear();
+});
+
+describe("weekend fx bars", () => {
+  it("fxClpWeekdayEodOnOrBefore skips weekend-dated bars but keeps weekday holiday bars", () => {
+    seedWeekendAnchorFixture();
+    expect(fxClpWeekdayEodOnOrBefore(WA_FRI)).toBe(900);
+    expect(fxClpWeekdayEodOnOrBefore(WA_SAT)).toBe(900);
+    expect(fxClpWeekdayEodOnOrBefore(WA_SUN)).toBe(900);
+    expect(fxClpWeekdayEodOnOrBefore(WA_MON)).toBe(905);
+  });
+
+  it("a Sunday composition date anchors on Friday's fx and holds the anchor identity", () => {
+    seedWeekendAnchorFixture();
+    const meta = loadCompositeMeta(WEEKEND_ANCHOR_BUCKET)!;
+    const holdings = loadCompositeHoldings(WEEKEND_ANCHOR_BUCKET);
+    expect(meta.anchor_fx_clp).toBe(900);
+
+    // Anchor identity: proxy at the composition date is the anchor cuota exactly —
+    // the Sunday spike must not leak into either leg (old behavior: 4000 × 950/900).
+    const atAnchor = proxyClpFromMeta(meta, holdings, WA_SUN, { preferLive: false });
+    expect(atAnchor).toBeCloseTo(4000, 8);
+    expect(atAnchor).not.toBeCloseTo(4000 * (950 / 900), 0);
+
+    // Weekends are flat: nothing repriced between Friday's close and Sunday.
+    const atFri = proxyClpFromMeta(meta, holdings, WA_FRI, { preferLive: false });
+    const atSat = proxyClpFromMeta(meta, holdings, WA_SAT, { preferLive: false });
+    expect(atFri).toBeCloseTo(atAnchor, 8);
+    expect(atSat).toBeCloseTo(atAnchor, 8);
+  });
+
+  it("Monday reprices with Monday's genuine weekday bar", () => {
+    seedWeekendAnchorFixture();
+    const meta = loadCompositeMeta(WEEKEND_ANCHOR_BUCKET)!;
+    const holdings = loadCompositeHoldings(WEEKEND_ANCHOR_BUCKET);
+    const atMon = proxyClpFromMeta(meta, holdings, WA_MON, { preferLive: false });
+    // 0.5×(110/100) + 0.5×(10/10) = 1.05 basket leg; fx leg 905/900.
+    expect(atMon).toBeCloseTo(4000 * 1.05 * (905 / 900), 6);
   });
 });
 
