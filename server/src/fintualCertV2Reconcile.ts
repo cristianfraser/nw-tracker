@@ -10,6 +10,9 @@ import {
 } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import { fundSeriesKeyFromImportNotes, isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { fintualExpectsCuotaOnPollDay } from "./fintualPublishDate.js";
+import { latestFundUnitRow } from "./fundUnitDaily.js";
+import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 
@@ -109,6 +112,12 @@ export function fintualCertV2PreferGoalsNavDisplay(opts: {
   lastGoalsPollYmd?: string | null;
   /** Newest `occurred_on` of a cuota-changing movement on the account (null when none). */
   newestLocalCuotaFlowYmd?: string | null;
+  /**
+   * The goals NAV equals the position at an OLDER stored cuota (see
+   * {@link fintualGoalsNavMatchesPriorPublishPosition}) — it lags the newest publish rather than
+   * disagreeing with it, so the local cuota position is the fresher truth.
+   */
+  navMatchesPriorPublishPosition?: boolean;
 }): boolean {
   if (opts.asOfYmd !== opts.todayYmd) return false;
   if (opts.goalsNavClp == null || opts.cuotaPositionClp == null) return false;
@@ -123,10 +132,75 @@ export function fintualCertV2PreferGoalsNavDisplay(opts: {
   ) {
     return false;
   }
+  if (opts.navMatchesPriorPublishPosition) return false;
   return !fintualCertV2GoalsCuotaReconciled({
     goalsNavClp: opts.goalsNavClp,
     cuotaPositionClp: opts.cuotaPositionClp,
   });
+}
+
+const stmtRecentFundUnitsBeforeDay = db.prepare(
+  `SELECT day, unit_value_clp FROM fund_unit_daily
+   WHERE series_key = ? AND day < ?
+   ORDER BY day DESC LIMIT 7`
+);
+
+/**
+ * The polled goals NAV reproduces (within tolerance) the account's position at a stored cuota
+ * OLDER than the newest bar — i.e. Fintual's goals endpoint has not rolled to the fund's newest
+ * publish yet (it lags real_assets by hours). Such a NAV is stale, not divergent: displaying it
+ * would show yesterday's balance with a phantom day P/L against the fresher cuotas × px.
+ */
+export function fintualGoalsNavMatchesPriorPublishPosition(
+  accountId: number,
+  importNotes: string,
+  goalsNavClp: number | null | undefined
+): boolean {
+  if (goalsNavClp == null || !Number.isFinite(goalsNavClp)) return false;
+  if (!isFintualCertV2ValuationNotes(importNotes)) return false;
+  const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+  if (!seriesKey) return false;
+  const units = fintualGoalUnitsFromMovements(accountId);
+  if (units == null || units <= 1e-9) return false;
+  const latest = latestFundUnitRow(seriesKey);
+  if (!latest) return false;
+  const rows = stmtRecentFundUnitsBeforeDay.all(seriesKey, latest.day) as {
+    day: string;
+    unit_value_clp: number;
+  }[];
+  for (const row of rows) {
+    if (!(row.unit_value_clp > 0)) continue;
+    const pos = Math.round(units * row.unit_value_clp);
+    if (Math.abs(goalsNavClp - pos) <= FINTUAL_CERT_V2_RECONCILE_TOLERANCE_CLP) return true;
+  }
+  return false;
+}
+
+/**
+ * A held v2 fund (cuotas > 0) whose `fund_unit_daily` series has not reached the publish day:
+ * no bar on the day AND no newer bar either — the fund's cuota for that day has not been
+ * recorded, e.g. it publishes later in the evening than the faster funds that already satisfied
+ * the global publish-day hints (Very Conservative Streep, 2026-08-24). Interior historical gaps
+ * (older days a later bar superseded) do not count — nothing left for a re-poll to heal there.
+ */
+export function fintualCertV2HeldFundMissingDayRow(
+  accountId: number,
+  importNotes: string,
+  asOfYmd: string
+): boolean {
+  if (!isFintualCertV2ValuationNotes(importNotes)) return false;
+  const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
+  if (!seriesKey) return false;
+  const units = fintualGoalUnitsFromMovements(accountId);
+  if (units == null || units <= 1e-9) return false;
+  const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as
+    | { unit_value_clp: number; note: string }
+    | undefined;
+  if (row?.unit_value_clp != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0) {
+    return false;
+  }
+  const latest = latestFundUnitRow(seriesKey);
+  return latest == null || latest.day < asOfYmd;
 }
 
 export function fintualCertV2AccountReconciledOnDay(
@@ -136,9 +210,52 @@ export function fintualCertV2AccountReconciledOnDay(
   goalsNavClp: number | null | undefined
 ): boolean {
   if (goalsNavClp == null || !Number.isFinite(goalsNavClp)) return true;
+  // Missing publish-day bar on a held fund is NOT vacuously reconciled — it is exactly the
+  // late-publish gap the poll loop must keep retrying for.
+  if (fintualCertV2HeldFundMissingDayRow(accountId, importNotes, asOfYmd)) return false;
   const cuotaPos = fintualCertV2PositionFromCuotaClp(accountId, importNotes, asOfYmd);
   if (cuotaPos == null) return true;
   return fintualCertV2GoalsCuotaReconciled({ goalsNavClp, cuotaPositionClp: cuotaPos });
+}
+
+/**
+ * Before 18:00 Chile: yesterday's poll evening left a held fund without its publish-day bar
+ * (per-fund late publish the sig/publish-date caught-up checks cannot see) — keep the source
+ * stale so the morning carry re-polls and lands the value the fund published overnight.
+ * Missing-bar driven only (NAV mismatches are the evening machinery's business), and vacuously
+ * resolved when no mapped v2 account exists. Bounded: `fintualLastPublishYmd` advances at the
+ * next evening poll, so a fund that truly never publishes a day stops being demanded once the
+ * publish day moves on.
+ */
+export function fintualMorningCarryPerFundUnresolved(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile
+): boolean {
+  if (cl.hour >= 18) return false;
+  const pollYmd = state.fintualLastCheckYmd;
+  if (!pollYmd || pollYmd >= cl.ymd) return false;
+  if (!fintualExpectsCuotaOnPollDay(pollYmd)) return false;
+  const publishYmd = state.fintualLastPublishYmd ?? pollYmd;
+  return fintualCertV2AnyHeldFundMissingDayRow(publishYmd, state);
+}
+
+/** Any mapped held v2 fund is still missing its `publishYmd` bar (see the per-account check). */
+export function fintualCertV2AnyHeldFundMissingDayRow(
+  publishYmd: string,
+  state: GlobalSyncStateFile = loadGlobalSyncState()
+): boolean {
+  const goalsById = parseFintualMappedNavSignature(
+    state.fintualLastCheckSig ?? state.fintualLastAppliedSig
+  );
+  if (goalsById.size === 0) return false;
+  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
+  for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
+    if (goalsById.get(goalId) == null) continue;
+    const acc = accStmt.get(importNotes) as { id: number } | undefined;
+    if (!acc) continue;
+    if (fintualCertV2HeldFundMissingDayRow(acc.id, importNotes, publishYmd)) return true;
+  }
+  return false;
 }
 
 /** All mapped v2 cert accounts reconcile goals API vs cuotas×cuota on `publishYmd`. */
@@ -207,9 +324,7 @@ export function listFintualCertV2ReconcileRows(
       goalsNavClp: goalsNav,
       cuotaPositionClp: cuotaPos,
       unitClp: unitRow?.unit_value_clp ?? null,
-      reconciled:
-        cuotaPos == null ||
-        fintualCertV2GoalsCuotaReconciled({ goalsNavClp: goalsNav, cuotaPositionClp: cuotaPos }),
+      reconciled: fintualCertV2AccountReconciledOnDay(acc.id, importNotes, publishYmd, goalsNav),
     });
   }
   return out;

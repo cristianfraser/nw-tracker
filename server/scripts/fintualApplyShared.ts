@@ -336,6 +336,7 @@ export function syncFintualFundUnitsFromResolutions(
         navClp: r.appliedNavClp,
         fundPriceClp: r.fundPriceClp,
         units: unitsForTarget,
+        recentNavByDay: r.recentNavByDay,
         dryRun,
       });
       if (!fu.recorded) continue;
@@ -345,7 +346,10 @@ export function syncFintualFundUnitsFromResolutions(
           r.fundPriceClp != null && r.fundPriceClp > 0 ? "publish" : "inferred";
         console.log(
           `sync: Fintual — fund_unit_daily ${fu.unitClp} (${asOfYmd}, ${src}, ${target.importNotes})` +
-            (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : "")
+            (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : "") +
+            (fu.realDaysBackfilled > 0
+              ? `, backfilled ${fu.realDaysBackfilled} real published day(s)`
+              : "")
         );
       }
     }

@@ -35,6 +35,7 @@ import {
   fintualCertV2PreferGoalsNavDisplay,
   fintualGoalsApiNavClpForImportNotes,
   fintualGoalsApiPollYmdForState,
+  fintualGoalsNavMatchesPriorPublishPosition,
 } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import {
@@ -93,6 +94,11 @@ function fintualCertPositionMeta(
     todayYmd: today,
     lastGoalsPollYmd: fintualGoalsApiPollYmdForState(goalsSyncState),
     newestLocalCuotaFlowYmd: newestCuotaMovementYmdForAccount(accountId),
+    navMatchesPriorPublishPosition: fintualGoalsNavMatchesPriorPublishPosition(
+      accountId,
+      importNotes,
+      goalsNavClp
+    ),
   });
 
   if (

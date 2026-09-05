@@ -79,6 +79,7 @@ describe("fintualMappedGoalsApiSignature", () => {
         appliedNavClp: 11_157_014,
         units: 2696.9454,
         fundPriceClp: 4136.9078,
+        recentNavByDay: null,
         mismatch: true,
       },
     ];
@@ -123,6 +124,7 @@ describe("collectFintualGoalValuationChanges v2", () => {
         appliedNavClp: 11_157_014,
         units: 2696.9454,
         fundPriceClp: 4136.9078,
+        recentNavByDay: null,
         mismatch: true,
       },
     ];

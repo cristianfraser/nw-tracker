@@ -33,6 +33,7 @@ import {
   isCryptoEodStale,
   isSbifMonthlyStale,
   isStocksNyseStale,
+  isUserForcedSyncSourceStale,
   staleSyncSources,
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
@@ -44,6 +45,7 @@ import {
   fintualPollDayStillUnresolved,
   fintualPriorEveningUnresolved,
   isFintualFundPublishDay,
+  priorFintualPublishYmd,
 } from "./fintualPublishDate.js";
 import {
   formatSyncClp,
@@ -97,7 +99,11 @@ import {
   syncFintualFundUnitsFromResolutions,
 } from "../scripts/fintualApplyShared.js";
 import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
-import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
+import {
+  fintualCertV2AnyHeldFundMissingDayRow,
+  fintualCertV2PollReconciled,
+  fintualMorningCarryPerFundUnresolved,
+} from "./fintualCertV2Reconcile.js";
 import {
   clearFintualRealAssetNavCaches,
   formatClp,
@@ -373,12 +379,21 @@ async function runFintual(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
 ): Promise<{ pending: boolean; fintualNoChange?: boolean }> {
-  const carryOverMorning = fintualPriorEveningUnresolved(cl, state);
+  // Pre-18:00 polls happen only as carries: an unresolved prior evening (sig/publish based), a
+  // held fund whose publish-day bar is still missing (late publisher — invisible to sig checks),
+  // or the user forcing the source stale from the UI («Marcar desactualizado» must always poll).
+  const userForcedPreEvening = cl.hour < 18 && isUserForcedSyncSourceStale(state, "fintual");
+  const carryOverMorning =
+    fintualPriorEveningUnresolved(cl, state) ||
+    fintualMorningCarryPerFundUnresolved(cl, state) ||
+    userForcedPreEvening;
   if (cl.hour < 18 && !carryOverMorning) {
     console.log(`sync: Fintual — skip (before 18:00 Chile; now ${cl.hour}:${String(cl.minute).padStart(2, "0")}).`);
     return { pending: false };
   }
-  const carryPollYmd = carryOverMorning ? state.fintualLastCheckYmd : undefined;
+  const carryPollYmd = carryOverMorning
+    ? state.fintualLastCheckYmd ?? priorFintualPublishYmd(cl.ymd) ?? undefined
+    : undefined;
   const pollCl: ChileWallClock =
     carryOverMorning && cl.hour < 18 && carryPollYmd
       ? fintualEveningPollClock(cl, carryPollYmd)
@@ -434,10 +449,14 @@ async function runFintual(
   writeGoalsSnapshot(snap);
 
   const sig = fintualMappedGoalsApiSignature(resolutions);
+  // Per-fund term: sig/publish-date equality cannot see a held fund whose publish-day bar is
+  // still missing (late publisher) — keep the carry day pinned until the bar lands (the write
+  // happens below in this same run when the API has the price by now).
   const stillUnresolved =
     carryPollYmd != null &&
     cl.hour < 18 &&
-    fintualPollDayStillUnresolved(carryPollYmd, publishYmd, state, sig);
+    (fintualPollDayStillUnresolved(carryPollYmd, publishYmd, state, sig) ||
+      fintualCertV2AnyHeldFundMissingDayRow(publishYmd, state));
   state.fintualLastPublishYmd = publishYmd;
   state.fintualLastCheckSig = sig;
   state.fintualLastCheckYmd = stillUnresolved ? carryPollYmd : cl.ymd;
@@ -469,6 +488,18 @@ async function runFintual(
   }
 
   if (fintualNavUnchangedSinceLastApply(sig, state, publishYmd)) {
+    // A late-publishing fund can land its cuota while the goals NAV endpoint still serves the
+    // prior day's totals (both lag independently): the sig is unchanged but the publish-day bar
+    // is missing. Write it now, or the poll loop would spin without ever recording the price.
+    if (fintualCertV2AnyHeldFundMissingDayRow(snap.asOfDate, state)) {
+      const recorded = syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
+      if (recorded > 0) {
+        if (!syncDryRun) invalidateMarketDataAggregations();
+        console.log(
+          `sync: Fintual — late publish: recorded ${recorded} fund unit value(s) for ${snap.asOfDate}.`
+        );
+      }
+    }
     if (fintualSnapshotMatchesDb(snap, resolutions)) {
       const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
       if (cleaned > 0) {
