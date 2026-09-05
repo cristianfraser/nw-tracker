@@ -67,6 +67,7 @@ import {
   shouldAggregateNavCharts,
   type ChartBucketPlan,
 } from "./groupChartBuckets.js";
+import { orderGroupTabRowsBucketMajor } from "./groupTabOrdering.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import {
   listFirstLevelPortfolioGroupChildren,
@@ -2061,7 +2062,24 @@ function listAccountsForPortfolioGroupSlug(portfolioGroupSlug: string): GroupTab
 }
 
 export function listAccountsForGroupTab(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
-  return finishGroupTabRows(listAccountsForGroupTabInner(groupSlug, tabSubgroup));
+  const rows = finishGroupTabRows(listAccountsForGroupTabInner(groupSlug, tabSubgroup));
+  const planSlug =
+    (tabSubgroup ? resolveGroupTabChildSlug(groupSlug, tabSubgroup) : null) ?? groupSlug;
+  return orderGroupTabRowsBucketMajor(rows, planSlug);
+}
+
+/** Child portfolio-group slug a legacy tab subgroup resolves to under `groupSlug`. */
+function resolveGroupTabChildSlug(groupSlug: string, tabSubgroup: string): string | null {
+  const child = db
+    .prepare(
+      `SELECT c.slug FROM portfolio_groups p
+       JOIN portfolio_group_items i ON i.group_id = p.id AND i.item_kind = 'group'
+       JOIN portfolio_groups c ON c.id = i.child_group_id
+       WHERE p.slug = ? AND (c.kind_slug = ? OR c.api_subgroup = ? OR c.slug = ?)
+       LIMIT 1`
+    )
+    .get(groupSlug, tabSubgroup, tabSubgroup, tabSubgroup) as { slug: string } | undefined;
+  return child?.slug ?? null;
 }
 
 function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
@@ -2077,16 +2095,8 @@ function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): 
     return listAccountsForPortfolioGroupSlug(groupSlug);
   }
   if (pgRow && tabSubgroup != null && tabSubgroup !== "") {
-    const child = db
-      .prepare(
-        `SELECT c.slug FROM portfolio_groups p
-         JOIN portfolio_group_items i ON i.group_id = p.id AND i.item_kind = 'group'
-         JOIN portfolio_groups c ON c.id = i.child_group_id
-         WHERE p.slug = ? AND (c.kind_slug = ? OR c.api_subgroup = ? OR c.slug = ?)
-         LIMIT 1`
-      )
-      .get(groupSlug, tabSubgroup, tabSubgroup, tabSubgroup) as { slug: string } | undefined;
-    if (child) return listAccountsForPortfolioGroupSlug(child.slug);
+    const childSlug = resolveGroupTabChildSlug(groupSlug, tabSubgroup);
+    if (childSlug) return listAccountsForPortfolioGroupSlug(childSlug);
   }
   if (groupSlug === "net_worth") {
     const bucketIds = new Set<number>();

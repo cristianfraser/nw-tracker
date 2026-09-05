@@ -1,6 +1,7 @@
 import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
+import type { NavNodeChartBucketsDto } from "./groupChartBuckets.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
 import { listSingleSourceReferenceSlugsByChartHost } from "./portfolioGroupReference.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
@@ -45,6 +46,13 @@ export type NavTreeNodeDto = {
    * Omitted when the node hosts none.
    */
   linked_card_slugs?: string[];
+  /**
+   * Grouped chart structure for this node's page (sidebar-nav payload only, via
+   * `annotateSidebarNavChartBuckets`): the same bucket lines the real grouped blocks carry, so
+   * the client's loading skeleton renders the final chart shape. Absent ⇔ the real payload has
+   * no grouped blocks for this node.
+   */
+  chart_buckets?: NavNodeChartBucketsDto;
   children: NavTreeNodeDto[];
 };
 

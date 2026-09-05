@@ -1,3 +1,5 @@
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
@@ -34,15 +36,15 @@ function isDashboardNwBucketSlug(slug: string): boolean {
   return DASHBOARD_NW_BUCKET_SLUGS.has(slug);
 }
 
-function isNavBucketNode(n: NavTreeNodeDto): boolean {
+export function isNavBucketNode(n: NavTreeNodeDto): boolean {
   return n.group_kind === "nav_bucket";
 }
 
-function isLiabilityGroupNavNode(n: NavTreeNodeDto): boolean {
+export function isLiabilityGroupNavNode(n: NavTreeNodeDto): boolean {
   return n.group_kind === "liability_group";
 }
 
-function resolveDashboardBucketFromNavNode(n: NavTreeNodeDto): string | null {
+export function resolveDashboardBucketFromNavNode(n: NavTreeNodeDto): string | null {
   const dash = n.dashboard_bucket_slug?.trim();
   if (dash && isDashboardNwBucketSlug(dash)) return dash;
   const asset = n.asset_group_slug?.trim();
@@ -51,8 +53,8 @@ function resolveDashboardBucketFromNavNode(n: NavTreeNodeDto): string | null {
   return null;
 }
 
-/** Group node that becomes one chart series (ported from client `isPortfolioStripCardNode`). */
-function isChartBucketCardNode(n: NavTreeNodeDto): boolean {
+/** Group node that becomes one chart series / strip card (single source; client picks emitted structure). */
+export function isChartBucketCardNode(n: NavTreeNodeDto): boolean {
   if (!n.route_path?.trim() || isLiabilityGroupNavNode(n)) return false;
   if (isNavBucketNode(n) && n.slug !== "cash_eqs") return false;
   if (n.account_id != null || n.expense_account_id != null) return false;
@@ -69,7 +71,7 @@ function isChartBucketAccountNode(n: NavTreeNodeDto): boolean {
 }
 
 /** Group children for a chart bucket row; flattens `nav_bucket` hubs (except cash_eqs). */
-function chartBucketGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
+export function chartBucketGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   const out: NavTreeNodeDto[] = [];
   for (const child of root.children ?? []) {
     if (isNavBucketNode(child) && child.slug !== "cash_eqs") {
@@ -85,7 +87,30 @@ function chartBucketAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   return (root.children ?? []).filter(isChartBucketAccountNode);
 }
 
-/** Nav nodes that each become one chart series in "Agrupado" mode (ported from client). */
+/**
+ * Graph ordering for account-node buckets: current valuation (today's CLP mark) descending,
+ * then label. Group-node bucket order stays the hand-set nav order — only account lines are
+ * valuation-ordered, matching the per-account row ordering (see groupTabOrdering.ts).
+ */
+function sortAccountNodesByMarkDesc(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
+  const today = chileCalendarTodayYmd();
+  const value = new Map<number, number>();
+  for (const n of nodes) {
+    const mark = accountMarkClpAtYmd(n.account_id!, today);
+    value.set(
+      n.account_id!,
+      mark != null && Number.isFinite(mark.value_clp) ? mark.value_clp : Number.NEGATIVE_INFINITY
+    );
+  }
+  return [...nodes].sort((a, b) => {
+    const va = value.get(a.account_id!)!;
+    const vb = value.get(b.account_id!)!;
+    if (va !== vb) return vb - va;
+    return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+  });
+}
+
+/** Nav nodes that each become one chart series in "Agrupado" mode (single source; client picks). */
 export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
   const groupKids = chartBucketGroupChildren(navNode);
   const accountKids = chartBucketAccountChildren(navNode);
@@ -95,13 +120,13 @@ export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDt
   if (groupKids.length === 1) {
     const sole = groupKids[0]!;
     const innerAccounts = chartBucketAccountChildren(sole);
-    if (innerAccounts.length >= 2) return innerAccounts;
+    if (innerAccounts.length >= 2) return sortAccountNodesByMarkDesc(innerAccounts);
     const innerGroups = chartBucketGroupChildren(sole);
     if (innerGroups.length >= 2) return innerGroups;
     return [sole];
   }
 
-  if (accountKids.length >= 2) return accountKids;
+  if (accountKids.length >= 2) return sortAccountNodesByMarkDesc(accountKids);
   return [];
 }
 
@@ -115,7 +140,7 @@ function navChartBucketNavNodesUngrouped(navNode: NavTreeNodeDto): NavTreeNodeDt
     if (innerGroups.length >= 2) {
       out.push(...innerGroups);
     } else if (innerAccounts.length >= 2) {
-      out.push(...innerAccounts);
+      out.push(...sortAccountNodesByMarkDesc(innerAccounts));
     } else {
       out.push(child);
     }
@@ -238,4 +263,57 @@ export function buildLiabilitiesChartBucketPlan(navNode: NavTreeNodeDto): ChartB
     keyPrefix: "liab",
     memberIds: liabilityBucketAccountIds,
   });
+}
+
+/** Client projection of {@link ChartBucketMeta} — one grouped chart line, emitted on the nav tree. */
+export type ChartBucketLineMetaDto = {
+  data_key: string;
+  /** Synthetic negative account id — same id the real grouped block's line carries. */
+  account_id: number;
+  dep_key: string;
+  bar_data_key: string;
+  name: string;
+  name_i18n_key: string | null;
+  color_rgb: string | null;
+};
+
+export type NavNodeChartBucketsDto = {
+  grouped?: ChartBucketLineMetaDto[];
+  ungrouped?: ChartBucketLineMetaDto[];
+  /** Pasivos pages: single grouped mode, no Agrupado toggle. */
+  liab?: ChartBucketLineMetaDto[];
+};
+
+function planLineMetaDtos(plan: ChartBucketPlan): ChartBucketLineMetaDto[] {
+  return plan.orderedKeys.map((key) => {
+    const m = plan.meta[key]!;
+    return {
+      data_key: m.dataKey,
+      account_id: m.accountId,
+      dep_key: m.depKey,
+      bar_data_key: m.barDataKey,
+      name: m.name,
+      name_i18n_key: m.name_i18n_key,
+      color_rgb: m.color_rgb,
+    };
+  });
+}
+
+/**
+ * Grouped chart structure for a nav node, emitted on the sidebar-nav payload so the client's
+ * loading skeleton renders the same bucket lines the real payload will carry. Emission conditions
+ * mirror `buildGroupedChartPayload` (valuationTimeseries.ts) exactly: a mode is present here iff
+ * the real payload emits that grouped block, so payload-presence toggles agree skeleton↔real.
+ */
+export function chartBucketsDtoForNavNode(navNode: NavTreeNodeDto): NavNodeChartBucketsDto | null {
+  if (isLiabilitiesChartNavNode(navNode)) {
+    if (!shouldAggregateLiabilitiesCharts(navNode)) return null;
+    return { liab: planLineMetaDtos(buildLiabilitiesChartBucketPlan(navNode)) };
+  }
+  const out: NavNodeChartBucketsDto = {};
+  for (const grouped of [true, false] as const) {
+    if (!shouldAggregateNavCharts(navNode, grouped)) continue;
+    out[grouped ? "grouped" : "ungrouped"] = planLineMetaDtos(buildNavChartBucketPlan(navNode, grouped));
+  }
+  return out.grouped || out.ungrouped ? out : null;
 }

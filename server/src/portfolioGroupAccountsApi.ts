@@ -16,16 +16,21 @@ export async function listPortfolioGroupAccountsForApi(
   const leafGroupSlugById = leafPortfolioGroupSlugByAccountIds(tabRows.map((r) => r.account_id));
 
   const ph = tabRows.map(() => "?").join(",");
-  const rows = db
+  const fetched = db
     .prepare(
       `SELECT a.id, a.name, a.notes, a.created_at, a.exclude_from_group_totals, a.color_rgb,
               g.slug AS bucket_slug, g.label AS bucket_label
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id IN (${ph})
-       ORDER BY g.sort_order, a.id, a.name`
+       WHERE a.id IN (${ph})`
     )
     .all(...tabRows.map((r) => r.account_id)) as Record<string, unknown>[];
+
+  // Preserve the group-tab ordering (bucket-major, valuation desc) — the single ordering authority.
+  const byId = new Map(fetched.map((row) => [row.id as number, row]));
+  const rows = tabRows
+    .map((r) => byId.get(r.account_id))
+    .filter((row): row is Record<string, unknown> => row != null);
 
   return rows.map((row) => ({
     ...row,

@@ -142,9 +142,10 @@ export function GroupInfoPage() {
         displayUnit,
         shell?.accounts ?? [],
         portfolioGroup,
-        placeholderFirstMonth
+        placeholderFirstMonth,
+        navMatchNode
       ),
-    [displayUnit, shell?.accounts, portfolioGroup, placeholderFirstMonth]
+    [displayUnit, shell?.accounts, portfolioGroup, placeholderFirstMonth, navMatchNode]
   );
   const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_proportional);
   const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
