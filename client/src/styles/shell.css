@@ -194,7 +194,7 @@
   .market-ticker-panel::before {
     content: "";
     position: absolute;
-    left: 0;
+    left: -1px;
     top: 0;
     bottom: -1px;
     width: calc(min(6.5rem, 10%) + 1.25rem);
