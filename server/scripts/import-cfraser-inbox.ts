@@ -27,6 +27,7 @@
  *   npm run import:cfraser-inbox -- --sync              # run global sync after import
  *   npm run import:cfraser-inbox -- --skip-organize
  *   npm run import:cfraser-inbox -- --skip-checking-pdf
+ *   npm run import:cfraser-inbox -- --skip-lider-boletas # hourly poll: no new boleta this hour
  *
  * Legacy `--skip-checking`, `--skip-cuenta-vista`, `--skip-sync` still disable those steps.
  */
@@ -390,8 +391,12 @@ function main(): void {
 
   // Lider «Boleta Digital» receipts staged by fetch:lider-boletas: parse the PDFs (fail-fast)
   // and import — grocery receipt+items always, an open-month card line when paid with the
-  // Lider card. The staged dirs are the permanent corpus; import is idempotent.
-  if (hasStagedBoletaPdfs()) {
+  // Lider card. The staged dirs are the permanent corpus and the import re-upserts all of it,
+  // which is why the hourly e-mail poll passes --skip-lider-boletas on hours that staged no
+  // new boleta; the nightly runs it unconditionally.
+  if (hasFlag("skip-lider-boletas")) {
+    console.log("\n=== Lider boletas (skipped — --skip-lider-boletas) ===");
+  } else if (hasStagedBoletaPdfs()) {
     const boletaArgs = ["run", "import:lider-boletas", "-w", "nw-tracker-server"];
     if (dryRun) boletaArgs.push("--", "--dry-run");
     const code = runStep(`Import Lider boletas${dryRun ? " (dry run)" : ""}`, "npm", boletaArgs);

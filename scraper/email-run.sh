@@ -5,13 +5,13 @@
 #   scraper/email-run.sh            # run now (manual trigger)
 #   scraper/email-run.sh --dry-run  # list what the fetches would download; import nothing
 #
-# Fetches ONLY what e-mail carries — Santander monthly PDFs + payment receipts, Lider
-# boletas, broker notifications — and applies the cheap e-mail-native imports when a fetch
-# staged something new this hour. Everything else (the bank web session, the inbox/CC
-# pipeline, Racional, statement JSONs) belongs to the 22:00 daily run, which is also the
-# unconditional retry backstop: anything staged here but not imported (a monthly statement
-# PDF waiting in the inbox, a receipt whose checking debit has not landed, a boleta whose
-# import failed) is picked up there.
+# Fetches ONLY what e-mail carries — Santander monthly PDFs + payment receipts, the BCI Lider
+# statement PDF, Lider boletas, broker notifications — and, when a fetch staged something new
+# this hour, runs the inbox pipeline (import:cfraser-inbox, the same one the nightly runs) plus
+# the broker e-mail imports. A monthly facturación therefore imports the hour its mail lands.
+# Everything else (the bank web session, Racional, statement JSONs) belongs to the 22:00 daily
+# run, which is also the unconditional retry backstop: anything staged here but not imported
+# (a failed import, a receipt whose checking debit has not landed) is picked up there.
 #
 # Outcome recording is deliberately NOT record:daily-run — its titles drive the nightly
 # run's same-day skip and staleness accounting, and an hourly row would silently disable
@@ -95,36 +95,41 @@ saved_count() {
 
 if [[ "$DRY_RUN" == "1" ]]; then
   step "Santander e-mail documents (dry run)" run_tee "$TMP_DIR/santander-docs.out" npm run fetch:santander-docs -- --dry-run
+  step "Lider statement e-mail (dry run)" run_tee "$TMP_DIR/lider-statements.out" npm run fetch:lider-statements -- --dry-run
   step "Lider boletas (dry run)" run_tee "$TMP_DIR/lider-boletas.out" npm run fetch:lider-boletas -- --dry-run
   # fetch:emails has no dry mode; --no-mark leaves the watermark alone (safe re-read).
   step "fetch broker e-mail (no-mark)" run_tee "$TMP_DIR/broker-emails.out" npm run fetch:emails -- --no-mark
 else
   step "Santander e-mail documents" run_tee "$TMP_DIR/santander-docs.out" npm run fetch:santander-docs
+  step "Lider statement e-mail" run_tee "$TMP_DIR/lider-statements.out" npm run fetch:lider-statements
   step "Lider boletas" run_tee "$TMP_DIR/lider-boletas.out" npm run fetch:lider-boletas
   step "fetch broker e-mail" run_tee "$TMP_DIR/broker-emails.out" npm run fetch:emails
 fi
 
 sd_saved="$(saved_count "$TMP_DIR/santander-docs.out")"
+ls_saved="$(saved_count "$TMP_DIR/lider-statements.out")"
 lb_saved="$(saved_count "$TMP_DIR/lider-boletas.out")"
 # fetch.ts always logs the count, zero included ("e-mail: N broker message(s)").
 be_msgs="$(sed -n 's/.*e-mail: \([0-9][0-9]*\) broker message(s).*/\1/p' "$TMP_DIR/broker-emails.out" 2>/dev/null | tail -1)"
 be_msgs="${be_msgs:-0}"
 
-# Imports run only when their fetch staged something new this hour. The gate matters:
-# the standalone boleta import re-upserts the whole staged corpus (DB writes → cache-warmer
-# churn on every no-op hour), and unmatched receipts retrying hourly buys nothing — their
-# checking debits arrive with the NIGHTLY xlsx import, whose inbox pipeline retries every
-# staged document unconditionally.
+# Imports run only when a fetch staged something new this hour. The pipeline is the same one
+# the nightly runs (organize → decrypt → parse → CC import, receipts + payment-mirror
+# conversion, cartolas, boletas), so a monthly statement PDF imports the hour it lands instead
+# of waiting for 22:00 — and it is cheap on a quiet corpus (sha-keyed parse cache, statement
+# fingerprints). The one whole-corpus stage is the boleta import (the staged dirs are the
+# permanent corpus), so it is skipped unless THIS hour staged a new boleta. Anything the gate
+# misses — a failed import, a receipt whose checking debit has not landed — is retried by the
+# nightly, whose pipeline runs unconditionally.
 if [[ "$DRY_RUN" != "1" ]]; then
-  if [[ "$lb_saved" -gt 0 ]]; then
-    step "Lider boletas import" npm run import:lider-boletas
+  if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 ]]; then
+    if [[ "$lb_saved" -gt 0 ]]; then
+      step "inbox pipeline" npm run import:cfraser-inbox
+    else
+      step "inbox pipeline (no new boletas)" npm run import:cfraser-inbox -- --skip-lider-boletas
+    fi
   else
-    log "=== Lider boletas import (skipped — nothing new staged)"
-  fi
-  if [[ "$sd_saved" -gt 0 ]]; then
-    step "Santander receipts import" npm run import:santander-receipts
-  else
-    log "=== Santander receipts import (skipped — nothing new staged)"
+    log "=== inbox pipeline (skipped — nothing new staged)"
   fi
   if [[ "$be_msgs" -gt 0 ]]; then
     # Same gate as daily-run.sh: the env var is set in the LaunchAgent plist.
@@ -133,12 +138,18 @@ if [[ "$DRY_RUN" != "1" ]]; then
     else
       step "Fintual e-mail movements (report only)" npm run import:fintual-emails
     fi
+    if [[ "${NW_TRACKER_RACIONAL_APPLY:-0}" == "1" ]]; then
+      step "Racional e-mail movements (apply)" npm run import:racional-emails -- --apply
+    else
+      step "Racional e-mail movements (report only)" npm run import:racional-emails
+    fi
   else
     log "=== Fintual e-mail movements (skipped — no new broker mail)"
+    log "=== Racional e-mail movements (skipped — no new broker mail)"
   fi
 fi
 
-if [[ "$sd_saved" -gt 0 || "$lb_saved" -gt 0 || "$be_msgs" -gt 0 ]]; then
+if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 || "$be_msgs" -gt 0 ]]; then
   activity=1
-  log "activity this hour: santander-docs saved=$sd_saved, boletas saved=$lb_saved, broker mail=$be_msgs"
+  log "activity this hour: santander-docs saved=$sd_saved, lider statement saved=$ls_saved, boletas saved=$lb_saved, broker mail=$be_msgs"
 fi
