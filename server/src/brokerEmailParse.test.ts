@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   brokerFromSender,
   classifyBrokerEmail,
+  collapseBrokerEmailEventsByMessageId,
   parseChileanNumber,
   parseUsNumber,
   scanBrokerEmails,
@@ -224,5 +225,31 @@ describe("brokerEmailParse", () => {
     ]);
     expect(withNudge.needsFetch).toEqual(["racional"]);
     expect(withNudge.importable.map((e) => e.ticker)).toEqual(["SPY"]);
+  });
+
+  it("collapses a mail staged in several scan files to its richest parse", () => {
+    const retiro = {
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 Reserva",
+      date: "2026-08-31T15:08:35Z",
+    };
+    const body =
+      "Pagamos tu retiro de $100.000 desde 🏦 Reserva. El retiro se hizo desde el Fondo Mutuo " +
+      "Very Conservative Streep Serie A (69,1041 cuotas).";
+    const events = [
+      // Short-preview copy from an older scan: amount only, no cuotas.
+      classifyBrokerEmail({ ...retiro, message_id: "<m1>", snippet: "Pagamos tu retiro de $100.000" }),
+      classifyBrokerEmail({ ...retiro, message_id: "<m1>", snippet: body }),
+      // A different mail, same everything else — a real second retiro.
+      classifyBrokerEmail({ ...retiro, message_id: "<m2>", snippet: body, date: "2026-08-31T15:47:56Z" }),
+      // Hand-built input with no id passes through untouched.
+      classifyBrokerEmail({ ...retiro, snippet: body }),
+    ];
+    const collapsed = collapseBrokerEmailEventsByMessageId(events);
+    expect(collapsed).toHaveLength(3);
+    const m1 = collapsed.find((e) => e.message_id === "<m1>")!;
+    expect(m1.units).toBe("69.1041");
+    expect(collapsed.filter((e) => e.message_id === "<m2>")).toHaveLength(1);
+    expect(collapsed.filter((e) => e.message_id == null)).toHaveLength(1);
   });
 });

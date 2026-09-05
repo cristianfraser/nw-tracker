@@ -226,9 +226,23 @@ export async function fetchBrokerEmails(opts?: {
     await client.logout().catch(() => undefined);
   }
 
+  // IMAP `SINCE` is day-granular: the search returns the watermark message's entire day, so
+  // without this every poll re-stages the newest message of the previous scan and it lands in
+  // two scan files. The importers collapse by Message-ID anyway; this keeps the staged corpus
+  // honest. Only applied when the watermark drove the search — an explicit --since is a
+  // deliberate re-read of the whole window.
+  const fetched = emails.length;
+  const watermarkMs = !explicitSince && state?.last_seen_at ? since.getTime() : null;
+  const fresh =
+    watermarkMs == null ? emails : emails.filter((e) => new Date(e.date).getTime() > watermarkMs);
+  emails.length = 0;
+  emails.push(...fresh);
   emails.sort((a, b) => a.date.localeCompare(b.date));
   const newestAt = emails.length > 0 ? emails[emails.length - 1]!.date : null;
-  log(`e-mail: ${emails.length} broker message(s)`);
+  log(
+    `e-mail: ${emails.length} broker message(s)` +
+      (fetched !== emails.length ? ` (${fetched - emails.length} already staged, skipped)` : "")
+  );
 
   if (emails.length === 0) return { emails, file: null, newestAt: null };
 

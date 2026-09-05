@@ -439,7 +439,8 @@ describe("fintualEmailImport", () => {
        VALUES (?, 'vitest Reserva Amb', 0, datetime('now'), 'import:fintual|cert|key=vitest-reserva-amb')`
     ).run(group.id);
     createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
-    for (const ymd of ["2026-08-05", "2026-08-09"]) {
+    // Both AFTER the payment day — only forward-dated credits are candidates at all.
+    for (const ymd of ["2026-08-08", "2026-08-10"]) {
       db.prepare(
         `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
          VALUES (?, 444555, 'clp', ?, 'vitest-ambiguous-credit')`
@@ -493,5 +494,139 @@ describe("fintualEmailImport", () => {
     expect(planned[0]!.requires_manual).toMatch(/next month/);
     expect(planned[0]!.synthesized).toBeUndefined();
     expect(planned[0]!.from_account_id).toBeNull();
+  });
+
+  /** Goal account + one unpaired checking credit; returns null on a DB without a cuenta corriente. */
+  function seedGoalAndCredit(
+    slug: string,
+    amount: number,
+    creditYmd: string
+  ): { checkingId: number; goalId: number; creditId: number } | null {
+    let checkingId: number;
+    try {
+      checkingId = checkingAccountId();
+    } catch {
+      return null;
+    }
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
+      | { id: number }
+      | undefined;
+    if (!group) return null;
+    db.prepare(
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+       VALUES (?, ?, 0, datetime('now'), ?)`
+    ).run(group.id, `vitest Reserva ${slug}`, `import:fintual|cert|key=vitest-reserva-${slug}`);
+    const goalId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    createdAccounts.push(goalId);
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, ?, 'clp', ?, ?)`
+    ).run(checkingId, amount, creditYmd, `vitest-retiro-credit-${slug}`);
+    const creditId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    created.push(creditId);
+    return { checkingId, goalId, creditId };
+  }
+
+  function retiroMail(slug: string, amountLabel: string, cuotas: string, date: string, messageId?: string) {
+    return classifyBrokerEmail({
+      message_id: messageId ?? null,
+      sender: FINTUAL,
+      subject: `Pagamos tu retiro de 🏦 vitest Reserva ${slug}`,
+      snippet:
+        `Pagamos tu retiro de $${amountLabel} desde 🏦 vitest Reserva ${slug}. El retiro se hizo ` +
+        `desde el Fondo Mutuo Very Conservative Streep Serie A (${cuotas} cuotas).`,
+      date,
+    });
+  }
+
+  it("plans one row when the same mail sits in two scan files", () => {
+    // The 2026-08-31 incident: IMAP SINCE is day-granular, so the watermark message came back
+    // in the next scan too. Both copies planned `promote <same credit>`; the second promote
+    // threw and rolled back the batch on every run for four days.
+    const seeded = seedGoalAndCredit("dup", 100000, "2026-08-31");
+    if (!seeded) return;
+    const id = `<vitest-dup-${Date.now()}@example>`;
+    const copy1 = retiroMail("dup", "100.000", "69,1041", "2026-08-31T15:08:35Z", id);
+    const copy2 = retiroMail("dup", "100.000", "69,1041", "2026-08-31T15:08:35Z", id);
+
+    const planned = planFintualEmailBatch([copy1, copy2]);
+    expect(planned).toHaveLength(1);
+    expect(planned[0]).toMatchObject({
+      promote_movement_id: seeded.creditId,
+      requires_manual: null,
+      duplicate_of: null,
+    });
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+    const row = db
+      .prepare(`SELECT from_account_id, to_account_id FROM movements WHERE id = ?`)
+      .get(seeded.creditId) as { from_account_id: number; to_account_id: number };
+    expect(row.from_account_id).toBe(seeded.goalId);
+    expect(row.to_account_id).toBe(seeded.checkingId);
+  });
+
+  it("keeps two distinct same-day retiros of the same amount apart", () => {
+    // Different Message-IDs are different events even when amount, cuotas and day coincide.
+    const seeded = seedGoalAndCredit("twin", 100000, "2026-08-31");
+    if (!seeded) return;
+    const a = retiroMail("twin", "100.000", "69,1041", "2026-08-31T15:08:35Z", `<vitest-twin-a-${Date.now()}>`);
+    const b = retiroMail("twin", "100.000", "69,1041", "2026-08-31T15:47:56Z", `<vitest-twin-b-${Date.now()}>`);
+
+    const planned = planFintualEmailBatch([a, b]);
+    expect(planned).toHaveLength(2);
+    // Only one unpaired credit exists: the first mail claims it, the second is refused instead
+    // of re-promoting the same row (which would throw and roll back both).
+    expect(planned[0]!.promote_movement_id).toBe(seeded.creditId);
+    expect(planned[0]!.requires_manual).toBeNull();
+    expect(planned[1]!.requires_manual).toMatch(/already claimed/);
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+  });
+
+  it("never pairs a credit dated before the payment day", () => {
+    // 2026-09-01: the $5x.xxx retiro's real bank leg was not imported yet, and the symmetric
+    // window handed it an unrelated $5x.xxx credit from 2026-08-28 — which got rewritten in
+    // place into a Fintual transfer. A wire cannot post before the fund paid it.
+    const seeded = seedGoalAndCredit("early", 50000, "2026-08-28");
+    if (!seeded) return;
+    const planned = planFintualEmailBatch([
+      retiroMail("early", "50.000", "34,5414", "2026-09-01T15:49:25Z", `<vitest-early-${Date.now()}>`),
+    ]);
+    expect(planned[0]!.promote_movement_id).toBeUndefined();
+    // With no forward-dated candidate the mail synthesizes its own transfer (a Tuesday: next
+    // business day stays inside the month), and the 08-28 credit is left exactly as it was.
+    expect(planned[0]!.synthesized).toBe(true);
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+    const synthesized = db
+      .prepare(`SELECT id FROM movements WHERE from_account_id = ? AND to_account_id = ?`)
+      .get(seeded.goalId, seeded.checkingId) as { id: number };
+    created.push(synthesized.id);
+    const untouched = db
+      .prepare(`SELECT account_id, from_account_id, note FROM movements WHERE id = ?`)
+      .get(seeded.creditId) as { account_id: number; from_account_id: number | null; note: string };
+    expect(untouched).toEqual({
+      account_id: seeded.checkingId,
+      from_account_id: null,
+      note: "vitest-retiro-credit-early",
+    });
+  });
+
+  it("recognises its own synthesis by Message-ID even when the ledger row moved", () => {
+    // The synthetic table is UNIQUE on message_id; if the transfer were later re-dated outside
+    // the ±5-day ledger match the importer must still see the mail as done, not re-insert.
+    const seeded = seedGoalAndCredit("moved", 77777, "2026-09-20"); // credit far away: unused
+    if (!seeded) return;
+    const id = `<vitest-moved-${Date.now()}>`;
+    const mail = retiroMail("moved", "77.777", "55,5", "2026-08-04T15:00:00Z", id);
+    const first = planFintualEmailBatch([mail]);
+    expect(first[0]!.synthesized).toBe(true);
+    expect(applyFintualEmailMovements(first)).toBe(1);
+    const mov = db
+      .prepare(`SELECT id FROM movements WHERE from_account_id = ? AND occurred_on = '2026-08-04'`)
+      .get(seeded.goalId) as { id: number };
+    created.push(mov.id);
+    db.prepare(`UPDATE movements SET occurred_on = '2026-07-01' WHERE id = ?`).run(mov.id);
+
+    const again = planFintualEmailBatch([mail]);
+    expect(again[0]!.duplicate_of).toBe(mov.id);
+    expect(applyFintualEmailMovements(again)).toBe(0);
   });
 });

@@ -338,6 +338,41 @@ export type BrokerEmailScan = {
   unrecognised: BrokerEmailEvent[];
 };
 
+/** Fields whose presence makes one parse of the same mail richer than another. */
+function eventRichness(e: BrokerEmailEvent): number {
+  return (
+    (e.amount != null ? 1 : 0) +
+    (e.clp_amount != null ? 1 : 0) +
+    (e.units != null ? 1 : 0) +
+    (e.price != null ? 1 : 0)
+  );
+}
+
+/**
+ * One mail can sit in several scan files: scans accumulate on disk and are all re-read every
+ * run, the fetcher's IMAP `SINCE` is day-granular so the watermark message's whole day comes
+ * back on the next poll, and the snippet cap changed over time. Collapse by Message-ID, keeping
+ * the richest parse. Every importer that plans writes from scan files MUST go through this —
+ * a duplicated retiro mail planned twice targets the same checking credit twice, and the
+ * second promote throws inside the batch transaction (2026-09-01: 39 consecutive failed runs,
+ * nothing written). Events without a Message-ID (hand-built inputs) pass through untouched.
+ */
+export function collapseBrokerEmailEventsByMessageId(
+  events: readonly BrokerEmailEvent[]
+): BrokerEmailEvent[] {
+  const byId = new Map<string, BrokerEmailEvent>();
+  const out: BrokerEmailEvent[] = [];
+  for (const e of events) {
+    if (!e.message_id) {
+      out.push(e);
+      continue;
+    }
+    const prev = byId.get(e.message_id);
+    if (!prev || eventRichness(e) > eventRichness(prev)) byId.set(e.message_id, e);
+  }
+  return [...out, ...byId.values()];
+}
+
 /** Brokers this project can actually drive a browser against. */
 const FETCHABLE: ReadonlySet<BrokerName> = new Set<BrokerName>(["racional"]);
 

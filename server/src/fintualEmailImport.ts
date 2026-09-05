@@ -27,7 +27,12 @@ import {
   fintualGoalFromWithdrawalSubject,
   promoteCheckingCreditToTransfer,
 } from "./fintualWithdrawalPairing.js";
-import { normalizeSubject, type BrokerEmailEvent } from "./brokerEmailParse.js";
+import {
+  collapseBrokerEmailEventsByMessageId,
+  normalizeSubject,
+  type BrokerEmailEvent,
+} from "./brokerEmailParse.js";
+import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros.js";
 
 /** Same tolerance as `fintualCertImport.CERT_MATCH_WINDOW_DAYS`, for the same reason. */
 export const EMAIL_MATCH_WINDOW_DAYS = 5;
@@ -211,6 +216,13 @@ export function planFintualEmailMovement(
             : "cannot read the goal from the subject — link it in /panel/mirror-pairs",
         };
       }
+      // This exact mail already produced a synthesized transfer: the strongest possible
+      // duplicate evidence, and checked first because `fintual_synthetic_retiro_transfers`
+      // is UNIQUE on message_id — reaching the insert again would abort the whole batch.
+      if (event.message_id) {
+        const synthesized = syntheticRetiroMovementIdForMessageId(event.message_id);
+        if (synthesized != null) return { ...base, duplicate_of: synthesized };
+      }
       // Already reconciled on an earlier run (or by hand): the transfer this e-mail describes is
       // in the ledger, so it is a duplicate rather than something still waiting for its bank leg.
       const existing = findNearbyTransfers.all(
@@ -324,13 +336,45 @@ export function markFintualDuplicates(
   });
 }
 
+/**
+ * Two rows in one batch that would promote the SAME checking credit cannot both be right: the
+ * first rewrites the row into a transfer and the second's UPDATE matches nothing and throws,
+ * rolling back the whole batch. The message-id collapse removes the duplicated-mail cause;
+ * this guards the remaining one — two distinct retiro mails whose only candidate credit is
+ * one and the same row — by keeping the first and sending the rest to a human.
+ */
+function refusePromoteCollisions(
+  planned: readonly FintualPlannedMovement[]
+): FintualPlannedMovement[] {
+  const claimed = new Set<number>();
+  return planned.map((p) => {
+    if (p.promote_movement_id == null || p.duplicate_of != null || p.requires_manual != null) {
+      return p;
+    }
+    if (claimed.has(p.promote_movement_id)) {
+      return {
+        ...p,
+        requires_manual:
+          `checking credit ${p.promote_movement_id} is already claimed by another retiro in this ` +
+          "batch — link it in /panel/mirror-pairs",
+      };
+    }
+    claimed.add(p.promote_movement_id);
+    return p;
+  });
+}
+
 export function planFintualEmailBatch(
   events: readonly BrokerEmailEvent[]
 ): FintualPlannedMovement[] {
-  const fintual = events.filter((e) => e.broker === "fintual" && e.is_transaction && e.is_complete);
+  const fintual = collapseBrokerEmailEventsByMessageId(
+    events.filter((e) => e.broker === "fintual" && e.is_transaction && e.is_complete)
+  );
   // Oldest first so the ledger reads chronologically when applied.
   const ordered = [...fintual].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
-  return markFintualDuplicates(ordered.map((e) => planFintualEmailMovement(e, fintual)));
+  return refusePromoteCollisions(
+    markFintualDuplicates(ordered.map((e) => planFintualEmailMovement(e, fintual)))
+  );
 }
 
 const insTransfer = db.prepare(
