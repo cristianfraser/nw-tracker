@@ -27,30 +27,6 @@ export interface AccountListRow {
   chart_inactive?: boolean;
 }
 
-export type PortfolioTreeNodeDto =
-  | {
-      kind: "group";
-      id: number;
-      slug: string;
-      label: string;
-      sort_order: number;
-      color_rgb: string;
-      color: string;
-      children: PortfolioTreeNodeDto[];
-    }
-  | {
-      kind: "account";
-      account_id: number;
-      name: string;
-      sort_order: number;
-      color_rgb: string;
-      color: string;
-    };
-
-export interface PortfolioTreeResponse {
-  roots: PortfolioTreeNodeDto[];
-}
-
 export interface AccountPositionSnapshot {
   ticker: string;
   units_kind: "shares" | "coin";

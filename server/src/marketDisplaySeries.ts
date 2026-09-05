@@ -35,10 +35,6 @@ const stmtAll = db.prepare(
    ORDER BY sort_order, id`
 );
 
-export function listMarketDisplaySeries(): MarketDisplaySeriesRow[] {
-  return stmtAll.all() as MarketDisplaySeriesRow[];
-}
-
 export function listMarqueeSeries(): MarketDisplaySeriesRow[] {
   return (stmtAll.all() as MarketDisplaySeriesRow[]).filter((r) => r.show_in_marquee === 1);
 }

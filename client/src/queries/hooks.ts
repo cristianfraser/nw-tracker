@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { api } from "../api";
 import {
@@ -280,14 +280,6 @@ export function useAccountsAll() {
   });
 }
 
-export function usePortfolioTree() {
-  return useQuery({
-    queryKey: queryKeys.portfolioTree(),
-    queryFn: () => api.portfolioTree(),
-    staleTime: 60_000,
-  });
-}
-
 export function useRatesInstruments() {
   return useQuery({
     queryKey: queryKeys.ratesInstruments(),
@@ -372,15 +364,6 @@ export function useMarketSeries() {
   return useQuery({
     queryKey: queryKeys.marketSeries(),
     queryFn: () => api.marketSeries(),
-  });
-}
-
-export function useFxCoverage(enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.fxCoverage(),
-    queryFn: () => api.fxCoverage(),
-    enabled,
-    staleTime: 60_000,
   });
 }
 
@@ -584,7 +567,6 @@ export function usePatchCreditCardConfigMutation(accountId: string) {
 
 export {
   useAssignCcExpenseLineCategory,
-  useMarkCcExpenseLineUniqueMutation,
   useDeleteCcPurchaseMutation,
   useDeleteCcStatementLineMutation,
   useMakeStatementLineInstallmentMutation,
@@ -633,39 +615,6 @@ export function usePortfolioGroupMortgageLedger(slug: string | undefined, enable
   });
 }
 
-const SKIP_MONTHLY_PERF_SLUGS = new Set(["cuenta_corriente", "cuenta_vista", "cuenta_ahorro_vivienda"]);
-
-export function useGroupAccountsMonthlyPerformance(
-  accounts: readonly { id: number; name: string; category_slug: string }[],
-  unit: DisplayUnit,
-  enabled: boolean
-) {
-  const eligible = accounts.filter((a) => !SKIP_MONTHLY_PERF_SLUGS.has(a.category_slug));
-  return useQueries({
-    queries: eligible.map((a) => ({
-      queryKey: queryKeys.accountMonthlyPerformance(String(a.id), unit),
-      queryFn: () => api.accountMonthlyPerformance(a.id, unit),
-      enabled,
-      ...displayUnitQueryBehavior,
-    })),
-  });
-}
-
-export function useGroupAccountMovements(
-  accounts: readonly { id: number; name: string; category_slug: string }[],
-  enabled: boolean
-) {
-  return useQueries({
-    queries: accounts.map((a) => ({
-      queryKey: queryKeys.accountMovements(a.id),
-      queryFn: async () => {
-        const res = await api.accountMovements(a.id);
-        return { account: a, movements: res.movements ?? [] };
-      },
-      enabled,
-    })),
-  });
-}
 
 export function useAccountDetailBundle(
   id: string | undefined,

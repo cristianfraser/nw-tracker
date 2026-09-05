@@ -17,15 +17,14 @@ export type BankConfig = {
   loginAccount: string;
 };
 
-export type BankName = "santander" | "lider" | "racional";
+export type BankName = "santander" | "racional";
 
 /**
- * Which identifier each bank signs in with. The Chilean banks use the RUT; Racional is a
+ * Which identifier each bank signs in with. Santander uses the RUT; Racional is a
  * brokerage app and uses an e-mail, so the field cannot be assumed.
  */
 export const LOGIN_IDENTIFIER: Record<BankName, "rut" | "email"> = {
   santander: "rut",
-  lider: "rut",
   racional: "email",
 } as const;
 

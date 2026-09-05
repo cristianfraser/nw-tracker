@@ -109,7 +109,6 @@ export const api = {
       bucket_slug: string;
       created_leaf_bucket: boolean;
     }>(`/api/accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  portfolioTree: () => j<import("./types").PortfolioTreeResponse>("/api/meta/portfolio-tree"),
   updateAccountColor: (id: number, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/accounts/${id}/color`, {
       method: "PATCH",
@@ -126,10 +125,6 @@ export const api = {
       body: JSON.stringify({ color_rgb }),
     }),
   ratesInstruments: () => j<import("./types").RatesInstrumentsResponse>("/api/meta/rates-instruments"),
-  dashboard: (includeUsd?: boolean) =>
-    j<import("./types").DashboardResponse>(
-      includeUsd ? "/api/dashboard?include_usd=true" : "/api/dashboard"
-    ),
   dashboardNavSnapshot: (unit: "clp" | "usd") => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
@@ -194,26 +189,6 @@ export const api = {
     const qs = q.toString();
     return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${qs}`);
   },
-  accountsByGroup: (groupSlug: string, subgroup?: string) => {
-    const q = new URLSearchParams();
-    q.set("group", groupSlug);
-    if (subgroup) q.set("subgroup", subgroup);
-    return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${q.toString()}`);
-  },
-  accountDepositInflows: (id: string | number) =>
-    j<import("./types").AccountDepositInflowsResponse>(`/api/accounts/${id}/deposit-inflows`),
-  accountMortgageLedger: (id: string | number) =>
-    j<import("./types").AccountMortgageLedgerResponse>(`/api/accounts/${id}/mortgage-ledger`),
-  accountCcInstallments: (id: string | number, extraOffsets?: Record<string, number>) => {
-    const q = new URLSearchParams();
-    if (extraOffsets && Object.keys(extraOffsets).length > 0) {
-      q.set("extraOffsets", JSON.stringify(extraOffsets));
-    }
-    const qs = q.toString();
-    return j<import("./types").AccountCcInstallmentsResponse>(
-      `/api/accounts/${id}/cc-installments${qs ? `?${qs}` : ""}`
-    );
-  },
   portfolioGroupCcLedger: (slug: string, extraOffsets?: Record<string, number>) => {
     const q = new URLSearchParams();
     if (extraOffsets && Object.keys(extraOffsets).length > 0) {
@@ -249,42 +224,12 @@ export const api = {
       `/api/accounts/${id}/cc-statement-lines/${lineId}/make-installment`,
       { method: "POST", body: JSON.stringify({ cuotas_totales }), headers: { "Content-Type": "application/json" } }
     ),
-  accountValuationTimeseries: (
-    id: string | number,
-    unit: "clp" | "usd",
-    opts?: { granularity?: "monthly" | "daily" }
-  ) => {
-    const q = new URLSearchParams();
-    if (unit === "usd") q.set("include_usd", "true");
-    if (opts?.granularity === "daily") q.set("granularity", "daily");
-    const qs = q.toString();
-    return j<import("./types").AccountValuationTimeseriesResponse>(
-      `/api/accounts/${id}/valuation-timeseries${qs ? `?${qs}` : ""}`
-    );
-  },
-  accountSummary: (id: string | number) =>
-    j<{
-      account_id: number;
-      category_slug: string | null;
-      group_slug: string | null;
-      group_label: string | null;
-      group_peer_count: number | null;
-      deposits_clp: number;
-      withdrawals_clp: number;
-      latest_valuation_clp: number | null;
-      latest_valuation_date: string | null;
-      position: import("./types").AccountPositionSnapshot | null;
-    }>(`/api/accounts/${id}/summary`),
   accountMonthlyPerformance: (id: string | number, unit: "clp" | "usd") => {
     const q = unit === "usd" ? "?include_usd=true" : "";
     return j<import("./types").AccountMonthlyPerformanceResponse>(
       `/api/accounts/${id}/performance-monthly${q}`
     );
   },
-  accountCheckingCartolaMonths: (id: string | number) =>
-    j<import("./types").CheckingCartolaMonthsResponse>(
-      `/api/accounts/${id}/checking-cartola-months`
-    ),
   putCheckingLedgerAnchor: (
     id: string | number,
     body: { amount_clp: number; occurred_on: string } | { clear: true }
@@ -471,23 +416,6 @@ export const api = {
       `/api/groups/${encodeURIComponent(slug)}/performance-monthly${qs ? `?${qs}` : ""}`
     );
   },
-  accountMovements: (id: string | number) =>
-    j<{
-      movements: {
-        id: number;
-        amount: number;
-        currency: string;
-        counter_amount: number | null;
-        counter_currency: string | null;
-        occurred_on: string;
-        note: string | null;
-        units_delta: number | null;
-        flow_kind: string | null;
-        ticker: string | null;
-        flow_type: string;
-        flow_type_label: string;
-      }[];
-    }>(`/api/accounts/${id}/movements`),
   createAccountMovement: (id: string | number, body: Record<string, unknown>) =>
     j<{ id: number; units_delta: number | null; flow_kind?: string }>(
       `/api/accounts/${id}/movements`,
@@ -516,16 +444,6 @@ export const api = {
       body: JSON.stringify(body),
     }),
   income: () => j<import("./types").FlowsIncomeResponse>("/api/income"),
-  createIncome: (body: {
-    amount_clp: number;
-    received_on: string;
-    source?: string | null;
-    note?: string | null;
-  }) =>
-    j<{ id: number }>("/api/income", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   patchWorkEarning: (
     id: number,
     body: {
@@ -566,16 +484,6 @@ export const api = {
       `/api/income/movements/${movementId}/restore`,
       { method: "POST" }
     ),
-  createExpense: (body: {
-    amount_clp: number;
-    spent_on: string;
-    category: string;
-    note?: string | null;
-  }) =>
-    j<{ id: number }>("/api/expenses", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   flowsDeposits: () => j<import("./types").FlowsDepositsResponse>("/api/flows/deposits"),
   flowsPl: (days?: number) =>
     j<import("./types").FlowsPlResponse>(
@@ -716,7 +624,6 @@ export const api = {
   deleteCcFacturadoFinancingLink: (id: number) =>
     j<void>(`/api/flows/expenses/credit-card/financing-links/${id}`, { method: "DELETE" }),
   marketSeries: () => j<import("./types").MarketSeriesResponse>("/api/market-series"),
-  fxCoverage: () => j<import("./types").FxCoverage>("/api/fx/coverage"),
   mortgageUfReminder: () =>
     j<import("./types").MortgageUfReminder>("/api/reminders/mortgage-uf"),
   fxBidAskGaps: () => j<{ gaps: import("./types").FxBidAskGapRow[] }>("/api/fx/bid-ask/gaps"),

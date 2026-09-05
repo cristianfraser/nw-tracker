@@ -29,7 +29,6 @@ import {
   clearCheckingBalanceCache,
   ensureCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
-import { loadParsedCheckingCartolasFromScreenshots } from "./checkingCartolaScreenshotImport.js";
 import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 import { preserveCheckingGastosCategoriesForCartolaNotes } from "./checkingGastosCategoryPersist.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
@@ -793,42 +792,6 @@ export function importCheckingCartolasFromDir(opts: {
   }
 
   return finishCartolaImportRun(accountId, opts, fileLogs);
-}
-
-export function importCheckingCartolasFromScreenshots(opts?: {
-  accountId?: number;
-  wipe?: boolean;
-  dryRun?: boolean;
-  jsonPath?: string;
-}): ImportCheckingCartolasResult {
-  const accountId = opts?.accountId ?? checkingAccountId();
-  const fileLogs: CheckingCartolaFileImportLog[] = [];
-
-  if (opts?.wipe && !opts?.dryRun) {
-    const w = wipeCheckingAccountData(accountId);
-    console.log(
-      `Wiped cuenta corriente (account ${accountId}): ${w.movements} movement(s), ${w.valuations} valuation(s), ${w.imports} import record(s).`
-    );
-  } else if (opts?.wipe && opts?.dryRun) {
-    console.log(`[dry-run] Would wipe movements/valuations/imports for account ${accountId}.`);
-  }
-
-  try {
-    const cartolas = loadParsedCheckingCartolasFromScreenshots(opts?.jsonPath);
-    importCartolaList(
-      accountId,
-      cartolas.map((cartola) => ({
-        cartola,
-        label: cartola.source_file,
-      })),
-      { wipe: opts?.wipe, dryRun: opts?.dryRun },
-      fileLogs
-    );
-  } catch (e) {
-    fileLogs.push(logParseError("screenshots", e));
-  }
-
-  return finishCartolaImportRun(accountId, { wipe: opts?.wipe, dryRun: opts?.dryRun }, fileLogs);
 }
 
 /** Insert cartola movements missing from DB (same date/amount/description/doc), using new note keys. */

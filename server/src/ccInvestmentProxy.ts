@@ -17,10 +17,6 @@ export const CC_PROXY_DEFAULT_TICKERS = ["fintual_cert_reserva2"] as const;
 export const CC_PROXY_INLINE_TICKER = "fintual_cert_reserva2";
 
 const stmtGetSetting = db.prepare(`SELECT value FROM app_settings WHERE key = ?`);
-const stmtUpsertSetting = db.prepare(
-  `INSERT INTO app_settings (key, value) VALUES (?, ?)
-   ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-);
 
 export function getCcProxyTickers(): string[] {
   const row = stmtGetSetting.get(CC_PROXY_TICKERS_KEY) as { value: string } | undefined;
@@ -34,10 +30,6 @@ export function getCcProxyTickers(): string[] {
     // fall through
   }
   return [...CC_PROXY_DEFAULT_TICKERS];
-}
-
-export function setCcProxyTickers(tickers: string[]): void {
-  stmtUpsertSetting.run(CC_PROXY_TICKERS_KEY, JSON.stringify(tickers));
 }
 
 // ─── Price helper ─────────────────────────────────────────────────────────────

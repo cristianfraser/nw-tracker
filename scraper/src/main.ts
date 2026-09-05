@@ -1,12 +1,11 @@
 import { runSantander } from "./santander/run.js";
-import { runLider } from "./lider/run.js";
 import { runRacional } from "./racional/run.js";
 import type { BankName } from "./config.js";
 import type { RunOptions } from "./runTypes.js";
 import { DEFAULT_MIN_INTERVAL_MINUTES } from "./runGuard.js";
 import { log } from "./log.js";
 
-const USAGE = `Usage: npm run fetch -- <santander|lider|racional> [options]
+const USAGE = `Usage: npm run fetch -- <santander|racional> [options]
 
 Options:
   --capture          Save every API request/response + screenshots; keep downloads out of the inbox.
@@ -16,7 +15,6 @@ Options:
   --movements-only   Skip statement and cartola downloads.
   --only=a,b         Run only these steps, so a re-test costs no extra requests.
                      santander: card-movements, checking-movements, card-statements, cartola
-                     lider:     movements, statement
                      racional:  movements, positions
   --min-interval=N   Minimum minutes since the last run of this bank (default 30).
   --force            Run despite the interval, and re-fetch documents already recorded.
@@ -24,7 +22,6 @@ Options:
 
 const RUNNERS: Record<BankName, (opts: RunOptions) => Promise<number>> = {
   santander: runSantander,
-  lider: runLider,
   racional: runRacional,
 };
 
