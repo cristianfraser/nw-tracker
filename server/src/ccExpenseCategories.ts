@@ -7,7 +7,7 @@ import {
   markUserDeclinedAutoCategory,
 } from "./ccAdditionalCardExpenseMatch.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
-import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
+import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 

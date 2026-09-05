@@ -14,11 +14,11 @@ import {
 } from "../globalSyncStale.js";
 import { buildImportSyncDocumentCoveragePayload } from "../importSyncDocumentCoverage.js";
 import {
-  createCcExpenseGenericUniqueMerchant,
-  deleteCcExpenseGenericUniqueMerchant,
-  listCcExpenseGenericUniqueMerchants,
-  updateCcExpenseGenericUniqueMerchant,
-} from "../ccExpenseGenericUniqueMerchants.js";
+  createExpenseGenericUniqueMerchant,
+  deleteExpenseGenericUniqueMerchant,
+  listExpenseGenericUniqueMerchants,
+  updateExpenseGenericUniqueMerchant,
+} from "../expenseGenericUniqueMerchants.js";
 import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
@@ -58,7 +58,7 @@ app.get("/api/import-sync/document-coverage", (_req, res) => {
 });
 
 app.get("/api/import-sync/generic-unique-merchants", (_req, res) => {
-  res.json({ merchants: listCcExpenseGenericUniqueMerchants() });
+  res.json({ merchants: listExpenseGenericUniqueMerchants() });
 });
 
 app.post("/api/import-sync/generic-unique-merchants", (req, res) => {
@@ -73,7 +73,7 @@ app.post("/api/import-sync/generic-unique-merchants", (req, res) => {
     return;
   }
   try {
-    const row = createCcExpenseGenericUniqueMerchant(merchantKey);
+    const row = createExpenseGenericUniqueMerchant(merchantKey);
     const backfill = backfillGenericTransferUniquePurchases();
     res.json({ row, backfill });
   } catch (e) {
@@ -99,7 +99,7 @@ app.patch("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
     return;
   }
   try {
-    const row = updateCcExpenseGenericUniqueMerchant(id, merchantKey);
+    const row = updateExpenseGenericUniqueMerchant(id, merchantKey);
     const backfill = backfillGenericTransferUniquePurchases();
     res.json({ row, backfill });
   } catch (e) {
@@ -116,7 +116,7 @@ app.delete("/api/import-sync/generic-unique-merchants/:id", (req, res) => {
     return;
   }
   try {
-    deleteCcExpenseGenericUniqueMerchant(id);
+    deleteExpenseGenericUniqueMerchant(id);
     res.status(204).send();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

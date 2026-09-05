@@ -15,7 +15,7 @@ import {
   isGenericTransferMerchantKey,
   normalizeCcExpenseMerchantKey,
 } from "./ccExpenseCategories.js";
-import { isExactGenericUniqueMerchantKey } from "./ccExpenseGenericUniqueMerchants.js";
+import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 
 /** Asset group for cash / efectivo accounts (internal transfer targets from checking). */

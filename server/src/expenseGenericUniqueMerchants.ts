@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 
-export type CcExpenseGenericUniqueMerchantRow = {
+export type ExpenseGenericUniqueMerchantRow = {
   id: number;
   merchant_key: string;
   sort_order: number;
@@ -8,7 +8,7 @@ export type CcExpenseGenericUniqueMerchantRow = {
 
 let cachedKeys: Set<string> | null = null;
 
-export function invalidateCcExpenseGenericUniqueMerchantCache(): void {
+export function invalidateExpenseGenericUniqueMerchantCache(): void {
   cachedKeys = null;
 }
 
@@ -26,19 +26,19 @@ export function isExactGenericUniqueMerchantKey(key: string): boolean {
   return exactGenericUniqueMerchantKeys().has(key);
 }
 
-export function listCcExpenseGenericUniqueMerchants(): CcExpenseGenericUniqueMerchantRow[] {
+export function listExpenseGenericUniqueMerchants(): ExpenseGenericUniqueMerchantRow[] {
   return db
     .prepare(
       `SELECT id, merchant_key, sort_order
        FROM cc_expense_generic_unique_merchants
        ORDER BY sort_order, merchant_key, id`
     )
-    .all() as CcExpenseGenericUniqueMerchantRow[];
+    .all() as ExpenseGenericUniqueMerchantRow[];
 }
 
-export function createCcExpenseGenericUniqueMerchant(
+export function createExpenseGenericUniqueMerchant(
   merchantKey: string
-): CcExpenseGenericUniqueMerchantRow {
+): ExpenseGenericUniqueMerchantRow {
   const key = merchantKey.trim();
   if (!key) {
     throw new Error("merchant_key required");
@@ -61,20 +61,20 @@ export function createCcExpenseGenericUniqueMerchant(
        VALUES (?, ?)`
     )
     .run(key, sortOrder);
-  invalidateCcExpenseGenericUniqueMerchantCache();
+  invalidateExpenseGenericUniqueMerchantCache();
 
   return db
     .prepare(
       `SELECT id, merchant_key, sort_order
        FROM cc_expense_generic_unique_merchants WHERE id = ?`
     )
-    .get(Number(result.lastInsertRowid)) as CcExpenseGenericUniqueMerchantRow;
+    .get(Number(result.lastInsertRowid)) as ExpenseGenericUniqueMerchantRow;
 }
 
-export function updateCcExpenseGenericUniqueMerchant(
+export function updateExpenseGenericUniqueMerchant(
   id: number,
   merchantKey: string
-): CcExpenseGenericUniqueMerchantRow {
+): ExpenseGenericUniqueMerchantRow {
   const key = merchantKey.trim();
   if (!key) {
     throw new Error("merchant_key required");
@@ -98,22 +98,22 @@ export function updateCcExpenseGenericUniqueMerchant(
     key,
     id
   );
-  invalidateCcExpenseGenericUniqueMerchantCache();
+  invalidateExpenseGenericUniqueMerchantCache();
 
   return db
     .prepare(
       `SELECT id, merchant_key, sort_order
        FROM cc_expense_generic_unique_merchants WHERE id = ?`
     )
-    .get(id) as CcExpenseGenericUniqueMerchantRow;
+    .get(id) as ExpenseGenericUniqueMerchantRow;
 }
 
-export function deleteCcExpenseGenericUniqueMerchant(id: number): void {
+export function deleteExpenseGenericUniqueMerchant(id: number): void {
   const result = db
     .prepare(`DELETE FROM cc_expense_generic_unique_merchants WHERE id = ?`)
     .run(id);
   if (result.changes === 0) {
     throw new Error("not found");
   }
-  invalidateCcExpenseGenericUniqueMerchantCache();
+  invalidateExpenseGenericUniqueMerchantCache();
 }

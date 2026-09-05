@@ -27,7 +27,7 @@ import {
 } from "../deptoDividendosLedger.js";
 import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
-import { invalidateCcExpenseGenericUniqueMerchantCache } from "../ccExpenseGenericUniqueMerchants.js";
+import { invalidateExpenseGenericUniqueMerchantCache } from "../expenseGenericUniqueMerchants.js";
 import { expandYearMonthsInclusive, monthEndUtcYmd } from "../calendarMonth.js";
 import { MOVEMENT_CLP_LEG_SQL } from "../movementAmounts.js";
 import {
@@ -1645,7 +1645,7 @@ export function seedDemoGenericTransferMerchants(): number {
   keys.forEach((k, i) => {
     n += ins.run(normalizeCcExpenseMerchantKey(k), 1000 + i * 10).changes;
   });
-  invalidateCcExpenseGenericUniqueMerchantCache();
+  invalidateExpenseGenericUniqueMerchantCache();
   return n;
 }
 

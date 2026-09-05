@@ -68,7 +68,7 @@ export interface ImportSyncDocumentCoverageResponse {
   cells: ImportSyncDocumentCell[][];
 }
 
-export interface CcExpenseGenericUniqueMerchantRow {
+export interface ExpenseGenericUniqueMerchantRow {
   id: number;
   merchant_key: string;
   sort_order: number;
@@ -76,12 +76,12 @@ export interface CcExpenseGenericUniqueMerchantRow {
 
 /** `GET /api/import-sync/generic-unique-merchants` */
 export interface GenericUniqueMerchantsResponse {
-  merchants: CcExpenseGenericUniqueMerchantRow[];
+  merchants: ExpenseGenericUniqueMerchantRow[];
 }
 
 /** `POST|PATCH /api/import-sync/generic-unique-merchants` */
 export interface GenericUniqueMerchantMutationResponse {
-  row: CcExpenseGenericUniqueMerchantRow;
+  row: ExpenseGenericUniqueMerchantRow;
   backfill: { inserted: number; merchant_rules_removed: number };
 }
 
