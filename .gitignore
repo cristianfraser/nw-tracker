@@ -39,3 +39,6 @@ version.json
 # Claude Code local state (launch.json is shared)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Python bytecode caches (server/scripts)
+__pycache__/

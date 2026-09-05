@@ -487,8 +487,14 @@ def extract_pdf_section_totals(
     currency: str,
     parse_clp: Callable[[str], Optional[int]],
     parse_usd: Callable[[str], Optional[float]],
+    layout_text: str = "",
 ) -> Dict[str, Optional[float]]:
-    """Read section/header totals from statement text (Santander + BCI/Líder)."""
+    """Read section/header totals from statement text (Santander + BCI/Líder).
+
+    ``full`` may be BOTH extractions concatenated (pypdf + pdftotext-layout — the parse
+    flow passes ``f"{full}\n{full_layout}"``). The scalar regex reads below are idempotent
+    over that, but anything that SUMS matching lines is not; pass the layout text
+    separately (``layout_text``) so such collectors can work on a single rendering."""
     cur = currency.lower()
     out: Dict[str, Optional[float]] = {
         "pdf_total_operaciones": None,
@@ -628,7 +634,16 @@ def extract_pdf_section_totals(
             out["pdf_deuda_total"] = float(parse_clp(m.group(1)) or 0)
 
     if cur == "clp" and is_bci_lider_statement(full):
-        bci_op, bci_cargos, bci_monto = _bci_subsection_totals_clp(full, parse_clp, parse_usd)
+        # This collector SUMS lone `$ amount` subtotal lines, so it must never run over the
+        # concatenated dual text: both renderings print the group subtotals, and summing the
+        # concat doubled pdf_total_operaciones (2026-08 ·0101: 3.xxx.xxx = 2 x 1.xxx.xxx),
+        # which disarmed the import-level monto_facturado check via its >8% hatch. Collect
+        # from one rendering — layout when present, else `full` (single-extraction callers).
+        bci_text = layout_text if layout_text.strip() else full
+        bci_op, bci_cargos, bci_monto = _bci_subsection_totals_clp(bci_text, parse_clp, parse_usd)
+        if bci_op is None and bci_text is not full:
+            # Degenerate layout without subtotal lines: keep the legacy full-text collection.
+            bci_op, bci_cargos, bci_monto = _bci_subsection_totals_clp(full, parse_clp, parse_usd)
         if bci_op is not None:
             out["pdf_total_operaciones"] = bci_op
         if bci_cargos is not None:
@@ -691,9 +706,10 @@ def merge_section_totals_into_meta(
     full: str,
     parse_clp: Callable[[str], Optional[int]],
     parse_usd: Callable[[str], Optional[float]],
+    layout_text: str = "",
 ) -> Dict[str, Any]:
     currency = str(meta.get("currency") or "clp").lower()
-    totals = extract_pdf_section_totals(full, currency, parse_clp, parse_usd)
+    totals = extract_pdf_section_totals(full, currency, parse_clp, parse_usd, layout_text=layout_text)
     meta.update(totals)
     return meta
 

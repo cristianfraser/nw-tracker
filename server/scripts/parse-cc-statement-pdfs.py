@@ -231,6 +231,7 @@ def parse_one_pdf(
                 f"{full}\n{full_layout}",
                 parse_clp_amount,
                 parse_usd_amount,
+                layout_text=full_layout,
             )
         _sync_statement_billing_headers_from_pdf(meta)
     else:
@@ -252,6 +253,7 @@ def parse_one_pdf(
                 f"{full}\n{full_layout}",
                 parse_clp_amount,
                 parse_usd_amount,
+                layout_text=full_layout,
             )
         else:
             merge_section_totals_into_meta(

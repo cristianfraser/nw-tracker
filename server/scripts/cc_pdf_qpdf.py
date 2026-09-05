@@ -152,9 +152,20 @@ def peek_bci_lider_meta(text: str) -> Tuple[Optional[str], Optional[str]]:
     if m_hasta:
         iso = _dd_mm_yyyy_to_iso(m_hasta.group(1))
     if not iso:
-        m_pay = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", text, re.I)
-        if m_pay:
-            iso = _dd_mm_yyyy_to_iso(m_pay.group(1))
+        # 2026 mail-attachment template: the extraction peek dumps the header table
+        # column-major — «Desde / Hasta / <desde> / <hasta> / <pagar hasta>» with the
+        # «Período Facturado / Pagar Hasta» labels AFTER the dates — so the close is the
+        # middle date of the only Desde/Hasta date triplet. A bare PAGAR HASTA fallback is a
+        # trap here and was removed: the section-1 anterior block reflows as
+        # «… a Pagar\n\nHasta\n<previous close>», which named the Aug-2026 statement after
+        # JULY's close and organize-duplicated it against the real July file.
+        m_triplet = re.search(
+            r"DESDE\s+HASTA\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
+            text,
+            re.I,
+        )
+        if m_triplet:
+            iso = _dd_mm_yyyy_to_iso(m_triplet.group(2))
     if not iso:
         m_stmt = re.search(r"FECHA\s+ESTADO\s+DE\s+CUENTA\s+(\d{2}/\d{2}/\d{4})", text, re.I)
         if m_stmt:

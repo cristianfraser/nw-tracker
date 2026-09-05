@@ -325,7 +325,11 @@ describe("ccStatementImportReconcile", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("skips BCI Lider reconcile when parsed row count is incomplete vs PDF operaciones", () => {
+  it("fails (never skips) a BCI Lider import whose rows do not sum to monto facturado", () => {
+    // The old `bci_incomplete_parse` hatch SKIPPED this case, which is exactly how the
+    // 2026-08 ·0101 facturación imported with 9 of 16 lines missing and nothing thrown
+    // (its >8% arm was tripped permanently by the doubled pdf_total_operaciones the old
+    // concat-text collection produced). An incomplete row set must fail the hard gate.
     const rows = Array.from({ length: 11 }, (_, i) =>
       line({
         amount_clp: 10_000 + i,
@@ -339,10 +343,83 @@ describe("ccStatementImportReconcile", () => {
       monto_facturado: 227_393,
       compras_cargos: null,
       source_pdf: "2025-09-26 estado de cuenta tarjeta 4343.pdf",
-      pdf_total_operaciones: 454_786,
+      pdf_total_operaciones: 227_393,
     });
-    expect(result.skipped).toBe(true);
-    expect(result.skip_reason).toBe("bci_incomplete_parse");
+    expect(result.skipped).toBe(false);
+    expect(result.ok).toBe(false);
+    const facturado = result.checks.find((c) => c.code === "monto_facturado");
+    expect(facturado?.ok).toBe(false);
+  });
+
+  it("passes a complete BCI Lider row set against monto facturado", () => {
+    const rows = [
+      line({
+        amount_clp: 200_000,
+        merchant: "SHOP A",
+        parser_layout: "bci_lider_operaciones",
+        dedupe_key: "bci-a",
+        row_id: "bci-a",
+      }),
+      line({
+        amount_clp: 27_393,
+        merchant: "SHOP B",
+        parser_layout: "bci_lider_operaciones",
+        dedupe_key: "bci-b",
+        row_id: "bci-b",
+      }),
+    ];
+    const result = reconcileBillingMonthMovements("2025-09", rows, {
+      monto_facturado: 227_393,
+      compras_cargos: null,
+      source_pdf: "2025-09-26 estado de cuenta tarjeta 4343.pdf",
+      pdf_total_operaciones: 227_393,
+    });
+    expect(result.skipped).toBe(false);
+    expect(result.ok).toBe(true);
+  });
+
+  it("nets BCI section-3 rows into facturado — abonos and impuestos count, PAGOs never", () => {
+    // The 2026-06 shape: the bank nets a merchant-named nota («GLASS LIDER.CL» -3x.xxx)
+    // and the stamp tax («IMPUESTO DL 3475» — singular, missed by the Santander regex)
+    // into Monto Total Facturado, while the PAGO stays out of it.
+    const rows = [
+      line({
+        amount_clp: 250_000,
+        merchant: "SHOP A",
+        parser_layout: "bci_lider_operaciones",
+        dedupe_key: "op-a",
+        row_id: "op-a",
+      }),
+      line({
+        amount_clp: -38_309,
+        merchant: "GLASS LIDER.CL (T)",
+        parser_layout: "bci_lider_cargos",
+        dedupe_key: "c-nota",
+        row_id: "c-nota",
+      }),
+      line({
+        amount_clp: 811,
+        merchant: "IMPUESTO DL 3475 C. CONTADO (T)",
+        parser_layout: "bci_lider_cargos",
+        dedupe_key: "c-impto",
+        row_id: "c-impto",
+      }),
+      line({
+        amount_clp: -566_338,
+        merchant: "PAGO",
+        parser_layout: "bci_lider_cargos",
+        dedupe_key: "c-pago",
+        row_id: "c-pago",
+      }),
+    ];
+    const result = reconcileBillingMonthMovements("2026-06", rows, {
+      monto_facturado: 250_000 - 38_309 + 811,
+      compras_cargos: null,
+      source_pdf: "2026-06-26 estado de cuenta tarjeta 4343.pdf",
+      pdf_total_operaciones: 250_000,
+    });
+    expect(result.skipped).toBe(false);
+    expect(result.ok).toBe(true);
   });
 
   it("reconciles May 2026 4242 movements against imported PDF header", () => {

@@ -27,10 +27,30 @@ const dbCheckDedupeKey = db.prepare(
    LIMIT 1`
 );
 
+// Web-paste bucket lines are NOT durable evidence for a PDF statement import: the same merge
+// deletes them right after (`reconcileOpenWebPasteAfterPdfImports`), so a skip against one
+// destroys the purchase from both places — the 2026-08 ·0101 facturación lost 9 lines
+// (1.xxx.xxx CLP) this way. `NOT LIKE 'import:web-paste%'` mirrors `isWebPasteSource`.
+const dbCheckDedupeKeyNoWebPaste = db.prepare(
+  `SELECT 1 AS o FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
+     AND s.source_pdf NOT LIKE 'import:web-paste%'
+   LIMIT 1`
+);
+
 const dbFindLineByDedupeKey = db.prepare(
   `SELECT l.id, l.origin_card_last4 FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
+   LIMIT 1`
+);
+
+const dbFindLineByDedupeKeyNoWebPaste = db.prepare(
+  `SELECT l.id, l.origin_card_last4 FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
+     AND s.source_pdf NOT LIKE 'import:web-paste%'
    LIMIT 1`
 );
 
@@ -172,11 +192,25 @@ export function canonicalCcLineDedupeKeys(
   return [...keys];
 }
 
-export function ccLineDedupeKeyExistsOnAccount(accountId: number, keys: readonly string[]): boolean {
+export type CcLineDedupeScanOpts = {
+  /**
+   * Ignore lines on `import:web-paste%` statements. Every PDF statement import must pass
+   * this: its own supersede deletes the open bucket's in-period lines right after the line
+   * loop, so a bucket line must never justify skipping the PDF row that replaces it.
+   */
+  excludeWebPasteSources?: boolean;
+};
+
+export function ccLineDedupeKeyExistsOnAccount(
+  accountId: number,
+  keys: readonly string[],
+  opts?: CcLineDedupeScanOpts
+): boolean {
   if (keys.length === 0) return false;
+  const stmt = opts?.excludeWebPasteSources ? dbCheckDedupeKeyNoWebPaste : dbCheckDedupeKey;
   for (const key of keys) {
     if (!key) continue;
-    const row = dbCheckDedupeKey.get(accountId, key) as { o: number } | undefined;
+    const row = stmt.get(accountId, key) as { o: number } | undefined;
     if (row) return true;
   }
   return false;
@@ -184,11 +218,13 @@ export function ccLineDedupeKeyExistsOnAccount(accountId: number, keys: readonly
 
 export function findCcStatementLineIdByDedupeKey(
   accountId: number,
-  keys: readonly string[]
+  keys: readonly string[],
+  opts?: CcLineDedupeScanOpts
 ): number | null {
+  const stmt = opts?.excludeWebPasteSources ? dbFindLineByDedupeKeyNoWebPaste : dbFindLineByDedupeKey;
   for (const key of keys) {
     if (!key) continue;
-    const row = dbFindLineByDedupeKey.get(accountId, key) as { id: number } | undefined;
+    const row = stmt.get(accountId, key) as { id: number } | undefined;
     if (row) return row.id;
   }
   return null;
@@ -198,14 +234,19 @@ export function findCcStatementLineIdByDedupeKey(
 export function patchCcLineOriginCardOnDedupeHit(
   accountId: number,
   dedupeKeys: readonly string[],
-  originCardLast4: string | null
+  originCardLast4: string | null,
+  opts?: CcLineDedupeScanOpts
 ): { lineId: number | null; patched: boolean } {
+  const stmt = opts?.excludeWebPasteSources ? dbFindLineByDedupeKeyNoWebPaste : dbFindLineByDedupeKey;
   if (!originCardLast4) {
-    return { lineId: findCcStatementLineIdByDedupeKey(accountId, dedupeKeys), patched: false };
+    return {
+      lineId: findCcStatementLineIdByDedupeKey(accountId, dedupeKeys, opts),
+      patched: false,
+    };
   }
   for (const key of dedupeKeys) {
     if (!key) continue;
-    const row = dbFindLineByDedupeKey.get(accountId, key) as
+    const row = stmt.get(accountId, key) as
       | { id: number; origin_card_last4: string | null }
       | undefined;
     if (!row) continue;

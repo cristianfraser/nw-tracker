@@ -67,6 +67,22 @@ class ReadableTextTest(unittest.TestCase):
         self.assertEqual(iso, "2024-04-30")
         self.assertEqual(last4, "4343")
 
+    def test_peek_bci_lider_meta_reflowed_template(self) -> None:
+        # 2026 mail-attachment template: the header table reflows column-major and the
+        # anterior section renders «a Pagar\n\nHasta\n<previous close>» — the close must come
+        # from the Desde/Hasta triplet, never from a bare PAGAR HASTA match.
+        text = (
+            "Numero tarjeta XXXXXXXXXXXX4343\n"
+            "Fecha Estado de Cuenta 27/08/2026\n\n"
+            "1. Periodo Anterior\n"
+            "Monto\nTotal\na Pagar\n\nHasta\n26/07/2026\n\n"
+            "CAE PREPAGO\n0%\nDesde\nHasta\n27/07/2026\n26/08/2026\n10/09/2026\n\n"
+            "Periodo Facturado\nPagar Hasta\n"
+        )
+        iso, last4 = mod.peek_bci_lider_meta(text)
+        self.assertEqual(iso, "2026-08-26")
+        self.assertEqual(last4, "4343")
+
     def test_password_env_names(self) -> None:
         self.assertEqual(
             mod.SANTANDER_CC_STATEMENT_PDF_PASSWORD_ENV,
