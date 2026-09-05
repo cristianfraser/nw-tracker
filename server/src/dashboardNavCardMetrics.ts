@@ -15,6 +15,11 @@
  * client keeps only single-account projections (compact account cards, account detail).
  */
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
+import {
+  chartBucketGroupChildren as portfolioStripGroupChildren,
+  isNavBucketNode,
+  resolveDashboardBucketFromNavNode as resolveDashboardBucketSlugFromNavNode,
+} from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import type { InversionesPeriodMetrics } from "./netWorthConsolidation.js";
 
@@ -321,26 +326,14 @@ function bucketCardMetrics(
 
 /* ------------------------------- nav-node helpers --------------------------------- */
 
-function isNavBucketNode(node: NavTreeNodeDto): boolean {
-  return node.group_kind === "nav_bucket";
-}
-
-function isLiabilityGroupNavNode(node: NavTreeNodeDto): boolean {
-  return node.group_kind === "liability_group";
-}
-
 function isNetWorthPortfolioRoot(node: NavTreeNodeDto): boolean {
   return node.slug === "net_worth" || node.asset_group_slug === "net_worth";
 }
 
-/** Port of client `resolveDashboardBucketFromNavNode`. */
+/** Shared walk's resolver, narrowed to the typed bucket slugs this module works with. */
 function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): DashboardNwBucketSlug | null {
-  const dash = node.dashboard_bucket_slug?.trim();
-  if (dash && isDashboardNwBucketSlug(dash)) return dash;
-  const asset = node.asset_group_slug?.trim();
-  if (asset && isDashboardNwBucketSlug(asset)) return asset;
-  if (isDashboardNwBucketSlug(node.slug)) return node.slug;
-  return null;
+  const slug = resolveDashboardBucketSlugFromNavNode(node);
+  return slug != null && isDashboardNwBucketSlug(slug) ? slug : null;
 }
 
 /** Port of client `usesFullDashboardBucketTotals`. */
@@ -358,32 +351,6 @@ function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
   const dash = node.dashboard_bucket_slug?.trim();
   if (dash === "cash_eqs" && node.slug !== "cash_eqs") return true;
   return node.asset_group_slug === "cash_eqs__cash_savings";
-}
-
-/** Port of client `isPortfolioStripCardNode`. */
-function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
-  if (!node.route_path?.trim() || isLiabilityGroupNavNode(node)) return false;
-  if (isNavBucketNode(node) && node.slug !== "cash_eqs") return false;
-  if (node.account_id != null || node.expense_account_id != null) return false;
-  if (resolveDashboardBucketFromNavNode(node) != null) return true;
-  if (node.asset_group_slug === "liabilities") return true;
-  if (node.asset_group_slug === "credit_cards" && (node.children?.length ?? 0) > 0) return true;
-  if (node.portfolio_group_id != null && (node.api_group || node.api_subgroup)) return true;
-  if (node.portfolio_group_id != null && node.kind_slug) return true;
-  return false;
-}
-
-/** Port of client `portfolioStripGroupChildren` (flattens nav_bucket hubs except cash_eqs). */
-function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
-  const out: NavTreeNodeDto[] = [];
-  for (const child of root.children ?? []) {
-    if (isNavBucketNode(child) && child.slug !== "cash_eqs") {
-      out.push(...portfolioStripGroupChildren(child));
-      continue;
-    }
-    if (isPortfolioStripCardNode(child)) out.push(child);
-  }
-  return out;
 }
 
 /** Port of client `dashboardBucketGroupsUnderNavHub`. */

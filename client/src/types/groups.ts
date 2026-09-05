@@ -209,6 +209,25 @@ export type FlowsPageResponse = Paginated<FlowsApiRow> & {
   filter_options: FlowsFilterOptions;
 };
 
+/** One grouped chart line's metadata, server-emitted on the nav tree (see `chart_buckets`). */
+export interface ChartBucketLineMetaDto {
+  data_key: string;
+  /** Synthetic negative account id — same id the real grouped block's line carries. */
+  account_id: number;
+  dep_key: string;
+  bar_data_key: string;
+  name: string;
+  name_i18n_key: string | null;
+  color_rgb: string | null;
+}
+
+export interface NavNodeChartBucketsDto {
+  grouped?: ChartBucketLineMetaDto[];
+  ungrouped?: ChartBucketLineMetaDto[];
+  /** Pasivos pages: single grouped mode, no Agrupado toggle. */
+  liab?: ChartBucketLineMetaDto[];
+}
+
 export interface NavTreeNodeDto {
   node_id: string;
   slug: string;
@@ -242,6 +261,12 @@ export interface NavTreeNodeDto {
    * sidebar nav — an unknown slug is skipped, never synthesized.
    */
   linked_card_slugs?: string[];
+  /**
+   * Grouped chart structure for this node's page — the same bucket lines the real grouped
+   * blocks carry, so the loading skeleton renders the final chart shape (grouped from first
+   * paint). Absent ⇔ the real payload has no grouped blocks for this node.
+   */
+  chart_buckets?: NavNodeChartBucketsDto;
   children: NavTreeNodeDto[];
 }
 

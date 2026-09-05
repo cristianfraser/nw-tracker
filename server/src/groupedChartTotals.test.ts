@@ -174,7 +174,11 @@ describe("buildNavChartBucketPlan (server bucket-node selection)", () => {
     const grouped = buildNavChartBucketPlan(brokerage, true);
     expect(grouped.orderedKeys).toEqual(["brokerage_acciones", "brokerage_crypto"]);
     const ungrouped = buildNavChartBucketPlan(brokerage, false);
-    expect(ungrouped.orderedKeys).toEqual(["account_1", "account_2", "account_3", "account_4"]);
+    // Bucket-major clustering holds; within a bucket, account nodes order by today's mark
+    // (valuation desc) — synthetic ids may collide with real test-DB marks, so assert the
+    // per-bucket membership rather than a fixed within-bucket order.
+    expect(ungrouped.orderedKeys.slice(0, 2).sort()).toEqual(["account_1", "account_2"]);
+    expect(ungrouped.orderedKeys.slice(2).sort()).toEqual(["account_3", "account_4"]);
     expect(ungrouped.idToBucket(1)).toBe("account_1");
   });
 

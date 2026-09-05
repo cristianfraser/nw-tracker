@@ -159,8 +159,15 @@ export function LiabilitiesGroupPage() {
   }, [queryClient, navMatchNode, portfolioGroup, displayUnit]);
 
   const placeholderBundle = useMemo(
-    () => buildPlaceholderPortfolioGroupBundle(displayUnit, shell?.accounts ?? [], portfolioGroup),
-    [displayUnit, shell?.accounts, portfolioGroup]
+    () =>
+      buildPlaceholderPortfolioGroupBundle(
+        displayUnit,
+        shell?.accounts ?? [],
+        portfolioGroup,
+        undefined,
+        navMatchNode
+      ),
+    [displayUnit, shell?.accounts, portfolioGroup, navMatchNode]
   );
   const bundleReady = Boolean(data?.ts?.accounts_in_group && data.ts.group_allocation_proportional);
   const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
