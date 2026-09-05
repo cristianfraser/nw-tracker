@@ -102,20 +102,6 @@ export function computeCryptoMtmClp(
   return Number.isFinite(clp) ? clp : null;
 }
 
-export function computeCryptoMtmClpLive(
-  accountId: number,
-  now: Date = new Date()
-): { value_clp: number; as_of_date: string } | null {
-  const ticker = cryptoEquityTickerForAccount(accountId);
-  if (!ticker) return null;
-  const session = equitySessionYmdForTicker(ticker, now);
-  const quote = getLiveEquityQuoteFromDb(ticker);
-  if (!quote) return null;
-  const clp = computeCryptoMtmClp(accountId, session, quote.price, now);
-  if (clp == null || !Number.isFinite(clp)) return null;
-  return { value_clp: clp, as_of_date: quote.trade_date };
-}
-
 /** Cached live crypto MTM when today's UTC session allows live quotes. */
 export function computeCryptoMtmClpCachedLive(
   accountId: number,

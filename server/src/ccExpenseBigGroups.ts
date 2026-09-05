@@ -1,7 +1,6 @@
 import { db } from "./db.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
 export type CcExpenseBigGroupRow = {
   slug: string;
@@ -148,8 +147,6 @@ export function setCcExpensePurchaseBigGroup(opts: {
   ).run(opts.accountId, purchaseKey, groupSlug);
   return { group_slug: groupSlug };
 }
-
-export type FlowCcExpenseLineBeforeBigGroup = Omit<FlowCcExpenseLineRow, "big_group_slug">;
 
 export function enrichFlowLinesWithBigGroups<
   T extends { account_id: number; purchase_key: string },

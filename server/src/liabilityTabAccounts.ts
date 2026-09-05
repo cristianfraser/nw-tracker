@@ -8,14 +8,6 @@ import { db } from "./db.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
 
-/** Legacy flat slugs and post-074 composite leaf buckets (`liabilities__mortgage`, …). */
-export const SQL_LIABILITY_LEAF_BUCKET = `(
-  g.slug IN ('mortgage', 'credit_card', 'other_debt')
-  OR g.slug LIKE '%__mortgage'
-  OR g.slug LIKE '%__credit_card'
-  OR g.slug LIKE '%__other_debt'
-)`;
-
 /** CC masters in `credit_card_group_items` — single id for Gastos and Pasivos. */
 function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
   const rows = db

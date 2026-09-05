@@ -80,15 +80,6 @@ export function loadLinkedPurchaseKeys(): Set<string> {
   return new Set(rows.map((r) => r.purchase_key));
 }
 
-export function loadRejectionsForEntry(expenseEntryId: number): Set<string> {
-  const rows = db
-    .prepare(
-      `SELECT purchase_key FROM real_estate_expense_link_rejections WHERE expense_entry_id = ?`
-    )
-    .all(expenseEntryId) as { purchase_key: string }[];
-  return new Set(rows.map((r) => r.purchase_key));
-}
-
 export function loadAllRejections(): Map<number, Set<string>> {
   const rows = db
     .prepare(

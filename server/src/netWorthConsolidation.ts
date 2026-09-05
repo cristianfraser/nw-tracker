@@ -20,7 +20,6 @@ import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
 /** Dashboard buckets rolled into the inversiones nav hub (brokerage + retirement). */
 export const INVERSIONES_DASHBOARD_BUCKET_SLUGS = ["brokerage", "retirement"] as const;
-export type InversionesDashboardBucketSlug = (typeof INVERSIONES_DASHBOARD_BUCKET_SLUGS)[number];
 
 function sumBucketConsolidatedRows(
   bucketRows: readonly ConsolidatedMonthlyPerfRow[][]
@@ -121,10 +120,3 @@ export function buildInversionesConsolidatedMonthly(
   return sumBucketConsolidatedRows(bucketRows);
 }
 
-/** Per-bucket closing at a date from the same consolidated path as NW series. */
-export function dashboardBucketClosingFromConsolidated(
-  bucket: NwDashboardBucketSlug,
-  unit: TsUnit = "clp"
-): ConsolidatedMonthlyPerfRow[] {
-  return loadBucketConsolidatedMonthly(bucket, unit);
-}

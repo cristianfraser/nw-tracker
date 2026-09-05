@@ -83,16 +83,6 @@ export function checkingMovementContentMatches(
   return partialDescriptionsMatch(a.description, b.description);
 }
 
-/** True when an official cartola movement row matches this partial import note. */
-export function cartolaMovementMatchesPartialNote(
-  mv: ParsedCheckingMovement,
-  partialNote: string
-): boolean {
-  const parsed = parsePartialMovementNote(partialNote);
-  if (!parsed) return false;
-  return checkingMovementContentMatches(mv, parsed);
-}
-
 /** True when a matching `import:cartola|…` movement already exists in the ledger. */
 export function partialMovementSupersededByCartola(
   accountId: number,

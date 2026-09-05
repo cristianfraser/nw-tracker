@@ -17,7 +17,6 @@ const childCountStmt = db.prepare(
   `SELECT COUNT(*) AS c FROM asset_groups WHERE parent_id = ?`
 );
 
-
 export function assetGroupBySlug(slug: string): AssetGroupRow | null {
   return (groupBySlugStmt.get(slug) as AssetGroupRow | undefined) ?? null;
 }
@@ -93,13 +92,6 @@ export function leafAssetGroupSlugsUnder(rootSlug: string): string[] {
   return rows.map((r) => r.slug);
 }
 
-/** Slugs used for `group=inversiones` tab (all brokerage + retirement leaves). */
-export function inversionesLeafBucketSlugs(): string[] {
-  const bro = leafAssetGroupSlugsUnder("brokerage");
-  const ret = leafAssetGroupSlugsUnder("retirement");
-  return [...bro, ...ret];
-}
-
 /** Cash & equivalents sub-buckets (migration 078). */
 export const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
 export const CASH_SAVINGS_BUCKET = "cash_eqs__cash_savings";
@@ -118,29 +110,6 @@ export function isCashEqsNwValuationGroupSlug(groupSlug: string): boolean {
 function assetGroupKindSlug(slug: string): string {
   const sep = slug.lastIndexOf("__");
   return sep >= 0 ? slug.slice(sep + 2) : slug;
-}
-
-/** @internal test hook */
-export function invalidateDashboardBucketCache(): void {
-  dashboardBucketBySlugCache = null;
-}
-
-/** Leaf kind slugs for cartola checking accounts (corriente + vista). */
-export function isCheckingAccountKindSlug(kindOrLeafSlug: string): boolean {
-  const kind = assetGroupKindSlug(kindOrLeafSlug);
-  return kind === "cuenta_corriente" || kind === "cuenta_vista";
-}
-
-export function listCheckingAccountRows(
-  excludeLegacyStocksNote: string
-): BucketAccountRow[] {
-  return listAccountsForBucketSlug(CHECKING_ACCOUNTS_BUCKET, undefined, excludeLegacyStocksNote);
-}
-
-export function listCashSavingsAccountRows(
-  excludeLegacyStocksNote: string
-): BucketAccountRow[] {
-  return listAccountsForBucketSlug(CASH_SAVINGS_BUCKET, undefined, excludeLegacyStocksNote);
 }
 
 /** Top-level net-worth dashboard card buckets (asset_groups roots for NW cards). */
@@ -227,15 +196,6 @@ export function accountBelongsToDashboardBucket(
   }
   const placement = row.bucket_slug ?? row.group_slug;
   return dashboardBucketForAssetGroupSlug(placement) === dashboardBucket;
-}
-
-export function requireLeafAssetGroupId(slug: string): number {
-  const g = assetGroupBySlug(slug);
-  if (!g) throw new Error(`unknown asset group slug: ${slug}`);
-  if (!isLeafAssetGroupId(g.id)) {
-    throw new Error(`asset group ${slug} is not a leaf bucket`);
-  }
-  return g.id;
 }
 
 export type BucketAccountRow = {

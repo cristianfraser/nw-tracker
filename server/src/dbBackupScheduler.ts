@@ -104,9 +104,3 @@ export function startDbBackupScheduler(): void {
   void backupTick();
 }
 
-export function stopDbBackupScheduler(): void {
-  if (timerHandle != null) {
-    clearInterval(timerHandle);
-    timerHandle = null;
-  }
-}

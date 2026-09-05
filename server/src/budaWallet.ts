@@ -47,11 +47,6 @@ export function loadCryptoCoinAccountIdsFundedByBuda(): Set<number> {
   return new Set(rows.map((r) => r.id));
 }
 
-/** Buda buffer inflows that come from checking (abono). Sell inflows (from coins) are internal. */
-export function isBudaExternalAbonoNote(note: string | null | undefined): boolean {
-  return note === "import:buda|abono";
-}
-
 /**
  * Materialize a synthetic checking outflow (cuenta_corriente → Buda) for each `abono` deposit into
  * the Buda buffer. The real transfers pre-date reliable cartola coverage, so they get mirrors exactly

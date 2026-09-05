@@ -47,14 +47,9 @@ export type DeptoDividendosPaymentRow = {
   desgravamen_clp: number | null;
 };
 
-
 function roundUf4(v: number): number {
   return Math.round(v * 1e4) / 1e4;
 }
-
-
-/** Depto Depto — shared account label (Table 2-1 / product). Gross UF is data-derived (vnuf + cruf). */
-export const DEPTO_DEPTO_ACCOUNT_DISPLAY_NAME = "depto";
 
 /** Repayment term labels on row 2 of `depto-dividendos.csv` (years). */
 export const DEPTO_PAYMENT_SCENARIO_TERMS = [30, 25, 20, 15, 12, 10, 5] as const;
@@ -136,9 +131,6 @@ export type DeptoMortgageCsvMeta = {
   csv_absolute_path?: string;
   csv_file_exists?: boolean;
 };
-
-
-
 
 export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosPaymentRow {
   return {
@@ -450,14 +442,6 @@ export function deptoPaymentHumanNote(
   return manual ? `${base} (manual)` : base;
 }
 
-/** Σ mortgage payments (cuotas + prepagos) in the calendar month of `asOf`, from the merged dividendos ledger. */
-export function mortgageSheetPaymentsClpInMonth(
-  ledger: readonly DeptoMortgageSheetRow[],
-  asOf: string
-): number {
-  return mortgageSheetPaymentsClpThroughDate(ledger, asOf, null);
-}
-
 /**
  * Σ mortgage payments in the calendar month of `asOf` with `occurred_on` ≤ `asOf`.
  * When `afterExclusive` is set, only counts payments strictly after that date (same month snapshots).
@@ -581,20 +565,10 @@ export function firstDeptoPropertyOwnershipYmd(
   return firstDeptoMortgagePaymentYmd(ledger);
 }
 
-/** Drop pre-hipoteca snapshots (pie / balance-only rows before the first cuota). */
-export function filterPointsFromFirstMortgagePayment<
-  T extends Record<string, string | number | null>,
->(points: readonly T[], ledger: readonly { cuota: string; occurred_on: string }[]): T[] {
-  const first = firstDeptoMortgagePaymentYmd(ledger);
-  if (!first) return [...points];
-  return points.filter((p) => String(p.as_of_date ?? "") >= first);
-}
-
 export function mortgageFlowKindFromCuota(
   cuota: string
 ): "pago_cuota_hipotecario" | "prepago_parcial_hipotecario" {
   if (/^prepago\b/i.test(String(cuota).trim())) return "prepago_parcial_hipotecario";
   return "pago_cuota_hipotecario";
 }
-
 

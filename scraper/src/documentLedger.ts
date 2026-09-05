@@ -63,16 +63,3 @@ export function recordDocument(bank: DocumentSource, kind: string, key: string):
   fs.writeFileSync(ledgerFile(), JSON.stringify(ledger, null, 2));
 }
 
-/**
- * The most recent closed calendar month, in Chile — the cartola that should exist today.
- *
- * On 2026-08-05 that is `2026-07`; on 2026-09-01 it becomes `2026-08`, which is what makes the
- * fetcher start asking for the August cartola daily until the bank publishes it.
- */
-export function lastClosedMonth(now: Date = new Date()): string {
-  const chile = new Date(now.toLocaleString("en-US", { timeZone: "America/Santiago" }));
-  const year = chile.getFullYear();
-  const month = chile.getMonth(); // 0-based; month-1 in 1-based terms is exactly this value
-  const target = month === 0 ? { y: year - 1, m: 12 } : { y: year, m: month };
-  return `${target.y}-${String(target.m).padStart(2, "0")}`;
-}

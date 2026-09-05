@@ -577,7 +577,6 @@ function liabilityPctMonth(nominal: number, priorClosing: number): number | null
     : null;
 }
 
-
 function monthEndCloseForMortgagePerformance(
   accountId: number,
   asOf: string,
@@ -984,20 +983,6 @@ export function mapMonthlyClosingToChartDates(
     if (last != null && Number.isFinite(last)) out.set(d, last);
   }
   return out;
-}
-
-/** Latest calendar month nominal P/L (falls back to most recent month in the series). */
-export function latestAccountMonthDelta(accountId: number, unit: TsUnit = "clp"): number | null {
-  const perf = getAccountMonthlyPerformance(accountId, unit);
-  if (!perf?.monthly.length) return null;
-  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
-  for (const row of perf.monthly) {
-    if (monthKeyFromYmd(row.as_of_date) === currentMk) {
-      return row.nominal_pl;
-    }
-  }
-  const latest = perf.monthly[0]?.nominal_pl;
-  return latest != null && Number.isFinite(latest) ? latest : null;
 }
 
 export type GroupMonthlyPerformanceBarAccount = {

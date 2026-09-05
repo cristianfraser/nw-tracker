@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Statement } from "better-sqlite3";
 import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
 import { type DepositFlowKind, depositFlowKindFromFintualMedio } from "./depositFlowKind.js";
 
@@ -31,49 +30,6 @@ export function parseDdMmYyyyToIso(fecha: string): string | null {
   if (!Number.isFinite(d) || !Number.isFinite(mo) || !Number.isFinite(y)) return null;
   if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
   return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-
-export type FintualCertificadoAccounts = {
-  fondo_reserva: number;
-  fintual_rn: number;
-  apv_a: number;
-  apv_b: number;
-};
-
-export type FintualCertificadoApplyResult = {
-  movementsInserted: number;
-  /** Earliest calendar month (`YYYY-MM`) with any peso/cuotas flow on Fintual APV-a in the certificate. */
-  apvACutMonth: string | null;
-  /** Earliest transaction date for Fintual APV-a in the certificate. */
-  apvAFirstFlowYmd: string | null;
-  /** Net CLP (aportes − rescates) for Fintual APV-a in `apvACutMonth` from the certificate. */
-  apvAFirstMonthNetClp: number;
-};
-
-const NOTE_PREFIX = "import:excel|fintual-certificado";
-
-export type CertificadoAccountResolver = (importNote: string | null) => number | undefined;
-
-function accountIdForImportNote(note: string | null, acc: FintualCertificadoAccounts): number | undefined {
-  if (!note) return undefined;
-  switch (note) {
-    case "import:excel|key=fondo_reserva":
-      return acc.fondo_reserva;
-    case "import:excel|key=fintual_rn":
-      return acc.fintual_rn;
-    case "import:excel|key=apv_a":
-      return acc.apv_a;
-    case "import:excel|key=apv_b":
-      return acc.apv_b;
-    default:
-      return undefined;
-  }
-}
-
-export function legacyCertificadoAccountResolver(
-  acc: FintualCertificadoAccounts
-): CertificadoAccountResolver {
-  return (note) => accountIdForImportNote(note, acc);
 }
 
 export type GoalToImportNote = (goalId: string, investmentName: string) => string | null;
@@ -206,60 +162,6 @@ export function aggregateFintualCertificado(
     apvAFirstFlowYmd,
     apvAFirstMonthNetClp,
     reservaSaldoClpByMonthKey,
-  };
-}
-
-export function insertFintualCertificadoMovementsFromAggregates(
-  scan: FintualCertificadoAggregateScan,
-  resolveAccountId: CertificadoAccountResolver,
-  insMov: Statement<[number, number, string, string, number | null]>,
-  matchGoal: GoalToImportNote,
-  notePrefix: string = NOTE_PREFIX
-): number {
-  let movementsInserted = 0;
-  for (const a of scan.sortedAggregates) {
-    const importNote = matchGoal(a.goalId, a.name);
-    if (!importNote) continue;
-    const accountId = resolveAccountId(importNote);
-    if (accountId == null) continue;
-
-    let impliedClp = a.clpNet;
-    if (impliedClp === 0 && a.cuotasNet !== 0 && a.valorCuotaHint != null) {
-      impliedClp = Math.round(a.cuotasNet * a.valorCuotaHint);
-    }
-    if (impliedClp === 0) continue;
-
-    const medio = [...a.medios].sort().join("; ");
-    const note = `${notePrefix}|goal=${a.goalId}|day=${a.ymd}|flow_kind=${a.flowKind}${medio ? `|medio=${medio}` : ""}`;
-    const ud = a.cuotasNet !== 0 ? a.cuotasNet : null;
-    insMov.run(accountId, impliedClp, a.ymd, note, ud);
-    movementsInserted += 1;
-  }
-  return movementsInserted;
-}
-
-export function applyFintualCertificadoMovements(
-  csvPath: string,
-  acc: FintualCertificadoAccounts,
-  maxMonth: string,
-  insMov: Statement<[number, number, string, string, number | null]>,
-  matchGoal: GoalToImportNote
-): FintualCertificadoApplyResult {
-  const scan = aggregateFintualCertificado(csvPath, maxMonth, matchGoal);
-  if (!scan) {
-    return { movementsInserted: 0, apvACutMonth: null, apvAFirstFlowYmd: null, apvAFirstMonthNetClp: 0 };
-  }
-  const movementsInserted = insertFintualCertificadoMovementsFromAggregates(
-    scan,
-    legacyCertificadoAccountResolver(acc),
-    insMov,
-    matchGoal
-  );
-  return {
-    movementsInserted,
-    apvACutMonth: scan.apvACutMonth,
-    apvAFirstFlowYmd: scan.apvAFirstFlowYmd,
-    apvAFirstMonthNetClp: scan.apvAFirstMonthNetClp,
   };
 }
 

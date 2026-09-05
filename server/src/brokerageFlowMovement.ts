@@ -2,7 +2,6 @@
  * Brokerage equity flows (SPY/VEA) stored in `movements` with `flow_kind` set.
  */
 
-import { db } from "./db.js";
 import { sumUnitsThroughDate } from "./movementTransfer.js";
 
 export const BROKERAGE_FLOW_KINDS = [
@@ -48,33 +47,13 @@ export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
   other: "Otro",
 };
 
-export function isShareTradeFlowKind(flowKind: string | null | undefined): boolean {
-  return flowKind === "stock_buy" || flowKind === "stock_sell" || flowKind === "compra_usd";
-}
-
 export function isBrokerageFlowKind(flowKind: string | null | undefined): flowKind is BrokerageFlowKind {
   return flowKind != null && (BROKERAGE_FLOW_KINDS as readonly string[]).includes(flowKind);
 }
 
-const shareUnitsFlowPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
-
 /** Cumulative share units through `asOfYmd` (Σ `units_delta` on compra/dividend flows). */
 export function brokerageShareUnitsThroughDate(accountId: number, asOfYmd: string): number {
   return sumUnitsThroughDate(accountId, asOfYmd, BROKERAGE_SHARE_UNITS_FLOW_KINDS);
-}
-
-export function accountHasBrokerageShareUnits(accountId: number): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT 1 FROM movements
-         WHERE (account_id = ? OR to_account_id = ?)
-           AND flow_kind IN (${shareUnitsFlowPh})
-           AND COALESCE(units_delta, 0) != 0
-         LIMIT 1`
-      )
-      .get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
-  );
 }
 
 /**

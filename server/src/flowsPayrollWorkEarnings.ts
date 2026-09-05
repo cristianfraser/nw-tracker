@@ -148,14 +148,6 @@ export function incomeKindByMovementId(): Map<number, PayrollEarningType> {
   return out;
 }
 
-export function incomeKindByMovementIdRecord(): Record<number, PayrollEarningType> {
-  const out: Record<number, PayrollEarningType> = {};
-  for (const [movementId, kind] of incomeKindByMovementId()) {
-    out[movementId] = kind;
-  }
-  return out;
-}
-
 export function payrollPeriodByMovementIdRecord(): Record<number, string> {
   const rows = db
     .prepare(

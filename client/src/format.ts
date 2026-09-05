@@ -381,10 +381,3 @@ export function formatOrDash(value: number | null | undefined, fmt: (n: number) 
   return value != null && Number.isFinite(value) ? fmt(value) : "—";
 }
 
-export type PieMoneyUnit = "clp" | "usd";
-
-/** Legend / tooltips on pies: CLP whole pesos; USD with cents. */
-export function formatMoneyForPie(v: number, unit: PieMoneyUnit): string {
-  return unit === "usd" ? formatUsdFine(v) : formatClp(v);
-}
-

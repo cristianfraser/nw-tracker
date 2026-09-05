@@ -1,4 +1,3 @@
-import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { portfolioGroupBySlug } from "./portfolioGroupTree.js";
 import { db } from "./db.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
@@ -43,20 +42,6 @@ export function accountIsMonthPrecisionDated(accountId: number): boolean {
 export function isLiabilityAccountId(accountId: number): boolean {
   const kind = accountKindSlugForAccountId(accountId);
   return kind === "credit_card" || kind === "mortgage";
-}
-
-export function dashboardBucketSlugForPortfolioGroupSlug(portfolioGroupSlug: string): string | null {
-  const pg = portfolioGroupBySlug(portfolioGroupSlug);
-  if (!pg) return null;
-  if (pg.dashboard_bucket_slug) return pg.dashboard_bucket_slug;
-  if (pg.asset_group_slug) return dashboardBucketForAssetGroupSlug(pg.asset_group_slug);
-  return null;
-}
-
-export function requireBucketSlugForAccountId(accountId: number): string {
-  const slug = bucketSlugForAccountId(accountId);
-  if (!slug) throw new Error(`account ${accountId} has no asset_group_id`);
-  return slug;
 }
 
 /** Top-level NW bucket for an account (portfolio group, then asset placement). */

@@ -99,21 +99,6 @@ export function priorAfpUnoFundUnitRowBeforeForDisplay(
   return null;
 }
 
-/** Upsert latest UNO Fondo A valor cuota from the public homepage (authoritative spot). */
-export async function refreshAfpUnoFundUnitFromUnoWebsite(opts?: {
-  signal?: AbortSignal;
-}): Promise<{ day: string; unit_value_clp: number } | null> {
-  const { fetchUnoClFondoAValorCuota } = await import("./afpUnoWebsiteCuota.js");
-  const r = await fetchUnoClFondoAValorCuota(opts);
-  const day = (r.quote_day_ymd && /^\d{4}-\d{2}-\d{2}$/.test(r.quote_day_ymd) ? r.quote_day_ymd : null) ?? chileCalendarTodayYmd();
-  const vRounded = Math.round(r.unit_value_clp * 100) / 100;
-  db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?,?,?,?)
-     ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
-  ).run(AFP_UNO_CUOTA_SERIES_KEY, day, vRounded, "uno.cl:homepage:fondo-a");
-  return { day, unit_value_clp: vRounded };
-}
-
 export function latestFundUnitClpOnOrBefore(seriesKey: string, asOfYmd: string): number | null {
   return latestFundUnitRowOnOrBefore(seriesKey, asOfYmd)?.unit_value_clp ?? null;
 }

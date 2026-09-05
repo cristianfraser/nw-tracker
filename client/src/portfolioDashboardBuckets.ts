@@ -1,7 +1,6 @@
 import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
-import { dashboardCardMainSortKey } from "./dashboardCardBreakdown";
 import type { GroupInfoTableAccount } from "./useGroupInfoConsolidatedTables";
-import type { DashboardAccountRow, DashboardResponse } from "./types";
+import type { DashboardAccountRow } from "./types";
 
 export type DashboardNwBucketSlug = "real_estate" | "retirement" | "brokerage" | "cash_eqs";
 
@@ -51,21 +50,3 @@ export function dashboardBucketRoutePath(bucketSlug: string): string | undefined
   }
 }
 
-export function bucketMainSortKeyFromTotals(
-  bucket: string,
-  totals: DashboardResponse["totals"],
-  showUsd: boolean
-): number {
-  switch (bucket) {
-    case "real_estate":
-      return dashboardCardMainSortKey(totals.real_estate_clp, totals.real_estate_usd, showUsd);
-    case "retirement":
-      return dashboardCardMainSortKey(totals.retirement_clp, totals.retirement_usd, showUsd);
-    case "brokerage":
-      return dashboardCardMainSortKey(totals.brokerage_clp, totals.brokerage_usd, showUsd);
-    case "cash_eqs":
-      return dashboardCardMainSortKey(totals.cash_eqs_clp, totals.cash_eqs_usd, showUsd);
-    default:
-      return Number.NEGATIVE_INFINITY;
-  }
-}

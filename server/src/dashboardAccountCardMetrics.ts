@@ -19,17 +19,6 @@ export function accountPriorPeriodCloseFromPerf(
   return priorCloseFromPerfRows(perf.monthly, anchor, todayYmd);
 }
 
-/** Month-end / prior year-end close from the same performance series as Retiro P/L charts. */
-export function accountPriorPeriodClose(
-  accountId: number,
-  period: AccountPeriodClosePeriod,
-  unit: TsUnit = "clp"
-): number | null {
-  const perf = getAccountMonthlyPerformance(accountId, unit);
-  if (!perf) return null;
-  return accountPriorPeriodCloseFromPerf(perf, period);
-}
-
 export type AccountCardPerformanceMetrics = {
   delta_month: number | null;
   delta_year: number | null;
@@ -86,18 +75,6 @@ export function accountCardPerformanceMetricsFromPerf(
     delta_year: anyYear ? delta_year : null,
     delta_total: total != null && Number.isFinite(total) ? total : null,
   };
-}
-
-/** Month / year / cumulative nominal P/L from one performance series read. */
-export function accountCardPerformanceMetrics(
-  accountId: number,
-  unit: TsUnit = "clp"
-): AccountCardPerformanceMetrics {
-  const perf = getAccountMonthlyPerformance(accountId, unit);
-  if (!perf) {
-    return { delta_month: null, delta_year: null, delta_total: null };
-  }
-  return accountCardPerformanceMetricsFromPerf(perf);
 }
 
 /** Card metrics + prior closes from one performance fetch per unit. */

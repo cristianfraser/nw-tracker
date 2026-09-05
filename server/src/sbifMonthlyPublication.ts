@@ -22,10 +22,6 @@ export function sbifMonthlyPublicationTargetMonth(cl: ChileWallClock): YearMonth
   return nextCalendarMonthParts(cl.year, cl.month);
 }
 
-export function monthPartsToMonthKey(p: YearMonthParts): string {
-  return `${p.y}-${String(p.m).padStart(2, "0")}`;
-}
-
 export function compareYearMonth(a: YearMonthParts, b: YearMonthParts): number {
   if (a.y !== b.y) return a.y - b.y;
   return a.m - b.m;

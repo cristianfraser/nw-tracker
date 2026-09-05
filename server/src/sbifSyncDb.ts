@@ -90,16 +90,6 @@ export function upsertEurRows(rows: { date: string; clpPerEur: number }[], dryRu
   return n;
 }
 
-export function maxFxDate(): string | null {
-  const r = db.prepare(`SELECT MAX(date) AS d FROM fx_daily`).get() as { d: string | null };
-  return r?.d ?? null;
-}
-
-export function maxEurDate(): string | null {
-  const r = db.prepare(`SELECT MAX(date) AS d FROM eur_daily`).get() as { d: string | null };
-  return r?.d ?? null;
-}
-
 /** Latest Yahoo CLP=X EOD row on or before `asOfYmd`. */
 export function maxFxDateOnOrBefore(asOfYmd: string): string | null {
   const r = db

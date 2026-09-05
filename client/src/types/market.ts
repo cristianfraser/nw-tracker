@@ -1,12 +1,5 @@
 import type { FxCoverage } from "./core";
 
-/** `GET /api/dashboard/stocks-earnings-monthly` — merged SPY+VEA (or single), derived. */
-export interface StocksLifetimeEarningsResponse {
-  unit: "clp" | "usd" | "uf";
-  stock_accounts: { account_id: number; name: string }[];
-  points: { as_of_date: string; delta_month: number; accumulated_earnings: number; ytd_merged: number }[];
-}
-
 /** `GET /api/market-series` — sparse observations per field (no cross-series forward-fill); CLP crosses use FX on or before each equity/fund observation date. */
 export interface MarketSeriesPoint {
   as_of_date: string;

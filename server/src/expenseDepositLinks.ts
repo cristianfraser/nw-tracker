@@ -349,14 +349,6 @@ export function loadExpenseDepositLinksMap(): Map<string, ExpenseDepositLinkRow[
   return out;
 }
 
-/** Movement ids that already have a durable expense_deposit_links row (any source). */
-export function loadLinkedMovementIds(): Set<number> {
-  const rows = db
-    .prepare(`SELECT deposit_movement_id FROM expense_deposit_links`)
-    .all() as { deposit_movement_id: number }[];
-  return new Set(rows.map((r) => r.deposit_movement_id));
-}
-
 const LINK_SOURCE_PRIORITY: Record<ExpenseDepositLinkSource, number> = {
   manual: 3,
   auto: 2,
@@ -808,10 +800,6 @@ export function chartCategorySlugsForFlowsExpenses(
   const out = new Set(categorySlugs);
   out.add(REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG);
   return [...out];
-}
-
-export function isRealEstateMortgageDepositChartSlug(slug: string): boolean {
-  return slug === REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG;
 }
 
 /** Chart stack only: principal renders below the x-axis as a negative bar segment. */

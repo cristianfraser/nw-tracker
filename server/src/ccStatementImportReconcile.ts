@@ -576,19 +576,6 @@ function pickPreferredReconcilePurchase(prev: CcReconcileRow, next: CcReconcileR
   return prev;
 }
 
-/**
- * Rows that count toward Monto Total Facturado: PDF statement movements plus web-paste
- * lines not already represented on the PDF (same date, amount, merchant stem).
- */
-export function buildFacturadoReconcileRows(rows: readonly CcReconcileRow[]): CcReconcileRow[] {
-  const pdfRows = rows.filter((r) => !r.from_web_paste);
-  const webRows = rows.filter((r) => r.from_web_paste);
-  const extraWeb = webRows.filter(
-    (w) => !pdfRows.some((p) => reconcileWebPastePdfRowsMatch(p, w))
-  );
-  return dedupeCrossSourceReconcileRows([...pdfRows, ...extraWeb]);
-}
-
 /** Collapse web-paste vs PDF one-shots that share date, amount, and merchant stem. */
 export function dedupeCrossSourceReconcileRows(rows: readonly CcReconcileRow[]): CcReconcileRow[] {
   const installments: CcReconcileRow[] = [];
@@ -948,10 +935,3 @@ export function assertCcImportReconcilesOrThrow(
   return results;
 }
 
-export function statementKeysFromIncoming(records: readonly CcStatementCsvRecord[]): Set<string> {
-  const keys = new Set<string>();
-  for (const row of records) {
-    keys.add(statementKeyFromRow(row));
-  }
-  return keys;
-}

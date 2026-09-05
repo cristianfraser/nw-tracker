@@ -1,9 +1,6 @@
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
-import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
-import { isCheckingAccountKindSlug } from "./assetGroupTree.js";
-import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { priorCalendarMonthKey } from "./accountPeriodMarks.js";
 import type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
@@ -23,26 +20,6 @@ export function applyCashSavingsNwAdjustment(rawSavingsClp: number, ccBalanceClp
   const cc = Math.round(ccBalanceClp);
   if (cc <= 0) return Math.round(rawSavingsClp);
   return Math.round(rawSavingsClp) - cc;
-}
-
-export function sumCheckingAccountsBalanceClp(
-  rows: readonly Pick<DashboardAccountStats, "bucket_slug" | "current_value_clp">[]
-): number {
-  let total = 0;
-  for (const r of rows) {
-    const slug = r.bucket_slug ?? "";
-    if (!isCheckingAccountKindSlug(slug)) continue;
-    total += Math.round(r.current_value_clp ?? 0);
-  }
-  return total;
-}
-
-export function checkingAccountsBalanceClpAt(asOfYmd: string): number {
-  let total = 0;
-  for (const accountId of listMovementBalanceCashAccountIds()) {
-    total += checkingMovementBalanceClpAtCached(accountId, asOfYmd);
-  }
-  return total;
 }
 
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
@@ -82,43 +59,6 @@ export function cashSavingsShortfallDashboardRow(
     sync_stale: false,
     chart_inactive: false,
   };
-}
-
-export type DashboardRowForCashSum = Pick<
-  DashboardAccountStats,
-  "account_id" | "current_value_clp" | "current_value_usd" | "exclude_from_group_totals" | "bucket_slug"
->;
-
-/** NW cash card total: Σ savings accounts − uncovered tarjeta after checking (matches card header). */
-export function sumCashSavingsNwAdjusted(
-  rows: readonly DashboardRowForCashSum[],
-  asOfYmd: string,
-  includeUsd: boolean
-): { clp: number; usd: number } {
-  let rawClp = 0;
-  let rawUsd = 0;
-  let anyUsd = false;
-  for (const r of rows) {
-    if (r.exclude_from_group_totals === 1) continue;
-    const bucket = r.bucket_slug ?? "";
-    if (!bucket.startsWith("cash_eqs__cash_savings") && !bucket.includes("fondo_reserva")) continue;
-    if (r.current_value_clp == null || !Number.isFinite(r.current_value_clp)) continue;
-    rawClp += r.current_value_clp;
-    if (includeUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
-      rawUsd += r.current_value_usd;
-      anyUsd = true;
-    }
-  }
-  const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
-  const clp = applyCashSavingsNwAdjustment(rawClp, cc);
-  const usd =
-    includeUsd && anyUsd
-      ? (() => {
-          const u = clpToUsdForBalanceAt(clp, asOfYmd);
-          return u != null && Number.isFinite(u) ? u : 0;
-        })()
-      : 0;
-  return { clp, usd };
 }
 
 export type DashboardLinkedBalanceDto = {
@@ -198,6 +138,3 @@ export function netLinkedCreditCardFromCashConsolidated(
     })
     .reverse();
 }
-
-/** @deprecated alias kept for imports */
-export { netLinkedCreditCardFromCashConsolidated as applyCashSavingsShortfallToConsolidated };

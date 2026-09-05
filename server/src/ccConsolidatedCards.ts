@@ -1,6 +1,4 @@
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
-import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
 
@@ -80,51 +78,3 @@ export function associatedCardLast4sForMaster(masterId: number): string[] {
   });
 }
 
-/** Remove imported CC statements, ledger, and billing rows for one master account. */
-export function purgeCcImportedDataForAccount(accountId: number): {
-  statements: number;
-  purchases: number;
-  billing: number;
-  valuations_cleared: number;
-} {
-  let statements = 0;
-  let purchases = 0;
-  let billing = 0;
-  let valuations_cleared = 0;
-
-  const tx = db.transaction(() => {
-    db.prepare(
-      `DELETE FROM cc_installment_payments
-       WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
-    ).run(accountId);
-    purchases = db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId)
-      .changes;
-    statements = db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId).changes;
-    billing = db
-      .prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`)
-      .run(accountId).changes;
-    valuations_cleared = db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId).changes;
-  });
-  tx();
-
-  upsertCreditCardValuationsFromLedger(accountId);
-  recomputeCcBillingMonthBalances(accountId);
-
-  return { statements, purchases, billing, valuations_cleared };
-}
-
-export function markSantanderCcSuperseded(last4: string, targetLast4: string): void {
-  const master = resolveMasterAccountIdForCardLast4(last4);
-  if (master == null) return;
-  db.prepare(
-    `UPDATE credit_card_account_config SET superseded_target_last4 = ? WHERE account_id = ?`
-  ).run(targetLast4, master);
-  db.prepare(`UPDATE accounts SET exclude_from_group_totals = 1 WHERE id = ?`).run(master);
-}
-
-export function unmarkSantanderCcSuperseded(last4: string): void {
-  const master = resolveMasterAccountIdForCardLast4(last4);
-  if (master == null) return;
-  db.prepare(`UPDATE credit_card_account_config SET superseded_target_last4 = NULL WHERE account_id = ?`).run(master);
-  db.prepare(`UPDATE accounts SET exclude_from_group_totals = 0 WHERE id = ?`).run(master);
-}

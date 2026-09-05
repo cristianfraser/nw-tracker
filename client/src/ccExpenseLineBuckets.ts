@@ -90,13 +90,6 @@ export function expenseLineMatchesPurchaseBigGroupPatch(
   return ln.account_id === accountId && ln.purchase_key === purchaseKey;
 }
 
-export function isBigGroupExcludedFromChart(
-  line: FlowCcExpenseLineRow,
-  excluded: ReadonlySet<string>
-): boolean {
-  return line.big_group_slug != null && excluded.has(line.big_group_slug);
-}
-
 export function isInstallmentCuotaZeroLine(line: {
   installment_flag: number;
   nro_cuota_current: number | null;

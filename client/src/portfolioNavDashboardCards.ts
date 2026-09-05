@@ -1,4 +1,4 @@
-import { accountCountsTowardGroupTotals, isChartActiveAccount } from "./accountGroupTotals";
+import { accountCountsTowardGroupTotals } from "./accountGroupTotals";
 import {
   buildCashEqsCardBreakdown,
   buildLiabilitiesCardBreakdown,
@@ -89,20 +89,6 @@ export function navAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
   return idSet;
 }
 
-/**
-/** Account ids under `navNode` marked `chart_inactive` (history charts only). */
-export function navChartInactiveAccountIds(navNode: NavTreeNodeDto): Set<number> {
-  const ids = new Set<number>();
-  const visit = (n: NavTreeNodeDto) => {
-    if (n.chart_inactive && n.account_id != null && n.account_id > 0) {
-      ids.add(n.account_id);
-    }
-    for (const c of n.children ?? []) visit(c);
-  };
-  visit(navNode);
-  return ids;
-}
-
 export function navLeafAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
   const idSet = new Set<number>();
   const visit = (n: NavTreeNodeDto) => {
@@ -119,14 +105,6 @@ export function dashboardRowsForNavSubtree(
 ): DashboardAccountRow[] {
   const idSet = navMetricsAccountIdSet(navNode, all);
   return all.filter((a) => idSet.has(a.account_id));
-}
-
-/** Nav subtree rows visible in breakdown lines (hides chart_inactive + null marks). */
-export function dashboardDisplayRowsForNavSubtree(
-  all: DashboardAccountRow[],
-  navNode: NavTreeNodeDto
-): DashboardAccountRow[] {
-  return dashboardRowsForNavSubtree(all, navNode).filter((a) => isChartActiveAccount(a));
 }
 
 /** Nav children that render as strip cards (balance filtering is server-side on shape APIs). */

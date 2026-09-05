@@ -43,13 +43,6 @@ export type CompositeHolding = {
   synced_at: string;
 };
 
-export type CompositeProxyValidation = {
-  composition_date: string;
-  last_sync_ymd: string;
-  points: { date: string; proxy_clp: number; official_clp: number; diff_pct: number }[];
-  max_abs_diff_pct: number;
-};
-
 const stmtMeta = db.prepare(
   `SELECT bucket_slug, fintual_managed_fund_id, composition_date,
           anchor_fund_unit_clp, anchor_apv_fund_unit_clp, anchor_basket_usd, anchor_fx_clp, last_sync_ymd
@@ -285,46 +278,6 @@ function tryProxyClp(
     if (e instanceof Error && e.message.includes("invalid anchor metadata")) throw e;
     return null;
   }
-}
-
-export function compositeProxyValidation(
-  bucketSlug: string,
-  days = 30,
-  now = new Date()
-): CompositeProxyValidation | null {
-  const meta = loadCompositeMeta(bucketSlug);
-  const holdings = loadCompositeHoldings(bucketSlug);
-  if (meta == null || holdings.length === 0) return null;
-
-  const today = chileCalendarTodayYmd();
-  const points: CompositeProxyValidation["points"] = [];
-  for (let back = 0; back < days; back++) {
-    const ymd = chileCalendarAddDays(today, -back);
-    let official_clp: number;
-    try {
-      official_clp = officialRiskyNorrisFundUnitOnOrBefore(ymd).unit_value_clp;
-    } catch {
-      continue;
-    }
-    const proxy = tryProxyClp(meta, holdings, ymd, { preferLive: false, now });
-    if (proxy == null || !Number.isFinite(proxy) || proxy <= 0) continue;
-    const diff_pct = ((proxy - official_clp) / official_clp) * 100;
-    points.push({
-      date: ymd,
-      proxy_clp: proxy,
-      official_clp,
-      diff_pct,
-    });
-  }
-  points.sort((a, b) => b.date.localeCompare(a.date));
-  const max_abs_diff_pct =
-    points.length > 0 ? Math.max(...points.map((p) => Math.abs(p.diff_pct))) : 0;
-  return {
-    composition_date: meta.composition_date,
-    last_sync_ymd: meta.last_sync_ymd,
-    points,
-    max_abs_diff_pct,
-  };
 }
 
 export type CompositeStatsAnchors = {

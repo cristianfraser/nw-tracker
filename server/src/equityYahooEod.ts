@@ -208,17 +208,3 @@ export async function fetchYahooRecentDailyCloses(symbol: string, days = 14): Pr
   return fetchYahooDailyCloses(symbol, period1, period2);
 }
 
-/** Last daily close on or before `ymd` (YYYY-MM-DD). `series.dates` sorted ascending. */
-export function lastCloseOnOrBefore(series: EodCloseSeries, ymd: string): number | null {
-  const { dates, closes } = series;
-  if (dates.length === 0) return null;
-  if (ymd < dates[0]) return null;
-  let lo = 0;
-  let hi = dates.length - 1;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (dates[mid] <= ymd) lo = mid;
-    else hi = mid - 1;
-  }
-  return closes[lo];
-}

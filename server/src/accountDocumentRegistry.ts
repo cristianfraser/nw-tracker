@@ -29,6 +29,3 @@ export function documentImportSpecsForAccount(accountId: number): DocumentImport
   return DOCUMENT_IMPORT_SPECS.filter((s) => s.categorySlugs.includes(kind));
 }
 
-export function listDocumentImportTypesForAccount(accountId: number): DocumentImportType[] {
-  return documentImportSpecsForAccount(accountId).map((s) => s.type);
-}

@@ -201,11 +201,6 @@ export interface FxLatest {
   clp_per_usd: number;
 }
 
-export interface UfLatest {
-  date: string;
-  clp_per_uf: number;
-}
-
 /** `data` = account valuation / flows (tail-clip trailing zeros). `reference` = totals, NW, liquidity overlays. */
 export type ValueSeriesType = "data" | "reference";
 

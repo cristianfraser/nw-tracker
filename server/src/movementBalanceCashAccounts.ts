@@ -146,7 +146,3 @@ export function listMovementBalanceCashAccountIds(dbHandle: Database = db): numb
     .sort((a, b) => a - b);
 }
 
-/** All cartola checking accounts (corriente + vista) that feed Expenses gastos. */
-export function listCheckingAccountIdsForExpenses(dbHandle: Database = db): number[] {
-  return listMovementBalanceCashAccountIds(dbHandle);
-}

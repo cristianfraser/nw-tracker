@@ -11,7 +11,6 @@ import {
   accountUsesCryptoMtm,
   computeCryptoMtmClp,
   cryptoCoinCumulativeThroughDate,
-  cryptoEquityTickerForAccount,
   type CryptoAsset,
 } from "./cryptoValuation.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
@@ -43,13 +42,6 @@ import {
   riskyNorrisProxyCuotaForMtm,
   shouldUseRiskyNorrisProxyMtm,
 } from "./riskyNorrisProxyMtm.js";
-
-/** Net coin held today (Σ `units_delta` on crypto MTM accounts). */
-export function netCryptoCoinFromMovements(accountId: number, _asset: CryptoAsset): number | null {
-  if (!cryptoEquityTickerForAccount(accountId)) return null;
-  const units = cryptoCoinCumulativeThroughDate(accountId, chileCalendarTodayYmd());
-  return Number.isFinite(units) ? units : null;
-}
 
 export type UnitsKind = "shares" | "coin";
 
@@ -362,23 +354,5 @@ export function liveAfpDisplayValueClp(
     return { value_clp: clp, as_of_date: date };
   }
   return null;
-}
-
-
-export function applyLiveAfpToAccountValueMap(
-  lastVal: Map<number, number>,
-  accountMeta: Map<number, { category_slug: string; import_key?: string | null; name?: string | null }>
-): void {
-  for (const [id, m] of accountMeta) {
-    if (m.category_slug === "afp") {
-      const live = liveAfpDisplayValueClp(id);
-      if (live) lastVal.set(id, live.value_clp);
-      continue;
-    }
-    if (m.import_key && isFintualCertV2ValuationNotes(m.import_key)) {
-      const live = liveFintualCertDisplayValueClp(id, m.import_key, m.name ?? null);
-      if (live) lastVal.set(id, live.value_clp);
-    }
-  }
 }
 

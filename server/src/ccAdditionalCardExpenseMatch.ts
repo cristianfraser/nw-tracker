@@ -163,20 +163,6 @@ export function mergeAutoAdditionalCardNote(
   return `${auto}\n\n${existing}`;
 }
 
-export function userClearedUniquePurchase(
-  accountId: number,
-  purchaseKey: string,
-  dbHandle: Database = db
-): boolean {
-  const row = dbHandle
-    .prepare(
-      `SELECT category_id FROM cc_expense_unique_purchases
-       WHERE account_id = ? AND purchase_key = ?`
-    )
-    .get(accountId, purchaseKey) as { category_id: number | null } | undefined;
-  return row != null && row.category_id == null;
-}
-
 export type ApplyAdditionalCardNoCuentaResult = {
   applied: boolean;
   skippedUserCleared: boolean;

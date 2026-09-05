@@ -45,10 +45,6 @@ export const WEALTH_COUNTRIES: readonly WealthCountry[] = [
   "CN",
 ];
 
-export function isWealthCountry(v: string): v is WealthCountry {
-  return (WEALTH_COUNTRIES as readonly string[]).includes(v);
-}
-
 export type WealthMode = "total" | "financial";
 
 export type WealthDistributionRecord = {

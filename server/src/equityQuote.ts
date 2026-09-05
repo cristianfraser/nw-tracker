@@ -282,27 +282,6 @@ export function equityCloseEod(ticker: string, asOfYmd: string): number | null {
   return eodQuote(ticker, asOfYmd)?.price ?? null;
 }
 
-const stmtEodPriorDate = db.prepare(
-  `SELECT trade_date FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
-);
-
-/** Prior session before display session (marquee / display). */
-export function priorEquitySessionForMarquee(ticker: string, now = new Date()): string | null {
-  const kind = equityMarketKind(ticker);
-  if (kind === "crypto24") {
-    const display = cryptoDisplaySessionYmd(ticker, now);
-    return priorCryptoSessionYmd(ticker, display);
-  }
-  if (kind === "santiago") {
-    const display =
-      resolveSantiagoEodQuote(ticker, now)?.trade_date ?? chileWallClockAt(now).ymd;
-    const prior = stmtEodPriorDate.get(ticker, display) as { trade_date: string } | undefined;
-    return prior?.trade_date ?? null;
-  }
-  const display = nyseDisplaySessionYmd(now);
-  return priorNyseSessionYmd(display);
-}
-
 /** No-op: live quotes are persisted in `live_market_quotes` (cleared on EOD sync is unnecessary). */
 export function clearEquityLiveQuoteCache(): void {
   /* retained for callers after equity EOD sync */

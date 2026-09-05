@@ -23,11 +23,6 @@ function cachedParsedJsonEntries(
   return rows;
 }
 
-/** @internal test hook */
-export function clearImportSyncCartolaSinMovimientosCache(): void {
-  parsedJsonCache.clear();
-}
-
 /**
  * Whether the import-sync matrix should show ○ (sin movimientos) for a cartola cell.
  * Uses imported / parsed movement totals — not whole-PDF banner text alone.

@@ -2136,8 +2136,6 @@ function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): 
 
 export { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 
-export type GroupChartPieSlice = { name: string; account_id: number; value: number; name_i18n_key?: string | null };
-
 function addNullable(
   a: string | number | null | undefined,
   b: string | number | null | undefined
