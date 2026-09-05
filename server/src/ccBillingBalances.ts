@@ -32,7 +32,10 @@ import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
-import { isCcPaymentMerchant } from "./ccPaymentLines.js";
+import {
+  isCcPaymentMerchant,
+  isCcPaymentOrUsdDebtAbonoMerchant,
+} from "./ccPaymentLines.js";
 import {
   isClpSection3FinancingChargeMerchant,
   isUsdSection3FinancingChargeMerchant,
@@ -126,7 +129,7 @@ function listRevolvingLineRowsForStatementDate(
 function sumRevolvingLinesForAccountStatementDateClp(
   accountId: number,
   statementDate: string,
-  opts?: { excludePayments?: boolean }
+  opts?: { excludePayments?: boolean; excludeUsdDebtPaymentAbonos?: boolean }
 ): number {
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   const rows = listRevolvingLineRowsForStatementDate(accountId, statementDate);
@@ -136,6 +139,12 @@ function sumRevolvingLinesForAccountStatementDateClp(
     if (superseded.has(r.id)) continue;
     if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
     if (opts?.excludePayments && isCcPaymentMerchant(r.merchant)) continue;
+    if (
+      opts?.excludeUsdDebtPaymentAbonos &&
+      isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)
+    ) {
+      continue;
+    }
     const clp = effectiveCcExpenseLineAmountClp(
       { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
       fxDateIso
@@ -152,6 +161,25 @@ export function sumRevolvingChargesClpForStatementDate(
 ): number {
   return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, {
     excludePayments: true,
+  });
+}
+
+/**
+ * Open-cycle variant: additionally excludes «ABONO DE DIVISAS» — the USD-debt payment the daily
+ * feed lands in the open web-paste bucket. Like the PAGO it settles the *prior* facturación, so
+ * it must not net against this cycle's charges; `paymentAbonosClpForBillingMonth` counts it (at
+ * the same FX this walk would have used) so the open-month balance roll (charges − payments) is
+ * unchanged by the classification. Kept out of {@link sumRevolvingChargesClpForStatementDate}:
+ * that summer also derives facturado for closed header-less legacy USD statements, whose
+ * displayed history (and month-end valuation anchors) must not move.
+ */
+function sumOpenCycleChargesClpForStatementDate(
+  accountId: number,
+  statementDate: string
+): number {
+  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate, {
+    excludePayments: true,
+    excludeUsdDebtPaymentAbonos: true,
   });
 }
 
@@ -375,7 +403,12 @@ export function postCloseLiveBalanceAdjustmentsClp(
   });
 }
 
-/** Σ positive revolving charges in a billing month (all statement closes on distinct dates). */
+/**
+ * Σ revolving charges in a billing month (all statement closes on distinct dates). Open-month
+ * only (facturado display + balance roll-forward), so payment lines — PAGO / MONTO CANCELADO /
+ * ABONO DE DIVISAS — are excluded: they settle the prior facturación, not this cycle's charges.
+ * Non-payment negative lines (refunds, notas de crédito) still net inside the sum.
+ */
 export function incrementalChargesClpForBillingMonth(
   accountId: number,
   billingMonth: string
@@ -386,14 +419,14 @@ export function incrementalChargesClpForBillingMonth(
     if (st.billing_month !== billingMonth) continue;
     if (seenDates.has(st.statement_date)) continue;
     seenDates.add(st.statement_date);
-    sum += sumRevolvingChargesClpForStatementDate(accountId, st.statement_date);
+    sum += sumOpenCycleChargesClpForStatementDate(accountId, st.statement_date);
   }
   const openBm = billingMonthForManualLedgerPurchase(accountId);
   if (openBm === billingMonth) {
     for (const stmtDate of listStaleOpenWebPasteStatementDates(accountId, billingMonth)) {
       if (seenDates.has(stmtDate)) continue;
       seenDates.add(stmtDate);
-      sum += sumRevolvingChargesClpForStatementDate(accountId, stmtDate);
+      sum += sumOpenCycleChargesClpForStatementDate(accountId, stmtDate);
     }
   }
   return sum;
@@ -403,8 +436,12 @@ export function incrementalChargesClpForBillingMonth(
  * Open-cycle USD (foreign) charges billed so far, in USD and CLP — used to split the open month's
  * facturado into its CLP and US$ stacked components. Mirrors the statement iteration of
  * {@link incrementalChargesClpForBillingMonth} but keeps only USD-denominated lines (foreign charges
- * that carry `amount_usd` with no CLP amount, or lines on a USD statement). Payments/abonos net in
- * via their negative amounts.
+ * that carry `amount_usd` with no CLP amount, or lines on a USD statement). Payment lines (PAGO /
+ * MONTO CANCELADO / ABONO DE DIVISAS) are EXCLUDED — same rule as the CLP side
+ * (`facturadoClpFromOpenMonthStatementLines`): a payment in the open cycle settles the *prior*
+ * facturación, so it must not reduce this cycle's billed US$ (the feed's divisas abono drove the
+ * open month to −US$xxx,xx on ·0781, 2026-08). Payments belong to the balance roll-forward only.
+ * Non-payment negative lines (refunds) still net in.
  *
  * "No CLP amount" must accept **0 as well as NULL**: the importer parses an empty `amount_clp`
  * CSV cell through `Number("")` → 0, so every stored foreign web-paste line carries 0, never NULL
@@ -426,6 +463,7 @@ export function openMonthUsdFacturado(
     for (const r of listRevolvingLineRowsForStatementDate(accountId, statementDate)) {
       if (superseded.has(r.id)) continue;
       if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+      if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
       const oneShot = {
         ...r,
         installment_flag: 0,
