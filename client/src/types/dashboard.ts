@@ -194,14 +194,6 @@ export interface DashboardResponse {
   /** True when deposit USD totals could not be converted (missing fx_daily). */
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
-  /** Current-month Patrimonio neto metrics from canonical consolidated series (card period row). */
-  net_worth_period_metrics?: {
-    closing_clp: number;
-    prior_closing_clp: number | null;
-    net_capital_flow_clp: number;
-    nominal_pl_clp: number | null;
-    balance_delta_clp: number | null;
-  } | null;
 }
 
 export interface FxLatest {

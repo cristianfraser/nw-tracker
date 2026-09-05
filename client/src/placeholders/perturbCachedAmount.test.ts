@@ -334,12 +334,11 @@ describe("synthesizeMissingUsdOnDashboardNavContext", () => {
     expect(synthesized.liabilities_breakdown!.mortgage_usd).toBeCloseTo(100_000, 5);
   });
 
-  it("leaves nw_bucket_totals, overviewPoints and inversiones_period_metrics untouched", () => {
+  it("leaves nw_bucket_totals and overviewPoints untouched", () => {
     const ctx = navCtx();
     const synthesized = synthesizeMissingUsdOnDashboardNavContext(ctx);
     expect(synthesized.nw_bucket_totals).toBe(ctx.nw_bucket_totals);
     expect(synthesized.overviewPoints).toBe(ctx.overviewPoints);
-    expect(synthesized.inversiones_period_metrics).toBe(ctx.inversiones_period_metrics);
   });
 
   it("leaves USD absent when no rate is available", () => {

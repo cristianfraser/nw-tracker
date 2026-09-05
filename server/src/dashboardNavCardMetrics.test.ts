@@ -154,7 +154,6 @@ describe("buildNavCardMetricsBySlug", () => {
   const input: NavCardMetricsBuildInput = {
     navRoots: [tree],
     rows: brokerageRows,
-    inversiones: null,
   };
 
   it("full-bucket child: bucket scope excludes non-counting rows; every variant carries all three period slices", () => {

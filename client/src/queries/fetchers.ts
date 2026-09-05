@@ -44,7 +44,6 @@ export type DashboardNavContext = {
   dashboard_layout?: DashboardResponse["dashboard_layout"];
   nw_bucket_totals?: DashboardNavContextResponse["nw_bucket_totals"];
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
-  inversiones_period_metrics?: DashboardNavContextResponse["inversiones_period_metrics"];
   overviewPoints: Record<string, string | number | null>[];
 };
 
@@ -62,7 +61,6 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
     card_metrics_by_slug: nav.card_metrics_by_slug,
-    inversiones_period_metrics: nav.inversiones_period_metrics,
     overviewPoints: nav.overview?.points ?? [],
   };
 }
@@ -167,7 +165,6 @@ export function dashPickForNavStrip(
   "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
 > & {
   totals: DashboardResponse["totals"];
-  inversiones_period_metrics?: DashboardNavContextResponse["inversiones_period_metrics"];
 } {
   const include = (a: DashboardResponse["accounts"][number]) => a.exclude_from_group_totals !== 1;
   const serverBuckets = ctx.nw_bucket_totals;
@@ -263,7 +260,6 @@ export function dashPickForNavStrip(
       ...(cash_eqs_usd !== undefined ? { cash_eqs_usd } : {}),
       ...(liabilities_usd !== undefined ? { liabilities_usd } : {}),
     },
-    inversiones_period_metrics: ctx.inversiones_period_metrics,
   };
 }
 

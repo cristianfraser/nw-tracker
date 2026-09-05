@@ -11,7 +11,6 @@ import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { isNwDashboardBucketSlug, portfolioGroupValueClpAt } from "./portfolioGroupValueAtDate.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
-import { netWorthCurrentMonthMetrics } from "./netWorthConsolidation.js";
 import {
   timeHeavy,
   timeHeavyAsync,
@@ -32,7 +31,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     return timeHeavy(HeavyWork.dashboardPayload, () => {
     const asOfToday = chileCalendarTodayYmd();
     const bucketTotals = buildDashboardNwBucketTotals(includeUsd);
-    const netWorthPeriod = netWorthCurrentMonthMetrics("clp");
     const re = { clp: bucketTotals.real_estate_clp, usd: bucketTotals.real_estate_usd ?? 0 };
     const ret = { clp: bucketTotals.retirement_clp, usd: bucketTotals.retirement_usd ?? 0 };
     const bro = { clp: bucketTotals.brokerage_clp, usd: bucketTotals.brokerage_usd ?? 0 };
@@ -81,8 +79,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       notes: notes ?? null,
     }));
     // Nav-strip card metrics, precomputed server-side (see dashboardNavCardMetrics.ts).
-    // `inversiones: null` mirrors this payload's shape: the bundle never carried
-    // inversiones_period_metrics, and the home strip never renders that parent card.
     // The liabilities root is included for the Pasivos page (its nodes are not in net_worth).
     const navRoot = getNetWorthNavGroupNode();
     if (!navRoot) throw new Error("dashboard payload: net_worth nav tree missing");
@@ -91,7 +87,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
       navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,
-      inversiones: null,
     });
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
     const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
@@ -153,7 +148,6 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
             fx_conversion_warnings: depositsFlow.fx_conversion_warnings,
           }
         : {}),
-      net_worth_period_metrics: netWorthPeriod,
     };
     });
   });

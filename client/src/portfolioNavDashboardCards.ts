@@ -296,19 +296,6 @@ export type PortfolioNavParentTitleDeltaMode =
   | { kind: "sum_dashboard_groups"; groups: readonly DashboardGroupSlug[] }
   | { kind: "subset_only" };
 
-export type ConsolidatedHubPeriodMetricsSlice = {
-  closing_clp: number;
-  prior_closing_clp: number | null;
-  net_capital_flow_clp: number;
-  nominal_pl_clp: number | null;
-  balance_delta_clp: number | null;
-};
-
-export type InversionesPeriodMetricsDto = {
-  month: ConsolidatedHubPeriodMetricsSlice | null;
-  year: ConsolidatedHubPeriodMetricsSlice | null;
-};
-
 /**
  * Main balance for portfolio strip compact card: dashboard bucket totals when the page maps to a
  * bucket; otherwise sum of live values under the nav subtree (e.g. Pasivos subset).

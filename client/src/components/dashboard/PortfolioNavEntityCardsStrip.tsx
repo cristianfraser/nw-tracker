@@ -11,7 +11,6 @@ import {
   portfolioNavParentMainValue,
   portfolioNavParentTitleModeForNavNode,
   requireNavCardMetrics,
-  type InversionesPeriodMetricsDto,
 } from "../../portfolioNavDashboardCards";
 import {
   portfolioStripAccountChildren,
@@ -23,9 +22,7 @@ export type PortfolioNavEntityCardsStripProps = {
   dash: Pick<
     DashboardResponse,
     "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
-  > & {
-    inversiones_period_metrics?: InversionesPeriodMetricsDto;
-  };
+  >;
   parentNavNode: NavTreeNodeDto;
   showUsd: boolean;
   animated?: boolean;
