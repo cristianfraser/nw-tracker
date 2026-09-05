@@ -21,7 +21,6 @@ import {
   resolveDashboardBucketFromNavNode as resolveDashboardBucketSlugFromNavNode,
 } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
-import type { InversionesPeriodMetrics } from "./netWorthConsolidation.js";
 
 export type CardMetricsPeriod = "day" | "month" | "year";
 
@@ -466,8 +465,6 @@ export type NavCardMetricsBuildInput = {
    */
   navRoots: readonly NavTreeNodeDto[];
   rows: readonly CardMetricsAccountRow[];
-  /** Consolidated hub series for the inversiones parent card (same value the payload serves). */
-  inversiones: InversionesPeriodMetrics | null;
 };
 
 /** Port of client `stripMetricsRowsForNavChild` (cash-savings node uses raw leaf ids minus shortfall). */
@@ -505,35 +502,12 @@ function childVariantForNode(
   };
 }
 
-/** Period fields from the consolidated hub slice over child-sum lifetime fields. */
-function hubMetricsFromConsolidated(
-  slice: { net_capital_flow_clp: number; balance_delta_clp: number | null } | null,
-  lifetime: CardPeriodMetricsDto
-): CardPeriodMetricsDto {
-  if (!slice) {
-    return {
-      ...lifetime,
-      deposits_period_clp: 0,
-      deposits_period_usd: null,
-      delta_period_clp: null,
-      delta_period_usd: null,
-    };
-  }
-  return {
-    ...lifetime,
-    deposits_period_clp: slice.net_capital_flow_clp,
-    deposits_period_usd: null,
-    delta_period_clp: slice.balance_delta_clp,
-    delta_period_usd: null,
-  };
-}
-
 function parentVariantForNode(
   node: NavTreeNodeDto,
   input: NavCardMetricsBuildInput,
   childVariantBySlug: Map<string, NavCardMetricsVariantDto>
 ): NavCardMetricsVariantDto {
-  const { rows, inversiones } = input;
+  const { rows } = input;
   const mode = parentTitleModeForNavNode(node);
   const subtreeIds = navMetricsAccountIdSet(node, rows);
   const subtreeRows = rows.filter((a) => subtreeIds.has(a.account_id));
@@ -550,17 +524,6 @@ function parentVariantForNode(
   };
 
   const metricsFor = (period: CardMetricsPeriod): CardPeriodMetricsDto => {
-    // The consolidated hub series is monthly — day composes from child buckets instead.
-    if (
-      node.slug === "inversiones" &&
-      inversiones &&
-      mode.kind === "sum_dashboard_groups" &&
-      period !== "day"
-    ) {
-      const lifetime = sumCardMetrics(childMetricsOfStripChildren(period));
-      const slice = period === "month" ? inversiones.month : inversiones.year;
-      return hubMetricsFromConsolidated(slice, lifetime);
-    }
     if (mode.kind === "dashboard_group") {
       return bucketCardMetrics(rows, mode.group, period, (a) => subtreeIds.has(a.account_id));
     }

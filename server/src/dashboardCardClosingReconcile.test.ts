@@ -1,18 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { monthKeyFromYmd } from "./calendarMonth.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
+import { buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { nwDashboardMetricGroupForAccount } from "./portfolioGroupTree.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 describe("dashboard card closing reconcile", () => {
-  it("net worth period metrics match bucket title delta and deposits + P/L", async () => {
+  it("consolidated NW month row matches bucket title delta and deposits", async () => {
     await withPortfolioGroupIndex(async () => {
       const payload = await buildDashboardPagePayload(false);
-      const nw = payload.net_worth_period_metrics;
-      if (nw?.balance_delta_clp == null) return;
+      const mk = monthKeyFromYmd(chileCalendarTodayYmd());
+      const row = buildNetWorthConsolidatedMonthly("clp").find(
+        (r) => monthKeyFromYmd(r.as_of_date) === mk
+      );
+      if (!row || row.prior_closing == null || !Number.isFinite(row.prior_closing)) return;
 
       const titleDelta =
         payload.totals.net_worth_clp - payload.totals.prior_closes.month.net_worth_clp;
-      expect(Math.round(titleDelta)).toBeCloseTo(nw.balance_delta_clp!, 0);
+      expect(Math.round(titleDelta)).toBeCloseTo(
+        Math.round(row.closing_value - row.prior_closing),
+        0
+      );
       const bucketDepSum = (["real_estate", "retirement", "brokerage", "cash_eqs"] as const).reduce(
         (s, slug) =>
           s +
@@ -24,7 +33,7 @@ describe("dashboard card closing reconcile", () => {
             .reduce((t, a) => t + (a.deposits_month_clp ?? 0), 0),
         0
       );
-      expect(nw.net_capital_flow_clp).toBeCloseTo(bucketDepSum, 0);
+      expect(Math.round(row.net_capital_flow)).toBeCloseTo(bucketDepSum, 0);
     });
   });
 

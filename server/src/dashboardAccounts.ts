@@ -57,9 +57,7 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
-import type { InversionesPeriodMetrics } from "./netWorthConsolidation.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
-import { inversionesPeriodMetrics } from "./netWorthConsolidation.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
@@ -618,13 +616,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
 /** @heavy One {@link getAccountMonthlyPerformance} per tracked account (via {@link buildDashboardAccountRows}). */
-export async function buildDashboardNavSnapshot(
-  includeUsd: boolean,
-  opts?: {
-    /** Consolidated inversiones slice for the hub parent card — nav-context passes the slice it serves; the standalone snapshot has none. */
-    inversiones?: InversionesPeriodMetrics | null;
-  }
-) {
+export async function buildDashboardNavSnapshot(includeUsd: boolean) {
   const rowsBuilt = await buildDashboardAccountRows(includeUsd);
   const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
     ...rest,
@@ -657,7 +649,6 @@ export async function buildDashboardNavSnapshot(
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
-    inversiones: opts?.inversiones ?? null,
   });
   return {
     accounts: clientAccounts,
@@ -678,11 +669,8 @@ export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit
 }
 
 async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) {
-  // Same inversiones slice feeds both the payload field and the hub card metrics, so the
-  // inversiones parent card always matches the served consolidated series.
-  const inversiones = inversionesPeriodMetrics(unit);
   const [nav, ts] = await Promise.all([
-    timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd, { inversiones })),
+    timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd)),
     Promise.resolve().then(() =>
       timeHeavy(HeavyWork.dashboardOverviewBlock, () => getDashboardOverviewBlock(unit))
     ),
@@ -693,7 +681,6 @@ async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) 
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
     card_metrics_by_slug: nav.card_metrics_by_slug,
-    inversiones_period_metrics: inversiones,
     overview: ts,
     fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
   };

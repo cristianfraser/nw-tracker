@@ -251,8 +251,8 @@ export function synthesizeMissingUsdOnNavSnapshot(
 
 /**
  * Fill missing USD fields on a held prior-unit nav-context during a CLP→USD switch (the
- * keepPreviousData placeholder in `useDashboardNavContext`). `nw_bucket_totals`, `overviewPoints`
- * and `inversiones_period_metrics` stay untouched — `dashPickForNavStrip` derives bucket USD by
+ * keepPreviousData placeholder in `useDashboardNavContext`). `nw_bucket_totals` and
+ * `overviewPoints` stay untouched — `dashPickForNavStrip` derives bucket USD by
  * summing the synthesized account rows, and delta paths fall back to per-account prior closes.
  */
 export function synthesizeMissingUsdOnDashboardNavContext(

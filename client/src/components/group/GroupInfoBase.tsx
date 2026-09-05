@@ -22,7 +22,6 @@ import {
 } from "../../useGroupInfoConsolidatedTables";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
 import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
-import type { InversionesPeriodMetricsDto } from "../../portfolioNavDashboardCards";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
@@ -34,9 +33,7 @@ export type GroupInfoPortfolioStrip = {
   dash: Pick<
     DashboardResponse,
     "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
-  > & {
-    inversiones_period_metrics?: InversionesPeriodMetricsDto;
-  };
+  >;
   overviewPoints: Record<string, string | number | null>[];
   showUsd: boolean;
   animated?: boolean;

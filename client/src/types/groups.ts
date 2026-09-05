@@ -97,23 +97,6 @@ export interface DashboardNavContextResponse {
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   overview: ValuationTimeseriesResponse["overview"];
   fx_coverage: FxCoverage | null;
-  /** Month/year metrics for the inversiones nav hub (canonical consolidated series). */
-  inversiones_period_metrics?: {
-    month: {
-      closing_clp: number;
-      prior_closing_clp: number | null;
-      net_capital_flow_clp: number;
-      nominal_pl_clp: number | null;
-      balance_delta_clp: number | null;
-    } | null;
-    year: {
-      closing_clp: number;
-      prior_closing_clp: number | null;
-      net_capital_flow_clp: number;
-      nominal_pl_clp: number | null;
-      balance_delta_clp: number | null;
-    } | null;
-  };
 }
 
 /** `GET /api/dashboard/page-bundle` — home dashboard in one response. */
